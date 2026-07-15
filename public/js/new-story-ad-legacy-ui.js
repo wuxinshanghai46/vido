@@ -2420,6 +2420,31 @@
     </div>`;
   }
 
+  function nestedFieldValue(source = {}, path = '') {
+    return String(path || '').split('.').reduce((value, key) => (value && typeof value === 'object' ? value[key] : undefined), source);
+  }
+
+  function displayFieldValue(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return value.map(displayFieldValue).filter(Boolean).join('；');
+    if (typeof value === 'object') return Object.entries(value).map(([key, item]) => `${key}: ${displayFieldValue(item)}`).filter(Boolean).join('；');
+    return String(value);
+  }
+
+  function setNestedField(source = {}, path = '', value) {
+    const keys = String(path || '').split('.').filter(Boolean);
+    if (!keys.length) return source;
+    let current = source;
+    keys.forEach((key, index) => {
+      if (index === keys.length - 1) current[key] = value;
+      else {
+        if (!current[key] || typeof current[key] !== 'object' || Array.isArray(current[key])) current[key] = {};
+        current = current[key];
+      }
+    });
+    return source;
+  }
+
   function shotFieldValue(shot = {}, contract = {}, field = '') {
     if (field === 'duration') return shot.duration || shot.duration_sec || contract.duration || '';
     if (field === 'visual') return editorFriendlyPromptText(shot.visual || shot.visual_description || shot.content_prompt || contract.visual || '');
@@ -2430,7 +2455,8 @@
     if (field === 'scene_view') return shot.scene_view || contract.scene_lock?.scene_view || '';
     if (field === 'scene_zone') return shot.scene_zone_label_zh || contract.scene_lock?.scene_zone_label_zh || shot.scene_zone || contract.scene_lock?.scene_zone || '';
     if (field === 'transition_reason') return shot.transition_reason || contract.scene_lock?.transition_reason || '';
-    return shot[field] || '';
+    if (field.includes('.')) return nestedFieldValue(shot, field) ?? '';
+    return displayFieldValue(shot[field] || '');
   }
 
   function updateShotField(target) {
@@ -2439,7 +2465,9 @@
     const field = target.dataset.nsaShotField || '';
     const shot = state.shots[index];
     if (!shot || !field) return true;
-    const value = field === 'duration' ? Math.max(1, Math.min(15, Number(target.value || 0) || Number(shot.duration || 3) || 3)) : target.value || '';
+    const value = field === 'duration'
+      ? Math.max(1, Math.min(15, Number(target.value || 0) || Number(shot.duration || 3) || 3))
+      : (target.type === 'checkbox' ? target.checked : target.value || '');
     shot._nsa_user_edited_fields = { ...(shot._nsa_user_edited_fields || {}), [field]: true };
     if (field === 'duration') { shot.duration = value; shot.duration_sec = value; }
     else if (field === 'visual') {
@@ -2466,6 +2494,7 @@
       shot.scene_zone = value;
     }
     else if (field === 'transition_reason') { shot.transition_reason = value; }
+    else if (field.includes('.')) { setNestedField(shot, field, value); }
     else { shot[field] = value; }
     shot.edited_at = new Date().toISOString();
     return true;
@@ -2518,6 +2547,14 @@
       const sceneSummary = [sceneName, sceneView, sceneZone, transition, shot.transition_reason].filter(Boolean).join(' · ') || '按任务场景与连续性合同生成';
       const cameraSummary = [technicalLabel(shot.shot_size || shot.shot_type), technicalLabel(shot.camera_angle), shot.lens_mm ? `${shot.lens_mm}mm` : '', technicalLabel(shot.camera_movement)].filter(Boolean).join(' · ') || '按镜头目的判断';
       const soundSummary = [shot.ambient_sound, Array.isArray(shot.sfx) ? shot.sfx.join('、') : shot.sfx, shot.music_cue].filter(Boolean).join('；') || '跟随整片声音设计';
+      const scopeLabels = { auto: '按任务判断', environment: '环境镜头', product_comparison: '产品/样品对比', character: '人物镜头', brand_endcard: '品牌收尾' };
+      const surfaceLabels = { auto: '', continuous: '连续完整表面', segmented: '分段表面', modular: '模块化表面' };
+      const effectLabels = { none: '', particle_assembly: '粒子/流沙汇聚', fade: '淡入', dissolve: '溶解', material_flow: '材质流动', custom: '自定义效果' };
+      const effectSummary = [
+        shot.shot_scope && shot.shot_scope !== 'auto' ? scopeLabels[shot.shot_scope] : '',
+        surfaceLabels[shot.surface_topology?.mode || 'auto'],
+        effectLabels[shot.motion_effect?.type || 'none'],
+      ].filter(Boolean).join(' · ');
       const currentFailed = !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked', 'qa_unavailable'].includes(String(frame.current_generation_status || '')));
       const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
@@ -2581,6 +2618,7 @@
             <section class="is-wide"><b>画面</b><span>${escapeHtml(visualSummary)}</span></section>
             <section><b>动作</b><span>${escapeHtml(actionSummary)}</span></section>
             <section><b>台词 / 声音</b><span>${escapeHtml(voiceoverSummary)}${soundSummary ? `<small>${escapeHtml(soundSummary)}</small>` : ''}</span></section>
+            ${effectSummary ? `<section class="is-wide"><b>表面结构 / 动态效果</b><span>${escapeHtml(effectSummary)}</span></section>` : ''}
           </div>
           ${frame.regeneration_error ? `<p class="dh-nsa-frame-warning"><b>${escapeHtml(window.NewStoryAdKeyframes?.isQaInfrastructureError?.(frame.regeneration_error, frame.regeneration_error_code) ? '本轮视觉审核服务异常，当前仍显示上一版画面。' : '新版本未通过，当前仍显示上一版画面。')}</b>${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.regeneration_error, frame.regeneration_error_code) : frame.regeneration_error)}</p>` : ''}
           ${(frame.error || (frame.image_url && !image)) ? `<p class="dh-nsa-frame-error">${escapeHtml(window.NewStoryAdKeyframes?.friendlyError ? window.NewStoryAdKeyframes.friendlyError(frame.error || '关键帧图片地址已失效，请重新生成本镜头。', frame.error_code) : (frame.error || '关键帧图片地址已失效，请重新生成本镜头。'))}</p>` : ''}
@@ -2595,6 +2633,35 @@
               <label><span>\u955c\u5934\u52a8\u4f5c</span><textarea class="dh-input" rows="3" data-nsa-shot-index="${i}" data-nsa-shot-field="action">${escapeHtml(shotFieldValue(shot, contract, 'action'))}</textarea></label>
               <label><span>\u53f0\u8bcd/\u65c1\u767d</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover">${escapeHtml(shotFieldValue(shot, contract, 'voiceover') || dialogue)}</textarea></label>
               <label><span>\u76ee\u7684/\u8865\u5145</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="purpose">${escapeHtml(shotFieldValue(shot, contract, 'purpose'))}</textarea></label>
+          <details class="dh-nsa-shot-design-editor">
+            <summary>本镜表面结构与动态效果</summary>
+            <p class="dh-nsa-shot-design-help">这些设置只作用于本镜；“按任务判断”不会改变旧任务。分镜 4 这类样品对比可独立设置，不会反向定义其它镜头的环境结构。</p>
+            <label><span>镜头作用域</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_scope">
+              ${[['auto','按任务判断'],['environment','环境镜头'],['product_comparison','产品/样品对比'],['character','人物镜头'],['brand_endcard','品牌收尾']].map(([value,label]) => `<option value="${value}" ${String(shot.shot_scope || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label><span>主表面结构</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="surface_topology.mode">
+              ${[['auto','按任务判断'],['continuous','连续完整表面'],['segmented','明确分段表面'],['modular','模块化结构']].map(([value,label]) => `<option value="${value}" ${String(shot.surface_topology?.mode || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label><span>拼缝策略</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="surface_topology.seam_policy">
+              ${[['auto','按任务判断'],['hidden','隐藏可见拼缝'],['visible','明确显示拼缝'],['task_defined','仅显示任务指定拼缝']].map(([value,label]) => `<option value="${value}" ${String(shot.surface_topology?.seam_policy || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label><span>饰面分布</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="surface_topology.finish_distribution">
+              ${[['auto','按任务判断'],['uniform','统一饰面'],['gradient','连续渐变'],['regional','连续基面上的局部变化'],['sample_comparison','样品对比']].map(([value,label]) => `<option value="${value}" ${String(shot.surface_topology?.finish_distribution || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label class="is-wide"><span>表面结构补充</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="surface_topology.notes">${escapeHtml(shotFieldValue(shot, contract, 'surface_topology.notes'))}</textarea></label>
+            <label><span>动态效果</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.type">
+              ${[['none','无'],['particle_assembly','粒子/流沙汇聚'],['fade','淡入'],['dissolve','溶解'],['material_flow','材质流动'],['custom','自定义效果']].map(([value,label]) => `<option value="${value}" ${String(shot.motion_effect?.type || 'none') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label><span>效果强度</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.intensity">
+              ${[['low','轻'],['medium','中'],['high','强']].map(([value,label]) => `<option value="${value}" ${String(shot.motion_effect?.intensity || 'medium') === value ? 'selected' : ''}>${label}</option>`).join('')}
+            </select></label>
+            <label><span>起始状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.source_state">${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.source_state'))}</textarea></label>
+            <label><span>目标状态</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.target_state">${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.target_state'))}</textarea></label>
+            <label class="is-wide"><span>时间轴</span><textarea class="dh-input" rows="2" placeholder="例如：0-1 秒保持；1-3.5 秒汇聚；3.5-4.5 秒成形；最后稳定" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.timeline">${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.timeline'))}</textarea></label>
+            <label><span>目标参考素材 ID（可选）</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.reference_asset_id'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.reference_asset_id"></label>
+            <label class="dh-nsa-inline-check"><input type="checkbox" ${shot.motion_effect?.preserve_scene_geometry !== false ? 'checked' : ''} data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.preserve_scene_geometry"><span>效果过程中保持场景几何不变</span></label>
+            <label class="is-wide"><span>效果补充</span><textarea class="dh-input" rows="2" data-nsa-shot-index="${i}" data-nsa-shot-field="motion_effect.notes">${escapeHtml(shotFieldValue(shot, contract, 'motion_effect.notes'))}</textarea></label>
+          </details>
           <details class="dh-nsa-continuity-editor">
             <summary>镜头语言与前后镜连续性</summary>
             <label><span>景别</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="shot_size">${['','extreme_wide','wide','full','medium','medium_close','close_up','extreme_close_up','macro'].map(value => `<option value="${value}" ${String(shot.shot_size || '') === value ? 'selected' : ''}>${value ? technicalLabel(value) : '按镜头目的判断'}</option>`).join('')}</select></label>
@@ -2621,10 +2688,12 @@
             <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
               </details>
               ${contract.subject_strategy ? `<details class="dh-nsa-frame-contract"><summary>查看生成约束</summary><p>${escapeHtml(contract.subject_strategy)}</p></details>` : ''}
+              ${shot._prompt_preview ? `<details class="dh-nsa-prompt-preview" open><summary>最终生成提示词（仅预览，未生成媒体）</summary><b>关键帧提示词</b><pre>${escapeHtml(shot._prompt_preview.keyframe_prompt || '')}</pre><b>视频动作提示词</b><pre>${escapeHtml(shot._prompt_preview.motion_prompt || '')}</pre></details>` : ''}
             </div>
           </details>
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-save="${i}">\u4fdd\u5b58\u672c\u955c</button>
+            <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
             ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">\u67e5\u770b\u5927\u56fe</button>` : ''}
           </div>
@@ -2895,6 +2964,7 @@
         : purpose;
       return {
         ...shot,
+        _prompt_preview: undefined,
         index: index + 1,
         shot_index: index + 1,
         duration,
@@ -2959,6 +3029,28 @@
     } finally {
       setButtonBusy(button, false);
       setBusy(false);
+    }
+  }
+
+  async function previewSingleShotPrompts(index = 0, button = null) {
+    const shotNo = Number(index) + 1;
+    setButtonBusy(button, true, '整理提示词...');
+    try {
+      const id = await ensureTask();
+      const shot = syncShotFieldsFromDom(index, host);
+      const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/prompt-preview`, {
+        method: 'POST',
+        body: { shot_index: Number(index) || 0, shot },
+      });
+      if (state.shots[index]) state.shots[index]._prompt_preview = response;
+      renderStoryboard();
+      toast(`第 ${shotNo} 镜提示词已更新预览，没有生成图片或视频`, 'success');
+      return response;
+    } catch (error) {
+      toast(error.message || `第 ${shotNo} 镜提示词预览失败`, 'error');
+      return null;
+    } finally {
+      setButtonBusy(button, false);
     }
   }
 
@@ -4546,6 +4638,13 @@
         } finally {
           setButtonBusy(shotSave, false);
         }
+        return;
+      }
+      const promptPreview = target.closest('[data-nsa-prompt-preview]');
+      if (promptPreview && host.contains(promptPreview)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await previewSingleShotPrompts(Number(promptPreview.dataset.nsaPromptPreview || 0), promptPreview);
         return;
       }
       const shotRegenerate = target.closest('[data-nsa-shot-regenerate]');

@@ -1424,6 +1424,19 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-continuity-editor[open] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .dh-nsa-continuity-editor[open] summary { grid-column: 1 / -1; margin-bottom: 2px; }
 .dh-nsa-continuity-editor select { width: 100%; min-height: 42px; }
+.dh-nsa-shot-design-editor { grid-column: 1 / -1; border: 1px solid var(--dh-border); border-radius: 14px; background: var(--dh-surface-soft); padding: 10px 12px; }
+.dh-nsa-shot-design-editor summary { cursor: pointer; color: var(--dh-text); font-weight: 900; }
+.dh-nsa-shot-design-editor[open] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dh-nsa-shot-design-editor[open] summary,
+.dh-nsa-shot-design-editor[open] .dh-nsa-shot-design-help,
+.dh-nsa-shot-design-editor[open] .is-wide { grid-column: 1 / -1; }
+.dh-nsa-shot-design-help { margin: 0; color: var(--dh-text-muted); font-size: 12px; line-height: 1.65; }
+.dh-nsa-inline-check { display: flex; align-items: center; gap: 8px; min-height: 42px; }
+.dh-nsa-inline-check input { width: 16px; height: 16px; }
+.dh-nsa-prompt-preview { grid-column: 1 / -1; border: 1px solid var(--dh-border); border-radius: 12px; padding: 10px 12px; background: var(--dh-surface); }
+.dh-nsa-prompt-preview summary { cursor: pointer; font-weight: 900; }
+.dh-nsa-prompt-preview b { display: block; margin-top: 10px; font-size: 12px; }
+.dh-nsa-prompt-preview pre { margin: 6px 0 0; padding: 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 8px; background: var(--dh-surface-soft); color: var(--dh-text); font: 11px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .dh-nsa-frame-contract,
 .dh-nsa-frame-error,
 .dh-nsa-frame-actions { grid-column: 1 / -1; }
@@ -1977,6 +1990,7 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
   .dh-nsa-frame-card { grid-template-columns: 1fr; grid-template-areas: "head" "notice" "media" "editor"; }
   .dh-nsa-frame-editor { grid-template-columns: 1fr; }
   .dh-nsa-continuity-editor[open] { grid-template-columns: 1fr; }
+  .dh-nsa-shot-design-editor[open] { grid-template-columns: 1fr; }
   .dh-nsa-frame-scene { grid-template-columns: 1fr; }
   .dh-nsa-frame-scene-title { display: grid; justify-content: stretch; }
   .dh-nsa-frame-scene-title span { white-space: normal; }

@@ -51,6 +51,12 @@
       materialLightText: value('materialLightText'),
       interactionText: value('interactionText'),
       negativeText: value('negativeText'),
+      surfaceTopology: {
+        mode: value('surfaceTopology.mode') || 'auto',
+        seam_policy: value('surfaceTopology.seam_policy') || 'auto',
+        finish_distribution: value('surfaceTopology.finish_distribution') || 'auto',
+        notes: value('surfaceTopology.notes'),
+      },
     };
   }
 
@@ -61,6 +67,17 @@
       const el = scope.querySelector(`[data-nsa-scene-spec="${key}"]`);
       const text = clean(value || '', 700);
       if (el && text && !clean(el.value || '', 10)) {
+        el.value = text;
+        changed = true;
+      }
+    });
+    const topology = spec.surfaceTopology || spec.surface_topology || {};
+    ['mode', 'seam_policy', 'finish_distribution', 'notes'].forEach(key => {
+      const el = scope.querySelector(`[data-nsa-scene-spec="surfaceTopology.${key}"]`);
+      const value = topology[key] ?? topology[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())];
+      const text = clean(value || '', 300);
+      const current = clean(el?.value || '', 60);
+      if (el && text && (!current || current === 'auto')) {
         el.value = text;
         changed = true;
       }
@@ -81,6 +98,14 @@
       } else if (clearMissing) {
         el.value = '';
       }
+    });
+    const topology = source.surfaceTopology || source.surface_topology || {};
+    ['mode', 'seam_policy', 'finish_distribution', 'notes'].forEach(key => {
+      const el = scope.querySelector(`[data-nsa-scene-spec="surfaceTopology.${key}"]`);
+      if (!el) return;
+      const value = topology[key] ?? topology[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())];
+      if (value !== undefined && value !== null) el.value = String(value);
+      else if (clearMissing) el.value = key === 'notes' ? '' : 'auto';
     });
     const mode = scope.querySelector('#dhNsaAdSceneMode');
     if (mode) {

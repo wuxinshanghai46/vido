@@ -8,6 +8,7 @@ const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
 const mediaAdapter = require('./mediaAdapter');
 const ttsAdapter = require('./ttsAdapter');
+const shotDesign = require('./shotDesignService');
 const modelGateway = require('./modelGateway');
 const storage = require('./storageService');
 const { continuityPrompt } = require('./continuityService');
@@ -143,6 +144,8 @@ function localAudioPath(url = '') {
 }
 
 function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null) {
+  const design = shotDesign.normalizeShotDesign(shot);
+  const authoredEffectTarget = !!(design.motion_effect?.target_state || design.motion_effect?.reference_asset_id);
   return [
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
@@ -150,8 +153,12 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null) {
     `Required movement: ${shot.action || shot.visual_action || ''}`,
     `Camera: ${shot.camera || shot.camera_movement || contract.camera_strategy || ''}`,
     continuityPrompt(shot, previousShot),
+    shotDesign.surfacePrompt(design.surface_topology, design.shot_scope),
+    shotDesign.motionEffectPrompt(design.motion_effect),
     'Animate the supplied keyframe only. Preserve the current subject identity, wardrobe, product, materials, scene geometry and lighting.',
-    'Use physically plausible motion and camera movement. Do not add unrelated people, objects, text, logos, products or locations.',
+    authoredEffectTarget
+      ? 'Use physically plausible motion and camera movement. The explicitly authored effect target is allowed; do not add any other people, objects, text, logos, products or locations.'
+      : 'Use physically plausible motion and camera movement. Do not add unrelated people, objects, text, logos, products or locations.',
   ].filter(Boolean).join('\n');
 }
 
@@ -515,5 +522,6 @@ module.exports = {
   generateShotVideos,
   renderLocalClip,
   normalizeProviderClip,
+  clipPrompt,
   probeDuration,
 };

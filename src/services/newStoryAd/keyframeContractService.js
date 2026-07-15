@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { sceneContractForShot } = require('./sceneBindingService');
 const productIdentity = require('./productIdentityContractService');
+const shotDesign = require('./shotDesignService');
 
 function contractFingerprint(contract = {}) {
   const personContract = contract.cast_lock?.person_contract || {};
@@ -102,6 +103,7 @@ function buildKeyframeContracts(ctx, shots) {
         style_direction: styleControl.notes || '',
         negative_requirements: negativeControl.text || '',
         text_rule: 'do not render readable UI labels, slogans, captions or brand text in image; leave clean post-production space if needed',
+        shot_design: shotDesign.normalizeShotDesign(shot),
       },
       negative_prompt: [
         'wrong advertised subject',

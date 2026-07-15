@@ -25,6 +25,7 @@ const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const { buildSoundJourney } = require('./soundJourneyService');
+const shotDesign = require('./shotDesignService');
 
 function withAssetContracts(ctx = {}) {
   const next = { ...ctx };
@@ -577,8 +578,10 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
   const visualChanged = !!visual && !!previousVisual && visual !== previousVisual;
   const userVisualOverride = shot.user_visual_override === true || incomingEditedFields.visual === true || visualChanged;
   const editedFields = userVisualOverride ? { ...incomingEditedFields, visual: true } : incomingEditedFields;
+  const design = shotDesign.normalizeShotDesign(shot);
   return {
     ...shot,
+    _prompt_preview: undefined,
     index: index + 1,
     shot_index: index + 1,
     duration,
@@ -609,6 +612,9 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
     transition_reason: cleanText(shot.transition_reason || shot.transitionReason || previousShot.transition_reason || '', 240) || undefined,
     requires_previous_frame: shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
       || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true',
+    shot_scope: design.shot_scope,
+    surface_topology: design.surface_topology,
+    motion_effect: design.motion_effect,
     edited_at: new Date().toISOString(),
   };
 }
@@ -1007,6 +1013,8 @@ function sceneAssetForShot(ctx = {}, shot = {}, index = 0) {
 function sceneAssetPrompt(asset = {}) {
   if (!asset || typeof asset !== 'object') return '';
   const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+  const assetSurfaceTopology = asset.surface_topology || asset.surfaceTopology;
+  const surfaceContract = assetSurfaceTopology ? shotDesign.surfacePrompt(assetSurfaceTopology, 'environment') : '';
   return [
     `Locked scene asset: ${cleanText(asset.name || asset.scene_id || asset.id || 'task scene', 120)}`,
     asset.lock_strength ? `Scene lock strength: ${cleanText(asset.lock_strength, 60)}` : '',
@@ -1015,6 +1023,7 @@ function sceneAssetPrompt(asset = {}) {
     asset.style_summary ? `Scene style lock: ${cleanText(asset.style_summary, 360)}` : '',
     views.length ? `Scene reference images attached by role: ${cleanText(views.map(view => view.key || view.label || 'view').join(', '), 160)}` : '',
     asset.negative ? `Scene asset negative reference: ${cleanText(asset.negative, 360)}. In final keyframes, keep these as space-quality constraints only; do not apply "empty scene/no people" when the storyboard requires the locked actor.` : '',
+    surfaceContract ? `Scene asset surface construction contract:\n${surfaceContract}` : '',
     'Keep the same scene identity, layout logic, material family, lighting direction and commercial realism across shots. Do not switch to another unrelated space.',
   ].filter(Boolean).join('\n');
 }
@@ -1044,6 +1053,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const actionText = cleanText(shot.action || shot.visual_action || '', 500);
+  const design = shotDesign.normalizeShotDesign(shot);
+  const surfaceDesignText = shotDesign.surfacePrompt(design.surface_topology, design.shot_scope);
+  const keyframeEffectText = shotDesign.keyframeEffectPrompt(design.motion_effect);
   const interactionRequested = /指向|伸手|食指|点击|点按|触摸|滑动|操作|按下|拿起|握住|放置|递给|注视|凝视|point|tap|touch|swipe|operate|press|pick up|hold|place|hand over|look at|gaze/i
     .test([visualText, actionText].filter(Boolean).join(' '));
   const interactionGroundingText = interactionRequested
@@ -1098,6 +1110,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
       ? `Current shot action: ${actionText || 'use a natural, physically grounded pose that supports the edited visual'}`
       : `Action: ${actionText}`,
     interactionGroundingText,
+    surfaceDesignText,
+    keyframeEffectText,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
     !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
     !userVisualOverride && visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
@@ -1150,6 +1164,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'subject', cap: 130, items: 2, match: /^Advertised subject|^Shot \d+:/i },
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
+    { name: 'design', cap: 460, items: 7, match: /^Shot scope:|Surface topology lock:|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
     { name: 'actor', cap: 360, items: 5, match: /Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
     { name: 'scene', cap: 340, items: 5, match: /scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
@@ -1160,7 +1175,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'other', cap: 40, items: 1, match: /.*/ },
   ];
   const buckets = new Map(categories.map(category => [category.name, []]));
-  const classificationOrder = ['repair', 'safety', 'context', 'subject', 'visual', 'action', 'actor', 'scene', 'continuity', 'product', 'style', 'other']
+  const classificationOrder = ['repair', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'scene', 'continuity', 'product', 'style', 'other']
     .map(name => categories.find(category => category.name === name))
     .filter(Boolean);
   lines.forEach(line => {
@@ -1200,6 +1215,36 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     return selected.map(value => cleanText(value, perItem)).filter(Boolean).join(' | ');
   }).filter(Boolean);
   return excerpts.join('\n').slice(0, Math.max(400, Number(maxChars) || 2400));
+}
+
+function previewShotPrompts(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const stored = storage.getOutput(taskId, 'storyboard_table') || [];
+  if (!Array.isArray(stored) || !stored.length) throw new Error('Storyboard table is empty');
+  const rawIndex = Number(options.shot_index ?? options.shotIndex ?? 0);
+  const index = Math.max(0, Math.min(stored.length - 1, Number.isFinite(rawIndex) ? rawIndex : 0));
+  const draft = options.shot && typeof options.shot === 'object' ? options.shot : {};
+  const merged = normalizeStoryboardShot({ ...stored[index], ...draft }, index, stored[index - 1] || {});
+  const shots = stored.map((shot, shotIndex) => shotIndex === index ? merged : shot);
+  const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  const contracts = buildKeyframeContracts(ctx, boundShots);
+  const shot = boundShots[index];
+  const contract = contracts[index] || {};
+  const previousShot = index > 0 ? boundShots[index - 1] : null;
+  return {
+    shot_index: index + 1,
+    shot_design: shotDesign.normalizeShotDesign(shot),
+    keyframe_prompt: buildKeyframePrompt(ctx, shot, contract, index, {
+      sceneAsset: sceneAssetForShot(ctx, shot, index),
+      previousFrame: acceptedKeyframeContextAt(storage.getOutput(taskId, 'keyframes') || [], index - 1),
+    }),
+    motion_prompt: videoAdapter.clipPrompt(shot, ctx, contract, previousShot),
+    media_generated: false,
+  };
 }
 
 function keyframeUrlFromResult(result = {}) {
@@ -2307,7 +2352,13 @@ async function assistBrief(body = {}, user = {}) {
     "layoutText": "空间布局、主体位置、前景/背景关系、可持续复用的场景身份，80-180 字",
     "materialLightText": "材质、色彩、光线方向、真实拍摄质感和商业高级感，80-180 字",
     "interactionText": "人物或商品可在空间中出现的位置、动作区域、镜头可运动范围，60-140 字",
-    "negativeText": "场景四视图不能出现的空间错误、材质错误、风格错误、文字水印或无关元素，分号分隔"
+    "negativeText": "场景四视图不能出现的空间错误、材质错误、风格错误、文字水印或无关元素，分号分隔",
+    "surfaceTopology": {
+      "mode": "auto/continuous/segmented/modular，仅在需求明确时选择",
+      "seam_policy": "auto/hidden/visible/task_defined",
+      "finish_distribution": "auto/uniform/gradient/regional/sample_comparison",
+      "notes": "只写当前任务明确要求的表面结构，不得套用行业或场景模板"
+    }
   }
 }`
         : `{
@@ -2386,6 +2437,7 @@ ${outputSchema}`;
         materialLightText: cleanText(spec.materialLightText || spec.material_light_text || spec.materialLight || spec.material || spec.light || '', 420),
         interactionText: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 320),
         negativeText: cleanText(spec.negativeText || spec.negative_text || spec.negative || '', 420),
+        surfaceTopology: shotDesign.normalizeSurfaceTopology(spec.surfaceTopology || spec.surface_topology),
       },
       mode,
       model_meta: {
@@ -2449,6 +2501,7 @@ module.exports = {
   keyframeReferenceImages,
   acceptedKeyframeContextAt,
   compactKeyframePrompt,
+  previewShotPrompts,
   isCompleteKeyframe,
   subtitleSegmentsFromShots,
 };

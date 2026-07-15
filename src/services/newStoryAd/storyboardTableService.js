@@ -3,6 +3,7 @@ const jsonRepair = require('./jsonRepairService');
 const { contextPrompt, normalizeCharacters, looksLikeDescriptorName } = require('./contextBuilder');
 const { bindShotsToScenes, sceneBindingPrompt } = require('./sceneBindingService');
 const { withContinuityContracts } = require('./continuityService');
+const shotDesign = require('./shotDesignService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -89,6 +90,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     sellingPoint ? `宣传卖点：${sellingPoint}` : '',
     shot.keyframe_notes || '',
   ].filter(Boolean).join('；'), 220);
+  const design = shotDesign.normalizeShotDesign(shot);
   const normalized = {
     index: n,
     title: clampText(shot.title || `镜头 ${n}`, 40),
@@ -139,7 +141,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     depth_of_field: clampText(shot.depth_of_field || shot.depthOfField || '', 40),
     composition: clampText(shot.composition || '', 80),
     subject_position: clampText(shot.subject_position || shot.subjectPosition || '', 80),
-    object_states: clampText(shot.object_states || shot.objectStates || '', 240),
+    object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 240),
     transition_type: clampText(shot.transition_type || shot.transitionType || shot.transition || '', 40),
     requires_previous_frame: shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
       || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true',
@@ -148,6 +150,9 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     sfx: (Array.isArray(shot.sfx) ? shot.sfx : String(shot.sfx || '').split(/[,，；;]/)).map(value => clampText(value, 100)).filter(Boolean).slice(0, 12),
     music_cue: clampText(shot.music_cue || shot.musicCue || '', 180),
     voiceover_timing: clampText(shot.voiceover_timing || shot.voiceoverTiming || '', 120),
+    shot_scope: design.shot_scope,
+    surface_topology: design.surface_topology,
+    motion_effect: design.motion_effect,
   };
   return normalized;
 }
@@ -321,6 +326,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Every shot after the first must describe entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type and audio_bridge when applicable.',
       'Set requires_previous_frame=true only when the current image must visually inherit an exact action, pose, object state, eyeline or composition from the immediately previous frame. Ordinary hard cuts with shared verified scene/person anchors must use false so they can generate in parallel.',
       'Choose shot_size, camera_angle, lens_mm, depth_of_field, composition and subject_position from the current shot purpose. These are cinematography controls, not fixed story templates.',
+      'shot_scope, surface_topology and motion_effect are optional task-scoped controls. Set them only when the current brief/beat explicitly needs an environment topology, a comparison insert or a within-shot effect; otherwise use shot_scope=auto and omit the two objects. Never infer an industry-specific surface, scene, character or effect template.',
       'Add ambient_sound, sfx, music_cue and voiceover_timing only when they serve the current shot. Never assume a fixed genre or industry sound.',
       'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
     ].join('\n');
@@ -342,6 +348,9 @@ Return JSON array for current beats only. Fields:
   "purpose": "short label",
   "subject_type": "human_scene/product_only/ui_screen/proof_scene/environment/brand_endcard",
   "shot_type": "medium / close_up / insert / product_detail / reaction / endcard",
+  "shot_scope": "auto/environment/product_comparison/character/brand_endcard",
+  "surface_topology": {"mode":"auto/continuous/segmented/modular","seam_policy":"auto/hidden/visible/task_defined","finish_distribution":"auto/uniform/gradient/regional/sample_comparison","notes":"optional task-specific structure only"},
+  "motion_effect": {"type":"none/particle_assembly/fade/dissolve/material_flow/custom","source_state":"visible start state","target_state":"authored end state","timeline":"within-shot timing","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"optional exact target asset id","notes":"optional task-specific effect only"},
   "visual_layers": [{"type":"story/product/material/space/ui/proof/comparison/emotion/brand/offer/process/result/other","content":"specific visual content"}],
   "story_visual": "optional, only if this shot needs story/character/emotion",
   "promo_visual": "optional, only if this shot needs product/service/brand proof",

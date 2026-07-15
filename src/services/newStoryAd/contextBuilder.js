@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const shotDesign = require('./shotDesignService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -138,6 +139,7 @@ function normalizeSceneAssets(input) {
       material_summary: cleanText(item.material_summary || item.materialSummary || '', 1000),
       style_summary: cleanText(item.style_summary || item.styleSummary || '', 800),
       negative: cleanText(item.negative || item.negative_prompt || '', 800),
+      surface_topology: shotDesign.normalizeSurfaceTopology(item.surface_topology || item.surfaceTopology),
       image_url: imageUrl,
       view_images: viewImages,
       view_count: Number(item.view_count || viewImages.length || (imageUrl ? 1 : 0)) || 0,
@@ -157,6 +159,7 @@ function normalizeSceneSpec(input = {}) {
     materialLightText: cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600),
     interactionText: cleanText(raw.interactionText || raw.interaction_text || raw.interaction || raw.camera || '', 500),
     negativeText: cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500),
+    surfaceTopology: shotDesign.normalizeSurfaceTopology(raw.surfaceTopology || raw.surface_topology),
   };
 }
 

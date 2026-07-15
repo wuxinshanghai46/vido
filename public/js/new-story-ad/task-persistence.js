@@ -12,6 +12,9 @@
       action: String(shot?.action || shot?.visual_action || ''),
       voiceover: String(shot?.voiceover || shot?.narration || shot?.subtitle || ''),
       purpose: String(shot?.purpose || shot?.objective || shot?.role || ''),
+      shot_scope: String(shot?.shot_scope || shot?.shotScope || 'auto'),
+      surface_topology: shot?.surface_topology || shot?.surfaceTopology || null,
+      motion_effect: shot?.motion_effect || shot?.motionEffect || null,
     }));
   }
 
@@ -80,6 +83,7 @@
         : purpose;
       return {
         ...shot,
+        _prompt_preview: undefined,
         index: index + 1,
         shot_index: index + 1,
         duration,

@@ -5,6 +5,7 @@ const { cleanText } = require('./contextBuilder');
 const sceneSpace = require('./sceneSpaceContractService');
 const cancellation = require('./cancellationContext');
 const sceneViewStrategy = require('./sceneViewStrategyService');
+const shotDesign = require('./shotDesignService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 
@@ -50,6 +51,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     interaction_summary: cleanText(asset.interaction_summary || asset.interactionSummary || '', 800),
     style_summary: cleanText(asset.style_summary || asset.styleSummary || '', 800),
     negative: cleanText(asset.negative || asset.negative_prompt || '', 800),
+    surface_topology: shotDesign.normalizeSurfaceTopology(asset.surface_topology || asset.surfaceTopology),
     image_url: primary,
     url: primary,
     view_images: viewImages,
@@ -86,6 +88,8 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
   const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600);
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 600);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
+  const surfaceTopology = shotDesign.normalizeSurfaceTopology(sceneSpec.surfaceTopology || sceneSpec.surface_topology);
+  const surfaceTopologyPrompt = surfaceTopology ? shotDesign.surfacePrompt(surfaceTopology, 'environment') : '';
   const noHumanNegative = [
     'Absolutely empty scene only.',
     'No people, no human figure, no actor, no model, no presenter, no customer, no staff.',
@@ -96,7 +100,9 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     'Photographic realism requirements:',
     'Make it look like a real location or production set photographed by a commercial environment photographer, not an AI concept render.',
     'Use physically plausible camera perspective, lens compression and scene geometry; keep fixed structures, ground planes, fixtures, props and products aligned to one coherent spatial system.',
-    'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
+    surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
+      ? 'Use real-world material scale: preserve the explicitly continuous surface topology while showing plausible contact shadows, subtle scratches, fingerprints, dust, uneven reflections and only construction details permitted by the task-specific seam policy.'
+      : 'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
     'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
     'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
   ].join('\n');
@@ -117,6 +123,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     layout ? `Scene layout requirement: ${layout}` : '',
     materialLight ? `Scene material and lighting requirement: ${materialLight}` : '',
     interaction ? `Scene interaction and camera position requirement: ${interaction}` : '',
+    surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
     sceneConfig.business_boundary ? `Business boundary: ${cleanText(sceneConfig.business_boundary, 500)}` : '',
     sceneConfig.story_strategy ? `Scene/story strategy: ${cleanText(JSON.stringify(sceneConfig.story_strategy), 900)}` : '',
     style ? `Visual style direction: ${style}` : '',
@@ -202,6 +209,7 @@ function sceneRequest(ctx = {}, body = {}) {
     layout: cleanText(spec.layoutText || spec.layout_text || spec.layout || body.layout_summary || '', 1000),
     material_light: cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000),
     interaction: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800),
+    surface_topology: shotDesign.normalizeSurfaceTopology(spec.surfaceTopology || spec.surface_topology),
   };
 }
 
@@ -337,6 +345,7 @@ async function generateSceneAsset(taskId, body = {}) {
       '空场景资产，不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影。',
       body.negative || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).negativeText || ctx.controlled_production?.negative_control?.text || '',
     ].filter(Boolean).join('；'),
+    surface_topology: shotDesign.normalizeSurfaceTopology((body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).surfaceTopology || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).surface_topology),
     image_url: viewImages[0]?.url || '',
     view_images: viewImages.map(view => ({
       ...view,
@@ -418,6 +427,7 @@ async function reverifySceneAsset(taskId, sceneId) {
 module.exports = {
   SCENE_VIEW_KEYS,
   sceneViewLabel,
+  buildSceneSheetPrompt,
   normalizeSceneAssets,
   localizeSceneViews,
   localizeSceneAssets,

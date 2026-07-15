@@ -872,6 +872,12 @@ router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
   );
 }));
 
+router.post('/tasks/:id/prompt-preview', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const preview = service.previewShotPrompts(req.params.id, req.body || {});
+  res.json({ success: true, task_id: req.params.id, ...preview });
+}));
+
 router.put('/tasks/:id/keyframes/:index/select', asyncRoute(async (req, res) => {
   taskForReq(req);
   const result = service.selectKeyframeCandidate(req.params.id, req.params.index, req.body?.candidate_id || req.body?.candidateId || '');

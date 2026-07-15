@@ -26,7 +26,7 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260713-complete-sync">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-progress-ui-v1">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260715-shot-effects-v1">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -411,6 +411,40 @@
                     <label>
                       <span>场景禁止项</span>
                       <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-scene-spec="negativeText" maxlength="420" placeholder="如：不要真人/背影/手/人形剪影、不要换场景、不要无关行业装饰、不要文字水印、不要卡通或三维渲染感。"></textarea>
+                    </label>
+                  </div>
+                  <div class="dh-nsa-scene-spec-grid dh-nsa-surface-topology-grid">
+                    <label>
+                      <span>主表面结构</span>
+                      <select class="dh-input" data-nsa-scene-spec="surfaceTopology.mode">
+                        <option value="auto">按当前任务判断</option>
+                        <option value="continuous">连续完整表面</option>
+                        <option value="segmented">明确分段表面</option>
+                        <option value="modular">模块化结构</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>拼缝策略</span>
+                      <select class="dh-input" data-nsa-scene-spec="surfaceTopology.seam_policy">
+                        <option value="auto">按当前任务判断</option>
+                        <option value="hidden">隐藏可见拼缝</option>
+                        <option value="visible">明确显示拼缝</option>
+                        <option value="task_defined">仅显示任务指定拼缝</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>饰面分布</span>
+                      <select class="dh-input" data-nsa-scene-spec="surfaceTopology.finish_distribution">
+                        <option value="auto">按当前任务判断</option>
+                        <option value="uniform">统一饰面</option>
+                        <option value="gradient">连续渐变</option>
+                        <option value="regional">连续基面上的局部变化</option>
+                        <option value="sample_comparison">样品对比</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>结构补充说明</span>
+                      <input class="dh-input" data-nsa-scene-spec="surfaceTopology.notes" maxlength="300" placeholder="可选；只描述当前任务，不会成为行业模板。">
                     </label>
                   </div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
@@ -2485,18 +2519,18 @@ B: ...
   <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/task-store.js?v=20260714-completed-task-actions"></script>
   <script src="/js/new-story-ad/progress.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad/scene-assets.js?v=20260714-visual-verification"></script>
+  <script src="/js/new-story-ad/scene-assets.js?v=20260715-shot-effects-v1"></script>
   <script src="/js/new-story-ad/state-sync.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/button-state.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/step-navigation.js?v=20260714-storyboard-recovery"></script>
-  <script src="/js/new-story-ad/task-persistence.js?v=20260712-network-recovery"></script>
+  <script src="/js/new-story-ad/task-persistence.js?v=20260715-shot-effects-v1"></script>
   <script src="/js/new-story-ad/storyboard.js?v=20260713-complete-sync"></script>
   <script src="/js/new-story-ad/actors.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/keyframes.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/generation-flow.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-progress-ui-v1"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-shot-effects-v1"></script>
 </body>
 </html>
 

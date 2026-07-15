@@ -1,3 +1,5 @@
+const shotDesign = require('./shotDesignService');
+
 function clean(value = '', max = 320) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > max ? text.slice(0, max).trim() : text;
@@ -35,7 +37,7 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     eyeline: clean(shot.eyeline || shot.eyeLine || '', 120),
     camera_axis: clean(shot.camera_axis || shot.cameraAxis || '', 120),
     camera_movement: clean(shot.camera_movement || shot.cameraMovement || shot.camera || '', 160),
-    object_states: clean(shot.object_states || shot.objectStates || '', 320),
+    object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 320),
     transition_type: normalizedTransition,
     requires_previous_frame: !!previousShot && (explicitPreviousFrame || ['cut_on_action', 'match_cut'].includes(normalizedTransition)),
     transition_reason: clean(shot.transition_reason || shot.transitionReason || '', 240),
