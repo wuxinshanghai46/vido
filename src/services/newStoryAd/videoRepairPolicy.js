@@ -1,7 +1,14 @@
 const { cleanText } = require('./contextBuilder');
 
-const DEFAULT_MAX_AUTO_REPAIRS = 2;
+const DEFAULT_MAX_AUTO_REPAIRS = 1;
 const HARD_MAX_AUTO_REPAIRS = 3;
+const NON_AUTOMATIC_REPAIR_DIMENSIONS = new Set([
+  'people_count',
+  'input_person_privacy',
+  'content_safety',
+  'provider_auth',
+  'provider_billing',
+]);
 
 function resolveRepairBudget(options = {}) {
   if (options.auto_repair === false || options.autoRepair === false || process.env.NEW_STORY_AD_VIDEO_AUTO_REPAIR === '0') return 0;
@@ -10,14 +17,18 @@ function resolveRepairBudget(options = {}) {
 }
 
 function normalizeFailure(item = {}) {
+  const dimensions = [...new Set(Array.isArray(item.dimensions) ? item.dimensions.filter(Boolean) : [])];
+  const hasDeterministicFailure = dimensions.some(dimension => NON_AUTOMATIC_REPAIR_DIMENSIONS.has(String(dimension).toLowerCase()));
   return {
     index: Math.max(0, Number(item.index) || 0),
     kind: String(item.kind || 'frame_qa'),
-    dimensions: [...new Set(Array.isArray(item.dimensions) ? item.dimensions.filter(Boolean) : [])],
+    dimensions,
     labels_zh: [...new Set(Array.isArray(item.labels_zh) ? item.labels_zh.filter(Boolean) : [])],
     problems: [...new Set(Array.isArray(item.problems) ? item.problems.map(value => cleanText(value, 300)).filter(Boolean) : [])],
     retry_instruction: cleanText(item.retry_instruction || '', 1000),
-    repairable: item.repairable !== false && ['frame_qa', 'cross_shot_qa'].includes(String(item.kind || 'frame_qa')),
+    repairable: item.repairable !== false
+      && !hasDeterministicFailure
+      && ['frame_qa', 'cross_shot_qa'].includes(String(item.kind || 'frame_qa')),
   };
 }
 
@@ -62,4 +73,4 @@ function buildRepairPlan(failures = [], { attempt = 0, maxAttempts = DEFAULT_MAX
   };
 }
 
-module.exports = { DEFAULT_MAX_AUTO_REPAIRS, HARD_MAX_AUTO_REPAIRS, resolveRepairBudget, normalizeFailure, mergeFailures, repairInstruction, buildRepairPlan };
+module.exports = { DEFAULT_MAX_AUTO_REPAIRS, HARD_MAX_AUTO_REPAIRS, NON_AUTOMATIC_REPAIR_DIMENSIONS, resolveRepairBudget, normalizeFailure, mergeFailures, repairInstruction, buildRepairPlan };

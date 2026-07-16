@@ -301,22 +301,27 @@ function record(p) {
     const errorMsg = firstValue(p.errorMsg, p.error_msg, null);
     const costOverride = firstValue(p.costUsd, p.cost_usd);
     const usageSource = firstValue(p.usageSource, p.usage_source, rawTotalTokens ? 'actual' : null);
+    const billingState = String(firstValue(p.billingState, p.billing_state, status === 'success' ? 'confirmed' : 'not_submitted'));
 
-    // 关键规则：status=fail 时把所有计费量都归零
-    //   原因：失败调用上游不会扣费，但 input prompt 长度还可能被估算成 token 量；
-    //   如果照样写进 token_usage.json，会污染 dashboard（让人误以为有真实消耗）。
-    //   只保留 calls 计数和 error_msg，方便分析失败率。
     const isFail = status === 'fail';
+    // Async video jobs can fail after the provider accepted a task. Their final
+    // billing outcome is unknown, so retain requested seconds as an estimate
+    // instead of incorrectly treating every failed job as free.
+    const mayBeBilledFailure = isFail
+      && category === 'video'
+      && billingState === 'unknown'
+      && !!requestId
+      && rawVideoSeconds > 0;
     const inputTokens  = isFail ? 0 : rawInputTokens;
     const outputTokens = isFail ? 0 : rawOutputTokens;
     const totalTokens = isFail ? 0 : (inputTokens + outputTokens || rawTotalTokens);
-    const videoSeconds = isFail ? 0 : rawVideoSeconds;
+    const videoSeconds = (isFail && !mayBeBilledFailure) ? 0 : rawVideoSeconds;
     const imageCount   = isFail ? 0 : rawImageCount;
     const ttsChars     = isFail ? 0 : rawTtsChars;
 
-    // 计算成本（fail 时上游不计费 → cost 直接 0）
+    // Unknown post-submission billing is explicitly labeled as estimated.
     let cost = 0;
-    if (!isFail) {
+    if (!isFail || mayBeBilledFailure) {
       if (costOverride !== undefined && costOverride !== null) {
         cost = toNumber(costOverride);
       } else if (category === 'llm') {
@@ -347,7 +352,8 @@ function record(p) {
       cost_usd: Number(cost.toFixed(6)),
       duration_ms: durationMs,
       status,
-      usage_source: usageSource,
+      usage_source: mayBeBilledFailure ? 'estimated_on_failure' : usageSource,
+      billing_state: billingState,
       source: p.source || null,
       operation: p.operation || null,
       workflow_id: p.workflowId || p.workflow_id || null,

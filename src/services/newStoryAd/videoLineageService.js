@@ -81,11 +81,49 @@ function canAdoptLegacyClip(clip = {}, expected = {}) {
     && (!clip.qa?.contract_fingerprint || clip.qa.contract_fingerprint === expected.contract_fingerprint);
 }
 
+function lineageWithoutSceneBlock(lineage = {}) {
+  const comparable = { ...(lineage || {}) };
+  [
+    'fingerprint',
+    'scene_block_policy_version',
+    'scene_block_id',
+    'scene_block_fingerprint',
+    'scene_block_members',
+  ].forEach(key => delete comparable[key]);
+  return comparable;
+}
+
+function baseLineageMatches(clip = {}, expected = {}) {
+  const actual = clip.lineage || {};
+  if (!actual.fingerprint && !clip.lineage_fingerprint) return false;
+  return revisionService.signature(lineageWithoutSceneBlock(actual))
+    === revisionService.signature(lineageWithoutSceneBlock(expected));
+}
+
+function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
+  // A previously split per-shot clip may be reused when its own task inputs are
+  // unchanged and the new policy now generates that shot as an independent unit.
+  return Array.isArray(expected.scene_block_members)
+    && expected.scene_block_members.length === 1
+    && baseLineageMatches(clip, expected);
+}
+
+function reviewableDecision(clip = {}, expected = {}) {
+  if (!clipHasUsableFile(clip)) return { reviewable: false, reason: 'missing_or_failed_clip' };
+  if (clip.qa?.pass === false) return { reviewable: false, reason: 'qa_rejected' };
+  if (qaApproved(clip)) return { reviewable: false, reason: 'already_reviewed' };
+  const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
+  if (actual && actual === expected.fingerprint) return { reviewable: true, reason: 'lineage_match_pending_qa' };
+  if (actual && canAdoptSceneBlockTopology(clip, expected)) return { reviewable: true, adopted: true, reason: 'topology_match_pending_qa' };
+  return { reviewable: false, reason: actual ? 'lineage_changed' : 'legacy_lineage_unverified' };
+}
+
 function reuseDecision(clip = {}, expected = {}, { allowLegacyAdoption = true } = {}) {
   if (!clipHasUsableFile(clip)) return { reusable: false, reason: 'missing_or_failed_clip' };
   if (!qaApproved(clip)) return { reusable: false, reason: 'qa_not_approved' };
   const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
   if (actual && actual === expected.fingerprint) return { reusable: true, reason: 'lineage_match' };
+  if (actual && canAdoptSceneBlockTopology(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_scene_block_topology_adoption' };
   if (!actual && allowLegacyAdoption && canAdoptLegacyClip(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_legacy_adoption' };
   return { reusable: false, reason: actual ? 'lineage_changed' : 'legacy_lineage_unverified' };
 }
@@ -105,6 +143,9 @@ module.exports = {
   buildShotLineage,
   clipHasUsableFile,
   qaApproved,
+  baseLineageMatches,
+  canAdoptSceneBlockTopology,
+  reviewableDecision,
   reuseDecision,
   attachLineage,
 };

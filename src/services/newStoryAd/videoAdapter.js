@@ -825,21 +825,28 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
       targetIndexes.forEach(index => {
         const current = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
         if (['qa_passed', 'qa_failed', 'failed', 'cancelled'].includes(current.lifecycle)) return;
-        if (current.lifecycle === 'generated' && clips[index]) {
-          clips[index] = {
-            ...clips[index],
-            error: '同批次失败，当前片段尚未完成视频审片',
-            error_code: 'VIDEO_BATCH_ABORTED_BEFORE_QA',
-          };
+        if (!cancelled && videoLineage.clipHasUsableFile(clips[index])) {
+          updateVideoShotStatus(taskId, index, {
+            lifecycle: 'generated',
+            batch_status: 'partial_success_pending_qa',
+            error: '',
+            error_code: '',
+            retryable: false,
+          }, list.length);
+          return;
         }
         updateVideoShotStatus(taskId, index, {
           lifecycle: cancelled ? 'cancelled' : 'failed',
-          error: cancelled ? '任务已取消' : (current.lifecycle === 'generated' ? '视频已落地但同批次失败，尚未完成审片' : '同批次镜头失败，当前镜头未继续提交'),
-          error_code: cancelled ? 'USER_CANCELLED' : (current.lifecycle === 'generated' ? 'VIDEO_BATCH_ABORTED_BEFORE_QA' : 'VIDEO_BATCH_ABORTED'),
-          retryable: true,
+          error: cancelled ? '任务已取消' : '同批次镜头失败，当前镜头未继续提交',
+          error_code: cancelled ? 'USER_CANCELLED' : 'VIDEO_BATCH_ABORTED',
+          retryable: !cancelled && error?.retryable === true,
         }, list.length);
       });
       storage.saveOutput(taskId, 'video_clips', clips);
+      error.partial_video_clips = clips.slice();
+      error.completed_indexes = targetIndexes.filter(index => videoLineage.clipHasUsableFile(clips[index]));
+      error.failed_indexes = targetIndexes.filter(index => !videoLineage.clipHasUsableFile(clips[index]));
+      error.target_indexes = targetIndexes.slice();
       throw error;
     }
     updateVideoProgress(taskId, list.length, {
@@ -1015,6 +1022,16 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       targetIndexes.forEach((index) => {
         const current = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
         if (['qa_passed', 'qa_failed', 'failed', 'cancelled'].includes(current.lifecycle)) return;
+        if (!cancelled && videoLineage.clipHasUsableFile(clips[index])) {
+          updateVideoShotStatus(taskId, index, {
+            lifecycle: 'generated',
+            batch_status: 'partial_success_pending_qa',
+            error: '',
+            error_code: '',
+            retryable: false,
+          }, list.length);
+          return;
+        }
         updateVideoShotStatus(taskId, index, {
           lifecycle: cancelled ? 'cancelled' : 'failed',
           error: cancelled ? '任务已取消' : (current.error || '连续场景段生成未完成'),
@@ -1023,6 +1040,10 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
         }, list.length);
       });
       storage.saveOutput(taskId, 'video_clips', clips);
+      error.partial_video_clips = clips.slice();
+      error.completed_indexes = targetIndexes.filter(index => videoLineage.clipHasUsableFile(clips[index]));
+      error.failed_indexes = targetIndexes.filter(index => !videoLineage.clipHasUsableFile(clips[index]));
+      error.target_indexes = targetIndexes.slice();
       throw error;
     }
   }

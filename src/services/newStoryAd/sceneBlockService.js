@@ -1,6 +1,6 @@
 const revisionService = require('./revisionService');
 
-const SCENE_BLOCK_POLICY_VERSION = 'spatial-scene-block-v1';
+const SCENE_BLOCK_POLICY_VERSION = 'spatial-scene-block-v2';
 const DEFAULT_MAX_BLOCK_DURATION = 15;
 const DEFAULT_MAX_BLOCK_SHOTS = 4;
 
@@ -37,8 +37,23 @@ function isExplicitBoundary(shot = {}, previousShot = {}) {
   const from = text(shot.transition_from || '');
   const previousScene = text(previousShot.scene_id || previousShot.scene_asset_id || '');
   if (from && previousScene && from !== previousScene) return true;
-  if (/fade|dissolve|flash|black|time.?jump|montage/.test(transition)) return true;
+  if (/fade|dissolve|flash|black|time.?jump|montage|hard.?cut|match.?cut|jump.?cut|smash.?cut/.test(transition)) return true;
   return shot.scene_block_boundary === true || shot.force_new_scene_block === true;
+}
+
+function visiblePersonPresence(shot = {}) {
+  if (Array.isArray(shot.characters)) return shot.characters.filter(Boolean).length > 0;
+  const subjectType = text(shot.subject_type || shot.cast_mode || shot.person_mode).toLowerCase();
+  if (/no.?person|no.?human|object.?only|product.?only|empty/.test(subjectType)) return false;
+  if (/person|human|character|cast/.test(subjectType)) return true;
+  const peopleCount = Number(shot.people_count ?? shot.person_count);
+  return Number.isFinite(peopleCount) ? peopleCount > 0 : null;
+}
+
+function hasCastModeBoundary(shot = {}, previousShot = {}) {
+  const currentPresence = visiblePersonPresence(shot);
+  const previousPresence = visiblePersonPresence(previousShot);
+  return currentPresence !== null && previousPresence !== null && currentPresence !== previousPresence;
 }
 
 function spatialReferenceUrls(contract = {}) {
@@ -117,6 +132,7 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
     const join = enabled && current && identity && identity === current.scene_identity
       && temporal === current.temporal_identity
       && !isExplicitBoundary(shot, previousShot)
+      && !hasCastModeBoundary(shot, previousShot)
       && current.duration_sec + shotDuration <= maxDuration
       && current.member_indexes.length < maxShots;
     if (!join) {
@@ -204,6 +220,8 @@ module.exports = {
   durationOf,
   sceneIdentity,
   isExplicitBoundary,
+  visiblePersonPresence,
+  hasCastModeBoundary,
   spatialReferenceUrls,
   buildSceneBlocks,
   blockForIndex,

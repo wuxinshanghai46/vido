@@ -400,6 +400,14 @@ function extractSeedanceContentTaskVideoUrl(payload) {
   return visit(data);
 }
 
+function attachSubmittedVideoTask(error, taskId, duration) {
+  const next = error instanceof Error ? error : new Error(String(error || 'Video generation failed'));
+  next.providerTaskId = next.providerTaskId || taskId;
+  next.requestedVideoSeconds = Number(next.requestedVideoSeconds || duration || 0);
+  next.billingState = next.billingState || 'unknown';
+  return next;
+}
+
 async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted = null, onProgress = null }) {
   const headers = buildHeaders(model, { forceDomestic: true });
   const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
@@ -425,39 +433,43 @@ async function generateSeedanceContentTask({ model, prompt, duration, size, imag
     provider: 'deyunai', model, taskId, status: 'submitted', submittedAt: new Date().toISOString(),
   });
 
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < timeoutMs) {
-    await abortableWait(5000, signal);
-    let queryRes;
-    try {
-      queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(taskId)}`, {
-        headers,
-        timeout: 30000,
-        signal,
+  try {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await abortableWait(5000, signal);
+      let queryRes;
+      try {
+        queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(taskId)}`, {
+          headers,
+          timeout: 30000,
+          signal,
+        });
+      } catch (requestError) {
+        const businessError = seedanceContentTaskError(requestError?.response?.data, '查询');
+        if (businessError) throw businessError;
+        throw requestError;
+      }
+      const queryError = seedanceContentTaskError(queryRes.data, '查询');
+      if (queryError) throw queryError;
+      const task = queryRes.data?.data || queryRes.data || {};
+      const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
+      const url = extractSeedanceContentTaskVideoUrl(task);
+      await notifyGenerationObserver(onProgress, {
+        provider: 'deyunai', model, taskId, status: status || 'polling',
+        elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!url,
       });
-    } catch (requestError) {
-      const businessError = seedanceContentTaskError(requestError?.response?.data, '查询');
-      if (businessError) throw businessError;
-      throw requestError;
+      if (url && (!status || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(status))) {
+        return { url, taskId, durationSec: Number(task.duration || task.duration_sec) || duration };
+      }
+      if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(status)) {
+        const message = task.error?.message || task.message || task.error_message || JSON.stringify(task).slice(0, 500);
+        throw new Error(`漫路 Seedance 2.0 生成失败: ${message}`);
+      }
     }
-    const queryError = seedanceContentTaskError(queryRes.data, '查询');
-    if (queryError) throw queryError;
-    const task = queryRes.data?.data || queryRes.data || {};
-    const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
-    const url = extractSeedanceContentTaskVideoUrl(task);
-    await notifyGenerationObserver(onProgress, {
-      provider: 'deyunai', model, taskId, status: status || 'polling',
-      elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!url,
-    });
-    if (url && (!status || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(status))) {
-      return { url, taskId, durationSec: Number(task.duration || task.duration_sec) || duration };
-    }
-    if (['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(status)) {
-      const message = task.error?.message || task.message || task.error_message || JSON.stringify(task).slice(0, 500);
-      throw new Error(`漫路 Seedance 2.0 生成失败: ${message}`);
-    }
+    throw new Error(`漫路 Seedance 2.0 生成超时（${timeoutMs}ms）`);
+  } catch (error) {
+    throw attachSubmittedVideoTask(error, taskId, duration);
   }
-  throw new Error(`漫路 Seedance 2.0 生成超时（${timeoutMs}ms）`);
 }
 
 function extractImageUrlsFromSyncPayload(payload) {
@@ -654,6 +666,13 @@ function summarizeGptImage2Request(endpoint, body = {}) {
 // ════════════════════════════════════════════════
 // 1. 文本 chat completions
 // ════════════════════════════════════════════════
+function estimateTextTokens(value) {
+  const source = typeof value === 'string' ? value : JSON.stringify(value || '');
+  const cjk = (source.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+  const nonCjk = Math.max(0, source.length - cjk);
+  return source.length ? Math.max(1, Math.ceil(cjk + (nonCjk / 4))) : 0;
+}
+
 /**
  * @param {object} opts
  * @param {string} opts.model
@@ -667,6 +686,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
   const _started = Date.now();
   let _ok = false; let _err = null;
   let _inputTokens = 0; let _outputTokens = 0;
+  let _usageSource = 'actual';
   try {
     const res = await axios.post(
       buildUrl('/chat/completions', model),
@@ -682,6 +702,11 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
     if (!text) throw new Error('LLM 返回空内容: ' + JSON.stringify(data).slice(0, 300));
     _inputTokens = data?.usage?.prompt_tokens || 0;
     _outputTokens = data?.usage?.completion_tokens || 0;
+    if (!_inputTokens && !_outputTokens) {
+      _inputTokens = estimateTextTokens(messages);
+      _outputTokens = estimateTextTokens(text);
+      _usageSource = 'estimated';
+    }
     _ok = true;
     return { text, raw: data };
   } catch (e) {
@@ -695,7 +720,7 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
         inputTokens: _inputTokens, outputTokens: _outputTokens,
         durationMs: Date.now() - _started,
         status: _ok ? 'success' : 'fail', errorMsg: _err,
-        userId, agentId,
+        userId, agentId, usageSource: _usageSource,
       });
     } catch {}
   }
@@ -916,6 +941,8 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     }
     throw new Error(`漫路视频生成超时（${timeoutMs}ms）`);
   } catch (e) {
+    _taskId = _taskId || e.providerTaskId || null;
+    _videoSeconds = Number(e.requestedVideoSeconds || _videoSeconds || duration || 0);
     const detail = e.response?.data
       ? `HTTP ${e.response.status}: ${JSON.stringify(e.response.data).slice(0, 500)}`
       : e.message;
@@ -926,10 +953,11 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     try {
       require('./tokenTracker').record({
         provider: 'deyunai', model,
-        category: 'video', videoSeconds: _ok ? _videoSeconds : 0,
+        category: 'video', videoSeconds: (_ok || _taskId) ? _videoSeconds : 0,
         durationMs: Date.now() - _started,
         status: _ok ? 'success' : 'fail', errorMsg: _err,
         userId, agentId, requestId: _taskId,
+        billingState: _ok ? 'confirmed' : (_taskId ? 'unknown' : 'not_submitted'),
       });
     } catch {}
   }
@@ -942,6 +970,8 @@ module.exports = {
   buildSeedanceContentTaskBody,
   seedanceContentTaskError,
   extractSeedanceContentTaskVideoUrl,
+  attachSubmittedVideoTask,
+  estimateTextTokens,
   listAssetGroups,
   createAssetGroup,
   listAssets,

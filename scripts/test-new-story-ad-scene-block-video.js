@@ -30,6 +30,16 @@ async function run() {
   assert.ok(prompt.includes('repair the current-task action handoff'));
   ['钢材', '厨房', '展厅', '家居', '佛山'].forEach(term => assert.ok(!prompt.includes(term), `scene block prompt must not hardcode ${term}`));
 
+  const semanticShots = [
+    { id: 'semantic-a', scene_id: 'space-semantic', duration: 5, characters: ['角色一'] },
+    { id: 'semantic-b', scene_id: 'space-semantic', duration: 5, characters: ['角色一'], transition_type: 'hard_cut' },
+    { id: 'semantic-c', scene_id: 'space-semantic', duration: 5, characters: [] },
+    { id: 'semantic-d', scene_id: 'space-semantic', duration: 5, characters: [], transition_type: 'match_cut' },
+  ];
+  const semanticContracts = semanticShots.map(() => ({ scene_lock: sceneLock('space-semantic') }));
+  const semanticBlocks = sceneBlocks.buildSceneBlocks(semanticShots, semanticContracts);
+  assert.deepStrictEqual(semanticBlocks.map(block => block.member_indexes), [[0], [1], [2], [3]], 'editorial cuts and visible-person mode changes must be paid generation boundaries');
+
   const baseLineage = lineage.buildShotLineage({
     shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
     ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: blocks[0],
@@ -91,6 +101,56 @@ async function run() {
     const sourceFiles = (pipelineResult?.clips || []).map(clip => clip?.scene_block_source_file).filter(Boolean);
     [...generatedFiles, ...sourceFiles].forEach(file => { try { fs.unlinkSync(file); } catch {} });
     storage.deleteTask(integrationTaskId);
+  }
+
+  const partialTaskId = `scene_block_partial_${Date.now()}`;
+  const partialShots = [
+    { id: 'partial-a', title: '成功单元', scene_id: 'space-partial-a', duration: 2, characters: [] },
+    { id: 'partial-b', title: '失败单元', scene_id: 'space-partial-b', duration: 2, characters: [] },
+  ];
+  const partialContracts = partialShots.map(shot => ({ scene_lock: sceneLock(shot.scene_id) }));
+  const partialBlocks = sceneBlocks.buildSceneBlocks(partialShots, partialContracts);
+  storage.createTask({ id: partialTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
+  let partialError;
+  try {
+    await videoAdapter.generateSceneBlockVideos({
+      taskId: partialTaskId,
+      shots: partialShots,
+      contracts: partialContracts,
+      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
+      sceneBlocks: partialBlocks,
+      ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
+      options: {
+        only_indexes: [0, 1],
+        video_concurrency: 1,
+        _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _generateShotVideo: async ({ taskId, shot, index }) => {
+          if (index === 1) {
+            const error = new Error('simulated provider billing failure');
+            error.code = 'PROVIDER_BILLING';
+            error.retryable = false;
+            throw error;
+          }
+          const filePath = path.join(__dirname, '..', 'outputs', 'analysis', `${taskId}_${index}.mp4`);
+          await videoAdapter.renderLocalClip({ outputPath: filePath, durationSec: shot.duration_sec, aspectRatio: '16:9' });
+          return { shot_index: index, file_path: filePath, video_url: '/mock-partial.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-partial-success' };
+        },
+      },
+      existingClips: [],
+    });
+  } catch (error) {
+    partialError = error;
+  }
+  try {
+    assert.ok(partialError, 'mixed batch must surface its provider failure');
+    assert.deepStrictEqual(partialError.completed_indexes, [0]);
+    assert.deepStrictEqual(partialError.failed_indexes, [1]);
+    assert.strictEqual(partialError.partial_video_clips[0].error_code || '', '', 'successful paid output must not be poisoned by a sibling failure');
+    assert.ok(fs.existsSync(partialError.partial_video_clips[0].file_path));
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_1').lifecycle, 'generated');
+  } finally {
+    (partialError?.partial_video_clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
+    storage.deleteTask(partialTaskId);
   }
   console.log('new story ad continuous scene block video: ok');
 }
