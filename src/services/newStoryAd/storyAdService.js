@@ -309,9 +309,13 @@ function storyboardStatus(bundle = {}, outputs = {}) {
   };
 }
 
-function publicTaskBundle(taskId, { diagnostics = false } = {}) {
-  const bundle = storage.getTaskBundle(taskId, { diagnostics });
-  const outputs = Object.fromEntries((bundle.outputs || []).map(x => [x.kind, x.payload]));
+function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
+  const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
+  const visibleOutputs = includeVideoMonitor
+    ? (rawBundle.outputs || [])
+    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'));
+  const bundle = { ...rawBundle, outputs: visibleOutputs };
+  const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload]));
   const currentStoryboardStatus = storyboardStatus(bundle, outputs);
   const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
   const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
@@ -360,13 +364,41 @@ function publicTaskBundle(taskId, { diagnostics = false } = {}) {
 }
 
 function taskSummary(task = {}) {
-  const storyboard = storage.getOutput(task.id, 'storyboard_table') || [];
-  const keyframes = storage.getOutput(task.id, 'keyframes') || [];
-  const finalVideo = storage.getOutput(task.id, 'final_video') || null;
-  const sceneAssets = storage.getOutput(task.id, 'scene_assets') || [];
+  // Task center can request up to 200 rows. Read this task's outputs once so
+  // adding per-shot monitoring does not multiply full JSON/SQLite reads.
+  const outputMap = Object.fromEntries(storage.listOutputs(task.id).map(row => [row.kind, row.payload]));
+  const storyboard = outputMap.storyboard_table || [];
+  const keyframes = outputMap.keyframes || [];
+  const finalVideo = outputMap.final_video || null;
+  const context = outputMap.context || task.request || {};
+  const sceneAssets = outputMap.scene_assets || [];
   const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
   const firstScene = sceneAssets[0] || {};
   const finalVideoUrl = finalVideo?.video_url || finalVideo?.videoUrl || '';
+  let videoShotStatuses = Object.entries(outputMap)
+    .filter(([kind]) => String(kind).startsWith('video_shot_status_'))
+    .sort(([a], [b]) => Number(a.slice('video_shot_status_'.length)) - Number(b.slice('video_shot_status_'.length)))
+    .map(([, payload]) => payload)
+    .filter(Boolean);
+  if (!videoShotStatuses.length && Array.isArray(outputMap.video_clips)) {
+    videoShotStatuses = outputMap.video_clips.map((clip, index) => {
+      if (!clip) return null;
+      const hasOutput = !!(clip.video_url || clip.videoUrl || clip.file_path);
+      const failed = !!clip.error_code || clip.qa?.pass === false || clip.cross_shot_qa?.pass === false;
+      return {
+        index: index + 1,
+        lifecycle: failed ? 'qa_failed' : (clip.qa?.pass === true ? 'qa_passed' : (hasOutput ? 'generated' : 'pending')),
+      };
+    }).filter(Boolean);
+  }
+  const storedVideoProgress = task.generation_progress?.stage === 'video' ? task.generation_progress : null;
+  const videoProgress = storedVideoProgress || (videoShotStatuses.length ? {
+    stage: 'video',
+    total: Array.isArray(storyboard) ? storyboard.length : videoShotStatuses.length,
+    generated: videoShotStatuses.filter(item => ['generated', 'video_qa', 'qa_passed', 'qa_failed'].includes(item.lifecycle)).length,
+    qa_passed: videoShotStatuses.filter(item => item.lifecycle === 'qa_passed').length,
+    failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
+  } : null);
   const storedStatus = String(task.status || '').toLowerCase();
   const taskStatus = finalVideoUrl
     ? 'done'
@@ -385,6 +417,11 @@ function taskSummary(task = {}) {
     error: cleanText(task.error || '', 300),
     error_code: task.error_code || '',
     retryable: task.retryable === true,
+    actor_name: cleanText(context.person_asset?.name || context.person_spec?.displayName || context.person_spec?.roleName || '', 100),
+    generation_queued_at: task.generation_queued_at || '',
+    generation_started_at: task.generation_started_at || '',
+    generation_finished_at: task.generation_finished_at || '',
+    generation_progress: videoProgress,
     shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
     keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
     thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || '',
@@ -2213,7 +2250,7 @@ async function generateVideoStage(taskId, options = {}) {
       storage.saveStage(taskId, 'video', {
         status: 'running',
         input_summary: `${shots.length} shot videos`,
-        output_summary: `${clips.length}/${shots.length} video clips`,
+        output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`,
         diagnostics: { last_provider_used: clip.provider_used || '' },
       });
     },
@@ -2224,8 +2261,24 @@ async function generateVideoStage(taskId, options = {}) {
   for (const index of targetIndexes) {
     const clip = clips[index];
     if (!clip) continue;
+    videoAdapter.updateVideoShotStatus(taskId, index, {
+      lifecycle: 'video_qa',
+      qa_status: 'reviewing',
+      file_path: clip.file_path || '',
+      file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
+      video_url: clip.video_url || clip.videoUrl || '',
+    }, shots.length);
     const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
     clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
+    videoAdapter.updateVideoShotStatus(taskId, index, {
+      lifecycle: qa.pass ? 'qa_passed' : 'qa_failed',
+      qa_status: qa.pass ? 'passed' : 'failed',
+      qa_problems: qa.problems || [],
+      qa_scores: qa.scores || {},
+      error: qa.pass ? '' : '视频抽帧 QA 未通过',
+      error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED',
+      retryable: !qa.pass,
+    }, shots.length);
     if (!qa.pass) qaFailures.push({ index, problems: qa.problems || [] });
   }
   const crossIndexes = [...new Set(targetIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
@@ -2235,6 +2288,14 @@ async function generateVideoStage(taskId, options = {}) {
     if (!previous?.qa?.pass || !current?.qa?.pass) continue;
     const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: shots[index - 1] || {}, currentShot: shots[index] || {}, ctx });
     clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? current.error : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? current.error_code : 'CROSS_SHOT_CONTINUITY_FAILED' };
+    videoAdapter.updateVideoShotStatus(taskId, index, {
+      lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed',
+      cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
+      cross_shot_qa_problems: crossQa.problems || [],
+      error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过',
+      error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED',
+      retryable: !crossQa.pass,
+    }, shots.length);
     if (!crossQa.pass) qaFailures.push({ index, problems: crossQa.problems || [] });
   }
   storage.saveOutput(taskId, 'video_clips', clips);
@@ -2251,7 +2312,7 @@ async function generateVideoStage(taskId, options = {}) {
   storage.saveStage(taskId, 'video', {
     status: 'done',
     output_summary: `${clips.filter(Boolean).length} video clips`,
-    diagnostics: { provider_used: generated.provider_used || '' },
+    diagnostics: { provider_used: generated.provider_used || '', schedule: generated.schedule || null },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
   return { video_clips: clips };

@@ -51,6 +51,15 @@ function getDeyunaiKey() {
   return p.api_key;
 }
 
+async function notifyGenerationObserver(observer, payload) {
+  if (typeof observer !== 'function') return;
+  try {
+    await observer(payload);
+  } catch (error) {
+    console.warn('[DeyunAI] generation observer failed:', String(error?.message || error));
+  }
+}
+
 function buildUrl(path, modelId) {
   // path 形如 '/chat/completions' | '/images/generations' | '/videos'
   const prefix = isOverseasModel(modelId) ? '/c35/v1' : '/v1';
@@ -386,7 +395,7 @@ function extractSeedanceContentTaskVideoUrl(payload) {
   return visit(data);
 }
 
-async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal }) {
+async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted = null, onProgress = null }) {
   const headers = buildHeaders(model, { forceDomestic: true });
   const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
   let submitRes;
@@ -406,6 +415,10 @@ async function generateSeedanceContentTask({ model, prompt, duration, size, imag
     error.retryable = true;
     throw error;
   }
+
+  await notifyGenerationObserver(onSubmitted, {
+    provider: 'deyunai', model, taskId, status: 'submitted', submittedAt: new Date().toISOString(),
+  });
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -427,6 +440,10 @@ async function generateSeedanceContentTask({ model, prompt, duration, size, imag
     const task = queryRes.data?.data || queryRes.data || {};
     const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
     const url = extractSeedanceContentTaskVideoUrl(task);
+    await notifyGenerationObserver(onProgress, {
+      provider: 'deyunai', model, taskId, status: status || 'polling',
+      elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!url,
+    });
     if (url && (!status || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(status))) {
       return { url, taskId, durationSec: Number(task.duration || task.duration_sec) || duration };
     }
@@ -839,13 +856,13 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
  * @param {string} [opts.agentId]
  * @returns {Promise<{ url:string, taskId:string, durationSec:number }>}
  */
-async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, referenceAssetUrls = [], timeoutMs = 600000, userId = null, agentId = null, signal = null }) {
+async function generateVideo({ model, prompt, duration = 5, size = '720x1280', imageUrl, referenceAssetUrls = [], timeoutMs = 600000, userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
   const _started = Date.now();
   let _ok = false; let _err = null; let _taskId = null;
   let _videoSeconds = duration || 5;
   try {
     if (isSeedanceContentGenerationModel(model)) {
-      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal });
+      const result = await generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted, onProgress });
       _taskId = result.taskId;
       _videoSeconds = Number(result.durationSec) || _videoSeconds;
       _ok = true;
@@ -864,6 +881,9 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
     if (!_taskId) {
       throw new Error('漫路 video 提交失败: ' + JSON.stringify(submitRes.data).slice(0, 300));
     }
+    await notifyGenerationObserver(onSubmitted, {
+      provider: 'deyunai', model, taskId: _taskId, status: 'submitted', submittedAt: new Date().toISOString(),
+    });
 
     // 轮询（视频可能 5-10 分钟）
     const start = Date.now();
@@ -874,6 +894,10 @@ async function generateVideo({ model, prompt, duration = 5, size = '720x1280', i
         { headers: buildHeaders(model), timeout: 15000, signal }
       );
       const d = queryRes.data?.data || {};
+      await notifyGenerationObserver(onProgress, {
+        provider: 'deyunai', model, taskId: _taskId, status: String(d.task_status || 'polling').toLowerCase(),
+        elapsedMs: Date.now() - start, polledAt: new Date().toISOString(), hasOutputUrl: !!(d.task_result?.videos?.[0]?.url || d.task_result?.video_url),
+      });
       if (d.task_status === 'succeed') {
         const url = d.task_result?.videos?.[0]?.url || d.task_result?.video_url;
         if (!url) throw new Error('视频生成成功但 url 为空');

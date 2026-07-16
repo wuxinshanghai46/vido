@@ -120,6 +120,7 @@ const PERMISSION_MATRIX = {
       { id: 'knowledgebase', label: '知识库',       group: 'AI 系统', actions: ['view', 'create', 'edit', 'delete', 'import', 'export'] },
       { id: 'aiteam',        label: 'AI 团队',      group: 'AI 系统', actions: ['view', 'create', 'edit', 'delete', 'configure'] },
       { id: 'monitor',       label: '模型监控',     group: '监控', actions: ['view', 'debug', 'export'] },
+      { id: 'videogenerationmonitor', label: '视频生成监控', group: '监控', actions: ['view', 'debug', 'export'] },
       { id: 'sync',          label: '数据同步',     group: '数据', actions: ['view', 'edit', 'run', 'debug'] },
       { id: 'apiaccounts',   label: '接口账号',     group: '接口', actions: ['view', 'create', 'edit', 'delete', 'test'] },
       { id: 'datasource',    label: '数据源管理',   group: '数据', actions: ['view', 'create', 'edit', 'delete', 'test'] },

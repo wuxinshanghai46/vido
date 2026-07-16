@@ -16,6 +16,13 @@ function cleanSpeech(value = '', max = 90) {
   return clampText(value, max).replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '').trim();
 }
 
+function normalizeSpeechMode(value = '') {
+  const mode = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(mode)) return 'on_camera_dialogue';
+  if (['silent', 'mute', 'no_speech'].includes(mode)) return 'silent';
+  return 'offscreen_voiceover';
+}
+
 function canonicalSpeakerName(name = '', characters = []) {
   const clean = clampText(name, 24);
   if (!clean || clean === '旁白') return clean || '旁白';
@@ -106,6 +113,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     selling_point: sellingPoint,
     visual: joinVisualLayers({ shotType, visualLayers, visual: visualRaw }),
     action: clampText(actionRaw, 120),
+    speech_mode: normalizeSpeechMode(shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode),
     voiceover: voice,
     dialogue_lines: normalizeDialogue(shot.dialogue_lines, voice, characters),
     characters: Array.isArray(shot.characters) ? shot.characters.slice(0, 4).map(c => ({
@@ -241,7 +249,8 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Return exactly one shot for every supplied missing beat, in the same order, with index equal to beat_index.',
     'All user-visible text must be natural Simplified Chinese. Technical enum values and IDs stay unchanged.',
     'Do not invent a new person, product, industry, scene or plot. Use only the supplied context, blueprint and scene assets.',
-    'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers and continuity fields.',
+    'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers, speech_mode and continuity fields.',
+    'Default speech_mode to offscreen_voiceover so visible people do not speak. Use on_camera_dialogue only when the user explicitly requests a visible person to speak; never infer it from an industry, profession or the mere presence of a person.',
     'If scene assets exist, use only their scene_id, scene_revision, camera_id, zone_ids and anchor_ids.',
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
@@ -250,7 +259,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -315,6 +324,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
       'voiceover must be a natural short line that can be heard in the final video.',
+      'speech_mode defaults to offscreen_voiceover. Visible people must remain naturally non-speaking in this mode. Use on_camera_dialogue only when the user explicitly asks for a visible person to speak; never choose it from industry, occupation, scene type or person presence alone. Use silent only when no speech is intended.',
       'voiceover and dialogue_lines.line are not subtitle fields. They must contain dialogue or narrator voice only, without labels such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
       'If Advanced production controls are enabled, obey them shot by shot: scene direction constrains location, product presentation controls product visibility and method, style direction controls visual tone, and negative requirements are forbidden.',
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
@@ -358,6 +368,7 @@ Return JSON array for current beats only. Fields:
   "selling_point": "commercial point proved here",
   "visual": "combined visible frame if needed",
   "action": "who does what",
+  "speech_mode": "offscreen_voiceover/on_camera_dialogue/silent; default offscreen_voiceover",
   "voiceover": "natural short line",
   "dialogue_lines": [{"speaker":"stable character name or narrator","line":"line"}],
   "characters": [{"name":"stable character name","action":"this shot action"}],

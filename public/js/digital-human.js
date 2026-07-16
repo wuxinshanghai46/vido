@@ -4268,6 +4268,8 @@
         ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '：' : ''}${d.line || d.text || ''}`).filter(Boolean).join('；')
         : (shot.dialogue || '');
       const strategy = contract.subject_strategy || contract.reference_strategy || '';
+      const speechMode = shot.speech_mode || contract.speech_mode || 'offscreen_voiceover';
+      const speechLabel = speechMode === 'on_camera_dialogue' ? '人物出镜讲话' : (speechMode === 'silent' ? '静音' : '人物不说话 / 画外旁白');
       return `<div class="dh-task-segment-row dh-task-storyboard-row">
         <div class="dh-task-segment-time">${String(shot.index || shot.shot_index || i + 1).padStart(2, '0')}</div>
         <div class="dh-task-segment-main">
@@ -4275,7 +4277,8 @@
           ${visual ? `<div class="dh-task-segment-meta">画面：${escapeHtml(visual)}</div>` : ''}
           ${action ? `<div class="dh-task-segment-meta">动作：${escapeHtml(action)}</div>` : ''}
           ${voice ? `<div class="dh-task-segment-meta">旁白：${escapeHtml(voice)}</div>` : ''}
-          ${dialogue ? `<div class="dh-task-segment-meta">对白：${escapeHtml(dialogue)}</div>` : ''}
+          ${dialogue ? `<div class="dh-task-segment-meta">${speechMode === 'on_camera_dialogue' ? '出镜对白' : '分镜参考对白（默认不驱动人物口型）'}：${escapeHtml(dialogue)}</div>` : ''}
+          <div class="dh-task-segment-meta">人物发声：${escapeHtml(speechLabel)}</div>
           ${strategy ? `<div class="dh-task-segment-meta">合同策略：${escapeHtml(strategy)}</div>` : ''}
         </div>
       </div>`;
@@ -4299,6 +4302,7 @@
     const shotContracts = detail.shotContracts || detail.shot_contracts || data.shot_contracts || snapshot.shot_contracts || project.shot_contracts || projectDraft.shot_contracts || [];
     const blueprint = detail.blueprint || data.blueprint || snapshot.blueprint || project.blueprint || projectDraft.blueprint || null;
     const modelCalls = detail.modelCalls || detail.model_calls || data.model_calls || data.modelCalls || snapshot.model_calls || [];
+    const videoMonitor = detail.videoMonitor || data.videoMonitor || snapshot.video_monitor || null;
     const clips = detail.clips || data.clips || snapshot.clips || data.clip_urls || snapshot.clip_urls || project.clips || project.clip_urls || [];
     const subtitle = detail.subtitle || data.subtitle || project.subtitle || projectDraft.subtitle || data.retryPayload?.subtitle || null;
     const qa = detail.qa || detail.qualityReview || detail.quality_review || data.quality_review || {};
@@ -4385,6 +4389,7 @@
           <div class="dh-task-detail-title">${isNewStoryAd ? '关键帧合同' : '逐镜状态 / 镜头合同'}</div>
           ${renderTaskShotStatuses(shotStatuses, shotContracts)}
         </section>
+        ${isNewStoryAd ? renderAdminVideoGenerationMonitor(videoMonitor) : ''}
         <section class="dh-task-create-section dh-task-create-section-wide">
           <div class="dh-task-detail-title">${sectionLabels.prompts}</div>
           ${prompts || '<div class="dh-task-empty-note">暂无镜头提示词记录</div>'}
@@ -4583,6 +4588,61 @@
     if (TERMINAL_ERROR_TASK_STATUSES.has(status)) return true;
     if (status === 'done' || status === 'ready') return false;
     return !!String(task.error || task.error_message || task.errorMessage || '').trim();
+  }
+
+  function renderAdminVideoGenerationMonitor(videoMonitor = null) {
+    if (!currentDhUserIsAdmin() || !videoMonitor || !Array.isArray(videoMonitor.shots)) return '';
+    const shots = videoMonitor.shots;
+    const progress = videoMonitor.generation_progress || {};
+    const healthLabels = {
+      pending: '待处理', running: '真实运行', provider_running: '供应商生成中',
+      suspected_stuck: '疑似卡死', passed: '审片通过', failed: '失败',
+    };
+    const lifecycleLabels = {
+      pending: '待处理', queued: '排队', submitting: '正在提交', provider_submitted: '已提交供应商',
+      provider_running: '供应商生成中', downloading: '下载中', normalizing: '视频标准化',
+      generated: '视频已落地', video_qa: '视频审片中', qa_passed: '审片通过', qa_failed: '审片失败',
+      failed: '生成失败', cancelled: '已取消',
+    };
+    const fmtIso = value => {
+      const time = Date.parse(value || '');
+      return time ? new Date(time).toLocaleString('zh-CN', { hour12: false }) : '--';
+    };
+    const summary = [
+      `总镜头 ${progress.total ?? shots.length}`,
+      `已生成 ${progress.generated ?? shots.filter(s => s.file_exists).length}`,
+      `通过 ${progress.qa_passed ?? shots.filter(s => s.health === 'passed').length}`,
+      `失败 ${progress.failed ?? shots.filter(s => s.health === 'failed').length}`,
+      progress.effective_concurrency ? `当前并发 ${progress.effective_concurrency}/${progress.max_concurrency || progress.effective_concurrency}` : '',
+    ].filter(Boolean).join(' · ');
+    return `<section class="dh-task-create-section dh-task-create-section-wide">
+      <div class="dh-task-detail-title">管理员 · 逐镜头生成监控</div>
+      <div class="dh-task-segment-meta" style="margin-bottom:10px">${escapeHtml(summary || '尚未进入视频生成阶段')} · 自动刷新 6 秒</div>
+      <div class="dh-task-segment-list dh-task-storyboard-list">${shots.map((shot, i) => {
+        const started = Date.parse(shot.started_at || shot.provider_submitted_at || '') || 0;
+        const finished = Date.parse(shot.finished_at || '') || Date.now();
+        const elapsed = started ? formatTaskElapsedText(Math.max(0, Math.round((finished - started) / 1000))) : '--';
+        const provider = shot.provider_used || [shot.provider_id, shot.model_id].filter(Boolean).join('/') || '--';
+        const problems = [
+          ...(Array.isArray(shot.qa_problems) ? shot.qa_problems : []),
+          ...(Array.isArray(shot.cross_shot_qa_problems) ? shot.cross_shot_qa_problems : []),
+        ].filter(Boolean);
+        const clipUrl = shot.video_url || '';
+        return `<div class="dh-task-segment-row dh-task-storyboard-row">
+          <div class="dh-task-segment-time">${String(shot.index || i + 1).padStart(2, '0')}</div>
+          <div class="dh-task-segment-main">
+            <div class="dh-task-segment-text">${escapeHtml(shot.title || `镜头 ${i + 1}`)} · ${escapeHtml(healthLabels[shot.health] || shot.health || '待处理')}</div>
+            <div class="dh-task-segment-meta">阶段：${escapeHtml(lifecycleLabels[shot.lifecycle] || shot.lifecycle || '待处理')} · 耗时：${escapeHtml(elapsed)}</div>
+            <div class="dh-task-segment-meta">模型：${escapeHtml(provider)} · 输入：${escapeHtml(shot.input_mode || '--')} · 发声：${escapeHtml(shot.speech_mode || 'offscreen_voiceover')}</div>
+            <div class="dh-task-segment-meta">供应商任务 ID：${escapeHtml(shot.provider_task_id || '--')} · 状态：${escapeHtml(shot.provider_status || '--')}</div>
+            <div class="dh-task-segment-meta">最后心跳：${escapeHtml(fmtIso(shot.last_heartbeat_at))} · 文件落地：${shot.file_exists ? '是' : '否'}</div>
+            ${clipUrl ? `<video src="${escapeHtml(withAuthQuery(clipUrl))}" controls playsinline preload="metadata" style="width:220px;max-height:130px;object-fit:cover;border-radius:6px;margin:8px 0;border:1px solid var(--dh-border)"></video>` : ''}
+            ${problems.length ? `<div class="dh-task-error">审片问题：${escapeHtml(problems.join('；'))}</div>` : ''}
+            ${shot.error ? `<div class="dh-task-error">错误：${escapeHtml(shot.error)}</div>` : ''}
+          </div>
+        </div>`;
+      }).join('')}</div>
+    </section>`;
   }
 
   function taskTimestamp(value) {
@@ -5458,6 +5518,18 @@
     modal.classList.add('open');
     refreshTaskProgressModal();
     loadTaskDetailIfNeeded(taskId);
+    if (state.adminVideoMonitorTimer) clearInterval(state.adminVideoMonitorTimer);
+    state.adminVideoMonitorTimer = null;
+    if (currentDhUserIsAdmin()) {
+      state.adminVideoMonitorTimer = setInterval(async () => {
+        const currentModal = document.getElementById('dhTaskProgressModal');
+        if (!currentModal?.classList.contains('open') || String(currentModal.dataset.taskId || '') !== String(taskId)) return;
+        if (getTaskType(findTaskCenterTask(taskId)) !== 'new_story_ad' || state.adminVideoMonitorRefreshing) return;
+        state.adminVideoMonitorRefreshing = true;
+        try { await loadNewStoryAdTaskDetail(taskId); } catch (error) { console.warn('[DH/admin-video-monitor] refresh failed:', error); }
+        finally { state.adminVideoMonitorRefreshing = false; }
+      }, 6000);
+    }
   }
   function findTaskCenterTask(taskId) {
     const id = String(taskId || '');
@@ -5515,6 +5587,9 @@
     if (!modal) return;
     delete modal.dataset.taskId;
     modal.classList.remove('open');
+    if (state.adminVideoMonitorTimer) clearInterval(state.adminVideoMonitorTimer);
+    state.adminVideoMonitorTimer = null;
+    state.adminVideoMonitorRefreshing = false;
   }
   // 由 pollVideoTask 在每个 tick 后调用，让弹窗内容跟着任务状态更新
   function refreshTaskProgressModal() {
@@ -5673,6 +5748,12 @@
       const idLabel = t.isLuxuryProjectDraft
         ? `项目 ${String(t.projectId || t.taskId).slice(0, 8)}`
         : `ID ${String(t.taskId).slice(0, 8)}`;
+      const adminOwnerLabel = currentDhUserIsAdmin() && getTaskType(t) === 'new_story_ad'
+        ? ` · 用户 ${taskOwnerId(t) || '--'}${t.actorName ? ` · 演员 ${t.actorName}` : ''}`
+        : '';
+      const videoGenerationSummary = currentDhUserIsAdmin() && getTaskType(t) === 'new_story_ad' && t.generationProgress?.total
+        ? `<div class="dh-task-segment-meta">视频监控：已生成 ${Number(t.generationProgress.generated || 0)}/${Number(t.generationProgress.total || 0)} · 审片通过 ${Number(t.generationProgress.qa_passed || 0)} · 失败 ${Number(t.generationProgress.failed || 0)}${t.generationProgress.effective_concurrency ? ` · 并发 ${Number(t.generationProgress.effective_concurrency)}/${Number(t.generationProgress.max_concurrency || t.generationProgress.effective_concurrency)}` : ''}</div>`
+        : '';
       const cardStyle = t.isLuxuryProjectDraft ? luxuryProjectAccentStyle(t.project || {}) : '';
       return `<div class="dh-task-card ${active ? 'active' : ''} ${t.isLuxuryProjectDraft ? 'dh-task-card-luxury-draft' : ''}" data-task-id="${escapeHtml(t.taskId)}"${cardStyle}>
         ${preview}
@@ -5680,7 +5761,7 @@
           <div class="dh-task-head">
             <div>
               <div class="dh-task-title">${escapeHtml(t.avatarName || '\u6570\u5b57\u4eba\u4efb\u52a1')}</div>
-              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)} · 创建时间 ${escapeHtml(created)} · 更新时间 ${escapeHtml(updated)}</div>
+              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)}${escapeHtml(adminOwnerLabel)} · 创建时间 ${escapeHtml(created)} · 更新时间 ${escapeHtml(updated)}</div>
             </div>
             <span class="dh-task-status ${escapeHtml(t.status || '')}">${getTaskDisplayStatusText(t)}</span>
           </div>
@@ -5690,6 +5771,7 @@
             <span>${elapsedLabel}</span>
           </div>
           ${progressBar}
+          ${videoGenerationSummary}
           <div class="dh-task-text">${escapeHtml(t.textPreview || '')}</div>
           ${video}${subtitle}${error}
           <div class="dh-task-actions">
@@ -6058,6 +6140,8 @@
     const bundle = raw.bundle && typeof raw.bundle === 'object' ? raw.bundle : raw;
     const task = bundle.task || raw.task || raw;
     const rawOutputs = bundle.outputs || raw.outputs || {};
+    const videoMonitor = raw.video_monitor || bundle.video_monitor || raw.videoMonitor || null;
+    const monitorModelCalls = Array.isArray(videoMonitor?.model_calls) ? videoMonitor.model_calls : [];
     const outputs = window.NewStoryAdTaskStore?.normalizeOutputs
       ? window.NewStoryAdTaskStore.normalizeOutputs(rawOutputs)
       : (Array.isArray(rawOutputs)
@@ -6120,6 +6204,9 @@
       user_id: task.user_id || ctx.user_id || '',
       userId: task.user_id || ctx.user_id || '',
       activeGenerationId: task.active_generation_id || raw.active_generation_id || '',
+      actorName: task.actor_name || videoMonitor?.actor?.name || '',
+      generationProgress,
+      videoShotStatuses: Array.isArray(videoMonitor?.shots) ? videoMonitor.shots : [],
       operationStartedAt,
       operationFinishedAt,
       startedAt: typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now()),
@@ -6131,7 +6218,8 @@
       snapshot: {
         ...raw,
         outputs,
-        model_calls: bundle.model_calls || raw.model_calls || [],
+        model_calls: monitorModelCalls.length ? monitorModelCalls : (bundle.model_calls || raw.model_calls || []),
+        video_monitor: videoMonitor,
       },
       createDetail: {
         source: 'new_story_ad',
@@ -6151,7 +6239,9 @@
         qa: outputs.quality_review || null,
         blueprint: outputs.blueprint || null,
         sceneConfig: outputs.scene_config || null,
-        modelCalls: bundle.model_calls || raw.model_calls || [],
+        modelCalls: monitorModelCalls.length ? monitorModelCalls : (bundle.model_calls || raw.model_calls || []),
+        videoMonitor,
+        videoShotStatuses: Array.isArray(videoMonitor?.shots) ? videoMonitor.shots : [],
         clips,
         composeNote: finalUrl ? '剧情广告成片已生成' : '',
         submittedAt: task.created_at || '',
@@ -6181,6 +6271,13 @@
     const id = String(taskId || '').trim();
     if (!id) throw new Error('任务 ID 为空');
     const response = await api('/api/new-story-ad/tasks/' + encodeURIComponent(id));
+    if (currentDhUserIsAdmin()) {
+      try {
+        response.video_monitor = await api('/api/new-story-ad/admin/tasks/' + encodeURIComponent(id) + '/video-monitor');
+      } catch (monitorError) {
+        console.warn('[DH/new-story-ad/video-monitor] admin monitor unavailable:', monitorError);
+      }
+    }
     const detailed = normalizeNewStoryAdTask(response || {});
     if (!detailed) throw new Error('服务器未返回可恢复的任务数据');
     const list = state.newStoryAdTasks || [];

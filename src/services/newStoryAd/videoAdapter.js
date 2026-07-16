@@ -15,11 +15,104 @@ const { continuityPrompt } = require('./continuityService');
 const cancellation = require('./cancellationContext');
 const personIdentity = require('./personIdentityContractService');
 const deyunaiService = require('../deyunaiService');
+const videoScheduler = require('./videoParallelScheduler');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
+const VIDEO_SHOT_STATUS_PREFIX = 'video_shot_status_';
+
+function videoShotStatusKind(index = 0) {
+  return `${VIDEO_SHOT_STATUS_PREFIX}${Math.max(0, Number(index) || 0) + 1}`;
+}
+
+function listVideoShotStatuses(taskId = '', total = 0) {
+  const count = Math.max(0, Number(total) || 0);
+  if (count) return Array.from({ length: count }, (_, index) => storage.getOutput(taskId, videoShotStatusKind(index)) || null);
+  return storage.listOutputs(taskId)
+    .filter(row => String(row.kind || '').startsWith(VIDEO_SHOT_STATUS_PREFIX))
+    .sort((a, b) => Number(String(a.kind).slice(VIDEO_SHOT_STATUS_PREFIX.length)) - Number(String(b.kind).slice(VIDEO_SHOT_STATUS_PREFIX.length)))
+    .map(row => row.payload || null);
+}
+
+function updateVideoProgress(taskId = '', total = 0, extra = {}) {
+  const statuses = listVideoShotStatuses(taskId, total);
+  const previous = storage.getTask(taskId)?.generation_progress || {};
+  const terminal = new Set(['qa_passed', 'qa_failed', 'failed', 'cancelled']);
+  const active = new Set(['queued', 'submitting', 'provider_submitted', 'provider_running', 'downloading', 'normalizing', 'generated', 'video_qa']);
+  const progress = {
+    ...previous,
+    stage: 'video',
+    total: Math.max(Number(total) || 0, statuses.length),
+    queued: statuses.filter(item => item?.lifecycle === 'queued').length,
+    active: statuses.filter(item => active.has(item?.lifecycle)).length,
+    generated: statuses.filter(item => ['generated', 'video_qa', 'qa_passed', 'qa_failed'].includes(item?.lifecycle)).length,
+    qa_passed: statuses.filter(item => item?.lifecycle === 'qa_passed').length,
+    failed: statuses.filter(item => ['qa_failed', 'failed'].includes(item?.lifecycle)).length,
+    completed: statuses.filter(item => terminal.has(item?.lifecycle)).length,
+    active_indexes: statuses.filter(item => active.has(item?.lifecycle)).map(item => Number(item.index || 0)).filter(Boolean),
+    last_heartbeat_at: statuses.map(item => item?.last_heartbeat_at || '').filter(Boolean).sort().slice(-1)[0] || '',
+    ...extra,
+  };
+  storage.updateTask(taskId, { generation_progress: progress });
+  return progress;
+}
+
+function updateVideoShotStatus(taskId = '', index = 0, patch = {}, total = 0) {
+  const kind = videoShotStatusKind(index);
+  const previous = storage.getOutput(taskId, kind) || {};
+  const now = new Date().toISOString();
+  const lifecycle = patch.lifecycle || previous.lifecycle || 'pending';
+  const health = ['qa_passed'].includes(lifecycle) ? 'passed'
+    : (['qa_failed', 'failed', 'cancelled'].includes(lifecycle) ? 'failed' : 'running');
+  const next = {
+    ...previous,
+    ...patch,
+    shot_index: index,
+    index: index + 1,
+    lifecycle,
+    health,
+    queued_at: patch.queued_at || previous.queued_at || (lifecycle === 'queued' ? now : ''),
+    started_at: Object.prototype.hasOwnProperty.call(patch, 'started_at')
+      ? patch.started_at
+      : (previous.started_at || (['submitting', 'provider_submitted', 'provider_running'].includes(lifecycle) ? now : '')),
+    finished_at: ['qa_passed', 'qa_failed', 'failed', 'cancelled'].includes(lifecycle) ? (patch.finished_at || now) : '',
+    last_heartbeat_at: patch.last_heartbeat_at || now,
+    updated_at: now,
+  };
+  storage.saveOutput(taskId, kind, next);
+  updateVideoProgress(taskId, total || next.total_shots || 0);
+  return next;
+}
+
+function explicitShotSpeechMode(shot = {}, contract = {}) {
+  const raw = String(
+    shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode || contract.speech_mode || contract.speechMode || '',
+  ).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(raw)) return 'on_camera_dialogue';
+  if (['silent', 'mute', 'no_speech'].includes(raw)) return 'silent';
+  return 'offscreen_voiceover';
+}
+
+function speechPrompt(shot = {}, contract = {}) {
+  const mode = explicitShotSpeechMode(shot, contract);
+  if (mode === 'on_camera_dialogue') {
+    return 'Speech mode: explicitly authored on-camera dialogue. The visible speaker may speak naturally; do not make any other person speak.';
+  }
+  if (mode === 'silent') {
+    return 'Speech mode: silent. Every visible person keeps a relaxed closed mouth and natural non-speaking expression. No talking or lip movement.';
+  }
+  return 'Speech mode: off-screen voiceover. Visible people do not speak or lip-sync to the narration; keep a relaxed closed mouth and natural non-speaking expression.';
+}
+
+function hardVideoDependency(shot = {}, contract = {}, index = 0) {
+  if (index <= 0) return null;
+  const lock = contract?.continuity_lock || shot.continuity || {};
+  const transition = String(lock.transition_type || shot.transition_type || '').trim().toLowerCase();
+  const required = lock.requires_previous_frame === true || shot.requires_previous_frame === true || shot.requiresPreviousFrame === true;
+  return required || /match|cut.?on.?action|continuous|动作接续|状态接续|连续/i.test(transition) ? index - 1 : null;
+}
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -155,6 +248,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     `Required movement: ${shot.action || shot.visual_action || ''}`,
     `Camera: ${shot.camera || shot.camera_movement || contract.camera_strategy || ''}`,
     continuityPrompt(shot, previousShot),
+    speechPrompt(shot, contract),
     shotDesign.surfacePrompt(design.surface_topology, design.shot_scope),
     shotDesign.motionEffectPrompt(design.motion_effect),
     humanApproved
@@ -369,11 +463,23 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     throw error;
   }
   const attempts = [];
+  const totalShots = Number(options._totalShots || 0);
   for (const model of candidates) {
     cancellation.throwIfCancelled(taskId);
     const filename = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
     const startedAt = Date.now();
     try {
+      updateVideoShotStatus(taskId, index, {
+        lifecycle: 'submitting',
+        total_shots: totalShots,
+        title: shot.title || `镜头 ${index + 1}`,
+        provider_id: model.provider_id,
+        model_id: model.model_id,
+        input_mode: personReferenceAsset ? 'verified_person_reference' : 'approved_keyframe_first_frame',
+        speech_mode: explicitShotSpeechMode(shot, contract),
+        error: '',
+        error_code: '',
+      }, totalShots);
       const videoService = require('../videoService');
       const generated = await videoService.generateVideoClip({
         video_provider: model.provider_id,
@@ -393,9 +499,31 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
         signal: cancellation.signal(),
+        onSubmitted: event => updateVideoShotStatus(taskId, index, {
+          lifecycle: 'provider_submitted',
+          provider_task_id: event.taskId || '',
+          provider_status: event.status || 'submitted',
+          provider_submitted_at: event.submittedAt || new Date().toISOString(),
+          last_polled_at: '',
+        }, totalShots),
+        onProgress: event => updateVideoShotStatus(taskId, index, {
+          lifecycle: event.status === 'downloading' ? 'downloading' : 'provider_running',
+          provider_task_id: event.taskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
+          provider_status: event.status || 'polling',
+          provider_elapsed_ms: Number(event.elapsedMs || 0),
+          last_polled_at: event.polledAt || new Date().toISOString(),
+          provider_has_output_url: event.hasOutputUrl === true,
+        }, totalShots),
       });
       cancellation.throwIfCancelled(taskId);
       if (!generated?.filePath || !fs.existsSync(generated.filePath)) throw new Error('视频供应商未生成可用文件');
+      updateVideoShotStatus(taskId, index, {
+        lifecycle: 'normalizing',
+        provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
+        provider_status: 'succeeded',
+        source_file_path: generated.filePath,
+        source_file_exists: true,
+      }, totalShots);
       const normalizedPath = path.join(VIDEO_DIR, `${filename}_normalized.mp4`);
       await normalizeProviderClip({
         inputPath: generated.filePath,
@@ -407,12 +535,22 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
       storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: attempts.length + 1 });
+      updateVideoShotStatus(taskId, index, {
+        lifecycle: 'generated',
+        provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
+        provider_status: 'succeeded',
+        provider_elapsed_ms: Date.now() - startedAt,
+        file_path: normalizedPath,
+        file_exists: fs.existsSync(normalizedPath),
+        video_url: publicVideoUrl(path.basename(normalizedPath)),
+      }, totalShots);
       return outputPayload(normalizedPath, {
         shot_index: index,
         index: index + 1,
         title: shot.title || `Shot ${index + 1}`,
         duration_sec: duration,
         provider_used: `${model.provider_id}/${model.model_id}`,
+        provider_task_id: generated.providerTaskId || '',
         image_source: imageUrl,
         motion_prompt: prompt,
         mode: personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video',
@@ -440,6 +578,13 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   error.code = attempts.some(item => item.retryable) ? 'VIDEO_ATTEMPTS_EXHAUSTED' : (attempts[0]?.code || 'VIDEO_MODEL_UNAVAILABLE');
   error.retryable = attempts.some(item => item.retryable);
   error.attempts = attempts;
+  updateVideoShotStatus(taskId, index, {
+    lifecycle: 'failed',
+    total_shots: totalShots,
+    error: String(error.message || error).slice(0, 1000),
+    error_code: error.code || 'VIDEO_MODEL_UNAVAILABLE',
+    retryable: error.retryable === true,
+  }, totalShots);
   throw error;
 }
 
@@ -465,6 +610,18 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
     const imagePath = localImagePath(keyframe.image_url || keyframe.imageUrl || keyframe.url || '');
     const audioPath = localAudioPath(audio.audio_url || audio.audioUrl || audio.url || '');
     await renderLocalClip({ outputPath: out, imagePath, audioPath, durationSec: duration, aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16' });
+    updateVideoShotStatus(taskId, index, {
+      lifecycle: 'generated',
+      provider_id: 'local-ffmpeg',
+      model_id: 'explicit-fallback',
+      provider_status: 'succeeded',
+      file_path: out,
+      file_exists: fs.existsSync(out),
+      video_url: publicVideoUrl(path.basename(out)),
+      warning: String(error.message || error).slice(0, 500),
+      error: '',
+      error_code: '',
+    }, Number(options._totalShots || 0));
     return outputPayload(out, {
       shot_index: index,
       index: index + 1,
@@ -498,28 +655,132 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
-  const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset };
+  const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length };
   const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
   const indexes = onlyIndex === null ? list.map((_, index) => index) : [onlyIndex];
   const targetIndexes = options.missing_only === true || options.missingOnly === true
     ? indexes.filter(index => !(clips[index]?.video_url || clips[index]?.videoUrl || clips[index]?.file_path) || !!clips[index]?.error_code)
     : indexes;
-  for (const i of targetIndexes) {
-    cancellation.throwIfCancelled(taskId);
-    const clip = await generateShotVideo({
-      taskId,
-      shot: list[i],
-      previousShot: i > 0 ? list[i - 1] : null,
-      keyframe: keyframes[i] || {},
-      audio: tracks[i] || {},
-      contract: contracts[i] || {},
-      ctx,
-      index: i,
-      options: runOptions,
+  targetIndexes.forEach(index => updateVideoShotStatus(taskId, index, {
+    lifecycle: 'queued',
+    queued_at: new Date().toISOString(),
+    started_at: '',
+    attempt_number: Number(storage.getOutput(taskId, videoShotStatusKind(index))?.attempt_number || 0) + 1,
+    total_shots: list.length,
+    title: list[index]?.title || `镜头 ${index + 1}`,
+    provider_id: pinnedModel.provider_id,
+    model_id: pinnedModel.model_id,
+    speech_mode: explicitShotSpeechMode(list[index] || {}, contracts[index] || {}),
+    dependency_index: hardVideoDependency(list[index] || {}, contracts[index] || {}, index),
+    previous_provider_task_id: storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
+    provider_task_id: '',
+    provider_status: '',
+    provider_submitted_at: '',
+    last_polled_at: '',
+    file_path: '',
+    file_exists: false,
+    video_url: '',
+    qa_status: '',
+    qa_problems: [],
+    error: '',
+    error_code: '',
+  }, list.length));
+
+  let schedule = {
+    results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1,
+    max_concurrency: 1, throttle_retries: {},
+  };
+  if (targetIndexes.length) {
+    try {
+      schedule = await videoScheduler.runSchedule({
+      indexes: targetIndexes,
+      options,
+      signal: cancellation.signal(),
+      dependencyOf: index => hardVideoDependency(list[index] || {}, contracts[index] || {}, index),
+      onWaveStart: wave => {
+        updateVideoProgress(taskId, list.length, {
+          configured_concurrency: wave.configured_concurrency,
+          effective_concurrency: wave.concurrency,
+          max_concurrency: wave.max_concurrency,
+          current_wave: wave.wave_number,
+          wave_indexes: wave.indexes.map(index => index + 1),
+          scheduler: 'adaptive_controlled_parallel',
+        });
+      },
+      onWaveComplete: wave => {
+        storage.saveStage(taskId, 'video', {
+          status: 'running',
+          input_summary: `${list.length} shot videos`,
+          output_summary: `${clips.filter(Boolean).length}/${list.length} video clips`,
+          diagnostics: {
+            provider_used: modelRoute(pinnedModel),
+            configured_concurrency: wave.configured_concurrency,
+            effective_concurrency: wave.next_concurrency,
+            max_concurrency: wave.max_concurrency,
+            last_wave: wave,
+          },
+        });
+      },
+      worker: async (i, wave) => {
+        cancellation.throwIfCancelled(taskId);
+        updateVideoShotStatus(taskId, i, {
+          lifecycle: 'queued',
+          scheduler_wave: wave.wave_number,
+          scheduler_concurrency: wave.concurrency,
+          global_queue_ms: wave.global_queue_ms || 0,
+        }, list.length);
+        const clip = await generateShotVideo({
+          taskId,
+          shot: list[i],
+          previousShot: i > 0 ? list[i - 1] : null,
+          keyframe: keyframes[i] || {},
+          audio: tracks[i] || {},
+          contract: contracts[i] || {},
+          ctx,
+          index: i,
+          options: runOptions,
+        });
+        cancellation.throwIfCancelled(taskId);
+        clips[i] = clip;
+        if (typeof onClip === 'function') await onClip(clip, clips.slice());
+        return clip;
+      },
+      });
+    } catch (error) {
+      const cancelled = error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted;
+      targetIndexes.forEach(index => {
+        const current = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
+        if (['qa_passed', 'qa_failed', 'failed', 'cancelled'].includes(current.lifecycle)) return;
+        if (current.lifecycle === 'generated' && clips[index]) {
+          clips[index] = {
+            ...clips[index],
+            error: '同批次失败，当前片段尚未完成视频审片',
+            error_code: 'VIDEO_BATCH_ABORTED_BEFORE_QA',
+          };
+        }
+        updateVideoShotStatus(taskId, index, {
+          lifecycle: cancelled ? 'cancelled' : 'failed',
+          error: cancelled ? '任务已取消' : (current.lifecycle === 'generated' ? '视频已落地但同批次失败，尚未完成审片' : '同批次镜头失败，当前镜头未继续提交'),
+          error_code: cancelled ? 'USER_CANCELLED' : (current.lifecycle === 'generated' ? 'VIDEO_BATCH_ABORTED_BEFORE_QA' : 'VIDEO_BATCH_ABORTED'),
+          retryable: true,
+        }, list.length);
+      });
+      storage.saveOutput(taskId, 'video_clips', clips);
+      throw error;
+    }
+    updateVideoProgress(taskId, list.length, {
+      configured_concurrency: schedule.configured_concurrency,
+      effective_concurrency: schedule.effective_concurrency,
+      max_concurrency: schedule.max_concurrency,
+      scheduler: 'adaptive_controlled_parallel',
+      schedule_waves: schedule.waves.map(wave => ({
+        wave_number: wave.wave_number,
+        indexes: wave.indexes.map(index => index + 1),
+        concurrency: wave.concurrency,
+        duration_ms: wave.duration_ms || 0,
+        throttled: wave.throttled === true,
+      })),
     });
-    cancellation.throwIfCancelled(taskId);
-    clips[i] = clip;
-    if (typeof onClip === 'function') await onClip(clip, clips.slice());
   }
   return {
     clips,
@@ -527,6 +788,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     pinned_model: pinnedModel,
     deyunai_person_asset: deyunaiPersonAsset,
     target_indexes: targetIndexes,
+    schedule,
   };
 }
 
@@ -543,6 +805,12 @@ module.exports = {
   publicVideoUrl,
   generateShotVideo,
   generateShotVideos,
+  videoShotStatusKind,
+  listVideoShotStatuses,
+  updateVideoShotStatus,
+  updateVideoProgress,
+  explicitShotSpeechMode,
+  hardVideoDependency,
   renderLocalClip,
   normalizeProviderClip,
   clipPrompt,

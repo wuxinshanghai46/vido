@@ -2284,7 +2284,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2324,10 +2324,19 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
     userId,
     agentId: agentId || 'video_gen',
     signal,
+    onSubmitted,
+    onProgress,
   });
   if (!r.url) throw new Error('漫路视频生成无 URL');
+  if (typeof onProgress === 'function') {
+    try {
+      await onProgress({ provider: 'deyunai', model: chosen.id, taskId: r.taskId || '', status: 'downloading', polledAt: new Date().toISOString(), hasOutputUrl: true });
+    } catch (error) {
+      console.warn('[VideoService] generation observer failed:', String(error?.message || error));
+    }
+  }
   await downloadFile(r.url, outputPath, signal);
-  return { filePath: outputPath };
+  return { filePath: outputPath, providerTaskId: r.taskId || '', providerUrl: r.url };
 }
 
 module.exports = {

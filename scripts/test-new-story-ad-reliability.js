@@ -128,6 +128,7 @@ async function main() {
   const dedupedSpeech = ttsAdapter.shotSpeechText(repeatedSpeechShot);
   assert.equal(dedupedSpeech, '开发 AI 应用，总想找到更强大的开发伙伴。');
   assert.equal(ttsAdapter.shotSpeechText({
+    speech_mode: 'on_camera_dialogue',
     voiceover: '先介绍产品。',
     dialogue_lines: [{ speaker: '主持人', line: '再演示核心功能。' }],
   }), '先介绍产品。 主持人: 再演示核心功能。');

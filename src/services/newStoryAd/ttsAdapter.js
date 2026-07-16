@@ -52,13 +52,24 @@ function dialogueSegments(shot = {}) {
   return [shot.dialogue || shot.dialog || ''];
 }
 
+function speechMode(shot = {}) {
+  const mode = String(shot.speech_mode || shot.speechMode || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (['on_camera', 'on_camera_dialogue', 'visible_dialogue', 'speaking', 'lip_sync'].includes(mode)) return 'on_camera_dialogue';
+  if (['silent', 'mute', 'no_speech'].includes(mode)) return 'silent';
+  return 'offscreen_voiceover';
+}
+
 function shotSpeechText(shot = {}) {
+  const mode = speechMode(shot);
+  if (mode === 'silent') return '';
+  const voiceover = normalizeSpeechSegment(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '');
+  if (mode !== 'on_camera_dialogue') {
+    if (voiceover) return voiceover;
+    return dialogueSegments(shot).map(segment => normalizeSpeechSegment(segment).replace(/^.*?:\s*/, '')).filter(Boolean).join(' ');
+  }
   const seen = new Set();
   return [
-    shot.voiceover,
-    shot.narration,
-    shot.ad_copy,
-    shot.subtitle,
+    voiceover,
     ...dialogueSegments(shot),
   ].map(normalizeSpeechSegment).filter((segment) => {
     const key = speechSegmentKey(segment);
@@ -134,9 +145,23 @@ async function generateShotAudio({
   speed = 1,
   allowSilentFallback = false,
 } = {}) {
-  const text = shotSpeechText(shot) || `Shot ${index + 1}`;
+  const mode = speechMode(shot);
+  const text = shotSpeechText(shot);
   const base = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
-  const estimatedDuration = clamp(shot.duration_sec || shot.duration || Math.ceil(text.length / 5), 1.2, 10, 3);
+  const estimatedDuration = clamp(shot.duration_sec || shot.duration || Math.ceil(Math.max(1, text.length) / 5), 1.2, 10, 3);
+  if (mode === 'silent') {
+    const out = path.join(AUDIO_DIR, `${base}_silent.wav`);
+    writeSilenceWav(out, estimatedDuration);
+    return publicResult(out, {
+      shot_index: index,
+      index: index + 1,
+      text: '',
+      duration_sec: estimatedDuration,
+      provider_used: 'local/silent-shot',
+      speech_mode: 'silent',
+    });
+  }
+  if (!text) throw new Error(`第 ${index + 1} 镜没有可生成的旁白或台词`);
   if (process.env.NEW_STORY_AD_MOCK_TTS === '1') {
     const out = path.join(AUDIO_DIR, `${base}.wav`);
     writeSilenceWav(out, estimatedDuration);
@@ -147,6 +172,7 @@ async function generateShotAudio({
       duration_sec: estimatedDuration,
       provider_used: 'mock/new-story-ad-tts',
       warning: 'test-only silent timing audio',
+      speech_mode: mode,
     });
   }
   if (!voiceId) throw new Error('未选择配音音色，不能生成真实配音');
@@ -166,6 +192,7 @@ async function generateShotAudio({
       text,
       duration_sec: estimatedDuration,
       provider_used: `${ttsService.voiceProviderForId(voiceId) || 'shared-tts'}/${voiceId}`,
+      speech_mode: mode,
     });
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
@@ -178,6 +205,7 @@ async function generateShotAudio({
       text,
       duration_sec: estimatedDuration,
       provider_used: 'local/silent-audio-fallback',
+      speech_mode: mode,
       warning: String(err.message || err).slice(0, 500),
     });
   }
@@ -216,6 +244,7 @@ module.exports = {
   AUDIO_DIR,
   audioPathFromName,
   publicAudioUrl,
+  speechMode,
   shotSpeechText,
   voiceoverPlanMatches,
   generateShotAudio,
