@@ -1626,12 +1626,6 @@
         "priority": 2
       },
       {
-        "provider_id": "zhipu",
-        "model_id": "cogvideox-flash",
-        "priority": 3,
-        "enabled": true
-      },
-      {
         "provider_id": "topview",
         "model_id": "topview-image2video-pro",
         "priority": 4,
