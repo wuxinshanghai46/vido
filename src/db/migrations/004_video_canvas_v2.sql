@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS video_canvas_settings (
 );
 
 CREATE INDEX IF NOT EXISTS idx_vc_projects_user_updated ON video_canvas_projects(user_id, updated_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_vc_projects_legacy ON video_canvas_projects(user_id, legacy_workflow_id) WHERE legacy_workflow_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vc_projects_legacy ON video_canvas_projects(user_id, legacy_workflow_id);
 CREATE INDEX IF NOT EXISTS idx_vc_revisions_project_created ON video_canvas_graph_revisions(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vc_runs_project_created ON video_canvas_runs(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vc_runs_status_queued ON video_canvas_runs(status, queued_at);

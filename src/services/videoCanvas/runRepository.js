@@ -1,6 +1,7 @@
 const { executeBatch } = require('../../db/sqlite');
 const { db } = require('./database');
 const { id, nowIso, parseJson } = require('./common');
+const settingsRepository = require('./settingsRepository');
 
 const NODE_TERMINAL = new Set(['succeeded', 'reused', 'failed', 'cancelled', 'skipped']);
 
@@ -143,30 +144,34 @@ function listCostEntries(runId) { return db().prepare('SELECT * FROM video_canva
 function attemptCount(nodeRunId) { return Number(db().prepare('SELECT COUNT(*) AS n FROM video_canvas_node_attempts WHERE node_run_id=?').get(nodeRunId)?.n || 0); }
 function claimNextQueued(workerId, leaseMs = 30000) {
   const now = nowIso(); const expires = new Date(Date.now() + leaseMs).toISOString();
-  const row = db().prepare(`UPDATE video_canvas_node_runs SET status='running',started_at=COALESCE(started_at,?),updated_at=? WHERE id=(
-    SELECT nr.id
+  // Keep the queue claim compatible with the production SQLite 3.7 bridge:
+  // no UPDATE ... RETURNING, JSON SQL functions or partial-index dependency.
+  // The conditional UPDATE is the atomic winner check when multiple workers
+  // inspect the same candidate.
+  const candidates = db().prepare(`SELECT nr.id,r.user_id
     FROM video_canvas_node_runs nr
     JOIN video_canvas_runs r ON r.id=nr.run_id
-    WHERE nr.status='queued'
-      AND r.status IN ('queued','running')
-      AND (
-        SELECT COUNT(*)
-        FROM video_canvas_node_runs active_nr
-        JOIN video_canvas_runs active_r ON active_r.id=active_nr.run_id
-        WHERE active_r.user_id=r.user_id AND active_nr.status='running'
-      ) < COALESCE(
-        (SELECT CAST(json_extract(s.settings_json,'$.concurrency') AS INTEGER) FROM video_canvas_settings s WHERE s.user_id=r.user_id),
-        2
-      )
+    WHERE nr.status='queued' AND r.status IN ('queued','running')
     ORDER BY nr.priority DESC,nr.created_at
-    LIMIT 1
-  ) RETURNING *`).get(now, now);
-  if (!row) return null;
-  db().prepare('INSERT OR REPLACE INTO video_canvas_worker_leases(node_run_id,lease_owner,lease_expires_at,heartbeat_at) VALUES(?,?,?,?)').run(row.id, workerId, expires, now);
-  const node = mapNodeRun(row);
-  db().prepare("UPDATE video_canvas_runs SET status='running',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='queued'").run(now, now, node.run_id);
-  addEvent(node.run_id, 'node.running', { nodeId: node.node_id, nodeType: node.node_type }, node.id);
-  return node;
+    LIMIT 100`).all();
+  for (const candidate of candidates) {
+    const limit = settingsRepository.getSettings(candidate.user_id).settings.concurrency;
+    const active = Number(db().prepare(`SELECT COUNT(*) AS n
+      FROM video_canvas_node_runs nr
+      JOIN video_canvas_runs r ON r.id=nr.run_id
+      WHERE r.user_id=? AND nr.status='running'`).get(candidate.user_id)?.n || 0);
+    if (active >= limit) continue;
+    const claimed = db().prepare("UPDATE video_canvas_node_runs SET status='running',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='queued'").run(now, now, candidate.id);
+    if (Number(claimed?.changes || 0) !== 1) continue;
+    const row = db().prepare('SELECT * FROM video_canvas_node_runs WHERE id=?').get(candidate.id);
+    if (!row) continue;
+    db().prepare('INSERT OR REPLACE INTO video_canvas_worker_leases(node_run_id,lease_owner,lease_expires_at,heartbeat_at) VALUES(?,?,?,?)').run(row.id, workerId, expires, now);
+    const node = mapNodeRun(row);
+    db().prepare("UPDATE video_canvas_runs SET status='running',started_at=COALESCE(started_at,?),updated_at=? WHERE id=? AND status='queued'").run(now, now, node.run_id);
+    addEvent(node.run_id, 'node.running', { nodeId: node.node_id, nodeType: node.node_type }, node.id);
+    return node;
+  }
+  return null;
 }
 function heartbeat(nodeRunId, workerId, leaseMs = 30000) {
   const now = nowIso(); const expires = new Date(Date.now() + leaseMs).toISOString();

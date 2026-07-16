@@ -37,9 +37,9 @@ function verifyPythonReturningCommit() {
     const { openDatabase, closeDatabase } = require('./src/db/sqlite');
     const db = openDatabase({ force: true });
     db.exec("CREATE TABLE queue(id TEXT PRIMARY KEY,status TEXT NOT NULL); INSERT INTO queue VALUES('one','queued');");
-    const first = db.prepare("UPDATE queue SET status='running' WHERE id=(SELECT id FROM queue WHERE status='queued' LIMIT 1) RETURNING *").get();
-    const second = db.prepare("UPDATE queue SET status='running' WHERE id=(SELECT id FROM queue WHERE status='queued' LIMIT 1) RETURNING *").get();
-    if (!first || second) throw new Error('Python SQLite UPDATE RETURNING claim was not committed exactly once');
+    const first = db.prepare("UPDATE queue SET status='running' WHERE id=(SELECT id FROM queue WHERE status='queued' LIMIT 1)").run();
+    const second = db.prepare("UPDATE queue SET status='running' WHERE id=(SELECT id FROM queue WHERE status='queued' LIMIT 1)").run();
+    if (Number(first.changes) !== 1 || Number(second.changes) !== 0) throw new Error('Python SQLite conditional claim was not committed exactly once');
     closeDatabase();
   `;
   const result = spawnSync(process.execPath, ['-e', script], {
