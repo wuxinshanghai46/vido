@@ -79,7 +79,7 @@
       && frame?.qa?.pass === true
     ));
     if (finalVideo.video_url || finalVideo.videoUrl || (Array.isArray(outputs.video_clips) && outputs.video_clips.length > 0)) return 5;
-    if (outputs.tts_audio || /(?:final|compose|video|tts)/.test(stage)) return currentFramesReady ? 5 : 4;
+    if (outputs.tts_audio || /(?:final|compose|video|tts|media)/.test(stage)) return currentFramesReady ? 5 : 4;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready

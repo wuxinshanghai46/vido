@@ -108,6 +108,8 @@ async function main() {
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });
+  assert.deepEqual(modelGateway.classifyError(new Error('The input image may contain real person. Request id: 02178417084623764d8a6219dbbdb6281842e0590025e923e2605')), { code: 'INPUT_PERSON_PRIVACY', retryable: false });
+  assert.deepEqual(modelGateway.classifyError(new Error('Request id: 02178417084623764d8a6219dbbdb6281842e0590025e923e2605')), { code: 'UNKNOWN', retryable: false });
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('视觉模型全部失败'), { code: 'VISION_QA_UNAVAILABLE' })), true);
   assert.strictEqual(service.isQaInfrastructureError(new Error('视觉模型未返回有效 JSON')), true);
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('vision response schema invalid'), { code: 'VISION_QA_SCHEMA_INVALID' })), true);

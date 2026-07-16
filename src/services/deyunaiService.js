@@ -97,8 +97,18 @@ function seedanceRatioFromSize(size = '') {
   if (!match) return '9:16';
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (width === height) return '1:1';
-  return width > height ? '16:9' : '9:16';
+  const supported = [
+    { ratio: '9:16', value: 9 / 16 },
+    { ratio: '3:4', value: 3 / 4 },
+    { ratio: '1:1', value: 1 },
+    { ratio: '4:3', value: 4 / 3 },
+    { ratio: '16:9', value: 16 / 9 },
+    { ratio: '21:9', value: 21 / 9 },
+  ];
+  const value = width / height;
+  return supported
+    .slice()
+    .sort((a, b) => Math.abs(Math.log(value / a.value)) - Math.abs(Math.log(value / b.value)))[0].ratio;
 }
 
 function seedanceResolutionFromSize(size = '') {
@@ -121,11 +131,12 @@ function normalizeSeedanceAssetUri(value = '') {
 
 function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [] }) {
   const content = [{ type: 'text', text: String(prompt || '').trim().substring(0, 4000) }];
-  // Seedance 2.0 rejects requests that mix first/last-frame inputs with
-  // reference-media assets. A generated keyframe already contains the locked
-  // person/product/scene appearance, so frame-driven video must use that frame
-  // alone. Reference assets remain valid for reference-only generation.
-  const assets = imageUrl ? [] : [...new Set((Array.isArray(referenceAssetUrls) ? referenceAssetUrls : [referenceAssetUrls])
+  // Seedance 2.0 rejects mixed first/last-frame and reference-media requests.
+  // A verified private-library asset must win whenever one is supplied: this
+  // is the compliant route for person shots. Shots without an asset keep the
+  // exact generated keyframe as first_frame. The choice is data-driven and is
+  // never tied to a user, task id, or a particular actor.
+  const assets = [...new Set((Array.isArray(referenceAssetUrls) ? referenceAssetUrls : [referenceAssetUrls])
     .map(normalizeSeedanceAssetUri)
     .filter(Boolean))].slice(0, 8);
   for (const assetUrl of assets) {
@@ -135,7 +146,7 @@ function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl,
       role: 'reference_image',
     });
   }
-  if (imageUrl) {
+  if (imageUrl && !assets.length) {
     content.push({
       type: 'image_url',
       image_url: { url: String(imageUrl).trim() },
@@ -146,11 +157,30 @@ function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl,
     model,
     content,
     ratio: seedanceRatioFromSize(size),
-    duration: Math.min(10, Math.max(5, Math.round(Number(duration) || 5))),
+    duration: Math.min(15, Math.max(5, Math.round(Number(duration) || 5))),
     resolution: seedanceResolutionFromSize(size),
     generate_audio: false,
     watermark: false,
   };
+}
+
+function seedanceContentTaskError(payload = {}, phase = '提交') {
+  const info = payload?.error || payload?.Error || payload?.data?.error || payload?.data?.Error || null;
+  if (!info) return null;
+  const providerCode = String(info.code || info.Code || info.type || info.Type || 'ProviderRequestRejected');
+  const providerMessage = String(info.message || info.Message || JSON.stringify(info)).slice(0, 800);
+  let code = 'PROVIDER_REQUEST_REJECTED';
+  if (/PrivacyInformation|real person/i.test(`${providerCode} ${providerMessage}`)) code = 'INPUT_PERSON_PRIVACY';
+  else if (/SensitiveContent/i.test(`${providerCode} ${providerMessage}`)) code = 'INPUT_SENSITIVE_CONTENT';
+  else if (/InvalidParameter|BadRequest|not valid/i.test(`${providerCode} ${providerMessage}`)) code = 'INVALID_PROVIDER_INPUT';
+  else if (/RateLimit|TooManyRequests|429/i.test(`${providerCode} ${providerMessage}`)) code = 'RATE_LIMIT';
+  else if (/Internal|ServiceUnavailable|5\d\d/i.test(providerCode)) code = 'PROVIDER_5XX';
+  const error = new Error(`漫路 Seedance 2.0 ${phase}失败 [${providerCode}]: ${providerMessage}`);
+  error.code = code;
+  error.providerCode = providerCode;
+  error.status = code.startsWith('INPUT_') || code === 'INVALID_PROVIDER_INPUT' ? 422 : 502;
+  error.retryable = ['RATE_LIMIT', 'PROVIDER_5XX'].includes(code);
+  return error;
 }
 
 function assetResult(payload = {}) {
@@ -359,18 +389,41 @@ function extractSeedanceContentTaskVideoUrl(payload) {
 async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal }) {
   const headers = buildHeaders(model, { forceDomestic: true });
   const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
-  const submitRes = await axios.post(CONTENT_GENERATION_TASKS_URL, body, { headers, timeout: 30000, signal });
+  let submitRes;
+  try {
+    submitRes = await axios.post(CONTENT_GENERATION_TASKS_URL, body, { headers, timeout: 30000, signal });
+  } catch (requestError) {
+    const businessError = seedanceContentTaskError(requestError?.response?.data, '提交');
+    if (businessError) throw businessError;
+    throw requestError;
+  }
+  const submitError = seedanceContentTaskError(submitRes.data, '提交');
+  if (submitError) throw submitError;
   const taskId = submitRes.data?.data?.id || submitRes.data?.id || submitRes.data?.data?.task_id || submitRes.data?.task_id;
-  if (!taskId) throw new Error('漫路 Seedance 2.0 提交成功但未返回任务 ID: ' + JSON.stringify(submitRes.data).slice(0, 300));
+  if (!taskId) {
+    const error = new Error('漫路 Seedance 2.0 返回格式异常，未返回任务 ID: ' + JSON.stringify(submitRes.data).slice(0, 300));
+    error.code = 'PROVIDER_RESPONSE_INVALID';
+    error.retryable = true;
+    throw error;
+  }
 
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
     await abortableWait(5000, signal);
-    const queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(taskId)}`, {
-      headers,
-      timeout: 30000,
-      signal,
-    });
+    let queryRes;
+    try {
+      queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(taskId)}`, {
+        headers,
+        timeout: 30000,
+        signal,
+      });
+    } catch (requestError) {
+      const businessError = seedanceContentTaskError(requestError?.response?.data, '查询');
+      if (businessError) throw businessError;
+      throw requestError;
+    }
+    const queryError = seedanceContentTaskError(queryRes.data, '查询');
+    if (queryError) throw queryError;
     const task = queryRes.data?.data || queryRes.data || {};
     const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
     const url = extractSeedanceContentTaskVideoUrl(task);
@@ -858,6 +911,7 @@ module.exports = {
   isSeedanceContentGenerationModel,
   normalizeSeedanceAssetUri,
   buildSeedanceContentTaskBody,
+  seedanceContentTaskError,
   extractSeedanceContentTaskVideoUrl,
   listAssetGroups,
   createAssetGroup,

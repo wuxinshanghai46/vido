@@ -4,6 +4,7 @@ const {
   isSeedanceContentGenerationModel,
   buildSeedanceContentTaskBody,
   extractSeedanceContentTaskVideoUrl,
+  seedanceContentTaskError,
   ensurePersonImageAsset,
 } = require('../src/services/deyunaiService');
 
@@ -37,13 +38,32 @@ const i2v = buildSeedanceContentTaskBody({
 });
 assert.strictEqual(i2v.ratio, '9:16');
 assert.strictEqual(i2v.resolution, '1080p');
-assert.strictEqual(i2v.duration, 10);
+assert.strictEqual(i2v.duration, 12);
 assert.deepStrictEqual(i2v.content[1], {
   type: 'image_url',
-  image_url: { url: 'https://example.com/frame.png' },
-  role: 'first_frame',
+  image_url: { url: 'asset://asset-person-001' },
+  role: 'reference_image',
 });
-assert.strictEqual(i2v.content.length, 2, '首帧模式不能混入 reference_image');
+assert.strictEqual(i2v.content.length, 2, '人物资产模式不能混入 first_frame');
+
+const frameOnly = buildSeedanceContentTaskBody({
+  model: 'doubao-seedance-2-0-260128',
+  prompt: 'frame only',
+  duration: 20,
+  size: '720x960',
+  imageUrl: 'https://example.com/frame.png',
+});
+assert.strictEqual(frameOnly.ratio, '3:4');
+assert.strictEqual(frameOnly.duration, 15);
+assert.strictEqual(frameOnly.content[1].role, 'first_frame');
+
+const landscape43 = buildSeedanceContentTaskBody({
+  model: 'doubao-seedance-2-0-260128',
+  prompt: 'four by three',
+  duration: 5,
+  size: '960x720',
+});
+assert.strictEqual(landscape43.ratio, '4:3');
 
 const referenceOnly = buildSeedanceContentTaskBody({
   model: 'doubao-seedance-2-0-260128',
@@ -66,6 +86,17 @@ assert.strictEqual(
   extractSeedanceContentTaskVideoUrl({ output: { results: [{ video: { url: 'https://cdn.example.com/b.mp4' } }] } }),
   'https://cdn.example.com/b.mp4'
 );
+
+const privacyError = seedanceContentTaskError({
+  error: {
+    code: 'InputImageSensitiveContentDetected.PrivacyInformation',
+    message: 'The request failed because the input image may contain real person. Request id: 02178417084623764d8a6219dbbdb6281842e0590025e923e2605',
+    type: 'BadRequest',
+  },
+});
+assert.strictEqual(privacyError.code, 'INPUT_PERSON_PRIVACY');
+assert.strictEqual(privacyError.retryable, false);
+assert.match(privacyError.message, /提交失败/);
 
 let listCalls = 0;
 const fakeHttpClient = {

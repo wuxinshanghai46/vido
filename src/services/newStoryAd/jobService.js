@@ -3,7 +3,7 @@ const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
 
 const runningJobs = new Map();
-const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose']);
+const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose', 'media']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
 const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
@@ -15,6 +15,7 @@ const DEFAULT_STAGE_BUDGETS = Object.freeze({
   tts: 600000,
   video: 1800000,
   compose: 600000,
+  media: 3600000,
   full: 3600000,
 });
 

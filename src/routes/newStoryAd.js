@@ -917,6 +917,18 @@ router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'compose', () => service.composeStage(req.params.id, body));
 }));
 
+router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'media', async () => {
+    // Video owns the idempotent TTS decision: matching voice tracks are reused,
+    // missing/outdated tracks are generated, and silent mode skips TTS. Keeping
+    // all media stages in one server job means closing the browser cannot stop
+    // the transition from video generation to final composition.
+    await service.generateVideoStage(req.params.id, { ...body, missing_only: true });
+    await service.composeStage(req.params.id, body);
+  }, { deadlineMs: 60 * 60 * 1000 });
+}));
+
 router.post('/storyboard', asyncRoute(async (req, res) => {
   const created = service.createTask(req.body || {}, userFromReq(req));
   req.params.id = created.task.id;

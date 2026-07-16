@@ -82,7 +82,10 @@ assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore 
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
-assert(generationFlow.includes('media.include_voiceover !== false && media.voice_id'), 'primary media chain must skip TTS without a selected voice');
+assert(generationFlow.includes("return runStage('media', ctx)"), 'primary media chain must be owned by one resumable server job');
+const route = read('src/routes/newStoryAd.js');
+assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
+assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));

@@ -185,12 +185,19 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     avg_latency_ms: 0,
     consecutive_failure_count: 0,
   };
+  const classified = ok ? null : classifyError(error);
+  const requestRejected = classified && ['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(classified.code);
   if (ok) {
     row.success_count = Number(row.success_count || 0) + 1;
     row.consecutive_failure_count = 0;
     row.cooldown_until = '';
     row.last_error_code = '';
     row.last_success_at = new Date().toISOString();
+  } else if (requestRejected) {
+    // User/input compliance failures do not mean the model endpoint is
+    // unhealthy and must never open a provider circuit or reorder models.
+    row.last_error_code = classified.code;
+    row.last_rejected_at = new Date().toISOString();
   } else {
     row.failure_count = Number(row.failure_count || 0) + 1;
     row.consecutive_failure_count = Number(row.consecutive_failure_count || 0) + 1;
@@ -257,13 +264,23 @@ function candidatesForVisionStage(stage) {
 
 function classifyError(error) {
   const msg = String(error?.message || error || '');
+  const explicitCode = String(error?.code || '');
+  if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(explicitCode)) {
+    return { code: explicitCode, retryable: false };
+  }
+  if (explicitCode === 'PROVIDER_RESPONSE_INVALID') return { code: explicitCode, retryable: true };
+  if (['RATE_LIMIT', 'PROVIDER_5XX', 'TIMEOUT_OR_NETWORK'].includes(explicitCode)) return { code: explicitCode, retryable: true };
+  if (['PROVIDER_BILLING', 'AUTH_CONFIG', 'MODEL_CONFIG'].includes(explicitCode)) return { code: explicitCode, retryable: false };
+  if (/InputImageSensitiveContentDetected\.PrivacyInformation|input image may contain real person|PrivacyInformation/i.test(msg)) return { code: 'INPUT_PERSON_PRIVACY', retryable: false };
+  if (/SensitiveContentDetected|sensitive content/i.test(msg)) return { code: 'INPUT_SENSITIVE_CONTENT', retryable: false };
+  if (/InvalidParameter|BadRequest|parameter .* not valid|cannot be mixed/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };
   if (/429|rate limit|quota/i.test(msg)) return { code: 'RATE_LIMIT', retryable: true };
   if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };
   if (/configuration not found|model.*not found|model_not_found|不是可用|没有可用配置|not available|disabled/i.test(msg)) return { code: 'MODEL_CONFIG', retryable: false };
   if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(msg)) return { code: 'MODEL_JSON', retryable: true };
-  if (/5\d\d|503|502|500/i.test(msg)) return { code: 'PROVIDER_5XX', retryable: true };
+  if (/\bHTTP\s*5\d\d\b|\bstatus(?:\s*code)?\s*[:=]?\s*5\d\d\b|Internal Server Error|Service Unavailable/i.test(msg)) return { code: 'PROVIDER_5XX', retryable: true };
   return { code: 'UNKNOWN', retryable: false };
 }
 

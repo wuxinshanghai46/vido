@@ -47,6 +47,7 @@ function clamp(num, min, max, fallback) {
 
 function ratioSize(ratio = '9:16') {
   const key = String(ratio || '9:16').trim();
+  if (key === '21:9') return { width: 1680, height: 720 };
   if (key === '16:9') return { width: 1280, height: 720 };
   if (key === '1:1') return { width: 1024, height: 1024 };
   if (key === '4:3') return { width: 1024, height: 768 };
@@ -184,7 +185,7 @@ function providerMatches(provider = {}, providerId = '') {
     .some(value => String(value).trim().toLowerCase() === target);
 }
 
-function videoCandidates(options = {}) {
+function videoCandidates(options = {}, { includeCircuitOpen = false } = {}) {
   const settings = loadSettings();
   const providers = Array.isArray(settings.providers) ? settings.providers : [];
   const preferredProvider = String(options.video_provider || options.videoProvider || '').trim().toLowerCase();
@@ -197,7 +198,7 @@ function videoCandidates(options = {}) {
       if (!provider) return false;
       return (provider.models || []).some(item => String(item.id || '') === String(model.model_id || '') && item.enabled !== false && String(item.use || item.type || '').toLowerCase() === 'video');
     })
-    .filter(model => !modelGateway.healthState(model).circuit_open)
+    .filter(model => includeCircuitOpen || !modelGateway.healthState(model).circuit_open)
     .sort((a, b) => Number(a.priority || 999) - Number(b.priority || 999) || modelGateway.getHealthScore(b) - modelGateway.getHealthScore(a))
     .slice(0, VIDEO_MAX_CANDIDATES);
 }
@@ -211,7 +212,7 @@ function clipRoute(clip = {}) {
 }
 
 function resolvePinnedVideoModel(options = {}, existingClips = []) {
-  const candidates = videoCandidates(options);
+  const configured = videoCandidates(options, { includeCircuitOpen: true });
   const existingRoutes = [...new Set((Array.isArray(existingClips) ? existingClips : [])
     .filter(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)
     .map(clipRoute)
@@ -223,15 +224,15 @@ function resolvePinnedVideoModel(options = {}, existingClips = []) {
     error.retryable = false;
     throw error;
   }
-  if (!candidates.length) {
-    const error = new Error('new_story_ad.video 当前没有未熔断的真实视频模型，已立即停止本阶段');
-    error.code = 'VIDEO_CIRCUIT_OPEN';
-    error.retryable = true;
+  if (!configured.length) {
+    const error = new Error('new_story_ad.video 模型调用管理中没有可用且已配置的视频模型');
+    error.code = 'VIDEO_MODEL_CONFIG_REQUIRED';
+    error.retryable = false;
     throw error;
   }
   if (existingRoutes.length === 1) {
-    const pinned = candidates.find(candidate => modelRoute(candidate) === existingRoutes[0]);
-    if (!pinned) {
+    const pinned = configured.find(candidate => modelRoute(candidate) === existingRoutes[0]);
+    if (!pinned || modelGateway.healthState(pinned).circuit_open) {
       const error = new Error(`任务原视频模型 ${existingRoutes[0]} 当前不可用；为避免静默换模导致画风和人物变化，已停止生成`);
       error.code = 'PINNED_VIDEO_MODEL_UNAVAILABLE';
       error.retryable = true;
@@ -239,7 +240,19 @@ function resolvePinnedVideoModel(options = {}, existingClips = []) {
     }
     return pinned;
   }
-  return candidates[0];
+  const allowFallback = options.allow_video_model_fallback === true || options.allowVideoModelFallback === true;
+  if (allowFallback) {
+    const available = configured.find(candidate => !modelGateway.healthState(candidate).circuit_open);
+    if (available) return available;
+  }
+  const primary = configured[0];
+  if (modelGateway.healthState(primary).circuit_open) {
+    const error = new Error(`模型调用管理首选视频模型 ${modelRoute(primary)} 当前处于熔断状态；为避免未确认的模型降级，任务已停止`);
+    error.code = 'PRIMARY_VIDEO_MODEL_UNAVAILABLE';
+    error.retryable = true;
+    throw error;
+  }
+  return primary;
 }
 
 function deyunaiAssetGroupType(ctx = {}) {
@@ -343,6 +356,10 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = clipPrompt(shot, ctx, contract, previousShot, keyframe);
+  const personReferenceAsset = options._deyunaiPersonAsset?.asset_url
+    && personIdentity.shotPersonRequired(ctx, shot, contract)
+    ? options._deyunaiPersonAsset.asset_url
+    : '';
   const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
   const audioDuration = await probeDuration(audioPath);
   if (audioDuration > duration + 0.35) {
@@ -365,10 +382,11 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         duration,
         outputDir: VIDEO_DIR,
         filename,
-        image_url: imageUrl,
-        reference_image_urls: options._deyunaiPersonAsset?.asset_url && personIdentity.shotPersonRequired(ctx, shot, contract)
-          ? [options._deyunaiPersonAsset.asset_url]
-          : [],
+        // Seedance forbids mixing first_frame with reference media. Person
+        // shots use the verified private-library asset only; non-person shots
+        // retain the exact approved keyframe as first_frame.
+        image_url: personReferenceAsset ? undefined : imageUrl,
+        reference_image_urls: personReferenceAsset ? [personReferenceAsset] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
         videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
@@ -397,7 +415,8 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         provider_used: `${model.provider_id}/${model.model_id}`,
         image_source: imageUrl,
         motion_prompt: prompt,
-        mode: 'provider_image_to_video',
+        mode: personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video',
+        seedance_input_mode: personReferenceAsset ? 'verified_person_reference' : 'approved_keyframe_first_frame',
         audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
         audio_muxed: !!audioPath,
         normalized: true,
@@ -483,7 +502,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
   const indexes = onlyIndex === null ? list.map((_, index) => index) : [onlyIndex];
   const targetIndexes = options.missing_only === true || options.missingOnly === true
-    ? indexes.filter(index => !(clips[index]?.video_url || clips[index]?.videoUrl || clips[index]?.file_path))
+    ? indexes.filter(index => !(clips[index]?.video_url || clips[index]?.videoUrl || clips[index]?.file_path) || !!clips[index]?.error_code)
     : indexes;
   for (const i of targetIndexes) {
     cancellation.throwIfCancelled(taskId);

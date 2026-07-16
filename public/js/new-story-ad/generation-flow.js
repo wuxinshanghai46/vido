@@ -7,6 +7,7 @@
     tts: '生成配音中...',
     video: '生成逐镜视频中...',
     compose: '合成成片中...',
+    media: '后台生成视频并合成成片中...',
   };
 
   function mediaStageBody(ctx = {}) {
@@ -49,6 +50,7 @@
     tts: 12 * 60 * 1000,
     video: 20 * 60 * 1000,
     compose: 12 * 60 * 1000,
+    media: 60 * 60 * 1000,
   };
 
   function sleep(ms) {
@@ -73,6 +75,7 @@
       tts: ['tts_ready', 'video', 'compose', 'completed'],
       video: ['video_ready', 'compose', 'completed'],
       compose: ['completed', 'compose_done'],
+      media: ['tts', 'tts_ready', 'video', 'video_ready', 'compose', 'completed', 'compose_done'],
     };
     return (downstream[expectedStage] || []).some(stage => current === stage || current.startsWith(`${stage}_`));
   }
@@ -312,6 +315,10 @@
         r = await startStage(id, 'compose', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
         showStep?.(5);
+      } else if (stage === 'media') {
+        r = await startStage(id, 'media', mediaStageBody(ctx), ctx);
+        normalizeBundle?.(r);
+        showStep?.(5);
       }
       renderAll?.();
       if (stage === 'keyframes') {
@@ -372,10 +379,7 @@
   }
 
   async function runMediaChain(ctx = {}) {
-    const media = mediaStageBody(ctx);
-    if (media.include_voiceover !== false && media.voice_id && !await runStage('tts', ctx)) return false;
-    if (!await runStage('video', ctx)) return false;
-    return runStage('compose', ctx);
+    return runStage('media', ctx);
   }
 
   async function assist(mode, ctx = {}) {
