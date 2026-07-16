@@ -1,6 +1,6 @@
 import { api, idempotencyKey } from '../core/api-client.js';
 import { toast, escapeHtml, money } from '../core/page-shell.js';
-import { VideoCanvasEditor } from '../graph/editor-adapter.js';
+import { VideoCanvasEditor } from '../graph/editor-adapter.js?v=20260717-v7';
 import { RevisionAutosave } from '../persistence/autosave.js';
 import { nodeUi } from '../nodes/registry.js';
 
@@ -62,12 +62,11 @@ function mountEditor() {
     onSelect: renderProperties,
     onConnection: state => {
       const hint = document.getElementById('connection-hint');
-      hint.hidden = !state;
+      hint.hidden = !state || Boolean(state?.error);
       if (state?.error) {
         toast(state.error, 'error');
-        editor.cancelConnection();
       } else if (state) {
-        hint.textContent = '请选择目标输入端口 · Esc 取消';
+        hint.textContent = '拖到高亮输入端口，或点击目标输入端口 · Esc 取消';
       }
     },
   });

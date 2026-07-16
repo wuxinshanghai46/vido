@@ -134,6 +134,13 @@ async function main() {
     assert.equal(invalidTypes.valid, false);
     assert(invalidTypes.errors.some(item => item.code === 'UNKNOWN_PORT' || item.code === 'PORT_TYPE_MISMATCH'));
 
+    const incompleteDraft = graph([
+      node('draft-text', 'text-generate', { prompt: '' }),
+      node('draft-edit', 'image-edit', { prompt: '' }),
+    ]);
+    assert.equal(validateGraph(incompleteDraft).valid, false, 'execution validation must reject incomplete nodes');
+    assert.equal(validateGraph(incompleteDraft, { requireReady: false }).valid, true, 'draft validation must allow incomplete configuration and inputs');
+
     const cyclic = validateGraph(graph([
       node('a', 'select'), node('b', 'select'),
     ], [edge('a-b', 'a', 'output', 'b', 'input'), edge('b-a', 'b', 'output', 'a', 'input')]));

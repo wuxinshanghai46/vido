@@ -23,8 +23,9 @@ function normalizeGraph(raw = {}) {
   };
 }
 
-function validateGraph(raw = {}) {
+function validateGraph(raw = {}, options = {}) {
   const graph = normalizeGraph(raw);
+  const requireReady = options.requireReady !== false;
   const errors = [];
   const warnings = [];
   const nodeById = new Map();
@@ -33,7 +34,7 @@ function validateGraph(raw = {}) {
     nodeById.set(node.id, node);
     const manifest = NODE_CATALOG[node.type];
     if (!manifest) { errors.push(issue('UNKNOWN_NODE_TYPE', `未知节点类型：${node.type}`, node.id)); continue; }
-    for (const key of manifest.policy.requiredConfig || []) {
+    if (requireReady) for (const key of manifest.policy.requiredConfig || []) {
       if (node.config[key] == null || String(node.config[key]).trim() === '') errors.push(issue('MISSING_CONFIG', `${manifest.label}缺少配置：${key}`, node.id));
     }
   }
@@ -51,7 +52,7 @@ function validateGraph(raw = {}) {
     else if (!compatible(sourceType, targetType)) errors.push(issue('PORT_TYPE_MISMATCH', `${sourceType} 不能连接到 ${targetType}`, target.id));
     incoming.get(target.id).push(edge); outgoing.get(source.id).push(edge);
   }
-  for (const node of graph.nodes) {
+  if (requireReady) for (const node of graph.nodes) {
     const manifest = NODE_CATALOG[node.type];
     if (!manifest) continue;
     for (const port of manifest.policy.requiredInputs || []) {
