@@ -34,14 +34,83 @@ function configureDatabase(db) {
   db.pragma('busy_timeout = 5000');
 }
 
-function getBetterSqliteDriver() {
+function getNativeSqliteDriver() {
   if (cachedDriver !== null) return cachedDriver;
-  try {
-    cachedDriver = require('better-sqlite3');
-  } catch {
+  if (String(process.env.SQLITE_DRIVER || '').trim().toLowerCase() === 'python') {
     cachedDriver = false;
+    return cachedDriver;
   }
+  try {
+    cachedDriver = { kind: 'better-sqlite3', Database: require('better-sqlite3') };
+    return cachedDriver;
+  } catch {}
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    cachedDriver = { kind: 'node:sqlite', Database: DatabaseSync };
+    return cachedDriver;
+  } catch {}
+  cachedDriver = false;
   return cachedDriver;
+}
+
+class NodeSqliteDatabase {
+  constructor(dbPath, DatabaseSync) {
+    this.path = dbPath;
+    this.raw = new DatabaseSync(dbPath);
+  }
+
+  pragma(sql) {
+    this.raw.exec(`PRAGMA ${sql};`);
+  }
+
+  exec(sql) {
+    return this.raw.exec(sql);
+  }
+
+  prepare(sql) {
+    return this.raw.prepare(sql);
+  }
+
+  transaction(fn) {
+    return (...args) => {
+      this.raw.exec('BEGIN IMMEDIATE');
+      try {
+        const result = fn(...args);
+        this.raw.exec('COMMIT');
+        return result;
+      } catch (error) {
+        try { this.raw.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+    };
+  }
+
+  upsertMany(table, columns, _conflictColumns, rows) {
+    const placeholders = columns.map(() => '?').join(', ');
+    const statement = this.raw.prepare(`INSERT OR REPLACE INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`);
+    return this.transaction(() => {
+      let changes = 0;
+      for (const row of rows) changes += Number(statement.run(...row).changes || 0);
+      return { changes };
+    })();
+  }
+
+  batch(operations = []) {
+    return this.transaction(() => {
+      const results = operations.map(item => {
+        const statement = this.raw.prepare(item.sql);
+        const params = item.params || [];
+        if (item.mode === 'get') return statement.get(...params);
+        if (item.mode === 'all') return statement.all(...params);
+        return statement.run(...params);
+      });
+      return { results };
+    })();
+  }
+
+  close() {
+    this.raw.close();
+  }
 }
 
 function runPythonSqlite(dbPath, op, sql, params, extra = {}) {
@@ -75,10 +144,16 @@ try:
     elif op == "get":
         cur = conn.execute(sql, params)
         row = cur.fetchone()
+        # Some atomic queue claims use UPDATE ... RETURNING through get().
+        # Commit after consuming the returned row so the claim cannot be
+        # silently rolled back and submitted to a paid provider twice.
+        conn.commit()
         emit(dict(row) if row else None)
     elif op == "all":
         cur = conn.execute(sql, params)
-        emit([dict(row) for row in cur.fetchall()])
+        rows = cur.fetchall()
+        conn.commit()
+        emit([dict(row) for row in rows])
     elif op == "upsertMany":
         columns = req["columns"]
         conflict_columns = req["conflictColumns"]
@@ -89,6 +164,27 @@ try:
         conn.executemany(stmt, rows)
         conn.commit()
         emit({"changes": conn.total_changes})
+    elif op == "batch":
+        operations = req.get("operations") or []
+        before = conn.total_changes
+        conn.execute("BEGIN IMMEDIATE")
+        results = []
+        try:
+            for item in operations:
+                cur = conn.execute(item.get("sql") or "", item.get("params") or [])
+                mode = item.get("mode") or "run"
+                if mode == "get":
+                    row = cur.fetchone()
+                    results.append(dict(row) if row else None)
+                elif mode == "all":
+                    results.append([dict(row) for row in cur.fetchall()])
+                else:
+                    results.append({"changes": cur.rowcount, "lastInsertRowid": cur.lastrowid})
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        emit({"changes": conn.total_changes - before, "results": results})
     else:
         raise RuntimeError("Unsupported sqlite op: " + op)
 finally:
@@ -163,6 +259,10 @@ class PythonSqliteDatabase {
     });
   }
 
+  batch(operations = []) {
+    return runPythonSqlite(this.path, 'batch', '', [], { operations });
+  }
+
   close() {}
 }
 
@@ -175,9 +275,12 @@ function openDatabase(options = {}) {
   if (cachedDb && !options.fresh) return cachedDb;
 
   fs.mkdirSync(path.dirname(config.path), { recursive: true });
-  const Database = getBetterSqliteDriver();
-  const db = Database ? new Database(config.path) : new PythonSqliteDatabase(config.path);
-  if (Database) configureDatabase(db);
+  const driver = getNativeSqliteDriver();
+  let db;
+  if (driver?.kind === 'better-sqlite3') db = new driver.Database(config.path);
+  else if (driver?.kind === 'node:sqlite') db = new NodeSqliteDatabase(config.path, driver.Database);
+  else db = new PythonSqliteDatabase(config.path);
+  if (driver) configureDatabase(db);
   cachedDb = db;
   return db;
 }
@@ -198,8 +301,22 @@ function healthCheck() {
   return { enabled: true, status: row?.ok === 1 ? 'ok' : 'unknown', path: config.path };
 }
 
+function executeBatch(operations = [], options = {}) {
+  const db = openDatabase(options);
+  if (!db) throw new Error('SQLite is disabled');
+  if (typeof db.batch === 'function') return db.batch(operations);
+  const apply = db.transaction(() => operations.map(item => {
+    const stmt = db.prepare(item.sql);
+    if (item.mode === 'get') return stmt.get(...(item.params || []));
+    if (item.mode === 'all') return stmt.all(...(item.params || []));
+    return stmt.run(...(item.params || []));
+  }));
+  return { results: apply() };
+}
+
 module.exports = {
   closeDatabase,
+  executeBatch,
   envBool,
   getDbConfig,
   healthCheck,

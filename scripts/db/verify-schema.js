@@ -35,6 +35,19 @@ const REQUIRED_TABLES = [
   'comic_tasks',
   'drama_projects',
   'drama_episodes',
+  'video_canvas_projects',
+  'video_canvas_graph_revisions',
+  'video_canvas_runs',
+  'video_canvas_node_runs',
+  'video_canvas_node_attempts',
+  'video_canvas_provider_tasks',
+  'video_canvas_artifacts',
+  'video_canvas_artifact_links',
+  'video_canvas_events',
+  'video_canvas_cost_ledger',
+  'video_canvas_idempotency_keys',
+  'video_canvas_worker_leases',
+  'video_canvas_settings',
 ];
 
 function main() {

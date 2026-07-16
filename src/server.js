@@ -667,6 +667,7 @@ app.use('/api/comic', authenticate, requirePermission('comic'), require('./route
 app.use('/api/drama', authenticate, require('./routes/drama'));
 app.use('/api/ai-cap', authenticate, require('./routes/aiCap'));
 app.use('/api/workflow', authenticate, require('./routes/workflow'));
+app.use('/api/video-canvas', authenticate, requirePermission('aicanvas'), require('./routes/videoCanvas'));
 // 新工作流引擎（复数）— JSON 驱动可配置 AI 工作流
 app.use('/api/workflows', authenticate, require('./routes/workflows'));
 app.use('/api/agent', authenticate, require('./routes/agent'));
@@ -760,6 +761,11 @@ app.get('/login.html', (req, res) => res.sendFile(path.join(__dirname, '../publi
 app.get('/admin', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
 app.get('/admin.html', requirePageAuth, (req, res) => res.sendFile(path.join(__dirname, '../public/admin.html')));
 
+// Video Canvas V2 has its own multi-page directory. The global static server
+// intentionally disables directory indexes, so expose the protected root here.
+app.get(/^\/video-canvas$/, requirePageAuth, (_req, res) => res.redirect('/video-canvas/'));
+app.get('/video-canvas/', requirePageAuth, (_req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/video-canvas/index.html')));
+
 // SPA 回退（排除 API 路径）
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api/')) {
@@ -788,6 +794,44 @@ app.listen(PORT, '0.0.0.0', async () => {
   const vp = process.env.VIDEO_PROVIDER || 'auto';
   const videoLabels = { demo: 'FFmpeg Demo（免费）', zhipu: '智谱AI CogVideoX（国内免费）', huggingface: 'HuggingFace ModelScope', replicate: 'Replicate', sora: 'Sora 2', 'webang-seedance': '微众 Seedance 2.0', auto: '自动（由 AI 配置决定）' };
   console.log(`  视频模型: ${videoLabels[vp] || vp}\n`);
+
+  // 视频画布 V2 使用持久化任务。默认把 Worker 放到独立子进程，避免
+  // SQLite/Python 兼容桥接或第三方模型调用阻塞 Web 请求；生产也可设置
+  // external 交给 PM2 单独管理，只有显式 embedded 才在 Web 进程内执行。
+  const videoCanvasWorkerMode = String(process.env.VIDEO_CANVAS_WORKER_MODE || 'subprocess').toLowerCase();
+  if (videoCanvasWorkerMode === 'embedded') {
+    try {
+      const { startEmbeddedWorker } = require('./services/videoCanvas/workerService');
+      const canvasWorker = startEmbeddedWorker();
+      console.log(`  [VideoCanvasWorker] ✓ ${canvasWorker.workerId} concurrency=${canvasWorker.concurrency}`);
+    } catch (err) {
+      console.error('  [VideoCanvasWorker] 启动失败:', err.message);
+    }
+  } else if (videoCanvasWorkerMode !== 'external') {
+    try {
+      const { fork } = require('child_process');
+      const workerPath = path.join(__dirname, 'workers/videoCanvas/worker.js');
+      const canvasWorkerProcess = fork(workerPath, [], {
+        cwd: path.join(__dirname, '..'),
+        env: { ...process.env, VIDEO_CANVAS_WORKER_MODE: 'external' },
+        stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+      });
+      console.log(`  [VideoCanvasWorker] ✓ subprocess pid=${canvasWorkerProcess.pid}`);
+      const stopCanvasWorker = () => {
+        if (canvasWorkerProcess.connected) canvasWorkerProcess.send({ type: 'shutdown' });
+        setTimeout(() => {
+          if (!canvasWorkerProcess.killed) canvasWorkerProcess.kill('SIGTERM');
+        }, 5000).unref?.();
+      };
+      process.once('SIGINT', stopCanvasWorker);
+      process.once('SIGTERM', stopCanvasWorker);
+      canvasWorkerProcess.on('exit', (code, signal) => {
+        if (code && code !== 0) console.error(`  [VideoCanvasWorker] subprocess exited code=${code} signal=${signal || ''}`);
+      });
+    } catch (err) {
+      console.error('  [VideoCanvasWorker] 子进程启动失败:', err.message);
+    }
+  }
 
   // 自动启动本地 MCP 服务器
   try {

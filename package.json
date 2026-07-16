@@ -12,6 +12,11 @@
     "db:import-json": "node scripts/db/migrate-json-to-sqlite.js",
     "db:import-json:dry": "node scripts/db/migrate-json-to-sqlite.js --dry-run",
     "db:verify-json": "node scripts/db/verify-json-migration.js"
+    ,"video-canvas:worker": "node src/workers/videoCanvas/worker.js",
+    "video-canvas:migrate:dry": "node scripts/migrate-video-canvas-v1.js",
+    "video-canvas:migrate": "node scripts/migrate-video-canvas-v1.js --apply",
+    "video-canvas:boundaries": "node scripts/check-video-canvas-boundaries.js",
+    "video-canvas:test": "node scripts/test-video-canvas-v2.js"
   },
   "dependencies": {
     "axios": "^1.6.8",
