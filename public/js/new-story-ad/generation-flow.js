@@ -15,6 +15,8 @@
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
+      include_voiceover: !!state.voiceId,
+      auto_tts: !!state.voiceId,
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
@@ -370,7 +372,8 @@
   }
 
   async function runMediaChain(ctx = {}) {
-    if (!await runStage('tts', ctx)) return false;
+    const media = mediaStageBody(ctx);
+    if (media.include_voiceover !== false && media.voice_id && !await runStage('tts', ctx)) return false;
     if (!await runStage('video', ctx)) return false;
     return runStage('compose', ctx);
   }

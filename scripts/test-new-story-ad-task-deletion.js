@@ -85,6 +85,12 @@ async function main() {
     const taskId = 'delete-owned-task';
     createFixture(taskId, 'owner-a');
 
+    assert.equal(service.listTaskSummaries({ userId: 'owner-a' }).tasks.some(task => task.id === taskId), true);
+    assert.equal(service.listTaskSummaries({ userId: 'owner-b' }).tasks.some(task => task.id === taskId), false);
+    service.updateTaskRequest(taskId, { brief: '通用剧情广告任务删除测试（已保存）' }, { id: 'owner-b', role: 'user' });
+    assert.equal(storage.getTask(taskId).user_id, 'owner-a', 'progress saves must not transfer task ownership');
+    assert.equal(storage.getOutput(taskId, 'context').user_id, 'owner-a', 'saved context must keep the original owner');
+
     const forbidden = await requestDelete(baseUrl, taskId, 'owner-b');
     assert.equal(forbidden.status, 403);
     assert(storage.getTask(taskId), 'unauthorized deletion must keep the task');
@@ -101,6 +107,13 @@ async function main() {
 
     const missing = await requestDelete(baseUrl, taskId, 'owner-a');
     assert.equal(missing.status, 404);
+
+    const ownerlessTaskId = 'ownerless-legacy-task';
+    createFixture(ownerlessTaskId, '');
+    assert.equal(service.listTaskSummaries({ userId: 'owner-a' }).tasks.some(task => task.id === ownerlessTaskId), false);
+    const ownerlessForbidden = await requestDelete(baseUrl, ownerlessTaskId, 'owner-a');
+    assert.equal(ownerlessForbidden.status, 403, 'ownerless legacy tasks must not leak into ordinary user accounts');
+    storage.deleteTask(ownerlessTaskId);
 
     const runningTaskId = 'delete-running-task';
     createFixture(runningTaskId, 'owner-a');

@@ -132,6 +132,7 @@
     cancelRequested: false,
     busy: false,
     restoringTask: false,
+    restoreError: '',
     currentStep: 1,
     shotEditorIndex: -1,
     shotEditorSnapshot: null,
@@ -139,6 +140,7 @@
 
   let nsaVoicePreviewAudio = null;
   let nsaVoicePreviewObjectUrl = '';
+  let nsaVoiceLoadPromise = null;
   let nsaMusicPreviewAudio = null;
   let autoSaveTimer = null;
   let autoSaveInFlight = false;
@@ -978,6 +980,7 @@
       production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
       voice_id: voiceId,
       voice_name: state.voiceName || '',
+      include_voiceover: !!voiceId,
       subtitle: state.subtitleEnabled,
       subtitle_style: state.subtitleStyle || 'popup',
       subtitle_config: {
@@ -1461,8 +1464,8 @@
     const voiceCurrent = within('#dhNsaAdVoiceCurrent');
     if (voiceCurrent) {
       const selectedVoice = (state.voiceList || []).find(v => String(v.id || '') === String(state.voiceId || ''));
-      const name = state.voiceName || selectedVoice?.name || (state.voiceId ? state.voiceId : '未选择配音');
-      const provider = selectedVoice?.provider || selectedVoice?.providerId || (state.voiceId ? '已选择，可用于旁白合成' : '剧情广告必须手动选择声音');
+      const name = state.voiceName || selectedVoice?.name || (state.voiceId ? state.voiceId : '无配音');
+      const provider = selectedVoice?.provider || selectedVoice?.providerId || (state.voiceId ? '已选择，可用于旁白合成' : '选填 · 将直接生成无旁白视频');
       voiceCurrent.innerHTML = `<div class="dh-voice-opt-icon">TV</div>
         <div class="dh-voice-opt-body">
           <div class="dh-voice-opt-name">${escapeHtml(name)}</div>
@@ -1827,6 +1830,7 @@
     const id = routeTaskId() || storedTaskId() || await fallbackLatestTaskId();
     if (!id || state.taskId) return false;
     state.restoringTask = true;
+    state.restoreError = '';
     renderAll();
     try {
       const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`);
@@ -1845,7 +1849,8 @@
       return true;
     } catch (err) {
       rememberTaskId('');
-      toast('当前任务恢复失败：' + (err.message || '无法读取任务数据'), 'error');
+      state.restoreError = err.message || '无法读取任务数据';
+      toast('当前任务恢复失败：' + state.restoreError, 'error');
       return false;
     } finally {
       state.restoringTask = false;
@@ -2809,6 +2814,10 @@
         : '';
     }
     if (!host) return;
+    if (state.restoreError && (!Array.isArray(state.shots) || !state.shots.length)) {
+      host.innerHTML = `<div class="dh-luxgen-empty"><b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span></div>`;
+      return;
+    }
     if (state.restoringTask && (!Array.isArray(state.shots) || !state.shots.length)) {
       host.innerHTML = '<div class="dh-luxgen-empty"><b>正在恢复分镜结果</b><span>正在读取任务中心保存的分镜和关键帧，请稍候。</span></div>';
       return;
@@ -3046,23 +3055,37 @@
     const composeSummary = within('#dhNsaAdComposeSummary');
     const progressHint = within('#dhNsaAdProgressHint');
     const gate = within('#dhNsaAdComposeGate');
+    const restoreFailed = !!state.restoreError && (!Array.isArray(state.shots) || !state.shots.length);
+    const restoring = !restoreFailed && state.restoringTask && (!Array.isArray(state.shots) || !state.shots.length);
     if (composeSummary) {
-      composeSummary.textContent = compose.total
+      composeSummary.textContent = restoreFailed
+        ? '任务内容读取失败'
+        : (restoring
+        ? '正在恢复任务数据'
+        : (compose.total
         ? `${compose.passed}/${compose.total} 镜当前版本审核通过`
-        : '尚未生成真实分镜';
+        : '尚未生成真实分镜'));
     }
     if (progressHint) {
-      progressHint.textContent = compose.ready
+      progressHint.textContent = restoreFailed
+        ? state.restoreError
+        : (restoring
+        ? '正在读取已确认的分镜和关键帧，请稍候'
+        : (compose.ready
         ? '审核已全部通过，可以生成配音、逐镜视频和最终成片'
-        : compose.message;
+        : compose.message));
     }
     if (gate) {
       const failed = state.taskStatus === 'failed' && state.taskError;
-      gate.hidden = compose.ready && !failed;
-      gate.className = `dh-nsa-compose-gate ${failed ? 'is-error' : 'is-warning'}`;
-      gate.innerHTML = failed
+      gate.hidden = !restoreFailed && !restoring && compose.ready && !failed;
+      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : 'is-warning')}`;
+      gate.innerHTML = restoreFailed
+        ? `<b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span>`
+        : (restoring
+        ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
+        : (failed
         ? `<b>上次合成未完成</b><span>${escapeHtml(state.taskError)}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`
-        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`;
+        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
     }
     if (!tracks.length && !clips.length && !finalUrl) {
       host.innerHTML = '<div class="dh-task-empty-note">还没有生成配音、逐镜视频或成片。</div>';
@@ -3526,6 +3549,8 @@
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
+      include_voiceover: !!state.voiceId,
+      auto_tts: !!state.voiceId,
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
@@ -3642,7 +3667,7 @@
         console.warn('[newStoryAd] media-chain fallback:', err.message || err);
       }
     }
-    if (!await runStage('tts', button)) return;
+    if (state.voiceId && !await runStage('tts', button)) return;
     if (!await runStage('video', button)) return;
     await runStage('compose', button);
   }
@@ -4034,12 +4059,13 @@
 
   async function loadNsaVoices(force = false) {
     if (!force && Array.isArray(state.voiceList) && state.voiceList.length) return state.voiceList;
+    if (!force && nsaVoiceLoadPromise) return nsaVoiceLoadPromise;
     state.voiceLoading = true;
-    try {
-      const stamp = Date.now();
+    const request = (async () => {
+      const query = force ? `?_t=${Date.now()}` : '';
       const [availableResult, recordedResult] = await Promise.allSettled([
-        api(`/api/avatar/voice-list?_t=${stamp}`),
-        api(`/api/workbench/voices?_t=${stamp}`),
+        api(`/api/avatar/voice-list${query}`),
+        api(`/api/workbench/voices${query}`),
       ]);
       if (availableResult.status === 'rejected' && recordedResult.status === 'rejected') throw availableResult.reason;
       const availableResponse = availableResult.status === 'fulfilled' ? availableResult.value : {};
@@ -4065,9 +4091,17 @@
         seen.add(id);
         return true;
       });
+      try {
+        sessionStorage.setItem('vido_nsa_voice_catalog', JSON.stringify(state.voiceList));
+      } catch {}
       return state.voiceList;
+    })();
+    nsaVoiceLoadPromise = request;
+    try {
+      return await request;
     } finally {
       state.voiceLoading = false;
+      if (nsaVoiceLoadPromise === request) nsaVoiceLoadPromise = null;
     }
   }
 
@@ -4190,6 +4224,13 @@
         ${[['all', '全部'], ['female', '女声'], ['male', '男声']].map(([id, label]) => `<button type="button" class="dh-btn dh-btn-sm ${state.voiceGenderFilter === id ? 'dh-btn-primary' : 'dh-btn-ghost'}" data-nsa-voice-gender="${id}">${label}</button>`).join('')}
       </div>
       <div data-nsa-voice-list style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;">
+        <div class="dh-nsa-picker-card dh-nsa-voice-card ${state.voiceId ? '' : 'is-selected'}" data-nsa-voice-card data-nsa-voice-optional="1" data-nsa-voice-gender="unknown" data-nsa-voice-search="不使用配音 无配音 剪映 后期">
+          <button type="button" class="dh-nsa-picker-select" data-nsa-voice-select="">
+            <b>不使用配音（选填）</b>
+            <span>直接生成无旁白视频，后期可在剪映添加</span>
+            ${state.voiceId ? '' : '<small class="is-selected-note">当前选择</small>'}
+          </button>
+        </div>
         ${voices.map(voice => {
           const display = voiceDisplay(voice);
           const id = String(voice.id || '');
@@ -4202,14 +4243,17 @@
             </button>
             <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-preview="${escapeHtml(id)}" aria-label="试听${escapeHtml(display.name)}">▶ 试听</button>
           </div>`;
-        }).join('') || '<div class="dh-task-empty-note">暂无可用音色，请先检查配音模型配置。</div>'}
+        }).join('')}
+        ${state.voiceLoading ? '<div class="dh-task-empty-note">音色正在后台加载，可先选择“无配音”继续合成。</div>' : (!voices.length ? '<div class="dh-task-empty-note">暂无其他可用音色；无配音模式仍可正常合成。</div>' : '')}
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:12px;">
         <button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-voice-record>🎤 录制 / 管理我的声音</button>
       </div>`;
     body.querySelector('[data-nsa-voice-refresh]')?.addEventListener('click', async () => {
       try {
-        await loadNsaVoices(true);
+        const pending = loadNsaVoices(true);
+        renderNsaVoiceModal();
+        await pending;
         renderNsaVoiceModal();
       } catch (err) {
         toast(err.message || '音色列表刷新失败', 'error');
@@ -4220,7 +4264,7 @@
       const gender = state.voiceGenderFilter || 'all';
       body.querySelectorAll('[data-nsa-voice-card]').forEach(card => {
         const matchesQuery = !q || String(card.dataset.nsaVoiceSearch || '').includes(q);
-        const matchesGender = gender === 'all' || card.dataset.nsaVoiceGender === gender;
+        const matchesGender = card.dataset.nsaVoiceOptional === '1' || gender === 'all' || card.dataset.nsaVoiceGender === gender;
         card.style.display = matchesQuery && matchesGender ? '' : 'none';
       });
     };
@@ -4256,28 +4300,41 @@
       if (!btn) return;
       const id = btn.dataset.nsaVoiceSelect || '';
       const voice = (state.voiceList || []).find(v => String(v.id || '') === id) || {};
+      const changed = id !== String(state.voiceId || '');
       state.voiceId = id;
-      state.voiceName = voice.name || id || '自动配音';
+      state.voiceName = voice.name || id || '';
+      if (changed) {
+        state.ttsAudio = null;
+        state.videoClips = [];
+        state.finalVideo = null;
+      }
       setFieldValue('#dhNsaAdVoiceId', state.voiceId);
       renderAll();
       stopNsaVoicePreview();
       hideNsaModal(modal);
       scheduleAutoSave('voice_select');
-      toast('配音已选择', 'success');
+      toast(id ? '配音已选择' : '已设为无配音，可直接生成视频', 'success');
     });
   }
 
-  async function openNsaVoiceModal() {
+  function openNsaVoiceModal() {
     const modal = ensureNsaModal('dhNsaVoicePickerModal', '选择旁白配音');
-    const body = modal.querySelector('[data-nsa-modal-body]');
-    body.innerHTML = '<div class="dh-task-empty-note">正在加载可用音色...</div>';
-    showNsaModal(modal);
-    try {
-      await loadNsaVoices(false);
-      renderNsaVoiceModal();
-    } catch (err) {
-      body.innerHTML = `<div class="dh-task-empty-note">${escapeHtml(err.message || '音色列表加载失败')}</div>`;
+    if (!state.voiceList.length) {
+      try {
+        const cached = JSON.parse(sessionStorage.getItem('vido_nsa_voice_catalog') || '[]');
+        if (Array.isArray(cached)) state.voiceList = cached;
+      } catch {}
     }
+    state.voiceLoading = !state.voiceList.length;
+    renderNsaVoiceModal();
+    showNsaModal(modal);
+    loadNsaVoices(false).then(() => {
+      if (modal.style.display !== 'none') renderNsaVoiceModal();
+    }).catch(err => {
+      state.voiceLoading = false;
+      if (modal.style.display !== 'none') renderNsaVoiceModal();
+      toast(err.message || '音色列表加载失败，无配音模式仍可使用', 'error');
+    });
   }
 
   function musicSearchText() {
@@ -5284,6 +5341,14 @@
         dhNsaAdVoiceOpen: () => openNsaVoiceModal(),
         dhNsaAdMusicLibrary: () => openNsaMusicLibrary(),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),
+        dhNsaAdBgmClear: () => {
+          revokePreview(state.bgmAsset);
+          state.bgmAsset = null;
+          state.finalVideo = null;
+          renderAll();
+          scheduleAutoSave('bgm_clear');
+          toast('已设为无背景音乐，可直接合成', 'success');
+        },
         dhNsaAdSubtitleStyleBtn: () => openNsaSubtitleStyleModal(),
         dhNsaAdProductDrop: () => within('#dhNsaAdProductFile')?.click(),
         dhNsaAdProductDropInline: () => within('#dhNsaAdProductFile')?.click(),

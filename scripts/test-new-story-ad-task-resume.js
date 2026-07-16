@@ -57,6 +57,7 @@ assert.equal(store.canContinue({ status: 'done', videoUrl: '/final.mp4' }), fals
 assert.match(taskCenterSource, /canContinueNewStoryAdTask\s*\?/);
 assert.match(taskCenterSource, /创建时间 \$\{escapeHtml\(created\)\} · 更新时间 \$\{escapeHtml\(updated\)\}/);
 assert.match(taskCenterSource, /\(b\.updatedAt \|\| b\.startedAt \|\| 0\) - \(a\.updatedAt \|\| a\.startedAt \|\| 0\)/);
+assert.match(taskCenterSource, /\.filter\(taskBelongsToCurrentUser\)/, 'task center must remove stale tasks that belong to another signed-in user');
 assert.doesNotMatch(taskCenterSource, /\$\{isNewStoryAdTask\s*\?\s*`<button[^`]+data-new-story-ad-continue/);
 
 store.rememberTaskId('', 1);

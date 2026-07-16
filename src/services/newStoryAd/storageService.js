@@ -218,7 +218,7 @@ function dedupeLatestTasks(rows = []) {
 function listTasks({ limit = 50, status = '', userId = '' } = {}) {
   let rows = listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
-  if (userId) rows = rows.filter(row => !row.user_id || String(row.user_id) === String(userId));
+  if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
   return dedupeLatestTasks(rows)
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
     .slice(0, Math.max(1, Math.min(200, Number(limit) || 50)));
@@ -227,7 +227,7 @@ function listTasks({ limit = 50, status = '', userId = '' } = {}) {
 function listTaskRows({ status = '', userId = '' } = {}) {
   let rows = listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
-  if (userId) rows = rows.filter(row => !row.user_id || String(row.user_id) === String(userId));
+  if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
   return dedupeLatestTasks(rows)
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
 }

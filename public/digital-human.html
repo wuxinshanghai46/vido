@@ -534,7 +534,7 @@
               <div class="dh-demo-headline">
                 <div>
                   <h3><span class="dh-luxgen-step-pill">5</span>广告合成</h3>
-                  <p class="dh-demo-copy">合成前确认配音和字幕。点击“合成广告”后进入任务中心，在任务详情里查看广告需求、场景配置、剧本、分镜、配音字幕和视频进度。</p>
+                  <p class="dh-demo-copy">配音、背景音乐和字幕均可选填；不配置也能直接合成无旁白、无配乐视频，后期可在剪映继续处理。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
@@ -546,8 +546,8 @@
                 <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-voice-card">
                   <div class="dh-luxgen-audio-head">
                     <div>
-                      <small>配音</small>
-                      <b>旁白声音</b>
+                      <small>配音（选填）</small>
+                      <b>旁白声音，可留空</b>
                     </div>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdVoiceOpen">选择配音</button>
                   </div>
@@ -555,7 +555,7 @@
                     <div class="dh-voice-opt-icon">TV</div>
                     <div class="dh-voice-opt-body">
                       <div class="dh-voice-opt-name">未选择配音</div>
-                      <div class="dh-voice-opt-sub">剧情广告必须手动选择声音</div>
+                      <div class="dh-voice-opt-sub">未选择时直接生成无旁白视频</div>
                     </div>
                   </div>
                   <div class="dh-luxgen-mix-row dh-luxgen-mix-row-voice">
@@ -567,12 +567,13 @@
                 <div class="dh-demo-card dh-luxgen-audio-card dh-luxgen-bgm-card" id="dhNsaAdBgmCard">
                   <div class="dh-luxgen-audio-head">
                     <div>
-                      <small>背景音乐</small>
+                      <small>背景音乐（选填）</small>
                       <b id="dhNsaAdBgmStatus">未配置，可先合成无配乐广告片</b>
                     </div>
                     <div class="dh-luxgen-bgm-actions">
                       <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" id="dhNsaAdMusicLibrary">公开曲库</button>
                       <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdBgmUpload">上传 BGM</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdBgmClear">不使用音乐</button>
                     </div>
                   </div>
                   <span id="dhNsaAdBgmLicense">优先从公开曲库选择真实纯音乐；本地程序化 BGM 已不作为默认推荐。</span>
@@ -2523,7 +2524,7 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260716-task-center-final-video-status-times"></script>
+  <script src="/js/digital-human.js?v=20260716-task-owner-restore-v1"></script>
   <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/task-store.js?v=20260716-final-video-status"></script>
   <script src="/js/new-story-ad/progress.js?v=20260715-progress-ui-v1"></script>
@@ -2537,8 +2538,8 @@ B: ...
   <script src="/js/new-story-ad/keyframes.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/generation-flow.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260715-human-override-no-human-v1"></script>
+  <script src="/js/new-story-ad/generation-flow.js?v=20260716-optional-audio-v1"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260716-optional-audio-v1"></script>
 </body>
 </html>
 

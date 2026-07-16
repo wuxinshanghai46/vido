@@ -315,6 +315,14 @@ function buildContext(body = {}, user = {}) {
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   const noHuman = castMode === 'no_human';
+  const voiceId = cleanText(body.voice_id || body.voiceId || '', 120);
+  const includeVoiceover = body.include_voiceover === false || body.includeVoiceover === false
+    ? false
+    : !!voiceId;
+  const rawSubtitleConfig = body.subtitle_config || body.subtitleConfig || {};
+  const subtitleEnabled = body.subtitle !== false && rawSubtitleConfig.show !== false;
+  const subtitleStyle = cleanText(body.subtitle_style || body.subtitleStyle || rawSubtitleConfig.style || 'popup', 60);
+  const bgmAsset = body.bgm_asset || body.bgmAsset || null;
   const contextAssets = noHuman
     ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
     : assets;
@@ -327,6 +335,20 @@ function buildContext(body = {}, user = {}) {
     output_ratio: outputRatio,
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
+    voice_id: voiceId,
+    voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
+    include_voiceover: includeVoiceover,
+    voice_volume: Math.max(0, Math.min(1.5, Number(body.voice_volume ?? body.voiceVolume ?? 1) || 1)),
+    bgm_volume: Math.max(0, Math.min(1, Number(body.bgm_volume ?? body.bgmVolume ?? 0.16) || 0)),
+    bgm_profile: cleanText(body.bgm_profile || body.bgmProfile || 'auto', 60),
+    bgm_asset: bgmAsset && typeof bgmAsset === 'object' ? bgmAsset : null,
+    subtitle: subtitleEnabled,
+    subtitle_style: subtitleStyle,
+    subtitle_config: {
+      ...(rawSubtitleConfig && typeof rawSubtitleConfig === 'object' ? rawSubtitleConfig : {}),
+      show: subtitleEnabled,
+      style: subtitleStyle,
+    },
     cast_mode: castMode,
     expected_people: noHuman ? 0 : (expectedPeopleRaw > 0 ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw))) : 0),
     characters: noHuman ? [] : characters,

@@ -5083,6 +5083,7 @@
     const groups = new Map();
     (Array.isArray(rawTasks) ? rawTasks : [])
       .filter(Boolean)
+      .filter(taskBelongsToCurrentUser)
       .filter(task => !(DH_LEGACY_STORY_AD_DISABLED && getTaskType(task) === 'luxury_ad'))
       .forEach(task => {
       const key = taskCenterDedupeKey(task);

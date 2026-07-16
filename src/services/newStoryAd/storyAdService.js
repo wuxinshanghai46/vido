@@ -244,7 +244,8 @@ function assertTaskOwner(taskId, user = {}) {
   }
   const userId = String(user.id || user.userId || '').trim();
   const role = String(user.role || '').toLowerCase();
-  if (task.user_id && String(task.user_id) !== userId && role !== 'admin') {
+  const ownerId = String(task.user_id || task.request?.user_id || task.request?.userId || '').trim();
+  if (role !== 'admin' && (!ownerId || ownerId !== userId)) {
     const err = new Error('无权访问该剧情广告任务');
     err.status = 403;
     err.code = 'TASK_FORBIDDEN';
@@ -426,7 +427,11 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
-  const builtCtx = buildContext({ ...(task.request || {}), ...(body || {}), task_id: taskId }, user);
+  const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
+  const builtCtx = buildContext(
+    { ...(task.request || {}), ...(body || {}), task_id: taskId },
+    { ...user, id: ownerId, userId: ownerId },
+  );
   const savingProgress = body.save_progress === true || body.saveProgress === true;
   const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
   // A progress save can race with a background stage (for example when the
@@ -458,6 +463,35 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});
   }
   invalidated = revisionService.invalidateOutputs(storage, taskId, scope);
+  const previousVoiceSettings = JSON.stringify({
+    voice_id: previousCtx.voice_id || '',
+    include_voiceover: previousCtx.include_voiceover !== false && !!previousCtx.voice_id,
+    voice_volume: Number(previousCtx.voice_volume ?? 1),
+  });
+  const nextVoiceSettings = JSON.stringify({
+    voice_id: ctx.voice_id || '',
+    include_voiceover: ctx.include_voiceover !== false && !!ctx.voice_id,
+    voice_volume: Number(ctx.voice_volume ?? 1),
+  });
+  const previousComposeSettings = JSON.stringify({
+    bgm_asset: previousCtx.bgm_asset || null,
+    bgm_volume: Number(previousCtx.bgm_volume ?? 0.16),
+    subtitle: previousCtx.subtitle !== false,
+    subtitle_style: previousCtx.subtitle_style || 'popup',
+    subtitle_config: previousCtx.subtitle_config || {},
+  });
+  const nextComposeSettings = JSON.stringify({
+    bgm_asset: ctx.bgm_asset || null,
+    bgm_volume: Number(ctx.bgm_volume ?? 0.16),
+    subtitle: ctx.subtitle !== false,
+    subtitle_style: ctx.subtitle_style || 'popup',
+    subtitle_config: ctx.subtitle_config || {},
+  });
+  const mediaInvalidated = previousVoiceSettings !== nextVoiceSettings
+    ? ['tts_audio', 'video_clips', 'final_video']
+    : (previousComposeSettings !== nextComposeSettings ? ['final_video'] : []);
+  mediaInvalidated.forEach(kind => storage.deleteOutput(taskId, kind));
+  invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
   const updated = storage.updateTask(taskId, patch);
   storage.saveOutput(taskId, 'context', ctx);
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
@@ -2059,16 +2093,41 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
 }
 
 function resolveTtsVoiceId(options = {}, ctx = {}, existingTtsAudio = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'voice_id') || Object.prototype.hasOwnProperty.call(options, 'voiceId')) {
+    return cleanText(options.voice_id ?? options.voiceId ?? '', 120);
+  }
+  if (Object.prototype.hasOwnProperty.call(ctx, 'voice_id') || Object.prototype.hasOwnProperty.call(ctx, 'voiceId')) {
+    return cleanText(ctx.voice_id ?? ctx.voiceId ?? '', 120);
+  }
   return cleanText(
-    options.voice_id
-      || options.voiceId
-      || ctx.voice_id
-      || ctx.voiceId
-      || existingTtsAudio?.voice_id
+    existingTtsAudio?.voice_id
       || existingTtsAudio?.voiceId
       || '',
     120,
   );
+}
+
+function voiceoverEnabled(options = {}, ctx = {}, voiceId = '') {
+  const requested = Object.prototype.hasOwnProperty.call(options, 'include_voiceover')
+    ? options.include_voiceover
+    : options.includeVoiceover;
+  if (requested !== undefined) return requested !== false && !!voiceId;
+  const stored = Object.prototype.hasOwnProperty.call(ctx, 'include_voiceover')
+    ? ctx.include_voiceover
+    : ctx.includeVoiceover;
+  if (stored !== undefined) return stored !== false && !!voiceId;
+  return !!voiceId;
+}
+
+function silentTtsOutput(reason = 'voiceover_disabled') {
+  return {
+    tracks: [],
+    voice_id: '',
+    skipped: true,
+    reason,
+    provider_used: '',
+    warnings: [],
+  };
 }
 
 async function generateTtsStage(taskId, options = {}) {
@@ -2083,8 +2142,20 @@ async function generateTtsStage(taskId, options = {}) {
   assertVideoInputsReady({ ctx, shots, keyframes, contracts });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
+  const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });
   storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
+  if (!includeVoiceover) {
+    const tts_audio = silentTtsOutput();
+    storage.saveOutput(taskId, 'tts_audio', tts_audio);
+    storage.saveStage(taskId, 'tts', {
+      status: 'done',
+      output_summary: 'voiceover skipped by user',
+      diagnostics: { skipped: true, reason: tts_audio.reason },
+    });
+    storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
+    return { tts_audio, skipped: true };
+  }
   const tts_audio = await ttsAdapter.generateVoiceover({
     taskId,
     shots,
@@ -2115,9 +2186,13 @@ async function generateVideoStage(taskId, options = {}) {
   assertVideoInputsReady({ ctx, shots, keyframes, contracts });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
   const voiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
-  const autoTtsEnabled = options.auto_tts !== false && options.autoTts !== false;
-  const ttsNeedsRefresh = !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
-  if (ttsNeedsRefresh && autoTtsEnabled) {
+  const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
+  const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
+  const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
+  if (!includeVoiceover) {
+    ttsAudio = silentTtsOutput();
+    storage.saveOutput(taskId, 'tts_audio', ttsAudio);
+  } else if (ttsNeedsRefresh && autoTtsEnabled) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
   }
@@ -2597,7 +2672,9 @@ async function composeStage(taskId, options = {}) {
   }
   storage.updateTask(taskId, { status: 'running', stage: 'compose' });
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
-  const subtitleEnabled = options.subtitle !== false && ctx.subtitle !== false;
+  const subtitleEnabled = Object.prototype.hasOwnProperty.call(options, 'subtitle')
+    ? options.subtitle !== false
+    : ctx.subtitle !== false;
   const subtitleStyle = cleanText(options.subtitle_style || options.subtitleStyle || ctx.subtitle_style || ctx.subtitleStyle || 'popup', 60);
   const rawSubtitleConfig = options.subtitle_config || options.subtitleConfig || ctx.subtitle_config || ctx.subtitleConfig || {};
   const subtitleConfig = {
@@ -2605,11 +2682,21 @@ async function composeStage(taskId, options = {}) {
     show: subtitleEnabled,
     style: subtitleStyle,
   };
-  const bgmAsset = options.bgm_asset || options.bgmAsset || ctx.bgm_asset || ctx.bgmAsset || null;
+  const hasBgmAssetOption = Object.prototype.hasOwnProperty.call(options, 'bgm_asset')
+    || Object.prototype.hasOwnProperty.call(options, 'bgmAsset');
+  const bgmAsset = hasBgmAssetOption
+    ? (options.bgm_asset ?? options.bgmAsset ?? null)
+    : (ctx.bgm_asset || ctx.bgmAsset || null);
+  const composeVoiceId = resolveTtsVoiceId(options, ctx, {});
+  const composeVoiceName = Object.prototype.hasOwnProperty.call(options, 'voice_name')
+    || Object.prototype.hasOwnProperty.call(options, 'voiceName')
+    ? cleanText(options.voice_name ?? options.voiceName ?? '', 120)
+    : cleanText(ctx.voice_name || ctx.voiceName || '', 120);
   storage.saveOutput(taskId, 'context', {
     ...ctx,
-    voice_id: cleanText(options.voice_id || options.voiceId || ctx.voice_id || ctx.voiceId || '', 120),
-    voice_name: cleanText(options.voice_name || options.voiceName || ctx.voice_name || ctx.voiceName || '', 120),
+    voice_id: composeVoiceId,
+    voice_name: composeVoiceName,
+    include_voiceover: voiceoverEnabled(options, ctx, composeVoiceId),
     voice_volume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
     bgm_volume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     bgm_profile: cleanText(options.bgm_profile || options.bgmProfile || ctx.bgm_profile || ctx.bgmProfile || 'auto', 60),
