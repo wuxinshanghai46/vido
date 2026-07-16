@@ -426,6 +426,21 @@ async function main() {
   assert.equal(Object.prototype.hasOwnProperty.call(summary, 'request'), false);
   assert.equal(summary.id, taskId);
 
+  const incompleteDoneTask = storage.createTask({
+    id: 'summary-incomplete-done',
+    title: '仅阶段完成，不是成片完成',
+    user_id: owner.id,
+    status: 'done',
+    stage: 'keyframes_ready',
+  });
+  const incompleteSummary = service.taskSummary(incompleteDoneTask);
+  assert.equal(incompleteSummary.status, 'working');
+  assert.equal(incompleteSummary.final_video_url, '');
+  storage.saveOutput(incompleteDoneTask.id, 'final_video', { video_url: '/final-summary.mp4' });
+  const completeSummary = service.taskSummary(storage.getTask(incompleteDoneTask.id));
+  assert.equal(completeSummary.status, 'done');
+  assert.equal(completeSummary.final_video_url, '/final-summary.mp4');
+
   const freshnessTask = service.createTask({
     brief: '验证剧本与分镜版本一致性',
     product_subject: '用户指定主体',

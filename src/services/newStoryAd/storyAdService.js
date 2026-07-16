@@ -365,10 +365,15 @@ function taskSummary(task = {}) {
   const sceneAssets = storage.getOutput(task.id, 'scene_assets') || [];
   const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
   const firstScene = sceneAssets[0] || {};
+  const finalVideoUrl = finalVideo?.video_url || finalVideo?.videoUrl || '';
+  const storedStatus = String(task.status || '').toLowerCase();
+  const taskStatus = finalVideoUrl
+    ? 'done'
+    : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status);
   return {
     id: task.id,
     type: task.type,
-    status: task.status,
+    status: taskStatus,
     stage: task.stage,
     title: task.title,
     brief: cleanText(task.brief || '', 220),
@@ -382,7 +387,7 @@ function taskSummary(task = {}) {
     shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
     keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
     thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || '',
-    final_video_url: finalVideo?.video_url || finalVideo?.videoUrl || '',
+    final_video_url: finalVideoUrl,
     created_at: task.created_at,
     updated_at: task.updated_at,
   };

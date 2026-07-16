@@ -5627,14 +5627,17 @@
     const ordered = scopedTasks.slice().sort((a, b) => {
       const aw = isTaskDisplayActive(a) ? 1 : 0;
       const bw = isTaskDisplayActive(b) ? 1 : 0;
-      return bw - aw || (b.startedAt || 0) - (a.startedAt || 0);
+      return bw - aw || (b.updatedAt || b.startedAt || 0) - (a.updatedAt || a.startedAt || 0);
     });
     host.innerHTML = ordered.map(t => {
       const failed = isTaskTerminalError(t);
       const active = isTaskDisplayActive(t);
       const progressPct = getTaskProgressPercent(t);
       const elapsedLabel = getTaskTimingLabel(t, active);
-      const created = t.startedAt ? new Date(t.startedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
+      const createdAt = t.createdAt || t.startedAt || 0;
+      const updatedAt = t.updatedAt || createdAt;
+      const created = createdAt ? new Date(createdAt).toLocaleString('zh-CN', { hour12: false }) : '--';
+      const updated = updatedAt ? new Date(updatedAt).toLocaleString('zh-CN', { hour12: false }) : '--';
       const videoUrl = t.videoUrl || t.video_url || '';
       const onDemandPoster = (!t.isLuxuryProjectDraft && videoUrl && t.taskId)
         ? `/api/dh/videos/tasks/${encodeURIComponent(t.taskId)}/thumbnail`
@@ -5676,7 +5679,7 @@
           <div class="dh-task-head">
             <div>
               <div class="dh-task-title">${escapeHtml(t.avatarName || '\u6570\u5b57\u4eba\u4efb\u52a1')}</div>
-              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)} · ${escapeHtml(created)}</div>
+              <div class="dh-task-sub">${escapeHtml(getTaskTypeLabel(getTaskType(t)))} · ${escapeHtml(idLabel)} · 创建时间 ${escapeHtml(created)} · 更新时间 ${escapeHtml(updated)}</div>
             </div>
             <span class="dh-task-status ${escapeHtml(t.status || '')}">${getTaskDisplayStatusText(t)}</span>
           </div>
@@ -6067,7 +6070,8 @@
     const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
     const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
     const finalVideo = outputs.final_video || raw.final_video || {};
-    const finalUrl = finalVideo.video_url || finalVideo.videoUrl || '';
+    const finalUrl = finalVideo.video_url || finalVideo.videoUrl
+      || task.final_video_url || raw.final_video_url || '';
     const resumeStep = window.NewStoryAdTaskStore?.resumeStep
       ? window.NewStoryAdTaskStore.resumeStep(task, outputs, bundle.storyboard_status || raw.storyboard_status || null)
       : (finalUrl ? 5
@@ -6078,7 +6082,10 @@
     const brief = task.brief || ctx.brief || ctx.content || '';
     const createdAt = task.created_at || task.createdAt || raw.created_at || Date.now();
     const updatedAt = task.updated_at || task.updatedAt || raw.updated_at || createdAt;
-    const status = String(task.status || raw.status || 'draft').trim() || 'draft';
+    const rawStatus = String(task.status || raw.status || 'draft').trim().toLowerCase() || 'draft';
+    const status = finalUrl
+      ? 'done'
+      : (['done', 'completed', 'succeeded', 'ready'].includes(rawStatus) ? 'working' : rawStatus);
     const stage = task.stage || raw.stage || 'draft';
     const generationProgress = task.generation_progress && typeof task.generation_progress === 'object'
       ? task.generation_progress
@@ -6116,6 +6123,7 @@
       operationFinishedAt,
       startedAt: typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now()),
       updatedAt: typeof updatedAt === 'number' ? updatedAt : (Date.parse(updatedAt) || Date.now()),
+      createdAt: typeof createdAt === 'number' ? createdAt : (Date.parse(createdAt) || Date.now()),
       scenes: shots,
       keyframes,
       clips,

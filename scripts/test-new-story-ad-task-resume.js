@@ -47,12 +47,16 @@ assert.equal(store.resumeStep({}, [
   { kind: 'storyboard_table', payload: [{ id: 'shot-1' }] },
 ]), 4);
 assert.equal(store.resumeStep({}, { final_video: { video_url: '/video.mp4' } }), 5);
+assert.equal(store.resumeStep({}, { video_clips: [] }), 1);
 assert.equal(store.canContinue({ status: 'working' }), true);
 assert.equal(store.canContinue({ status: 'failed' }), true);
-assert.equal(store.canContinue({ status: 'done' }), false);
-assert.equal(store.canContinue({ status: 'completed' }), false);
-assert.equal(store.canContinue({ status: 'succeeded' }), false);
+assert.equal(store.canContinue({ status: 'done' }), true);
+assert.equal(store.canContinue({ status: 'completed' }), true);
+assert.equal(store.canContinue({ status: 'succeeded' }), true);
+assert.equal(store.canContinue({ status: 'done', videoUrl: '/final.mp4' }), false);
 assert.match(taskCenterSource, /canContinueNewStoryAdTask\s*\?/);
+assert.match(taskCenterSource, /创建时间 \$\{escapeHtml\(created\)\} · 更新时间 \$\{escapeHtml\(updated\)\}/);
+assert.match(taskCenterSource, /\(b\.updatedAt \|\| b\.startedAt \|\| 0\) - \(a\.updatedAt \|\| a\.startedAt \|\| 0\)/);
 assert.doesNotMatch(taskCenterSource, /\$\{isNewStoryAdTask\s*\?\s*`<button[^`]+data-new-story-ad-continue/);
 
 store.rememberTaskId('', 1);

@@ -78,7 +78,7 @@
       && Number(frame?.qa_policy_version || 0) >= 2
       && frame?.qa?.pass === true
     ));
-    if (finalVideo.video_url || finalVideo.videoUrl || outputs.video_clips) return 5;
+    if (finalVideo.video_url || finalVideo.videoUrl || (Array.isArray(outputs.video_clips) && outputs.video_clips.length > 0)) return 5;
     if (outputs.tts_audio || /(?:final|compose|video|tts)/.test(stage)) return currentFramesReady ? 5 : 4;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
@@ -93,7 +93,8 @@
 
   function canContinue(task = {}) {
     const status = clean(task.status || '', 40).toLowerCase();
-    return !['done', 'completed', 'succeeded'].includes(status);
+    const finalVideoUrl = clean(task.videoUrl || task.video_url || task.final_video_url || '', 1000);
+    return !finalVideoUrl || !['done', 'completed', 'succeeded'].includes(status);
   }
 
   window.NewStoryAdTaskStore = {
