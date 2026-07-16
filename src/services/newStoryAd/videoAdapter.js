@@ -40,12 +40,22 @@ function listVideoShotStatuses(taskId = '', total = 0) {
 
 function updateVideoProgress(taskId = '', total = 0, extra = {}) {
   const statuses = listVideoShotStatuses(taskId, total);
-  const previous = storage.getTask(taskId)?.generation_progress || {};
+  const task = storage.getTask(taskId) || {};
+  const previous = task.generation_progress?.stage === 'video' ? task.generation_progress : {};
+  const generationId = String(extra.generation_id || task.active_generation_id || previous.generation_id || '');
+  const generationChanged = generationId && generationId !== String(previous.generation_id || '');
+  const now = new Date().toISOString();
   const terminal = new Set(['qa_passed', 'qa_failed', 'failed', 'cancelled']);
   const active = new Set(['queued', 'submitting', 'provider_submitted', 'provider_running', 'downloading', 'normalizing', 'generated', 'video_qa']);
   const progress = {
     ...previous,
     stage: 'video',
+    status: 'running',
+    generation_id: generationId,
+    started_at: generationChanged
+      ? (task.generation_started_at || task.generation_queued_at || now)
+      : (previous.started_at || task.generation_started_at || task.generation_queued_at || now),
+    updated_at: now,
     total: Math.max(Number(total) || 0, statuses.length),
     queued: statuses.filter(item => item?.lifecycle === 'queued').length,
     active: statuses.filter(item => active.has(item?.lifecycle)).length,

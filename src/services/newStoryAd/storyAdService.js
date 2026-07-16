@@ -2815,7 +2815,14 @@ async function composeStage(taskId, options = {}) {
     error.retryable = true;
     throw error;
   }
-  storage.updateTask(taskId, { status: 'running', stage: 'compose' });
+  storage.updateTask(taskId, {
+    status: 'running',
+    stage: 'compose',
+    generation_progress: {
+      ...(storage.getTask(taskId)?.generation_progress || {}),
+      stage: 'compose', status: 'running', updated_at: new Date().toISOString(),
+    },
+  });
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
   const subtitleEnabled = Object.prototype.hasOwnProperty.call(options, 'subtitle')
     ? options.subtitle !== false

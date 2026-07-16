@@ -89,6 +89,11 @@ function testUniversalNonSpeakingDefault() {
 
 function testPersistedShotMonitor() {
   storage.createTask({ id: 'monitor-task', title: '通用监控测试', user_id: 'user-a', request: {} });
+  storage.updateTask('monitor-task', {
+    active_generation_id: 'video-generation-current', active_stage: 'media',
+    generation_started_at: '2026-07-16T08:00:00.000Z',
+    generation_progress: { stage: 'keyframes', generation_id: 'keyframe-generation-old', processed: 2 },
+  });
   videoAdapter.updateVideoShotStatus('monitor-task', 0, {
     lifecycle: 'provider_submitted',
     total_shots: 2,
@@ -108,6 +113,9 @@ function testPersistedShotMonitor() {
   const task = storage.getTask('monitor-task');
   assert.strictEqual(task.generation_progress.total, 2);
   assert.strictEqual(task.generation_progress.qa_passed, 1);
+  assert.strictEqual(task.generation_progress.stage, 'video');
+  assert.strictEqual(task.generation_progress.generation_id, 'video-generation-current', '视频进度必须绑定本次后台生成，不能继承旧关键帧任务 ID');
+  assert.strictEqual(task.generation_progress.started_at, '2026-07-16T08:00:00.000Z');
 }
 
 (async () => {

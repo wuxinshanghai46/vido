@@ -46,6 +46,10 @@ assert(css.includes('.dh-nsa-duration { min-height: 36px;'), 'duration control m
 assert(css.includes('.dh-nsa-frame-status-note { grid-area: notice;'), 'long status explanations must render in a separate full-width notice');
 assert(css.includes('.dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }'), 'dynamic preview ratio must explicitly reset the legacy max-height cap');
 assert(css.includes('@media (max-width: 600px)'), 'mobile storyboard layout must be covered');
-assert(html.includes('20260715-progress-ui-v1'), 'storyboard assets must use a fresh cache version');
+assert(html.includes('20260716-real-video-progress-v1'), 'progress assets must use a fresh cache version');
+assert(ui.includes('data-nsa-admin-video-monitor'), 'super admin must have an in-context shot monitor entry');
+assert(ui.includes('/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor'), 'shot monitor must read the protected admin endpoint');
+assert(ui.includes("currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes"), 'ordinary users and non-video stages must not show the admin shot monitor entry');
+assert(ui.includes('每 5 秒自动刷新'), 'admin shot monitor must explain its live refresh interval');
 
 console.log('new-story-ad storyboard UI tests passed');

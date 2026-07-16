@@ -53,6 +53,41 @@ assert.strictEqual(submittingBatch.stat, '准备中');
 assert.strictEqual(submittingBatch.indeterminate, true);
 assert(!/6\/6|成功|失败|96%/.test(`${submittingBatch.title}${submittingBatch.stat}${submittingBatch.message}`), '提交窗口不得闪现上一批终态统计');
 
+const video = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'media', generationId: 'video-current', startedAt: Date.now() - 6 * 60 * 1000, total: 6 },
+  taskStage: 'video', taskStatus: 'running',
+  serverProgress: {
+    stage: 'video', generation_id: 'video-current', total: 6, generated: 3,
+    completed: 2, qa_passed: 2, failed: 0, active_indexes: [3, 4],
+  },
+});
+assert.match(video.stat, /已完成 2\/6 镜 · 33%/);
+assert.match(video.message, /已生成 3\/6 镜，审片通过 2 镜/);
+assert(!video.stat.includes('86%'), '视频进度不得再按耗时模拟并封顶在 86%');
+
+const videoWaiting = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'media', generationId: 'video-current', startedAt: Date.now() - 30 * 60 * 1000, total: 6 },
+  taskStage: 'video', taskStatus: 'running',
+  serverProgress: { stage: 'video', generation_id: 'video-current', total: 6, generated: 0, completed: 0, qa_passed: 0, active_indexes: [1, 2, 3] },
+});
+assert.match(videoWaiting.stat, /已完成 0\/6 镜 · 0%/);
+assert.strictEqual(videoWaiting.indeterminate, true);
+
+const composing = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'media', generationId: 'video-current', startedAt: Date.now() - 10 * 60 * 1000, total: 6 },
+  taskStage: 'compose', taskStatus: 'running',
+  serverProgress: { stage: 'video', generation_id: 'video-current', total: 6, completed: 6, qa_passed: 6 },
+});
+assert.match(composing.stat, /逐镜视频 6\/6 · 合成中/);
+assert.strictEqual(composing.indeterminate, true);
+assert(!/%/.test(composing.stat), '最终封装阶段未知进度时不得显示虚假百分比');
+
+const storyboardProgress = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'storyboard', startedAt: Date.now() - 6 * 60 * 1000, total: 6 },
+});
+assert.strictEqual(storyboardProgress.indeterminate, true);
+assert(!/%/.test(storyboardProgress.stat), '没有真实计数的阶段不得根据耗时伪造百分比');
+
 const syncSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
 vm.runInNewContext(syncSource, sandbox, { filename: 'state-sync.js' });
 const sync = sandbox.window.NewStoryAdStateSync;

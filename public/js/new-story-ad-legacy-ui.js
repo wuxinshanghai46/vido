@@ -130,6 +130,8 @@
     generationProgress: null,
     generationStartedAt: '',
     cancelRequested: false,
+    adminVideoMonitorTimer: null,
+    adminVideoMonitorLoading: false,
     busy: false,
     restoringTask: false,
     restoreError: '',
@@ -392,6 +394,17 @@
     } catch {
       const join = raw.includes('?') ? '&' : '?';
       return `${raw}${join}token=${encodeURIComponent(state.token)}`;
+    }
+  }
+
+  function currentUserIsAdmin() {
+    if (!state.token) return false;
+    try {
+      const part = String(state.token).split('.')[1] || '';
+      const base64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(part.length / 4) * 4, '=');
+      return String(JSON.parse(atob(base64) || '{}').role || '').toLowerCase() === 'admin';
+    } catch {
+      return false;
     }
   }
 
@@ -2007,6 +2020,9 @@
         total: stageItemCount(state.stageProgress?.stage || ''),
         completed: completedKeyframeCount(),
         serverProgress: state.generationProgress || null,
+        taskStage: state.taskStage || state.activeStage || '',
+        taskStatus: state.taskStatus || '',
+        finalVideoReady: !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl),
       });
     }
     const progress = state.stageProgress || {};
@@ -2015,39 +2031,40 @@
     const elapsed = Math.max(0, Date.now() - (Number(progress.startedAt || 0) || Date.now()));
     if (stage === 'single_keyframe') {
       const shotNo = Math.max(1, Number(progress.shotNo || progress.targetIndex + 1 || 1) || 1);
-      const pct = Math.max(8, Math.min(88, Math.round(8 + Math.min(80, elapsed / 1200))));
       return {
         title: `正在重新生成第 ${shotNo} 镜真实关键帧`,
-        stat: `已耗时 ${formatElapsedText(elapsed)} · ${pct}%`,
-        percent: pct,
+        stat: `已耗时 ${formatElapsedText(elapsed)}`,
+        percent: 0,
+        indeterminate: true,
         message: `当前正在重新生成第 ${shotNo} 镜，完成后会自动替换本镜图片。`,
       };
     }
     if (stage === 'keyframes') {
       const completed = Math.min(total, Number(state.generationProgress?.processed) || 0);
       const current = Math.min(total, completed + 1);
-      const pct = completed >= total ? 96 : Math.max(8, Math.min(92, Math.round(8 + (completed / total) * 78 + Math.min(10, elapsed / 9000))));
+      const pct = Math.round((completed / total) * 100);
       return {
         title: `\u751f\u6210\u771f\u5b9e\u5173\u952e\u5e27\u4e2d\uff1a\u7b2c ${current}/${total} \u955c`,
-        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
+        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 \u5df2\u5904\u7406 ${completed}/${total} \u00b7 ${pct}%`,
         percent: pct,
+        indeterminate: completed === 0,
         message: `\u5df2\u5b8c\u6210 ${completed}/${total} \u5f20\u5173\u952e\u5e27\uff1b\u5f53\u524d\u6b63\u5728\u751f\u6210\u7b2c ${current} \u955c\uff0c\u5b8c\u6210\u4e00\u5f20\u4f1a\u81ea\u52a8\u66f4\u65b0\u3002`,
       };
     }
     if (stage === 'storyboard') {
-      const pct = Math.max(12, Math.min(88, Math.round(18 + elapsed / 900)));
       return {
         title: `\u751f\u6210\u5206\u955c\u8868\u4e2d\uff1a\u5171 ${total} \u955c`,
-        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
-        percent: pct,
+        stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)}`,
+        percent: 0,
+        indeterminate: true,
         message: '\u6b63\u5728\u6309\u5df2\u786e\u8ba4\u5267\u672c\u751f\u6210\u5206\u955c\u8868\uff0c\u5e76\u8fdb\u884c\u955c\u5934\u3001\u52a8\u4f5c\u3001\u53f0\u8bcd\u548c\u5546\u4e1a\u4e00\u81f4\u6027\u68c0\u67e5\u3002',
       };
     }
-    const pct = Math.max(12, Math.min(86, Math.round(18 + elapsed / 1000)));
     return {
       title: label || progress.label || '\u5904\u7406\u4e2d...',
-      stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)} \u00b7 ${pct}%`,
-      percent: pct,
+      stat: `\u5df2\u8017\u65f6 ${formatElapsedText(elapsed)}`,
+      percent: 0,
+      indeterminate: true,
       message: progress.message || '\u6b63\u5728\u6267\u884c\u5f53\u524d\u9636\u6bb5\uff0c\u8bf7\u7a0d\u5019\u3002',
     };
   }
@@ -2060,6 +2077,7 @@
         <b>${escapeHtml(snap.title)}</b>
         <div class="dh-nsa-progress-actions">
           <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em></span>
+          ${currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes(String(state.stageProgress?.stage || '')) ? '<button type="button" class="dh-nsa-admin-monitor-btn" data-nsa-admin-video-monitor>查看镜头进度</button>' : ''}
           ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>` : ''}
         </div>
       </div>
@@ -4080,7 +4098,94 @@
 
   function hideNsaModal(modal) {
     if (modal) modal.style.display = 'none';
+    if (modal?.id === 'dhNsaAdminVideoMonitorModal' && state.adminVideoMonitorTimer) {
+      clearInterval(state.adminVideoMonitorTimer);
+      state.adminVideoMonitorTimer = null;
+    }
     document.documentElement.classList.remove('dh-nsa-modal-open');
+  }
+
+  function adminVideoMonitorHtml(data = {}) {
+    const shots = Array.isArray(data.shots) ? data.shots : [];
+    const progress = data.generation_progress || {};
+    const healthLabels = {
+      pending: '待处理', running: '运行中', provider_running: '模型生成中',
+      suspected_stuck: '疑似卡住', passed: '审核通过', failed: '失败',
+    };
+    const lifecycleLabels = {
+      pending: '待处理', queued: '排队', submitting: '提交模型', provider_submitted: '模型已接收',
+      provider_running: '模型生成中', downloading: '下载视频', normalizing: '视频标准化',
+      generated: '视频已生成', video_qa: '质量审核中', qa_passed: '审核通过', qa_failed: '审核失败',
+      failed: '生成失败', cancelled: '已取消',
+    };
+    const fmtTime = value => {
+      const time = Date.parse(value || '');
+      return time ? new Date(time).toLocaleString('zh-CN', { hour12: false }) : '--';
+    };
+    const summary = [
+      `总镜头 ${Number(progress.total ?? shots.length)}`,
+      `已生成 ${Number(progress.generated ?? shots.filter(shot => shot.file_exists).length)}`,
+      `已通过 ${Number(progress.qa_passed ?? shots.filter(shot => shot.health === 'passed').length)}`,
+      `失败 ${Number(progress.failed ?? shots.filter(shot => shot.health === 'failed').length)}`,
+      progress.effective_concurrency ? `并发 ${Number(progress.effective_concurrency)}` : '',
+      progress.scene_block_count ? `场景段 ${Number(progress.scene_block_count)}（连续 ${Number(progress.continuous_scene_block_count || 0)}）` : '',
+    ].filter(Boolean).join(' · ');
+    if (!shots.length) return `<div class="dh-nsa-admin-monitor-empty"><b>尚未进入逐镜视频生成</b><span>${escapeHtml(summary || '等待后台生成任务启动。')}</span></div>`;
+    return `<div class="dh-nsa-admin-monitor-summary">
+      <b>${escapeHtml(summary)}</b><span>每 5 秒自动刷新 · 数据更新时间 ${escapeHtml(fmtTime(data.generated_at))}</span>
+    </div><div class="dh-nsa-admin-monitor-grid">${shots.map((shot, index) => {
+      const started = Date.parse(shot.started_at || shot.provider_submitted_at || '') || 0;
+      const finished = Date.parse(shot.finished_at || '') || Date.now();
+      const elapsed = started ? formatElapsedText(Math.max(0, finished - started)) : '--';
+      const provider = shot.provider_used || [shot.provider_id, shot.model_id].filter(Boolean).join('/') || '--';
+      const problems = [
+        ...(Array.isArray(shot.qa_problems) ? shot.qa_problems : []),
+        ...(Array.isArray(shot.cross_shot_qa_problems) ? shot.cross_shot_qa_problems : []),
+      ].filter(Boolean);
+      return `<article class="dh-nsa-admin-shot is-${escapeHtml(shot.health || 'pending')}">
+        <div class="dh-nsa-admin-shot-head"><b>第 ${Number(shot.index || index + 1)} 镜 · ${escapeHtml(shot.title || `镜头 ${index + 1}`)}</b><em>${escapeHtml(healthLabels[shot.health] || shot.health || '待处理')}</em></div>
+        <div class="dh-nsa-admin-shot-stage">${escapeHtml(lifecycleLabels[shot.lifecycle] || shot.lifecycle || '待处理')} · 耗时 ${escapeHtml(elapsed)}</div>
+        ${shot.scene_block_id ? `<div>连续场景段：${escapeHtml(shot.scene_block_id)} · 包含镜头 ${(shot.scene_block_members || []).map(Number).filter(Boolean).join('、') || Number(shot.index || index + 1)}</div>` : ''}
+        <div>模型：${escapeHtml(provider)}</div>
+        <div>供应商任务：${escapeHtml(shot.provider_task_id || '--')} · ${escapeHtml(shot.provider_status || '--')}</div>
+        <div>最后心跳：${escapeHtml(fmtTime(shot.last_heartbeat_at || shot.updated_at))} · 文件落地：${shot.file_exists ? '是' : '否'}</div>
+        <div>自动修复：${Number(shot.repair_attempt || 0)} 次 · QA：${escapeHtml(shot.qa_status || '--')}</div>
+        ${shot.video_url ? `<video src="${escapeHtml(withAuthQuery(shot.video_url))}" controls playsinline preload="metadata"></video>` : ''}
+        ${problems.length ? `<div class="dh-nsa-admin-shot-error">审核问题：${escapeHtml(problems.join('；'))}</div>` : ''}
+        ${shot.error ? `<div class="dh-nsa-admin-shot-error">错误：${escapeHtml(shot.error)}${shot.error_code ? `（${escapeHtml(shot.error_code)}）` : ''}</div>` : ''}
+      </article>`;
+    }).join('')}</div>`;
+  }
+
+  async function refreshAdminVideoMonitor() {
+    if (!currentUserIsAdmin() || !state.taskId || state.adminVideoMonitorLoading) return;
+    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 分镜生成监控');
+    const body = modal.querySelector('[data-nsa-modal-body]');
+    state.adminVideoMonitorLoading = true;
+    if (body && !body.dataset.loaded) body.innerHTML = '<div class="dh-nsa-admin-monitor-empty"><b>正在读取真实生成状态...</b></div>';
+    try {
+      const data = await api(`/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor?_t=${Date.now()}`);
+      if (body) {
+        body.dataset.loaded = '1';
+        body.innerHTML = adminVideoMonitorHtml(data);
+      }
+    } catch (error) {
+      if (body) body.innerHTML = `<div class="dh-nsa-admin-monitor-empty"><b>监控读取失败</b><span>${escapeHtml(error.message || '请稍后重试')}</span></div>`;
+    } finally {
+      state.adminVideoMonitorLoading = false;
+    }
+  }
+
+  function openAdminVideoMonitor() {
+    if (!currentUserIsAdmin() || !state.taskId) return;
+    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 分镜生成监控');
+    showNsaModal(modal);
+    refreshAdminVideoMonitor();
+    if (state.adminVideoMonitorTimer) clearInterval(state.adminVideoMonitorTimer);
+    state.adminVideoMonitorTimer = setInterval(() => {
+      if (modal.style.display === 'none') return;
+      refreshAdminVideoMonitor();
+    }, 5000);
   }
 
   async function loadNsaVoices(force = false) {
@@ -4919,6 +5024,13 @@
         return;
       }
       const btn = target.closest('button, [role="button"], a');
+      const adminVideoMonitor = target.closest('[data-nsa-admin-video-monitor]');
+      if (adminVideoMonitor && host.contains(adminVideoMonitor)) {
+        e.preventDefault();
+        e.stopPropagation();
+        openAdminVideoMonitor();
+        return;
+      }
       const cancelGeneration = target.closest('[data-nsa-cancel-generation]');
       if (cancelGeneration && host.contains(cancelGeneration)) {
         e.preventDefault();

@@ -1772,6 +1772,24 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-lux-person-progress-stat i { font-style: normal; color: var(--dh-primary); font-size: 12px; font-weight: 900; }
 .dh-lux-person-progress-stat em { font-style: normal; color: var(--dh-text-muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
 .dh-nsa-progress-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: max-content; }
+.dh-nsa-admin-monitor-btn { min-height: 34px; padding: 0 13px; border: 1px solid rgba(14,165,233,.38); border-radius: 10px; color: #0369a1; background: #f0f9ff; font-size: 12px; font-weight: 800; cursor: pointer; }
+.dh-nsa-admin-monitor-btn:hover { border-color: #0284c7; background: #e0f2fe; }
+.dh-nsa-admin-monitor-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid rgba(14,165,233,.24); border-radius: 12px; background: rgba(14,165,233,.07); }
+.dh-nsa-admin-monitor-summary b { font-size: 13px; }
+.dh-nsa-admin-monitor-summary span { color: var(--dh-text-muted); font-size: 11px; }
+.dh-nsa-admin-monitor-grid { display: grid; gap: 12px; }
+.dh-nsa-admin-shot { display: grid; gap: 6px; padding: 13px 14px; border: 1px solid var(--dh-border); border-left: 4px solid #94a3b8; border-radius: 12px; background: rgba(255,255,255,.035); color: var(--dh-text-soft); font-size: 12px; line-height: 1.5; }
+.dh-nsa-admin-shot.is-running, .dh-nsa-admin-shot.is-provider_running { border-left-color: #0ea5e9; }
+.dh-nsa-admin-shot.is-passed { border-left-color: #22c55e; }
+.dh-nsa-admin-shot.is-failed, .dh-nsa-admin-shot.is-suspected_stuck { border-left-color: #ef4444; }
+.dh-nsa-admin-shot-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.dh-nsa-admin-shot-head b { color: var(--dh-text); font-size: 13px; }
+.dh-nsa-admin-shot-head em { flex: 0 0 auto; padding: 2px 8px; border-radius: 999px; color: #0369a1; background: #e0f2fe; font-style: normal; font-size: 11px; font-weight: 800; }
+.dh-nsa-admin-shot-stage { color: var(--dh-text); font-weight: 800; }
+.dh-nsa-admin-shot video { width: min(280px, 100%); max-height: 180px; border: 1px solid var(--dh-border); border-radius: 9px; object-fit: cover; background: #000; }
+.dh-nsa-admin-shot-error { color: #dc2626; font-weight: 700; }
+.dh-nsa-admin-monitor-empty { display: grid; gap: 8px; min-height: 150px; place-content: center; text-align: center; color: var(--dh-text-muted); }
+.dh-nsa-admin-monitor-empty b { color: var(--dh-text); }
 .dh-nsa-cancel-generation { appearance: none; border: 1px solid rgba(239, 68, 68, .42); border-radius: 9px; background: rgba(239, 68, 68, .09); color: #dc2626; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; line-height: 1; padding: 8px 12px; transition: background .18s ease, border-color .18s ease, opacity .18s ease; }
 .dh-nsa-cancel-generation:hover:not(:disabled) { background: rgba(239, 68, 68, .16); border-color: rgba(239, 68, 68, .7); }
 .dh-nsa-cancel-generation:disabled { cursor: wait; opacity: .55; }
