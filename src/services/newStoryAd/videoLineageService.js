@@ -13,7 +13,7 @@ function shotIdentity(shot = {}, index = 0) {
 
 function buildShotLineage({
   shot = {}, index = 0, contract = {}, keyframe = {}, ctx = {}, blueprint = {},
-  storyboardMeta = {}, modelRoute = '', speechMode = '', motionPrompt = '', audio = {},
+  storyboardMeta = {}, modelRoute = '', speechMode = '', motionPrompt = '', audio = {}, sceneBlock = null,
 } = {}) {
   const payload = {
     policy_version: VIDEO_PIPELINE_POLICY_VERSION,
@@ -51,6 +51,10 @@ function buildShotLineage({
     }),
     output_ratio: String(ctx.output_ratio || ''),
     video_resolution: String(ctx.video_resolution || ''),
+    scene_block_policy_version: String(sceneBlock?.policy_version || ''),
+    scene_block_id: String(sceneBlock?.id || ''),
+    scene_block_fingerprint: String(sceneBlock?.fingerprint || ''),
+    scene_block_members: Array.isArray(sceneBlock?.member_indexes) ? sceneBlock.member_indexes.map(index => index + 1) : [],
     model_route: String(modelRoute || '').toLowerCase(),
   };
   return { ...payload, fingerprint: revisionService.signature(payload) };
@@ -67,6 +71,9 @@ function qaApproved(clip = {}) {
 }
 
 function canAdoptLegacyClip(clip = {}, expected = {}) {
+  // Independent legacy clips cannot be treated as a continuous scene block;
+  // the provider must generate that spatial sequence in one call.
+  if (Array.isArray(expected.scene_block_members) && expected.scene_block_members.length > 1) return false;
   return clipHasUsableFile(clip)
     && qaApproved(clip)
     && String(clip.provider_used || clip.providerUsed || '').toLowerCase() === expected.model_route

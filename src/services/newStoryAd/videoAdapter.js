@@ -17,6 +17,7 @@ const personIdentity = require('./personIdentityContractService');
 const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
+const sceneBlockService = require('./sceneBlockService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -195,11 +196,13 @@ function probeDuration(filePath = '') {
   });
 }
 
-async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', durationSec = 4, aspectRatio = '9:16', resolution = '720p' } = {}) {
+async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '720p' } = {}) {
   ensureDir(path.dirname(outputPath));
   const { width, height } = outputSize(aspectRatio, resolution);
   const duration = clamp(durationSec, 1, 15, 4);
-  const args = ['-y', '-i', inputPath];
+  const args = ['-y'];
+  if (Number(startSec) > 0) args.push('-ss', String(Math.max(0, Number(startSec) || 0)));
+  args.push('-i', inputPath);
   if (audioPath) args.push('-i', audioPath);
   else args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100');
   args.push(
@@ -403,6 +406,36 @@ async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} }
   return asset;
 }
 
+async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, options = {} } = {}) {
+  const sources = (Array.isArray(block.spatial_reference_urls) ? block.spatial_reference_urls : [])
+    .map(url => absoluteAssetUrl(url, options))
+    .filter(Boolean)
+    .slice(0, 1);
+  if (!sources.length) return [];
+  const saved = storage.getOutput(taskId, 'deyunai_scene_reference_assets') || {};
+  const next = { ...saved };
+  const assets = [];
+  for (let index = 0; index < sources.length; index += 1) {
+    const sourceUrl = sources[index];
+    const key = `${block.scene_identity || block.id || 'scene'}:${index}`;
+    const safeKey = safeBase(key).slice(0, 42);
+    const asset = await deyunaiService.ensurePersonImageAsset({
+      sourceUrl,
+      assetKind: 'scene',
+      name: `vido_scene_${safeKey}`,
+      groupName: `vido_scene_${safeKey}`,
+      groupType: 'AIGC',
+      projectName: options.deyunai_project_name || options.deyunaiProjectName || 'default',
+      existing: next[key] || null,
+      signal: cancellation.signal(),
+    });
+    next[key] = asset;
+    assets.push(asset);
+  }
+  storage.saveOutput(taskId, 'deyunai_scene_reference_assets', next);
+  return assets;
+}
+
 function publicBaseUrl(options = {}) {
   return String(
     options.public_base_url
@@ -440,6 +473,18 @@ async function renderLocalClip({ outputPath, imagePath = '', audioPath = '', dur
   return outputPath;
 }
 
+function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 0, options = {}) {
+  const members = Array.isArray(options._sceneBlock?.member_indexes) && options._sceneBlock.member_indexes.length
+    ? options._sceneBlock.member_indexes
+    : [index];
+  return members.map(member => updateVideoShotStatus(taskId, member, {
+    ...patch,
+    title: options._sceneBlockShotTitles?.[member] || patch.title,
+    scene_block_id: options._sceneBlock?.id || patch.scene_block_id || '',
+    scene_block_members: options._sceneBlock?.member_indexes?.map(value => value + 1) || patch.scene_block_members || [],
+  }, total));
+}
+
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
   const pinnedModel = options._pinnedVideoModel;
   if (!pinnedModel) {
@@ -451,11 +496,15 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const candidates = [pinnedModel];
   const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
-  const prompt = clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
+  const prompt = String(options._promptOverride || '').trim()
+    || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
   const personReferenceAsset = options._deyunaiPersonAsset?.asset_url
     && personIdentity.shotPersonRequired(ctx, shot, contract)
     ? options._deyunaiPersonAsset.asset_url
     : '';
+  const sceneReferenceAssets = personReferenceAsset
+    ? [...new Set((Array.isArray(options._sceneReferenceAssetUrls) ? options._sceneReferenceAssetUrls : []).filter(Boolean))].slice(0, 2)
+    : [];
   const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
   const audioDuration = await probeDuration(audioPath);
   if (audioDuration > duration + 0.35) {
@@ -471,17 +520,19 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     const filename = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
     const startedAt = Date.now();
     try {
-      updateVideoShotStatus(taskId, index, {
+      updateGenerationUnitStatus(taskId, index, {
         lifecycle: 'submitting',
         total_shots: totalShots,
         title: shot.title || `镜头 ${index + 1}`,
         provider_id: model.provider_id,
         model_id: model.model_id,
-        input_mode: personReferenceAsset ? 'verified_person_reference' : 'approved_keyframe_first_frame',
+        input_mode: personReferenceAsset ? (sceneReferenceAssets.length ? 'verified_person_and_scene_reference' : 'verified_person_reference') : 'approved_keyframe_first_frame',
+        scene_block_id: options._sceneBlock?.id || '',
+        scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         speech_mode: explicitShotSpeechMode(shot, contract),
         error: '',
         error_code: '',
-      }, totalShots);
+      }, totalShots, options);
       const videoService = require('../videoService');
       const generated = await videoService.generateVideoClip({
         video_provider: model.provider_id,
@@ -494,38 +545,38 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         // shots use the verified private-library asset only; non-person shots
         // retain the exact approved keyframe as first_frame.
         image_url: personReferenceAsset ? undefined : imageUrl,
-        reference_image_urls: personReferenceAsset ? [personReferenceAsset] : [],
+        reference_image_urls: personReferenceAsset ? [personReferenceAsset, ...sceneReferenceAssets] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
         videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
         signal: cancellation.signal(),
-        onSubmitted: event => updateVideoShotStatus(taskId, index, {
+        onSubmitted: event => updateGenerationUnitStatus(taskId, index, {
           lifecycle: 'provider_submitted',
           provider_task_id: event.taskId || '',
           provider_status: event.status || 'submitted',
           provider_submitted_at: event.submittedAt || new Date().toISOString(),
           last_polled_at: '',
-        }, totalShots),
-        onProgress: event => updateVideoShotStatus(taskId, index, {
+        }, totalShots, options),
+        onProgress: event => updateGenerationUnitStatus(taskId, index, {
           lifecycle: event.status === 'downloading' ? 'downloading' : 'provider_running',
           provider_task_id: event.taskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
           provider_status: event.status || 'polling',
           provider_elapsed_ms: Number(event.elapsedMs || 0),
           last_polled_at: event.polledAt || new Date().toISOString(),
           provider_has_output_url: event.hasOutputUrl === true,
-        }, totalShots),
+        }, totalShots, options),
       });
       cancellation.throwIfCancelled(taskId);
       if (!generated?.filePath || !fs.existsSync(generated.filePath)) throw new Error('视频供应商未生成可用文件');
-      updateVideoShotStatus(taskId, index, {
+      updateGenerationUnitStatus(taskId, index, {
         lifecycle: 'normalizing',
         provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
         provider_status: 'succeeded',
         source_file_path: generated.filePath,
         source_file_exists: true,
-      }, totalShots);
+      }, totalShots, options);
       const normalizedPath = path.join(VIDEO_DIR, `${filename}_normalized.mp4`);
       await normalizeProviderClip({
         inputPath: generated.filePath,
@@ -537,7 +588,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
       storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: attempts.length + 1 });
-      updateVideoShotStatus(taskId, index, {
+      updateGenerationUnitStatus(taskId, index, {
         lifecycle: 'generated',
         provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
         provider_status: 'succeeded',
@@ -545,7 +596,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         file_path: normalizedPath,
         file_exists: fs.existsSync(normalizedPath),
         video_url: publicVideoUrl(path.basename(normalizedPath)),
-      }, totalShots);
+      }, totalShots, options);
       return outputPayload(normalizedPath, {
         shot_index: index,
         index: index + 1,
@@ -555,8 +606,11 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         provider_task_id: generated.providerTaskId || '',
         image_source: imageUrl,
         motion_prompt: prompt,
-        mode: personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video',
-        seedance_input_mode: personReferenceAsset ? 'verified_person_reference' : 'approved_keyframe_first_frame',
+        mode: options._sceneBlock?.continuous ? 'provider_continuous_scene_block' : (personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video'),
+        seedance_input_mode: personReferenceAsset ? (sceneReferenceAssets.length ? 'verified_person_and_scene_reference' : 'verified_person_reference') : 'approved_keyframe_first_frame',
+        scene_block_id: options._sceneBlock?.id || '',
+        scene_block_fingerprint: options._sceneBlock?.fingerprint || '',
+        scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
         audio_muxed: !!audioPath,
         normalized: true,
@@ -580,13 +634,13 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   error.code = attempts.some(item => item.retryable) ? 'VIDEO_ATTEMPTS_EXHAUSTED' : (attempts[0]?.code || 'VIDEO_MODEL_UNAVAILABLE');
   error.retryable = attempts.some(item => item.retryable);
   error.attempts = attempts;
-  updateVideoShotStatus(taskId, index, {
+  updateGenerationUnitStatus(taskId, index, {
     lifecycle: 'failed',
     total_shots: totalShots,
     error: String(error.message || error).slice(0, 1000),
     error_code: error.code || 'VIDEO_MODEL_UNAVAILABLE',
     retryable: error.retryable === true,
-  }, totalShots);
+  }, totalShots, options);
   throw error;
 }
 
@@ -802,6 +856,174 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
   };
 }
 
+async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, shots = [], tracks = [], ctx = {}, options = {} } = {}) {
+  const output = [];
+  for (const beat of block.beats || []) {
+    cancellation.throwIfCancelled(taskId);
+    const index = Number(beat.shot_index || 1) - 1;
+    const audio = tracks[index] || {};
+    const audioPath = localAudioPath(audio.audio_url || audio.audioUrl || audio.url || '');
+    const audioDuration = await probeDuration(audioPath);
+    if (audioDuration > Number(beat.duration_sec || 0) + 0.35) {
+      const error = new Error(`第 ${index + 1} 镜配音 ${audioDuration.toFixed(2)} 秒超过连续场景段分配时长 ${Number(beat.duration_sec || 0).toFixed(2)} 秒`);
+      error.code = 'AUDIO_DURATION_EXCEEDS_SHOT';
+      error.retryable = false;
+      throw error;
+    }
+    const filename = safeBase(`nsa_${taskId || 'task'}_block_${block.first_index + 1}_${block.last_index + 1}_shot_${index + 1}_${Date.now()}`);
+    const filePath = path.join(VIDEO_DIR, `${filename}.mp4`);
+    await normalizeProviderClip({
+      inputPath: sourceClip.file_path,
+      outputPath: filePath,
+      audioPath,
+      startSec: beat.start_sec,
+      durationSec: beat.duration_sec,
+      aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
+      resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+    });
+    output.push(outputPayload(filePath, {
+      ...sourceClip,
+      filename: path.basename(filePath),
+      file_path: filePath,
+      video_url: publicVideoUrl(path.basename(filePath)),
+      videoUrl: publicVideoUrl(path.basename(filePath)),
+      shot_index: index,
+      index: index + 1,
+      title: shots[index]?.title || `Shot ${index + 1}`,
+      duration_sec: beat.duration_sec,
+      scene_block_id: block.id,
+      scene_block_fingerprint: block.fingerprint,
+      scene_block_members: block.member_indexes.map(member => member + 1),
+      scene_block_source_file: sourceClip.file_path,
+      scene_block_source_video_url: sourceClip.video_url || '',
+      scene_block_start_sec: beat.start_sec,
+      scene_block_end_sec: beat.end_sec,
+      mode: 'continuous_scene_block_segment',
+      audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
+      audio_muxed: !!audioPath,
+    }));
+  }
+  return output;
+}
+
+async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [], ttsAudio = {}, contracts = [], sceneBlocks = [], ctx = {}, options = {}, existingClips = [], onClip = null } = {}) {
+  const list = Array.isArray(shots) ? shots : [];
+  const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
+  const blocks = Array.isArray(sceneBlocks) && sceneBlocks.length ? sceneBlocks : sceneBlockService.buildSceneBlocks(list, contracts, options);
+  const clips = Array.isArray(existingClips) ? existingClips.slice() : [];
+  const pinnedModel = options._pinnedVideoModel || resolvePinnedVideoModel(options, clips);
+  const isDeyunaiSeedance = String(pinnedModel.provider_id || '').toLowerCase() === 'deyunai'
+    && /^doubao-seedance-2-0/i.test(String(pinnedModel.model_id || ''));
+  if (personIdentity.personRequired(ctx) && !isDeyunaiSeedance) {
+    const error = new Error(`人物广告必须使用支持人物素材库锁定的漫路 Seedance 2.0；当前候选 ${modelRoute(pinnedModel)} 不满足要求，已禁止降级`);
+    error.code = 'PERSON_ASSET_VIDEO_MODEL_REQUIRED';
+    error.status = 422;
+    error.retryable = true;
+    throw error;
+  }
+  const requested = Array.isArray(options.only_indexes || options.onlyIndexes)
+    ? (options.only_indexes || options.onlyIndexes).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < list.length)
+    : list.map((_, index) => index);
+  const targetIndexes = sceneBlockService.expandIndexesToBlocks(requested, blocks);
+  const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
+  const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit
+    ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
+    : null;
+  const shotTitles = Object.fromEntries(list.map((shot, index) => [index, shot.title || `镜头 ${index + 1}`]));
+  const unitGenerator = typeof options._generateShotVideo === 'function' ? options._generateShotVideo : generateShotVideo;
+  targetIndexes.forEach((index) => {
+    const block = sceneBlockService.blockForIndex(blocks, index);
+    updateVideoShotStatus(taskId, index, {
+      lifecycle: 'queued', queued_at: new Date().toISOString(), started_at: '',
+      attempt_number: Number(storage.getOutput(taskId, videoShotStatusKind(index))?.attempt_number || 0) + 1,
+      total_shots: list.length, title: shotTitles[index], provider_id: pinnedModel.provider_id, model_id: pinnedModel.model_id,
+      speech_mode: explicitShotSpeechMode(list[index] || {}, contracts[index] || {}),
+      scene_block_id: block?.id || '', scene_block_members: block?.member_indexes?.map(member => member + 1) || [index + 1],
+      scene_block_duration_sec: block?.duration_sec || sceneBlockService.durationOf(list[index] || {}),
+      provider_task_id: '', provider_status: '', file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '',
+      repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+      lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
+    }, list.length);
+  });
+  let schedule = { results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1, max_concurrency: 1, throttle_retries: {} };
+  if (units.length) {
+    try {
+      schedule = await videoScheduler.runSchedule({
+      indexes: units.map((_, index) => index), options, signal: cancellation.signal(), dependencyOf: () => null,
+      onWaveStart: wave => updateVideoProgress(taskId, list.length, {
+        configured_concurrency: wave.configured_concurrency, effective_concurrency: wave.concurrency,
+        max_concurrency: wave.max_concurrency, current_wave: wave.wave_number,
+        wave_indexes: wave.indexes.flatMap(unitIndex => units[unitIndex].member_indexes.map(index => index + 1)),
+        scheduler: 'adaptive_scene_block_parallel',
+        scene_block_count: units.length,
+        continuous_scene_block_count: units.filter(block => block.continuous).length,
+      }),
+      worker: async (unitIndex, wave) => {
+        const block = units[unitIndex];
+        const first = block.first_index;
+        const syntheticShot = sceneBlockService.generationShot(block, list);
+        const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
+        const sceneAssets = personRequired && block.continuous
+          ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
+          : [];
+        block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
+          lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
+          global_queue_ms: wave.global_queue_ms || 0,
+        }, list.length));
+        const runOptions = {
+          ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length,
+          _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
+          _sceneReferenceAssetUrls: sceneAssets.map(asset => asset.asset_url).filter(Boolean),
+          _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
+        };
+        const sourceClip = await unitGenerator({
+          taskId, shot: block.continuous ? syntheticShot : list[first], previousShot: first > 0 ? list[first - 1] : null,
+          keyframe: keyframes[first] || {}, audio: block.continuous ? {} : (tracks[first] || {}),
+          contract: contracts[first] || {}, ctx, index: first, options: runOptions,
+        });
+        const generatedClips = block.continuous
+          ? await splitSceneBlockClip({ taskId, block, sourceClip, shots: list, tracks, ctx, options: runOptions })
+          : [{ ...sourceClip, scene_block_id: block.id, scene_block_fingerprint: block.fingerprint, scene_block_members: [first + 1] }];
+        for (const generated of generatedClips) {
+          const index = generated.shot_index;
+          clips[index] = options._expectedLineages?.[index]
+            ? videoLineage.attachLineage(generated, options._expectedLineages[index], { repair_attempt: Number(options._repairAttempt || 0) })
+            : generated;
+          updateVideoShotStatus(taskId, index, {
+            lifecycle: 'generated', file_path: clips[index].file_path, file_exists: true,
+            video_url: clips[index].video_url, scene_block_id: block.id,
+            scene_block_fingerprint: block.fingerprint, scene_block_members: block.member_indexes.map(member => member + 1),
+          }, list.length);
+          if (typeof onClip === 'function') await onClip(clips[index], clips.slice());
+        }
+        return generatedClips;
+      },
+      });
+    } catch (error) {
+      const cancelled = error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted;
+      targetIndexes.forEach((index) => {
+        const current = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
+        if (['qa_passed', 'qa_failed', 'failed', 'cancelled'].includes(current.lifecycle)) return;
+        updateVideoShotStatus(taskId, index, {
+          lifecycle: cancelled ? 'cancelled' : 'failed',
+          error: cancelled ? '任务已取消' : (current.error || '连续场景段生成未完成'),
+          error_code: cancelled ? 'USER_CANCELLED' : (current.error_code || 'SCENE_BLOCK_GENERATION_FAILED'),
+          retryable: error?.retryable === true,
+        }, list.length);
+      });
+      storage.saveOutput(taskId, 'video_clips', clips);
+      throw error;
+    }
+  }
+  updateVideoProgress(taskId, list.length, {
+    configured_concurrency: schedule.configured_concurrency, effective_concurrency: schedule.effective_concurrency,
+    max_concurrency: schedule.max_concurrency, scheduler: 'adaptive_scene_block_parallel',
+    scene_block_count: units.length, continuous_scene_block_count: units.filter(block => block.continuous).length,
+  });
+  return { clips, provider_used: modelRoute(pinnedModel), pinned_model: pinnedModel, deyunai_person_asset: deyunaiPersonAsset, target_indexes: targetIndexes, scene_blocks: units, schedule };
+}
+
 module.exports = {
   VIDEO_DIR,
   VIDEO_STAGE,
@@ -811,10 +1033,12 @@ module.exports = {
   deyunaiAssetGroupType,
   personReferenceUrl,
   prepareDeyunaiPersonAsset,
+  prepareDeyunaiSceneReferenceAssets,
   videoPathFromName,
   publicVideoUrl,
   generateShotVideo,
   generateShotVideos,
+  generateSceneBlockVideos,
   videoShotStatusKind,
   listVideoShotStatuses,
   updateVideoShotStatus,
@@ -823,6 +1047,7 @@ module.exports = {
   hardVideoDependency,
   renderLocalClip,
   normalizeProviderClip,
+  splitSceneBlockClip,
   clipPrompt,
   probeDuration,
 };

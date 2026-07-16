@@ -4615,6 +4615,7 @@
       `失败 ${progress.failed ?? shots.filter(s => s.health === 'failed').length}`,
       progress.effective_concurrency ? `当前并发 ${progress.effective_concurrency}/${progress.max_concurrency || progress.effective_concurrency}` : '',
       progress.repair_attempt ? `自动修复 ${progress.repair_attempt}/${progress.max_repair_attempts || progress.repair_attempt}` : '',
+      progress.scene_block_count ? `场景段 ${progress.scene_block_count}（连续 ${progress.continuous_scene_block_count || 0}）` : '',
     ].filter(Boolean).join(' · ');
     return `<section class="dh-task-create-section dh-task-create-section-wide">
       <div class="dh-task-detail-title">管理员 · 逐镜头生成监控</div>
@@ -4638,6 +4639,7 @@
             <div class="dh-task-segment-meta">供应商任务 ID：${escapeHtml(shot.provider_task_id || '--')} · 状态：${escapeHtml(shot.provider_status || '--')}</div>
             <div class="dh-task-segment-meta">最后心跳：${escapeHtml(fmtIso(shot.last_heartbeat_at))} · 文件落地：${shot.file_exists ? '是' : '否'}</div>
             <div class="dh-task-segment-meta">自动修复：${Number(shot.repair_attempt || 0)} 次 · 流水线：${escapeHtml(shot.pipeline_policy_version || videoMonitor.pipeline_policy?.version || '--')} · 当前版本指纹：${shot.lineage_fingerprint ? '已绑定' : '未绑定'}</div>
+            ${shot.scene_block_id ? `<div class="dh-task-segment-meta">连续场景段：${escapeHtml(shot.scene_block_id)} · 包含镜头 ${(shot.scene_block_members || []).join('、') || shot.index}</div>` : ''}
             ${clipUrl ? `<video src="${escapeHtml(withAuthQuery(clipUrl))}" controls playsinline preload="metadata" style="width:220px;max-height:130px;object-fit:cover;border-radius:6px;margin:8px 0;border:1px solid var(--dh-border)"></video>` : ''}
             ${problems.length ? `<div class="dh-task-error">审片问题：${escapeHtml(problems.join('；'))}</div>` : ''}
             ${shot.error ? `<div class="dh-task-error">错误：${escapeHtml(shot.error)}</div>` : ''}

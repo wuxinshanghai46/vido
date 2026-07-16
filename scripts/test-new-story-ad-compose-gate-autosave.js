@@ -82,7 +82,7 @@ assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore 
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 assert(ui.includes('const failed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
-assert(ui.includes('重新合成时只会重做未通过或版本已变化的镜头'), 'retry behavior must be explained without implying a full regeneration');
+assert(ui.includes('只会重做失败镜头所属的连续场景段或版本已变化的镜头'), 'retry behavior must explain scene-block regeneration boundaries');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('media', ctx)"), 'primary media chain must be owned by one resumable server job');
@@ -99,6 +99,8 @@ const videoBlock = service.slice(service.indexOf('async function generateVideoSt
 assert(videoBlock.includes('ttsAudio = silentTtsOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');
 assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be linked to the current storyboard/person/product/scene/keyframe/audio contract');
 assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
+assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive generic continuous blocks from current spatial contracts');
+assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit scene blocks instead of always submitting independent shots');
 const composeBlock = service.slice(service.indexOf('async function composeStage'), service.indexOf('async function runFull'));
 assert(composeBlock.includes('hasBgmAssetOption'), 'explicit no-BGM selection must not restore an older BGM from task context');
 assert(composeBlock.includes('const composeVoiceId = resolveTtsVoiceId'), 'explicit no-voice selection must persist through compose');

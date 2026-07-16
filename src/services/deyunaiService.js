@@ -264,6 +264,7 @@ function assetId(item = {}) {
 
 async function ensurePersonImageAsset({
   sourceUrl,
+  assetKind = 'person',
   name = '',
   groupName = '',
   groupType = 'AIGC',
@@ -275,10 +276,12 @@ async function ensurePersonImageAsset({
   httpClient = axios,
   signal = null,
 } = {}) {
+  const sceneAsset = String(assetKind || '').toLowerCase() === 'scene';
+  const assetLabel = sceneAsset ? '场景空间参考' : '人物';
   const url = String(sourceUrl || '').trim();
   if (!/^https?:\/\//i.test(url) || /^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)(?::|\/|$)/i.test(url)) {
-    const error = new Error('漫路人物素材必须使用公网可访问的 http(s) 图片 URL');
-    error.code = 'DEYUNAI_PERSON_ASSET_URL_REQUIRED';
+    const error = new Error(`漫路${assetLabel}素材必须使用公网可访问的 http(s) 图片 URL`);
+    error.code = sceneAsset ? 'DEYUNAI_SCENE_ASSET_URL_REQUIRED' : 'DEYUNAI_PERSON_ASSET_URL_REQUIRED';
     throw error;
   }
   if (existing && String(existing.source_url || '') === url && /^active$/i.test(String(existing.status || '')) && existing.asset_id) {
@@ -286,7 +289,7 @@ async function ensurePersonImageAsset({
   }
 
   const resolvedGroupType = /^livenessface$/i.test(String(groupType || '')) ? 'LivenessFace' : 'AIGC';
-  const safeGroupName = String(groupName || `vido_person_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
+  const safeGroupName = String(groupName || `vido_${sceneAsset ? 'scene' : 'person'}_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
   let resolvedGroupId = String(groupId || existing?.group_id || '').trim();
   if (!resolvedGroupId) {
     if (resolvedGroupType === 'LivenessFace') {
@@ -302,7 +305,9 @@ async function ensurePersonImageAsset({
     if (!resolvedGroupId) {
       resolvedGroupId = await createAssetGroup({
         name: safeGroupName,
-        description: 'VIDO 独立虚拟人物素材组；仅用于同一人物的 Seedance 2.0 一致性锁定',
+        description: sceneAsset
+          ? 'VIDO 当前任务场景空间参考素材组；仅用于 Seedance 2.0 空间一致性锁定'
+          : 'VIDO 独立虚拟人物素材组；仅用于同一人物的 Seedance 2.0 一致性锁定',
         groupType: 'AIGC',
         projectName,
         httpClient,
@@ -318,7 +323,7 @@ async function ensurePersonImageAsset({
     throw error;
   }
 
-  const safeName = String(name || `vido_actor_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
+  const safeName = String(name || `vido_${sceneAsset ? 'scene' : 'actor'}_${Date.now()}`).replace(/[^a-z0-9_.-]+/ig, '_').slice(0, 64);
   const createPayload = await requestAssetApi('CreateAsset', {
     GroupId: resolvedGroupId,
     URL: url,
@@ -327,7 +332,7 @@ async function ensurePersonImageAsset({
     ProjectName: projectName,
   }, { httpClient, signal });
   const createdId = assetId(assetResult(createPayload));
-  if (!createdId) throw new Error('漫路人物素材上传成功但未返回 Asset ID');
+  if (!createdId) throw new Error(`漫路${assetLabel}素材上传成功但未返回 Asset ID`);
 
   const startedAt = Date.now();
   let lastStatus = 'Processing';
@@ -350,12 +355,12 @@ async function ensurePersonImageAsset({
       }
       if (/^failed$/i.test(lastStatus)) {
         const detail = current.Error || current.error || current.Message || current.message || '';
-        throw new Error(`漫路人物素材处理失败: ${String(detail || JSON.stringify(current)).slice(0, 500)}`);
+        throw new Error(`漫路${assetLabel}素材处理失败: ${String(detail || JSON.stringify(current)).slice(0, 500)}`);
       }
     }
     await abortableWait(Math.max(0, Number(pollIntervalMs) || 0), signal);
   }
-  throw new Error(`漫路人物素材处理超时，asset=${createdId}, lastStatus=${lastStatus}`);
+  throw new Error(`漫路${assetLabel}素材处理超时，asset=${createdId}, lastStatus=${lastStatus}`);
 }
 
 function extractSeedanceContentTaskVideoUrl(payload) {

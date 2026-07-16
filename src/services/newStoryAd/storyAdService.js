@@ -26,6 +26,7 @@ const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoLineage = require('./videoLineageService');
 const videoRepairPolicy = require('./videoRepairPolicy');
+const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 
@@ -2250,6 +2251,8 @@ async function generateVideoStage(taskId, options = {}) {
   const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
+  const sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, options);
+  storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const expectedLineages = shots.map((shot, index) => videoLineage.buildShotLineage({
     shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
@@ -2257,6 +2260,7 @@ async function generateVideoStage(taskId, options = {}) {
     speechMode: videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}),
     motionPrompt: videoAdapter.clipPrompt(shot, ctx, contracts[index] || {}, index > 0 ? shots[index - 1] : null, keyframes[index] || {}),
     audio: audioTracks[index] || {},
+    sceneBlock: sceneBlockService.blockForIndex(sceneBlocks, index),
   }));
   let clips = previousClips.slice();
   const initialIndexes = [];
@@ -2269,17 +2273,22 @@ async function generateVideoStage(taskId, options = {}) {
     initialIndexes.push(index);
     clips[index] = null;
   });
-  if (initialIndexes.length) storage.deleteOutput(taskId, 'final_video');
+  const expandedInitialIndexes = sceneBlockService.expandIndexesToBlocks(initialIndexes, sceneBlocks);
+  expandedInitialIndexes.forEach(index => { clips[index] = null; });
+  if (expandedInitialIndexes.length) storage.deleteOutput(taskId, 'final_video');
   const maxRepairs = videoRepairPolicy.resolveRepairBudget(options);
   const policy = {
     version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+    scene_block_policy_version: sceneBlockService.SCENE_BLOCK_POLICY_VERSION,
     model_route: pinnedRoute,
     max_auto_repairs: maxRepairs,
+    scene_block_count: sceneBlocks.length,
+    continuous_scene_block_count: sceneBlocks.filter(block => block.continuous).length,
     adopted_at: new Date().toISOString(),
   };
   storage.saveOutput(taskId, 'video_pipeline_policy', policy);
   storage.saveOutput(taskId, 'video_clips', clips);
-  let targetIndexes = initialIndexes;
+  let targetIndexes = expandedInitialIndexes;
   let repairAttempt = 0;
   let repairInstructions = {};
   let lastGenerated = { provider_used: pinnedRoute, schedule: null };
@@ -2289,8 +2298,10 @@ async function generateVideoStage(taskId, options = {}) {
       status: 'running', stage: repairAttempt ? 'video_repair' : 'video', error: '', error_code: '', retryable: false,
       generation_progress: { ...(storage.getTask(taskId)?.generation_progress || {}), repair_attempt: repairAttempt, max_repair_attempts: maxRepairs, repair_indexes: targetIndexes.map(index => index + 1) },
     });
-    lastGenerated = await videoAdapter.generateShotVideos({
+    targetIndexes = sceneBlockService.expandIndexesToBlocks(targetIndexes, sceneBlocks);
+    lastGenerated = await videoAdapter.generateSceneBlockVideos({
       taskId, shots, keyframes, ttsAudio, contracts, ctx,
+      sceneBlocks,
       options: {
         ...options,
         only_indexes: targetIndexes,
@@ -2854,6 +2865,11 @@ async function composeStage(taskId, options = {}) {
     ...final_video,
     pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
     clip_lineage_fingerprints: clips.map(clip => clip.lineage_fingerprint),
+    scene_blocks: [...new Map(clips.filter(clip => clip.scene_block_id).map(clip => [clip.scene_block_id, {
+      id: clip.scene_block_id,
+      fingerprint: clip.scene_block_fingerprint || '',
+      members: clip.scene_block_members || [],
+    }])).values()],
   };
   storage.saveOutput(taskId, 'final_video', finalVideoWithLineage);
   storage.saveStage(taskId, 'compose', {

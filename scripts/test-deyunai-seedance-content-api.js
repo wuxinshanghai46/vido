@@ -78,6 +78,20 @@ assert.deepStrictEqual(referenceOnly.content[1], {
   role: 'reference_image',
 });
 
+const personAndSceneReferences = buildSeedanceContentTaskBody({
+  model: 'doubao-seedance-2-0-260128',
+  prompt: 'continuous current-task scene',
+  duration: 10,
+  size: '1280x720',
+  imageUrl: 'https://example.com/forbidden-mixed-first-frame.png',
+  referenceAssetUrls: ['asset://asset-person-001', 'asset://asset-scene-001'],
+});
+assert.deepStrictEqual(personAndSceneReferences.content.slice(1).map(item => [item.image_url.url, item.role]), [
+  ['asset://asset-person-001', 'reference_image'],
+  ['asset://asset-scene-001', 'reference_image'],
+]);
+assert.strictEqual(personAndSceneReferences.content.some(item => item.role === 'first_frame'), false, '人物+场景素材仍必须保持单一 reference-media 输入模式');
+
 assert.strictEqual(
   extractSeedanceContentTaskVideoUrl({ content: { video_url: 'https://cdn.example.com/a.mp4' } }),
   'https://cdn.example.com/a.mp4'

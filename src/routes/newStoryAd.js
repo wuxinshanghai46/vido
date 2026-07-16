@@ -943,6 +943,7 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
   const clips = storage.getOutput(task.id, 'video_clips') || [];
   const repairHistory = storage.getOutput(task.id, 'video_repair_history') || [];
   const pipelinePolicy = storage.getOutput(task.id, 'video_pipeline_policy') || null;
+  const sceneBlocks = storage.getOutput(task.id, 'video_scene_blocks') || [];
   const context = storage.getOutput(task.id, 'context') || task.request || {};
   const statuses = videoAdapter.listVideoShotStatuses(task.id, storyboard.length);
   const now = Date.now();
@@ -997,6 +998,7 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
     shots,
     repair_history: repairHistory,
     pipeline_policy: pipelinePolicy,
+    scene_blocks: sceneBlocks,
     stages: bundle.stages,
     model_calls: bundle.model_calls,
     generated_at: new Date(now).toISOString(),

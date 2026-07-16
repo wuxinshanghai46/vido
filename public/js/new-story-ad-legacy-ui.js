@@ -3070,6 +3070,7 @@
     const host = ensureMediaHost();
     const tracks = Array.isArray(state.ttsAudio?.tracks) ? state.ttsAudio.tracks : [];
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
+    const continuousBlocks = [...new Set(clips.filter(clip => Array.isArray(clip?.scene_block_members) && clip.scene_block_members.length > 1).map(clip => clip.scene_block_id).filter(Boolean))];
     const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
     const compose = composeReadiness();
     const composeSummary = within('#dhNsaAdComposeSummary');
@@ -3108,7 +3109,7 @@
         : (restoring
         ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
         : (failed
-        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span>${failureDetails.length ? `<div>${failureDetails.map(item => `<div>第 ${item.index} 镜「${escapeHtml(item.title)}」：${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</div>`).join('')}</div>` : ''}<span>重新合成时只会重做未通过或版本已变化的镜头，已通过镜头会保留。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜与约束</button>`
+        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span>${failureDetails.length ? `<div>${failureDetails.map(item => `<div>第 ${item.index} 镜「${escapeHtml(item.title)}」：${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</div>`).join('')}</div>` : ''}<span>重新合成时只会重做失败镜头所属的连续场景段或版本已变化的镜头，其他已通过场景段会保留。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜与约束</button>`
         : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
     }
     if (!tracks.length && !clips.length && !finalUrl) {
@@ -3121,6 +3122,7 @@
       <div class="dh-task-detail-value">${escapeHtml([
         tracks.length ? `配音 ${tracks.length} 条` : '',
         clips.length ? `视频镜头 ${clips.length} 条` : '',
+        continuousBlocks.length ? `连续场景段 ${continuousBlocks.length} 组` : '',
         finalUrl ? '成片已生成' : '',
       ].filter(Boolean).join(' · ') || '等待生成')}</div>
     </div>`;
