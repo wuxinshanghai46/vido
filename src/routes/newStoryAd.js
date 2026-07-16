@@ -941,6 +941,8 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
   const storyboard = storage.getOutput(task.id, 'storyboard_table') || [];
   const contracts = storage.getOutput(task.id, 'keyframe_contracts') || [];
   const clips = storage.getOutput(task.id, 'video_clips') || [];
+  const repairHistory = storage.getOutput(task.id, 'video_repair_history') || [];
+  const pipelinePolicy = storage.getOutput(task.id, 'video_pipeline_policy') || null;
   const context = storage.getOutput(task.id, 'context') || task.request || {};
   const statuses = videoAdapter.listVideoShotStatuses(task.id, storyboard.length);
   const now = Date.now();
@@ -975,6 +977,9 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
       provider_used: clip.provider_used || [row.provider_id, row.model_id].filter(Boolean).join('/'),
       qa: clip.qa || null,
       cross_shot_qa: clip.cross_shot_qa || null,
+      repair_attempt: Number(clip.repair_attempt || row.repair_attempt || 0),
+      pipeline_policy_version: clip.pipeline_policy_version || pipelinePolicy?.version || '',
+      lineage_fingerprint: clip.lineage_fingerprint || '',
     };
   });
   const bundle = service.publicTaskBundle(task.id, { diagnostics: true, includeVideoMonitor: true });
@@ -990,6 +995,8 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
     },
     generation_progress: summary.generation_progress || null,
     shots,
+    repair_history: repairHistory,
+    pipeline_policy: pipelinePolicy,
     stages: bundle.stages,
     model_calls: bundle.model_calls,
     generated_at: new Date(now).toISOString(),

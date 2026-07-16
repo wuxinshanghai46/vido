@@ -16,6 +16,7 @@ const cancellation = require('./cancellationContext');
 const personIdentity = require('./personIdentityContractService');
 const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
+const videoLineage = require('./videoLineageService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -237,7 +238,7 @@ function localAudioPath(url = '') {
   return filePath && fs.existsSync(filePath) ? filePath : '';
 }
 
-function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, keyframe = {}) {
+function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, keyframe = {}, repairInstruction = '') {
   const design = shotDesign.normalizeShotDesign(shot);
   const authoredEffectTarget = !!(design.motion_effect?.target_state || design.motion_effect?.reference_asset_id);
   const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
@@ -258,6 +259,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     authoredEffectTarget
       ? 'Use physically plausible motion and camera movement. The explicitly authored effect target is allowed; do not add any other people, objects, text, logos, products or locations.'
       : 'Use physically plausible motion and camera movement. Do not add unrelated people, objects, text, logos, products or locations.',
+    repairInstruction ? `QA repair instruction for this attempt:\n${repairInstruction}` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -449,7 +451,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const candidates = [pinnedModel];
   const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
-  const prompt = clipPrompt(shot, ctx, contract, previousShot, keyframe);
+  const prompt = clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
   const personReferenceAsset = options._deyunaiPersonAsset?.asset_url
     && personIdentity.shotPersonRequired(ctx, shot, contract)
     ? options._deyunaiPersonAsset.asset_url
@@ -657,7 +659,10 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     : null;
   const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length };
   const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex)) ? Math.max(0, Math.min(list.length - 1, Number(options.only_index ?? options.onlyIndex))) : null;
-  const indexes = onlyIndex === null ? list.map((_, index) => index) : [onlyIndex];
+  const requestedIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
+    ? (options.only_indexes || options.onlyIndexes).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < list.length)
+    : null;
+  const indexes = requestedIndexes?.length ? [...new Set(requestedIndexes)] : (onlyIndex === null ? list.map((_, index) => index) : [onlyIndex]);
   const targetIndexes = options.missing_only === true || options.missingOnly === true
     ? indexes.filter(index => !(clips[index]?.video_url || clips[index]?.videoUrl || clips[index]?.file_path) || !!clips[index]?.error_code)
     : indexes;
@@ -684,6 +689,9 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     qa_problems: [],
     error: '',
     error_code: '',
+    repair_attempt: Number(options._repairAttempt || 0),
+    pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+    lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
   }, list.length));
 
   let schedule = {
@@ -741,7 +749,9 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
           options: runOptions,
         });
         cancellation.throwIfCancelled(taskId);
-        clips[i] = clip;
+        clips[i] = options._expectedLineages?.[i]
+          ? videoLineage.attachLineage(clip, options._expectedLineages[i], { repair_attempt: Number(options._repairAttempt || 0) })
+          : clip;
         if (typeof onClip === 'function') await onClip(clip, clips.slice());
         return clip;
       },

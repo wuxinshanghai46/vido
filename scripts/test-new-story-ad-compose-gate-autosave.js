@@ -80,6 +80,9 @@ assert(ui.includes('include_voiceover: !!state.voiceId'), 'media payload must ex
 assert(ui.includes("if (state.voiceId && !await runStage('tts', button))"), 'legacy media chain must skip TTS without a selected voice');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
+assert(ui.includes('const failed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
+assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
+assert(ui.includes('重新合成时只会重做未通过或版本已变化的镜头'), 'retry behavior must be explained without implying a full regeneration');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('media', ctx)"), 'primary media chain must be owned by one resumable server job');
@@ -94,6 +97,8 @@ assert(ttsBlock.indexOf('assertVideoInputsReady') < ttsBlock.indexOf('ttsAdapter
 assert(ttsBlock.indexOf('if (!includeVoiceover)') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'disabled voiceover must return before any paid TTS call');
 const videoBlock = service.slice(service.indexOf('async function generateVideoStage'), service.indexOf('async function composeStage'));
 assert(videoBlock.includes('ttsAudio = silentTtsOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');
+assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be linked to the current storyboard/person/product/scene/keyframe/audio contract');
+assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
 const composeBlock = service.slice(service.indexOf('async function composeStage'), service.indexOf('async function runFull'));
 assert(composeBlock.includes('hasBgmAssetOption'), 'explicit no-BGM selection must not restore an older BGM from task context');
 assert(composeBlock.includes('const composeVoiceId = resolveTtsVoiceId'), 'explicit no-voice selection must persist through compose');

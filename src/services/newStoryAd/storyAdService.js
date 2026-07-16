@@ -24,6 +24,8 @@ const productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
+const videoLineage = require('./videoLineageService');
+const videoRepairPolicy = require('./videoRepairPolicy');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 
@@ -2216,7 +2218,7 @@ async function generateTtsStage(taskId, options = {}) {
 async function generateVideoStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  let ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
@@ -2224,6 +2226,14 @@ async function generateVideoStage(taskId, options = {}) {
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
   const voiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
+  ctx = {
+    ...ctx,
+    voice_id: voiceId,
+    include_voiceover: includeVoiceover,
+    output_ratio: options.aspect_ratio || options.aspectRatio || ctx.output_ratio || '9:16',
+    video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+  };
+  storage.saveOutput(taskId, 'context', ctx);
   const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
   const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
   if (!includeVoiceover) {
@@ -2233,86 +2243,139 @@ async function generateVideoStage(taskId, options = {}) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
   }
-  storage.updateTask(taskId, { status: 'running', stage: 'video' });
+  storage.updateTask(taskId, { status: 'running', stage: 'video', error: '', error_code: '', retryable: false });
   storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
-  const existingClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
-  const generated = await videoAdapter.generateShotVideos({
-    taskId,
-    shots,
-    keyframes: Array.isArray(keyframes) ? keyframes : [],
-    ttsAudio,
-    contracts,
-    ctx,
-    options,
-    existingClips,
-    onClip: async (clip, clips) => {
-      storage.saveOutput(taskId, 'video_clips', clips);
-      storage.saveStage(taskId, 'video', {
-        status: 'running',
-        input_summary: `${shots.length} shot videos`,
-        output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`,
-        diagnostics: { last_provider_used: clip.provider_used || '' },
-      });
-    },
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
+  const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
+  const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
+  const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
+  const expectedLineages = shots.map((shot, index) => videoLineage.buildShotLineage({
+    shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
+    blueprint, storyboardMeta, modelRoute: pinnedRoute,
+    speechMode: videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}),
+    motionPrompt: videoAdapter.clipPrompt(shot, ctx, contracts[index] || {}, index > 0 ? shots[index - 1] : null, keyframes[index] || {}),
+    audio: audioTracks[index] || {},
+  }));
+  let clips = previousClips.slice();
+  const initialIndexes = [];
+  shots.forEach((_, index) => {
+    const decision = videoLineage.reuseDecision(clips[index], expectedLineages[index]);
+    if (decision.reusable) {
+      if (decision.adopted) clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString() });
+      return;
+    }
+    initialIndexes.push(index);
+    clips[index] = null;
   });
-  const clips = generated.clips.slice();
-  const targetIndexes = Array.isArray(generated.target_indexes) ? generated.target_indexes : shots.map((_, index) => index);
-  const qaFailures = [];
-  for (const index of targetIndexes) {
-    const clip = clips[index];
-    if (!clip) continue;
-    videoAdapter.updateVideoShotStatus(taskId, index, {
-      lifecycle: 'video_qa',
-      qa_status: 'reviewing',
-      file_path: clip.file_path || '',
-      file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
-      video_url: clip.video_url || clip.videoUrl || '',
-    }, shots.length);
-    const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
-    clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
-    videoAdapter.updateVideoShotStatus(taskId, index, {
-      lifecycle: qa.pass ? 'qa_passed' : 'qa_failed',
-      qa_status: qa.pass ? 'passed' : 'failed',
-      qa_problems: qa.problems || [],
-      qa_scores: qa.scores || {},
-      error: qa.pass ? '' : '视频抽帧 QA 未通过',
-      error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED',
-      retryable: !qa.pass,
-    }, shots.length);
-    if (!qa.pass) qaFailures.push({ index, problems: qa.problems || [] });
-  }
-  const crossIndexes = [...new Set(targetIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
-  for (const index of crossIndexes) {
-    const previous = clips[index - 1];
-    const current = clips[index];
-    if (!previous?.qa?.pass || !current?.qa?.pass) continue;
-    const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: shots[index - 1] || {}, currentShot: shots[index] || {}, ctx });
-    clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? current.error : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? current.error_code : 'CROSS_SHOT_CONTINUITY_FAILED' };
-    videoAdapter.updateVideoShotStatus(taskId, index, {
-      lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed',
-      cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
-      cross_shot_qa_problems: crossQa.problems || [],
-      error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过',
-      error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED',
-      retryable: !crossQa.pass,
-    }, shots.length);
-    if (!crossQa.pass) qaFailures.push({ index, problems: crossQa.problems || [] });
+  if (initialIndexes.length) storage.deleteOutput(taskId, 'final_video');
+  const maxRepairs = videoRepairPolicy.resolveRepairBudget(options);
+  const policy = {
+    version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+    model_route: pinnedRoute,
+    max_auto_repairs: maxRepairs,
+    adopted_at: new Date().toISOString(),
+  };
+  storage.saveOutput(taskId, 'video_pipeline_policy', policy);
+  storage.saveOutput(taskId, 'video_clips', clips);
+  let targetIndexes = initialIndexes;
+  let repairAttempt = 0;
+  let repairInstructions = {};
+  let lastGenerated = { provider_used: pinnedRoute, schedule: null };
+  let qaFailures = [];
+  while (targetIndexes.length) {
+    storage.updateTask(taskId, {
+      status: 'running', stage: repairAttempt ? 'video_repair' : 'video', error: '', error_code: '', retryable: false,
+      generation_progress: { ...(storage.getTask(taskId)?.generation_progress || {}), repair_attempt: repairAttempt, max_repair_attempts: maxRepairs, repair_indexes: targetIndexes.map(index => index + 1) },
+    });
+    lastGenerated = await videoAdapter.generateShotVideos({
+      taskId, shots, keyframes, ttsAudio, contracts, ctx,
+      options: {
+        ...options,
+        only_indexes: targetIndexes,
+        _pinnedVideoModel: pinnedModel,
+        _expectedLineages: expectedLineages,
+        _repairInstructions: repairInstructions,
+        _repairAttempt: repairAttempt,
+      },
+      existingClips: clips,
+      onClip: async (clip, nextClips) => {
+        storage.saveOutput(taskId, 'video_clips', nextClips);
+        storage.saveStage(taskId, 'video', {
+          status: 'running', input_summary: `${shots.length} shot videos`,
+          output_summary: `${nextClips.filter(Boolean).length}/${shots.length} video clips`,
+          diagnostics: { last_provider_used: clip.provider_used || '', repair_attempt: repairAttempt },
+        });
+      },
+    });
+    clips = lastGenerated.clips.slice();
+    const reviewedIndexes = Array.isArray(lastGenerated.target_indexes) ? lastGenerated.target_indexes : targetIndexes;
+    qaFailures = [];
+    for (const index of reviewedIndexes) {
+      const clip = clips[index];
+      if (!clip) continue;
+      videoAdapter.updateVideoShotStatus(taskId, index, {
+        lifecycle: 'video_qa', qa_status: 'reviewing', repair_attempt: repairAttempt,
+        file_path: clip.file_path || '', file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
+        video_url: clip.video_url || clip.videoUrl || '',
+      }, shots.length);
+      const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
+      clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
+      videoAdapter.updateVideoShotStatus(taskId, index, {
+        lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
+        qa_problems: qa.problems || [], qa_failure_dimensions: qa.failure_dimensions || [], qa_failure_labels_zh: qa.failure_labels_zh || [],
+        error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED', retryable: !qa.pass,
+      }, shots.length);
+      if (!qa.pass) qaFailures.push({ index, kind: 'frame_qa', dimensions: qa.failure_dimensions || [], labels_zh: qa.failure_labels_zh || [], problems: qa.problems || [], retry_instruction: qa.retry_instruction || '', repairable: true });
+    }
+    const crossIndexes = [...new Set(reviewedIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
+    for (const index of crossIndexes) {
+      const previous = clips[index - 1];
+      const current = clips[index];
+      if (!previous?.qa?.pass || !current?.qa?.pass) continue;
+      const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: shots[index - 1] || {}, currentShot: shots[index] || {}, ctx });
+      clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED' };
+      videoAdapter.updateVideoShotStatus(taskId, index, {
+        lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed', cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
+        cross_shot_qa_problems: crossQa.problems || [], cross_shot_failure_dimensions: crossQa.failure_dimensions || [], cross_shot_failure_labels_zh: crossQa.failure_labels_zh || [],
+        error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED', retryable: !crossQa.pass,
+      }, shots.length);
+      if (!crossQa.pass) qaFailures.push({ index, kind: 'cross_shot_qa', dimensions: crossQa.failure_dimensions || [], labels_zh: crossQa.failure_labels_zh || [], problems: crossQa.problems || [], retry_instruction: crossQa.retry_instruction || '', repairable: true });
+    }
+    storage.saveOutput(taskId, 'video_clips', clips);
+    if (!qaFailures.length) break;
+    const plan = videoRepairPolicy.buildRepairPlan(qaFailures, { attempt: repairAttempt, maxAttempts: maxRepairs });
+    const history = Array.isArray(storage.getOutput(taskId, 'video_repair_history')) ? storage.getOutput(taskId, 'video_repair_history') : [];
+    history.push({
+      attempt: repairAttempt, next_attempt: plan.next_attempt, max_attempts: maxRepairs,
+      status: plan.can_retry ? 'retrying' : 'exhausted', indexes: plan.failures.map(item => item.index + 1),
+      failures: plan.failures, policy_version: policy.version, recorded_at: new Date().toISOString(),
+    });
+    storage.saveOutput(taskId, 'video_repair_history', history.slice(-100));
+    if (!plan.can_retry) break;
+    repairAttempt = plan.next_attempt;
+    targetIndexes = plan.indexes;
+    repairInstructions = plan.instructions;
+    storage.saveStage(taskId, 'video', {
+      status: 'running', input_summary: `${shots.length} shot videos`,
+      output_summary: `正在自动修复第 ${targetIndexes.map(index => index + 1).join('、')} 镜（${repairAttempt}/${maxRepairs}）`,
+      diagnostics: { qa_failures: plan.failures, repair_attempt: repairAttempt, max_repair_attempts: maxRepairs },
+    });
   }
   storage.saveOutput(taskId, 'video_clips', clips);
   if (qaFailures.length) {
-    storage.saveStage(taskId, 'video', { status: 'failed', output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`, error: '视频审片未通过', diagnostics: { qa_failures: qaFailures } });
-    storage.updateTask(taskId, { status: 'failed', stage: 'video_failed', error: '部分视频镜头未通过视觉审核，请只重试失败镜头', error_code: 'VIDEO_QA_FAILED', retryable: true });
-    const error = new Error('视频审片未通过：' + qaFailures.map(item => `第 ${item.index + 1} 镜`).join('、'));
-    error.code = 'VIDEO_QA_FAILED';
-    error.retryable = true;
-    error.video_clips = clips;
-    error.qa_failures = qaFailures;
+    const mergedFailures = videoRepairPolicy.mergeFailures(qaFailures);
+    storage.saveStage(taskId, 'video', { status: 'failed', output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`, error: '视频审片未通过', diagnostics: { qa_failures: mergedFailures, repair_attempts_used: repairAttempt, max_repair_attempts: maxRepairs } });
+    storage.updateTask(taskId, { status: 'failed', stage: 'video_failed', error: `部分镜头在 ${repairAttempt} 次自动修复后仍未通过视觉审核`, error_code: 'VIDEO_QA_FAILED', retryable: true });
+    const error = new Error('视频审片未通过：' + mergedFailures.map(item => `第 ${item.index + 1} 镜（${item.labels_zh.join('、') || '质量审核'}）`).join('；'));
+    error.code = 'VIDEO_QA_FAILED'; error.retryable = true; error.video_clips = clips; error.qa_failures = mergedFailures;
     throw error;
   }
   storage.saveStage(taskId, 'video', {
     status: 'done',
     output_summary: `${clips.filter(Boolean).length} video clips`,
-    diagnostics: { provider_used: generated.provider_used || '', schedule: generated.schedule || null },
+    diagnostics: { provider_used: lastGenerated.provider_used || pinnedRoute, schedule: lastGenerated.schedule || null, policy_version: policy.version, repair_attempts_used: repairAttempt },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
   return { video_clips: clips };
@@ -2724,12 +2787,22 @@ function subtitleSegmentsFromShots(shots = [], subtitleConfig = {}) {
 async function composeStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  let ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
-  let clips = storage.getOutput(taskId, 'video_clips');
-  if (!Array.isArray(clips) || !clips.length) {
-    const generated = await generateVideoStage(taskId, options);
-    clips = generated.video_clips || [];
+  // Always pass through the video-stage lineage gate before composition. It is
+  // a no-cost reuse check when every approved clip still belongs to the current
+  // task contracts, and selectively regenerates only stale/missing shots.
+  const generated = await generateVideoStage(taskId, options);
+  const clips = generated.video_clips || [];
+  ctx = storage.getOutput(taskId, 'context') || ctx;
+  const unapproved = shots.map((_, index) => index).filter(index => (
+    !videoLineage.clipHasUsableFile(clips[index]) || !videoLineage.qaApproved(clips[index]) || !clips[index]?.lineage_fingerprint
+  ));
+  if (unapproved.length) {
+    const error = new Error(`当前版本仍有未审片或来源不匹配的镜头：${unapproved.map(index => `第 ${index + 1} 镜`).join('、')}`);
+    error.code = 'COMPOSE_CLIP_LINEAGE_INVALID';
+    error.retryable = true;
+    throw error;
   }
   storage.updateTask(taskId, { status: 'running', stage: 'compose' });
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
@@ -2777,14 +2850,19 @@ async function composeStage(taskId, options = {}) {
     subtitleStyle,
     transitions: shots,
   });
-  storage.saveOutput(taskId, 'final_video', final_video);
+  const finalVideoWithLineage = {
+    ...final_video,
+    pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+    clip_lineage_fingerprints: clips.map(clip => clip.lineage_fingerprint),
+  };
+  storage.saveOutput(taskId, 'final_video', finalVideoWithLineage);
   storage.saveStage(taskId, 'compose', {
     status: 'done',
     output_summary: `final video from ${final_video.clip_count || clips.length} clips`,
     diagnostics: { provider_used: final_video.provider_used || '' },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'final_video_ready' });
-  return { final_video, video_clips: clips };
+  return { final_video: finalVideoWithLineage, video_clips: clips };
 }
 
 async function runFull(body = {}, user = {}) {

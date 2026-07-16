@@ -11,6 +11,28 @@ const productIdentity = require('./productIdentityContractService');
 const { cleanText } = require('./contextBuilder');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
+const FRAME_DIMENSIONS = {
+  person_pass: ['person_identity', '人物身份与造型'],
+  product_pass: ['product_identity', '产品与主体一致性'],
+  scene_pass: ['scene_consistency', '场景与环境一致性'],
+  action_pass: ['action_fulfillment', '动作与镜头意图'],
+  people_count_pass: ['people_count', '出镜人数'],
+  text_watermark_pass: ['text_watermark', '文字或水印'],
+};
+const CROSS_DIMENSIONS = {
+  person_position_score: ['person_position', '人物位置连续性'],
+  wardrobe_score: ['wardrobe', '服装与造型连续性'],
+  prop_state_score: ['prop_state', '道具与主体状态连续性'],
+  scene_score: ['scene_continuity', '相邻场景连续性'],
+  screen_direction_score: ['screen_direction', '运动与视线方向连续性'],
+  action_continuity_score: ['action_continuity', '动作承接连续性'],
+};
+
+function failedDimensionDetails(values = {}, mapping = {}, threshold = null) {
+  return Object.entries(mapping).filter(([key]) => (
+    threshold === null ? values[key] === false : Number(values[key] || 0) < threshold
+  )).map(([key, [code, label]]) => ({ key, code, label }));
+}
 
 function runFfmpeg(args) {
   if (!ffmpegPath) return Promise.reject(new Error('ffmpeg-static is unavailable'));
@@ -157,6 +179,9 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     warnings: decision.warnings,
     accepted_provenance_watermark: decision.accepted_provenance_watermark,
     retry_instruction: cleanText(parsed.retry_instruction || '', 800),
+    failure_dimensions: failedDimensionDetails(normalized, FRAME_DIMENSIONS).map(item => item.code),
+    failure_labels_zh: failedDimensionDetails(normalized, FRAME_DIMENSIONS).map(item => item.label),
+    contract_fingerprint: String(contract.contract_fingerprint || ''),
     frames,
     checked_at: new Date().toISOString(),
     used_model: result.used_model,
@@ -180,8 +205,19 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   const problems = Array.isArray(parsed.problems) ? parsed.problems.map(value => cleanText(value, 300)).filter(Boolean) : [];
   const scores = ['person_position_score', 'wardrobe_score', 'prop_state_score', 'scene_score', 'screen_direction_score', 'action_continuity_score'];
   const normalized = Object.fromEntries(scores.map(key => [key, Math.max(0, Math.min(1, Number(parsed[key]) || 0))]));
-  const pass = parsed.pass === true && scores.every(key => normalized[key] >= 0.7) && !problems.length;
-  return { pass, status: pass ? 'verified' : 'rejected', ...normalized, problems, checked_at: new Date().toISOString(), used_model: result.used_model };
+  const failed = failedDimensionDetails(normalized, CROSS_DIMENSIONS, 0.7);
+  const pass = parsed.pass === true && !failed.length && !problems.length;
+  const retryInstruction = cleanText(parsed.retry_instruction || [
+    failed.length ? `Repair continuity dimensions: ${failed.map(item => item.code).join(', ')}.` : '',
+    problems.length ? `Observed problems: ${problems.join('; ')}.` : '',
+  ].filter(Boolean).join(' '), 1000);
+  return {
+    pass, status: pass ? 'verified' : 'rejected', ...normalized, problems,
+    failure_dimensions: failed.map(item => item.code),
+    failure_labels_zh: failed.map(item => item.label),
+    retry_instruction: retryInstruction,
+    checked_at: new Date().toISOString(), used_model: result.used_model,
+  };
 }
 
-module.exports = { FRAME_POINTS, extractReviewFrames, reviewDecision, expectedPeopleForShot, reviewVideoClip, reviewCrossShot };
+module.exports = { FRAME_POINTS, FRAME_DIMENSIONS, CROSS_DIMENSIONS, failedDimensionDetails, extractReviewFrames, reviewDecision, expectedPeopleForShot, reviewVideoClip, reviewCrossShot };

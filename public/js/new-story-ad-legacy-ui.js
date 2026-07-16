@@ -3035,6 +3035,26 @@
     return host;
   }
 
+  function videoFailureDetails(clips = []) {
+    return (Array.isArray(clips) ? clips : []).map((clip, index) => {
+      if (!clip || (!clip.error_code && clip.qa?.pass !== false && clip.cross_shot_qa?.pass !== false)) return null;
+      const labels = [
+        ...(Array.isArray(clip.qa?.failure_labels_zh) ? clip.qa.failure_labels_zh : []),
+        ...(Array.isArray(clip.cross_shot_qa?.failure_labels_zh) ? clip.cross_shot_qa.failure_labels_zh : []),
+      ];
+      const problems = [
+        ...(Array.isArray(clip.qa?.problems) ? clip.qa.problems : []),
+        ...(Array.isArray(clip.cross_shot_qa?.problems) ? clip.cross_shot_qa.problems : []),
+      ];
+      return {
+        index: index + 1,
+        title: state.shots?.[index]?.title || `镜头 ${index + 1}`,
+        reason: [...new Set(labels.concat(problems))].filter(Boolean).join('；') || clip.error || '当前版本视频审核未通过',
+        attempt: Number(clip.repair_attempt || 0),
+      };
+    }).filter(Boolean);
+  }
+
   function renderMedia() {
     const voiceSummary = within('#dhNsaAdVoiceSummary');
     const subtitleSummary = within('#dhNsaAdSubtitleSummary');
@@ -3076,7 +3096,11 @@
         : compose.message));
     }
     if (gate) {
-      const failed = state.taskStatus === 'failed' && state.taskError;
+      const mediaActive = !!state.activeGenerationId
+        || state.stageProgress?.active === true
+        || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
+      const failed = !mediaActive && state.taskStatus === 'failed' && state.taskError;
+      const failureDetails = videoFailureDetails(clips);
       gate.hidden = !restoreFailed && !restoring && compose.ready && !failed;
       gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : 'is-warning')}`;
       gate.innerHTML = restoreFailed
@@ -3084,7 +3108,7 @@
         : (restoring
         ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
         : (failed
-        ? `<b>上次合成未完成</b><span>${escapeHtml(state.taskError)}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`
+        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span>${failureDetails.length ? `<div>${failureDetails.map(item => `<div>第 ${item.index} 镜「${escapeHtml(item.title)}」：${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</div>`).join('')}</div>` : ''}<span>重新合成时只会重做未通过或版本已变化的镜头，已通过镜头会保留。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜与约束</button>`
         : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
     }
     if (!tracks.length && !clips.length && !finalUrl) {
