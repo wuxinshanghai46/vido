@@ -40,13 +40,22 @@ assert.strictEqual(i2v.resolution, '1080p');
 assert.strictEqual(i2v.duration, 10);
 assert.deepStrictEqual(i2v.content[1], {
   type: 'image_url',
-  image_url: { url: 'asset://asset-person-001' },
-  role: 'reference_image',
-});
-assert.deepStrictEqual(i2v.content[2], {
-  type: 'image_url',
   image_url: { url: 'https://example.com/frame.png' },
   role: 'first_frame',
+});
+assert.strictEqual(i2v.content.length, 2, '首帧模式不能混入 reference_image');
+
+const referenceOnly = buildSeedanceContentTaskBody({
+  model: 'doubao-seedance-2-0-260128',
+  prompt: 'reference only',
+  duration: 5,
+  size: '720x1280',
+  referenceAssetUrls: ['asset://asset-person-001'],
+});
+assert.deepStrictEqual(referenceOnly.content[1], {
+  type: 'image_url',
+  image_url: { url: 'asset://asset-person-001' },
+  role: 'reference_image',
 });
 
 assert.strictEqual(

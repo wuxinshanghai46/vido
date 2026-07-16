@@ -121,7 +121,11 @@ function normalizeSeedanceAssetUri(value = '') {
 
 function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [] }) {
   const content = [{ type: 'text', text: String(prompt || '').trim().substring(0, 4000) }];
-  const assets = [...new Set((Array.isArray(referenceAssetUrls) ? referenceAssetUrls : [referenceAssetUrls])
+  // Seedance 2.0 rejects requests that mix first/last-frame inputs with
+  // reference-media assets. A generated keyframe already contains the locked
+  // person/product/scene appearance, so frame-driven video must use that frame
+  // alone. Reference assets remain valid for reference-only generation.
+  const assets = imageUrl ? [] : [...new Set((Array.isArray(referenceAssetUrls) ? referenceAssetUrls : [referenceAssetUrls])
     .map(normalizeSeedanceAssetUri)
     .filter(Boolean))].slice(0, 8);
   for (const assetUrl of assets) {
