@@ -80,9 +80,13 @@ assert(ui.includes('include_voiceover: !!state.voiceId'), 'media payload must ex
 assert(ui.includes("if (state.voiceId && !await runStage('tts', button))"), 'legacy media chain must skip TTS without a selected voice');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
-assert(ui.includes('const failed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
+assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
 assert(ui.includes('只会重做失败镜头所属的连续场景段或版本已变化的镜头'), 'retry behavior must explain scene-block regeneration boundaries');
+assert(ui.includes('data-nsa-media-result-state'), 'media result must display an explicit success, running, incomplete or failed state');
+assert(ui.includes('最终成片没有生成，因此这里不会出现成片播放器'), 'failed media result must explain why no player is visible');
+assert(ui.includes('有效镜头 ${approvedVideoShots}/${totalVideoShots}'), 'media result must report QA-approved shots instead of raw clip array length');
+assert(!ui.includes('clips.length ? `视频镜头 ${clips.length} 条`'), 'raw clip records must never be presented as successful video shots');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('media', ctx)"), 'primary media chain must be owned by one resumable server job');

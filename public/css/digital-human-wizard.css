@@ -1790,6 +1790,20 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-nsa-admin-shot-error { color: #dc2626; font-weight: 700; }
 .dh-nsa-admin-monitor-empty { display: grid; gap: 8px; min-height: 150px; place-content: center; text-align: center; color: var(--dh-text-muted); }
 .dh-nsa-admin-monitor-empty b { color: var(--dh-text); }
+.dh-nsa-media-result-state { display: grid; gap: 5px; margin: 10px 0 12px; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 12px; background: #f8fafc; color: #475569; }
+.dh-nsa-media-result-state b { color: #0f172a; font-size: 14px; }
+.dh-nsa-media-result-state span { font-size: 12px; line-height: 1.55; }
+.dh-nsa-media-result-state em { font-style: normal; font-size: 11px; font-weight: 800; }
+.dh-nsa-media-result-state.is-success { border-color: #86efac; background: #f0fdf4; color: #166534; }
+.dh-nsa-media-result-state.is-success b { color: #15803d; }
+.dh-nsa-media-result-state.is-failed { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+.dh-nsa-media-result-state.is-failed b { color: #dc2626; }
+.dh-nsa-media-result-state.is-running { border-color: #7dd3fc; background: #f0f9ff; color: #075985; }
+.dh-nsa-media-result-state.is-running b { color: #0284c7; }
+.dh-nsa-media-failure-list { display: grid; gap: 8px; margin-top: 12px; }
+.dh-nsa-media-failure-list > div { display: grid; gap: 3px; padding: 10px 12px; border-left: 3px solid #ef4444; border-radius: 8px; background: #fff7f7; }
+.dh-nsa-media-failure-list b { color: #991b1b; font-size: 12px; }
+.dh-nsa-media-failure-list span { color: #7f1d1d; font-size: 11px; line-height: 1.5; }
 .dh-nsa-cancel-generation { appearance: none; border: 1px solid rgba(239, 68, 68, .42); border-radius: 9px; background: rgba(239, 68, 68, .09); color: #dc2626; cursor: pointer; font: inherit; font-size: 12px; font-weight: 800; line-height: 1; padding: 8px 12px; transition: background .18s ease, border-color .18s ease, opacity .18s ease; }
 .dh-nsa-cancel-generation:hover:not(:disabled) { background: rgba(239, 68, 68, .16); border-color: rgba(239, 68, 68, .7); }
 .dh-nsa-cancel-generation:disabled { cursor: wait; opacity: .55; }

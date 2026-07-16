@@ -3090,6 +3090,23 @@
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
     const continuousBlocks = [...new Set(clips.filter(clip => Array.isArray(clip?.scene_block_members) && clip.scene_block_members.length > 1).map(clip => clip.scene_block_id).filter(Boolean))];
     const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
+    const videoProgress = state.generationProgress?.stage === 'video' || state.generationProgress?.stage === 'compose'
+      ? state.generationProgress
+      : null;
+    const totalVideoShots = Math.max(Number(videoProgress?.total || 0), state.shots.length, clips.length);
+    const qaApprovedFromClips = clips.filter(clip => clip
+      && (clip.video_url || clip.videoUrl || clip.file_path)
+      && !clip.error_code
+      && clip.qa?.pass === true
+      && clip.cross_shot_qa?.pass !== false).length;
+    const approvedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.qa_passed ?? qaApprovedFromClips) || 0));
+    const generatedVideoShots = Math.max(approvedVideoShots, Math.min(totalVideoShots, Number(videoProgress?.generated ?? 0) || 0));
+    const failedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.failed ?? Math.max(0, totalVideoShots - approvedVideoShots)) || 0));
+    const mediaActive = !!state.activeGenerationId
+      || state.stageProgress?.active === true
+      || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
+    const mediaFailed = !mediaActive && state.taskStatus === 'failed';
+    const failureDetails = videoFailureDetails(clips);
     const compose = composeReadiness();
     const composeSummary = within('#dhNsaAdComposeSummary');
     const progressHint = within('#dhNsaAdProgressHint');
@@ -3115,11 +3132,7 @@
         : compose.message));
     }
     if (gate) {
-      const mediaActive = !!state.activeGenerationId
-        || state.stageProgress?.active === true
-        || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
-      const failed = !mediaActive && state.taskStatus === 'failed' && state.taskError;
-      const failureDetails = videoFailureDetails(clips);
+      const failed = mediaFailed && state.taskError;
       gate.hidden = !restoreFailed && !restoring && compose.ready && !failed;
       gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : 'is-warning')}`;
       gate.innerHTML = restoreFailed
@@ -3136,13 +3149,25 @@
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
       <div class="dh-task-detail-title">媒体生成结果</div>
+      <div class="dh-nsa-media-result-state ${finalUrl ? 'is-success' : (mediaFailed ? 'is-failed' : (mediaActive ? 'is-running' : 'is-incomplete'))}" data-nsa-media-result-state>
+        <b>${finalUrl ? '成片合成成功' : (mediaFailed ? '本次合成失败' : (mediaActive ? '正在生成媒体' : '最终成片尚未生成'))}</b>
+        <span>${finalUrl
+          ? '最终成片已生成，可以直接播放。'
+          : (mediaFailed
+            ? `最终成片没有生成，因此这里不会出现成片播放器。${state.taskError ? `失败原因：${escapeHtml(state.taskError)}` : ''}`
+            : (mediaActive ? '后台仍在处理镜头或最终封装，请等待真实状态更新。' : '当前只有中间片段记录，不代表最终成片成功。'))}</span>
+        ${mediaFailed && state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}
+      </div>
       ${finalUrl ? `<video class="dh-task-detail-preview-video" src="${escapeHtml(finalUrl)}" controls playsinline></video>` : ''}
       <div class="dh-task-detail-value">${escapeHtml([
         tracks.length ? `配音 ${tracks.length} 条` : '',
-        clips.length ? `视频镜头 ${clips.length} 条` : '',
+        totalVideoShots ? `有效镜头 ${approvedVideoShots}/${totalVideoShots}` : '',
+        generatedVideoShots > approvedVideoShots ? `已落地待审核 ${generatedVideoShots - approvedVideoShots}` : '',
+        failedVideoShots ? `未通过 ${failedVideoShots}` : '',
         continuousBlocks.length ? `连续场景段 ${continuousBlocks.length} 组` : '',
-        finalUrl ? '成片已生成' : '',
+        finalUrl ? '最终成片已生成' : '最终成片未生成',
       ].filter(Boolean).join(' · ') || '等待生成')}</div>
+      ${mediaFailed && failureDetails.length ? `<div class="dh-nsa-media-failure-list">${failureDetails.map(item => `<div><b>第 ${item.index} 镜${item.title ? `「${escapeHtml(item.title)}」` : ''}</b><span>${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</span></div>`).join('')}</div>` : ''}
     </div>`;
   }
 
