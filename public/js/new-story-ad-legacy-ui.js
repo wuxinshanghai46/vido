@@ -2852,6 +2852,20 @@
       const frame = state.keyframes[i] || {};
       const image = window.NewStoryAdKeyframes?.frameUrl ? window.NewStoryAdKeyframes.frameUrl(frame) : (frame.image_url || frame.imageUrl || frame.url || '');
       const preview = image ? withAuthQuery(image) : '';
+      const videoClip = (Array.isArray(state.videoClips) ? state.videoClips : []).find((clip, clipIndex) => {
+        if (!clip) return false;
+        if (Number.isInteger(Number(clip.shot_index))) return Number(clip.shot_index) === i;
+        if (Number.isInteger(Number(clip.index))) return Number(clip.index) === i + 1;
+        return clipIndex === i;
+      }) || {};
+      const shotVideoUrl = videoClip.video_url || videoClip.videoUrl || '';
+      const shotVideoReady = !!shotVideoUrl;
+      const shotVideoQaPassed = shotVideoReady && videoClip.qa?.pass === true && videoClip.cross_shot_qa?.pass !== false;
+      const shotVideoQaFailed = shotVideoReady && (videoClip.qa?.pass === false || videoClip.cross_shot_qa?.pass === false || !!videoClip.error_code);
+      const shotVideoState = shotVideoQaPassed ? 'is-passed' : (shotVideoQaFailed ? 'is-failed' : 'is-review');
+      const shotVideoLabel = shotVideoQaPassed
+        ? '视频已生成并审核通过'
+        : (shotVideoQaFailed ? '视频已生成，但审核未通过，可播放检查' : '视频已生成，等待审核');
       const dialogue = Array.isArray(shot.dialogue_lines)
         ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '\uff1a' : ''}${d.line || d.text || ''}`).filter(Boolean).join('\uff1b')
         : (shot.dialogue || shot.voiceover || '');
@@ -2935,6 +2949,10 @@
         </header>
         ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span>${reviewableCandidate ? `<button type="button" data-nsa-candidate-review="${i}:${escapeHtml(reviewableCandidate.id || '')}">重新验证此图</button>` : `<button type="button" data-nsa-shot-regenerate="${i}">重新生成</button>`}</div>` : ''}
         <div class="dh-nsa-frame-media">
+          ${shotVideoReady ? `<section class="dh-nsa-shot-video-result ${shotVideoState}">
+            <div><b>本镜视频</b><span>${shotVideoLabel}</span></div>
+            <video src="${escapeHtml(withAuthQuery(shotVideoUrl))}" ${image ? `poster="${escapeHtml(preview)}"` : ''} controls playsinline preload="metadata"></video>
+          </section>` : ''}
           ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
             <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>

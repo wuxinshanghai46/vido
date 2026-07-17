@@ -1531,6 +1531,14 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-frame-status-note button { flex: 0 0 auto; min-height: 32px; padding: 5px 11px; border: 1px solid rgba(245,158,11,.40); border-radius: 8px; background: color-mix(in srgb, #fff 78%, #f59e0b); color: #92400e; cursor: pointer; font: inherit; font-weight: 900; }
 .dh-nsa-frame-status-note button:hover { border-color: rgba(245,158,11,.72); background: color-mix(in srgb, #fff 66%, #f59e0b); }
 .dh-nsa-frame-media { grid-area: media; min-width: 0; display: grid; align-content: start; gap: 9px; }
+.dh-nsa-shot-video-result { overflow: hidden; border: 1px solid rgba(33,255,243,.28); border-radius: 12px; background: #05070b; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+.dh-nsa-shot-video-result > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; background: rgba(33,255,243,.08); }
+.dh-nsa-shot-video-result b { color: #fff; font-size: 12px; }
+.dh-nsa-shot-video-result span { color: rgba(255,255,255,.7); font-size: 10px; text-align: right; }
+.dh-nsa-shot-video-result.is-passed > div { background: rgba(62,220,137,.11); }
+.dh-nsa-shot-video-result.is-failed { border-color: rgba(255,91,108,.42); }
+.dh-nsa-shot-video-result.is-failed > div { background: rgba(255,91,108,.13); }
+.dh-nsa-shot-video-result video { display: block; width: 100%; aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); object-fit: contain; background: #000; }
 .dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }
 .dh-nsa-frame-media .dh-nsa-candidate-strip { padding: 8px; }
 .dh-nsa-frame-media .dh-nsa-candidate-strip > div { gap: 6px; }
