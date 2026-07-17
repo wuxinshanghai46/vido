@@ -314,6 +314,23 @@ function storyboardStatus(bundle = {}, outputs = {}) {
 
 function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
   const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
+  const videoShotStatuses = (rawBundle.outputs || [])
+    .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
+    .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
+    .map(row => row.payload || {})
+    .filter(Boolean)
+    .map((status, index) => ({
+      index: Number(status.index || status.shot_index || index + 1),
+      title: cleanText(status.title || '', 120),
+      lifecycle: cleanText(status.lifecycle || 'pending', 40),
+      scene_block_id: cleanText(status.scene_block_id || '', 100),
+      scene_block_members: Array.isArray(status.scene_block_members) ? status.scene_block_members.map(Number).filter(Number.isInteger) : [],
+      qa_status: cleanText(status.qa_status || '', 40),
+      error: cleanText(status.error || '', 300),
+      error_code: cleanText(status.error_code || '', 80),
+      retryable: status.retryable === true,
+      updated_at: status.updated_at || '',
+    }));
   const visibleOutputs = includeVideoMonitor
     ? (rawBundle.outputs || [])
     : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'));
@@ -361,6 +378,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     task,
     context,
     outputs,
+    video_shot_statuses: videoShotStatuses,
     storyboard_status: currentStoryboardStatus,
     keyframe_status: keyframeStatus,
   };

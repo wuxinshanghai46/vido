@@ -117,6 +117,11 @@ function testPersistedShotMonitor() {
   assert.strictEqual(task.generation_progress.stage, 'video');
   assert.strictEqual(task.generation_progress.generation_id, 'video-generation-current', '视频进度必须绑定本次后台生成，不能继承旧关键帧任务 ID');
   assert.strictEqual(task.generation_progress.started_at, '2026-07-16T08:00:00.000Z');
+  const publicBundle = storyService.publicTaskBundle('monitor-task');
+  assert.strictEqual(publicBundle.video_shot_statuses[0].lifecycle, 'qa_passed');
+  assert.strictEqual(publicBundle.video_shot_statuses[0].index, 1);
+  assert.strictEqual(publicBundle.video_shot_statuses[0].provider_task_id, undefined, '普通任务页不能暴露供应商任务标识');
+  assert(!Object.keys(publicBundle.outputs || {}).some(kind => String(kind).startsWith('video_shot_status_')), '逐镜状态应使用安全摘要而不是原始监控记录');
 }
 
 function testManualVideoAcceptanceDoesNotGenerate() {

@@ -141,6 +141,7 @@
     state.review = outputs.quality_review || response.review || state.review;
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
+    state.videoShotStatuses = response.video_shot_statuses || bundle.video_shot_statuses || state.videoShotStatuses || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
     detectMissingStoryboardOutput(state, outputs);
     if (task.id || task.status || task.stage || task.error || task.error_code) {
@@ -251,6 +252,7 @@
     state.review = outputs.quality_review || state.review;
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips;
+    state.videoShotStatuses = bundle.video_shot_statuses || state.videoShotStatuses || [];
     state.finalVideo = outputs.final_video || state.finalVideo;
     detectMissingStoryboardOutput(state, outputs);
     state.taskStatus = task.status || '';

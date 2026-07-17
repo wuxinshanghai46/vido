@@ -120,7 +120,14 @@ assert(ui.includes("sessionStorage.setItem('vido_nsa_voice_catalog'"), 'voice ca
 assert(ui.includes('include_voiceover: !!state.voiceId'), 'media payload must explicitly disable voiceover when no voice is selected');
 assert(ui.includes("if (state.voiceId && !await runStage('tts', button))"), 'legacy media chain must skip TTS without a selected voice');
 assert(!ui.includes("if (!await runStage('video', button)) return;"), 'step 5 must not regenerate storyboard videos');
-assert(ui.includes('重新产生生成费用'), 'full video regeneration must require an explicit cost warning');
+assert(ui.includes('已有视频也会被新版本替换'), 'full video regeneration must require an explicit replacement warning');
+assert(ui.includes('function confirmNsaAction'), 'video cost confirmation must use an in-product modal');
+assert(!ui.includes('window.confirm'), 'story-ad actions must not use poor browser-native confirmation dialogs');
+assert(ui.includes('点击取消不会改变按钮和任务状态'), 'full regeneration modal must explain that cancellation has no side effects');
+assert(ui.includes("querySelectorAll('.is-busy, [aria-busy=\"true\"]')"), 'successful cancellation must immediately clear the triggering button busy state');
+assert(ui.includes('视频尚未生成'), 'each storyboard row must distinguish missing video output');
+assert(ui.includes('视频已生成，等待审核'), 'each storyboard row must distinguish generated video awaiting review');
+assert(ui.includes('videoShotStatuses'), 'the UI must hydrate persisted per-shot video lifecycle state');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
@@ -140,6 +147,8 @@ assert(generationFlow.includes('force_regenerate_all: regenerateAll'), 'full reg
 
 const wizardCss = read('public/css/digital-human-wizard.css');
 assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-generating'), 'only the actively running step-4 action should receive the highlighted style');
+assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
+assert(wizardCss.includes('.dh-nsa-video-status-badge'), 'each storyboard row must visibly label video state');
 const route = read('src/routes/newStoryAd.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
 assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
