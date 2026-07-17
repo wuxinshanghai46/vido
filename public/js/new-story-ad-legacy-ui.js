@@ -2866,6 +2866,7 @@
       const shotVideoLabel = shotVideoQaPassed
         ? '视频已生成并审核通过'
         : (shotVideoQaFailed ? '视频已生成，但审核未通过，可播放检查' : '视频已生成，等待审核');
+      const shotVideoPoster = image ? withAuthQuery(assetThumbUrl(image, 520)) : '';
       const dialogue = Array.isArray(shot.dialogue_lines)
         ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '\uff1a' : ''}${d.line || d.text || ''}`).filter(Boolean).join('\uff1b')
         : (shot.dialogue || shot.voiceover || '');
@@ -2951,13 +2952,12 @@
         <div class="dh-nsa-frame-media">
           ${shotVideoReady ? `<section class="dh-nsa-shot-video-result ${shotVideoState}">
             <div><b>本镜视频</b><span>${shotVideoLabel}</span></div>
-            <video src="${escapeHtml(withAuthQuery(shotVideoUrl))}" ${image ? `poster="${escapeHtml(preview)}"` : ''} controls playsinline preload="metadata"></video>
-          </section>` : ''}
-          ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+            <video src="${escapeHtml(withAuthQuery(shotVideoUrl))}" ${shotVideoPoster ? `poster="${escapeHtml(shotVideoPoster)}"` : ''} controls playsinline preload="none"></video>
+          </section>` : (window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
             <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
             <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
-          </button>`}
+          </button>`)}
           ${candidateStrip}
         </div>
         <div class="dh-nsa-frame-editor">
@@ -3053,7 +3053,7 @@
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-edit="${i}">编辑</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
-            ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">\u67e5\u770b\u5927\u56fe</button>` : ''}
+            ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">分镜图</button>` : ''}
           </div>
         </div>
       </article>`;
