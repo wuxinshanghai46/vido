@@ -43,9 +43,12 @@
     const hasBrief = brief.length >= 8;
     const hasBlueprint = !!state.blueprint;
     const hasShots = Array.isArray(state.shots) && state.shots.length > 0;
+    const frames = window.NewStoryAdStepNavigation?.keyframeReadiness
+      ? window.NewStoryAdStepNavigation.keyframeReadiness({ state })
+      : { ready: hasShots, message: '请先生成并审核全部真实画面' };
     const compose = window.NewStoryAdStepNavigation?.composeReadiness
       ? window.NewStoryAdStepNavigation.composeReadiness({ state })
-      : { ready: hasShots, message: '请先生成并审核全部分镜' };
+      : { ready: false, message: '请先在第 4 步生成并审核全部分镜视频' };
     const hasActorInput = !!getPersonSpec('appearanceText');
     const noHuman = getPersonSpec('castMode') === 'no_human';
 
@@ -55,8 +58,9 @@
     lock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
-    lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜');
-    lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜');
+    lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
+    lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
+    lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
     lock('#dhNsaAdGeneratePersonSheet', noHuman || (!hasBrief && !hasActorInput), noHuman ? '无人物模式不需要生成演员' : '请先填写广告需求或人物设定', { allowBusy: true });
     lock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     lock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });

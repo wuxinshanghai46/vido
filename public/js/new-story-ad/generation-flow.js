@@ -308,9 +308,14 @@
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'video') {
-        r = await startStage(id, 'video', mediaStageBody(ctx), ctx);
+        r = await startStage(id, 'video', {
+          ...mediaStageBody(ctx),
+          include_voiceover: false,
+          auto_tts: false,
+          visual_only: true,
+        }, ctx);
         normalizeBundle?.(r);
-        showStep?.(5);
+        showStep?.(4);
       } else if (stage === 'compose') {
         r = await startStage(id, 'compose', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
@@ -379,7 +384,8 @@
   }
 
   async function runMediaChain(ctx = {}) {
-    return runStage('media', ctx);
+    if (ctx.state?.voiceId && !await runStage('tts', ctx)) return false;
+    return runStage('compose', ctx);
   }
 
   async function assist(mode, ctx = {}) {

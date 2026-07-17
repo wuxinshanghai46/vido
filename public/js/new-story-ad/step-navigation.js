@@ -16,7 +16,7 @@
     return { total, fresh_pass: freshPass, needs_regeneration: Math.max(0, total - freshPass) };
   }
 
-  function composeReadiness(ctx = {}) {
+  function keyframeReadiness(ctx = {}) {
     const state = ctx.state || {};
     const shots = Array.isArray(state.shots) ? state.shots : [];
     const status = window.NewStoryAdKeyframes?.status
@@ -36,8 +36,39 @@
     let message = '';
     if (!shots.length) message = '请先生成分镜和真实关键帧';
     else if (!storyboardReady) message = '剧本或分镜已修改，请重新确认并生成当前版本分镜';
-    else if (!ready) message = `当前版本仅通过 ${passed}/${Math.max(total, shots.length)} 镜，请先修复未通过审核的镜头`;
+    else if (!ready) message = `当前版本只有 ${passed}/${Math.max(total, shots.length)} 镜画面审核通过，请先修复未通过镜头`;
     return { ready, message, total: Math.max(total, shots.length), passed, needs_regeneration: needsRegeneration };
+  }
+
+  function clipForShot(clips = [], index = 0) {
+    return clips.find((clip, clipIndex) => {
+      if (!clip) return false;
+      if (Number.isInteger(Number(clip.shot_index))) return Number(clip.shot_index) === index;
+      if (Number.isInteger(Number(clip.index))) return Number(clip.index) === index + 1;
+      return clipIndex === index;
+    }) || null;
+  }
+
+  function composeReadiness(ctx = {}) {
+    const state = ctx.state || {};
+    const shots = Array.isArray(state.shots) ? state.shots : [];
+    const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
+    const frames = keyframeReadiness({ state });
+    const passed = shots.filter((_, index) => {
+      const clip = clipForShot(clips, index);
+      return !!(clip?.video_url || clip?.videoUrl || clip?.file_path)
+        && !clip?.error
+        && !clip?.error_code
+        && clip?.qa?.pass === true
+        && clip?.cross_shot_qa?.pass !== false;
+    }).length;
+    const total = shots.length;
+    const ready = frames.ready && total > 0 && passed === total;
+    let message = '';
+    if (!frames.ready) message = frames.message;
+    else if (!clips.length) message = '请先在第 4 步生成分镜视频';
+    else if (!ready) message = `当前只有 ${passed}/${total} 镜视频审核通过，请先在第 4 步补齐或修复分镜视频`;
+    return { ready, message, total, passed, needs_regeneration: Math.max(0, total - passed), keyframes: frames };
   }
 
   function stepReady(step, ctx = {}) {
@@ -90,6 +121,7 @@
   }
 
   window.NewStoryAdStepNavigation = {
+    keyframeReadiness,
     composeReadiness,
     showStep,
     stepReady,

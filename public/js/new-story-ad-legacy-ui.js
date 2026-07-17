@@ -3148,7 +3148,7 @@
         : (restoring
         ? '正在读取已确认的分镜和关键帧，请稍候'
         : (compose.ready
-        ? '审核已全部通过，可以生成配音、逐镜视频和最终成片'
+        ? '分镜视频已全部通过；本步骤只生成可选配音、字幕、音乐并拼接最终成片'
         : compose.message));
     }
     if (gate) {
@@ -3160,11 +3160,11 @@
         : (restoring
         ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
         : (failed
-        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span>${failureDetails.length ? `<div>${failureDetails.map(item => `<div>第 ${item.index} 镜「${escapeHtml(item.title)}」：${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</div>`).join('')}</div>` : ''}<span>重新合成时只会重做失败镜头所属的连续场景段或版本已变化的镜头，其他已通过场景段会保留。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜与约束</button>`
-        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部关键帧审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
+        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span><span>分镜视频不会在本步骤重新生成；请检查配音、字幕、音乐或拼接设置后重试。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜视频</button>`
+        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部分镜视频审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
     }
     if (!tracks.length && !clips.length && !finalUrl) {
-      host.innerHTML = '<div class="dh-task-empty-note">还没有生成配音、逐镜视频或成片。</div>';
+      host.innerHTML = '<div class="dh-task-empty-note">分镜视频已在第 4 步确认；这里尚未生成最终成片。</div>';
       return;
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
@@ -3655,6 +3655,15 @@
     };
   }
 
+  function visualVideoStagePayload() {
+    return {
+      ...mediaStagePayload(),
+      include_voiceover: false,
+      auto_tts: false,
+      visual_only: true,
+    };
+  }
+
   async function runStage(stage, button) {
     if (window.NewStoryAdGenerationFlow?.runStage) {
       try {
@@ -3708,9 +3717,9 @@
         normalizeBundle(r);
         showStep(5);
       } else if (stage === 'video') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: mediaStagePayload() });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: visualVideoStagePayload() });
         normalizeBundle(r);
-        showStep(5);
+        showStep(4);
       } else if (stage === 'compose') {
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/compose`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
@@ -3757,9 +3766,8 @@
         console.warn('[newStoryAd] media-chain fallback:', err.message || err);
       }
     }
-    if (state.voiceId && !await runStage('tts', button)) return;
-    if (!await runStage('video', button)) return;
-    await runStage('compose', button);
+    if (state.voiceId && !await runStage('tts', button)) return false;
+    return runStage('compose', button);
   }
 
   async function assist(mode, button) {
@@ -5469,6 +5477,7 @@
         dhNsaAdScriptRegenerateTop: () => runStage('blueprint', btn),
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
         dhNsaAdGenerateFinalFrames: () => runStage('keyframes', btn),
+        dhNsaAdGenerateShotVideos: () => runStage('video', btn),
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),
         dhNsaAdRegenerateFrames: () => runStage('keyframes', btn),
         dhNsaAdDetectStyle: () => runStage('scene', btn),

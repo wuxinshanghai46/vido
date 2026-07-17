@@ -2225,19 +2225,26 @@ async function generateVideoStage(taskId, options = {}) {
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   assertVideoInputsReady({ ctx, shots, keyframes, contracts });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
-  const voiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
-  const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
-  ctx = {
+  const visualOnly = options.visual_only === true || options.visualOnly === true;
+  const selectedVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
+  const voiceId = visualOnly ? '' : selectedVoiceId;
+  const includeVoiceover = !visualOnly && voiceoverEnabled(options, ctx, voiceId);
+  const persistedCtx = {
     ...ctx,
-    voice_id: voiceId,
-    include_voiceover: includeVoiceover,
+    ...(visualOnly ? {} : { voice_id: voiceId, include_voiceover: includeVoiceover }),
     output_ratio: options.aspect_ratio || options.aspectRatio || ctx.output_ratio || '9:16',
     video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
   };
-  storage.saveOutput(taskId, 'context', ctx);
+  ctx = {
+    ...persistedCtx,
+    include_voiceover: visualOnly ? false : includeVoiceover,
+  };
+  storage.saveOutput(taskId, 'context', persistedCtx);
   const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
   const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
-  if (!includeVoiceover) {
+  if (visualOnly) {
+    ttsAudio = silentTtsOutput('visual_only_storyboard_video');
+  } else if (!includeVoiceover) {
     ttsAudio = silentTtsOutput();
     storage.saveOutput(taskId, 'tts_audio', ttsAudio);
   } else if (ttsNeedsRefresh && autoTtsEnabled) {
@@ -2850,12 +2857,12 @@ async function composeStage(taskId, options = {}) {
   if (!task) throw new Error('Task not found');
   let ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
-  // Always pass through the video-stage lineage gate before composition. It is
-  // a no-cost reuse check when every approved clip still belongs to the current
-  // task contracts, and selectively regenerates only stale/missing shots.
-  const generated = await generateVideoStage(taskId, options);
-  const clips = generated.video_clips || [];
-  ctx = storage.getOutput(taskId, 'context') || ctx;
+  // Composition must never generate visual clips. Step 4 owns storyboard video
+  // generation and review; step 5 only mixes optional audio/effects and joins
+  // the already-approved clips.
+  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
+    ? storage.getOutput(taskId, 'video_clips')
+    : [];
   const unapproved = shots.map((_, index) => index).filter(index => (
     !videoLineage.clipHasUsableFile(clips[index]) || !videoLineage.qaApproved(clips[index]) || !clips[index]?.lineage_fingerprint
   ));
@@ -2864,6 +2871,17 @@ async function composeStage(taskId, options = {}) {
     error.code = 'COMPOSE_CLIP_LINEAGE_INVALID';
     error.retryable = true;
     throw error;
+  }
+  let ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
+  const composeVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
+  const includeVoiceover = voiceoverEnabled(options, ctx, composeVoiceId);
+  if (includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, composeVoiceId)) {
+    const generatedTts = await generateTtsStage(taskId, options);
+    ttsAudio = generatedTts.tts_audio;
+    ctx = storage.getOutput(taskId, 'context') || ctx;
+  } else if (!includeVoiceover) {
+    ttsAudio = silentTtsOutput();
+    storage.saveOutput(taskId, 'tts_audio', ttsAudio);
   }
   storage.updateTask(taskId, {
     status: 'running',
@@ -2889,7 +2907,6 @@ async function composeStage(taskId, options = {}) {
   const bgmAsset = hasBgmAssetOption
     ? (options.bgm_asset ?? options.bgmAsset ?? null)
     : (ctx.bgm_asset || ctx.bgmAsset || null);
-  const composeVoiceId = resolveTtsVoiceId(options, ctx, {});
   const composeVoiceName = Object.prototype.hasOwnProperty.call(options, 'voice_name')
     || Object.prototype.hasOwnProperty.call(options, 'voiceName')
     ? cleanText(options.voice_name ?? options.voiceName ?? '', 120)
@@ -2898,7 +2915,7 @@ async function composeStage(taskId, options = {}) {
     ...ctx,
     voice_id: composeVoiceId,
     voice_name: composeVoiceName,
-    include_voiceover: voiceoverEnabled(options, ctx, composeVoiceId),
+    include_voiceover: includeVoiceover,
     voice_volume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,
     bgm_volume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     bgm_profile: cleanText(options.bgm_profile || options.bgmProfile || ctx.bgm_profile || ctx.bgmProfile || 'auto', 60),
@@ -2910,6 +2927,7 @@ async function composeStage(taskId, options = {}) {
   const final_video = await composeService.concatVideos({
     taskId,
     clips,
+    ttsAudio,
     bgmAsset,
     bgmVolume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     voiceVolume: options.voice_volume ?? options.voiceVolume ?? ctx.voice_volume ?? ctx.voiceVolume ?? 1,

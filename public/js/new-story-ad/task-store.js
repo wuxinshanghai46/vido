@@ -78,8 +78,22 @@
       && Number(frame?.qa_policy_version || 0) >= 2
       && frame?.qa?.pass === true
     ));
-    if (finalVideo.video_url || finalVideo.videoUrl || (Array.isArray(outputs.video_clips) && outputs.video_clips.length > 0)) return 5;
-    if (outputs.tts_audio || /(?:final|compose|video|tts|media)/.test(stage)) return currentFramesReady ? 5 : 4;
+    const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
+    const currentVideosReady = shotCount > 0 && clips.length >= shotCount && Array.from({ length: shotCount }).every((_, index) => {
+      const clip = clips.find((item, clipIndex) => {
+        if (!item) return false;
+        if (Number.isInteger(Number(item.shot_index))) return Number(item.shot_index) === index;
+        if (Number.isInteger(Number(item.index))) return Number(item.index) === index + 1;
+        return clipIndex === index;
+      });
+      return !!(clip?.video_url || clip?.videoUrl || clip?.file_path)
+        && !clip?.error && !clip?.error_code
+        && clip?.qa?.pass === true
+        && clip?.cross_shot_qa?.pass !== false;
+    });
+    if (finalVideo.video_url || finalVideo.videoUrl || currentVideosReady) return 5;
+    if (/video/.test(stage)) return 4;
+    if (outputs.tts_audio || /(?:final|compose|tts|media)/.test(stage)) return currentVideosReady ? 5 : 4;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready

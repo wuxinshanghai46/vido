@@ -4,6 +4,7 @@ const { spawn } = require('child_process');
 const cancellation = require('./cancellationContext');
 const ffmpegPath = require('ffmpeg-static');
 const videoAdapter = require('./videoAdapter');
+const ttsAdapter = require('./ttsAdapter');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const COMPOSE_DIR = path.join(OUTPUT_DIR, 'new-story-ad-compose');
@@ -69,6 +70,25 @@ function localVideoPath(clip = {}) {
   return filePath && fs.existsSync(filePath) ? filePath : '';
 }
 
+function localAudioPath(track = {}) {
+  const clean = normalizeLocalUrl(track.audio_url || track.audioUrl || track.url || '').split('?')[0];
+  const prefix = '/api/new-story-ad/audio/';
+  if (!clean.startsWith(prefix)) return '';
+  const filePath = ttsAdapter.audioPathFromName(decodeURIComponent(clean.slice(prefix.length)));
+  return filePath && fs.existsSync(filePath) ? filePath : '';
+}
+
+async function muxVoiceTrack(videoPath = '', audioPath = '', outputPath = '') {
+  if (!videoPath || !audioPath || !outputPath) return videoPath;
+  await execFfmpeg([
+    '-y', '-i', videoPath, '-i', audioPath,
+    '-map', '0:v:0', '-map', '1:a:0',
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+    '-af', 'apad', '-shortest', '-movflags', '+faststart', outputPath,
+  ], 240000);
+  return outputPath;
+}
+
 function normalizeMediaRef(value = '') {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -119,6 +139,7 @@ function quoteConcatPath(filePath = '') {
 async function concatVideos({
   taskId = '',
   clips = [],
+  ttsAudio = {},
   bgmAsset = null,
   bgmVolume = 0.16,
   voiceVolume = 1,
@@ -127,9 +148,23 @@ async function concatVideos({
   subtitleStyle = 'popup',
   transitions = [],
 } = {}) {
-  const inputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
-  if (!inputs.length) throw new Error('new_story_ad compose requires at least one local video clip');
   ensureDir(COMPOSE_DIR);
+  const rawInputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
+  if (!rawInputs.length) throw new Error('new_story_ad compose requires at least one local video clip');
+  const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
+  const inputs = [];
+  let voiceTrackCount = 0;
+  for (let index = 0; index < rawInputs.length; index += 1) {
+    const audioPath = localAudioPath(tracks[index] || {});
+    if (!audioPath) {
+      inputs.push(rawInputs[index]);
+      continue;
+    }
+    const voiceFilename = `${safeBase(`voice_${taskId || 'task'}_${index + 1}_${Date.now()}`)}.mp4`;
+    const voicedPath = path.join(COMPOSE_DIR, voiceFilename);
+    inputs.push(await muxVoiceTrack(rawInputs[index], audioPath, voicedPath));
+    voiceTrackCount += 1;
+  }
   const filename = `${safeBase(`nsa_final_${taskId || 'task'}_${Date.now()}`)}.mp4`;
   const out = path.join(COMPOSE_DIR, filename);
   if (inputs.length === 1) {
@@ -175,6 +210,8 @@ async function concatVideos({
     video_url: finalUrl,
     videoUrl: finalUrl,
     clip_count: inputs.length,
+    voiceover_applied: voiceTrackCount > 0,
+    voiceover_track_count: voiceTrackCount,
     bgm_applied: !!bgmPath,
     subtitle_applied: validSubtitles.length > 0,
     subtitle_style: subtitleStyle || 'popup',
