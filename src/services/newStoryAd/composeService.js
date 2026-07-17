@@ -136,6 +136,90 @@ function quoteConcatPath(filePath = '') {
   return String(filePath).replace(/\\/g, '/').replace(/'/g, "'\\''");
 }
 
+function transitionType(item = {}) {
+  return String(item?.transition_type || item?.transitionType || 'hard_cut').trim().toLowerCase() || 'hard_cut';
+}
+
+function buildTransitionPlan(clips = [], transitions = [], durations = []) {
+  return clips.map((clip, index) => {
+    const authored = transitionType(transitions[index] || {});
+    const previous = index > 0 ? clips[index - 1] || {} : {};
+    const sameContinuousSource = index > 0
+      && clip?.scene_block_id
+      && clip.scene_block_id === previous.scene_block_id
+      && Array.isArray(clip.scene_block_members)
+      && clip.scene_block_members.length > 1;
+    const effect = sameContinuousSource
+      ? 'continuous_source_cut'
+      : (authored === 'dissolve' ? 'dissolve' : (authored === 'fade' ? 'fade_black' : 'cut'));
+    const available = index > 0 ? Math.min(Number(durations[index - 1] || 0), Number(durations[index] || 0)) : 0;
+    const overlap = ['dissolve', 'fade_black'].includes(effect)
+      ? Math.max(0, Math.min(0.35, available / 4))
+      : 0;
+    return {
+      shot_index: index + 1,
+      type: authored,
+      reason: transitions[index]?.transition_reason || transitions[index]?.transitionReason || '',
+      audio_bridge: transitions[index]?.audio_bridge || transitions[index]?.audioBridge || '',
+      execution: effect,
+      overlap_sec: Number(overlap.toFixed(3)),
+      same_continuous_source: sameContinuousSource,
+    };
+  });
+}
+
+async function composeWithTransitionFilters(inputs = [], outputPath = '', plan = [], durations = []) {
+  const args = ['-y'];
+  inputs.forEach(input => args.push('-i', input));
+  const filters = [];
+  inputs.forEach((_, index) => {
+    filters.push(`[${index}:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v${index}]`);
+    filters.push(`[${index}:a]aresample=44100,asetpts=PTS-STARTPTS[a${index}]`);
+  });
+  let videoLabel = 'v0';
+  let audioLabel = 'a0';
+  let timeline = Number(durations[0] || 0);
+  for (let index = 1; index < inputs.length; index += 1) {
+    const row = plan[index] || {};
+    const overlap = Number(row.overlap_sec || 0);
+    const nextVideo = `vj${index}`;
+    const nextAudio = `aj${index}`;
+    if (overlap > 0) {
+      const xfade = row.execution === 'fade_black' ? 'fadeblack' : 'fade';
+      const offset = Math.max(0, timeline - overlap);
+      filters.push(`[${videoLabel}][v${index}]xfade=transition=${xfade}:duration=${overlap.toFixed(3)}:offset=${offset.toFixed(3)}[${nextVideo}]`);
+      filters.push(`[${audioLabel}][a${index}]acrossfade=d=${overlap.toFixed(3)}:c1=tri:c2=tri[${nextAudio}]`);
+      timeline += Number(durations[index] || 0) - overlap;
+    } else {
+      filters.push(`[${videoLabel}][v${index}]concat=n=2:v=1:a=0[${nextVideo}]`);
+      filters.push(`[${audioLabel}][a${index}]concat=n=2:v=0:a=1[${nextAudio}]`);
+      timeline += Number(durations[index] || 0);
+    }
+    videoLabel = nextVideo;
+    audioLabel = nextAudio;
+  }
+  args.push(
+    '-filter_complex', filters.join(';'),
+    '-map', `[${videoLabel}]`, '-map', `[${audioLabel}]`,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22',
+    '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
+    '-movflags', '+faststart', outputPath,
+  );
+  await execFfmpeg(args, 360000);
+}
+
+function adjustSubtitlesForTransitionOverlaps(subtitles = [], plan = []) {
+  return subtitles.map(item => {
+    const shotIndex = Math.max(1, Number(item?.shot_index || 1));
+    const shift = plan.slice(1, shotIndex).reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
+    return {
+      ...item,
+      startTime: Math.max(0, Number(item.startTime || 0) - shift),
+      endTime: Math.max(0, Number(item.endTime || 0) - shift),
+    };
+  });
+}
+
 async function concatVideos({
   taskId = '',
   clips = [],
@@ -167,8 +251,14 @@ async function concatVideos({
   }
   const filename = `${safeBase(`nsa_final_${taskId || 'task'}_${Date.now()}`)}.mp4`;
   const out = path.join(COMPOSE_DIR, filename);
+  const durations = [];
+  for (const input of inputs) durations.push(await videoAdapter.probeDuration(input));
+  const transitionPlan = buildTransitionPlan(clips, transitions, durations);
+  const needsTransitionFilters = transitionPlan.some(row => Number(row.overlap_sec || 0) > 0);
   if (inputs.length === 1) {
     fs.copyFileSync(inputs[0], out);
+  } else if (needsTransitionFilters) {
+    await composeWithTransitionFilters(inputs, out, transitionPlan, durations);
   } else {
     const listFile = path.join(COMPOSE_DIR, `${safeBase(`concat_${taskId || 'task'}_${Date.now()}`)}.txt`);
     fs.writeFileSync(listFile, inputs.map(p => `file '${quoteConcatPath(p)}'`).join('\n'), 'utf8');
@@ -178,10 +268,10 @@ async function concatVideos({
   let finalUrl = publicComposeUrl(filename);
   const bgmPath = localBgmPath(bgmAsset || {});
   const validSubtitles = subtitleEnabled
-    ? (Array.isArray(subtitles) ? subtitles : []).filter(item => item && item.text)
+    ? adjustSubtitlesForTransitionOverlaps((Array.isArray(subtitles) ? subtitles : []).filter(item => item && item.text), transitionPlan)
     : [];
   const needsEffects = !!bgmPath || validSubtitles.length > 0;
-  let providerUsed = 'local-ffmpeg/new-story-ad-compose';
+  let providerUsed = `local-ffmpeg/new-story-ad-compose${needsTransitionFilters ? '+authored-transitions' : ''}`;
   if (needsEffects) {
     const { applyEffects } = require('../effectsService');
     const fx = await applyEffects({
@@ -216,12 +306,7 @@ async function concatVideos({
     subtitle_applied: validSubtitles.length > 0,
     subtitle_style: subtitleStyle || 'popup',
     provider_used: providerUsed,
-    transition_plan: (Array.isArray(transitions) ? transitions : []).map((item, index) => ({
-      shot_index: index + 1,
-      type: item?.transition_type || item?.transitionType || 'hard_cut',
-      reason: item?.transition_reason || item?.transitionReason || '',
-      audio_bridge: item?.audio_bridge || item?.audioBridge || '',
-    })),
+    transition_plan: transitionPlan,
   };
 }
 
@@ -229,5 +314,7 @@ module.exports = {
   COMPOSE_DIR,
   composePathFromName,
   publicComposeUrl,
+  buildTransitionPlan,
+  adjustSubtitlesForTransitionOverlaps,
   concatVideos,
 };

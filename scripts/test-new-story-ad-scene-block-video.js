@@ -38,7 +38,16 @@ async function run() {
   ];
   const semanticContracts = semanticShots.map(() => ({ scene_lock: sceneLock('space-semantic') }));
   const semanticBlocks = sceneBlocks.buildSceneBlocks(semanticShots, semanticContracts);
-  assert.deepStrictEqual(semanticBlocks.map(block => block.member_indexes), [[0], [1], [2], [3]], 'editorial cuts and visible-person mode changes must be paid generation boundaries');
+  assert.deepStrictEqual(semanticBlocks.map(block => block.member_indexes), [[0], [1, 2], [3]], 'explicit editorial cuts remain boundaries, while an empty character list alone must not split a potentially continuous partial-person beat');
+  const preservedSemanticBlocks = sceneBlocks.buildSceneBlocks(semanticShots, semanticContracts, { preserve_existing_topology: true });
+  assert.deepStrictEqual(preservedSemanticBlocks.map(block => block.member_indexes), [[0], [1], [2], [3]], 'repairing an existing task must preserve the prior paid clip topology');
+
+  const handoffShots = [
+    { id: 'handoff-a', scene_id: 'space-handoff', duration: 5, characters: ['actor'], exit_frame_state: 'hand reaches the surface', screen_direction: 'left_to_right' },
+    { id: 'handoff-b', scene_id: 'space-handoff', duration: 5, characters: [], transition_type: 'hard_cut', entry_frame_state: 'the same hand continues touching the surface', screen_direction: 'left_to_right' },
+  ];
+  const handoffBlocks = sceneBlocks.buildSceneBlocks(handoffShots, handoffShots.map(() => ({ scene_lock: sceneLock('space-handoff') })));
+  assert.deepStrictEqual(handoffBlocks.map(block => block.member_indexes), [[0, 1]], 'an authored entry/exit handoff in one space must generate as one continuous block even when the second beat has no principal character list');
 
   const baseLineage = lineage.buildShotLineage({
     shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
@@ -111,9 +120,9 @@ async function run() {
   const partialContracts = partialShots.map(shot => ({ scene_lock: sceneLock(shot.scene_id) }));
   const partialBlocks = sceneBlocks.buildSceneBlocks(partialShots, partialContracts);
   storage.createTask({ id: partialTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
-  let partialError;
+  let partialResult;
   try {
-    await videoAdapter.generateSceneBlockVideos({
+    partialResult = await videoAdapter.generateSceneBlockVideos({
       taskId: partialTaskId,
       shots: partialShots,
       contracts: partialContracts,
@@ -138,18 +147,16 @@ async function run() {
       },
       existingClips: [],
     });
-  } catch (error) {
-    partialError = error;
-  }
+  } catch (error) { throw error; }
   try {
-    assert.ok(partialError, 'mixed batch must surface its provider failure');
-    assert.deepStrictEqual(partialError.completed_indexes, [0]);
-    assert.deepStrictEqual(partialError.failed_indexes, [1]);
-    assert.strictEqual(partialError.partial_video_clips[0].error_code || '', '', 'successful paid output must not be poisoned by a sibling failure');
-    assert.ok(fs.existsSync(partialError.partial_video_clips[0].file_path));
+    assert.deepStrictEqual(partialResult.failed_indexes, [1], 'a failed independent block must be reported without aborting sibling blocks');
+    assert.strictEqual(partialResult.clips[0].error_code || '', '', 'successful paid output must not be poisoned by a sibling failure');
+    assert.ok(fs.existsSync(partialResult.clips[0].file_path));
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_1').lifecycle, 'generated');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').lifecycle, 'failed');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').provider_submission_state, 'not_submitted');
   } finally {
-    (partialError?.partial_video_clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
+    (partialResult?.clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
     storage.deleteTask(partialTaskId);
   }
   console.log('new story ad continuous scene block video: ok');

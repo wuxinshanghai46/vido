@@ -2025,6 +2025,41 @@
     }) || {};
   }
 
+  function videoShotFailureDetail(index) {
+    const clip = videoClipAt(index);
+    const status = videoShotStatusAt(index);
+    const labels = [
+      ...(Array.isArray(clip.qa?.failure_labels_zh) ? clip.qa.failure_labels_zh : []),
+      ...(Array.isArray(clip.cross_shot_qa?.failure_labels_zh) ? clip.cross_shot_qa.failure_labels_zh : []),
+      ...(Array.isArray(status.qa_failure_labels_zh) ? status.qa_failure_labels_zh : []),
+      ...(Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh : []),
+    ];
+    const problems = [
+      ...(Array.isArray(clip.qa?.problems) ? clip.qa.problems : []),
+      ...(Array.isArray(clip.cross_shot_qa?.problems) ? clip.cross_shot_qa.problems : []),
+      ...(Array.isArray(status.qa_problems) ? status.qa_problems : []),
+      ...(Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems : []),
+    ];
+    const code = String(clip.error_code || status.error_code || '').toUpperCase();
+    const friendlyCodes = {
+      INPUT_PERSON_PRIVACY: '人物首帧被服务商隐私规则拦截，未生成视频',
+      VIDEO_FRAME_QA_FAILED: '视频已生成，但画面审核未通过',
+      CROSS_SHOT_CONTINUITY_FAILED: '视频已生成，但与上一镜的连续性审核未通过',
+      PROVIDER_BILLING: '视频服务商账户或额度异常',
+      USER_CANCELLED: '本次生成已取消',
+    };
+    const notSubmitted = !clip.video_url && !clip.videoUrl && !clip.file_path
+      && status.provider_submission_state === 'not_submitted';
+    const prefix = notSubmitted ? '未提交视频模型' : (friendlyCodes[code] || status.error || clip.error || '');
+    const detail = [...new Set(labels.concat(problems).concat(prefix).filter(Boolean))];
+    return {
+      code,
+      title: notSubmitted ? '未生成、未产生本镜视频' : (clip.video_url || clip.videoUrl || clip.file_path ? '已生成，但未通过审核' : '生成失败'),
+      text: detail.join('；') || '当前镜头尚未获得可用视频，请查看状态后只修复本镜。',
+      notSubmitted,
+    };
+  }
+
   function videoShotView(index) {
     const clip = videoClipAt(index);
     const status = videoShotStatusAt(index);
@@ -2038,7 +2073,10 @@
     const reviewing = hasVideo && !qaPassed && !qaFailed
       || ['generated', 'video_qa'].includes(lifecycle);
     if (qaPassed || lifecycle === 'qa_passed') return { key: 'passed', label: '视频审核通过', shortLabel: '已通过', tone: 'pass', hasVideo: true, clip, status };
-    if (qaFailed) return { key: 'failed', label: hasVideo ? '视频已生成但审核未通过' : '视频生成失败', shortLabel: '失败', tone: 'failed', hasVideo, clip, status };
+    if (qaFailed) {
+      const failure = videoShotFailureDetail(index);
+      return { key: 'failed', label: hasVideo ? '视频已生成但审核未通过' : (failure.notSubmitted ? '未提交生成' : '视频生成失败'), shortLabel: failure.notSubmitted ? '未提交' : '失败', tone: 'failed', hasVideo, clip, status, failure };
+    }
     if (reviewing) return { key: 'reviewing', label: '视频已生成，等待审核', shortLabel: '待审核', tone: 'review', hasVideo: true, clip, status };
     if (running) return { key: 'running', label: '视频生成中', shortLabel: '生成中', tone: 'running', hasVideo, clip, status };
     if (lifecycle === 'cancelled') return { key: 'cancelled', label: '视频生成已取消', shortLabel: '已取消', tone: 'cancelled', hasVideo, clip, status };
@@ -2952,6 +2990,7 @@
       const preview = image ? withAuthQuery(image) : '';
       const videoClip = videoClipAt(i);
       const videoView = videoShotView(i);
+      const videoFailure = videoView.key === 'failed' ? (videoView.failure || videoShotFailureDetail(i)) : null;
       const shotVideoUrl = videoClip.video_url || videoClip.videoUrl || '';
       const shotVideoReady = !!shotVideoUrl;
       const shotVideoBlockMembers = Array.isArray(videoClip.scene_block_members)
@@ -3059,6 +3098,11 @@
           </button>`)}
           ${candidateStrip}
         </div>
+        ${videoFailure ? `<div class="dh-nsa-video-failure-detail ${videoFailure.notSubmitted ? 'is-not-submitted' : ''}">
+          <b>${escapeHtml(videoFailure.title)}</b>
+          <span>${escapeHtml(videoFailure.text)}</span>
+          ${videoFailure.code ? `<small>状态码：${escapeHtml(videoFailure.code)}</small>` : ''}
+        </div>` : ''}
         <div class="dh-nsa-frame-editor">
           <div class="dh-nsa-frame-summary">
             <section><b>镜头 / 构图</b><span>${escapeHtml(cameraSummary)}</span></section>

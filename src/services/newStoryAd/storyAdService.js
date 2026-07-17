@@ -326,6 +326,11 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       scene_block_id: cleanText(status.scene_block_id || '', 100),
       scene_block_members: Array.isArray(status.scene_block_members) ? status.scene_block_members.map(Number).filter(Number.isInteger) : [],
       qa_status: cleanText(status.qa_status || '', 40),
+      qa_problems: Array.isArray(status.qa_problems) ? status.qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
+      qa_failure_labels_zh: Array.isArray(status.qa_failure_labels_zh) ? status.qa_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
+      cross_shot_qa_problems: Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
+      cross_shot_failure_labels_zh: Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
+      provider_submission_state: cleanText(status.provider_submission_state || '', 40),
       error: cleanText(status.error || '', 300),
       error_code: cleanText(status.error_code || '', 80),
       retryable: status.retryable === true,
@@ -2274,9 +2279,14 @@ async function generateVideoStage(taskId, options = {}) {
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const forceRegenerateAll = options.force_regenerate_all === true || options.forceRegenerateAll === true;
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
-  const sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, options);
+  const preserveExistingTopology = !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
+  const sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, {
+    ...options,
+    preserve_existing_topology: preserveExistingTopology,
+  });
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const expectedLineages = shots.map((shot, index) => videoLineage.buildShotLineage({
@@ -2326,7 +2336,6 @@ async function generateVideoStage(taskId, options = {}) {
   }
   const initialIndexes = [];
   const pendingReviewIndexes = [];
-  const forceRegenerateAll = options.force_regenerate_all === true || options.forceRegenerateAll === true;
   const requestedOnlyIndex = options.only_index ?? options.onlyIndex;
   const requestedIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
     ? (options.only_indexes || options.onlyIndexes)

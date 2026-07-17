@@ -32,7 +32,9 @@ assert.strictEqual(videoAdapter.resumableProviderTaskId(active, expected, model)
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, lineage_fingerprint: 'old' }, expected, model), '');
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, error_code: 'PROVIDER_TASK_TERMINAL_FAILED' }, expected, model), '');
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, model_id: 'other-model' }, expected, model), '');
-assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({}), false, 'approved keyframe first-frame mode must be the default');
-assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({ seedance_input_mode: 'reference_assets' }), true, 'asset-reference mode must require an explicit opt-in');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({}), false, 'non-person shots keep the approved keyframe as first frame');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({}, { personRequired: true }), true, 'person shots default to the managed reference path to avoid provider privacy rejection');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({ seedance_input_mode: 'first_frame' }, { personRequired: true }), false, 'an explicit first-frame override remains available');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({ seedance_input_mode: 'reference_assets' }), true, 'explicit asset-reference mode remains supported');
 
 console.log('NEW_STORY_AD_VIDEO_TASK_RESUME_TEST_OK');

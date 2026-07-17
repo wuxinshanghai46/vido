@@ -1552,6 +1552,12 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-shot-video-result.is-failed { border-color: rgba(255,91,108,.42); }
 .dh-nsa-shot-video-result.is-failed > div { background: rgba(255,91,108,.13); }
 .dh-nsa-shot-video-result video { display: block; width: 100%; aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); object-fit: contain; background: #000; }
+.dh-nsa-video-failure-detail { grid-column: 1 / -1; display: grid; gap: 5px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid rgba(251,113,133,.38); border-radius: 10px; color: #fecdd3; background: rgba(127,29,29,.13); }
+.dh-nsa-video-failure-detail b { color: #fb7185; font-size: 12px; }
+.dh-nsa-video-failure-detail span { color: var(--dh-text-secondary); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.dh-nsa-video-failure-detail small { color: var(--dh-text-muted); font-size: 10px; }
+.dh-nsa-video-failure-detail.is-not-submitted { border-color: rgba(245,158,11,.36); background: rgba(120,53,15,.1); }
+.dh-nsa-video-failure-detail.is-not-submitted b { color: #fbbf24; }
 .dh-nsa-video-cost-hint { margin: 10px 0; padding: 12px 14px; border: 1px solid rgba(75,214,203,.28); border-radius: 12px; color: var(--dh-text-muted); background: rgba(15,91,91,.1); font-size: 12px; line-height: 1.6; }
 .dh-nsa-video-cost-hint b { color: var(--dh-text); }
 .dh-nsa-video-cost-hint p { margin: 8px 0 0; }

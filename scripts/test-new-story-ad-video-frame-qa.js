@@ -60,6 +60,7 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'single' }, { characters: [] }), 0);
   assert.strictEqual(videoQa.expectedPeopleForShot({ cast_mode: 'no_human' }, {}), 0);
   assert.strictEqual(videoQa.expectedPeopleForShot({}, { characters: [{ name: '甲' }, { name: '乙' }] }), 2);
+  assert.strictEqual(videoQa.peopleProblemMatchesApprovedKeyframe('Expected no visible human, but a partial human hand is present.'), true);
   const manualPrompt = videoAdapter.clipPrompt(
     { visual: '展示不锈钢饰面', action: '光线缓慢扫过' },
     { product_subject: '不锈钢饰面' },
@@ -88,6 +89,22 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(qa.frames.length, 5);
   assert.deepEqual(qa.frames.map(frame => frame.point), [0, 0.25, 0.5, 0.75, 1]);
   assert(qa.frames.every(frame => fs.existsSync(frame.file_path)));
+  process.env.NEW_STORY_AD_MOCK_LLM = '0';
+  const matchedKeyframeQa = await videoQa.reviewVideoClip({
+    taskId: 'video-qa-keyframe-people-match',
+    clip: { file_path: clipPath, duration_sec: 2 },
+    shot: { title: 'detail', characters: [] },
+    keyframe: { image_url: '/api/new-story-ad/assets/approved-detail.png', contract_fingerprint: 'contract-current', qa: { pass: true } },
+    contract: { contract_fingerprint: 'contract-current' },
+    ctx: { cast_mode: 'no_human' },
+    index: 0,
+    gateway: { generateVision: async () => ({ text: JSON.stringify({ pass: false, person_pass: false, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: false, keyframe_people_match: true, unexpected_people_added: false, text_watermark_pass: true, problems: ['Expected no visible human, but a partial human hand is present.'] }), used_model: 'test/vision' }) },
+    repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
+  });
+  assert.strictEqual(matchedKeyframeQa.pass, true, 'a partial person already present in the approved keyframe must not trigger a paid redraw');
+  assert.strictEqual(matchedKeyframeQa.people_count_pass, true);
+  assert.deepStrictEqual(matchedKeyframeQa.problems, []);
+  process.env.NEW_STORY_AD_MOCK_LLM = '1';
   const cross = await videoQa.reviewCrossShot({ taskId: 'video-qa-test', previous: qa, current: qa, previousShot: {}, currentShot: {}, ctx: {} });
   assert.strictEqual(cross.pass, true);
   console.log('new story ad video frame QA: ok');

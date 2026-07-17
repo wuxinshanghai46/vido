@@ -32,17 +32,29 @@ function temporalIdentity(shot = {}, contract = {}) {
   });
 }
 
-function isExplicitBoundary(shot = {}, previousShot = {}) {
+function hasContinuityHandoff(shot = {}, previousShot = {}) {
+  const previousExit = text(previousShot.exit_frame_state || previousShot.exit_state || '');
+  const currentEntry = text(shot.entry_frame_state || shot.entry_state || '');
+  if (previousExit && currentEntry) return true;
+  const previousDirection = text(previousShot.screen_direction || '').toLowerCase();
+  const currentDirection = text(shot.screen_direction || '').toLowerCase();
+  return !!(previousDirection && currentDirection && previousDirection === currentDirection);
+}
+
+function isExplicitBoundary(shot = {}, previousShot = {}, options = {}) {
   const transition = text(shot.transition_type || shot.transition).toLowerCase();
   const from = text(shot.transition_from || '');
   const previousScene = text(previousShot.scene_id || previousShot.scene_asset_id || '');
   if (from && previousScene && from !== previousScene) return true;
-  if (/fade|dissolve|flash|black|time.?jump|montage|hard.?cut|match.?cut|jump.?cut|smash.?cut/.test(transition)) return true;
+  if (/fade|dissolve|flash|black|time.?jump|montage|jump.?cut|smash.?cut/.test(transition)) return true;
+  if (options.preserve_existing_topology === true && /hard.?cut|match.?cut/.test(transition)) return true;
+  if (/hard.?cut|match.?cut/.test(transition) && !hasContinuityHandoff(shot, previousShot)) return true;
   return shot.scene_block_boundary === true || shot.force_new_scene_block === true;
 }
 
-function visiblePersonPresence(shot = {}) {
-  if (Array.isArray(shot.characters)) return shot.characters.filter(Boolean).length > 0;
+function visiblePersonPresence(shot = {}, options = {}) {
+  if (Array.isArray(shot.characters) && shot.characters.filter(Boolean).length > 0) return true;
+  if (options.preserve_existing_topology === true && Array.isArray(shot.characters)) return false;
   const subjectType = text(shot.subject_type || shot.cast_mode || shot.person_mode).toLowerCase();
   if (/no.?person|no.?human|object.?only|product.?only|empty/.test(subjectType)) return false;
   if (/person|human|character|cast/.test(subjectType)) return true;
@@ -50,9 +62,9 @@ function visiblePersonPresence(shot = {}) {
   return Number.isFinite(peopleCount) ? peopleCount > 0 : null;
 }
 
-function hasCastModeBoundary(shot = {}, previousShot = {}) {
-  const currentPresence = visiblePersonPresence(shot);
-  const previousPresence = visiblePersonPresence(previousShot);
+function hasCastModeBoundary(shot = {}, previousShot = {}, options = {}) {
+  const currentPresence = visiblePersonPresence(shot, options);
+  const previousPresence = visiblePersonPresence(previousShot, options);
   return currentPresence !== null && previousPresence !== null && currentPresence !== previousPresence;
 }
 
@@ -131,8 +143,8 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
     const previousShot = previousIndex == null ? {} : list[previousIndex] || {};
     const join = enabled && current && identity && identity === current.scene_identity
       && temporal === current.temporal_identity
-      && !isExplicitBoundary(shot, previousShot)
-      && !hasCastModeBoundary(shot, previousShot)
+      && !isExplicitBoundary(shot, previousShot, options)
+      && !hasCastModeBoundary(shot, previousShot, options)
       && current.duration_sec + shotDuration <= maxDuration
       && current.member_indexes.length < maxShots;
     if (!join) {
@@ -219,6 +231,7 @@ module.exports = {
   DEFAULT_MAX_BLOCK_SHOTS,
   durationOf,
   sceneIdentity,
+  hasContinuityHandoff,
   isExplicitBoundary,
   visiblePersonPresence,
   hasCastModeBoundary,

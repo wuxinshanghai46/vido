@@ -460,9 +460,15 @@ async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, opt
   return assets;
 }
 
-function useSeedanceReferenceAssets(options = {}) {
+function useSeedanceReferenceAssets(options = {}, { personRequired = false } = {}) {
   const mode = String(options.seedance_input_mode || options.seedanceInputMode || '').trim().toLowerCase();
-  return ['reference_assets', 'reference_asset', 'asset_reference'].includes(mode);
+  if (['reference_assets', 'reference_asset', 'asset_reference'].includes(mode)) return true;
+  if (['first_frame', 'approved_keyframe', 'image_to_video'].includes(mode)) return false;
+  // Seedance may reject a direct first-frame image that contains a person as
+  // privacy-sensitive input. Use its managed asset/reference path only for
+  // person shots; object/environment shots keep the approved keyframe as the
+  // exact first frame so scene geometry remains locked.
+  return personRequired === true;
 }
 
 async function prepareDeyunaiKeyframeReferenceAsset({ taskId = '', index = 0, keyframe = {}, options = {} } = {}) {
@@ -546,8 +552,9 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
     || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
-  const personReferenceAsset = useSeedanceReferenceAssets(options) && options._deyunaiPersonAsset?.asset_url
-    && personIdentity.shotPersonRequired(ctx, shot, contract)
+  const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
+  const personReferenceAsset = useSeedanceReferenceAssets(options, { personRequired: shotNeedsPerson }) && options._deyunaiPersonAsset?.asset_url
+    && shotNeedsPerson
     ? options._deyunaiPersonAsset.asset_url
     : '';
   const sceneReferenceAssets = personReferenceAsset
@@ -767,7 +774,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     throw error;
   }
   const hasPersonShot = list.some((shot, index) => personIdentity.shotPersonRequired(ctx, shot, contracts[index] || {}));
-  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot && useSeedanceReferenceAssets(options)
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot && useSeedanceReferenceAssets(options, { personRequired: hasPersonShot })
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
   const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length };
@@ -993,7 +1000,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const targetIndexes = sceneBlockService.expandIndexesToBlocks(requested, blocks);
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
   const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
-  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && useSeedanceReferenceAssets(options)
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && useSeedanceReferenceAssets(options, { personRequired: hasPersonUnit })
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
   const shotTitles = Object.fromEntries(list.map((shot, index) => [index, shot.title || `镜头 ${index + 1}`]));
@@ -1019,6 +1026,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
     }, list.length);
   });
   let schedule = { results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1, max_concurrency: 1, throttle_retries: {} };
+  const unitFailures = [];
   if (units.length) {
     try {
       schedule = await videoScheduler.runSchedule({
@@ -1034,46 +1042,67 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       worker: async (unitIndex, wave) => {
         const block = units[unitIndex];
         const first = block.first_index;
-        const syntheticShot = sceneBlockService.generationShot(block, list);
-        const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
-        const referenceAssetMode = useSeedanceReferenceAssets(options);
-        const sceneAssets = referenceAssetMode && personRequired && block.continuous
-          ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
-          : [];
-        const keyframeAsset = referenceAssetMode && personRequired
-          ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options })
-          : null;
-        block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
-          lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
-          global_queue_ms: wave.global_queue_ms || 0,
-        }, list.length));
-        const runOptions = {
-          ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length,
-          _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
-          _sceneReferenceAssetUrls: [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean),
-          _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
-        };
-        const sourceClip = await unitGenerator({
-          taskId, shot: block.continuous ? syntheticShot : list[first], previousShot: first > 0 ? list[first - 1] : null,
-          keyframe: keyframes[first] || {}, audio: block.continuous ? {} : (tracks[first] || {}),
-          contract: contracts[first] || {}, ctx, index: first, options: runOptions,
-        });
-        const generatedClips = block.continuous
-          ? await splitSceneBlockClip({ taskId, block, sourceClip, shots: list, tracks, ctx, options: runOptions })
-          : [{ ...sourceClip, scene_block_id: block.id, scene_block_fingerprint: block.fingerprint, scene_block_members: [first + 1] }];
-        for (const generated of generatedClips) {
-          const index = generated.shot_index;
-          clips[index] = options._expectedLineages?.[index]
-            ? videoLineage.attachLineage(generated, options._expectedLineages[index], { repair_attempt: Number(options._repairAttempt || 0) })
-            : generated;
-          updateVideoShotStatus(taskId, index, {
-            lifecycle: 'generated', file_path: clips[index].file_path, file_exists: true,
-            video_url: clips[index].video_url, scene_block_id: block.id,
-            scene_block_fingerprint: block.fingerprint, scene_block_members: block.member_indexes.map(member => member + 1),
-          }, list.length);
-          if (typeof onClip === 'function') await onClip(clips[index], clips.slice());
+        try {
+          cancellation.throwIfCancelled(taskId);
+          const syntheticShot = sceneBlockService.generationShot(block, list);
+          const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
+          const referenceAssetMode = useSeedanceReferenceAssets(options, { personRequired });
+          const sceneAssets = referenceAssetMode && personRequired && block.continuous
+            ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
+            : [];
+          const keyframeAsset = referenceAssetMode && personRequired
+            ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options })
+            : null;
+          block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
+            lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
+            global_queue_ms: wave.global_queue_ms || 0,
+          }, list.length));
+          const runOptions = {
+            ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length,
+            _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
+            _sceneReferenceAssetUrls: [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean),
+            _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
+          };
+          const sourceClip = await unitGenerator({
+            taskId, shot: block.continuous ? syntheticShot : list[first], previousShot: first > 0 ? list[first - 1] : null,
+            keyframe: keyframes[first] || {}, audio: block.continuous ? {} : (tracks[first] || {}),
+            contract: contracts[first] || {}, ctx, index: first, options: runOptions,
+          });
+          const generatedClips = block.continuous
+            ? await splitSceneBlockClip({ taskId, block, sourceClip, shots: list, tracks, ctx, options: runOptions })
+            : [{ ...sourceClip, scene_block_id: block.id, scene_block_fingerprint: block.fingerprint, scene_block_members: [first + 1] }];
+          for (const generated of generatedClips) {
+            const index = generated.shot_index;
+            clips[index] = options._expectedLineages?.[index]
+              ? videoLineage.attachLineage(generated, options._expectedLineages[index], { repair_attempt: Number(options._repairAttempt || 0) })
+              : generated;
+            updateVideoShotStatus(taskId, index, {
+              lifecycle: 'generated', file_path: clips[index].file_path, file_exists: true,
+              video_url: clips[index].video_url, scene_block_id: block.id,
+              scene_block_fingerprint: block.fingerprint, scene_block_members: block.member_indexes.map(member => member + 1),
+            }, list.length);
+            if (typeof onClip === 'function') await onClip(clips[index], clips.slice());
+          }
+          return generatedClips;
+        } catch (error) {
+          if (error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted) throw error;
+          const failure = {
+            scene_block_id: block.id,
+            indexes: block.member_indexes.slice(),
+            error: String(error.message || error).slice(0, 1000),
+            error_code: error.code || 'SCENE_BLOCK_GENERATION_FAILED',
+            retryable: error.retryable === true,
+          };
+          unitFailures.push(failure);
+          block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
+            lifecycle: 'failed',
+            error: failure.error,
+            error_code: failure.error_code,
+            retryable: failure.retryable,
+            provider_submission_state: storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id ? 'submitted' : 'not_submitted',
+          }, list.length));
+          return { failed: true, ...failure };
         }
-        return generatedClips;
       },
       });
     } catch (error) {
@@ -1111,7 +1140,17 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
     max_concurrency: schedule.max_concurrency, scheduler: 'adaptive_scene_block_parallel',
     scene_block_count: units.length, continuous_scene_block_count: units.filter(block => block.continuous).length,
   });
-  return { clips, provider_used: modelRoute(pinnedModel), pinned_model: pinnedModel, deyunai_person_asset: deyunaiPersonAsset, target_indexes: targetIndexes, scene_blocks: units, schedule };
+  return {
+    clips,
+    provider_used: modelRoute(pinnedModel),
+    pinned_model: pinnedModel,
+    deyunai_person_asset: deyunaiPersonAsset,
+    target_indexes: targetIndexes,
+    failed_indexes: [...new Set(unitFailures.flatMap(item => item.indexes))].sort((a, b) => a - b),
+    failures: unitFailures,
+    scene_blocks: units,
+    schedule,
+  };
 }
 
 module.exports = {
