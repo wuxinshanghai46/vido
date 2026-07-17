@@ -2284,7 +2284,7 @@ async function generateVideoClip(options) {
 // 漫路（DeyunAI）聚合 — 视频生成
 // 通过 deyunaiService.generateVideo 统一调用 + 自动埋点
 // ════════════════════════════════════════════════
-async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
+async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, aspectRatio = '16:9', image_url, reference_image_urls = [], video_model, provider_task_id = '', resolution = '720p', videoResolution = '', size: requestedSize = '', userId = null, agentId = null, signal = null, onSubmitted = null, onProgress = null }) {
   const dy = require('./deyunaiService');
   fs.mkdirSync(outputDir, { recursive: true });
   const outputPath = path.join(outputDir, `${filename}.mp4`);
@@ -2313,20 +2313,34 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
   const size = String(requestedSize || '').trim() || _deyunaiVideoSize(aspectRatio, videoResolution || resolution);
   console.log(`[VideoService] 漫路视频 model=${chosen.id} size=${size} duration=${duration}s`);
 
-  const r = await dy.generateVideo({
+  const generationOptions = {
     model: chosen.id,
-    prompt,
     duration: Math.max(3, Math.min(15, parseInt(duration) || 5)),
-    size,
-    imageUrl: image_url && !image_url.startsWith('data:') ? image_url : undefined,
-    referenceAssetUrls: reference_image_urls,
     timeoutMs: 600000,
-    userId,
-    agentId: agentId || 'video_gen',
     signal,
-    onSubmitted,
     onProgress,
-  });
+  };
+  const submitNewVideo = () => dy.generateVideo({
+      ...generationOptions,
+      prompt,
+      size,
+      imageUrl: image_url && !image_url.startsWith('data:') ? image_url : undefined,
+      referenceAssetUrls: reference_image_urls,
+      userId,
+      agentId: agentId || 'video_gen',
+      onSubmitted,
+    });
+  let r;
+  if (provider_task_id) {
+    try {
+      r = await dy.resumeVideo({ ...generationOptions, taskId: provider_task_id });
+    } catch (error) {
+      if (error?.code !== 'PROVIDER_TASK_TERMINAL_FAILED') throw error;
+      r = await submitNewVideo();
+    }
+  } else {
+    r = await submitNewVideo();
+  }
   if (!r.url) throw new Error('漫路视频生成无 URL');
   if (typeof onProgress === 'function') {
     try {
@@ -2336,7 +2350,7 @@ async function generateDeyunaiClip({ prompt, duration = 5, outputDir, filename, 
     }
   }
   await downloadFile(r.url, outputPath, signal);
-  return { filePath: outputPath, providerTaskId: r.taskId || '', providerUrl: r.url };
+  return { filePath: outputPath, providerTaskId: r.taskId || '', providerUrl: r.url, resumed: r.resumed === true };
 }
 
 module.exports = {

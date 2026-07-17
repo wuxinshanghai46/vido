@@ -408,6 +408,72 @@ function attachSubmittedVideoTask(error, taskId, duration) {
   return next;
 }
 
+function seedanceTaskSnapshot(payload = {}, fallbackDuration = 0) {
+  const task = payload?.data || payload || {};
+  const status = String(task.status || task.task_status || task.state || '').trim().toLowerCase();
+  const url = extractSeedanceContentTaskVideoUrl(task);
+  const succeeded = !!url && (!status || ['succeeded', 'success', 'completed', 'done', 'finished'].includes(status));
+  const failed = ['failed', 'fail', 'error', 'cancelled', 'canceled'].includes(status);
+  return {
+    task,
+    status,
+    url,
+    succeeded,
+    failed,
+    terminal: succeeded || failed,
+    durationSec: Number(task.duration || task.duration_sec) || Number(fallbackDuration) || 0,
+    message: task.error?.message || task.message || task.error_message || '',
+  };
+}
+
+async function resumeVideo({ model, taskId, duration = 5, timeoutMs = 600000, signal = null, onProgress = null }) {
+  const providerTaskId = String(taskId || '').trim();
+  if (!providerTaskId) throw new Error('漫路视频续接缺少 provider task ID');
+  if (!isSeedanceContentGenerationModel(model)) {
+    const error = new Error(`当前漫路模型不支持按任务 ID 续接: ${model || 'unknown'}`);
+    error.code = 'PROVIDER_TASK_RESUME_UNSUPPORTED';
+    error.retryable = false;
+    throw error;
+  }
+  const headers = buildHeaders(model, { forceDomestic: true });
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    let queryRes;
+    try {
+      queryRes = await axios.get(`${CONTENT_GENERATION_TASKS_URL}/${encodeURIComponent(providerTaskId)}`, {
+        headers,
+        timeout: 30000,
+        signal,
+      });
+    } catch (requestError) {
+      const businessError = seedanceContentTaskError(requestError?.response?.data, '续接查询');
+      throw attachSubmittedVideoTask(businessError || requestError, providerTaskId, duration);
+    }
+    const queryError = seedanceContentTaskError(queryRes.data, '续接查询');
+    if (queryError) throw attachSubmittedVideoTask(queryError, providerTaskId, duration);
+    const snapshot = seedanceTaskSnapshot(queryRes.data, duration);
+    await notifyGenerationObserver(onProgress, {
+      provider: 'deyunai', model, taskId: providerTaskId, status: snapshot.status || 'polling',
+      elapsedMs: Date.now() - startedAt, polledAt: new Date().toISOString(), hasOutputUrl: !!snapshot.url,
+      resumed: true,
+    });
+    if (snapshot.succeeded) {
+      return { url: snapshot.url, taskId: providerTaskId, durationSec: snapshot.durationSec || duration, resumed: true };
+    }
+    if (snapshot.failed) {
+      const error = new Error(`漫路 Seedance 2.0 原任务已失败: ${snapshot.message || JSON.stringify(snapshot.task).slice(0, 500)}`);
+      error.code = 'PROVIDER_TASK_TERMINAL_FAILED';
+      error.retryable = true;
+      throw attachSubmittedVideoTask(error, providerTaskId, duration);
+    }
+    await abortableWait(5000, signal);
+  }
+  const error = new Error(`漫路 Seedance 2.0 原任务续接超时（${timeoutMs}ms）`);
+  error.code = 'PROVIDER_TASK_RESUME_TIMEOUT';
+  error.retryable = true;
+  throw attachSubmittedVideoTask(error, providerTaskId, duration);
+}
+
 async function generateSeedanceContentTask({ model, prompt, duration, size, imageUrl, referenceAssetUrls, timeoutMs, signal, onSubmitted = null, onProgress = null }) {
   const headers = buildHeaders(model, { forceDomestic: true });
   const body = buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls });
@@ -971,6 +1037,8 @@ module.exports = {
   seedanceContentTaskError,
   extractSeedanceContentTaskVideoUrl,
   attachSubmittedVideoTask,
+  seedanceTaskSnapshot,
+  resumeVideo,
   estimateTextTokens,
   listAssetGroups,
   createAssetGroup,

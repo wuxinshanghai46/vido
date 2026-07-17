@@ -98,6 +98,17 @@ function updateVideoShotStatus(taskId = '', index = 0, patch = {}, total = 0) {
   return next;
 }
 
+function resumableProviderTaskId(status = {}, expectedLineage = {}, model = {}) {
+  const taskId = String(status.provider_task_id || status.resume_provider_task_id || '').trim();
+  if (!taskId || status.error_code === 'PROVIDER_TASK_TERMINAL_FAILED') return '';
+  if (!['provider_submitted', 'provider_running', 'downloading', 'queued'].includes(String(status.lifecycle || ''))) return '';
+  const expectedFingerprint = String(expectedLineage?.fingerprint || '');
+  if (!expectedFingerprint || String(status.lineage_fingerprint || '') !== expectedFingerprint) return '';
+  if (String(status.provider_id || '').toLowerCase() !== String(model.provider_id || '').toLowerCase()) return '';
+  if (String(status.model_id || '').toLowerCase() !== String(model.model_id || '').toLowerCase()) return '';
+  return taskId;
+}
+
 function explicitShotSpeechMode(shot = {}, contract = {}) {
   const raw = String(
     shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode || contract.speech_mode || contract.speechMode || '',
@@ -549,11 +560,15 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   const totalShots = Number(options._totalShots || 0);
   for (const model of candidates) {
     cancellation.throwIfCancelled(taskId);
+    const previousStatus = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
+    const resumeProviderTaskId = options.force_regenerate_all === true
+      ? ''
+      : resumableProviderTaskId(previousStatus, options._expectedLineages?.[index] || {}, model);
     const filename = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
     const startedAt = Date.now();
     try {
       updateGenerationUnitStatus(taskId, index, {
-        lifecycle: 'submitting',
+        lifecycle: resumeProviderTaskId ? 'provider_running' : 'submitting',
         total_shots: totalShots,
         title: shot.title || `镜头 ${index + 1}`,
         provider_id: model.provider_id,
@@ -562,6 +577,10 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         scene_block_id: options._sceneBlock?.id || '',
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         speech_mode: explicitShotSpeechMode(shot, contract),
+        provider_task_id: resumeProviderTaskId,
+        provider_status: resumeProviderTaskId ? 'resuming' : '',
+        resume_provider_task_id: resumeProviderTaskId,
+        resumed_after_interruption: !!resumeProviderTaskId,
         error: '',
         error_code: '',
       }, totalShots, options);
@@ -573,6 +592,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         duration,
         outputDir: VIDEO_DIR,
         filename,
+        provider_task_id: resumeProviderTaskId,
         // Seedance forbids mixing first_frame with reference media. Person
         // shots use the verified private-library asset only; non-person shots
         // retain the exact approved keyframe as first_frame.
@@ -619,7 +639,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
-      storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: attempts.length + 1 });
+      storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, adapter: generated.resumed ? 'provider_task_resume' : '', status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: attempts.length + 1 });
       updateGenerationUnitStatus(taskId, index, {
         lifecycle: 'generated',
         provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
@@ -646,6 +666,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
         audio_muxed: !!audioPath,
         normalized: true,
+        resumed_after_interruption: generated.resumed === true,
         attempts,
       });
     } catch (error) {
@@ -973,14 +994,20 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const unitGenerator = typeof options._generateShotVideo === 'function' ? options._generateShotVideo : generateShotVideo;
   targetIndexes.forEach((index) => {
     const block = sceneBlockService.blockForIndex(blocks, index);
+    const previousStatus = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
+    const resumeProviderTaskId = options.force_regenerate_all === true
+      ? ''
+      : resumableProviderTaskId(previousStatus, options._expectedLineages?.[index] || {}, pinnedModel);
     updateVideoShotStatus(taskId, index, {
       lifecycle: 'queued', queued_at: new Date().toISOString(), started_at: '',
-      attempt_number: Number(storage.getOutput(taskId, videoShotStatusKind(index))?.attempt_number || 0) + 1,
+      attempt_number: Number(previousStatus.attempt_number || 0) + (resumeProviderTaskId ? 0 : 1),
       total_shots: list.length, title: shotTitles[index], provider_id: pinnedModel.provider_id, model_id: pinnedModel.model_id,
       speech_mode: explicitShotSpeechMode(list[index] || {}, contracts[index] || {}),
       scene_block_id: block?.id || '', scene_block_members: block?.member_indexes?.map(member => member + 1) || [index + 1],
       scene_block_duration_sec: block?.duration_sec || sceneBlockService.durationOf(list[index] || {}),
-      provider_task_id: '', provider_status: '', file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '',
+      provider_task_id: resumeProviderTaskId, provider_status: resumeProviderTaskId ? 'resume_pending' : '',
+      resume_provider_task_id: resumeProviderTaskId, resumed_after_interruption: !!resumeProviderTaskId,
+      file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '',
       repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
       lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
     }, list.length);
@@ -1099,6 +1126,7 @@ module.exports = {
   listVideoShotStatuses,
   updateVideoShotStatus,
   updateVideoProgress,
+  resumableProviderTaskId,
   explicitShotSpeechMode,
   hardVideoDependency,
   renderLocalClip,
