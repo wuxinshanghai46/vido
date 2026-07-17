@@ -255,6 +255,9 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
   const design = shotDesign.normalizeShotDesign(shot);
   const authoredEffectTarget = !!(design.motion_effect?.target_state || design.motion_effect?.reference_asset_id);
   const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
+  const currentKeyframeAccepted = !!(keyframe.image_url || keyframe.imageUrl || keyframe.url)
+    && keyframe.qa?.pass === true
+    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
   return [
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
@@ -265,8 +268,8 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     speechPrompt(shot, contract),
     shotDesign.surfacePrompt(design.surface_topology, design.shot_scope),
     shotDesign.motionEffectPrompt(design.motion_effect),
-    humanApproved
-      ? `Human-approved keyframe is authoritative for the starting composition and visible scene/material structure. Preserve its intentional seams, panel layout, crop and subject presence exactly; do not "correct" them because of older automated observations. Approval note: ${keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'user approved the current visual'}.`
+    currentKeyframeAccepted
+      ? `The current approved keyframe is authoritative for starting composition, scene geometry, material topology, seams, crop and subject placement. Preserve what is visibly present in that keyframe and do not rebuild the wall, ceiling, floor, furniture or panel structure from older scene observations.${humanApproved ? ` Human approval note: ${keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'user approved the current visual'}.` : ''}`
       : '',
     'Animate the supplied keyframe only. Preserve the current subject identity, wardrobe, product, materials, scene geometry and lighting.',
     authoredEffectTarget
@@ -444,6 +447,25 @@ async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, opt
   }
   storage.saveOutput(taskId, 'deyunai_scene_reference_assets', next);
   return assets;
+}
+
+async function prepareDeyunaiKeyframeReferenceAsset({ taskId = '', index = 0, keyframe = {}, options = {} } = {}) {
+  const sourceUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
+  if (!sourceUrl) return null;
+  const saved = storage.getOutput(taskId, 'deyunai_keyframe_reference_assets') || {};
+  const identity = safeBase(`${index + 1}_${keyframe.current_generation_id || keyframe.generation_id || keyframe.contract_fingerprint || path.basename(sourceUrl)}`).slice(0, 52);
+  const asset = await deyunaiService.ensurePersonImageAsset({
+    sourceUrl,
+    assetKind: 'scene',
+    name: `vido_keyframe_${identity}`,
+    groupName: `vido_keyframe_${identity}`,
+    groupType: 'AIGC',
+    projectName: options.deyunai_project_name || options.deyunaiProjectName || 'default',
+    existing: saved[identity] || null,
+    signal: cancellation.signal(),
+  });
+  storage.saveOutput(taskId, 'deyunai_keyframe_reference_assets', { ...saved, [identity]: asset });
+  return asset;
 }
 
 function publicBaseUrl(options = {}) {
@@ -984,6 +1006,9 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
         const sceneAssets = personRequired && block.continuous
           ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
           : [];
+        const keyframeAsset = personRequired
+          ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options })
+          : null;
         block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
           lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
           global_queue_ms: wave.global_queue_ms || 0,
@@ -991,7 +1016,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
         const runOptions = {
           ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length,
           _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
-          _sceneReferenceAssetUrls: sceneAssets.map(asset => asset.asset_url).filter(Boolean),
+          _sceneReferenceAssetUrls: [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean),
           _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
         };
         const sourceClip = await unitGenerator({

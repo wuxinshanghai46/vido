@@ -1,7 +1,7 @@
 const fs = require('fs');
 const revisionService = require('./revisionService');
 
-const VIDEO_PIPELINE_POLICY_VERSION = 'general-video-contract-v2';
+const VIDEO_PIPELINE_POLICY_VERSION = 'general-video-contract-v3';
 
 function cleanAssetIdentity(value = '') {
   return String(value || '').trim().split('?')[0];
@@ -101,10 +101,16 @@ function baseLineageMatches(clip = {}, expected = {}) {
 }
 
 function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
-  // A previously split per-shot clip may be reused when its own task inputs are
-  // unchanged and the new policy now generates that shot as an independent unit.
-  return Array.isArray(expected.scene_block_members)
-    && expected.scene_block_members.length === 1
+  // Never adopt a segment cut from a multi-shot provider clip as an independent
+  // shot. The shared source video may have rebuilt scene geometry to satisfy a
+  // neighbouring beat even when the per-shot text and keyframe did not change.
+  const actualMembers = Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
+    ? clip.scene_block_members.map(Number)
+    : (Array.isArray(clip.lineage?.scene_block_members) ? clip.lineage.scene_block_members.map(Number) : []);
+  const expectedMembers = Array.isArray(expected.scene_block_members) ? expected.scene_block_members.map(Number) : [];
+  return actualMembers.length === 1
+    && expectedMembers.length === 1
+    && actualMembers[0] === expectedMembers[0]
     && baseLineageMatches(clip, expected);
 }
 

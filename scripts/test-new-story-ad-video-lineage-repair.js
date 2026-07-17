@@ -11,7 +11,7 @@ function fixture(overrides = {}) {
     cast_lock: { person_contract: { person_fingerprint: 'person-v1', person_revision: 1 } },
     product_lock: { product_fingerprint: 'product-v1', product_revision: 1 },
   };
-  const keyframe = { image_url: '/api/new-story-ad/assets/frame-a.png', current_generation_id: 'g-1', contract_fingerprint: 'contract-v1', current_generation_status: 'accepted' };
+  const keyframe = { image_url: '/api/new-story-ad/assets/frame-a.png', current_generation_id: 'g-1', contract_fingerprint: 'contract-v1', current_generation_status: 'accepted', qa: { pass: true } };
   const ctx = { revisions: { source: 1, scene: 1, person: 1, product: 1 }, output_ratio: '9:16', video_resolution: '720p' };
   const motionPrompt = videoAdapter.clipPrompt(shot, ctx, contract, null, keyframe);
   return lineageService.buildShotLineage({ shot, index: 0, contract, keyframe, ctx, blueprint: { revision: 1, fingerprint: 'bp-1' }, storyboardMeta: { revision: 1 }, modelRoute: 'provider/model', speechMode: 'silent', motionPrompt, audio: {}, ...overrides });
@@ -27,20 +27,21 @@ function run() {
 
   const baseShot = { id: 's-1', title: '任务自定义镜头', visual: '任务给定主体位于任务给定环境', action: '主体完成任务指定动作', duration: 5, characters: ['角色甲'] };
   const baseContract = { contract_fingerprint: 'contract-v1', scene_lock: { scene_id: 'scene-a', anchors: ['anchor-a'] }, cast_lock: { person_contract: { person_fingerprint: 'person-v1', person_revision: 1 } }, product_lock: { product_fingerprint: 'product-v1', product_revision: 1 } };
-  const baseKeyframe = { image_url: '/api/new-story-ad/assets/frame-a.png', current_generation_id: 'g-1', contract_fingerprint: 'contract-v1', current_generation_status: 'accepted' };
+  const baseKeyframe = { image_url: '/api/new-story-ad/assets/frame-a.png', current_generation_id: 'g-1', contract_fingerprint: 'contract-v1', current_generation_status: 'accepted', qa: { pass: true } };
   const baseCtx = { revisions: { source: 1, scene: 1, person: 1, product: 1 }, output_ratio: '9:16', video_resolution: '720p' };
   const legacyPrompt = videoAdapter.clipPrompt(baseShot, baseCtx, baseContract, null, baseKeyframe);
+  assert.ok(legacyPrompt.includes('current approved keyframe is authoritative'), 'video prompt must make the current contract-matched keyframe authoritative');
   const legacy = { file_path: __filename, provider_used: 'provider/model', qa: { pass: true, contract_fingerprint: 'contract-v1' }, motion_prompt: legacyPrompt };
   assert.strictEqual(lineageService.reuseDecision(legacy, expected).adopted, true, 'matching legacy output should be safely adopted');
   assert.strictEqual(lineageService.reuseDecision({ ...legacy, motion_prompt: `${legacyPrompt}\nchanged` }, expected).reusable, false, 'unverifiable legacy prompt must not be reused');
 
   const oldBlockLineage = fixture({ sceneBlock: { policy_version: 'spatial-scene-block-v1', id: 'old-1-3', fingerprint: 'old-block', member_indexes: [0, 1, 2] } });
   const independentLineage = fixture({ sceneBlock: { policy_version: 'spatial-scene-block-v2', id: 'new-1', fingerprint: 'new-block', member_indexes: [0] } });
-  const topologyApproved = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', qa: { pass: true } }, oldBlockLineage);
+  const topologyApproved = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', qa: { pass: true }, scene_block_members: [1, 2, 3] }, oldBlockLineage);
   const topologyDecision = lineageService.reuseDecision(topologyApproved, independentLineage);
-  assert.strictEqual(topologyDecision.adopted, true, 'QA-approved split clips should survive a safer scene-block topology change');
-  const pendingQaClip = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model' }, oldBlockLineage);
-  assert.strictEqual(lineageService.reviewableDecision(pendingQaClip, independentLineage).reviewable, true, 'completed paid output should be reviewed before any regeneration');
+  assert.strictEqual(topologyDecision.reusable, false, 'a clip split from a multi-shot source must not be reused as an independent shot');
+  const pendingQaClip = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', scene_block_members: [1, 2, 3] }, oldBlockLineage);
+  assert.strictEqual(lineageService.reviewableDecision(pendingQaClip, independentLineage).reviewable, false, 'stale multi-shot topology must not be promoted by a new QA pass');
 
   const failures = [
     { index: 2, kind: 'frame_qa', dimensions: ['person_identity'], labels_zh: ['人物身份与造型'], problems: ['identity drift'], retry_instruction: 'restore current contract identity' },
