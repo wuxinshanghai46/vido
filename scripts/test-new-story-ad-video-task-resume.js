@@ -32,5 +32,7 @@ assert.strictEqual(videoAdapter.resumableProviderTaskId(active, expected, model)
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, lineage_fingerprint: 'old' }, expected, model), '');
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, error_code: 'PROVIDER_TASK_TERMINAL_FAILED' }, expected, model), '');
 assert.strictEqual(videoAdapter.resumableProviderTaskId({ ...active, model_id: 'other-model' }, expected, model), '');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({}), false, 'approved keyframe first-frame mode must be the default');
+assert.strictEqual(videoAdapter.useSeedanceReferenceAssets({ seedance_input_mode: 'reference_assets' }), true, 'asset-reference mode must require an explicit opt-in');
 
 console.log('NEW_STORY_AD_VIDEO_TASK_RESUME_TEST_OK');

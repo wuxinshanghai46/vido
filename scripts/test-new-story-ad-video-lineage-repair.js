@@ -54,7 +54,8 @@ function run() {
   assert.ok(plan.instructions[2].includes('screen_direction'));
   assert.strictEqual(repairPolicy.buildRepairPlan(failures, { attempt: 2, maxAttempts: 2 }).can_retry, false);
   assert.strictEqual(repairPolicy.buildRepairPlan([{ index: 0, kind: 'provider_error', repairable: false }], { attempt: 0, maxAttempts: 2 }).can_retry, false, 'provider/compliance errors must not be bypassed by QA retry');
-  assert.strictEqual(repairPolicy.resolveRepairBudget({}), 1, 'default automatic repair budget must be one targeted pass');
+  assert.strictEqual(repairPolicy.resolveRepairBudget({}), 0, 'default video QA policy must stop before another paid generation');
+  assert.strictEqual(repairPolicy.resolveRepairBudget({ max_auto_repairs: 1 }), 1, 'automatic retry must require an explicit budget');
   assert.strictEqual(repairPolicy.buildRepairPlan([{ index: 0, kind: 'frame_qa', dimensions: ['people_count'] }], { attempt: 0, maxAttempts: 1 }).can_retry, false, 'deterministic people-count failures must stop instead of spending another video call');
 
   const customTerms = JSON.stringify({ expected, plan });

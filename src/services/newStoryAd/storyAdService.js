@@ -2309,8 +2309,25 @@ async function generateVideoStage(taskId, options = {}) {
   const initialIndexes = [];
   const pendingReviewIndexes = [];
   const forceRegenerateAll = options.force_regenerate_all === true || options.forceRegenerateAll === true;
+  const requestedOnlyIndex = options.only_index ?? options.onlyIndex;
+  const requestedIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
+    ? (options.only_indexes || options.onlyIndexes)
+    : (requestedOnlyIndex !== null && requestedOnlyIndex !== undefined && Number.isInteger(Number(requestedOnlyIndex)) ? [Number(requestedOnlyIndex)] : []);
+  const requestedIndexSet = requestedIndexes.length
+    ? new Set(requestedIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < shots.length))
+    : null;
+  if (requestedIndexSet && !requestedIndexSet.size) {
+    const error = new Error('指定的镜头序号无效，已停止生成以避免误生成全部镜头');
+    error.code = 'VIDEO_SHOT_INDEX_INVALID';
+    error.status = 422;
+    throw error;
+  }
+  const forcedIndexSet = new Set((Array.isArray(options.force_regenerate_indexes || options.forceRegenerateIndexes)
+    ? (options.force_regenerate_indexes || options.forceRegenerateIndexes)
+    : []).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < shots.length));
   shots.forEach((_, index) => {
-    if (forceRegenerateAll) {
+    if (requestedIndexSet && !requestedIndexSet.has(index)) return;
+    if (forceRegenerateAll || forcedIndexSet.has(index)) {
       initialIndexes.push(index);
       clips[index] = null;
       return;
@@ -2446,6 +2463,20 @@ async function generateVideoStage(taskId, options = {}) {
     error.code = 'VIDEO_QA_FAILED'; error.retryable = true; error.video_clips = clips; error.qa_failures = mergedFailures;
     throw error;
   }
+  const remainingUnapproved = shots.map((_, index) => index).filter(index => !videoLineage.qaApproved(clips[index] || {}));
+  if (remainingUnapproved.length) {
+    storage.saveStage(taskId, 'video', {
+      status: 'partial',
+      output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips；仍有 ${remainingUnapproved.length} 镜待处理`,
+      diagnostics: { remaining_unapproved_indexes: remainingUnapproved.map(index => index + 1), policy_version: policy.version },
+    });
+    storage.updateTask(taskId, {
+      status: 'failed', stage: 'video_failed',
+      error: `仍有镜头需要生成、审核或人工处理：${remainingUnapproved.map(index => `第 ${index + 1} 镜`).join('、')}`,
+      error_code: 'VIDEO_SHOTS_REMAINING', retryable: true,
+    });
+    return { video_clips: clips, partial: true, remaining_unapproved_indexes: remainingUnapproved };
+  }
   storage.saveStage(taskId, 'video', {
     status: 'done',
     output_summary: `${clips.filter(Boolean).length} video clips`,
@@ -2453,6 +2484,84 @@ async function generateVideoStage(taskId, options = {}) {
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
   return { video_clips: clips };
+}
+
+function acceptVideoClipOverride(taskId, shotIndex, input = {}, user = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
+  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips').slice() : [];
+  const index = Number(shotIndex);
+  const clip = clips[index];
+  const hasFile = !!(clip && ((clip.file_path && fs.existsSync(clip.file_path)) || clip.video_url || clip.videoUrl));
+  if (!Number.isInteger(index) || index < 0 || !shots[index] || !hasFile) {
+    const error = new Error('要人工确认的镜头视频不存在或文件不可用');
+    error.code = 'VIDEO_CLIP_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  if (!clip.lineage_fingerprint) {
+    const error = new Error('该视频没有当前分镜版本来源记录，不能人工确认，请重新生成本镜视频');
+    error.code = 'VIDEO_LINEAGE_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const acceptedAt = new Date().toISOString();
+  const reason = cleanText(input.reason || '用户已查看本镜视频并确认接受当前效果', 500);
+  const acceptedBy = {
+    id: cleanText(user.id || user.userId || '', 100),
+    name: cleanText(user.name || user.username || user.nickname || '', 100),
+    source: cleanText(input.source || 'story_ad_ui', 80),
+  };
+  const originalQa = clip.qa && typeof clip.qa === 'object' ? { ...clip.qa } : {};
+  const manualAcceptance = {
+    approved: true,
+    accepted_at: acceptedAt,
+    accepted_by: acceptedBy,
+    reason,
+    original_qa: originalQa,
+    original_cross_shot_qa: clip.cross_shot_qa || null,
+  };
+  clips[index] = {
+    ...clip,
+    qa: {
+      ...originalQa,
+      pass: true,
+      status: 'manual_accepted',
+      manual_override: true,
+      model_pass: originalQa.pass === true,
+      decision_source: 'human_override',
+      override_reason: reason,
+      overridden_at: acceptedAt,
+      overridden_by: acceptedBy,
+    },
+    cross_shot_qa: clip.cross_shot_qa?.pass === false
+      ? { ...clip.cross_shot_qa, pass: true, status: 'manual_accepted', manual_override: true }
+      : clip.cross_shot_qa,
+    manual_acceptance: manualAcceptance,
+    error: '',
+    error_code: '',
+  };
+  storage.saveOutput(taskId, 'video_clips', clips);
+  storage.deleteOutput(taskId, 'final_video');
+  videoAdapter.updateVideoShotStatus(taskId, index, {
+    lifecycle: 'qa_passed', qa_status: 'manual_accepted', manual_acceptance: manualAcceptance,
+    error: '', error_code: '', retryable: false,
+  }, shots.length);
+  const remaining = shots.map((_, shot) => shot).filter(shot => !videoLineage.qaApproved(clips[shot] || {}));
+  storage.saveStage(taskId, 'video', {
+    status: remaining.length ? 'partial' : 'done',
+    output_summary: remaining.length ? `人工接受第 ${index + 1} 镜；仍有 ${remaining.length} 镜待处理` : `${clips.length} video clips`,
+    diagnostics: { manually_accepted_shot_index: index + 1, remaining_unapproved_indexes: remaining.map(shot => shot + 1) },
+  });
+  storage.updateTask(taskId, {
+    status: remaining.length ? 'failed' : 'done',
+    stage: remaining.length ? 'video_failed' : 'video_ready',
+    error: remaining.length ? `仍有镜头待处理：${remaining.map(shot => `第 ${shot + 1} 镜`).join('、')}` : '',
+    error_code: remaining.length ? 'VIDEO_SHOTS_REMAINING' : '',
+    retryable: remaining.length > 0,
+  });
+  return { video_clip: clips[index], video_clips: clips, remaining_unapproved_indexes: remaining };
 }
 
 function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, candidate, options = {}) {
@@ -3326,6 +3435,7 @@ module.exports = {
   resolveTtsVoiceId,
   generateTtsStage,
   generateVideoStage,
+  acceptVideoClipOverride,
   assertVideoInputsReady,
   verifyPersonContract,
   verifyProductContract,

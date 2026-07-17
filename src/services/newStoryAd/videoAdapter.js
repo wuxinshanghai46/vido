@@ -460,6 +460,11 @@ async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, opt
   return assets;
 }
 
+function useSeedanceReferenceAssets(options = {}) {
+  const mode = String(options.seedance_input_mode || options.seedanceInputMode || '').trim().toLowerCase();
+  return ['reference_assets', 'reference_asset', 'asset_reference'].includes(mode);
+}
+
 async function prepareDeyunaiKeyframeReferenceAsset({ taskId = '', index = 0, keyframe = {}, options = {} } = {}) {
   const sourceUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!sourceUrl) return null;
@@ -541,7 +546,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
     || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
-  const personReferenceAsset = options._deyunaiPersonAsset?.asset_url
+  const personReferenceAsset = useSeedanceReferenceAssets(options) && options._deyunaiPersonAsset?.asset_url
     && personIdentity.shotPersonRequired(ctx, shot, contract)
     ? options._deyunaiPersonAsset.asset_url
     : '';
@@ -593,9 +598,10 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         outputDir: VIDEO_DIR,
         filename,
         provider_task_id: resumeProviderTaskId,
-        // Seedance forbids mixing first_frame with reference media. Person
-        // shots use the verified private-library asset only; non-person shots
-        // retain the exact approved keyframe as first_frame.
+        // The accepted storyboard frame already contains the approved person,
+        // scene and composition. Keep it as first_frame by default so video
+        // generation cannot silently replace the wall/space geometry. Asset
+        // reference mode remains opt-in for exceptional tasks only.
         image_url: personReferenceAsset ? undefined : imageUrl,
         reference_image_urls: personReferenceAsset ? [personReferenceAsset, ...sceneReferenceAssets] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
@@ -761,7 +767,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     throw error;
   }
   const hasPersonShot = list.some((shot, index) => personIdentity.shotPersonRequired(ctx, shot, contracts[index] || {}));
-  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonShot && useSeedanceReferenceAssets(options)
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
   const runOptions = { ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length };
@@ -987,7 +993,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const targetIndexes = sceneBlockService.expandIndexesToBlocks(requested, blocks);
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
   const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
-  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && useSeedanceReferenceAssets(options)
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
   const shotTitles = Object.fromEntries(list.map((shot, index) => [index, shot.title || `镜头 ${index + 1}`]));
@@ -1030,10 +1036,11 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
         const first = block.first_index;
         const syntheticShot = sceneBlockService.generationShot(block, list);
         const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
-        const sceneAssets = personRequired && block.continuous
+        const referenceAssetMode = useSeedanceReferenceAssets(options);
+        const sceneAssets = referenceAssetMode && personRequired && block.continuous
           ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
           : [];
-        const keyframeAsset = personRequired
+        const keyframeAsset = referenceAssetMode && personRequired
           ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options })
           : null;
         block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
@@ -1117,6 +1124,7 @@ module.exports = {
   personReferenceUrl,
   prepareDeyunaiPersonAsset,
   prepareDeyunaiSceneReferenceAssets,
+  useSeedanceReferenceAssets,
   videoPathFromName,
   publicVideoUrl,
   generateShotVideo,

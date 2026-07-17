@@ -1,6 +1,8 @@
 const fs = require('fs');
 const revisionService = require('./revisionService');
 
+// Keep the lineage version stable so already-approved clips are not invalidated
+// merely because future generations now use a stricter keyframe-first input.
 const VIDEO_PIPELINE_POLICY_VERSION = 'general-video-contract-v3';
 
 function cleanAssetIdentity(value = '') {

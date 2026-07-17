@@ -309,6 +309,7 @@
         showStep?.(5);
       } else if (stage === 'video') {
         const regenerateAll = button?.id === 'dhNsaAdRegenerateAllShotVideos';
+        const singleIndex = button?.dataset?.nsaVideoRegenerate === undefined ? null : Number(button.dataset.nsaVideoRegenerate);
         r = await startStage(id, 'video', {
           ...mediaStageBody(ctx),
           include_voiceover: false,
@@ -316,6 +317,9 @@
           visual_only: true,
           missing_only: !regenerateAll,
           force_regenerate_all: regenerateAll,
+          ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
+          auto_repair: false,
+          max_auto_repairs: 0,
         }, ctx);
         normalizeBundle?.(r);
         showStep?.(4);

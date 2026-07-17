@@ -2005,6 +2005,30 @@
     return { ready, total, passed, message: ready ? '' : `当前版本仅通过 ${passed}/${total} 镜，请先修复未通过审核的镜头` };
   }
 
+  function videoClipAt(index) {
+    return (Array.isArray(state.videoClips) ? state.videoClips : []).find((clip, clipIndex) => {
+      if (!clip) return false;
+      if (Number.isInteger(Number(clip.shot_index))) return Number(clip.shot_index) === index;
+      if (Number.isInteger(Number(clip.index))) return Number(clip.index) === index + 1;
+      return clipIndex === index;
+    }) || {};
+  }
+
+  function videoClipApproved(clip = {}) {
+    return !!(clip.video_url || clip.videoUrl || clip.file_path)
+      && !clip.error_code
+      && clip.qa?.pass === true
+      && clip.cross_shot_qa?.pass !== false;
+  }
+
+  function videoGenerationEstimate({ regenerateAll = false, onlyIndex = null } = {}) {
+    const indexes = onlyIndex !== null && onlyIndex !== undefined && Number.isInteger(Number(onlyIndex))
+      ? [Number(onlyIndex)]
+      : state.shots.map((_, index) => index);
+    const targets = regenerateAll ? indexes : indexes.filter(index => !videoClipApproved(videoClipAt(index)));
+    return { count: targets.length, indexes: targets, total: state.shots.length };
+  }
+
   function stopStageProgress() {
     if (state.stageProgressTimer) {
       clearInterval(state.stageProgressTimer);
@@ -2826,6 +2850,8 @@
   function renderStoryboard() {
     const host = within('#dhNsaAdFrameHost');
     const guard = within('#dhNsaAdCommercialGuard');
+    const costHint = within('#dhNsaAdVideoCostHint');
+    if (costHint && (!Array.isArray(state.shots) || !state.shots.length)) costHint.hidden = true;
     if (guard) {
       const blocking = Array.isArray(state.review?.blocking_issues) ? state.review.blocking_issues : [];
       guard.innerHTML = state.restoreErrorCode === 'STORYBOARD_OUTPUT_MISSING'
@@ -2847,6 +2873,13 @@
       host.innerHTML = '<div class="dh-luxgen-empty"><b>\u8fd8\u6ca1\u6709\u5206\u955c</b><span>\u8bf7\u5148\u751f\u6210\u5206\u955c\u8868\u6216\u771f\u5b9e\u5173\u952e\u5e27\u3002</span></div>';
       return;
     }
+    if (costHint) {
+      const estimate = videoGenerationEstimate();
+      costHint.hidden = false;
+      costHint.innerHTML = estimate.count
+        ? `<b>消耗提示：</b>补齐/修复本轮最多可能新增生成 ${estimate.count} 个镜头；已有未审核视频会先审核，审核失败后才重做。每个镜头默认只生成 1 次，不会自动连续“抽卡”。`
+        : '<b>消耗提示：</b>当前镜头视频均已通过；除非手动选择“仅重做本镜视频”或“重新生成全部视频”，否则不会新增视频消耗。';
+    }
     if (window.NewStoryAdStoryboard?.normalizeShots) {
       state.shots = window.NewStoryAdStoryboard.normalizeShots(state.shots, state.sceneAssets || []);
     }
@@ -2855,14 +2888,13 @@
       const frame = state.keyframes[i] || {};
       const image = window.NewStoryAdKeyframes?.frameUrl ? window.NewStoryAdKeyframes.frameUrl(frame) : (frame.image_url || frame.imageUrl || frame.url || '');
       const preview = image ? withAuthQuery(image) : '';
-      const videoClip = (Array.isArray(state.videoClips) ? state.videoClips : []).find((clip, clipIndex) => {
-        if (!clip) return false;
-        if (Number.isInteger(Number(clip.shot_index))) return Number(clip.shot_index) === i;
-        if (Number.isInteger(Number(clip.index))) return Number(clip.index) === i + 1;
-        return clipIndex === i;
-      }) || {};
+      const videoClip = videoClipAt(i);
       const shotVideoUrl = videoClip.video_url || videoClip.videoUrl || '';
       const shotVideoReady = !!shotVideoUrl;
+      const shotVideoBlockMembers = Array.isArray(videoClip.scene_block_members)
+        ? videoClip.scene_block_members.map(Number).filter(Number.isInteger)
+        : [];
+      const shotVideoIsContinuousBlock = shotVideoBlockMembers.length > 1;
       const shotVideoQaPassed = shotVideoReady && videoClip.qa?.pass === true && videoClip.cross_shot_qa?.pass !== false;
       const shotVideoQaFailed = shotVideoReady && (videoClip.qa?.pass === false || videoClip.cross_shot_qa?.pass === false || !!videoClip.error_code);
       const shotVideoState = shotVideoQaPassed ? 'is-passed' : (shotVideoQaFailed ? 'is-failed' : 'is-review');
@@ -3055,8 +3087,10 @@
           <div class="dh-nsa-frame-actions">
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-edit="${i}">编辑</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
-            <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">\u91cd\u65b0\u751f\u6210\u672c\u955c</button>
+            <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">重新生成分镜图</button>
             ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">分镜图</button>` : ''}
+            ${shotVideoReady ? `<button type="button" class="dh-luxgen-edit" data-nsa-video-regenerate="${i}">${shotVideoIsContinuousBlock ? '重做连续镜组视频' : '仅重做本镜视频'}</button>` : ''}
+            ${shotVideoQaFailed ? `<button type="button" class="dh-luxgen-edit" data-nsa-video-accept="${i}">接受当前视频</button>` : ''}
           </div>
         </div>
       </article>`;
@@ -3658,6 +3692,7 @@
 
   function visualVideoStagePayload(button = null) {
     const regenerateAll = button?.id === 'dhNsaAdRegenerateAllShotVideos';
+    const singleIndex = button?.dataset?.nsaVideoRegenerate === undefined ? null : Number(button.dataset.nsaVideoRegenerate);
     return {
       ...mediaStagePayload(),
       include_voiceover: false,
@@ -3665,6 +3700,9 @@
       visual_only: true,
       missing_only: !regenerateAll,
       force_regenerate_all: regenerateAll,
+      ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
+      auto_repair: false,
+      max_auto_repairs: 0,
     };
   }
 
@@ -5472,6 +5510,43 @@
         await regenerateSingleKeyframe(index, shotRegenerate);
         return;
       }
+      const videoRegenerate = target.closest('[data-nsa-video-regenerate]');
+      if (videoRegenerate && host.contains(videoRegenerate)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = Number(videoRegenerate.dataset.nsaVideoRegenerate || 0);
+        const members = videoClipAt(index).scene_block_members;
+        const linked = Array.isArray(members) ? members.map(Number).filter(Number.isInteger) : [];
+        const scope = linked.length > 1
+          ? `第 ${linked.join('、')} 镜属于同一个连续镜组，将作为一段视频一起重做`
+          : `仅重新生成第 ${index + 1} 镜视频`;
+        if (!window.confirm(`${scope}，会新增一次对应时长的视频生成消耗；本轮不自动连续重试。确定继续吗？`)) return;
+        await runStage('video', videoRegenerate);
+        return;
+      }
+      const videoAccept = target.closest('[data-nsa-video-accept]');
+      if (videoAccept && host.contains(videoAccept)) {
+        e.preventDefault();
+        e.stopPropagation();
+        const index = Number(videoAccept.dataset.nsaVideoAccept || 0);
+        if (!window.confirm(`确认接受第 ${index + 1} 镜当前视频效果并允许用于最终合成吗？此操作不会产生新的生成消耗。`)) return;
+        setButtonBusy(videoAccept, true, '确认中...');
+        try {
+          const id = await ensureTask();
+          const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video/${index}/manual-accept`, {
+            method: 'POST',
+            body: { reason: '用户已在分镜页面查看并接受当前视频效果', source: 'story_ad_ui' },
+          });
+          normalizeBundle(response);
+          renderAll();
+          toast(`第 ${index + 1} 镜已人工确认接受，没有重新生成视频`, 'success');
+        } catch (error) {
+          toast(error.message || `第 ${index + 1} 镜确认失败`, 'error');
+        } finally {
+          setButtonBusy(videoAccept, false);
+        }
+        return;
+      }
       if (!btn || !host.contains(btn)) return;
       const id = btn.id || '';
       const handled = {
@@ -5482,10 +5557,16 @@
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
         dhNsaAdGenerateFinalFrames: () => runStage('keyframes', btn),
         dhNsaAdRegenerateAllShotVideos: () => {
-          if (!window.confirm('将按当前分镜重新生成全部镜头视频，已通过的视频也会重做并重新产生生成费用。确定继续吗？')) return false;
+          const estimate = videoGenerationEstimate({ regenerateAll: true });
+          if (!window.confirm(`将重新生成全部 ${estimate.count} 个镜头视频，已通过的视频也会重做并重新产生生成费用；每镜只生成 1 次，不自动连续重试。确定继续吗？`)) return false;
           return runStage('video', btn);
         },
-        dhNsaAdGenerateShotVideos: () => runStage('video', btn),
+        dhNsaAdGenerateShotVideos: () => {
+          const estimate = videoGenerationEstimate();
+          if (!estimate.count) return toast('当前镜头视频均已通过，无需补齐或修复', 'success');
+          if (!window.confirm(`本轮最多可能新增生成 ${estimate.count} 个未通过或缺失的镜头；已有未审核视频会先审核，每镜不自动连续重试。确定继续吗？`)) return false;
+          return runStage('video', btn);
+        },
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),
         dhNsaAdRegenerateFrames: () => runStage('keyframes', btn),
         dhNsaAdDetectStyle: () => runStage('scene', btn),

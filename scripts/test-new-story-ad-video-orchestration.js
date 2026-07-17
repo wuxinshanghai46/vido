@@ -13,6 +13,7 @@ const scheduler = require('../src/services/newStoryAd/videoParallelScheduler');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const storage = require('../src/services/newStoryAd/storageService');
+const storyService = require('../src/services/newStoryAd/storyAdService');
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -118,12 +119,35 @@ function testPersistedShotMonitor() {
   assert.strictEqual(task.generation_progress.started_at, '2026-07-16T08:00:00.000Z');
 }
 
+function testManualVideoAcceptanceDoesNotGenerate() {
+  const taskId = 'manual-video-accept-task';
+  const clipPath = path.join(tempDir, 'manual-accept.mp4');
+  fs.writeFileSync(clipPath, 'existing paid video');
+  storage.createTask({ id: taskId, title: '人工接受视频测试', user_id: 'user-a', request: {} });
+  storage.saveOutput(taskId, 'storyboard_table', [{ index: 1, title: '镜头 1' }]);
+  storage.saveOutput(taskId, 'video_clips', [{
+    shot_index: 0,
+    file_path: clipPath,
+    video_url: '/existing.mp4',
+    lineage_fingerprint: 'current-lineage',
+    qa: { pass: false, problems: ['visible seam'] },
+    error: '视频抽帧 QA 未通过',
+    error_code: 'VIDEO_FRAME_QA_FAILED',
+  }]);
+  const result = storyService.acceptVideoClipOverride(taskId, 0, { reason: '用户确认接受' }, { id: 'user-a' });
+  assert.strictEqual(result.video_clip.qa.pass, true);
+  assert.strictEqual(result.video_clip.qa.manual_override, true);
+  assert.strictEqual(result.video_clip.manual_acceptance.approved, true);
+  assert.strictEqual(storage.getTask(taskId).stage, 'video_ready');
+}
+
 (async () => {
   try {
     await testAdaptiveDependencyAwareConcurrency();
     await testThrottleDowngrade();
     testUniversalNonSpeakingDefault();
     testPersistedShotMonitor();
+    testManualVideoAcceptanceDoesNotGenerate();
     console.log('new story ad video orchestration: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

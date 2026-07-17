@@ -156,7 +156,9 @@ assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures mu
 assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive generic continuous blocks from current spatial contracts');
 assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit scene blocks instead of always submitting independent shots');
 assert(videoBlock.includes('const forceRegenerateAll = options.force_regenerate_all'), 'server video stage must recognize explicit full regeneration');
-assert(videoBlock.includes('if (forceRegenerateAll)'), 'full regeneration must bypass successful clip reuse');
+assert(videoBlock.includes('if (forceRegenerateAll || forcedIndexSet.has(index))'), 'full and explicit single-shot regeneration must bypass successful clip reuse');
+assert(videoBlock.includes('requestedIndexSet && !requestedIndexSet.has(index)'), 'single-shot video regeneration must not submit unrelated shots');
+assert(service.includes('function acceptVideoClipOverride'), 'failed videos must support explicit human acceptance without another generation');
 const composeBlock = service.slice(service.indexOf('async function composeStage'), service.indexOf('async function runFull'));
 assert(!composeBlock.includes('generateVideoStage(taskId'), 'composition must never call the paid visual video generator');
 assert(composeBlock.includes("storage.getOutput(taskId, 'video_clips')"), 'composition must consume already-approved step 4 clips');

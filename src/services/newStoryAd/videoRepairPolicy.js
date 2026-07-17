@@ -1,6 +1,8 @@
 const { cleanText } = require('./contextBuilder');
 
-const DEFAULT_MAX_AUTO_REPAIRS = 1;
+// A QA rejection must be visible to the user before another paid generation.
+// Automatic visual retries turn a probabilistic model into an opaque cost loop.
+const DEFAULT_MAX_AUTO_REPAIRS = 0;
 const HARD_MAX_AUTO_REPAIRS = 3;
 const NON_AUTOMATIC_REPAIR_DIMENSIONS = new Set([
   'people_count',

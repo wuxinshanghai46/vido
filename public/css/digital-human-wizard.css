@@ -1544,6 +1544,9 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-shot-video-result.is-failed { border-color: rgba(255,91,108,.42); }
 .dh-nsa-shot-video-result.is-failed > div { background: rgba(255,91,108,.13); }
 .dh-nsa-shot-video-result video { display: block; width: 100%; aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); object-fit: contain; background: #000; }
+.dh-nsa-video-cost-hint { margin: 10px 0; padding: 10px 12px; border: 1px solid rgba(75,214,203,.28); border-radius: 10px; color: var(--dh-text-muted); background: rgba(15,91,91,.1); font-size: 12px; line-height: 1.6; }
+.dh-nsa-video-cost-hint b { color: var(--dh-text); }
+.dh-nsa-frame-actions [data-nsa-video-regenerate], .dh-nsa-frame-actions [data-nsa-video-accept] { border-color: rgba(75,214,203,.38); }
 .dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }
 .dh-nsa-frame-media .dh-nsa-candidate-strip { padding: 8px; }
 .dh-nsa-frame-media .dh-nsa-candidate-strip > div { gap: 6px; }

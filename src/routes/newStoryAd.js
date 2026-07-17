@@ -930,6 +930,17 @@ router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'video', () => service.generateVideoStage(req.params.id, body));
 }));
 
+router.post('/tasks/:id/video/:index/manual-accept', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const result = service.acceptVideoClipOverride(
+    req.params.id,
+    req.params.index,
+    req.body || {},
+    userFromReq(req),
+  );
+  res.json({ success: true, task_id: req.params.id, ...result });
+}));
+
 router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
   const body = req.body || {};
   return queueTaskStage(req, res, 'compose', () => service.composeStage(req.params.id, body));
