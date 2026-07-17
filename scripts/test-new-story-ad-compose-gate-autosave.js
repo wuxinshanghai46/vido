@@ -96,8 +96,8 @@ assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status mu
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
 assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own storyboard video generation');
 assert(html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'step 4 must provide an explicit full video regeneration action');
-assert(html.includes('补齐/修复镜头视频'), 'incremental video repair action must be clearly labeled');
-assert(html.includes('重新生成全部视频'), 'full video regeneration action must be clearly labeled');
+assert(html.includes('生成前优化方案'), 'cost-aware video preflight action must be clearly labeled');
+assert(html.includes('连续运镜方案'), 'continuous camera plan action must be clearly labeled');
 ['dhNsaAdGenerateFinalFrames', 'dhNsaAdRegenerateAllShotVideos', 'dhNsaAdGenerateShotVideos'].forEach((id) => {
   const tag = html.match(new RegExp(`<button[^>]+id="${id}"[^>]*>`))?.[0] || '';
   assert(tag.includes('dh-nsa-step4-generate-action'), `${id} must use the neutral step-4 action style`);
@@ -120,7 +120,8 @@ assert(ui.includes("sessionStorage.setItem('vido_nsa_voice_catalog'"), 'voice ca
 assert(ui.includes('include_voiceover: !!state.voiceId'), 'media payload must explicitly disable voiceover when no voice is selected');
 assert(ui.includes("if (state.voiceId && !await runStage('tts', button))"), 'legacy media chain must skip TTS without a selected voice');
 assert(!ui.includes("if (!await runStage('video', button)) return;"), 'step 5 must not regenerate storyboard videos');
-assert(ui.includes('已有视频也会被新版本替换'), 'full video regeneration must require an explicit replacement warning');
+assert(ui.includes('预计付费提交'), 'video generation must disclose paid provider units before confirmation');
+assert(ui.includes('confirmVideoPreflight'), 'all storyboard video actions must load a server preflight before generation');
 assert(ui.includes('function confirmNsaAction'), 'video cost confirmation must use an in-product modal');
 assert(!ui.includes('window.confirm'), 'story-ad actions must not use poor browser-native confirmation dialogs');
 assert(ui.includes('点击取消不会改变按钮和任务状态'), 'full regeneration modal must explain that cancellation has no side effects');
@@ -154,6 +155,8 @@ assert(wizardCss.includes('.dh-nsa-video-status-badge'), 'each storyboard row mu
 const route = read('src/routes/newStoryAd.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
 assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
+assert(route.includes("router.get('/tasks/:id/video/preflight'"), 'server must expose a zero-generation video preflight endpoint');
+assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body)'), 'server must reject unconfirmed or stale video plans before queueing');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));
@@ -166,7 +169,7 @@ assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be
 assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
 assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive generic continuous blocks from current spatial contracts');
 assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit scene blocks instead of always submitting independent shots');
-assert(videoBlock.includes('const forceRegenerateAll = options.force_regenerate_all'), 'server video stage must recognize explicit full regeneration');
+assert(videoBlock.includes('const forceRegenerateAll = !zeroCostOnly'), 'server video stage must recognize confirmed continuous/full regeneration while preserving zero-cost-only mode');
 assert(videoBlock.includes('if (forceRegenerateAll || forcedIndexSet.has(index))'), 'full and explicit single-shot regeneration must bypass successful clip reuse');
 assert(videoBlock.includes('requestedIndexSet && !requestedIndexSet.has(index)'), 'single-shot video regeneration must not submit unrelated shots');
 assert(videoBlock.includes('const reviewExistingOnly ='), 'missing-only repair must distinguish existing rejected media from genuinely missing media');

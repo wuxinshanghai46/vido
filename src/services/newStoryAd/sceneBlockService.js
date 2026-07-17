@@ -46,7 +46,8 @@ function isExplicitBoundary(shot = {}, previousShot = {}, options = {}) {
   const from = text(shot.transition_from || '');
   const previousScene = text(previousShot.scene_id || previousShot.scene_asset_id || '');
   if (from && previousScene && from !== previousScene) return true;
-  if (/fade|dissolve|flash|black|time.?jump|montage|jump.?cut|smash.?cut/.test(transition)) return true;
+  if (/flash|black|time.?jump|montage|jump.?cut|smash.?cut/.test(transition)) return true;
+  if (/fade|dissolve/.test(transition) && options.continuous_quality_mode !== true) return true;
   if (options.preserve_existing_topology === true && /hard.?cut|match.?cut/.test(transition)) return true;
   if (/hard.?cut|match.?cut/.test(transition) && !hasContinuityHandoff(shot, previousShot)) return true;
   return shot.scene_block_boundary === true || shot.force_new_scene_block === true;

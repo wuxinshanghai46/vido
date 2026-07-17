@@ -512,8 +512,8 @@
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdRegenerateAllShotVideos" type="button">重新生成全部视频</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">补齐/修复镜头视频</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdRegenerateAllShotVideos" type="button">连续运镜方案</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">生成前优化方案</button>
                   <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">分镜视频全部通过，进入广告合成</button>
                 </div>
               </div>
@@ -521,7 +521,7 @@
               <input type="file" id="dhNsaAdAssetFile" accept="image/*" hidden>
               <div class="dh-demo-guide" id="dhNsaAdFrameGuide">
                 <b id="dhNsaAdFrameGuideTitle">按剧本生成</b>
-                <span id="dhNsaAdFrameGuideCopy">先生成并审核真实画面，再在本页生成、播放和审核每条分镜视频；全部分镜视频通过后才能进入第 5 步合成完整广告。</span>
+                <span id="dhNsaAdFrameGuideCopy">先审核真实画面，再查看系统自动修正后的生成方案、连续镜组和预计付费次数；确认方案后才生成视频，全部通过后进入第 5 步合成。</span>
               </div>
               <div class="dh-nsa-video-cost-hint" id="dhNsaAdVideoCostHint" hidden></div>
               <div id="dhNsaAdCommercialGuard" class="dh-lux-commercial-guard"></div>
@@ -2541,8 +2541,8 @@ B: ...
   <script src="/js/new-story-ad/keyframes.js?v=20260715-progress-ui-v1"></script>
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/generation-flow.js?v=20260717-keyframe-first-video-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260717-video-quality-cost-v2"></script>
+  <script src="/js/new-story-ad/generation-flow.js?v=20260717-video-preflight-v1"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260717-video-preflight-v1"></script>
 </body>
 </html>
 

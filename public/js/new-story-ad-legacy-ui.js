@@ -130,6 +130,9 @@
     activeStage: '',
     generationProgress: null,
     generationStartedAt: '',
+    videoPreflightFingerprint: '',
+    videoGenerationMode: '',
+    videoZeroCostOnly: false,
     cancelRequested: false,
     adminVideoMonitorTimer: null,
     adminVideoMonitorLoading: false,
@@ -2121,6 +2124,59 @@
     return { count: targets.length, indexes: targets, generationCount: generationIndexes.length, generationIndexes, reviewCount: targets.length - generationIndexes.length, total: state.shots.length };
   }
 
+  function videoPreflightItems(preflight = {}) {
+    return (Array.isArray(preflight.shots) ? preflight.shots : []).map(item => ({
+      index: Math.max(0, Number(item.shot_index || 1) - 1),
+      title: item.title || `第 ${item.shot_index || 1} 镜`,
+      status: (item.changes || []).join('；') || (item.paid ? '会调用视频模型一次' : '不调用视频模型'),
+      action: item.label || item.action || '',
+    }));
+  }
+
+  async function confirmVideoPreflight(mode = 'economy', onlyIndex = null) {
+    let id = '';
+    let data = null;
+    try {
+      id = await ensureTask();
+      const onlyQuery = onlyIndex !== null && onlyIndex !== undefined && Number.isInteger(Number(onlyIndex))
+        ? `&only_index=${Number(onlyIndex)}`
+        : '';
+      data = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video/preflight?mode=${encodeURIComponent(mode)}${onlyQuery}&_t=${Date.now()}`);
+    } catch (error) {
+      toast(error.message || '暂时无法读取生成前方案，本次没有提交视频模型', 'error');
+      return null;
+    }
+    const preflight = data.preflight || {};
+    const quality = mode === 'quality';
+    const blocked = Array.isArray(preflight.blockers) && preflight.blockers.length > 0;
+    const zeroCostOnly = blocked && Number(preflight.zero_cost_action_count || 0) > 0;
+    const description = quality
+      ? '推荐方案会先把同一场景、动作可衔接的镜头合并为连续视频段，再按时间轴一次生成；材质类简单运镜改为本地确定性动画。它不是把多个随机视频事后硬拼。'
+      : '系统已根据关键帧、上次失败原因和供应商状态自动选择：复用已有证据、执行本地确定性运镜，或真正改变输入方式后再生成。不会拿原提示词原样重抽；复审仍未通过也不会自动付费重做。';
+    const accepted = await confirmNsaAction({
+      title: quality ? '连续运镜生成前方案' : (blocked ? '生成通道已暂停，可先做无需视频生成的处理' : '成本优化后的生成方案'),
+      summary: blocked
+        ? preflight.blockers.map(item => item.message).join('；')
+        : `预计付费提交 ${Number(preflight.paid_unit_count || 0)} 组，本地处理 ${Number(preflight.local_unit_count || 0)} 组`,
+      description,
+      confirmLabel: zeroCostOnly ? `仅应用 ${Number(preflight.zero_cost_action_count || 0)} 项无需视频生成的处理` : (blocked ? '关闭' : (quality ? '确认按连续方案生成' : '确认按优化方案处理')),
+      cancelLabel: blocked && !zeroCostOnly ? '返回' : '取消',
+      tone: blocked ? 'danger' : 'primary',
+      facts: [
+        { value: String(Number(preflight.paid_unit_count || 0)), label: '付费生成组数', tone: Number(preflight.paid_unit_count || 0) ? 'warning' : 'pass' },
+        { value: String(Number(preflight.local_unit_count || 0)), label: '不调用视频模型', tone: 'pass' },
+        { value: String(Number(preflight.review_only_count || 0)), label: '只复审现有视频', tone: 'pass' },
+        { value: '0', label: '自动重试', tone: 'pass' },
+      ],
+      items: videoPreflightItems(preflight),
+      note: quality
+        ? `连续方案预计生成 ${Number(preflight.paid_video_seconds || 0)} 秒付费视频素材；每个连续镜组只提交一次。点击取消不会改变按钮和任务状态。`
+        : '只有方案中明确标记为“按修正方案生成一次”的镜头会产生视频模型费用；点击取消不会改变按钮和任务状态。',
+    });
+    if (!accepted || (blocked && !zeroCostOnly)) return null;
+    return { preflight, zeroCostOnly };
+  }
+
   function stopStageProgress() {
     if (state.stageProgressTimer) {
       clearInterval(state.stageProgressTimer);
@@ -2978,8 +3034,8 @@
       ].filter(([, label]) => !/ 0$/.test(label)).map(([tone, label]) => `<span class="is-${tone}">${label}</span>`).join('');
       costHint.hidden = false;
       costHint.innerHTML = `<div class="dh-nsa-video-status-summary"><b>镜头视频状态</b>${summaryChips}</div><p>${estimate.count
-        ? `本轮处理 ${estimate.count} 个镜头：最多新增生成 ${estimate.generationCount} 个，已有视频只重新审核；审核仍未通过时保留现有视频，由你选择接受或仅重做本镜，不会自动连续“抽卡”。`
-        : '当前镜头视频均已通过；除非手动选择“仅重做本镜视频”或“重新生成全部视频”，否则不会新增视频消耗。'}</p>`;
+        ? `还有 ${estimate.count} 个镜头需要处理。请先点击“生成前优化方案”：系统会把失败原因转换为输入方式、动作约束或不调用视频模型的本地运镜，并显示连续镜组与付费提交次数；确认前不会生成。`
+        : '当前镜头视频均已通过；除非重新确认新的生成前方案，否则不会新增视频消耗。'}</p>`;
     }
     if (window.NewStoryAdStoryboard?.normalizeShots) {
       state.shots = window.NewStoryAdStoryboard.normalizeShots(state.shots, state.sceneAssets || []);
@@ -3809,6 +3865,9 @@
       visual_only: true,
       missing_only: !regenerateAll,
       force_regenerate_all: regenerateAll,
+      video_generation_mode: state.videoGenerationMode || (regenerateAll ? 'quality' : 'economy'),
+      video_preflight_fingerprint: state.videoPreflightFingerprint || '',
+      zero_cost_only: state.videoZeroCostOnly === true,
       ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
       auto_repair: false,
       max_auto_repairs: 0,
@@ -5698,25 +5757,18 @@
         e.preventDefault();
         e.stopPropagation();
         const index = Number(videoRegenerate.dataset.nsaVideoRegenerate || 0);
-        const members = videoClipAt(index).scene_block_members;
-        const linked = Array.isArray(members) ? members.map(Number).filter(Number.isInteger) : [];
-        const scope = linked.length > 1
-          ? `第 ${linked.join('、')} 镜属于同一个连续镜组，将作为一段视频一起重做`
-          : `仅重新生成第 ${index + 1} 镜视频`;
-        const plan = linked.length > 1
-          ? linked.flatMap(member => videoPlanItems({ onlyIndex: member - 1, regenerateExisting: true }))
-          : videoPlanItems({ onlyIndex: index, regenerateExisting: true });
-        if (!await confirmNsaAction({
-          title: linked.length > 1 ? '重做连续镜组视频' : `重做第 ${index + 1} 镜视频`,
-          summary: scope,
-          description: '系统使用当前已审核分镜图作为视频首帧，只执行一次生成，不会自动连续重试。',
-          confirmLabel: linked.length > 1 ? '确认重做镜组' : '确认重做本镜',
-          tone: 'danger',
-          facts: [{ value: '1 次', label: '预计模型生成', tone: 'warning' }, { value: '0 次', label: '自动重试', tone: 'pass' }],
-          items: plan,
-          note: '连续镜组会按一段视频生成，费用与对应总时长有关。',
-        })) return;
-        await runStage('video', videoRegenerate);
+        const confirmed = await confirmVideoPreflight('economy', index);
+        if (!confirmed) return;
+        state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
+        state.videoGenerationMode = 'economy';
+        state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+        try {
+          await runStage('video', videoRegenerate);
+        } finally {
+          state.videoPreflightFingerprint = '';
+          state.videoGenerationMode = '';
+          state.videoZeroCostOnly = false;
+        }
         return;
       }
       const videoAccept = target.closest('[data-nsa-video-accept]');
@@ -5761,46 +5813,34 @@
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
         dhNsaAdGenerateFinalFrames: () => runStage('keyframes', btn),
         dhNsaAdRegenerateAllShotVideos: async () => {
-          const estimate = videoGenerationEstimate({ regenerateAll: true });
-          const plan = videoPlanItems({ regenerateAll: true });
-          const existingCount = plan.filter(item => item.view.hasVideo).length;
-          if (!await confirmNsaAction({
-            title: '重新生成全部镜头视频',
-            summary: `将处理全部 ${estimate.count} 个镜头，已有视频也会被新版本替换`,
-            description: '这是全量重做操作。每个独立镜头或连续镜组只提交一次，不会因 QA 失败自动继续重抽。',
-            confirmLabel: `确认重新生成 ${estimate.count} 镜`,
-            tone: 'danger',
-            facts: [
-              { value: String(estimate.count), label: '处理镜头', tone: 'warning' },
-              { value: String(existingCount), label: '将替换已有视频', tone: existingCount ? 'danger' : 'neutral' },
-              { value: '0', label: '自动重试', tone: 'pass' },
-            ],
-            items: plan,
-            note: '点击确认后才会进入生成状态；点击取消不会改变按钮和任务状态。',
-          })) return false;
-          return runStage('video', btn);
+          const confirmed = await confirmVideoPreflight('quality');
+          if (!confirmed) return false;
+          state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
+          state.videoGenerationMode = 'quality';
+          state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+          try {
+            return await runStage('video', btn);
+          } finally {
+            state.videoPreflightFingerprint = '';
+            state.videoGenerationMode = '';
+            state.videoZeroCostOnly = false;
+          }
         },
         dhNsaAdGenerateShotVideos: async () => {
           const estimate = videoGenerationEstimate();
           if (!estimate.count) return toast('当前镜头视频均已通过，无需补齐或修复', 'success');
-          const plan = videoPlanItems();
-          const missingCount = plan.filter(item => !item.view.hasVideo).length;
-          const reviewCount = plan.filter(item => item.view.hasVideo).length;
-          if (!await confirmNsaAction({
-            title: '补齐或修复镜头视频',
-            summary: `只处理 ${estimate.count} 个未通过、未审核或缺失的镜头`,
-            description: '已通过的视频保持不动；已有但未通过的视频只按最新规则复审，复审仍未通过也不会自动付费重做。',
-            confirmLabel: `确认处理 ${estimate.count} 镜`,
-            tone: 'primary',
-            facts: [
-              { value: String(missingCount), label: '未生成', tone: missingCount ? 'warning' : 'neutral' },
-              { value: String(reviewCount), label: '先审核', tone: reviewCount ? 'review' : 'neutral' },
-              { value: '0', label: '自动重试', tone: 'pass' },
-            ],
-            items: plan,
-            note: `点击确认后才开始处理；本轮最多新增生成 ${missingCount} 个缺失镜头，已有视频复审不产生新的视频生成费用。`,
-          })) return false;
-          return runStage('video', btn);
+          const confirmed = await confirmVideoPreflight('economy');
+          if (!confirmed) return false;
+          state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
+          state.videoGenerationMode = 'economy';
+          state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+          try {
+            return await runStage('video', btn);
+          } finally {
+            state.videoPreflightFingerprint = '';
+            state.videoGenerationMode = '';
+            state.videoZeroCostOnly = false;
+          }
         },
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),
         dhNsaAdRegenerateFrames: () => runStage('keyframes', btn),

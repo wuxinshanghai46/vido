@@ -507,7 +507,24 @@ function absoluteAssetUrl(url = '', options = {}) {
   return `${publicBaseUrl(options)}${raw.startsWith('/') ? raw : `/${raw}`}`;
 }
 
-async function renderLocalClip({ outputPath, imagePath = '', audioPath = '', durationSec = 4, aspectRatio = '9:16' } = {}) {
+function localMotionFilter({ width, height, duration, cameraMotion = '' } = {}) {
+  const frames = Math.max(30, Math.round(Number(duration || 4) * 30));
+  const motion = String(cameraMotion || '').toLowerCase();
+  const base = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
+  if (/truck|pan|横移|摇移/.test(motion)) {
+    const reverse = /left|向左|左移/.test(motion);
+    const x = reverse
+      ? `'(iw-iw/zoom)*(1-on/${frames})'`
+      : `'(iw-iw/zoom)*on/${frames}'`;
+    return `${base},zoompan=z='1.045':x=${x}:y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30,setsar=1,format=yuv420p`;
+  }
+  if (/pull|zoom.?out|拉远|后退/.test(motion)) {
+    return `${base},zoompan=z='max(1.0,1.04-0.04*on/${frames})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30,setsar=1,format=yuv420p`;
+  }
+  return `${base},zoompan=z='min(1.04,1+0.04*on/${frames})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${width}x${height}:fps=30,setsar=1,format=yuv420p`;
+}
+
+async function renderLocalClip({ outputPath, imagePath = '', audioPath = '', durationSec = 4, aspectRatio = '9:16', cameraMotion = '' } = {}) {
   ensureDir(path.dirname(outputPath));
   const { width, height } = ratioSize(aspectRatio);
   const duration = clamp(durationSec, 1, 15, 4);
@@ -518,13 +535,50 @@ async function renderLocalClip({ outputPath, imagePath = '', audioPath = '', dur
   else args.push('-f', 'lavfi', '-i', 'anullsrc=channel_layout=mono:sample_rate=44100');
   args.push(
     '-t', String(duration),
-    '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},setsar=1,format=yuv420p`,
+    '-vf', localMotionFilter({ width, height, duration, cameraMotion }),
     '-map', '0:v:0', '-map', '1:a:0',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
     '-c:a', 'aac', '-b:a', '128k', '-r', '30', '-movflags', '+faststart', outputPath,
   );
   await execFfmpeg(args);
   return outputPath;
+}
+
+async function generateLocalMotionClip({ taskId = '', shot = {}, keyframe = {}, audio = {}, ctx = {}, index = 0, duration = 5, options = {} } = {}) {
+  const imagePath = localImagePath(keyframe.image_url || keyframe.imageUrl || keyframe.url || '');
+  if (!imagePath) {
+    const error = new Error(`第 ${index + 1} 镜缺少可用于本地确定性运镜的已确认关键帧`);
+    error.code = 'LOCAL_MOTION_KEYFRAME_REQUIRED';
+    error.retryable = false;
+    throw error;
+  }
+  const audioPath = localAudioPath(audio.audio_url || audio.audioUrl || audio.url || '');
+  const filename = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_local_motion_${Date.now()}`);
+  const outputPath = path.join(VIDEO_DIR, `${filename}.mp4`);
+  await renderLocalClip({
+    outputPath,
+    imagePath,
+    audioPath,
+    durationSec: duration,
+    aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
+    cameraMotion: shot.camera_movement || shot.camera || shot.action || '',
+  });
+  return outputPayload(outputPath, {
+    shot_index: index,
+    index: index + 1,
+    title: shot.title || `Shot ${index + 1}`,
+    duration_sec: duration,
+    provider_used: 'local-ffmpeg/cost-aware-camera-motion',
+    provider_task_id: '',
+    image_source: keyframe.image_url || keyframe.imageUrl || '',
+    motion_prompt: clipPrompt(shot, ctx, options._contract || {}, null, keyframe),
+    mode: 'deterministic_local_camera_motion',
+    seedance_input_mode: 'not_applicable_local_motion',
+    audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
+    audio_muxed: !!audioPath,
+    normalized: true,
+    zero_cost_visual_generation: true,
+  });
 }
 
 function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 0, options = {}) {
@@ -579,13 +633,15 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     const filename = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
     const startedAt = Date.now();
     try {
+      const inputMode = String(options._inputModeOverride || '').trim()
+        || (personReferenceAsset ? (sceneReferenceAssets.length ? 'verified_person_and_scene_reference' : 'verified_person_reference') : 'approved_keyframe_first_frame');
       updateGenerationUnitStatus(taskId, index, {
         lifecycle: resumeProviderTaskId ? 'provider_running' : 'submitting',
         total_shots: totalShots,
         title: shot.title || `镜头 ${index + 1}`,
         provider_id: model.provider_id,
         model_id: model.model_id,
-        input_mode: personReferenceAsset ? (sceneReferenceAssets.length ? 'verified_person_and_scene_reference' : 'verified_person_reference') : 'approved_keyframe_first_frame',
+        input_mode: inputMode,
         scene_block_id: options._sceneBlock?.id || '',
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         speech_mode: explicitShotSpeechMode(shot, contract),
@@ -672,7 +728,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         image_source: imageUrl,
         motion_prompt: prompt,
         mode: options._sceneBlock?.continuous ? 'provider_continuous_scene_block' : (personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video'),
-        seedance_input_mode: personReferenceAsset ? (sceneReferenceAssets.length ? 'verified_person_and_scene_reference' : 'verified_person_reference') : 'approved_keyframe_first_frame',
+        seedance_input_mode: inputMode,
         scene_block_id: options._sceneBlock?.id || '',
         scene_block_fingerprint: options._sceneBlock?.fingerprint || '',
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
@@ -999,8 +1055,13 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
     : list.map((_, index) => index);
   const targetIndexes = sceneBlockService.expandIndexesToBlocks(requested, blocks);
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
+  const localMotionIndexes = new Set((Array.isArray(options._localMotionIndexes) ? options._localMotionIndexes : []).map(Number));
+  const keyframeReferenceOnlyIndexes = new Set((Array.isArray(options._keyframeReferenceOnlyIndexes) ? options._keyframeReferenceOnlyIndexes : []).map(Number));
   const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
-  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && useSeedanceReferenceAssets(options, { personRequired: hasPersonUnit })
+  const allPersonUnitsUseKeyframeOnly = units
+    .filter(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}))
+    .every(block => keyframeReferenceOnlyIndexes.has(block.first_index));
+  const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && !allPersonUnitsUseKeyframeOnly && useSeedanceReferenceAssets(options, { personRequired: hasPersonUnit })
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
   const shotTitles = Object.fromEntries(list.map((shot, index) => [index, shot.title || `镜头 ${index + 1}`]));
@@ -1045,6 +1106,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
         try {
           cancellation.throwIfCancelled(taskId);
           const syntheticShot = sceneBlockService.generationShot(block, list);
+          const localMotion = block.member_indexes.length === 1 && localMotionIndexes.has(first);
           const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
           const referenceAssetMode = useSeedanceReferenceAssets(options, { personRequired });
           const sceneAssets = referenceAssetMode && personRequired && block.continuous
@@ -1053,21 +1115,31 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           const keyframeAsset = referenceAssetMode && personRequired
             ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options })
             : null;
+          const keyframeReferenceOnly = personRequired && keyframeReferenceOnlyIndexes.has(first) && !!keyframeAsset?.asset_url;
           block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
             lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
             global_queue_ms: wave.global_queue_ms || 0,
           }, list.length));
           const runOptions = {
-            ...options, _pinnedVideoModel: pinnedModel, _deyunaiPersonAsset: deyunaiPersonAsset, _totalShots: list.length,
+            ...options, _pinnedVideoModel: pinnedModel,
+            _deyunaiPersonAsset: keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset,
+            _totalShots: list.length,
             _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
-            _sceneReferenceAssetUrls: [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean),
+            _sceneReferenceAssetUrls: keyframeReferenceOnly ? [] : [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean),
             _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
+            _inputModeOverride: keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : '',
           };
-          const sourceClip = await unitGenerator({
-            taskId, shot: block.continuous ? syntheticShot : list[first], previousShot: first > 0 ? list[first - 1] : null,
-            keyframe: keyframes[first] || {}, audio: block.continuous ? {} : (tracks[first] || {}),
-            contract: contracts[first] || {}, ctx, index: first, options: runOptions,
-          });
+          const sourceClip = localMotion
+            ? await generateLocalMotionClip({
+              taskId, shot: list[first] || {}, keyframe: keyframes[first] || {}, audio: tracks[first] || {},
+              ctx, index: first, duration: sceneBlockService.durationOf(list[first] || {}),
+              options: { ...runOptions, _contract: contracts[first] || {} },
+            })
+            : await unitGenerator({
+              taskId, shot: block.continuous ? syntheticShot : list[first], previousShot: first > 0 ? list[first - 1] : null,
+              keyframe: keyframes[first] || {}, audio: block.continuous ? {} : (tracks[first] || {}),
+              contract: contracts[first] || {}, ctx, index: first, options: runOptions,
+            });
           const generatedClips = block.continuous
             ? await splitSceneBlockClip({ taskId, block, sourceClip, shots: list, tracks, ctx, options: runOptions })
             : [{ ...sourceClip, scene_block_id: block.id, scene_block_fingerprint: block.fingerprint, scene_block_members: [first + 1] }];
@@ -1177,6 +1249,7 @@ module.exports = {
   explicitShotSpeechMode,
   hardVideoDependency,
   renderLocalClip,
+  generateLocalMotionClip,
   normalizeProviderClip,
   splitSceneBlockClip,
   clipPrompt,

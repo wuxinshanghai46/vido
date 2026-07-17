@@ -104,6 +104,63 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(matchedKeyframeQa.pass, true, 'a partial person already present in the approved keyframe must not trigger a paid redraw');
   assert.strictEqual(matchedKeyframeQa.people_count_pass, true);
   assert.deepStrictEqual(matchedKeyframeQa.problems, []);
+  const manualPartialQa = await videoQa.reviewVideoClip({
+    taskId: 'video-qa-manual-partial-person',
+    clip: { file_path: clipPath, duration_sec: 2 },
+    shot: { title: 'material detail', characters: [], expected_people: 1 },
+    keyframe: {
+      image_url: '/api/new-story-ad/assets/manual-partial-person.png',
+      contract_fingerprint: 'contract-manual-partial',
+      current_generation_status: 'manual_accepted',
+      qa: { pass: true, manual_override: true, override_reason: '用户确认画面中的手部有效', person: { person_presence: 'partial' } },
+    },
+    contract: { contract_fingerprint: 'contract-manual-partial' },
+    ctx: { cast_mode: 'no_human' },
+    index: 0,
+    gateway: { generateVision: async () => ({ text: JSON.stringify({
+      pass: false, person_pass: false, product_pass: true, scene_pass: false, action_pass: true,
+      people_count_pass: false, keyframe_people_match: false, unexpected_people_added: true,
+      text_watermark_pass: true,
+      problems: [
+        'The presence of a hand interacting with the surface introduces a visible partial person, which was not part of the authoritative keyframe.',
+        'The inclusion of the hand conflicts with the hard rule against new visible body parts appearing in the clip.',
+      ],
+    }), used_model: 'test/vision' }) },
+    repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
+  });
+  assert.strictEqual(manualPartialQa.pass, true, 'structured human-approved partial-person evidence must override a contradictory people-presence model verdict');
+  assert.strictEqual(manualPartialQa.unexpected_people_added, false);
+  assert.deepStrictEqual(manualPartialQa.problems, []);
+  const savedContractQa = videoQa.reconcileExistingApprovedPartialPersonQa({
+    qa: {
+      pass: false,
+      person_pass: false,
+      product_pass: true,
+      scene_pass: false,
+      action_pass: true,
+      people_count_pass: false,
+      text_watermark_pass: true,
+      problems: ['The presence of a hand conflicts with the rule to avoid visible human elements.'],
+      failure_dimensions: ['person_identity', 'scene_consistency', 'people_count'],
+    },
+    keyframe: {
+      image_url: '/assets/approved-partial.jpg',
+      contract_fingerprint: 'contract-partial',
+      current_generation_status: 'manual_accepted',
+      qa: { pass: true, manual_override: true, person: { person_presence: 'partial' } },
+    },
+    contract: { contract_fingerprint: 'contract-partial' },
+  });
+  assert.strictEqual(savedContractQa.pass, true, 'saved manual partial-person evidence should reconcile old contradictory QA without another model call');
+  assert.strictEqual(savedContractQa.used_model, undefined, 'saved contract reconciliation must not claim another QA model call');
+  assert.strictEqual(savedContractQa.decision_source, 'saved_keyframe_contract_reconciliation');
+  const localMotionQa = videoQa.deterministicLocalMotionQa({
+    clip: { mode: 'deterministic_local_camera_motion' },
+    keyframe: { image_url: '/assets/approved.jpg', contract_fingerprint: 'contract-local', qa: { pass: true } },
+    contract: { contract_fingerprint: 'contract-local' },
+  });
+  assert.strictEqual(localMotionQa.pass, true, 'a pixel transform of the current approved keyframe should pass deterministic QA');
+  assert.strictEqual(localMotionQa.used_model, 'none/local-ffmpeg-contract', 'deterministic local motion must not call a QA model');
   process.env.NEW_STORY_AD_MOCK_LLM = '1';
   const cross = await videoQa.reviewCrossShot({ taskId: 'video-qa-test', previous: qa, current: qa, previousShot: {}, currentShot: {}, ctx: {} });
   assert.strictEqual(cross.pass, true);

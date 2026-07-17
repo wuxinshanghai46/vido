@@ -26,6 +26,7 @@ const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoLineage = require('./videoLineageService');
 const videoRepairPolicy = require('./videoRepairPolicy');
+const videoPreflight = require('./videoPreflightService');
 const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
@@ -2239,6 +2240,73 @@ async function generateTtsStage(taskId, options = {}) {
   return { tts_audio };
 }
 
+function buildVideoPreflightPlan(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('Task not found');
+  const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
+  const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
+  const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
+  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
+  let pinnedModel = null;
+  try {
+    pinnedModel = videoAdapter.resolvePinnedVideoModel(options, clips);
+  } catch {
+    pinnedModel = videoAdapter.videoCandidates(options, { includeCircuitOpen: true })[0] || null;
+  }
+  const providerRoute = pinnedModel
+    ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`
+    : '';
+  const plan = videoPreflight.buildVideoPreflight({
+    taskId,
+    shots,
+    keyframes,
+    contracts,
+    clips,
+    statuses,
+    ctx,
+    mode: options.video_generation_mode || options.videoGenerationMode || options.mode || 'economy',
+    providerRoute,
+    onlyIndexes: Array.isArray(options.only_indexes || options.onlyIndexes)
+      ? (options.only_indexes || options.onlyIndexes)
+      : ((options.only_index ?? options.onlyIndex) !== undefined ? [Number(options.only_index ?? options.onlyIndex)] : null),
+  });
+  storage.saveOutput(taskId, 'video_preflight', videoPreflight.publicVideoPreflight(plan));
+  return plan;
+}
+
+function assertVideoPreflightConfirmation(taskId, options = {}) {
+  const plan = buildVideoPreflightPlan(taskId, options);
+  const supplied = String(options.video_preflight_fingerprint || options.videoPreflightFingerprint || '').trim();
+  if (!supplied || supplied !== plan.fingerprint) {
+    const error = new Error('视频生成方案尚未确认或任务内容已变化。请先查看新的生成前优化方案；本次没有提交视频模型。');
+    error.code = 'VIDEO_PREFLIGHT_CONFIRMATION_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.preflight = videoPreflight.publicVideoPreflight(plan);
+    throw error;
+  }
+  const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
+  if (plan.blockers.length && !zeroCostOnly) {
+    const error = new Error(plan.blockers.map(item => item.message).join('；'));
+    error.code = plan.blockers[0]?.code || 'VIDEO_PREFLIGHT_BLOCKED';
+    error.status = 409;
+    error.retryable = true;
+    error.preflight = videoPreflight.publicVideoPreflight(plan);
+    throw error;
+  }
+  if (zeroCostOnly && !plan.zero_cost_action_count) {
+    const error = new Error('当前没有可执行的“无需调用视频生成模型”处理，本次没有提交视频模型。');
+    error.code = 'VIDEO_PREFLIGHT_NO_ZERO_COST_ACTION';
+    error.status = 409;
+    error.retryable = false;
+    error.preflight = videoPreflight.publicVideoPreflight(plan);
+    throw error;
+  }
+  return plan;
+}
+
 async function generateVideoStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('Task not found');
@@ -2247,6 +2315,16 @@ async function generateVideoStage(taskId, options = {}) {
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   assertVideoInputsReady({ ctx, shots, keyframes, contracts });
+  const requirePreflight = options.require_video_preflight === true || options.requireVideoPreflight === true
+    || !!(options.video_preflight_fingerprint || options.videoPreflightFingerprint);
+  const preflightPlan = requirePreflight
+    ? assertVideoPreflightConfirmation(taskId, options)
+    : buildVideoPreflightPlan(taskId, options);
+  const generationMode = preflightPlan.mode;
+  const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
+  const generationShots = generationMode === 'quality' ? preflightPlan.reconciled_shots : shots;
+  const localMotionIndexSet = new Set(preflightPlan.local_motion_indexes || []);
+  const preflightShotActions = new Map((preflightPlan.shots || []).map(item => [item.index, item]));
   let ttsAudio = storage.getOutput(taskId, 'tts_audio');
   const visualOnly = options.visual_only === true || options.visualOnly === true;
   const selectedVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
@@ -2279,21 +2357,23 @@ async function generateVideoStage(taskId, options = {}) {
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
-  const forceRegenerateAll = options.force_regenerate_all === true || options.forceRegenerateAll === true;
+  const forceRegenerateAll = !zeroCostOnly && (generationMode === 'quality'
+    || options.force_regenerate_all === true || options.forceRegenerateAll === true);
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
-  const preserveExistingTopology = !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
-  const sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, {
+  const preserveExistingTopology = generationMode !== 'quality' && !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
+  const sceneBlocks = sceneBlockService.buildSceneBlocks(generationShots, contracts, {
     ...options,
     preserve_existing_topology: preserveExistingTopology,
+    continuous_quality_mode: generationMode === 'quality',
   });
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
-  const expectedLineages = shots.map((shot, index) => videoLineage.buildShotLineage({
+  const expectedLineages = generationShots.map((shot, index) => videoLineage.buildShotLineage({
     shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
     blueprint, storyboardMeta, modelRoute: pinnedRoute,
     speechMode: videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}),
-    motionPrompt: videoAdapter.clipPrompt(shot, ctx, contracts[index] || {}, index > 0 ? shots[index - 1] : null, keyframes[index] || {}),
+    motionPrompt: videoAdapter.clipPrompt(shot, ctx, contracts[index] || {}, index > 0 ? generationShots[index - 1] : null, keyframes[index] || {}, preflightPlan.repair_instructions?.[index] || ''),
     audio: audioTracks[index] || {},
     sceneBlock: sceneBlockService.blockForIndex(sceneBlocks, index),
   }));
@@ -2308,7 +2388,14 @@ async function generateVideoStage(taskId, options = {}) {
         file_path: clip.file_path || '', file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
         video_url: clip.video_url || clip.videoUrl || '',
       }, shots.length);
-      const qa = await videoFrameQa.reviewVideoClip({ taskId, clip, shot: shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
+      const plannedAction = preflightShotActions.get(index)?.action || '';
+      const savedContractQa = plannedAction === 'review_only'
+        ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: clip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
+        : null;
+      const localMotionQa = plannedAction === 'local_motion'
+        ? videoFrameQa.deterministicLocalMotionQa({ clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
+        : null;
+      const qa = savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
       clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
@@ -2317,12 +2404,14 @@ async function generateVideoStage(taskId, options = {}) {
       }, shots.length);
       if (!qa.pass) failures.push({ index, kind: 'frame_qa', dimensions: qa.failure_dimensions || [], labels_zh: qa.failure_labels_zh || [], problems: qa.problems || [], retry_instruction: qa.retry_instruction || '', repairable: true });
     }
-    const crossIndexes = [...new Set(reviewedIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
+    const crossIndexes = zeroCostOnly
+      ? []
+      : [...new Set(reviewedIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
     for (const index of crossIndexes) {
       const previous = clips[index - 1];
       const current = clips[index];
       if (!previous?.qa?.pass || !current?.qa?.pass) continue;
-      const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: shots[index - 1] || {}, currentShot: shots[index] || {}, ctx });
+      const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
       clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED' };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed', cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
@@ -2354,6 +2443,22 @@ async function generateVideoStage(taskId, options = {}) {
     : []).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < shots.length));
   shots.forEach((_, index) => {
     if (requestedIndexSet && !requestedIndexSet.has(index)) return;
+    const planned = preflightShotActions.get(index) || {};
+    if (zeroCostOnly && !['local_motion', 'review_only'].includes(planned.action)) return;
+    if (planned.action === 'review_only') {
+      if (videoLineage.clipHasMediaFile(clips[index])) pendingReviewIndexes.push(index);
+      return;
+    }
+    if (planned.action === 'local_motion') {
+      initialIndexes.push(index);
+      clips[index] = null;
+      return;
+    }
+    if (planned.action === 'provider_generate' && videoLineage.clipHasMediaFile(clips[index]) && (planned.changes || []).length) {
+      initialIndexes.push(index);
+      clips[index] = null;
+      return;
+    }
     if (forceRegenerateAll || forcedIndexSet.has(index)) {
       initialIndexes.push(index);
       clips[index] = null;
@@ -2431,14 +2536,16 @@ async function generateVideoStage(taskId, options = {}) {
     let generationError = null;
     try {
       lastGenerated = await videoAdapter.generateSceneBlockVideos({
-        taskId, shots, keyframes, ttsAudio, contracts, ctx,
+        taskId, shots: generationShots, keyframes, ttsAudio, contracts, ctx,
         sceneBlocks,
         options: {
           ...options,
           only_indexes: targetIndexes,
           _pinnedVideoModel: pinnedModel,
           _expectedLineages: expectedLineages,
-          _repairInstructions: repairInstructions,
+          _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions },
+          _localMotionIndexes: [...localMotionIndexSet],
+          _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [],
           _repairAttempt: repairAttempt,
         },
         existingClips: clips,
@@ -3474,6 +3581,9 @@ module.exports = {
   generateKeyframesStage,
   resolveTtsVoiceId,
   generateTtsStage,
+  buildVideoPreflightPlan,
+  assertVideoPreflightConfirmation,
+  publicVideoPreflight: videoPreflight.publicVideoPreflight,
   generateVideoStage,
   acceptVideoClipOverride,
   assertVideoInputsReady,

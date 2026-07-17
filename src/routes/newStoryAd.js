@@ -40,6 +40,7 @@ function asyncRoute(fn) {
         partial: err.partial || undefined,
         keyframes: err.keyframes || undefined,
         attempts: err.attempts || undefined,
+        preflight: err.preflight || undefined,
       });
     }
   };
@@ -925,8 +926,26 @@ router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'tts', () => service.generateTtsStage(req.params.id, body));
 }));
 
+router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const requestedIndex = req.query.only_index !== undefined ? Number(req.query.only_index) : null;
+  if (requestedIndex !== null && (!Number.isInteger(requestedIndex) || requestedIndex < 0)) {
+    const error = new Error('指定的镜头序号无效，本次没有提交视频模型');
+    error.code = 'VIDEO_SHOT_INDEX_INVALID';
+    error.status = 422;
+    throw error;
+  }
+  const plan = service.buildVideoPreflightPlan(req.params.id, {
+    video_generation_mode: req.query.mode || 'economy',
+    ...(requestedIndex !== null ? { only_indexes: [requestedIndex] } : {}),
+  });
+  res.json({ success: true, task_id: req.params.id, preflight: service.publicVideoPreflight(plan) });
+}));
+
 router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
-  const body = req.body || {};
+  taskForReq(req);
+  const body = { ...(req.body || {}), require_video_preflight: true };
+  service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'video', () => service.generateVideoStage(req.params.id, body));
 }));
 

@@ -128,7 +128,69 @@ function expectedPeopleForShot(ctx = {}, shot = {}) {
 }
 
 function peopleProblemMatchesApprovedKeyframe(problem = '') {
-  return /expected\s+no\s+(?:visible\s+)?human|unexpected\s+(?:human|person|people)\s+presence|people\s+count\s+mismatch|partial\s+(?:human\s+)?(?:hand|arm|body)|visible\s+human.*expected_people\s*(?:is|=)\s*0/i.test(String(problem || ''));
+  return /expected\s+no\s+(?:visible\s+)?human|unexpected\s+(?:principal\s+)?(?:human|person|people)\s+(?:presence|visible)|people\s+count\s+mismatch|partial\s+(?:human\s+)?(?:person|hand|arm|body)|presence\s+of\s+(?:a\s+)?(?:hand|arm|body)|(?:hand|arm|body).*(?:not\s+part\s+of|conflicts?\s+with|violates?|avoid\s+visible)|new\s+visible\s+body\s+parts?|visible\s+human.*expected_people\s*(?:is|=)\s*0/i.test(String(problem || ''));
+}
+
+function keyframeIsCurrentAndApproved(keyframe = {}, contract = {}) {
+  return !!(keyframe.image_url || keyframe.imageUrl || keyframe.url)
+    && keyframe.qa?.pass === true
+    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
+}
+
+function reconcileExistingApprovedPartialPersonQa({ qa = {}, keyframe = {}, contract = {} } = {}) {
+  const presence = String(keyframe.qa?.person?.person_presence || keyframe.person_presence || '').trim().toLowerCase();
+  const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
+  const dimensions = Array.isArray(qa.failure_dimensions) ? qa.failure_dimensions.filter(Boolean) : [];
+  const problems = Array.isArray(qa.problems) ? qa.problems.filter(Boolean) : [];
+  const contractOnlyConflict = keyframeIsCurrentAndApproved(keyframe, contract)
+    && humanApproved
+    && presence === 'partial'
+    && qa.pass === false
+    && qa.action_pass === true
+    && dimensions.length > 0
+    && dimensions.every(value => ['people_count', 'person_identity', 'scene_consistency'].includes(value))
+    && problems.length > 0
+    && problems.every(peopleProblemMatchesApprovedKeyframe);
+  if (!contractOnlyConflict) return null;
+  return {
+    ...qa,
+    pass: true,
+    status: 'verified_by_saved_contract',
+    person_pass: true,
+    scene_pass: true,
+    people_count_pass: true,
+    keyframe_people_match: true,
+    unexpected_people_added: false,
+    problems: [],
+    warnings: [...new Set([...(Array.isArray(qa.warnings) ? qa.warnings : []), ...problems])],
+    failure_dimensions: [],
+    failure_labels_zh: [],
+    retry_instruction: '',
+    decision_source: 'saved_keyframe_contract_reconciliation',
+    checked_at: new Date().toISOString(),
+  };
+}
+
+function deterministicLocalMotionQa({ clip = {}, keyframe = {}, contract = {} } = {}) {
+  if (clip.mode !== 'deterministic_local_camera_motion' || !keyframeIsCurrentAndApproved(keyframe, contract)) return null;
+  return {
+    pass: true,
+    status: 'verified_deterministic_local_motion',
+    person_pass: true,
+    product_pass: true,
+    scene_pass: true,
+    action_pass: true,
+    people_count_pass: true,
+    text_watermark_pass: true,
+    problems: [],
+    warnings: [],
+    failure_dimensions: [],
+    failure_labels_zh: [],
+    frames: [],
+    decision_source: 'deterministic_pixel_transform_of_approved_keyframe',
+    checked_at: new Date().toISOString(),
+    used_model: 'none/local-ffmpeg-contract',
+  };
 }
 
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
@@ -148,7 +210,11 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
   const references = currentKeyframeAccepted
     ? [acceptedKeyframeRef, personRef, productRef].filter(Boolean)
     : [sceneRef.url || sceneRef.image_url || '', personRef, productRef].filter(Boolean);
-  const expectedPeople = expectedPeopleForShot(ctx, shot);
+  const keyframePersonPresence = String(keyframe.qa?.person?.person_presence || keyframe.person_presence || '').trim().toLowerCase();
+  const approvedPartialPerson = currentKeyframeAccepted && keyframePersonPresence === 'partial';
+  const expectedPeople = ['person', 'partial'].includes(keyframePersonPresence)
+    ? Math.max(1, Number(expectedPeopleForShot(ctx, shot) || 0))
+    : expectedPeopleForShot(ctx, shot);
   const result = await gateway.generateVision({
     taskId,
     stage: 'new_story_ad.video_frame_qa',
@@ -158,14 +224,18 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
       'The first optional images are current-task scene/person/product references. The remaining images are ordered samples from one generated clip.',
       'The task may cover any lawful industry, scene, person, product or visual medium. Never impose a fixed template. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. An empty characters list must not overrule a visible hand, arm, or person already present in the approved keyframe: in that case set keyframe_people_match=true and people_count_pass=true when the clip preserves the same visible people state. Still reject any newly added principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension only when it is genuinely not applicable.`,
+    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, expected_person_presence: keyframePersonPresence || 'unknown', reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople, expected_person_presence: keyframePersonPresence || null, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. The structured expected_person_presence value comes from the already-approved keyframe review and is authoritative: when it is partial, the hand/arm/body part already present in the approved keyframe is allowed and must not be treated as a newly introduced person merely because characters is empty. In that case set keyframe_people_match=true and people_count_pass=true when the clip preserves that partial-person state. Still reject a genuinely new principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"text_watermark_pass":boolean,"problems":string[],"retry_instruction":string}. Use true for a dimension only when it is genuinely not applicable.`,
     maxTokens: 3000,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   let problems = Array.isArray(parsed.problems) ? parsed.problems.map(value => cleanText(value, 300)).filter(Boolean) : [];
+  const structuredPartialPeopleMatch = approvedPartialPerson
+    && humanApproved
+    && problems.length > 0
+    && problems.every(peopleProblemMatchesApprovedKeyframe)
+    && parsed.action_pass === true;
   const approvedPeopleMatch = currentKeyframeAccepted
-    && parsed.keyframe_people_match === true
-    && parsed.unexpected_people_added !== true;
+    && ((parsed.keyframe_people_match === true && parsed.unexpected_people_added !== true) || structuredPartialPeopleMatch);
   if (approvedPeopleMatch) {
     problems = problems.filter(problem => !peopleProblemMatchesApprovedKeyframe(problem));
   }
@@ -174,7 +244,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     pass: parsed.pass === true || approvedPeopleMatch,
     person_pass: personIdentity.shotPersonRequired(ctx, shot, contract) ? parsed.person_pass === true : true,
     product_pass: productIdentity.productRequired(ctx) ? parsed.product_pass === true : true,
-    scene_pass: parsed.scene_pass === true,
+    scene_pass: parsed.scene_pass === true || structuredPartialPeopleMatch,
     action_pass: parsed.action_pass === true,
     people_count_pass: parsed.people_count_pass === true || approvedPeopleMatch,
     text_watermark_pass: parsed.text_watermark_pass === true,
@@ -192,7 +262,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     problems: decision.problems,
     warnings: decision.warnings,
     keyframe_people_match: approvedPeopleMatch,
-    unexpected_people_added: parsed.unexpected_people_added === true,
+    unexpected_people_added: parsed.unexpected_people_added === true && !structuredPartialPeopleMatch,
     accepted_provenance_watermark: decision.accepted_provenance_watermark,
     retry_instruction: cleanText(parsed.retry_instruction || '', 800),
     failure_dimensions: failedDimensionDetails(normalized, FRAME_DIMENSIONS).map(item => item.code),
@@ -236,4 +306,18 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   };
 }
 
-module.exports = { FRAME_POINTS, FRAME_DIMENSIONS, CROSS_DIMENSIONS, failedDimensionDetails, extractReviewFrames, reviewDecision, expectedPeopleForShot, peopleProblemMatchesApprovedKeyframe, reviewVideoClip, reviewCrossShot };
+module.exports = {
+  FRAME_POINTS,
+  FRAME_DIMENSIONS,
+  CROSS_DIMENSIONS,
+  failedDimensionDetails,
+  extractReviewFrames,
+  reviewDecision,
+  expectedPeopleForShot,
+  peopleProblemMatchesApprovedKeyframe,
+  keyframeIsCurrentAndApproved,
+  reconcileExistingApprovedPartialPersonQa,
+  deterministicLocalMotionQa,
+  reviewVideoClip,
+  reviewCrossShot,
+};
