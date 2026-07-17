@@ -18,7 +18,7 @@
     "video-canvas:boundaries": "node scripts/check-video-canvas-boundaries.js",
     "video-canvas:test": "node scripts/test-video-canvas-v2.js",
     "story-ad:v3:boundaries": "node scripts/check-new-story-ad-v3-boundaries.js",
-    "story-ad:v3:test": "node scripts/test-video-generation-core-v3.js && node scripts/check-new-story-ad-v3-boundaries.js && node scripts/test-new-story-ad-video-preflight.js && node scripts/test-new-story-ad-scene-block-video.js && node scripts/test-new-story-ad-video-orchestration.js"
+    "story-ad:v3:test": "node scripts/test-video-generation-core-v3.js && node scripts/check-new-story-ad-v3-boundaries.js && node scripts/test-new-story-ad-person-assist-completeness.js && node scripts/test-new-story-ad-video-preflight.js && node scripts/test-new-story-ad-scene-block-video.js && node scripts/test-new-story-ad-video-orchestration.js"
   },
   "dependencies": {
     "axios": "^1.6.8",

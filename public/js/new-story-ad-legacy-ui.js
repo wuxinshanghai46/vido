@@ -5201,6 +5201,26 @@
     return changed;
   }
 
+  /**
+   * 将模型的部分人物建议与当前表单、任务兜底逐字段合并，避免任一必需内容留空。
+   */
+  function completePersonSpecSuggestion(suggestion = {}, current = {}, fallback = {}) {
+    const source = suggestion && typeof suggestion === 'object' ? suggestion : {};
+    const existing = current && typeof current === 'object' ? current : {};
+    const defaults = fallback && typeof fallback === 'object' ? fallback : {};
+    const keys = [
+      'castMode', 'gender', 'age', 'origin', 'roleName', 'displayName',
+      'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
+    ];
+    return keys.reduce((result, key) => {
+      const suggested = String(source[key] ?? '').trim();
+      const currentValue = String(existing[key] ?? '').trim();
+      const fallbackValue = String(defaults[key] ?? '').trim();
+      result[key] = suggested || currentValue || fallbackValue;
+      return result;
+    }, {});
+  }
+
   function fallbackPersonSpecFromBrief(brief = '') {
     const isMale = /男|先生|老板|师傅|经理/.test(brief) && !/女|女士|美女|太太/.test(brief);
     const isFemale = /女|女士|美女|太太|模特/.test(brief);
@@ -5242,7 +5262,10 @@
       } catch (err) {
         suggestion = fallbackPersonSpecFromBrief(brief);
       }
-      const changed = applyPersonSpecSuggestion(suggestion || fallbackPersonSpecFromBrief(brief));
+      const current = collectPersonSpec();
+      const fallback = fallbackPersonSpecFromBrief(brief);
+      const completedSuggestion = completePersonSpecSuggestion(suggestion, current, fallback);
+      const changed = applyPersonSpecSuggestion(completedSuggestion);
       markSourceDirty('person');
       renderAll();
       scheduleAutoSave('person_spec_assist');
