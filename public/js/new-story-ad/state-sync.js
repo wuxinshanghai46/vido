@@ -110,6 +110,21 @@
     if (!preserveOptimisticKeyframeProgress) state.generationProgress = null;
   }
 
+  function detectMissingStoryboardOutput(state = {}, outputs = {}) {
+    const shots = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
+    const meta = outputs.storyboard_meta || null;
+    if (shots.length) {
+      if (state.restoreErrorCode === 'STORYBOARD_OUTPUT_MISSING') {
+        state.restoreError = '';
+        state.restoreErrorCode = '';
+      }
+      return;
+    }
+    if (meta?.status !== 'ready') return;
+    state.restoreErrorCode = 'STORYBOARD_OUTPUT_MISSING';
+    state.restoreError = '服务器记录显示分镜曾经完成，但分镜主体数据已缺失；请从任务备份恢复，不能把 QA 状态当作分镜内容';
+  }
+
   function normalizeBundle(response = {}, ctx = {}) {
     const { state, rememberTaskId } = ctx;
     if (!state) return;
@@ -127,6 +142,7 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    detectMissingStoryboardOutput(state, outputs);
     if (task.id || task.status || task.stage || task.error || task.error_code) {
       state.taskStatus = task.status || '';
       state.taskStage = task.stage || '';
@@ -236,6 +252,7 @@
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips;
     state.finalVideo = outputs.final_video || state.finalVideo;
+    detectMissingStoryboardOutput(state, outputs);
     state.taskStatus = task.status || '';
     state.taskStage = task.stage || '';
     state.taskError = task.error || '';
@@ -284,5 +301,6 @@
     syncGenerationProgress,
     isPendingKeyframeSubmission,
     shouldPreserveTrackedGeneration,
+    detectMissingStoryboardOutput,
   };
 })();

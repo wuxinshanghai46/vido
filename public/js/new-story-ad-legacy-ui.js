@@ -2737,7 +2737,7 @@
       </section>
       <div class="dh-nsa-shot-edit-scroll" data-nsa-shot-edit-content></div>
       <div class="dh-modal-foot dh-nsa-shot-edit-foot">
-        <span class="dh-nsa-autosave-status is-idle" data-nsa-shot-autosave-status>修改后自动保存</span>
+        <span class="dh-nsa-autosave-status is-idle" data-nsa-shot-autosave-status hidden>修改后自动保存</span>
         <button type="button" class="dh-btn dh-btn-primary" data-nsa-shot-done>完成</button>
       </div>
     </div>`;
@@ -2827,7 +2827,9 @@
     const guard = within('#dhNsaAdCommercialGuard');
     if (guard) {
       const blocking = Array.isArray(state.review?.blocking_issues) ? state.review.blocking_issues : [];
-      guard.innerHTML = state.review
+      guard.innerHTML = state.restoreErrorCode === 'STORYBOARD_OUTPUT_MISSING'
+        ? `<div class="dh-task-warning">${escapeHtml(state.restoreError)}</div>`
+        : state.review
         ? `<div class="${blocking.length ? 'dh-task-warning' : 'dh-task-ok'}">${blocking.length ? `\u5206\u955c QA \u53d1\u73b0 ${blocking.length} \u4e2a\u95ee\u9898\uff1a${escapeHtml(blocking.join('\uff1b'))}` : '\u5206\u955c QA \u5df2\u901a\u8fc7'}</div>`
         : '';
     }
@@ -3353,6 +3355,7 @@
       el.className = `dh-nsa-autosave-status is-${status}`;
       el.textContent = text;
       el.setAttribute('aria-live', 'polite');
+      el.hidden = status !== 'error';
     });
   }
 

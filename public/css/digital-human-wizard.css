@@ -1263,6 +1263,7 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-autosave-status.is-pending { border-color: #7dd3fc; background: #f0f9ff; color: #0369a1; }
 .dh-nsa-autosave-status.is-saved { border-color: #86efac; background: #f0fdf4; color: #15803d; }
 .dh-nsa-autosave-status.is-error { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; white-space: normal; }
+.dh-nsa-autosave-status[hidden] { display: none !important; }
 .dh-nsa-compose-gate {
   display: flex;
   align-items: center;

@@ -177,7 +177,7 @@
               <div class="dh-wizard-title" id="dhNsaAdModeTitle">素材审片</div>
               <div class="dh-wizard-sub" id="dhNsaAdModeSub">选择演员、上传多张素材，AI 生成广告词后直接合成基础广告。</div>
             </div>
-            <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
+            <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
           </div>
 
           <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告完整流程" id="dhNsaAdSteps">
@@ -240,7 +240,7 @@
                   <p class="dh-demo-copy">系统根据广告需求先整理标题、主题、风格、时长和比例，再确认主体来源。</p>
                 </div>
                 <div class="dh-demo-script-actions">
-                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认基础信息，生成剧本</button>
                 </div>
               </div>
@@ -489,7 +489,7 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdScriptRegenerateTop" type="button">重新生成剧本</button>
-                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdPreviewFrames" type="button">确认剧本，生成分镜</button>
                 </div>
               </div>
@@ -509,7 +509,7 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdRegenerateScriptFromStep4" type="button">重新生成剧本</button>
-                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
                   <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">确认分镜，进入广告合成</button>
@@ -537,7 +537,7 @@
                   <p class="dh-demo-copy">配音、背景音乐和字幕均可选填；不配置也能直接合成无旁白、无配乐视频，后期可在剪映继续处理。</p>
                 </div>
                 <div class="dh-demo-script-actions">
-                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status>自动保存已开启</span>
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdConfirmGenerate" type="button">合成广告</button>
                 </div>
               </div>
@@ -2529,7 +2529,7 @@ B: ...
   <script src="/js/new-story-ad/task-store.js?v=20260716-seedance-person-routing-v1"></script>
   <script src="/js/new-story-ad/progress.js?v=20260716-real-video-progress-v1"></script>
   <script src="/js/new-story-ad/scene-assets.js?v=20260715-shot-effects-v1"></script>
-  <script src="/js/new-story-ad/state-sync.js?v=20260715-compose-gate-autosave-v2"></script>
+  <script src="/js/new-story-ad/state-sync.js?v=20260717-missing-storyboard-guard-v1"></script>
   <script src="/js/new-story-ad/button-state.js?v=20260715-human-override-no-human-v1"></script>
   <script src="/js/new-story-ad/step-navigation.js?v=20260715-compose-gate-autosave-v3"></script>
   <script src="/js/new-story-ad/task-persistence.js?v=20260715-compose-gate-autosave-v2"></script>
@@ -2539,7 +2539,7 @@ B: ...
   <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
   <script src="/js/new-story-ad/generation-flow.js?v=20260716-seedance-person-routing-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260717-shot-video-preview-v3"></script>
+  <script src="/js/new-story-ad-legacy-ui.js?v=20260717-autosave-hidden-v1"></script>
 </body>
 </html>
 

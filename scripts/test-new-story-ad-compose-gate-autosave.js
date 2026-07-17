@@ -24,7 +24,7 @@ context.window.NewStoryAdKeyframes = {
   },
 };
 vm.createContext(context);
-['public/js/new-story-ad/step-navigation.js', 'public/js/new-story-ad/button-state.js', 'public/js/new-story-ad/task-store.js', 'public/js/new-story-ad/task-persistence.js']
+['public/js/new-story-ad/step-navigation.js', 'public/js/new-story-ad/button-state.js', 'public/js/new-story-ad/task-store.js', 'public/js/new-story-ad/task-persistence.js', 'public/js/new-story-ad/state-sync.js']
   .forEach(file => vm.runInContext(read(file), context, { filename: file }));
 
 const shots = Array.from({ length: 6 }, (_, index) => ({ index: index + 1 }));
@@ -58,10 +58,15 @@ assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video
 assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 5);
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots }), 'keyframe_contract_ready');
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots, keyframes: validState.keyframes }), 'keyframes_ready');
+const missingStoryboardState = {};
+context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboardState, { storyboard_meta: { status: 'ready' } });
+assert.strictEqual(missingStoryboardState.restoreErrorCode, 'STORYBOARD_OUTPUT_MISSING');
+context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboardState, { storyboard_table: shots, storyboard_meta: { status: 'ready' } });
+assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
-assert(html.includes('data-nsa-autosave-status'), 'autosave status must be visible');
+assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
 assert(html.includes('data-nsa-cast-mode-quick="no_human"'), 'no-human mode must be directly visible instead of hidden only in a select');
 assert(html.includes('配音（选填）'), 'voiceover must be visibly optional');
@@ -69,6 +74,7 @@ assert(html.includes('背景音乐（选填）'), 'BGM must be visibly optional'
 assert(html.includes('id="dhNsaAdBgmClear"'), 'BGM must provide an explicit no-music action');
 
 const ui = read('public/js/new-story-ad-legacy-ui.js');
+assert(ui.includes("el.hidden = status !== 'error'"), 'autosave UI must only appear when saving fails');
 assert(ui.includes('data-nsa-candidate-override'), 'rejected keyframes must offer an explicit human override action');
 assert(ui.includes('/manual-accept'), 'human override must call the auditable manual acceptance endpoint');
 assert(ui.includes("person_spec: noHuman ? { castMode: 'no_human' } : person"), 'no-human payload must suppress stale person details');
