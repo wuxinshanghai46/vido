@@ -98,6 +98,11 @@ assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own storybo
 assert(html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'step 4 must provide an explicit full video regeneration action');
 assert(html.includes('补齐/修复镜头视频'), 'incremental video repair action must be clearly labeled');
 assert(html.includes('重新生成全部视频'), 'full video regeneration action must be clearly labeled');
+['dhNsaAdGenerateFinalFrames', 'dhNsaAdRegenerateAllShotVideos', 'dhNsaAdGenerateShotVideos'].forEach((id) => {
+  const tag = html.match(new RegExp(`<button[^>]+id="${id}"[^>]*>`))?.[0] || '';
+  assert(tag.includes('dh-nsa-step4-generate-action'), `${id} must use the neutral step-4 action style`);
+  assert(!tag.includes('dh-btn-primary'), `${id} must not look selected before the user clicks it`);
+});
 assert(html.includes('data-nsa-cast-mode-quick="no_human"'), 'no-human mode must be directly visible instead of hidden only in a select');
 assert(html.includes('配音（选填）'), 'voiceover must be visibly optional');
 assert(html.includes('背景音乐（选填）'), 'BGM must be visibly optional');
@@ -132,6 +137,9 @@ const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('compose', ctx)"), 'step 5 chain must end in composition only');
 assert(generationFlow.includes('visual_only: true'), 'step 4 storyboard video generation must be explicitly visual-only');
 assert(generationFlow.includes('force_regenerate_all: regenerateAll'), 'full regeneration button must send an explicit server flag');
+
+const wizardCss = read('public/css/digital-human-wizard.css');
+assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-generating'), 'only the actively running step-4 action should receive the highlighted style');
 const route = read('src/routes/newStoryAd.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
 assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
