@@ -2302,7 +2302,7 @@ async function generateVideoStage(taskId, options = {}) {
     const failures = [];
     for (const index of reviewedIndexes) {
       const clip = clips[index];
-      if (!videoLineage.clipHasUsableFile(clip)) continue;
+      if (!videoLineage.clipHasMediaFile(clip)) continue;
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: 'video_qa', qa_status: 'reviewing', repair_attempt: repairAttempt,
         file_path: clip.file_path || '', file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
@@ -2359,6 +2359,16 @@ async function generateVideoStage(taskId, options = {}) {
       clips[index] = null;
       return;
     }
+    const existingClip = clips[index] || {};
+    const existingLineage = existingClip.lineage_fingerprint || existingClip.lineage?.fingerprint || '';
+    const reviewExistingOnly = (options.missing_only === true || options.missingOnly === true)
+      && videoLineage.clipHasMediaFile(existingClip)
+      && existingLineage === expectedLineages[index].fingerprint
+      && !videoLineage.qaApproved(existingClip);
+    if (reviewExistingOnly) {
+      pendingReviewIndexes.push(index);
+      return;
+    }
     const decision = videoLineage.reuseDecision(clips[index], expectedLineages[index]);
     if (decision.reusable) {
       if (decision.adopted) clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString() });
@@ -2378,6 +2388,9 @@ async function generateVideoStage(taskId, options = {}) {
     pendingReviewIndexes.forEach((index) => {
       if (!rejectedIndexes.has(index) && videoLineage.qaApproved(clips[index])) {
         clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString(), recovered_before_regeneration: true });
+        return;
+      }
+      if ((options.missing_only === true || options.missingOnly === true) && videoLineage.clipHasMediaFile(clips[index])) {
         return;
       }
       initialIndexes.push(index);

@@ -132,6 +132,8 @@ assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore 
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
+assert(ui.includes('复审现有视频，不自动重做'), 'incremental repair must clearly preserve and re-review existing rejected media');
+assert(ui.includes('不会自动付费重做'), 'repair confirmation must disclose that failed re-review does not trigger paid regeneration');
 assert(ui.includes('分镜视频不会在本步骤重新生成'), 'step 5 failure copy must make the no-video-regeneration boundary explicit');
 assert(ui.includes('NewStoryAdTaskStore.resumeStep(bundle.task'), 'task restore must derive the current step from persisted server progress');
 assert(!ui.includes('requestedStep === 3 && storyboardReady ? 4 : requestedStep'), 'task restore must not automatically advance from the URL step');
@@ -167,6 +169,9 @@ assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video gene
 assert(videoBlock.includes('const forceRegenerateAll = options.force_regenerate_all'), 'server video stage must recognize explicit full regeneration');
 assert(videoBlock.includes('if (forceRegenerateAll || forcedIndexSet.has(index))'), 'full and explicit single-shot regeneration must bypass successful clip reuse');
 assert(videoBlock.includes('requestedIndexSet && !requestedIndexSet.has(index)'), 'single-shot video regeneration must not submit unrelated shots');
+assert(videoBlock.includes('const reviewExistingOnly ='), 'missing-only repair must distinguish existing rejected media from genuinely missing media');
+assert(videoBlock.includes('videoLineage.clipHasMediaFile(existingClip)'), 'existing rejected media must be retained for zero-cost re-review');
+assert(videoBlock.includes('pendingReviewIndexes.push(index)'), 'matching rejected media must enter QA review before any provider generation');
 assert(service.includes('function acceptVideoClipOverride'), 'failed videos must support explicit human acceptance without another generation');
 const composeBlock = service.slice(service.indexOf('async function composeStage'), service.indexOf('async function runFull'));
 assert(!composeBlock.includes('generateVideoStage(taskId'), 'composition must never call the paid visual video generator');

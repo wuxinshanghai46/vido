@@ -2091,7 +2091,7 @@
     }, { total: items.length, passed: 0, reviewing: 0, running: 0, failed: 0, cancelled: 0, missing: 0 });
   }
 
-  function videoPlanItems({ regenerateAll = false, onlyIndex = null } = {}) {
+  function videoPlanItems({ regenerateAll = false, onlyIndex = null, regenerateExisting = false } = {}) {
     return state.shots.map((shot, index) => ({
       index,
       title: shot.title || `第 ${index + 1} 镜`,
@@ -2101,7 +2101,7 @@
       return regenerateAll || item.view.key !== 'passed';
     }).map(item => ({
       ...item,
-      action: item.view.hasVideo ? (regenerateAll ? '重新生成' : (item.view.key === 'reviewing' ? '先审核，未通过再生成' : '修复生成')) : '补充生成',
+      action: item.view.hasVideo ? (regenerateAll || regenerateExisting ? '重新生成' : '复审现有视频，不自动重做') : '补充生成',
     }));
   }
 
@@ -2117,7 +2117,8 @@
       ? [Number(onlyIndex)]
       : state.shots.map((_, index) => index);
     const targets = regenerateAll ? indexes : indexes.filter(index => !videoClipApproved(videoClipAt(index)));
-    return { count: targets.length, indexes: targets, total: state.shots.length };
+    const generationIndexes = regenerateAll ? targets : targets.filter(index => !videoShotView(index).hasVideo);
+    return { count: targets.length, indexes: targets, generationCount: generationIndexes.length, generationIndexes, reviewCount: targets.length - generationIndexes.length, total: state.shots.length };
   }
 
   function stopStageProgress() {
@@ -2977,7 +2978,7 @@
       ].filter(([, label]) => !/ 0$/.test(label)).map(([tone, label]) => `<span class="is-${tone}">${label}</span>`).join('');
       costHint.hidden = false;
       costHint.innerHTML = `<div class="dh-nsa-video-status-summary"><b>镜头视频状态</b>${summaryChips}</div><p>${estimate.count
-        ? `补齐/修复本轮最多可能新增生成 ${estimate.count} 个镜头；已有未审核视频会先审核，审核失败后才重做。每个镜头默认只生成 1 次，不会自动连续“抽卡”。`
+        ? `本轮处理 ${estimate.count} 个镜头：最多新增生成 ${estimate.generationCount} 个，已有视频只重新审核；审核仍未通过时保留现有视频，由你选择接受或仅重做本镜，不会自动连续“抽卡”。`
         : '当前镜头视频均已通过；除非手动选择“仅重做本镜视频”或“重新生成全部视频”，否则不会新增视频消耗。'}</p>`;
     }
     if (window.NewStoryAdStoryboard?.normalizeShots) {
@@ -5703,8 +5704,8 @@
           ? `第 ${linked.join('、')} 镜属于同一个连续镜组，将作为一段视频一起重做`
           : `仅重新生成第 ${index + 1} 镜视频`;
         const plan = linked.length > 1
-          ? linked.flatMap(member => videoPlanItems({ onlyIndex: member - 1 }))
-          : videoPlanItems({ onlyIndex: index });
+          ? linked.flatMap(member => videoPlanItems({ onlyIndex: member - 1, regenerateExisting: true }))
+          : videoPlanItems({ onlyIndex: index, regenerateExisting: true });
         if (!await confirmNsaAction({
           title: linked.length > 1 ? '重做连续镜组视频' : `重做第 ${index + 1} 镜视频`,
           summary: scope,
@@ -5784,11 +5785,11 @@
           if (!estimate.count) return toast('当前镜头视频均已通过，无需补齐或修复', 'success');
           const plan = videoPlanItems();
           const missingCount = plan.filter(item => !item.view.hasVideo).length;
-          const reviewCount = plan.filter(item => item.view.key === 'reviewing').length;
+          const reviewCount = plan.filter(item => item.view.hasVideo).length;
           if (!await confirmNsaAction({
             title: '补齐或修复镜头视频',
             summary: `只处理 ${estimate.count} 个未通过、未审核或缺失的镜头`,
-            description: '已通过的视频保持不动；已有未审核视频会先审核，只有未通过时才生成一次新版本。',
+            description: '已通过的视频保持不动；已有但未通过的视频只按最新规则复审，复审仍未通过也不会自动付费重做。',
             confirmLabel: `确认处理 ${estimate.count} 镜`,
             tone: 'primary',
             facts: [
@@ -5797,7 +5798,7 @@
               { value: '0', label: '自动重试', tone: 'pass' },
             ],
             items: plan,
-            note: '点击确认后才开始处理；本轮最大新增生成数量不会超过上方列出的处理范围。',
+            note: `点击确认后才开始处理；本轮最多新增生成 ${missingCount} 个缺失镜头，已有视频复审不产生新的视频生成费用。`,
           })) return false;
           return runStage('video', btn);
         },

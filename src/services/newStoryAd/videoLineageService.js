@@ -116,6 +116,12 @@ function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
     && baseLineageMatches(clip, expected);
 }
 
+function clipHasMediaFile(clip = {}) {
+  if (!clip) return false;
+  if (clip.file_path) return fs.existsSync(clip.file_path);
+  return !!(clip.video_url || clip.videoUrl);
+}
+
 function reviewableDecision(clip = {}, expected = {}) {
   if (!clipHasUsableFile(clip)) return { reviewable: false, reason: 'missing_or_failed_clip' };
   if (clip.qa?.pass === false) return { reviewable: false, reason: 'qa_rejected' };
@@ -149,6 +155,7 @@ function attachLineage(clip = {}, lineage = {}, extra = {}) {
 module.exports = {
   VIDEO_PIPELINE_POLICY_VERSION,
   buildShotLineage,
+  clipHasMediaFile,
   clipHasUsableFile,
   qaApproved,
   baseLineageMatches,

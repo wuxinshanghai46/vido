@@ -43,6 +43,17 @@ function run() {
   const pendingQaClip = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', scene_block_members: [1, 2, 3] }, oldBlockLineage);
   assert.strictEqual(lineageService.reviewableDecision(pendingQaClip, independentLineage).reviewable, false, 'stale multi-shot topology must not be promoted by a new QA pass');
 
+  const rejectedWithMedia = lineageService.attachLineage({
+    file_path: __filename,
+    provider_used: 'provider/model',
+    qa: { pass: false, problems: ['needs review'] },
+    error: 'VIDEO_QA_FAILED',
+    error_code: 'VIDEO_QA_FAILED',
+  }, expected);
+  assert.strictEqual(lineageService.clipHasUsableFile(rejectedWithMedia), false, 'a rejected clip must not be treated as approved output');
+  assert.strictEqual(lineageService.clipHasMediaFile(rejectedWithMedia), true, 'a rejected clip with real media must remain available for zero-cost re-review');
+  assert.strictEqual(lineageService.clipHasMediaFile({ ...rejectedWithMedia, file_path: `${__filename}.missing` }), false, 'missing media must still require generation');
+
   const failures = [
     { index: 2, kind: 'frame_qa', dimensions: ['person_identity'], labels_zh: ['人物身份与造型'], problems: ['identity drift'], retry_instruction: 'restore current contract identity' },
     { index: 2, kind: 'cross_shot_qa', dimensions: ['screen_direction'], labels_zh: ['运动与视线方向连续性'], problems: ['direction changed'] },
