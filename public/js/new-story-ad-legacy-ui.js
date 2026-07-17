@@ -933,7 +933,9 @@
       ['#dhNsaAdStoryboard', '确认基础信息，生成剧本'],
       ['#dhNsaAdPreviewFrames', '确认剧本，生成分镜'],
       ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
-      ['#dhNsaAdGoCompose', '确认分镜，进入广告合成'],
+      ['#dhNsaAdRegenerateAllShotVideos', '重新生成全部视频'],
+      ['#dhNsaAdGenerateShotVideos', '补齐/修复镜头视频'],
+      ['#dhNsaAdGoCompose', '分镜视频全部通过，进入广告合成'],
       ['#dhNsaAdConfirmGenerate', '合成广告'],
     ];
     stepButtons.forEach(([selector, label]) => {
@@ -955,7 +957,7 @@
     setCopy();
     bind();
     state.restoringTask = !!(routeTaskId() || storedTaskId()) && !state.taskId;
-    showStep(routeStep(), { remember: false });
+    showStep(state.restoringTask ? 1 : routeStep(), { remember: false });
     renderAll();
     restoreCurrentTask();
   }
@@ -1851,12 +1853,11 @@
       if (!bundle?.task) throw new Error('任务不存在');
       hydrateTaskBundle(bundle);
       await recoverPersonAssetFromLibrary(bundle);
-      const requestedStep = routeStep();
-      const storyboardReady = state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
-        ? state.storyboardStatus.ready
-        : state.shots.length > 0;
-      const desiredStep = requestedStep === 3 && storyboardReady ? 4 : requestedStep;
-      showStep(desiredStep === 5 && !composeReadiness().ready ? 4 : desiredStep, { remember: false });
+      const desiredStep = window.NewStoryAdTaskStore?.resumeStep
+        ? window.NewStoryAdTaskStore.resumeStep(bundle.task || {}, bundle.outputs || {}, state.storyboardStatus)
+        : routeStep();
+      showStep(desiredStep, { remember: false });
+      rememberRouteStep(desiredStep);
       renderAll();
       resumeActiveGeneration();
       return true;
@@ -3655,12 +3656,15 @@
     };
   }
 
-  function visualVideoStagePayload() {
+  function visualVideoStagePayload(button = null) {
+    const regenerateAll = button?.id === 'dhNsaAdRegenerateAllShotVideos';
     return {
       ...mediaStagePayload(),
       include_voiceover: false,
       auto_tts: false,
       visual_only: true,
+      missing_only: !regenerateAll,
+      force_regenerate_all: regenerateAll,
     };
   }
 
@@ -3717,7 +3721,7 @@
         normalizeBundle(r);
         showStep(5);
       } else if (stage === 'video') {
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: visualVideoStagePayload() });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: visualVideoStagePayload(button) });
         normalizeBundle(r);
         showStep(4);
       } else if (stage === 'compose') {
@@ -5477,6 +5481,10 @@
         dhNsaAdScriptRegenerateTop: () => runStage('blueprint', btn),
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
         dhNsaAdGenerateFinalFrames: () => runStage('keyframes', btn),
+        dhNsaAdRegenerateAllShotVideos: () => {
+          if (!window.confirm('将按当前分镜重新生成全部镜头视频，已通过的视频也会重做并重新产生生成费用。确定继续吗？')) return false;
+          return runStage('video', btn);
+        },
         dhNsaAdGenerateShotVideos: () => runStage('video', btn),
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),
         dhNsaAdRegenerateFrames: () => runStage('keyframes', btn),

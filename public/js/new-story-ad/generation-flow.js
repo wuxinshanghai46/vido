@@ -308,11 +308,14 @@
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'video') {
+        const regenerateAll = button?.id === 'dhNsaAdRegenerateAllShotVideos';
         r = await startStage(id, 'video', {
           ...mediaStageBody(ctx),
           include_voiceover: false,
           auto_tts: false,
           visual_only: true,
+          missing_only: !regenerateAll,
+          force_regenerate_all: regenerateAll,
         }, ctx);
         normalizeBundle?.(r);
         showStep?.(4);

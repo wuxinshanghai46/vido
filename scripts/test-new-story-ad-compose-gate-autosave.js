@@ -57,6 +57,7 @@ const buttons = {
   '#dhNsaAdGoCompose': fakeButton(),
   '#dhNsaAdConfirmGenerate': fakeButton(),
   '#dhNsaAdGenerateShotVideos': fakeButton(),
+  '#dhNsaAdRegenerateAllShotVideos': fakeButton(),
 };
 context.window.NewStoryAdButtonState.updateLocks({
   state: invalidState,
@@ -66,6 +67,7 @@ context.window.NewStoryAdButtonState.updateLocks({
 assert.strictEqual(buttons['#dhNsaAdGoCompose'].disabled, true);
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, true);
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, true);
+assert.strictEqual(buttons['#dhNsaAdRegenerateAllShotVideos'].disabled, true);
 
 context.window.NewStoryAdButtonState.updateLocks({
   state: keyframeReadyState,
@@ -73,12 +75,13 @@ context.window.NewStoryAdButtonState.updateLocks({
   getPersonSpec: () => '',
 });
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, false);
+assert.strictEqual(buttons['#dhNsaAdRegenerateAllShotVideos'].disabled, false);
 assert.strictEqual(buttons['#dhNsaAdGoCompose'].disabled, true);
 
 const outputs = { storyboard_table: shots, keyframes: invalidState.keyframes, tts_audio: { tracks: [] } };
 assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 4);
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 4);
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 5);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 5);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 4);
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots }), 'keyframe_contract_ready');
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots, keyframes: validState.keyframes }), 'keyframes_ready');
 const missingStoryboardState = {};
@@ -92,6 +95,9 @@ assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save butt
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
 assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own storyboard video generation');
+assert(html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'step 4 must provide an explicit full video regeneration action');
+assert(html.includes('补齐/修复镜头视频'), 'incremental video repair action must be clearly labeled');
+assert(html.includes('重新生成全部视频'), 'full video regeneration action must be clearly labeled');
 assert(html.includes('data-nsa-cast-mode-quick="no_human"'), 'no-human mode must be directly visible instead of hidden only in a select');
 assert(html.includes('配音（选填）'), 'voiceover must be visibly optional');
 assert(html.includes('背景音乐（选填）'), 'BGM must be visibly optional');
@@ -109,11 +115,14 @@ assert(ui.includes("sessionStorage.setItem('vido_nsa_voice_catalog'"), 'voice ca
 assert(ui.includes('include_voiceover: !!state.voiceId'), 'media payload must explicitly disable voiceover when no voice is selected');
 assert(ui.includes("if (state.voiceId && !await runStage('tts', button))"), 'legacy media chain must skip TTS without a selected voice');
 assert(!ui.includes("if (!await runStage('video', button)) return;"), 'step 5 must not regenerate storyboard videos');
+assert(ui.includes('重新产生生成费用'), 'full video regeneration must require an explicit cost warning');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
 assert(ui.includes('分镜视频不会在本步骤重新生成'), 'step 5 failure copy must make the no-video-regeneration boundary explicit');
+assert(ui.includes('NewStoryAdTaskStore.resumeStep(bundle.task'), 'task restore must derive the current step from persisted server progress');
+assert(!ui.includes('requestedStep === 3 && storyboardReady ? 4 : requestedStep'), 'task restore must not automatically advance from the URL step');
 assert(ui.includes('data-nsa-media-result-state'), 'media result must display an explicit success, running, incomplete or failed state');
 assert(ui.includes('最终成片没有生成，因此这里不会出现成片播放器'), 'failed media result must explain why no player is visible');
 assert(ui.includes('有效镜头 ${approvedVideoShots}/${totalVideoShots}'), 'media result must report QA-approved shots instead of raw clip array length');
@@ -122,6 +131,7 @@ assert(!ui.includes('clips.length ? `视频镜头 ${clips.length} 条`'), 'raw c
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('compose', ctx)"), 'step 5 chain must end in composition only');
 assert(generationFlow.includes('visual_only: true'), 'step 4 storyboard video generation must be explicitly visual-only');
+assert(generationFlow.includes('force_regenerate_all: regenerateAll'), 'full regeneration button must send an explicit server flag');
 const route = read('src/routes/newStoryAd.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
 assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
@@ -137,6 +147,8 @@ assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be
 assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
 assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive generic continuous blocks from current spatial contracts');
 assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit scene blocks instead of always submitting independent shots');
+assert(videoBlock.includes('const forceRegenerateAll = options.force_regenerate_all'), 'server video stage must recognize explicit full regeneration');
+assert(videoBlock.includes('if (forceRegenerateAll)'), 'full regeneration must bypass successful clip reuse');
 const composeBlock = service.slice(service.indexOf('async function composeStage'), service.indexOf('async function runFull'));
 assert(!composeBlock.includes('generateVideoStage(taskId'), 'composition must never call the paid visual video generator');
 assert(composeBlock.includes("storage.getOutput(taskId, 'video_clips')"), 'composition must consume already-approved step 4 clips');

@@ -91,9 +91,9 @@
         && clip?.qa?.pass === true
         && clip?.cross_shot_qa?.pass !== false;
     });
-    if (finalVideo.video_url || finalVideo.videoUrl || currentVideosReady) return 5;
-    if (/video/.test(stage)) return 4;
-    if (outputs.tts_audio || /(?:final|compose|tts|media)/.test(stage)) return currentVideosReady ? 5 : 4;
+    if (finalVideo.video_url || finalVideo.videoUrl) return 5;
+    if (/(?:compose|final|tts)/.test(stage)) return 5;
+    if (/video|media/.test(stage) || currentVideosReady || clips.length) return 4;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready

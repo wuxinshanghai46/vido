@@ -58,6 +58,7 @@
     lock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
+    lock('#dhNsaAdRegenerateAllShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
     lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
     lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
     lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜视频');

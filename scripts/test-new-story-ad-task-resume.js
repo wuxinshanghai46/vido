@@ -41,6 +41,10 @@ assert.equal(store.resumeStep({ stage: 'scene_config_done' }, {}), 2);
 assert.equal(store.resumeStep({ stage: 'blueprint_failed' }, {}), 3);
 assert.equal(store.resumeStep({ stage: 'keyframes_failed', shot_count: 6 }, {}), 4);
 assert.equal(store.resumeStep({ stage: 'video_failed' }, {}), 4);
+assert.equal(store.resumeStep({ stage: 'video_ready' }, { video_clips: [{ video_url: '/shot.mp4', qa: { pass: true } }] }), 4);
+assert.equal(store.resumeStep({ stage: 'media_failed' }, { video_clips: [{ video_url: '/shot.mp4' }] }), 4);
+assert.equal(store.resumeStep({ stage: 'tts_ready' }, { tts_audio: { tracks: [] } }), 5);
+assert.equal(store.resumeStep({ stage: 'compose_failed' }, {}), 5);
 assert.equal(store.resumeStep({}, [
   { kind: 'scene_config', payload: { id: 'scene-1' } },
   { kind: 'blueprint', payload: { beats: [] } },

@@ -2308,7 +2308,13 @@ async function generateVideoStage(taskId, options = {}) {
   }
   const initialIndexes = [];
   const pendingReviewIndexes = [];
+  const forceRegenerateAll = options.force_regenerate_all === true || options.forceRegenerateAll === true;
   shots.forEach((_, index) => {
+    if (forceRegenerateAll) {
+      initialIndexes.push(index);
+      clips[index] = null;
+      return;
+    }
     const decision = videoLineage.reuseDecision(clips[index], expectedLineages[index]);
     if (decision.reusable) {
       if (decision.adopted) clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString() });
