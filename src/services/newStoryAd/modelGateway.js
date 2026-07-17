@@ -296,7 +296,7 @@ async function generateText({
   maxCandidates = TEXT_MAX_CANDIDATES,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
 } = {}) {
-  if (!stage) throw new Error('newStoryAd modelGateway requires stage');
+  if (!stage) throw new Error('剧情广告模型调用缺少阶段标识。');
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     const text = mockResponse(stage, userPrompt);
     return {

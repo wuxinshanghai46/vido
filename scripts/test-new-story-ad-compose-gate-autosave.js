@@ -97,7 +97,7 @@ assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must e
 assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own storyboard video generation');
 assert(html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'step 4 must provide an explicit full video regeneration action');
 assert(html.includes('生成前优化方案'), 'cost-aware video preflight action must be clearly labeled');
-assert(html.includes('连续运镜方案'), 'continuous camera plan action must be clearly labeled');
+assert(html.includes('高质量逐镜方案'), 'high-quality per-shot action must be clearly labeled');
 ['dhNsaAdGenerateFinalFrames', 'dhNsaAdRegenerateAllShotVideos', 'dhNsaAdGenerateShotVideos'].forEach((id) => {
   const tag = html.match(new RegExp(`<button[^>]+id="${id}"[^>]*>`))?.[0] || '';
   assert(tag.includes('dh-nsa-step4-generate-action'), `${id} must use the neutral step-4 action style`);
@@ -167,9 +167,11 @@ const videoBlock = service.slice(service.indexOf('async function generateVideoSt
 assert(videoBlock.includes('ttsAudio = silentTtsOutput()'), 'video generation must use empty audio tracks when voiceover is disabled');
 assert(videoBlock.includes('videoLineage.buildShotLineage'), 'every clip must be linked to the current storyboard/person/product/scene/keyframe/audio contract');
 assert(videoBlock.includes('videoRepairPolicy.buildRepairPlan'), 'QA failures must use bounded structured auto-repair');
-assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive generic continuous blocks from current spatial contracts');
-assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit scene blocks instead of always submitting independent shots');
-assert(videoBlock.includes('const forceRegenerateAll = !zeroCostOnly'), 'server video stage must recognize confirmed continuous/full regeneration while preserving zero-cost-only mode');
+assert(videoBlock.includes('sceneBlockService.buildSceneBlocks'), 'video stage must derive compatible generation units from current spatial contracts');
+assert(videoBlock.includes('videoAdapter.generateSceneBlockVideos'), 'video generation must submit isolated generation units through the compatibility adapter');
+assert(videoBlock.includes('const forceRegenerateAll = !zeroCostOnly'), 'server video stage must recognize confirmed high-quality regeneration while preserving zero-cost-only mode');
+assert(videoBlock.includes('const maxRepairs = 0'), 'paid video generation must never retry automatically');
+assert(videoBlock.includes('video_cost_authorization') || service.includes('video_cost_authorization'), 'paid video generation must persist RMB cost authorization');
 assert(videoBlock.includes('if (forceRegenerateAll || forcedIndexSet.has(index))'), 'full and explicit single-shot regeneration must bypass successful clip reuse');
 assert(videoBlock.includes('requestedIndexSet && !requestedIndexSet.has(index)'), 'single-shot video regeneration must not submit unrelated shots');
 assert(videoBlock.includes('const reviewExistingOnly ='), 'missing-only repair must distinguish existing rejected media from genuinely missing media');

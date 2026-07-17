@@ -17,18 +17,26 @@ async function run() {
   const sceneLock = id => ({ scene_id: id, scene_revision: id === 'space-alpha' ? 2 : 1, layout_summary: 'current task layout', view_images: [{ key: 'master', url: '/api/new-story-ad/assets/master.png' }] });
   const contracts = shots.map(shot => ({ contract_fingerprint: `contract-${shot.id}`, scene_lock: sceneLock(shot.scene_id) }));
   const blocks = sceneBlocks.buildSceneBlocks(shots, contracts, { scene_block_max_duration: 15 });
-  assert.deepStrictEqual(blocks.map(block => block.member_indexes), [[0, 1, 2], [3], [4]], 'same verified space must group until a generic boundary');
-  assert.strictEqual(blocks[0].duration_sec, 10);
-  assert.strictEqual(blocks[0].continuous, true);
-  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], blocks), [0, 1, 2], 'one failed beat must regenerate its complete continuous block');
+  assert.deepStrictEqual(blocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4]], '同一场景必须默认保留真实剪辑边界');
+  assert.strictEqual(blocks[0].duration_sec, 3);
+  assert.strictEqual(blocks[0].continuous, false);
+  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], blocks), [1], '单镜失败只能重做当前生成单元');
   assert.strictEqual(blocks[0].spatial_reference_urls[0], '/api/new-story-ad/assets/master.png');
   const prompt = sceneBlocks.generationPrompt(blocks[0], shots, contracts, { 1: 'repair the current-task action handoff' });
-  assert.ok(prompt.includes('one uninterrupted continuous shot'));
-  assert.ok(prompt.includes('Ordered timeline beats'));
-  assert.ok(prompt.includes('Scene block contract'));
+  assert.ok(prompt.includes('exactly one final edit shot'));
+  assert.ok(prompt.includes('Edit shot contract'));
+  assert.ok(prompt.includes('Generation unit contract'));
   assert.ok(prompt.length <= 3950);
-  assert.ok(prompt.includes('repair the current-task action handoff'));
   ['钢材', '厨房', '展厅', '家居', '佛山'].forEach(term => assert.ok(!prompt.includes(term), `scene block prompt must not hardcode ${term}`));
+
+  const authoredOneTakeShots = shots.map((shot, index) => index < 3 ? { ...shot, one_take_group_id: 'take-alpha' } : shot);
+  const oneTakeBlocks = sceneBlocks.buildSceneBlocks(authoredOneTakeShots, contracts, {
+    allow_one_take: true,
+    provider_supports_one_take: true,
+  });
+  assert.deepStrictEqual(oneTakeBlocks.map(block => block.member_indexes), [[0, 1, 2], [3], [4]], '只有明确标记并通过能力检查的一镜到底才允许合并');
+  assert.strictEqual(oneTakeBlocks[0].continuous, true);
+  assert.ok(sceneBlocks.generationPrompt(oneTakeBlocks[0], authoredOneTakeShots, contracts).includes('uninterrupted take'));
 
   const semanticShots = [
     { id: 'semantic-a', scene_id: 'space-semantic', duration: 5, characters: ['角色一'] },
@@ -38,7 +46,7 @@ async function run() {
   ];
   const semanticContracts = semanticShots.map(() => ({ scene_lock: sceneLock('space-semantic') }));
   const semanticBlocks = sceneBlocks.buildSceneBlocks(semanticShots, semanticContracts);
-  assert.deepStrictEqual(semanticBlocks.map(block => block.member_indexes), [[0], [1, 2], [3]], 'explicit editorial cuts remain boundaries, while an empty character list alone must not split a potentially continuous partial-person beat');
+  assert.deepStrictEqual(semanticBlocks.map(block => block.member_indexes), [[0], [1], [2], [3]], '人物数量变化和剪辑边界不得触发隐式母片合并');
   const preservedSemanticBlocks = sceneBlocks.buildSceneBlocks(semanticShots, semanticContracts, { preserve_existing_topology: true });
   assert.deepStrictEqual(preservedSemanticBlocks.map(block => block.member_indexes), [[0], [1], [2], [3]], 'repairing an existing task must preserve the prior paid clip topology');
 
@@ -47,13 +55,13 @@ async function run() {
     { id: 'handoff-b', scene_id: 'space-handoff', duration: 5, characters: [], transition_type: 'hard_cut', entry_frame_state: 'the same hand continues touching the surface', screen_direction: 'left_to_right' },
   ];
   const handoffBlocks = sceneBlocks.buildSceneBlocks(handoffShots, handoffShots.map(() => ({ scene_lock: sceneLock('space-handoff') })));
-  assert.deepStrictEqual(handoffBlocks.map(block => block.member_indexes), [[0, 1]], 'an authored entry/exit handoff in one space must generate as one continuous block even when the second beat has no principal character list');
+  assert.deepStrictEqual(handoffBlocks.map(block => block.member_indexes), [[0], [1]], '动作交接属于连续性合同，不等于付费生成单元合并');
 
   const baseLineage = lineage.buildShotLineage({
     shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
-    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: blocks[0],
+    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: oneTakeBlocks[0],
   });
-  const changedBlock = { ...blocks[0], fingerprint: 'changed-block' };
+  const changedBlock = { ...oneTakeBlocks[0], fingerprint: 'changed-block' };
   const changedLineage = lineage.buildShotLineage({
     shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
     ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: changedBlock,
@@ -86,7 +94,7 @@ async function run() {
       shots: shots.slice(0, 2),
       contracts: contracts.slice(0, 2),
       keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
-      sceneBlocks: blocks.slice(0, 1).map(block => ({ ...block, member_indexes: [0, 1], first_index: 0, last_index: 1, duration_sec: 7, beats: block.beats.slice(0, 2) })),
+      sceneBlocks: oneTakeBlocks.slice(0, 1).map(block => ({ ...block, member_indexes: [0, 1], first_index: 0, last_index: 1, duration_sec: 7, beats: block.beats.slice(0, 2) })),
       ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
       options: {
         only_indexes: [0, 1],

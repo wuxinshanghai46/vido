@@ -372,7 +372,7 @@ async function generateSceneAsset(taskId, body = {}) {
 
 async function reverifySceneAsset(taskId, sceneId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
   const index = assets.findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));

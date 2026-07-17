@@ -1381,6 +1381,9 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 }
 .dh-demo-frame-info .wide { grid-column: 1 / -1; }
 .dh-nsa-frame-list { display: grid; gap: 14px; min-width: 0; }
+.dh-nsa-pagination { display:flex; align-items:center; justify-content:center; gap:12px; margin:12px 0; color:var(--t-3); font-size:12px; }
+.dh-nsa-pagination button { border:1px solid var(--line); border-radius:8px; padding:7px 12px; color:var(--t-2); background:var(--card); cursor:pointer; }
+.dh-nsa-pagination button:disabled { opacity:.45; cursor:not-allowed; }
 .dh-nsa-frame-card {
   display: grid;
   grid-template-columns: minmax(210px, 280px) minmax(0, 1fr);

@@ -18,6 +18,7 @@ const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService');
+const videoCore = require('../videoGenerationCore');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -593,10 +594,11 @@ function updateGenerationUnitStatus(taskId = '', index = 0, patch = {}, total = 
   }, total));
 }
 
+/** 提交一个已经通过费用授权的供应商生成单元，不执行隐式模型回退。 */
 async function generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options }) {
   const pinnedModel = options._pinnedVideoModel;
   if (!pinnedModel) {
-    const error = new Error('new_story_ad.video 当前没有未熔断的真实视频模型，已立即停止本阶段');
+    const error = new Error('当前没有可用且状态正常的真实视频模型，已立即停止本阶段。');
     error.code = 'VIDEO_CIRCUIT_OPEN';
     error.retryable = true;
     throw error;
@@ -748,11 +750,11 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         model_id: model.model_id,
         code: error.code || classified.code,
         retryable: error.retryable === true || classified.retryable,
-        error: String(error.message || error).slice(0, 500),
+        error: videoCore.chineseError.classifyChineseMessage(error),
       });
     }
   }
-  const error = new Error(`第 ${index + 1} 镜视频模型全部失败：${attempts.map(item => `${item.provider_id}/${item.model_id}: ${item.error}`).join('；')}`);
+  const error = new Error(`第 ${index + 1} 镜视频生成失败，系统已停止自动重试。请查看供应商任务状态后再决定是否重新提交。`);
   error.code = attempts.some(item => item.retryable) ? 'VIDEO_ATTEMPTS_EXHAUSTED' : (attempts[0]?.code || 'VIDEO_MODEL_UNAVAILABLE');
   error.retryable = attempts.some(item => item.retryable);
   error.attempts = attempts;
@@ -766,6 +768,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
   throw error;
 }
 
+/** 生成单个最终剪辑镜头；仅在明确开启时允许零费用本地兜底。 */
 async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, keyframe = {}, audio = {}, contract = {}, ctx = {}, index = 0, options = {} } = {}) {
   const requestedDuration = Number(options.duration_sec || options.durationSec || shot.duration_sec || shot.duration || audio.duration_sec || 4);
   if (!Number.isFinite(requestedDuration) || requestedDuration < 1 || requestedDuration > 15) {
@@ -796,7 +799,7 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
       file_path: out,
       file_exists: fs.existsSync(out),
       video_url: publicVideoUrl(path.basename(out)),
-      warning: String(error.message || error).slice(0, 500),
+      warning: videoCore.chineseError.classifyChineseMessage(error),
       error: '',
       error_code: '',
     }, Number(options._totalShots || 0));
@@ -810,7 +813,7 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
       audio_source: audioPath ? (audio.audio_url || audio.audioUrl || '') : '',
       motion_prompt: clipPrompt(shot, ctx, contract, previousShot, keyframe),
       mode: imagePath ? 'still_keyframe_video' : 'placeholder_video',
-      warning: String(error.message || error).slice(0, 500),
+      warning: videoCore.chineseError.classifyChineseMessage(error),
     });
   }
 }
@@ -1035,6 +1038,7 @@ async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, s
   return output;
 }
 
+/** 按独立生成单元执行镜头；失败仅影响当前单元并记录可核对的计费状态。 */
 async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [], ttsAudio = {}, contracts = [], sceneBlocks = [], ctx = {}, options = {}, existingClips = [], onClip = null } = {}) {
   const list = Array.isArray(shots) ? shots : [];
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
@@ -1158,12 +1162,15 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           return generatedClips;
         } catch (error) {
           if (error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted) throw error;
+          const currentStatus = storage.getOutput(taskId, videoShotStatusKind(block.first_index)) || {};
+          const submitted = !!currentStatus.provider_task_id;
           const failure = {
             scene_block_id: block.id,
             indexes: block.member_indexes.slice(),
-            error: String(error.message || error).slice(0, 1000),
+            error: videoCore.chineseError.classifyChineseMessage(error, '当前镜头生成失败，系统已停止自动重试。'),
             error_code: error.code || 'SCENE_BLOCK_GENERATION_FAILED',
             retryable: error.retryable === true,
+            billing_state: submitted ? 'unknown' : 'not_submitted',
           };
           unitFailures.push(failure);
           block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
@@ -1171,7 +1178,8 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             error: failure.error,
             error_code: failure.error_code,
             retryable: failure.retryable,
-            provider_submission_state: storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id ? 'submitted' : 'not_submitted',
+            provider_submission_state: submitted ? 'submitted' : 'not_submitted',
+            billing_state: failure.billing_state,
           }, list.length));
           return { failed: true, ...failure };
         }

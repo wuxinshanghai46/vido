@@ -65,12 +65,12 @@ function preferredMatches(model = {}, preferred = '') {
 function resolveImageAdapter(model = {}) {
   const providerId = String(model.provider_id || model.providerId || '').trim();
   const modelId = String(model.model_id || model.model || '').trim();
-  if (!providerId || !modelId) throw new Error('new_story_ad image adapter requires provider_id/model_id');
+  if (!providerId || !modelId) throw new Error('图片生成缺少供应商或模型配置。');
   const settings = loadSettings();
   const provider = (settings.providers || []).find(p => p.enabled && p.api_key && providerMatches(p, providerId));
-  if (!provider) throw new Error(`new_story_ad image provider unavailable: ${providerId}`);
+  if (!provider) throw new Error(`图片供应商 ${providerId} 当前不可用。`);
   const providerModel = (provider.models || []).find(m => String(m.id || '').trim() === modelId && m.enabled !== false && imageUseMatches(m));
-  if (!providerModel) throw new Error(`new_story_ad image model is not enabled image model: ${providerId}/${modelId}`);
+  if (!providerModel) throw new Error(`图片模型 ${providerId}/${modelId} 未启用或类型不正确。`);
   return {
     adapter: provider.adapter || provider.preset || provider.id || providerId,
     family: adapterFamily(provider),
@@ -166,7 +166,7 @@ function writeBase64Asset(base64, filename) {
 async function imageBufferFromResult(result = {}) {
   if (result.filePath && fs.existsSync(result.filePath)) return fs.readFileSync(result.filePath);
   const value = String(result.image_url || result.imageUrl || result.url || '').trim();
-  if (!value) throw new Error('image result has no readable url');
+  if (!value) throw new Error('图片生成结果没有可读取的地址。');
   if (value.startsWith('/api/new-story-ad/assets/')) {
     const filePath = assetPathFromName(decodeURIComponent(value.split('/').pop() || ''));
     if (filePath && fs.existsSync(filePath)) return fs.readFileSync(filePath);
@@ -175,7 +175,7 @@ async function imageBufferFromResult(result = {}) {
     const response = await axios.get(value, { responseType: 'arraybuffer', timeout: 120000, signal: cancellation.signal() });
     return Buffer.from(response.data);
   }
-  throw new Error(`unsupported image url for local processing: ${value.slice(0, 120)}`);
+  throw new Error(`当前图片地址不支持本地处理：${value.slice(0, 120)}`);
 }
 
 async function persistImageResult({ result = {}, filename = '', thumbnailWidths = [] } = {}) {
@@ -236,7 +236,7 @@ async function splitReferenceSheet({
   const meta = await sharp(normalized).metadata();
   const fullW = Number(meta.width || 0);
   const fullH = Number(meta.height || 0);
-  if (fullW < 400 || fullH < 400) throw new Error(`actor sheet image is too small: ${fullW}x${fullH}`);
+  if (fullW < 400 || fullH < 400) throw new Error(`演员设定图尺寸过小：${fullW}x${fullH}。`);
   const cellW = Math.floor(fullW / 2);
   const cellH = Math.floor(fullH / 2);
   const rects = [
@@ -325,7 +325,7 @@ async function generateImage({
     try {
       config = resolveImageAdapter(model);
       if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
-        throw new Error(`adapter ${config.adapter} is not implemented in new_story_ad image adapter`);
+        throw new Error(`当前图片适配方式 ${config.adapter} 尚未实现。`);
       }
       const references = (Array.isArray(referenceImages) ? referenceImages : [])
         .map(absolutePublicImageUrl)
@@ -425,7 +425,7 @@ async function generateImage({
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
         return payload;
       }
-      throw new Error('image provider returned no url or b64_json');
+      throw new Error('图片供应商没有返回图片地址或图片数据。');
     } catch (err) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = modelGateway.classifyError(err);

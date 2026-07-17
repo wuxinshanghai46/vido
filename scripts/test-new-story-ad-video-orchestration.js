@@ -15,10 +15,12 @@ const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const storage = require('../src/services/newStoryAd/storageService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
 
+/** 等待指定毫秒，用于构造可重复的并发波次。 */
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** 验证无依赖镜头并行、连续镜头等待前镜完成。 */
 async function testAdaptiveDependencyAwareConcurrency() {
   const dependencies = { 0: null, 1: 0, 2: null, 3: null, 4: null, 5: null };
   const events = [];
@@ -46,11 +48,28 @@ async function testAdaptiveDependencyAwareConcurrency() {
   assert(schedule.waves.some(wave => wave.concurrency >= 3), '成功波次后应自适应提高并发');
 }
 
-async function testThrottleDowngrade() {
+/** 验证付费任务默认不会因限流自动再次提交。 */
+async function testPaidThrottleDoesNotRetry() {
+  let calls = 0;
+  await assert.rejects(() => scheduler.runSchedule({
+    indexes: [0],
+    options: { video_concurrency: 1 },
+    worker: async () => {
+      calls += 1;
+      const error = new Error('HTTP 429 rate limit');
+      error.code = 'RATE_LIMIT';
+      throw error;
+    },
+  }), error => error.code === 'RATE_LIMIT');
+  assert.strictEqual(calls, 1, '付费视频限流后不得自动重试');
+}
+
+/** 验证只有显式允许的零费用任务才能限流降级重试。 */
+async function testExplicitThrottleDowngrade() {
   const calls = new Map();
   const schedule = await scheduler.runSchedule({
     indexes: [0, 1],
-    options: { video_concurrency: 2, video_max_concurrency: 4, adaptive_video_concurrency: false },
+    options: { video_concurrency: 2, video_max_concurrency: 4, adaptive_video_concurrency: false, allow_throttle_retry: true },
     worker: async index => {
       calls.set(index, (calls.get(index) || 0) + 1);
       if (index === 0 && calls.get(index) === 1) {
@@ -67,6 +86,7 @@ async function testThrottleDowngrade() {
   assert.strictEqual(schedule.throttle_retries['0'], 1);
 }
 
+/** 验证默认画外音不会错误驱动人物口型。 */
 function testUniversalNonSpeakingDefault() {
   const defaultPrompt = videoAdapter.clipPrompt(
     { visual: '人物展示当前任务主体', action: '自然转身', voiceover: '这里是画外旁白。' },
@@ -88,6 +108,7 @@ function testUniversalNonSpeakingDefault() {
   assert(speakingPrompt.includes('explicitly authored on-camera dialogue'));
 }
 
+/** 验证逐镜监控持久化且普通接口不暴露供应商标识。 */
 function testPersistedShotMonitor() {
   storage.createTask({ id: 'monitor-task', title: '通用监控测试', user_id: 'user-a', request: {} });
   storage.updateTask('monitor-task', {
@@ -124,6 +145,7 @@ function testPersistedShotMonitor() {
   assert(!Object.keys(publicBundle.outputs || {}).some(kind => String(kind).startsWith('video_shot_status_')), '逐镜状态应使用安全摘要而不是原始监控记录');
 }
 
+/** 验证人工接受现有视频不会触发新的付费生成。 */
 function testManualVideoAcceptanceDoesNotGenerate() {
   const taskId = 'manual-video-accept-task';
   const clipPath = path.join(tempDir, 'manual-accept.mp4');
@@ -149,7 +171,8 @@ function testManualVideoAcceptanceDoesNotGenerate() {
 (async () => {
   try {
     await testAdaptiveDependencyAwareConcurrency();
-    await testThrottleDowngrade();
+    await testPaidThrottleDoesNotRetry();
+    await testExplicitThrottleDowngrade();
     testUniversalNonSpeakingDefault();
     testPersistedShotMonitor();
     testManualVideoAcceptanceDoesNotGenerate();

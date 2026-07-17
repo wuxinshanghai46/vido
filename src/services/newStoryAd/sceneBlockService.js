@@ -1,6 +1,7 @@
 const revisionService = require('./revisionService');
+const videoCore = require('../videoGenerationCore');
 
-const SCENE_BLOCK_POLICY_VERSION = 'spatial-scene-block-v2';
+const SCENE_BLOCK_POLICY_VERSION = 'edit-shot-generation-unit-v3';
 const DEFAULT_MAX_BLOCK_DURATION = 15;
 const DEFAULT_MAX_BLOCK_SHOTS = 4;
 
@@ -128,36 +129,43 @@ function finalizeBlock(block, shots, contracts) {
   };
 }
 
+/**
+ * 将通用执行方案转换为旧视频适配器可读取的兼容块。
+ * 注意：块现在代表付费生成单元，不再代表“同场景镜头自动合并”。
+ */
 function buildSceneBlocks(shots = [], contracts = [], options = {}) {
   const list = Array.isArray(shots) ? shots : [];
-  const enabled = options.scene_block_generation !== false && options.sceneBlockGeneration !== false;
-  const maxDuration = Math.max(5, Math.min(15, Number(options.scene_block_max_duration || options.sceneBlockMaxDuration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
-  const maxShots = Math.max(1, Math.min(8, Number(options.scene_block_max_shots || options.sceneBlockMaxShots || DEFAULT_MAX_BLOCK_SHOTS) || DEFAULT_MAX_BLOCK_SHOTS));
-  const blocks = [];
-  let current = null;
-  list.forEach((shot, index) => {
-    const contract = contracts[index] || {};
-    const identity = sceneIdentity(shot, contract);
-    const temporal = temporalIdentity(shot, contract);
-    const shotDuration = durationOf(shot);
-    const previousIndex = current?.member_indexes?.[current.member_indexes.length - 1];
-    const previousShot = previousIndex == null ? {} : list[previousIndex] || {};
-    const join = enabled && current && identity && identity === current.scene_identity
-      && temporal === current.temporal_identity
-      && !isExplicitBoundary(shot, previousShot, options)
-      && !hasCastModeBoundary(shot, previousShot, options)
-      && current.duration_sec + shotDuration <= maxDuration
-      && current.member_indexes.length < maxShots;
-    if (!join) {
-      if (current) blocks.push(finalizeBlock(current, list, contracts));
-      current = { scene_identity: identity || `unbound-shot-${index + 1}`, temporal_identity: temporal, member_indexes: [index], duration_sec: shotDuration };
-    } else {
-      current.member_indexes.push(index);
-      current.duration_sec += shotDuration;
-    }
+  if (!list.length) return [];
+  const executionPlan = videoCore.planner.compileExecutionPlan({
+    shots: list,
+    contracts,
+    businessProfile: options.business_profile || options.businessProfile || 'story_ad',
+    options,
   });
-  if (current) blocks.push(finalizeBlock(current, list, contracts));
-  return blocks;
+  return executionPlan.generation_units.map((unit) => {
+    const firstIndex = unit.edit_shot_indexes[0];
+    const firstShot = list[firstIndex] || {};
+    const firstContract = contracts[firstIndex] || {};
+    const compatible = finalizeBlock({
+      scene_identity: sceneIdentity(firstShot, firstContract) || `unbound-shot-${firstIndex + 1}`,
+      temporal_identity: temporalIdentity(firstShot, firstContract),
+      member_indexes: unit.edit_shot_indexes.slice(),
+      duration_sec: unit.duration_sec,
+    }, list, contracts);
+    return {
+      ...compatible,
+      id: unit.id,
+      fingerprint: unit.fingerprint,
+      generation_mode: unit.mode,
+      continuous: unit.mode === 'one_take',
+      paid: unit.paid !== false,
+      complexity_level: unit.complexity_level,
+      requires_manual_review: unit.requires_manual_review === true,
+      automatic_retry_limit: 0,
+      execution_plan_fingerprint: executionPlan.fingerprint,
+      policy_version: SCENE_BLOCK_POLICY_VERSION,
+    };
+  });
 }
 
 function blockForIndex(blocks = [], index = 0) {
@@ -173,8 +181,19 @@ function expandIndexesToBlocks(indexes = [], blocks = []) {
   return [...expanded].sort((a, b) => a - b);
 }
 
+/** 为单镜或经批准的一镜到底生成供应商镜头合同。 */
 function generationShot(block = {}, shots = []) {
   const memberShots = block.member_indexes.map(index => shots[index] || {});
+  const oneTake = block.generation_mode === 'one_take' && memberShots.length > 1;
+  if (!oneTake) {
+    const shot = memberShots[0] || {};
+    return {
+      ...shot,
+      title: shot.title || `第 ${(block.first_index ?? 0) + 1} 镜`,
+      purpose: shot.purpose || shot.role || '生成一个可直接用于最终剪辑的独立镜头。',
+      duration_sec: block.duration_sec || durationOf(shot),
+    };
+  }
   return {
     title: `Continuous scene block ${block.first_index + 1}-${block.last_index + 1}`,
     purpose: 'Execute the ordered current-task storyboard beats as one uninterrupted spatially continuous shot.',
@@ -205,6 +224,7 @@ function compactSceneLock(lock = {}) {
   };
 }
 
+/** 生成单镜或一镜到底提示词；只有明确批准的一镜到底才使用连续母片语义。 */
 function generationPrompt(block = {}, shots = [], contracts = [], repairInstructions = {}) {
   const firstContract = contracts[block.first_index] || {};
   const repairs = block.member_indexes.map(index => repairInstructions[index]).filter(Boolean);
@@ -215,14 +235,21 @@ function generationPrompt(block = {}, shots = [], contracts = [], repairInstruct
     exit_frame_state: clipped(beat.exit_frame_state, 90), screen_direction: clipped(beat.screen_direction, 60),
     object_states: clipped(beat.object_states, 90), characters: beat.characters,
   }));
+  const oneTake = block.generation_mode === 'one_take' && block.member_indexes.length > 1;
+  const instructions = oneTake ? [
+    'Generate one intentionally designed uninterrupted take inside one current-task spatial scene. Do not cut, dissolve, teleport or rebuild the room between authored beats.',
+    'Move the camera and subjects continuously through the established space. Preserve cast identity, wardrobe, prop state, screen direction and action handoff across every beat.',
+  ] : [
+    'Generate exactly one final edit shot. Do not invent additional shots, split screens, montages or unrequested camera changes.',
+    'Use this shot-specific camera, lens, composition, cast blocking and approved keyframe state. The shared scene world defines geometry but does not force a continuous mother clip.',
+  ];
   return [
-    'Generate one uninterrupted continuous shot inside one current-task spatial scene. Do not cut, dissolve, teleport or rebuild the room between beats.',
-    'Treat doors, windows, walls, fixed furniture, display structures, dominant materials, lighting direction and spatial anchors as immutable geometry for the whole clip.',
-    'Move the camera and subjects continuously through the established space. Preserve cast identity, wardrobe, product, prop state, screen direction and action handoff across every beat.',
+    ...instructions,
+    'Treat doors, windows, walls, fixed furniture, display structures, dominant materials, lighting direction and spatial anchors as immutable geometry.',
     'The task may represent any lawful industry, environment, person, product or story. Use only this task contract and never substitute a template scene.',
     repairs.length ? `QA repair requirements: ${repairs.join('\n')}` : '',
-    `Ordered timeline beats: ${JSON.stringify(promptBeats)}`,
-    `Scene block contract: ${JSON.stringify({ id: block.id, scene_identity: block.scene_identity, duration_sec: block.duration_sec, scene_lock: compactSceneLock(firstContract.scene_lock || {}) })}`,
+    `${oneTake ? 'Ordered timeline beats' : 'Edit shot contract'}: ${JSON.stringify(promptBeats)}`,
+    `Generation unit contract: ${JSON.stringify({ id: block.id, mode: block.generation_mode || 'single_shot', scene_identity: block.scene_identity, duration_sec: block.duration_sec, scene_lock: compactSceneLock(firstContract.scene_lock || {}) })}`,
   ].filter(Boolean).join('\n').slice(0, 3950);
 }
 

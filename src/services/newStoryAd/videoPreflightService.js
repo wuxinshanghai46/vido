@@ -1,7 +1,8 @@
 const revisionService = require('./revisionService');
 const sceneBlockService = require('./sceneBlockService');
+const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v1';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v2';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -113,12 +114,19 @@ function repairInstruction(shot = {}, keyframe = {}, contract = {}, clip = {}) {
   return parts.join(' ');
 }
 
+/** 阻止对计费未知或刚发生余额错误的供应商任务再次提交。 */
 function providerBillingBlocked(statuses = [], clips = [], indexes = null) {
   const scoped = indexes instanceof Set ? indexes : null;
   return (Array.isArray(statuses) ? statuses : []).some((status, index) => {
     if (scoped && !scoped.has(index)) return false;
     const code = text(status?.error_code || clips[index]?.error_code).toUpperCase();
-    return /BILLING|BALANCE|CREDIT|QUOTA/.test(code) && !clipHasMedia(clips[index] || {});
+    const billingState = text(status?.billing_state || clips[index]?.billing_state).toLowerCase();
+    const submissionState = text(status?.provider_submission_state || clips[index]?.provider_submission_state).toLowerCase();
+    return !clipHasMedia(clips[index] || {}) && (
+      /BILLING|BALANCE|CREDIT|QUOTA/.test(code)
+      || billingState === 'unknown'
+      || ['submitted', 'request_started'].includes(submissionState)
+    );
   });
 }
 
@@ -152,6 +160,7 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
   };
 }
 
+/** 将通用生成单元转换为质量模式的前端预检明细。 */
 function qualityUnits({ reconciledShots, keyframes, contracts, sceneBlocks }) {
   return sceneBlocks.map((block, unitIndex) => {
     const cameraOnly = block.member_indexes.every(index => cameraOnlyShot(reconciledShots[index] || {}, keyframes[index] || {}, contracts[index] || {}));
@@ -171,23 +180,31 @@ function qualityUnits({ reconciledShots, keyframes, contracts, sceneBlocks }) {
       duration_sec: block.duration_sec,
       input_strategy: action === 'provider_generate' ? 'approved_keyframe_private_asset_only' : 'approved_keyframe_local_motion',
       changes: [
-        ...(block.continuous ? [`第 ${block.member_indexes.map(index => index + 1).join('、')} 镜合并为一段连续运镜，不再分别抽卡后拼接`] : []),
-        ...(action === 'local_motion' ? ['只做可控的平移/推进/聚焦，保持关键帧人物、材质与构图不变'] : ['以镜组第一张已确认关键帧作为唯一视觉起点，按时间轴完成全部动作']),
+        ...(block.continuous ? [`第 ${block.member_indexes.map(index => index + 1).join('、')} 镜已明确批准为一镜到底，并通过供应商能力检查`] : ['保持真实剪辑边界，本镜独立生成并共享场景世界资产']),
+        ...(action === 'local_motion' ? ['只做可控的平移/推进/聚焦，保持关键帧人物、材质与构图不变'] : ['以本镜已确认关键帧作为唯一视觉起点，不使用其他镜头的错误机位']),
       ],
     };
   });
 }
 
+/** 生成零自动付费重试的视频预检方案，并绑定通用执行计划指纹。 */
 function buildVideoPreflight({
-  taskId = '', shots = [], keyframes = [], contracts = [], clips = [], statuses = [], ctx = {}, mode = 'economy', providerRoute = '', onlyIndexes = null,
+  taskId = '', shots = [], keyframes = [], contracts = [], clips = [], statuses = [], ctx = {}, mode = 'economy', providerRoute = '', onlyIndexes = null, executionPlan = null, executionOptions = {},
 } = {}) {
   const normalizedMode = text(mode).toLowerCase() === 'quality' ? 'quality' : 'economy';
   const reconciledShots = reconcileShots(shots, keyframes, contracts);
+  const resolvedExecutionPlan = executionPlan || videoCore.planner.compileExecutionPlan({
+    shots: reconciledShots,
+    contracts,
+    businessProfile: ctx.business_profile || ctx.businessProfile || ctx.ad_type || 'story_ad',
+    options: ctx.execution_options || {},
+  });
   let sceneBlocks = [];
   let shotPlans = [];
   let units = [];
   if (normalizedMode === 'quality') {
     sceneBlocks = sceneBlockService.buildSceneBlocks(reconciledShots, contracts, {
+      ...executionOptions,
       preserve_existing_topology: false,
       continuous_quality_mode: true,
       scene_block_generation: true,
@@ -220,7 +237,7 @@ function buildVideoPreflight({
       action: item.action, label: item.label, paid: item.paid, duration_sec: sceneBlockService.durationOf(shots[item.index] || {}),
       input_strategy: item.input_strategy || '', changes: item.changes || [],
     }));
-    sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, { preserve_existing_topology: true });
+    sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, { ...executionOptions, preserve_existing_topology: true });
   }
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
@@ -240,6 +257,7 @@ function buildVideoPreflight({
     mode: normalizedMode,
     only_indexes: shotPlans.map(item => item.index),
     provider_route: providerRoute,
+    execution_plan_fingerprint: resolvedExecutionPlan.fingerprint,
     shot_contracts: reconciledShots.map((shot, index) => ({
       index, title: shot.title || '', visual: shot.visual || '', action: shot.action || '', characters: shot.characters || [],
       expected_people: shot.expected_people, person_presence: shot.video_person_presence,
@@ -259,6 +277,7 @@ function buildVideoPreflight({
     fingerprint,
     status: blockers.length ? (localUnits.length || reviewOnly.length ? 'partial_ready' : 'blocked') : 'ready',
     provider_route: providerRoute,
+    execution_plan: resolvedExecutionPlan,
     paid_unit_count: paidUnits.length,
     paid_video_seconds: paidUnits.reduce((sum, unit) => sum + Number(unit.duration_sec || 0), 0),
     local_unit_count: localUnits.length,
@@ -286,6 +305,8 @@ function publicVideoPreflight(plan = {}) {
     fingerprint: plan.fingerprint,
     status: plan.status,
     provider_route: plan.provider_route,
+    execution_plan_fingerprint: plan.execution_plan?.fingerprint || '',
+    execution_summary: plan.execution_plan?.summary || {},
     paid_unit_count: plan.paid_unit_count,
     paid_video_seconds: plan.paid_video_seconds,
     local_unit_count: plan.local_unit_count,
@@ -294,6 +315,9 @@ function publicVideoPreflight(plan = {}) {
     zero_cost_action_count: plan.zero_cost_action_count,
     automatic_retry_count: 0,
     blockers: plan.blockers || [],
+    warnings: plan.warnings || [],
+    cost_plan: plan.cost_plan ? videoCore.costGuard.publicCostPlan(plan.cost_plan) : null,
+    runtime_policy: plan.runtime_policy || {},
     shots: (plan.shots || []).map(item => ({
       shot_index: item.shot_index, title: item.title, action: item.action, label: item.label,
       paid: item.paid, unit_id: item.unit_id || '', changes: item.changes || [],

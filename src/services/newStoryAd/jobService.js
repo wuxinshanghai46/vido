@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
+const videoCore = require('../videoGenerationCore');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -29,28 +30,30 @@ function jobKey(taskId) {
   return String(taskId);
 }
 
+/** 将后台任务失败归类，并保证持久化到项目中的错误提示为中文。 */
 function classifyFailure(error) {
-  const message = String(error?.message || error || '未知错误');
+  const rawMessage = String(error?.message || error || '未知错误');
+  const message = videoCore.chineseError.classifyChineseMessage(error, '后台任务执行失败，请稍后从当前阶段重试。');
   if (error?.code) {
     return { code: String(error.code), retryable: error.retryable === true, message };
   }
-  if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(message)) {
-    return { code: 'AUTH_CONFIG', retryable: false, message };
+  if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(rawMessage)) {
+    return { code: 'AUTH_CONFIG', retryable: false, message: '模型访问凭证无效，请联系管理员检查模型配置。' };
   }
-  if (/timeout|timed out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(message)) {
+  if (/timeout|timed out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(rawMessage)) {
     return { code: 'TIMEOUT_OR_NETWORK', retryable: true, message };
   }
-  if (/429|rate limit|quota|频率|额度/i.test(message)) {
-    return { code: 'RATE_LIMIT', retryable: true, message };
+  if (/429|rate limit|quota|频率|额度/i.test(rawMessage)) {
+    return { code: 'RATE_LIMIT', retryable: true, message: '模型调用频率或额度已达到限制，请稍后重试。' };
   }
-  if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(message)) {
-    return { code: 'MODEL_JSON', retryable: true, message };
+  if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(rawMessage)) {
+    return { code: 'MODEL_JSON', retryable: true, message: '模型返回内容格式不完整，请从当前阶段重试。' };
   }
-  if (/model.*not found|configuration not found|not available|disabled|没有可用|不是可用/i.test(message)) {
+  if (/model.*not found|configuration not found|not available|disabled|没有可用|不是可用/i.test(rawMessage)) {
     return { code: 'MODEL_CONFIG', retryable: false, message };
   }
-  if (/\b5\d\d\b|Internal Server Error|provider.*fail/i.test(message)) {
-    return { code: 'PROVIDER_5XX', retryable: true, message };
+  if (/\b5\d\d\b|Internal Server Error|provider.*fail/i.test(rawMessage)) {
+    return { code: 'PROVIDER_5XX', retryable: true, message: '模型供应商暂时异常，请稍后从当前阶段重试。' };
   }
   return { code: 'UNKNOWN', retryable: false, message };
 }

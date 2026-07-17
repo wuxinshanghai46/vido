@@ -30,6 +30,15 @@ const videoPreflight = require('./videoPreflightService');
 const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
+const videoCore = require('../videoGenerationCore');
+
+/** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
+function storyAdV3RuntimePolicy(env = process.env) {
+  const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
+  const paidVideoEnabled = enabled
+    && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
+  return { version: videoCore.planner.PLAN_VERSION, enabled, paid_video_enabled: paidVideoEnabled };
+}
 
 function withAssetContracts(ctx = {}) {
   const next = { ...ctx };
@@ -390,10 +399,11 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
   };
 }
 
-function taskSummary(task = {}) {
-  // Task center can request up to 200 rows. Read this task's outputs once so
-  // adding per-shot monitoring does not multiply full JSON/SQLite reads.
-  const outputMap = Object.fromEntries(storage.listOutputs(task.id).map(row => [row.kind, row.payload]));
+/** 构建任务摘要；列表模式禁止读取完整分镜、关键帧和视频输出。 */
+function taskSummary(task = {}, { detailed = true } = {}) {
+  const outputMap = detailed && task.id
+    ? Object.fromEntries(storage.listOutputs(task.id).map(row => [row.kind, row.payload]))
+    : {};
   const storyboard = outputMap.storyboard_table || [];
   const keyframes = outputMap.keyframes || [];
   const finalVideo = outputMap.final_video || null;
@@ -401,7 +411,7 @@ function taskSummary(task = {}) {
   const sceneAssets = outputMap.scene_assets || [];
   const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
   const firstScene = sceneAssets[0] || {};
-  const finalVideoUrl = finalVideo?.video_url || finalVideo?.videoUrl || '';
+  const finalVideoUrl = finalVideo?.video_url || finalVideo?.videoUrl || task.final_video_url || '';
   let videoShotStatuses = Object.entries(outputMap)
     .filter(([kind]) => String(kind).startsWith('video_shot_status_'))
     .sort(([a], [b]) => Number(a.slice('video_shot_status_'.length)) - Number(b.slice('video_shot_status_'.length)))
@@ -427,7 +437,8 @@ function taskSummary(task = {}) {
     failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
   } : null);
   const storedStatus = String(task.status || '').toLowerCase();
-  const taskStatus = finalVideoUrl
+  const hasFinalOutput = !!finalVideoUrl || /final_video_ready|compose_done/.test(String(task.stage || ''));
+  const taskStatus = hasFinalOutput
     ? 'done'
     : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status);
   return {
@@ -451,7 +462,7 @@ function taskSummary(task = {}) {
     generation_progress: videoProgress,
     shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
     keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
-    thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || '',
+    thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || task.thumbnail_url || '',
     final_video_url: finalVideoUrl,
     created_at: task.created_at,
     updated_at: task.updated_at,
@@ -468,7 +479,7 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
     total,
     page: currentPage,
     page_size: pageSize,
-    tasks: tasks.map(taskSummary),
+    tasks: tasks.map(task => taskSummary(task, { detailed: false })),
   };
 }
 
@@ -564,7 +575,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
 
 async function verifyPersonContract(taskId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   if (!ctx.person_asset) {
     const error = new Error('当前任务没有可验证的人物资产');
@@ -597,7 +608,7 @@ async function verifyPersonContract(taskId) {
 
 async function verifyProductContract(taskId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const contract = await productIdentity.verifyProductContract({ taskId, ctx });
   const next = { ...ctx, product_contract: contract };
@@ -655,7 +666,7 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
 
 function updateBlueprint(taskId, blueprint = {}, user = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const previous = storage.getOutput(taskId, 'blueprint') || {};
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
@@ -748,7 +759,7 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
 
 function updateStoryboardTable(taskId, shots = [], user = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const current = storage.getOutput(taskId, 'storyboard_table') || [];
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
@@ -1383,12 +1394,12 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
 
 function previewShotPrompts(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const stored = storage.getOutput(taskId, 'storyboard_table') || [];
-  if (!Array.isArray(stored) || !stored.length) throw new Error('Storyboard table is empty');
+  if (!Array.isArray(stored) || !stored.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   const rawIndex = Number(options.shot_index ?? options.shotIndex ?? 0);
   const index = Math.max(0, Math.min(stored.length - 1, Number.isFinite(rawIndex) ? rawIndex : 0));
   const draft = options.shot && typeof options.shot === 'object' ? options.shot : {};
@@ -1419,7 +1430,7 @@ function keyframeUrlFromResult(result = {}) {
 
 async function generateKeyframesStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
@@ -1431,7 +1442,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     const generated = await generateStoryboardStage(taskId);
     shots = generated.shots || [];
   }
-  if (!Array.isArray(shots) || !shots.length) throw new Error('Storyboard table is empty');
+  if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
   if (JSON.stringify(boundShots) !== JSON.stringify(shots)) {
     shots = boundShots;
@@ -1578,7 +1589,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         });
         const imageLatencyMs = Date.now() - imageStartedMs;
         const imageUrl = keyframeUrlFromResult(result);
-        if (!imageUrl) throw new Error('Image provider returned no image url');
+        if (!imageUrl) throw new Error('图片供应商没有返回可用图片地址。');
         // Use the provider URL for immediate remote QA when available, while
         // keeping the persisted VIDO URL as the production/display asset.
         const qaImageUrl = result.source_url || mediaAdapter.absolutePublicImageUrl(imageUrl);
@@ -2070,13 +2081,13 @@ function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = 
 
 async function ensureStoryboardForMedia(taskId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) {
     const generated = await generateStoryboardStage(taskId);
     shots = generated.shots || [];
   }
-  if (!Array.isArray(shots) || !shots.length) throw new Error('Storyboard table is empty');
+  if (!Array.isArray(shots) || !shots.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   return shots;
 }
 
@@ -2196,7 +2207,7 @@ function silentTtsOutput(reason = 'voiceover_disabled') {
 
 async function generateTtsStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
@@ -2240,9 +2251,10 @@ async function generateTtsStage(taskId, options = {}) {
   return { tts_audio };
 }
 
+/** 编译通用执行方案、人民币成本上限和零自动重试的视频预检。 */
 function buildVideoPreflightPlan(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
   const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
@@ -2258,6 +2270,12 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const providerRoute = pinnedModel
     ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`
     : '';
+  const executionPlan = videoCore.planner.compileExecutionPlan({
+    shots,
+    contracts,
+    businessProfile: ctx.business_profile || ctx.businessProfile || ctx.ad_type || 'story_ad',
+    options,
+  });
   const plan = videoPreflight.buildVideoPreflight({
     taskId,
     shots,
@@ -2268,14 +2286,68 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     ctx,
     mode: options.video_generation_mode || options.videoGenerationMode || options.mode || 'economy',
     providerRoute,
+    executionPlan,
+    executionOptions: options,
     onlyIndexes: Array.isArray(options.only_indexes || options.onlyIndexes)
       ? (options.only_indexes || options.onlyIndexes)
       : ((options.only_index ?? options.onlyIndex) !== undefined ? [Number(options.only_index ?? options.onlyIndex)] : null),
   });
+  const authorizedExecutionPlan = {
+    ...executionPlan,
+    generation_units: (plan.units || []).filter(unit => unit.paid).map(unit => ({
+      id: unit.id,
+      paid: true,
+      mode: unit.continuous ? 'one_take' : 'single_shot',
+      edit_shot_indexes: unit.member_indexes || [],
+      duration_sec: unit.duration_sec,
+      complexity_level: Math.max(0, ...(unit.member_indexes || []).map(index => videoCore.planner.complexityOf(executionPlan.edit_shots[index] || {}))),
+      requires_manual_review: (unit.member_indexes || []).some(index => videoCore.planner.complexityOf(executionPlan.edit_shots[index] || {}) >= 3),
+      automatic_retry_limit: 0,
+    })),
+  };
+  const costPlan = videoCore.costGuard.buildCostPlan({
+    executionPlan: authorizedExecutionPlan,
+    providerId: pinnedModel?.provider_id || '',
+    modelId: pinnedModel?.model_id || '',
+    options,
+  });
+  plan.authorized_execution_plan = authorizedExecutionPlan;
+  plan.cost_plan = costPlan;
+  plan.warnings = [];
+  if (executionPlan.summary.high_risk_unit_count > 0) {
+    plan.warnings.push({
+      code: 'VIDEO_COMPLEXITY_REVIEW_REQUIRED',
+      message: `检测到 ${executionPlan.summary.high_risk_unit_count} 个高复杂度生成单元，付费提交前必须确认动画预演和镜头拆分。`,
+    });
+  }
+  if (plan.paid_unit_count > 0 && !costPlan.price_known) {
+    plan.blockers.push({
+      code: 'VIDEO_COST_PRICE_UNKNOWN',
+      message: '当前视频模型没有可信的人民币计费单价，已停止付费生成。请先由管理员补充价格配置。',
+    });
+    plan.status = plan.zero_cost_action_count > 0 ? 'partial_ready' : 'blocked';
+  }
+  const runtimePolicy = storyAdV3RuntimePolicy();
+  plan.runtime_policy = runtimePolicy;
+  if (plan.paid_unit_count > 0 && !runtimePolicy.paid_video_enabled) {
+    plan.blockers.push({
+      code: 'VIDEO_V3_PAID_DISABLED',
+      message: '剧情广告 V3 当前处于只读或零费用灰度状态，新的付费视频提交已暂停。',
+    });
+    plan.status = plan.zero_cost_action_count > 0 ? 'partial_ready' : 'blocked';
+  }
+  plan.fingerprint = revisionService.signature({
+    video_preflight_fingerprint: plan.fingerprint,
+    execution_plan_fingerprint: executionPlan.fingerprint,
+    cost_plan_fingerprint: costPlan.fingerprint,
+    runtime_policy: runtimePolicy,
+  });
+  storage.saveOutput(taskId, 'video_execution_plan', executionPlan);
   storage.saveOutput(taskId, 'video_preflight', videoPreflight.publicVideoPreflight(plan));
   return plan;
 }
 
+/** 校验不可变视频方案、复杂度确认和人民币费用授权。 */
 function assertVideoPreflightConfirmation(taskId, options = {}) {
   const plan = buildVideoPreflightPlan(taskId, options);
   const supplied = String(options.video_preflight_fingerprint || options.videoPreflightFingerprint || '').trim();
@@ -2304,22 +2376,30 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
     error.preflight = videoPreflight.publicVideoPreflight(plan);
     throw error;
   }
+  if (!zeroCostOnly && Number(plan.paid_unit_count || 0) > 0) {
+    videoCore.costGuard.assertComplexityReview(plan.authorized_execution_plan || plan.execution_plan, options);
+    const authorization = videoCore.costGuard.assertCostAuthorization(plan.cost_plan, options);
+    storage.saveOutput(taskId, 'video_cost_authorization', {
+      ...authorization,
+      execution_plan_fingerprint: plan.execution_plan.fingerprint,
+      video_preflight_fingerprint: plan.fingerprint,
+      authorized_at: new Date().toISOString(),
+      status: 'authorized',
+    });
+  }
   return plan;
 }
 
 async function generateVideoStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   let ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   assertVideoInputsReady({ ctx, shots, keyframes, contracts });
-  const requirePreflight = options.require_video_preflight === true || options.requireVideoPreflight === true
-    || !!(options.video_preflight_fingerprint || options.videoPreflightFingerprint);
-  const preflightPlan = requirePreflight
-    ? assertVideoPreflightConfirmation(taskId, options)
-    : buildVideoPreflightPlan(taskId, options);
+  // 视频供应商调用必须经过不可绕过的方案与人民币费用确认。
+  const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;
   const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
   const generationShots = generationMode === 'quality' ? preflightPlan.reconciled_shots : shots;
@@ -2367,6 +2447,9 @@ async function generateVideoStage(taskId, options = {}) {
     preserve_existing_topology: preserveExistingTopology,
     continuous_quality_mode: generationMode === 'quality',
   });
+  storage.saveOutput(taskId, 'scene_worlds', preflightPlan.execution_plan?.scene_worlds || []);
+  storage.saveOutput(taskId, 'continuity_runs', preflightPlan.execution_plan?.continuity_runs || []);
+  storage.saveOutput(taskId, 'generation_units', preflightPlan.execution_plan?.generation_units || []);
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const expectedLineages = generationShots.map((shot, index) => videoLineage.buildShotLineage({
@@ -2505,7 +2588,8 @@ async function generateVideoStage(taskId, options = {}) {
   const expandedInitialIndexes = sceneBlockService.expandIndexesToBlocks(initialIndexes, sceneBlocks);
   expandedInitialIndexes.forEach(index => { clips[index] = null; });
   if (expandedInitialIndexes.length) storage.deleteOutput(taskId, 'final_video');
-  const maxRepairs = videoRepairPolicy.resolveRepairBudget(options);
+  // 付费视频禁止自动重试；失败后只能由用户查看新方案并再次明确确认。
+  const maxRepairs = 0;
   const initialBlockIds = new Set(expandedInitialIndexes.map(index => sceneBlockService.blockForIndex(sceneBlocks, index)?.id).filter(Boolean));
   const initialVideoSeconds = sceneBlocks.filter(block => initialBlockIds.has(block.id)).reduce((sum, block) => sum + Number(block.duration_sec || 0), 0);
   const policy = {
@@ -2635,7 +2719,7 @@ async function generateVideoStage(taskId, options = {}) {
 
 function acceptVideoClipOverride(taskId, shotIndex, input = {}, user = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
   const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips').slice() : [];
   const index = Number(shotIndex);
@@ -2791,7 +2875,7 @@ function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, ca
 
 function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
   const index = Math.max(0, Number(shotIndex) || 0);
   const frame = keyframes[index];
@@ -2833,7 +2917,7 @@ function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
 
 function acceptKeyframeCandidateOverride(taskId, shotIndex, candidateId, input = {}, user = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
   const index = Math.max(0, Number(shotIndex) || 0);
   const frame = keyframes[index];
@@ -2894,7 +2978,7 @@ function acceptKeyframeCandidateOverride(taskId, shotIndex, candidateId, input =
 
 async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes').slice() : [];
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
   const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
@@ -3116,7 +3200,7 @@ function subtitleSegmentsFromShots(shots = [], subtitleConfig = {}) {
 
 async function composeStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
-  if (!task) throw new Error('Task not found');
+  if (!task) throw new Error('没有找到对应项目。');
   let ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const shots = await ensureStoryboardForMedia(taskId);
   // Composition must never generate visual clips. Step 4 owns storyboard video
@@ -3569,6 +3653,7 @@ ${outputSchema}`;
 }
 
 module.exports = {
+  storyAdV3RuntimePolicy,
   assertTaskOwner,
   createTask,
   updateTaskRequest,

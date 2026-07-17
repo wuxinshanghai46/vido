@@ -16,12 +16,14 @@ const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
 const jobService = require('../services/newStoryAd/jobService');
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
+const videoCore = require('../services/videoGenerationCore');
 const db = require('../models/database');
 
 function userFromReq(req) {
   return req.user || req.auth || {};
 }
 
+/** 统一捕获剧情广告接口异常，并保证所有用户可见错误均为中文。 */
 function asyncRoute(fn) {
   return async (req, res) => {
     try {
@@ -29,18 +31,20 @@ function asyncRoute(fn) {
     } catch (err) {
       const requestId = uuidv4();
       console.error(`[new-story-ad] request failed request_id=${requestId} code=${err.code || 'INTERNAL_ERROR'}:`, String(err.message || err));
-      res.status(err.status || 500).json({
+      const publicError = videoCore.chineseError.ensureChineseError(err);
+      res.status(publicError.status || 500).json({
         success: false,
-        code: err.code || 'INTERNAL_ERROR',
-        error: String(err.message || err),
+        code: publicError.code || 'INTERNAL_ERROR',
+        error: String(publicError.message),
         request_id: requestId,
-        retryable: err.retryable === true,
-        conflicts: err.conflicts || undefined,
-        review: err.review || undefined,
-        partial: err.partial || undefined,
-        keyframes: err.keyframes || undefined,
-        attempts: err.attempts || undefined,
-        preflight: err.preflight || undefined,
+        retryable: publicError.retryable === true,
+        conflicts: publicError.conflicts || undefined,
+        review: publicError.review || undefined,
+        partial: publicError.partial || undefined,
+        keyframes: publicError.keyframes || undefined,
+        attempts: publicError.attempts || undefined,
+        preflight: publicError.preflight || undefined,
+        details: publicError.details || undefined,
       });
     }
   };
@@ -134,13 +138,15 @@ const upload = multer({
   },
 });
 
+/** 执行单文件上传，并把 Multer 技术错误转换为中文。 */
 function uploadSingle(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (!err) return next();
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({ success: false, error: '文件超过 50MB，请压缩后再上传' });
     }
-    return res.status(400).json({ success: false, error: err.message || '文件上传失败' });
+    const publicError = videoCore.chineseError.ensureChineseError(err, { code: 'INVALID_ARGUMENT', status: 400, fallback: '文件上传失败，请检查文件格式后重试。' });
+    return res.status(400).json({ success: false, code: publicError.code, error: publicError.message });
   });
 }
 
@@ -498,6 +504,7 @@ router.get('/health', (req, res) => {
       db_path: storage.DB_PATH,
       health_path: storage.HEALTH_PATH,
     },
+    runtime_policy: service.storyAdV3RuntimePolicy(),
     candidates: Object.fromEntries(stages.map((stage) => {
       const rows = stage === 'new_story_ad.video'
         ? videoAdapter.videoCandidates({})
@@ -1036,12 +1043,10 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
 }));
 
 router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
-  const body = req.body || {};
+  const body = { ...(req.body || {}), require_video_preflight: true };
+  service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'media', async () => {
-    // Video owns the idempotent TTS decision: matching voice tracks are reused,
-    // missing/outdated tracks are generated, and silent mode skips TTS. Keeping
-    // all media stages in one server job means closing the browser cannot stop
-    // the transition from video generation to final composition.
+    // 视频阶段负责幂等配音判断；整个媒体链保持一个后台任务，关闭浏览器也不会中断。
     await service.generateVideoStage(req.params.id, { ...body, missing_only: true });
     await service.composeStage(req.params.id, body);
   }, { deadlineMs: 60 * 60 * 1000 });

@@ -131,6 +131,9 @@
     generationProgress: null,
     generationStartedAt: '',
     videoPreflightFingerprint: '',
+    videoCostPlanFingerprint: '',
+    videoConfirmedCostLimitRmb: 0,
+    videoComplexityReviewConfirmed: false,
     videoGenerationMode: '',
     videoZeroCostOnly: false,
     cancelRequested: false,
@@ -142,6 +145,8 @@
     currentStep: 1,
     shotEditorIndex: -1,
     shotEditorSnapshot: null,
+    storyboardPage: 1,
+    storyboardPageSize: 20,
   };
 
   let nsaVoicePreviewAudio = null;
@@ -898,7 +903,7 @@
     }
     if (resp.status === 401) {
       location.href = '/?login=1&target=' + encodeURIComponent('/digital-human?tab=new-story-ad');
-      throw new Error('unauth');
+      throw new Error('登录状态已失效，请重新登录。');
     }
     const raw = await resp.text();
     let data = null;
@@ -908,7 +913,11 @@
       const friendly = isHtmlError && resp.status === 404
         ? `接口不存在或服务仍是旧版本，请重启服务后再试：${path}`
         : (isHtmlError ? `接口返回了 HTML 错误页：HTTP ${resp.status}` : '');
-      const err = new Error(apiErrorMessage(data?.error) || apiErrorMessage(data?.message) || friendly || raw.slice(0, 180) || `HTTP ${resp.status}`);
+      const original = apiErrorMessage(data?.error) || apiErrorMessage(data?.message) || friendly || raw.slice(0, 180);
+      const message = window.NewStoryAdApi?.chineseErrorMessage
+        ? window.NewStoryAdApi.chineseErrorMessage(original, resp.status)
+        : (original || `请求失败（状态码 ${resp.status}），请稍后重试。`);
+      const err = new Error(message);
       err.status = resp.status;
       err.data = data;
       throw err;
@@ -2133,6 +2142,7 @@
     }));
   }
 
+  /** 展示逐镜生成、人民币最高费用和高复杂度风险，并取得一次性用户授权。 */
   async function confirmVideoPreflight(mode = 'economy', onlyIndex = null) {
     let id = '';
     let data = null;
@@ -2147,34 +2157,62 @@
       return null;
     }
     const preflight = data.preflight || {};
+    const costPlan = preflight.cost_plan || {};
     const quality = mode === 'quality';
     const blocked = Array.isArray(preflight.blockers) && preflight.blockers.length > 0;
     const zeroCostOnly = blocked && Number(preflight.zero_cost_action_count || 0) > 0;
     const description = quality
-      ? '推荐方案会先把同一场景、动作可衔接的镜头合并为连续视频段，再按时间轴一次生成；材质类简单运镜改为本地确定性动画。它不是把多个随机视频事后硬拼。'
+      ? '高质量方案会保留每个真实剪辑边界，每镜使用自己的机位、关键帧和人物站位；同场景镜头只共享场景世界资产。只有明确标记并通过能力检查的一镜到底才会合并。'
       : '系统已根据关键帧、上次失败原因和供应商状态自动选择：复用已有证据、执行本地确定性运镜，或真正改变输入方式后再生成。不会拿原提示词原样重抽；复审仍未通过也不会自动付费重做。';
     const accepted = await confirmNsaAction({
       title: quality ? '连续运镜生成前方案' : (blocked ? '生成通道已暂停，可先做无需视频生成的处理' : '成本优化后的生成方案'),
       summary: blocked
         ? preflight.blockers.map(item => item.message).join('；')
-        : `预计付费提交 ${Number(preflight.paid_unit_count || 0)} 组，本地处理 ${Number(preflight.local_unit_count || 0)} 组`,
+        : `预计付费提交 ${Number(preflight.paid_unit_count || 0)} 组，本地处理 ${Number(preflight.local_unit_count || 0)} 组；人民币最高费用 ¥${Number(costPlan.maximum_cost_rmb || 0).toFixed(2)}`,
       description,
-      confirmLabel: zeroCostOnly ? `仅应用 ${Number(preflight.zero_cost_action_count || 0)} 项无需视频生成的处理` : (blocked ? '关闭' : (quality ? '确认按连续方案生成' : '确认按优化方案处理')),
+      confirmLabel: zeroCostOnly ? `仅应用 ${Number(preflight.zero_cost_action_count || 0)} 项无需视频生成的处理` : (blocked ? '关闭' : (quality ? '确认按高质量逐镜方案生成' : '确认按优化方案处理')),
       cancelLabel: blocked && !zeroCostOnly ? '返回' : '取消',
       tone: blocked ? 'danger' : 'primary',
       facts: [
         { value: String(Number(preflight.paid_unit_count || 0)), label: '付费生成组数', tone: Number(preflight.paid_unit_count || 0) ? 'warning' : 'pass' },
         { value: String(Number(preflight.local_unit_count || 0)), label: '不调用视频模型', tone: 'pass' },
         { value: String(Number(preflight.review_only_count || 0)), label: '只复审现有视频', tone: 'pass' },
+        { value: `¥${Number(costPlan.maximum_cost_rmb || 0).toFixed(2)}`, label: '人民币最高费用', tone: Number(costPlan.maximum_cost_rmb || 0) ? 'warning' : 'pass' },
         { value: '0', label: '自动重试', tone: 'pass' },
       ],
       items: videoPreflightItems(preflight),
       note: quality
-        ? `连续方案预计生成 ${Number(preflight.paid_video_seconds || 0)} 秒付费视频素材；每个连续镜组只提交一次。点击取消不会改变按钮和任务状态。`
-        : '只有方案中明确标记为“按修正方案生成一次”的镜头会产生视频模型费用；点击取消不会改变按钮和任务状态。',
+        ? `高质量方案预计生成 ${Number(preflight.paid_video_seconds || 0)} 秒付费视频素材；确认后仍不会自动重试。点击取消不会改变按钮和任务状态。`
+        : '只有方案中明确标记为“按修正方案生成一次”的镜头会产生视频模型费用；费用或内容变化后必须重新确认。',
     });
     if (!accepted || (blocked && !zeroCostOnly)) return null;
-    return { preflight, zeroCostOnly };
+    return {
+      preflight,
+      zeroCostOnly,
+      costPlanFingerprint: zeroCostOnly ? '' : (costPlan.fingerprint || ''),
+      confirmedCostLimitRmb: zeroCostOnly ? 0 : Number(costPlan.maximum_cost_rmb || 0),
+      complexityReviewConfirmed: !zeroCostOnly,
+    };
+  }
+
+  /** 把当前预检授权写入一次性页面状态，供后台提交时校验。 */
+  function rememberVideoAuthorization(confirmed = null, mode = 'economy') {
+    state.videoPreflightFingerprint = confirmed?.preflight?.fingerprint || '';
+    state.videoCostPlanFingerprint = confirmed?.costPlanFingerprint || '';
+    state.videoConfirmedCostLimitRmb = Number(confirmed?.confirmedCostLimitRmb || 0);
+    state.videoComplexityReviewConfirmed = confirmed?.complexityReviewConfirmed === true;
+    state.videoGenerationMode = mode;
+    state.videoZeroCostOnly = confirmed?.zeroCostOnly === true;
+  }
+
+  /** 清除一次性费用授权，禁止同一确认被后续内容重复使用。 */
+  function clearVideoAuthorization() {
+    state.videoPreflightFingerprint = '';
+    state.videoCostPlanFingerprint = '';
+    state.videoConfirmedCostLimitRmb = 0;
+    state.videoComplexityReviewConfirmed = false;
+    state.videoGenerationMode = '';
+    state.videoZeroCostOnly = false;
   }
 
   function stopStageProgress() {
@@ -2995,6 +3033,7 @@
     modal.querySelector('textarea, input, select')?.focus();
   }
 
+  /** 按页渲染当前分镜，避免大型项目一次挂载全部图片、视频和编辑器。 */
   function renderStoryboard() {
     const host = within('#dhNsaAdFrameHost');
     const guard = within('#dhNsaAdCommercialGuard');
@@ -3040,7 +3079,17 @@
     if (window.NewStoryAdStoryboard?.normalizeShots) {
       state.shots = window.NewStoryAdStoryboard.normalizeShots(state.shots, state.sceneAssets || []);
     }
-    host.innerHTML = `<div class="dh-nsa-frame-list">${state.shots.map((shot, i) => {
+    const pageSize = Math.max(1, Number(state.storyboardPageSize || 20));
+    const totalPages = Math.max(1, Math.ceil(state.shots.length / pageSize));
+    state.storyboardPage = Math.max(1, Math.min(totalPages, Number(state.storyboardPage || 1)));
+    const startIndex = (state.storyboardPage - 1) * pageSize;
+    const visibleShots = state.shots.map((shot, index) => ({ shot, index })).slice(startIndex, startIndex + pageSize);
+    const pager = totalPages > 1 ? `<nav class="dh-nsa-pagination" aria-label="分镜分页">
+      <button type="button" data-nsa-storyboard-page="${state.storyboardPage - 1}" ${state.storyboardPage <= 1 ? 'disabled' : ''}>上一页</button>
+      <span>第 ${state.storyboardPage}/${totalPages} 页 · 共 ${state.shots.length} 镜</span>
+      <button type="button" data-nsa-storyboard-page="${state.storyboardPage + 1}" ${state.storyboardPage >= totalPages ? 'disabled' : ''}>下一页</button>
+    </nav>` : '';
+    host.innerHTML = `${pager}<div class="dh-nsa-frame-list">${visibleShots.map(({ shot, index: i }) => {
       const contract = state.contracts.find(x => Number(x.index || x.shot_index || 0) === Number(shot.index || shot.shot_index || i + 1)) || state.contracts[i] || {};
       const frame = state.keyframes[i] || {};
       const image = window.NewStoryAdKeyframes?.frameUrl ? window.NewStoryAdKeyframes.frameUrl(frame) : (frame.image_url || frame.imageUrl || frame.url || '');
@@ -3259,7 +3308,7 @@
           </div>
         </div>
       </article>`;
-    }).join('')}</div>`;
+    }).join('')}</div>${pager}`;
   }
 
   function ensureMediaHost() {
@@ -3867,6 +3916,9 @@
       force_regenerate_all: regenerateAll,
       video_generation_mode: state.videoGenerationMode || (regenerateAll ? 'quality' : 'economy'),
       video_preflight_fingerprint: state.videoPreflightFingerprint || '',
+      cost_plan_fingerprint: state.videoCostPlanFingerprint || '',
+      confirmed_cost_limit_rmb: Number(state.videoConfirmedCostLimitRmb || 0),
+      complexity_review_confirmed: state.videoComplexityReviewConfirmed === true,
       zero_cost_only: state.videoZeroCostOnly === true,
       ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
       auto_repair: false,
@@ -4644,7 +4696,9 @@
         if (!response?.ok) {
           let detail = '';
           try { detail = (await response.json())?.error || ''; } catch {}
-          throw new Error(detail || `HTTP ${response?.status || 500}`);
+          throw new Error(window.NewStoryAdApi?.chineseErrorMessage
+            ? window.NewStoryAdApi.chineseErrorMessage(detail, response?.status || 500)
+            : (detail || `试听请求失败（状态码 ${response?.status || 500}）。`));
         }
         const blob = await response.blob();
         if (!/^audio\//i.test(blob.type || '') || blob.size < 2048) throw new Error('试听音频为空或格式不可播放');
@@ -5344,6 +5398,14 @@
     host.dataset.bound = '1';
     host.addEventListener('click', async e => {
       const target = e.target;
+      const storyboardPage = target.closest('[data-nsa-storyboard-page]');
+      if (storyboardPage && host.contains(storyboardPage) && !storyboardPage.disabled) {
+        e.preventDefault();
+        state.storyboardPage = Math.max(1, Number(storyboardPage.dataset.nsaStoryboardPage || 1));
+        renderStoryboard();
+        within('#dhNsaAdFrameHost')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
       const castModeQuick = target.closest('[data-nsa-cast-mode-quick]');
       if (castModeQuick && host.contains(castModeQuick)) {
         e.preventDefault();
@@ -5759,15 +5821,11 @@
         const index = Number(videoRegenerate.dataset.nsaVideoRegenerate || 0);
         const confirmed = await confirmVideoPreflight('economy', index);
         if (!confirmed) return;
-        state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
-        state.videoGenerationMode = 'economy';
-        state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+        rememberVideoAuthorization(confirmed, 'economy');
         try {
           await runStage('video', videoRegenerate);
         } finally {
-          state.videoPreflightFingerprint = '';
-          state.videoGenerationMode = '';
-          state.videoZeroCostOnly = false;
+          clearVideoAuthorization();
         }
         return;
       }
@@ -5815,15 +5873,11 @@
         dhNsaAdRegenerateAllShotVideos: async () => {
           const confirmed = await confirmVideoPreflight('quality');
           if (!confirmed) return false;
-          state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
-          state.videoGenerationMode = 'quality';
-          state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+          rememberVideoAuthorization(confirmed, 'quality');
           try {
             return await runStage('video', btn);
           } finally {
-            state.videoPreflightFingerprint = '';
-            state.videoGenerationMode = '';
-            state.videoZeroCostOnly = false;
+            clearVideoAuthorization();
           }
         },
         dhNsaAdGenerateShotVideos: async () => {
@@ -5831,15 +5885,11 @@
           if (!estimate.count) return toast('当前镜头视频均已通过，无需补齐或修复', 'success');
           const confirmed = await confirmVideoPreflight('economy');
           if (!confirmed) return false;
-          state.videoPreflightFingerprint = confirmed.preflight.fingerprint || '';
-          state.videoGenerationMode = 'economy';
-          state.videoZeroCostOnly = confirmed.zeroCostOnly === true;
+          rememberVideoAuthorization(confirmed, 'economy');
           try {
             return await runStage('video', btn);
           } finally {
-            state.videoPreflightFingerprint = '';
-            state.videoGenerationMode = '';
-            state.videoZeroCostOnly = false;
+            clearVideoAuthorization();
           }
         },
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),

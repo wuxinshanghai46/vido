@@ -234,7 +234,7 @@ async function concatVideos({
 } = {}) {
   ensureDir(COMPOSE_DIR);
   const rawInputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
-  if (!rawInputs.length) throw new Error('new_story_ad compose requires at least one local video clip');
+  if (!rawInputs.length) throw new Error('最终合成至少需要一个已通过审核的本地视频镜头。');
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const inputs = [];
   let voiceTrackCount = 0;

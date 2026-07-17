@@ -31,16 +31,16 @@ function adapterFamily(provider = {}) {
 function resolveTextAdapter(model = {}) {
   const providerId = String(model.provider_id || model.providerId || '').trim();
   const modelId = String(model.model_id || model.model || '').trim();
-  if (!providerId || !modelId) throw new Error('new_story_ad adapter requires provider_id/model_id');
+  if (!providerId || !modelId) throw new Error('模型调用缺少供应商或模型配置。');
   const settings = loadSettings();
   const provider = (settings.providers || [])
     .find(p => p.enabled && p.api_key && providerMatches(p, providerId));
-  if (!provider) throw new Error(`new_story_ad provider unavailable: ${providerId}`);
+  if (!provider) throw new Error(`模型供应商 ${providerId} 当前不可用。`);
   const expectsVision = /(?:scene_vision|consistency_qa|vision)/i.test(String(model._stageId || ''));
   const providerModel = (provider.models || [])
     .find(m => String(m.id || '').trim() === modelId && m.enabled !== false
       && (expectsVision ? visionUseMatches(m) : storyUseMatches(m)));
-  if (!providerModel) throw new Error(`new_story_ad model is not enabled text model: ${providerId}/${modelId}`);
+  if (!providerModel) throw new Error(`文本模型 ${providerId}/${modelId} 未启用或类型不正确。`);
   const adapter = provider.adapter || provider.preset || provider.id || providerId;
   return {
     adapter,
@@ -242,7 +242,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   }
   if (!completion?.choices?.length || !text) {
     const raw = (typeof completion === 'string' ? completion : JSON.stringify(completion || {})).slice(0, 300);
-    throw new Error(`new_story_ad adapter empty response (${config.providerId}/${config.modelId}): ${raw}`);
+    throw new Error(`模型 ${config.providerId}/${config.modelId} 没有返回可用内容。`);
   }
   return { text, usage: completion.usage || {} };
 }

@@ -2,6 +2,7 @@ const DEFAULT_CONCURRENCY = 2;
 const DEFAULT_MAX_CONCURRENCY = 4;
 const HARD_MAX_CONCURRENCY = 4;
 const DEFAULT_GLOBAL_CONCURRENCY = 4;
+const videoCore = require('../videoGenerationCore');
 
 let globalActive = 0;
 const globalQueue = [];
@@ -89,6 +90,7 @@ async function withGlobalSlot(worker, options = {}) {
   }
 }
 
+/** 按连续性依赖分波次执行镜头，并把所有持久化失败信息转换为中文。 */
 async function runSchedule({
   indexes = [],
   dependencyOf = () => null,
@@ -98,7 +100,7 @@ async function runSchedule({
   onWaveStart = null,
   onWaveComplete = null,
 } = {}) {
-  if (typeof worker !== 'function') throw new TypeError('video schedule worker is required');
+  if (typeof worker !== 'function') throw new TypeError('视频并发计划缺少执行函数');
   const pending = Array.isArray(indexes) ? indexes.slice() : [];
   const targetSet = new Set(pending);
   const completed = new Set();
@@ -106,10 +108,11 @@ async function runSchedule({
   const results = [];
   const waves = [];
   const resolved = resolveConcurrency(options, pending.length);
+  const allowThrottleRetry = options.allow_throttle_retry === true || options.allowThrottleRetry === true;
   let effective = resolved.configured;
 
   while (pending.length) {
-    if (signal?.aborted) throw signal.reason || new Error('video generation cancelled');
+    if (signal?.aborted) throw signal.reason || new Error('视频生成已取消');
     const ready = pending.filter(index => {
       const dependency = dependencyOf(index);
       return !Number.isInteger(dependency) || !targetSet.has(dependency) || completed.has(dependency);
@@ -149,22 +152,22 @@ async function runSchedule({
         results.push({ index: item.index, value: item.value, ok: true });
         continue;
       }
-      if (isThrottleError(item.reason) && (retryCounts.get(item.index) || 0) < 1) {
+      if (allowThrottleRetry && isThrottleError(item.reason) && (retryCounts.get(item.index) || 0) < 1) {
         retryCounts.set(item.index, 1);
         pending.unshift(item.index);
         throttled = true;
         effective = 1;
-        results.push({ index: item.index, ok: false, throttled: true, retry_scheduled: true, error: String(item.reason?.message || item.reason) });
+        results.push({ index: item.index, ok: false, throttled: true, retry_scheduled: true, error: videoCore.chineseError.classifyChineseMessage(item.reason, '供应商并发受限，已降低并发后重试。') });
       } else {
         fatal ||= item.reason;
-        results.push({ index: item.index, ok: false, error: String(item.reason?.message || item.reason), error_code: item.reason?.code || '' });
+        results.push({ index: item.index, ok: false, error: videoCore.chineseError.classifyChineseMessage(item.reason), error_code: item.reason?.code || '' });
       }
     }
 
     wave.finished_at = new Date().toISOString();
     wave.duration_ms = Date.now() - startedAt;
     wave.throttled = throttled;
-    wave.results = settled.map(item => ({ index: item.index, status: item.status, error: item.status === 'rejected' ? String(item.reason?.message || item.reason) : '' }));
+    wave.results = settled.map(item => ({ index: item.index, status: item.status, error: item.status === 'rejected' ? videoCore.chineseError.classifyChineseMessage(item.reason) : '' }));
     if (!fatal && !throttled && resolved.adaptive && effective < resolved.maximum) effective += 1;
     wave.next_concurrency = effective;
     if (typeof onWaveComplete === 'function') await onWaveComplete({ ...wave });

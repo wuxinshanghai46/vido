@@ -36,7 +36,7 @@ async function runSchedule({
   onWaveStart = null,
   onWaveComplete = null,
 } = {}) {
-  if (typeof worker !== 'function') throw new TypeError('keyframe schedule worker is required');
+  if (typeof worker !== 'function') throw new TypeError('关键帧并发计划缺少执行函数。');
   const pending = Array.isArray(indexes) ? indexes.slice() : [];
   const targetSet = new Set(pending);
   const completed = new Set();

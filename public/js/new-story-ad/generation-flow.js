@@ -256,6 +256,7 @@
     return waitForStage(taskId, expectedStage, ctx);
   }
 
+  /** 提交单个后台阶段，并在视频阶段携带不可复用的费用授权。 */
   async function runStage(stage, ctx = {}) {
     const {
       button,
@@ -319,6 +320,9 @@
           force_regenerate_all: regenerateAll,
           video_generation_mode: state.videoGenerationMode || (regenerateAll ? 'quality' : 'economy'),
           video_preflight_fingerprint: state.videoPreflightFingerprint || '',
+          cost_plan_fingerprint: state.videoCostPlanFingerprint || '',
+          confirmed_cost_limit_rmb: Number(state.videoConfirmedCostLimitRmb || 0),
+          complexity_review_confirmed: state.videoComplexityReviewConfirmed === true,
           zero_cost_only: state.videoZeroCostOnly === true,
           ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
           auto_repair: false,

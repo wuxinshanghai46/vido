@@ -512,7 +512,7 @@
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdRegenerateAllShotVideos" type="button">连续运镜方案</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdRegenerateAllShotVideos" type="button">高质量逐镜方案</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">生成前优化方案</button>
                   <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">分镜视频全部通过，进入广告合成</button>
                 </div>
@@ -2528,21 +2528,8 @@ B: ...
   </div>
 
   <script src="/js/digital-human.js?v=20260716-spatial-scene-block-v1"></script>
-  <script src="/js/new-story-ad/api.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/task-store.js?v=20260717-resume-current-step-v1"></script>
-  <script src="/js/new-story-ad/progress.js?v=20260716-real-video-progress-v1"></script>
-  <script src="/js/new-story-ad/scene-assets.js?v=20260715-shot-effects-v1"></script>
-  <script src="/js/new-story-ad/state-sync.js?v=20260717-video-status-modal-v1"></script>
-  <script src="/js/new-story-ad/button-state.js?v=20260717-keyframe-first-video-v1"></script>
-  <script src="/js/new-story-ad/step-navigation.js?v=20260717-step4-video-v1"></script>
-  <script src="/js/new-story-ad/task-persistence.js?v=20260715-compose-gate-autosave-v2"></script>
-  <script src="/js/new-story-ad/storyboard.js?v=20260715-shot-ai-assist-v1"></script>
-  <script src="/js/new-story-ad/actors.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/keyframes.js?v=20260715-progress-ui-v1"></script>
-  <script src="/js/new-story-ad/uploads.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/actor-library.js?v=20260710-restore-no-progress"></script>
-  <script src="/js/new-story-ad/generation-flow.js?v=20260717-video-preflight-v1"></script>
-  <script src="/js/new-story-ad-legacy-ui.js?v=20260717-video-preflight-v1"></script>
+  <!-- 剧情广告脚本只在进入对应标签时加载，避免拖慢数字人和其他平台功能。 -->
+  <script src="/js/new-story-ad/bootstrap.js?v=20260718-v3-upgrade"></script>
 </body>
 </html>
 
