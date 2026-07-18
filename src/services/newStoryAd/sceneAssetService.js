@@ -92,6 +92,25 @@ function normalizeRepairViewKeys(input = []) {
   return REQUIRED_SCENE_VIEW_KEYS.filter(key => source.includes(key));
 }
 
+function failedViewKeysFromReasons(reasons = []) {
+  const ordinalMap = {
+    1: 'master', 2: 'reverse', 3: 'interaction', 4: 'detail', 5: 'layout',
+    一: 'master', 二: 'reverse', 三: 'interaction', 四: 'detail', 五: 'layout',
+  };
+  const keys = new Set();
+  const failurePattern = /不一致|完全不同|违反|不符|错误|缺失|不足|重复|副本|未能|失败|漂移|改变|替换|严重/;
+  for (const reason of reasons) {
+    const text = cleanText(reason, 300);
+    if (!failurePattern.test(text)) continue;
+    const pattern = /第\s*([一二三四五1-5])\s*张(?:图|图片)?|图\s*([1-5])/g;
+    for (const match of text.matchAll(pattern)) {
+      const key = ordinalMap[match[1] || match[2]];
+      if (key) keys.add(key);
+    }
+  }
+  return REQUIRED_SCENE_VIEW_KEYS.filter(key => keys.has(key));
+}
+
 function buildSceneRepairPlan(asset = {}) {
   const contract = asset.scene_contract && typeof asset.scene_contract === 'object'
     ? asset.scene_contract
@@ -117,31 +136,35 @@ function buildSceneRepairPlan(asset = {}) {
   const keys = new Set();
   const combined = reasons.join('；');
   const below = (value, threshold) => Number.isFinite(Number(value)) && Number(value) < threshold;
-  if (below(requirement.layout_match_score, 0.75)
-    || below(spatial.layout_topology_score, 0.8)
-    || /俯视|顶视|轴测|布局参考|布局拓扑|第\s*5\s*张|layout/i.test(combined)) keys.add('layout');
-  if (below(requirement.material_light_match_score, 0.75)
-    || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属/i.test(combined)) {
-    keys.add('master');
-    keys.add('detail');
-  }
-  if (below(requirement.interaction_match_score, 0.7)
-    || below(spatial.interaction_zone_score, 0.7)
-    || /互动|交互|行动区|活动区域|动线|站位/i.test(combined)) keys.add('interaction');
-  if (below(requirement.surface_topology_match_score, 0.8)
-    || below(requirement.negative_compliance_score, 0.9)
-    || /拼缝|接缝|板块|模块|禁止项|违禁/i.test(combined)) keys.add('master');
-  if (below(spatial.reverse_coverage_score, 0.75)
-    || /反向|侧向|背向空间/i.test(combined)) keys.add('reverse');
-  if (below(spatial.camera_diversity_score, 0.75)
-    || /机位差异|视图多样|多视图[^。；]{0,24}重复|参考图[^。；]{0,24}重复/i.test(combined)) {
-    keys.add('reverse');
-    keys.add('interaction');
-  }
-  if (crossView.pass === false) {
-    keys.add('reverse');
-    keys.add('interaction');
-    keys.add('detail');
+  const explicitFailedViewKeys = failedViewKeysFromReasons(reasons);
+  explicitFailedViewKeys.forEach(key => keys.add(key));
+  if (!explicitFailedViewKeys.length) {
+    if (below(requirement.layout_match_score, 0.75)
+      || below(spatial.layout_topology_score, 0.8)
+      || /俯视|顶视|轴测|布局参考|布局拓扑|第\s*5\s*张|layout/i.test(combined)) keys.add('layout');
+    if (below(requirement.material_light_match_score, 0.75)
+      || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属/i.test(combined)) {
+      keys.add('master');
+      keys.add('detail');
+    }
+    if (below(requirement.interaction_match_score, 0.7)
+      || below(spatial.interaction_zone_score, 0.7)
+      || /互动|交互|行动区|活动区域|动线|站位/i.test(combined)) keys.add('interaction');
+    if (below(requirement.surface_topology_match_score, 0.8)
+      || below(requirement.negative_compliance_score, 0.9)
+      || /拼缝|接缝|板块|模块|禁止项|违禁/i.test(combined)) keys.add('master');
+    if (below(spatial.reverse_coverage_score, 0.75)
+      || /反向|侧向|背向空间/i.test(combined)) keys.add('reverse');
+    if (below(spatial.camera_diversity_score, 0.75)
+      || /机位差异|视图多样|多视图[^。；]{0,24}重复|参考图[^。；]{0,24}重复/i.test(combined)) {
+      keys.add('reverse');
+      keys.add('interaction');
+    }
+    if (crossView.pass === false) {
+      keys.add('reverse');
+      keys.add('interaction');
+      keys.add('detail');
+    }
   }
   if (!keys.size) REQUIRED_SCENE_VIEW_KEYS.forEach(key => keys.add(key));
 

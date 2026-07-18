@@ -187,6 +187,18 @@ async function main() {
   });
   assert.deepEqual(currentFailurePlan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
 
+  const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
+    scene_contract: {
+      schema_version: 3,
+      status: 'rejected',
+      verification: { state: 'rejected', reasons: ['第三张图展示了一个与其余四张图完全不同的场景。'] },
+      requirement_qa: { pass: false, layout_match_score: 0.5, material_light_match_score: 0.8, interaction_match_score: 1, surface_topology_match_score: 0, negative_compliance_score: 0, mismatch_reasons: ['第三张图的背景墙为模块化矩形拼板，严重违反连续完整墙体要求。'] },
+      cross_view_qa: { pass: false, scene_consistency_score: 0, geometry_consistency_score: 0, material_consistency_score: 0, mismatch_reasons: ['第三张图展示了一个与其余四张图完全不同的场景。'] },
+      spatial_coverage_qa: { pass: false, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: ['主场景的空间覆盖完整。'] },
+    },
+  });
+  assert.deepEqual(explicitInteractionFailurePlan.view_keys, ['interaction'], 'an explicitly failed third view must not expand into five paid regenerations');
+
   const taskId = 'scene-repair-test';
   const sceneId = 'scene-repair-one';
   const sceneSpec = {
@@ -286,6 +298,7 @@ async function main() {
     console.log(JSON.stringify({
       success: true,
       current_failure_repairs: currentFailurePlan.view_keys,
+      explicit_interaction_repairs: explicitInteractionFailurePlan.view_keys,
       nano_prompt_length: nanoPrompt.length,
       audit_retry_attempts: auditAttempts,
       targeted_generation_calls: calls.length,
