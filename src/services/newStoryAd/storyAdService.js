@@ -16,7 +16,13 @@ const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
 const composeService = require('./composeService');
-const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets } = require('./sceneBindingService');
+const {
+  bindShotsToScenes,
+  selectSceneAsset,
+  assertVerifiedSceneAssets,
+  completeSpaceLock,
+  layoutSceneReference,
+} = require('./sceneBindingService');
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService');
 const personIdentity = require('./personIdentityContractService');
@@ -1068,7 +1074,7 @@ function hasHardPreviousContinuity(shot = {}, contract = {}) {
 function buildKeyframeDependencyPlan(shots = [], contracts = [], ctx = {}) {
   const list = Array.isArray(shots) ? shots : [];
   const verifiedSceneKeys = new Set((Array.isArray(ctx.scene_assets) ? ctx.scene_assets : [])
-    .filter(asset => asset?.scene_contract?.status === 'verified' && asset?.scene_contract?.cross_view_qa?.pass === true)
+    .filter(completeSpaceLock)
     .map((asset, index) => cleanText(asset.scene_id || asset.id || `scene_${index + 1}`, 160).toLowerCase())
     .filter(Boolean));
   const personContract = ctx.person_contract || ctx.person_asset?.person_contract || {};
@@ -1168,6 +1174,9 @@ function sceneAssetPrompt(asset = {}, options = {}) {
   const surfaceContract = rawSurfaceContract
     ? rawSurfaceContract.split('\n').map(line => `Master environment only — ${line}`).join('\n')
     : '';
+  const fullSpaceLock = completeSpaceLock(asset);
+  const spatialQa = asset.scene_contract?.spatial_coverage_qa || asset.spatial_coverage_qa || {};
+  const layoutReference = layoutSceneReference(asset);
   return [
     `Locked scene asset: ${cleanText(asset.name || asset.scene_id || asset.id || 'task scene', 120)}`,
     asset.lock_strength ? `Scene lock strength: ${cleanText(asset.lock_strength, 60)}` : '',
@@ -1175,6 +1184,9 @@ function sceneAssetPrompt(asset = {}, options = {}) {
     asset.layout_summary ? `Scene layout lock: ${cleanText(asset.layout_summary, 600)}` : '',
     asset.style_summary ? `Scene style lock: ${cleanText(asset.style_summary, 360)}` : '',
     views.length ? `Scene reference images attached by role: ${cleanText(views.map(view => view.key || view.label || 'view').join(', '), 160)}` : '',
+    `Spatial lock state: ${fullSpaceLock ? 'complete and verified' : 'incomplete; do not invent unseen space'}`,
+    layoutReference?.url ? 'An auxiliary whole-space layout reference is attached when reference capacity permits. Use it for topology and zone relationships, never as the commercial camera composition.' : '',
+    fullSpaceLock ? `Spatial coverage scores: layout ${Number(spatialQa.layout_topology_score || 0).toFixed(2)}, camera diversity ${Number(spatialQa.camera_diversity_score || 0).toFixed(2)}, reverse coverage ${Number(spatialQa.reverse_coverage_score || 0).toFixed(2)}, interaction zone ${Number(spatialQa.interaction_zone_score || 0).toFixed(2)}.` : '',
     asset.negative ? `Scene asset negative reference: ${cleanText(asset.negative, 360)}. In final keyframes, keep these as space-quality constraints only; do not apply "empty scene/no people" when the storyboard requires the locked actor.` : '',
     surfaceContract ? `Scene asset surface construction contract:\n${surfaceContract}` : '',
     'Keep the same scene identity, layout logic, material family, lighting direction and commercial realism across shots. Do not switch to another unrelated space.',
@@ -1565,7 +1577,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     const shotCandidates = [];
     try {
       const sceneReference = selectedSceneReference(sceneAsset, contracts[i] || {});
-      const referenceImages = keyframeReferenceImages(ctx, sceneReference, previousFrame, shot, contracts[i] || {});
+      const referenceImages = keyframeReferenceImages(ctx, sceneReference, previousFrame, shot, contracts[i] || {}, sceneAsset);
       const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contracts[i] || {});
       const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
       const productRequired = productIdentity.shotProductRequired(ctx, shot, contracts[i] || {});
@@ -1987,6 +1999,7 @@ function selectedSceneReference(sceneAsset = {}, contract = {}) {
 
 async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, generatedUrl = '' } = {}) {
   const sceneReference = selectedSceneReference(sceneAsset, contract);
+  const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset) : null;
   const reviewUrl = /^https?:\/\//i.test(String(generatedUrl || ''))
     ? String(generatedUrl)
     : mediaAdapter.absolutePublicImageUrl(generatedUrl);
@@ -2001,6 +2014,7 @@ async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}
       ? reviewWithInfrastructureRetry(attempt => sceneSpace.reviewKeyframe({
         taskId,
         sceneReferenceUrl: sceneReference,
+        layoutReferenceUrl: layoutReference?.url || '',
         generatedUrl: reviewUrl,
         contract: contract?.scene_lock || sceneAsset?.scene_contract || {},
         shot,
@@ -2064,7 +2078,7 @@ function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference 
   };
 }
 
-function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}) {
+function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
   const person = ctx.person_asset || {};
   const personViews = Array.isArray(person.view_images) ? person.view_images : [];
   const includePerson = personIdentity.shotPersonRequired(ctx, shot, contract) && !personIdentity.shotForbidsPerson(ctx, shot);
@@ -2077,10 +2091,14 @@ function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = 
   const personFallback = includePerson && !continuityReference
     ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '')
     : '';
-  // Providers accept at most four references here. Preserve one stable slot per
-  // contract so the previous accepted keyframe can never be displaced by extra
-  // actor views: scene + actor + product + continuity/fallback actor view.
-  const refs = [sceneReference, personPrimary, productReference, continuityReference || personFallback];
+  const continuityOrFallback = continuityReference || personFallback;
+  const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
+  // Providers accept at most four references. Commercial scene, actor, product
+  // and accepted-frame continuity have priority. The layout blueprint fills a
+  // remaining slot, so it improves spatial grounding without weakening identity
+  // or temporal continuity in reference-heavy shots.
+  const refs = [sceneReference, personPrimary, productReference, continuityOrFallback];
+  if (layoutReference && refs.filter(Boolean).length < 4) refs.push(layoutReference);
   const seen = new Set();
   return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => {
     if (!url || seen.has(url)) return false;

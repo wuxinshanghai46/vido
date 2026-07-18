@@ -41,6 +41,14 @@ function passingSceneResult(overrides = {}) {
       negative_compliance_score: 0.99,
       mismatch_reasons: [],
     },
+    spatial_coverage_qa: {
+      pass: true,
+      layout_topology_score: 0.95,
+      camera_diversity_score: 0.92,
+      reverse_coverage_score: 0.93,
+      interaction_zone_score: 0.94,
+      reasons: [],
+    },
     anchors: [],
     zones: [],
     geometry_facts: [],
@@ -152,7 +160,7 @@ async function main() {
   assert.equal(rejectedContract.requirement_qa.pass, false);
   assert.equal(rejectedContract.status, 'rejected', '跨视图一致但不符合原始要求时必须拒绝');
 
-  assert.equal(sceneAssets.needsLayoutView({ layout: '单面背景墙', interaction: '固定机位' }), false);
+  assert.equal(sceneAssets.needsLayoutView({ layout: '单面背景墙', interaction: '固定机位' }), true);
   assert.equal(sceneAssets.needsLayoutView({ layout: '前厅、走廊和后场组成多个区域', interaction: '人物沿动线连续穿行' }), true);
 
   const originalVision = modelGateway.generateVision;

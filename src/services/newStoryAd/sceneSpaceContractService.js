@@ -88,8 +88,20 @@ function score(value) {
   return Math.max(0, Math.min(1, Number(value || 0)));
 }
 
+function qaContainers(input = {}) {
+  return [
+    input,
+    input.cross_view_qa,
+    input.requirement_qa,
+    input.spatial_coverage_qa,
+    input.scores,
+    input.quality_dimensions,
+    input.metrics,
+  ].filter(Boolean);
+}
+
 function firstScore(input = {}, keys = []) {
-  const containers = [input, input.cross_view_qa, input.requirement_qa, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
+  const containers = qaContainers(input);
   for (const container of containers) {
     for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(container, key) && Number.isFinite(Number(container[key]))) {
@@ -101,7 +113,7 @@ function firstScore(input = {}, keys = []) {
 }
 
 function hasRequiredScores(input = {}, fields = []) {
-  const containers = [input, input.cross_view_qa, input.requirement_qa, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
+  const containers = qaContainers(input);
   return fields.every(aliases => containers.some(container => aliases.some(key =>
     Object.prototype.hasOwnProperty.call(container, key) && Number.isFinite(Number(container[key]))
   )));
@@ -151,6 +163,88 @@ function buildLayoutContract(input = {}, options = {}) {
   };
 }
 
+function referenceViewMap(input = {}, options = {}) {
+  const result = {};
+  const add = (key, url, source = '') => {
+    const normalizedKey = cleanText(key, 40);
+    const normalizedUrl = cleanText(url, 1000);
+    if (!REFERENCE_VIEW_KEYS.includes(normalizedKey) || !normalizedUrl || result[normalizedKey]) return;
+    result[normalizedKey] = { key: normalizedKey, url: normalizedUrl, source };
+  };
+  (Array.isArray(options.views) ? options.views : []).forEach(view => {
+    add(view?.key || view?.view, view?.url || view?.image_url, 'views');
+  });
+  (Array.isArray(input.cameras) ? input.cameras : []).forEach(camera => {
+    add(camera?.view_id || camera?.key, camera?.reference_image_url || camera?.url || camera?.image_url, 'cameras');
+  });
+  add('layout', input.layout_contract?.reference_image_url, 'layout_contract');
+  return result;
+}
+
+function normalizeSpatialCoverageQa(input = {}, options = {}) {
+  const explicit = input.spatial_coverage_qa && typeof input.spatial_coverage_qa === 'object';
+  const source = explicit ? input.spatial_coverage_qa : {};
+  const evidence = referenceViewMap(input, options);
+  const masterUrl = evidence.master?.url || '';
+  const reverseUrl = evidence.reverse?.url || '';
+  const interactionUrl = evidence.interaction?.url || '';
+  const hasLayout = !!evidence.layout?.url;
+  const hasReverse = !!reverseUrl && !!masterUrl && reverseUrl !== masterUrl;
+  const hasInteraction = !!interactionUrl && !!masterUrl
+    && interactionUrl !== masterUrl && interactionUrl !== reverseUrl;
+  const reasons = stringList(source.reasons || source.mismatch_reasons || [], 20, 300);
+  const appendReason = reason => {
+    if (reason && !reasons.includes(reason)) reasons.push(reason);
+  };
+
+  if (!explicit) {
+    return {
+      pass: false,
+      layout_topology_score: null,
+      camera_diversity_score: null,
+      reverse_coverage_score: null,
+      interaction_zone_score: null,
+      coverage_status: 'legacy_partial',
+      assessment_source: 'legacy_contract',
+      legacy: true,
+      full_space_lock: false,
+      reasons: ['历史场景合同缺少独立空间覆盖验证，不能视为完整空间锁定'],
+      mismatch_reasons: ['历史场景合同缺少独立空间覆盖验证，不能视为完整空间锁定'],
+    };
+  }
+
+  const qa = {
+    pass: false,
+    layout_topology_score: score(firstScore(source, ['layout_topology_score', 'layout_coverage_score', 'topology_coverage_score'])),
+    camera_diversity_score: score(firstScore(source, ['camera_diversity_score', 'view_diversity_score', 'camera_coverage_score'])),
+    reverse_coverage_score: score(firstScore(source, ['reverse_coverage_score', 'reverse_view_score', 'reverse_spatial_score'])),
+    interaction_zone_score: score(firstScore(source, ['interaction_zone_score', 'interaction_coverage_score', 'interaction_spatial_score'])),
+    coverage_status: 'partial',
+    assessment_source: 'vision_v3',
+    legacy: false,
+    full_space_lock: false,
+    reasons,
+  };
+  if (!hasLayout) appendReason('缺少俯视或轴测布局参考，无法验证完整空间拓扑');
+  if (!hasReverse) appendReason('缺少与主视角明确不同的反向或侧向参考，无法验证背向空间');
+  if (!hasInteraction) appendReason('缺少独立互动位参考，无法验证人物活动区域和动线');
+  if (qa.layout_topology_score < 0.8) appendReason('空间布局拓扑覆盖不足');
+  if (qa.camera_diversity_score < 0.75) appendReason('参考机位差异不足，不能证明未展示区域');
+  if (qa.reverse_coverage_score < 0.75) appendReason('反向或侧向空间覆盖不足');
+  if (qa.interaction_zone_score < 0.7) appendReason('互动区域与动线覆盖不足');
+  qa.pass = source.pass === true
+    && hasLayout && hasReverse && hasInteraction
+    && qa.layout_topology_score >= 0.8
+    && qa.camera_diversity_score >= 0.75
+    && qa.reverse_coverage_score >= 0.75
+    && qa.interaction_zone_score >= 0.7
+    && reasons.length === 0;
+  qa.coverage_status = qa.pass ? 'complete' : 'partial';
+  qa.full_space_lock = qa.pass;
+  qa.mismatch_reasons = [...qa.reasons];
+  return qa;
+}
+
 function normalizeContract(input = {}, options = {}) {
   const requested = options.requested || {};
   const views = options.views || [];
@@ -158,7 +252,8 @@ function normalizeContract(input = {}, options = {}) {
   const hasExplicitRequirementQa = input.requirement_qa && typeof input.requirement_qa === 'object';
   const sourceRequirementQa = hasExplicitRequirementQa ? input.requirement_qa : input;
   const contract = {
-    schema_version: 2,
+    schema_version: 3,
+    source_schema_version: Math.max(1, Number(input.schema_version || (input.spatial_coverage_qa ? 3 : 2)) || 1),
     scene_id: cleanText(options.sceneId || input.scene_id, 120),
     scene_revision: Math.max(1, Number(options.revision || input.scene_revision || 1) || 1),
     status: cleanText(input.status || 'verified', 40),
@@ -211,7 +306,27 @@ function normalizeContract(input = {}, options = {}) {
     views,
     layoutRequired: options.layoutRequired === true || input.layout_contract?.required === true,
   });
+  contract.spatial_coverage_qa = normalizeSpatialCoverageQa(input, { views });
+  contract.compatibility_status = contract.spatial_coverage_qa.legacy ? 'legacy_partial' : 'current';
+  // `status` remains the appearance/requirement compatibility gate for older
+  // callers. A production-usable complete space lock must additionally check
+  // `full_space_lock` / `spatial_coverage_qa.pass` (schema v3).
   contract.status = unavailable ? 'unverified' : (qa.pass && contract.requirement_qa.pass ? 'verified' : 'rejected');
+  contract.full_space_lock = contract.schema_version >= 3
+    && contract.status === 'verified'
+    && contract.requirement_qa.pass === true
+    && qa.pass === true
+    && contract.spatial_coverage_qa.pass === true
+    && contract.layout_contract.status === 'available';
+  contract.space_lock_status = contract.full_space_lock
+    ? 'complete'
+    : (contract.spatial_coverage_qa.legacy
+      ? 'legacy_partial'
+      : (unavailable
+        ? 'unavailable'
+        : (qa.pass && contract.requirement_qa.pass
+          ? contract.spatial_coverage_qa.coverage_status
+          : 'rejected')));
   if (unavailable) {
     contract.qa_unavailable = true;
     contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
@@ -227,14 +342,18 @@ function normalizeContract(input = {}, options = {}) {
     requested_negative: contract.requested_negative,
     requested_surface_topology: contract.requested_surface_topology,
     cameras: contract.cameras.map(camera => ({ view_id: camera.view_id, reference_image_url: camera.reference_image_url })),
+    layout_reference_image_url: contract.layout_contract.reference_image_url,
+    spatial_coverage_schema: contract.schema_version,
   })).digest('hex');
   contract.verification = unavailable
     ? (input.verification || verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error }))
-    : (qa.pass && contract.requirement_qa.pass
+    : (qa.pass && contract.requirement_qa.pass && contract.spatial_coverage_qa.pass
       ? verification.verified(input.vision_model || '')
       : verification.rejected(
-        [...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons],
-        contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求',
+        [...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+        contract.requirement_qa.pass && qa.pass
+          ? '场景视角覆盖不足，尚未形成完整空间锁定'
+          : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
       ));
   return contract;
 }
@@ -263,6 +382,21 @@ function buildUnverifiedContract(options = {}, error = null) {
     negative_compliance_score: null,
     mismatch_reasons: [],
   };
+  contract.spatial_coverage_qa = {
+    pass: null,
+    layout_topology_score: null,
+    camera_diversity_score: null,
+    reverse_coverage_score: null,
+    interaction_zone_score: null,
+    coverage_status: 'unavailable',
+    assessment_source: 'unavailable',
+    legacy: false,
+    full_space_lock: false,
+    reasons: [],
+    mismatch_reasons: [],
+  };
+  contract.space_lock_status = 'unavailable';
+  contract.full_space_lock = false;
   return contract;
 }
 
@@ -275,7 +409,7 @@ async function analyzeSceneViews(options = {}) {
     systemPrompt: [
       'You are a strict scene continuity and spatial-geometry inspector for a general-purpose commercial video system.',
       'Analyze only the supplied images and current request. Never assume a fixed industry, location, person or object.',
-      'Evaluate two independent gates: requirement fidelity to the user request, and cross-view consistency between generated references.',
+      'Evaluate three independent gates: requirement fidelity, cross-view visual consistency, and spatial/view coverage completeness.',
       'Return JSON only. Images are ordered master, reverse/side, interaction position, detail, with an optional fifth top-down/axonometric layout reference.',
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
@@ -283,7 +417,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
       + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
-      + 'Overall pass may be true only when both requirement_qa.pass and cross_view_qa.pass are true. Use concise Simplified Chinese for every mismatch reason. '
+      + 'spatial_coverage_qa object containing pass, layout_topology_score, camera_diversity_score, reverse_coverage_score, interaction_zone_score and reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
+      + 'Overall pass may be true only when requirement_qa.pass, cross_view_qa.pass and spatial_coverage_qa.pass are all true. Use concise Simplified Chinese for every mismatch reason. '
       + 'anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
       + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
       + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
@@ -291,7 +426,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
       + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
-      + 'Do not fail merely because camera perspective changes.',
+      + 'For a complete spatial lock, spatial_coverage_qa must fail if the layout/top-down/axonometric reference is missing, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
+      + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
     maxTokens: 5000,
   };
@@ -309,14 +445,24 @@ async function analyzeSceneViews(options = {}) {
     ['surface_topology_match_score', 'topology_match_score', 'surface_topology_match'],
     ['negative_compliance_score', 'forbidden_compliance_score', 'negative_compliance'],
   ];
-  if (!hasRequiredScores(parsed, sceneScoreFields) || !hasRequiredScores(parsed, requirementScoreFields)) {
+  const spatialCoverageScoreFields = [
+    ['layout_topology_score', 'layout_coverage_score', 'topology_coverage_score'],
+    ['camera_diversity_score', 'view_diversity_score', 'camera_coverage_score'],
+    ['reverse_coverage_score', 'reverse_view_score', 'reverse_spatial_score'],
+    ['interaction_zone_score', 'interaction_coverage_score', 'interaction_spatial_score'],
+  ];
+  if (!hasRequiredScores(parsed, sceneScoreFields)
+    || !hasRequiredScores(parsed, requirementScoreFields)
+    || !hasRequiredScores(parsed, spatialCoverageScoreFields)) {
     result = await modelGateway.generateVision({
       ...request,
-      userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact nested requirement_qa and cross_view_qa schema with every numeric score from 0 to 1.',
+      userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact nested requirement_qa, cross_view_qa and spatial_coverage_qa schema with every numeric score from 0 to 1.',
     });
     parsed = safeJson(result.text);
   }
-  if (!hasRequiredScores(parsed, sceneScoreFields) || !hasRequiredScores(parsed, requirementScoreFields)) {
+  if (!hasRequiredScores(parsed, sceneScoreFields)
+    || !hasRequiredScores(parsed, requirementScoreFields)
+    || !hasRequiredScores(parsed, spatialCoverageScoreFields)) {
     const error = new Error('场景视觉 QA 返回结构缺少必需评分字段');
     error.code = 'VISION_QA_SCHEMA_INVALID';
     error.retryable = true;
@@ -330,11 +476,13 @@ async function analyzeSceneViews(options = {}) {
     layoutRequired: options.layoutRequired === true,
   });
   contract.vision_model = result.used_model || '';
-  contract.verification = contract.status === 'verified'
+  contract.verification = contract.full_space_lock === true
     ? verification.verified(result.used_model)
     : verification.rejected(
-      [...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons],
-      contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求',
+      [...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+      contract.requirement_qa.pass && contract.cross_view_qa.pass
+        ? '场景视角覆盖不足，尚未形成完整空间锁定'
+        : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
     );
   return contract;
 }
@@ -432,12 +580,19 @@ function staticShotContract(shot = {}) {
 async function reviewKeyframe(options = {}) {
   const sceneContract = keyframeSceneContract(options.contract || {}, options.shot || {});
   const shotContract = staticShotContract(options.shot || {});
+  const layoutReferenceUrl = cleanText(options.layoutReferenceUrl || '', 1000);
+  const reviewImages = [options.sceneReferenceUrl, layoutReferenceUrl, options.generatedUrl].filter(Boolean);
   const request = {
     taskId: options.taskId || '',
     stage: 'new_story_ad.scene_consistency_qa',
     systemPrompt: [
       'You are a strict scene-continuity visual QA inspector for general-purpose commercial storyboards.',
-      'Image 1 is the required empty scene/camera reference. Image 2 is the generated keyframe.',
+      layoutReferenceUrl
+        ? 'Image 1 is the required commercial camera reference, Image 2 is the auxiliary whole-space layout blueprint, and Image 3 is the generated keyframe.'
+        : 'Image 1 is the required empty scene/camera reference. Image 2 is the generated keyframe.',
+      layoutReferenceUrl
+        ? 'Use the layout blueprint only to verify topology, zones, entrances and fixed-anchor relationships. Do not require the generated commercial keyframe to copy the blueprint camera angle.'
+        : '',
       'Judge spatial identity, fixed anchors, camera intent, material family and newly invented architecture.',
       'This stage evaluates scene continuity only. Do not judge subjective aesthetics, symmetry, balance, actor placement, copy layout, or ordinary foreground occlusion here. A required actor covering part of a surface does not break that surface topology.',
       'Only treat framing or occlusion as a scene failure when it contradicts the selected camera contract or makes every required scene anchor impossible to identify.',
@@ -461,7 +616,7 @@ async function reviewKeyframe(options = {}) {
       + 'Fail for another space, incompatible required-anchor movement, changed dominant material structure, '
       + 'selected-camera contradiction, or unsupported new architecture.'
       + '\nUse Simplified Chinese for every reason string. Do not return English reason text.',
-    imageUrls: [options.sceneReferenceUrl, options.generatedUrl],
+    imageUrls: reviewImages,
     maxTokens: 3000,
     timeoutMs: Math.max(15000, Number(options.timeoutMs) || 60000),
     maxCandidates: Math.max(1, Math.min(3, Number(options.maxCandidates) || 2)),
@@ -522,6 +677,7 @@ module.exports = {
   normalizeAnchors,
   normalizeZones,
   normalizeRequirementQa,
+  normalizeSpatialCoverageQa,
   keyframeSceneContract,
   staticShotContract,
   normalizeKeyframeQa,

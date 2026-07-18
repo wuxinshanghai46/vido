@@ -10,15 +10,72 @@
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;
 
+  function scorePercent(qa = {}, keys = []) {
+    for (const key of keys) {
+      const raw = qa?.[key];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const value = Number(raw);
+      if (Number.isFinite(value)) return Math.round(Math.max(0, Math.min(1, value)) * 100);
+    }
+    return null;
+  }
+
+  function sceneLockAssessment(asset = {}) {
+    const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
+    const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
+    const crossViewQa = asset.cross_view_qa || contract.cross_view_qa || {};
+    const spatialQa = asset.spatial_coverage_qa || contract.spatial_coverage_qa || {};
+    const layoutContract = asset.layout_contract || contract.layout_contract || {};
+    const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+    const hasLayoutView = views.some(view => clean(view?.key || view?.view, 40) === 'layout');
+    const schemaVersion = Number(contract.schema_version || asset.schema_version || 0) || 0;
+    const hasSpatialQa = !!(asset.spatial_coverage_qa || contract.spatial_coverage_qa);
+    const layoutAvailable = layoutContract.status === 'available' && hasLayoutView;
+    const requirementPass = requirementQa.pass === true;
+    const crossViewPass = crossViewQa.pass === true;
+    const spatialPass = spatialQa.pass === true;
+    const appearancePass = contract.status === 'verified' && requirementPass && crossViewPass;
+    const complete = schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable;
+    const legacy = schemaVersion < 3
+      || !hasSpatialQa
+      || spatialQa.legacy === true
+      || spatialQa.coverage_status === 'legacy_partial'
+      || contract.compatibility_status === 'legacy_partial';
+    const requirementScore = averagePercent(requirementQa, ['layout_match_score', 'material_light_match_score', 'interaction_match_score', 'surface_topology_match_score', 'negative_compliance_score']);
+    const crossViewScore = averagePercent(crossViewQa, ['scene_consistency_score', 'geometry_consistency_score', 'material_consistency_score']);
+    const spatialScore = scorePercent(spatialQa, ['coverage_score', 'spatial_coverage_score'])
+      ?? averagePercent(spatialQa, ['layout_topology_score', 'camera_diversity_score', 'reverse_coverage_score', 'interaction_zone_score'])
+      ?? null;
+    return {
+      complete,
+      legacy,
+      appearancePass,
+      layoutAvailable,
+      hasLayoutView,
+      hasSpatialQa,
+      requirementQa,
+      crossViewQa,
+      spatialQa,
+      layoutContract,
+      schemaVersion,
+      requirementScore,
+      crossViewScore,
+      spatialScore,
+    };
+  }
+
   function verificationView(asset = {}) {
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const qa = asset.cross_view_qa || contract.cross_view_qa || {};
     const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
+    const assessment = sceneLockAssessment(asset);
+    const spatialQa = assessment.spatialQa;
     const details = asset.verification || contract.verification || {};
     const reasons = [...new Set([
       ...(Array.isArray(details.reasons) ? details.reasons : []),
       ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
       ...(Array.isArray(requirementQa.mismatch_reasons) ? requirementQa.mismatch_reasons : []),
+      ...(Array.isArray(spatialQa.mismatch_reasons) ? spatialQa.mismatch_reasons : []),
     ].map(value => clean(value, 240)).filter(Boolean))].slice(0, 6);
     const scores = [
       ['空间', qa.scene_consistency_score],
@@ -32,16 +89,22 @@
     ].map(([label, value]) => ({ label, value: Number(value) }))
       .filter(item => Number.isFinite(item.value) && item.value > 0)
       .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
-    if (contract.status === 'verified' && qa.pass === true && requirementQa.pass === true) {
-      return { tone: 'verified', label: '空间锁已验证', message: details.message || '当前场景版本已通过需求符合度与跨视图一致性验证', reasons: [], scores };
+    if (assessment.complete) {
+      return { tone: 'verified', label: '完整空间已锁定', message: details.message || '需求、跨视图和空间覆盖三道验证均已通过，俯视布局已纳入空间合同', reasons: [], scores, assessment };
+    }
+    if (assessment.legacy && assessment.appearancePass) {
+      return { tone: 'upgrade', label: '待升级', message: '这是旧版场景资产，目前只能确认外观一致。请重新生成当前场景，补齐俯视布局与空间覆盖验证。', reasons, scores, assessment };
+    }
+    if (assessment.appearancePass) {
+      return { tone: 'appearance', label: '仅外观锁定', message: details.message || '需求和跨视图外观已通过，但空间覆盖或俯视布局未通过，不能标记为完整空间锁定。', reasons, scores, assessment };
     }
     if (contract.status === 'rejected') {
-      return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '场景未满足原始要求或跨视图不一致', reasons, scores };
+      return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '场景未满足原始要求、跨视图不一致或空间覆盖不足', reasons, scores, assessment };
     }
     if (details.state === 'unavailable' || contract.qa_unavailable === true) {
-      return { tone: 'unavailable', label: '场景验证异常', message: details.message || '视觉审核暂时不可用，请稍后重试', reasons };
+      return { tone: 'unavailable', label: '场景验证异常', message: details.message || '视觉审核暂时不可用，请稍后重试', reasons, assessment };
     }
-    return { tone: 'unverified', label: '空间锁待验证', message: details.message || '首次使用或场景版本变化后需要验证一次', reasons };
+    return { tone: 'unverified', label: '空间锁待验证', message: details.message || '首次使用或场景版本变化后需要验证一次', reasons, assessment };
   }
 
   function verificationDetailsHtml(view = {}, escapeHtml = value => value) {
@@ -104,8 +167,11 @@
   }
 
   function averagePercent(qa = {}, keys = []) {
-    const values = keys.map(key => Number(qa?.[key])).filter(Number.isFinite);
-    if (!values.length) return 0;
+    const values = keys.map(key => qa?.[key])
+      .filter(value => value !== undefined && value !== null && value !== '')
+      .map(Number)
+      .filter(Number.isFinite);
+    if (!values.length) return null;
     return Math.round((values.reduce((sum, value) => sum + Math.max(0, Math.min(1, value)), 0) / values.length) * 100);
   }
 
@@ -204,6 +270,7 @@
       cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
       requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
       layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
+      spatial_coverage_qa: asset.spatial_coverage_qa || asset.scene_contract?.spatial_coverage_qa || null,
     };
   }
 
@@ -290,15 +357,11 @@
     const asset = assets[selectedIndex];
     const views = asset.view_images || [];
     const mainUrl = asset.url || asset.image_url || views[0]?.url || views[0]?.image_url || '';
-    const contract = asset.scene_contract || {};
-    const qa = asset.cross_view_qa || contract.cross_view_qa || {};
-    const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
-    const qaPassed = contract.status === 'verified' && qa.pass === true && requirementQa.pass === true;
-    const qaScore = Number(qa.scene_consistency_score || 0);
-    const requirementScore = averagePercent(requirementQa, ['layout_match_score', 'material_light_match_score', 'interaction_match_score', 'surface_topology_match_score', 'negative_compliance_score']);
-    const crossViewScore = averagePercent(qa, ['scene_consistency_score', 'geometry_consistency_score', 'material_consistency_score']);
     const sceneVerification = verificationView(asset);
-    const canReverify = !qaPassed && ['unavailable', 'unverified'].includes(sceneVerification.tone);
+    const assessment = sceneVerification.assessment || sceneLockAssessment(asset);
+    const qaPassed = assessment.complete;
+    const canReverify = !qaPassed && !assessment.legacy && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone);
+    const metricValue = value => Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证';
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
@@ -316,15 +379,20 @@
           <div class="dh-nsa-scene-head">
             <div>
               <b>${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}</b>
-              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`, requirementScore ? `需求符合度 ${requirementScore}%` : '', crossViewScore || qaScore ? `跨视图一致性 ${crossViewScore || Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
+              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`].filter(Boolean).join(' · '))}</span>
             </div>
-            <em>${escapeHtml(sceneVerification.label)}</em>
+            <em class="is-${escapeHtml(sceneVerification.tone)}">${escapeHtml(sceneVerification.label)}</em>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">未验证场景不会进入关键帧</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${sceneVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改场景设定后重新生成当前场景，失败图片已保留供对照</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          <div class="dh-nsa-scene-lock-metrics" aria-label="场景锁定验证指标">
+            <div class="${assessment.requirementQa.pass === true ? 'is-pass' : 'is-pending'}"><small>需求符合度</small><b>${escapeHtml(metricValue(assessment.requirementScore))}</b><span>布局、材质、互动与禁止项</span></div>
+            <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
+            <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
+          </div>
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : '未完整锁定的场景不会进入关键帧'}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${sceneVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改场景设定后重新生成当前场景，失败图片已保留供对照</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
-              return `<button type="button" class="dh-nsa-scene-view" data-nsa-scene-preview="${selectedIndex}:${index}">
+              return `<button type="button" class="dh-nsa-scene-view ${view.key === 'layout' ? 'is-layout' : ''}" data-nsa-scene-preview="${selectedIndex}:${index}">
                 ${url ? `<img src="${escapeHtml(thumbUrl(url, 360))}" alt="${escapeHtml(view.label || `视角 ${index + 1}`)}" loading="lazy" decoding="async">` : ''}
                 <b>${escapeHtml(view.label || VIEW_LABELS[view.key] || `视角 ${index + 1}`)}</b>
               </button>`;
@@ -473,6 +541,7 @@
 
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
+    sceneLockAssessment,
     thumbUrl,
     specPayload,
     hasContinuousSurfaceIntent,

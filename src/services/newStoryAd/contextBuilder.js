@@ -427,6 +427,11 @@ function sceneAssetsPrompt(sceneAssets = []) {
     material_summary: cleanText(asset.material_summary || '', 500),
     style_summary: cleanText(asset.style_summary || '', 300),
     scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
+    space_lock_status: cleanText(asset.scene_contract?.space_lock_status || asset.space_lock_status || 'upgrade_required', 40),
+    full_space_lock: asset.scene_contract?.full_space_lock === true || asset.full_space_lock === true,
+    schema_version: Number(asset.scene_contract?.schema_version || asset.schema_version || 0) || 0,
+    layout_contract: asset.scene_contract?.layout_contract || asset.layout_contract || null,
+    spatial_coverage_qa: asset.scene_contract?.spatial_coverage_qa || asset.spatial_coverage_qa || null,
     anchors: (Array.isArray(asset.scene_contract?.anchors) ? asset.scene_contract.anchors : []).map(anchor => ({
       id: cleanText(anchor.id || '', 100),
       label: cleanText(anchor.label || '', 120),
@@ -446,6 +451,8 @@ function sceneAssetsPrompt(sceneAssets = []) {
   return [
     '场景空间锁：已生成，后续剧本、分镜和关键帧必须优先使用当前任务 scene_assets。',
     `当前任务场景资产：${JSON.stringify(digest)}`,
+    '只有 full_space_lock=true 的场景才允许进入分镜与关键帧生成。俯视/轴测 layout 只用于理解整体拓扑、区域和机位关系，不得直接作为商业镜头构图。',
+    '镜头不得发明空间蓝图和已验证商业视图都未覆盖的新房间、通道、入口、墙体、功能区或交互位置。',
     '分镜必须为每镜输出 scene_id、scene_revision、scene_view、camera_id、scene_zone、zone_ids、anchor_ids、transition_from、transition_reason。',
     '单场景任务必须保持同一 scene_id；多场景任务只有在剧情或商业表达需要时才能切换 scene_id，并说明转场原因。',
     '禁止凭空新增当前任务场景资产之外的行业或具体空间。',

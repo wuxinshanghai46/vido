@@ -40,12 +40,14 @@ async function main() {
     aspect_ratio: '16:9',
   });
   const asset = generated.scene_asset;
-  assert.equal(asset.view_images.length, 4, '必须生成四个独立场景视图');
-  assert.deepEqual(asset.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail']);
-  assert.equal(new Set(asset.view_images.map(view => view.url)).size, 4, '四视图不能再由同一结果冒充');
+  assert.equal(asset.view_images.length, 5, '必须生成四个商业视图和一个空间蓝图');
+  assert.deepEqual(asset.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail', 'layout']);
+  assert.equal(new Set(asset.view_images.map(view => view.url)).size, 5, '五视图不能再由同一结果冒充');
   assert.equal(asset.scene_revision, 1);
   assert.equal(asset.scene_contract.status, 'verified');
   assert.equal(asset.scene_contract.cross_view_qa.pass, true);
+  assert.equal(asset.scene_contract.spatial_coverage_qa.pass, true);
+  assert.equal(asset.scene_contract.full_space_lock, true);
 
   const secondAsset = {
     ...asset,

@@ -1,0 +1,153 @@
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = path.resolve(__dirname, '..');
+const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
+
+function fullAsset() {
+  return {
+    scene_id: 'scene-v3',
+    name: '完整空间场景',
+    view_images: [
+      { key: 'master', url: '/master.png' },
+      { key: 'reverse', url: '/reverse.png' },
+      { key: 'interaction', url: '/interaction.png' },
+      { key: 'detail', url: '/detail.png' },
+      { key: 'layout', label: '俯视布局', url: '/layout.png' },
+    ],
+    scene_contract: {
+      schema_version: 3,
+      status: 'verified',
+      requirement_qa: {
+        pass: true,
+        layout_match_score: 0.96,
+        material_light_match_score: 0.95,
+        interaction_match_score: 0.94,
+        surface_topology_match_score: 0.97,
+        negative_compliance_score: 0.98,
+      },
+      cross_view_qa: {
+        pass: true,
+        scene_consistency_score: 0.95,
+        geometry_consistency_score: 0.94,
+        material_consistency_score: 0.96,
+      },
+      spatial_coverage_qa: {
+        pass: true,
+        layout_topology_score: 0.94,
+        camera_diversity_score: 0.91,
+        reverse_coverage_score: 0.92,
+        interaction_zone_score: 0.95,
+        mismatch_reasons: [],
+      },
+      layout_contract: { status: 'available', required: true, reference_image_url: '/layout.png' },
+      anchors: [{ id: 'wall', label: '主墙', required: true }],
+      zones: [{ id: 'interaction_zone', label: '互动区' }],
+      cameras: [{ id: 'camera_master', view_id: 'master' }],
+    },
+  };
+}
+
+function loadFrontend() {
+  const source = fs.readFileSync(path.join(root, 'public/js/new-story-ad/scene-assets.js'), 'utf8');
+  const sandbox = {
+    window: {},
+    document: { getElementById: () => null },
+    console,
+    setInterval,
+    clearInterval,
+  };
+  vm.runInNewContext(source, sandbox, { filename: 'scene-assets.js' });
+  return sandbox.window.NewStoryAdSceneAssets;
+}
+
+function main() {
+  const asset = fullAsset();
+  assert.equal(sceneBinding.completeSpaceLock(asset), true, 'v3 + 三道 QA + 俯视布局才是完整空间锁');
+  assert.deepEqual(sceneBinding.primarySceneViews(asset).map(view => view.key), ['master', 'reverse', 'interaction', 'detail']);
+  assert.equal(sceneBinding.layoutSceneReference(asset).role, 'auxiliary_spatial_lock');
+
+  const digest = sceneBinding.sceneAssetDigest([asset])[0];
+  assert.equal(digest.available_views.length, 4, '分镜可选机位不得包含 layout');
+  assert.equal(digest.available_views.some(view => view.key === 'layout'), false);
+  assert.equal(digest.layout_reference.available, true);
+  assert.equal(digest.space_lock_status, 'complete');
+
+  const boundLayoutRequest = sceneBinding.bindShotToScene({ scene_id: 'scene-v3', scene_view: 'layout', visual: '完整空间建立镜头' }, [asset]);
+  assert.equal(boundLayoutRequest.scene_view, 'master', '商业镜头不得绑定 layout 辅助视图');
+  const lock = sceneBinding.sceneContractForShot({ scene_assets: [asset] }, boundLayoutRequest);
+  assert.equal(lock.view_images.length, 4);
+  assert.equal(lock.layout_reference.url, '/layout.png');
+  assert.equal(lock.layout_reference.role, 'auxiliary_spatial_lock');
+  assert.equal(lock.spatial_contract.schema_version, 3);
+  assert.equal(lock.spatial_contract.spatial_coverage_qa.pass, true);
+  assert.equal(lock.space_lock_status, 'complete');
+
+  const legacy = fullAsset();
+  legacy.scene_id = 'legacy-scene';
+  legacy.view_images = legacy.view_images.slice(0, 4);
+  legacy.scene_contract = {
+    status: 'verified',
+    requirement_qa: { pass: true },
+    cross_view_qa: { pass: true },
+  };
+  assert.equal(sceneBinding.completeSpaceLock(legacy), false);
+  assert.equal(sceneBinding.sceneVerificationState(legacy), 'legacy_partial');
+  assert.throws(() => sceneBinding.assertVerifiedSceneAssets([legacy]), error => (
+    error.code === 'SCENE_VERIFICATION_REQUIRED'
+    && error.invalid_scenes[0].status === 'legacy_partial'
+  ));
+  const normalizedLegacy = {
+    ...legacy,
+    scene_contract: {
+      ...legacy.scene_contract,
+      schema_version: 3,
+      source_schema_version: 2,
+      compatibility_status: 'legacy_partial',
+      spatial_coverage_qa: { pass: false, legacy: true, coverage_status: 'legacy_partial' },
+    },
+  };
+  assert.equal(sceneBinding.sceneVerificationState(normalizedLegacy), 'legacy_partial');
+
+  const frontend = loadFrontend();
+  const fullAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([asset])[0]);
+  assert.equal(fullAssessment.complete, true);
+  assert.equal(fullAssessment.layoutAvailable, true);
+  assert.equal(fullAssessment.spatialScore, 93);
+  const legacyAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([legacy])[0]);
+  assert.equal(legacyAssessment.complete, false);
+  assert.equal(legacyAssessment.legacy, true);
+  assert.equal(legacyAssessment.spatialScore, null, '旧资产空间覆盖应显示待验证，不得伪造分数');
+  assert.equal(frontend.sceneLockAssessment(frontend.normalizeAssets([normalizedLegacy])[0]).legacy, true);
+  const fullHost = { innerHTML: '' };
+  frontend.render({ host: fullHost, state: { taskId: 'task-v3', sceneAssets: [asset] } });
+  assert(fullHost.innerHTML.includes('完整空间已锁定'));
+  assert(fullHost.innerHTML.includes('需求符合度'));
+  assert(fullHost.innerHTML.includes('跨视图一致性'));
+  assert(fullHost.innerHTML.includes('空间覆盖度'));
+  assert(fullHost.innerHTML.includes('俯视布局'));
+  const legacyHost = { innerHTML: '' };
+  frontend.render({ host: legacyHost, state: { taskId: 'task-legacy', sceneAssets: [legacy] } });
+  assert(legacyHost.innerHTML.includes('待升级'));
+  assert(legacyHost.innerHTML.includes('旧资产仅锁定外观'));
+  assert(legacyHost.innerHTML.includes('生成/重新生成当前场景'));
+  assert(!legacyHost.innerHTML.includes('空间覆盖度 100%'));
+
+  const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
+  assert(css.includes('.dh-nsa-scene-lock-metrics'));
+  assert(css.includes('.dh-nsa-scene-view.is-layout'));
+  assert(html.includes('20260718-scene-lock-v3'));
+
+  console.log(JSON.stringify({
+    complete_space_lock: true,
+    legacy_upgrade_required: true,
+    commercial_views_exclude_layout: true,
+    layout_contract_reaches_keyframe_lock: true,
+    split_metrics_ui: true,
+  }, null, 2));
+}
+
+main();

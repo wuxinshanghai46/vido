@@ -12,6 +12,59 @@ function normalizeSceneView(value = '') {
   return '';
 }
 
+function sceneViewKey(view = {}, index = 0) {
+  const raw = cleanText(view?.key || view?.view || '', 40);
+  if (VIEW_KEYS.includes(raw) || raw === 'layout') return raw;
+  return VIEW_KEYS[index] || '';
+}
+
+function primarySceneViews(asset = {}) {
+  return (Array.isArray(asset.view_images) ? asset.view_images : [])
+    .filter((view, index) => VIEW_KEYS.includes(sceneViewKey(view, index)));
+}
+
+function layoutSceneReference(asset = {}) {
+  if (!asset || typeof asset !== 'object') return null;
+  const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+  const view = views.find((item, index) => sceneViewKey(item, index) === 'layout');
+  if (!view) return null;
+  return {
+    key: 'layout',
+    label: cleanText(view.label || view.name || '俯视布局', 80),
+    url: cleanText(view.url || view.image_url || '', 1000),
+    image_url: cleanText(view.image_url || view.url || '', 1000),
+    role: 'auxiliary_spatial_lock',
+  };
+}
+
+function completeSpaceLock(asset = {}) {
+  if (!asset || typeof asset !== 'object') return false;
+  const contract = asset.scene_contract || {};
+  const requirementQa = contract.requirement_qa || asset.requirement_qa || {};
+  const crossViewQa = contract.cross_view_qa || asset.cross_view_qa || {};
+  const spatialQa = contract.spatial_coverage_qa || asset.spatial_coverage_qa || {};
+  const layoutContract = contract.layout_contract || asset.layout_contract || {};
+  const schemaVersion = Number(contract.schema_version || asset.schema_version || 0) || 0;
+  const layoutReference = layoutSceneReference(asset);
+  return schemaVersion >= 3
+    && contract.status === 'verified'
+    && requirementQa.pass === true
+    && crossViewQa.pass === true
+    && spatialQa.pass === true
+    && layoutContract.status === 'available'
+    && !!layoutReference?.url;
+}
+
+function legacySpaceLock(asset = {}) {
+  const contract = asset.scene_contract || {};
+  const spatialQa = contract.spatial_coverage_qa || asset.spatial_coverage_qa || null;
+  return Number(contract.source_schema_version || contract.schema_version || asset.schema_version || 0) < 3
+    || !spatialQa
+    || spatialQa.legacy === true
+    || spatialQa.coverage_status === 'legacy_partial'
+    || contract.compatibility_status === 'legacy_partial';
+}
+
 function semanticSceneView(shot = {}, asset = {}) {
   const available = new Set((Array.isArray(asset.view_images) ? asset.view_images : [])
     .map(view => normalizeSceneView(view?.key || view?.view)).filter(Boolean));
@@ -95,7 +148,9 @@ function spatialBindingForShot(shot = {}, asset = {}, sceneView = 'master') {
 
 function sceneAssetDigest(sceneAssets = []) {
   return (Array.isArray(sceneAssets) ? sceneAssets : []).map((asset, index) => {
-    const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+    const views = primarySceneViews(asset);
+    const layoutReference = layoutSceneReference(asset);
+    const contract = asset.scene_contract || {};
     return {
       scene_id: normalizeSceneId(asset, index),
       name: cleanText(asset.name || `任务场景 ${index + 1}`, 120),
@@ -104,6 +159,10 @@ function sceneAssetDigest(sceneAssets = []) {
       material_summary: cleanText(asset.material_summary || '', 500),
       style_summary: cleanText(asset.style_summary || '', 300),
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
+      space_lock_status: completeSpaceLock(asset) ? 'complete' : (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only'),
+      layout_reference: layoutReference ? { available: true, role: layoutReference.role, label: layoutReference.label } : { available: false, role: 'auxiliary_spatial_lock' },
+      layout_contract: contract.layout_contract || asset.layout_contract || null,
+      spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
       anchors: (Array.isArray(asset.scene_contract?.anchors) ? asset.scene_contract.anchors : [])
         .map(anchor => ({ id: cleanText(anchor.id || '', 100), label: cleanText(anchor.label || '', 120) })).slice(0, 16),
       zones: (Array.isArray(asset.scene_contract?.zones) ? asset.scene_contract.zones : [])
@@ -149,7 +208,8 @@ function selectSceneAsset(sceneAssets = [], sceneId = '', index = 0) {
 function sceneVerificationState(asset = {}) {
   const contract = asset.scene_contract || {};
   const qa = contract.cross_view_qa || asset.cross_view_qa || {};
-  if (contract.status === 'verified' && qa.pass === true) return 'verified';
+  if (completeSpaceLock(asset)) return 'verified';
+  if (legacySpaceLock(asset)) return 'legacy_partial';
   if (contract.status === 'rejected' || qa.pass === false && contract.qa_unavailable !== true) return 'rejected';
   return cleanText(contract.status || 'unverified', 40) || 'unverified';
 }
@@ -254,6 +314,7 @@ function sceneBindingPrompt(sceneAssets = []) {
     `Available task scene assets: ${JSON.stringify(digest)}`,
     `Every storyboard shot must choose one scene_id from: ${ids}.`,
     'For each shot, also output scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from and transition_reason.',
+    'scene_view is a commercial camera binding and may only be master, reverse, interaction or detail. The layout reference is auxiliary spatial evidence only and must never be selected as scene_view.',
     'scene_zone_id and zone_ids are stable machine bindings copied from the selected scene contract. Never translate or rename them.',
     'scene_zone_label_zh is presentation-only and must be a concise Simplified Chinese zone name. Translation must never alter scene_zone_id or zone_ids.',
     'Single-scene task: keep all shots on the same scene_id and vary only scene_view or scene_zone.',
@@ -270,6 +331,8 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
   const sceneId = normalizeSceneId(asset, assetIndex);
   const sceneView = normalizeSceneView(shot.scene_view || '') || semanticSceneView(shot, asset);
   const spatial = spatialBindingForShot(shot, asset, sceneView);
+  const contract = asset.scene_contract || {};
+  const layoutReference = layoutSceneReference(asset);
   return {
     scene_id: sceneId,
     scene_name: cleanText(shot.scene_name || asset.name || `任务场景 ${assetIndex + 1}`, 120),
@@ -288,8 +351,21 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
     material_summary: cleanText(asset.material_summary || '', 800),
     style_summary: cleanText(asset.style_summary || '', 500),
     negative: cleanText(asset.negative || '', 800),
-    view_images: Array.isArray(asset.view_images) ? asset.view_images : [],
-    scene_contract: asset.scene_contract || null,
+    view_images: primarySceneViews(asset),
+    layout_reference: layoutReference,
+    layout_contract: contract.layout_contract || asset.layout_contract || null,
+    spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
+    space_lock_status: completeSpaceLock(asset) ? 'complete' : (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only'),
+    spatial_contract: {
+      schema_version: Number(contract.schema_version || 0) || 0,
+      anchors: Array.isArray(contract.anchors) ? contract.anchors : [],
+      zones: Array.isArray(contract.zones) ? contract.zones : [],
+      cameras: Array.isArray(contract.cameras) ? contract.cameras : [],
+      surface_topology: contract.surface_topology || asset.surface_topology || null,
+      layout_contract: contract.layout_contract || asset.layout_contract || null,
+      spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
+    },
+    scene_contract: contract || null,
   };
 }
 
@@ -305,4 +381,8 @@ module.exports = {
   selectSceneAsset,
   semanticSceneView,
   spatialBindingForShot,
+  completeSpaceLock,
+  legacySpaceLock,
+  layoutSceneReference,
+  primarySceneViews,
 };

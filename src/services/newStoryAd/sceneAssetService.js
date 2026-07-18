@@ -8,6 +8,7 @@ const sceneViewStrategy = require('./sceneViewStrategyService');
 const shotDesign = require('./shotDesignService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
+const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 
 function sceneViewLabel(key = '') {
   return {
@@ -81,7 +82,7 @@ function normalizeSceneAssets(input = []) {
   return raw.map(normalizeSceneAsset).filter(Boolean);
 }
 
-function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
+function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRole = 'master' } = {}) {
   const brief = cleanText(ctx.brief || body.brief || '', 1600);
   const subject = cleanText(ctx.product_subject || sceneConfig.advertised_subject || body.product_subject || '', 240);
   const sceneSpec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
@@ -118,8 +119,20 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
     'No generic luxury template, no repeated procedural texture, no melted details, no impossible reflections, no glowing seams, no excessive contrast, no heavy HDR, no fake bokeh.',
     'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent material direction between panels.',
   ].join(' ');
+  const outputInstruction = outputRole === 'layout'
+    ? [
+      'Create one photorealistic SPATIAL BLUEPRINT for a reusable commercial video scene before any cinematic camera view is designed.',
+      'Use a high oblique axonometric or top-down whole-space composition that exposes the complete floor boundary, walls, openings, fixed structures, anchor furniture/props, circulation path and interaction zone in one coherent coordinate system.',
+      'This blueprint is the authoritative geometry source for all later camera views. Prioritize spatial legibility and relative positions over dramatic composition; do not hide essential topology behind foreground objects.',
+    ]
+    : outputRole === 'contract'
+      ? ['Use the following task-specific scene contract as the content authority for the requested spatial asset.']
+      : [
+      'Create one photorealistic MASTER REFERENCE VIEW for a reusable commercial video scene.',
+      'Use a wide eye-level or slightly elevated three-quarter establishing composition derived from the locked spatial blueprint, clearly showing the main scene identity and anchor relations without looking top-down.',
+      ];
   return [
-    'Create one photorealistic MASTER REFERENCE VIEW for a reusable commercial video scene.',
+    ...outputInstruction,
     'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no panels, no split screen, no labels, no people or human-like subjects.',
     photographicRealism,
     'Use a wide establishing composition that clearly defines the whole spatial layout and the relative position of fixed structures and movable anchors.',
@@ -200,23 +213,47 @@ async function localizeSceneAssets(sceneAssets = [], { taskId = '' } = {}) {
   return localized;
 }
 
-function buildDerivedViewPrompt(masterPrompt = '', viewKey = '') {
+function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
   const instruction = {
-    reverse: 'Generate a reverse or side camera view of the exact same physical space. Preserve every fixed structure, opening, anchor object, material, color, light source and relative position. Reveal a geometrically plausible opposite/side relation; do not redesign the room.',
-    interaction: 'Generate an interaction-position camera view inside the exact same physical space. Preserve fixed structures and anchor positions. Choose a practical empty standing/display/action zone for later adding the current task subject, but do not add any person or replace the environment.',
-    detail: 'Generate a close material and construction-detail view taken inside the exact same physical space. Use only materials, seams, fixtures and colors visibly supported by the master reference. Do not invent a new wall system or decorative composition.',
-    layout: 'Generate a high-angle orthographic top-down or axonometric whole-space reference of the exact same physical scene. Preserve every opening, fixed structure, zone, anchor object and relative position. This is a technical spatial continuity reference, not a new design and not a commercial camera shot.',
+    master: 'Generate the MASTER ESTABLISHING VIEW of the exact space defined by the supplied spatial blueprint. Use a natural eye-level or slightly elevated three-quarter wide camera, not a top-down view. Show enough floor, ceiling and at least two adjoining spatial planes to establish scale, depth, entrances and anchor relations. Translate the blueprint into a believable commercial photograph without moving, deleting or inventing any opening, fixed structure, anchor object, circulation route or interaction zone.',
+    reverse: 'Generate a TRUE REVERSE OR SIDE VIEW of the exact same physical space, not a small reframing of the master. Move the camera to a geometrically plausible opposite or side sector with at least about 90 degrees of azimuth change from the master camera. Swap the foreground/background relationship and reveal at least one wall, opening, boundary or anchor relation that the master cannot show clearly. Do not mirror the master, reuse its near-identical composition, or keep the camera in the same frontal sector. Preserve every fixed structure, opening, anchor object, material, color, light source and relative position.',
+    interaction: 'Generate a DISTINCT INTERACTION-POSITION VIEW inside the exact same physical space. Place the camera at practical human eye/chest height beside the locked interaction zone. Clearly show an empty standing/action clearance, the reachable target surface or product position, and the route into and out of that zone. This must be a usable blocking camera, not another establishing shot and not a duplicate of the master or reverse view. Preserve all blueprint coordinates and do not add any person, mannequin or human reflection.',
+    detail: 'Generate a TRUE MATERIAL / CONSTRUCTION DETAIL VIEW captured inside the exact same physical space. Use a close or macro crop that makes real material scale, texture direction, surface transition, contact shadow, fixture edge or permitted assembly detail readable. It must not be another wide room view. Use only materials, finishes, seams and fixtures supported by the blueprint and master. Respect the task-specific surface topology and seam policy; do not invent panels, joints or decorative composition.',
   }[viewKey] || 'Generate another camera view of the exact same physical space without redesigning it.';
+  const hasLayoutReference = options.hasLayoutReference !== false;
+  const hasMasterReference = options.hasMasterReference === true;
+  const referenceAuthority = [
+    hasLayoutReference && hasMasterReference
+      ? 'Reference image 1 is the spatial blueprint. Reference image 2 is the master establishing view.'
+      : (hasLayoutReference ? 'The supplied reference image is the spatial blueprint.' : ''),
+    hasLayoutReference
+      ? 'The supplied spatial blueprint is the canonical authority for geometry, topology, openings, zones and relative coordinates.'
+      : '',
+    hasMasterReference
+      ? 'The supplied master view is the canonical authority for photographic appearance, material identity, color, lighting direction and object design.'
+      : '',
+    hasLayoutReference && hasMasterReference
+      ? 'Resolve any ambiguity by preserving blueprint geometry first and master-view appearance second; never redesign either source.'
+      : '',
+  ].filter(Boolean).join(' ');
   return [
     instruction,
-    'The supplied image is the canonical master scene reference and has highest priority.',
+    referenceAuthority,
     'Output one continuous photorealistic image only, no collage, no split screen, no labels, no logo and no people.',
     'Scene identity lock is strict: preserve spatial geometry, anchor relations, material family and lighting direction.',
-    masterPrompt,
+    scenePrompt,
   ].filter(Boolean).join('\n\n');
 }
 
 function needsLayoutView(requested = {}, body = {}) {
+  // Every new scene defines its topology before cinematic views are derived.
+  // Parameters remain accepted so historical callers do not need migration.
+  void requested;
+  void body;
+  return true;
+}
+
+function legacyNeedsLayoutHeuristic(requested = {}, body = {}) {
   if (body.include_layout_view === true || body.includeLayoutView === true) return true;
   const text = [
     requested.layout,
@@ -297,7 +334,8 @@ async function generateSceneAsset(taskId, body = {}) {
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
   const requested = sceneRequest(ctx, body);
   const layoutRequired = needsLayoutView(requested, body);
-  const requiredViewKeys = layoutRequired ? [...SCENE_VIEW_KEYS, 'layout'] : SCENE_VIEW_KEYS;
+  const legacyLayoutTrigger = legacyNeedsLayoutHeuristic(requested, body);
+  const requiredViewKeys = layoutRequired ? REQUIRED_SCENE_VIEW_KEYS : SCENE_VIEW_KEYS;
   const viewAcquisition = sceneViewStrategy.resolveSceneViewStrategy({
     requested: body.view_strategy || body.viewStrategy || 'auto',
     requiredViews: requiredViewKeys,
@@ -305,7 +343,29 @@ async function generateSceneAsset(taskId, body = {}) {
     videoAcquisitionEnabled: false,
   });
   const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
-  const prompt = buildSceneSheetPrompt({ ctx, sceneConfig, body });
+  const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body, outputRole: 'contract' });
+  const layoutPrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body, outputRole: 'layout' });
+  const layout = await mediaAdapter.generateImage({
+    taskId,
+    stage: 'new_story_ad.scene_asset',
+    prompt: layoutPrompt,
+    filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_' + Date.now(),
+    aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+    resolution: body.resolution || '2K',
+    imageModel: body.image_model || body.imageModel || 'auto',
+  });
+  cancellation.throwIfCancelled(taskId);
+  const layoutView = normalizeSceneView({
+    key: 'layout',
+    label: sceneViewLabel('layout'),
+    url: layout.url || layout.image_url,
+    image_url: layout.image_url || layout.url,
+    provider_used: layout.provider_used,
+  }, REQUIRED_SCENE_VIEW_KEYS.indexOf('layout'));
+  const prompt = buildDerivedViewPrompt(scenePrompt, 'master', {
+    hasLayoutReference: true,
+    hasMasterReference: false,
+  });
   const master = await mediaAdapter.generateImage({
     taskId,
     stage: 'new_story_ad.scene_asset',
@@ -314,6 +374,9 @@ async function generateSceneAsset(taskId, body = {}) {
     aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
     resolution: body.resolution || '2K',
     imageModel: body.image_model || body.imageModel || 'auto',
+    referenceImages: [layout.url || layout.image_url],
+    requireReferences: true,
+    inputFidelity: 'high',
   });
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
@@ -323,51 +386,34 @@ async function generateSceneAsset(taskId, body = {}) {
     image_url: master.image_url || master.url,
     provider_used: master.provider_used,
   }, 0)];
-  for (const key of SCENE_VIEW_KEYS.slice(1)) {
-    cancellation.throwIfCancelled(taskId);
+  cancellation.throwIfCancelled(taskId);
+  const derivedViews = await Promise.all(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
     const generated = await mediaAdapter.generateImage({
       taskId,
       stage: 'new_story_ad.scene_asset',
-      prompt: buildDerivedViewPrompt(prompt, key),
+      prompt: buildDerivedViewPrompt(scenePrompt, key, {
+        hasLayoutReference: true,
+        hasMasterReference: true,
+      }),
       filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_' + key + '_' + Date.now(),
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: body.image_model || body.imageModel || 'auto',
-      referenceImages: [master.url || master.image_url],
+      referenceImages: [layout.url || layout.image_url, master.url || master.image_url],
       requireReferences: true,
       inputFidelity: 'high',
     });
-    cancellation.throwIfCancelled(taskId);
-    viewImages.push(normalizeSceneView({
+    return normalizeSceneView({
       key,
       label: sceneViewLabel(key),
       url: generated.url || generated.image_url,
       image_url: generated.image_url || generated.url,
       provider_used: generated.provider_used,
-    }, viewImages.length));
-  }
-  if (layoutRequired) {
-    cancellation.throwIfCancelled(taskId);
-    const generated = await mediaAdapter.generateImage({
-      taskId,
-      stage: 'new_story_ad.scene_asset',
-      prompt: buildDerivedViewPrompt(prompt, 'layout'),
-      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_' + Date.now(),
-      aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
-      resolution: body.resolution || '2K',
-      imageModel: body.image_model || body.imageModel || 'auto',
-      referenceImages: [master.url || master.image_url],
-      requireReferences: true,
-      inputFidelity: 'high',
-    });
-    viewImages.push(normalizeSceneView({
-      key: 'layout',
-      label: sceneViewLabel('layout'),
-      url: generated.url || generated.image_url,
-      image_url: generated.image_url || generated.url,
-      provider_used: generated.provider_used,
-    }, viewImages.length));
-  }
+    }, index + 1);
+  }));
+  cancellation.throwIfCancelled(taskId);
+  viewImages.push(...derivedViews);
+  viewImages.push(layoutView);
   const contractOptions = {
     taskId,
     sceneId,
@@ -385,7 +431,7 @@ async function generateSceneAsset(taskId, body = {}) {
     sceneContract = await sceneSpace.analyzeSceneViews(contractOptions);
   } catch (error) {
     if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
-    // Keep the four successfully generated views instead of discarding costly
+    // Keep the five successfully generated views instead of discarding costly
     // assets because an optional verifier is unavailable. The package remains
     // explicitly unverified and can be rechecked later; it is never mislabeled
     // as having passed commercial visual QA.
@@ -394,7 +440,7 @@ async function generateSceneAsset(taskId, body = {}) {
   const localizedViews = await localizeSceneViews(viewImages, { taskId, sceneId, revision });
   sceneContract = relinkContractViews(sceneContract, localizedViews);
   viewImages.splice(0, viewImages.length, ...localizedViews);
-  const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ') || master.provider_used || '';
+  const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ') || master.provider_used || layout.provider_used || '';
   const asset = normalizeSceneAsset({
     id: sceneId,
     scene_id: sceneId,
@@ -419,7 +465,19 @@ async function generateSceneAsset(taskId, body = {}) {
     })),
     view_count: viewImages.length,
     view_strategy: viewAcquisition.selected,
-    view_acquisition: viewAcquisition,
+    view_acquisition: {
+      ...viewAcquisition,
+      layout_policy: 'required_for_all_new_scenes',
+      legacy_layout_trigger: legacyLayoutTrigger,
+      generation_order: REQUIRED_SCENE_VIEW_KEYS,
+      reference_graph: {
+        layout: [],
+        master: ['layout'],
+        reverse: ['layout', 'master'],
+        interaction: ['layout', 'master'],
+        detail: ['layout', 'master'],
+      },
+    },
     provider_used: providerUsed,
     prompt,
     scene_contract: sceneContract,
@@ -432,12 +490,12 @@ async function generateSceneAsset(taskId, body = {}) {
   saveSceneAssetsToTask(taskId, sceneAssets, {
     sceneSpec: resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
   });
-  if (sceneContract.status !== 'verified') {
+  if (sceneContract.full_space_lock !== true) {
     storage.saveStage(taskId, 'scene_asset', {
       status: sceneContract.qa_unavailable === true ? 'warning' : 'review',
       output_summary: sceneContract.qa_unavailable === true
         ? '场景参考已保存，视觉验证服务暂不可用'
-        : '场景参考已保存，但需求符合度或跨视图一致性未通过',
+        : '场景参考已保存，但需求符合度、跨视图一致性或空间覆盖度尚未全部通过',
     });
   }
   return {
@@ -445,6 +503,8 @@ async function generateSceneAsset(taskId, body = {}) {
     scene_assets: sceneAssets,
     provider_used: providerUsed,
     verification_status: sceneContract.status,
+    space_lock_status: sceneContract.space_lock_status,
+    full_space_lock: sceneContract.full_space_lock === true,
   };
 }
 
@@ -508,8 +568,10 @@ async function reverifySceneAsset(taskId, sceneId) {
 
 module.exports = {
   SCENE_VIEW_KEYS,
+  REQUIRED_SCENE_VIEW_KEYS,
   sceneViewLabel,
   buildSceneSheetPrompt,
+  buildDerivedViewPrompt,
   needsLayoutView,
   normalizeSceneAssets,
   localizeSceneViews,

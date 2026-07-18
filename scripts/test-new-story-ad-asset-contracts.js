@@ -172,10 +172,17 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
     error => error.code === 'PRODUCT_VERIFICATION_REQUIRED',
   );
 
-  const verifiedContract = { status: 'verified', cross_view_qa: { pass: true } };
+  const verifiedContract = {
+    schema_version: 3,
+    status: 'verified',
+    requirement_qa: { pass: true },
+    cross_view_qa: { pass: true },
+    spatial_coverage_qa: { pass: true },
+    layout_contract: { status: 'available' },
+  };
   const sceneAssets = [
-    { id: 'scene-a', scene_id: 'scene-a', scene_revision: 1, scene_contract: verifiedContract },
-    { id: 'scene-b', scene_id: 'scene-b', scene_revision: 2, scene_contract: verifiedContract },
+    { id: 'scene-a', scene_id: 'scene-a', scene_revision: 1, view_images: [{ key: 'layout', url: 'https://example.com/scene-a-layout.png' }], scene_contract: verifiedContract },
+    { id: 'scene-b', scene_id: 'scene-b', scene_revision: 2, view_images: [{ key: 'layout', url: 'https://example.com/scene-b-layout.png' }], scene_contract: verifiedContract },
   ];
   assert.doesNotThrow(() => scenes.assertVerifiedSceneAssets(sceneAssets));
   assert.throws(

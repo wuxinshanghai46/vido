@@ -1,5 +1,6 @@
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
+const { completeSpaceLock } = require('./sceneBindingService');
 
 const INTERNAL_PROCESS_PATTERNS = [
   ['广告需求', /广告需求/],
@@ -105,8 +106,8 @@ function localReview(ctx, shots) {
         blocking.push(`第 ${n} 镜绑定了不存在的场景资产：${sceneId}`);
       }
       const sceneAsset = sceneAssets.find((asset, assetIndex) => String(asset.scene_id || asset.id || `scene_${assetIndex + 1}`) === sceneId);
-      if (sceneAsset?.scene_contract?.status === 'rejected' || sceneAsset?.cross_view_qa?.pass === false) {
-        blocking.push(`第 ${n} 镜绑定的场景空间契约未通过多视图一致性验证`);
+      if (sceneAsset && !completeSpaceLock(sceneAsset)) {
+        blocking.push(`第 ${n} 镜绑定的场景尚未完成空间锁定（需求符合度、多视图一致性、空间覆盖及俯视蓝图必须全部通过）`);
       }
       const expectedRevision = Math.max(1, Number(sceneAsset?.scene_revision || sceneAsset?.scene_contract?.scene_revision || 1) || 1);
       if (sceneAsset && Number(shot.scene_revision || 0) !== expectedRevision) {

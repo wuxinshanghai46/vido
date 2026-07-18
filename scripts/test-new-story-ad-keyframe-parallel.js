@@ -20,6 +20,24 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function verifiedSceneAsset(sceneId = 'verified-scene') {
+  return {
+    scene_id: sceneId,
+    view_images: [
+      { key: 'master', url: `https://example.test/${sceneId}-master.png` },
+      { key: 'layout', url: `https://example.test/${sceneId}-layout.png` },
+    ],
+    scene_contract: {
+      schema_version: 3,
+      status: 'verified',
+      requirement_qa: { pass: true },
+      cross_view_qa: { pass: true },
+      spatial_coverage_qa: { pass: true },
+      layout_contract: { status: 'available' },
+    },
+  };
+}
+
 async function testDependencyAwareParallelism() {
   const dependencies = { 0: null, 1: 0, 2: null, 3: 2 };
   const events = [];
@@ -227,7 +245,7 @@ function testConfigurationAndContracts() {
   const plan = service.buildKeyframeDependencyPlan(shots, contracts, {
     cast_mode: 'single',
     person_contract: { status: 'verified', cross_view_qa: { pass: true } },
-    scene_assets: shots.map(shot => ({ scene_id: shot.scene_id, scene_contract: { status: 'verified', cross_view_qa: { pass: true } } })),
+    scene_assets: shots.map(shot => verifiedSceneAsset(shot.scene_id)),
   });
   assert.deepStrictEqual(plan.dependencies, { 0: null, 1: null, 2: null, 3: null, 4: 3 });
   assert.strictEqual(plan.reasons[1], 'independent_with_shared_anchors', '共享已验证场景是锚点，不应变成镜头依赖');
@@ -247,7 +265,7 @@ function testConfigurationAndContracts() {
   })));
   const sameScenePlan = service.buildKeyframeDependencyPlan(sameSceneShots, sameSceneShots.map(shot => ({ scene_lock: { scene_id: 'verified-scene' }, continuity_lock: shot.continuity })), {
     cast_mode: 'no_human',
-    scene_assets: [{ scene_id: 'verified-scene', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+    scene_assets: [verifiedSceneAsset('verified-scene')],
   });
   assert.deepStrictEqual(sameScenePlan.dependencies, { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null }, '同场景普通动作必须依靠场景锚点并行');
 
@@ -259,7 +277,7 @@ function testConfigurationAndContracts() {
     { scene_lock: { scene_id: 'scene-b' }, continuity_lock: { transition_type: 'dissolve' } },
   ], {
     cast_mode: 'no_human',
-    scene_assets: ['scene-a', 'scene-b'].map(scene_id => ({ scene_id, scene_contract: { status: 'verified', cross_view_qa: { pass: true } } })),
+    scene_assets: ['scene-a', 'scene-b'].map(verifiedSceneAsset),
   });
   assert.deepStrictEqual(dissolvePlan.dependencies, { 0: null, 1: null }, '普通 dissolve 不需要上一关键帧参与生成');
 
@@ -271,7 +289,7 @@ function testConfigurationAndContracts() {
     { scene_lock: { scene_id: 'scene-a' }, continuity_lock: { transition_type: 'hard_cut', requires_previous_frame: true, object_states: '产品保持开启' } },
   ], {
     cast_mode: 'no_human',
-    scene_assets: [{ scene_id: 'scene-a', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+    scene_assets: [verifiedSceneAsset('scene-a')],
   });
   assert.deepStrictEqual(explicitStatePlan.dependencies, { 0: null, 1: 0 }, '显式要求承接上一帧时，即使 hard_cut 也必须建立依赖');
 
@@ -287,7 +305,7 @@ function testConfigurationAndContracts() {
     cast_mode: 'multi',
     person_contract: { status: 'verified', cross_view_qa: { pass: true } },
     person_asset: { name: '已验证主角', image_url: 'https://example.test/main.png' },
-    scene_assets: [{ scene_id: 'verified-scene', scene_contract: { status: 'verified', cross_view_qa: { pass: true } } }],
+    scene_assets: [verifiedSceneAsset('verified-scene')],
   });
   assert.deepStrictEqual(multiPersonPlan.dependencies, { 0: null, 1: null, 2: 1 }, '未验证的同一配角必须保守承接，不能被主角全局验证状态放行');
 
@@ -319,6 +337,18 @@ function testConfigurationAndContracts() {
     'https://example.test/product.png',
     'https://example.test/previous.png',
   ], '连续性参考必须占据稳定槽位，不能被多余人物视图挤掉');
+
+  const layoutGroundedRefs = service.keyframeReferenceImages({
+    cast_mode: 'no_human',
+    product_subject: '',
+  }, 'https://example.test/scene-master.png', null, {
+    subject_type: 'scene_only',
+    visual: '空场景空间建立镜头',
+  }, {}, verifiedSceneAsset('layout-grounded'));
+  assert.deepStrictEqual(layoutGroundedRefs, [
+    'https://example.test/scene-master.png',
+    'https://example.test/layout-grounded-layout.png',
+  ], '引用槽位充足时，关键帧必须同时继承商业机位与空间蓝图');
 
   const prompt = service.buildKeyframePrompt({ brief: '测试广告', product_subject: '测试产品' }, {
     title: '第二镜', visual: '人物拿起产品', action: '延续上一镜动作',
