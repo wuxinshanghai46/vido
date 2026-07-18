@@ -91,6 +91,37 @@ function rejectedReverseContract() {
 }
 
 async function main() {
+  const verbosePrompt = Array.from({ length: 20 }, (_, index) => `Section ${index + 1}: ${'camera material topology '.repeat(18)}`).join('\n\n');
+  const auditSafePrompt = sceneAssets.buildSceneAuditSafePrompt({
+    ctx: { controlled_production: { style_control: { notes: 'real commercial photography' } } },
+    body: {
+      scene_spec: {
+        layoutText: 'One continuous room with a complete main wall and one entrance.',
+        materialLightText: 'Brushed stainless steel, etched metallic texture and warm grazing light.',
+        interactionText: 'Clear action zone in front of the main wall.',
+        surfaceTopology: { mode: 'continuous', seam_policy: 'hidden' },
+      },
+    },
+    viewKey: 'layout',
+  });
+  assert.ok(auditSafePrompt.length <= 2200);
+  assert.match(auditSafePrompt, /high-oblique architectural survey/i);
+  assert.doesNotMatch(auditSafePrompt, /arms|hands|legs|body|silhouette|fingerprints/i);
+  const nanoPrompt = mediaAdapter.promptForImageCandidate(verbosePrompt, { modelId: 'nano-banana-pro' }, auditSafePrompt);
+  assert.equal(nanoPrompt, auditSafePrompt);
+  assert.ok(nanoPrompt.length <= 2400);
+  const gptPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt);
+  assert.equal(gptPrompt, 'normal provider prompt');
+  assert.equal(mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt, true), auditSafePrompt);
+  let auditAttempts = 0;
+  const auditRetryResult = await mediaAdapter.invokeWithAuditSafeRetry(async candidatePrompt => {
+    auditAttempts += 1;
+    if (auditAttempts === 1) throw new Error('provider error: AuditSubmitIllegal');
+    return candidatePrompt;
+  }, 'rejected prompt', auditSafePrompt);
+  assert.equal(auditAttempts, 2);
+  assert.equal(auditRetryResult, auditSafePrompt);
+
   const currentFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
       schema_version: 3,
@@ -157,6 +188,8 @@ async function main() {
     console.log(JSON.stringify({
       success: true,
       current_failure_repairs: currentFailurePlan.view_keys,
+      nano_prompt_length: nanoPrompt.length,
+      audit_retry_attempts: auditAttempts,
       targeted_generation_calls: calls.length,
       regenerated_views: result.scene_asset.repair_history[0].regenerated_view_keys,
       final_space_lock: result.scene_asset.scene_contract.full_space_lock,

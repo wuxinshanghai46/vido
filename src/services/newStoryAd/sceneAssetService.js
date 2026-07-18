@@ -346,6 +346,30 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
   ].filter(Boolean).join('\n\n');
 }
 
+function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } = {}) {
+  const requested = sceneRequest(ctx, body);
+  const roleInstruction = {
+    layout: 'Create a high-oblique architectural survey of one coherent commercial interior. Use a 55-90 degree downward camera and show the complete floor boundary, at least three wall planes, openings, fixed anchors, circulation and the interaction zone.',
+    master: 'Create the master establishing photograph of the supplied spatial blueprint. Use an eye-level or slightly elevated three-quarter wide camera and preserve all blueprint coordinates, openings and anchors.',
+    reverse: 'Create a true reverse or side camera view of the supplied scene. Relocate the camera by about 90 degrees, exchange foreground and background, and reveal a boundary or opening hidden in the master view while preserving the same space.',
+    interaction: 'Create a distinct practical interaction-position camera view inside the supplied scene. Clearly reveal the empty action clearance, reachable target surface and circulation route while preserving the same space.',
+    detail: 'Create a close material and construction photograph inside the supplied scene. Make the required metal finish, texture direction, surface transition, fixture edge and realistic material scale clearly readable.',
+  }[viewKey] || 'Create a coherent photorealistic architectural interior reference.';
+  const topology = requested.surface_topology
+    ? shotDesign.surfacePrompt(requested.surface_topology, 'environment')
+    : '';
+  return [
+    roleInstruction,
+    'Output one continuous photorealistic architectural image with natural perspective, physically plausible geometry, realistic material scale and believable commercial lighting.',
+    requested.layout ? `Spatial design: ${requested.layout}` : '',
+    requested.material_light ? `Materials and lighting: ${requested.material_light}` : '',
+    requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
+    topology ? `Surface construction: ${topology}` : '',
+    requested.style ? `Visual style: ${requested.style}` : '',
+    'The frame is an unoccupied architectural reference containing only the designed space and its intended fixtures. Use a single camera view without typography, logos, montage or split panels.',
+  ].filter(Boolean).join('\n\n').slice(0, 2200);
+}
+
 function needsLayoutView(requested = {}, body = {}) {
   // Every new scene defines its topology before cinematic views are derived.
   // Parameters remain accepted so historical callers do not need migration.
@@ -464,6 +488,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: body.image_model || body.imageModel || 'auto',
+      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
     })
     : previousViews.get('layout');
   cancellation.throwIfCancelled(taskId);
@@ -491,6 +516,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       requireReferences: true,
       // Camera role changes must be allowed to move away from the blueprint pixels.
       inputFidelity: 'low',
+      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
     })
     : previousViews.get('master');
   cancellation.throwIfCancelled(taskId);
@@ -524,6 +550,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // Reverse and interaction views require a real camera relocation. Detail
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
+      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
     });
     return normalizeSceneView({
       key,
@@ -759,6 +786,7 @@ module.exports = {
   sceneViewLabel,
   buildSceneSheetPrompt,
   buildDerivedViewPrompt,
+  buildSceneAuditSafePrompt,
   needsLayoutView,
   buildSceneRepairPlan,
   normalizeSceneAssets,

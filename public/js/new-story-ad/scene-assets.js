@@ -10,6 +10,15 @@
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;
 
+  function sceneRepairFailureMessage(error = '') {
+    const text = clean(error, 1200);
+    if (!text) return '';
+    if (/AuditSubmitIllegal|submit.*illegal|size must be between 0 and 2500/i.test(text)) {
+      return '图像供应商未接受本轮生成请求，因此没有创建新版本，旧图已安全保留。请再次执行自动修复。';
+    }
+    return `本轮自动修复未创建新版本：${clean(text, 220)}`;
+  }
+
   function scorePercent(qa = {}, keys = []) {
     for (const key of keys) {
       const raw = qa?.[key];
@@ -361,6 +370,9 @@
     const qaPassed = assessment.complete;
     const canReverify = !qaPassed && !assessment.legacy && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone);
     const canRepair = !qaPassed && !assessment.legacy && sceneVerification.tone === 'rejected';
+    const repairFailure = state.taskStatus === 'failed' && /scene_asset/i.test(String(state.taskStage || ''))
+      ? sceneRepairFailureMessage(state.taskError)
+      : '';
     const repairCount = Math.max(1, Number(asset.repair_plan?.count || 0) || 1);
     const metricValue = value => Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证';
     host.innerHTML = `<div class="dh-nsa-scene-list">
@@ -384,6 +396,7 @@
             </div>
             <em class="is-${escapeHtml(sceneVerification.tone)}">${escapeHtml(sceneVerification.label)}</em>
           </div>
+          ${repairFailure ? `<div class="dh-nsa-scene-repair-error"><b>上次修复失败，当前仍显示版本 r${asset.scene_revision || 1}</b><span>${escapeHtml(repairFailure)}</span></div>` : ''}
           <div class="dh-nsa-scene-lock-metrics" aria-label="场景锁定验证指标">
             <div class="${assessment.requirementQa.pass === true ? 'is-pass' : 'is-pending'}"><small>需求符合度</small><b>${escapeHtml(metricValue(assessment.requirementScore))}</b><span>布局、材质、互动与禁止项</span></div>
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>

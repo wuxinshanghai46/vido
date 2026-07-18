@@ -273,6 +273,8 @@ function classifyError(error) {
   if (['PROVIDER_BILLING', 'AUTH_CONFIG', 'MODEL_CONFIG'].includes(explicitCode)) return { code: explicitCode, retryable: false };
   if (/InputImageSensitiveContentDetected\.PrivacyInformation|input image may contain real person|PrivacyInformation/i.test(msg)) return { code: 'INPUT_PERSON_PRIVACY', retryable: false };
   if (/SensitiveContentDetected|sensitive content/i.test(msg)) return { code: 'INPUT_SENSITIVE_CONTENT', retryable: false };
+  if (/AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(msg)) return { code: 'PROVIDER_CONTENT_AUDIT', retryable: false };
+  if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/InvalidParameter|BadRequest|parameter .* not valid|cannot be mixed/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };

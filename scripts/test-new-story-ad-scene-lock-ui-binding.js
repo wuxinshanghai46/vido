@@ -163,6 +163,20 @@ function main() {
   assert(rejectedHost.innerHTML.includes('自动修复并重生成失败视图（2 张）'));
   assert(rejectedHost.innerHTML.includes('系统会根据 QA 原因保留通过项'));
   assert(!rejectedHost.innerHTML.includes('请修改场景设定后重新生成当前场景'));
+  const failedRepairHost = { innerHTML: '' };
+  frontend.render({
+    host: failedRepairHost,
+    state: {
+      taskId: 'task-rejected',
+      taskStatus: 'failed',
+      taskStage: 'scene_asset_failed',
+      taskError: 'gpt-image-2 AuditSubmitIllegal; nano-banana-pro prompt: size must be between 0 and 2500',
+      sceneAssets: [rejected],
+    },
+  });
+  assert(failedRepairHost.innerHTML.includes('上次修复失败，当前仍显示版本 r1'));
+  assert(failedRepairHost.innerHTML.includes('没有创建新版本，旧图已安全保留'));
+
   const legacyUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   assert(legacyUi.includes("target.closest('[data-nsa-scene-repair]')"));
   assert(legacyUi.includes('NewStoryAdSceneAssets?.repair'));
@@ -171,7 +185,8 @@ function main() {
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
-  assert(html.includes('20260718-scene-repair-v6'));
+  assert(css.includes('.dh-nsa-scene-repair-error'));
+  assert(html.includes('20260718-scene-repair-v7'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,

@@ -3,6 +3,7 @@ const { Client } = require('ssh2');
 const host = process.env.VIDO_DEPLOY_HOST;
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD;
+const port = Math.max(1, Number(process.env.VIDO_DEPLOY_PORT || 22) || 22);
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const requestedTaskId = String(process.env.VIDO_TASK_ID || '').trim();
 if (!host || !password) throw new Error('Missing server connection environment variables');
@@ -34,6 +35,7 @@ client.on('ready', async () => {
         const storyboard = outputs.find(row => row.kind === 'storyboard_table')?.payload || [];
         const calls = db.model_calls.filter(row => String(row.task_id) === String(task.id)).slice(-30);
         const stages = db.stages.filter(row => String(row.task_id) === String(task.id));
+        const sceneAssets = outputs.find(row => row.kind === 'scene_assets')?.payload || [];
         return {
           task: {
             id: task.id, user_id: task.user_id, title: task.title, status: task.status, stage: task.stage,
@@ -46,6 +48,27 @@ client.on('ready', async () => {
             completed: Array.isArray(keyframes) ? keyframes.filter(item => item && (item.image_url || item.imageUrl || item.url)).length : 0,
             items: Array.isArray(keyframes) ? keyframes.map((item, index) => ({ index: item?.index || item?.shot_index || index + 1, has_image: !!(item?.image_url || item?.imageUrl || item?.url), error: item?.error || '', provider_used: item?.provider_used || '', created_at: item?.created_at || '' })) : [],
           },
+          scene_assets: Array.isArray(sceneAssets) ? sceneAssets.map(asset => ({
+            scene_id: asset?.scene_id || asset?.id || '',
+            scene_revision: asset?.scene_revision || 1,
+            created_at: asset?.created_at || '',
+            updated_at: asset?.updated_at || '',
+            provider_used: asset?.provider_used || '',
+            full_space_lock: asset?.scene_contract?.full_space_lock === true,
+            verification_state: asset?.scene_contract?.verification?.state || '',
+            verification_reasons: asset?.scene_contract?.verification?.reasons || [],
+            requirement_qa: asset?.scene_contract?.requirement_qa || asset?.requirement_qa || null,
+            spatial_coverage_qa: asset?.scene_contract?.spatial_coverage_qa || null,
+            repair_plan: asset?.repair_plan || null,
+            repair_history: asset?.repair_history || [],
+            views: Array.isArray(asset?.view_images) ? asset.view_images.map(view => ({
+              key: view?.key || '',
+              url: view?.url || view?.image_url || '',
+              source_url: view?.source_url || '',
+              filename: view?.filename || '',
+              provider_used: view?.provider_used || '',
+            })) : [],
+          })) : [],
           storyboard: requestedTaskId && Array.isArray(storyboard) ? storyboard.map((shot, index) => ({
             index: shot?.index || index + 1,
             title: shot?.title || '',
@@ -78,4 +101,4 @@ client.on('ready', async () => {
 }).on('error', error => {
   console.error(error.message || error);
   process.exitCode = 1;
-}).connect({ host, port: 22, username, password, readyTimeout: 25000 });
+}).connect({ host, port, username, password, readyTimeout: 25000 });

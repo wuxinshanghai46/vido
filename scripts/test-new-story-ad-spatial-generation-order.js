@@ -100,6 +100,8 @@ async function main() {
     assert.match(calls[0].prompt, /complete floor boundary, at least three wall planes, openings/i);
     assert.match(calls[0].prompt, /camera pitch must be 55 to 90 degrees downward/i);
     assert.doesNotMatch(calls[0].prompt, /still from a real commercial shoot/i);
+    assert.match(calls[0].auditSafePrompt, /high-oblique architectural survey/i);
+    assert.ok(calls[0].auditSafePrompt.length <= 2200);
 
     assert.match(calls[1].filename, /_master_/);
     assert.deepEqual(calls[1].referenceImages, ['/mock-scene-view-1.png']);
@@ -108,6 +110,7 @@ async function main() {
     assert.match(calls[1].prompt, /MASTER ESTABLISHING VIEW/i);
     assert.match(calls[1].prompt, /Reference image 1 is the spatial blueprint/i);
     assert.match(calls[1].prompt, /spatial blueprint is the canonical authority/i);
+    assert.match(calls[1].auditSafePrompt, /master establishing photograph/i);
 
     for (const call of calls.slice(2, 4)) {
       assert.deepEqual(call.referenceImages, ['/mock-scene-view-2.png', '/mock-scene-view-1.png']);
@@ -116,6 +119,7 @@ async function main() {
       assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the spatial blueprint/i);
       assert.match(call.prompt, /blueprint geometry first and master-view appearance second/i);
       assert.match(call.prompt, /no people/i);
+      assert.ok(call.auditSafePrompt.length <= 2200);
     }
     assert.match(calls[2].filename, /_reverse_/);
     assert.match(calls[2].prompt, /at least about 90 degrees of azimuth change/i);

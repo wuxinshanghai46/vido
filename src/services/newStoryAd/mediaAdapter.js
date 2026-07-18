@@ -16,6 +16,7 @@ const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '
 const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
 const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
 const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
+const NANO_BANANA_PROMPT_LIMIT = 2400;
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -110,6 +111,68 @@ function supportsReferenceImages(config = {}) {
   if (declared === true) return true;
   const family = `${config.family || ''} ${config.adapter || ''} ${config.providerId || ''}`;
   return /deyunai|漫路/i.test(family);
+}
+
+function imagePromptLimit(config = {}) {
+  const modelId = String(config.modelId || config.providerModel?.id || '').trim().toLowerCase();
+  if (/nano-banana/.test(modelId)) return NANO_BANANA_PROMPT_LIMIT;
+  if (/gpt-image-2/.test(modelId)) return 10000;
+  return 6000;
+}
+
+function compactImagePrompt(prompt = '', maxLength = 6000) {
+  const limit = Math.max(400, Number(maxLength) || 6000);
+  const raw = String(prompt || '').replace(/\r/g, '').trim();
+  if (raw.length <= limit) return raw;
+  const blocks = raw.split(/\n{2,}/).map(value => value.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const priorityPattern = /mandatory correction|user scene requirement|scene layout requirement|material and lighting|interaction and camera|surface construction|task-specific|view requirement|camera|composition|advertised subject|campaign brief|final look target/i;
+  const ordered = [
+    ...blocks.slice(0, 2),
+    ...blocks.filter(block => priorityPattern.test(block)),
+    ...blocks,
+  ].filter((block, index, list) => list.indexOf(block) === index);
+  const selected = [];
+  let used = 0;
+  for (const block of ordered) {
+    const remaining = limit - used - (selected.length ? 2 : 0);
+    if (remaining <= 0) break;
+    const piece = block.slice(0, remaining);
+    if (!piece) continue;
+    selected.push(piece);
+    used += piece.length + (selected.length > 1 ? 2 : 0);
+  }
+  return selected.join('\n\n').slice(0, limit);
+}
+
+function isProviderSubmitAuditError(error = null) {
+  const text = [
+    error?.code,
+    error?.message,
+    error?.response?.data?.code,
+    error?.response?.data?.reason,
+    error?.response?.data?.message,
+  ].filter(Boolean).join(' ');
+  return /AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(text);
+}
+
+function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '', forceAuditSafe = false) {
+  const limit = imagePromptLimit(config);
+  const primary = String(prompt || '').trim();
+  const alternative = String(auditSafePrompt || '').trim();
+  const source = forceAuditSafe && alternative
+    ? alternative
+    : (primary.length > limit && alternative ? alternative : primary);
+  return compactImagePrompt(source, limit);
+}
+
+async function invokeWithAuditSafeRetry(invoke, candidatePrompt = '', retryPrompt = '', onAudit = null) {
+  try {
+    return await invoke(candidatePrompt);
+  } catch (firstError) {
+    if (!isProviderSubmitAuditError(firstError) || !retryPrompt || retryPrompt === candidatePrompt) throw firstError;
+    if (typeof onAudit === 'function') onAudit(firstError);
+    return invoke(retryPrompt);
+  }
 }
 
 function assetPathFromName(filename = '') {
@@ -290,6 +353,7 @@ async function generateImage({
   referenceImages = [],
   requireReferences = false,
   inputFidelity = 'high',
+  auditSafePrompt = '',
   timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
@@ -344,9 +408,9 @@ async function generateImage({
       // without reference images; the generic OpenAI image client cannot decode
       // those responses reliably.
       if (/deyunai|漫路/i.test(`${config.family} ${config.adapter} ${config.providerId}`)) {
-        const generated = await deyunaiService.generateImage({
+        const invokeDeyunai = candidatePrompt => deyunaiService.generateImage({
           model: config.modelId,
-          prompt,
+          prompt: candidatePrompt,
           n: 1,
           size: sizeFor(config, aspectRatio),
           aspectRatio,
@@ -354,6 +418,21 @@ async function generateImage({
           inputFidelity,
           signal: cancellation.signal(),
           timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
+        });
+        const candidatePrompt = promptForImageCandidate(prompt, config, auditSafePrompt);
+        const retryPrompt = promptForImageCandidate(prompt, config, auditSafePrompt, true);
+        const generated = await invokeWithAuditSafeRetry(invokeDeyunai, candidatePrompt, retryPrompt, firstError => {
+          storage.saveModelCall({
+            task_id: taskId,
+            stage,
+            provider_id: model.provider_id,
+            model_id: model.model_id,
+            status: 'failed',
+            error_code: 'PROVIDER_CONTENT_AUDIT',
+            error_message: String(firstError.message || firstError).slice(0, 500),
+            latency_ms: Date.now() - startedAt,
+            fallback_rank: candidateIndex + 1,
+          });
         });
         cancellation.throwIfCancelled(taskId);
         const url = Array.isArray(generated?.urls) ? generated.urls.find(Boolean) : '';
@@ -477,6 +556,11 @@ module.exports = {
   absolutePublicImageUrl,
   persistImageResult,
   supportsReferenceImages,
+  imagePromptLimit,
+  compactImagePrompt,
+  isProviderSubmitAuditError,
+  promptForImageCandidate,
+  invokeWithAuditSafeRetry,
   availableImageCandidates,
   generateImage,
   generateActorReference,

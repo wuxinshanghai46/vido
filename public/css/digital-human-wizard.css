@@ -2075,6 +2075,19 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   border-color: rgba(239, 68, 68, .42);
   background: rgba(239, 68, 68, .1);
 }
+.dh-nsa-scene-repair-error {
+  display: grid;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid rgba(239, 68, 68, .42);
+  border-radius: 10px;
+  background: rgba(127, 29, 29, .16);
+  color: #fecaca;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.dh-nsa-scene-repair-error b { color: #fca5a5; font-size: 12px; }
+.dh-nsa-scene-repair-error span { overflow-wrap: anywhere; }
 .dh-nsa-scene-lock-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
