@@ -115,8 +115,32 @@ function main() {
   assert.equal(frontend.requiresLayoutView({ layoutText: '简单单墙场景' }), true, 'v3 新场景必须固定生成第五张空间布局');
   const progressHost = { innerHTML: '' };
   frontend.render({ host: progressHost, state: { sceneGenerationProgress: { active: true, startedAt: Date.now() } } });
-  assert.match(progressHost.innerHTML, /预计 5 张/);
+  assert.match(progressHost.innerHTML, /已完成 0\/5 张/);
   assert.doesNotMatch(progressHost.innerHTML, /\/4 张|\/4</);
+  const realProgressHost = { innerHTML: '' };
+  frontend.render({
+    host: realProgressHost,
+    state: {
+      sceneGenerationProgress: {
+        active: true,
+        mode: 'repair',
+        stage: 'scene_asset',
+        status: 'running',
+        target_total: 4,
+        succeeded: 1,
+        view_states: [
+          { key: 'master', label: '主视角', status: 'succeeded' },
+          { key: 'reverse', label: '反向/侧向', status: 'running' },
+          { key: 'interaction', label: '互动位', status: 'running' },
+          { key: 'detail', label: '材质细节', status: 'queued' },
+        ],
+        started_at: new Date().toISOString(),
+      },
+    },
+  });
+  assert.match(realProgressHost.innerHTML, /已完成 1\/4 张/);
+  assert.match(realProgressHost.innerHTML, /正在生成：反向\/侧向、互动位/);
+  assert.doesNotMatch(realProgressHost.innerHTML, /耗时估算/);
   const fullAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([asset])[0]);
   assert.equal(fullAssessment.complete, true);
   assert.equal(fullAssessment.layoutAvailable, true);
@@ -186,7 +210,7 @@ function main() {
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260718-scene-repair-v7'));
+  assert(html.includes('20260718-scene-repair-v8'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,
@@ -195,6 +219,7 @@ function main() {
     layout_contract_reaches_keyframe_lock: true,
     split_metrics_ui: true,
     rejected_scene_has_targeted_repair: true,
+    real_scene_view_progress: true,
   }, null, 2));
 }
 

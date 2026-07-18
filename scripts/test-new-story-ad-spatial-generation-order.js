@@ -14,6 +14,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const storyAdService = require('../src/services/newStoryAd/storyAdService');
 
 async function main() {
   const taskId = 'spatial-generation-order-test';
@@ -99,6 +100,8 @@ async function main() {
     assert.match(calls[0].prompt, /SPATIAL BLUEPRINT/i);
     assert.match(calls[0].prompt, /complete floor boundary, at least three wall planes, openings/i);
     assert.match(calls[0].prompt, /camera pitch must be 55 to 90 degrees downward/i);
+    assert.match(calls[0].prompt, /zero authority over final material/i);
+    assert.match(calls[0].prompt, /neutral low-saturation placeholders/i);
     assert.doesNotMatch(calls[0].prompt, /still from a real commercial shoot/i);
     assert.match(calls[0].auditSafePrompt, /high-oblique architectural survey/i);
     assert.ok(calls[0].auditSafePrompt.length <= 2200);
@@ -108,15 +111,17 @@ async function main() {
     assert.equal(calls[1].requireReferences, true);
     assert.equal(calls[1].inputFidelity, 'low');
     assert.match(calls[1].prompt, /MASTER ESTABLISHING VIEW/i);
-    assert.match(calls[1].prompt, /Reference image 1 is the spatial blueprint/i);
+    assert.match(calls[1].prompt, /Reference image 1 is the geometry-only spatial blueprint/i);
     assert.match(calls[1].prompt, /spatial blueprint is the canonical authority/i);
+    assert.match(calls[1].prompt, /ZERO authority over final material identity/i);
+    assert.match(calls[1].prompt, /Material identity and surface topology are independent constraints/i);
     assert.match(calls[1].auditSafePrompt, /master establishing photograph/i);
 
     for (const call of calls.slice(2, 4)) {
       assert.deepEqual(call.referenceImages, ['/mock-scene-view-2.png', '/mock-scene-view-1.png']);
       assert.equal(call.requireReferences, true);
       assert.equal(call.inputFidelity, 'low');
-      assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the spatial blueprint/i);
+      assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the geometry-only spatial blueprint/i);
       assert.match(call.prompt, /blueprint geometry first and master-view appearance second/i);
       assert.match(call.prompt, /no people/i);
       assert.ok(call.auditSafePrompt.length <= 2200);
@@ -139,6 +144,7 @@ async function main() {
     assert.equal(asset.view_count, 5);
     assert.equal(asset.layout_contract.required, true);
     assert.equal(asset.view_acquisition.layout_policy, 'required_for_all_new_scenes');
+    assert.equal(asset.view_acquisition.layout_appearance_role, 'geometry_only');
     assert.deepEqual(asset.view_acquisition.generation_order, ['layout', 'master', 'reverse', 'interaction', 'detail']);
     assert.deepEqual(asset.view_acquisition.reference_graph, {
       layout: [],
@@ -147,6 +153,31 @@ async function main() {
       interaction: ['master', 'layout'],
       detail: ['master'],
     });
+    const progress = storage.getTask(taskId).generation_progress;
+    assert.equal(progress.stage, 'scene_asset');
+    assert.equal(progress.status, 'completed');
+    assert.equal(progress.target_total, 5);
+    assert.equal(progress.succeeded, 5);
+    assert.deepEqual(progress.completed_view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
+    assert.equal(storyAdService.taskSummary(storage.getTask(taskId)).generation_progress.stage, 'scene_asset', 'scene progress must reach the polling API');
+    const publicSceneAsset = storyAdService.publicTaskBundle(taskId).outputs.scene_assets[0];
+    assert.equal(publicSceneAsset.repair_plan.version, 2, 'the public bundle must normalize scene assets before rendering the repair action');
+
+    const genericCases = [
+      { material: 'open-grain oak veneer with directional grain and soft wax sheen', forbidden: /stainless steel/i },
+      { material: 'translucent borosilicate glass with crisp refraction and matte polymer', forbidden: /oak veneer/i },
+      { material: 'woven acoustic fabric with readable fibre scale and anodized aluminium', forbidden: /borosilicate/i },
+    ];
+    for (const [index, item] of genericCases.entries()) {
+      const genericPrompt = sceneAssets.buildSceneSheetPrompt({
+        ctx: { brief: `generic business case ${index + 1}` },
+        body: { scene_spec: { layoutText: 'one coherent reusable space', materialLightText: item.material } },
+        outputRole: 'contract',
+      });
+      assert.ok(genericPrompt.includes(item.material), 'the current task material must remain authoritative');
+      assert.match(genericPrompt, /Every material or finish explicitly named by the current task/i);
+      assert.doesNotMatch(genericPrompt, item.forbidden, 'a different test industry/material must never be injected');
+    }
 
     console.log(JSON.stringify({
       success: true,
@@ -154,6 +185,8 @@ async function main() {
       stored_view_order: asset.view_images.map(view => view.key),
       generation_calls: calls.length,
       peak_parallel_image_calls: peakImageCalls,
+      real_progress_views: progress.succeeded,
+      generic_material_cases: genericCases.length,
       all_views_empty_scene: calls.every(call => /no people/i.test(call.prompt)),
       primary_view_backward_compatible: asset.image_url === '/mock-scene-view-2.png',
     }, null, 2));

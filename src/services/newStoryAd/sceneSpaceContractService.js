@@ -460,6 +460,8 @@ async function analyzeSceneViews(options = {}) {
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
       + 'First verify that the generated scene obeys the requested layout, material/light, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
+      + 'The optional layout image is a geometry-only blueprint with neutral placeholder finishes. Use it only for topology, coordinates, openings and anchor placement; exclude its colour, texture and lighting from material/light fidelity and cross-view material consistency. '
+      + 'For the four photographic views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
       + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '

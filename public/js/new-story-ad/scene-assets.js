@@ -311,13 +311,34 @@
   }
 
   function sceneProgressView(progress = {}) {
-    const startedAt = Number(progress.startedAt || 0) || Date.now();
+    const startedAt = Number(progress.startedAt || 0)
+      || Date.parse(progress.started_at || '')
+      || Date.now();
     const elapsed = Math.max(0, Date.now() - startedAt);
-    const total = Math.max(1, Number(progress.total || 5) || 5);
-    const completed = Math.max(0, Math.min(total, Number(progress.completed || 0) || 0));
+    const total = Math.max(1, Number(progress.target_total || progress.total || 5) || 5);
+    const completed = Math.max(0, Math.min(total, Number(progress.succeeded ?? progress.completed ?? 0) || 0));
     const current = Math.max(1, Math.min(total, Number(progress.current || completed + 1) || 1));
-    const pct = Math.max(8, Math.min(96, Math.round(Number(progress.percent || ((completed / total) * 100)) || 18)));
+    const realStates = Array.isArray(progress.view_states) ? progress.view_states : [];
+    const verifying = progress.phase === 'verification' || progress.status === 'verifying';
+    const pct = verifying
+      ? 92
+      : Math.max(8, Math.min(96, Math.round(Number(realStates.length ? (8 + ((completed / total) * 80)) : progress.percent) || 8)));
     const viewLabel = ['俯视布局', '主视角', '反向/侧向', '互动位', '材质细节'][current - 1] || `视角 ${current}`;
+    const activeLabels = realStates
+      .filter(item => item.status === 'running')
+      .map(item => item.label || VIEW_LABELS[item.key] || item.key)
+      .filter(Boolean);
+    const queuedLabels = realStates
+      .filter(item => item.status === 'queued')
+      .map(item => item.label || VIEW_LABELS[item.key] || item.key)
+      .filter(Boolean);
+    const realMessage = verifying
+      ? `${completed}/${total} 张已生成完成，正在执行自动视觉验证。`
+      : (activeLabels.length
+        ? `已完成 ${completed}/${total} 张；正在生成：${activeLabels.join('、')}。`
+        : (realStates.length && queuedLabels.length
+          ? `已完成 ${completed}/${total} 张；等待生成：${queuedLabels.join('、')}。`
+          : '任务已提交，正在等待服务器返回真实视图进度。'));
     return {
       pct,
       completed,
@@ -325,8 +346,24 @@
       total,
       viewLabel,
       elapsedText: formatElapsedText(elapsed),
-      message: progress.message || `预计生成 ${total} 张场景参考，当前阶段：${viewLabel}。完成后会自动更新实际结果。`,
+      message: realStates.length || verifying
+        ? realMessage
+        : (progress.message || `预计生成 ${total} 张场景参考，正在等待真实生成状态。`),
     };
+  }
+
+  function liveSceneProgress(state = {}, fallback = {}) {
+    const server = state.generationProgress && state.generationProgress.stage === 'scene_asset'
+      ? state.generationProgress
+      : null;
+    const serverStartedAt = Date.parse(server?.started_at || '') || 0;
+    const clickStartedAt = Number(fallback.startedAt || 0) || Date.now();
+    const current = server
+      && ['running', 'verifying'].includes(String(server.status || ''))
+      && (!serverStartedAt || serverStartedAt >= clickStartedAt - 30000);
+    return current
+      ? { ...server, active: true, startedAt: serverStartedAt || clickStartedAt }
+      : { ...fallback, active: true, startedAt: clickStartedAt };
   }
 
   function render({ host, state = {} } = {}) {
@@ -340,7 +377,7 @@
         <div class="dh-nsa-scene-body">
           <div class="dh-lux-person-progress">
             <div class="dh-lux-person-progress-head">
-              <b>${progress.mode === 'repair' ? '正在修复未通过视图' : '正在生成场景参考'}：预计 ${view.total} 张</b>
+              <b>${progress.mode === 'repair' ? '正在修复未通过视图' : '正在生成场景参考'}：已完成 ${view.completed}/${view.total} 张</b>
               <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
             </div>
             <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
@@ -457,29 +494,20 @@
     const layoutRequired = requiresLayoutView(sceneSpec);
     const totalViews = 5;
     const label = append ? '追加场景参考中...' : '生成场景参考中...';
-    // The endpoint is synchronous, so these are honest phase estimates rather
-    // than fabricated per-image completion events. The last three views run in
-    // parallel after layout and master are ready.
-    const stages = [
-      { at: 0, percent: 10, completed: 0, current: 1, message: '预计生成 5 张，当前正在生成空间蓝图（俯视布局）。进度为耗时估算。' },
-      { at: 8000, percent: 38, completed: 0, current: 2, message: '预计生成 5 张，当前正在根据空间蓝图生成主视角。进度为耗时估算。' },
-      { at: 16000, percent: 68, completed: 0, current: 3, message: '预计生成 5 张，当前正在并行生成反向/侧向、互动位和材质细节。进度为耗时估算。' },
-      { at: 28000, percent: 88, completed: 0, current: 3, message: '5 张场景参考仍在生成与自动验证，请稍候，完成后会显示实际结果。' },
-    ];
+    const startedAt = Date.now();
+    const fallbackProgress = {
+      mode: 'generate',
+      total: totalViews,
+      completed: 0,
+      startedAt,
+      percent: 8,
+      message: '任务正在提交，等待服务器返回每个视图的真实生成状态。',
+    };
     const setProgressStage = () => {
-      const start = state.sceneGenerationProgress?.startedAt || Date.now();
-      const elapsed = Date.now() - start;
-      let stage = stages[0];
-      stages.forEach(item => { if (elapsed >= item.at) stage = item; });
-      state.sceneGenerationProgress = {
-        active: true,
-        total: totalViews,
-        startedAt: start,
-        ...stage,
-      };
+      state.sceneGenerationProgress = liveSceneProgress(state, fallbackProgress);
       renderAll?.();
     };
-    state.sceneGenerationProgress = { active: true, total: totalViews, percent: 10, completed: 0, current: 1, startedAt: Date.now(), message: stages[0].message };
+    state.sceneGenerationProgress = liveSceneProgress(state, fallbackProgress);
     const timer = setInterval(setProgressStage, 1000);
     setBusy?.(true, label);
     setButtonBusy?.(button, true, label);
@@ -566,18 +594,16 @@
     const currentAsset = currentIndex >= 0 ? state.sceneAssets[currentIndex] : null;
     const total = Math.max(1, Number(currentAsset?.repair_plan?.count || 0) || 5);
     const startedAt = Date.now();
+    const fallbackProgress = {
+      mode: 'repair',
+      total,
+      completed: 0,
+      startedAt,
+      percent: 8,
+      message: `修复任务正在提交，等待服务器返回 ${total} 张视图的真实生成状态。`,
+    };
     const updateProgress = () => {
-      const elapsed = Date.now() - startedAt;
-      state.sceneGenerationProgress = {
-        active: true,
-        mode: 'repair',
-        total,
-        completed: 0,
-        current: 1,
-        startedAt,
-        percent: Math.min(88, 12 + Math.round(elapsed / 700)),
-        message: `系统正在根据失败原因重生成 ${total} 张关联视图，完成后会自动复验。进度为耗时估算。`,
-      };
+      state.sceneGenerationProgress = liveSceneProgress(state, fallbackProgress);
       renderAll?.();
     };
     updateProgress();
@@ -628,6 +654,7 @@
     hasContinuousSurfaceIntent,
     reconcileSurfaceIntent,
     requiresLayoutView,
+    sceneProgressView,
     applySpec,
     clearSpecInputs,
     applySpecSuggestion,

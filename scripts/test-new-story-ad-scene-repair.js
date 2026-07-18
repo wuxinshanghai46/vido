@@ -187,6 +187,50 @@ async function main() {
   });
   assert.deepEqual(currentFailurePlan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
 
+  const legacyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
+    view_acquisition: { layout_policy: 'required_for_all_new_scenes' },
+    scene_contract: {
+      schema_version: 3,
+      status: 'rejected',
+      verification: { state: 'rejected', reasons: ['主表面的材质身份与当前任务要求不符'] },
+      requirement_qa: { pass: false, layout_match_score: 1, material_light_match_score: 0.3, interaction_match_score: 1, surface_topology_match_score: 1, negative_compliance_score: 1, mismatch_reasons: ['材质身份错误'] },
+      cross_view_qa: { pass: true },
+      spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
+    },
+  });
+  assert.deepEqual(legacyMaterialFailurePlan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail'], 'legacy colour layouts must be replaced when material identity fails');
+
+  const geometryOnlyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
+    view_acquisition: { layout_policy: 'required_for_all_new_scenes', layout_appearance_role: 'geometry_only' },
+    scene_contract: {
+      schema_version: 3,
+      status: 'rejected',
+      verification: { state: 'rejected', reasons: ['主表面的材质身份与当前任务要求不符'] },
+      requirement_qa: { pass: false, layout_match_score: 1, material_light_match_score: 0.3, interaction_match_score: 1, surface_topology_match_score: 1, negative_compliance_score: 1, mismatch_reasons: ['材质身份错误'] },
+      cross_view_qa: { pass: true },
+      spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
+    },
+  });
+  assert.deepEqual(geometryOnlyMaterialFailurePlan.view_keys, ['master', 'reverse', 'interaction', 'detail'], 'geometry-only layouts must be retained without contaminating paid repairs');
+
+  const upgradedLegacyAsset = sceneAssets.normalizeSceneAssets([{
+    id: 'legacy-v1-plan',
+    scene_id: 'legacy-v1-plan',
+    layout_summary: 'A coherent legacy scene with one continuous main surface.',
+    view_acquisition: { layout_policy: 'required_for_all_new_scenes' },
+    repair_plan: { version: 1, action: 'regenerate_views', view_keys: ['master', 'reverse', 'interaction', 'detail'], count: 4 },
+    scene_contract: legacyMaterialFailurePlan.action === 'regenerate_views' ? {
+      schema_version: 3,
+      status: 'rejected',
+      verification: { state: 'rejected', reasons: ['material identity and texture do not match the request'] },
+      requirement_qa: { pass: false, material_light_match_score: 0.3, mismatch_reasons: ['material finish is wrong'] },
+      cross_view_qa: { pass: true },
+      spatial_coverage_qa: { pass: true },
+    } : {},
+  }])[0];
+  assert.equal(upgradedLegacyAsset.repair_plan.version, 2, 'stored v1 repair plans must be upgraded on read');
+  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
+
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
       schema_version: 3,
@@ -242,6 +286,7 @@ async function main() {
     assert.deepEqual(calls[0].referenceImages, ['/old-master.png', '/old-layout.png']);
     assert.equal(calls[0].inputFidelity, 'low');
     assert.match(calls[0].prompt, /Mandatory correction from the previous rejected attempt/i);
+    assert.match(calls[0].prompt, /Correction priority: if any reference image conflicts/i);
     assert.equal(result.scene_asset.scene_revision, 2);
     assert.equal(result.scene_asset.view_images.find(view => view.key === 'reverse').url, '/new-reverse.png');
     assert.equal(result.scene_asset.view_images.find(view => view.key === 'master').url, '/old-master.png');
@@ -298,6 +343,8 @@ async function main() {
     console.log(JSON.stringify({
       success: true,
       current_failure_repairs: currentFailurePlan.view_keys,
+      legacy_material_repairs: legacyMaterialFailurePlan.view_keys,
+      geometry_only_material_repairs: geometryOnlyMaterialFailurePlan.view_keys,
       explicit_interaction_repairs: explicitInteractionFailurePlan.view_keys,
       nano_prompt_length: nanoPrompt.length,
       audit_retry_attempts: auditAttempts,

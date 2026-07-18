@@ -214,7 +214,8 @@ async function main() {
   assert.equal(reconciledGenerated.scene_asset.surface_topology.seam_policy, 'hidden');
   assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /a modular system is required/i);
   assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /visible panel seams, joints, bevels/i);
-  assert.match(reconciledGenerated.scene_asset.prompt, /ONE continuous, uninterrupted construction plane/i);
+  assert.match(reconciledGenerated.scene_asset.prompt, /ONE visually continuous, uninterrupted plane/i);
+  assert.match(reconciledGenerated.scene_asset.prompt, /continuity controls visible segmentation, not material identity/i);
   const reconciledContext = storage.getOutput(conflictingTask.task.id, 'context');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.mode, 'continuous', '实际生成所用的纠偏设置必须写回任务上下文');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.seam_policy, 'hidden');

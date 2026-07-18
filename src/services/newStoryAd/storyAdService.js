@@ -37,6 +37,7 @@ const videoPreflight = require('./videoPreflightService');
 const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
+const sceneAssetLifecycle = require('./sceneAssetService');
 const videoCore = require('../videoGenerationCore');
 
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -353,9 +354,12 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       retryable: status.retryable === true,
       updated_at: status.updated_at || '',
     }));
-  const visibleOutputs = includeVideoMonitor
+  const visibleOutputs = (includeVideoMonitor
     ? (rawBundle.outputs || [])
-    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'));
+    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
+    .map(row => String(row.kind || '') === 'scene_assets'
+      ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(row.payload || []) }
+      : row);
   const bundle = { ...rawBundle, outputs: visibleOutputs };
   const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload]));
   const currentStoryboardStatus = storyboardStatus(bundle, outputs);
@@ -435,7 +439,10 @@ function taskSummary(task = {}, { detailed = true } = {}) {
       };
     }).filter(Boolean);
   }
-  const storedVideoProgress = task.generation_progress?.stage === 'video' ? task.generation_progress : null;
+  const storedGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
+    ? task.generation_progress
+    : null;
+  const storedVideoProgress = storedGenerationProgress?.stage === 'video' ? storedGenerationProgress : null;
   const videoProgress = storedVideoProgress || (videoShotStatuses.length ? {
     stage: 'video',
     total: Array.isArray(storyboard) ? storyboard.length : videoShotStatuses.length,
@@ -466,7 +473,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     generation_queued_at: task.generation_queued_at || '',
     generation_started_at: task.generation_started_at || '',
     generation_finished_at: task.generation_finished_at || '',
-    generation_progress: videoProgress,
+    generation_progress: storedGenerationProgress || videoProgress,
     shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
     keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
     thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || task.thumbnail_url || '',

@@ -9,7 +9,8 @@ const shotDesign = require('./shotDesignService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
-const SCENE_REPAIR_PLAN_VERSION = 1;
+const SCENE_REPAIR_PLAN_VERSION = 2;
+const LAYOUT_APPEARANCE_ROLE = 'geometry_only';
 
 function sceneViewLabel(key = '') {
   return {
@@ -75,11 +76,74 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
     repair_plan: asset.repair_plan && typeof asset.repair_plan === 'object'
+      && Number(asset.repair_plan.version || 0) >= SCENE_REPAIR_PLAN_VERSION
       ? asset.repair_plan
       : buildSceneRepairPlan(asset),
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     created_at: asset.created_at || new Date().toISOString(),
   };
+}
+
+function updateSceneGenerationProgress(taskId, update = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) return null;
+  const previous = task.generation_progress?.stage === 'scene_asset'
+    ? task.generation_progress
+    : {};
+  const keys = normalizeRepairViewKeys(update.viewKeys?.length ? update.viewKeys : previous.view_keys);
+  const priorStates = new Map((previous.view_states || []).map(item => [item.key, item]));
+  const now = new Date().toISOString();
+  const viewStates = keys.map(key => {
+    const current = priorStates.get(key) || { key, label: sceneViewLabel(key), status: 'queued' };
+    return key === update.viewKey
+      ? { ...current, status: update.viewStatus || current.status, error: cleanText(update.error || '', 240), updated_at: now }
+      : current;
+  });
+  const processed = viewStates.filter(item => ['succeeded', 'failed'].includes(item.status)).length;
+  const succeeded = viewStates.filter(item => item.status === 'succeeded').length;
+  const failed = viewStates.filter(item => item.status === 'failed').length;
+  const phase = update.phase || previous.phase || 'preparing';
+  const terminal = phase === 'complete';
+  const progress = {
+    schema_version: 1,
+    stage: 'scene_asset',
+    generation_id: task.active_generation_id || previous.generation_id || '',
+    mode: update.mode || previous.mode || 'generate',
+    phase,
+    status: terminal ? 'completed' : (phase === 'verification' ? 'verifying' : (failed ? 'failed' : 'running')),
+    view_keys: keys,
+    target_total: keys.length,
+    processed,
+    succeeded,
+    failed,
+    active_view_keys: viewStates.filter(item => item.status === 'running').map(item => item.key),
+    completed_view_keys: viewStates.filter(item => item.status === 'succeeded').map(item => item.key),
+    view_states: viewStates,
+    verification_state: cleanText(update.verificationState || previous.verification_state || '', 40),
+    started_at: previous.started_at || task.generation_started_at || task.generation_queued_at || now,
+    updated_at: now,
+    ...(terminal ? { finished_at: now } : {}),
+  };
+  storage.updateTask(taskId, { generation_progress: progress });
+  return progress;
+}
+
+async function generateTrackedSceneView(taskId, key, options = {}, progress = {}) {
+  updateSceneGenerationProgress(taskId, { ...progress, viewKey: key, viewStatus: 'running', phase: 'generation' });
+  try {
+    const result = await mediaAdapter.generateImage(options);
+    updateSceneGenerationProgress(taskId, { ...progress, viewKey: key, viewStatus: 'succeeded', phase: 'generation' });
+    return result;
+  } catch (error) {
+    updateSceneGenerationProgress(taskId, {
+      ...progress,
+      viewKey: key,
+      viewStatus: 'failed',
+      phase: 'generation',
+      error: error?.message || error,
+    });
+    throw error;
+  }
 }
 
 function normalizeSceneAssets(input = []) {
@@ -136,16 +200,22 @@ function buildSceneRepairPlan(asset = {}) {
   const keys = new Set();
   const combined = reasons.join('；');
   const below = (value, threshold) => Number.isFinite(Number(value)) && Number(value) < threshold;
+  const materialFailed = below(requirement.material_light_match_score, 0.75)
+    || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属|material|texture|finish|lighting|reflection/i.test(combined);
+  const geometryOnlyLayout = asset.view_acquisition?.layout_appearance_role === LAYOUT_APPEARANCE_ROLE;
   const explicitFailedViewKeys = failedViewKeysFromReasons(reasons);
   explicitFailedViewKeys.forEach(key => keys.add(key));
   if (!explicitFailedViewKeys.length) {
     if (below(requirement.layout_match_score, 0.75)
       || below(spatial.layout_topology_score, 0.8)
       || /俯视|顶视|轴测|布局参考|布局拓扑|第\s*5\s*张|layout/i.test(combined)) keys.add('layout');
-    if (below(requirement.material_light_match_score, 0.75)
-      || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属/i.test(combined)) {
+    if (materialFailed) {
       keys.add('master');
       keys.add('detail');
+      // Older full-colour layout references can carry the same rejected
+      // appearance into every regenerated view. New geometry-only blueprints
+      // are safe to retain; legacy/unknown layouts must be regenerated once.
+      if (!geometryOnlyLayout) keys.add('layout');
     }
     if (below(requirement.interaction_match_score, 0.7)
       || below(spatial.interaction_zone_score, 0.7)
@@ -199,6 +269,15 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
   );
   const surfaceTopologyPrompt = surfaceTopology ? shotDesign.surfacePrompt(surfaceTopology, 'environment') : '';
+  const materialIdentityContract = [
+    'Material identity and surface topology are independent constraints.',
+    'Every material or finish explicitly named by the current task must remain visibly identifiable through its own observable physical cues, such as directionality, reflectance, roughness, grain, pores, weave, translucency, micro-relief, edge behaviour, patina or scale, but only when those cues are supported by the request.',
+    'Never replace a requested material with a visually adjacent generic finish merely to satisfy continuity, minimalism or style.',
+    'A continuous or hidden-seam surface means visually uninterrupted composition; it does not authorize changing the requested material family or erasing all evidence of its physical identity.',
+    repairFeedback
+      ? 'The correction feedback has higher authority than appearance inherited from previous images. Preserve valid geometry, but replace any rejected appearance instead of imitating it.'
+      : '',
+  ].filter(Boolean).join(' ');
   const noHumanNegative = [
     'Absolutely empty scene only.',
     'No people, no human figure, no actor, no model, no presenter, no customer, no staff.',
@@ -208,10 +287,12 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const photographicRealism = [
     'Photographic realism requirements:',
     outputRole === 'layout'
-      ? 'Make it look like a real location documented by an architectural survey camera from overhead, not an eye-level commercial still and not an AI concept render.'
+      ? 'Create a neutral geometry survey of a plausible real location from overhead, not an eye-level commercial still and not an AI concept render.'
       : 'Make it look like a real location or production set photographed by a commercial environment photographer, not an AI concept render.',
     'Use physically plausible camera perspective, lens compression and scene geometry; keep fixed structures, ground planes, fixtures, props and products aligned to one coherent spatial system.',
-    surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
+    outputRole === 'layout'
+      ? 'Use neutral low-saturation clay/diagram shading for large surfaces. Do not establish, stylize or imitate the final hero material appearance in this geometry blueprint.'
+      : surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
       ? 'Use real-world material scale: preserve the explicitly continuous surface topology while showing plausible contact shadows, subtle scratches, fingerprints, dust, uneven reflections and only construction details permitted by the task-specific seam policy.'
       : 'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
     'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
@@ -223,13 +304,14 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     'Strict anti-AI / anti-render negatives:',
     'No CGI render look, no Unreal/Octane/3D render look, no plastic texture, no waxy surface, no over-smoothed material, no fantasy environment.',
     'No generic luxury template, no repeated procedural texture, no melted details, no impossible reflections, no glowing seams, no excessive contrast, no heavy HDR, no fake bokeh.',
-    'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent material direction between panels.',
+    'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent physical material cues across one authored finish.',
   ].join(' ');
   const outputInstruction = outputRole === 'layout'
     ? [
       'Create one unmistakable photorealistic SPATIAL BLUEPRINT for a reusable commercial video scene before any cinematic camera view is designed.',
       'The camera pitch must be 55 to 90 degrees downward: use a high oblique axonometric or true top-down whole-space composition that exposes the complete floor boundary, at least three wall planes, openings, fixed structures, anchor furniture/props, circulation path and interaction zone in one coherent coordinate system.',
-      'This blueprint is the authoritative geometry source for all later camera views. Prioritize spatial legibility and relative positions over dramatic composition; do not hide essential topology behind foreground objects.',
+      'This blueprint is the authoritative geometry source for all later camera views, but it has zero authority over final material, colour, texture or lighting appearance. Prioritize spatial legibility and relative positions over dramatic composition; do not hide essential topology behind foreground objects.',
+      'Render final finishes only as neutral low-saturation placeholders. Do not bake the requested hero material appearance into this blueprint.',
       'An eye-level room photo, frontal wall elevation, close crop, or composition that resembles a cinematic master view is INVALID for this output.',
     ]
     : outputRole === 'contract'
@@ -240,7 +322,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       ];
   return [
     ...outputInstruction,
-    'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no panels, no split screen, no labels, no people or human-like subjects.',
+    'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no multi-panel composition, no split screen, no labels, no people or human-like subjects.',
     photographicRealism,
     outputRole === 'layout'
       ? 'Show the entire spatial footprint in one overhead or axonometric survey; do not use an eye-level or frontal commercial-camera composition.'
@@ -252,6 +334,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     materialLight ? `Scene material and lighting requirement: ${materialLight}` : '',
     interaction ? `Scene interaction and camera position requirement: ${interaction}` : '',
     surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
+    outputRole === 'layout' ? '' : `Task-specific material identity contract:\n${materialIdentityContract}`,
     sceneConfig.business_boundary ? `Business boundary: ${cleanText(sceneConfig.business_boundary, 500)}` : '',
     sceneConfig.story_strategy ? `Scene/story strategy: ${cleanText(JSON.stringify(sceneConfig.story_strategy), 900)}` : '',
     style ? `Visual style direction: ${style}` : '',
@@ -260,7 +343,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     negative ? `Additional negative requirements: ${negative}` : '',
     repairFeedback ? `Mandatory correction from the previous rejected attempt: ${repairFeedback}. Create a fresh role-correct image and do not reproduce the rejected composition.` : '',
     outputRole === 'layout'
-      ? 'Final look target: a clearly overhead or axonometric photorealistic architectural survey with readable topology and realistic materials.'
+      ? 'Final look target: a clearly overhead or axonometric architectural geometry survey with readable topology and neutral placeholder finishes.'
       : 'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
 }
@@ -330,7 +413,7 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     master: 'Generate the MASTER ESTABLISHING VIEW of the exact space defined by the supplied spatial blueprint. Use a natural eye-level or slightly elevated three-quarter wide camera, not a top-down view. Show enough floor, ceiling and at least two adjoining spatial planes to establish scale, depth, entrances and anchor relations. Translate the blueprint into a believable commercial photograph without moving, deleting or inventing any opening, fixed structure, anchor object, circulation route or interaction zone.',
     reverse: 'Generate a TRUE REVERSE OR SIDE VIEW of the exact same physical space, not a small reframing of the master. Move the camera to a geometrically plausible opposite or side sector with at least about 90 degrees of azimuth change from the master camera. Swap the foreground/background relationship and reveal at least one wall, opening, boundary or anchor relation that the master cannot show clearly. Do not mirror the master, reuse its near-identical composition, or keep the camera in the same frontal sector. Preserve every fixed structure, opening, anchor object, material, color, light source and relative position.',
     interaction: 'Generate a DISTINCT INTERACTION-POSITION VIEW inside the exact same physical space. Place the camera at practical human eye/chest height beside the locked interaction zone. Clearly show an empty standing/action clearance, the reachable target surface or product position, and the route into and out of that zone. This must be a usable blocking camera, not another establishing shot and not a duplicate of the master or reverse view. Preserve all blueprint coordinates and do not add any person, mannequin or human reflection.',
-    detail: 'Generate a TRUE MATERIAL / CONSTRUCTION DETAIL VIEW captured inside the exact same physical space. Use a close or macro crop that makes real material scale, texture direction, surface transition, contact shadow, fixture edge or permitted assembly detail readable. It must not be another wide room view. Use only materials, finishes, seams and fixtures supported by the blueprint and master. Respect the task-specific surface topology and seam policy; do not invent panels, joints or decorative composition.',
+    detail: 'Generate a TRUE MATERIAL / CONSTRUCTION DETAIL VIEW captured inside the exact same physical space. Use a close or macro crop that makes real material scale, texture direction, surface transition, contact shadow, fixture edge or permitted assembly detail readable. It must not be another wide room view. Use only materials, finishes, seams and fixtures supported by the blueprint and master. Respect the task-specific surface topology and seam policy; do not invent visible subdivisions, joints or decorative composition.',
   }[viewKey] || 'Generate another camera view of the exact same physical space without redesigning it.';
   const fallbackOrder = options.hasMasterReference === true
     ? (options.hasLayoutReference === false ? ['master'] : ['layout', 'master'])
@@ -340,12 +423,15 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
   const hasLayoutReference = referenceOrder.includes('layout');
   const hasMasterReference = referenceOrder.includes('master');
   const referenceDescriptions = referenceOrder.map((key, index) => key === 'layout'
-    ? `Reference image ${index + 1} is the spatial blueprint.`
+    ? `Reference image ${index + 1} is the geometry-only spatial blueprint.`
     : `Reference image ${index + 1} is the master establishing view.`);
   const referenceAuthority = [
     ...referenceDescriptions,
     hasLayoutReference
       ? 'The supplied spatial blueprint is the canonical authority for geometry, topology, openings, zones and relative coordinates.'
+      : '',
+    hasLayoutReference
+      ? 'The blueprint has ZERO authority over final material identity, colour, texture or lighting. Never copy its neutral placeholders or any legacy appearance into the final photograph.'
       : '',
     hasMasterReference
       ? 'The supplied master view is the canonical authority for photographic appearance, material identity, color, lighting direction and object design.'
@@ -365,6 +451,9 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     cleanText(options.repairFeedback || '', 1200)
       ? `Mandatory correction from the previous rejected attempt: ${cleanText(options.repairFeedback, 1200)}. Do not repeat the rejected composition.`
       : '',
+    cleanText(options.repairFeedback || '', 1200)
+      ? 'Correction priority: if any reference image conflicts with the textual requirement, preserve only its valid geometry and replace the rejected appearance.'
+      : '',
     scenePrompt,
   ].filter(Boolean).join('\n\n');
 }
@@ -381,11 +470,15 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } =
   const topology = requested.surface_topology
     ? shotDesign.surfacePrompt(requested.surface_topology, 'environment')
     : '';
+  const geometryOnly = viewKey === 'layout'
+    ? 'This layout is geometry-only. Use neutral low-saturation placeholder finishes and do not establish final material, colour, texture or lighting appearance.'
+    : 'The named material identity must be visibly proven by task-supported physical cues. Surface continuity must never substitute or genericize the requested material family.';
   return [
     roleInstruction,
     'Output one continuous photorealistic architectural image with natural perspective, physically plausible geometry, realistic material scale and believable commercial lighting.',
+    geometryOnly,
     requested.layout ? `Spatial design: ${requested.layout}` : '',
-    requested.material_light ? `Materials and lighting: ${requested.material_light}` : '',
+    requested.material_light && viewKey !== 'layout' ? `Materials and lighting: ${requested.material_light}` : '',
     requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
     topology ? `Surface construction: ${topology}` : '',
     requested.style ? `Visual style: ${requested.style}` : '',
@@ -499,11 +592,18 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     uploadedViewCount: Array.isArray(body.view_images) ? body.view_images.length : 0,
     videoAcquisitionEnabled: false,
   });
+  const progressViewKeys = repairMode ? repairViewKeys : requiredViewKeys;
+  const progressMode = repairMode ? 'repair' : 'generate';
+  updateSceneGenerationProgress(taskId, {
+    mode: progressMode,
+    phase: 'preparing',
+    viewKeys: progressViewKeys,
+  });
   const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
   const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract' });
   const layoutPrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'layout' });
   const layout = shouldGenerate('layout')
-    ? await mediaAdapter.generateImage({
+    ? await generateTrackedSceneView(taskId, 'layout', {
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt: layoutPrompt,
@@ -512,7 +612,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       resolution: body.resolution || '2K',
       imageModel: body.image_model || body.imageModel || 'auto',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
-    })
+    }, { mode: progressMode, viewKeys: progressViewKeys })
     : previousViews.get('layout');
   cancellation.throwIfCancelled(taskId);
   const layoutView = normalizeSceneView({
@@ -527,7 +627,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     repairFeedback,
   });
   const master = shouldGenerate('master')
-    ? await mediaAdapter.generateImage({
+    ? await generateTrackedSceneView(taskId, 'master', {
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt,
@@ -540,7 +640,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // Camera role changes must be allowed to move away from the blueprint pixels.
       inputFidelity: 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
-    })
+    }, { mode: progressMode, viewKeys: progressViewKeys })
     : previousViews.get('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
@@ -557,7 +657,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     const referenceImages = detailView
       ? [master.url || master.image_url]
       : [master.url || master.image_url, layout.url || layout.image_url];
-    const generated = await mediaAdapter.generateImage({
+    const generated = await generateTrackedSceneView(taskId, key, {
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt: buildDerivedViewPrompt(scenePrompt, key, {
@@ -574,7 +674,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
-    });
+    }, { mode: progressMode, viewKeys: progressViewKeys });
     return normalizeSceneView({
       key,
       label: sceneViewLabel(key),
@@ -598,6 +698,11 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     requested,
     layoutRequired,
   };
+  updateSceneGenerationProgress(taskId, {
+    mode: progressMode,
+    phase: 'verification',
+    viewKeys: progressViewKeys,
+  });
   let sceneContract = null;
   try {
     sceneContract = await sceneSpace.analyzeSceneViews(contractOptions);
@@ -626,6 +731,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const repairPlan = buildSceneRepairPlan({
     scene_contract: sceneContract,
     view_images: viewImages,
+    view_acquisition: { layout_appearance_role: LAYOUT_APPEARANCE_ROLE },
   });
   const repairHistory = [
     ...(Array.isArray(previous?.repair_history) ? previous.repair_history : []),
@@ -665,6 +771,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     view_acquisition: {
       ...viewAcquisition,
       layout_policy: 'required_for_all_new_scenes',
+      layout_appearance_role: LAYOUT_APPEARANCE_ROLE,
       legacy_layout_trigger: legacyLayoutTrigger,
       generation_order: REQUIRED_SCENE_VIEW_KEYS,
       last_generated_views: repairMode ? repairViewKeys : REQUIRED_SCENE_VIEW_KEYS,
@@ -699,6 +806,12 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         : '场景参考已保存，但需求符合度、跨视图一致性或空间覆盖度尚未全部通过',
     });
   }
+  updateSceneGenerationProgress(taskId, {
+    mode: progressMode,
+    phase: 'complete',
+    viewKeys: progressViewKeys,
+    verificationState: sceneContract.verification?.state || sceneContract.status || '',
+  });
   return {
     scene_asset: asset,
     scene_assets: sceneAssets,

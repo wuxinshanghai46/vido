@@ -25,8 +25,8 @@ const continuousShot = {
   },
 };
 const surfaceText = shotDesign.surfacePrompt(continuousShot.surface_topology, continuousShot.shot_scope);
-assert.match(surfaceText, /continuous, uninterrupted construction plane/i);
-assert.match(surfaceText, /NO visible construction joints/i);
+assert.match(surfaceText, /visually continuous, uninterrupted plane/i);
+assert.match(surfaceText, /NO conspicuous construction joints/i);
 assert.doesNotMatch(surfaceText, /stainless|wall|actress|佛山/i);
 
 const isolatedHardCut = continuity.continuityContract({
@@ -64,9 +64,10 @@ const isolatedPrompt = storyAd.buildKeyframePrompt({
     action_start: '第一块样品进入画面',
   },
 }, 4);
-assert.match(isolatedPrompt, /Surface topology lock: ONE continuous, uninterrupted construction plane; never repeated modules, panels, tiles, grids, sample boards or decorative divisions\./);
-assert.match(isolatedPrompt, /Seam policy: NO visible construction joints, panel borders or evenly spaced vertical\/horizontal divisions\./);
-assert.match(isolatedPrompt, /Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or color panels\./);
+assert.match(isolatedPrompt, /Surface topology lock: ONE visually continuous, uninterrupted plane/);
+assert.match(isolatedPrompt, /material may still be physically supplied as sheets, boards or panels/);
+assert.match(isolatedPrompt, /Seam policy: NO conspicuous construction joints, outlined borders or evenly spaced vertical\/horizontal divisions/);
+assert.match(isolatedPrompt, /Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or swatch-like regions/);
 assert.doesNotMatch(isolatedPrompt, /第一块样品|Entry frame state:|Action start\/end:/);
 assert.strictEqual((isolatedPrompt.match(/Shot scope:/g) || []).length, 1);
 assert.doesNotMatch(isolatedPrompt, /Master environment only — Surface topology lock:/);
