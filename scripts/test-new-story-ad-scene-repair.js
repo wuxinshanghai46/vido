@@ -242,7 +242,12 @@ async function main() {
     assert.equal(unavailableResult.scene_asset.scene_contract.qa_unavailable, true);
     assert.equal(unavailableResult.scene_asset.scene_contract.verification.state, 'unavailable');
     assert.equal(unavailableResult.scene_asset.repair_plan.action, 'reverify');
-    assert.equal(storage.getOutput(unavailableTaskId, 'scene_assets')[0].scene_revision, 2, 'the paid revision must remain persisted');
+    const persistedUnavailable = storage.getOutput(unavailableTaskId, 'scene_assets')[0];
+    assert.equal(persistedUnavailable.scene_revision, 2, 'the paid revision must remain persisted');
+    assert.equal(persistedUnavailable.scene_contract.requirement_qa.layout_match_score, null, 'unavailable QA must not be shown as a zero content score');
+    assert.equal(persistedUnavailable.scene_contract.cross_view_qa.scene_consistency_score, null);
+    assert.equal(persistedUnavailable.scene_contract.spatial_coverage_qa.layout_topology_score, null);
+    assert.equal(persistedUnavailable.scene_contract.spatial_coverage_qa.coverage_status, 'unavailable');
 
     sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
     const callsBeforeReverify = calls.length;

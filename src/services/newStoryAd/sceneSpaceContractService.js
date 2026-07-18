@@ -338,6 +338,38 @@ function normalizeContract(input = {}, options = {}) {
     contract.qa_unavailable = true;
     contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
     contract.qa_error = cleanText(input.qa_error || input.verification?.message || '', 500);
+    // Unknown is not a zero score. Keep every QA gate nullable so the UI shows
+    // "pending verification" instead of presenting an infrastructure failure
+    // as a content rejection after the asset is normalized and saved again.
+    contract.cross_view_qa = {
+      pass: null,
+      scene_consistency_score: null,
+      geometry_consistency_score: null,
+      material_consistency_score: null,
+      mismatch_reasons: [],
+    };
+    contract.requirement_qa = {
+      pass: null,
+      layout_match_score: null,
+      material_light_match_score: null,
+      interaction_match_score: null,
+      surface_topology_match_score: null,
+      negative_compliance_score: null,
+      mismatch_reasons: [],
+    };
+    contract.spatial_coverage_qa = {
+      pass: null,
+      layout_topology_score: null,
+      camera_diversity_score: null,
+      reverse_coverage_score: null,
+      interaction_zone_score: null,
+      coverage_status: 'unavailable',
+      assessment_source: 'unavailable',
+      legacy: false,
+      full_space_lock: false,
+      reasons: [],
+      mismatch_reasons: [],
+    };
   }
   contract.reference_fingerprint = crypto.createHash('sha256').update(JSON.stringify({
     scene_id: contract.scene_id,
