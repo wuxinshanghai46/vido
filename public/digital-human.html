@@ -25,8 +25,8 @@
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=20260713-complete-sync">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260717-video-quality-cost-v1">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260718-dark-select-v1">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260718-scene-conflict-v1">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -80,7 +80,7 @@
     }
   </style>
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
-  <link rel="stylesheet" href="/css/vido-ui.css?v=20260627-lux-error-contrast" />
+  <link rel="stylesheet" href="/css/vido-ui.css?v=20260718-native-select-v1" />
   <script src="/js/media-delivery.js?v=20260714-platform-media-v2"></script>
 </head>
 <body>
@@ -454,6 +454,7 @@
                       <input class="dh-input" data-nsa-scene-spec="surfaceTopology.notes" maxlength="300" placeholder="可选；只描述当前任务，不会成为行业模板。">
                     </label>
                   </div>
+                  <div class="dh-nsa-surface-conflict-hint">冲突保护：当空间描述或禁止项明确要求完整连续墙面时，系统会自动采用“连续完整表面 + 隐藏可见拼缝”，不会再让旧的模块化选项覆盖文字要求。</div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
@@ -2529,7 +2530,7 @@ B: ...
 
   <script src="/js/digital-human.js?v=20260716-spatial-scene-block-v1"></script>
   <!-- 剧情广告脚本只在进入对应标签时加载，避免拖慢数字人和其他平台功能。 -->
-  <script src="/js/new-story-ad/bootstrap.js?v=20260718-verification-closure-v1"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260718-scene-conflict-v1"></script>
 </body>
 </html>
 

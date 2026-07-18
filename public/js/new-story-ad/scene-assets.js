@@ -68,6 +68,33 @@
     };
   }
 
+  function hasContinuousSurfaceIntent(spec = {}) {
+    const topology = spec.surfaceTopology || spec.surface_topology || {};
+    const text = [spec.layoutText, spec.materialLightText, spec.negativeText, topology.notes].filter(Boolean).join(' ');
+    return /一整面|整面(?:连续|完整)|连续(?:、|，|和|且)?完整|完整(?:、|，|和|且)?连续|一面完整的?(?:背景)?墙|连续基面|无缝(?:墙|基面|表面)|single\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|one\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:panel|module|tile|grid|seam)/i.test(text)
+      || /(?:禁止|不得|不要|严禁|避免)[^。；;]{0,48}(?:模块化|模块|拼板|板块|网格墙|样品墙|展示墙|可见接缝|拼缝)/i.test(text);
+  }
+
+  function reconcileSurfaceIntent(spec = {}, { syncControls = false } = {}) {
+    const source = spec && typeof spec === 'object' ? spec : {};
+    const current = source.surfaceTopology || source.surface_topology || {};
+    if (!hasContinuousSurfaceIntent(source)) return { spec: source, changed: false };
+    const topology = {
+      ...current,
+      mode: 'continuous',
+      seam_policy: 'hidden',
+      finish_distribution: current.finish_distribution === 'sample_comparison'
+        ? 'regional'
+        : (current.finish_distribution || 'auto'),
+    };
+    const changed = current.mode !== topology.mode
+      || current.seam_policy !== topology.seam_policy
+      || current.finish_distribution !== topology.finish_distribution;
+    const next = { ...source, surfaceTopology: topology };
+    if (syncControls && changed) applySpec(next, { clearMissing: false });
+    return { spec: next, changed };
+  }
+
   function requiresLayoutView(spec = {}) {
     const text = [spec.layoutText, spec.interactionText, spec.surfaceTopology?.notes].filter(Boolean).join(' ');
     if (/俯视|俯拍|鸟瞰|顶视|平面图|轴测|空间全貌|top.?down|bird.?s.?eye|floor.?plan|axonometric/i.test(text)) return true;
@@ -340,7 +367,11 @@
     append = false,
   } = {}) {
     if (!state || typeof ensureTask !== 'function' || typeof api !== 'function') return false;
-    const sceneSpec = specPayload();
+    const reconciled = reconcileSurfaceIntent(specPayload(), { syncControls: true });
+    const sceneSpec = reconciled.spec;
+    if (reconciled.changed) {
+      toast?.('检测到完整连续墙面要求，已自动改为“连续完整表面 + 隐藏可见拼缝”', 'info');
+    }
     const layoutRequired = requiresLayoutView(sceneSpec);
     const totalViews = layoutRequired ? 5 : 4;
     const label = append ? '追加场景参考中...' : '生成场景参考中...';
@@ -444,6 +475,8 @@
     normalizeAssets,
     thumbUrl,
     specPayload,
+    hasContinuousSurfaceIntent,
+    reconcileSurfaceIntent,
     requiresLayoutView,
     applySpec,
     clearSpecInputs,

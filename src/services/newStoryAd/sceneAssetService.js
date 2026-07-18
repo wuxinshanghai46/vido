@@ -91,7 +91,10 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {} } = {}) {
   const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600);
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 600);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
-  const surfaceTopology = shotDesign.normalizeSurfaceTopology(sceneSpec.surfaceTopology || sceneSpec.surface_topology);
+  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+    sceneSpec.surfaceTopology || sceneSpec.surface_topology,
+    [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
+  );
   const surfaceTopologyPrompt = surfaceTopology ? shotDesign.surfacePrompt(surfaceTopology, 'environment') : '';
   const noHumanNegative = [
     'Absolutely empty scene only.',
@@ -230,14 +233,27 @@ function needsLayoutView(requested = {}, body = {}) {
 
 function sceneRequest(ctx = {}, body = {}) {
   const spec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
+  const layout = cleanText(spec.layoutText || spec.layout_text || spec.layout || body.layout_summary || '', 1000);
+  const materialLight = cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000);
+  const interaction = cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800);
+  const negative = cleanText(spec.negativeText || spec.negative_text || body.negative || ctx.controlled_production?.negative_control?.text || '', 1000);
   return {
-    layout: cleanText(spec.layoutText || spec.layout_text || spec.layout || body.layout_summary || '', 1000),
-    material_light: cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000),
-    interaction: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800),
-    surface_topology: shotDesign.normalizeSurfaceTopology(spec.surfaceTopology || spec.surface_topology),
+    layout,
+    material_light: materialLight,
+    interaction,
+    surface_topology: shotDesign.resolveSurfaceTopology(
+      spec.surfaceTopology || spec.surface_topology,
+      [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
+    ),
     style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
-    negative: cleanText(spec.negativeText || spec.negative_text || body.negative || ctx.controlled_production?.negative_control?.text || '', 1000),
+    negative,
   };
+}
+
+function resolvedSceneSpec(spec = {}, requested = {}) {
+  const source = spec && typeof spec === 'object' ? spec : {};
+  const { surface_topology: ignoredSurfaceTopology, ...rest } = source;
+  return { ...rest, surfaceTopology: requested.surface_topology };
 }
 
 function mergeSceneAssets(existing = [], asset = {}) {
@@ -250,13 +266,17 @@ function mergeSceneAssets(existing = [], asset = {}) {
   return list;
 }
 
-function saveSceneAssetsToTask(taskId, sceneAssets = []) {
+function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const normalized = normalizeSceneAssets(sceneAssets);
   storage.saveOutput(taskId, 'scene_assets', normalized);
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
-  const nextCtx = { ...ctx, scene_assets: normalized };
+  const nextCtx = {
+    ...ctx,
+    ...(options.sceneSpec ? { scene_spec: options.sceneSpec } : {}),
+    scene_assets: normalized,
+  };
   storage.saveOutput(taskId, 'context', nextCtx);
   storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
   storage.saveStage(taskId, 'scene_asset', {
@@ -390,7 +410,7 @@ async function generateSceneAsset(taskId, body = {}) {
       '空场景资产，不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影。',
       body.negative || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).negativeText || ctx.controlled_production?.negative_control?.text || '',
     ].filter(Boolean).join('；'),
-    surface_topology: shotDesign.normalizeSurfaceTopology((body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).surfaceTopology || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).surface_topology),
+    surface_topology: requested.surface_topology,
     image_url: viewImages[0]?.url || '',
     view_images: viewImages.map(view => ({
       ...view,
@@ -409,7 +429,9 @@ async function generateSceneAsset(taskId, body = {}) {
     verification: sceneContract.verification,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
-  saveSceneAssetsToTask(taskId, sceneAssets);
+  saveSceneAssetsToTask(taskId, sceneAssets, {
+    sceneSpec: resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
+  });
   if (sceneContract.status !== 'verified') {
     storage.saveStage(taskId, 'scene_asset', {
       status: sceneContract.qa_unavailable === true ? 'warning' : 'review',

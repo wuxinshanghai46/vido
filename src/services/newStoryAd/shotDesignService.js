@@ -47,6 +47,29 @@ function normalizeSurfaceTopology(input = null) {
   return meaningful ? topology : undefined;
 }
 
+/** Detect an explicit request for one uninterrupted primary surface. */
+function hasContinuousSurfaceIntent(value = '') {
+  const text = structuredText(value, 2400);
+  if (!text) return false;
+  return /一整面|整面(?:连续|完整)|连续(?:、|，|和|且)?完整|完整(?:、|，|和|且)?连续|一面完整的?(?:背景)?墙|连续基面|无缝(?:墙|基面|表面)|single\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|one\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:panel|module|tile|grid|seam)/i.test(text)
+    || /(?:禁止|不得|不要|严禁|避免)[^。；;]{0,48}(?:模块化|模块|拼板|板块|网格墙|样品墙|展示墙|可见接缝|拼缝)/i.test(text);
+}
+
+/** Resolve contradictory select values and free-text requirements before generation. */
+function resolveSurfaceTopology(input = null, contextText = '') {
+  const topology = normalizeSurfaceTopology(input);
+  const notes = topology?.notes || '';
+  if (!hasContinuousSurfaceIntent([contextText, notes])) return topology;
+  return {
+    mode: 'continuous',
+    seam_policy: 'hidden',
+    finish_distribution: topology?.finish_distribution === 'sample_comparison'
+      ? 'regional'
+      : (topology?.finish_distribution || 'auto'),
+    notes,
+  };
+}
+
 function normalizeMotionEffect(input = null) {
   const raw = typeof input === 'string' ? { type: input } : (input && typeof input === 'object' ? input : {});
   const effect = {
@@ -142,6 +165,8 @@ module.exports = {
   EFFECT_INTENSITIES,
   structuredText,
   normalizeSurfaceTopology,
+  hasContinuousSurfaceIntent,
+  resolveSurfaceTopology,
   normalizeMotionEffect,
   normalizeShotDesign,
   surfacePrompt,

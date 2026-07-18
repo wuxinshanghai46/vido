@@ -174,19 +174,12 @@ select {
   color-scheme: light;
 }
 
-select option,
-select optgroup {
-  background-color: var(--bg2, var(--dh-bg-gray, var(--vido-surface-2)));
-  color: var(--text, var(--dh-text, var(--vido-text)));
-}
-
-select option:disabled {
-  color: var(--text3, var(--dh-text-muted, var(--vido-text-3)));
-}
-
-select option:checked {
-  background-color: rgba(var(--accent-rgb, var(--vido-accent-rgb)), .24);
-  color: var(--text, var(--dh-text, var(--vido-text)));
+:root:not([data-theme^="light"]) select option,
+:root:not([data-theme^="light"]) select optgroup,
+:root:not([data-theme^="light"]) select option:checked,
+:root:not([data-theme^="light"]) select option:disabled {
+  background-color: revert !important;
+  color: revert !important;
 }
 
 button,

@@ -1942,6 +1942,7 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 }
 .dh-nsa-scene-spec-grid label { min-width: 0; display: grid; gap: 6px; color: var(--dh-text-muted); font-size: 12px; font-weight: 900; }
 .dh-nsa-scene-spec-grid textarea { min-height: 104px; height: 100%; resize: vertical; }
+.dh-nsa-surface-conflict-hint { margin-top: 8px; padding: 9px 11px; border: 1px solid rgba(33,255,243,.22); border-radius: 8px; background: rgba(33,255,243,.055); color: var(--dh-text-soft); font-size: 11px; line-height: 1.55; }
 .dh-nsa-scene-actions {
   grid-column: auto;
   align-self: end;

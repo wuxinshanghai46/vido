@@ -182,6 +182,35 @@ async function main() {
   assert(layoutGenerated.scene_asset.view_images.some(view => view.key === 'layout'));
   assert.equal(layoutGenerated.scene_asset.scene_contract.layout_contract.status, 'available');
 
+  const conflictingTask = storyAd.createTask({
+    brief: '生成一整面连续完整的不锈钢背景墙用于商业展示',
+    product_subject: '测试墙面',
+    cast_mode: 'no_human',
+    scene_spec: {
+      layoutText: '画面视觉焦点是一整面连续完整的背景墙',
+      materialLightText: '不锈钢纹理在同一连续基面上变化',
+      negativeText: '禁止模块化拼板、矩形板块、网格墙和可见接缝',
+      surfaceTopology: {
+        mode: 'modular',
+        seam_policy: 'task_defined',
+        finish_distribution: 'regional',
+        notes: '背景必须是一整面连续完整平直的墙体',
+      },
+    },
+  }, { id: 'verification-lifecycle-user' });
+  const reconciledGenerated = await sceneAssets.generateSceneAsset(conflictingTask.task.id, {
+    scene_id: 'scene-conflict-reconciled',
+    scene_spec: conflictingTask.context.scene_spec,
+  });
+  assert.equal(reconciledGenerated.scene_asset.surface_topology.mode, 'continuous', '连续墙面文字要求必须覆盖冲突的模块化旧值');
+  assert.equal(reconciledGenerated.scene_asset.surface_topology.seam_policy, 'hidden');
+  assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /a modular system is required/i);
+  assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /visible panel seams, joints, bevels/i);
+  assert.match(reconciledGenerated.scene_asset.prompt, /ONE continuous, uninterrupted construction plane/i);
+  const reconciledContext = storage.getOutput(conflictingTask.task.id, 'context');
+  assert.equal(reconciledContext.scene_spec.surfaceTopology.mode, 'continuous', '实际生成所用的纠偏设置必须写回任务上下文');
+  assert.equal(reconciledContext.scene_spec.surfaceTopology.seam_policy, 'hidden');
+
   console.log(JSON.stringify({
     success: true,
     person_atomic_verification: true,
@@ -191,6 +220,8 @@ async function main() {
     rejected_scene_preserved: true,
     reverify_surface_topology: true,
     conditional_layout_view: true,
+    contradictory_scene_spec_reconciled: true,
+    reconciled_scene_spec_persisted: true,
   }, null, 2));
 }
 
