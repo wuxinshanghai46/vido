@@ -2,10 +2,11 @@
 // 一次性脚本：调查服务器 /opt/vido/app 仓库状态，密码通过 env var 传入
 const { Client } = require('ssh2');
 
-const HOST = '43.98.167.151';
-const USER = 'root';
-const PASS = process.env.VIDO_SSH_PASS;
-const REPO = '/opt/vido/app';
+const HOST = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
+const USER = process.env.VIDO_DEPLOY_USER || 'root';
+const PASS = process.env.VIDO_SSH_PASS || process.env.VIDO_DEPLOY_PASSWORD;
+const PORT = parseInt(process.env.VIDO_DEPLOY_PORT || '22', 10);
+const REPO = process.env.VIDO_DEPLOY_REMOTE || '/opt/vido/app';
 
 if (!PASS) {
   console.error('需要环境变量 VIDO_SSH_PASS');
@@ -52,7 +53,7 @@ conn.on('ready', async () => {
   process.exit(2);
 }).connect({
   host: HOST,
-  port: 22,
+  port: PORT,
   username: USER,
   password: PASS,
   readyTimeout: 15000,
