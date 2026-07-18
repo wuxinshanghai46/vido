@@ -159,11 +159,10 @@
   }
 
   function requiresLayoutView(spec = {}) {
-    const text = [spec.layoutText, spec.interactionText, spec.surfaceTopology?.notes].filter(Boolean).join(' ');
-    if (/俯视|俯拍|鸟瞰|顶视|平面图|轴测|空间全貌|top.?down|bird.?s.?eye|floor.?plan|axonometric/i.test(text)) return true;
-    if (/多区域|多个区域|跨区域|多入口|多个入口|双入口|多空间|多个空间|长运镜|连续穿行|跨区走位/i.test(text)) return true;
-    const zoneHints = text.match(/主展示区|展示区|互动区|行动区|操作区|接待区|入口区|出口区|通道|走廊|前厅|后场|工作区|休息区|厨房|客厅/g) || [];
-    return new Set(zoneHints).size >= 3 && /动线|路径|走位|穿行|进入|离开|绕行|连续摄影机/i.test(text);
+    // schema v3 requires a whole-space layout for every newly generated scene.
+    // Keep the argument and exported helper for backward-compatible callers.
+    void spec;
+    return true;
   }
 
   function averagePercent(qa = {}, keys = []) {
@@ -305,11 +304,11 @@
   function sceneProgressView(progress = {}) {
     const startedAt = Number(progress.startedAt || 0) || Date.now();
     const elapsed = Math.max(0, Date.now() - startedAt);
-    const total = Math.max(1, Number(progress.total || 4) || 4);
+    const total = Math.max(1, Number(progress.total || 5) || 5);
     const completed = Math.max(0, Math.min(total, Number(progress.completed || 0) || 0));
     const current = Math.max(1, Math.min(total, Number(progress.current || completed + 1) || 1));
     const pct = Math.max(8, Math.min(96, Math.round(Number(progress.percent || ((completed / total) * 100)) || 18)));
-    const viewLabel = ['主视角', '反向/侧向', '互动位', '材质细节', '俯视布局'][current - 1] || `视角 ${current}`;
+    const viewLabel = ['俯视布局', '主视角', '反向/侧向', '互动位', '材质细节'][current - 1] || `视角 ${current}`;
     return {
       pct,
       completed,
@@ -317,7 +316,7 @@
       total,
       viewLabel,
       elapsedText: formatElapsedText(elapsed),
-      message: progress.message || `已完成 ${completed}/${total} 张，正在生成第 ${current}/${total} 张：${viewLabel}。`,
+      message: progress.message || `预计生成 ${total} 张场景参考，当前阶段：${viewLabel}。完成后会自动更新实际结果。`,
     };
   }
 
@@ -332,7 +331,7 @@
         <div class="dh-nsa-scene-body">
           <div class="dh-lux-person-progress">
             <div class="dh-lux-person-progress-head">
-              <b>正在生成场景参考：第 ${view.current}/${view.total} 张</b>
+              <b>正在生成场景参考：预计 ${view.total} 张</b>
               <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
             </div>
             <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
@@ -441,21 +440,17 @@
       toast?.('检测到完整连续墙面要求，已自动改为“连续完整表面 + 隐藏可见拼缝”', 'info');
     }
     const layoutRequired = requiresLayoutView(sceneSpec);
-    const totalViews = layoutRequired ? 5 : 4;
+    const totalViews = 5;
     const label = append ? '追加场景参考中...' : '生成场景参考中...';
-    const stageLabels = ['主视角', '反向/侧向', '互动位', '材质细节', '俯视布局'].slice(0, totalViews);
-    const stages = [{ at: 0, percent: 10, completed: 0, current: 1 }];
-    stageLabels.forEach((viewLabel, index) => {
-      if (index === 0) return;
-      stages.push({
-        at: 2500 + ((index - 1) * 7000),
-        percent: Math.min(92, 24 + (index * Math.round(68 / totalViews))),
-        completed: index,
-        current: index + 1,
-        message: `已完成 ${index}/${totalViews} 张，正在生成第 ${index + 1}/${totalViews} 张：${viewLabel}。`,
-      });
-    });
-    stages[0].message = `已完成 0/${totalViews} 张，正在生成第 1/${totalViews} 张：主视角。`;
+    // The endpoint is synchronous, so these are honest phase estimates rather
+    // than fabricated per-image completion events. The last three views run in
+    // parallel after layout and master are ready.
+    const stages = [
+      { at: 0, percent: 10, completed: 0, current: 1, message: '预计生成 5 张，当前正在生成空间蓝图（俯视布局）。进度为耗时估算。' },
+      { at: 8000, percent: 38, completed: 0, current: 2, message: '预计生成 5 张，当前正在根据空间蓝图生成主视角。进度为耗时估算。' },
+      { at: 16000, percent: 68, completed: 0, current: 3, message: '预计生成 5 张，当前正在并行生成反向/侧向、互动位和材质细节。进度为耗时估算。' },
+      { at: 28000, percent: 88, completed: 0, current: 3, message: '5 张场景参考仍在生成与自动验证，请稍候，完成后会显示实际结果。' },
+    ];
     const setProgressStage = () => {
       const start = state.sceneGenerationProgress?.startedAt || Date.now();
       const elapsed = Date.now() - start;

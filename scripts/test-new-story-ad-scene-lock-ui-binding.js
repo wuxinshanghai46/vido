@@ -112,6 +112,11 @@ function main() {
   assert.equal(sceneBinding.sceneVerificationState(normalizedLegacy), 'legacy_partial');
 
   const frontend = loadFrontend();
+  assert.equal(frontend.requiresLayoutView({ layoutText: '简单单墙场景' }), true, 'v3 新场景必须固定生成第五张空间布局');
+  const progressHost = { innerHTML: '' };
+  frontend.render({ host: progressHost, state: { sceneGenerationProgress: { active: true, startedAt: Date.now() } } });
+  assert.match(progressHost.innerHTML, /预计 5 张/);
+  assert.doesNotMatch(progressHost.innerHTML, /\/4 张|\/4</);
   const fullAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([asset])[0]);
   assert.equal(fullAssessment.complete, true);
   assert.equal(fullAssessment.layoutAvailable, true);
@@ -139,7 +144,7 @@ function main() {
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
-  assert(html.includes('20260718-scene-lock-v3'));
+  assert(html.includes('20260718-scene-progress-v5'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,
