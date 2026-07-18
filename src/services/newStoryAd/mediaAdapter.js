@@ -17,6 +17,7 @@ const ASSET_DIR = path.join(OUTPUT_DIR, 'new-story-ad-assets');
 const THUMB_DIR = path.join(ASSET_DIR, 'thumbs');
 const IMAGE_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES) || 2));
 const NANO_BANANA_PROMPT_LIMIT = 2400;
+const STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -47,8 +48,18 @@ function modelKey(model = {}) {
   return `${String(model.provider_id || model.providerId || '').trim()}/${String(model.model_id || model.model || '').trim()}`;
 }
 
+function requiredImageModelForStage(stage = '') {
+  return String(stage || '').startsWith('new_story_ad.') ? STORY_AD_REQUIRED_IMAGE_MODEL : '';
+}
+
+function applyImageModelPolicy(stage = '', candidates = []) {
+  const requiredModel = requiredImageModelForStage(stage);
+  const list = Array.isArray(candidates) ? candidates : [];
+  return requiredModel ? list.filter(model => preferredMatches(model, requiredModel)) : list;
+}
+
 function availableImageCandidates(stage) {
-  return stageCandidates(stage)
+  return applyImageModelPolicy(stage, stageCandidates(stage))
     .filter(model => !modelGateway.healthState(model).circuit_open)
     .filter(model => {
       try { resolveImageAdapter(model); return true; } catch { return false; }
@@ -357,12 +368,17 @@ async function generateImage({
   timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
-  const candidates = stageCandidates(stage);
-  const preferred = String(imageModel || '').trim();
+  const candidates = applyImageModelPolicy(stage, stageCandidates(stage));
+  const requestedPreferred = String(imageModel || '').trim();
+  const requiredModel = requiredImageModelForStage(stage);
+  const preferred = requiredModel || requestedPreferred;
   const preferredCandidates = preferred && preferred !== 'auto'
     ? candidates.filter(m => preferredMatches(m, preferred))
     : candidates;
-  const filtered = (preferredCandidates.length ? preferredCandidates : candidates)
+  const candidatePool = requiredModel
+    ? preferredCandidates
+    : (preferredCandidates.length ? preferredCandidates : candidates);
+  const filtered = candidatePool
     .filter(model => !modelGateway.healthState(model).circuit_open)
     .slice(0, IMAGE_MAX_CANDIDATES);
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
@@ -370,14 +386,18 @@ async function generateImage({
   if (String(stage || '').startsWith('new_story_ad.')) {
     console.info('[new_story_ad:image_candidates]', JSON.stringify({
       stage,
+      requested_image_model: requestedPreferred || 'auto',
+      enforced_image_model: requiredModel || '',
       image_model: preferred || 'auto',
       preferred_matched: preferredCandidates.map(modelKey).filter(Boolean),
       candidates: candidates.map(modelKey).filter(Boolean),
     }));
   }
   if (!filtered.length) {
-    const error = new Error(`new_story_ad image models unavailable for ${stage}: no enabled candidate inside the current circuit-breaker window`);
-    error.code = 'IMAGE_CIRCUIT_OPEN';
+    const error = new Error(requiredModel
+      ? `剧情广告图片只允许使用 ${requiredModel}，但当前没有可用通道；已停止生成且不会回退其他图片模型。`
+      : `new_story_ad image models unavailable for ${stage}: no enabled candidate inside the current circuit-breaker window`);
+    error.code = requiredModel ? 'NEW_STORY_AD_IMAGE2_UNAVAILABLE' : 'IMAGE_CIRCUIT_OPEN';
     error.retryable = true;
     throw error;
   }
@@ -560,6 +580,8 @@ module.exports = {
   compactImagePrompt,
   isProviderSubmitAuditError,
   promptForImageCandidate,
+  requiredImageModelForStage,
+  applyImageModelPolicy,
   invokeWithAuditSafeRetry,
   availableImageCandidates,
   generateImage,

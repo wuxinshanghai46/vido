@@ -158,11 +158,10 @@ async function main() {
     viewKey: 'layout',
   });
   assert.ok(auditSafePrompt.length <= 2200);
-  assert.match(auditSafePrompt, /high-oblique architectural survey/i);
+  assert.match(auditSafePrompt, /real high-oblique whole-space photograph/i);
+  assert.match(auditSafePrompt, /brushed stainless steel/i);
+  assert.match(auditSafePrompt, /not a neutral diagram, clay render, dollhouse/i);
   assert.doesNotMatch(auditSafePrompt, /arms|hands|legs|body|silhouette|fingerprints/i);
-  const nanoPrompt = mediaAdapter.promptForImageCandidate(verbosePrompt, { modelId: 'nano-banana-pro' }, auditSafePrompt);
-  assert.equal(nanoPrompt, auditSafePrompt);
-  assert.ok(nanoPrompt.length <= 2400);
   const gptPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt);
   assert.equal(gptPrompt, 'normal provider prompt');
   assert.equal(mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt, true), auditSafePrompt);
@@ -185,7 +184,7 @@ async function main() {
       spatial_coverage_qa: { pass: false, layout_topology_score: 0, camera_diversity_score: 0.2, reverse_coverage_score: 0.1, interaction_zone_score: 0, reasons: ['第5张不是顶视布局且与主图重复'] },
     },
   });
-  assert.deepEqual(currentFailurePlan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
+  assert.deepEqual(currentFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
 
   const legacyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
     view_acquisition: { layout_policy: 'required_for_all_new_scenes' },
@@ -198,7 +197,7 @@ async function main() {
       spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
     },
   });
-  assert.deepEqual(legacyMaterialFailurePlan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail'], 'legacy colour layouts must be replaced when material identity fails');
+  assert.deepEqual(legacyMaterialFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], 'a material-root failure must rebuild the master and every dependent view');
 
   const geometryOnlyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
     view_acquisition: { layout_policy: 'required_for_all_new_scenes', layout_appearance_role: 'geometry_only' },
@@ -211,7 +210,7 @@ async function main() {
       spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
     },
   });
-  assert.deepEqual(geometryOnlyMaterialFailurePlan.view_keys, ['master', 'reverse', 'interaction', 'detail'], 'geometry-only layouts must be retained without contaminating paid repairs');
+  assert.deepEqual(geometryOnlyMaterialFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], 'old geometry-first assets must migrate to the master-root dependency graph');
 
   const upgradedLegacyAsset = sceneAssets.normalizeSceneAssets([{
     id: 'legacy-v1-plan',
@@ -228,8 +227,8 @@ async function main() {
       spatial_coverage_qa: { pass: true },
     } : {},
   }])[0];
-  assert.equal(upgradedLegacyAsset.repair_plan.version, 2, 'stored v1 repair plans must be upgraded on read');
-  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['layout', 'master', 'reverse', 'interaction', 'detail']);
+  assert.equal(upgradedLegacyAsset.repair_plan.version, 3, 'stored v1 repair plans must be upgraded on read');
+  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
 
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
@@ -285,6 +284,7 @@ async function main() {
     assert.match(calls[0].filename, /_reverse_/);
     assert.deepEqual(calls[0].referenceImages, ['/old-master.png', '/old-layout.png']);
     assert.equal(calls[0].inputFidelity, 'low');
+    assert.equal(calls[0].imageModel, 'gpt-image-2');
     assert.match(calls[0].prompt, /Mandatory correction from the previous rejected attempt/i);
     assert.match(calls[0].prompt, /Correction priority: if any reference image conflicts/i);
     assert.equal(result.scene_asset.scene_revision, 2);
@@ -346,7 +346,7 @@ async function main() {
       legacy_material_repairs: legacyMaterialFailurePlan.view_keys,
       geometry_only_material_repairs: geometryOnlyMaterialFailurePlan.view_keys,
       explicit_interaction_repairs: explicitInteractionFailurePlan.view_keys,
-      nano_prompt_length: nanoPrompt.length,
+      image2_only_policy: true,
       audit_retry_attempts: auditAttempts,
       targeted_generation_calls: calls.length,
       regenerated_views: result.scene_asset.repair_history[0].regenerated_view_keys,

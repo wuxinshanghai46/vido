@@ -459,9 +459,10 @@ async function analyzeSceneViews(options = {}) {
       'Return JSON only. Images are ordered master, reverse/side, interaction position, detail, with an optional fifth top-down/axonometric layout reference.',
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
-      + 'First verify that the generated scene obeys the requested layout, material/light, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
-      + 'The optional layout image is a geometry-only blueprint with neutral placeholder finishes. Use it only for topology, coordinates, openings and anchor placement; exclude its colour, texture and lighting from material/light fidelity and cross-view material consistency. '
-      + 'For the four photographic views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
+      + 'First verify that the generated scene obeys the requested layout, material/light, visual style or photographic medium, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
+      + 'The optional fifth layout image is a master-derived high-oblique photograph of the same finished location. Use it primarily for topology, coordinates, openings and anchor placement, but also reject it when it depicts an unrelated room, furniture system, material identity or lighting design. '
+      + 'For all five views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
+      + 'When the requested medium is real photography, cinematic realism or an on-location commercial shoot, fail requirement_qa if the images visibly read as architectural visualization, CGI, a dollhouse/floor-plan render, a sterile virtual showroom or a material catalogue render. '
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
       + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '

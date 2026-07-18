@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260718-scene-repair-v8';
+  const SCRIPT_VERSION = '20260718-scene-quality-v9';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

@@ -210,7 +210,7 @@ function main() {
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260718-scene-repair-v8'));
+  assert(html.includes('20260718-scene-quality-v9'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,
