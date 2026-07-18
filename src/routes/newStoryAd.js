@@ -653,6 +653,8 @@ router.post('/assist', asyncRoute(async (req, res) => {
 router.post('/person-sheet', asyncRoute(async (req, res) => {
   const body = req.body || {};
   const user = userFromReq(req);
+  const taskId = String(body.task_id || body.taskId || '').trim();
+  if (taskId) service.assertTaskOwner(taskId, user);
   const generationId = String(body.generation_id || body.generationId || uuidv4());
   const ownerId = String(user.id || user.userId || user.username || 'anonymous');
   return cancellation.run({ generationId, taskId: body.task_id || body.taskId || '', stage: 'person_sheet', ownerId }, async () => {
@@ -693,7 +695,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     const extraImages = viewImages.slice(1).map(v => v.url).filter(Boolean);
     const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ');
     const personContract = await personIdentity.verifyPersonAsset({
-      taskId: body.task_id || body.taskId || generationId,
+      taskId: taskId || generationId,
       asset: {
         id: `actor_asset_${actorId}`,
         actor_id: actorId,
@@ -707,7 +709,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       spec,
       revision: 1,
     });
-    const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
+    let actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
       actor_id: actorId,
@@ -734,6 +736,17 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       actor_sheet_url: normalizeLocalPublicUrl(sheet.image_url || sheet.url || ''),
       request_key: body.request_key || '',
     });
+    let committed = null;
+    actorAsset = {
+      ...actorAsset,
+      person_revision: personContract.person_revision,
+      person_contract: personContract,
+      production_usable_actor: personContract.status === 'verified',
+    };
+    if (taskId) {
+      committed = service.commitGeneratedPersonAsset(taskId, actorAsset, spec);
+      actorAsset = committed.person_asset;
+    }
     return res.json(actorPayload(actorAsset, {
       status: 'done',
       generated: true,
@@ -742,7 +755,8 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       provider_used: providerUsed,
       request_key: body.request_key || '',
       verification_status: personContract.status,
-      person_contract: personContract,
+      person_contract: committed?.person_contract || personContract,
+      invalidated_outputs: committed?.invalidated_outputs || [],
     }));
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
@@ -758,7 +772,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       err.code = err.code || 'NEW_STORY_PERSON_SHEET_PROVIDER_UNAVAILABLE';
       throw err;
     }
-    const actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, fallback, {
+    let actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, fallback, {
       generated_by: 'new_story_ad.person_sheet.fallback',
       fallback_reason: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',
@@ -767,6 +781,20 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       expected_people: expectedPeople,
       person_count: expectedPeople,
     });
+    const fallbackContract = await personIdentity.verifyPersonAsset({
+      taskId: taskId || generationId,
+      asset: actorAsset,
+      spec,
+      revision: 1,
+    });
+    actorAsset = {
+      ...actorAsset,
+      person_revision: fallbackContract.person_revision,
+      person_contract: fallbackContract,
+      production_usable_actor: fallbackContract.status === 'verified',
+    };
+    const committed = taskId ? service.commitGeneratedPersonAsset(taskId, actorAsset, spec) : null;
+    if (committed) actorAsset = committed.person_asset;
     return res.json(actorPayload(actorAsset, {
       status: 'fallback_actor_library',
       generated: false,
@@ -775,6 +803,8 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       fallback_reason: '图片供应商额度/频率或通道失败，已切换到本地可商用演员库候选。',
       provider_error: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',
+      verification_status: committed?.person_contract?.status || fallbackContract.status,
+      person_contract: committed?.person_contract || fallbackContract,
     }));
   }
   });

@@ -5,6 +5,7 @@ const verification = require('./visualVerificationService');
 const personIdentity = require('./personIdentityContractService');
 
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
+const REFERENCE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
 
 function safeJson(raw = '') {
   const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
@@ -39,8 +40,8 @@ function normalizeAnchors(input = []) {
       description: cleanText(source.description || source.visual || label, 300),
       relative_position: cleanText(source.relative_position || source.position || source.relation || '', 240),
       required: source.required !== false,
-      visible_in_views: (Array.isArray(source.visible_in_views) ? source.visible_in_views : VIEW_KEYS)
-        .map(value => cleanText(value, 40)).filter(value => VIEW_KEYS.includes(value)),
+      visible_in_views: (Array.isArray(source.visible_in_views) ? source.visible_in_views : REFERENCE_VIEW_KEYS)
+        .map(value => cleanText(value, 40)).filter(value => REFERENCE_VIEW_KEYS.includes(value)),
     };
   }).filter(item => item.label).slice(0, 24);
 }
@@ -59,8 +60,8 @@ function normalizeZones(input = []) {
       tags: stringList(source.tags || source.allowed_actions || [], 12, 80),
       normalized_box: box.length === 4 && box.every(Number.isFinite)
         ? box.map(value => Math.max(0, Math.min(1, value))) : [],
-      visible_in_views: (Array.isArray(source.visible_in_views) ? source.visible_in_views : VIEW_KEYS)
-        .map(value => cleanText(value, 40)).filter(value => VIEW_KEYS.includes(value)),
+      visible_in_views: (Array.isArray(source.visible_in_views) ? source.visible_in_views : REFERENCE_VIEW_KEYS)
+        .map(value => cleanText(value, 40)).filter(value => REFERENCE_VIEW_KEYS.includes(value)),
     };
   }).filter(item => item.label).slice(0, 24);
 }
@@ -88,7 +89,7 @@ function score(value) {
 }
 
 function firstScore(input = {}, keys = []) {
-  const containers = [input, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
+  const containers = [input, input.cross_view_qa, input.requirement_qa, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
   for (const container of containers) {
     for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(container, key) && Number.isFinite(Number(container[key]))) {
@@ -100,24 +101,73 @@ function firstScore(input = {}, keys = []) {
 }
 
 function hasRequiredScores(input = {}, fields = []) {
-  const containers = [input, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
+  const containers = [input, input.cross_view_qa, input.requirement_qa, input.scores, input.quality_dimensions, input.metrics].filter(Boolean);
   return fields.every(aliases => containers.some(container => aliases.some(key =>
     Object.prototype.hasOwnProperty.call(container, key) && Number.isFinite(Number(container[key]))
   )));
+}
+
+function normalizeRequestedTopology(input = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  return {
+    mode: cleanText(source.mode || 'auto', 40),
+    seam_policy: cleanText(source.seam_policy || source.seamPolicy || 'auto', 40),
+    finish_distribution: cleanText(source.finish_distribution || source.finishDistribution || 'auto', 60),
+    notes: cleanText(source.notes || '', 500),
+  };
+}
+
+function normalizeRequirementQa(input = {}) {
+  const reasons = stringList(input.mismatch_reasons || input.requirement_mismatch_reasons || [], 20, 300);
+  const qa = {
+    pass: false,
+    layout_match_score: score(firstScore(input, ['layout_match_score', 'layout_fidelity_score', 'layout_match'])),
+    material_light_match_score: score(firstScore(input, ['material_light_match_score', 'material_requirement_score', 'material_light_match'])),
+    interaction_match_score: score(firstScore(input, ['interaction_match_score', 'interaction_space_score', 'interaction_match'])),
+    surface_topology_match_score: score(firstScore(input, ['surface_topology_match_score', 'topology_match_score', 'surface_topology_match'])),
+    negative_compliance_score: score(firstScore(input, ['negative_compliance_score', 'forbidden_compliance_score', 'negative_compliance'])),
+    mismatch_reasons: reasons,
+  };
+  qa.pass = input.pass === true
+    && qa.layout_match_score >= 0.75
+    && qa.material_light_match_score >= 0.75
+    && qa.interaction_match_score >= 0.7
+    && qa.surface_topology_match_score >= 0.8
+    && qa.negative_compliance_score >= 0.9
+    && reasons.length === 0;
+  return qa;
+}
+
+function buildLayoutContract(input = {}, options = {}) {
+  const layoutView = (options.views || []).find(view => cleanText(view?.key || view?.view || '', 40) === 'layout');
+  return {
+    required: options.layoutRequired === true || !!layoutView,
+    status: layoutView ? 'available' : (options.layoutRequired === true ? 'missing' : 'not_required'),
+    mode: layoutView ? 'topdown_or_axonometric_reference' : 'topology_contract',
+    reference_image_url: cleanText(layoutView?.url || layoutView?.image_url || '', 1000),
+    zones: normalizeZones(input.zones || input.spatial_zones || []),
+    anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
+    camera_path: stringList(input.camera_path || input.camera_paths || [], 16, 240),
+  };
 }
 
 function normalizeContract(input = {}, options = {}) {
   const requested = options.requested || {};
   const views = options.views || [];
   const sourceQa = input.cross_view_qa && typeof input.cross_view_qa === 'object' ? input.cross_view_qa : input;
+  const hasExplicitRequirementQa = input.requirement_qa && typeof input.requirement_qa === 'object';
+  const sourceRequirementQa = hasExplicitRequirementQa ? input.requirement_qa : input;
   const contract = {
-    schema_version: 1,
+    schema_version: 2,
     scene_id: cleanText(options.sceneId || input.scene_id, 120),
     scene_revision: Math.max(1, Number(options.revision || input.scene_revision || 1) || 1),
     status: cleanText(input.status || 'verified', 40),
     requested_layout: cleanText(requested.layout || input.requested_layout || '', 1000),
     requested_material_light: cleanText(requested.material_light || input.requested_material_light || '', 1000),
     requested_interaction: cleanText(requested.interaction || input.requested_interaction || '', 800),
+    requested_style: cleanText(requested.style || input.requested_style || '', 800),
+    requested_negative: cleanText(requested.negative || input.requested_negative || '', 1000),
+    requested_surface_topology: normalizeRequestedTopology(requested.surface_topology || input.requested_surface_topology || {}),
     observed_summary: cleanText(input.observed_summary || input.summary || '', 1200),
     anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
     zones: normalizeZones(input.zones || input.spatial_zones || []),
@@ -137,13 +187,31 @@ function normalizeContract(input = {}, options = {}) {
       material_consistency_score: score(firstScore(sourceQa, ['material_consistency_score', 'material_match_score', 'material_fidelity', 'material_consistency'])),
       mismatch_reasons: stringList(sourceQa.mismatch_reasons || [], 20, 300),
     },
+    requirement_qa: hasExplicitRequirementQa
+      ? normalizeRequirementQa(sourceRequirementQa)
+      : (input.status === 'verified' && sourceQa.pass === true
+        ? {
+          pass: true,
+          layout_match_score: 1,
+          material_light_match_score: 1,
+          interaction_match_score: 1,
+          surface_topology_match_score: 1,
+          negative_compliance_score: 1,
+          mismatch_reasons: [],
+          legacy_assumed: true,
+        }
+        : normalizeRequirementQa(sourceRequirementQa)),
     verified_at: new Date().toISOString(),
   };
   const qa = contract.cross_view_qa;
   qa.pass = sourceQa.pass === true && qa.scene_consistency_score >= 0.72
     && qa.geometry_consistency_score >= 0.68 && qa.material_consistency_score >= 0.72;
   const unavailable = input.qa_unavailable === true || input.verification?.state === 'unavailable';
-  contract.status = unavailable ? 'unverified' : (qa.pass ? 'verified' : 'rejected');
+  contract.layout_contract = buildLayoutContract(input, {
+    views,
+    layoutRequired: options.layoutRequired === true || input.layout_contract?.required === true,
+  });
+  contract.status = unavailable ? 'unverified' : (qa.pass && contract.requirement_qa.pass ? 'verified' : 'rejected');
   if (unavailable) {
     contract.qa_unavailable = true;
     contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
@@ -155,13 +223,19 @@ function normalizeContract(input = {}, options = {}) {
     requested_layout: contract.requested_layout,
     requested_material_light: contract.requested_material_light,
     requested_interaction: contract.requested_interaction,
+    requested_style: contract.requested_style,
+    requested_negative: contract.requested_negative,
+    requested_surface_topology: contract.requested_surface_topology,
     cameras: contract.cameras.map(camera => ({ view_id: camera.view_id, reference_image_url: camera.reference_image_url })),
   })).digest('hex');
   contract.verification = unavailable
     ? (input.verification || verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error }))
-    : (qa.pass
+    : (qa.pass && contract.requirement_qa.pass
       ? verification.verified(input.vision_model || '')
-      : verification.rejected(qa.mismatch_reasons, '场景空间、结构或材质一致性未通过'));
+      : verification.rejected(
+        [...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons],
+        contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求',
+      ));
   return contract;
 }
 
@@ -180,6 +254,15 @@ function buildUnverifiedContract(options = {}, error = null) {
     material_consistency_score: null,
     mismatch_reasons: [],
   };
+  contract.requirement_qa = {
+    pass: null,
+    layout_match_score: null,
+    material_light_match_score: null,
+    interaction_match_score: null,
+    surface_topology_match_score: null,
+    negative_compliance_score: null,
+    mismatch_reasons: [],
+  };
   return contract;
 }
 
@@ -192,18 +275,22 @@ async function analyzeSceneViews(options = {}) {
     systemPrompt: [
       'You are a strict scene continuity and spatial-geometry inspector for a general-purpose commercial video system.',
       'Analyze only the supplied images and current request. Never assume a fixed industry, location, person or object.',
-      'Return JSON only. Images are ordered master, reverse/side, interaction position and detail.',
+      'Evaluate two independent gates: requirement fidelity to the user request, and cross-view consistency between generated references.',
+      'Return JSON only. Images are ordered master, reverse/side, interaction position, detail, with an optional fifth top-down/axonometric layout reference.',
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
-      + 'Extract the actual generated space and verify all views belong to one physically coherent scene. '
+      + 'First verify that the generated scene obeys the requested layout, material/light, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
-      + 'scene_consistency_score, geometry_consistency_score and material_consistency_score as REQUIRED EVALUATED numbers from 0 to 1; '
-      + 'mismatch_reasons string array; anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
+      + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
+      + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
+      + 'Overall pass may be true only when both requirement_qa.pass and cross_view_qa.pass are true. Use concise Simplified Chinese for every mismatch reason. '
+      + 'anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
       + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
       + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
       + 'geometry_facts string array; materials string array; lighting object; cameras object array. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
-      + 'Fail when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
+      + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
+      + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
       + 'Do not fail merely because camera perspective changes.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
     maxTokens: 5000,
@@ -215,14 +302,21 @@ async function analyzeSceneViews(options = {}) {
     ['geometry_consistency_score', 'anchor_consistency_score', 'spatial_consistency', 'geometry_consistency'],
     ['material_consistency_score', 'material_match_score', 'material_fidelity', 'material_consistency'],
   ];
-  if (!hasRequiredScores(parsed, sceneScoreFields)) {
+  const requirementScoreFields = [
+    ['layout_match_score', 'layout_fidelity_score', 'layout_match'],
+    ['material_light_match_score', 'material_requirement_score', 'material_light_match'],
+    ['interaction_match_score', 'interaction_space_score', 'interaction_match'],
+    ['surface_topology_match_score', 'topology_match_score', 'surface_topology_match'],
+    ['negative_compliance_score', 'forbidden_compliance_score', 'negative_compliance'],
+  ];
+  if (!hasRequiredScores(parsed, sceneScoreFields) || !hasRequiredScores(parsed, requirementScoreFields)) {
     result = await modelGateway.generateVision({
       ...request,
-      userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact schema with all three numeric scores from 0 to 1.',
+      userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact nested requirement_qa and cross_view_qa schema with every numeric score from 0 to 1.',
     });
     parsed = safeJson(result.text);
   }
-  if (!hasRequiredScores(parsed, sceneScoreFields)) {
+  if (!hasRequiredScores(parsed, sceneScoreFields) || !hasRequiredScores(parsed, requirementScoreFields)) {
     const error = new Error('场景视觉 QA 返回结构缺少必需评分字段');
     error.code = 'VISION_QA_SCHEMA_INVALID';
     error.retryable = true;
@@ -233,11 +327,15 @@ async function analyzeSceneViews(options = {}) {
     revision: options.revision,
     views,
     requested,
+    layoutRequired: options.layoutRequired === true,
   });
   contract.vision_model = result.used_model || '';
   contract.verification = contract.status === 'verified'
     ? verification.verified(result.used_model)
-    : verification.rejected(contract.cross_view_qa.mismatch_reasons, '场景空间、结构或材质一致性未通过');
+    : verification.rejected(
+      [...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons],
+      contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求',
+    );
   return contract;
 }
 
@@ -417,11 +515,13 @@ async function reviewKeyframe(options = {}) {
 
 module.exports = {
   VIEW_KEYS,
+  REFERENCE_VIEW_KEYS,
   analyzeSceneViews,
   buildUnverifiedContract,
   normalizeContract,
   normalizeAnchors,
   normalizeZones,
+  normalizeRequirementQa,
   keyframeSceneContract,
   staticShotContract,
   normalizeKeyframeQa,

@@ -2095,6 +2095,12 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   border: 1px solid rgba(249, 115, 22, .42);
   background: rgba(249, 115, 22, .1);
 }
+.dh-nsa-verification-hint {
+  flex: 1 1 240px;
+  color: var(--dh-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .dh-nsa-verification-details {
   display: grid;
   gap: 4px;

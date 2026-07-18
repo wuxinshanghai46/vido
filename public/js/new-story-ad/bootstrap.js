@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260718-person-assist-fix-v1';
+  const SCRIPT_VERSION = '20260718-verification-closure-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

@@ -4,6 +4,7 @@
     reverse: '反向/侧向',
     interaction: '互动位',
     detail: '材质细节',
+    layout: '俯视布局',
   };
 
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
@@ -12,23 +13,30 @@
   function verificationView(asset = {}) {
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const qa = asset.cross_view_qa || contract.cross_view_qa || {};
+    const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
     const details = asset.verification || contract.verification || {};
     const reasons = [...new Set([
       ...(Array.isArray(details.reasons) ? details.reasons : []),
       ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
+      ...(Array.isArray(requirementQa.mismatch_reasons) ? requirementQa.mismatch_reasons : []),
     ].map(value => clean(value, 240)).filter(Boolean))].slice(0, 6);
     const scores = [
       ['空间', qa.scene_consistency_score],
       ['结构', qa.geometry_consistency_score || qa.anchor_consistency_score],
       ['材质', qa.material_consistency_score || qa.material_match_score],
+      ['需求布局', requirementQa.layout_match_score],
+      ['需求材质/光线', requirementQa.material_light_match_score],
+      ['互动空间', requirementQa.interaction_match_score],
+      ['表面结构', requirementQa.surface_topology_match_score],
+      ['禁止项', requirementQa.negative_compliance_score],
     ].map(([label, value]) => ({ label, value: Number(value) }))
       .filter(item => Number.isFinite(item.value) && item.value > 0)
       .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
-    if (contract.status === 'verified' && qa.pass === true) {
-      return { tone: 'verified', label: '空间锁已验证', message: details.message || '当前场景版本已通过空间一致性验证', reasons: [], scores };
+    if (contract.status === 'verified' && qa.pass === true && requirementQa.pass === true) {
+      return { tone: 'verified', label: '空间锁已验证', message: details.message || '当前场景版本已通过需求符合度与跨视图一致性验证', reasons: [], scores };
     }
     if (contract.status === 'rejected') {
-      return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '空间结构、材质或固定元素不一致', reasons, scores };
+      return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '场景未满足原始要求或跨视图不一致', reasons, scores };
     }
     if (details.state === 'unavailable' || contract.qa_unavailable === true) {
       return { tone: 'unavailable', label: '场景验证异常', message: details.message || '视觉审核暂时不可用，请稍后重试', reasons };
@@ -58,6 +66,20 @@
         notes: value('surfaceTopology.notes'),
       },
     };
+  }
+
+  function requiresLayoutView(spec = {}) {
+    const text = [spec.layoutText, spec.interactionText, spec.surfaceTopology?.notes].filter(Boolean).join(' ');
+    if (/俯视|俯拍|鸟瞰|顶视|平面图|轴测|空间全貌|top.?down|bird.?s.?eye|floor.?plan|axonometric/i.test(text)) return true;
+    if (/多区域|多个区域|跨区域|多入口|多个入口|双入口|多空间|多个空间|长运镜|连续穿行|跨区走位/i.test(text)) return true;
+    const zoneHints = text.match(/主展示区|展示区|互动区|行动区|操作区|接待区|入口区|出口区|通道|走廊|前厅|后场|工作区|休息区|厨房|客厅/g) || [];
+    return new Set(zoneHints).size >= 3 && /动线|路径|走位|穿行|进入|离开|绕行|连续摄影机/i.test(text);
+  }
+
+  function averagePercent(qa = {}, keys = []) {
+    const values = keys.map(key => Number(qa?.[key])).filter(Number.isFinite);
+    if (!values.length) return 0;
+    return Math.round((values.reduce((sum, value) => sum + Math.max(0, Math.min(1, value)), 0) / values.length) * 100);
   }
 
   function applySpecSuggestion(spec = {}) {
@@ -153,6 +175,8 @@
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
       scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : null,
       cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
+      requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
+      layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
     };
   }
 
@@ -191,7 +215,7 @@
     const completed = Math.max(0, Math.min(total, Number(progress.completed || 0) || 0));
     const current = Math.max(1, Math.min(total, Number(progress.current || completed + 1) || 1));
     const pct = Math.max(8, Math.min(96, Math.round(Number(progress.percent || ((completed / total) * 100)) || 18)));
-    const viewLabel = ['主视角', '反向/侧向', '互动位', '材质细节'][current - 1] || `视角 ${current}`;
+    const viewLabel = ['主视角', '反向/侧向', '互动位', '材质细节', '俯视布局'][current - 1] || `视角 ${current}`;
     return {
       pct,
       completed,
@@ -214,7 +238,7 @@
         <div class="dh-nsa-scene-body">
           <div class="dh-lux-person-progress">
             <div class="dh-lux-person-progress-head">
-              <b>正在生成场景四视图：第 ${view.current}/${view.total} 张</b>
+              <b>正在生成场景参考：第 ${view.current}/${view.total} 张</b>
               <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
             </div>
             <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
@@ -228,8 +252,8 @@
       host.innerHTML = `<div class="dh-nsa-scene-card is-empty">
         <div class="dh-nsa-scene-thumb">空间</div>
         <div class="dh-nsa-scene-body">
-          <b>未生成场景四视图</b>
-          <span>可在生成剧本前先锁定当前任务的空间布局、材质和光线；不需要固定空间的任务可以跳过。</span>
+          <b>未生成场景参考</b>
+          <span>可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。</span>
         </div>
       </div>`;
       return;
@@ -239,10 +263,15 @@
     const asset = assets[selectedIndex];
     const views = asset.view_images || [];
     const mainUrl = asset.url || asset.image_url || views[0]?.url || views[0]?.image_url || '';
-    const qa = asset.cross_view_qa || asset.scene_contract?.cross_view_qa || {};
-    const qaPassed = qa.pass === true;
+    const contract = asset.scene_contract || {};
+    const qa = asset.cross_view_qa || contract.cross_view_qa || {};
+    const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
+    const qaPassed = contract.status === 'verified' && qa.pass === true && requirementQa.pass === true;
     const qaScore = Number(qa.scene_consistency_score || 0);
+    const requirementScore = averagePercent(requirementQa, ['layout_match_score', 'material_light_match_score', 'interaction_match_score', 'surface_topology_match_score', 'negative_compliance_score']);
+    const crossViewScore = averagePercent(qa, ['scene_consistency_score', 'geometry_consistency_score', 'material_consistency_score']);
     const sceneVerification = verificationView(asset);
+    const canReverify = !qaPassed && ['unavailable', 'unverified'].includes(sceneVerification.tone);
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
@@ -260,13 +289,13 @@
           <div class="dh-nsa-scene-head">
             <div>
               <b>${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}</b>
-              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`, qaScore ? `空间一致性 ${Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
+              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`, requirementScore ? `需求符合度 ${requirementScore}%` : '', crossViewScore || qaScore ? `跨视图一致性 ${crossViewScore || Math.round(qaScore * 100)}%` : ''].filter(Boolean).join(' · '))}</span>
             </div>
             <em>${escapeHtml(sceneVerification.label)}</em>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">未验证场景不会进入关键帧</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">重新验证</button></div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">未验证场景不会进入关键帧</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${sceneVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改场景设定后重新生成当前场景，失败图片已保留供对照</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
-            ${views.slice(0, 4).map((view, index) => {
+            ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
               return `<button type="button" class="dh-nsa-scene-view" data-nsa-scene-preview="${selectedIndex}:${index}">
                 ${url ? `<img src="${escapeHtml(thumbUrl(url, 360))}" alt="${escapeHtml(view.label || `视角 ${index + 1}`)}" loading="lazy" decoding="async">` : ''}
@@ -311,14 +340,23 @@
     append = false,
   } = {}) {
     if (!state || typeof ensureTask !== 'function' || typeof api !== 'function') return false;
-    const label = append ? '追加场景四视图中...' : '生成场景四视图中...';
-    const stages = [
-      { at: 0, percent: 10, completed: 0, current: 1, message: '已完成 0/4 张，正在生成第 1/4 张：主视角。' },
-      { at: 2500, percent: 28, completed: 0, current: 1, message: '已完成 0/4 张，正在生成第 1/4 张：主视角。' },
-      { at: 8500, percent: 52, completed: 1, current: 2, message: '已完成 1/4 张，正在生成第 2/4 张：反向/侧向。' },
-      { at: 15000, percent: 74, completed: 2, current: 3, message: '已完成 2/4 张，正在生成第 3/4 张：互动位。' },
-      { at: 21500, percent: 88, completed: 3, current: 4, message: '已完成 3/4 张，正在生成第 4/4 张：材质细节。' },
-    ];
+    const sceneSpec = specPayload();
+    const layoutRequired = requiresLayoutView(sceneSpec);
+    const totalViews = layoutRequired ? 5 : 4;
+    const label = append ? '追加场景参考中...' : '生成场景参考中...';
+    const stageLabels = ['主视角', '反向/侧向', '互动位', '材质细节', '俯视布局'].slice(0, totalViews);
+    const stages = [{ at: 0, percent: 10, completed: 0, current: 1 }];
+    stageLabels.forEach((viewLabel, index) => {
+      if (index === 0) return;
+      stages.push({
+        at: 2500 + ((index - 1) * 7000),
+        percent: Math.min(92, 24 + (index * Math.round(68 / totalViews))),
+        completed: index,
+        current: index + 1,
+        message: `已完成 ${index}/${totalViews} 张，正在生成第 ${index + 1}/${totalViews} 张：${viewLabel}。`,
+      });
+    });
+    stages[0].message = `已完成 0/${totalViews} 张，正在生成第 1/${totalViews} 张：主视角。`;
     const setProgressStage = () => {
       const start = state.sceneGenerationProgress?.startedAt || Date.now();
       const elapsed = Date.now() - start;
@@ -326,13 +364,13 @@
       stages.forEach(item => { if (elapsed >= item.at) stage = item; });
       state.sceneGenerationProgress = {
         active: true,
-        total: 4,
+        total: totalViews,
         startedAt: start,
         ...stage,
       };
       renderAll?.();
     };
-    state.sceneGenerationProgress = { active: true, total: 4, percent: 10, completed: 0, current: 1, startedAt: Date.now(), message: stages[0].message };
+    state.sceneGenerationProgress = { active: true, total: totalViews, percent: 10, completed: 0, current: 1, startedAt: Date.now(), message: stages[0].message };
     const timer = setInterval(setProgressStage, 1000);
     setBusy?.(true, label);
     setButtonBusy?.(button, true, label);
@@ -346,7 +384,8 @@
         method: 'POST',
         body: {
           ...body,
-          scene_spec: specPayload(),
+          scene_spec: sceneSpec,
+          include_layout_view: layoutRequired,
           scene_assets: payload(state),
           scene_id: append ? undefined : (currentAsset?.scene_id || currentAsset?.id || undefined),
           lock_strength: 'standard',
@@ -360,12 +399,19 @@
       state.sceneSelectedIndex = append ? Math.max(0, state.sceneAssets.length - 1) : currentIndex;
       state.sceneGenerationProgress = null;
       renderAll?.();
-      toast?.(append ? '新场景四视图已追加并绑定当前任务' : '当前场景四视图已生成并绑定当前任务', 'success');
+      const updatedAsset = state.sceneAssets[state.sceneSelectedIndex] || {};
+      const verificationResult = verificationView(updatedAsset);
+      toast?.(
+        verificationResult.tone === 'verified'
+          ? (append ? '新场景参考已生成、自动验证并绑定当前任务' : '当前场景参考已生成、自动验证并绑定当前任务')
+          : (verificationResult.message || verificationResult.label),
+        verificationResult.tone === 'verified' ? 'success' : (verificationResult.tone === 'unavailable' ? 'warning' : 'error'),
+      );
       return true;
     } catch (err) {
       state.sceneGenerationProgress = null;
       renderAll?.();
-      toast?.(err.message || '场景四视图生成失败', 'error');
+      toast?.(err.message || '场景参考生成失败', 'error');
       return false;
     } finally {
       clearInterval(timer);
@@ -398,6 +444,7 @@
     normalizeAssets,
     thumbUrl,
     specPayload,
+    requiresLayoutView,
     applySpec,
     clearSpecInputs,
     applySpecSuggestion,

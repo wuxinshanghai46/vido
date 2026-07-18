@@ -15,6 +15,7 @@ function sceneViewLabel(key = '') {
     reverse: '反向/侧向',
     interaction: '互动位',
     detail: '材质细节',
+    layout: '俯视布局',
   }[key] || key || '场景视角';
 }
 
@@ -67,6 +68,8 @@ function normalizeSceneAsset(asset = {}, index = 0) {
       })
       : null,
     cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
+    requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
+    layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
     created_at: asset.created_at || new Date().toISOString(),
@@ -163,6 +166,12 @@ function relinkContractViews(contract = null, views = []) {
       ...camera,
       reference_image_url: viewMap.get(String(camera.view_id || '')) || camera.reference_image_url || '',
     })) : contract.cameras,
+    layout_contract: contract.layout_contract && typeof contract.layout_contract === 'object'
+      ? {
+        ...contract.layout_contract,
+        reference_image_url: viewMap.get('layout') || contract.layout_contract.reference_image_url || '',
+      }
+      : contract.layout_contract,
   };
 }
 
@@ -193,6 +202,7 @@ function buildDerivedViewPrompt(masterPrompt = '', viewKey = '') {
     reverse: 'Generate a reverse or side camera view of the exact same physical space. Preserve every fixed structure, opening, anchor object, material, color, light source and relative position. Reveal a geometrically plausible opposite/side relation; do not redesign the room.',
     interaction: 'Generate an interaction-position camera view inside the exact same physical space. Preserve fixed structures and anchor positions. Choose a practical empty standing/display/action zone for later adding the current task subject, but do not add any person or replace the environment.',
     detail: 'Generate a close material and construction-detail view taken inside the exact same physical space. Use only materials, seams, fixtures and colors visibly supported by the master reference. Do not invent a new wall system or decorative composition.',
+    layout: 'Generate a high-angle orthographic top-down or axonometric whole-space reference of the exact same physical scene. Preserve every opening, fixed structure, zone, anchor object and relative position. This is a technical spatial continuity reference, not a new design and not a commercial camera shot.',
   }[viewKey] || 'Generate another camera view of the exact same physical space without redesigning it.';
   return [
     instruction,
@@ -203,6 +213,21 @@ function buildDerivedViewPrompt(masterPrompt = '', viewKey = '') {
   ].filter(Boolean).join('\n\n');
 }
 
+function needsLayoutView(requested = {}, body = {}) {
+  if (body.include_layout_view === true || body.includeLayoutView === true) return true;
+  const text = [
+    requested.layout,
+    requested.interaction,
+    requested.surface_topology?.notes,
+    body.description,
+  ].filter(Boolean).join(' ');
+  if (/俯视|俯拍|鸟瞰|顶视|平面图|轴测|空间全貌|top.?down|bird.?s.?eye|floor.?plan|axonometric/i.test(text)) return true;
+  if (/多区域|多个区域|跨区域|多入口|多个入口|双入口|多空间|多个空间|长运镜|连续穿行|跨区走位/i.test(text)) return true;
+  const zoneHints = text.match(/主展示区|展示区|互动区|行动区|操作区|接待区|入口区|出口区|通道|走廊|前厅|后场|工作区|休息区|厨房|客厅/g) || [];
+  const movement = /动线|路径|走位|穿行|进入|离开|绕行|连续摄影机/i.test(text);
+  return new Set(zoneHints).size >= 3 && movement;
+}
+
 function sceneRequest(ctx = {}, body = {}) {
   const spec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
   return {
@@ -210,6 +235,8 @@ function sceneRequest(ctx = {}, body = {}) {
     material_light: cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000),
     interaction: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800),
     surface_topology: shotDesign.normalizeSurfaceTopology(spec.surfaceTopology || spec.surface_topology),
+    style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
+    negative: cleanText(spec.negativeText || spec.negative_text || body.negative || ctx.controlled_production?.negative_control?.text || '', 1000),
   };
 }
 
@@ -248,9 +275,12 @@ async function generateSceneAsset(taskId, body = {}) {
   const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
+  const requested = sceneRequest(ctx, body);
+  const layoutRequired = needsLayoutView(requested, body);
+  const requiredViewKeys = layoutRequired ? [...SCENE_VIEW_KEYS, 'layout'] : SCENE_VIEW_KEYS;
   const viewAcquisition = sceneViewStrategy.resolveSceneViewStrategy({
     requested: body.view_strategy || body.viewStrategy || 'auto',
-    requiredViews: SCENE_VIEW_KEYS,
+    requiredViews: requiredViewKeys,
     uploadedViewCount: Array.isArray(body.view_images) ? body.view_images.length : 0,
     videoAcquisitionEnabled: false,
   });
@@ -296,7 +326,28 @@ async function generateSceneAsset(taskId, body = {}) {
       provider_used: generated.provider_used,
     }, viewImages.length));
   }
-  const requested = sceneRequest(ctx, body);
+  if (layoutRequired) {
+    cancellation.throwIfCancelled(taskId);
+    const generated = await mediaAdapter.generateImage({
+      taskId,
+      stage: 'new_story_ad.scene_asset',
+      prompt: buildDerivedViewPrompt(prompt, 'layout'),
+      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_' + Date.now(),
+      aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+      resolution: body.resolution || '2K',
+      imageModel: body.image_model || body.imageModel || 'auto',
+      referenceImages: [master.url || master.image_url],
+      requireReferences: true,
+      inputFidelity: 'high',
+    });
+    viewImages.push(normalizeSceneView({
+      key: 'layout',
+      label: sceneViewLabel('layout'),
+      url: generated.url || generated.image_url,
+      image_url: generated.image_url || generated.url,
+      provider_used: generated.provider_used,
+    }, viewImages.length));
+  }
   const contractOptions = {
     taskId,
     sceneId,
@@ -307,6 +358,7 @@ async function generateSceneAsset(taskId, body = {}) {
       image_url: mediaAdapter.absolutePublicImageUrl(view.image_url || view.url),
     })),
     requested,
+    layoutRequired,
   };
   let sceneContract = null;
   try {
@@ -318,13 +370,6 @@ async function generateSceneAsset(taskId, body = {}) {
     // explicitly unverified and can be rechecked later; it is never mislabeled
     // as having passed commercial visual QA.
     sceneContract = sceneSpace.buildUnverifiedContract(contractOptions, error);
-  }
-  if (sceneContract.qa_unavailable !== true && !sceneContract.cross_view_qa?.pass) {
-    const error = new Error('场景多视图空间一致性未通过：' + (sceneContract.cross_view_qa?.mismatch_reasons || []).join('；'));
-    error.code = 'SCENE_CROSS_VIEW_MISMATCH';
-    error.retryable = true;
-    error.partial = { scene_id: sceneId, scene_revision: revision, scene_contract: sceneContract };
-    throw error;
   }
   const localizedViews = await localizeSceneViews(viewImages, { taskId, sceneId, revision });
   sceneContract = relinkContractViews(sceneContract, localizedViews);
@@ -359,14 +404,25 @@ async function generateSceneAsset(taskId, body = {}) {
     prompt,
     scene_contract: sceneContract,
     cross_view_qa: sceneContract.cross_view_qa,
+    requirement_qa: sceneContract.requirement_qa,
+    layout_contract: sceneContract.layout_contract,
     verification: sceneContract.verification,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
   saveSceneAssetsToTask(taskId, sceneAssets);
+  if (sceneContract.status !== 'verified') {
+    storage.saveStage(taskId, 'scene_asset', {
+      status: sceneContract.qa_unavailable === true ? 'warning' : 'review',
+      output_summary: sceneContract.qa_unavailable === true
+        ? '场景参考已保存，视觉验证服务暂不可用'
+        : '场景参考已保存，但需求符合度或跨视图一致性未通过',
+    });
+  }
   return {
     scene_asset: asset,
     scene_assets: sceneAssets,
     provider_used: providerUsed,
+    verification_status: sceneContract.status,
   };
 }
 
@@ -405,7 +461,9 @@ async function reverifySceneAsset(taskId, sceneId) {
       interaction: asset.interaction_summary || '',
       style: asset.style_summary || '',
       negative: asset.negative || '',
+      surface_topology: asset.surface_topology || {},
     },
+    layoutRequired: asset.layout_contract?.required === true || views.some(view => view.key === 'layout'),
   };
   let contract;
   try {
@@ -418,6 +476,8 @@ async function reverifySceneAsset(taskId, sceneId) {
     ...asset,
     scene_contract: contract,
     cross_view_qa: contract.cross_view_qa,
+    requirement_qa: contract.requirement_qa,
+    layout_contract: contract.layout_contract,
     verification: contract.verification,
   };
   saveSceneAssetsToTask(taskId, assets);
@@ -428,6 +488,7 @@ module.exports = {
   SCENE_VIEW_KEYS,
   sceneViewLabel,
   buildSceneSheetPrompt,
+  needsLayoutView,
   normalizeSceneAssets,
   localizeSceneViews,
   localizeSceneAssets,

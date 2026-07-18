@@ -20,6 +20,7 @@ const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets } = requi
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService');
 const personIdentity = require('./personIdentityContractService');
+const personAssetLifecycle = require('./personAssetLifecycleService');
 const productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
@@ -516,8 +517,17 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const scope = savingProgress && hasActiveGeneration
     ? 'none'
     : revisionService.changeScope(previousCtx, builtCtx, body.change_scope || body.changeScope || '');
+  const keepVerifiedPerson = personAssetLifecycle.contractMatchesInput(
+    previousCtx.person_contract || previousCtx.person_asset?.person_contract,
+    builtCtx.person_asset,
+    builtCtx.person_spec || {},
+  );
   let ctx = revisionService.applyRevisions(previousCtx, builtCtx, scope);
-  if (scope === 'person' || scope === 'source') ctx.person_contract = null;
+  if (scope === 'person' || scope === 'source') {
+    ctx.person_contract = keepVerifiedPerson
+      ? personAssetLifecycle.carryContract(previousCtx.person_contract || previousCtx.person_asset?.person_contract, ctx.revisions?.person)
+      : null;
+  }
   if (scope === 'product' || scope === 'source') ctx.product_contract = null;
   ctx = withAssetContracts(ctx);
   let invalidated = [];
@@ -3700,6 +3710,7 @@ module.exports = {
   assertTaskOwner,
   createTask,
   updateTaskRequest,
+  commitGeneratedPersonAsset: personAssetLifecycle.commitGeneratedPersonAsset,
   updateBlueprint,
   updateStoryboardTable,
   generateSceneConfig,

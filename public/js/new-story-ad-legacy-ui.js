@@ -723,6 +723,8 @@
       extra_image_urls: urls.slice(1),
       view_images: Array.isArray(asset.view_images) ? asset.view_images : [],
       view_count: asset.view_count || asset.view_images?.length || urls.length || 1,
+      person_revision: asset.person_revision || asset.person_contract?.person_revision || 1,
+      person_contract: asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : null,
       description: asset.spec_description || asset.description || personDescription(),
     };
   }
@@ -1439,6 +1441,7 @@
     const verificationStatus = personContract?.status || (asset.production_usable_actor === true ? 'legacy_unverified' : 'unverified');
     const verified = verificationStatus === 'verified' && personContract?.cross_view_qa?.pass === true;
     const personVerification = verificationView(personContract, 'cross_view_qa', '人物');
+    const canReverifyPerson = !verified && ['unavailable', 'unverified'].includes(personVerification.tone);
     const meta = [
       actorReferenceLabel(asset),
       actorId ? '已绑定人物参考' : '',
@@ -1473,7 +1476,8 @@
       ${viewStrip}
       <div class="dh-nsa-verification-row">
         <span class="dh-nsa-verification-badge is-${escapeHtml(personVerification.tone)}">${escapeHtml(personVerification.label)}</span>
-        ${!verified && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>重新验证</button>' : ''}
+        ${canReverifyPerson && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>再次验证（不重新生成）</button>' : ''}
+        ${personVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改人物设定后重新生成，当前图片已保留供对照</span>' : ''}
       </div>
       ${verificationDetailsHtml(personVerification)}
       ${warning}
@@ -5279,7 +5283,7 @@
     return {
       layoutText: `围绕当前广告需求建立一个可连续拍摄的真实商业空间：明确主体展示区、人物行动区、前景和背景层次，保证多个镜头能在同一空间内切换视角而不跳场。`,
       materialLightText: `材质、色彩和光线按广告主体定位判断，保持真实摄影质感、自然商业布光和统一色温；材质细节清晰可读，避免廉价棚拍、过度虚化或不相关装饰。`,
-      interactionText: `预留后续可放置人物或商品的空白站位、展示区、近景特写区和移动镜头路径；当前场景四视图必须保持空场景，只表现空间结构、可互动区域和镜头位置，不生成人物。`,
+      interactionText: `预留后续可放置人物或商品的空白站位、展示区、近景特写区和移动镜头路径；当前场景参考必须保持空场景，只表现空间结构、可互动区域和镜头位置，不生成人物。`,
       negativeText: `不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影；不要出现与当前广告需求无关的空间；不要文字水印、品牌乱入、卡通或三维渲染感；不要突然换场景、换材质、换光线方向。`,
     };
   }
@@ -5390,10 +5394,22 @@
       }
       state.personAsset = null;
       state.personGenerationProgress = null;
+      state.pendingChangeScope = 'none';
+      state.context = {
+        ...(state.context || {}),
+        person_spec: generationSpec,
+        person_asset: state.actorAsset,
+        person_contract: state.actorAsset?.person_contract || r.person_contract || null,
+      };
       renderPerson();
       persistPersonAssetToLibrary(state.actorAsset, 'new_story_ad_person_sheet').catch(() => {});
-      await saveCurrentTaskProgress({ silent: true });
-      toast('拟真一致性演员已生成并保存，可用于后续分镜人物一致性锁定', 'success');
+      const verificationResult = verificationView(state.actorAsset?.person_contract || r.person_contract, 'cross_view_qa', '人物');
+      toast(
+        verificationResult.tone === 'verified'
+          ? '拟真一致性演员已生成、自动验证并保存'
+          : (verificationResult.message || verificationResult.label),
+        verificationResult.tone === 'verified' ? 'success' : (verificationResult.tone === 'unavailable' ? 'warning' : 'error'),
+      );
     } catch (err) {
       state.personGenerationProgress = null;
       renderPerson();
@@ -5714,7 +5730,7 @@
         const views = Array.isArray(asset?.view_images) ? asset.view_images : [];
         const entry = views[Number(viewRaw || 0)] || null;
         const url = entry?.url || entry?.image_url || '';
-        if (url) openPreview(withAuthQuery(url), `${asset?.name || '场景四视图'} · ${entry.label || ''}`);
+        if (url) openPreview(withAuthQuery(url), `${asset?.name || '场景参考'} · ${entry.label || ''}`);
         return;
       }
       const sceneSelect = target.closest('[data-nsa-scene-select]');
@@ -5937,7 +5953,7 @@
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
         dhNsaAdGenerateSceneSheet: () => {
-          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景四视图模块未加载，请刷新页面后重试。', 'error');
+          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景参考模块未加载，请刷新页面后重试。', 'error');
           return window.NewStoryAdSceneAssets.generate({
             state,
             ensureTask,
@@ -5953,7 +5969,7 @@
           });
         },
         dhNsaAdAddSceneSheet: () => {
-          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景四视图模块未加载，请刷新页面后重试。', 'error');
+          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景参考模块未加载，请刷新页面后重试。', 'error');
           return window.NewStoryAdSceneAssets.generate({
             state,
             ensureTask,

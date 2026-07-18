@@ -109,7 +109,7 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
   return contract;
 }
 
-async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair } = {}) {
+async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair, qaAttempts = 2 } = {}) {
   const contract = buildPersonContract(asset, spec, { revision });
   const views = personViews(asset);
   if (!force && contract.status === 'verified' && contract.cross_view_qa.pass) return contract;
@@ -135,8 +135,10 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
     contract.verification = verification.unavailable(error);
     return contract;
   }
-  try {
-    const result = await gateway.generateVision({
+  const maxAttempts = Math.max(1, Math.min(3, Number(qaAttempts) || 2));
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await gateway.generateVision({
       taskId,
       stage: 'new_story_ad.person_consistency_qa',
       imageUrls: normalizedReferences.urls,
@@ -148,21 +150,26 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
       userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"mismatch_reasons":string[]}. Reject extra people, inconsistent identity/age/hair/skin/wardrobe/body, watermarks, collage borders or malformed anatomy.`,
       maxTokens: 2200,
     });
-    const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
-    contract.cross_view_qa = normalizeQa({ ...parsed, used_model: result.used_model });
-    contract.status = contract.cross_view_qa.pass ? 'verified' : 'rejected';
-    contract.qa_unavailable = false;
-    contract.verification_error_code = '';
-    contract.verification = contract.cross_view_qa.pass
-      ? verification.verified(result.used_model)
-      : verification.rejected(contract.cross_view_qa.mismatch_reasons, '人物身份、年龄、服装或体态一致性未通过');
-  } catch (error) {
-    if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
-    contract.status = 'unverified';
-    contract.qa_unavailable = true;
-    contract.cross_view_qa = normalizeQa({ pass: false, mismatch_reasons: ['人物视觉验证暂不可用，请稍后重新验证'] });
-    contract.verification_error_code = error.code;
-    contract.verification = verification.unavailable(error);
+      const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
+      contract.cross_view_qa = normalizeQa({ ...parsed, used_model: result.used_model });
+      contract.status = contract.cross_view_qa.pass ? 'verified' : 'rejected';
+      contract.qa_unavailable = false;
+      contract.verification_error_code = '';
+      contract.verification_attempts = attempt;
+      contract.verification = contract.cross_view_qa.pass
+        ? verification.verified(result.used_model)
+        : verification.rejected(contract.cross_view_qa.mismatch_reasons, '人物身份、年龄、服装或体态一致性未通过');
+      break;
+    } catch (error) {
+      if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
+      if (attempt < maxAttempts) continue;
+      contract.status = 'unverified';
+      contract.qa_unavailable = true;
+      contract.cross_view_qa = normalizeQa({ pass: false, mismatch_reasons: ['人物视觉验证暂不可用，请稍后重新验证'] });
+      contract.verification_error_code = error.code;
+      contract.verification_attempts = attempt;
+      contract.verification = verification.unavailable(error);
+    }
   }
   contract.updated_at = new Date().toISOString();
   return contract;
