@@ -93,6 +93,33 @@ function rejectedReverseContract() {
 
 async function main() {
   const originalGenerateVision = modelGateway.generateVision;
+  let visionCalls = 0;
+  const completeDecision = {
+    pass: false,
+    status: 'rejected',
+    observed_summary: 'same scene except interaction view',
+    requirement_qa: { pass: true, layout_match_score: 0.95, material_light_match_score: 0.92, interaction_match_score: 0.9, surface_topology_match_score: 0.94, negative_compliance_score: 0.98, mismatch_reasons: [] },
+    cross_view_qa: { pass: false, scene_consistency_score: 0.4, geometry_consistency_score: 0.4, material_consistency_score: 0.5, mismatch_reasons: ['interaction view differs'] },
+    spatial_coverage_qa: { pass: false, layout_topology_score: 0.9, camera_diversity_score: 0.8, reverse_coverage_score: 0.8, interaction_zone_score: 0.2, reasons: ['interaction zone missing'] },
+  };
+  const truncatedOptionalJson = `${JSON.stringify(completeDecision).slice(0, -1)},"anchors":[{"id":"anchor_1","visible_in`;
+  modelGateway.generateVision = async () => {
+    visionCalls += 1;
+    return { text: `\`\`\`json\n${truncatedOptionalJson}`, used_model: 'mock/truncated-optional-json' };
+  };
+  const salvagedContract = await sceneSpace.analyzeSceneViews({
+    taskId: 'salvaged-json-contract',
+    sceneId: 'salvaged-json-scene',
+    revision: 1,
+    views: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({ key, url: `https://test.invalid/${key}.png` })),
+    requested: {},
+    layoutRequired: true,
+  });
+  assert.equal(visionCalls, 1, 'complete QA gates must be salvaged without another vision request');
+  assert.equal(salvagedContract.status, 'rejected');
+  assert.equal(salvagedContract.cross_view_qa.scene_consistency_score, 0.4);
+  assert.equal(salvagedContract.spatial_coverage_qa.interaction_zone_score, 0.2);
+
   modelGateway.generateVision = async () => ({
     text: '{"pass":true,"requirement_qa":',
     used_model: 'mock/broken-json',
@@ -265,6 +292,7 @@ async function main() {
       regenerated_views: result.scene_asset.repair_history[0].regenerated_view_keys,
       final_space_lock: result.scene_asset.scene_contract.full_space_lock,
       malformed_json_code: 'VISION_QA_SCHEMA_INVALID',
+      truncated_optional_json_salvaged: true,
       preserved_revision_after_qa_failure: unavailableResult.scene_asset.scene_revision,
       reverify_image_calls: calls.length - callsBeforeReverify,
     }, null, 2));

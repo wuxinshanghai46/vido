@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
+const jsonRepair = require('./jsonRepairService');
 const { cleanText } = require('./contextBuilder');
 const verification = require('./visualVerificationService');
 const personIdentity = require('./personIdentityContractService');
@@ -8,13 +9,19 @@ const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REFERENCE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
 
 function safeJson(raw = '') {
-  const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  const text = jsonRepair.stripMarkdown(raw);
   let parseError = null;
-  try { return JSON.parse(text); } catch (error) { parseError = error; }
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try { return JSON.parse(text.slice(start, end + 1)); } catch (error) { parseError = error; }
+  try { return jsonRepair.parseJson(text, 'object'); } catch (error) { parseError = error; }
+  // Some vision providers truncate verbose optional topology arrays even when
+  // the three required QA gates at the start are complete. Salvage that valid
+  // decision prefix locally instead of paying for another vision call or
+  // discarding the generated images. normalizeContract reconstructs cameras
+  // from the five authoritative view URLs when optional details are absent.
+  const optionalStart = text.search(/,\s*"(?:anchors|zones|geometry_facts|materials|lighting|cameras)"\s*:/i);
+  const objectStart = text.indexOf('{');
+  if (objectStart >= 0 && optionalStart > objectStart) {
+    const decisionPrefix = `${text.slice(objectStart, optionalStart).replace(/,\s*$/, '')}\n}`;
+    try { return jsonRepair.parseJson(decisionPrefix, 'object'); } catch (error) { parseError = error; }
   }
   const error = new Error('视觉模型未返回有效 JSON');
   error.code = 'VISION_QA_SCHEMA_INVALID';
@@ -466,7 +473,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
       + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
       + 'For a complete spatial lock, spatial_coverage_qa must fail if the layout/top-down/axonometric reference is missing, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
-      + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes.',
+      + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes. '
+      + 'Keep the complete JSON under 3500 characters. Put requirement_qa, cross_view_qa and spatial_coverage_qa before optional details. Use at most 3 concise reasons per gate, 5 anchors, 3 zones, 8 geometry facts, 5 materials and 5 cameras; keep each description under 80 characters.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
     maxTokens: 5000,
   };
