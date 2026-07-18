@@ -75,7 +75,7 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
     { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
-    { id: 'new_story_ad.scene_asset', name: '场景四视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间四视图，锁定场景布局、材质和光线一致性' },
+    { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间五视图，锁定场景布局、材质和光线一致性' },
     { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
     { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
     { id: 'new_story_ad.tts', name: '5 配音 TTS', type: 'tts', desc: '后续按分镜表生成旁白、对白或字幕配音' },
@@ -117,13 +117,16 @@ const NEW_STORY_AD_TEXT_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 9, enabled: false },
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 10, enabled: false },
 ];
+const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
+  'new_story_ad.person_sheet',
+  'new_story_ad.scene_asset',
+  'new_story_ad.keyframe',
+]);
+const NEW_STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
 const NEW_STORY_AD_IMAGE_DEFAULTS = [
-  { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 1, enabled: true },
-  { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 2, enabled: false },
-  { provider_id: 'deyunai', model_id: 'nano-banana-pro', priority: 3, enabled: false },
-  { provider_id: 'deyunai', model_id: 'nano-banana', priority: 4, enabled: false },
-  { provider_id: 'topview', model_id: 'topview-gpt-image-2', priority: 5, enabled: false },
-  { provider_id: 'jimeng', model_id: 'jimeng_t2i_v30', priority: 6, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gpt-image-2', priority: 1, enabled: true },
+  { provider_id: 'apismile', model_id: 'gpt-image-2', priority: 2, enabled: false },
+  { provider_id: 'webang-maas', model_id: 'gpt-image-2', priority: 3, enabled: false },
 ];
 
 const STAGE_DEFAULTS = {
@@ -390,8 +393,34 @@ const STAGE_DEFAULTS = {
   'imggen.i2v':          [{ provider_id: 'jimeng', model_id: 'jimeng_i2v_first_v30', priority: 1, enabled: true }],
 };
 
+function isNewStoryAdImageStage(stageId = '') {
+  return NEW_STORY_AD_IMAGE_STAGE_IDS.has(String(stageId || '').trim());
+}
+
+function isStageModelAllowed(stageId = '', model = {}) {
+  if (!isNewStoryAdImageStage(stageId)) return true;
+  return String(model.model_id || model.model || '').trim().toLowerCase() === NEW_STORY_AD_REQUIRED_IMAGE_MODEL;
+}
+
+function filterStageModels(stageId = '', models = []) {
+  const list = Array.isArray(models) ? models : [];
+  return list.filter(model => isStageModelAllowed(stageId, model));
+}
+
+function sanitizePipelineConfig(config = {}) {
+  const stages = { ...(config.stages || {}) };
+  for (const stageId of NEW_STORY_AD_IMAGE_STAGE_IDS) {
+    if (!Array.isArray(stages[stageId])) continue;
+    stages[stageId] = filterStageModels(stageId, stages[stageId]).map((model, index) => ({
+      ...model,
+      priority: index + 1,
+    }));
+  }
+  return { stages };
+}
+
 function listDefaults() { return STAGE_DEFAULTS; }
-function getStageDefaults(stageId) { return STAGE_DEFAULTS[stageId] || []; }
+function getStageDefaults(stageId) { return filterStageModels(stageId, STAGE_DEFAULTS[stageId] || []); }
 
 function isStrictPipelineManagedStage(stageId) {
   const id = String(stageId || '').trim();
@@ -446,7 +475,7 @@ function loadConfig() {
   if (dbConfig.enabled && dbConfig.readPrimary) {
     try {
       const c = appKv.get('pipeline_model_config.full', null);
-      if (c) return { stages: c.stages || {} };
+      if (c) return sanitizePipelineConfig(c);
       if (!dbConfig.jsonFallback) return { stages: {} };
     } catch (error) {
       if (!dbConfig.jsonFallback) throw error;
@@ -455,7 +484,7 @@ function loadConfig() {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const c = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-      return { stages: c.stages || {} };
+      return sanitizePipelineConfig(c);
     }
   } catch {}
   return { stages: {} };
@@ -463,7 +492,7 @@ function loadConfig() {
 
 function saveConfig(config) {
   const dbConfig = sqliteConfig.getDbConfig();
-  const normalized = { stages: config.stages || {} };
+  const normalized = sanitizePipelineConfig(config);
   if (dbConfig.enabled) appKv.set('pipeline_model_config.full', normalized);
   if (dbConfig.enabled && dbConfig.readPrimary && !dbConfig.dualWrite) return;
   fs.mkdirSync(path.dirname(CONFIG_FILE), { recursive: true });
@@ -631,6 +660,7 @@ function validateStageModel(stageId, model = {}) {
   const providerId = String(model.provider_id || '').trim();
   const modelId = String(model.model_id || '').trim();
   if (!providerId || !modelId) return { ok: false, reason: 'missing_provider_or_model' };
+  if (!isStageModelAllowed(stageId, model)) return { ok: false, reason: 'stage_requires_gpt_image_2' };
   const provider = _findProviderForRouting(providerId);
   if (!provider) return { ok: false, reason: 'provider_not_enabled_or_missing' };
   if (!_providerAuthReady(providerId, provider)) return { ok: false, reason: 'provider_auth_missing' };
@@ -683,12 +713,16 @@ async function validateStageModelLive(stageId, model = {}, options = {}) {
 }
 
 function setStageConfig(stageId, models) {
-  const autoEnabled = ensureProviderModelsEnabledForStage(models);
+  const input = Array.isArray(models) ? models : [];
+  const allowedInput = filterStageModels(stageId, input);
+  const autoEnabled = ensureProviderModelsEnabledForStage(allowedInput);
   const config = loadConfig();
   config.stages = config.stages || {};
-  const rejected = [];
+  const rejected = input
+    .filter(model => model && model.provider_id && model.model_id && !isStageModelAllowed(stageId, model))
+    .map(model => ({ ...model, reason: 'stage_requires_gpt_image_2' }));
   const seen = new Set();
-  const validated = (models || [])
+  const validated = allowedInput
     .filter(m => m && m.provider_id && m.model_id)
     .filter(m => {
       const key = `${String(m.provider_id).trim().toLowerCase()}/${String(m.model_id).trim().toLowerCase()}`;
@@ -727,15 +761,18 @@ function setStageConfig(stageId, models) {
 }
 
 async function setStageConfigAsync(stageId, models, options = {}) {
-  const autoEnabled = ensureProviderModelsEnabledForStage(models);
+  const input = Array.isArray(models) ? models : [];
+  const allowedInput = filterStageModels(stageId, input);
+  const autoEnabled = ensureProviderModelsEnabledForStage(allowedInput);
   const config = loadConfig();
   config.stages = config.stages || {};
-  const rejected = [];
+  const rejected = input
+    .filter(model => model && model.provider_id && model.model_id && !isStageModelAllowed(stageId, model))
+    .map(model => ({ ...model, reason: 'stage_requires_gpt_image_2' }));
   const seen = new Set();
   const validated = [];
-  const input = Array.isArray(models) ? models : [];
-  for (let i = 0; i < input.length; i += 1) {
-    const m = input[i];
+  for (let i = 0; i < allowedInput.length; i += 1) {
+    const m = allowedInput[i];
     if (!m || !m.provider_id || !m.model_id) continue;
     const key = `${String(m.provider_id).trim().toLowerCase()}/${String(m.model_id).trim().toLowerCase()}`;
     if (seen.has(key)) {
@@ -849,13 +886,24 @@ function listAvailableModels(useType) {
   } catch { return []; }
 }
 
+function listAvailableModelsForStage(stageId = '') {
+  const meta = getStageMeta(stageId);
+  return filterStageModels(stageId, listAvailableModels(meta?.type || 'all'));
+}
+
 module.exports = {
   PIPELINE_SCHEMA,
   STAGE_DEFAULTS,
+  NEW_STORY_AD_IMAGE_STAGE_IDS,
+  NEW_STORY_AD_REQUIRED_IMAGE_MODEL,
   listSchema,
   listDefaults,
   getStageDefaults,
   getStageMeta,
+  isNewStoryAdImageStage,
+  isStageModelAllowed,
+  filterStageModels,
+  sanitizePipelineConfig,
   preferDeyunaiForNonVideoStages,
   loadConfig,
   saveConfig,
@@ -869,5 +917,6 @@ module.exports = {
   pickAllEnabled,
   pickAllEnabledWithDefault,
   listAvailableModels,
+  listAvailableModelsForStage,
 };
 

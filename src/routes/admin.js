@@ -2120,7 +2120,13 @@ router.get('/pipeline-models', (req, res) => {
       tts:   pms.listAvailableModels('tts'),
       avatar: pms.listAvailableModels('avatar'),
     };
-    res.json({ success: true, schema, config: config.stages, available: availableByUse, defaults: pms.listDefaults() });
+    const availableByStage = {};
+    Object.values(schema).flat().forEach(stage => {
+      if (pms.isNewStoryAdImageStage(stage.id)) {
+        availableByStage[stage.id] = pms.listAvailableModelsForStage(stage.id);
+      }
+    });
+    res.json({ success: true, schema, config: config.stages, available: availableByUse, available_by_stage: availableByStage, defaults: pms.listDefaults() });
   } catch (e) { res.status(500).json({ success: false, error: e.message }); }
 });
 

@@ -38,8 +38,6 @@ function configure() {
   ensureModel(deyunai, { id: 'gpt-4o', name: 'GPT-4o（漫路）', type: 'story', use: 'story', channel: 'overseas' });
   ensureModel(deyunai, { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash（漫路）', type: 'story', use: 'story', channel: 'overseas' });
   ensureModel(deyunai, { id: 'gpt-image-2', name: 'GPT Image 2（漫路）', type: 'image', use: 'image', channel: 'cn' });
-  ensureModel(deyunai, { id: 'nano-banana-pro', name: 'Nano Banana Pro（漫路）', type: 'image', use: 'image', channel: 'cn' });
-  ensureModel(deyunai, { id: 'nano-banana', name: 'Nano Banana（漫路）', type: 'image', use: 'image', channel: 'cn' });
   ensureModel(deyunai, { id: 'doubao-seedance-2-0-260128', name: 'Seedance 2.0（漫路·图生视频）', type: 'video', use: 'video', channel: 'cn' });
   ensureModel(deyunai, { id: 'doubao-seedance-2-0-fast-260128', name: 'Seedance 2.0 Fast（漫路·图生视频）', type: 'video', use: 'video', channel: 'cn' });
   saveSettings(settings);
@@ -62,8 +60,6 @@ function configure() {
 
   const imageModels = [
     { provider_id: 'deyunai', model_id: 'gpt-image-2', enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana-pro', enabled: true },
-    { provider_id: 'deyunai', model_id: 'nano-banana', enabled: true },
   ];
   for (const stage of [
     'new_story_ad.person_sheet',

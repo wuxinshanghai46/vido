@@ -317,21 +317,47 @@
     const elapsed = Math.max(0, Date.now() - startedAt);
     const total = Math.max(1, Number(progress.target_total || progress.total || 5) || 5);
     const completed = Math.max(0, Math.min(total, Number(progress.succeeded ?? progress.completed ?? 0) || 0));
-    const current = Math.max(1, Math.min(total, Number(progress.current || completed + 1) || 1));
     const realStates = Array.isArray(progress.view_states) ? progress.view_states : [];
     const verifying = progress.phase === 'verification' || progress.status === 'verifying';
+    const activeStates = realStates.filter(item => item.status === 'running');
+    const runningCredit = Math.min(Math.max(0, total - completed), activeStates.length) * 0.25;
     const pct = verifying
-      ? 92
-      : Math.max(8, Math.min(96, Math.round(Number(realStates.length ? (8 + ((completed / total) * 80)) : progress.percent) || 8)));
-    const viewLabel = ['俯视布局', '主视角', '反向/侧向', '互动位', '材质细节'][current - 1] || `视角 ${current}`;
-    const activeLabels = realStates
-      .filter(item => item.status === 'running')
+      ? 94
+      : Math.max(8, Math.min(92, Math.round(Number(realStates.length
+        ? (8 + (((completed + runningCredit) / total) * 80))
+        : progress.percent) || 8)));
+    const activeLabels = activeStates
       .map(item => item.label || VIEW_LABELS[item.key] || item.key)
       .filter(Boolean);
     const queuedLabels = realStates
       .filter(item => item.status === 'queued')
       .map(item => item.label || VIEW_LABELS[item.key] || item.key)
       .filter(Boolean);
+    const targetKeys = Array.isArray(progress.view_keys) && progress.view_keys.length
+      ? progress.view_keys
+      : realStates.map(item => item.key).filter(Boolean);
+    const targetLabels = targetKeys.map(key => VIEW_LABELS[key] || key).filter(Boolean);
+    const activePositions = activeStates
+      .map(item => targetKeys.indexOf(item.key) + 1)
+      .filter(position => position > 0)
+      .sort((a, b) => a - b);
+    const current = activePositions[0] || Math.max(1, Math.min(total, Number(progress.current || completed + 1) || 1));
+    const viewLabel = activeLabels[0] || targetLabels[current - 1] || `视图 ${current}`;
+    const operation = progress.mode === 'repair' ? '修复' : '生成';
+    const activeRange = activePositions.length > 1
+      ? `${activePositions[0]}–${activePositions[activePositions.length - 1]}`
+      : String(activePositions[0] || current);
+    const retryStates = activeStates.filter(item => item.retrying === true || Number(item.attempt || 1) > 1);
+    const retryText = retryStates.length
+      ? `（${retryStates.map(item => `${item.label || VIEW_LABELS[item.key] || item.key} 第 ${Number(item.attempt || 1)}/${Number(item.max_attempts || 3)} 次尝试`).join('、')}）`
+      : '';
+    const title = verifying
+      ? `${total}/${total} 张已生成，正在自动复验`
+      : (activeLabels.length
+        ? `正在${activeLabels.length > 1 ? `并行${operation}` : operation}第 ${activeRange}/${total} 张：${activeLabels.join('、')}${retryText}`
+        : (realStates.length && queuedLabels.length
+          ? `准备${operation} ${total} 张：${queuedLabels.join('、')}`
+          : `${operation}任务正在提交：共 ${total} 张`));
     const realMessage = verifying
       ? `${completed}/${total} 张已生成完成，正在执行自动视觉验证。`
       : (activeLabels.length
@@ -345,6 +371,8 @@
       current,
       total,
       viewLabel,
+      title,
+      targetLabels,
       elapsedText: formatElapsedText(elapsed),
       message: realStates.length || verifying
         ? realMessage
@@ -377,7 +405,7 @@
         <div class="dh-nsa-scene-body">
           <div class="dh-lux-person-progress">
             <div class="dh-lux-person-progress-head">
-              <b>${progress.mode === 'repair' ? '正在修复未通过视图' : '正在生成场景参考'}：已完成 ${view.completed}/${view.total} 张</b>
+              <b>${escapeHtml(view.title)}</b>
               <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
             </div>
             <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
@@ -529,7 +557,9 @@
         },
       });
       const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
-        ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', { api })
+        ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
+            api, normalizeBundle, renderAll, state,
+          })
         : submitted;
       if (typeof normalizeBundle === 'function') normalizeBundle(r);
       state.sceneAssets = normalizeAssets(r.scene_assets || r.outputs?.scene_assets || r.bundle?.outputs?.scene_assets || []);
@@ -592,7 +622,10 @@
     if (!state?.taskId || !sceneId || typeof api !== 'function') return false;
     const currentIndex = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId));
     const currentAsset = currentIndex >= 0 ? state.sceneAssets[currentIndex] : null;
-    const total = Math.max(1, Number(currentAsset?.repair_plan?.count || 0) || 5);
+    const repairViewKeys = Array.isArray(currentAsset?.repair_plan?.view_keys) && currentAsset.repair_plan.view_keys.length
+      ? currentAsset.repair_plan.view_keys.filter(key => VIEW_LABELS[key])
+      : ['master', 'layout', 'reverse', 'interaction', 'detail'];
+    const total = Math.max(1, repairViewKeys.length || Number(currentAsset?.repair_plan?.count || 0) || 5);
     const startedAt = Date.now();
     const fallbackProgress = {
       mode: 'repair',
@@ -600,7 +633,9 @@
       completed: 0,
       startedAt,
       percent: 8,
-      message: `修复任务正在提交，等待服务器返回 ${total} 张视图的真实生成状态。`,
+      view_keys: repairViewKeys,
+      view_states: repairViewKeys.map(key => ({ key, label: VIEW_LABELS[key], status: 'queued' })),
+      message: `本次将重做 ${total} 张：${repairViewKeys.map(key => VIEW_LABELS[key]).join('、')}。正在等待服务器返回真实生成状态。`,
     };
     const updateProgress = () => {
       state.sceneGenerationProgress = liveSceneProgress(state, fallbackProgress);
@@ -620,7 +655,9 @@
         },
       });
       const response = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
-        ? await window.NewStoryAdGenerationFlow.waitForStage(state.taskId, 'scene_asset', { api })
+        ? await window.NewStoryAdGenerationFlow.waitForStage(state.taskId, 'scene_asset', {
+            api, normalizeBundle, renderAll, state,
+          })
         : submitted;
       if (typeof normalizeBundle === 'function') normalizeBundle(response);
       state.sceneAssets = normalizeAssets(response.scene_assets || response.outputs?.scene_assets || response.bundle?.outputs?.scene_assets || state.sceneAssets || []);

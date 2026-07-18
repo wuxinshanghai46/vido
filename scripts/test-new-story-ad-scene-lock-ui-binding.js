@@ -115,7 +115,7 @@ function main() {
   assert.equal(frontend.requiresLayoutView({ layoutText: '简单单墙场景' }), true, 'v3 新场景必须固定生成第五张空间布局');
   const progressHost = { innerHTML: '' };
   frontend.render({ host: progressHost, state: { sceneGenerationProgress: { active: true, startedAt: Date.now() } } });
-  assert.match(progressHost.innerHTML, /已完成 0\/5 张/);
+  assert.match(progressHost.innerHTML, /生成任务正在提交：共 5 张/);
   assert.doesNotMatch(progressHost.innerHTML, /\/4 张|\/4</);
   const realProgressHost = { innerHTML: '' };
   frontend.render({
@@ -130,7 +130,7 @@ function main() {
         succeeded: 1,
         view_states: [
           { key: 'master', label: '主视角', status: 'succeeded' },
-          { key: 'reverse', label: '反向/侧向', status: 'running' },
+          { key: 'reverse', label: '反向/侧向', status: 'running', attempt: 2, max_attempts: 3, retrying: true },
           { key: 'interaction', label: '互动位', status: 'running' },
           { key: 'detail', label: '材质细节', status: 'queued' },
         ],
@@ -139,8 +139,27 @@ function main() {
     },
   });
   assert.match(realProgressHost.innerHTML, /已完成 1\/4 张/);
-  assert.match(realProgressHost.innerHTML, /正在生成：反向\/侧向、互动位/);
+  assert.match(realProgressHost.innerHTML, /正在并行修复第 2–3\/4 张：反向\/侧向、互动位/);
+  assert.match(realProgressHost.innerHTML, /反向\/侧向 第 2\/3 次尝试/);
+  assert.match(realProgressHost.innerHTML, />38%<\/i>\s*<\/span>/);
   assert.doesNotMatch(realProgressHost.innerHTML, /耗时估算/);
+  const queuedRepairHost = { innerHTML: '' };
+  frontend.render({
+    host: queuedRepairHost,
+    state: {
+      sceneGenerationProgress: {
+        active: true,
+        mode: 'repair',
+        target_total: 2,
+        view_keys: ['reverse', 'interaction'],
+        view_states: [
+          { key: 'reverse', label: '反向/侧向', status: 'queued' },
+          { key: 'interaction', label: '互动位', status: 'queued' },
+        ],
+      },
+    },
+  });
+  assert.match(queuedRepairHost.innerHTML, /准备修复 2 张：反向\/侧向、互动位/);
   const fullAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([asset])[0]);
   assert.equal(fullAssessment.complete, true);
   assert.equal(fullAssessment.layoutAvailable, true);
@@ -207,10 +226,21 @@ function main() {
 
   const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
+  const adminHtml = fs.readFileSync(path.join(root, 'public/admin.html'), 'utf8');
+  const adminUi = fs.readFileSync(path.join(root, 'public/js/admin.js'), 'utf8');
+  const adminRoute = fs.readFileSync(path.join(root, 'src/routes/admin.js'), 'utf8');
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260718-scene-quality-v9'));
+  assert(html.includes('20260719-scene-progress-v10'));
+  const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
+  const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
+  assert(bootstrap.includes('20260719-scene-progress-v10'));
+  assert(generationFlow.includes('ctx.renderAll?.()'));
+  assert(adminHtml.includes('20260719-story-ad-image2-only'));
+  assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));
+  assert(adminUi.includes('_pmsCache.available_by_stage[window._stageEditId]'));
+  assert(adminRoute.includes('available_by_stage: availableByStage'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,
@@ -220,6 +250,7 @@ function main() {
     split_metrics_ui: true,
     rejected_scene_has_targeted_repair: true,
     real_scene_view_progress: true,
+    model_management_image2_only: true,
   }, null, 2));
 }
 

@@ -4474,7 +4474,9 @@ function openStageEditModal(stageId, type) {
       usingDefaults = true;
     }
   }
-  const avail = _pmsCache.available[type] || [];
+  const avail = (_pmsCache.available_by_stage && _pmsCache.available_by_stage[stageId])
+    || _pmsCache.available[type]
+    || [];
 
   const renderBody = () => {
     const inUseSet = new Set(cur.map(m => m.provider_id + '::' + m.model_id));
@@ -4564,7 +4566,9 @@ function openStageEditModal(stageId, type) {
 }
 
 window._stageEditAdd = function(candIdx) {
-  const avail = _pmsCache.available[window._stageEditType] || [];
+  const avail = (_pmsCache.available_by_stage && _pmsCache.available_by_stage[window._stageEditId])
+    || _pmsCache.available[window._stageEditType]
+    || [];
   const cur = window._stageEditCur;
   const inUseSet = new Set(cur.map(m => m.provider_id + '::' + m.model_id));
   const candidates = avail.filter(a => !inUseSet.has(a.provider_id + '::' + a.model_id));

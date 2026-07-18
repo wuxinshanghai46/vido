@@ -9,9 +9,11 @@ fs.mkdirSync(outputDir, { recursive: true });
 process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://test.invalid';
+process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS = '1';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
+const pipelineModels = require('../src/services/pipelineModelService');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
@@ -39,6 +41,8 @@ async function main() {
   const calls = [];
   let activeImageCalls = 0;
   let peakImageCalls = 0;
+  let transientFailuresRemaining = 0;
+  let transientFilenamePattern = null;
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;
   mediaAdapter.generateImage = async options => {
@@ -47,6 +51,11 @@ async function main() {
     activeImageCalls += 1;
     peakImageCalls = Math.max(peakImageCalls, activeImageCalls);
     await new Promise(resolve => setTimeout(resolve, 5));
+    if (transientFailuresRemaining > 0 && transientFilenamePattern?.test(options.filename || '')) {
+      transientFailuresRemaining -= 1;
+      activeImageCalls -= 1;
+      throw new Error('gpt-image-2 provider error: code=500, message=Internal Server Error');
+    }
     const url = `/mock-scene-view-${callNumber}.png`;
     activeImageCalls -= 1;
     return { url, image_url: url, provider_used: 'mock/spatial-order' };
@@ -165,6 +174,21 @@ async function main() {
     const publicSceneAsset = storyAdService.publicTaskBundle(taskId).outputs.scene_assets[0];
     assert.equal(publicSceneAsset.repair_plan.version, 3, 'the public bundle must normalize scene assets before rendering the repair action');
 
+    const retryTaskId = 'spatial-generation-transient-retry-test';
+    storage.createTask({ id: retryTaskId, title: 'transient image2 retry', request: context });
+    storage.saveOutput(retryTaskId, 'context', context);
+    const callsBeforeRetryTask = calls.length;
+    transientFailuresRemaining = 1;
+    transientFilenamePattern = /_reverse_/;
+    const retried = await sceneAssets.generateSceneAsset(retryTaskId, {
+      scene_id: 'retry-room',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeRetryTask, 6, 'one transient Image2 500 must retry only the failed view once');
+    assert.equal(retried.scene_asset.view_count, 5);
+    assert.equal(storage.getTask(retryTaskId).generation_progress.status, 'completed');
+
     const genericCases = [
       { material: 'open-grain oak veneer with directional grain and soft wax sheen', forbidden: /stainless steel/i },
       { material: 'translucent borosilicate glass with crisp refraction and matte polymer', forbidden: /oak veneer/i },
@@ -197,6 +221,23 @@ async function main() {
       { provider_id: 'deyunai', model_id: 'nano-banana' },
     ]);
     assert.deepEqual(policyCandidates.map(item => item.model_id), ['gpt-image-2'], 'story-ad image policy must remove every Nano Banana fallback');
+    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe'];
+    strictImageStages.forEach(stageId => {
+      assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one Image2 default`);
+      assert.ok(pipelineModels.getStageDefaults(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} defaults must contain only Image2`);
+      assert.ok(pipelineModels.listAvailableModelsForStage(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} admin candidates must contain only Image2`);
+      assert.equal(pipelineModels.validateStageModel(stageId, { provider_id: 'deyunai', model_id: 'nano-banana-pro' }).reason, 'stage_requires_gpt_image_2');
+    });
+    const sanitizedPipeline = pipelineModels.sanitizePipelineConfig({
+      stages: {
+        'new_story_ad.scene_asset': [
+          { provider_id: 'deyunai', model_id: 'nano-banana-pro', enabled: true },
+          { provider_id: 'deyunai', model_id: 'gpt-image-2', enabled: true },
+          { provider_id: 'deyunai', model_id: 'nano-banana', enabled: true },
+        ],
+      },
+    });
+    assert.deepEqual(sanitizedPipeline.stages['new_story_ad.scene_asset'].map(item => item.model_id), ['gpt-image-2']);
 
     console.log(JSON.stringify({
       success: true,
@@ -208,6 +249,7 @@ async function main() {
       generic_material_cases: genericCases.length,
       all_views_empty_scene: calls.every(call => /no people/i.test(call.prompt)),
       primary_view_backward_compatible: asset.image_url === '/mock-scene-view-1.png',
+      model_management_image2_only: true,
     }, null, 2));
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;

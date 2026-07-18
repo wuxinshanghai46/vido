@@ -12,6 +12,8 @@ const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
 const SCENE_REPAIR_PLAN_VERSION = 3;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_photographic_overview';
+const SCENE_IMAGE_MAX_ATTEMPTS = Math.max(1, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_MAX_ATTEMPTS || 3) || 3));
+const SCENE_IMAGE_RETRY_DELAY_MS = Math.max(0, Math.min(5000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS || 1200) || 0));
 
 function sceneViewLabel(key = '') {
   return {
@@ -97,7 +99,15 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const viewStates = keys.map(key => {
     const current = priorStates.get(key) || { key, label: sceneViewLabel(key), status: 'queued' };
     return key === update.viewKey
-      ? { ...current, status: update.viewStatus || current.status, error: cleanText(update.error || '', 240), updated_at: now }
+      ? {
+          ...current,
+          status: update.viewStatus || current.status,
+          error: cleanText(update.error || '', 240),
+          attempt: Math.max(1, Number(update.attempt || current.attempt || 1) || 1),
+          max_attempts: Math.max(1, Number(update.maxAttempts || current.max_attempts || SCENE_IMAGE_MAX_ATTEMPTS) || SCENE_IMAGE_MAX_ATTEMPTS),
+          retrying: update.retrying === true,
+          updated_at: now,
+        }
       : current;
   });
   const processed = viewStates.filter(item => ['succeeded', 'failed'].includes(item.status)).length;
@@ -130,21 +140,50 @@ function updateSceneGenerationProgress(taskId, update = {}) {
 }
 
 async function generateTrackedSceneView(taskId, key, options = {}, progress = {}) {
-  updateSceneGenerationProgress(taskId, { ...progress, viewKey: key, viewStatus: 'running', phase: 'generation' });
-  try {
-    const result = await mediaAdapter.generateImage(options);
-    updateSceneGenerationProgress(taskId, { ...progress, viewKey: key, viewStatus: 'succeeded', phase: 'generation' });
-    return result;
-  } catch (error) {
+  const retryable = error => /(?:\b500\b|internal server error|timeout|timed out|econnreset|econnrefused|socket hang up|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily)|service unavailable)/i
+    .test(String(error?.message || error || ''));
+  for (let attempt = 1; attempt <= SCENE_IMAGE_MAX_ATTEMPTS; attempt += 1) {
     updateSceneGenerationProgress(taskId, {
       ...progress,
       viewKey: key,
-      viewStatus: 'failed',
+      viewStatus: 'running',
       phase: 'generation',
-      error: error?.message || error,
+      attempt,
+      maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+      retrying: attempt > 1,
     });
-    throw error;
+    try {
+      const result = await mediaAdapter.generateImage(options);
+      updateSceneGenerationProgress(taskId, {
+        ...progress,
+        viewKey: key,
+        viewStatus: 'succeeded',
+        phase: 'generation',
+        attempt,
+        maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+      });
+      return result;
+    } catch (error) {
+      const willRetry = attempt < SCENE_IMAGE_MAX_ATTEMPTS && retryable(error);
+      updateSceneGenerationProgress(taskId, {
+        ...progress,
+        viewKey: key,
+        viewStatus: willRetry ? 'running' : 'failed',
+        phase: 'generation',
+        error: error?.message || error,
+        attempt: willRetry ? attempt + 1 : attempt,
+        maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+        retrying: willRetry,
+      });
+      if (!willRetry) throw error;
+      cancellation.throwIfCancelled(taskId);
+      if (SCENE_IMAGE_RETRY_DELAY_MS > 0) {
+        await new Promise(resolve => setTimeout(resolve, SCENE_IMAGE_RETRY_DELAY_MS * attempt));
+      }
+      cancellation.throwIfCancelled(taskId);
+    }
   }
+  throw new Error(`场景视图 ${sceneViewLabel(key)} 生成失败`);
 }
 
 function normalizeSceneAssets(input = []) {
@@ -939,6 +978,7 @@ module.exports = {
   SCENE_VIEW_KEYS,
   REQUIRED_SCENE_VIEW_KEYS,
   SCENE_GENERATION_ORDER,
+  SCENE_IMAGE_MAX_ATTEMPTS,
   sceneViewLabel,
   buildSceneSheetPrompt,
   buildDerivedViewPrompt,

@@ -1488,39 +1488,15 @@
         "priority": 1
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
-        "enabled": true,
-        "priority": 2
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
-        "enabled": true,
-        "priority": 3
-      },
-      {
         "provider_id": "apismile",
         "model_id": "gpt-image-2",
-        "priority": 4,
+        "priority": 2,
         "enabled": false
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gpt-image-2",
-        "priority": 5,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 6,
-        "enabled": false
-      },
-      {
-        "provider_id": "jimeng",
-        "model_id": "jimeng_t2i_v30",
-        "priority": 7,
+        "priority": 3,
         "enabled": false
       }
     ],
@@ -1532,39 +1508,15 @@
         "priority": 1
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
-        "enabled": true,
-        "priority": 2
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
-        "enabled": true,
-        "priority": 3
-      },
-      {
         "provider_id": "apismile",
         "model_id": "gpt-image-2",
-        "priority": 4,
+        "priority": 2,
         "enabled": false
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gpt-image-2",
-        "priority": 5,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 6,
-        "enabled": false
-      },
-      {
-        "provider_id": "jimeng",
-        "model_id": "jimeng_t2i_v30",
-        "priority": 7,
+        "priority": 3,
         "enabled": false
       }
     ],
@@ -1576,39 +1528,15 @@
         "priority": 1
       },
       {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana-pro",
-        "enabled": true,
-        "priority": 2
-      },
-      {
-        "provider_id": "deyunai",
-        "model_id": "nano-banana",
-        "enabled": true,
-        "priority": 3
-      },
-      {
         "provider_id": "apismile",
         "model_id": "gpt-image-2",
-        "priority": 4,
+        "priority": 2,
         "enabled": false
       },
       {
         "provider_id": "webang-maas",
         "model_id": "gpt-image-2",
-        "priority": 5,
-        "enabled": false
-      },
-      {
-        "provider_id": "topview",
-        "model_id": "topview-gpt-image-2",
-        "priority": 6,
-        "enabled": false
-      },
-      {
-        "provider_id": "jimeng",
-        "model_id": "jimeng_t2i_v30",
-        "priority": 7,
+        "priority": 3,
         "enabled": false
       }
     ],

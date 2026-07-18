@@ -207,6 +207,7 @@
     while (Date.now() - started < timeoutMs) {
       const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
       normalizeBundle?.(bundle);
+      ctx.renderAll?.();
       const task = bundle.task || {};
       const active = String(task.active_generation_id || '');
       const status = String(task.status || '').toLowerCase();
