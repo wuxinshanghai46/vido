@@ -12,6 +12,7 @@ process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://test.invalid';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
+const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 
@@ -91,6 +92,31 @@ function rejectedReverseContract() {
 }
 
 async function main() {
+  const originalGenerateVision = modelGateway.generateVision;
+  modelGateway.generateVision = async () => ({
+    text: '{"pass":true,"requirement_qa":',
+    used_model: 'mock/broken-json',
+  });
+  try {
+    await assert.rejects(
+      () => sceneSpace.analyzeSceneViews({
+        taskId: 'broken-json-contract',
+        sceneId: 'broken-json-scene',
+        revision: 1,
+        views: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({
+          key,
+          url: `https://test.invalid/${key}.png`,
+        })),
+        requested: {},
+        layoutRequired: true,
+      }),
+      error => error?.code === 'VISION_QA_SCHEMA_INVALID' && error?.retryable === true,
+      'malformed vision JSON must use the preservable QA schema error code',
+    );
+  } finally {
+    modelGateway.generateVision = originalGenerateVision;
+  }
+
   const verbosePrompt = Array.from({ length: 20 }, (_, index) => `Section ${index + 1}: ${'camera material topology '.repeat(18)}`).join('\n\n');
   const auditSafePrompt = sceneAssets.buildSceneAuditSafePrompt({
     ctx: { controlled_production: { style_control: { notes: 'real commercial photography' } } },
@@ -185,6 +211,46 @@ async function main() {
     assert.equal(result.scene_asset.repair_history.length, 1);
     assert.deepEqual(result.scene_asset.repair_history[0].regenerated_view_keys, ['reverse']);
     assert.equal(result.scene_asset.repair_plan.action, 'none');
+
+    const unavailableTaskId = 'scene-repair-qa-unavailable-test';
+    const unavailableSceneId = 'scene-repair-qa-unavailable';
+    storage.createTask({ id: unavailableTaskId, title: 'preserve generated scene', request: context });
+    storage.saveOutput(unavailableTaskId, 'context', context);
+    storage.saveOutput(unavailableTaskId, 'scene_assets', [{
+      id: unavailableSceneId,
+      scene_id: unavailableSceneId,
+      scene_revision: 1,
+      name: 'preserve scene',
+      image_url: urls.master,
+      view_images: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({ key, url: urls[key], image_url: urls[key] })),
+      layout_summary: sceneSpec.layoutText,
+      material_summary: sceneSpec.materialLightText,
+      interaction_summary: sceneSpec.interactionText,
+      negative: sceneSpec.negativeText,
+      surface_topology: sceneSpec.surfaceTopology,
+      scene_contract: rejectedReverseContract(),
+    }]);
+    sceneSpace.analyzeSceneViews = async () => {
+      throw new SyntaxError('Unexpected end of JSON input');
+    };
+    const unavailableResult = await sceneAssets.repairSceneAsset(unavailableTaskId, unavailableSceneId, {
+      scene_spec: sceneSpec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length, 2, 'the failed reverse view should be generated exactly once before QA fails');
+    assert.equal(unavailableResult.scene_asset.scene_revision, 2);
+    assert.equal(unavailableResult.scene_asset.scene_contract.qa_unavailable, true);
+    assert.equal(unavailableResult.scene_asset.scene_contract.verification.state, 'unavailable');
+    assert.equal(unavailableResult.scene_asset.repair_plan.action, 'reverify');
+    assert.equal(storage.getOutput(unavailableTaskId, 'scene_assets')[0].scene_revision, 2, 'the paid revision must remain persisted');
+
+    sceneSpace.analyzeSceneViews = async options => passingContract(options.views);
+    const callsBeforeReverify = calls.length;
+    const reverified = await sceneAssets.reverifySceneAsset(unavailableTaskId, unavailableSceneId);
+    assert.equal(calls.length, callsBeforeReverify, 'reverification must never call the image generator');
+    assert.equal(reverified.scene_asset.scene_revision, 2);
+    assert.equal(reverified.scene_asset.scene_contract.full_space_lock, true);
+    assert.equal(reverified.scene_asset.repair_plan.action, 'none');
     console.log(JSON.stringify({
       success: true,
       current_failure_repairs: currentFailurePlan.view_keys,
@@ -193,6 +259,9 @@ async function main() {
       targeted_generation_calls: calls.length,
       regenerated_views: result.scene_asset.repair_history[0].regenerated_view_keys,
       final_space_lock: result.scene_asset.scene_contract.full_space_lock,
+      malformed_json_code: 'VISION_QA_SCHEMA_INVALID',
+      preserved_revision_after_qa_failure: unavailableResult.scene_asset.scene_revision,
+      reverify_image_calls: calls.length - callsBeforeReverify,
     }, null, 2));
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;

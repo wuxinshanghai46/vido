@@ -9,11 +9,18 @@ const REFERENCE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
 
 function safeJson(raw = '') {
   const text = String(raw || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  try { return JSON.parse(text); } catch (_) {}
+  let parseError = null;
+  try { return JSON.parse(text); } catch (error) { parseError = error; }
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-  throw new Error('视觉模型未返回有效 JSON');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch (error) { parseError = error; }
+  }
+  const error = new Error('视觉模型未返回有效 JSON');
+  error.code = 'VISION_QA_SCHEMA_INVALID';
+  error.retryable = true;
+  error.parse_error = cleanText(parseError?.message || '', 240);
+  throw error;
 }
 
 function stableId(prefix, value, index) {

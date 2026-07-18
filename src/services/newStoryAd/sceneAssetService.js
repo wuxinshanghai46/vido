@@ -579,9 +579,19 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   try {
     sceneContract = await sceneSpace.analyzeSceneViews(contractOptions);
   } catch (error) {
-    if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
+    // Generated scene images are paid assets. Once all views exist, a verifier
+    // failure must never discard them or make the next click regenerate them.
+    // Cancellation/deadline still wins through the shared cancellation guard.
+    cancellation.throwIfCancelled(taskId);
+    console.warn('[new_story_ad:scene_vision_unavailable]', {
+      task_id: taskId,
+      scene_id: sceneId,
+      revision,
+      code: error?.code || 'VISION_QA_UNAVAILABLE',
+      message: String(error?.message || error || '').slice(0, 300),
+    });
     // Keep the five successfully generated views instead of discarding costly
-    // assets because an optional verifier is unavailable. The package remains
+    // assets because the verifier is unavailable or malformed. The package remains
     // explicitly unverified and can be rechecked later; it is never mislabeled
     // as having passed commercial visual QA.
     sceneContract = sceneSpace.buildUnverifiedContract(contractOptions, error);
@@ -764,7 +774,14 @@ async function reverifySceneAsset(taskId, sceneId) {
   try {
     contract = await sceneSpace.analyzeSceneViews(contractOptions);
   } catch (error) {
-    if (!['VISION_QA_UNAVAILABLE', 'VISION_CIRCUIT_OPEN', 'VISION_REFERENCE_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID'].includes(error?.code)) throw error;
+    cancellation.throwIfCancelled(taskId);
+    console.warn('[new_story_ad:scene_reverify_unavailable]', {
+      task_id: taskId,
+      scene_id: asset.scene_id,
+      revision: asset.scene_revision || 1,
+      code: error?.code || 'VISION_QA_UNAVAILABLE',
+      message: String(error?.message || error || '').slice(0, 300),
+    });
     contract = sceneSpace.buildUnverifiedContract(contractOptions, error);
   }
   assets[index] = {
