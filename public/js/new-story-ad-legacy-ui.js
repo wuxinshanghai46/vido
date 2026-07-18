@@ -5714,6 +5714,24 @@
         }
         return;
       }
+      const sceneRepair = target.closest('[data-nsa-scene-repair]');
+      if (sceneRepair && host.contains(sceneRepair)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await window.NewStoryAdSceneAssets?.repair?.({
+          state,
+          api,
+          payload,
+          normalizeBundle,
+          renderAll,
+          setBusy,
+          setButtonBusy,
+          toast,
+          button: sceneRepair,
+          sceneId: sceneRepair.dataset.nsaSceneRepair,
+        });
+        return;
+      }
       const sceneVerify = target.closest('[data-nsa-scene-verify]');
       if (sceneVerify && host.contains(sceneVerify)) {
         e.preventDefault();

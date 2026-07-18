@@ -9,6 +9,7 @@ const shotDesign = require('./shotDesignService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
+const SCENE_REPAIR_PLAN_VERSION = 1;
 
 function sceneViewLabel(key = '') {
   return {
@@ -73,6 +74,10 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
+    repair_plan: asset.repair_plan && typeof asset.repair_plan === 'object'
+      ? asset.repair_plan
+      : buildSceneRepairPlan(asset),
+    repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     created_at: asset.created_at || new Date().toISOString(),
   };
 }
@@ -80,6 +85,79 @@ function normalizeSceneAsset(asset = {}, index = 0) {
 function normalizeSceneAssets(input = []) {
   const raw = Array.isArray(input) ? input : [];
   return raw.map(normalizeSceneAsset).filter(Boolean);
+}
+
+function normalizeRepairViewKeys(input = []) {
+  const source = Array.isArray(input) ? input : [];
+  return REQUIRED_SCENE_VIEW_KEYS.filter(key => source.includes(key));
+}
+
+function buildSceneRepairPlan(asset = {}) {
+  const contract = asset.scene_contract && typeof asset.scene_contract === 'object'
+    ? asset.scene_contract
+    : asset;
+  const requirement = contract.requirement_qa || asset.requirement_qa || {};
+  const crossView = contract.cross_view_qa || asset.cross_view_qa || {};
+  const spatial = contract.spatial_coverage_qa || asset.spatial_coverage_qa || {};
+  const verificationState = cleanText(contract.verification?.state || asset.verification?.state || '', 40);
+  const reasons = [...new Set([
+    ...(Array.isArray(contract.verification?.reasons) ? contract.verification.reasons : []),
+    ...(Array.isArray(requirement.mismatch_reasons) ? requirement.mismatch_reasons : []),
+    ...(Array.isArray(crossView.mismatch_reasons) ? crossView.mismatch_reasons : []),
+    ...(Array.isArray(spatial.reasons) ? spatial.reasons : []),
+    ...(Array.isArray(spatial.mismatch_reasons) ? spatial.mismatch_reasons : []),
+  ].map(value => cleanText(value, 300)).filter(Boolean))].slice(0, 12);
+  if (contract.full_space_lock === true) {
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'none', view_keys: [], view_labels: [], count: 0, reasons: [], message: '完整空间已经锁定，无需修复。' };
+  }
+  if (contract.qa_unavailable === true || verificationState === 'unavailable') {
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '图片无需重新生成，请稍后再次验证。' };
+  }
+
+  const keys = new Set();
+  const combined = reasons.join('；');
+  const below = (value, threshold) => Number.isFinite(Number(value)) && Number(value) < threshold;
+  if (below(requirement.layout_match_score, 0.75)
+    || below(spatial.layout_topology_score, 0.8)
+    || /俯视|顶视|轴测|布局参考|布局拓扑|第\s*5\s*张|layout/i.test(combined)) keys.add('layout');
+  if (below(requirement.material_light_match_score, 0.75)
+    || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属/i.test(combined)) {
+    keys.add('master');
+    keys.add('detail');
+  }
+  if (below(requirement.interaction_match_score, 0.7)
+    || below(spatial.interaction_zone_score, 0.7)
+    || /互动|交互|行动区|活动区域|动线|站位/i.test(combined)) keys.add('interaction');
+  if (below(requirement.surface_topology_match_score, 0.8)
+    || below(requirement.negative_compliance_score, 0.9)
+    || /拼缝|接缝|板块|模块|禁止项|违禁/i.test(combined)) keys.add('master');
+  if (below(spatial.reverse_coverage_score, 0.75)
+    || /反向|侧向|背向空间/i.test(combined)) keys.add('reverse');
+  if (below(spatial.camera_diversity_score, 0.75)
+    || /机位差异|视图多样|多视图[^。；]{0,24}重复|参考图[^。；]{0,24}重复/i.test(combined)) {
+    keys.add('reverse');
+    keys.add('interaction');
+  }
+  if (crossView.pass === false) {
+    keys.add('reverse');
+    keys.add('interaction');
+    keys.add('detail');
+  }
+  if (!keys.size) REQUIRED_SCENE_VIEW_KEYS.forEach(key => keys.add(key));
+
+  // 蓝图或主视角一旦变化，所有依赖它的派生视图也必须同步更新。
+  if (keys.has('layout')) REQUIRED_SCENE_VIEW_KEYS.forEach(key => keys.add(key));
+  else if (keys.has('master')) SCENE_VIEW_KEYS.forEach(key => keys.add(key));
+  const viewKeys = REQUIRED_SCENE_VIEW_KEYS.filter(key => keys.has(key));
+  return {
+    version: SCENE_REPAIR_PLAN_VERSION,
+    action: 'regenerate_failed_views',
+    view_keys: viewKeys,
+    view_labels: viewKeys.map(sceneViewLabel),
+    count: viewKeys.length,
+    reasons: reasons.slice(0, 6),
+    message: `系统将保留通过项，并按依赖关系重新生成 ${viewKeys.length} 张：${viewKeys.map(sceneViewLabel).join('、')}。`,
+  };
 }
 
 function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRole = 'master' } = {}) {
@@ -92,6 +170,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600);
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 600);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
+  const repairFeedback = cleanText(body.repair_feedback || body.repairFeedback || '', 1200);
   const surfaceTopology = shotDesign.resolveSurfaceTopology(
     sceneSpec.surfaceTopology || sceneSpec.surface_topology,
     [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
@@ -105,13 +184,17 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   ].join(' ');
   const photographicRealism = [
     'Photographic realism requirements:',
-    'Make it look like a real location or production set photographed by a commercial environment photographer, not an AI concept render.',
+    outputRole === 'layout'
+      ? 'Make it look like a real location documented by an architectural survey camera from overhead, not an eye-level commercial still and not an AI concept render.'
+      : 'Make it look like a real location or production set photographed by a commercial environment photographer, not an AI concept render.',
     'Use physically plausible camera perspective, lens compression and scene geometry; keep fixed structures, ground planes, fixtures, props and products aligned to one coherent spatial system.',
     surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
       ? 'Use real-world material scale: preserve the explicitly continuous surface topology while showing plausible contact shadows, subtle scratches, fingerprints, dust, uneven reflections and only construction details permitted by the task-specific seam policy.'
       : 'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
     'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
-    'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
+    outputRole === 'layout'
+      ? 'Composition must prioritize the readable whole-space footprint, topology and relative coordinates over cinematic foreground/background depth.'
+      : 'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
   ].join('\n');
   const antiAiNegative = [
     'Strict anti-AI / anti-render negatives:',
@@ -121,9 +204,10 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   ].join(' ');
   const outputInstruction = outputRole === 'layout'
     ? [
-      'Create one photorealistic SPATIAL BLUEPRINT for a reusable commercial video scene before any cinematic camera view is designed.',
-      'Use a high oblique axonometric or top-down whole-space composition that exposes the complete floor boundary, walls, openings, fixed structures, anchor furniture/props, circulation path and interaction zone in one coherent coordinate system.',
+      'Create one unmistakable photorealistic SPATIAL BLUEPRINT for a reusable commercial video scene before any cinematic camera view is designed.',
+      'The camera pitch must be 55 to 90 degrees downward: use a high oblique axonometric or true top-down whole-space composition that exposes the complete floor boundary, at least three wall planes, openings, fixed structures, anchor furniture/props, circulation path and interaction zone in one coherent coordinate system.',
       'This blueprint is the authoritative geometry source for all later camera views. Prioritize spatial legibility and relative positions over dramatic composition; do not hide essential topology behind foreground objects.',
+      'An eye-level room photo, frontal wall elevation, close crop, or composition that resembles a cinematic master view is INVALID for this output.',
     ]
     : outputRole === 'contract'
       ? ['Use the following task-specific scene contract as the content authority for the requested spatial asset.']
@@ -135,7 +219,9 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     ...outputInstruction,
     'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no panels, no split screen, no labels, no people or human-like subjects.',
     photographicRealism,
-    'Use a wide establishing composition that clearly defines the whole spatial layout and the relative position of fixed structures and movable anchors.',
+    outputRole === 'layout'
+      ? 'Show the entire spatial footprint in one overhead or axonometric survey; do not use an eye-level or frontal commercial-camera composition.'
+      : 'Use a wide establishing composition that clearly defines the whole spatial layout and the relative position of fixed structures and movable anchors.',
     brief ? `Campaign brief: ${brief}` : '',
     subject ? `Advertised subject: ${subject}` : '',
     custom ? `User scene requirement: ${custom}` : '',
@@ -149,7 +235,10 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     `Hard negative requirements: ${noHumanNegative}`,
     antiAiNegative,
     negative ? `Additional negative requirements: ${negative}` : '',
-    'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
+    repairFeedback ? `Mandatory correction from the previous rejected attempt: ${repairFeedback}. Create a fresh role-correct image and do not reproduce the rejected composition.` : '',
+    outputRole === 'layout'
+      ? 'Final look target: a clearly overhead or axonometric photorealistic architectural survey with readable topology and realistic materials.'
+      : 'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
 }
 
@@ -220,12 +309,18 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     interaction: 'Generate a DISTINCT INTERACTION-POSITION VIEW inside the exact same physical space. Place the camera at practical human eye/chest height beside the locked interaction zone. Clearly show an empty standing/action clearance, the reachable target surface or product position, and the route into and out of that zone. This must be a usable blocking camera, not another establishing shot and not a duplicate of the master or reverse view. Preserve all blueprint coordinates and do not add any person, mannequin or human reflection.',
     detail: 'Generate a TRUE MATERIAL / CONSTRUCTION DETAIL VIEW captured inside the exact same physical space. Use a close or macro crop that makes real material scale, texture direction, surface transition, contact shadow, fixture edge or permitted assembly detail readable. It must not be another wide room view. Use only materials, finishes, seams and fixtures supported by the blueprint and master. Respect the task-specific surface topology and seam policy; do not invent panels, joints or decorative composition.',
   }[viewKey] || 'Generate another camera view of the exact same physical space without redesigning it.';
-  const hasLayoutReference = options.hasLayoutReference !== false;
-  const hasMasterReference = options.hasMasterReference === true;
+  const fallbackOrder = options.hasMasterReference === true
+    ? (options.hasLayoutReference === false ? ['master'] : ['layout', 'master'])
+    : (options.hasLayoutReference === false ? [] : ['layout']);
+  const referenceOrder = (Array.isArray(options.referenceOrder) ? options.referenceOrder : fallbackOrder)
+    .filter(key => key === 'layout' || key === 'master');
+  const hasLayoutReference = referenceOrder.includes('layout');
+  const hasMasterReference = referenceOrder.includes('master');
+  const referenceDescriptions = referenceOrder.map((key, index) => key === 'layout'
+    ? `Reference image ${index + 1} is the spatial blueprint.`
+    : `Reference image ${index + 1} is the master establishing view.`);
   const referenceAuthority = [
-    hasLayoutReference && hasMasterReference
-      ? 'Reference image 1 is the spatial blueprint. Reference image 2 is the master establishing view.'
-      : (hasLayoutReference ? 'The supplied reference image is the spatial blueprint.' : ''),
+    ...referenceDescriptions,
     hasLayoutReference
       ? 'The supplied spatial blueprint is the canonical authority for geometry, topology, openings, zones and relative coordinates.'
       : '',
@@ -239,8 +334,14 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
   return [
     instruction,
     referenceAuthority,
+    viewKey === 'reverse' || viewKey === 'interaction'
+      ? 'This is a deliberate camera relocation task. Preserve scene identity, but do not reproduce the master image pixel composition, crop, camera sector or foreground/background arrangement.'
+      : '',
     'Output one continuous photorealistic image only, no collage, no split screen, no labels, no logo and no people.',
     'Scene identity lock is strict: preserve spatial geometry, anchor relations, material family and lighting direction.',
+    cleanText(options.repairFeedback || '', 1200)
+      ? `Mandatory correction from the previous rejected attempt: ${cleanText(options.repairFeedback, 1200)}. Do not repeat the rejected composition.`
+      : '',
     scenePrompt,
   ].filter(Boolean).join('\n\n');
 }
@@ -323,7 +424,7 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
   return normalized;
 }
 
-async function generateSceneAsset(taskId, body = {}) {
+async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -332,6 +433,15 @@ async function generateSceneAsset(taskId, body = {}) {
   const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
+  const repairViewKeys = previous ? normalizeRepairViewKeys(runOptions.repairViewKeys) : [];
+  const repairMode = !!previous && repairViewKeys.length > 0;
+  const previousViews = new Map((previous?.view_images || []).map((view, index) => {
+    const normalized = normalizeSceneView(view, index);
+    return [normalized.key, normalized];
+  }));
+  const shouldGenerate = key => !repairMode || repairViewKeys.includes(key) || !previousViews.has(key);
+  const repairFeedback = cleanText(runOptions.repairFeedback || '', 1200);
+  const promptBody = repairFeedback ? { ...body, repair_feedback: repairFeedback } : body;
   const requested = sceneRequest(ctx, body);
   const layoutRequired = needsLayoutView(requested, body);
   const legacyLayoutTrigger = legacyNeedsLayoutHeuristic(requested, body);
@@ -343,17 +453,19 @@ async function generateSceneAsset(taskId, body = {}) {
     videoAcquisitionEnabled: false,
   });
   const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
-  const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body, outputRole: 'contract' });
-  const layoutPrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body, outputRole: 'layout' });
-  const layout = await mediaAdapter.generateImage({
-    taskId,
-    stage: 'new_story_ad.scene_asset',
-    prompt: layoutPrompt,
-    filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_' + Date.now(),
-    aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
-    resolution: body.resolution || '2K',
-    imageModel: body.image_model || body.imageModel || 'auto',
-  });
+  const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract' });
+  const layoutPrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'layout' });
+  const layout = shouldGenerate('layout')
+    ? await mediaAdapter.generateImage({
+      taskId,
+      stage: 'new_story_ad.scene_asset',
+      prompt: layoutPrompt,
+      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_' + Date.now(),
+      aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+      resolution: body.resolution || '2K',
+      imageModel: body.image_model || body.imageModel || 'auto',
+    })
+    : previousViews.get('layout');
   cancellation.throwIfCancelled(taskId);
   const layoutView = normalizeSceneView({
     key: 'layout',
@@ -363,21 +475,24 @@ async function generateSceneAsset(taskId, body = {}) {
     provider_used: layout.provider_used,
   }, REQUIRED_SCENE_VIEW_KEYS.indexOf('layout'));
   const prompt = buildDerivedViewPrompt(scenePrompt, 'master', {
-    hasLayoutReference: true,
-    hasMasterReference: false,
+    referenceOrder: ['layout'],
+    repairFeedback,
   });
-  const master = await mediaAdapter.generateImage({
-    taskId,
-    stage: 'new_story_ad.scene_asset',
-    prompt,
-    filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_master_' + Date.now(),
-    aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
-    resolution: body.resolution || '2K',
-    imageModel: body.image_model || body.imageModel || 'auto',
-    referenceImages: [layout.url || layout.image_url],
-    requireReferences: true,
-    inputFidelity: 'high',
-  });
+  const master = shouldGenerate('master')
+    ? await mediaAdapter.generateImage({
+      taskId,
+      stage: 'new_story_ad.scene_asset',
+      prompt,
+      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_master_' + Date.now(),
+      aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+      resolution: body.resolution || '2K',
+      imageModel: body.image_model || body.imageModel || 'auto',
+      referenceImages: [layout.url || layout.image_url],
+      requireReferences: true,
+      // Camera role changes must be allowed to move away from the blueprint pixels.
+      inputFidelity: 'low',
+    })
+    : previousViews.get('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
     key: 'master',
@@ -388,20 +503,27 @@ async function generateSceneAsset(taskId, body = {}) {
   }, 0)];
   cancellation.throwIfCancelled(taskId);
   const derivedViews = await Promise.all(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
+    if (!shouldGenerate(key)) return normalizeSceneView(previousViews.get(key), index + 1);
+    const detailView = key === 'detail';
+    const referenceImages = detailView
+      ? [master.url || master.image_url]
+      : [master.url || master.image_url, layout.url || layout.image_url];
     const generated = await mediaAdapter.generateImage({
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt: buildDerivedViewPrompt(scenePrompt, key, {
-        hasLayoutReference: true,
-        hasMasterReference: true,
+        referenceOrder: detailView ? ['master'] : ['master', 'layout'],
+        repairFeedback,
       }),
       filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_' + key + '_' + Date.now(),
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: body.image_model || body.imageModel || 'auto',
-      referenceImages: [layout.url || layout.image_url, master.url || master.image_url],
+      referenceImages,
       requireReferences: true,
-      inputFidelity: 'high',
+      // Reverse and interaction views require a real camera relocation. Detail
+      // keeps high fidelity because only crop/scale should change.
+      inputFidelity: detailView ? 'high' : 'low',
     });
     return normalizeSceneView({
       key,
@@ -441,6 +563,21 @@ async function generateSceneAsset(taskId, body = {}) {
   sceneContract = relinkContractViews(sceneContract, localizedViews);
   viewImages.splice(0, viewImages.length, ...localizedViews);
   const providerUsed = [...new Set(viewImages.map(v => v.provider_used).filter(Boolean))].join(', ') || master.provider_used || layout.provider_used || '';
+  const repairPlan = buildSceneRepairPlan({
+    scene_contract: sceneContract,
+    view_images: viewImages,
+  });
+  const repairHistory = [
+    ...(Array.isArray(previous?.repair_history) ? previous.repair_history : []),
+    ...(repairMode ? [{
+      plan_version: SCENE_REPAIR_PLAN_VERSION,
+      source_revision: previous.scene_revision || 1,
+      revision,
+      regenerated_view_keys: repairViewKeys,
+      result: sceneContract.full_space_lock === true ? 'verified' : (sceneContract.qa_unavailable === true ? 'unavailable' : 'rejected'),
+      created_at: new Date().toISOString(),
+    }] : []),
+  ].slice(-8);
   const asset = normalizeSceneAsset({
     id: sceneId,
     scene_id: sceneId,
@@ -470,12 +607,14 @@ async function generateSceneAsset(taskId, body = {}) {
       layout_policy: 'required_for_all_new_scenes',
       legacy_layout_trigger: legacyLayoutTrigger,
       generation_order: REQUIRED_SCENE_VIEW_KEYS,
+      last_generated_views: repairMode ? repairViewKeys : REQUIRED_SCENE_VIEW_KEYS,
+      repair_mode: repairMode,
       reference_graph: {
         layout: [],
         master: ['layout'],
-        reverse: ['layout', 'master'],
-        interaction: ['layout', 'master'],
-        detail: ['layout', 'master'],
+        reverse: ['master', 'layout'],
+        interaction: ['master', 'layout'],
+        detail: ['master'],
       },
     },
     provider_used: providerUsed,
@@ -485,6 +624,8 @@ async function generateSceneAsset(taskId, body = {}) {
     requirement_qa: sceneContract.requirement_qa,
     layout_contract: sceneContract.layout_contract,
     verification: sceneContract.verification,
+    repair_plan: repairPlan,
+    repair_history: repairHistory,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
   saveSceneAssetsToTask(taskId, sceneAssets, {
@@ -505,7 +646,52 @@ async function generateSceneAsset(taskId, body = {}) {
     verification_status: sceneContract.status,
     space_lock_status: sceneContract.space_lock_status,
     full_space_lock: sceneContract.full_space_lock === true,
+    repair_plan: repairPlan,
   };
+}
+
+async function repairSceneAsset(taskId, sceneId, body = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('没有找到对应项目。');
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
+  const asset = assets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
+  if (!asset) {
+    const error = new Error('要修复的场景不存在');
+    error.code = 'SCENE_ASSET_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const plan = buildSceneRepairPlan(asset);
+  if (plan.action === 'none') {
+    const error = new Error('当前场景已经通过完整空间验证，无需重新生成');
+    error.code = 'SCENE_ALREADY_VERIFIED';
+    error.status = 409;
+    throw error;
+  }
+  if (plan.action === 'reverify') {
+    const error = new Error('当前图片没有内容缺陷，只需点击“再次验证”，无需付费重新生成');
+    error.code = 'SCENE_REVERIFY_ONLY';
+    error.status = 409;
+    throw error;
+  }
+  const sceneSpec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {
+    layoutText: asset.layout_summary || '',
+    materialLightText: asset.material_summary || '',
+    interactionText: asset.interaction_summary || '',
+    negativeText: asset.negative || '',
+    surfaceTopology: asset.surface_topology || {},
+  };
+  return generateSceneAsset(taskId, {
+    ...body,
+    scene_id: asset.scene_id,
+    scene_spec: sceneSpec,
+    name: asset.name,
+    lock_strength: asset.lock_strength,
+  }, {
+    repairViewKeys: plan.view_keys,
+    repairFeedback: plan.reasons.join('；'),
+  });
 }
 
 async function reverifySceneAsset(taskId, sceneId) {
@@ -561,6 +747,7 @@ async function reverifySceneAsset(taskId, sceneId) {
     requirement_qa: contract.requirement_qa,
     layout_contract: contract.layout_contract,
     verification: contract.verification,
+    repair_plan: buildSceneRepairPlan({ scene_contract: contract, view_images: asset.view_images || [] }),
   };
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
@@ -573,10 +760,12 @@ module.exports = {
   buildSceneSheetPrompt,
   buildDerivedViewPrompt,
   needsLayoutView,
+  buildSceneRepairPlan,
   normalizeSceneAssets,
   localizeSceneViews,
   localizeSceneAssets,
   saveSceneAssetsToTask,
   generateSceneAsset,
+  repairSceneAsset,
   reverifySceneAsset,
 };

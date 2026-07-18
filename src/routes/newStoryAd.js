@@ -852,6 +852,11 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
+router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, body));
+}));
+
 router.get('/tasks/:id', asyncRoute(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');

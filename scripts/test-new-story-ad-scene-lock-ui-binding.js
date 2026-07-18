@@ -140,11 +140,38 @@ function main() {
   assert(legacyHost.innerHTML.includes('生成/重新生成当前场景'));
   assert(!legacyHost.innerHTML.includes('空间覆盖度 100%'));
 
+  const rejected = fullAsset();
+  rejected.scene_id = 'rejected-scene';
+  rejected.repair_plan = { action: 'regenerate_failed_views', count: 2, view_keys: ['reverse', 'interaction'] };
+  rejected.scene_contract = {
+    ...rejected.scene_contract,
+    status: 'rejected',
+    verification: { state: 'rejected', message: '机位覆盖不足', reasons: ['反向和互动位重复'] },
+    requirement_qa: { ...rejected.scene_contract.requirement_qa, pass: true },
+    cross_view_qa: { ...rejected.scene_contract.cross_view_qa, pass: true },
+    spatial_coverage_qa: {
+      pass: false,
+      layout_topology_score: 0.94,
+      camera_diversity_score: 0.2,
+      reverse_coverage_score: 0.1,
+      interaction_zone_score: 0.1,
+      mismatch_reasons: ['反向和互动位重复'],
+    },
+  };
+  const rejectedHost = { innerHTML: '' };
+  frontend.render({ host: rejectedHost, state: { taskId: 'task-rejected', sceneAssets: [rejected] } });
+  assert(rejectedHost.innerHTML.includes('自动修复并重生成失败视图（2 张）'));
+  assert(rejectedHost.innerHTML.includes('系统会根据 QA 原因保留通过项'));
+  assert(!rejectedHost.innerHTML.includes('请修改场景设定后重新生成当前场景'));
+  const legacyUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
+  assert(legacyUi.includes("target.closest('[data-nsa-scene-repair]')"));
+  assert(legacyUi.includes('NewStoryAdSceneAssets?.repair'));
+
   const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
-  assert(html.includes('20260718-scene-progress-v5'));
+  assert(html.includes('20260718-scene-repair-v6'));
 
   console.log(JSON.stringify({
     complete_space_lock: true,
@@ -152,6 +179,7 @@ function main() {
     commercial_views_exclude_layout: true,
     layout_contract_reaches_keyframe_lock: true,
     split_metrics_ui: true,
+    rejected_scene_has_targeted_repair: true,
   }, null, 2));
 }
 

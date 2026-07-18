@@ -97,19 +97,23 @@ async function main() {
     assert.match(calls[0].filename, /_layout_/);
     assert.deepEqual(calls[0].referenceImages || [], []);
     assert.match(calls[0].prompt, /SPATIAL BLUEPRINT/i);
-    assert.match(calls[0].prompt, /complete floor boundary, walls, openings/i);
+    assert.match(calls[0].prompt, /complete floor boundary, at least three wall planes, openings/i);
+    assert.match(calls[0].prompt, /camera pitch must be 55 to 90 degrees downward/i);
+    assert.doesNotMatch(calls[0].prompt, /still from a real commercial shoot/i);
 
     assert.match(calls[1].filename, /_master_/);
     assert.deepEqual(calls[1].referenceImages, ['/mock-scene-view-1.png']);
     assert.equal(calls[1].requireReferences, true);
+    assert.equal(calls[1].inputFidelity, 'low');
     assert.match(calls[1].prompt, /MASTER ESTABLISHING VIEW/i);
-    assert.match(calls[1].prompt, /supplied reference image is the spatial blueprint/i);
+    assert.match(calls[1].prompt, /Reference image 1 is the spatial blueprint/i);
     assert.match(calls[1].prompt, /spatial blueprint is the canonical authority/i);
 
-    for (const call of calls.slice(2)) {
-      assert.deepEqual(call.referenceImages, ['/mock-scene-view-1.png', '/mock-scene-view-2.png']);
+    for (const call of calls.slice(2, 4)) {
+      assert.deepEqual(call.referenceImages, ['/mock-scene-view-2.png', '/mock-scene-view-1.png']);
       assert.equal(call.requireReferences, true);
-      assert.match(call.prompt, /Reference image 1 is the spatial blueprint.*Reference image 2 is the master establishing view/i);
+      assert.equal(call.inputFidelity, 'low');
+      assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the spatial blueprint/i);
       assert.match(call.prompt, /blueprint geometry first and master-view appearance second/i);
       assert.match(call.prompt, /no people/i);
     }
@@ -120,6 +124,9 @@ async function main() {
     assert.match(calls[3].prompt, /human eye\/chest height/i);
     assert.match(calls[3].prompt, /empty standing\/action clearance/i);
     assert.match(calls[4].filename, /_detail_/);
+    assert.deepEqual(calls[4].referenceImages, ['/mock-scene-view-2.png']);
+    assert.equal(calls[4].inputFidelity, 'high');
+    assert.match(calls[4].prompt, /Reference image 1 is the master establishing view/i);
     assert.match(calls[4].prompt, /close or macro crop/i);
     assert.match(calls[4].prompt, /must not be another wide room view/i);
 
@@ -132,9 +139,9 @@ async function main() {
     assert.deepEqual(asset.view_acquisition.reference_graph, {
       layout: [],
       master: ['layout'],
-      reverse: ['layout', 'master'],
-      interaction: ['layout', 'master'],
-      detail: ['layout', 'master'],
+      reverse: ['master', 'layout'],
+      interaction: ['master', 'layout'],
+      detail: ['master'],
     });
 
     console.log(JSON.stringify({

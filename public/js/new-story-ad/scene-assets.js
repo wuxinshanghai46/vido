@@ -331,7 +331,7 @@
         <div class="dh-nsa-scene-body">
           <div class="dh-lux-person-progress">
             <div class="dh-lux-person-progress-head">
-              <b>正在生成场景参考：预计 ${view.total} 张</b>
+              <b>${progress.mode === 'repair' ? '正在修复未通过视图' : '正在生成场景参考'}：预计 ${view.total} 张</b>
               <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
             </div>
             <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
@@ -360,6 +360,8 @@
     const assessment = sceneVerification.assessment || sceneLockAssessment(asset);
     const qaPassed = assessment.complete;
     const canReverify = !qaPassed && !assessment.legacy && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone);
+    const canRepair = !qaPassed && !assessment.legacy && sceneVerification.tone === 'rejected';
+    const repairCount = Math.max(1, Number(asset.repair_plan?.count || 0) || 1);
     const metricValue = value => Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证';
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
@@ -387,7 +389,7 @@
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
             <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : '未完整锁定的场景不会进入关键帧'}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${sceneVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改场景设定后重新生成当前场景，失败图片已保留供对照</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : '未完整锁定的场景不会进入关键帧'}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复并重生成失败视图${asset.repair_plan?.count ? `（${repairCount} 张）` : ''}</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${canRepair ? '<span class="dh-nsa-verification-hint">系统会根据 QA 原因保留通过项、重做失败项并自动复验，无需手工改提示词。</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
@@ -534,6 +536,77 @@
     }
   }
 
+  async function repair({
+    state,
+    api,
+    payload: buildPayload,
+    normalizeBundle,
+    renderAll,
+    setBusy,
+    setButtonBusy,
+    toast,
+    button,
+    sceneId,
+  } = {}) {
+    if (!state?.taskId || !sceneId || typeof api !== 'function') return false;
+    const currentIndex = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId));
+    const currentAsset = currentIndex >= 0 ? state.sceneAssets[currentIndex] : null;
+    const total = Math.max(1, Number(currentAsset?.repair_plan?.count || 0) || 5);
+    const startedAt = Date.now();
+    const updateProgress = () => {
+      const elapsed = Date.now() - startedAt;
+      state.sceneGenerationProgress = {
+        active: true,
+        mode: 'repair',
+        total,
+        completed: 0,
+        current: 1,
+        startedAt,
+        percent: Math.min(88, 12 + Math.round(elapsed / 700)),
+        message: `系统正在根据失败原因重生成 ${total} 张关联视图，完成后会自动复验。进度为耗时估算。`,
+      };
+      renderAll?.();
+    };
+    updateProgress();
+    const timer = setInterval(updateProgress, 1000);
+    setBusy?.(true, '自动修复场景中...');
+    setButtonBusy?.(button, true, '修复并复验中...');
+    try {
+      const body = typeof buildPayload === 'function' ? buildPayload() : {};
+      const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/scene-assets/${encodeURIComponent(sceneId)}/repair`, {
+        method: 'POST',
+        body: {
+          ...body,
+          scene_spec: specPayload(),
+        },
+      });
+      const response = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
+        ? await window.NewStoryAdGenerationFlow.waitForStage(state.taskId, 'scene_asset', { api })
+        : submitted;
+      if (typeof normalizeBundle === 'function') normalizeBundle(response);
+      state.sceneAssets = normalizeAssets(response.scene_assets || response.outputs?.scene_assets || response.bundle?.outputs?.scene_assets || state.sceneAssets || []);
+      state.sceneSelectedIndex = Math.max(0, state.sceneAssets.findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId)));
+      state.sceneGenerationProgress = null;
+      renderAll?.();
+      const updated = state.sceneAssets[state.sceneSelectedIndex] || {};
+      const result = verificationView(updated);
+      toast?.(
+        result.tone === 'verified' ? '失败视图已修复并通过自动验证' : (result.message || result.label),
+        result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'),
+      );
+      return result.tone === 'verified';
+    } catch (error) {
+      state.sceneGenerationProgress = null;
+      renderAll?.();
+      toast?.(error.message || '场景自动修复失败', 'error');
+      return false;
+    } finally {
+      clearInterval(timer);
+      setButtonBusy?.(button, false);
+      setBusy?.(false);
+    }
+  }
+
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
     sceneLockAssessment,
@@ -549,6 +622,7 @@
     payload,
     hydrate,
     generate,
+    repair,
     verify,
   };
   const STRATEGY_LABELS = {
