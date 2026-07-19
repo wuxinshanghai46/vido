@@ -3505,6 +3505,7 @@
         state,
       });
     }
+    syncSceneUpgradeActions();
   }
 
   function renderAll() {
@@ -5288,10 +5289,30 @@
     };
   }
 
+  function selectedSceneUpgradeRequired() {
+    return window.NewStoryAdSceneAssets?.selectedSceneUpgradeRequired?.(state) === true;
+  }
+
+  function syncSceneUpgradeActions() {
+    const upgradeRequired = selectedSceneUpgradeRequired();
+    ['#dhNsaAdAiSceneSpec', '#dhNsaAdGenerateSceneSheet'].forEach(selector => {
+      const button = within(selector);
+      if (!button) return;
+      button.hidden = upgradeRequired;
+      if (upgradeRequired) button.setAttribute('aria-hidden', 'true');
+      else button.removeAttribute('aria-hidden');
+    });
+  }
+
   async function fillSceneSpecFromBrief(button = null, options = {}) {
     const replaceExisting = options.replaceExisting === true;
     const requireAi = options.requireAi === true;
     const quiet = options.quiet === true;
+    const allowUpgradeAsset = options.allowUpgradeAsset === true;
+    if (!allowUpgradeAsset && selectedSceneUpgradeRequired()) {
+      toast('当前是旧版场景资产，请使用场景卡片中的“重新补齐并重建当前场景（5 张）”完成一次性升级', 'warning');
+      return false;
+    }
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
     const label = '补齐场景中...';
@@ -5334,7 +5355,11 @@
     }
   }
 
-  function generateSceneSheet(button, append = false) {
+  function generateSceneSheet(button, append = false, options = {}) {
+    if (!append && options.upgradePrepared !== true && selectedSceneUpgradeRequired()) {
+      toast('旧版场景不能绕过空间设定重编译直接生成，请使用场景卡片中的完整升级按钮', 'warning');
+      return false;
+    }
     if (!window.NewStoryAdSceneAssets?.generate) {
       toast('场景参考模块未加载，请刷新页面后重试。', 'error');
       return false;
@@ -5357,10 +5382,15 @@
   async function upgradeAndRegenerateScene(button = null, sceneId = '') {
     const index = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
     if (index >= 0) state.sceneSelectedIndex = index;
-    const completed = await fillSceneSpecFromBrief(button, { replaceExisting: true, requireAi: true, quiet: true });
+    const completed = await fillSceneSpecFromBrief(button, {
+      replaceExisting: true,
+      requireAi: true,
+      quiet: true,
+      allowUpgradeAsset: true,
+    });
     if (!completed) return false;
     toast('空间设定已按当前广告需求重新编译，开始完整生成 5 张新版场景参考', 'info');
-    return generateSceneSheet(button, false);
+    return generateSceneSheet(button, false, { upgradePrepared: true });
   }
 
   async function generatePersonSheet(button) {

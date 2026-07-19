@@ -170,6 +170,8 @@ function main() {
   assert.equal(legacyAssessment.complete, false);
   assert.equal(legacyAssessment.legacy, true);
   assert.equal(legacyAssessment.spatialScore, null, '旧资产空间覆盖应显示待验证，不得伪造分数');
+  assert.equal(frontend.selectedSceneUpgradeRequired({ sceneAssets: [legacy] }), true);
+  assert.equal(frontend.selectedSceneUpgradeRequired({ sceneAssets: [asset] }), false);
   assert.equal(frontend.sceneLockAssessment(frontend.normalizeAssets([normalizedLegacy])[0]).legacy, true);
   const fullHost = { innerHTML: '' };
   frontend.render({ host: fullHost, state: { taskId: 'task-v3', sceneAssets: [asset] } });
@@ -269,8 +271,17 @@ function main() {
   assert(legacyUi.includes('NewStoryAdSceneAssets?.repair'));
   assert(legacyUi.includes("target.closest('[data-nsa-scene-upgrade]')"));
   assert(legacyUi.includes('upgradeAndRegenerateScene'));
-  assert(legacyUi.includes('replaceExisting: true, requireAi: true'));
+  assert(legacyUi.includes('replaceExisting: true'));
+  assert(legacyUi.includes('requireAi: true'));
   assert(legacyUi.includes('没有提交任何图片生成'));
+  assert(legacyUi.includes('syncSceneUpgradeActions'));
+  assert(legacyUi.includes('button.hidden = upgradeRequired'));
+  assert(legacyUi.includes('!allowUpgradeAsset && selectedSceneUpgradeRequired()'));
+  assert(legacyUi.includes('options.upgradePrepared !== true && selectedSceneUpgradeRequired()'));
+
+  const sceneService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
+  assert(!sceneService.includes('legacyNeedsLayoutHeuristic'));
+  assert(!sceneService.includes('legacy_layout_trigger'));
 
   const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
@@ -280,10 +291,11 @@ function main() {
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260719-scene-contract-upgrade-v12'));
+  assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
+  assert(html.includes('20260719-scene-upgrade-closure-v14'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260719-scene-contract-upgrade-v12'));
+  assert(bootstrap.includes('20260719-scene-upgrade-closure-v14'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));

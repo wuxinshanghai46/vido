@@ -1955,6 +1955,7 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   min-height: 38px;
   padding-inline: 13px;
 }
+.dh-nsa-scene-actions .dh-btn[hidden] { display: none !important; }
 .dh-nsa-scene-actions .dh-luxgen-action-btn {
   min-width: 0;
 }

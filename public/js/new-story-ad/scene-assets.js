@@ -189,6 +189,13 @@
     return true;
   }
 
+  function selectedSceneUpgradeRequired(state = {}) {
+    const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
+    if (!assets.length) return false;
+    const index = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+    return sceneLockAssessment(assets[index] || {}).upgradeRequired === true;
+  }
+
   function averagePercent(qa = {}, keys = []) {
     const values = keys.map(key => qa?.[key])
       .filter(value => value !== undefined && value !== null && value !== '')
@@ -727,6 +734,7 @@
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
     sceneLockAssessment,
+    selectedSceneUpgradeRequired,
     thumbUrl,
     specPayload,
     hasContinuousSurfaceIntent,

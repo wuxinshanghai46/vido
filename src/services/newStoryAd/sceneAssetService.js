@@ -607,27 +607,10 @@ function sceneVisionThumbnailUrl(value = '', width = 560) {
   return `${absolute}${separator}w=${Math.max(240, Math.min(960, Number(width) || 560))}`;
 }
 
-function needsLayoutView(requested = {}, body = {}) {
+function needsLayoutView() {
   // Every new scene defines its topology before cinematic views are derived.
-  // Parameters remain accepted so historical callers do not need migration.
-  void requested;
-  void body;
+  // JavaScript callers may still pass historical arguments; they are ignored.
   return true;
-}
-
-function legacyNeedsLayoutHeuristic(requested = {}, body = {}) {
-  if (body.include_layout_view === true || body.includeLayoutView === true) return true;
-  const text = [
-    requested.layout,
-    requested.interaction,
-    requested.surface_topology?.notes,
-    body.description,
-  ].filter(Boolean).join(' ');
-  if (/俯视|俯拍|鸟瞰|顶视|平面图|轴测|空间全貌|top.?down|bird.?s.?eye|floor.?plan|axonometric/i.test(text)) return true;
-  if (/多区域|多个区域|跨区域|多入口|多个入口|双入口|多空间|多个空间|长运镜|连续穿行|跨区走位/i.test(text)) return true;
-  const zoneHints = text.match(/主展示区|展示区|互动区|行动区|操作区|接待区|入口区|出口区|通道|走廊|前厅|后场|工作区|休息区|厨房|客厅/g) || [];
-  const movement = /动线|路径|走位|穿行|进入|离开|绕行|连续摄影机/i.test(text);
-  return new Set(zoneHints).size >= 3 && movement;
 }
 
 function sceneRequest(ctx = {}, body = {}) {
@@ -721,8 +704,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const promptBody = repairFeedback ? { ...body, repair_feedback: repairFeedback } : body;
   const requested = sceneRequest(ctx, body);
   const materialReferences = sceneMaterialReferenceImages(ctx, body);
-  const layoutRequired = needsLayoutView(requested, body);
-  const legacyLayoutTrigger = legacyNeedsLayoutHeuristic(requested, body);
+  const layoutRequired = needsLayoutView();
   const requiredViewKeys = layoutRequired ? SCENE_GENERATION_ORDER : SCENE_VIEW_KEYS;
   const viewAcquisition = sceneViewStrategy.resolveSceneViewStrategy({
     requested: body.view_strategy || body.viewStrategy || 'auto',
@@ -954,7 +936,6 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       layout_policy: 'required_for_all_new_scenes',
       layout_appearance_role: LAYOUT_APPEARANCE_ROLE,
       layout_preflight: layoutAcquisition,
-      legacy_layout_trigger: legacyLayoutTrigger,
       generation_order: SCENE_GENERATION_ORDER,
       last_generated_views: repairMode ? repairViewKeys : SCENE_GENERATION_ORDER,
       repair_mode: repairMode,
