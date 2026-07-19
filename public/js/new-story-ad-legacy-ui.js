@@ -5288,7 +5288,10 @@
     };
   }
 
-  async function fillSceneSpecFromBrief(button = null) {
+  async function fillSceneSpecFromBrief(button = null, options = {}) {
+    const replaceExisting = options.replaceExisting === true;
+    const requireAi = options.requireAi === true;
+    const quiet = options.quiet === true;
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
     const label = '补齐场景中...';
@@ -5307,16 +5310,57 @@
         });
         suggestion = r.scene_spec || r.sceneSpec || null;
       } catch (err) {
+        if (requireAi) {
+          toast('AI 空间设定补齐失败，已停止操作，没有提交任何图片生成', 'error');
+          return false;
+        }
         suggestion = fallbackSceneSpecFromBrief(brief);
       }
-      const changed = window.NewStoryAdSceneAssets?.applySpecSuggestion?.(suggestion || fallbackSceneSpecFromBrief(brief));
+      const nextSpec = suggestion || fallbackSceneSpecFromBrief(brief);
+      let changed = false;
+      if (replaceExisting && window.NewStoryAdSceneAssets?.applySpec) {
+        window.NewStoryAdSceneAssets.applySpec(nextSpec, { clearMissing: false });
+        changed = true;
+      } else {
+        changed = window.NewStoryAdSceneAssets?.applySpecSuggestion?.(nextSpec) === true;
+      }
       markSourceDirty('scene');
       renderAll();
       scheduleAutoSave('scene_spec_assist');
-      toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
+      if (!quiet) toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
+      return true;
     } finally {
       setButtonBusy(button, false);
     }
+  }
+
+  function generateSceneSheet(button, append = false) {
+    if (!window.NewStoryAdSceneAssets?.generate) {
+      toast('场景参考模块未加载，请刷新页面后重试。', 'error');
+      return false;
+    }
+    return window.NewStoryAdSceneAssets.generate({
+      state,
+      ensureTask,
+      api,
+      payload,
+      normalizeBundle,
+      renderAll,
+      setBusy,
+      setButtonBusy,
+      toast,
+      button,
+      append,
+    });
+  }
+
+  async function upgradeAndRegenerateScene(button = null, sceneId = '') {
+    const index = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
+    if (index >= 0) state.sceneSelectedIndex = index;
+    const completed = await fillSceneSpecFromBrief(button, { replaceExisting: true, requireAi: true, quiet: true });
+    if (!completed) return false;
+    toast('空间设定已按当前广告需求重新编译，开始完整生成 5 张新版场景参考', 'info');
+    return generateSceneSheet(button, false);
   }
 
   async function generatePersonSheet(button) {
@@ -5714,6 +5758,13 @@
         }
         return;
       }
+      const sceneUpgrade = target.closest('[data-nsa-scene-upgrade]');
+      if (sceneUpgrade && host.contains(sceneUpgrade)) {
+        e.preventDefault();
+        e.stopPropagation();
+        await upgradeAndRegenerateScene(sceneUpgrade, sceneUpgrade.dataset.nsaSceneUpgrade);
+        return;
+      }
       const sceneRepair = target.closest('[data-nsa-scene-repair]');
       if (sceneRepair && host.contains(sceneRepair)) {
         e.preventDefault();
@@ -5970,38 +6021,8 @@
         },
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
-        dhNsaAdGenerateSceneSheet: () => {
-          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景参考模块未加载，请刷新页面后重试。', 'error');
-          return window.NewStoryAdSceneAssets.generate({
-            state,
-            ensureTask,
-            api,
-            payload,
-            normalizeBundle,
-            renderAll,
-            setBusy,
-            setButtonBusy,
-            toast,
-            button: btn,
-            append: false,
-          });
-        },
-        dhNsaAdAddSceneSheet: () => {
-          if (!window.NewStoryAdSceneAssets?.generate) return toast('场景参考模块未加载，请刷新页面后重试。', 'error');
-          return window.NewStoryAdSceneAssets.generate({
-            state,
-            ensureTask,
-            api,
-            payload,
-            normalizeBundle,
-            renderAll,
-            setBusy,
-            setButtonBusy,
-            toast,
-            button: btn,
-            append: true,
-          });
-        },
+        dhNsaAdGenerateSceneSheet: () => generateSceneSheet(btn, false),
+        dhNsaAdAddSceneSheet: () => generateSceneSheet(btn, true),
         dhNsaAdVoiceOpen: () => openNsaVoiceModal(),
         dhNsaAdMusicLibrary: () => openNsaMusicLibrary(),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),

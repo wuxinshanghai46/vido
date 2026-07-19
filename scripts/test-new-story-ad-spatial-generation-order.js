@@ -205,9 +205,11 @@ async function main() {
     assert.deepEqual(asset.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail', 'layout']);
     assert.equal(asset.image_url, '/mock-scene-view-1.png', 'master remains the historical primary thumbnail');
     assert.equal(asset.view_count, 5);
+    assert.equal(asset.generation_contract_version, 5);
     assert.equal(asset.layout_contract.required, true);
     assert.equal(asset.view_acquisition.layout_policy, 'required_for_all_new_scenes');
     assert.equal(asset.view_acquisition.layout_appearance_role, 'master_derived_photographic_overview');
+    assert.equal(asset.view_acquisition.generation_contract_version, 5);
     assert.deepEqual(asset.view_acquisition.generation_order, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.deepEqual(asset.view_acquisition.reference_graph, {
       master: [],

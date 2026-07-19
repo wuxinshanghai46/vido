@@ -6,6 +6,7 @@
     detail: '材质细节',
     layout: '俯视布局',
   };
+  const SCENE_GENERATION_CONTRACT_VERSION = 5;
 
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;
@@ -38,18 +39,25 @@
     const views = Array.isArray(asset.view_images) ? asset.view_images : [];
     const hasLayoutView = views.some(view => clean(view?.key || view?.view, 40) === 'layout');
     const schemaVersion = Number(contract.schema_version || asset.schema_version || 0) || 0;
+    const generationContractVersion = Number(
+      asset.generation_contract_version
+      || asset.view_acquisition?.generation_contract_version
+      || 0,
+    ) || 0;
+    const upgradeRequired = generationContractVersion < SCENE_GENERATION_CONTRACT_VERSION;
     const hasSpatialQa = !!(asset.spatial_coverage_qa || contract.spatial_coverage_qa);
     const layoutAvailable = layoutContract.status === 'available' && hasLayoutView;
     const requirementPass = requirementQa.pass === true;
     const crossViewPass = crossViewQa.pass === true;
     const spatialPass = spatialQa.pass === true;
     const appearancePass = contract.status === 'verified' && requirementPass && crossViewPass;
-    const complete = schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable;
+    const complete = !upgradeRequired && schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable;
     const legacy = schemaVersion < 3
       || !hasSpatialQa
       || spatialQa.legacy === true
       || spatialQa.coverage_status === 'legacy_partial'
-      || contract.compatibility_status === 'legacy_partial';
+      || contract.compatibility_status === 'legacy_partial'
+      || upgradeRequired;
     const requirementScore = averagePercent(requirementQa, ['layout_match_score', 'material_light_match_score', 'interaction_match_score', 'surface_topology_match_score', 'negative_compliance_score']);
     const crossViewScore = averagePercent(crossViewQa, ['scene_consistency_score', 'geometry_consistency_score', 'material_consistency_score']);
     const spatialScore = scorePercent(spatialQa, ['coverage_score', 'spatial_coverage_score'])
@@ -58,6 +66,8 @@
     return {
       complete,
       legacy,
+      upgradeRequired,
+      generationContractVersion,
       appearancePass,
       layoutAvailable,
       hasLayoutView,
@@ -102,6 +112,9 @@
       .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
     if (assessment.complete) {
       return { tone: 'verified', label: '完整空间已锁定', message: details.message || '需求、跨视图和空间覆盖三道验证均已通过，俯视布局已纳入空间合同', reasons: [], scores, assessment };
+    }
+    if (assessment.upgradeRequired) {
+      return { tone: 'upgrade', label: '需要完整升级', message: '当前图片生成于旧版空间合同，重复验证或局部修复无法升级。请重新补齐空间设定并完整生成新版场景。', reasons: [], scores: [], assessment };
     }
     if (details.state === 'unavailable' || contract.qa_unavailable === true) {
       return { tone: 'unavailable', label: '场景待验证', message: details.message || '视觉审核服务暂时不可用，现有图片没有被判定为失败；再次验证不会重新生成图片。', reasons, assessment };
@@ -276,6 +289,7 @@
       view_images: views,
       view_count: Number(asset.view_count || views.length || (url ? 1 : 0)) || 0,
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
+      generation_contract_version: Math.max(0, Number(asset.generation_contract_version || asset.view_acquisition?.generation_contract_version || 0) || 0),
       scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : null,
       cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
       requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
@@ -447,6 +461,7 @@
       && !assessment.legacy
       && repairAction === 'regenerate_failed_views'
       && repairViewKeys.length > 0;
+    const canUpgrade = !qaPassed && assessment.upgradeRequired;
     const repairFailure = state.taskStatus === 'failed' && /scene_asset/i.test(String(state.taskStage || ''))
       ? sceneRepairFailureMessage(state.taskError)
       : '';
@@ -482,7 +497,7 @@
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
             <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : (sceneVerification.tone === 'unavailable' ? '审核服务异常，图片尚未判定失败' : '未完整锁定的场景不会进入关键帧')}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.upgradeRequired ? '旧版图片不能继续复验或局部修复，需要一次完整升级' : (assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : (sceneVerification.tone === 'unavailable' ? '审核服务异常，图片尚未判定失败' : '未完整锁定的场景不会进入关键帧'))}</span>${canUpgrade ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-upgrade="${escapeHtml(asset.scene_id || asset.id)}">重新补齐并重建当前场景（5 张）</button>` : ''}${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${canUpgrade ? '<span class="dh-nsa-verification-hint">系统会先用 AI 重新编译当前空间设定；补齐成功后才生成 5 张新版参考并自动验收，旧版图片文件保留。</span>' : (assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : '')}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
@@ -546,6 +561,12 @@
       percent: 8,
       message: '任务正在提交，等待服务器返回每个视图的真实生成状态。',
     };
+    if (!append) {
+      state.taskStatus = 'working';
+      state.taskStage = 'scene_asset';
+      state.taskError = '';
+      state.taskErrorCode = '';
+    }
     const setProgressStage = () => {
       state.sceneGenerationProgress = liveSceneProgress(state, fallbackProgress);
       renderAll?.();

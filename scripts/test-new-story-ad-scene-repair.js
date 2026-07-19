@@ -238,8 +238,9 @@ async function main() {
     } : {},
   }])[0];
   assert.equal(upgradedLegacyAsset.repair_plan.version, 5, 'stored v1 repair plans must be upgraded on read');
-  assert.equal(upgradedLegacyAsset.repair_plan.action, 'reverify');
-  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, []);
+  assert.equal(upgradedLegacyAsset.repair_plan.action, 'regenerate_full_scene');
+  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
+  assert.equal(sceneAssets.sceneGenerationUpgradeRequired(upgradedLegacyAsset), true);
 
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
@@ -301,9 +302,29 @@ async function main() {
       view_issues: [{ code: 'CAMERA_DIVERSITY_LOW', view_keys: ['layout'], reason: 'coverage low', evidence: '', confidence: 0.8 }],
     },
   }])[0];
-  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.version, 5, 'stored v4 plans must be migrated through the evidence gate');
-  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.action, 'reverify');
-  assert.deepEqual(upgradedEvidenceFreeV4Asset.repair_plan.view_keys, []);
+  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.version, 5, 'stored v4 plans must be migrated through the generation-contract gate');
+  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.action, 'regenerate_full_scene');
+  assert.deepEqual(upgradedEvidenceFreeV4Asset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
+
+  const upgradeTaskId = 'scene-full-upgrade-required-test';
+  storage.createTask({ id: upgradeTaskId, title: 'old scene upgrade', request: {} });
+  storage.saveOutput(upgradeTaskId, 'scene_assets', [{
+    ...upgradedEvidenceFreeV4Asset,
+    scene_id: 'old-scene-upgrade',
+    id: 'old-scene-upgrade',
+    image_url: '/old-master.png',
+    view_images: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({ key, url: `/old-${key}.png` })),
+  }]);
+  await assert.rejects(
+    () => sceneAssets.reverifySceneAsset(upgradeTaskId, 'old-scene-upgrade'),
+    error => error.code === 'SCENE_FULL_REBUILD_REQUIRED',
+    'old generation contracts must not enter another verification loop',
+  );
+  await assert.rejects(
+    () => sceneAssets.repairSceneAsset(upgradeTaskId, 'old-scene-upgrade'),
+    error => error.code === 'SCENE_FULL_REBUILD_REQUIRED',
+    'old generation contracts must not enter targeted paid repair',
+  );
 
   const observableOnlyIssue = sceneSpace.normalizeViewIssues([{
     code: 'ROOT_MATERIAL_IDENTITY_INVALID',
@@ -343,6 +364,7 @@ async function main() {
   storage.saveOutput(taskId, 'scene_assets', [{
     id: sceneId,
     scene_id: sceneId,
+    generation_contract_version: 5,
     scene_revision: 1,
     name: 'repair scene',
     image_url: urls.master,
@@ -388,6 +410,7 @@ async function main() {
     storage.saveOutput(unavailableTaskId, 'scene_assets', [{
       id: unavailableSceneId,
       scene_id: unavailableSceneId,
+      generation_contract_version: 5,
       scene_revision: 1,
       name: 'preserve scene',
       image_url: urls.master,

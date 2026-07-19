@@ -10,6 +10,7 @@ function fullAsset() {
   return {
     scene_id: 'scene-v3',
     name: '完整空间场景',
+    generation_contract_version: 5,
     view_images: [
       { key: 'master', url: '/master.png' },
       { key: 'reverse', url: '/reverse.png' },
@@ -87,6 +88,7 @@ function main() {
 
   const legacy = fullAsset();
   legacy.scene_id = 'legacy-scene';
+  legacy.generation_contract_version = 0;
   legacy.view_images = legacy.view_images.slice(0, 4);
   legacy.scene_contract = {
     status: 'verified',
@@ -178,9 +180,11 @@ function main() {
   assert(fullHost.innerHTML.includes('俯视布局'));
   const legacyHost = { innerHTML: '' };
   frontend.render({ host: legacyHost, state: { taskId: 'task-legacy', sceneAssets: [legacy] } });
-  assert(legacyHost.innerHTML.includes('待升级'));
-  assert(legacyHost.innerHTML.includes('旧资产仅锁定外观'));
-  assert(legacyHost.innerHTML.includes('生成/重新生成当前场景'));
+  assert(legacyHost.innerHTML.includes('需要完整升级'));
+  assert(legacyHost.innerHTML.includes('旧版图片不能继续复验或局部修复'));
+  assert(legacyHost.innerHTML.includes('重新补齐并重建当前场景（5 张）'));
+  assert(legacyHost.innerHTML.includes('data-nsa-scene-upgrade='));
+  assert(!legacyHost.innerHTML.includes('data-nsa-scene-verify='));
   assert(!legacyHost.innerHTML.includes('空间覆盖度 100%'));
 
   const unavailable = fullAsset();
@@ -263,6 +267,10 @@ function main() {
   const legacyUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   assert(legacyUi.includes("target.closest('[data-nsa-scene-repair]')"));
   assert(legacyUi.includes('NewStoryAdSceneAssets?.repair'));
+  assert(legacyUi.includes("target.closest('[data-nsa-scene-upgrade]')"));
+  assert(legacyUi.includes('upgradeAndRegenerateScene'));
+  assert(legacyUi.includes('replaceExisting: true, requireAi: true'));
+  assert(legacyUi.includes('没有提交任何图片生成'));
 
   const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
   const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
@@ -272,10 +280,10 @@ function main() {
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260719-scene-layout-gate-v11'));
+  assert(html.includes('20260719-scene-contract-upgrade-v12'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260719-scene-layout-gate-v11'));
+  assert(bootstrap.includes('20260719-scene-contract-upgrade-v12'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));

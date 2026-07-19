@@ -11,6 +11,7 @@ const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
 const SCENE_REPAIR_PLAN_VERSION = 5;
+const SCENE_GENERATION_CONTRACT_VERSION = 5;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_photographic_overview';
 const SCENE_IMAGE_EXTRA_ATTEMPTS = Math.max(0, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_EXTRA_ATTEMPTS || 2) || 0));
 const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
@@ -95,6 +96,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     view_count: Number(asset.view_count || viewImages.length || (primary ? 1 : 0)) || 0,
     view_strategy: cleanText(asset.view_strategy || asset.viewStrategy || 'image_derived', 40),
     view_acquisition: asset.view_acquisition && typeof asset.view_acquisition === 'object' ? asset.view_acquisition : null,
+    generation_contract_version: sceneGenerationContractVersion(asset),
     scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
     scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object'
       ? sceneSpace.normalizeContract(asset.scene_contract, {
@@ -108,12 +110,39 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
-    repair_plan: asset.repair_plan && typeof asset.repair_plan === 'object'
-      && Number(asset.repair_plan.version || 0) >= SCENE_REPAIR_PLAN_VERSION
-      ? asset.repair_plan
-      : buildSceneRepairPlan(asset),
+    repair_plan: sceneGenerationUpgradeRequired(asset)
+      ? fullSceneUpgradePlan()
+      : (asset.repair_plan && typeof asset.repair_plan === 'object'
+        && Number(asset.repair_plan.version || 0) >= SCENE_REPAIR_PLAN_VERSION
+        ? asset.repair_plan
+        : buildSceneRepairPlan(asset)),
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     created_at: asset.created_at || new Date().toISOString(),
+  };
+}
+
+function sceneGenerationContractVersion(asset = {}) {
+  return Math.max(0, Number(
+    asset.generation_contract_version
+    || asset.view_acquisition?.generation_contract_version
+    || 0,
+  ) || 0);
+}
+
+function sceneGenerationUpgradeRequired(asset = {}) {
+  return sceneGenerationContractVersion(asset) < SCENE_GENERATION_CONTRACT_VERSION;
+}
+
+function fullSceneUpgradePlan() {
+  return {
+    version: SCENE_REPAIR_PLAN_VERSION,
+    action: 'regenerate_full_scene',
+    view_keys: [...SCENE_GENERATION_ORDER],
+    view_labels: SCENE_GENERATION_ORDER.map(sceneViewLabel),
+    count: SCENE_GENERATION_ORDER.length,
+    reasons: ['场景图片生成于旧版空间合同，不能通过重复审核升级'],
+    issue_codes: ['GENERATION_CONTRACT_UPGRADE_REQUIRED'],
+    message: '系统将先重新补齐当前空间设定，再完整生成 5 张新版场景参考并自动验收。',
   };
 }
 
@@ -908,8 +937,10 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     })),
     view_count: viewImages.length,
     view_strategy: viewAcquisition.selected,
+    generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
     view_acquisition: {
       ...viewAcquisition,
+      generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
       layout_policy: 'required_for_all_new_scenes',
       layout_appearance_role: LAYOUT_APPEARANCE_ROLE,
       layout_preflight: layoutAcquisition,
@@ -999,6 +1030,12 @@ async function repairSceneAsset(taskId, sceneId, body = {}) {
     error.status = 404;
     throw error;
   }
+  if (sceneGenerationUpgradeRequired(asset)) {
+    const error = new Error('当前图片来自旧版空间合同，不能继续局部修复；请完整重新生成当前场景');
+    error.code = 'SCENE_FULL_REBUILD_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
   const plan = buildSceneRepairPlan(asset);
   if (plan.action === 'none') {
     const error = new Error('当前场景已经通过完整空间验证，无需重新生成');
@@ -1044,6 +1081,12 @@ async function reverifySceneAsset(taskId, sceneId) {
     throw error;
   }
   const asset = assets[index];
+  if (sceneGenerationUpgradeRequired(asset)) {
+    const error = new Error('当前图片来自旧版空间合同，重复验证无法升级；请完整重新生成当前场景');
+    error.code = 'SCENE_FULL_REBUILD_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
   const views = (asset.view_images || []).map(view => ({
     ...view,
     url: sceneVisionThumbnailUrl(view.url || view.image_url),
@@ -1113,6 +1156,7 @@ module.exports = {
   SCENE_GENERATION_ORDER,
   SCENE_IMAGE_MAX_ATTEMPTS,
   SCENE_IMAGE_EXTRA_ATTEMPTS,
+  SCENE_GENERATION_CONTRACT_VERSION,
   sceneViewLabel,
   sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
@@ -1122,6 +1166,7 @@ module.exports = {
   sceneVisionThumbnailUrl,
   needsLayoutView,
   buildSceneRepairPlan,
+  sceneGenerationUpgradeRequired,
   normalizeSceneAssets,
   localizeSceneViews,
   localizeSceneAssets,
