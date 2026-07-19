@@ -52,6 +52,43 @@ function passingResult(overrides = {}) {
 }
 
 async function main() {
+  assert.equal(modelGateway.visionAttemptTimeoutForBudget({
+    timeoutMs: 120000,
+    stageBudgetMs: 120000,
+    elapsedMs: 0,
+    remainingCandidates: 2,
+  }), 60000, 'first vision candidate must not consume the fallback candidate budget');
+  assert.equal(modelGateway.visionAttemptTimeoutForBudget({
+    timeoutMs: 120000,
+    stageBudgetMs: 120000,
+    elapsedMs: 60000,
+    remainingCandidates: 1,
+  }), 60000, 'the second vision candidate must retain a real timeout window');
+  const visionAttempts = [];
+  const fallbackResult = await modelGateway.generateVision({
+    taskId: 'vision-budget-fallback-test',
+    stage: 'new_story_ad.scene_vision',
+    systemPrompt: 'Return JSON.',
+    userPrompt: 'Inspect the supplied image.',
+    imageUrls: ['https://example.test/reference.png'],
+    maxCandidates: 2,
+    timeoutMs: 120000,
+    stageBudgetMs: 120000,
+    _candidateModels: [
+      { provider_id: 'mock-primary', model_id: 'vision-a', enabled: true },
+      { provider_id: 'mock-fallback', model_id: 'vision-b', enabled: true },
+    ],
+    _generateText: async options => {
+      visionAttempts.push({ model: options.model.model_id, timeoutMs: options.timeoutMs });
+      if (options.model.model_id === 'vision-a') throw new Error('request timed out');
+      return { text: '{"pass":true}', adapter: 'mock', family: 'mock' };
+    },
+  });
+  assert.equal(visionAttempts.length, 2, 'primary vision timeout must execute the fallback candidate');
+  assert.ok(visionAttempts[0].timeoutMs >= 59000 && visionAttempts[0].timeoutMs <= 60000);
+  assert.ok(visionAttempts[1].timeoutMs >= 59000);
+  assert.equal(fallbackResult.fallback_used, true);
+  assert.equal(fallbackResult.failed_models[0].code, 'TIMEOUT_OR_NETWORK');
   const complete = sceneSpace.normalizeContract(passingResult(), {
     sceneId: 'scene-complete',
     views: fullViews,
@@ -175,6 +212,36 @@ async function main() {
 
   const originalVision = modelGateway.generateVision;
   try {
+    let layoutGateRequest = null;
+    const layoutGate = await sceneSpace.validateLayoutAcquisition({
+      taskId: 'layout-role-gate-test',
+      masterUrl: 'https://test.invalid/master.png',
+      layoutUrl: 'https://test.invalid/layout.png?w=560',
+      requested: { layout: 'task-defined footprint and access route' },
+      gateway: {
+        generateVision: async request => {
+          layoutGateRequest = request;
+          return {
+            text: JSON.stringify({
+              pass: true,
+              layout_role_score: 0.95,
+              footprint_coverage_score: 0.94,
+              scene_identity_score: 0.96,
+              camera_relocation_score: 0.92,
+              reasons: [],
+            }),
+            used_model: 'mock/layout-role',
+          };
+        },
+      },
+    });
+    assert.equal(layoutGate.pass, true);
+    assert.match(layoutGateRequest.userPrompt, /65-80 degree downward camera/i);
+    assert.match(layoutGateRequest.userPrompt, /usable ground\/base footprint/i);
+    assert.match(layoutGateRequest.userPrompt, /prominent ceiling plane/i);
+    assert.match(layoutGateRequest.userPrompt, /mild high-angle commercial shot/i);
+    assert.equal(layoutGateRequest.imageUrls[1], 'https://test.invalid/layout.png?w=560');
+
     let successfulReviewCalls = 0;
     modelGateway.generateVision = async () => {
       successfulReviewCalls += 1;
@@ -192,6 +259,27 @@ async function main() {
     assert.equal(analyzed.status, 'verified');
     assert.equal(analyzed.vision_model, 'mock/spatial-v3');
     assert.equal(successfulReviewCalls, 1, '三道空间验收必须合并在一次视觉审核请求中，不能串行调用三次');
+
+    const roleInvalid = await sceneSpace.analyzeSceneViews({
+      taskId: 'spatial-layout-role-invalid',
+      sceneId: 'scene-layout-role-invalid',
+      views: fullViews,
+      requested: { layout: '固定整间空间布局' },
+      layoutRequired: true,
+      layoutAcquisition: {
+        pass: false,
+        layout_role_score: 0.2,
+        footprint_coverage_score: 0.3,
+        scene_identity_score: 0.95,
+        camera_relocation_score: 0.2,
+        reasons: ['只是主视图的轻微抬高重构'],
+      },
+    });
+    assert.equal(roleInvalid.full_space_lock, false);
+    assert.equal(roleInvalid.status, 'rejected');
+    assert.equal(roleInvalid.layout_contract.status, 'invalid');
+    assert.equal(roleInvalid.layout_contract.layout_role_pass, false);
+    assert.match(roleInvalid.spatial_coverage_qa.reasons.join('；'), /轻微抬高|高俯角/);
 
     let calls = 0;
     modelGateway.generateVision = async () => {

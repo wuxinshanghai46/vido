@@ -86,20 +86,25 @@
       ...(Array.isArray(requirementQa.mismatch_reasons) ? requirementQa.mismatch_reasons : []),
       ...(Array.isArray(spatialQa.mismatch_reasons) ? spatialQa.mismatch_reasons : []),
     ].map(value => clean(value, 240)).filter(Boolean))].slice(0, 6);
+    const firstPresent = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
     const scores = [
       ['空间', qa.scene_consistency_score],
-      ['结构', qa.geometry_consistency_score || qa.anchor_consistency_score],
-      ['材质', qa.material_consistency_score || qa.material_match_score],
+      ['结构', firstPresent(qa.geometry_consistency_score, qa.anchor_consistency_score)],
+      ['材质', firstPresent(qa.material_consistency_score, qa.material_match_score)],
       ['需求布局', requirementQa.layout_match_score],
       ['需求材质/光线', requirementQa.material_light_match_score],
       ['互动空间', requirementQa.interaction_match_score],
       ['表面结构', requirementQa.surface_topology_match_score],
       ['禁止项', requirementQa.negative_compliance_score],
-    ].map(([label, value]) => ({ label, value: Number(value) }))
-      .filter(item => Number.isFinite(item.value) && item.value > 0)
+    ].filter(([, value]) => value !== undefined && value !== null && value !== '')
+      .map(([label, value]) => ({ label, value: Number(value) }))
+      .filter(item => Number.isFinite(item.value))
       .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
     if (assessment.complete) {
       return { tone: 'verified', label: '完整空间已锁定', message: details.message || '需求、跨视图和空间覆盖三道验证均已通过，俯视布局已纳入空间合同', reasons: [], scores, assessment };
+    }
+    if (details.state === 'unavailable' || contract.qa_unavailable === true) {
+      return { tone: 'unavailable', label: '场景待验证', message: details.message || '视觉审核服务暂时不可用，现有图片没有被判定为失败；再次验证不会重新生成图片。', reasons, assessment };
     }
     if (assessment.legacy && assessment.appearancePass) {
       return { tone: 'upgrade', label: '待升级', message: '这是旧版场景资产，目前只能确认外观一致。请重新生成当前场景，补齐俯视布局与空间覆盖验证。', reasons, scores, assessment };
@@ -109,9 +114,6 @@
     }
     if (contract.status === 'rejected') {
       return { tone: 'rejected', label: '场景验证未通过', message: details.message || reasons[0] || '场景未满足原始要求、跨视图不一致或空间覆盖不足', reasons, scores, assessment };
-    }
-    if (details.state === 'unavailable' || contract.qa_unavailable === true) {
-      return { tone: 'unavailable', label: '场景验证异常', message: details.message || '视觉审核暂时不可用，请稍后重试', reasons, assessment };
     }
     return { tone: 'unverified', label: '空间锁待验证', message: details.message || '首次使用或场景版本变化后需要验证一次', reasons, assessment };
   }
@@ -433,13 +435,26 @@
     const sceneVerification = verificationView(asset);
     const assessment = sceneVerification.assessment || sceneLockAssessment(asset);
     const qaPassed = assessment.complete;
-    const canReverify = !qaPassed && !assessment.legacy && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone);
-    const canRepair = !qaPassed && !assessment.legacy && sceneVerification.tone === 'rejected';
+    const repairAction = asset.repair_plan?.action || '';
+    const repairViewKeys = Array.isArray(asset.repair_plan?.view_keys)
+      ? asset.repair_plan.view_keys.filter(key => VIEW_LABELS[key])
+      : [];
+    const canReverify = !qaPassed && !assessment.legacy && (
+      repairAction === 'reverify'
+      || (!repairAction && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone))
+    );
+    const canRepair = !qaPassed
+      && !assessment.legacy
+      && repairAction === 'regenerate_failed_views'
+      && repairViewKeys.length > 0;
     const repairFailure = state.taskStatus === 'failed' && /scene_asset/i.test(String(state.taskStage || ''))
       ? sceneRepairFailureMessage(state.taskError)
       : '';
-    const repairCount = Math.max(1, Number(asset.repair_plan?.count || 0) || 1);
-    const metricValue = value => Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证';
+    const repairCount = repairViewKeys.length;
+    const repairLabels = repairViewKeys.map(key => VIEW_LABELS[key]).join('、');
+    const metricValue = value => value === null || value === undefined || value === ''
+      ? '待验证'
+      : (Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证');
     host.innerHTML = `<div class="dh-nsa-scene-list">
       ${assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
@@ -467,7 +482,7 @@
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
             <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : '未完整锁定的场景不会进入关键帧'}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复并重生成失败视图${asset.repair_plan?.count ? `（${repairCount} 张）` : ''}</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${canRepair ? '<span class="dh-nsa-verification-hint">系统会根据 QA 原因保留通过项、重做失败项并自动复验，无需手工改提示词。</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : (sceneVerification.tone === 'unavailable' ? '审核服务异常，图片尚未判定失败' : '未完整锁定的场景不会进入关键帧')}</span>${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : ''}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
@@ -622,10 +637,15 @@
     if (!state?.taskId || !sceneId || typeof api !== 'function') return false;
     const currentIndex = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId));
     const currentAsset = currentIndex >= 0 ? state.sceneAssets[currentIndex] : null;
-    const repairViewKeys = Array.isArray(currentAsset?.repair_plan?.view_keys) && currentAsset.repair_plan.view_keys.length
+    const repairViewKeys = currentAsset?.repair_plan?.action === 'regenerate_failed_views'
+      && Array.isArray(currentAsset?.repair_plan?.view_keys)
       ? currentAsset.repair_plan.view_keys.filter(key => VIEW_LABELS[key])
-      : ['master', 'layout', 'reverse', 'interaction', 'detail'];
-    const total = Math.max(1, repairViewKeys.length || Number(currentAsset?.repair_plan?.count || 0) || 5);
+      : [];
+    if (!repairViewKeys.length) {
+      toast?.('没有明确的失败视图，已停止图片重生成；请先执行再次验证。', 'warning');
+      return false;
+    }
+    const total = repairViewKeys.length;
     const startedAt = Date.now();
     const fallbackProgress = {
       mode: 'repair',

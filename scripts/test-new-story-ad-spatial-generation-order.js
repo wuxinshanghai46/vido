@@ -43,8 +43,12 @@ async function main() {
   let peakImageCalls = 0;
   let transientFailuresRemaining = 0;
   let transientFilenamePattern = null;
+  let layoutPreflightFailuresRemaining = 0;
+  let finalQaLayoutFailuresRemaining = 0;
+  let finalQaUnavailableRemaining = 0;
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;
+  const originalValidateLayout = sceneSpace.validateLayoutAcquisition;
   mediaAdapter.generateImage = async options => {
     calls.push(options);
     const callNumber = calls.length;
@@ -60,37 +64,73 @@ async function main() {
     activeImageCalls -= 1;
     return { url, image_url: url, provider_used: 'mock/spatial-order' };
   };
-  sceneSpace.analyzeSceneViews = async options => ({
-    schema_version: 3,
-    status: 'verified',
-    observed_summary: 'One locked room represented by five distinct spatial views.',
-    cross_view_qa: {
+  sceneSpace.analyzeSceneViews = async options => {
+    if (finalQaUnavailableRemaining > 0) {
+      finalQaUnavailableRemaining -= 1;
+      const error = new Error('vision service temporarily unavailable');
+      error.code = 'VISION_QA_UNAVAILABLE';
+      error.retryable = true;
+      throw error;
+    }
+    const layoutRejected = finalQaLayoutFailuresRemaining > 0;
+    if (layoutRejected) finalQaLayoutFailuresRemaining -= 1;
+    return {
+      schema_version: 3,
+      status: layoutRejected ? 'rejected' : 'verified',
+      full_space_lock: !layoutRejected,
+      observed_summary: 'One locked location represented by five distinct spatial views.',
+      verification: layoutRejected
+        ? { state: 'rejected', reasons: ['第5张俯视布局只是主视图的轻微抬高重构'] }
+        : { state: 'verified', reasons: [] },
+      cross_view_qa: {
+        pass: true,
+        scene_consistency_score: 0.96,
+        geometry_consistency_score: 0.95,
+        material_consistency_score: 0.96,
+        mismatch_reasons: [],
+      },
+      requirement_qa: {
+        pass: true,
+        layout_match_score: 0.96,
+        material_light_match_score: 0.95,
+        interaction_match_score: 0.94,
+        surface_topology_match_score: 0.96,
+        negative_compliance_score: 0.97,
+        mismatch_reasons: [],
+      },
+      spatial_coverage_qa: {
+        pass: !layoutRejected,
+        layout_topology_score: layoutRejected ? 0.2 : 0.95,
+        camera_diversity_score: layoutRejected ? 0.4 : 0.92,
+        reverse_coverage_score: 0.9,
+        interaction_zone_score: 0.9,
+        reasons: layoutRejected ? ['第5张俯视布局只是主视图的轻微抬高重构'] : [],
+      },
+      layout_contract: { required: true, status: 'available' },
+      cameras: options.views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
+    };
+  };
+  sceneSpace.validateLayoutAcquisition = async () => {
+    if (layoutPreflightFailuresRemaining > 0) {
+      layoutPreflightFailuresRemaining -= 1;
+      return {
+        pass: false,
+        layout_role_score: 0.2,
+        footprint_coverage_score: 0.2,
+        scene_identity_score: 0.95,
+        camera_relocation_score: 0.2,
+        reasons: ['机位仍接近主视图，没有展示完整可用范围'],
+      };
+    }
+    return {
       pass: true,
-      scene_consistency_score: 0.96,
-      geometry_consistency_score: 0.95,
-      material_consistency_score: 0.96,
-      mismatch_reasons: [],
-    },
-    requirement_qa: {
-      pass: true,
-      layout_match_score: 0.96,
-      material_light_match_score: 0.95,
-      interaction_match_score: 0.94,
-      surface_topology_match_score: 0.96,
-      negative_compliance_score: 0.97,
-      mismatch_reasons: [],
-    },
-    spatial_coverage_qa: {
-      pass: true,
-      layout_topology_score: 0.95,
-      camera_diversity_score: 0.92,
-      reverse_coverage_score: 0.9,
-      interaction_zone_score: 0.9,
+      layout_role_score: 0.95,
+      footprint_coverage_score: 0.94,
+      scene_identity_score: 0.96,
+      camera_relocation_score: 0.93,
       reasons: [],
-    },
-    layout_contract: { required: true, status: 'available' },
-    cameras: options.views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
-  });
+    };
+  };
 
   try {
     const generated = await sceneAssets.generateSceneAsset(taskId, {
@@ -121,8 +161,13 @@ async function main() {
     assert.equal(calls[1].inputFidelity, 'low');
     assert.equal(calls[1].imageModel, 'gpt-image-2');
     assert.match(calls[1].prompt, /PHOTOGRAPHIC HIGH-OBLIQUE WHOLE-SPACE OVERVIEW/i);
+    assert.match(calls[1].prompt, /65 to 80 degree downward pitch/i);
+    assert.match(calls[1].prompt, /usable ground\/base footprint must occupy most of the frame/i);
+    assert.match(calls[1].prompt, /master reference controls scene identity.*not the target camera composition/i);
+    assert.doesNotMatch(calls[1].prompt, /Scene interaction and camera position requirement/i);
+    assert.ok(calls[1].prompt.length <= 6200, 'layout role prompt must remain compact enough for Image2 to prioritize camera acquisition');
     assert.match(calls[1].prompt, /Reference image 1 is the master establishing view/i);
-    assert.match(calls[1].prompt, /same real built location/i);
+    assert.match(calls[1].prompt, /same location|exact physical location/i);
     assert.match(calls[1].prompt, /not a neutral diagram, clay render, dollhouse/i);
     assert.match(calls[1].prompt, /Material identity and surface topology are independent constraints/i);
     assert.match(calls[1].auditSafePrompt, /real high-oblique whole-space photograph/i);
@@ -189,6 +234,68 @@ async function main() {
     assert.equal(retried.scene_asset.view_count, 5);
     assert.equal(storage.getTask(retryTaskId).generation_progress.status, 'completed');
 
+    const preflightTaskId = 'spatial-layout-preflight-retry-test';
+    storage.createTask({ id: preflightTaskId, title: 'layout preflight retry', request: context });
+    storage.saveOutput(preflightTaskId, 'context', context);
+    const callsBeforePreflightTask = calls.length;
+    layoutPreflightFailuresRemaining = 1;
+    const preflightRetried = await sceneAssets.generateSceneAsset(preflightTaskId, {
+      scene_id: 'preflight-room',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    const preflightCalls = calls.slice(callsBeforePreflightTask);
+    assert.equal(preflightCalls.length, 6, 'a role-invalid layout must retry only the layout once before derived views');
+    assert.deepEqual(preflightCalls.map(call => /_(master|layout|reverse|interaction|detail)(?:_|\.)/.exec(call.filename)?.[1]), [
+      'master', 'layout', 'layout', 'reverse', 'interaction', 'detail',
+    ]);
+    assert.match(preflightCalls[2].prompt, /Automated layout-role validation rejected the previous candidate/i);
+    assert.equal(preflightRetried.scene_asset.view_count, 5);
+
+    const autoRepairTaskId = 'spatial-final-qa-auto-repair-test';
+    storage.createTask({ id: autoRepairTaskId, title: 'bounded auto repair', request: context });
+    storage.saveOutput(autoRepairTaskId, 'context', context);
+    const callsBeforeAutoRepair = calls.length;
+    finalQaLayoutFailuresRemaining = 1;
+    const autoRepaired = await sceneAssets.generateSceneAsset(autoRepairTaskId, {
+      scene_id: 'auto-repair-location',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeAutoRepair, 6, 'final QA layout rejection must auto-regenerate only layout once');
+    assert.equal(autoRepaired.scene_asset.scene_revision, 2);
+    assert.equal(autoRepaired.scene_asset.scene_contract.full_space_lock, true);
+    assert.deepEqual(autoRepaired.scene_asset.repair_history[0].regenerated_view_keys, ['layout']);
+
+    const boundedTaskId = 'spatial-final-qa-bounded-repair-test';
+    storage.createTask({ id: boundedTaskId, title: 'bounded repeated rejection', request: context });
+    storage.saveOutput(boundedTaskId, 'context', context);
+    const callsBeforeBounded = calls.length;
+    finalQaLayoutFailuresRemaining = 2;
+    const bounded = await sceneAssets.generateSceneAsset(boundedTaskId, {
+      scene_id: 'bounded-repair-location',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeBounded, 6, 'automatic paid repair must stop after one targeted cycle');
+    assert.equal(bounded.scene_asset.scene_revision, 2);
+    assert.equal(bounded.scene_asset.scene_contract.full_space_lock, false);
+    assert.deepEqual(bounded.scene_asset.repair_plan.view_keys, ['layout']);
+
+    const unavailableTaskId = 'spatial-final-qa-unavailable-test';
+    storage.createTask({ id: unavailableTaskId, title: 'qa unavailable preservation', request: context });
+    storage.saveOutput(unavailableTaskId, 'context', context);
+    const callsBeforeUnavailable = calls.length;
+    finalQaUnavailableRemaining = 1;
+    const qaUnavailable = await sceneAssets.generateSceneAsset(unavailableTaskId, {
+      scene_id: 'qa-unavailable-location',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeUnavailable, 5, 'QA infrastructure failure must never trigger paid image regeneration');
+    assert.equal(qaUnavailable.scene_asset.scene_contract.qa_unavailable, true);
+    assert.equal(qaUnavailable.scene_asset.repair_plan.action, 'reverify');
+
     const genericCases = [
       { material: 'open-grain oak veneer with directional grain and soft wax sheen', forbidden: /stainless steel/i },
       { material: 'translucent borosilicate glass with crisp refraction and matte polymer', forbidden: /oak veneer/i },
@@ -205,6 +312,29 @@ async function main() {
       assert.match(genericPrompt, /do not turn one hero surface into bands, swatches, sample zones or a catalogue wall/i);
       assert.doesNotMatch(genericPrompt, item.forbidden, 'a different test industry/material must never be injected');
     }
+    const universalLayoutCases = [
+      { layout: 'an enclosed clinic with two access points and fixed treatment anchors', forbidden: /outdoor road|construction yard/i },
+      { layout: 'an outdoor road work zone with barriers, access lane and equipment anchors', forbidden: /clinic|office furniture/i },
+      { layout: 'a semi-open retail courtyard with two entrances and a central display anchor', forbidden: /treatment|road work/i },
+    ];
+    universalLayoutCases.forEach((item, index) => {
+      const rolePrompt = sceneAssets.buildLayoutAcquisitionPrompt({
+        ctx: { brief: `universal location ${index + 1}` },
+        body: {
+          scene_spec: {
+            layoutText: item.layout,
+            materialLightText: 'task-specific observable material and natural practical light',
+            interactionText: 'eye-level camera tracks parallel to the wall, then cuts to a close-up cinematic lens',
+          },
+        },
+      });
+      assert.ok(rolePrompt.length <= 3600);
+      assert.ok(rolePrompt.includes(item.layout));
+      assert.match(rolePrompt, /65 to 80 degree downward pitch/i);
+      assert.match(rolePrompt, /usable ground\/base footprint must occupy most of the frame/i);
+      assert.doesNotMatch(rolePrompt, /eye-level camera tracks parallel to the wall|close-up cinematic lens/i);
+      assert.doesNotMatch(rolePrompt, item.forbidden);
+    });
     const continuousTradeFinishPrompt = sceneAssets.buildSceneSheetPrompt({
       ctx: { brief: 'generic continuous-surface task' },
       body: {
@@ -280,6 +410,7 @@ async function main() {
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;
     sceneSpace.analyzeSceneViews = originalAnalyze;
+    sceneSpace.validateLayoutAcquisition = originalValidateLayout;
   }
 }
 

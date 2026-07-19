@@ -2069,11 +2069,15 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   border-color: rgba(245, 158, 11, .42);
   background: rgba(245, 158, 11, .1);
 }
-.dh-nsa-scene-head em.is-rejected,
-.dh-nsa-scene-head em.is-unavailable {
+.dh-nsa-scene-head em.is-rejected {
   color: #fca5a5;
   border-color: rgba(239, 68, 68, .42);
   background: rgba(239, 68, 68, .1);
+}
+.dh-nsa-scene-head em.is-unavailable {
+  color: #fdba74;
+  border-color: rgba(249, 115, 22, .42);
+  background: rgba(249, 115, 22, .1);
 }
 .dh-nsa-scene-repair-error {
   display: grid;

@@ -405,6 +405,8 @@ async function generateVision({
   timeoutMs = 120000,
   maxCandidates = Math.min(2, TEXT_MAX_CANDIDATES),
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
+  _candidateModels = null,
+  _generateText = null,
 } = {}) {
   const referenceDiagnostics = publicReferences.normalizeVisionReferences(imageUrls, { max: 8 });
   const urls = referenceDiagnostics.urls;
@@ -454,7 +456,7 @@ async function generateVision({
       latency_ms: 1,
     };
   }
-  const candidates = candidatesForVisionStage(stage);
+  const candidates = Array.isArray(_candidateModels) ? _candidateModels : candidatesForVisionStage(stage);
   if (!candidates.length) {
     const error = new Error(`${stage} 没有未熔断的可用视觉模型，已立即停止本阶段`);
     error.code = 'VISION_CIRCUIT_OPEN';
@@ -476,11 +478,17 @@ async function generateVision({
   const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || 1)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
-    if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
+    const attemptTimeoutMs = visionAttemptTimeoutForBudget({
+      timeoutMs,
+      stageBudgetMs,
+      elapsedMs: Date.now() - stageStarted,
+      remainingCandidates: attemptCandidates.length - i,
+    });
+    if (attemptTimeoutMs <= 0) break;
     const model = attemptCandidates[i];
     const start = Date.now();
     try {
-      const result = await providerAdapters.generateText({
+      const result = await (typeof _generateText === 'function' ? _generateText : providerAdapters.generateText)({
         model: { ...model, _stageId: stage },
         stage,
         taskId,
@@ -488,7 +496,7 @@ async function generateVision({
         userPrompt,
         messages,
         maxTokens,
-        timeoutMs,
+        timeoutMs: attemptTimeoutMs,
         signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
@@ -530,6 +538,23 @@ async function generateVision({
   error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX/.test(item.code));
   error.failed_models = failed;
   throw error;
+}
+
+function visionAttemptTimeoutForBudget({
+  timeoutMs = 120000,
+  stageBudgetMs = TEXT_STAGE_BUDGET_MS,
+  elapsedMs = 0,
+  remainingCandidates = 1,
+} = {}) {
+  const totalBudget = Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS);
+  const remainingBudget = totalBudget - Math.max(0, Number(elapsedMs) || 0);
+  if (remainingBudget < 5000) return 0;
+  const attempts = Math.max(1, Number(remainingCandidates) || 1);
+  const fairShare = Math.floor(remainingBudget / attempts);
+  return Math.max(5000, Math.min(
+    Math.max(5000, Number(timeoutMs) || 120000),
+    fairShare,
+  ));
 }
 
 function mockName(seed = '', idx = 0) {
@@ -591,6 +616,7 @@ module.exports = {
   candidatesForVisionStage,
   generateText,
   generateVision,
+  visionAttemptTimeoutForBudget,
   classifyError,
   isConfiguredAndUsable,
   recordHealth,

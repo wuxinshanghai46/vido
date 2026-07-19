@@ -183,6 +183,46 @@ function main() {
   assert(legacyHost.innerHTML.includes('生成/重新生成当前场景'));
   assert(!legacyHost.innerHTML.includes('空间覆盖度 100%'));
 
+  const unavailable = fullAsset();
+  unavailable.scene_id = 'qa-unavailable-scene';
+  unavailable.repair_plan = { action: 'reverify', count: 0, view_keys: [] };
+  unavailable.scene_contract = {
+    ...unavailable.scene_contract,
+    status: 'rejected',
+    qa_unavailable: true,
+    verification: { state: 'unavailable', message: '视觉审核服务暂时不可用' },
+    requirement_qa: {
+      pass: false,
+      layout_match_score: null,
+      material_light_match_score: null,
+      interaction_match_score: null,
+      surface_topology_match_score: null,
+      negative_compliance_score: null,
+    },
+    cross_view_qa: {
+      pass: false,
+      scene_consistency_score: null,
+      geometry_consistency_score: null,
+      material_consistency_score: null,
+    },
+    spatial_coverage_qa: {
+      pass: false,
+      layout_topology_score: null,
+      camera_diversity_score: null,
+      reverse_coverage_score: null,
+      interaction_zone_score: null,
+      coverage_status: 'unavailable',
+    },
+  };
+  const unavailableHost = { innerHTML: '' };
+  frontend.render({ host: unavailableHost, state: { taskId: 'task-unavailable', sceneAssets: [unavailable] } });
+  assert.equal((unavailableHost.innerHTML.match(/<b>待验证<\/b>/g) || []).length, 3, 'unknown QA metrics must render as pending, never zero');
+  assert.doesNotMatch(unavailableHost.innerHTML, />0%<\/b>/);
+  assert.match(unavailableHost.innerHTML, /场景待验证/);
+  assert.match(unavailableHost.innerHTML, /再次验证（不重新生成）/);
+  assert.match(unavailableHost.innerHTML, /不会调用图片模型/);
+  assert.doesNotMatch(unavailableHost.innerHTML, /data-nsa-scene-repair=/);
+
   const rejected = fullAsset();
   rejected.scene_id = 'rejected-scene';
   rejected.repair_plan = { action: 'regenerate_failed_views', count: 2, view_keys: ['reverse', 'interaction'] };
@@ -203,8 +243,8 @@ function main() {
   };
   const rejectedHost = { innerHTML: '' };
   frontend.render({ host: rejectedHost, state: { taskId: 'task-rejected', sceneAssets: [rejected] } });
-  assert(rejectedHost.innerHTML.includes('自动修复并重生成失败视图（2 张）'));
-  assert(rejectedHost.innerHTML.includes('系统会根据 QA 原因保留通过项'));
+  assert(rejectedHost.innerHTML.includes('自动修复：反向/侧向、互动位（2 张）'));
+  assert(rejectedHost.innerHTML.includes('系统只重做：反向/侧向、互动位'));
   assert(!rejectedHost.innerHTML.includes('请修改场景设定后重新生成当前场景'));
   const failedRepairHost = { innerHTML: '' };
   frontend.render({
@@ -232,10 +272,10 @@ function main() {
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
-  assert(html.includes('20260719-scene-progress-v10'));
+  assert(html.includes('20260719-scene-layout-gate-v11'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260719-scene-progress-v10'));
+  assert(bootstrap.includes('20260719-scene-layout-gate-v11'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));
