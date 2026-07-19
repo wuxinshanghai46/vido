@@ -137,7 +137,8 @@ function normalizeViewIssues(input = [], requested = {}) {
     let code = cleanText(source.code || source.issue_code || '', 80).toUpperCase();
     let viewKeys = (Array.isArray(source.view_keys) ? source.view_keys : [source.view_key])
       .map(value => cleanText(value, 40)).filter(value => REFERENCE_VIEW_KEYS.includes(value));
-    if (!VIEW_ISSUE_CODES.has(code) || !viewKeys.length) return null;
+    const evidence = cleanText(source.evidence || source.visual_evidence || '', 300);
+    if (!VIEW_ISSUE_CODES.has(code) || !viewKeys.length || !evidence) return null;
     if (code === 'ROOT_MATERIAL_IDENTITY_INVALID' && materialEvidenceMode !== 'reference_exact') {
       code = 'MATERIAL_DETAIL_WEAK';
       viewKeys = ['detail'];
@@ -146,7 +147,7 @@ function normalizeViewIssues(input = [], requested = {}) {
       code,
       view_keys: [...new Set(viewKeys)],
       reason: cleanText(source.reason || source.message || code, 300),
-      evidence: cleanText(source.evidence || source.visual_evidence || '', 300),
+      evidence,
       confidence: Math.max(0, Math.min(1, Number(source.confidence ?? 1) || 0)),
     };
   }).filter(item => item && item.confidence >= 0.6).slice(0, 12);

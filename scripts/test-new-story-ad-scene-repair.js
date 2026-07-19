@@ -237,7 +237,7 @@ async function main() {
       spatial_coverage_qa: { pass: true },
     } : {},
   }])[0];
-  assert.equal(upgradedLegacyAsset.repair_plan.version, 4, 'stored v1 repair plans must be upgraded on read');
+  assert.equal(upgradedLegacyAsset.repair_plan.version, 5, 'stored v1 repair plans must be upgraded on read');
   assert.equal(upgradedLegacyAsset.repair_plan.action, 'reverify');
   assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, []);
 
@@ -253,6 +253,57 @@ async function main() {
     },
   });
   assert.deepEqual(explicitInteractionFailurePlan.view_keys, ['interaction'], 'an explicitly failed third view must not expand into five paid regenerations');
+
+  const emptyEvidenceIssues = sceneSpace.normalizeViewIssues([{
+    code: 'PHOTOREALISM_INVALID',
+    view_keys: ['master', 'reverse'],
+    reason: 'photorealism is insufficient',
+    evidence: '',
+    confidence: 0.9,
+  }]);
+  assert.deepEqual(emptyEvidenceIssues, [], 'an issue without visible evidence must not authorize paid regeneration');
+  const emptyEvidencePlan = sceneAssets.buildSceneRepairPlan({
+    status: 'rejected',
+    verification: { state: 'rejected' },
+    view_issues: [{
+      code: 'PHOTOREALISM_INVALID',
+      view_keys: ['master', 'reverse'],
+      reason: 'photorealism is insufficient',
+      evidence: '',
+      confidence: 0.9,
+    }],
+  });
+  assert.equal(emptyEvidencePlan.action, 'reverify');
+  assert.deepEqual(emptyEvidencePlan.view_keys, []);
+
+  const masterScopedPlan = sceneAssets.buildSceneRepairPlan({
+    status: 'rejected',
+    verification: { state: 'rejected' },
+    view_issues: [{
+      code: 'PHOTOREALISM_INVALID',
+      view_keys: ['master', 'reverse'],
+      reason: 'two views contain visibly synthetic geometry',
+      evidence: 'the sofa legs merge into the floor in master and reverse',
+      confidence: 0.9,
+    }],
+  });
+  assert.deepEqual(masterScopedPlan.view_keys, ['master', 'reverse'], 'a non-root master issue must remain scoped to its exact views');
+
+  const upgradedEvidenceFreeV4Asset = sceneAssets.normalizeSceneAssets([{
+    id: 'evidence-free-v4-plan',
+    scene_id: 'evidence-free-v4-plan',
+    layout_summary: 'A coherent existing scene.',
+    repair_plan: { version: 4, action: 'regenerate_failed_views', view_keys: ['master', 'layout', 'reverse', 'interaction', 'detail'], count: 5 },
+    scene_contract: {
+      schema_version: 4,
+      status: 'rejected',
+      verification: { state: 'rejected' },
+      view_issues: [{ code: 'CAMERA_DIVERSITY_LOW', view_keys: ['layout'], reason: 'coverage low', evidence: '', confidence: 0.8 }],
+    },
+  }])[0];
+  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.version, 5, 'stored v4 plans must be migrated through the evidence gate');
+  assert.equal(upgradedEvidenceFreeV4Asset.repair_plan.action, 'reverify');
+  assert.deepEqual(upgradedEvidenceFreeV4Asset.repair_plan.view_keys, []);
 
   const observableOnlyIssue = sceneSpace.normalizeViewIssues([{
     code: 'ROOT_MATERIAL_IDENTITY_INVALID',
@@ -272,7 +323,7 @@ async function main() {
   const exactReferencePlan = sceneAssets.buildSceneRepairPlan({
     status: 'rejected',
     verification: { state: 'rejected' },
-    view_issues: [{ code: 'ROOT_MATERIAL_IDENTITY_INVALID', view_keys: ['master'], reason: '与附件样本不符' }],
+    view_issues: [{ code: 'ROOT_MATERIAL_IDENTITY_INVALID', view_keys: ['master'], reason: '与附件样本不符', evidence: '附件样本与主图的纹理方向明显不同' }],
   });
   assert.deepEqual(exactReferencePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], '有附件证据的根材质错误才允许重建完整依赖图');
 

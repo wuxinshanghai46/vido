@@ -10,7 +10,7 @@ const shotDesign = require('./shotDesignService');
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
-const SCENE_REPAIR_PLAN_VERSION = 4;
+const SCENE_REPAIR_PLAN_VERSION = 5;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_photographic_overview';
 const SCENE_IMAGE_EXTRA_ATTEMPTS = Math.max(0, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_EXTRA_ATTEMPTS || 2) || 0));
 const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
@@ -261,7 +261,11 @@ function buildSceneRepairPlan(asset = {}) {
     ? asset.scene_contract
     : asset;
   const verificationState = cleanText(contract.verification?.state || asset.verification?.state || '', 40);
-  const issues = Array.isArray(contract.view_issues) ? contract.view_issues : [];
+  // Paid regeneration requires concrete visible evidence for every issue. This
+  // also protects old stored contracts and direct callers that bypass the
+  // scene-contract normalizer.
+  const issues = (Array.isArray(contract.view_issues) ? contract.view_issues : [])
+    .filter(issue => cleanText(issue?.evidence || issue?.visual_evidence || '', 300));
   const reasons = issues.map(issue => cleanText(issue.reason || issue.code, 300)).filter(Boolean).slice(0, 8);
   if (contract.full_space_lock === true) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'none', view_keys: [], view_labels: [], count: 0, reasons: [], message: '完整空间已经锁定，无需修复。' };
@@ -273,8 +277,9 @@ function buildSceneRepairPlan(asset = {}) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons: [], message: '审核未提供逐图证据，禁止付费重生，请先再次验证。' };
   }
   const rootCodes = new Set(['ROOT_SCENE_IDENTITY_INVALID', 'ROOT_GEOMETRY_INVALID', 'ROOT_MATERIAL_IDENTITY_INVALID']);
-  const rootFailure = issues.some(issue => rootCodes.has(issue.code)
-    || (Array.isArray(issue.view_keys) && issue.view_keys.includes('master')));
+  // A normal issue may target the master only. Expanding it to every dependent
+  // view is allowed exclusively for an explicit ROOT failure.
+  const rootFailure = issues.some(issue => rootCodes.has(issue.code));
   const keys = new Set(rootFailure
     ? SCENE_GENERATION_ORDER
     : issues.flatMap(issue => Array.isArray(issue.view_keys) ? issue.view_keys : []));
