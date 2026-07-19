@@ -286,6 +286,16 @@ function normalizeRepairViewKeys(input = []) {
 }
 
 function buildSceneRepairPlan(asset = {}) {
+  // Keep every caller on the same generation-contract boundary. Public bundle
+  // normalization already applies this gate, but routes and future callers may
+  // invoke the planner directly with a stored legacy asset.
+  const hasDeclaredGenerationContract = Object.prototype.hasOwnProperty.call(asset, 'generation_contract_version')
+    || Object.prototype.hasOwnProperty.call(asset.view_acquisition || {}, 'generation_contract_version');
+  const looksLikeStoredGeneratedAsset = Boolean(asset.id || asset.scene_id)
+    && (Boolean(asset.image_url) || (Array.isArray(asset.view_images) && asset.view_images.length > 0));
+  if ((hasDeclaredGenerationContract || looksLikeStoredGeneratedAsset) && sceneGenerationUpgradeRequired(asset)) {
+    return fullSceneUpgradePlan();
+  }
   const contract = asset.scene_contract && typeof asset.scene_contract === 'object'
     ? asset.scene_contract
     : asset;

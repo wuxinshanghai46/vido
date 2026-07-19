@@ -241,6 +241,14 @@ async function main() {
   assert.equal(upgradedLegacyAsset.repair_plan.action, 'regenerate_full_scene');
   assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
   assert.equal(sceneAssets.sceneGenerationUpgradeRequired(upgradedLegacyAsset), true);
+  assert.equal(
+    sceneAssets.buildSceneRepairPlan({
+      ...upgradedLegacyAsset,
+      view_images: [{ key: 'master', url: '/legacy-master.png' }],
+    }).action,
+    'regenerate_full_scene',
+    'direct repair-plan callers must not send a legacy generation contract back to reverify',
+  );
 
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
