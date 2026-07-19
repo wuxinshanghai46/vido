@@ -75,7 +75,7 @@ async function main() {
     const layoutRejected = finalQaLayoutFailuresRemaining > 0;
     if (layoutRejected) finalQaLayoutFailuresRemaining -= 1;
     return {
-      schema_version: 3,
+      schema_version: 4,
       status: layoutRejected ? 'rejected' : 'verified',
       full_space_lock: !layoutRejected,
       observed_summary: 'One locked location represented by five distinct spatial views.',
@@ -107,6 +107,13 @@ async function main() {
         reasons: layoutRejected ? ['第5张俯视布局只是主视图的轻微抬高重构'] : [],
       },
       layout_contract: { required: true, status: 'available' },
+      view_issues: layoutRejected ? [{
+        code: 'LAYOUT_ROLE_INVALID',
+        view_keys: ['layout'],
+        reason: '俯视布局只是主视图的轻微抬高重构',
+        evidence: '未覆盖完整可用范围',
+        confidence: 0.98,
+      }] : [],
       cameras: options.views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
     };
   };
@@ -217,7 +224,7 @@ async function main() {
     assert.deepEqual(progress.completed_view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.equal(storyAdService.taskSummary(storage.getTask(taskId)).generation_progress.stage, 'scene_asset', 'scene progress must reach the polling API');
     const publicSceneAsset = storyAdService.publicTaskBundle(taskId).outputs.scene_assets[0];
-    assert.equal(publicSceneAsset.repair_plan.version, 3, 'the public bundle must normalize scene assets before rendering the repair action');
+    assert.equal(publicSceneAsset.repair_plan.version, 4, 'the public bundle must normalize scene assets before rendering the repair action');
 
     const retryTaskId = 'spatial-generation-transient-retry-test';
     storage.createTask({ id: retryTaskId, title: 'transient image2 retry', request: context });
@@ -308,8 +315,8 @@ async function main() {
         outputRole: 'contract',
       });
       assert.ok(genericPrompt.includes(item.material), 'the current task material must remain authoritative');
-      assert.match(genericPrompt, /Every material or finish explicitly named by the current task/i);
-      assert.match(genericPrompt, /do not turn one hero surface into bands, swatches, sample zones or a catalogue wall/i);
+      assert.match(genericPrompt, /Keep every task-provided proprietary or trade finish name as content authority/i);
+      assert.match(genericPrompt, /Multiple finish terms do not authorize bands, swatches or catalogue panels/i);
       assert.doesNotMatch(genericPrompt, item.forbidden, 'a different test industry/material must never be injected');
     }
     const universalLayoutCases = [
@@ -395,6 +402,29 @@ async function main() {
     });
     assert.deepEqual(sanitizedPipeline.stages['new_story_ad.scene_asset'].map(item => item.model_id), ['gpt-image-2']);
 
+    const circuitTaskId = 'spatial-image2-circuit-test';
+    storage.createTask({ id: circuitTaskId, title: 'image2 circuit', request: context });
+    storage.saveOutput(circuitTaskId, 'context', context);
+    const callsBeforeCircuit = calls.length;
+    transientFailuresRemaining = 2;
+    transientFilenamePattern = /_master_/;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(circuitTaskId, { scene_id: 'circuit-room', scene_spec: context.scene_spec }),
+      /Internal Server Error/,
+    );
+    assert.equal(calls.length - callsBeforeCircuit, 2, 'two consecutive upstream failures must stop after one shared-budget retry');
+    const cooldownTaskId = 'spatial-image2-cooldown-test';
+    storage.createTask({ id: cooldownTaskId, title: 'image2 cooldown', request: context });
+    storage.saveOutput(cooldownTaskId, 'context', context);
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(cooldownTaskId, { scene_id: 'cooldown-room', scene_spec: context.scene_spec }),
+      error => error?.code === 'SCENE_IMAGE_PROVIDER_COOLDOWN',
+    );
+    assert.equal(calls.length - callsBeforeCircuit, 2, 'open circuit must reject without another paid provider call');
+    sceneAssets._resetSceneImageCircuit();
+    transientFailuresRemaining = 0;
+    transientFilenamePattern = null;
+
     console.log(JSON.stringify({
       success: true,
       generation_order: asset.view_acquisition.generation_order,
@@ -406,6 +436,8 @@ async function main() {
       all_views_empty_scene: calls.every(call => /no people/i.test(call.prompt)),
       primary_view_backward_compatible: asset.image_url === '/mock-scene-view-1.png',
       model_management_image2_only: true,
+      task_extra_attempt_budget: sceneAssets.SCENE_IMAGE_EXTRA_ATTEMPTS,
+      provider_circuit_breaker: true,
     }, null, 2));
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;

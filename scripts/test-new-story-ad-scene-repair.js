@@ -18,7 +18,7 @@ const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 
 function passingContract(views = []) {
   return {
-    schema_version: 3,
+    schema_version: 4,
     status: 'verified',
     full_space_lock: true,
     space_lock_status: 'complete',
@@ -48,13 +48,14 @@ function passingContract(views = []) {
       reasons: [],
     },
     layout_contract: { required: true, status: 'available' },
+    view_issues: [],
     cameras: views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
   };
 }
 
 function rejectedReverseContract() {
   return {
-    schema_version: 3,
+    schema_version: 4,
     status: 'rejected',
     full_space_lock: false,
     verification: {
@@ -88,6 +89,13 @@ function rejectedReverseContract() {
       reasons: ['第2张反向/侧向图与主视图差异极小', '反向或侧向空间覆盖不足'],
     },
     layout_contract: { required: true, status: 'available' },
+    view_issues: [{
+      code: 'REVERSE_COVERAGE_LOW',
+      view_keys: ['reverse'],
+      reason: '反向或侧向空间覆盖不足',
+      evidence: '反向视图与主视图机位近似',
+      confidence: 0.96,
+    }],
   };
 }
 
@@ -101,6 +109,7 @@ async function main() {
     requirement_qa: { pass: true, layout_match_score: 0.95, material_light_match_score: 0.92, interaction_match_score: 0.9, surface_topology_match_score: 0.94, negative_compliance_score: 0.98, mismatch_reasons: [] },
     cross_view_qa: { pass: false, scene_consistency_score: 0.4, geometry_consistency_score: 0.4, material_consistency_score: 0.5, mismatch_reasons: ['interaction view differs'] },
     spatial_coverage_qa: { pass: false, layout_topology_score: 0.9, camera_diversity_score: 0.8, reverse_coverage_score: 0.8, interaction_zone_score: 0.2, reasons: ['interaction zone missing'] },
+    view_issues: [{ code: 'INTERACTION_ZONE_MISSING', view_keys: ['interaction'], reason: '互动位缺少空置区', evidence: '未见可达目标与通路', confidence: 0.95 }],
   };
   const truncatedOptionalJson = `${JSON.stringify(completeDecision).slice(0, -1)},"anchors":[{"id":"anchor_1","visible_in`;
   modelGateway.generateVision = async () => {
@@ -184,7 +193,8 @@ async function main() {
       spatial_coverage_qa: { pass: false, layout_topology_score: 0, camera_diversity_score: 0.2, reverse_coverage_score: 0.1, interaction_zone_score: 0, reasons: ['第5张不是顶视布局且与主图重复'] },
     },
   });
-  assert.deepEqual(currentFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
+  assert.equal(currentFailurePlan.action, 'reverify', 'free-text reasons must never trigger paid regeneration');
+  assert.deepEqual(currentFailurePlan.view_keys, []);
 
   const legacyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
     view_acquisition: { layout_policy: 'required_for_all_new_scenes' },
@@ -197,7 +207,7 @@ async function main() {
       spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
     },
   });
-  assert.deepEqual(legacyMaterialFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], 'a material-root failure must rebuild the master and every dependent view');
+  assert.equal(legacyMaterialFailurePlan.action, 'reverify', 'legacy material prose must be reverified under the structured contract');
 
   const geometryOnlyMaterialFailurePlan = sceneAssets.buildSceneRepairPlan({
     view_acquisition: { layout_policy: 'required_for_all_new_scenes', layout_appearance_role: 'geometry_only' },
@@ -210,7 +220,7 @@ async function main() {
       spatial_coverage_qa: { pass: true, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: [] },
     },
   });
-  assert.deepEqual(geometryOnlyMaterialFailurePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], 'old geometry-first assets must migrate to the master-root dependency graph');
+  assert.equal(geometryOnlyMaterialFailurePlan.action, 'reverify', 'old geometry-first prose must not expand into paid generation');
 
   const upgradedLegacyAsset = sceneAssets.normalizeSceneAssets([{
     id: 'legacy-v1-plan',
@@ -227,8 +237,9 @@ async function main() {
       spatial_coverage_qa: { pass: true },
     } : {},
   }])[0];
-  assert.equal(upgradedLegacyAsset.repair_plan.version, 3, 'stored v1 repair plans must be upgraded on read');
-  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail']);
+  assert.equal(upgradedLegacyAsset.repair_plan.version, 4, 'stored v1 repair plans must be upgraded on read');
+  assert.equal(upgradedLegacyAsset.repair_plan.action, 'reverify');
+  assert.deepEqual(upgradedLegacyAsset.repair_plan.view_keys, []);
 
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
@@ -238,9 +249,32 @@ async function main() {
       requirement_qa: { pass: false, layout_match_score: 0.5, material_light_match_score: 0.8, interaction_match_score: 1, surface_topology_match_score: 0, negative_compliance_score: 0, mismatch_reasons: ['第三张图的背景墙为模块化矩形拼板，严重违反连续完整墙体要求。'] },
       cross_view_qa: { pass: false, scene_consistency_score: 0, geometry_consistency_score: 0, material_consistency_score: 0, mismatch_reasons: ['第三张图展示了一个与其余四张图完全不同的场景。'] },
       spatial_coverage_qa: { pass: false, layout_topology_score: 1, camera_diversity_score: 1, reverse_coverage_score: 1, interaction_zone_score: 1, reasons: ['主场景的空间覆盖完整。'] },
+      view_issues: [{ code: 'CROSS_VIEW_DRIFT', view_keys: ['interaction'], reason: '互动位与其余视图不是同一场景', evidence: '固定锚点不一致', confidence: 0.98 }],
     },
   });
   assert.deepEqual(explicitInteractionFailurePlan.view_keys, ['interaction'], 'an explicitly failed third view must not expand into five paid regenerations');
+
+  const observableOnlyIssue = sceneSpace.normalizeViewIssues([{
+    code: 'ROOT_MATERIAL_IDENTITY_INVALID',
+    view_keys: ['master'],
+    reason: '无法仅凭名称识别专有饰面',
+    evidence: '没有附带材质样本',
+    confidence: 0.8,
+  }], { material_contract: { evidence_mode: 'observable_only' } });
+  assert.equal(observableOnlyIssue[0].code, 'MATERIAL_DETAIL_WEAK');
+  assert.deepEqual(observableOnlyIssue[0].view_keys, ['detail'], '无样本时不得因专有名词误杀整套场景');
+  const observableOnlyPlan = sceneAssets.buildSceneRepairPlan({
+    status: 'rejected',
+    verification: { state: 'rejected' },
+    view_issues: observableOnlyIssue,
+  });
+  assert.deepEqual(observableOnlyPlan.view_keys, ['detail']);
+  const exactReferencePlan = sceneAssets.buildSceneRepairPlan({
+    status: 'rejected',
+    verification: { state: 'rejected' },
+    view_issues: [{ code: 'ROOT_MATERIAL_IDENTITY_INVALID', view_keys: ['master'], reason: '与附件样本不符' }],
+  });
+  assert.deepEqual(exactReferencePlan.view_keys, ['master', 'layout', 'reverse', 'interaction', 'detail'], '有附件证据的根材质错误才允许重建完整依赖图');
 
   const taskId = 'scene-repair-test';
   const sceneId = 'scene-repair-one';

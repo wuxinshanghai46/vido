@@ -83,6 +83,32 @@ function resolveSurfaceTopology(input = null, contextText = '') {
   };
 }
 
+function normalizeMaterialContract(input = {}, options = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const sourceText = clean(options.sourceText || source.source_text || source.sourceText || '', 1000);
+  const topology = resolveSurfaceTopology(options.topology, sourceText) || {};
+  const referenceAvailable = options.referenceAvailable === true;
+  const observableCues = Array.isArray(source.observable_cues || source.observableCues)
+    ? (source.observable_cues || source.observableCues).map(value => clean(value, 100)).filter(Boolean).slice(0, 8)
+    : [];
+  return {
+    source_text: sourceText,
+    evidence_mode: referenceAvailable ? 'reference_exact' : 'observable_only',
+    source_authority: referenceAvailable ? 'task_text_and_reference' : 'task_text',
+    dominant_finish: clean(source.dominant_finish || source.dominantFinish || sourceText, 300),
+    observable_cues: observableCues,
+    surface_mode: topology.mode || 'auto',
+    seam_policy: topology.seam_policy || 'auto',
+    finish_distribution: topology.finish_distribution || 'auto',
+    generation_scope: topology.mode === 'continuous' || topology.seam_policy === 'hidden'
+      ? 'one_dominant_coherent_finish'
+      : (topology.finish_distribution === 'regional' ? 'task_mapped_regions' : 'task_defined'),
+    validation_rule: referenceAvailable
+      ? 'match_attached_reference_and_observable_task_cues'
+      : 'judge_only_observable_cues_written_in_task',
+  };
+}
+
 function normalizeMotionEffect(input = null) {
   const raw = typeof input === 'string' ? { type: input } : (input && typeof input === 'object' ? input : {});
   const effect = {
@@ -181,6 +207,7 @@ module.exports = {
   hasContinuousSurfaceIntent,
   hasExplicitFinishRegionMapping,
   resolveSurfaceTopology,
+  normalizeMaterialContract,
   normalizeMotionEffect,
   normalizeShotDesign,
   surfacePrompt,

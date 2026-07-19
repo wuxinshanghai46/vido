@@ -10,10 +10,38 @@ const shotDesign = require('./shotDesignService');
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
-const SCENE_REPAIR_PLAN_VERSION = 3;
+const SCENE_REPAIR_PLAN_VERSION = 4;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_photographic_overview';
-const SCENE_IMAGE_MAX_ATTEMPTS = Math.max(1, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_MAX_ATTEMPTS || 3) || 3));
+const SCENE_IMAGE_EXTRA_ATTEMPTS = Math.max(0, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_EXTRA_ATTEMPTS || 2) || 0));
+const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
 const SCENE_IMAGE_RETRY_DELAY_MS = Math.max(0, Math.min(5000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS || 1200) || 0));
+const SCENE_IMAGE_CIRCUIT_COOLDOWN_MS = Math.max(5000, Math.min(300000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_CIRCUIT_COOLDOWN_MS || 60000) || 60000));
+const imageCircuit = { consecutiveTransientFailures: 0, openUntil: 0 };
+
+function isTransientImageError(error) {
+  return /(?:\b500\b|internal server error|timeout|timed out|econnreset|econnrefused|socket hang up|connection termination|reset before headers|upstream connect error|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily)|service unavailable)/i
+    .test(String(error?.message || error || ''));
+}
+
+function sceneGenerationBudget(existing = null) {
+  return existing || { maxExtra: SCENE_IMAGE_EXTRA_ATTEMPTS, usedExtra: 0, reasons: [] };
+}
+
+function reserveExtraAttempt(budget, reason = '') {
+  if (!budget || budget.usedExtra >= budget.maxExtra) return false;
+  budget.usedExtra += 1;
+  if (reason) budget.reasons.push(reason);
+  return true;
+}
+
+function remainingExtraAttempts(budget) {
+  return Math.max(0, Number(budget?.maxExtra || 0) - Number(budget?.usedExtra || 0));
+}
+
+function resetSceneImageCircuit() {
+  imageCircuit.consecutiveTransientFailures = 0;
+  imageCircuit.openUntil = 0;
+}
 
 function sceneViewLabel(key = '') {
   return {
@@ -59,6 +87,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     style_summary: cleanText(asset.style_summary || asset.styleSummary || '', 800),
     negative: cleanText(asset.negative || asset.negative_prompt || '', 800),
     surface_topology: shotDesign.normalizeSurfaceTopology(asset.surface_topology || asset.surfaceTopology),
+    material_contract: asset.material_contract && typeof asset.material_contract === 'object' ? asset.material_contract : null,
     material_reference_available: asset.material_reference_available === true || asset.materialReferenceAvailable === true,
     image_url: primary,
     url: primary,
@@ -157,32 +186,45 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   return progress;
 }
 
-async function generateTrackedSceneView(taskId, key, options = {}, progress = {}) {
-  const retryable = error => /(?:\b500\b|internal server error|timeout|timed out|econnreset|econnrefused|socket hang up|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily)|service unavailable)/i
-    .test(String(error?.message || error || ''));
-  for (let attempt = 1; attempt <= SCENE_IMAGE_MAX_ATTEMPTS; attempt += 1) {
+async function generateTrackedSceneView(taskId, key, options = {}, progress = {}, budget = sceneGenerationBudget()) {
+  let attempt = 1;
+  while (true) {
     updateSceneGenerationProgress(taskId, {
       ...progress,
       viewKey: key,
       viewStatus: 'running',
       phase: 'generation',
       attempt,
-      maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+      maxAttempts: 1 + remainingExtraAttempts(budget),
       retrying: attempt > 1,
     });
     try {
+      if (imageCircuit.openUntil > Date.now()) {
+        const error = new Error('Image2 provider is temporarily cooling down after repeated upstream failures');
+        error.code = 'SCENE_IMAGE_PROVIDER_COOLDOWN';
+        error.retryable = false;
+        throw error;
+      }
       const result = await mediaAdapter.generateImage(options);
+      imageCircuit.consecutiveTransientFailures = 0;
+      imageCircuit.openUntil = 0;
       updateSceneGenerationProgress(taskId, {
         ...progress,
         viewKey: key,
         viewStatus: 'succeeded',
         phase: 'generation',
         attempt,
-        maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+        maxAttempts: attempt,
       });
       return result;
     } catch (error) {
-      const willRetry = attempt < SCENE_IMAGE_MAX_ATTEMPTS && retryable(error);
+      const transient = isTransientImageError(error);
+      if (transient) {
+        imageCircuit.consecutiveTransientFailures += 1;
+        if (imageCircuit.consecutiveTransientFailures >= 2) imageCircuit.openUntil = Date.now() + SCENE_IMAGE_CIRCUIT_COOLDOWN_MS;
+      }
+      const willRetry = transient && imageCircuit.openUntil <= Date.now()
+        && reserveExtraAttempt(budget, `provider_retry:${key}`);
       updateSceneGenerationProgress(taskId, {
         ...progress,
         viewKey: key,
@@ -190,7 +232,7 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
         phase: 'generation',
         error: error?.message || error,
         attempt: willRetry ? attempt + 1 : attempt,
-        maxAttempts: SCENE_IMAGE_MAX_ATTEMPTS,
+        maxAttempts: attempt + (willRetry ? 1 : 0),
         retrying: willRetry,
       });
       if (!willRetry) throw error;
@@ -199,9 +241,9 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
         await new Promise(resolve => setTimeout(resolve, SCENE_IMAGE_RETRY_DELAY_MS * attempt));
       }
       cancellation.throwIfCancelled(taskId);
+      attempt += 1;
     }
   }
-  throw new Error(`场景视图 ${sceneViewLabel(key)} 生成失败`);
 }
 
 function normalizeSceneAssets(input = []) {
@@ -214,96 +256,32 @@ function normalizeRepairViewKeys(input = []) {
   return SCENE_GENERATION_ORDER.filter(key => source.includes(key));
 }
 
-function failedViewKeysFromReasons(reasons = []) {
-  const ordinalMap = {
-    1: 'master', 2: 'reverse', 3: 'interaction', 4: 'detail', 5: 'layout',
-    一: 'master', 二: 'reverse', 三: 'interaction', 四: 'detail', 五: 'layout',
-  };
-  const keys = new Set();
-  const failurePattern = /不一致|完全不同|违反|不符|错误|缺失|不足|重复|副本|未能|失败|漂移|改变|替换|严重|无效|轻微抬高|重构|俯角/;
-  for (const reason of reasons) {
-    const text = cleanText(reason, 300);
-    if (!failurePattern.test(text)) continue;
-    const pattern = /第\s*([一二三四五1-5])\s*张(?:图|图片)?|图\s*([1-5])/g;
-    for (const match of text.matchAll(pattern)) {
-      const key = ordinalMap[match[1] || match[2]];
-      if (key) keys.add(key);
-    }
-  }
-  return REQUIRED_SCENE_VIEW_KEYS.filter(key => keys.has(key));
-}
-
 function buildSceneRepairPlan(asset = {}) {
   const contract = asset.scene_contract && typeof asset.scene_contract === 'object'
     ? asset.scene_contract
     : asset;
-  const requirement = contract.requirement_qa || asset.requirement_qa || {};
-  const crossView = contract.cross_view_qa || asset.cross_view_qa || {};
-  const spatial = contract.spatial_coverage_qa || asset.spatial_coverage_qa || {};
   const verificationState = cleanText(contract.verification?.state || asset.verification?.state || '', 40);
-  const reasons = [...new Set([
-    ...(Array.isArray(contract.verification?.reasons) ? contract.verification.reasons : []),
-    ...(Array.isArray(requirement.mismatch_reasons) ? requirement.mismatch_reasons : []),
-    ...(Array.isArray(crossView.mismatch_reasons) ? crossView.mismatch_reasons : []),
-    ...(Array.isArray(spatial.reasons) ? spatial.reasons : []),
-    ...(Array.isArray(spatial.mismatch_reasons) ? spatial.mismatch_reasons : []),
-  ].map(value => cleanText(value, 300)).filter(Boolean))].slice(0, 12);
+  const issues = Array.isArray(contract.view_issues) ? contract.view_issues : [];
+  const reasons = issues.map(issue => cleanText(issue.reason || issue.code, 300)).filter(Boolean).slice(0, 8);
   if (contract.full_space_lock === true) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'none', view_keys: [], view_labels: [], count: 0, reasons: [], message: '完整空间已经锁定，无需修复。' };
   }
   if (contract.qa_unavailable === true || verificationState === 'unavailable') {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '图片无需重新生成，请稍后再次验证。' };
   }
-
-  const keys = new Set();
-  const combined = reasons.join('；');
-  const below = (value, threshold) => Number.isFinite(Number(value)) && Number(value) < threshold;
-  const materialFailed = below(requirement.material_light_match_score, 0.75)
-    || /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属|material|texture|finish|lighting|reflection/i.test(combined);
-  const explicitFailedViewKeys = failedViewKeysFromReasons(reasons);
-  explicitFailedViewKeys.forEach(key => keys.add(key));
-  const hasUnscopedMaterialFailure = reasons.some(reason => (
-    /材质|拉丝|蚀刻|纹理|光线|灯光|反射|金属|material|texture|finish|lighting|reflection/i.test(reason)
-    && failedViewKeysFromReasons([reason]).length === 0
-  ));
-  if (explicitFailedViewKeys.length && materialFailed && hasUnscopedMaterialFailure) {
-    keys.add('master');
-    keys.add('detail');
+  if (!issues.length) {
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons: [], message: '审核未提供逐图证据，禁止付费重生，请先再次验证。' };
   }
-  if (!explicitFailedViewKeys.length) {
-    if (below(requirement.layout_match_score, 0.75)
-      || below(spatial.layout_topology_score, 0.8)
-      || /俯视|顶视|轴测|布局参考|布局拓扑|第\s*5\s*张|layout/i.test(combined)) keys.add('layout');
-    if (materialFailed) {
-      keys.add('master');
-      keys.add('detail');
-    }
-    if (below(requirement.interaction_match_score, 0.7)
-      || below(spatial.interaction_zone_score, 0.7)
-      || /互动|交互|行动区|活动区域|动线|站位/i.test(combined)) keys.add('interaction');
-    if (below(requirement.surface_topology_match_score, 0.8)
-      || below(requirement.negative_compliance_score, 0.9)
-      || /拼缝|接缝|板块|模块|禁止项|违禁/i.test(combined)) keys.add('master');
-    if (below(spatial.reverse_coverage_score, 0.75)
-      || /反向|侧向|背向空间/i.test(combined)) keys.add('reverse');
-    if (below(spatial.camera_diversity_score, 0.75)
-      || /机位差异|视图多样|多视图[^。；]{0,24}重复|参考图[^。；]{0,24}重复/i.test(combined)) {
-      keys.add('reverse');
-      keys.add('interaction');
-    }
-    if (crossView.pass === false) {
-      keys.add('reverse');
-      keys.add('interaction');
-      keys.add('detail');
-    }
-  }
-  if (!keys.size) REQUIRED_SCENE_VIEW_KEYS.forEach(key => keys.add(key));
-
-  // 主视角是整套资产唯一根参考；它变化时，空间全貌和全部派生视图必须同步更新。
-  // 仅空间全貌角色失败时先只重建 layout 并复验；只有复验明确指出
-  // reverse/interaction 也已不一致时才重做对应视图，避免无证据扩大付费生成。
-  if (keys.has('master')) SCENE_GENERATION_ORDER.forEach(key => keys.add(key));
+  const rootCodes = new Set(['ROOT_SCENE_IDENTITY_INVALID', 'ROOT_GEOMETRY_INVALID', 'ROOT_MATERIAL_IDENTITY_INVALID']);
+  const rootFailure = issues.some(issue => rootCodes.has(issue.code)
+    || (Array.isArray(issue.view_keys) && issue.view_keys.includes('master')));
+  const keys = new Set(rootFailure
+    ? SCENE_GENERATION_ORDER
+    : issues.flatMap(issue => Array.isArray(issue.view_keys) ? issue.view_keys : []));
   const viewKeys = SCENE_GENERATION_ORDER.filter(key => keys.has(key));
+  if (!viewKeys.length) {
+    return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '审核证据未定位到具体视图，禁止付费重生，请先再次验证。' };
+  }
   return {
     version: SCENE_REPAIR_PLAN_VERSION,
     action: 'regenerate_failed_views',
@@ -311,7 +289,8 @@ function buildSceneRepairPlan(asset = {}) {
     view_labels: viewKeys.map(sceneViewLabel),
     count: viewKeys.length,
     reasons: reasons.slice(0, 6),
-    message: `系统将保留通过项，并按依赖关系重新生成 ${viewKeys.length} 张：${viewKeys.map(sceneViewLabel).join('、')}。`,
+    issue_codes: [...new Set(issues.map(issue => issue.code))],
+    message: `系统将只重做有逐图证据的 ${viewKeys.length} 张：${viewKeys.map(sceneViewLabel).join('、')}。`,
   };
 }
 
@@ -331,16 +310,16 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
   );
   const surfaceTopologyPrompt = surfaceTopology ? shotDesign.surfacePrompt(surfaceTopology, 'environment') : '';
+  const materialContract = shotDesign.normalizeMaterialContract(sceneSpec.materialContract || sceneSpec.material_contract, {
+    sourceText: materialLight,
+    topology: surfaceTopology,
+    referenceAvailable: materialReferences.length > 0,
+  });
   const materialIdentityContract = [
-    'Authority order for the primary surface is: explicit topology and seam policy first, attached material appearance evidence second, observable task material cues third, and generic construction priors last.',
-    'Material identity and surface topology are independent constraints.',
-    'Every material or finish explicitly named by the current task must remain visibly identifiable through its own observable physical cues, such as directionality, reflectance, roughness, grain, pores, weave, translucency, micro-relief, edge behaviour, patina or scale, but only when those cues are supported by the request.',
-    'Never replace a requested material with a visually adjacent generic finish merely to satisfy continuity, minimalism or style.',
-    'A continuous or hidden-seam surface means visually uninterrupted composition; it does not authorize changing the requested material family or erasing all evidence of its physical identity.',
-    'When the task mentions a product portfolio or several finishes, do not turn one hero surface into bands, swatches, sample zones or a catalogue wall merely to display every option. Unless the task explicitly maps finishes to visible regions, render one coherent dominant finish and express only compatible secondary cues as subtle boundary-free variation.',
-    surfaceTopology?.mode === 'continuous'
-      ? 'For this continuous primary surface, synthesize compatible appearance terms into one finish language. Never visualize product-form words, multiple adjectives or commercial naming as separate boards, panels, bands or vertical material zones.'
-      : '',
+    `Compiled material contract: ${JSON.stringify(materialContract)}.`,
+    'Keep every task-provided proprietary or trade finish name as content authority; never substitute a nearby generic material.',
+    'Material identity and surface topology are independent. Prove identity through task-supported observable cues, while obeying the compiled generation_scope and seam policy.',
+    'Multiple finish terms do not authorize bands, swatches or catalogue panels unless the contract explicitly uses task_mapped_regions.',
     materialReferences.length
       ? 'The attached task reference image is appearance evidence for material colour, grain, reflectance and micro-relief only. It must not replace scene geometry or be copied as a sample board.'
       : 'No authoritative material sample image is attached. Translate proprietary or trade finish names only through the observable physical cues explicitly written in the task; do not invent segmentation to make an unfamiliar name visible.',
@@ -613,15 +592,26 @@ function sceneRequest(ctx = {}, body = {}) {
   const materialLight = cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000);
   const interaction = cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800);
   const negative = cleanText(spec.negativeText || spec.negative_text || body.negative || ctx.controlled_production?.negative_control?.text || '', 1000);
+  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+    spec.surfaceTopology || spec.surface_topology,
+    [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
+  );
+  const materialReferenceAvailable = sceneMaterialReferenceImages(ctx, body).length > 0;
   return {
     layout,
     material_light: materialLight,
     interaction,
-    surface_topology: shotDesign.resolveSurfaceTopology(
-      spec.surfaceTopology || spec.surface_topology,
-      [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
-    ),
-    material_reference_available: sceneMaterialReferenceImages(ctx, body).length > 0,
+    surface_topology: surfaceTopology,
+    material_contract: shotDesign.normalizeMaterialContract(spec.materialContract || spec.material_contract, {
+      sourceText: materialLight,
+      topology: surfaceTopology,
+      referenceAvailable: materialReferenceAvailable,
+    }),
+    interaction_contract: {
+      scene_empty: true,
+      required_evidence: ['empty_clearance', 'reachable_target', 'access_route'],
+    },
+    material_reference_available: materialReferenceAvailable,
     style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
     negative,
   };
@@ -629,8 +619,12 @@ function sceneRequest(ctx = {}, body = {}) {
 
 function resolvedSceneSpec(spec = {}, requested = {}) {
   const source = spec && typeof spec === 'object' ? spec : {};
-  const { surface_topology: ignoredSurfaceTopology, ...rest } = source;
-  return { ...rest, surfaceTopology: requested.surface_topology };
+  const { surface_topology: ignoredSurfaceTopology, material_contract: ignoredMaterialContract, ...rest } = source;
+  return {
+    ...rest,
+    surfaceTopology: requested.surface_topology,
+    materialContract: requested.material_contract,
+  };
 }
 
 function mergeSceneAssets(existing = [], asset = {}) {
@@ -694,6 +688,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   });
   const progressViewKeys = repairMode ? repairViewKeys : requiredViewKeys;
   const progressMode = repairMode ? 'repair' : 'generate';
+  const generationBudget = sceneGenerationBudget(runOptions.generationBudget);
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
     phase: 'preparing',
@@ -719,7 +714,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       requireReferences: materialReferences.length > 0,
       inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
-    }, { mode: progressMode, viewKeys: progressViewKeys })
+    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget)
     : previousViews.get('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
@@ -734,6 +729,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   if (shouldGenerate('layout')) {
     let layoutCorrection = repairFeedback;
     for (let qualityAttempt = 1; qualityAttempt <= 2; qualityAttempt += 1) {
+      if (qualityAttempt > 1 && !reserveExtraAttempt(generationBudget, 'layout_quality_retry')) break;
       layout = await generateTrackedSceneView(taskId, 'layout', {
         taskId,
         stage: 'new_story_ad.scene_asset',
@@ -749,7 +745,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         requireReferences: true,
         inputFidelity: 'low',
         auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
-      }, { mode: progressMode, viewKeys: progressViewKeys });
+      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget);
       try {
         layoutAcquisition = await sceneSpace.validateLayoutAcquisition({
           taskId,
@@ -810,7 +806,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
-    }, { mode: progressMode, viewKeys: progressViewKeys });
+    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget);
     return normalizeSceneView({
       key,
       label: sceneViewLabel(key),
@@ -897,6 +893,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       body.negative || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).negativeText || ctx.controlled_production?.negative_control?.text || '',
     ].filter(Boolean).join('；'),
     surface_topology: requested.surface_topology,
+    material_contract: requested.material_contract,
     material_reference_available: requested.material_reference_available,
     image_url: viewImages[0]?.url || '',
     view_images: viewImages.map(view => ({
@@ -943,8 +940,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     && sceneContract.qa_unavailable !== true
     && repairPlan.action === 'regenerate_failed_views'
     && repairPlan.view_keys.length > 0
-    && repairPlan.view_keys.length <= 3;
+    && repairPlan.view_keys.length <= remainingExtraAttempts(generationBudget);
   if (autoRepairEligible) {
+    repairPlan.view_keys.forEach(key => reserveExtraAttempt(generationBudget, `auto_repair:${key}`));
     storage.saveStage(taskId, 'scene_asset', {
       status: 'running',
       output_summary: `自动验证发现 ${repairPlan.view_keys.length} 张视图需要修复，正在定向重做`,
@@ -956,6 +954,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       repairViewKeys: repairPlan.view_keys,
       repairFeedback: repairPlan.reasons.join('；'),
       autoRepairPass: autoRepairPass + 1,
+      generationBudget,
     });
   }
   if (sceneContract.full_space_lock !== true) {
@@ -1063,6 +1062,15 @@ async function reverifySceneAsset(taskId, sceneId) {
       style: asset.style_summary || '',
       negative: asset.negative || '',
       surface_topology: asset.surface_topology || {},
+      material_contract: asset.material_contract || shotDesign.normalizeMaterialContract({}, {
+        sourceText: asset.material_summary || '',
+        topology: asset.surface_topology || {},
+        referenceAvailable: asset.material_reference_available === true,
+      }),
+      interaction_contract: {
+        scene_empty: true,
+        required_evidence: ['empty_clearance', 'reachable_target', 'access_route'],
+      },
       material_reference_available: asset.material_reference_available === true,
     },
     layoutRequired: asset.layout_contract?.required === true || views.some(view => view.key === 'layout'),
@@ -1099,6 +1107,7 @@ module.exports = {
   REQUIRED_SCENE_VIEW_KEYS,
   SCENE_GENERATION_ORDER,
   SCENE_IMAGE_MAX_ATTEMPTS,
+  SCENE_IMAGE_EXTRA_ATTEMPTS,
   sceneViewLabel,
   sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
@@ -1115,4 +1124,5 @@ module.exports = {
   generateSceneAsset,
   repairSceneAsset,
   reverifySceneAsset,
+  _resetSceneImageCircuit: resetSceneImageCircuit,
 };

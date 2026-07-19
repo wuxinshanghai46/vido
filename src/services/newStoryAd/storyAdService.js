@@ -3529,6 +3529,8 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
+    'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。',
+    '当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
@@ -3568,6 +3570,10 @@ async function assistBrief(body = {}, user = {}) {
       "seam_policy": "auto/hidden/visible/task_defined",
       "finish_distribution": "auto/uniform/gradient/regional/sample_comparison",
       "notes": "只写当前任务明确要求的表面结构，不得套用行业或场景模板"
+    },
+    "materialContract": {
+      "dominant_finish": "原样保留专有名称，并说明其在本任务中的主导饰面表达",
+      "observable_cues": ["仅填写需求可支持的颜色、纹理、反射、粗糙度、肌理、尺度等可见证据"]
     }
   }
 }`
@@ -3683,13 +3689,23 @@ ${outputSchema}`;
   if (isSceneSpec) {
     const raw = parsed.scene_spec || parsed.sceneSpec || parsed;
     const spec = raw && typeof raw === 'object' ? raw : {};
+    const materialLightText = cleanText(spec.materialLightText || spec.material_light_text || spec.materialLight || spec.material || spec.light || '', 420);
+    const surfaceTopology = shotDesign.resolveSurfaceTopology(
+      spec.surfaceTopology || spec.surface_topology,
+      [materialLightText, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
+    );
     return {
       scene_spec: {
         layoutText: cleanText(spec.layoutText || spec.layout_text || spec.layout || spec.description || '', 420),
-        materialLightText: cleanText(spec.materialLightText || spec.material_light_text || spec.materialLight || spec.material || spec.light || '', 420),
+        materialLightText,
         interactionText: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 320),
         negativeText: cleanText(spec.negativeText || spec.negative_text || spec.negative || '', 420),
-        surfaceTopology: shotDesign.normalizeSurfaceTopology(spec.surfaceTopology || spec.surface_topology),
+        surfaceTopology,
+        materialContract: shotDesign.normalizeMaterialContract(spec.materialContract || spec.material_contract, {
+          sourceText: materialLightText,
+          topology: surfaceTopology,
+          referenceAvailable: false,
+        }),
       },
       mode,
       model_meta: {

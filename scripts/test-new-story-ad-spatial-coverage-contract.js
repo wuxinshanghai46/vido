@@ -93,7 +93,7 @@ async function main() {
     sceneId: 'scene-complete',
     views: fullViews,
   });
-  assert.equal(complete.schema_version, 3);
+  assert.equal(complete.schema_version, 4);
   assert.equal(complete.status, 'verified');
   assert.equal(complete.spatial_coverage_qa.pass, true);
   assert.equal(complete.spatial_coverage_qa.coverage_status, 'complete');
@@ -196,7 +196,7 @@ async function main() {
       mismatch_reasons: [],
     },
   }, { sceneId: 'scene-legacy', views: fullViews.slice(0, 4) });
-  assert.equal(legacy.schema_version, 3);
+  assert.equal(legacy.schema_version, 4);
   assert.equal(legacy.source_schema_version, 2);
   assert.equal(legacy.requirement_qa.legacy_assumed, true);
   assert.equal(legacy.compatibility_status, 'legacy_partial');
@@ -305,7 +305,7 @@ async function main() {
     duplicate_reverse_status: duplicateReverse.space_lock_status,
     legacy_status: legacy.space_lock_status,
     independent_qa_gates: true,
-    strict_v3_schema_retry: true,
+    strict_v4_schema_retry: true,
   }, null, 2));
 }
 

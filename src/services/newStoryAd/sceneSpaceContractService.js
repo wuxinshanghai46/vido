@@ -7,6 +7,22 @@ const personIdentity = require('./personIdentityContractService');
 
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REFERENCE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
+const VIEW_ISSUE_CODES = new Set([
+  'ROOT_SCENE_IDENTITY_INVALID',
+  'ROOT_GEOMETRY_INVALID',
+  'ROOT_MATERIAL_IDENTITY_INVALID',
+  'LAYOUT_ROLE_INVALID',
+  'LAYOUT_TOPOLOGY_INCOMPLETE',
+  'REVERSE_COVERAGE_LOW',
+  'INTERACTION_ZONE_MISSING',
+  'CAMERA_DIVERSITY_LOW',
+  'MATERIAL_DETAIL_WEAK',
+  'MATERIAL_APPEARANCE_MISMATCH',
+  'SURFACE_TOPOLOGY_INVALID',
+  'NEGATIVE_VIOLATION',
+  'PHOTOREALISM_INVALID',
+  'CROSS_VIEW_DRIFT',
+]);
 
 function safeJson(raw = '') {
   const text = jsonRepair.stripMarkdown(raw);
@@ -112,6 +128,28 @@ function qaContainers(input = {}) {
     input.quality_dimensions,
     input.metrics,
   ].filter(Boolean);
+}
+
+function normalizeViewIssues(input = [], requested = {}) {
+  const materialEvidenceMode = cleanText(requested.material_contract?.evidence_mode || '', 40);
+  return (Array.isArray(input) ? input : []).map(item => {
+    const source = item && typeof item === 'object' ? item : {};
+    let code = cleanText(source.code || source.issue_code || '', 80).toUpperCase();
+    let viewKeys = (Array.isArray(source.view_keys) ? source.view_keys : [source.view_key])
+      .map(value => cleanText(value, 40)).filter(value => REFERENCE_VIEW_KEYS.includes(value));
+    if (!VIEW_ISSUE_CODES.has(code) || !viewKeys.length) return null;
+    if (code === 'ROOT_MATERIAL_IDENTITY_INVALID' && materialEvidenceMode !== 'reference_exact') {
+      code = 'MATERIAL_DETAIL_WEAK';
+      viewKeys = ['detail'];
+    }
+    return {
+      code,
+      view_keys: [...new Set(viewKeys)],
+      reason: cleanText(source.reason || source.message || code, 300),
+      evidence: cleanText(source.evidence || source.visual_evidence || '', 300),
+      confidence: Math.max(0, Math.min(1, Number(source.confidence ?? 1) || 0)),
+    };
+  }).filter(item => item && item.confidence >= 0.6).slice(0, 12);
 }
 
 function firstScore(input = {}, keys = []) {
@@ -260,14 +298,19 @@ function normalizeSpatialCoverageQa(input = {}, options = {}) {
 }
 
 function normalizeContract(input = {}, options = {}) {
-  const requested = options.requested || {};
+  const requestedInput = options.requested || {};
+  const requested = {
+    ...requestedInput,
+    material_contract: requestedInput.material_contract || input.requested_material_contract || {},
+    interaction_contract: requestedInput.interaction_contract || input.requested_interaction_contract || {},
+  };
   const views = options.views || [];
   const sourceQa = input.cross_view_qa && typeof input.cross_view_qa === 'object' ? input.cross_view_qa : input;
   const hasExplicitRequirementQa = input.requirement_qa && typeof input.requirement_qa === 'object';
   const sourceRequirementQa = hasExplicitRequirementQa ? input.requirement_qa : input;
   const contract = {
-    schema_version: 3,
-    source_schema_version: Math.max(1, Number(input.schema_version || (input.spatial_coverage_qa ? 3 : 2)) || 1),
+    schema_version: 4,
+    source_schema_version: Math.max(1, Number(input.schema_version || (input.view_issues ? 4 : (input.spatial_coverage_qa ? 3 : 2))) || 1),
     scene_id: cleanText(options.sceneId || input.scene_id, 120),
     scene_revision: Math.max(1, Number(options.revision || input.scene_revision || 1) || 1),
     status: cleanText(input.status || 'verified', 40),
@@ -277,6 +320,8 @@ function normalizeContract(input = {}, options = {}) {
     requested_style: cleanText(requested.style || input.requested_style || '', 800),
     requested_negative: cleanText(requested.negative || input.requested_negative || '', 1000),
     requested_surface_topology: normalizeRequestedTopology(requested.surface_topology || input.requested_surface_topology || {}),
+    requested_material_contract: requested.material_contract || input.requested_material_contract || {},
+    requested_interaction_contract: requested.interaction_contract || input.requested_interaction_contract || {},
     observed_summary: cleanText(input.observed_summary || input.summary || '', 1200),
     anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
     zones: normalizeZones(input.zones || input.spatial_zones || []),
@@ -289,6 +334,7 @@ function normalizeContract(input = {}, options = {}) {
       notes: cleanText(input.lighting.notes || '', 300),
     } : {},
     cameras: normalizeCameras(input.cameras || [], views),
+    view_issues: normalizeViewIssues(input.view_issues || input.viewIssues || [], requested),
     cross_view_qa: {
       pass: sourceQa.pass === true,
       scene_consistency_score: score(firstScore(sourceQa, ['scene_consistency_score', 'scene_continuity', 'scene_consistency'])),
@@ -324,14 +370,16 @@ function normalizeContract(input = {}, options = {}) {
   contract.compatibility_status = contract.spatial_coverage_qa.legacy ? 'legacy_partial' : 'current';
   // `status` remains the appearance/requirement compatibility gate for older
   // callers. A production-usable complete space lock must additionally check
-  // `full_space_lock` / `spatial_coverage_qa.pass` (schema v3).
-  contract.status = unavailable ? 'unverified' : (qa.pass && contract.requirement_qa.pass ? 'verified' : 'rejected');
+  // `full_space_lock` / `spatial_coverage_qa.pass` (schema v4).
+  const noActionableIssues = contract.view_issues.length === 0;
+  contract.status = unavailable ? 'unverified' : (qa.pass && contract.requirement_qa.pass && noActionableIssues ? 'verified' : 'rejected');
   contract.full_space_lock = contract.schema_version >= 3
     && contract.status === 'verified'
     && contract.requirement_qa.pass === true
     && qa.pass === true
     && contract.spatial_coverage_qa.pass === true
-    && contract.layout_contract.status === 'available';
+    && contract.layout_contract.status === 'available'
+    && noActionableIssues;
   contract.space_lock_status = contract.full_space_lock
     ? 'complete'
     : (contract.spatial_coverage_qa.legacy
@@ -345,6 +393,7 @@ function normalizeContract(input = {}, options = {}) {
     contract.qa_unavailable = true;
     contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
     contract.qa_error = cleanText(input.qa_error || input.verification?.message || '', 500);
+    contract.view_issues = [];
     // Unknown is not a zero score. Keep every QA gate nullable so the UI shows
     // "pending verification" instead of presenting an infrastructure failure
     // as a content rejection after the asset is normalized and saved again.
@@ -387,6 +436,9 @@ function normalizeContract(input = {}, options = {}) {
     requested_style: contract.requested_style,
     requested_negative: contract.requested_negative,
     requested_surface_topology: contract.requested_surface_topology,
+    requested_material_contract: contract.requested_material_contract,
+    requested_interaction_contract: contract.requested_interaction_contract,
+    view_issues: contract.view_issues,
     cameras: contract.cameras.map(camera => ({ view_id: camera.view_id, reference_image_url: camera.reference_image_url })),
     layout_reference_image_url: contract.layout_contract.reference_image_url,
     spatial_coverage_schema: contract.schema_version,
@@ -396,7 +448,7 @@ function normalizeContract(input = {}, options = {}) {
     : (qa.pass && contract.requirement_qa.pass && contract.spatial_coverage_qa.pass
       ? verification.verified(input.vision_model || '')
       : verification.rejected(
-        [...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+        [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
         contract.requirement_qa.pass && qa.pass
           ? '场景视角覆盖不足，尚未形成完整空间锁定'
           : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
@@ -412,6 +464,7 @@ function buildUnverifiedContract(options = {}, error = null) {
   contract.qa_error = cleanText(error?.message || '视觉验收暂不可用', 500);
   contract.verification = verification.unavailable(error || { code: contract.qa_error_code, message: contract.qa_error });
   contract.vision_model = '';
+  contract.view_issues = [];
   contract.cross_view_qa = {
     pass: null,
     scene_consistency_score: null,
@@ -469,6 +522,10 @@ async function analyzeSceneViews(options = {}) {
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
       + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
       + 'spatial_coverage_qa object containing pass, layout_topology_score, camera_diversity_score, reverse_coverage_score, interaction_zone_score and reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
+      + 'view_issues is a REQUIRED array. Every failed gate must add at least one object with code, exact view_keys, concise reason, visible evidence and confidence. Free-text reasons are display-only and must never be used to decide paid regeneration. '
+      + 'Allowed codes: ROOT_SCENE_IDENTITY_INVALID, ROOT_GEOMETRY_INVALID, ROOT_MATERIAL_IDENTITY_INVALID, LAYOUT_ROLE_INVALID, LAYOUT_TOPOLOGY_INCOMPLETE, REVERSE_COVERAGE_LOW, INTERACTION_ZONE_MISSING, CAMERA_DIVERSITY_LOW, MATERIAL_DETAIL_WEAK, MATERIAL_APPEARANCE_MISMATCH, SURFACE_TOPOLOGY_INVALID, NEGATIVE_VIOLATION, PHOTOREALISM_INVALID, CROSS_VIEW_DRIFT. Allowed view keys: master, reverse, interaction, detail, layout. '
+      + 'Use a ROOT code only when the canonical master scene itself is unusable and all derived views must change. Otherwise identify only the failing view. Without an attached material reference, a proprietary name is still a generation target but never sufficient evidence for ROOT_MATERIAL_IDENTITY_INVALID; judge only observable cues and use MATERIAL_DETAIL_WEAK on detail when evidence is insufficient. '
+      + 'The interaction image depicts an empty scene: require empty clearance, a reachable target and an access route; never require a visible person. '
       + 'Overall pass may be true only when requirement_qa.pass, cross_view_qa.pass and spatial_coverage_qa.pass are all true. Use concise Simplified Chinese for every mismatch reason. '
       + 'anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
       + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
@@ -480,7 +537,7 @@ async function analyzeSceneViews(options = {}) {
       + 'For a complete spatial lock, spatial_coverage_qa must fail if the layout/top-down/high-oblique reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
       + 'A valid fifth layout view must use a genuinely elevated steep downward camera, show most of the usable ground/base footprint, make task-appropriate boundaries or edges, access points, fixed anchors, circulation and action-zone relations readable together, and relocate meaningfully from the master camera. Reject a mild high-angle commercial shot, frontal elevation, close crop, master reframe, ceiling-dominant enclosed view, or an unrelated plan/miniature/CGI view. '
       + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes. '
-      + 'Keep the complete JSON under 3500 characters. Put requirement_qa, cross_view_qa and spatial_coverage_qa before optional details. Use at most 3 concise reasons per gate, 5 anchors, 3 zones, 8 geometry facts, 5 materials and 5 cameras; keep each description under 80 characters.',
+      + 'Keep the complete JSON under 3500 characters. Put requirement_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts, 5 materials and 5 cameras; keep each description under 80 characters.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
     maxTokens: 3500,
   };
@@ -504,19 +561,40 @@ async function analyzeSceneViews(options = {}) {
     ['reverse_coverage_score', 'reverse_view_score', 'reverse_spatial_score'],
     ['interaction_zone_score', 'interaction_coverage_score', 'interaction_spatial_score'],
   ];
+  const lacksIssueEvidence = candidate => {
+    const requirementQa = candidate.requirement_qa || candidate;
+    const crossViewQa = candidate.cross_view_qa || candidate;
+    const spatialQa = candidate.spatial_coverage_qa || candidate;
+    const failed = requirementQa.pass === false || crossViewQa.pass === false || spatialQa.pass === false
+      || firstScore(requirementQa, ['layout_match_score']) < 0.75
+      || firstScore(requirementQa, ['material_light_match_score']) < 0.75
+      || firstScore(requirementQa, ['interaction_match_score']) < 0.7
+      || firstScore(requirementQa, ['surface_topology_match_score']) < 0.8
+      || firstScore(requirementQa, ['negative_compliance_score']) < 0.9
+      || firstScore(crossViewQa, ['scene_consistency_score']) < 0.72
+      || firstScore(crossViewQa, ['geometry_consistency_score']) < 0.68
+      || firstScore(crossViewQa, ['material_consistency_score']) < 0.72
+      || firstScore(spatialQa, ['layout_topology_score']) < 0.8
+      || firstScore(spatialQa, ['camera_diversity_score']) < 0.75
+      || firstScore(spatialQa, ['reverse_coverage_score']) < 0.75
+      || firstScore(spatialQa, ['interaction_zone_score']) < 0.7;
+    return failed && normalizeViewIssues(candidate.view_issues || candidate.viewIssues || [], requested).length === 0;
+  };
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
-    || !hasRequiredScores(parsed, spatialCoverageScoreFields)) {
+    || !hasRequiredScores(parsed, spatialCoverageScoreFields)
+    || lacksIssueEvidence(parsed)) {
     result = await modelGateway.generateVision({
       ...request,
-      userPrompt: request.userPrompt + '\nYour previous response omitted required numeric score fields. Return the exact nested requirement_qa, cross_view_qa and spatial_coverage_qa schema with every numeric score from 0 to 1.',
+      userPrompt: request.userPrompt + '\nYour previous response omitted required scores or exact per-view issue evidence. Return the exact nested QA schema and view_issues. Every failed gate must identify an allowed code and exact view_keys; do not use free text as a substitute.',
     });
     parsed = safeJson(result.text);
   }
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
-    || !hasRequiredScores(parsed, spatialCoverageScoreFields)) {
-    const error = new Error('场景视觉 QA 返回结构缺少必需评分字段');
+    || !hasRequiredScores(parsed, spatialCoverageScoreFields)
+    || lacksIssueEvidence(parsed)) {
+    const error = new Error('场景视觉 QA 缺少必需评分或逐图错误证据');
     error.code = 'VISION_QA_SCHEMA_INVALID';
     error.retryable = true;
     throw error;
@@ -553,6 +631,13 @@ async function analyzeSceneViews(options = {}) {
       ...(layoutAcquisition.reasons || []),
       '第5张俯视布局未通过高俯角全貌角色验证',
     ])].slice(0, 4);
+    contract.view_issues = [...contract.view_issues, {
+      code: 'LAYOUT_ROLE_INVALID',
+      view_keys: ['layout'],
+      reason: cleanText(layoutAcquisition.reasons?.[0] || '俯视布局未通过全貌视角验证', 300),
+      evidence: 'layout preflight scores below role thresholds',
+      confidence: 1,
+    }];
     contract.status = 'rejected';
     contract.space_lock_status = 'rejected';
     contract.full_space_lock = false;
@@ -561,7 +646,7 @@ async function analyzeSceneViews(options = {}) {
   contract.verification = contract.full_space_lock === true
     ? verification.verified(result.used_model)
     : verification.rejected(
-      [...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+      [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
       contract.requirement_qa.pass && contract.cross_view_qa.pass
         ? '场景视角覆盖不足，尚未形成完整空间锁定'
         : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
@@ -808,11 +893,13 @@ async function reviewKeyframe(options = {}) {
 module.exports = {
   VIEW_KEYS,
   REFERENCE_VIEW_KEYS,
+  VIEW_ISSUE_CODES,
   analyzeSceneViews,
   buildUnverifiedContract,
   normalizeContract,
   normalizeAnchors,
   normalizeZones,
+  normalizeViewIssues,
   normalizeRequirementQa,
   normalizeSpatialCoverageQa,
   keyframeSceneContract,

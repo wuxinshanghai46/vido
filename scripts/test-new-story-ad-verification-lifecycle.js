@@ -155,6 +155,13 @@ async function main() {
       negative_compliance_score: 0.55,
       mismatch_reasons: ['背景墙被生成成多块拼接并出现可见接缝'],
     },
+    view_issues: [{
+      code: 'SURFACE_TOPOLOGY_INVALID',
+      view_keys: ['master'],
+      reason: '主视图背景墙出现可见拼缝',
+      evidence: '连续基面被竖向边界切分',
+      confidence: 0.98,
+    }],
   }), { sceneId: 'scene-rejected', revision: 1, requested, views: [] });
   assert.equal(rejectedContract.cross_view_qa.pass, true);
   assert.equal(rejectedContract.requirement_qa.pass, false);
@@ -164,7 +171,13 @@ async function main() {
   assert.equal(sceneAssets.needsLayoutView({ layout: '前厅、走廊和后场组成多个区域', interaction: '人物沿动线连续穿行' }), true);
 
   const originalVision = modelGateway.generateVision;
-  modelGateway.generateVision = async () => ({ text: JSON.stringify(passingSceneResult({ requirement_qa: rejectedContract.requirement_qa })), used_model: 'mock/rejected-scene' });
+  modelGateway.generateVision = async () => ({
+    text: JSON.stringify(passingSceneResult({
+      requirement_qa: rejectedContract.requirement_qa,
+      view_issues: rejectedContract.view_issues,
+    })),
+    used_model: 'mock/rejected-scene',
+  });
   const rejectedGenerated = await sceneAssets.generateSceneAsset(taskId, { scene_id: 'scene-rejected', scene_spec: created.context.scene_spec });
   assert.equal(rejectedGenerated.scene_asset.scene_contract.status, 'rejected');
   assert(storage.getOutput(taskId, 'scene_assets').some(asset => asset.scene_id === 'scene-rejected'), '验证不合格的场景图片仍应保存供用户对照');

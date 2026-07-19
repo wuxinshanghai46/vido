@@ -140,6 +140,7 @@ function normalizeSceneAssets(input) {
       style_summary: cleanText(item.style_summary || item.styleSummary || '', 800),
       negative: cleanText(item.negative || item.negative_prompt || '', 800),
       surface_topology: shotDesign.normalizeSurfaceTopology(item.surface_topology || item.surfaceTopology),
+      material_contract: item.material_contract && typeof item.material_contract === 'object' ? item.material_contract : null,
       image_url: imageUrl,
       view_images: viewImages,
       view_count: Number(item.view_count || viewImages.length || (imageUrl ? 1 : 0)) || 0,
@@ -153,13 +154,23 @@ function normalizeSceneAssets(input) {
 
 function normalizeSceneSpec(input = {}) {
   const raw = input && typeof input === 'object' ? input : {};
+  const materialLightText = cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600);
+  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+    raw.surfaceTopology || raw.surface_topology,
+    [materialLightText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
+  );
   return {
     mode: cleanText(raw.mode || raw.sceneMode || 'auto', 40),
     layoutText: cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600),
-    materialLightText: cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600),
+    materialLightText,
     interactionText: cleanText(raw.interactionText || raw.interaction_text || raw.interaction || raw.camera || '', 500),
     negativeText: cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500),
-    surfaceTopology: shotDesign.normalizeSurfaceTopology(raw.surfaceTopology || raw.surface_topology),
+    surfaceTopology,
+    materialContract: shotDesign.normalizeMaterialContract(raw.materialContract || raw.material_contract, {
+      sourceText: materialLightText,
+      topology: surfaceTopology,
+      referenceAvailable: false,
+    }),
   };
 }
 
