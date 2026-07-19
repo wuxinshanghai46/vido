@@ -59,6 +59,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     style_summary: cleanText(asset.style_summary || asset.styleSummary || '', 800),
     negative: cleanText(asset.negative || asset.negative_prompt || '', 800),
     surface_topology: shotDesign.normalizeSurfaceTopology(asset.surface_topology || asset.surfaceTopology),
+    material_reference_available: asset.material_reference_available === true || asset.materialReferenceAvailable === true,
     image_url: primary,
     url: primary,
     view_images: viewImages,
@@ -85,6 +86,23 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     created_at: asset.created_at || new Date().toISOString(),
   };
+}
+
+function sceneMaterialReferenceImages(ctx = {}, body = {}) {
+  const spec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
+  const candidates = [
+    spec.material_reference_images,
+    spec.materialReferenceImages,
+    body.material_reference_images,
+    body.materialReferenceImages,
+    ctx.material_reference_images,
+    ctx.materialReferenceImages,
+    ctx.product_contract?.reference_images,
+  ].flatMap(value => Array.isArray(value) ? value : (value ? [value] : []));
+  return [...new Set(candidates.map(item => cleanText(
+    typeof item === 'string' ? item : (item?.url || item?.image_url || item?.imageUrl || ''),
+    1600,
+  )).filter(value => /^https?:\/\/|^\//i.test(value)))].slice(0, 2);
 }
 
 function updateSceneGenerationProgress(taskId, update = {}) {
@@ -310,17 +328,25 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 420);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
   const repairFeedback = cleanText(body.repair_feedback || body.repairFeedback || '', 1200);
+  const materialReferences = sceneMaterialReferenceImages(ctx, body);
   const surfaceTopology = shotDesign.resolveSurfaceTopology(
     sceneSpec.surfaceTopology || sceneSpec.surface_topology,
     [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
   );
   const surfaceTopologyPrompt = surfaceTopology ? shotDesign.surfacePrompt(surfaceTopology, 'environment') : '';
   const materialIdentityContract = [
+    'Authority order for the primary surface is: explicit topology and seam policy first, attached material appearance evidence second, observable task material cues third, and generic construction priors last.',
     'Material identity and surface topology are independent constraints.',
     'Every material or finish explicitly named by the current task must remain visibly identifiable through its own observable physical cues, such as directionality, reflectance, roughness, grain, pores, weave, translucency, micro-relief, edge behaviour, patina or scale, but only when those cues are supported by the request.',
     'Never replace a requested material with a visually adjacent generic finish merely to satisfy continuity, minimalism or style.',
     'A continuous or hidden-seam surface means visually uninterrupted composition; it does not authorize changing the requested material family or erasing all evidence of its physical identity.',
     'When the task mentions a product portfolio or several finishes, do not turn one hero surface into bands, swatches, sample zones or a catalogue wall merely to display every option. Unless the task explicitly maps finishes to visible regions, render one coherent dominant finish and express only compatible secondary cues as subtle boundary-free variation.',
+    surfaceTopology?.mode === 'continuous'
+      ? 'For this continuous primary surface, synthesize compatible appearance terms into one finish language. Never visualize product-form words, multiple adjectives or commercial naming as separate boards, panels, bands or vertical material zones.'
+      : '',
+    materialReferences.length
+      ? 'The attached task reference image is appearance evidence for material colour, grain, reflectance and micro-relief only. It must not replace scene geometry or be copied as a sample board.'
+      : 'No authoritative material sample image is attached. Translate proprietary or trade finish names only through the observable physical cues explicitly written in the task; do not invent segmentation to make an unfamiliar name visible.',
     repairFeedback
       ? 'The correction feedback has higher authority than appearance inherited from previous images. Preserve valid geometry, but replace any rejected appearance instead of imitating it.'
       : '',
@@ -335,7 +361,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     'Visual medium lock: this must be a real on-location photograph of a physically built interior or production set, captured with a full-frame camera; it must not resemble an architectural visualization, material catalogue render, CGI concept image or virtual showroom.',
     'Use plausible lens behaviour, slight optical imperfection, natural exposure roll-off, restrained sensor detail and coherent constructed geometry. Avoid sterile perfection and perfectly mirrored staging.',
     surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
-      ? 'Use real-world material scale: preserve the explicitly continuous surface topology while showing plausible contact shadows, subtle scratches, fingerprints, dust, uneven reflections and only construction details permitted by the task-specific seam policy.'
+      ? 'Use real-world material scale while preserving one optically uninterrupted primary plane: show subtle scratches, dust and uneven reflections as continuous micro-variation, but show no joint, gap, groove, recess or full-span tonal boundary on that surface.'
       : 'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
     'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
     outputRole === 'layout'
@@ -512,10 +538,14 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } =
   const appearanceRule = viewKey === 'layout'
     ? 'This overview must preserve the master photograph’s final material identity, colours, lighting and furniture. It is not a neutral diagram, clay render, dollhouse or floor-plan illustration.'
     : 'The named material identity must be visibly proven by task-supported physical cues. Surface continuity must never substitute or genericize the requested material family.';
+  const materialEvidenceRule = requested.material_reference_available
+    ? 'Use the attached task material reference only for colour, grain, reflectance and micro-relief; never copy its sample boundaries into the scene.'
+    : 'No material sample is attached. Convert trade or proprietary names only into explicitly requested observable cues, without inventing panels, bands or region boundaries.';
   return [
     roleInstruction,
     'Output one real on-location photograph with natural perspective, plausible lens behaviour, physically built geometry, realistic material scale and believable practical lighting; never output an architectural visualization or CGI showroom render.',
     appearanceRule,
+    materialEvidenceRule,
     requested.layout ? `Spatial design: ${requested.layout}` : '',
     requested.material_light ? `Materials and lighting: ${requested.material_light}` : '',
     requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
@@ -562,6 +592,7 @@ function sceneRequest(ctx = {}, body = {}) {
       spec.surfaceTopology || spec.surface_topology,
       [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
     ),
+    material_reference_available: sceneMaterialReferenceImages(ctx, body).length > 0,
     style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
     negative,
   };
@@ -622,6 +653,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const repairFeedback = cleanText(runOptions.repairFeedback || '', 1200);
   const promptBody = repairFeedback ? { ...body, repair_feedback: repairFeedback } : body;
   const requested = sceneRequest(ctx, body);
+  const materialReferences = sceneMaterialReferenceImages(ctx, body);
   const layoutRequired = needsLayoutView(requested, body);
   const legacyLayoutTrigger = legacyNeedsLayoutHeuristic(requested, body);
   const requiredViewKeys = layoutRequired ? SCENE_GENERATION_ORDER : SCENE_VIEW_KEYS;
@@ -654,6 +686,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: 'gpt-image-2',
+      referenceImages: materialReferences,
+      requireReferences: materialReferences.length > 0,
+      inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
     }, { mode: progressMode, viewKeys: progressViewKeys })
     : previousViews.get('master');
@@ -801,6 +836,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       body.negative || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).negativeText || ctx.controlled_production?.negative_control?.text || '',
     ].filter(Boolean).join('；'),
     surface_topology: requested.surface_topology,
+    material_reference_available: requested.material_reference_available,
     image_url: viewImages[0]?.url || '',
     view_images: viewImages.map(view => ({
       ...view,
@@ -944,6 +980,7 @@ async function reverifySceneAsset(taskId, sceneId) {
       style: asset.style_summary || '',
       negative: asset.negative || '',
       surface_topology: asset.surface_topology || {},
+      material_reference_available: asset.material_reference_available === true,
     },
     layoutRequired: asset.layout_contract?.required === true || views.some(view => view.key === 'layout'),
   };
@@ -980,6 +1017,7 @@ module.exports = {
   SCENE_GENERATION_ORDER,
   SCENE_IMAGE_MAX_ATTEMPTS,
   sceneViewLabel,
+  sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
   buildDerivedViewPrompt,
   buildSceneAuditSafePrompt,

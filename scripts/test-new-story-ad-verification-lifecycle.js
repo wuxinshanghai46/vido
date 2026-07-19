@@ -179,6 +179,9 @@ async function main() {
   assert.match(reverifyPrompt, /surface_topology/);
   assert.match(reverifyPrompt, /continuous/);
   assert.match(reverifyPrompt, /hidden/);
+  assert.match(reverifyPrompt, /material_reference_available/);
+  assert.match(reverifyPrompt, /do not fail solely because a proprietary, trade or unfamiliar finish name/i);
+  assert.match(reverifyPrompt, /a smooth reflection or lighting gradient is not a seam by itself/i);
 
   modelGateway.generateVision = originalVision;
   const layoutGenerated = await sceneAssets.generateSceneAsset(taskId, {
@@ -212,10 +215,12 @@ async function main() {
   });
   assert.equal(reconciledGenerated.scene_asset.surface_topology.mode, 'continuous', '连续墙面文字要求必须覆盖冲突的模块化旧值');
   assert.equal(reconciledGenerated.scene_asset.surface_topology.seam_policy, 'hidden');
+  assert.equal(reconciledGenerated.scene_asset.surface_topology.finish_distribution, 'uniform', '未映射到明确位置的局部变化必须收敛为无边界统一饰面');
   assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /a modular system is required/i);
   assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /visible panel seams, joints, bevels/i);
-  assert.match(reconciledGenerated.scene_asset.prompt, /ONE visually continuous, uninterrupted plane/i);
-  assert.match(reconciledGenerated.scene_asset.prompt, /continuity controls visible segmentation, not material identity/i);
+  assert.match(reconciledGenerated.scene_asset.prompt, /ONE monolithic uninterrupted visual plane/i);
+  assert.match(reconciledGenerated.scene_asset.prompt, /ZERO visible joints/i);
+  assert.doesNotMatch(reconciledGenerated.scene_asset.prompt, /physically supplied as sheets, boards or panels|visually recessive joints/i);
   const reconciledContext = storage.getOutput(conflictingTask.task.id, 'context');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.mode, 'continuous', '实际生成所用的纠偏设置必须写回任务上下文');
   assert.equal(reconciledContext.scene_spec.surfaceTopology.seam_policy, 'hidden');

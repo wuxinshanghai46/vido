@@ -55,17 +55,30 @@ function hasContinuousSurfaceIntent(value = '') {
     || /(?:禁止|不得|不要|严禁|避免)[^。；;]{0,48}(?:模块化|模块|拼板|板块|网格墙|样品墙|展示墙|可见接缝|拼缝)/i.test(text);
 }
 
+/** A regional finish is valid only when the task maps it to a named place. */
+function hasExplicitFinishRegionMapping(value = '') {
+  const text = structuredText(value, 2400);
+  if (!text) return false;
+  const spatialToken = '(?:左侧|右侧|上部|下部|顶部|底部|中央|中心|入口侧|出口侧|内侧|外侧|前部|后部|left|right|upper|lower|top|bottom|centre|center|entrance|exit|inner|outer|front|rear)';
+  const finishToken = '(?:材质|饰面|纹理|表面|涂层|色彩|颜色|material|finish|texture|surface|coating|colou?r)';
+  return new RegExp(`${spatialToken}[^。；;]{0,48}${finishToken}|${finishToken}[^。；;]{0,48}(?:位于|设置于|应用于|限定于|mapped\\s+to|placed\\s+at|applied\\s+to)[^。；;]{0,48}${spatialToken}`, 'i').test(text);
+}
+
 /** Resolve contradictory select values and free-text requirements before generation. */
 function resolveSurfaceTopology(input = null, contextText = '') {
   const topology = normalizeSurfaceTopology(input);
   const notes = topology?.notes || '';
-  if (!hasContinuousSurfaceIntent([contextText, notes])) return topology;
+  const continuous = topology?.mode === 'continuous' || hasContinuousSurfaceIntent([contextText, notes]);
+  if (!continuous) return topology;
+  const regionalMapped = hasExplicitFinishRegionMapping([contextText, notes]);
+  const requestedDistribution = topology?.finish_distribution || 'auto';
+  const finishDistribution = requestedDistribution === 'gradient'
+    ? 'gradient'
+    : (requestedDistribution === 'regional' && regionalMapped ? 'regional' : 'uniform');
   return {
     mode: 'continuous',
     seam_policy: 'hidden',
-    finish_distribution: topology?.finish_distribution === 'sample_comparison'
-      ? 'regional'
-      : (topology?.finish_distribution || 'auto'),
+    finish_distribution: finishDistribution,
     notes,
   };
 }
@@ -110,18 +123,18 @@ function surfacePrompt(surface = null, shotScope = 'auto') {
     lines.push('This is an isolated product/sample comparison insert. Divisions between samples belong only to this insert and must not redefine the topology of the master environment used by other shots.');
   }
   if (topology?.mode === 'continuous') {
-    lines.push('Surface topology lock: ONE visually continuous, uninterrupted plane; never turn it into a repeated decorative grid, sample board, tiled collage or outlined set of modules. A task-named material may still be physically supplied as sheets, boards or panels; continuity controls visible segmentation, not material identity.');
+    lines.push('Surface topology lock: ONE monolithic uninterrupted visual plane. ZERO full-height/full-width boundaries, gaps, grooves, grids, sample zones or modules. Task construction nouns do not authorize segmentation.');
   } else if (topology?.mode === 'segmented') {
     lines.push('Surface topology lock: intentional segmented construction is required; make the segment logic physically coherent and task-specific.');
   } else if (topology?.mode === 'modular') {
     lines.push('Surface topology lock: a modular system is required; preserve its repeat logic and physical assembly details.');
   }
-  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: NO conspicuous construction joints, outlined borders or evenly spaced vertical/horizontal divisions. Keep any physically necessary task-supported joints visually recessive.');
+  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: ZERO visible joints, including faint or recessive ones. Fully conceal assembly; no floor-to-ceiling or full-width line or tonal edge.');
   if (topology?.seam_policy === 'visible') lines.push('Seam policy: visible joints are intentional evidence and must follow the task-defined construction logic.');
   if (topology?.seam_policy === 'task_defined') lines.push('Seam policy: follow only seams explicitly required by this shot or its task references; do not add generic decorative divisions.');
-  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or swatch-like regions.');
+  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: one coherent dominant finish over the primary surface. Allow only boundary-free micro-variation; no blocks, bands, swatches or region edges.');
   if (topology?.finish_distribution === 'gradient') lines.push('Finish distribution: use one continuous gradient without turning it into separate swatches or sample blocks.');
-  if (topology?.finish_distribution === 'regional') lines.push('Finish distribution: regional variation is allowed only where the shot explicitly places it; preserve the underlying continuous construction topology.');
+  if (topology?.finish_distribution === 'regional') lines.push('Finish distribution: use regional variation only at the explicitly named task location. Blend the transition without a seam, border, groove, gap or full-span tonal division, and preserve one continuous construction topology.');
   if (topology?.finish_distribution === 'sample_comparison') lines.push('Finish distribution: show clearly distinguishable comparison samples as product evidence within this shot only.');
   if (topology?.notes) lines.push(`Task-specific surface note: ${topology.notes}`);
   return lines.join('\n');
@@ -166,6 +179,7 @@ module.exports = {
   structuredText,
   normalizeSurfaceTopology,
   hasContinuousSurfaceIntent,
+  hasExplicitFinishRegionMapping,
   resolveSurfaceTopology,
   normalizeMotionEffect,
   normalizeShotDesign,

@@ -25,9 +25,24 @@ const continuousShot = {
   },
 };
 const surfaceText = shotDesign.surfacePrompt(continuousShot.surface_topology, continuousShot.shot_scope);
-assert.match(surfaceText, /visually continuous, uninterrupted plane/i);
-assert.match(surfaceText, /NO conspicuous construction joints/i);
+assert.match(surfaceText, /ONE monolithic uninterrupted visual plane/i);
+assert.match(surfaceText, /ZERO visible joints/i);
+assert.match(surfaceText, /ZERO full-height\/full-width boundaries/i);
+assert.doesNotMatch(surfaceText, /physically supplied|visually recessive/i);
 assert.doesNotMatch(surfaceText, /stainless|wall|actress|佛山/i);
+
+const reconciledUnmappedFinish = shotDesign.resolveSurfaceTopology({
+  mode: 'continuous',
+  seam_policy: 'hidden',
+  finish_distribution: 'regional',
+}, '一整面连续完整基面，允许自然纹理局部变化但不得出现边界或接缝');
+assert.equal(reconciledUnmappedFinish.finish_distribution, 'uniform', '没有明确空间映射的局部变化不能变成分区饰面');
+const reconciledMappedFinish = shotDesign.resolveSurfaceTopology({
+  mode: 'continuous',
+  seam_policy: 'hidden',
+  finish_distribution: 'regional',
+}, '左侧区域采用较深饰面，右侧区域保持浅色纹理，过渡无缝');
+assert.equal(reconciledMappedFinish.finish_distribution, 'regional', '明确映射到位置的饰面变化应继续支持');
 
 const isolatedHardCut = continuity.continuityContract({
   title: 'independent environment shot',
@@ -64,10 +79,10 @@ const isolatedPrompt = storyAd.buildKeyframePrompt({
     action_start: '第一块样品进入画面',
   },
 }, 4);
-assert.match(isolatedPrompt, /Surface topology lock: ONE visually continuous, uninterrupted plane/);
-assert.match(isolatedPrompt, /material may still be physically supplied as sheets, boards or panels/);
-assert.match(isolatedPrompt, /Seam policy: NO conspicuous construction joints, outlined borders or evenly spaced vertical\/horizontal divisions/);
-assert.match(isolatedPrompt, /Finish distribution: one coherent finish across the entire visible primary surface; no sample blocks or swatch-like regions/);
+assert.match(isolatedPrompt, /Surface topology lock: ONE monolithic uninterrupted visual plane/);
+assert.match(isolatedPrompt, /Seam policy: ZERO visible joints/);
+assert.match(isolatedPrompt, /Finish distribution: one coherent dominant finish over the primary surface/);
+assert.doesNotMatch(isolatedPrompt, /material may still be physically supplied|Keep any physically necessary task-supported joints visually recessive/);
 assert.doesNotMatch(isolatedPrompt, /第一块样品|Entry frame state:|Action start\/end:/);
 assert.strictEqual((isolatedPrompt.match(/Shot scope:/g) || []).length, 1);
 assert.doesNotMatch(isolatedPrompt, /Master environment only — Surface topology lock:/);
@@ -139,7 +154,7 @@ const continuousScenePrompt = sceneAssets.buildSceneSheetPrompt({
     },
   },
 });
-assert.match(continuousScenePrompt, /explicitly continuous surface topology/i);
+assert.match(continuousScenePrompt, /one optically uninterrupted primary plane/i);
 assert.doesNotMatch(continuousScenePrompt, /visible panel seams, joints/i);
 
 console.log('new-story-ad shot design tests passed');

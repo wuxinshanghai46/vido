@@ -205,6 +205,32 @@ async function main() {
       assert.match(genericPrompt, /do not turn one hero surface into bands, swatches, sample zones or a catalogue wall/i);
       assert.doesNotMatch(genericPrompt, item.forbidden, 'a different test industry/material must never be injected');
     }
+    const continuousTradeFinishPrompt = sceneAssets.buildSceneSheetPrompt({
+      ctx: { brief: 'generic continuous-surface task' },
+      body: {
+        scene_spec: {
+          layoutText: '一整面连续完整平直的主表面',
+          materialLightText: '专有蚀刻纹理、做旧金属风格和细腻拉丝质感的装饰面板',
+          negativeText: '禁止模块化拼板、竖向接缝、网格和样品展示墙',
+          surfaceTopology: { mode: 'continuous', seam_policy: 'hidden', finish_distribution: 'regional' },
+        },
+      },
+      outputRole: 'contract',
+    });
+    assert.match(continuousTradeFinishPrompt, /ONE monolithic uninterrupted visual plane/i);
+    assert.match(continuousTradeFinishPrompt, /ZERO visible joints/i);
+    assert.match(continuousTradeFinishPrompt, /one coherent dominant finish over the primary surface/i);
+    assert.match(continuousTradeFinishPrompt, /No authoritative material sample image is attached/i);
+    assert.doesNotMatch(continuousTradeFinishPrompt, /physically supplied as sheets, boards or panels|Keep any physically necessary task-supported joints visually recessive/i);
+    assert.deepEqual(sceneAssets.sceneMaterialReferenceImages({
+      product_contract: { reference_images: ['https://example.invalid/material-a.png', 'https://example.invalid/material-a.png'] },
+    }), ['https://example.invalid/material-a.png']);
+    const referencedMaterialPrompt = sceneAssets.buildSceneSheetPrompt({
+      ctx: { product_contract: { reference_images: ['https://example.invalid/material-a.png'] } },
+      body: { scene_spec: { materialLightText: 'task-defined finish' } },
+      outputRole: 'contract',
+    });
+    assert.match(referencedMaterialPrompt, /attached task reference image is appearance evidence/i);
     const glassDetailPrompt = sceneAssets.buildSceneAuditSafePrompt({
       body: { scene_spec: { materialLightText: 'translucent architectural glass with natural refraction' } },
       viewKey: 'detail',
