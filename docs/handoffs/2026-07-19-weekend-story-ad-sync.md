@@ -1,9 +1,13 @@
 # VIDO 周末更新同步与公司接续核对（2026-07-17 晚—2026-07-19）
 
-> 生成时间：2026-07-19（Asia/Shanghai）  
-> 接续分支：`codex/story-ad-v3-upgrade`  
-> 业务代码基线：`016bae51480e87b8b11b3943668713b9c7bfd000`  
-> 基线 Git Tree：`9f80d2aae8d8cca47fa579b6f04b1d0b23ac5c14`  
+> 生成时间：2026-07-19（Asia/Shanghai）
+>
+> 接续分支：`codex/story-ad-v3-upgrade`
+>
+> 业务代码基线：`016bae51480e87b8b11b3943668713b9c7bfd000`
+>
+> 基线 Git Tree：`9f80d2aae8d8cca47fa579b6f04b1d0b23ac5c14`
+>
 > 安全说明：本文不记录服务器、数据库、模型平台密码、Token 或 API Key。
 
 ## 1. 明天到公司先这样做
