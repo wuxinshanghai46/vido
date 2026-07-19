@@ -47,7 +47,7 @@ node src/server.js
 ### 2.2 Git 远端状态
 
 - Gitee 的 `origin` 和 `gitee` 指向同一个仓库，业务分支均已同步到 `016bae5`。
-- GitHub 在交接前尚无 `codex/story-ad-v3-upgrade` 分支；本次交付会把最终分支补推到 GitHub，作为第二份远端副本。
+- GitHub 在交接时尚无 `codex/story-ad-v3-upgrade` 分支；本次已多次尝试补推，但当前网络无法连接 `github.com:443`。公司接续以已成功同步的 Gitee `origin` 为准，此项不影响明天拉取。
 - 未将该功能分支擅自合并进 `master`，避免覆盖公司仍在进行的主线工作。
 
 ### 2.3 未纳入提交的历史资料
