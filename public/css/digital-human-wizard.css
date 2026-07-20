@@ -103,6 +103,30 @@
 .dh-input option:disabled { color: var(--dh-text-muted); }
 .dh-input-sm { padding: 8px 10px; font-size: 13px; }
 
+/* Scene topology selects live on a permanently dark work surface. Keep the
+   browser-native popup in the same scheme and make explicit choices visible. */
+.dh-nsa-scene-spec-grid select.dh-input {
+  color-scheme: dark;
+  background-color: #18242a;
+  color: #effffd;
+}
+.dh-nsa-scene-spec-grid select.dh-input option,
+.dh-nsa-scene-spec-grid select.dh-input optgroup {
+  background-color: #111b20 !important;
+  color: #effffd !important;
+}
+.dh-nsa-scene-spec-grid select.dh-input option:checked {
+  background-color: #36d8ce !important;
+  color: #061012 !important;
+}
+.dh-nsa-scene-spec-grid select.dh-input.is-explicit-selection {
+  border-color: rgba(33,255,243,.78);
+  color: #8cfff8;
+  font-weight: 800;
+  background: linear-gradient(135deg, rgba(33,255,243,.13), rgba(164,255,72,.06)), #18242a;
+  box-shadow: 0 0 0 2px rgba(33,255,243,.09), 0 8px 20px rgba(0,0,0,.16);
+}
+
 /* ——— Chip 行 ——— */
 .dh-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .dh-chip { background: rgba(255,255,255,.025); border: 1px solid var(--dh-border); color: var(--dh-text-soft); min-height: 36px; padding: 8px 16px; border-radius: 10px; cursor: pointer; font-size: 13px; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .16s ease; font-weight: 700; }

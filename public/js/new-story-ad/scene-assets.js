@@ -238,7 +238,20 @@
         changed = true;
       }
     });
+    syncSpecSelectionState(scope);
     return changed;
+  }
+
+  function syncSpecSelectionState(target = root()) {
+    const selector = 'select[data-nsa-scene-spec], #dhNsaAdSceneMode';
+    const controls = target?.matches?.(selector)
+      ? [target]
+      : Array.from(target?.querySelectorAll?.(selector) || []);
+    controls.forEach(control => {
+      const explicit = !['', 'auto'].includes(clean(control.value || '', 60));
+      control.classList.toggle('is-explicit-selection', explicit);
+      control.dataset.nsaSelectionState = explicit ? 'explicit' : 'auto';
+    });
   }
 
   function applySpec(spec = {}, options = {}) {
@@ -268,6 +281,7 @@
       if (source.mode) mode.value = String(source.mode);
       else if (clearMissing) mode.value = 'auto';
     }
+    syncSpecSelectionState(scope);
   }
 
   function clearSpecInputs() {
@@ -758,6 +772,7 @@
     applySpec,
     clearSpecInputs,
     applySpecSuggestion,
+    syncSpecSelectionState,
     render,
     payload,
     hydrate,

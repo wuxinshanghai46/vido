@@ -56,6 +56,8 @@
     const generateBtn = within('#dhNsaAdGenerate');
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
     lock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
+    const storyboardBtn = within('#dhNsaAdStoryboard');
+    if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     lock('#dhNsaAdRegenerateAllShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');

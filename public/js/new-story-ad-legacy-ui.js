@@ -1968,6 +1968,8 @@
     const generateBtn = within('#dhNsaAdGenerate');
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
     setButtonLock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
+    const storyboardBtn = within('#dhNsaAdStoryboard');
+    if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     setButtonLock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     setButtonLock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     setButtonLock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜');
@@ -3510,6 +3512,7 @@
 
   function renderAll() {
     syncOptionControls();
+    window.NewStoryAdSceneAssets?.syncSpecSelectionState?.();
     renderAdvancedControls();
     renderAssets();
     renderPerson();
@@ -6177,6 +6180,7 @@
         return;
       }
       if (target?.matches?.('[data-nsa-scene-spec]')) {
+        window.NewStoryAdSceneAssets?.syncSpecSelectionState?.(target);
         markSourceDirty('scene');
         renderStatus();
       }
@@ -6241,6 +6245,7 @@
         return;
       }
       if (target?.id === 'dhNsaAdSceneMode') {
+        window.NewStoryAdSceneAssets?.syncSpecSelectionState?.(target);
         markSourceDirty('scene');
         renderStatus();
         return;

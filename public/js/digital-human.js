@@ -18725,19 +18725,13 @@
     if (newStoryAdContinue) {
       const id = String(newStoryAdContinue.dataset.newStoryAdContinue || '').trim();
       if (!id) return;
-      const originalText = newStoryAdContinue.textContent;
-      try {
-        newStoryAdContinue.disabled = true;
-        newStoryAdContinue.textContent = '正在恢复…';
-        const detailed = await loadNewStoryAdTaskDetail(id, { render: false });
-        const step = Math.max(1, Math.min(5, Number(detailed.resumeStep || newStoryAdContinue.dataset.newStoryAdStep || 1) || 1));
-        try { localStorage.setItem('vido_new_story_ad_current_task_id', id); } catch {}
-        window.location.href = `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(id)}&nsa_step=${step}`;
-      } catch (err) {
-        newStoryAdContinue.disabled = false;
-        newStoryAdContinue.textContent = originalText;
-        toast('任务恢复失败：' + (err.message || '无法读取任务数据'), 'error');
-      }
+      // The destination restores the authoritative task bundle and recomputes the
+      // resume step. Do not fetch the same detail (plus admin monitor data) here.
+      const step = Math.max(1, Math.min(5, Number(newStoryAdContinue.dataset.newStoryAdStep || 1) || 1));
+      newStoryAdContinue.disabled = true;
+      newStoryAdContinue.textContent = '正在打开…';
+      try { localStorage.setItem('vido_new_story_ad_current_task_id', id); } catch {}
+      window.location.href = `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(id)}&nsa_step=${step}`;
       return;
     }
     const luxProjectDelete = closest('[data-lux-project-delete]');

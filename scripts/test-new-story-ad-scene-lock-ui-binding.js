@@ -64,6 +64,13 @@ function loadFrontend() {
   return sandbox.window.NewStoryAdSceneAssets;
 }
 
+function loadButtonState() {
+  const source = fs.readFileSync(path.join(root, 'public/js/new-story-ad/button-state.js'), 'utf8');
+  const sandbox = { window: {}, document: { querySelector: () => null } };
+  vm.runInNewContext(source, sandbox, { filename: 'button-state.js' });
+  return sandbox.window.NewStoryAdButtonState;
+}
+
 function main() {
   const asset = fullAsset();
   assert.equal(sceneBinding.completeSpaceLock(asset), true, 'v3 + 三道 QA + 俯视布局才是完整空间锁');
@@ -114,6 +121,48 @@ function main() {
   assert.equal(sceneBinding.sceneVerificationState(normalizedLegacy), 'legacy_partial');
 
   const frontend = loadFrontend();
+  const selectedClasses = new Set();
+  const topologySelect = {
+    value: 'hidden',
+    dataset: {},
+    matches: selector => selector.includes('select[data-nsa-scene-spec]'),
+    classList: {
+      toggle(name, enabled) {
+        if (enabled) selectedClasses.add(name);
+        else selectedClasses.delete(name);
+      },
+    },
+  };
+  frontend.syncSpecSelectionState(topologySelect);
+  assert(selectedClasses.has('is-explicit-selection'));
+  assert.equal(topologySelect.dataset.nsaSelectionState, 'explicit');
+  topologySelect.value = 'auto';
+  frontend.syncSpecSelectionState(topologySelect);
+  assert(!selectedClasses.has('is-explicit-selection'));
+  assert.equal(topologySelect.dataset.nsaSelectionState, 'auto');
+  const storyboardClasses = new Set();
+  const storyboardButton = {
+    disabled: false,
+    classList: {
+      toggle(name, enabled) {
+        if (enabled) storyboardClasses.add(name);
+        else storyboardClasses.delete(name);
+      },
+    },
+    setAttribute() {},
+    removeAttribute() {},
+  };
+  loadButtonState().updateLocks({
+    state: { taskId: 'restored-task', busy: false, shots: [] },
+    getPersonSpec: () => '',
+    within: selector => {
+      if (selector === '#dhNsaAdText') return { value: '' };
+      if (selector === '#dhNsaAdStoryboard') return storyboardButton;
+      return null;
+    },
+  });
+  assert.equal(storyboardButton.disabled, false);
+  assert(storyboardClasses.has('is-next'));
   assert.equal(frontend.requiresLayoutView({ layoutText: '简单单墙场景' }), true, 'v3 新场景必须固定生成第五张空间布局');
   const progressHost = { innerHTML: '' };
   frontend.render({ host: progressHost, state: { sceneGenerationProgress: { active: true, startedAt: Date.now() } } });
@@ -322,10 +371,22 @@ function main() {
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
-  assert(html.includes('bootstrap.js?v=20260720-scene-spec-duplicate-gates-v17'));
+  assert(html.includes('bootstrap.js?v=20260720-instant-restore-select-state-v18'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-scene-spec-duplicate-gates-v17'));
+  assert(bootstrap.includes('20260720-instant-restore-select-state-v18'));
+  const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
+  const continueHandler = taskCenterUi.slice(
+    taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),
+    taskCenterUi.indexOf("const luxProjectDelete = closest('[data-lux-project-delete]')"),
+  );
+  assert(continueHandler.includes("newStoryAdContinue.textContent = '正在打开…'"));
+  assert(!continueHandler.includes('loadNewStoryAdTaskDetail'));
+  const buttonState = fs.readFileSync(path.join(root, 'public/js/new-story-ad/button-state.js'), 'utf8');
+  assert(buttonState.includes("storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy)"));
+  assert(legacyUi.includes("NewStoryAdSceneAssets?.syncSpecSelectionState?.(target)"));
+  assert(css.includes('.dh-nsa-scene-spec-grid select.dh-input.is-explicit-selection'));
+  assert(css.includes('color-scheme: dark'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));
