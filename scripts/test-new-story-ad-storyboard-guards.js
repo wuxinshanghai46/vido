@@ -24,6 +24,15 @@ assert(badReview.blocking_issues.some(issue => issue.includes('模型内部状�
 const countReview = localReview({ expected_storyboard_count: 6 }, validShots.concat(validShots.slice(0, 2)));
 assert(countReview.blocking_issues.some(issue => issue.includes('需要 6，实际 5')));
 
+const dialogueDriftReview = localReview({}, [{
+  visual: '设计师观察材料表面与空间关系。',
+  action: '她触摸纹理后确认方案。',
+  dialogue_function: 'proof',
+  blueprint_spoken_line: '纹理这么细，光线走过也没有生硬的反光。',
+  voiceover: '原来可以这样。',
+}]);
+assert(dialogueDriftReview.blocking_issues.some(issue => /偏离已确认剧本/.test(issue)), '分镜不得把已确认台词再次压薄');
+
 const beats = Array.from({ length: 6 }, (_, index) => ({ beat_index: index + 1 }));
 const aligned = alignShotsToBeats([{ index: 1 }, { index: 2 }], beats.slice(4));
 assert.deepStrictEqual(aligned.map(shot => shot.index), [5, 6], '分块模型的局部索引应映射回全局 beat 索引');

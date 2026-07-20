@@ -26,9 +26,9 @@ const premiumBlueprint = {
   logline: '交付前连接突然中断，林清禾改用当前任务主体完成验证，终于在雨停前发出结果。',
   characters: [{ name: '林清禾', role: '项目负责人', description: '当前任务原创人物' }],
   beats: [
-    { beat_index: 1, role: '冲突', plot: '窗外下雨，交付页面的连接状态变红。', action: '林清禾停下输入并检查错误来源。', spoken_line: '偏偏现在断了。' },
-    { beat_index: 2, role: '转折', plot: '当前任务主体完成验证，状态由红转绿。', action: '她重新连接并确认核心步骤。', spoken_line: '先把最关键的一步跑通。' },
-    { beat_index: 3, role: '结果', plot: '结果页完整出现，发送时间早于截止线。', action: '她核对结果后点击发送。', spoken_line: '赶上了，结果也对。' },
+    { beat_index: 1, role: '冲突', plot: '窗外下雨，交付页面的连接状态变红。', action: '林清禾停下输入并检查错误来源。', spoken_line: '客户十分钟后就要当场看结果，偏偏最后一条关键链路又断了。' },
+    { beat_index: 2, role: '转折', plot: '当前任务主体完成验证，状态由红转绿。', action: '她重新连接并确认核心步骤。', spoken_line: '先锁定真正的错误源，再把最关键的一步完整重新跑通。' },
+    { beat_index: 3, role: '结果', plot: '结果页完整出现，发送时间早于截止线。', action: '她核对结果后点击发送。', spoken_line: '赶上了，结果、时间和预算现在都能清楚对得上。' },
   ],
 };
 

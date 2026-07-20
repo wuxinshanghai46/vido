@@ -2,10 +2,13 @@ const assert = require('assert');
 const {
   BLUEPRINT_RIGHTS_POLICY_VERSION,
   assessBlueprintQuality,
+  assessDialogueNarrative,
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
   similarity,
 } = require('../src/services/newStoryAd/blueprintQualityService');
+const { normalizeBlueprint } = require('../src/services/newStoryAd/blueprintService');
+const { alignShotsToBeats, normalizeShots } = require('../src/services/newStoryAd/storyboardTableService');
 
 const weak = {
   logline: 'A developer discovers a platform.',
@@ -77,4 +80,64 @@ assert.match(normalizedBrandAppearance.beats[2].spoken_line, /佛山海和/, '�
 assert.equal(assessBlueprintQuality(normalizedBrandAppearance).pass, true);
 assert.equal(normalizeAuthorizedBrandPresentation(rightsRisk).beats[1].plot, rightsRisk.beats[1].plot, '明确要求生成或变形 Logo 时仍必须保留并拦截');
 assert.equal(assessBlueprintQuality(premium).pass, true);
+
+const productionThinDialogue = {
+  story_title: '材质发现',
+  logline: '设计师带着空间难题接近材料墙，经过观察与触摸找到方案并作出选择。',
+  target_duration: 30,
+  dialogue_contract: {
+    version: 'dialogue-arc-v1',
+    target_chars_per_second: { min: 2.4, max: 4.8 },
+  },
+  beats: [
+    { role: '冲突', dialogue_function: 'obstacle', duration: 5, plot: '设计师面对空旷墙面思考材料难题。', action: '她抱臂停下。', spoken_line: '又要温度，又要独特的质感…' },
+    { role: '发现', dialogue_function: 'question', duration: 5, plot: '墙面显出铂棕纹理。', action: '她走近观察。', spoken_line: '嗯？这是…不锈钢？' },
+    { role: '证明', dialogue_function: 'proof', duration: 5, plot: '光线掠过蚀刻肌理。', action: '她触摸纹理。', spoken_line: '原来肌理，可以如此细腻。' },
+    { role: '转折', dialogue_function: 'value_shift', duration: 5, plot: '不同表面组合成完整墙面。', action: '她后退观察。', spoken_line: '原来…可以这样做。' },
+    { role: '结果', dialogue_function: 'decision', duration: 5, plot: '设计方案在脑中成形。', action: '她拍下细节。', spoken_line: '就是它了。' },
+    { role: '品牌收束', dialogue_function: 'brand_closure', duration: 5, plot: '材质特写后期叠加授权品牌素材。', action: '画面定格在纹理上。', spoken_line: '海和不锈钢。质感，超乎所想。' },
+  ],
+};
+const thinDialogueReview = assessDialogueNarrative(productionThinDialogue);
+assert.equal(thinDialogueReview.pass, false);
+assert.equal(thinDialogueReview.metrics.total_characters, 49);
+assert.equal(thinDialogueReview.metrics.chars_per_second, 1.63);
+assert(thinDialogueReview.issues.some(issue => /台词总信息量不足/.test(issue)));
+assert(thinDialogueReview.issues.some(issue => /泛化反应/.test(issue)));
+assert(thinDialogueReview.issues.some(issue => /句式重复/.test(issue)));
+assert.equal(assessBlueprintQuality(productionThinDialogue).pass, false, '生产中的单薄台词必须被质量门禁拒绝');
+
+const storyDrivenDialogue = {
+  ...productionThinDialogue,
+  beats: [
+    { role: '冲突', dialogue_function: '冲突', plot: '设计师面对空旷墙面思考材料难题。', action: '她翻看方案并停在墙前。', spoken_line: '客户要温度和质感，可普通材料撑不起整面空间。' },
+    { role: '发现', dialogue_function: 'question', plot: '墙面显出铂棕纹理。', action: '她走近辨认表面。', spoken_line: '等等，这种细腻的纹理，真的是不锈钢？' },
+    { role: '证明', dialogue_function: 'proof', plot: '光线掠过蚀刻肌理。', action: '她用指尖确认表面起伏。', spoken_line: '纹理这么细，光线走过也没有生硬的反光。' },
+    { role: '转折', dialogue_function: 'value_shift', plot: '不同表面组合成完整墙面。', action: '她后退比较颜色与质感。', spoken_line: '颜色、拉丝和做旧能组合，设计思路一下就打开了。' },
+    { role: '结果', dialogue_function: 'decision', plot: '设计方案在脑中成形。', action: '她拍下细节发给客户。', spoken_line: '细节和空间都对得上，这套材料可以真正落地。' },
+    { role: '品牌收束', dialogue_function: 'brand_closure', plot: '材质特写后期叠加授权品牌素材。', action: '画面定格在纹理上。', spoken_line: '就选佛山海和，让不锈钢真正成为设计的一部分。' },
+  ],
+};
+const normalizedStoryDialogue = normalizeBlueprint(storyDrivenDialogue, {
+  brief: '用真人慢节奏展示不锈钢纹理如何解决空间设计难题。',
+  product_subject: '佛山海和不锈钢',
+  target_duration: 30,
+  cast_mode: 'single',
+  characters: [{ name: '苏晚', role: '设计师' }],
+});
+assert.equal(normalizedStoryDialogue.dialogue_contract.version, 'dialogue-arc-v1');
+assert.equal(normalizedStoryDialogue.target_duration, 30);
+assert.equal(normalizedStoryDialogue.beats.reduce((sum, beat) => sum + beat.duration_sec, 0), 30);
+assert(normalizedStoryDialogue.beats.every(beat => beat.dialogue_function));
+assert.equal(normalizedStoryDialogue.beats[0].dialogue_function, 'obstacle', '中文叙事职责必须归一为稳定枚举');
+assert.equal(assessBlueprintQuality(normalizedStoryDialogue).pass, true, '有冲突、证据、价值转折和决定的台词应通过');
+const alignedDialogueShots = alignShotsToBeats([
+  { index: 1, visual: '设计师面对墙面。', action: '她停下思考。', voiceover: '短句被模型压薄。', speech_mode: 'offscreen_voiceover' },
+], [normalizedStoryDialogue.beats[0]]);
+assert.equal(alignedDialogueShots[0].voiceover, normalizedStoryDialogue.beats[0].spoken_line, '分镜必须继承已确认剧本台词');
+assert.equal(alignedDialogueShots[0].blueprint_spoken_line, normalizedStoryDialogue.beats[0].spoken_line);
+assert.equal(alignedDialogueShots[0].dialogue_function, normalizedStoryDialogue.beats[0].dialogue_function);
+const normalizedDialogueShots = normalizeShots(alignedDialogueShots, { target_duration: 5, characters: [], scene_assets: [] });
+assert.equal(normalizedDialogueShots[0].voiceover, normalizedStoryDialogue.beats[0].spoken_line, '分镜标准化不得再次缩短剧本台词');
+assert.equal(normalizedDialogueShots[0].dialogue_lines[0].line, normalizedStoryDialogue.beats[0].spoken_line, '对白轨也必须与已确认剧本一致');
 console.log('PASS new story ad premium blueprint quality');

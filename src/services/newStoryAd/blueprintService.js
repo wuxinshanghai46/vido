@@ -6,6 +6,39 @@ const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
 const { BLUEPRINT_PROGRESS_TOTAL } = require('./blueprintProgressService');
 
+const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
+
+function inferDialogueFunction(beat = {}, index = 0, total = 1) {
+  const explicit = clean(beat.dialogue_function || beat.dialogue_intent || '', 40).toLowerCase().replace(/[\s-]+/g, '_');
+  const allowed = new Set(['setup_goal', 'obstacle', 'question', 'discovery', 'proof', 'value_shift', 'decision', 'result', 'resolution', 'brand_closure', 'development']);
+  if (allowed.has(explicit)) return explicit;
+  if (/品牌|落版|收束|号召/.test(explicit)) return 'brand_closure';
+  if (/结果|解决|决定|选择|行动/.test(explicit)) return 'decision';
+  if (/证明|证据|验证|体验|演示/.test(explicit)) return 'proof';
+  if (/转折|反转|发现|灵感|认知/.test(explicit)) return 'discovery';
+  if (/冲突|问题|困难|受阻|压力|危机|怀疑/.test(explicit)) return 'obstacle';
+  const role = clean(`${beat.role || ''} ${beat.purpose || ''}`, 100);
+  if (/品牌|落版|收束|号召/.test(role)) return 'brand_closure';
+  if (/结果|解决|决定|选择|行动/.test(role)) return index >= total - 2 ? 'decision' : 'result';
+  if (/证明|证据|验证|体验|演示/.test(role)) return 'proof';
+  if (/转折|反转|发现|灵感|认知/.test(role)) return 'discovery';
+  if (/冲突|问题|困难|受阻|压力|危机|怀疑/.test(role)) return 'obstacle';
+  if (index === 0) return 'setup_goal';
+  if (index === total - 1) return 'resolution';
+  return 'development';
+}
+
+function allocateBeatDurations(beats = [], targetDuration = 30) {
+  if (!beats.length) return [];
+  const target = Math.max(beats.length, Math.round(Number(targetDuration || 30) || 30));
+  const base = Math.floor(target / beats.length);
+  let remainder = target - base * beats.length;
+  return beats.map(beat => {
+    const duration = Math.max(1, base + (remainder-- > 0 ? 1 : 0));
+    return { ...beat, duration, duration_sec: duration };
+  });
+}
+
 function reportBlueprintProgress(onProgress, phase, completed, message) {
   if (typeof onProgress !== 'function') return;
   try {
@@ -179,18 +212,26 @@ function normalizeBlueprint(blueprint, ctx) {
     visual_proof: clean(beat.visual_proof || beat.evidence || beat.promo_visual || '', 180),
     action: clean(beat.action || beat.solution_step || '', 120),
     spoken_line: cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || fallbackSpokenLine(beat, idx, ctx), 100),
+    dialogue_function: inferDialogueFunction(beat, idx, beats.length),
     why_next: clean(beat.why_next || '', 120),
   })).filter(x => x.plot || x.story_visual || x.promo_visual || x.visual_proof || x.spoken_line);
   const limitedBeats = compactBeatsByPacing(normalizedBeats, beatLimit);
+  const timedBeats = allocateBeatDurations(limitedBeats, profile.targetDuration);
   return {
     story_title: bp.story_title || bp.title || `${ctx.product_subject}剧情广告`,
     logline: bp.logline || bp.synopsis || '',
     beat_style: bp.beat_style || 'content_driven_visual_beats',
     visual_requirements: Array.isArray(bp.visual_requirements) ? bp.visual_requirements.map(x => clean(x, 80)).filter(Boolean) : [],
-    target_beat_count: Number(targetCount || limitedBeats.length || recommendedCount || 0) || 0,
+    target_beat_count: Number(targetCount || timedBeats.length || recommendedCount || 0) || 0,
+    target_duration: profile.targetDuration,
+    dialogue_contract: {
+      version: DIALOGUE_CONTRACT_VERSION,
+      target_chars_per_second: { min: 2.4, max: 4.8 },
+      required_arc: ['setup_or_obstacle', 'development_or_proof', 'decision_or_resolution'],
+    },
     segment_plan: Array.isArray(bp.segment_plan) ? bp.segment_plan : [],
     characters: noHuman ? [] : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed),
-    beats: limitedBeats,
+    beats: timedBeats,
     model_meta: bp.model_meta || {},
   };
 }
@@ -207,6 +248,11 @@ async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
     'Write a causal short story with character motivation, a visible obstacle, a meaningful turn and a concrete result. Do not write a feature checklist or a sequence of unrelated selling-point demonstrations.',
     'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
     'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
+    'The spoken track must carry the story, not merely react to visuals. Do not hide motivation, obstacle, evidence, value change or decision only in plot, visual, action or why_next.',
+    'Give every beat a distinct dialogue_function such as setup_goal, obstacle, question, discovery, proof, value_shift, decision, resolution or brand_closure. Across the whole film, the heard lines must cover setup/obstacle, development/proof and decision/resolution.',
+    'For natural Chinese with deliberate pauses, target roughly 2.4-4.8 spoken Chinese characters per second across the full film. A normal 4-6 second beat usually needs about 10-22 meaningful characters; a brand end card may be shorter.',
+    'Do not use a generic reaction such as “原来……可以这样做”“就是它了”“太棒了” as the whole line. Each line must add a concrete intention, question, product/material evidence, consequence or decision.',
+    'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
     'The visual field describes what the audience sees; the action field describes what changes or what the subject does. Never duplicate the same sentence across visual and action.',
     'Do not use a fixed template, fixed large segments, or fixed shot count. The number of beats must follow the user brief content, event density and pacing.',
     'First extract concrete user-provided story events, actions, selling points, proof points, emotional turns, and call-to-action moments. Each real filmable event becomes one beat.',
@@ -258,6 +304,7 @@ Return JSON in this shape:
     "selling_point": "commercial point proved by this beat",
     "visual_proof": "visible proof",
     "action": "who does what",
+    "dialogue_function": "setup_goal/obstacle/question/discovery/proof/value_shift/decision/resolution/brand_closure/development",
     "spoken_line": "natural line heard in final video, without label prefix",
     "why_next": "why the next beat follows"
   }]

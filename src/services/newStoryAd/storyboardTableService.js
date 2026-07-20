@@ -83,7 +83,8 @@ function fallbackVoiceover(shot = {}, idx = 0, ctx = {}) {
 function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
   const characters = normalizeCharacters(ctx.characters || [], `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   const n = Number(shot.index || shot.shot_index || idx + 1);
-  const voice = cleanSpeech(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || fallbackVoiceover(shot, idx, ctx), 90);
+  const blueprintSpokenLine = cleanSpeech(shot.blueprint_spoken_line || '', 90);
+  const voice = cleanSpeech(blueprintSpokenLine || shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || shot.text || fallbackVoiceover(shot, idx, ctx), 90);
   const shotType = clampText(shot.shot_type || shot.camera || shot.lens || '', 80);
   const visualLayers = normalizeVisualLayers(shot);
   const storyVisual = clampText(shot.story_visual || shot.story_moment || shot.character_moment || '', 140);
@@ -98,6 +99,14 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     shot.keyframe_notes || '',
   ].filter(Boolean).join('；'), 220);
   const design = shotDesign.normalizeShotDesign(shot);
+  const speechMode = normalizeSpeechMode(shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode);
+  const proposedDialogue = normalizeDialogue(shot.dialogue_lines, voice, characters);
+  const dialogueLines = blueprintSpokenLine
+    ? [{
+      speaker: speechMode === 'on_camera_dialogue' ? (proposedDialogue[0]?.speaker || characters[0]?.name || '旁白') : '旁白',
+      line: blueprintSpokenLine,
+    }]
+    : proposedDialogue;
   const normalized = {
     index: n,
     title: clampText(shot.title || `镜头 ${n}`, 40),
@@ -113,9 +122,11 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     selling_point: sellingPoint,
     visual: joinVisualLayers({ shotType, visualLayers, visual: visualRaw }),
     action: clampText(actionRaw, 120),
-    speech_mode: normalizeSpeechMode(shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode),
+    speech_mode: speechMode,
+    dialogue_function: clampText(shot.dialogue_function || shot.dialogue_intent || '', 40),
+    blueprint_spoken_line: blueprintSpokenLine,
     voiceover: voice,
-    dialogue_lines: normalizeDialogue(shot.dialogue_lines, voice, characters),
+    dialogue_lines: dialogueLines,
     characters: Array.isArray(shot.characters) ? shot.characters.slice(0, 4).map(c => ({
       name: canonicalSpeakerName(c?.name || '', characters),
       action: clampText(c?.action || '', 80),
@@ -223,16 +234,29 @@ function plannedBeats(blueprint, ctx) {
 
 function alignShotsToBeats(rows, beats) {
   const shots = Array.isArray(rows) ? rows : [];
-  const expected = (Array.isArray(beats) ? beats : []).map((beat, index) => Number(beat?.beat_index || index + 1));
+  const sourceBeats = Array.isArray(beats) ? beats : [];
+  const expected = sourceBeats.map((beat, index) => Number(beat?.beat_index || index + 1));
   const expectedSet = new Set(expected);
   const claimed = shots.map(shot => Number(shot?.index || shot?.shot_index || 0));
   const indexesAreUsable = claimed.length === shots.length
     && new Set(claimed).size === claimed.length
     && claimed.every(index => expectedSet.has(index));
-  return shots.slice(0, expected.length).map((shot, index) => ({
-    ...shot,
-    index: indexesAreUsable ? claimed[index] : expected[index],
-  }));
+  const beatByIndex = new Map(sourceBeats.map((beat, index) => [
+    Number(beat?.beat_index || index + 1),
+    beat,
+  ]));
+  return shots.slice(0, expected.length).map((shot, index) => {
+    const shotIndex = indexesAreUsable ? claimed[index] : expected[index];
+    const beat = beatByIndex.get(shotIndex) || sourceBeats[index] || {};
+    const blueprintSpokenLine = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 90);
+    return {
+      ...shot,
+      index: shotIndex,
+      dialogue_function: beat.dialogue_function || beat.dialogue_intent || shot.dialogue_function || '',
+      blueprint_spoken_line: blueprintSpokenLine,
+      voiceover: blueprintSpokenLine || shot.voiceover || shot.narration || '',
+    };
+  });
 }
 
 function missingBeatIndexes(beats, shots) {
@@ -324,6 +348,8 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
       'voiceover must be a natural short line that can be heard in the final video.',
+      'The blueprint spoken_line and dialogue_function are approved story contracts. Copy spoken_line verbatim into voiceover and preserve dialogue_function; do not shorten it into a generic reaction or replace it with a new slogan.',
+      'The heard lines across adjacent shots must retain the blueprint causal arc: goal/obstacle, discovery/proof, then decision/result. Do not move this meaning back into visuals only.',
       'speech_mode defaults to offscreen_voiceover. Visible people must remain naturally non-speaking in this mode. Use on_camera_dialogue only when the user explicitly asks for a visible person to speak; never choose it from industry, occupation, scene type or person presence alone. Use silent only when no speech is intended.',
       'voiceover and dialogue_lines.line are not subtitle fields. They must contain dialogue or narrator voice only, without labels such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
       'If Advanced production controls are enabled, obey them shot by shot: scene direction constrains location, product presentation controls product visibility and method, style direction controls visual tone, and negative requirements are forbidden.',
@@ -368,6 +394,7 @@ Return JSON array for current beats only. Fields:
   "selling_point": "commercial point proved here",
   "visual": "combined visible frame if needed",
   "action": "who does what",
+  "dialogue_function": "copy from the current blueprint beat",
   "speech_mode": "offscreen_voiceover/on_camera_dialogue/silent; default offscreen_voiceover",
   "voiceover": "natural short line",
   "dialogue_lines": [{"speaker":"stable character name or narrator","line":"line"}],

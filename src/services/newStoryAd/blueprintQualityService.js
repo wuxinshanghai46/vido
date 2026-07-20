@@ -7,6 +7,7 @@ const CLICHE_PATTERNS = [
   /通过一个统一的平台|海量.{0,8}任你选|轻松实现|轻松化解|高效便捷|安全稳定可靠|量身设计|直观友好|完美解决方案|完美呈现|秘密武器|前所未有|惊艳的现实|发现新大陆|星辰般/,
 ];
 const BLUEPRINT_RIGHTS_POLICY_VERSION = 'original-rights-v2';
+const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
 const EXPLICIT_GENERATED_LOGO_PATTERN = /(?:logo|标志|商标|品牌字样).{0,18}(?:生成|形成|汇聚|变形|浮现|拼成|长出)|(?:生成|形成|汇聚|变形|浮现|拼成|长出).{0,18}(?:logo|标志|商标|品牌字样)/i;
 const BRAND_MARK_PATTERN = /(?:品牌\s*)?(?:logo|标志|商标|品牌字样)/gi;
 const BRAND_VISUAL_FIELDS = ['plot', 'visual', 'story_visual', 'promo_visual', 'action', 'visual_proof'];
@@ -36,6 +37,88 @@ function similarity(a, b) {
   let common = 0;
   left.forEach(item => { if (right.has(item)) common += 1; });
   return common / Math.max(1, Math.min(left.size, right.size));
+}
+
+function spokenCharacterCount(value = '') {
+  return clean(value).replace(/[^\u3400-\u9fffA-Za-z0-9]/g, '').length;
+}
+
+function dialogueArcStage(value = '') {
+  const fn = clean(value).toLowerCase().replace(/[\s-]+/g, '_');
+  if (['setup_goal', 'obstacle', 'question'].includes(fn)) return 'setup';
+  if (['discovery', 'proof', 'value_shift', 'development'].includes(fn)) return 'development';
+  if (['decision', 'result', 'resolution', 'brand_closure'].includes(fn)) return 'resolution';
+  return '';
+}
+
+function genericReactionLine(value = '') {
+  const spoken = clean(value).replace(/[，。！？…,.!?\s]/g, '');
+  return /^(?:就是它了|就这样|这样就好|可以这样做|原来可以这样做|原来是这样|太棒了|真不错|没想到)$/.test(spoken)
+    || (/^(?:嗯|哦|啊|咦|原来|没想到)/.test(spoken) && spoken.length <= 7);
+}
+
+function assessDialogueNarrative(blueprint = {}) {
+  const contract = blueprint.dialogue_contract || {};
+  if (contract.version !== DIALOGUE_CONTRACT_VERSION) {
+    return { pass: true, issues: [], enforced: false, metrics: {} };
+  }
+  const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const targetDuration = Math.max(1, Number(blueprint.target_duration || 0)
+    || beats.reduce((sum, beat) => sum + Math.max(0, Number(beat.duration || beat.duration_sec || 0) || 0), 0)
+    || 30);
+  const lines = beats.map(beat => clean(beat.spoken_line || beat.voiceover || beat.copy));
+  const counts = lines.map(spokenCharacterCount);
+  const totalCharacters = counts.reduce((sum, count) => sum + count, 0);
+  const minRate = Math.max(1.8, Number(contract.target_chars_per_second?.min || 2.4) || 2.4);
+  const maxRate = Math.max(minRate, Number(contract.target_chars_per_second?.max || 4.8) || 4.8);
+  const minTotal = Math.max(beats.length * 6, Math.round(targetDuration * minRate));
+  const maxTotal = Math.ceil(targetDuration * maxRate);
+  const issues = [];
+  if (totalCharacters < minTotal) issues.push(`台词总信息量不足：${targetDuration} 秒至少约 ${minTotal} 个有效字，当前 ${totalCharacters} 个`);
+  if (totalCharacters > maxTotal) issues.push(`台词总量超过自然口播容量：${targetDuration} 秒最多约 ${maxTotal} 个有效字，当前 ${totalCharacters} 个`);
+
+  beats.forEach((beat, index) => {
+    const n = index + 1;
+    const duration = Math.max(1, Number(beat.duration || beat.duration_sec || targetDuration / Math.max(1, beats.length)) || 1);
+    const fn = clean(beat.dialogue_function || beat.dialogue_intent);
+    const minimum = fn === 'brand_closure' ? 4 : Math.max(6, Math.round(duration * 1.8));
+    const maximum = Math.max(18, Math.ceil(duration * 5.2));
+    if (counts[index] < minimum) issues.push(`第 ${n} 镜台词信息量不足：${duration} 秒至少约 ${minimum} 个有效字，当前 ${counts[index]} 个`);
+    if (counts[index] > maximum) issues.push(`第 ${n} 镜台词超过镜头口播容量：${duration} 秒最多约 ${maximum} 个有效字，当前 ${counts[index]} 个`);
+    if (!fn) issues.push(`第 ${n} 镜缺少 dialogue_function，无法验证台词在故事中的职责`);
+    if (genericReactionLine(lines[index])) issues.push(`第 ${n} 镜台词只有泛化反应，没有推进意图、证据或决定`);
+  });
+
+  const stages = new Set(beats.map(beat => dialogueArcStage(beat.dialogue_function || beat.dialogue_intent)).filter(Boolean));
+  if (beats.length >= 3 && !stages.has('setup')) issues.push('台词弧线缺少目标、问题或阻力');
+  if (beats.length >= 3 && !stages.has('development')) issues.push('台词弧线缺少发现、证据或价值转变');
+  if (beats.length >= 3 && !stages.has('resolution')) issues.push('台词弧线缺少决定、结果或品牌收束');
+
+  const meaningful = lines.map(line => line.replace(/[^\u3400-\u9fffA-Za-z0-9]/g, ''));
+  const repeatedOpeners = new Map();
+  meaningful.forEach(line => {
+    if (line.length < 4) return;
+    const opener = line.slice(0, 2);
+    repeatedOpeners.set(opener, (repeatedOpeners.get(opener) || 0) + 1);
+  });
+  const repeated = [...repeatedOpeners.entries()].filter(([, count]) => count >= 2).map(([opener]) => opener);
+  if (repeated.length) issues.push(`台词句式重复：多镜重复以“${repeated.join('、')}”开头`);
+  const ellipsisLines = lines.filter(line => /…|\.{3,}/.test(line)).length;
+  if (ellipsisLines >= 2) issues.push(`台词过度依赖省略停顿：${ellipsisLines} 镜使用省略号`);
+
+  return {
+    pass: issues.length === 0,
+    issues: Array.from(new Set(issues)),
+    enforced: true,
+    metrics: {
+      target_duration: targetDuration,
+      total_characters: totalCharacters,
+      chars_per_second: Math.round((totalCharacters / targetDuration) * 100) / 100,
+      min_total_characters: minTotal,
+      max_total_characters: maxTotal,
+      arc_stages: [...stages],
+    },
+  };
 }
 
 function blueprintVisibleText(blueprint = {}) {
@@ -105,12 +188,15 @@ function assessBlueprintQuality(blueprint = {}) {
   if (CLICHE_PATTERNS.some(pattern => pattern.test(spokenText))) issues.push('整体文案存在广告套话');
   const roles = beats.map(beat => clean(beat.role || beat.purpose)).join(' ');
   if (beats.length >= 4 && !/(冲突|受阻|失败|危机|压力|问题|转折|反转|结果|解决|收束)/.test(roles)) issues.push('缺少冲突、转折与结果的因果推进');
+  const dialogue = assessDialogueNarrative(blueprint);
+  issues.push(...dialogue.issues);
   const rights = assessBlueprintRights(blueprint);
   issues.push(...rights.issues);
   return {
     pass: issues.length === 0,
     issues: Array.from(new Set(issues)),
     score: Math.max(0, Math.round((1 - Math.min(0.8, issues.length * 0.08)) * 100) / 100),
+    dialogue,
     rights,
   };
 }
@@ -147,6 +233,11 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '所有行业通用：只依据当前任务内容创作，不套用固定行业、固定场景、固定人物或固定故事模板。',
       '每个卖点必须由人物选择、可见动作、界面/产品反馈或结果变化证明；不要让人物直接念卖点。',
       '台词必须像真人会说的话，简短、自然、有上下文；避免“宇宙般、行业领先、为您赋能、最大化预算、更快更智能、一站式”等广告套话。',
+      '台词必须承担故事推进，不能把人物目标、阻力、发现、可见证据、价值变化和最终决定只写在 plot、visual、action 或 why_next 中。',
+      '保持每镜 dialogue_function 不变，并让 spoken_line 真正完成该职责；整条片子的台词必须形成“目标/阻力 → 发现/证据 → 决定/结果”的听觉叙事弧线。',
+      '按 dialogue_contract 的口播密度修正台词。正常 4-6 秒镜头通常需要约 10-22 个有意义的中文字，品牌落版可以更短；简短不等于空泛。',
+      '禁止用“原来……可以这样做”“就是它了”“太棒了”等泛化反应充当整句；每句至少补入具体意图、问题、材质/产品证据、后果或决定之一。',
+      '相邻镜头不要重复“原来”“没想到”等相同开头，也不要依靠连续省略号制造虚假的情绪推进。',
       'spoken_line 只能写最终会被说出来的话，禁止加入括号、语气说明、表演提示、说话人标签或纯表情描述。',
       '除非用户明确提供，画面中不得出现真实第三方模型 Logo、品牌标识、虚构价格数字或未经证实的行业对比；可以使用通用模型卡片和抽象指标。',
       '所有人物、场景、剧情和视觉表达必须原创。不得复刻影视、动漫、游戏、广告、海报或专辑画面，不得模仿指定导演、艺术家、摄影师或在世创作者风格。',
@@ -200,6 +291,7 @@ module.exports = {
   assessBlueprintQuality,
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
+  assessDialogueNarrative,
   polishBlueprint,
   similarity,
 };

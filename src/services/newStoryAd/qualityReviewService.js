@@ -52,6 +52,7 @@ function localReview(ctx, shots) {
     const promoVisual = String(shot.promo_visual || shot.visual_proof || shot.material_usage || '');
     const action = String(shot.action || '');
     const voice = String(shot.voiceover || '');
+    const approvedVoice = String(shot.blueprint_spoken_line || '').trim();
     const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
     const dialogueText = dialogue.map(d => `${d?.speaker || ''} ${d?.line || ''}`).join(' ');
     const all = `${visual} ${layerText} ${storyVisual} ${promoVisual} ${action} ${voice} ${dialogueText} ${shot.purpose || ''}`;
@@ -61,6 +62,8 @@ function localReview(ctx, shots) {
     if (!visual.trim()) blocking.push(`第 ${n} 镜缺少画面`);
     if (!action.trim()) blocking.push(`第 ${n} 镜缺少动作`);
     if (!voice.trim() && !dialogue.some(d => String(d?.line || '').trim())) blocking.push(`第 ${n} 镜缺少台词/旁白`);
+    if (approvedVoice && voice.trim() !== approvedVoice) blocking.push(`第 ${n} 镜台词偏离已确认剧本，必须保留 blueprint_spoken_line`);
+    if (!String(shot.dialogue_function || '').trim()) rewrite.push(`第 ${n} 镜缺少台词叙事职责 dialogue_function`);
     const asksStory = /(剧情|故事|人物|客户|顾问|销售|用户|情绪|冲突|对话|对白|真人|主角)/.test(requiredHints);
     const asksProduct = /(产品|服务|主体|卖点|材质|材料|纹理|界面|功能|品牌|证明|证据|对比|结果|方案|报价|优惠)/.test(requiredHints);
     if (!visualLayers.length && !visual.trim()) rewrite.push(`第 ${n} 镜缺少按用户需求拆出的视觉层`);
