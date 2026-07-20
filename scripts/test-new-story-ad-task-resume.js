@@ -90,6 +90,7 @@ assert(restoreBlock.includes("new-story-ad:restore-finished"));
 assert(bootstrapSource.includes('preloadScripts();'));
 assert(bootstrapSource.includes('prefetchRouteTask();'));
 assert(bootstrapSource.includes('await waitForStoryTemplate();'));
+assert(bootstrapSource.includes('(document.body || document.head || document.documentElement).appendChild(script)'));
 assert(bootstrapSource.includes("link.rel = 'preload'"));
 assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
 assert(routeSource.includes("String(req.query.compact || '') === '1'"));

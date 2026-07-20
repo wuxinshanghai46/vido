@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v22';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v23';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -66,7 +66,7 @@
         resolve();
       }, { once: true });
       script.addEventListener('error', () => reject(new Error(`脚本加载失败：${path}`)), { once: true });
-      if (!existing) document.body.appendChild(script);
+      if (!existing) (document.body || document.head || document.documentElement).appendChild(script);
     });
   }
 
