@@ -5,6 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
+const sceneAssetService = require('../src/services/newStoryAd/sceneAssetService');
 
 function fullAsset() {
   return {
@@ -93,6 +94,29 @@ function main() {
   assert.equal(lock.spatial_contract.spatial_coverage_qa.pass, true);
   assert.equal(lock.space_lock_status, 'complete');
 
+  const certifiedExisting = fullAsset();
+  certifiedExisting.scene_id = 'certified-existing-scene';
+  delete certifiedExisting.generation_contract_version;
+  certifiedExisting.scene_contract = {
+    ...certifiedExisting.scene_contract,
+    schema_version: 4,
+    source_schema_version: 4,
+    compatibility_status: 'current',
+    full_space_lock: true,
+    space_lock_status: 'complete',
+  };
+  assert.equal(sceneBinding.completeSceneViewEvidence(certifiedExisting), true);
+  assert.equal(sceneBinding.completeSpaceLock(certifiedExisting), true, '完整五视图和三项 QA 可以证明空间锁，不应因缺少生成来源字段误判');
+  assert.equal(sceneAssetService.sceneGenerationUpgradeRequired(certifiedExisting), false);
+  assert.equal(sceneAssetService.buildSceneRepairPlan(certifiedExisting).action, 'none');
+
+  const duplicateEvidence = fullAsset();
+  duplicateEvidence.generation_contract_version = 0;
+  duplicateEvidence.view_images[4].url = duplicateEvidence.view_images[0].url;
+  assert.equal(sceneBinding.completeSceneViewEvidence(duplicateEvidence), false, '五个机位不得复用同一个图片身份');
+  assert.equal(sceneBinding.completeSpaceLock(duplicateEvidence), false);
+  assert.equal(sceneAssetService.sceneGenerationUpgradeRequired(duplicateEvidence), true);
+
   const legacy = fullAsset();
   legacy.scene_id = 'legacy-scene';
   legacy.generation_contract_version = 0;
@@ -121,6 +145,15 @@ function main() {
   assert.equal(sceneBinding.sceneVerificationState(normalizedLegacy), 'legacy_partial');
 
   const frontend = loadFrontend();
+  const certifiedAssessment = frontend.sceneLockAssessment(certifiedExisting);
+  assert.equal(certifiedAssessment.complete, true);
+  assert.equal(certifiedAssessment.upgradeRequired, false);
+  assert.equal(certifiedAssessment.evidenceComplete, true);
+  const certifiedHost = { innerHTML: '' };
+  frontend.render({ host: certifiedHost, state: { taskId: 'task-certified', sceneAssets: [certifiedExisting] } });
+  assert(certifiedHost.innerHTML.includes('完整空间已锁定'));
+  assert(!certifiedHost.innerHTML.includes('需要完整升级'));
+  assert(!certifiedHost.innerHTML.includes('data-nsa-scene-upgrade='));
   const selectedClasses = new Set();
   const topologySelect = {
     value: 'hidden',
@@ -373,15 +406,15 @@ function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260720-story-ad-selects-v29'));
+  assert(html.includes('bootstrap.js?v=20260720-verified-scene-actions-v30'));
   assert(html.includes('digital-human-wizard.css?v=20260720-story-ad-selects-v25'));
-  assert(html.indexOf('bootstrap.js?v=20260720-story-ad-selects-v29') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
+  assert(html.indexOf('bootstrap.js?v=20260720-verified-scene-actions-v30') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-story-ad-selects-v29'));
+  assert(bootstrap.includes('20260720-verified-scene-actions-v30'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),

@@ -1,6 +1,7 @@
 const { cleanText } = require('./contextBuilder');
 
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
+const REQUIRED_SPACE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
 
 function normalizeSceneId(asset = {}, index = 0) {
   return cleanText(asset.scene_id || asset.id || `scene_${index + 1}`, 120);
@@ -37,6 +38,17 @@ function layoutSceneReference(asset = {}) {
   };
 }
 
+function completeSceneViewEvidence(asset = {}) {
+  if (!asset || typeof asset !== 'object') return false;
+  const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+  const identities = REQUIRED_SPACE_VIEW_KEYS.map(key => {
+    const view = views.find((item, index) => sceneViewKey(item, index) === key);
+    const url = cleanText(view?.url || view?.image_url || '', 1000);
+    return url ? url.split(/[?#]/, 1)[0] : '';
+  });
+  return identities.every(Boolean) && new Set(identities).size === REQUIRED_SPACE_VIEW_KEYS.length;
+}
+
 function completeSpaceLock(asset = {}) {
   if (!asset || typeof asset !== 'object') return false;
   const contract = asset.scene_contract || {};
@@ -52,7 +64,8 @@ function completeSpaceLock(asset = {}) {
     && crossViewQa.pass === true
     && spatialQa.pass === true
     && layoutContract.status === 'available'
-    && !!layoutReference?.url;
+    && !!layoutReference?.url
+    && completeSceneViewEvidence(asset);
 }
 
 function legacySpaceLock(asset = {}) {
@@ -382,6 +395,7 @@ module.exports = {
   semanticSceneView,
   spatialBindingForShot,
   completeSpaceLock,
+  completeSceneViewEvidence,
   legacySpaceLock,
   layoutSceneReference,
   primarySceneViews,

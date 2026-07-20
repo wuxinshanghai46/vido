@@ -10,6 +10,7 @@ const cancellation = require('./cancellationContext');
 const sceneViewStrategy = require('./sceneViewStrategyService');
 const shotDesign = require('./shotDesignService');
 const sceneCheckpoint = require('./sceneGenerationCheckpointService');
+const sceneBinding = require('./sceneBindingService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -135,7 +136,12 @@ function sceneGenerationContractVersion(asset = {}) {
 }
 
 function sceneGenerationUpgradeRequired(asset = {}) {
-  return sceneGenerationContractVersion(asset) < SCENE_GENERATION_CONTRACT_VERSION;
+  // Stored assets created during the contract transition may not carry the
+  // generation provenance field. A fully verified five-view space lock is
+  // stronger evidence than that missing metadata; only incomplete legacy
+  // assets must be rebuilt.
+  return !sceneBinding.completeSpaceLock(asset)
+    && sceneGenerationContractVersion(asset) < SCENE_GENERATION_CONTRACT_VERSION;
 }
 
 function fullSceneUpgradePlan() {

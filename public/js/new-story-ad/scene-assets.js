@@ -30,6 +30,17 @@
     return null;
   }
 
+  function completeSceneViewEvidence(asset = {}) {
+    const requiredKeys = ['master', 'reverse', 'interaction', 'detail', 'layout'];
+    const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+    const identities = requiredKeys.map(key => {
+      const view = views.find(item => clean(item?.key || item?.view, 40) === key);
+      const url = clean(view?.url || view?.image_url || '', 1000);
+      return url ? url.split(/[?#]/, 1)[0] : '';
+    });
+    return identities.every(Boolean) && new Set(identities).size === requiredKeys.length;
+  }
+
   function sceneLockAssessment(asset = {}) {
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
@@ -44,20 +55,21 @@
       || asset.view_acquisition?.generation_contract_version
       || 0,
     ) || 0;
-    const upgradeRequired = generationContractVersion < SCENE_GENERATION_CONTRACT_VERSION;
     const hasSpatialQa = !!(asset.spatial_coverage_qa || contract.spatial_coverage_qa);
     const layoutAvailable = layoutContract.status === 'available' && hasLayoutView;
     const requirementPass = requirementQa.pass === true;
     const crossViewPass = crossViewQa.pass === true;
     const spatialPass = spatialQa.pass === true;
     const appearancePass = contract.status === 'verified' && requirementPass && crossViewPass;
-    const complete = !upgradeRequired && schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable;
-    const legacy = schemaVersion < 3
+    const evidenceComplete = completeSceneViewEvidence(asset);
+    const complete = schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable && evidenceComplete;
+    const upgradeRequired = !complete && generationContractVersion < SCENE_GENERATION_CONTRACT_VERSION;
+    const legacy = !complete && (schemaVersion < 3
       || !hasSpatialQa
       || spatialQa.legacy === true
       || spatialQa.coverage_status === 'legacy_partial'
       || contract.compatibility_status === 'legacy_partial'
-      || upgradeRequired;
+      || upgradeRequired);
     const requirementScore = averagePercent(requirementQa, ['layout_match_score', 'material_light_match_score', 'interaction_match_score', 'surface_topology_match_score', 'negative_compliance_score']);
     const crossViewScore = averagePercent(crossViewQa, ['scene_consistency_score', 'geometry_consistency_score', 'material_consistency_score']);
     const spatialScore = scorePercent(spatialQa, ['coverage_score', 'spatial_coverage_score'])
@@ -72,6 +84,7 @@
       layoutAvailable,
       hasLayoutView,
       hasSpatialQa,
+      evidenceComplete,
       requirementQa,
       crossViewQa,
       spatialQa,
@@ -951,6 +964,7 @@
   window.NewStoryAdSceneAssets = {
     normalizeAssets,
     sceneLockAssessment,
+    completeSceneViewEvidence,
     selectedSceneUpgradeRequired,
     resumableUpgradeProgress,
     thumbUrl,
