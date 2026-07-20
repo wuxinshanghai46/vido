@@ -618,6 +618,12 @@ async function analyzeSceneViews(options = {}) {
       footprint_coverage_score: score(layoutAcquisition.footprint_coverage_score),
       overhead_verticality_score: score(layoutAcquisition.overhead_verticality_score),
       boundary_completeness_score: score(layoutAcquisition.boundary_completeness_score),
+      estimated_downward_pitch_degrees: Number(layoutAcquisition.estimated_downward_pitch_degrees),
+      visible_horizon: layoutAcquisition.visible_horizon === true,
+      dominant_vertical_wall_face: layoutAcquisition.dominant_vertical_wall_face === true,
+      complete_perimeter_visible: layoutAcquisition.complete_perimeter_visible === true,
+      ceiling_removed_or_not_visible: layoutAcquisition.ceiling_removed_or_not_visible === true,
+      master_like_composition: layoutAcquisition.master_like_composition === true,
       camera_relocation_score: score(layoutAcquisition.camera_relocation_score),
       scene_identity_score: score(layoutAcquisition.scene_identity_score),
     };
@@ -668,12 +674,14 @@ async function validateLayoutAcquisition(options = {}) {
       'You are a strict role validator for a general-purpose spatial reference acquisition system.',
       'Image 1 is the master appearance reference. Image 2 is the candidate near-vertical top-down whole-location spatial survey.',
       'Judge only overhead camera role, complete footprint and boundary readability, same-location identity and camera relocation. Never assume a fixed industry, indoor room, outdoor site, material or object category.',
-      'Return JSON only with pass, layout_role_score, footprint_coverage_score, overhead_verticality_score, boundary_completeness_score, scene_identity_score, camera_relocation_score and reasons.',
+      'First report literal visible facts, then scores. Do not infer hidden geometry or copy placeholder values.',
+      'Return JSON only with pass, estimated_downward_pitch_degrees, visible_horizon, dominant_vertical_wall_face, complete_perimeter_visible, ceiling_removed_or_not_visible, master_like_composition, evidence, layout_role_score, footprint_coverage_score, overhead_verticality_score, boundary_completeness_score, scene_identity_score, camera_relocation_score and reasons.',
     ].join('\n'),
     userPrompt: 'Current task spatial constraints: ' + JSON.stringify(options.requested || {}).slice(0, 5000) + '\n'
       + 'The candidate passes only when it uses an 82-90 degree downward, near-orthographic camera; fits the complete usable ground/base footprint and every scene boundary or task-defined edge inside one frame; makes access points, fixed anchors, circulation and action-zone relations readable together; remains the same physical location as the master; and does not preserve the master crop or camera sector. '
       + 'For an enclosed location, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. A visible horizon, dominant vertical wall face, perspective-led commercial composition, mild high-angle shot, frontal elevation, close crop, missing perimeter or master reframe must fail. A photoreal cutaway boundary is allowed; labels, watermark, CAD lines, dimensions and schematic annotation are forbidden. '
       + 'Scoring anchor: if the camera is visibly below 82 degrees or any dominant wall face is seen frontally, overhead_verticality_score must be 0.35 or lower. If any task-defined perimeter or usable footprint edge is outside the frame, boundary_completeness_score must be 0.5 or lower. '
+      + 'Fact anchor: estimate pitch from visible projection only. Set master_like_composition=true when Image 2 keeps substantially the same wall-facing sector, crop or foreground/background arrangement as Image 1, even if it is slightly higher. '
       + 'Every score must be an evaluated number from 0 to 1. Use concise Simplified Chinese reasons and never copy placeholder scores.',
     imageUrls,
     maxTokens: 1200,
@@ -698,11 +706,32 @@ async function validateLayoutAcquisition(options = {}) {
     error.retryable = true;
     throw error;
   }
+  const requiredBooleanFacts = [
+    'visible_horizon',
+    'dominant_vertical_wall_face',
+    'complete_perimeter_visible',
+    'ceiling_removed_or_not_visible',
+    'master_like_composition',
+  ];
+  if (!Number.isFinite(Number(parsed.estimated_downward_pitch_degrees))
+    || requiredBooleanFacts.some(key => typeof parsed[key] !== 'boolean')) {
+    const error = new Error('俯视布局前置验证缺少可核验的机位事实字段');
+    error.code = 'VISION_QA_SCHEMA_INVALID';
+    error.retryable = true;
+    throw error;
+  }
   const normalized = {
     layout_role_score: score(parsed.layout_role_score),
     footprint_coverage_score: score(parsed.footprint_coverage_score),
     overhead_verticality_score: score(parsed.overhead_verticality_score),
     boundary_completeness_score: score(parsed.boundary_completeness_score),
+    estimated_downward_pitch_degrees: Math.max(0, Math.min(90, Number(parsed.estimated_downward_pitch_degrees))),
+    visible_horizon: parsed.visible_horizon === true,
+    dominant_vertical_wall_face: parsed.dominant_vertical_wall_face === true,
+    complete_perimeter_visible: parsed.complete_perimeter_visible === true,
+    ceiling_removed_or_not_visible: parsed.ceiling_removed_or_not_visible === true,
+    master_like_composition: parsed.master_like_composition === true,
+    evidence: stringList(parsed.evidence || [], 4, 180),
     scene_identity_score: score(parsed.scene_identity_score),
     camera_relocation_score: score(parsed.camera_relocation_score),
     reasons: stringList(parsed.reasons || parsed.mismatch_reasons || [], 4, 180),
@@ -713,8 +742,21 @@ async function validateLayoutAcquisition(options = {}) {
     && normalized.footprint_coverage_score >= 0.85
     && normalized.overhead_verticality_score >= 0.85
     && normalized.boundary_completeness_score >= 0.85
+    && normalized.estimated_downward_pitch_degrees >= 82
+    && normalized.visible_horizon === false
+    && normalized.dominant_vertical_wall_face === false
+    && normalized.complete_perimeter_visible === true
+    && normalized.ceiling_removed_or_not_visible === true
+    && normalized.master_like_composition === false
     && normalized.scene_identity_score >= 0.75
     && normalized.camera_relocation_score >= 0.8;
+  if (normalized.estimated_downward_pitch_degrees < 82) normalized.reasons.push('俯视角度不足 82°，仍属于斜俯拍');
+  if (normalized.visible_horizon) normalized.reasons.push('画面仍出现地平线或水平远景');
+  if (normalized.dominant_vertical_wall_face) normalized.reasons.push('画面仍以垂直墙面正立面为主');
+  if (!normalized.complete_perimeter_visible) normalized.reasons.push('完整空间边界没有全部入镜');
+  if (!normalized.ceiling_removed_or_not_visible) normalized.reasons.push('封闭空间顶面未正确移除或仍遮挡布局');
+  if (normalized.master_like_composition) normalized.reasons.push('俯视布局仍是主视图的近似重构');
+  normalized.reasons = [...new Set(normalized.reasons)].slice(0, 4);
   if (!normalized.pass && !normalized.reasons.length) {
     normalized.reasons.push('俯视布局未达到近垂直机位、完整边界覆盖、同场景或机位迁移要求');
   }

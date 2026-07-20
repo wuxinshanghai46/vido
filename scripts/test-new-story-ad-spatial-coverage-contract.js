@@ -228,6 +228,13 @@ async function main() {
               footprint_coverage_score: 0.94,
               overhead_verticality_score: 0.96,
               boundary_completeness_score: 0.95,
+              estimated_downward_pitch_degrees: 88,
+              visible_horizon: false,
+              dominant_vertical_wall_face: false,
+              complete_perimeter_visible: true,
+              ceiling_removed_or_not_visible: true,
+              master_like_composition: false,
+              evidence: ['complete perimeter visible', 'near-orthographic projection'],
               scene_identity_score: 0.96,
               camera_relocation_score: 0.92,
               reasons: [],
@@ -258,6 +265,13 @@ async function main() {
             footprint_coverage_score: 0.94,
             overhead_verticality_score: 0.3,
             boundary_completeness_score: 0.95,
+            estimated_downward_pitch_degrees: 75,
+            visible_horizon: false,
+            dominant_vertical_wall_face: false,
+            complete_perimeter_visible: true,
+            ceiling_removed_or_not_visible: true,
+            master_like_composition: true,
+            evidence: ['same wall-facing sector as master'],
             scene_identity_score: 0.96,
             camera_relocation_score: 0.92,
             reasons: [],
@@ -267,6 +281,7 @@ async function main() {
       },
     });
     assert.equal(shallowOverhead.pass, false, 'a mild high-angle image must fail even when the model says pass');
+    assert.match(shallowOverhead.reasons.join(' '), /不足 82°|主视图的近似重构/);
 
     let successfulReviewCalls = 0;
     modelGateway.generateVision = async () => {
@@ -298,6 +313,12 @@ async function main() {
         footprint_coverage_score: 0.3,
         overhead_verticality_score: 0.2,
         boundary_completeness_score: 0.3,
+        estimated_downward_pitch_degrees: 45,
+        visible_horizon: true,
+        dominant_vertical_wall_face: true,
+        complete_perimeter_visible: false,
+        ceiling_removed_or_not_visible: false,
+        master_like_composition: true,
         scene_identity_score: 0.95,
         camera_relocation_score: 0.2,
         reasons: ['只是主视图的轻微抬高重构'],
