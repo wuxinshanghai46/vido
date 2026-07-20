@@ -240,6 +240,7 @@ async function main() {
     });
     const progress = storage.getTask(taskId).generation_progress;
     assert.equal(progress.stage, 'scene_asset');
+    assert.equal(progress.scene_id, 'locked-room');
     assert.equal(progress.status, 'completed');
     assert.equal(progress.target_total, 5);
     assert.equal(progress.succeeded, 5);
@@ -247,6 +248,41 @@ async function main() {
     assert.equal(storyAdService.taskSummary(storage.getTask(taskId)).generation_progress.stage, 'scene_asset', 'scene progress must reach the polling API');
     const publicSceneAsset = storyAdService.publicTaskBundle(taskId).outputs.scene_assets[0];
     assert.equal(publicSceneAsset.repair_plan.version, 5, 'the public bundle must normalize scene assets before rendering the repair action');
+
+    const legacyUpgradeTaskId = 'spatial-legacy-v0-full-upgrade-test';
+    storage.createTask({ id: legacyUpgradeTaskId, title: 'legacy v0 full upgrade', request: context });
+    storage.saveOutput(legacyUpgradeTaskId, 'context', context);
+    const legacyUrls = ['/legacy-master.png', '/legacy-reverse.png', '/legacy-interaction.png', '/legacy-detail.png'];
+    storage.saveOutput(legacyUpgradeTaskId, 'scene_assets', [{
+      id: 'legacy-room',
+      scene_id: 'legacy-room',
+      scene_revision: 1,
+      generation_contract_version: 0,
+      image_url: legacyUrls[0],
+      view_images: ['master', 'reverse', 'interaction', 'detail'].map((key, index) => ({
+        key,
+        url: legacyUrls[index],
+        image_url: legacyUrls[index],
+      })),
+      view_count: 4,
+      verification: { state: 'verified' },
+    }]);
+    const callsBeforeLegacyUpgrade = calls.length;
+    const upgradedLegacy = await sceneAssets.generateSceneAsset(legacyUpgradeTaskId, {
+      scene_id: 'legacy-room',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeLegacyUpgrade, 5, 'v0 upgrade must generate all five v6 views instead of reusing old images');
+    assert.equal(upgradedLegacy.scene_asset.scene_id, 'legacy-room');
+    assert.equal(upgradedLegacy.scene_asset.scene_revision, 2);
+    assert.equal(upgradedLegacy.scene_asset.generation_contract_version, 6);
+    assert.equal(upgradedLegacy.scene_asset.view_acquisition.generation_contract_version, 6);
+    assert.equal(upgradedLegacy.scene_asset.view_count, 5);
+    assert(upgradedLegacy.scene_asset.view_images.every(view => !legacyUrls.includes(view.url || view.image_url)));
+    const storedLegacyUpgrade = storage.getOutput(legacyUpgradeTaskId, 'scene_assets')[0];
+    assert.equal(storedLegacyUpgrade.generation_contract_version, 6, 'published storage must replace v0 with v6 atomically');
+    assert.equal(storedLegacyUpgrade.scene_revision, 2);
 
     const retryTaskId = 'spatial-generation-transient-retry-test';
     storage.createTask({ id: retryTaskId, title: 'transient image2 retry', request: context });

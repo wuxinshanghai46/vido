@@ -5382,14 +5382,25 @@
   async function upgradeAndRegenerateScene(button = null, sceneId = '') {
     const index = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
     if (index >= 0) state.sceneSelectedIndex = index;
-    const completed = await fillSceneSpecFromBrief(button, {
-      replaceExisting: true,
-      requireAi: true,
-      quiet: true,
-      allowUpgradeAsset: true,
-    });
-    if (!completed) return false;
-    toast('空间设定已按当前广告需求重新编译，开始完整生成 5 张新版场景参考', 'info');
+    const resumable = window.NewStoryAdSceneAssets?.resumableUpgradeProgress?.(state, sceneId) === true;
+    if (!resumable) {
+      const completed = await fillSceneSpecFromBrief(button, {
+        replaceExisting: true,
+        requireAi: true,
+        quiet: true,
+        allowUpgradeAsset: true,
+      });
+      if (!completed) return false;
+      try {
+        await saveCurrentTaskProgress({ silent: true, render: false });
+      } catch (error) {
+        toast(`新版空间设定保存失败，已停止操作，没有提交任何图片生成：${error.message || error}`, 'error');
+        return false;
+      }
+      toast('新版空间设定已先保存到任务，开始完整生成 5 张新版场景参考', 'info');
+    } else {
+      toast('检测到同一场景的新版升级检查点，将沿用上次已保存的空间设定，仅补齐未成功的视图', 'info');
+    }
     return generateSceneSheet(button, false, { upgradePrepared: true });
   }
 

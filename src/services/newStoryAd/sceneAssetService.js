@@ -200,6 +200,7 @@ function updateSceneGenerationProgress(taskId, update = {}) {
   const progress = {
     schema_version: 1,
     stage: 'scene_asset',
+    scene_id: cleanText(update.sceneId || update.scene_id || previous.scene_id || '', 120),
     generation_id: task.active_generation_id || previous.generation_id || '',
     mode: update.mode || previous.mode || 'generate',
     phase,
@@ -801,6 +802,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
     phase: 'preparing',
+    sceneId,
     viewKeys: progressViewKeys,
     initialViewStates: sceneCheckpoint.initialViewStates(checkpoint, progressViewKeys),
   });

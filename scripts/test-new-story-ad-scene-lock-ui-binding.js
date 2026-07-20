@@ -172,6 +172,33 @@ function main() {
   assert.equal(legacyAssessment.spatialScore, null, '旧资产空间覆盖应显示待验证，不得伪造分数');
   assert.equal(frontend.selectedSceneUpgradeRequired({ sceneAssets: [legacy] }), true);
   assert.equal(frontend.selectedSceneUpgradeRequired({ sceneAssets: [asset] }), false);
+  assert.equal(frontend.resumableUpgradeProgress({
+    sceneAssets: [legacy],
+    generationProgress: {
+      stage: 'scene_asset',
+      scene_id: 'legacy-scene',
+      status: 'failed',
+      succeeded: 3,
+    },
+  }, 'legacy-scene'), true, '同一旧场景已有成功候选时必须进入检查点续跑');
+  assert.equal(frontend.resumableUpgradeProgress({
+    sceneAssets: [legacy],
+    generationProgress: {
+      stage: 'scene_asset',
+      scene_id: 'another-scene',
+      status: 'failed',
+      succeeded: 3,
+    },
+  }, 'legacy-scene'), false, '其他场景的失败进度不得误触发续跑');
+  assert.equal(frontend.resumableUpgradeProgress({
+    sceneAssets: [legacy],
+    generationProgress: {
+      stage: 'scene_asset',
+      scene_id: 'legacy-scene',
+      status: 'failed',
+      succeeded: 0,
+    },
+  }, 'legacy-scene'), false, '没有成功候选时应重新准备升级设定');
   assert.equal(frontend.sceneLockAssessment(frontend.normalizeAssets([normalizedLegacy])[0]).legacy, true);
   const fullHost = { innerHTML: '' };
   frontend.render({ host: fullHost, state: { taskId: 'task-v3', sceneAssets: [asset] } });
@@ -273,6 +300,9 @@ function main() {
   assert(legacyUi.includes('upgradeAndRegenerateScene'));
   assert(legacyUi.includes('replaceExisting: true'));
   assert(legacyUi.includes('requireAi: true'));
+  assert(legacyUi.includes('resumableUpgradeProgress'));
+  assert(legacyUi.includes("saveCurrentTaskProgress({ silent: true, render: false })"));
+  assert(legacyUi.includes('沿用上次已保存的空间设定，仅补齐未成功的视图'));
   assert(legacyUi.includes('没有提交任何图片生成'));
   assert(legacyUi.includes('syncSceneUpgradeActions'));
   assert(legacyUi.includes('button.hidden = upgradeRequired'));
@@ -292,10 +322,10 @@ function main() {
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
-  assert(html.includes('bootstrap.js?v=20260720-near-vertical-layout-v15'));
+  assert(html.includes('bootstrap.js?v=20260720-scene-upgrade-resume-v16'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-near-vertical-layout-v15'));
+  assert(bootstrap.includes('20260720-scene-upgrade-resume-v16'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));

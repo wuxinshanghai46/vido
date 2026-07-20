@@ -196,6 +196,17 @@
     return sceneLockAssessment(assets[index] || {}).upgradeRequired === true;
   }
 
+  function resumableUpgradeProgress(state = {}, sceneId = '') {
+    const progress = state.generationProgress && typeof state.generationProgress === 'object'
+      ? state.generationProgress
+      : {};
+    return selectedSceneUpgradeRequired(state)
+      && progress.stage === 'scene_asset'
+      && progress.status === 'failed'
+      && clean(progress.scene_id, 120) === clean(sceneId, 120)
+      && Math.max(0, Number(progress.succeeded || 0) || 0) > 0;
+  }
+
   function averagePercent(qa = {}, keys = []) {
     const values = keys.map(key => qa?.[key])
       .filter(value => value !== undefined && value !== null && value !== '')
@@ -735,6 +746,7 @@
     normalizeAssets,
     sceneLockAssessment,
     selectedSceneUpgradeRequired,
+    resumableUpgradeProgress,
     thumbUrl,
     specPayload,
     hasContinuousSurfaceIntent,
