@@ -54,20 +54,16 @@ assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { stat
 
 const buttons = {
   '#dhNsaAdText': { value: '足够长的剧情广告需求' },
-  '#dhNsaAdGoCompose': fakeButton(),
   '#dhNsaAdConfirmGenerate': fakeButton(),
   '#dhNsaAdGenerateShotVideos': fakeButton(),
-  '#dhNsaAdRegenerateAllShotVideos': fakeButton(),
 };
 context.window.NewStoryAdButtonState.updateLocks({
   state: invalidState,
   within: selector => buttons[selector] || null,
   getPersonSpec: () => '',
 });
-assert.strictEqual(buttons['#dhNsaAdGoCompose'].disabled, true);
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, true);
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, true);
-assert.strictEqual(buttons['#dhNsaAdRegenerateAllShotVideos'].disabled, true);
 
 context.window.NewStoryAdButtonState.updateLocks({
   state: keyframeReadyState,
@@ -75,8 +71,14 @@ context.window.NewStoryAdButtonState.updateLocks({
   getPersonSpec: () => '',
 });
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, false);
-assert.strictEqual(buttons['#dhNsaAdRegenerateAllShotVideos'].disabled, false);
-assert.strictEqual(buttons['#dhNsaAdGoCompose'].disabled, true);
+const selectedButton = fakeButton('生成整条广告视频');
+context.window.NewStoryAdButtonState.setButtonBusy(selectedButton, true, '生成整条广告视频中...');
+assert.strictEqual(selectedButton.classList.contains('is-selected'), true);
+assert.strictEqual(selectedButton.attributes['aria-pressed'], 'true');
+assert.strictEqual(selectedButton.attributes['aria-busy'], 'true');
+context.window.NewStoryAdButtonState.setButtonBusy(selectedButton, false);
+assert.strictEqual(selectedButton.classList.contains('is-selected'), false);
+assert.strictEqual(selectedButton.attributes['aria-pressed'], 'false');
 
 const outputs = { storyboard_table: shots, keyframes: invalidState.keyframes, tts_audio: { tracks: [] } };
 assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 4);
@@ -94,14 +96,13 @@ const html = read('public/digital-human.html');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
-assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own storyboard video generation');
-assert(html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'step 4 must provide an explicit full video regeneration action');
-assert(html.includes('生成前优化方案'), 'cost-aware video preflight action must be clearly labeled');
-assert(html.includes('高质量逐镜方案'), 'high-quality per-shot action must be clearly labeled');
-['dhNsaAdGenerateFinalFrames', 'dhNsaAdRegenerateAllShotVideos', 'dhNsaAdGenerateShotVideos'].forEach((id) => {
+assert(html.includes('id="dhNsaAdGenerateShotVideos"'), 'step 4 must own the one-click whole-ad video workflow');
+assert(!html.includes('id="dhNsaAdRegenerateAllShotVideos"'), 'the UI must not expose a second per-shot/full-regeneration path');
+assert(html.includes('生成整条广告视频'), 'the single video action must clearly describe the whole-ad workflow');
+assert(!html.includes('高质量逐镜方案') && !html.includes('生成前优化方案'), 'obsolete per-shot plan actions must be removed');
+['dhNsaAdGenerateFinalFrames', 'dhNsaAdGenerateShotVideos'].forEach((id) => {
   const tag = html.match(new RegExp(`<button[^>]+id="${id}"[^>]*>`))?.[0] || '';
-  assert(tag.includes('dh-nsa-step4-generate-action'), `${id} must use the neutral step-4 action style`);
-  assert(!tag.includes('dh-btn-primary'), `${id} must not look selected before the user clicks it`);
+  assert(tag.includes('dh-nsa-step4-generate-action'), `${id} must use the explicit step-4 action state style`);
 });
 assert(html.includes('data-nsa-cast-mode-quick="no_human"'), 'no-human mode must be directly visible instead of hidden only in a select');
 assert(html.includes('配音（选填）'), 'voiceover must be visibly optional');
@@ -129,6 +130,7 @@ assert(ui.includes("querySelectorAll('.is-busy, [aria-busy=\"true\"]')"), 'succe
 assert(ui.includes('视频尚未生成'), 'each storyboard row must distinguish missing video output');
 assert(ui.includes('视频已生成，等待审核'), 'each storyboard row must distinguish generated video awaiting review');
 assert(ui.includes('videoShotStatuses'), 'the UI must hydrate persisted per-shot video lifecycle state');
+assert(!ui.includes('data-nsa-video-regenerate="${i}"'), 'storyboard rows must not expose paid per-shot video generation');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
 assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
@@ -147,9 +149,11 @@ const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 assert(generationFlow.includes("return runStage('compose', ctx)"), 'step 5 chain must end in composition only');
 assert(generationFlow.includes('visual_only: true'), 'step 4 storyboard video generation must be explicitly visual-only');
 assert(generationFlow.includes('force_regenerate_all: regenerateAll'), 'full regeneration button must send an explicit server flag');
+assert(generationFlow.includes("video_generation_mode: state.videoGenerationMode || 'quality'"), 'whole-ad media payload must use the approved continuous quality plan');
 
 const wizardCss = read('public/css/digital-human-wizard.css');
 assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-generating'), 'only the actively running step-4 action should receive the highlighted style');
+assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-selected'), 'the clicked action must have a persistent high-contrast selected state');
 assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
 assert(wizardCss.includes('.dh-nsa-video-status-badge'), 'each storyboard row must visibly label video state');
 const route = read('src/routes/newStoryAd.js');
@@ -193,17 +197,22 @@ assert(contextBuilder.includes('include_voiceover: includeVoiceover'), 'optional
 
 console.log('NEW_STORY_AD_COMPOSE_GATE_AUTOSAVE_TEST_OK');
 
-function fakeButton() {
+function fakeButton(textContent = '') {
   const classes = new Set();
+  const attributes = {};
   return {
     disabled: false,
     title: '',
+    textContent,
+    dataset: {},
+    attributes,
     classList: {
       toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); },
       add(...names) { names.forEach(name => classes.add(name)); },
       remove(...names) { names.forEach(name => classes.delete(name)); },
+      contains(name) { return classes.has(name); },
     },
-    setAttribute() {},
-    removeAttribute() {},
+    setAttribute(name, value) { attributes[name] = String(value); },
+    removeAttribute(name) { delete attributes[name]; },
   };
 }

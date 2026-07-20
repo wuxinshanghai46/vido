@@ -19,8 +19,9 @@
       if (!button.dataset.nsaOriginalText) button.dataset.nsaOriginalText = button.textContent.trim();
       if (label) button.textContent = label;
       button.disabled = true;
-      button.classList.add('is-generating', 'is-busy');
+      button.classList.add('is-generating', 'is-busy', 'is-selected');
       button.setAttribute('aria-busy', 'true');
+      button.setAttribute('aria-pressed', 'true');
       return;
     }
     if (button.dataset.nsaOriginalText) {
@@ -28,8 +29,9 @@
       delete button.dataset.nsaOriginalText;
     }
     button.disabled = false;
-    button.classList.remove('is-generating', 'is-busy');
+    button.classList.remove('is-generating', 'is-busy', 'is-selected');
     button.removeAttribute('aria-busy');
+    button.setAttribute('aria-pressed', 'false');
     if (typeof ctx.updateLocks === 'function') ctx.updateLocks();
   }
 
@@ -60,9 +62,7 @@
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
-    lock('#dhNsaAdRegenerateAllShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
     lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
-    lock('#dhNsaAdGoCompose', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
     lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
     lock('#dhNsaAdGeneratePersonSheet', noHuman || (!hasBrief && !hasActorInput), noHuman ? '无人物模式不需要生成演员' : '请先填写广告需求或人物设定', { allowBusy: true });
     lock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });

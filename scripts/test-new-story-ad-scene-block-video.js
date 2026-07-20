@@ -29,6 +29,16 @@ async function run() {
   assert.ok(prompt.length <= 3950);
   ['钢材', '厨房', '展厅', '家居', '佛山'].forEach(term => assert.ok(!prompt.includes(term), `scene block prompt must not hardcode ${term}`));
 
+  const qualityBlocks = sceneBlocks.buildSceneBlocks(shots, contracts, {
+    scene_block_max_duration: 15,
+    continuous_quality_mode: true,
+    scene_block_generation: true,
+  });
+  assert.deepStrictEqual(qualityBlocks.map(block => block.member_indexes), [[0, 1, 2], [3], [4]], '整条广告质量模式应把兼容镜头组织为 15 秒以内的连续场景段');
+  assert.strictEqual(qualityBlocks[0].generation_mode, 'one_take');
+  assert.strictEqual(qualityBlocks[0].duration_sec, 10);
+  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], qualityBlocks), [0, 1, 2], '连续场景段必须作为一个生成与修复单元');
+
   const authoredOneTakeShots = shots.map((shot, index) => index < 3 ? { ...shot, one_take_group_id: 'take-alpha' } : shot);
   const oneTakeBlocks = sceneBlocks.buildSceneBlocks(authoredOneTakeShots, contracts, {
     allow_one_take: true,

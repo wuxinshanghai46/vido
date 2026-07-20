@@ -5,7 +5,7 @@
     storyboard: '生成分镜表中...',
     keyframes: '生成真实画面中...',
     tts: '生成配音中...',
-    video: '生成逐镜视频中...',
+    video: '生成连续场景视频中...',
     compose: '合成成片中...',
     media: '后台生成视频并合成成片中...',
   };
@@ -29,6 +29,15 @@
         style: state.subtitleStyle || 'popup',
         ...(state.subtitleOptions || {}),
       },
+      video_generation_mode: state.videoGenerationMode || 'quality',
+      video_preflight_fingerprint: state.videoPreflightFingerprint || '',
+      cost_plan_fingerprint: state.videoCostPlanFingerprint || '',
+      confirmed_cost_limit_rmb: Number(state.videoConfirmedCostLimitRmb || 0),
+      complexity_review_confirmed: state.videoComplexityReviewConfirmed === true,
+      zero_cost_only: state.videoZeroCostOnly === true,
+      force_regenerate_all: true,
+      auto_repair: false,
+      max_auto_repairs: 0,
     };
   }
 

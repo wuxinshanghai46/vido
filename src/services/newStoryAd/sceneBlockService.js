@@ -1,7 +1,7 @@
 const revisionService = require('./revisionService');
 const videoCore = require('../videoGenerationCore');
 
-const SCENE_BLOCK_POLICY_VERSION = 'edit-shot-generation-unit-v3';
+const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v4';
 const DEFAULT_MAX_BLOCK_DURATION = 15;
 const DEFAULT_MAX_BLOCK_SHOTS = 4;
 
@@ -48,7 +48,7 @@ function isExplicitBoundary(shot = {}, previousShot = {}, options = {}) {
   const previousScene = text(previousShot.scene_id || previousShot.scene_asset_id || '');
   if (from && previousScene && from !== previousScene) return true;
   if (/flash|black|time.?jump|montage|jump.?cut|smash.?cut/.test(transition)) return true;
-  if (/fade|dissolve/.test(transition) && options.continuous_quality_mode !== true) return true;
+  if (/fade|dissolve/.test(transition)) return true;
   if (options.preserve_existing_topology === true && /hard.?cut|match.?cut/.test(transition)) return true;
   if (/hard.?cut|match.?cut/.test(transition) && !hasContinuityHandoff(shot, previousShot)) return true;
   return shot.scene_block_boundary === true || shot.force_new_scene_block === true;
@@ -142,6 +142,50 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
     businessProfile: options.business_profile || options.businessProfile || 'story_ad',
     options,
   });
+  if (options.scene_block_generation === true && options.continuous_quality_mode === true) {
+    const maxDuration = Math.max(1, Math.min(15, Number(options.scene_block_max_duration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
+    const maxShots = Math.max(1, Math.min(6, Number(options.scene_block_max_shots || DEFAULT_MAX_BLOCK_SHOTS) || DEFAULT_MAX_BLOCK_SHOTS));
+    const groups = [];
+    let current = null;
+    list.forEach((shot, index) => {
+      const contract = contracts[index] || {};
+      const identity = sceneIdentity(shot, contract);
+      const temporal = temporalIdentity(shot, contract);
+      const shotDuration = durationOf(shot);
+      const previousIndex = current?.member_indexes?.[current.member_indexes.length - 1];
+      const previousShot = Number.isInteger(previousIndex) ? list[previousIndex] : null;
+      const canContinue = !!current
+        && !!identity
+        && identity === current.scene_identity
+        && temporal === current.temporal_identity
+        && current.member_indexes.length < maxShots
+        && current.duration_sec + shotDuration <= maxDuration
+        && !isExplicitBoundary(shot, previousShot || {}, options)
+        && !hasCastModeBoundary(shot, previousShot || {}, options);
+      if (!canContinue) {
+        current = { scene_identity: identity || `unbound-shot-${index + 1}`, temporal_identity: temporal, member_indexes: [index], duration_sec: shotDuration };
+        groups.push(current);
+        return;
+      }
+      current.member_indexes.push(index);
+      current.duration_sec += shotDuration;
+    });
+    return groups.map((group) => {
+      const block = finalizeBlock(group, list, contracts);
+      const continuous = block.member_indexes.length > 1;
+      return {
+        ...block,
+        generation_mode: continuous ? 'one_take' : 'single_shot',
+        continuous,
+        paid: true,
+        complexity_level: continuous ? 'complex' : 'standard',
+        requires_manual_review: continuous,
+        automatic_retry_limit: 0,
+        execution_plan_fingerprint: executionPlan.fingerprint,
+        policy_version: SCENE_BLOCK_POLICY_VERSION,
+      };
+    });
+  }
   return executionPlan.generation_units.map((unit) => {
     const firstIndex = unit.edit_shot_indexes[0];
     const firstShot = list[firstIndex] || {};

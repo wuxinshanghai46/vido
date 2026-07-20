@@ -171,6 +171,24 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
     () => product.assertVerifiedProduct(productCtx),
     error => error.code === 'PRODUCT_VERIFICATION_REQUIRED',
   );
+  const actorMentioningProduct = {
+    product_subject: '不锈钢设计作品',
+    assets: [{
+      id: 'actor-reference-with-product-copy',
+      type: 'person_reference',
+      name: '苏晚人物参考',
+      description: '人物站在不锈钢产品旁，体现产品质感',
+      url: 'https://example.com/actor.png',
+    }],
+    controlled_production: { product_control: { enabled: false } },
+  };
+  assert.deepStrictEqual(product.productAssets(actorMentioningProduct), [], '人物素材描述中的产品关键词不能触发产品校验');
+  assert.strictEqual(product.productRequired(actorMentioningProduct), false);
+  assert.doesNotThrow(() => product.assertVerifiedProduct(actorMentioningProduct));
+  assert.strictEqual(product.buildProductContract(actorMentioningProduct).status, 'not_applicable');
+  assert.strictEqual(product.isProductAsset({ type: 'scene_reference', name: '产品展厅', description: '产品空间', url: 'https://example.com/scene.png' }), false);
+  assert.strictEqual(product.isProductAsset({ type: 'product_reference', name: '产品参考', url: 'https://example.com/product.png' }), true);
+  assert.strictEqual(product.isProductAsset({ type: 'reference', name: '包装参考图', url: 'https://example.com/package.png' }), true);
 
   const verifiedContract = {
     schema_version: 3,

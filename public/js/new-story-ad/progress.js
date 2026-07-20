@@ -24,11 +24,11 @@
     if (stage === 'keyframes') {
       if (progress.submissionPending === true) {
         return {
-          title: '正在启动画面生成',
-          stat: '准备中',
+          title: `正在启动第 1/${count} 张真实画面`,
+          stat: `已处理 0/${count} 张 · 0%`,
           percent: 0,
-          indeterminate: true,
-          message: '正在创建本次生成任务，请稍候。',
+          indeterminate: false,
+          message: `正在创建本次生成任务；服务器接受后将从第 1 张开始并逐张更新。`,
         };
       }
       const progressGenerationId = String(progress.generationId || '');
@@ -72,19 +72,28 @@
         return { title: '视频合成已完成', stat: '100%', percent: 100, message: '全部镜头和最终成片均已生成完成。' };
       }
       if (currentTaskStage === 'compose' || currentTaskStage === 'video_ready' || stage === 'compose') {
-        const totalShots = Math.max(0, Number(serverProgress?.total) || 0);
+        const trackedCompose = serverProgress?.stage === 'compose' ? serverProgress : null;
+        const totalMilestones = Math.max(1, Number(trackedCompose?.total) || 3);
+        const completedMilestones = Math.max(0, Math.min(totalMilestones, Number(trackedCompose?.completed) || 0));
+        const pct = Math.max(0, Math.min(100, Number(trackedCompose?.percent) || Math.round((completedMilestones / totalMilestones) * 100)));
+        const phaseLabels = {
+          audio_preparing: '正在检查配音、音乐和字幕',
+          audio_ready: '音频配置已就绪，正在准备成片时间线',
+          timeline_ready: '成片时间线已确认，正在封装最终视频',
+          persisted: '最终成片已完成',
+        };
         return {
-          title: '逐镜视频已完成，正在合成最终成片',
-          stat: `已耗时 ${formatElapsedText(elapsed)}${totalShots ? ` · 逐镜视频 ${totalShots}/${totalShots}` : ''} · 合成中`,
-          percent: 0,
-          indeterminate: true,
-          message: '当前处于最终封装阶段，不使用虚假的时间推算百分比。',
+          title: phaseLabels[trackedCompose?.phase] || '连续场景视频已完成，正在合成最终成片',
+          stat: `已耗时 ${formatElapsedText(elapsed)} · ${completedMilestones}/${totalMilestones} 个合成里程碑 · ${pct}%`,
+          percent: pct,
+          indeterminate: false,
+          message: trackedCompose?.message || '合成百分比按音频、时间线和最终封装三个真实完成里程碑计算。',
         };
       }
       if (/^tts(?:_|$)/.test(currentTaskStage)) {
         return {
           title: '正在准备可选音频', stat: `已耗时 ${formatElapsedText(elapsed)} · 音频处理中`,
-          percent: 0, indeterminate: true, message: '音频完成后将进入逐镜视频生成。',
+          percent: 0, indeterminate: false, message: '音频完成后将进入整条广告的连续场景视频生成。',
         };
       }
       const progressGenerationId = String(progress.generationId || '');
@@ -110,7 +119,7 @@
       return {
         title: activeLabel
           ? `${repairing ? '自动修复' : '生成连续场景视频'}：第 ${activeLabel} 镜（共 ${totalShots} 镜）`
-          : (generated > processed ? '正在审核已生成镜头' : (label || '生成逐镜视频中...')),
+          : (generated > processed ? '正在审核已生成场景段' : (label || '生成整条广告视频中...')),
         stat: `已耗时 ${formatElapsedText(elapsed)} · 已完成 ${processed}/${totalShots} 镜 · ${pct}%`,
         percent: pct,
         indeterminate: processed === 0,
@@ -155,13 +164,46 @@
       };
     }
 
-    if (stage === 'storyboard') {
+    if (stage === 'scene') {
+      const progressGenerationId = String(progress.generationId || '');
+      const serverGenerationId = String(serverProgress?.generation_id || '');
+      const generationMatches = !progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId;
+      const tracked = serverProgress?.stage === 'scene_config' && generationMatches ? serverProgress : null;
+      const totalMilestones = Math.max(1, Number(tracked?.total) || 3);
+      const completedMilestones = Math.max(0, Math.min(totalMilestones, Number(tracked?.completed) || 0));
+      const pct = Math.max(0, Math.min(100, Number(tracked?.percent) || Math.round((completedMilestones / totalMilestones) * 100)));
+      const phaseLabels = {
+        context_ready: '准备当前项目输入与业务边界',
+        draft_ready: '场景配置初稿已返回，正在校验',
+        structure_validated: '配置结构已通过，正在保存',
+        persisted: '场景配置生成完成',
+      };
       return {
-        title: `生成分镜表中：共 ${count} 镜`,
-        stat: `已耗时 ${formatElapsedText(elapsed)}`,
-        percent: 0,
-        indeterminate: true,
-        message: '正在按已确认剧本生成分镜表，并检查镜头、动作、台词、场景绑定和商业一致性。',
+        title: phaseLabels[tracked?.phase] || label || '正在启动场景配置生成',
+        stat: `已耗时 ${formatElapsedText(elapsed)} · ${completedMilestones}/${totalMilestones} · ${pct}%`,
+        percent: pct,
+        indeterminate: false,
+        message: tracked?.message || '正在等待服务器返回本次场景配置的真实里程碑。',
+      };
+    }
+
+    if (stage === 'storyboard') {
+      const progressGenerationId = String(progress.generationId || '');
+      const serverGenerationId = String(serverProgress?.generation_id || '');
+      const generationMatches = !progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId;
+      const tracked = serverProgress?.stage === 'storyboard' && generationMatches ? serverProgress : null;
+      const targetTotal = Math.max(1, Number(tracked?.target_total) || count);
+      const processed = Math.max(0, Math.min(targetTotal, Number(tracked?.processed) || 0));
+      const current = Math.max(1, Math.min(targetTotal, Number(tracked?.current_index) || processed + 1));
+      const pct = Math.max(0, Math.min(100, Number(tracked?.percent) || Math.round((processed / targetTotal) * 80)));
+      const phase = String(tracked?.phase || 'preparing');
+      const reviewing = phase === 'reviewing' || phase.startsWith('rewrite_');
+      return {
+        title: reviewing ? '分镜初稿已生成，正在执行整体质量审核' : `生成分镜表中：第 ${current}/${targetTotal} 镜`,
+        stat: `已耗时 ${formatElapsedText(elapsed)} · 已生成 ${processed}/${targetTotal} 镜 · ${pct}%`,
+        percent: pct,
+        indeterminate: false,
+        message: tracked?.message || '正在按已确认剧本生成分镜表，并检查镜头、动作、台词、场景绑定和商业一致性。',
       };
     }
 

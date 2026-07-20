@@ -5040,7 +5040,7 @@
       keyframes_failed: '关键帧生成失败',
       tts: '生成 TTS',
       tts_ready: 'TTS 已就绪',
-      video_ready: '逐镜视频已就绪',
+      video_ready: '连续场景视频已就绪',
       compose: '合成成片',
       final_video_ready: '成片已就绪',
       script_reviewing: '剧本待继续编辑',
@@ -15772,14 +15772,14 @@
             subtitle: subtitlePayload,
             bgmAsset: luxuryAdBgmAssetPayload(),
             shotCount: state.luxuryAd.segments.length || state.luxuryAd.keyframes.length || 4,
-            composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · ${luxuryAdHasBgm() ? 'BGM 已配置' : '无 BGM'} · 提交后在任务中心查看逐镜视频`,
+            composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · ${luxuryAdHasBgm() ? 'BGM 已配置' : '无 BGM'} · 提交后在任务中心查看连续场景视频`,
             workflow: '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成（配音 / 字幕 / 视频）',
             submittedAt: new Date().toISOString(),
           },
         });
         pollVideoTask(state.luxuryAd.taskId);
       }
-      toast('剧情广告任务已提交，任务中心会显示剧本、分镜、配音、字幕和逐镜视频生成进度', 'success');
+      toast('剧情广告任务已提交，任务中心会显示剧本、分镜、配音、字幕和连续场景视频生成进度', 'success');
       openGeneratingTaskCenter('luxury_ad');
     } catch (err) {
       toast('剧情广告生成失败：' + err.message, 'error');
@@ -17068,7 +17068,7 @@
           submitted:     { name: '⏳ 等待中', sub: '已提交，等服务端调度' },
           polling:       { name: '⏳ 等待中', sub: '渲染中，请稍候' },
           running:       { name: '🎨 渲染中', sub: `引擎状态 ${t.cv_status || '...'}` },
-          storyboard:    { name: isLuxuryTask ? '🎬 生成视频' : '🧩 生成分镜', sub: t.message || (isLuxuryTask ? '正在按已确认分镜生成逐镜视频' : '规划产品广告镜头') },
+          storyboard:    { name: isLuxuryTask ? '🎬 生成视频' : '🧩 生成分镜', sub: t.message || (isLuxuryTask ? '正在按已确认分镜生成连续场景视频' : '规划产品广告镜头') },
           keyframes:     { name: isLuxuryTask ? '🖼️ 生成分镜' : '🖼️ 生成关键帧', sub: t.message || (isLuxuryTask ? '生成每段分镜画面' : '固定商品和场景画面') },
           guide_keyframe:{ name: '🖼️ 生成导览预览', sub: t.message || '融合讲解员和空间背景' },
           guide_video:   { name: '🎬 生成讲解视频', sub: t.message || '驱动数字人一镜到底讲解' },

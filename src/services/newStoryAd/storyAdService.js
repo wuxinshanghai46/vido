@@ -39,6 +39,7 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
+const stageProgress = require('./stageProgressService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection');
 const videoCore = require('../videoGenerationCore');
 
@@ -820,11 +821,13 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   return { shots: normalized, keyframe_contracts: contracts };
 }
 
-async function generateSceneConfig(taskId) {
+async function generateSceneConfig(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   storage.updateTask(taskId, { status: 'running', stage: 'scene_config' });
+  stageProgress.update(taskId, { stage: 'scene_config', phase: 'context_ready', completed: 0, total: 3, generationId, message: '已确认当前项目输入，准备生成场景配置' });
   storage.saveStage(taskId, 'scene_config', { status: 'running', input_summary: ctx.brief });
   const systemPrompt = [
     '你是剧情广告场景配置 agent。只输出 JSON 对象。',
@@ -851,6 +854,7 @@ async function generateSceneConfig(taskId) {
     userPrompt,
     maxTokens: 3000,
   });
+  stageProgress.update(taskId, { stage: 'scene_config', phase: 'draft_ready', completed: 1, total: 3, generationId, message: '场景配置初稿已返回，正在校验结构' });
   const sceneConfig = await jsonRepair.parseOrRepair({
     raw: result.text,
     expected: 'object',
@@ -858,6 +862,7 @@ async function generateSceneConfig(taskId) {
     taskId,
     stage: 'new_story_ad.json_repair',
   });
+  stageProgress.update(taskId, { stage: 'scene_config', phase: 'structure_validated', completed: 2, total: 3, generationId, message: '场景配置结构已通过，正在保存' });
   sceneConfig.model_meta = {
     used_model: result.used_model,
     fallback_used: result.fallback_used,
@@ -866,6 +871,7 @@ async function generateSceneConfig(taskId) {
   storage.saveOutput(taskId, 'scene_config', sceneConfig);
   storage.saveStage(taskId, 'scene_config', { status: 'done', output_summary: '场景配置已生成', diagnostics: sceneConfig.model_meta });
   storage.updateTask(taskId, { status: 'running', stage: 'scene_config_done' });
+  stageProgress.update(taskId, { stage: 'scene_config', status: 'done', phase: 'persisted', completed: 3, total: 3, generationId, message: '场景配置已保存' });
   return sceneConfig;
 }
 
@@ -873,7 +879,7 @@ async function generateBlueprintStage(taskId, options = {}) {
   return blueprintLifecycle.generateBlueprintStage(taskId, options, { versionedBlueprint });
 }
 
-async function generateStoryboardStage(taskId) {
+async function generateStoryboardStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
@@ -886,6 +892,8 @@ async function generateStoryboardStage(taskId) {
   }
   const sourceFingerprint = blueprint.fingerprint;
   const sourceRevision = Number(blueprint.revision || 1);
+  const generationId = cleanText(options.generation_id || options.generationId || '', 80);
+  const startedAt = new Date().toISOString();
   const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
   const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && Array.isArray(savedCheckpoint.shots)
     ? savedCheckpoint.shots
@@ -899,14 +907,17 @@ async function generateStoryboardStage(taskId) {
       : Number(ctx.shot_count || 0),
     characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters, characterSeed),
   };
+  const expectedTotal = Math.max(1, Number(blueprint.beats?.length || stageCtx.expected_storyboard_count || 1));
   storage.updateTask(taskId, { status: 'running', stage: 'storyboard' });
+  const initialStoryboardProgress = stageProgress.update(taskId, { stage: 'storyboard', phase: 'preparing', completed: 0, total: expectedTotal, processed: 0, currentIndex: 1, percent: 0, generationId, startedAt, message: '正在准备已确认剧本与分镜生成合同' });
+  storage.updateTask(taskId, { generation_progress: { ...initialStoryboardProgress, target_total: expectedTotal } });
   storage.saveStage(taskId, 'storyboard', { status: 'running', input_summary: `${blueprint.beats?.length || 0} beats` });
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'running',
     source: 'generated',
     blueprint_revision: sourceRevision,
     blueprint_fingerprint: sourceFingerprint,
-    started_at: new Date().toISOString(),
+    started_at: startedAt,
   });
   const saveCheckpoint = async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0 } = {}) => {
     storage.saveOutput(taskId, 'storyboard_checkpoint', {
@@ -921,16 +932,14 @@ async function generateStoryboardStage(taskId) {
       shots,
       updated_at: new Date().toISOString(),
     });
-    storage.updateTask(taskId, {
-      generation_progress: {
-        stage: 'storyboard',
-        status: 'running',
-        phase,
-        processed: completed_indexes.length || shots.length,
-        target_total: Number(expected_total || blueprint.beats?.length || 0),
-        updated_at: new Date().toISOString(),
-      },
-    });
+    const processed = Math.min(Number(expected_total || expectedTotal), completed_indexes.length || shots.length);
+    const targetTotal = Math.max(1, Number(expected_total || expectedTotal));
+    const reviewPhase = phase === 'reviewing' || /^rewrite_/.test(phase);
+    const percent = reviewPhase
+      ? (phase === 'reviewing' ? 84 : (phase.startsWith('rewrite_1') ? 90 : 94))
+      : Math.min(80, Math.round((processed / targetTotal) * 80));
+    const progress = stageProgress.update(taskId, { stage: 'storyboard', phase, completed: processed, total: targetTotal, processed, currentIndex: Math.min(targetTotal, processed + 1), percent, generationId, startedAt, message: reviewPhase ? '分镜初稿已生成，正在执行结构与商业一致性审核' : `已生成 ${processed}/${targetTotal} 个分镜` });
+    storage.updateTask(taskId, { generation_progress: { ...progress, target_total: targetTotal } });
   };
   const assertBlueprintUnchanged = () => {
     const current = storage.getOutput(taskId, 'blueprint') || {};
@@ -977,6 +986,8 @@ async function generateStoryboardStage(taskId) {
     storage.deleteOutput(taskId, 'storyboard_checkpoint');
     storage.saveStage(taskId, 'storyboard', { status: 'failed', error: review.blocking_issues.join('；'), diagnostics: review });
     storage.updateTask(taskId, { status: 'failed', stage: 'storyboard_failed', error: review.blocking_issues.join('；') });
+    const failedProgress = stageProgress.update(taskId, { stage: 'storyboard', status: 'failed', phase: 'review_failed', completed: shots.length, total: Math.max(1, shots.length), processed: shots.length, currentIndex: shots.length, percent: 100, generationId, startedAt, message: '分镜生成已完成，但质量审核未通过' });
+    storage.updateTask(taskId, { generation_progress: { ...failedProgress, target_total: Math.max(1, shots.length) } });
     const err = new Error(`剧情广告分镜硬阻断：${review.blocking_issues.join('；')}`);
     err.review = review;
     err.partial = shots;
@@ -998,11 +1009,9 @@ async function generateStoryboardStage(taskId) {
   persistKeyframeContracts(taskId, contracts);
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
-  storage.updateTask(taskId, {
-    status: 'done',
-    stage: 'keyframe_contract_ready',
-    diagnostics: diagnostics.summarizeTask({ task, review }),
-  });
+  storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', diagnostics: diagnostics.summarizeTask({ task, review }) });
+  const doneProgress = stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'persisted', completed: shots.length, total: Math.max(1, shots.length), processed: shots.length, currentIndex: shots.length, percent: 100, generationId, startedAt, message: `分镜表与 ${contracts.length} 个关键帧合同已保存` });
+  storage.updateTask(taskId, { generation_progress: { ...doneProgress, target_total: Math.max(1, shots.length) } });
   return { shots, review, keyframe_contracts: contracts, model_meta: generated.model_meta };
 }
 
@@ -2473,6 +2482,7 @@ async function generateVideoStage(taskId, options = {}) {
     ...options,
     preserve_existing_topology: preserveExistingTopology,
     continuous_quality_mode: generationMode === 'quality',
+    scene_block_generation: generationMode === 'quality',
   });
   storage.saveOutput(taskId, 'scene_worlds', preflightPlan.execution_plan?.scene_worlds || []);
   storage.saveOutput(taskId, 'continuity_runs', preflightPlan.execution_plan?.continuity_runs || []);
@@ -3245,6 +3255,9 @@ async function composeStage(taskId, options = {}) {
     error.retryable = true;
     throw error;
   }
+  const composeGenerationId = cleanText(options.generation_id || options.generationId || '', 80);
+  const composeStartedAt = new Date().toISOString();
+  stageProgress.update(taskId, { stage: 'compose', phase: 'audio_preparing', completed: 0, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '正在检查配音、音乐和字幕配置' });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const composeVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const includeVoiceover = voiceoverEnabled(options, ctx, composeVoiceId);
@@ -3256,13 +3269,10 @@ async function composeStage(taskId, options = {}) {
     ttsAudio = silentTtsOutput();
     storage.saveOutput(taskId, 'tts_audio', ttsAudio);
   }
+  stageProgress.update(taskId, { stage: 'compose', phase: 'audio_ready', completed: 1, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '音频配置已就绪，正在准备成片时间线' });
   storage.updateTask(taskId, {
     status: 'running',
     stage: 'compose',
-    generation_progress: {
-      ...(storage.getTask(taskId)?.generation_progress || {}),
-      stage: 'compose', status: 'running', updated_at: new Date().toISOString(),
-    },
   });
   storage.saveStage(taskId, 'compose', { status: 'running', input_summary: `${clips.length} clips` });
   const subtitleEnabled = Object.prototype.hasOwnProperty.call(options, 'subtitle')
@@ -3297,6 +3307,7 @@ async function composeStage(taskId, options = {}) {
     subtitle_style: subtitleStyle,
     subtitle_config: subtitleConfig,
   });
+  stageProgress.update(taskId, { stage: 'compose', phase: 'timeline_ready', completed: 2, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '成片时间线已确认，正在封装最终视频' });
   const final_video = await composeService.concatVideos({
     taskId,
     clips,
@@ -3326,6 +3337,7 @@ async function composeStage(taskId, options = {}) {
     diagnostics: { provider_used: final_video.provider_used || '' },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'final_video_ready' });
+  stageProgress.update(taskId, { stage: 'compose', status: 'done', phase: 'persisted', completed: 3, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '最终成片已完成并保存' });
   return { final_video: finalVideoWithLineage, video_clips: clips };
 }
 

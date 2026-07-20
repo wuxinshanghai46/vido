@@ -48,9 +48,9 @@ const submittingBatch = sandbox.window.NewStoryAdProgress.snapshot({
   completed: 6,
   serverProgress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4, current_index: 6 },
 });
-assert.strictEqual(submittingBatch.title, '正在启动画面生成');
-assert.strictEqual(submittingBatch.stat, '准备中');
-assert.strictEqual(submittingBatch.indeterminate, true);
+assert.strictEqual(submittingBatch.title, '正在启动第 1/6 张真实画面');
+assert.strictEqual(submittingBatch.stat, '已处理 0/6 张 · 0%');
+assert.strictEqual(submittingBatch.indeterminate, false);
 assert(!/6\/6|成功|失败|96%/.test(`${submittingBatch.title}${submittingBatch.stat}${submittingBatch.message}`), '提交窗口不得闪现上一批终态统计');
 
 const video = sandbox.window.NewStoryAdProgress.snapshot({
@@ -76,17 +76,19 @@ assert.strictEqual(videoWaiting.indeterminate, true);
 const composing = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'media', generationId: 'video-current', startedAt: Date.now() - 10 * 60 * 1000, total: 6 },
   taskStage: 'compose', taskStatus: 'running',
-  serverProgress: { stage: 'video', generation_id: 'video-current', total: 6, completed: 6, qa_passed: 6 },
+  serverProgress: { stage: 'compose', generation_id: 'video-current', phase: 'timeline_ready', completed: 2, total: 3, percent: 67, message: '成片时间线已确认' },
 });
-assert.match(composing.stat, /逐镜视频 6\/6 · 合成中/);
-assert.strictEqual(composing.indeterminate, true);
-assert(!/%/.test(composing.stat), '最终封装阶段未知进度时不得显示虚假百分比');
+assert.match(composing.stat, /2\/3 个合成里程碑 · 67%/);
+assert.strictEqual(composing.indeterminate, false);
+assert.match(composing.message, /成片时间线已确认/);
 
 const storyboardProgress = sandbox.window.NewStoryAdProgress.snapshot({
-  progress: { stage: 'storyboard', startedAt: Date.now() - 6 * 60 * 1000, total: 6 },
+  progress: { stage: 'storyboard', generationId: 'storyboard-current', startedAt: Date.now() - 6 * 60 * 1000, total: 6 },
+  serverProgress: { stage: 'storyboard', generation_id: 'storyboard-current', phase: 'running', processed: 4, target_total: 6, current_index: 5, percent: 53 },
 });
-assert.strictEqual(storyboardProgress.indeterminate, true);
-assert(!/%/.test(storyboardProgress.stat), '没有真实计数的阶段不得根据耗时伪造百分比');
+assert.strictEqual(storyboardProgress.indeterminate, false);
+assert.match(storyboardProgress.title, /第 5\/6 镜/);
+assert.match(storyboardProgress.stat, /已生成 4\/6 镜 · 53%/);
 
 const blueprintProgress = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'blueprint', generationId: 'blueprint-current', startedAt: Date.now() - 65000 },

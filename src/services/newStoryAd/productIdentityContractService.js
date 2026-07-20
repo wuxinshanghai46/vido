@@ -13,10 +13,31 @@ function score(value) {
   return Math.max(0, Math.min(1, n > 1 && n <= 100 ? n / 100 : n));
 }
 
+function normalizedAssetType(asset = {}) {
+  return cleanText(asset.type || asset.asset_type || asset.kind || '', 120).toLowerCase().replace(/[\s-]+/g, '_');
+}
+
+function isProductAsset(asset = {}) {
+  if (!asset || !(asset.url || asset.image_url)) return false;
+  const type = normalizedAssetType(asset);
+  // The asset type is authoritative. An actor/scene description can legitimately
+  // mention the advertised product and must never turn that asset into a product
+  // reference that requires a separate visual verification gate.
+  if (/(?:^|_)(?:person|people|human|actor|character|cast|portrait|face|scene|environment|location|room|space|background)(?:_|$)/i.test(type)) return false;
+  if (/(?:^|_)(?:product|goods|package|packaging|packshot|merchandise|sku|product_material|material_sample)(?:_|$)/i.test(type)) return true;
+  if (/(?:商品|产品|包装|货品|样品)/.test(type)) return true;
+
+  // Older uploads sometimes used only a generic type. In that case accept an
+  // explicit reference name, but deliberately ignore free-form descriptions.
+  if (!type || /^(?:reference|image|asset|upload|uploaded_image)$/.test(type)) {
+    const name = cleanText(asset.name || asset.label || '', 160);
+    return /(?:产品|商品|包装|货品|样品)(?:参考|素材|图片|图|照)|(?:product|goods|package|packshot)\s*(?:reference|asset|image|photo)/i.test(name);
+  }
+  return false;
+}
+
 function productAssets(ctx = {}) {
-  return (Array.isArray(ctx.assets) ? ctx.assets : []).filter(asset => /product|subject|goods|package|商品|产品|主体|包装/i.test([
-    asset.type, asset.name, asset.description,
-  ].join(' ')) && (asset.url || asset.image_url));
+  return (Array.isArray(ctx.assets) ? ctx.assets : []).filter(isProductAsset);
 }
 
 function normalizeQa(input = {}) {
@@ -184,4 +205,4 @@ function assertVerifiedProduct(ctx = {}) {
   throw error;
 }
 
-module.exports = { THRESHOLDS, productAssets, normalizeQa, buildProductContract, verifyProductContract, productRequired, shotProductPresence, shotProductRequired, assertVerifiedProduct };
+module.exports = { THRESHOLDS, normalizedAssetType, isProductAsset, productAssets, normalizeQa, buildProductContract, verifyProductContract, productRequired, shotProductPresence, shotProductRequired, assertVerifiedProduct };

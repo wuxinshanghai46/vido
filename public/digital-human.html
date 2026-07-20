@@ -522,16 +522,14 @@
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdRegenerateAllShotVideos" type="button">高质量逐镜方案</button>
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">生成前优化方案</button>
-                  <button class="dh-btn dh-btn-primary" id="dhNsaAdGoCompose" type="button">分镜视频全部通过，进入广告合成</button>
+                  <button class="dh-btn dh-btn-primary dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">生成整条广告视频</button>
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-step4-progress" id="dhNsaAdStep4ScriptProgress" hidden></div>
               <input type="file" id="dhNsaAdAssetFile" accept="image/*" hidden>
               <div class="dh-demo-guide" id="dhNsaAdFrameGuide">
                 <b id="dhNsaAdFrameGuideTitle">按剧本生成</b>
-                <span id="dhNsaAdFrameGuideCopy">先审核真实画面，再查看系统自动修正后的生成方案、连续镜组和预计付费次数；确认方案后才生成视频，全部通过后进入第 5 步合成。</span>
+                <span id="dhNsaAdFrameGuideCopy">先审核全部真实画面，再一次提交整条广告生成。系统会按空间、人物和动作连续性自动组织 15 秒以内的连续场景段，并在全部通过后自动合成；页面不再逐镜提交视频。</span>
               </div>
               <div class="dh-nsa-video-cost-hint" id="dhNsaAdVideoCostHint" hidden></div>
               <div id="dhNsaAdCommercialGuard" class="dh-lux-commercial-guard"></div>
@@ -621,7 +619,7 @@
                     <b>剧情广告</b>
                     <span class="dh-demo-muted" id="dhNsaAdTaskMeta">提交后进入任务中心 · 30 秒 · 9:16</span>
                     <div class="dh-demo-progress-line"><i></i></div>
-                    <p class="dh-demo-muted">任务中心会显示逐镜视频、配音、字幕和最终合成进度。</p>
+                    <p class="dh-demo-muted">任务中心会显示连续场景视频、配音、字幕和最终合成进度。</p>
                   </div>
                 </aside>
                 <div class="dh-demo-task-detail">
@@ -2014,7 +2012,7 @@
                     <b>剧情广告</b>
                     <span class="dh-demo-muted" id="dhLuxAdTaskMeta">提交后进入任务中心 · 30 秒 · 9:16</span>
                     <div class="dh-demo-progress-line"><i></i></div>
-                    <p class="dh-demo-muted">任务中心会显示逐镜视频、配音、字幕和最终合成进度。</p>
+                    <p class="dh-demo-muted">任务中心会显示连续场景视频、配音、字幕和最终合成进度。</p>
                   </div>
                 </aside>
                 <div class="dh-demo-task-detail">

@@ -908,7 +908,7 @@ router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'scene_config', () => service.generateSceneConfig(req.params.id));
+  return queueTaskStage(req, res, 'scene_config', job => service.generateSceneConfig(req.params.id, { generation_id: job.generationId }));
 }));
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
@@ -916,7 +916,7 @@ router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'storyboard', () => service.generateStoryboardStage(req.params.id));
+  return queueTaskStage(req, res, 'storyboard', job => service.generateStoryboardStage(req.params.id, { generation_id: job.generationId }));
 }));
 
 router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
@@ -991,7 +991,7 @@ router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = { ...(req.body || {}), require_video_preflight: true };
   service.assertVideoPreflightConfirmation(req.params.id, body);
-  return queueTaskStage(req, res, 'video', () => service.generateVideoStage(req.params.id, body));
+  return queueTaskStage(req, res, 'video', job => service.generateVideoStage(req.params.id, { ...body, generation_id: job.generationId }));
 }));
 
 router.post('/tasks/:id/video/:index/manual-accept', asyncRoute(async (req, res) => {
@@ -1007,7 +1007,7 @@ router.post('/tasks/:id/video/:index/manual-accept', asyncRoute(async (req, res)
 
 router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'compose', () => service.composeStage(req.params.id, body));
+  return queueTaskStage(req, res, 'compose', job => service.composeStage(req.params.id, { ...body, generation_id: job.generationId }));
 }));
 
 router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, res) => {
@@ -1083,10 +1083,10 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
 router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
   const body = { ...(req.body || {}), require_video_preflight: true };
   service.assertVideoPreflightConfirmation(req.params.id, body);
-  return queueTaskStage(req, res, 'media', async () => {
+  return queueTaskStage(req, res, 'media', async job => {
     // 视频阶段负责幂等配音判断；整个媒体链保持一个后台任务，关闭浏览器也不会中断。
-    await service.generateVideoStage(req.params.id, { ...body, missing_only: true });
-    await service.composeStage(req.params.id, body);
+    await service.generateVideoStage(req.params.id, { ...body, missing_only: true, generation_id: job.generationId });
+    await service.composeStage(req.params.id, { ...body, generation_id: job.generationId });
   }, { deadlineMs: 60 * 60 * 1000 });
 }));
 
