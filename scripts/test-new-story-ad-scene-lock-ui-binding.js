@@ -371,10 +371,11 @@ function main() {
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
-  assert(html.includes('bootstrap.js?v=20260720-refresh-route-restore-v19'));
+  assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
+  assert(html.includes('bootstrap.js?v=20260720-refresh-route-restore-v20'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-refresh-route-restore-v19'));
+  assert(bootstrap.includes('20260720-refresh-route-restore-v20'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),

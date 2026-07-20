@@ -7,6 +7,9 @@ const vm = require('vm');
 const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-store.js'), 'utf8');
 const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
 const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+const bootstrapSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap.js'), 'utf8');
+const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
+const storyService = require('../src/services/newStoryAd/storyAdService');
 const values = new Map([['vido_new_story_ad_current_task_id', 'old-task']]);
 const location = {
   href: 'https://example.test/digital-human?tab=new-story-ad&nsa_task_id=old-task&nsa_step=4',
@@ -82,6 +85,29 @@ const immediateRender = restoreBlock.match(/state\.restoringTask = false;\s*rend
 assert(immediateRender);
 assert(immediateRender.index < restoreBlock.indexOf('recoverPersonAssetFromLibrary(bundle).then'));
 assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
+assert(restoreBlock.includes('?compact=1'));
+assert(restoreBlock.includes("new-story-ad:restore-finished"));
+assert(bootstrapSource.includes('preloadScripts();'));
+assert(bootstrapSource.includes("link.rel = 'preload'"));
+assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
+assert(routeSource.includes("String(req.query.compact || '') === '1'"));
+
+const fullBundle = {
+  task: { id: 'resume-task', request: { brief: 'original', scene_assets: [{ id: 'scene-1' }] } },
+  context: { brief: 'original', scene_assets: [{ id: 'scene-1' }] },
+  outputs: {
+    context: { brief: 'original', scene_assets: [{ id: 'scene-1' }], person_contract: { id: 'person-1' } },
+    scene_assets: [{ id: 'scene-1' }],
+    person_contract: { id: 'person-1' },
+  },
+};
+const compactBundle = storyService.compactPublicTaskBundle(fullBundle);
+assert.equal(compactBundle.task.request, undefined);
+assert.equal(compactBundle.context, undefined);
+assert.equal(compactBundle.outputs.context.scene_assets, undefined);
+assert.equal(compactBundle.outputs.context.person_contract, undefined);
+assert.deepEqual(compactBundle.outputs.scene_assets, [{ id: 'scene-1' }]);
+assert.deepEqual(fullBundle.outputs.context.scene_assets, [{ id: 'scene-1' }], 'compaction must not mutate stored/full data');
 
 store.rememberTaskId('', 1);
 assert.equal(values.has('vido_new_story_ad_current_task_id'), false);

@@ -1874,7 +1874,7 @@
     rememberTaskId(id);
     renderAll();
     try {
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`);
+      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}?compact=1`);
       const bundle = r.bundle || r;
       if (!bundle?.task) throw new Error('任务不存在');
       hydrateTaskBundle(bundle);
@@ -1885,6 +1885,9 @@
       rememberRouteStep(desiredStep);
       state.restoringTask = false;
       renderAll();
+      document.dispatchEvent(new CustomEvent('new-story-ad:restore-finished', {
+        detail: { success: true, taskId: state.taskId || id },
+      }));
       recoverPersonAssetFromLibrary(bundle).then(recovered => {
         if (recovered) renderAll();
       }).catch(() => {});
@@ -1894,6 +1897,9 @@
       rememberTaskId('');
       state.restoreError = err.message || '无法读取任务数据';
       toast('当前任务恢复失败：' + state.restoreError, 'error');
+      document.dispatchEvent(new CustomEvent('new-story-ad:restore-finished', {
+        detail: { success: false, taskId: id },
+      }));
       return false;
     } finally {
       state.pendingRestoreTaskId = '';

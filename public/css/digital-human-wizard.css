@@ -3584,6 +3584,22 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-task-segment-text { color: var(--dh-text); font-size: 13px; line-height: 1.55; word-break: break-word; }
 .dh-task-segment-meta { margin-top: 6px; color: var(--dh-text-muted); font-size: 12px; line-height: 1.55; word-break: break-word; }
 
+.dh-tab-pane[data-pane="new-story-ad"][aria-busy="true"] [data-nsa-lazy-loader] {
+  position: sticky;
+  top: 12px;
+  z-index: 30;
+  min-height: 48px;
+  display: flex !important;
+  align-items: center;
+  border: 1px solid rgba(33,255,243,.28);
+  box-shadow: 0 10px 30px rgba(0,0,0,.28);
+}
+.dh-tab-pane[data-pane="new-story-ad"][aria-busy="true"] #dhNewStoryAdLegacyMount {
+  min-height: 58vh;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 @media (max-width: 720px) {
   .dh-nsa-scene-mode { flex-basis: auto; width: 100%; }
   .dh-nsa-scene-spec-grid { grid-template-columns: 1fr; }

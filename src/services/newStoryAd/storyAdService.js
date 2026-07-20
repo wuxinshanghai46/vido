@@ -39,6 +39,7 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
+const { compactPublicTaskBundle } = require('./taskBundleProjection');
 const videoCore = require('../videoGenerationCore');
 
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -3764,6 +3765,7 @@ module.exports = {
   composeStage,
   runFull,
   publicTaskBundle,
+  compactPublicTaskBundle,
   taskSummary,
   listTaskSummaries,
   modelHealth,

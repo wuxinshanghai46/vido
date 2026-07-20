@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v19';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v20';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -68,15 +68,41 @@
     });
   }
 
+  /** 并行预取全部剧情广告脚本，同时继续按依赖顺序执行。 */
+  function preloadScripts() {
+    SCRIPT_PATHS.forEach(path => {
+      if (document.querySelector(`link[data-nsa-script-preload="${path}"]`)) return;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'script';
+      link.href = `${path}?v=${encodeURIComponent(SCRIPT_VERSION)}`;
+      link.dataset.nsaScriptPreload = path;
+      document.head.appendChild(link);
+    });
+  }
+
   /** 首次进入剧情广告时加载全部兼容模块，后续进入直接复用。 */
   async function loadStoryAd() {
     if (window.__newStoryAdLegacyUI) return window.__newStoryAdLegacyUI;
     if (loadPromise) return loadPromise;
     loadPromise = (async () => {
       setLoadingState('loading', '正在按需加载剧情广告工作台，不会影响其他平台模块…');
+      let restoreFinished = false;
+      const onRestoreFinished = () => {
+        restoreFinished = true;
+        setLoadingState('ready');
+      };
+      document.addEventListener('new-story-ad:restore-finished', onRestoreFinished, { once: true });
+      preloadScripts();
       for (const path of SCRIPT_PATHS) await loadScript(path);
-      setLoadingState('ready');
       document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
+      const restoring = window.__newStoryAdLegacyUI?.state?.restoringTask === true;
+      if (restoring && !restoreFinished) {
+        setLoadingState('loading', '正在恢复已保存的任务数据，任务内容不会丢失…');
+      } else {
+        document.removeEventListener('new-story-ad:restore-finished', onRestoreFinished);
+        setLoadingState('ready');
+      }
       return window.__newStoryAdLegacyUI || null;
     })().catch((error) => {
       loadPromise = null;

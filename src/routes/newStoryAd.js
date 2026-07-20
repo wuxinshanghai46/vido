@@ -862,7 +862,10 @@ router.get('/tasks/:id', asyncRoute(async (req, res) => {
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
   taskForReq(req);
-  const bundle = service.publicTaskBundle(req.params.id);
+  const fullBundle = service.publicTaskBundle(req.params.id);
+  const bundle = String(req.query.compact || '') === '1'
+    ? service.compactPublicTaskBundle(fullBundle)
+    : fullBundle;
   if (!bundle.task) return res.status(404).json({ success: false, error: '任务不存在' });
   res.json({ success: true, ...bundle });
 }));
