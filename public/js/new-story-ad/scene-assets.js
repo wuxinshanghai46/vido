@@ -246,10 +246,29 @@
     const shell = control?._nsaCustomSelect;
     if (!shell) return;
     shell.classList.remove('is-open');
+    shell.classList.remove('opens-up');
     shell.querySelector('[data-nsa-select-trigger]')?.setAttribute('aria-expanded', 'false');
-    shell.querySelector('[data-nsa-select-menu]')?.setAttribute('hidden', '');
+    const menu = shell.querySelector('[data-nsa-select-menu]');
+    menu?.setAttribute('hidden', '');
+    if (menu) menu.style.maxHeight = '';
     shell.closest('.dh-luxgen-story')?.classList.remove('has-open-scene-select');
     if (focus) shell.querySelector('[data-nsa-select-trigger]')?.focus();
+  }
+
+  function positionSpecSelectMenu(control) {
+    const shell = control?._nsaCustomSelect;
+    const trigger = shell?.querySelector('[data-nsa-select-trigger]');
+    const menu = shell?.querySelector('[data-nsa-select-menu]');
+    if (!shell || !trigger || !menu || menu.hidden) return;
+    const rect = trigger.getBoundingClientRect();
+    const viewportHeight = Math.max(0, Number(window.innerHeight || document.documentElement?.clientHeight || 0));
+    const below = Math.max(0, viewportHeight - rect.bottom - 10);
+    const above = Math.max(0, rect.top - 10);
+    const desired = Math.min(320, Math.max(0, Number(menu.scrollHeight || 0)));
+    const opensUp = below < desired && above > below;
+    const available = opensUp ? above : below;
+    shell.classList.toggle('opens-up', opensUp);
+    menu.style.maxHeight = `${Math.max(96, Math.min(320, available))}px`;
   }
 
   function syncCustomSpecSelect(control) {
@@ -339,6 +358,7 @@
       menu.toggleAttribute('hidden', !opening);
       shell.closest('.dh-luxgen-story')?.classList.toggle('has-open-scene-select', opening);
       if (opening) {
+        positionSpecSelectMenu(control);
         (menu.querySelector('.is-selected') || menu.querySelector('[data-nsa-select-option]:not(:disabled)'))?.focus();
       }
     });
