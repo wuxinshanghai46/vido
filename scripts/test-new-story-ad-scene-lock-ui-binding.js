@@ -359,6 +359,7 @@ function main() {
   assert(legacyUi.includes('options.upgradePrepared !== true && selectedSceneUpgradeRequired()'));
 
   const sceneService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
+  const sceneUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/scene-assets.js'), 'utf8');
   assert(!sceneService.includes('legacyNeedsLayoutHeuristic'));
   assert(!sceneService.includes('legacy_layout_trigger'));
 
@@ -372,14 +373,15 @@ function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260720-refresh-route-restore-v25'));
-  assert(html.indexOf('bootstrap.js?v=20260720-refresh-route-restore-v25') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
+  assert(html.includes('bootstrap.js?v=20260720-custom-scene-select-v26'));
+  assert(html.includes('digital-human-wizard.css?v=20260720-custom-scene-select-v22'));
+  assert(html.indexOf('bootstrap.js?v=20260720-custom-scene-select-v26') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-refresh-route-restore-v25'));
+  assert(bootstrap.includes('20260720-custom-scene-select-v26'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),
@@ -392,6 +394,9 @@ function main() {
   assert(legacyUi.includes("NewStoryAdSceneAssets?.syncSpecSelectionState?.(target)"));
   assert(css.includes('.dh-nsa-scene-spec-grid select.dh-input.is-explicit-selection'));
   assert(css.includes('color-scheme: dark'));
+  assert(css.includes('.dh-nsa-custom-select-option.is-selected'));
+  assert(css.includes('.dh-luxgen-story.has-open-scene-select'));
+  assert(sceneUi.includes("control.dispatchEvent(new Event('change', { bubbles: true }))"));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));

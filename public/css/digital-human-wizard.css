@@ -126,6 +126,82 @@
   background: linear-gradient(135deg, rgba(33,255,243,.13), rgba(164,255,72,.06)), #18242a;
   box-shadow: 0 0 0 2px rgba(33,255,243,.09), 0 8px 20px rgba(0,0,0,.16);
 }
+.dh-nsa-custom-select { position: relative; min-width: 0; }
+.dh-nsa-custom-select-native {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+.dh-nsa-custom-select-trigger {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 38px 10px 12px;
+  border: 1px solid var(--dh-border);
+  border-radius: var(--dh-radius-sm);
+  background: #18242a;
+  color: #effffd;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+}
+.dh-nsa-custom-select-trigger:focus-visible { outline: 2px solid #21fff3; outline-offset: 2px; }
+.dh-nsa-custom-select-trigger i {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  transition: transform .15s ease;
+}
+.dh-nsa-custom-select.is-open .dh-nsa-custom-select-trigger i { transform: translateY(-30%) rotate(225deg); }
+.dh-nsa-custom-select.is-explicit-selection .dh-nsa-custom-select-trigger {
+  border-color: rgba(33,255,243,.82);
+  color: #8cfff8;
+  font-weight: 900;
+  background: linear-gradient(135deg, rgba(33,255,243,.15), rgba(164,255,72,.07)), #18242a;
+  box-shadow: 0 0 0 2px rgba(33,255,243,.11), 0 8px 20px rgba(0,0,0,.16);
+}
+.dh-nsa-custom-select-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(33,255,243,.52);
+  border-radius: 9px;
+  background: #0b1419;
+  box-shadow: 0 18px 42px rgba(0,0,0,.58);
+}
+.dh-nsa-custom-select-menu[hidden] { display: none; }
+.dh-nsa-custom-select-option {
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #dcebea;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.dh-nsa-custom-select-option:hover,
+.dh-nsa-custom-select-option:focus-visible { outline: none; border-color: rgba(33,255,243,.34); background: rgba(33,255,243,.09); color: #ffffff; }
+.dh-nsa-custom-select-option.is-selected { border-color: rgba(33,255,243,.66); background: linear-gradient(135deg, rgba(33,255,243,.24), rgba(164,255,72,.10)); color: #8cfff8; }
+.dh-luxgen-story.has-open-scene-select { overflow: visible; z-index: 12; }
 
 /* ——— Chip 行 ——— */
 .dh-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -242,6 +242,114 @@
     return changed;
   }
 
+  function closeSpecSelect(control, { focus = false } = {}) {
+    const shell = control?._nsaCustomSelect;
+    if (!shell) return;
+    shell.classList.remove('is-open');
+    shell.querySelector('[data-nsa-select-trigger]')?.setAttribute('aria-expanded', 'false');
+    shell.querySelector('[data-nsa-select-menu]')?.setAttribute('hidden', '');
+    shell.closest('.dh-luxgen-story')?.classList.remove('has-open-scene-select');
+    if (focus) shell.querySelector('[data-nsa-select-trigger]')?.focus();
+  }
+
+  function syncCustomSpecSelect(control) {
+    const shell = control?._nsaCustomSelect;
+    if (!shell) return;
+    const selected = Array.from(control.options || []).find(option => option.value === control.value)
+      || control.options?.[0];
+    const trigger = shell.querySelector('[data-nsa-select-trigger]');
+    if (trigger) {
+      trigger.querySelector('[data-nsa-select-value]').textContent = selected?.textContent || '';
+      trigger.disabled = !!control.disabled;
+    }
+    shell.classList.toggle('is-explicit-selection', control.dataset.nsaSelectionState === 'explicit');
+    shell.querySelectorAll('[data-nsa-select-option]').forEach(option => {
+      const active = option.dataset.value === String(control.value || '');
+      option.classList.toggle('is-selected', active);
+      option.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+  }
+
+  function enhanceSpecSelect(control) {
+    if (!control || control.tagName !== 'SELECT' || control._nsaCustomSelect) return;
+    const options = Array.from(control.options || []);
+    if (!options.length || !control.parentNode) return;
+    const shell = document.createElement('div');
+    shell.className = 'dh-nsa-custom-select';
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'dh-nsa-custom-select-trigger';
+    trigger.dataset.nsaSelectTrigger = 'true';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.innerHTML = '<span data-nsa-select-value></span><i aria-hidden="true"></i>';
+    const menu = document.createElement('div');
+    menu.className = 'dh-nsa-custom-select-menu';
+    menu.dataset.nsaSelectMenu = 'true';
+    menu.setAttribute('role', 'listbox');
+    menu.setAttribute('hidden', '');
+    options.forEach(nativeOption => {
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'dh-nsa-custom-select-option';
+      option.dataset.nsaSelectOption = 'true';
+      option.dataset.value = nativeOption.value;
+      option.setAttribute('role', 'option');
+      option.textContent = nativeOption.textContent;
+      option.disabled = !!nativeOption.disabled;
+      option.addEventListener('click', () => {
+        if (option.disabled) return;
+        control.value = nativeOption.value;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+        syncSpecSelectionState(control);
+        closeSpecSelect(control, { focus: true });
+      });
+      menu.appendChild(option);
+    });
+    control.parentNode.insertBefore(shell, control);
+    shell.append(control, trigger, menu);
+    control.classList.add('dh-nsa-custom-select-native');
+    control._nsaCustomSelect = shell;
+    trigger.addEventListener('click', () => {
+      const opening = !shell.classList.contains('is-open');
+      document.querySelectorAll('.dh-nsa-custom-select.is-open').forEach(openShell => {
+        const native = openShell.querySelector('select[data-nsa-scene-spec]');
+        if (native && native !== control) closeSpecSelect(native);
+      });
+      shell.classList.toggle('is-open', opening);
+      trigger.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      menu.toggleAttribute('hidden', !opening);
+      shell.closest('.dh-luxgen-story')?.classList.toggle('has-open-scene-select', opening);
+      if (opening) {
+        (menu.querySelector('.is-selected') || menu.querySelector('[data-nsa-select-option]:not(:disabled)'))?.focus();
+      }
+    });
+    shell.addEventListener('keydown', event => {
+      const enabled = Array.from(menu.querySelectorAll('[data-nsa-select-option]:not(:disabled)'));
+      const current = enabled.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSpecSelect(control, { focus: true });
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!shell.classList.contains('is-open')) trigger.click();
+        else enabled[(current + (event.key === 'ArrowDown' ? 1 : -1) + enabled.length) % enabled.length]?.focus();
+      }
+    });
+    if (!document.documentElement.dataset.nsaSpecSelectOutsideBound) {
+      document.documentElement.dataset.nsaSpecSelectOutsideBound = 'true';
+      document.addEventListener('pointerdown', event => {
+        document.querySelectorAll('.dh-nsa-custom-select.is-open').forEach(openShell => {
+          if (openShell.contains(event.target)) return;
+          const native = openShell.querySelector('select[data-nsa-scene-spec]');
+          if (native) closeSpecSelect(native);
+        });
+      });
+    }
+    syncCustomSpecSelect(control);
+  }
+
   function syncSpecSelectionState(target = root()) {
     const selector = 'select[data-nsa-scene-spec], #dhNsaAdSceneMode';
     const controls = target?.matches?.(selector)
@@ -251,6 +359,8 @@
       const explicit = !['', 'auto'].includes(clean(control.value || '', 60));
       control.classList.toggle('is-explicit-selection', explicit);
       control.dataset.nsaSelectionState = explicit ? 'explicit' : 'auto';
+      enhanceSpecSelect(control);
+      syncCustomSpecSelect(control);
     });
   }
 
