@@ -78,8 +78,9 @@ const restoreBlock = legacyUiSource.slice(
   legacyUiSource.indexOf('function resumeActiveGeneration()'),
 );
 assert(!restoreBlock.includes('await recoverPersonAssetFromLibrary(bundle)'));
-assert(restoreBlock.indexOf('state.restoringTask = false;\n      renderAll();') >= 0);
-assert(restoreBlock.indexOf('state.restoringTask = false;\n      renderAll();') < restoreBlock.indexOf('recoverPersonAssetFromLibrary(bundle).then'));
+const immediateRender = restoreBlock.match(/state\.restoringTask = false;\s*renderAll\(\);/);
+assert(immediateRender);
+assert(immediateRender.index < restoreBlock.indexOf('recoverPersonAssetFromLibrary(bundle).then'));
 assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
 
 store.rememberTaskId('', 1);
