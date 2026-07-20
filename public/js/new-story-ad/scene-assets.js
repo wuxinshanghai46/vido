@@ -299,6 +299,10 @@
       option.disabled = !!nativeOption.disabled;
       option.addEventListener('click', () => {
         if (option.disabled) return;
+        if (control.value === nativeOption.value) {
+          closeSpecSelect(control, { focus: true });
+          return;
+        }
         control.value = nativeOption.value;
         control.dispatchEvent(new Event('input', { bubbles: true }));
         control.dispatchEvent(new Event('change', { bubbles: true }));
