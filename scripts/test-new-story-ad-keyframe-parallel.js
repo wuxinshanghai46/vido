@@ -25,6 +25,9 @@ function verifiedSceneAsset(sceneId = 'verified-scene') {
     scene_id: sceneId,
     view_images: [
       { key: 'master', url: `https://example.test/${sceneId}-master.png` },
+      { key: 'reverse', url: `https://example.test/${sceneId}-reverse.png` },
+      { key: 'interaction', url: `https://example.test/${sceneId}-interaction.png` },
+      { key: 'detail', url: `https://example.test/${sceneId}-detail.png` },
       { key: 'layout', url: `https://example.test/${sceneId}-layout.png` },
     ],
     scene_contract: {
@@ -224,6 +227,55 @@ async function testStageIntegrationWithoutPaidProvider() {
   }
 }
 
+async function testFailedBatchKeepsStructuredState() {
+  const owner = { id: 'parallel-failure-owner', role: 'user' };
+  const taskId = service.createTask({
+    brief: '验证失败分镜的结构化收尾',
+    product_subject: '测试主体',
+    cast_mode: 'no_human',
+  }, owner).task.id;
+  storage.saveOutput(taskId, 'context', {
+    brief: '验证失败分镜的结构化收尾',
+    product_subject: '测试主体',
+    cast_mode: 'no_human',
+    scene_assets: [],
+    assets: [],
+  });
+  storage.saveOutput(taskId, 'storyboard_table', [{
+    index: 1, title: '失败镜头', visual: '任务主体静态展示', action: '保持静止', subject_type: 'product_only', characters: [],
+  }]);
+  storage.saveOutput(taskId, 'keyframe_contracts', [{
+    contract_fingerprint: 'failure-contract-v1', visual_contract: {}, continuity_lock: { transition_type: 'hard_cut' },
+  }]);
+
+  const originalGenerateImage = mediaAdapter.generateImage;
+  mediaAdapter.generateImage = async () => {
+    const error = new Error('供应商暂时不可用');
+    error.code = 'PROVIDER_5XX_AMBIGUOUS';
+    error.retryable = false;
+    throw error;
+  };
+  try {
+    await assert.rejects(
+      () => service.generateKeyframesStage(taskId, { parallel_keyframes: false }),
+      error => error?.code === 'KEYFRAME_BATCH_PARTIAL_FAILURE'
+        && error?.retryable === true
+        && error?.details?.[0]?.shot_number === 1,
+    );
+    const [frame] = storage.getOutput(taskId, 'keyframes');
+    assert.equal(frame.current_generation_status, 'failed');
+    assert.equal(frame.latest_attempt.status, 'failed');
+    assert.equal(frame.latest_attempt.error_code, 'PROVIDER_5XX_AMBIGUOUS');
+    const task = storage.getTask(taskId);
+    assert.equal(task.error_code, 'KEYFRAME_BATCH_PARTIAL_FAILURE');
+    assert.deepEqual(task.generation_progress.failed_shots, [1]);
+    const stage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
+    assert.equal(stage.diagnostics.failures[0].shot_number, 1);
+  } finally {
+    mediaAdapter.generateImage = originalGenerateImage;
+  }
+}
+
 function testConfigurationAndContracts() {
   assert.strictEqual(scheduler.resolveConcurrency({}, 8, {}), 2);
   assert.strictEqual(scheduler.resolveConcurrency({ keyframe_concurrency: 99 }, 8, {}), 3);
@@ -244,6 +296,7 @@ function testConfigurationAndContracts() {
   }));
   const plan = service.buildKeyframeDependencyPlan(shots, contracts, {
     cast_mode: 'single',
+    person_asset: { image_url: 'https://example.test/verified-person.png' },
     person_contract: { status: 'verified', cross_view_qa: { pass: true } },
     scene_assets: shots.map(shot => verifiedSceneAsset(shot.scene_id)),
   });
@@ -377,6 +430,7 @@ async function main() {
   await testThrottleDowngradeAndSingleRetry();
   await testCancellationStopsNewWaves();
   await testStageIntegrationWithoutPaidProvider();
+  await testFailedBatchKeepsStructuredState();
   console.log('new-story-ad keyframe parallel tests passed');
 }
 

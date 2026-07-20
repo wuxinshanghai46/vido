@@ -163,6 +163,9 @@ function isProviderSubmitAuditError(error = null) {
     error?.response?.data?.code,
     error?.response?.data?.reason,
     error?.response?.data?.message,
+    error?.providerPayload?.code,
+    error?.providerPayload?.reason,
+    error?.providerPayload?.message,
   ].filter(Boolean).join(' ');
   return /AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(text);
 }
@@ -175,7 +178,24 @@ function providerErrorText(error = null) {
     error?.response?.data?.reason,
     error?.response?.data?.message,
     error?.response?.data?.error,
+    error?.providerPayload?.code,
+    error?.providerPayload?.reason,
+    error?.providerPayload?.message,
   ].filter(Boolean).join(' ');
+}
+
+function providerErrorDiagnostics(error = null) {
+  const payload = error?.providerPayload && typeof error.providerPayload === 'object'
+    ? error.providerPayload
+    : (error?.response?.data && typeof error.response.data === 'object' ? error.response.data : {});
+  const nested = payload?.error && typeof payload.error === 'object' ? payload.error : {};
+  const cleanField = (value, max = 160) => String(value ?? '').replace(/[\r\n]+/g, ' ').trim().slice(0, max);
+  return {
+    provider_status: cleanField(error?.response?.status || payload?.status || payload?.code || ''),
+    provider_reason: cleanField(payload?.reason || nested?.reason || ''),
+    provider_request_id: cleanField(payload?.request_id || payload?.requestId || nested?.request_id || nested?.requestId || error?.response?.headers?.['x-request-id'] || ''),
+    provider_error_code: cleanField(payload?.code || nested?.code || ''),
+  };
 }
 
 function isProviderRightsAuditError(error = null) {
@@ -590,6 +610,7 @@ async function generateImage({
     } catch (err) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = classifyImageGenerationError(err);
+      const providerDiagnostics = providerErrorDiagnostics(err);
       if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(classified.code)) {
         modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
       }
@@ -601,6 +622,7 @@ async function generateImage({
         status: 'failed',
         error_code: classified.code || err.code,
         error_message: String(classified.message || err.message || err).slice(0, 500),
+        ...providerDiagnostics,
         latency_ms: Date.now() - startedAt,
         fallback_rank: candidateIndex + 1,
       });
@@ -609,6 +631,7 @@ async function generateImage({
         code: classified.code || err.code,
         retryable: classified.retryable === true,
         message: String(classified.message || err.message || err).slice(0, 240),
+        ...providerDiagnostics,
       });
       if (classified.terminal === true) break;
     }
@@ -617,7 +640,11 @@ async function generateImage({
     ? `；ignored preferred=${preferred} because it is not enabled for ${stage}`
     : '';
   const detail = errors
-    .map(item => `${item.model}：${item.message || item.code}`)
+    .map(item => {
+      const providerMarker = [item.provider_error_code || item.provider_status, item.provider_reason]
+        .filter(Boolean).join('/');
+      return `${item.model}：${item.message || item.code}${providerMarker ? `（供应商：${providerMarker}）` : ''}`;
+    })
     .join('；');
   const error = new Error(`图片生成失败，已尝试 ${errors.length} 个模型并停止继续调用${ignoredPreferred ? `（${ignoredPreferred}）` : ''}${detail ? `：${detail}` : ''}`);
   error.code = errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE');
@@ -652,6 +679,7 @@ module.exports = {
   isProviderSubmitAuditError,
   isProviderRightsAuditError,
   classifyImageGenerationError,
+  providerErrorDiagnostics,
   rightsAwareImagePrompt,
   promptForImageCandidate,
   requiredImageModelForStage,

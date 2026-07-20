@@ -64,6 +64,13 @@ function hasExplicitFinishRegionMapping(value = '') {
   return new RegExp(`${spatialToken}[^。；;]{0,48}${finishToken}|${finishToken}[^。；;]{0,48}(?:位于|设置于|应用于|限定于|mapped\\s+to|placed\\s+at|applied\\s+to)[^。；;]{0,48}${spatialToken}`, 'i').test(text);
 }
 
+/** Detect language that would make an image model physically divide a surface. */
+function hasSegmentedSurfaceIntent(value = '') {
+  const text = structuredText(value, 3000);
+  if (!text) return false;
+  return /拼接|拼板|板块|模块(?:化)?|网格(?:墙)?|样品墙|展示墙|分区(?:墙|饰面|表面)|不同(?:材质|质感|饰面)[^。；;]{0,24}(?:拼|组合|并列)|panel(?:led|s)?|tile(?:d|s)?|grid|modular|segmented|patchwork|visible\s+(?:joint|seam)|sample\s+(?:wall|grid|blocks?)/i.test(text);
+}
+
 /** Resolve contradictory select values and free-text requirements before generation. */
 function resolveSurfaceTopology(input = null, contextText = '') {
   const topology = normalizeSurfaceTopology(input);
@@ -139,6 +146,83 @@ function normalizeShotDesign(shot = {}) {
   };
 }
 
+/**
+ * Compile the editable shot description and the bound scene contract into one
+ * generation-time surface contract. The scene owns environment topology;
+ * isolated product/sample comparison inserts may own their local topology.
+ */
+function compileShotDesign({ shot = {}, sceneSurface = null, sceneText = '' } = {}) {
+  const normalized = normalizeShotDesign(shot);
+  const shotText = structuredText([
+    shot.visual,
+    shot.content_prompt,
+    shot.action,
+    shot.visual_action,
+    shot.keyframe_notes,
+    shot.material_usage,
+    normalized.surface_topology?.notes,
+  ], 3000);
+  const sceneContext = structuredText([sceneText, sceneSurface], 3000);
+  const resolvedScene = resolveSurfaceTopology(sceneSurface, sceneContext);
+  const sceneRequiresContinuity = resolvedScene?.mode === 'continuous'
+    || resolvedScene?.seam_policy === 'hidden'
+    || hasContinuousSurfaceIntent(sceneContext);
+  const isolatedComparison = normalized.shot_scope === 'product_comparison';
+  const shotRequestsSegmentation = ['segmented', 'modular'].includes(normalized.surface_topology?.mode)
+    || normalized.surface_topology?.seam_policy === 'visible'
+    || normalized.surface_topology?.finish_distribution === 'sample_comparison'
+    || hasSegmentedSurfaceIntent(shotText);
+
+  if (sceneRequiresContinuity && !isolatedComparison) {
+    const effectiveSurface = resolveSurfaceTopology({
+      ...(resolvedScene || {}),
+      mode: 'continuous',
+      seam_policy: 'hidden',
+      notes: clean(resolvedScene?.notes || normalized.surface_topology?.notes || '', 500),
+    }, sceneContext);
+    return {
+      ...normalized,
+      surface_topology: effectiveSurface,
+      surface_resolution: {
+        authority: 'scene_contract',
+        conflict: shotRequestsSegmentation,
+        reason: shotRequestsSegmentation
+          ? 'shot_segmentation_intent_reinterpreted_as_finish_variation'
+          : 'scene_continuous_surface_inherited',
+      },
+    };
+  }
+
+  const effectiveSurface = isolatedComparison
+    ? (normalizeSurfaceTopology(normalized.surface_topology) || resolvedScene)
+    : (resolveSurfaceTopology(normalized.surface_topology, shotText) || resolvedScene);
+  return {
+    ...normalized,
+    surface_topology: effectiveSurface,
+    surface_resolution: {
+      authority: isolatedComparison && normalized.surface_topology ? 'isolated_shot_contract' : (normalized.surface_topology ? 'shot_contract' : (resolvedScene ? 'scene_contract' : 'none')),
+      conflict: false,
+      reason: isolatedComparison ? 'isolated_product_comparison_scope' : 'no_cross_contract_conflict',
+    },
+  };
+}
+
+function compileBoundShotDesign(shot = {}, sceneLock = null, sceneAsset = null) {
+  return compileShotDesign({
+    shot,
+    sceneSurface: sceneLock?.spatial_contract?.surface_topology
+      || sceneAsset?.scene_contract?.surface_topology
+      || sceneAsset?.surface_topology
+      || null,
+    sceneText: [sceneLock?.layout_summary, sceneLock?.material_summary, sceneAsset?.layout_summary, sceneAsset?.material_summary],
+  });
+}
+
+function surfaceConflictPrompt(resolution = null) {
+  if (resolution?.conflict !== true) return '';
+  return 'Surface conflict resolution (authoritative): any narrative words about combining, splicing or contrasting multiple finishes describe optical colour, reflectivity or microtexture variation on the SAME monolithic plane. They do not authorize panels, tiles, sample blocks, grids, borders, grooves, gaps or visible joints.';
+}
+
 function surfacePrompt(surface = null, shotScope = 'auto') {
   const topology = normalizeSurfaceTopology(surface);
   const scope = enumValue(shotScope, SHOT_SCOPES, 'auto');
@@ -205,12 +289,16 @@ module.exports = {
   structuredText,
   normalizeSurfaceTopology,
   hasContinuousSurfaceIntent,
+  hasSegmentedSurfaceIntent,
   hasExplicitFinishRegionMapping,
   resolveSurfaceTopology,
   normalizeMaterialContract,
   normalizeMotionEffect,
   normalizeShotDesign,
+  compileShotDesign,
+  compileBoundShotDesign,
   surfacePrompt,
+  surfaceConflictPrompt,
   keyframeEffectPrompt,
   motionEffectPrompt,
 };

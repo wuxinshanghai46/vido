@@ -106,13 +106,55 @@ async function main() {
   await waitUntil(() => storage.getTask(taskId).stage === 'video_failed');
   assert.equal(storage.getTask(taskId).error_code, 'AUTH_CONFIG');
   assert.equal(storage.getTask(taskId).retryable, false);
+  assert.equal(storage.getTask(taskId).support_id, failed.job.id);
+  assert.match(storage.getTask(taskId).error, new RegExp(`支持编号：${failed.job.id}`));
   const failedStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'video');
   assert.equal(failedStage.output_summary, '执行失败，未保存可用结果', '失败重试必须覆盖旧的用户取消摘要');
+  assert.equal(failedStage.diagnostics.support_id, failed.job.id);
+
+  const structuredFailure = jobs.queueStage({
+    taskId,
+    stage: 'keyframes',
+    execute: async () => {
+      const error = new Error('第 2、4、5 镜未生成可用分镜图；已保留成功镜头，可仅补齐失败镜头。');
+      error.code = 'KEYFRAME_BATCH_PARTIAL_FAILURE';
+      error.retryable = true;
+      error.details = [{ shot_number: 2, title: '镜头二', code: 'PROVIDER_5XX_AMBIGUOUS', message: '供应商内部错误', status: 'failed', candidate_exists: false }];
+      throw error;
+    },
+  });
+  await waitUntil(() => storage.getTask(taskId).stage === 'keyframes_failed');
+  const structuredTask = storage.getTask(taskId);
+  assert.equal(structuredTask.error_code, 'KEYFRAME_BATCH_PARTIAL_FAILURE');
+  assert.equal(structuredTask.retryable, true);
+  assert.equal(structuredTask.support_id, structuredFailure.job.id);
+  assert.match(structuredTask.error, /第 2、4、5 镜未生成可用分镜图/);
+  assert.match(structuredTask.error, new RegExp(structuredFailure.job.id));
+  const structuredStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
+  assert.equal(structuredStage.diagnostics.failure_details[0].shot_number, 2);
+  assert.equal(structuredStage.diagnostics.failure_details[0].code, 'PROVIDER_5XX_AMBIGUOUS');
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });
   assert.deepEqual(modelGateway.classifyError(new Error('The input image may contain real person. Request id: 02178417084623764d8a6219dbbdb6281842e0590025e923e2605')), { code: 'INPUT_PERSON_PRIVACY', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request id: 02178417084623764d8a6219dbbdb6281842e0590025e923e2605')), { code: 'UNKNOWN', retryable: false });
+  const providerFailure = new Error('Internal Server Error');
+  providerFailure.providerPayload = { code: 500, reason: 'UNKXXXO004IFR', message: 'Internal Server Error', request_id: 'provider-request-1' };
+  assert.deepEqual(mediaAdapter.providerErrorDiagnostics(providerFailure), {
+    provider_status: '500',
+    provider_reason: 'UNKXXXO004IFR',
+    provider_request_id: 'provider-request-1',
+    provider_error_code: '500',
+  });
+  const storedProviderCall = storage.saveModelCall({
+    task_id: taskId,
+    stage: 'new_story_ad.keyframe',
+    status: 'failed',
+    error_code: 'PROVIDER_5XX_AMBIGUOUS',
+    ...mediaAdapter.providerErrorDiagnostics(providerFailure),
+  });
+  assert.equal(storedProviderCall.provider_reason, 'UNKXXXO004IFR');
+  assert.equal(storedProviderCall.provider_request_id, 'provider-request-1');
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('视觉模型全部失败'), { code: 'VISION_QA_UNAVAILABLE' })), true);
   assert.strictEqual(service.isQaInfrastructureError(new Error('视觉模型未返回有效 JSON')), true);
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('vision response schema invalid'), { code: 'VISION_QA_SCHEMA_INVALID' })), true);

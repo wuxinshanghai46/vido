@@ -40,6 +40,16 @@ function buildKeyframeContracts(ctx, shots) {
   return (Array.isArray(shots) ? shots : []).map((shot, idx) => {
     const sceneLock = sceneContractForShot(ctx, shot, idx);
     const productPresence = productIdentity.shotProductPresence(ctx, shot, {});
+    const compiledShotDesign = shotDesign.compileShotDesign({
+      shot,
+      sceneSurface: sceneLock?.spatial_contract?.surface_topology || null,
+      sceneText: [
+        sceneLock?.layout_summary,
+        sceneLock?.material_summary,
+        sceneLock?.scene_contract?.layout_summary,
+        sceneLock?.scene_contract?.material_summary,
+      ],
+    });
     const contract = {
       shot_index: idx + 1,
       title: shot.title || `镜头 ${idx + 1}`,
@@ -103,7 +113,8 @@ function buildKeyframeContracts(ctx, shots) {
         style_direction: styleControl.notes || '',
         negative_requirements: negativeControl.text || '',
         text_rule: 'do not render readable UI labels, slogans, captions or brand text in image; leave clean post-production space if needed',
-        shot_design: shotDesign.normalizeShotDesign(shot),
+        shot_design: compiledShotDesign,
+        surface_topology_resolution: compiledShotDesign.surface_resolution,
       },
       negative_prompt: [
         'wrong advertised subject',

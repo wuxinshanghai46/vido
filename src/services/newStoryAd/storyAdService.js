@@ -15,6 +15,7 @@ const mediaAdapter = require('./mediaAdapter');
 const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
+const keyframeFailure = require('./keyframeFailureService');
 const composeService = require('./composeService');
 const {
   bindShotsToScenes,
@@ -471,6 +472,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     active_generation_id: task.active_generation_id || '',
     error: cleanText(task.error || '', 300),
     error_code: task.error_code || '',
+    support_id: task.support_id || '',
     retryable: task.retryable === true,
     actor_name: cleanText(context.person_asset?.name || context.person_spec?.displayName || context.person_spec?.roleName || '', 100),
     generation_queued_at: task.generation_queued_at || '',
@@ -1228,16 +1230,20 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const actionText = cleanText(shot.action || shot.visual_action || '', 500);
-  const design = shotDesign.normalizeShotDesign(shot);
+  const previousFrame = options.previousFrame || null;
+  const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
+  const contractDesign = visualContract.shot_design;
+  const design = contractDesign?.surface_resolution
+    ? contractDesign
+    : shotDesign.compileBoundShotDesign(shot, sceneLock, sceneAsset);
   const surfaceDesignText = shotDesign.surfacePrompt(design.surface_topology, design.shot_scope);
+  const surfaceConflictText = shotDesign.surfaceConflictPrompt(design.surface_resolution);
   const keyframeEffectText = shotDesign.keyframeEffectPrompt(design.motion_effect);
   const interactionRequested = /指向|伸手|食指|点击|点按|触摸|滑动|操作|按下|拿起|握住|放置|递给|注视|凝视|point|tap|touch|swipe|operate|press|pick up|hold|place|hand over|look at|gaze/i
     .test([visualText, actionText].filter(Boolean).join(' '));
   const interactionGroundingText = interactionRequested
     ? 'Visible interaction grounding is mandatory: every pointing, touching, operating, holding or gaze action must connect to a clearly visible, physically reachable target from this shot, such as the specified product, prop, control, screen, table or interface. Align fingertip, hand and eyeline with the same target. Never point, tap or gesture into empty air. If the requested target cannot be shown coherently, use a natural grounded pose with hands resting on or holding a visible task object.'
     : '';
-  const previousFrame = options.previousFrame || null;
-  const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
   const includeSceneSurfaceContract = !design.surface_topology || design.shot_scope === 'product_comparison';
   const sceneReferenceText = sceneAssetPrompt(sceneAsset, { includeSurfaceContract: includeSceneSurfaceContract });
   const sceneBindingText = sceneLock ? [
@@ -1287,6 +1293,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
       : `Action: ${actionText}`,
     interactionGroundingText,
     surfaceDesignText,
+    surfaceConflictText,
     keyframeEffectText,
     `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
     !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
@@ -1340,7 +1347,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'subject', cap: 130, items: 2, match: /^Advertised subject|^Shot \d+:/i },
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
-    { name: 'design', cap: 700, items: 9, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
+    { name: 'design', cap: 880, items: 10, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Surface conflict resolution \(authoritative\):|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
     { name: 'actor', cap: 320, items: 5, match: /Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
     { name: 'scene', cap: 300, items: 5, match: /scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
@@ -1442,7 +1449,7 @@ function previewShotPrompts(taskId, options = {}) {
   const previousShot = index > 0 ? boundShots[index - 1] : null;
   return {
     shot_index: index + 1,
-    shot_design: shotDesign.normalizeShotDesign(shot),
+    shot_design: contract.visual_contract?.shot_design || shotDesign.normalizeShotDesign(shot),
     keyframe_prompt: buildKeyframePrompt(ctx, shot, contract, index, {
       sceneAsset: sceneAssetForShot(ctx, shot, index),
       previousFrame: acceptedKeyframeContextAt(storage.getOutput(taskId, 'keyframes') || [], index - 1),
@@ -1751,12 +1758,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           accepted_at: new Date().toISOString(),
           qa_policy_version: 2,
         },
-        latest_attempt: {
-          generation_id: generationProgress.generation_id,
-          status: 'accepted',
-          candidates: shotCandidates,
-          finished_at: new Date().toISOString(),
-        },
+        latest_attempt: keyframeFailure.attempt({ generationId: generationProgress.generation_id, status: 'accepted', candidates: shotCandidates }),
       };
     } catch (err) {
       if (err?.code === 'STAGE_DEADLINE_EXCEEDED' || err?.code === 'USER_CANCELLED') {
@@ -1795,16 +1797,15 @@ async function generateKeyframesStage(taskId, options = {}) {
           candidates: [...(Array.isArray(previousAcceptedFrame.candidates) ? previousAcceptedFrame.candidates : []), ...shotCandidates]
             .filter((candidate, candidateIndex, all) => all.findIndex(item => String(item?.id || item?.image_url || '') === String(candidate?.id || candidate?.image_url || '')) === candidateIndex)
             .slice(-8),
-          latest_attempt: {
-            generation_id: generationProgress.generation_id,
+          latest_attempt: keyframeFailure.attempt({
+            generationId: generationProgress.generation_id,
             status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected'),
-            error: String(err.message || err),
-            error_code: err.code || 'KEYFRAME_FAILED',
+            error: err,
             candidates: shotCandidates,
-            finished_at: new Date().toISOString(),
-          },
+          }),
         };
       } else {
+        const failedStatus = retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed');
         keyframes[i] = {
           ...(keyframes[i] || {}),
           shot_index: i,
@@ -1814,8 +1815,9 @@ async function generateKeyframesStage(taskId, options = {}) {
           error_code: err.code || 'KEYFRAME_FAILED',
           contract: contracts[i] || null,
           candidates: shotCandidates,
-          current_generation_status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed'),
+          current_generation_status: failedStatus,
           current_generation_id: generationProgress.generation_id,
+          latest_attempt: keyframeFailure.attempt({ generationId: generationProgress.generation_id, status: failedStatus, error: err, candidates: shotCandidates }),
         };
       }
     }
@@ -1886,14 +1888,11 @@ async function generateKeyframesStage(taskId, options = {}) {
         current_generation_status: 'blocked',
         current_generation_id: generationProgress.generation_id,
         contract: contracts[index] || previousAcceptedFrame.contract || null,
-        latest_attempt: {
-          generation_id: generationProgress.generation_id,
+        latest_attempt: keyframeFailure.attempt({
+          generationId: generationProgress.generation_id,
           status: 'blocked',
-          error: message,
-          error_code: 'KEYFRAME_DEPENDENCY_BLOCKED',
-          candidates: [],
-          finished_at: new Date().toISOString(),
-        },
+          error: Object.assign(new Error(message), { code: 'KEYFRAME_DEPENDENCY_BLOCKED' }),
+        }),
       };
     } else {
       keyframes[index] = {
@@ -1906,6 +1905,11 @@ async function generateKeyframesStage(taskId, options = {}) {
         contract: contracts[index] || null,
         current_generation_status: 'blocked',
         current_generation_id: generationProgress.generation_id,
+        latest_attempt: keyframeFailure.attempt({
+          generationId: generationProgress.generation_id,
+          status: 'blocked',
+          error: Object.assign(new Error(message), { code: 'KEYFRAME_DEPENDENCY_BLOCKED' }),
+        }),
       };
     }
   }
@@ -1967,18 +1971,16 @@ async function generateKeyframesStage(taskId, options = {}) {
     err.attempts = attempts;
     throw err;
   }
-  const failed = targetIndexes
-    .filter(index => !isCompleteKeyframe(keyframes[index]) || keyframes[index]?.qa?.pass !== true)
-    .map(index => ({ index, error: keyframes[index]?.error || 'keyframe or scene QA failed' }));
+  const failed = keyframeFailure.describeBatchFailures({ targetIndexes, keyframes, shots, isComplete: isCompleteKeyframe });
   if (failed.length) {
-    const message = `Keyframe image generation failed for shot ${failed.map(a => a.index + 1).join(', ')}`;
+    const err = keyframeFailure.batchError(failed, keyframes, attempts);
+    const message = err.message;
     generationProgress.status = 'failed';
     generationProgress.finished_at = new Date().toISOString();
-    storage.saveStage(taskId, 'keyframes', { status: 'failed', error: message, diagnostics: { attempts } });
-    storage.updateTask(taskId, { status: 'failed', stage: 'keyframes_failed', error: message, error_code: 'KEYFRAME_GENERATION_FAILED', retryable: true, generation_progress: { ...generationProgress } });
-    const err = new Error(message);
-    err.keyframes = keyframes;
-    err.attempts = attempts;
+    generationProgress.failed_shots = failed.map(item => item.shot_number);
+    generationProgress.error_code = 'KEYFRAME_BATCH_PARTIAL_FAILURE';
+    storage.saveStage(taskId, 'keyframes', { status: 'failed', error: message, diagnostics: { attempts, failures: failed, generation_id: generationProgress.generation_id } });
+    storage.updateTask(taskId, { status: 'failed', stage: 'keyframes_failed', error: message, error_code: 'KEYFRAME_BATCH_PARTIAL_FAILURE', retryable: true, generation_progress: { ...generationProgress } });
     throw err;
   }
   const finalStatus = keyframeCompletion(keyframes, shots);

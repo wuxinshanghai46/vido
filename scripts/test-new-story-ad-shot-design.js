@@ -5,6 +5,7 @@ const continuity = require('../src/services/newStoryAd/continuityService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const keyframeContracts = require('../src/services/newStoryAd/keyframeContractService');
 
 const empty = shotDesign.normalizeShotDesign({});
 assert.strictEqual(empty.shot_scope, 'auto');
@@ -86,6 +87,48 @@ assert.doesNotMatch(isolatedPrompt, /material may still be physically supplied|K
 assert.doesNotMatch(isolatedPrompt, /第一块样品|Entry frame state:|Action start\/end:/);
 assert.strictEqual((isolatedPrompt.match(/Shot scope:/g) || []).length, 1);
 assert.doesNotMatch(isolatedPrompt, /Master environment only — Surface topology lock:/);
+
+const conflictingContext = {
+  brief: '同一艺术空间内展示材质效果',
+  product_subject: '任务主体',
+  scene_assets: [{
+    id: 'scene_continuous',
+    name: '连续主场景',
+    layout_summary: '一整面连续完整的主墙面',
+    material_summary: '表面允许细腻的光泽和微纹理变化，但不得出现板块边界',
+    scene_contract: {
+      surface_topology: { mode: 'continuous', seam_policy: 'hidden', finish_distribution: 'uniform' },
+    },
+  }],
+};
+const conflictingShot = {
+  title: '材质灵感展开',
+  scene_id: 'scene_continuous',
+  shot_scope: 'environment',
+  visual: '整面墙由金属拉丝、做旧钢板与细碎纹理等不同质感拼接而成',
+  action: '人物观察墙面不同区域的细节变化',
+};
+const [compiledConflictContract] = keyframeContracts.buildKeyframeContracts(conflictingContext, [conflictingShot]);
+assert.equal(compiledConflictContract.visual_contract.shot_design.surface_topology.mode, 'continuous');
+assert.equal(compiledConflictContract.visual_contract.shot_design.surface_topology.seam_policy, 'hidden');
+assert.equal(compiledConflictContract.visual_contract.shot_design.surface_topology.finish_distribution, 'uniform');
+assert.equal(compiledConflictContract.visual_contract.surface_topology_resolution.authority, 'scene_contract');
+assert.equal(compiledConflictContract.visual_contract.surface_topology_resolution.conflict, true);
+const conflictingPrompt = storyAd.buildKeyframePrompt(conflictingContext, conflictingShot, compiledConflictContract, 0);
+assert.match(conflictingPrompt, /Surface conflict resolution \(authoritative\)/i);
+assert.match(conflictingPrompt, /SAME monolithic plane/i);
+assert.match(conflictingPrompt, /They do not authorize panels, tiles, sample blocks, grids/i);
+assert.match(conflictingPrompt, /Surface topology lock: ONE monolithic uninterrupted visual plane/i);
+
+const [comparisonContract] = keyframeContracts.buildKeyframeContracts(conflictingContext, [{
+  ...conflictingShot,
+  title: '独立样品对比',
+  shot_scope: 'product_comparison',
+  surface_topology: { mode: 'segmented', seam_policy: 'visible', finish_distribution: 'sample_comparison' },
+}]);
+assert.equal(comparisonContract.visual_contract.shot_design.surface_topology.mode, 'segmented');
+assert.equal(comparisonContract.visual_contract.surface_topology_resolution.authority, 'isolated_shot_contract');
+assert.equal(comparisonContract.visual_contract.surface_topology_resolution.conflict, false);
 
 const comparisonText = shotDesign.surfacePrompt({
   mode: 'segmented',

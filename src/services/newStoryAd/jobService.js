@@ -41,6 +41,13 @@ function classifyFailure(error) {
       message: '剧本内容触发供应商审核，已停止继续调用。请移除未经授权的品牌/IP、公众人物、角色复刻或指定艺术家风格后重新生成。',
     };
   }
+  if (String(error?.code || '') === 'KEYFRAME_BATCH_PARTIAL_FAILURE') {
+    return {
+      code: 'KEYFRAME_BATCH_PARTIAL_FAILURE',
+      retryable: true,
+      message: rawMessage,
+    };
+  }
   if (error?.code) {
     return { code: String(error.code), retryable: error.retryable === true, message };
   }
@@ -65,6 +72,24 @@ function classifyFailure(error) {
   return { code: 'UNKNOWN', retryable: false, message };
 }
 
+function withSupportId(message = '', supportId = '') {
+  const text = String(message || '').trim();
+  if (!supportId || text.includes(String(supportId))) return text;
+  return `支持编号：${supportId}。${text}`.trim();
+}
+
+function sanitizedFailureDetails(error = null) {
+  const details = Array.isArray(error?.details) ? error.details : [];
+  return details.slice(0, 50).map(item => ({
+    shot_number: Number(item?.shot_number || 0) || 0,
+    title: String(item?.title || '').slice(0, 120),
+    code: String(item?.code || '').slice(0, 100),
+    message: String(item?.message || '').slice(0, 500),
+    status: String(item?.status || '').slice(0, 80),
+    candidate_exists: item?.candidate_exists === true,
+  }));
+}
+
 function publicJob(job = {}) {
   return {
     id: job.id,
@@ -76,6 +101,7 @@ function publicJob(job = {}) {
     finished_at: job.finishedAt || '',
     error_code: job.errorCode || '',
     error: job.error || '',
+    support_id: job.supportId || job.id || '',
     retryable: job.retryable === true,
   };
 }
@@ -212,6 +238,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
     errorCode: '',
     error: '',
     retryable: false,
+    supportId: id,
     deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
   };
   runningJobs.set(key, job);
@@ -226,6 +253,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
     generation_progress: null,
     error: '',
     error_code: '',
+    support_id: '',
   });
   storage.saveStage(taskId, stage, {
     status: 'queued',
@@ -274,6 +302,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           generation_finished_at: job.finishedAt,
           error: '',
           error_code: '',
+          support_id: '',
         });
       }
     } catch (error) {
@@ -290,8 +319,10 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
       job.status = 'failed';
       job.finishedAt = new Date().toISOString();
       job.errorCode = failure.code;
-      job.error = failure.message.slice(0, 1000);
+      job.supportId = id;
+      job.error = withSupportId(failure.message, id).slice(0, 1000);
       job.retryable = failure.retryable;
+      const failureDetails = sanitizedFailureDetails(error);
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') === id) {
         storage.saveStage(taskId, stage, {
@@ -302,8 +333,10 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           error: job.error,
           diagnostics: {
             generation_id: id,
+            support_id: id,
             error_code: failure.code,
             retryable: failure.retryable,
+            ...(failureDetails.length ? { failure_details: failureDetails } : {}),
           },
         }, { systemFinalization: true });
         storage.updateTask(taskId, {
@@ -314,12 +347,15 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           generation_finished_at: job.finishedAt,
           error: job.error,
           error_code: failure.code,
+          support_id: id,
           retryable: failure.retryable,
           ...(current.generation_progress?.stage === stage ? {
             generation_progress: {
               ...current.generation_progress,
               status: 'failed',
               error_code: failure.code,
+              support_id: id,
+              ...(failureDetails.length ? { failure_details: failureDetails } : {}),
               message: job.error,
               finished_at: job.finishedAt,
               updated_at: job.finishedAt,
@@ -342,7 +378,8 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
       job.status = 'failed';
       job.finishedAt = new Date().toISOString();
       job.errorCode = failure.code;
-      job.error = failure.message.slice(0, 1000);
+      job.supportId = id;
+      job.error = withSupportId(failure.message, id).slice(0, 1000);
       job.retryable = true;
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') !== id) return;
@@ -352,7 +389,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
         finished_at: job.finishedAt,
         output_summary: '执行超时，未保存可用结果',
         error: job.error,
-        diagnostics: { generation_id: id, error_code: failure.code, retryable: true },
+        diagnostics: { generation_id: id, support_id: id, error_code: failure.code, retryable: true },
       }, { systemFinalization: true });
       storage.updateTask(taskId, {
         status: 'failed',
@@ -362,12 +399,14 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
         generation_finished_at: job.finishedAt,
         error: job.error,
         error_code: failure.code,
+        support_id: id,
         retryable: true,
         ...(current.generation_progress?.stage === stage ? {
           generation_progress: {
             ...current.generation_progress,
             status: 'failed',
             error_code: failure.code,
+            support_id: id,
             message: job.error,
             finished_at: job.finishedAt,
             updated_at: job.finishedAt,
