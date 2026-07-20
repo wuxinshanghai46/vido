@@ -58,6 +58,8 @@ function testFrontendCompletenessGuardIsWired() {
   assert.match(source, /function completePersonSpecSuggestion\(/);
   assert.match(source, /const completedSuggestion = completePersonSpecSuggestion\(suggestion, current, fallback\)/);
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
+  assert.match(source, /function completeSceneSpecSuggestion\(/);
+  assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
 }
 
 /** 验证真实 assist 服务在模型部分返回时也会输出完整人物设定。 */
@@ -93,13 +95,64 @@ async function testAssistServiceCompletesPartialResponse() {
   }
 }
 
+/** 验证场景模型只返回一条残句时，原有四项设定不会被清空。 */
+async function testSceneAssistPreservesCompleteExistingSpec() {
+  const originalGenerateText = modelGateway.generateText;
+  modelGateway.generateText = async () => ({
+    text: JSON.stringify({ scene_spec: { layoutText: '一个现代空间，核心墙面由' } }),
+    used_model: 'mock/partial-scene-spec',
+    fallback_used: false,
+    failed_models: [],
+  });
+  const current = {
+    layoutText: '一个可连续拍摄的完整现代空间，入口、前景、背景、展示区和行动通路清晰，多个镜头切换后仍保持同一空间身份。',
+    materialLightText: '用户指定的金属表面、色彩、纹理、反射、粗糙度和尺度保持一致，采用自然侧光与克制的商业重点光。',
+    interactionText: '预留人物站位、商品展示区、可到达的互动区域以及连续镜头移动路径，场景参考保持空场景。',
+    negativeText: '不要人物、文字、水印、Logo、无关装饰、材质漂移、结构变化、模块化拼板或可见接缝。',
+    surfaceTopology: { mode: 'continuous', seam_policy: 'hidden', finish_distribution: 'uniform' },
+  };
+  try {
+    const response = await service.assistBrief({
+      mode: 'scene_spec',
+      brief: '为当前产品制作真实商业空间广告',
+      product_subject: '当前产品',
+      scene_spec: current,
+    }, { id: 'test-user' });
+    assert.equal(response.scene_spec.layoutText, current.layoutText, '模型残句不得覆盖完整布局');
+    assert.equal(response.scene_spec.materialLightText, current.materialLightText);
+    assert.equal(response.scene_spec.interactionText, current.interactionText);
+    assert.equal(response.scene_spec.negativeText, current.negativeText);
+    assert.equal(response.scene_spec.surfaceTopology.mode, 'continuous');
+  } finally {
+    modelGateway.generateText = originalGenerateText;
+  }
+}
+
+/** 验证没有旧值时也会使用通用兜底补齐四项，而不是放行空字段。 */
+function testSceneAssistFallbackIsComplete() {
+  const result = service.enforceAssistedSceneSpec({ layoutText: '残句' }, {}, {
+    brief: '通用产品广告',
+    product_subject: '通用产品',
+  });
+  assert.ok(result.layoutText.length >= 30);
+  assert.ok(result.materialLightText.length >= 30);
+  assert.ok(result.interactionText.length >= 24);
+  assert.ok(result.negativeText.length >= 24);
+  assert.match(result.layoutText, /完整真实空间/);
+  assert.match(result.materialLightText, /材质、色彩和光线/);
+  assert.match(result.interactionText, /场景参考保持空场景/);
+  assert.match(result.negativeText, /不要出现真人/);
+}
+
 /** 按顺序运行人物辅助补齐专项回归。 */
 async function main() {
   testPartialModelResponseIsCompleted();
   testExistingUserDetailsArePreserved();
   testFrontendCompletenessGuardIsWired();
+  testSceneAssistFallbackIsComplete();
   await testAssistServiceCompletesPartialResponse();
-  console.log('剧情广告人物辅助补齐完整性：全部测试通过');
+  await testSceneAssistPreservesCompleteExistingSpec();
+  console.log('剧情广告人物/场景辅助补齐完整性：全部测试通过');
 }
 
 main().catch(error => {

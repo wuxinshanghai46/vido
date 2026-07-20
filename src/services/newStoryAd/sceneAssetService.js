@@ -1,4 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const storage = require('./storageService');
 const mediaAdapter = require('./mediaAdapter');
 const { cleanText } = require('./contextBuilder');
@@ -280,6 +283,58 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
       attempt += 1;
     }
   }
+}
+
+function localSceneViewPath(view = {}) {
+  const direct = cleanText(view.filePath || view.file_path || '', 1600);
+  if (direct) {
+    const resolved = path.resolve(direct);
+    const root = path.resolve(mediaAdapter.ASSET_DIR);
+    if (resolved.startsWith(root + path.sep) && fs.existsSync(resolved)) return resolved;
+  }
+  const url = cleanText(view.url || view.image_url || view.imageUrl || '', 1600);
+  if (!url.startsWith('/api/new-story-ad/assets/')) return '';
+  const name = decodeURIComponent(url.split('/').pop()?.split('?')[0] || '');
+  const resolved = mediaAdapter.assetPathFromName(name);
+  return resolved && fs.existsSync(resolved) ? resolved : '';
+}
+
+function sceneViewContentHash(view = {}) {
+  const file = localSceneViewPath(view);
+  if (!file) return '';
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function exactSceneViewDuplicate(candidate = {}, references = []) {
+  if (String(process.env.NEW_STORY_AD_MOCK_IMAGE || '') === '1') return false;
+  const candidateHash = sceneViewContentHash(candidate);
+  if (!candidateHash) return false;
+  return (Array.isArray(references) ? references : [references])
+    .some(reference => sceneViewContentHash(reference) === candidateHash);
+}
+
+function assertCompleteUpgradeSceneSpec(body = {}) {
+  if (body.require_complete_scene_spec !== true && body.requireCompleteSceneSpec !== true) return;
+  const spec = body.scene_spec || body.sceneSpec || {};
+  const minimums = {
+    layoutText: 30,
+    materialLightText: 30,
+    interactionText: 24,
+    negativeText: 24,
+  };
+  const missing = Object.entries(minimums)
+    .filter(([key, minimum]) => {
+      const text = cleanText(spec[key] || '', 1000);
+      return text.length < minimum
+        || /(?:由|为|和|与|的|及|以及|包括|采用|融合|形成|一面|一个|一种|位于|呈现)$/u.test(text);
+    })
+    .map(([key]) => key);
+  if (!missing.length) return;
+  const error = new Error(`新版场景空间设定不完整，已在图片调用前停止：${missing.join(', ')}`);
+  error.code = 'SCENE_SPEC_INCOMPLETE';
+  error.retryable = false;
+  error.missing_fields = missing;
+  throw error;
 }
 
 async function generateCheckpointedSceneView(taskId, key, options = {}, progress = {}, budget, checkpoint) {
@@ -720,6 +775,7 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
 
 async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
+  assertCompleteUpgradeSceneSpec(body);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -854,31 +910,61 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         inputFidelity: 'low',
         auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
       }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
-      try {
-        layoutAcquisition = await sceneSpace.validateLayoutAcquisition({
-          taskId,
-          masterUrl: sceneVisionThumbnailUrl(master.url || master.image_url),
-          layoutUrl: sceneVisionThumbnailUrl(layout.url || layout.image_url),
-          requested,
-        });
+      if (exactSceneViewDuplicate(layout, [master])) {
+        layoutAcquisition = {
+          pass: false,
+          layout_role_score: 0,
+          footprint_coverage_score: 0,
+          overhead_verticality_score: 0,
+          boundary_completeness_score: 0,
+          estimated_downward_pitch_degrees: 0,
+          visible_horizon: false,
+          dominant_vertical_wall_face: false,
+          complete_perimeter_visible: false,
+          ceiling_removed_or_not_visible: false,
+          master_like_composition: true,
+          scene_identity_score: 1,
+          camera_relocation_score: 0,
+          reasons: ['俯视布局与主视角文件完全相同，没有发生相机迁移'],
+          deterministic_duplicate: true,
+        };
         sceneCheckpoint.setLayoutAcquisition(checkpoint, layoutAcquisition);
-      } catch (error) {
-        cancellation.throwIfCancelled(taskId);
-        console.warn('[new_story_ad:layout_preflight_unavailable]', {
-          task_id: taskId,
-          scene_id: sceneId,
-          revision,
-          code: error?.code || 'VISION_QA_UNAVAILABLE',
-          message: String(error?.message || error || '').slice(0, 240),
-        });
-        layoutAcquisition = null;
-        break;
+      } else {
+        try {
+          layoutAcquisition = await sceneSpace.validateLayoutAcquisition({
+            taskId,
+            masterUrl: sceneVisionThumbnailUrl(master.url || master.image_url),
+            layoutUrl: sceneVisionThumbnailUrl(layout.url || layout.image_url),
+            requested,
+          });
+          sceneCheckpoint.setLayoutAcquisition(checkpoint, layoutAcquisition);
+        } catch (error) {
+          cancellation.throwIfCancelled(taskId);
+          console.warn('[new_story_ad:layout_preflight_unavailable]', {
+            task_id: taskId,
+            scene_id: sceneId,
+            revision,
+            code: error?.code || 'VISION_QA_UNAVAILABLE',
+            message: String(error?.message || error || '').slice(0, 240),
+          });
+          layoutAcquisition = null;
+          break;
+        }
       }
-      if (layoutAcquisition.pass || qualityAttempt >= 2) break;
+      if (layoutAcquisition.pass) break;
       const layoutRoleError = new Error((layoutAcquisition.reasons || []).join('；') || '俯视布局没有通过角色验证');
-      layoutRoleError.code = 'LAYOUT_ROLE_INVALID';
+      layoutRoleError.code = layoutAcquisition.deterministic_duplicate === true
+        ? 'SCENE_VIEW_EXACT_DUPLICATE'
+        : 'LAYOUT_ROLE_INVALID';
       layoutRoleError.retryable = true;
       sceneCheckpoint.markFailed(checkpoint, 'layout', layoutRoleError, generationBudget);
+      if (qualityAttempt >= 2) {
+        sceneCheckpoint.markPartial(checkpoint, layoutRoleError);
+        layoutRoleError.partial_scene_checkpoint = true;
+        layoutRoleError.completed_view_keys = ['master'];
+        layoutRoleError.failed_view_keys = ['layout'];
+        throw layoutRoleError;
+      }
       layoutCorrection = [
         repairFeedback,
         'Automated layout-role validation rejected the previous candidate.',
@@ -920,6 +1006,13 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       inputFidelity: detailView ? 'high' : 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
     }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+    if (exactSceneViewDuplicate(generated, detailView ? [master] : [master, layout])) {
+      const duplicateError = new Error(`${sceneViewLabel(key)}与其参考视图文件完全相同，没有形成独立机位或景别`);
+      duplicateError.code = 'SCENE_VIEW_EXACT_DUPLICATE';
+      duplicateError.retryable = true;
+      sceneCheckpoint.markFailed(checkpoint, key, duplicateError, generationBudget);
+      throw duplicateError;
+    }
     return normalizeSceneView({
       key,
       label: sceneViewLabel(key),
@@ -1255,6 +1348,9 @@ module.exports = {
   SCENE_IMAGE_EXTRA_ATTEMPTS,
   SCENE_GENERATION_CONTRACT_VERSION,
   sceneViewLabel,
+  sceneViewContentHash,
+  exactSceneViewDuplicate,
+  assertCompleteUpgradeSceneSpec,
   sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
   buildLayoutAcquisitionPrompt,

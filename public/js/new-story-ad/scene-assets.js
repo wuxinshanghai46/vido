@@ -560,6 +560,7 @@
     toast,
     button,
     append = false,
+    fullUpgrade = false,
   } = {}) {
     if (!state || typeof ensureTask !== 'function' || typeof api !== 'function') return false;
     const reconciled = reconcileSurfaceIntent(specPayload(), { syncControls: true });
@@ -608,6 +609,7 @@
           scene_assets: payload(state),
           scene_id: append ? undefined : (currentAsset?.scene_id || currentAsset?.id || undefined),
           lock_strength: 'standard',
+          require_complete_scene_spec: fullUpgrade === true,
         },
       });
       const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage

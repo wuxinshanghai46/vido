@@ -37,6 +37,7 @@ const videoPreflight = require('./videoPreflightService');
 const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
+const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const videoCore = require('../videoGenerationCore');
 
@@ -3688,25 +3689,13 @@ ${outputSchema}`;
   }
   if (isSceneSpec) {
     const raw = parsed.scene_spec || parsed.sceneSpec || parsed;
-    const spec = raw && typeof raw === 'object' ? raw : {};
-    const materialLightText = cleanText(spec.materialLightText || spec.material_light_text || spec.materialLight || spec.material || spec.light || '', 420);
-    const surfaceTopology = shotDesign.resolveSurfaceTopology(
-      spec.surfaceTopology || spec.surface_topology,
-      [materialLightText, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
+    const spec = sceneAssistCompleteness.enforceAssistedSceneSpec(
+      raw && typeof raw === 'object' ? raw : {},
+      ctx.scene_spec || ctx.sceneSpec || {},
+      ctx,
     );
     return {
-      scene_spec: {
-        layoutText: cleanText(spec.layoutText || spec.layout_text || spec.layout || spec.description || '', 420),
-        materialLightText,
-        interactionText: cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 320),
-        negativeText: cleanText(spec.negativeText || spec.negative_text || spec.negative || '', 420),
-        surfaceTopology,
-        materialContract: shotDesign.normalizeMaterialContract(spec.materialContract || spec.material_contract, {
-          sourceText: materialLightText,
-          topology: surfaceTopology,
-          referenceAvailable: false,
-        }),
-      },
+      scene_spec: spec,
       mode,
       model_meta: {
         used_model: result.used_model,
@@ -3781,6 +3770,7 @@ module.exports = {
   assistBrief,
   alignPersonAgeDescription,
   enforceAssistedPersonSpec,
+  enforceAssistedSceneSpec: sceneAssistCompleteness.enforceAssistedSceneSpec,
   normalizeAssistedShotSettings,
   keyframeCompletion,
   keyframeTargetIndexes,

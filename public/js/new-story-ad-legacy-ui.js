@@ -5289,6 +5289,34 @@
     };
   }
 
+  function completeSceneSpecSuggestion(suggestion = {}, current = {}, fallback = {}) {
+    const proposed = suggestion && typeof suggestion === 'object' ? suggestion : {};
+    const existing = current && typeof current === 'object' ? current : {};
+    const safe = fallback && typeof fallback === 'object' ? fallback : {};
+    const usable = (text, minimum) => text.length >= minimum
+      && !/(?:由|为|和|与|的|及|以及|包括|采用|融合|形成|一面|一个|一种|位于|呈现)$/u.test(text);
+    const choose = (key, minimum) => {
+      const candidate = String(proposed[key] || '').trim();
+      const prior = String(existing[key] || '').trim();
+      if (usable(candidate, minimum)) return candidate;
+      if (usable(prior, minimum)) return prior;
+      return String(safe[key] || '').trim();
+    };
+    return {
+      ...proposed,
+      layoutText: choose('layoutText', 30),
+      materialLightText: choose('materialLightText', 30),
+      interactionText: choose('interactionText', 24),
+      negativeText: choose('negativeText', 24),
+      surfaceTopology: proposed.surfaceTopology || proposed.surface_topology
+        || existing.surfaceTopology || existing.surface_topology
+        || safe.surfaceTopology || safe.surface_topology || {},
+      materialContract: proposed.materialContract || proposed.material_contract
+        || existing.materialContract || existing.material_contract
+        || safe.materialContract || safe.material_contract || {},
+    };
+  }
+
   function selectedSceneUpgradeRequired() {
     return window.NewStoryAdSceneAssets?.selectedSceneUpgradeRequired?.(state) === true;
   }
@@ -5315,6 +5343,7 @@
     }
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
+    const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
     const label = '补齐场景中...';
     setButtonBusy(button, true, label);
     try {
@@ -5337,7 +5366,8 @@
         }
         suggestion = fallbackSceneSpecFromBrief(brief);
       }
-      const nextSpec = suggestion || fallbackSceneSpecFromBrief(brief);
+      const fallbackSpec = fallbackSceneSpecFromBrief(brief);
+      const nextSpec = completeSceneSpecSuggestion(suggestion, currentSpec, fallbackSpec);
       let changed = false;
       if (replaceExisting && window.NewStoryAdSceneAssets?.applySpec) {
         window.NewStoryAdSceneAssets.applySpec(nextSpec, { clearMissing: false });
@@ -5376,6 +5406,7 @@
       toast,
       button,
       append,
+      fullUpgrade: options.upgradePrepared === true,
     });
   }
 

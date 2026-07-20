@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-scene-upgrade-resume-v16';
+  const SCRIPT_VERSION = '20260720-scene-spec-duplicate-gates-v17';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

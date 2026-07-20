@@ -35,6 +35,17 @@ async function main() {
       },
     },
   };
+  assert.throws(
+    () => sceneAssets.assertCompleteUpgradeSceneSpec({
+      require_complete_scene_spec: true,
+      scene_spec: { layoutText: '只有布局，其他字段为空' },
+    }),
+    error => error?.code === 'SCENE_SPEC_INCOMPLETE'
+      && error.missing_fields.includes('materialLightText')
+      && error.missing_fields.includes('interactionText')
+      && error.missing_fields.includes('negativeText'),
+    '完整升级必须在任何图片调用前拒绝缺字段空间设定',
+  );
   storage.createTask({ id: taskId, title: 'spatial generation order', request: context });
   storage.saveOutput(taskId, 'context', context);
 
@@ -48,6 +59,7 @@ async function main() {
   let layoutPreflightFailuresRemaining = 0;
   let finalQaLayoutFailuresRemaining = 0;
   let finalQaUnavailableRemaining = 0;
+  let exactDuplicateFiles = false;
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;
   const originalValidateLayout = sceneSpace.validateLayoutAcquisition;
@@ -65,8 +77,14 @@ async function main() {
       throw error;
     }
     const url = `/mock-scene-view-${callNumber}.png`;
+    let filePath = '';
+    if (exactDuplicateFiles) {
+      fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
+      filePath = path.join(mediaAdapter.ASSET_DIR, `mock-duplicate-${callNumber}.png`);
+      fs.writeFileSync(filePath, 'identical-scene-view-bytes');
+    }
     activeImageCalls -= 1;
-    return { url, image_url: url, provider_used: 'mock/spatial-order' };
+    return { url, image_url: url, filePath, provider_used: 'mock/spatial-order' };
   };
   sceneSpace.analyzeSceneViews = async options => {
     if (finalQaUnavailableRemaining > 0) {
@@ -283,6 +301,29 @@ async function main() {
     const storedLegacyUpgrade = storage.getOutput(legacyUpgradeTaskId, 'scene_assets')[0];
     assert.equal(storedLegacyUpgrade.generation_contract_version, 6, 'published storage must replace v0 with v6 atomically');
     assert.equal(storedLegacyUpgrade.scene_revision, 2);
+
+    const duplicateTaskId = 'spatial-exact-duplicate-gate-test';
+    storage.createTask({ id: duplicateTaskId, title: 'exact duplicate layout gate', request: context });
+    storage.saveOutput(duplicateTaskId, 'context', context);
+    const callsBeforeDuplicateTask = calls.length;
+    exactDuplicateFiles = true;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(duplicateTaskId, {
+        scene_id: 'duplicate-room',
+        scene_spec: context.scene_spec,
+        aspect_ratio: '16:9',
+      }),
+      error => error?.code === 'SCENE_VIEW_EXACT_DUPLICATE'
+        && error?.partial_scene_checkpoint === true,
+      '主视角与俯视布局文件完全相同时必须由代码硬拒绝',
+    );
+    exactDuplicateFiles = false;
+    assert.equal(calls.length - callsBeforeDuplicateTask, 3, '重复布局最多尝试两次，且不得继续生成其余派生视图');
+    const duplicateCheckpoint = storage.getOutput(duplicateTaskId, 'scene_asset_checkpoint:duplicate-room');
+    assert.equal(duplicateCheckpoint.status, 'partial');
+    assert.equal(duplicateCheckpoint.views.master.status, 'succeeded');
+    assert.equal(duplicateCheckpoint.views.layout.status, 'failed');
+    assert.equal(duplicateCheckpoint.views.reverse, undefined);
 
     const retryTaskId = 'spatial-generation-transient-retry-test';
     storage.createTask({ id: retryTaskId, title: 'transient image2 retry', request: context });

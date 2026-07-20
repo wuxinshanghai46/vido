@@ -322,10 +322,10 @@ function main() {
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
-  assert(html.includes('bootstrap.js?v=20260720-scene-upgrade-resume-v16'));
+  assert(html.includes('bootstrap.js?v=20260720-scene-spec-duplicate-gates-v17'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-scene-upgrade-resume-v16'));
+  assert(bootstrap.includes('20260720-scene-spec-duplicate-gates-v17'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));
