@@ -100,7 +100,9 @@
       : shotCount > 0;
     if (keyframeCount || storyboardReady || outputs.keyframe_contracts || /keyframe/.test(stage)) return 4;
     if (/storyboard/.test(stage) && !/(?:failed|cancelled)/.test(stage)) return 3;
-    if (outputs.blueprint || /blueprint/.test(stage)) return 3;
+    if (outputs.blueprint) return 3;
+    if (/blueprint_(?:failed|cancelled)/.test(stage)) return 2;
+    if (/blueprint/.test(stage) && !/blueprint_(?:failed|cancelled)/.test(stage)) return 3;
     if (outputs.scene_config || outputs.scene_assets || /scene/.test(stage)) return 2;
     return 1;
   }
@@ -109,6 +111,25 @@
     const status = clean(task.status || '', 40).toLowerCase();
     const finalVideoUrl = clean(task.videoUrl || task.video_url || task.final_video_url || '', 1000);
     return !finalVideoUrl || !['done', 'completed', 'succeeded'].includes(status);
+  }
+
+  function blueprintFailureMessage(state = {}) {
+    if (state.taskErrorCode === 'STAGE_DEADLINE_EXCEEDED') {
+      return '剧本生成超过安全执行时限，本次没有产生可用剧本；请重新生成剧本。';
+    }
+    return state.taskError || '服务器没有保存可用剧本，请重新生成剧本。';
+  }
+
+  function blueprintFailureHtml(state = {}, escapeHtml = String) {
+    if (state.blueprint || state.taskStatus !== 'failed' || state.taskStage !== 'blueprint_failed') return '';
+    return `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(blueprintFailureMessage(state))}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在当前第 2 步重新生成剧本。</small></div>`;
+  }
+
+  function syncBlueprintFailureHost(state = {}, host, escapeHtml = String) {
+    if (state.busy || !host) return;
+    const failure = blueprintFailureHtml(state, escapeHtml);
+    host.hidden = !failure;
+    host.innerHTML = failure;
   }
 
   window.NewStoryAdTaskStore = {
@@ -121,5 +142,8 @@
     normalizeOutputs,
     resumeStep,
     canContinue,
+    blueprintFailureMessage,
+    blueprintFailureHtml,
+    syncBlueprintFailureHost,
   };
 })();

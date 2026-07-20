@@ -2406,21 +2406,17 @@
       setBusy(true, label);
     }, 1000);
   }
+
   function setBusy(isBusy, label = '处理中...') {
     if (!isBusy) stopStageProgress();
     state.busy = !!isBusy;
     const host = within('#dhNsaAdLiveProgress');
     if (host) {
-      const blueprintFailed = !isBusy
-        && !state.blueprint
-        && state.taskStatus === 'failed'
-        && state.taskStage === 'blueprint_failed';
-      host.hidden = !isBusy && !blueprintFailed;
+      const failure = isBusy ? '' : (window.NewStoryAdTaskStore?.blueprintFailureHtml(state, escapeHtml) || '');
+      host.hidden = !isBusy && !failure;
       host.innerHTML = isBusy
         ? renderStageProgress(label)
-        : (blueprintFailed
-          ? `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(state.taskError || '服务器没有保存可用剧本，请重新生成剧本。')}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在当前第 2 步重新生成剧本。</small></div>`
-          : '');
+        : failure;
     }
     ['#dhNsaAdGenerate', '#dhNsaAdStoryboard', '#dhNsaAdPreviewFrames', '#dhNsaAdGenerateFinalFrames', '#dhNsaAdConfirmGenerate'].forEach(sel => {
       const btn = within(sel);
@@ -2667,7 +2663,7 @@
     if (!state.blueprint) {
       const failed = state.taskStatus === 'failed' && state.taskStage === 'blueprint_failed';
       host.innerHTML = failed
-        ? `<div class="dh-luxgen-empty is-error"><b>本次剧本没有生成成功</b><span>${escapeHtml(state.taskError || '服务器没有保存可用剧本，请返回第 2 步重新生成。')}</span></div>`
+        ? `<div class="dh-luxgen-empty is-error"><b>本次剧本没有生成成功</b><span>${escapeHtml(window.NewStoryAdTaskStore?.blueprintFailureMessage(state))}</span></div>`
         : '<div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“生成剧本”。</span></div>';
       return;
     }
@@ -3572,6 +3568,7 @@
     renderMedia();
     renderStatus();
     renderAutoSaveStatus();
+    window.NewStoryAdTaskStore?.syncBlueprintFailureHost(state, within('#dhNsaAdLiveProgress'), escapeHtml);
     // Dynamic script/storyboard/modal selects are created during the render calls above.
     // Run the workbench-wide enhancer last so every visible selector gets the same dark UI.
     window.NewStoryAdSceneAssets?.syncSpecSelectionState?.();

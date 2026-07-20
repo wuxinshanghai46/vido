@@ -113,7 +113,10 @@ async function main() {
     assert.equal(sandbox.window.NewStoryAdGenerationFlow.blueprintIsReady({ outputs: { blueprint: { beats: [{ beat_index: 1 }] } } }, {}), true);
     const uiSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
     assert(uiSource.includes('本次剧本没有生成成功'));
-    assert(uiSource.includes('人物、场景和已通过的空间验证均已保留'));
+    assert(uiSource.includes('syncBlueprintFailureHost'));
+    const taskStoreSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/task-store.js'), 'utf8');
+    assert(taskStoreSource.includes('人物、场景和已通过的空间验证均已保留'));
+    assert(taskStoreSource.includes("state.taskErrorCode === 'STAGE_DEADLINE_EXCEEDED'"));
     console.log('new story ad blueprint lifecycle: ok');
   } finally {
     modelGateway.generateText = originalGenerateText;
