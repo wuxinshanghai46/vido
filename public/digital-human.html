@@ -25,8 +25,8 @@
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v20">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260720-refresh-route-restore-v20">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260720-refresh-route-restore-v21">
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -43,6 +43,13 @@
     html[data-dh-initial-tab="material-film"] .dh-tab-pane[data-pane="luxury-ad"],
     html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"],
     html[data-dh-initial-tab="new-story-ad"] .dh-tab-pane[data-pane="new-story-ad"] { display: block !important; }
+    html[data-dh-initial-tab="new-story-ad"]:not([data-nsa-story-ready="1"]) #dhNewStoryAdLegacyMount {
+      min-height: 58vh;
+      visibility: hidden;
+    }
+    html[data-dh-initial-tab="new-story-ad"]:not([data-nsa-story-ready="1"]) [data-nsa-lazy-loader] {
+      display: flex !important;
+    }
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) .dh-nav-item.active {
       background: transparent;
       color: var(--dh-text-soft);
@@ -171,6 +178,7 @@
       <section class="dh-view" id="dhView">
 
         <div class="dh-tab-pane dh-new-story-ad-pane" data-pane="new-story-ad">
+          <div data-nsa-lazy-loader="true" style="display:none;margin:12px 20px;padding:10px 14px;min-height:48px;align-items:center;border-radius:10px;background:rgba(59,130,246,.10);color:#bfdbfe;font-size:13px;">正在恢复已保存的任务数据，任务内容不会丢失…</div>
           <div id="dhNewStoryAdLegacyMount">
           <div class="dh-wizard-head">
             <div>
@@ -2528,9 +2536,9 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260720-refresh-route-restore-v20"></script>
   <!-- 剧情广告脚本只在进入对应标签时加载，避免拖慢数字人和其他平台功能。 -->
-  <script src="/js/new-story-ad/bootstrap.js?v=20260720-refresh-route-restore-v20"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260720-refresh-route-restore-v21"></script>
+  <script src="/js/digital-human.js?v=20260720-refresh-route-restore-v19"></script>
 </body>
 </html>
 

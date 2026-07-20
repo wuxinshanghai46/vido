@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v20';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v21';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -34,6 +34,8 @@
   function setLoadingState(status = 'loading', message = '') {
     const pane = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]');
     if (!pane) return;
+    if (status === 'loading') delete document.documentElement.dataset.nsaStoryReady;
+    else document.documentElement.dataset.nsaStoryReady = '1';
     pane.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false');
     let indicator = pane.querySelector('[data-nsa-lazy-loader]');
     if (!indicator) {
@@ -128,6 +130,6 @@
   }
 
   window.NewStoryAdBootstrap = { load: loadStoryAd, isActive: storyAdIsActive };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindLazyEntry, { once: true });
-  else bindLazyEntry();
+  // 脚本位于 body 末尾，所需工作台 DOM 已经存在；立即绑定可与主工作台脚本并行加载。
+  bindLazyEntry();
 })();
