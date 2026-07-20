@@ -9,6 +9,9 @@ const outputDir = path.join(root, '.tmp', 'new-story-ad-blueprint-lifecycle');
 fs.rmSync(outputDir, { recursive: true, force: true });
 fs.mkdirSync(outputDir, { recursive: true });
 process.env.OUTPUT_DIR = outputDir;
+process.env.DB_ENABLED = 'false';
+process.env.DB_DUAL_WRITE = 'false';
+process.env.DB_READ_PRIMARY = 'false';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
