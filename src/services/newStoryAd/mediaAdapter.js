@@ -136,7 +136,7 @@ function compactImagePrompt(prompt = '', maxLength = 6000) {
   const raw = String(prompt || '').replace(/\r/g, '').trim();
   if (raw.length <= limit) return raw;
   const blocks = raw.split(/\n{2,}/).map(value => value.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  const priorityPattern = /mandatory correction|user scene requirement|scene layout requirement|material and lighting|interaction and camera|surface construction|task-specific|view requirement|camera|composition|advertised subject|campaign brief|final look target/i;
+  const priorityPattern = /mandatory correction|user scene requirement|scene layout requirement|material and lighting|interaction and camera|surface construction|task-specific|view requirement|camera|composition|advertised subject|campaign brief|final look target|rights and originality rule/i;
   const ordered = [
     ...blocks.slice(0, 2),
     ...blocks.filter(block => priorityPattern.test(block)),
@@ -156,6 +156,7 @@ function compactImagePrompt(prompt = '', maxLength = 6000) {
 }
 
 function isProviderSubmitAuditError(error = null) {
+  if (isProviderRightsAuditError(error)) return false;
   const text = [
     error?.code,
     error?.message,
@@ -164,6 +165,60 @@ function isProviderSubmitAuditError(error = null) {
     error?.response?.data?.message,
   ].filter(Boolean).join(' ');
   return /AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(text);
+}
+
+function providerErrorText(error = null) {
+  return [
+    error?.code,
+    error?.message,
+    error?.response?.data?.code,
+    error?.response?.data?.reason,
+    error?.response?.data?.message,
+    error?.response?.data?.error,
+  ].filter(Boolean).join(' ');
+}
+
+function isProviderRightsAuditError(error = null) {
+  return /copyright|copyrighted|infring(?:e|ement)|intellectual property|\bIP\s*(?:violation|rights|infringement)|版权|著作权|知识产权|侵权|肖像权|名人肖像|celebrity likeness|public figure likeness|trademark|商标权|角色版权/i
+    .test(providerErrorText(error));
+}
+
+function classifyImageGenerationError(error = null) {
+  if (isProviderRightsAuditError(error)) {
+    return {
+      code: 'PROVIDER_RIGHTS_AUDIT',
+      retryable: false,
+      terminal: true,
+      message: '供应商判定输入可能涉及版权、商标、角色或人物肖像授权，已停止自动重试；请确认素材权利或改用原创内容。',
+    };
+  }
+  if (isProviderSubmitAuditError(error)) {
+    return {
+      code: 'PROVIDER_CONTENT_AUDIT',
+      retryable: false,
+      terminal: true,
+      message: '供应商内容审核未通过，已停止自动重试；请检查素材和生成要求。',
+    };
+  }
+  const classified = modelGateway.classifyError(error);
+  if (classified.code === 'PROVIDER_5XX') {
+    return {
+      code: 'PROVIDER_5XX_AMBIGUOUS',
+      retryable: false,
+      terminal: true,
+      message: '供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。',
+    };
+  }
+  // Preserve the existing provider-fallback behavior for ordinary failures.
+  // Only review-sensitive and ambiguous paid-call failures are terminal above.
+  return { ...classified, terminal: false };
+}
+
+function rightsAwareImagePrompt(prompt = '') {
+  const source = String(prompt || '').trim();
+  if (!source) return '';
+  const safety = 'Rights and originality rule: unless the task explicitly states that the relevant rights are cleared, do not reproduce any celebrity or public-figure likeness, copyrighted fictional character, protected artwork, trademark, brand logo or signature visual identity. If such material appears only as a creative reference, translate the intent into generic observable lighting, color, lens, material and composition attributes. Use original, task-specific visual solutions. Treat task-provided references only as requested continuity evidence and never infer additional third-party intellectual property.';
+  return source.includes('Rights and originality rule:') ? source : `${source}\n\n${safety}`.trim();
 }
 
 function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '', forceAuditSafe = false) {
@@ -439,8 +494,10 @@ async function generateImage({
           signal: cancellation.signal(),
           timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
         });
-        const candidatePrompt = promptForImageCandidate(prompt, config, auditSafePrompt);
-        const retryPrompt = promptForImageCandidate(prompt, config, auditSafePrompt, true);
+        const governedPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(prompt) : prompt;
+        const governedAuditPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt;
+        const candidatePrompt = promptForImageCandidate(governedPrompt, config, governedAuditPrompt);
+        const retryPrompt = promptForImageCandidate(governedPrompt, config, governedAuditPrompt, true);
         const generated = await invokeWithAuditSafeRetry(invokeDeyunai, candidatePrompt, retryPrompt, firstError => {
           storage.saveModelCall({
             task_id: taskId,
@@ -477,9 +534,14 @@ async function generateImage({
         return stablePayload;
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
+      const genericPrompt = promptForImageCandidate(
+        String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(prompt) : prompt,
+        config,
+        String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt,
+      );
       const response = await client.images.generate({
         model: config.modelId,
-        prompt,
+        prompt: genericPrompt,
         size: sizeFor(config, aspectRatio),
         n: 1,
       }, { signal: cancellation.signal() });
@@ -527,20 +589,28 @@ async function generateImage({
       throw new Error('图片供应商没有返回图片地址或图片数据。');
     } catch (err) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
-      const classified = modelGateway.classifyError(err);
-      if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED') modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
+      const classified = classifyImageGenerationError(err);
+      if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(classified.code)) {
+        modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
+      }
       storage.saveModelCall({
         task_id: taskId,
         stage,
         provider_id: model.provider_id,
         model_id: model.model_id,
         status: 'failed',
-        error_code: err.code || classified.code,
-        error_message: String(err.message || err).slice(0, 500),
+        error_code: classified.code || err.code,
+        error_message: String(classified.message || err.message || err).slice(0, 500),
         latency_ms: Date.now() - startedAt,
         fallback_rank: candidateIndex + 1,
       });
-      errors.push({ model: modelKey(model), code: err.code || classified.code, retryable: err.retryable === true || classified.retryable, message: String(err.message || err).slice(0, 180) });
+      errors.push({
+        model: modelKey(model),
+        code: classified.code || err.code,
+        retryable: classified.retryable === true,
+        message: String(classified.message || err.message || err).slice(0, 240),
+      });
+      if (classified.terminal === true) break;
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
@@ -579,6 +649,9 @@ module.exports = {
   imagePromptLimit,
   compactImagePrompt,
   isProviderSubmitAuditError,
+  isProviderRightsAuditError,
+  classifyImageGenerationError,
+  rightsAwareImagePrompt,
   promptForImageCandidate,
   requiredImageModelForStage,
   applyImageModelPolicy,

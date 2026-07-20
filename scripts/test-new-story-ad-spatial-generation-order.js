@@ -43,6 +43,8 @@ async function main() {
   let peakImageCalls = 0;
   let transientFailuresRemaining = 0;
   let transientFilenamePattern = null;
+  let transientFailureMessage = 'socket hang up ECONNRESET';
+  let transientFailureCode = '';
   let layoutPreflightFailuresRemaining = 0;
   let finalQaLayoutFailuresRemaining = 0;
   let finalQaUnavailableRemaining = 0;
@@ -58,7 +60,9 @@ async function main() {
     if (transientFailuresRemaining > 0 && transientFilenamePattern?.test(options.filename || '')) {
       transientFailuresRemaining -= 1;
       activeImageCalls -= 1;
-      throw new Error('gpt-image-2 provider error: code=500, message=Internal Server Error');
+      const error = new Error(transientFailureMessage);
+      if (transientFailureCode) error.code = transientFailureCode;
+      throw error;
     }
     const url = `/mock-scene-view-${callNumber}.png`;
     activeImageCalls -= 1;
@@ -239,9 +243,53 @@ async function main() {
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
     });
-    assert.equal(calls.length - callsBeforeRetryTask, 6, 'one transient Image2 500 must retry only the failed view once');
+    assert.equal(calls.length - callsBeforeRetryTask, 6, 'one network reset must retry only the failed view once');
     assert.equal(retried.scene_asset.view_count, 5);
     assert.equal(storage.getTask(retryTaskId).generation_progress.status, 'completed');
+
+    const checkpointTaskId = 'spatial-partial-checkpoint-resume-test';
+    storage.createTask({ id: checkpointTaskId, title: 'partial checkpoint resume', request: context });
+    storage.saveOutput(checkpointTaskId, 'context', context);
+    const callsBeforeCheckpoint = calls.length;
+    transientFailuresRemaining = 1;
+    transientFilenamePattern = /_detail(?:_|\.)/;
+    transientFailureMessage = 'HTTP 500 Internal Server Error; provider review may include copyright policy';
+    transientFailureCode = 'PROVIDER_5XX_AMBIGUOUS';
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(checkpointTaskId, {
+        scene_id: 'checkpoint-room',
+        scene_spec: context.scene_spec,
+        aspect_ratio: '16:9',
+      }),
+      error => error?.code === 'PROVIDER_5XX_AMBIGUOUS' && error?.partial_scene_checkpoint === true,
+    );
+    assert.equal(calls.length - callsBeforeCheckpoint, 5, 'a rights-ambiguous 500 must stop without an automatic paid retry');
+    const partialCheckpoint = storage.getOutput(checkpointTaskId, 'scene_asset_checkpoint:checkpoint-room');
+    assert.equal(partialCheckpoint.status, 'partial');
+    assert.deepEqual(
+      Object.entries(partialCheckpoint.views).filter(([, view]) => view.status === 'succeeded').map(([key]) => key).sort(),
+      ['interaction', 'layout', 'master', 'reverse'],
+      'four completed paid views must remain recoverable',
+    );
+    transientFailuresRemaining = 0;
+    transientFilenamePattern = null;
+    transientFailureMessage = 'socket hang up ECONNRESET';
+    transientFailureCode = '';
+    const resumedCheckpoint = await sceneAssets.generateSceneAsset(checkpointTaskId, {
+      scene_id: 'checkpoint-room',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
+    assert.equal(calls.length - callsBeforeCheckpoint, 6, 'resume must call the provider only for the one missing view');
+    assert.equal(resumedCheckpoint.scene_asset.view_count, 5);
+    assert.equal(resumedCheckpoint.scene_asset.view_acquisition.resumed_from_checkpoint, true);
+    assert.equal(storage.getOutput(checkpointTaskId, 'scene_asset_checkpoint:checkpoint-room').status, 'published');
+    assert.equal(
+      Object.keys(storyAdService.publicTaskBundle(checkpointTaskId).outputs || {})
+        .some(kind => String(kind).startsWith('scene_asset_checkpoint:')),
+      false,
+      'private checkpoint metadata must not leak into the public task bundle',
+    );
 
     const preflightTaskId = 'spatial-layout-preflight-retry-test';
     storage.createTask({ id: preflightTaskId, title: 'layout preflight retry', request: context });
@@ -386,6 +434,17 @@ async function main() {
       { provider_id: 'deyunai', model_id: 'nano-banana' },
     ]);
     assert.deepEqual(policyCandidates.map(item => item.model_id), ['gpt-image-2'], 'story-ad image policy must remove every Nano Banana fallback');
+    assert.match(mediaAdapter.rightsAwareImagePrompt('original commercial scene'), /Rights and originality rule:/);
+    assert.equal(mediaAdapter.isProviderRightsAuditError(new Error('copyright infringement policy')), true);
+    assert.deepEqual(
+      mediaAdapter.classifyImageGenerationError(new Error('HTTP 500 Internal Server Error')),
+      {
+        code: 'PROVIDER_5XX_AMBIGUOUS',
+        retryable: false,
+        terminal: true,
+        message: '供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。',
+      },
+    );
     const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe'];
     strictImageStages.forEach(stageId => {
       assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one Image2 default`);
@@ -410,11 +469,13 @@ async function main() {
     const callsBeforeCircuit = calls.length;
     transientFailuresRemaining = 2;
     transientFilenamePattern = /_master_/;
+    transientFailureMessage = 'socket hang up ECONNRESET';
+    transientFailureCode = 'ECONNRESET';
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(circuitTaskId, { scene_id: 'circuit-room', scene_spec: context.scene_spec }),
-      /Internal Server Error/,
+      /ECONNRESET/,
     );
-    assert.equal(calls.length - callsBeforeCircuit, 2, 'two consecutive upstream failures must stop after one shared-budget retry');
+    assert.equal(calls.length - callsBeforeCircuit, 2, 'two consecutive network failures must stop after one shared-budget retry');
     const cooldownTaskId = 'spatial-image2-cooldown-test';
     storage.createTask({ id: cooldownTaskId, title: 'image2 cooldown', request: context });
     storage.saveOutput(cooldownTaskId, 'context', context);
@@ -426,6 +487,8 @@ async function main() {
     sceneAssets._resetSceneImageCircuit();
     transientFailuresRemaining = 0;
     transientFilenamePattern = null;
+    transientFailureMessage = 'socket hang up ECONNRESET';
+    transientFailureCode = '';
 
     console.log(JSON.stringify({
       success: true,
@@ -440,6 +503,8 @@ async function main() {
       model_management_image2_only: true,
       task_extra_attempt_budget: sceneAssets.SCENE_IMAGE_EXTRA_ATTEMPTS,
       provider_circuit_breaker: true,
+      partial_checkpoint_resume: true,
+      rights_ambiguous_500_stops_retry: true,
     }, null, 2));
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;

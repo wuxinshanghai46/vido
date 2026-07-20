@@ -27,6 +27,7 @@ const novelReview  = require('./seeds/novel_review');
 const deAiExpression = require('./seeds/de_ai_expression');
 const ljgWorkflows = require('./seeds/ljg_workflows');
 const luxuryAdIndustry = require('./seeds/luxury_ad_industry');
+const aiVisualCompliance = require('./seeds/ai_visual_compliance');
 
 const seedDocs = [
   ...digitalHuman,
@@ -43,6 +44,7 @@ const seedDocs = [
   ...deAiExpression,
   ...ljgWorkflows,
   ...luxuryAdIndustry,
+  ...aiVisualCompliance,
 ];
 
 module.exports = seedDocs;

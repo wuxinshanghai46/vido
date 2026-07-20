@@ -356,7 +356,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     }));
   const visibleOutputs = (includeVideoMonitor
     ? (rawBundle.outputs || [])
-    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
+    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'))).filter(row => !String(row.kind || '').startsWith('scene_asset_checkpoint:'))
     .map(row => String(row.kind || '') === 'scene_assets'
       ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(row.payload || []) }
       : row);

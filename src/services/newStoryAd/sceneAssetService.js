@@ -6,6 +6,7 @@ const sceneSpace = require('./sceneSpaceContractService');
 const cancellation = require('./cancellationContext');
 const sceneViewStrategy = require('./sceneViewStrategyService');
 const shotDesign = require('./shotDesignService');
+const sceneCheckpoint = require('./sceneGenerationCheckpointService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -20,7 +21,8 @@ const SCENE_IMAGE_CIRCUIT_COOLDOWN_MS = Math.max(5000, Math.min(300000, Number(p
 const imageCircuit = { consecutiveTransientFailures: 0, openUntil: 0 };
 
 function isTransientImageError(error) {
-  return /(?:\b500\b|internal server error|timeout|timed out|econnreset|econnrefused|socket hang up|connection termination|reset before headers|upstream connect error|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily)|service unavailable)/i
+  if (['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(String(error?.code || ''))) return false;
+  return /(?:timeout|timed out|econnreset|econnrefused|socket hang up|connection termination|reset before headers|upstream connect error|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily))/i
     .test(String(error?.message || error || ''));
 }
 
@@ -170,7 +172,11 @@ function updateSceneGenerationProgress(taskId, update = {}) {
     ? task.generation_progress
     : {};
   const keys = normalizeRepairViewKeys(update.viewKeys?.length ? update.viewKeys : previous.view_keys);
-  const priorStates = new Map((previous.view_states || []).map(item => [item.key, item]));
+  const initialStates = Array.isArray(update.initialViewStates) ? update.initialViewStates : [];
+  const priorStates = new Map([
+    ...(previous.view_states || []).map(item => [item.key, item]),
+    ...initialStates.map(item => [item.key, item]),
+  ]);
   const now = new Date().toISOString();
   const viewStates = keys.map(key => {
     const current = priorStates.get(key) || { key, label: sceneViewLabel(key), status: 'queued' };
@@ -272,6 +278,28 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
       cancellation.throwIfCancelled(taskId);
       attempt += 1;
     }
+  }
+}
+
+async function generateCheckpointedSceneView(taskId, key, options = {}, progress = {}, budget, checkpoint) {
+  try {
+    const generated = await generateTrackedSceneView(taskId, key, options, progress, budget);
+    sceneCheckpoint.markSucceeded(checkpoint, key, {
+      key,
+      label: sceneViewLabel(key),
+      url: generated.url || generated.image_url,
+      image_url: generated.image_url || generated.url,
+      source_url: generated.source_url || '',
+      filename: generated.filename || '',
+      filePath: generated.filePath || generated.file_path || '',
+      provider_used: generated.provider_used || '',
+    }, budget);
+    return generated;
+  } catch (error) {
+    if (error?.code !== 'USER_CANCELLED' && error?.cancelled !== true) {
+      sceneCheckpoint.markFailed(checkpoint, key, error, budget);
+    }
+    throw error;
   }
 }
 
@@ -699,7 +727,6 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     const normalized = normalizeSceneView(view, index);
     return [normalized.key, normalized];
   }));
-  const shouldGenerate = key => !repairMode || repairViewKeys.includes(key) || !previousViews.has(key);
   const repairFeedback = cleanText(runOptions.repairFeedback || '', 1200);
   const promptBody = repairFeedback ? { ...body, repair_feedback: repairFeedback } : body;
   const requested = sceneRequest(ctx, body);
@@ -714,25 +741,70 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   });
   const progressViewKeys = repairMode ? repairViewKeys : requiredViewKeys;
   const progressMode = repairMode ? 'repair' : 'generate';
-  const generationBudget = sceneGenerationBudget(runOptions.generationBudget);
-  updateSceneGenerationProgress(taskId, {
-    mode: progressMode,
-    phase: 'preparing',
-    viewKeys: progressViewKeys,
-  });
-  const revision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
   const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract' });
   const layoutPrompt = buildLayoutAcquisitionPrompt({ ctx, body: promptBody });
   const prompt = buildDerivedViewPrompt(scenePrompt, 'master', {
     referenceOrder: [],
     repairFeedback,
   });
+  const requestedRevision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
+  const fingerprint = sceneCheckpoint.inputFingerprint({
+    generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
+    scene_id: sceneId,
+    requested,
+    scene_prompt: scenePrompt,
+    layout_prompt: layoutPrompt,
+    repair_view_keys: repairViewKeys,
+    repair_feedback: repairFeedback,
+    material_references: materialReferences,
+    aspect_ratio: body.aspect_ratio || body.aspectRatio || '16:9',
+    resolution: body.resolution || '2K',
+    image_model: 'gpt-image-2',
+    generation_order: requiredViewKeys,
+    previous_revision: Number(previous?.scene_revision || 0) || 0,
+  });
+  const initialBudget = sceneGenerationBudget(runOptions.generationBudget);
+  const openedCheckpoint = sceneCheckpoint.open({
+    taskId,
+    sceneId,
+    fingerprint,
+    candidateRevision: requestedRevision,
+    viewKeys: progressViewKeys,
+    retryBudget: initialBudget,
+    metadata: {
+      mode: progressMode,
+      generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
+      reference_graph: {
+        master: [],
+        layout: ['master'],
+        reverse: ['master', 'layout'],
+        interaction: ['master', 'layout'],
+        detail: ['master'],
+      },
+    },
+  });
+  const checkpoint = openedCheckpoint.checkpoint;
+  const revision = checkpoint.candidate_revision;
+  const generationBudget = sceneGenerationBudget(runOptions.generationBudget || {
+    maxExtra: checkpoint.retry_budget?.max_extra,
+    usedExtra: checkpoint.retry_budget?.used_extra,
+    reasons: checkpoint.retry_budget?.reasons,
+  });
+  const selectedView = key => sceneCheckpoint.checkpointView(checkpoint, key)
+    || (repairMode && !repairViewKeys.includes(key) ? previousViews.get(key) : null);
+  const shouldGenerate = key => !selectedView(key);
+  updateSceneGenerationProgress(taskId, {
+    mode: progressMode,
+    phase: 'preparing',
+    viewKeys: progressViewKeys,
+    initialViewStates: sceneCheckpoint.initialViewStates(checkpoint, progressViewKeys),
+  });
   const master = shouldGenerate('master')
-    ? await generateTrackedSceneView(taskId, 'master', {
+    ? await generateCheckpointedSceneView(taskId, 'master', {
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt,
-      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_master_' + Date.now(),
+      filename: sceneCheckpoint.candidateFilename(checkpoint, 'master'),
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: 'gpt-image-2',
@@ -740,8 +812,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       requireReferences: materialReferences.length > 0,
       inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
-    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget)
-    : previousViews.get('master');
+    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint)
+    : selectedView('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
     key: 'master',
@@ -750,20 +822,23 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     image_url: master.image_url || master.url,
     provider_used: master.provider_used,
   }, 0)];
-  let layout = previousViews.get('layout');
-  let layoutAcquisition = null;
+  let layout = selectedView('layout');
+  let layoutAcquisition = checkpoint.layout_acquisition || previous?.view_acquisition?.layout_preflight || null;
   if (shouldGenerate('layout')) {
     let layoutCorrection = repairFeedback;
     for (let qualityAttempt = 1; qualityAttempt <= 2; qualityAttempt += 1) {
-      if (qualityAttempt > 1 && !reserveExtraAttempt(generationBudget, 'layout_quality_retry')) break;
-      layout = await generateTrackedSceneView(taskId, 'layout', {
+      if (qualityAttempt > 1) {
+        if (!reserveExtraAttempt(generationBudget, 'layout_quality_retry')) break;
+        sceneCheckpoint.syncRetryBudget(checkpoint, generationBudget);
+      }
+      layout = await generateCheckpointedSceneView(taskId, 'layout', {
         taskId,
         stage: 'new_story_ad.scene_asset',
         prompt: buildDerivedViewPrompt(layoutPrompt, 'layout', {
           referenceOrder: ['master'],
           repairFeedback: layoutCorrection,
         }),
-        filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_layout_q' + qualityAttempt + '_' + Date.now(),
+        filename: sceneCheckpoint.candidateFilename(checkpoint, 'layout'),
         aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
         resolution: body.resolution || '2K',
         imageModel: 'gpt-image-2',
@@ -771,7 +846,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         requireReferences: true,
         inputFidelity: 'low',
         auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
-      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget);
+      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
       try {
         layoutAcquisition = await sceneSpace.validateLayoutAcquisition({
           taskId,
@@ -779,6 +854,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           layoutUrl: sceneVisionThumbnailUrl(layout.url || layout.image_url),
           requested,
         });
+        sceneCheckpoint.setLayoutAcquisition(checkpoint, layoutAcquisition);
       } catch (error) {
         cancellation.throwIfCancelled(taskId);
         console.warn('[new_story_ad:layout_preflight_unavailable]', {
@@ -792,6 +868,10 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         break;
       }
       if (layoutAcquisition.pass || qualityAttempt >= 2) break;
+      const layoutRoleError = new Error((layoutAcquisition.reasons || []).join('；') || '俯视布局没有通过角色验证');
+      layoutRoleError.code = 'LAYOUT_ROLE_INVALID';
+      layoutRoleError.retryable = true;
+      sceneCheckpoint.markFailed(checkpoint, 'layout', layoutRoleError, generationBudget);
       layoutCorrection = [
         repairFeedback,
         'Automated layout-role validation rejected the previous candidate.',
@@ -809,20 +889,20 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     provider_used: layout.provider_used,
   }, REQUIRED_SCENE_VIEW_KEYS.indexOf('layout'));
   cancellation.throwIfCancelled(taskId);
-  const derivedViews = await Promise.all(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
-    if (!shouldGenerate(key)) return normalizeSceneView(previousViews.get(key), index + 1);
+  const derivedResults = await Promise.allSettled(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
+    if (!shouldGenerate(key)) return normalizeSceneView(selectedView(key), index + 1);
     const detailView = key === 'detail';
     const referenceImages = detailView
       ? [master.url || master.image_url]
       : [master.url || master.image_url, layout.url || layout.image_url];
-    const generated = await generateTrackedSceneView(taskId, key, {
+    const generated = await generateCheckpointedSceneView(taskId, key, {
       taskId,
       stage: 'new_story_ad.scene_asset',
       prompt: buildDerivedViewPrompt(scenePrompt, key, {
         referenceOrder: detailView ? ['master'] : ['master', 'layout'],
         repairFeedback,
       }),
-      filename: 'scene_asset_' + taskId + '_' + sceneId + '_r' + revision + '_' + key + '_' + Date.now(),
+      filename: sceneCheckpoint.candidateFilename(checkpoint, key),
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
       resolution: body.resolution || '2K',
       imageModel: 'gpt-image-2',
@@ -832,7 +912,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
       auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
-    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget);
+    }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
     return normalizeSceneView({
       key,
       label: sceneViewLabel(key),
@@ -841,9 +921,24 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       provider_used: generated.provider_used,
     }, index + 1);
   }));
+  const derivedFailures = derivedResults
+    .map((result, index) => ({ result, key: SCENE_VIEW_KEYS.slice(1)[index] }))
+    .filter(item => item.result.status === 'rejected');
+  if (derivedFailures.length) {
+    const firstError = derivedFailures[0].result.reason instanceof Error
+      ? derivedFailures[0].result.reason
+      : new Error(String(derivedFailures[0].result.reason || '场景派生视图生成失败'));
+    sceneCheckpoint.markPartial(checkpoint, firstError);
+    firstError.partial_scene_checkpoint = true;
+    firstError.completed_view_keys = progressViewKeys.filter(key => !!sceneCheckpoint.checkpointView(checkpoint, key));
+    firstError.failed_view_keys = derivedFailures.map(item => item.key);
+    throw firstError;
+  }
+  const derivedViews = derivedResults.map(result => result.value);
   cancellation.throwIfCancelled(taskId);
   viewImages.push(...derivedViews);
   viewImages.push(layoutView);
+  sceneCheckpoint.markReadyForQa(checkpoint);
   const contractOptions = {
     taskId,
     sceneId,
@@ -939,6 +1034,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       generation_order: SCENE_GENERATION_ORDER,
       last_generated_views: repairMode ? repairViewKeys : SCENE_GENERATION_ORDER,
       repair_mode: repairMode,
+      checkpoint_schema_version: sceneCheckpoint.CHECKPOINT_SCHEMA_VERSION,
+      resumed_from_checkpoint: openedCheckpoint.resumed === true,
+      checkpoint_resume_count: Number(checkpoint.resume_count || 0) || 0,
       reference_graph: {
         master: [],
         layout: ['master'],
@@ -961,6 +1059,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   saveSceneAssetsToTask(taskId, sceneAssets, {
     sceneSpec: resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
   });
+  sceneCheckpoint.markPublished(checkpoint, asset);
   const autoRepairPass = Math.max(0, Number(runOptions.autoRepairPass || 0) || 0);
   const autoRepairEligible = !repairMode
     && autoRepairPass < 1
