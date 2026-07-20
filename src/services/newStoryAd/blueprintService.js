@@ -4,6 +4,20 @@ const { contextPrompt, normalizeCharacters } = require('./contextBuilder');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
+const { BLUEPRINT_PROGRESS_TOTAL } = require('./blueprintProgressService');
+
+function reportBlueprintProgress(onProgress, phase, completed, message) {
+  if (typeof onProgress !== 'function') return;
+  try {
+    onProgress({
+      stage: 'blueprint',
+      phase,
+      completed: Math.max(0, Math.min(BLUEPRINT_PROGRESS_TOTAL, Number(completed) || 0)),
+      total: BLUEPRINT_PROGRESS_TOTAL,
+      message,
+    });
+  } catch {}
+}
 
 function desiredBeatCount(ctx = {}) {
   if (ctx.shot_count) return Math.max(1, Math.min(18, Number(ctx.shot_count) || 0));
@@ -181,7 +195,7 @@ function normalizeBlueprint(blueprint, ctx) {
   };
 }
 
-async function generateBlueprint(ctx, { taskId = '' } = {}) {
+async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
   const targetCount = desiredBeatCount(ctx);
   const profile = pacingProfile(ctx);
   const recommendedCount = profile.recommended;
@@ -213,6 +227,10 @@ async function generateBlueprint(ctx, { taskId = '' } = {}) {
     'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
     'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
     'Never put explicitly forbidden people, objects, carrier forms, styles or wrong products into beats.',
+    'Originality and rights are hard production constraints for every industry: create original characters, scenes, plot actions and visual compositions. Never reproduce or closely imitate a film, series, animation, game, advertisement, poster, album cover or protected character.',
+    'Never request the style, likeness, face, voice or recognizable identity of a named artist, director, photographer, celebrity, public figure, influencer or third-party character. Do not write face-swap, identity-bypass or review-bypass instructions.',
+    'User-provided first-party brand and product facts may remain in text. Any logo, trademark or brand wordmark must be described only as an authorized asset added in post-production; never ask an image model to generate, transform, infer or imitate it.',
+    'If the brief contains an inspiration reference, translate it into generic high-level traits such as pacing, lighting, framing, material mood or emotional tone without naming or copying the reference.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}
@@ -248,6 +266,7 @@ Return JSON in this shape:
 ${ctx.shot_count ? `Beat count must equal the user-specified ${ctx.shot_count} shots.` : `Beat count is content-driven. Do not force the exact recommended number, but keep the result compact for the target duration; normal shots should have enough time to be understood, and only explicit fast-cut or dense step-by-step briefs should approach the upper bound ${beatLimit}.`}
 For multi-person stories, keep names, roles, relationships and speaker ownership stable across all beats.`;
 
+  reportBlueprintProgress(onProgress, 'draft_generation', 1, '上下文和原创过审规则已准备，正在生成剧本初稿。');
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.blueprint',
@@ -255,6 +274,7 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
     userPrompt,
     maxTokens: 5200,
   });
+  reportBlueprintProgress(onProgress, 'draft_ready', 2, '剧本初稿已返回，正在校验 JSON 结构。');
   const parsed = await jsonRepair.parseOrRepair({
     raw: result.text,
     expected: 'object',
@@ -262,9 +282,12 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
     taskId,
     stage: 'new_story_ad.json_repair',
   });
+  reportBlueprintProgress(onProgress, 'structure_validated', 3, '剧本结构已校验，正在检查中文表达和可拍性。');
   const language = await ensureChineseOutput({ payload: parsed, kind: 'blueprint', taskId, context: ctx });
+  reportBlueprintProgress(onProgress, 'language_checked', 4, '中文表达已检查，正在执行质量与版权/IP 风险审核。');
   const firstPass = normalizeBlueprint(language.payload, ctx);
-  const polish = await polishBlueprint(ctx, firstPass, { taskId });
+  const polish = await polishBlueprint(ctx, firstPass, { taskId, onProgress });
+  reportBlueprintProgress(onProgress, 'quality_approved', 5, '剧情质量和版权/IP 风险审核已通过，正在保存最终剧本。');
   const normalized = normalizeBlueprint(polish.blueprint, ctx);
   normalized.model_meta = {
     used_model: result.used_model,
@@ -276,11 +299,14 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
     polish_model: polish.model_meta?.used_model || '',
     quality_before: polish.before,
     quality_after: polish.after,
+    rights_policy_version: polish.after?.rights?.policy_version || polish.before?.rights?.policy_version || '',
+    rights_pass: polish.after?.rights?.pass !== false,
   };
   return normalized;
 }
 
 module.exports = {
+  BLUEPRINT_PROGRESS_TOTAL,
   generateBlueprint,
   normalizeBlueprint,
   desiredBeatCount,

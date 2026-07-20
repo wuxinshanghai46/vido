@@ -9,7 +9,7 @@ const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_G
 const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
-  blueprint: 120000,
+  blueprint: 480000,
   storyboard: 480000,
   scene_asset: 600000,
   keyframes: 900000,
@@ -34,6 +34,13 @@ function jobKey(taskId) {
 function classifyFailure(error) {
   const rawMessage = String(error?.message || error || '未知错误');
   const message = videoCore.chineseError.classifyChineseMessage(error, '后台任务执行失败，请稍后从当前阶段重试。');
+  if (String(error?.code || '') === 'PROVIDER_CONTENT_AUDIT') {
+    return {
+      code: 'PROVIDER_CONTENT_AUDIT',
+      retryable: false,
+      message: '剧本内容触发供应商审核，已停止继续调用。请移除未经授权的品牌/IP、公众人物、角色复刻或指定艺术家风格后重新生成。',
+    };
+  }
   if (error?.code) {
     return { code: String(error.code), retryable: error.retryable === true, message };
   }
@@ -307,6 +314,16 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           error: job.error,
           error_code: failure.code,
           retryable: failure.retryable,
+          ...(current.generation_progress?.stage === stage ? {
+            generation_progress: {
+              ...current.generation_progress,
+              status: 'failed',
+              error_code: failure.code,
+              message: job.error,
+              finished_at: job.finishedAt,
+              updated_at: job.finishedAt,
+            },
+          } : {}),
         });
       }
     } finally {
@@ -344,6 +361,16 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
         error: job.error,
         error_code: failure.code,
         retryable: true,
+        ...(current.generation_progress?.stage === stage ? {
+          generation_progress: {
+            ...current.generation_progress,
+            status: 'failed',
+            error_code: failure.code,
+            message: job.error,
+            finished_at: job.finishedAt,
+            updated_at: job.finishedAt,
+          },
+        } : {}),
       });
     });
   });

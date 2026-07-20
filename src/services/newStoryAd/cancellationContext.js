@@ -6,7 +6,14 @@ const active = new Map();
 
 function cancelledError(meta = {}) {
   const deadline = meta.cancelReason === 'deadline';
-  const error = new Error(deadline ? '本批次已达到安全执行时限，已保存完成结果；可以继续补齐未完成镜头' : '用户已取消当前生成');
+  const deadlineMessages = {
+    blueprint: '剧本生成超过安全执行时限，本次没有产生可用剧本；请重新生成剧本',
+    scene_config: '场景配置生成超过安全执行时限，本次没有产生可用配置；请重新生成场景配置',
+    storyboard: '分镜生成超过安全执行时限，已保存可恢复进度；请继续生成未完成分镜',
+  };
+  const error = new Error(deadline
+    ? (deadlineMessages[meta.stage] || '本批次已达到安全执行时限，已保存完成结果；可以继续补齐未完成镜头')
+    : '用户已取消当前生成');
   error.code = deadline ? 'STAGE_DEADLINE_EXCEEDED' : 'USER_CANCELLED';
   error.retryable = true;
   error.cancelled = true;

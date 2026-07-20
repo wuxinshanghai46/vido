@@ -88,6 +88,25 @@ const storyboardProgress = sandbox.window.NewStoryAdProgress.snapshot({
 assert.strictEqual(storyboardProgress.indeterminate, true);
 assert(!/%/.test(storyboardProgress.stat), '没有真实计数的阶段不得根据耗时伪造百分比');
 
+const blueprintProgress = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'blueprint', generationId: 'blueprint-current', startedAt: Date.now() - 65000 },
+  serverProgress: {
+    stage: 'blueprint', generation_id: 'blueprint-current', phase: 'language_checked',
+    completed: 4, total: 6, percent: 67, message: '中文表达已检查，正在执行质量与版权/IP 风险审核。',
+  },
+});
+assert.match(blueprintProgress.title, /质量与版权\/IP 风险审核/);
+assert.match(blueprintProgress.stat, /4\/6 · 67%/);
+assert.equal(blueprintProgress.indeterminate, false);
+assert.match(blueprintProgress.message, /中文表达已检查/);
+
+const blueprintWaiting = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'blueprint', generationId: 'blueprint-new', startedAt: Date.now() },
+  serverProgress: { stage: 'blueprint', generation_id: 'blueprint-old', completed: 6, total: 6, percent: 100 },
+});
+assert.equal(blueprintWaiting.indeterminate, true, '不得混用上一批剧本进度');
+assert(!/100%/.test(blueprintWaiting.stat));
+
 const syncSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
 vm.runInNewContext(syncSource, sandbox, { filename: 'state-sync.js' });
 const sync = sandbox.window.NewStoryAdStateSync;

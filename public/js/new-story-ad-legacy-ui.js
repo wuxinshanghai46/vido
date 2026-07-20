@@ -2292,6 +2292,19 @@
         message: `\u5df2\u5b8c\u6210 ${completed}/${total} \u5f20\u5173\u952e\u5e27\uff1b\u5f53\u524d\u6b63\u5728\u751f\u6210\u7b2c ${current} \u955c\uff0c\u5b8c\u6210\u4e00\u5f20\u4f1a\u81ea\u52a8\u66f4\u65b0\u3002`,
       };
     }
+    if (stage === 'blueprint' && state.generationProgress?.stage === 'blueprint') {
+      const tracked = state.generationProgress;
+      const count = Math.max(1, Number(tracked.total) || 6);
+      const completed = Math.max(0, Math.min(count, Number(tracked.completed) || 0));
+      const pct = Math.max(0, Math.min(100, Number(tracked.percent) || Math.round((completed / count) * 100)));
+      return {
+        title: tracked.phase === 'quality_polish' ? '修正质量与版权/IP 风险问题' : (label || '生成剧本中...'),
+        stat: `已耗时 ${formatElapsedText(elapsed)} · ${completed}/${count} · ${pct}%`,
+        percent: pct,
+        indeterminate: false,
+        message: tracked.message || '正在按真实完成的剧本里程碑更新进度。',
+      };
+    }
     if (stage === 'storyboard') {
       return {
         title: `\u751f\u6210\u5206\u955c\u8868\u4e2d\uff1a\u5171 ${total} \u955c`,
@@ -2398,10 +2411,16 @@
     state.busy = !!isBusy;
     const host = within('#dhNsaAdLiveProgress');
     if (host) {
-      host.hidden = !isBusy;
+      const blueprintFailed = !isBusy
+        && !state.blueprint
+        && state.taskStatus === 'failed'
+        && state.taskStage === 'blueprint_failed';
+      host.hidden = !isBusy && !blueprintFailed;
       host.innerHTML = isBusy
         ? renderStageProgress(label)
-        : '';
+        : (blueprintFailed
+          ? `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(state.taskError || '服务器没有保存可用剧本，请重新生成剧本。')}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在当前第 2 步重新生成剧本。</small></div>`
+          : '');
     }
     ['#dhNsaAdGenerate', '#dhNsaAdStoryboard', '#dhNsaAdPreviewFrames', '#dhNsaAdGenerateFinalFrames', '#dhNsaAdConfirmGenerate'].forEach(sel => {
       const btn = within(sel);
@@ -2453,7 +2472,7 @@
     }
     if (step <= 1) return true;
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
-    if (step === 3) return !!state.blueprint || !!state.sceneConfig;
+    if (step === 3) return !!state.blueprint;
     if (step === 4) return Array.isArray(state.shots) && state.shots.length > 0 || !!state.blueprint;
     if (step === 5) return stepReady(4);
     return true;
@@ -2646,7 +2665,10 @@
     const host = within('#dhNsaAdScriptHost');
     if (!host) return;
     if (!state.blueprint) {
-      host.innerHTML = '<div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“生成剧本”。</span></div>';
+      const failed = state.taskStatus === 'failed' && state.taskStage === 'blueprint_failed';
+      host.innerHTML = failed
+        ? `<div class="dh-luxgen-empty is-error"><b>本次剧本没有生成成功</b><span>${escapeHtml(state.taskError || '服务器没有保存可用剧本，请返回第 2 步重新生成。')}</span></div>`
+        : '<div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“生成剧本”。</span></div>';
       return;
     }
     const bp = state.blueprint || {};

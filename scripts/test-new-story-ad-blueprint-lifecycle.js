@@ -1,0 +1,127 @@
+#!/usr/bin/env node
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const root = path.resolve(__dirname, '..');
+const outputDir = path.join(root, '.tmp', 'new-story-ad-blueprint-lifecycle');
+fs.rmSync(outputDir, { recursive: true, force: true });
+fs.mkdirSync(outputDir, { recursive: true });
+process.env.OUTPUT_DIR = outputDir;
+
+const storage = require('../src/services/newStoryAd/storageService');
+const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const blueprintService = require('../src/services/newStoryAd/blueprintService');
+const blueprintProgress = require('../src/services/newStoryAd/blueprintProgressService');
+const storyService = require('../src/services/newStoryAd/storyAdService');
+const jobService = require('../src/services/newStoryAd/jobService');
+const cancellation = require('../src/services/newStoryAd/cancellationContext');
+
+const premiumBlueprint = {
+  story_title: '雨停前的交付',
+  logline: '交付前连接突然中断，林清禾改用当前任务主体完成验证，终于在雨停前发出结果。',
+  characters: [{ name: '林清禾', role: '项目负责人', description: '当前任务原创人物' }],
+  beats: [
+    { beat_index: 1, role: '冲突', plot: '窗外下雨，交付页面的连接状态变红。', action: '林清禾停下输入并检查错误来源。', spoken_line: '偏偏现在断了。' },
+    { beat_index: 2, role: '转折', plot: '当前任务主体完成验证，状态由红转绿。', action: '她重新连接并确认核心步骤。', spoken_line: '先把最关键的一步跑通。' },
+    { beat_index: 3, role: '结果', plot: '结果页完整出现，发送时间早于截止线。', action: '她核对结果后点击发送。', spoken_line: '赶上了，结果也对。' },
+  ],
+};
+
+async function main() {
+  const originalGenerateText = modelGateway.generateText;
+  modelGateway.generateText = async () => ({
+    text: JSON.stringify(premiumBlueprint),
+    used_model: 'test/original-blueprint',
+    fallback_used: false,
+    failed_models: [],
+  });
+  try {
+    const context = {
+      request_id: 'blueprint-lifecycle-task',
+      brief: '为当前任务主体制作一条完全原创、无第三方品牌和公众人物的剧情广告。',
+      original_brief: '原创剧情广告，不使用第三方 IP。',
+      product_subject: '当前任务主体',
+      target_duration: 24,
+      output_ratio: '9:16',
+      cast_mode: 'single',
+      forbidden: ['第三方 IP', '公众人物', '未经授权 Logo'],
+      characters: premiumBlueprint.characters,
+      assets: [],
+      scene_assets: [],
+    };
+    const milestones = [];
+    const generated = await blueprintService.generateBlueprint(context, {
+      taskId: 'blueprint-lifecycle-task',
+      onProgress: progress => milestones.push(progress),
+    });
+    assert.equal(generated.beats.length, 3);
+    assert.deepEqual(milestones.map(item => item.completed), [1, 2, 3, 4, 5]);
+    assert.equal(milestones.at(-1).phase, 'quality_approved');
+    assert.equal(generated.model_meta.rights_pass, true);
+
+    storage.createTask({
+      id: 'blueprint-lifecycle-task',
+      brief: context.brief,
+      status: 'running',
+      stage: 'blueprint',
+      request: context,
+    });
+    storage.saveOutput('blueprint-lifecycle-task', 'context', context);
+    storage.updateTask('blueprint-lifecycle-task', {
+      active_stage: 'blueprint',
+      active_generation_id: 'generation-blueprint-current',
+      generation_started_at: new Date().toISOString(),
+    });
+    const persisted = await storyService.generateBlueprintStage('blueprint-lifecycle-task', {
+      generationId: 'generation-blueprint-current',
+    });
+    const task = storage.getTask('blueprint-lifecycle-task');
+    assert.equal(persisted.beats.length, 3);
+    assert.equal(storage.getOutput('blueprint-lifecycle-task', 'blueprint').beats.length, 3);
+    assert.equal(task.generation_progress.stage, 'blueprint');
+    assert.equal(task.generation_progress.phase, 'persisted');
+    assert.equal(task.generation_progress.completed, 6);
+    assert.equal(task.generation_progress.total, 6);
+    assert.equal(task.generation_progress.percent, 100);
+    assert.equal(jobService.stageBudgetMs('blueprint'), 480000);
+
+    storage.updateTask('blueprint-lifecycle-task', { active_stage: '', active_generation_id: '' });
+    const before = storage.getTask('blueprint-lifecycle-task').generation_progress;
+    assert.equal(blueprintProgress.update('blueprint-lifecycle-task', {
+      phase: 'late_write', completed: 2, total: 6,
+    }, { generationId: 'generation-blueprint-current' }), null);
+    assert.deepEqual(storage.getTask('blueprint-lifecycle-task').generation_progress, before, '超时或取消后的迟到回调不得覆盖终态');
+
+    const deadline = cancellation.cancelledError({ cancelReason: 'deadline', stage: 'blueprint' });
+    assert.equal(deadline.code, 'STAGE_DEADLINE_EXCEEDED');
+    assert.match(deadline.message, /没有产生可用剧本.*重新生成剧本/);
+    const auditFailure = jobService.classifyFailure(Object.assign(new Error('content audit'), { code: 'PROVIDER_CONTENT_AUDIT' }));
+    assert.equal(auditFailure.retryable, false);
+    assert.match(auditFailure.message, /停止继续调用.*品牌\/IP.*公众人物/);
+
+    const modelGatewaySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/modelGateway.js'), 'utf8');
+    assert(modelGatewaySource.includes("'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)) break"));
+    const stepNavigationSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/step-navigation.js'), 'utf8');
+    assert(stepNavigationSource.includes("if (step === 3) return !!state.blueprint;"));
+    const generationFlowSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
+    const sandbox = { window: {}, setTimeout, clearTimeout, Promise, Date };
+    vm.runInNewContext(generationFlowSource, sandbox, { filename: 'generation-flow.js' });
+    assert.equal(sandbox.window.NewStoryAdGenerationFlow.blueprintIsReady({ outputs: {} }, { blueprint: null }), false);
+    assert.equal(sandbox.window.NewStoryAdGenerationFlow.blueprintIsReady({ outputs: { blueprint: { beats: [] } } }, {}), false);
+    assert.equal(sandbox.window.NewStoryAdGenerationFlow.blueprintIsReady({ outputs: { blueprint: { beats: [{ beat_index: 1 }] } } }, {}), true);
+    const uiSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
+    assert(uiSource.includes('本次剧本没有生成成功'));
+    assert(uiSource.includes('人物、场景和已通过的空间验证均已保留'));
+    console.log('new story ad blueprint lifecycle: ok');
+  } finally {
+    modelGateway.generateText = originalGenerateText;
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

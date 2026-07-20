@@ -86,7 +86,7 @@
     const state = ctx.state || {};
     if (step <= 1) return true;
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
-    if (step === 3) return !!state.blueprint || !!state.sceneConfig;
+    if (step === 3) return !!state.blueprint;
     if (step === 4) return (Array.isArray(state.shots) && state.shots.length > 0) || !!state.blueprint;
     if (step === 5) return composeReadiness({ state }).ready;
     return true;

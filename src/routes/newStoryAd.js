@@ -912,7 +912,7 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'blueprint', () => service.generateBlueprintStage(req.params.id));
+  return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, job));
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {

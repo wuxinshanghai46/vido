@@ -118,6 +118,43 @@
       };
     }
 
+    if (stage === 'blueprint') {
+      const progressGenerationId = String(progress.generationId || '');
+      const serverGenerationId = String(serverProgress?.generation_id || '');
+      const generationMatches = !progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId;
+      const tracked = serverProgress?.stage === 'blueprint' && generationMatches ? serverProgress : null;
+      if (!tracked) {
+        return {
+          title: label || '正在启动剧本生成',
+          stat: `已耗时 ${formatElapsedText(elapsed)} · 准备中`,
+          percent: 0,
+          indeterminate: true,
+          message: '等待服务器返回本次剧本的真实里程碑。',
+        };
+      }
+      const totalMilestones = Math.max(1, Number(tracked.total) || 6);
+      const completedMilestones = Math.max(0, Math.min(totalMilestones, Number(tracked.completed) || 0));
+      const pct = Math.max(0, Math.min(100, Number(tracked.percent) || Math.round((completedMilestones / totalMilestones) * 100)));
+      const phaseLabels = {
+        context_ready: '准备剧本上下文与原创过审规则',
+        draft_generation: '生成剧本初稿',
+        draft_ready: '校验剧本初稿结构',
+        structure_validated: '检查中文表达与可拍性',
+        language_checked: '执行质量与版权/IP 风险审核',
+        quality_review: '执行质量与版权/IP 风险审核',
+        quality_polish: '修正质量与版权/IP 风险问题',
+        quality_approved: '保存审核通过的最终剧本',
+        persisted: '剧本生成完成',
+      };
+      return {
+        title: phaseLabels[tracked.phase] || label || '生成剧本中...',
+        stat: `已耗时 ${formatElapsedText(elapsed)} · ${completedMilestones}/${totalMilestones} · ${pct}%`,
+        percent: pct,
+        indeterminate: false,
+        message: tracked.message || '正在按真实完成的剧本里程碑更新进度。',
+      };
+    }
+
     if (stage === 'storyboard') {
       return {
         title: `生成分镜表中：共 ${count} 镜`,

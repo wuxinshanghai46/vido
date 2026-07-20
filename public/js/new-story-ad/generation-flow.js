@@ -98,6 +98,12 @@
     return Array.isArray(shots) && shots.length > 0;
   }
 
+  function blueprintIsReady(bundle = {}, state = {}) {
+    const outputs = bundle.outputs || bundle.bundle?.outputs || {};
+    const blueprint = outputs.blueprint || bundle.blueprint || bundle.bundle?.blueprint || state.blueprint || null;
+    return !!blueprint && Array.isArray(blueprint.beats) && blueprint.beats.length > 0;
+  }
+
   function adoptActiveGeneration(state = {}, job = {}, expectedStage = '', body = {}) {
     if (!state || !job?.id) return;
     state.activeGenerationId = job.id || '';
@@ -290,9 +296,11 @@
         if (!state.sceneConfig) normalizeBundle?.(await startStage(id, 'scene', {}, ctx));
         r = await startStage(id, 'blueprint', {}, ctx);
         normalizeBundle?.(r);
+        if (!blueprintIsReady(r, state)) throw new Error('剧本任务已结束，但服务器没有保存可用剧本；已停留在当前步骤，请重新生成剧本');
         showStep?.(3);
       } else if (stage === 'storyboard') {
         if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, ctx));
+        if (!blueprintIsReady({}, state)) throw new Error('服务器没有可用剧本，不能继续生成分镜；请先重新生成剧本');
         if (state.blueprint && typeof saveBlueprintEdits === 'function') await saveBlueprintEdits(id);
         r = await startStage(id, 'storyboard', {}, ctx);
         normalizeBundle?.(r);
@@ -437,6 +445,7 @@
     stageWasAccepted,
     taskConfirmsSubmission,
     storyboardIsReady,
+    blueprintIsReady,
     STAGE_LABELS,
   };
 })();

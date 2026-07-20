@@ -2017,6 +2017,11 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-lux-person-progress-track i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.42), transparent); transform: translateX(-100%); animation: dh-lux-person-progress-bar 1.35s linear infinite; }
 .dh-lux-person-progress.is-indeterminate .dh-lux-person-progress-track i { min-width: 0; animation: dh-nsa-progress-indeterminate 1.15s ease-in-out infinite; }
 .dh-lux-person-progress small { color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; }
+.dh-nsa-stage-failure { display: grid; gap: 7px; padding: 12px 14px; border: 1px solid rgba(255,86,104,.48); border-radius: 9px; background: rgba(132,20,39,.18); }
+.dh-nsa-stage-failure b { color: #ffb3be; font-size: 13px; }
+.dh-nsa-stage-failure span { color: var(--dh-text); font-size: 12px; line-height: 1.55; }
+.dh-nsa-stage-failure em { color: #ff8898; font-size: 10px; font-style: normal; font-weight: 800; }
+.dh-nsa-stage-failure small { color: var(--dh-text-muted); font-size: 11px; line-height: 1.5; }
 @keyframes dh-lux-person-progress-sheen { 0% { transform: translateX(-120%); } 58%, 100% { transform: translateX(120%); } }
 @keyframes dh-lux-person-progress-bar { to { transform: translateX(120%); } }
 @keyframes dh-nsa-progress-indeterminate { 0% { transform: translateX(-115%); } 55%, 100% { transform: translateX(360%); } }

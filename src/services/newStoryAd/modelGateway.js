@@ -382,6 +382,7 @@ async function generateText({
         latency_ms: latency,
         fallback_rank: i + 1,
       });
+      if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)) break;
       if (!classified.retryable && i >= attemptCandidates.length - 1) break;
     }
   }

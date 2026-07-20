@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-verified-scene-actions-v30';
+  const SCRIPT_VERSION = '20260720-blueprint-lifecycle-v31';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

@@ -5,7 +5,7 @@ const storage = require('./storageService');
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent } = require('./contextBuilder');
-const { generateBlueprint } = require('./blueprintService');
+const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const { reviewStoryboard } = require('./qualityReviewService');
 const { buildKeyframeContracts } = require('./keyframeContractService');
@@ -869,18 +869,8 @@ async function generateSceneConfig(taskId) {
   return sceneConfig;
 }
 
-async function generateBlueprintStage(taskId) {
-  const task = storage.getTask(taskId);
-  if (!task) throw new Error('任务不存在');
-  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  storage.updateTask(taskId, { status: 'running', stage: 'blueprint' });
-  storage.saveStage(taskId, 'blueprint', { status: 'running', input_summary: ctx.brief });
-  const previous = storage.getOutput(taskId, 'blueprint') || {};
-  const blueprint = versionedBlueprint(await generateBlueprint(ctx, { taskId }), previous);
-  storage.saveOutput(taskId, 'blueprint', blueprint);
-  storage.saveStage(taskId, 'blueprint', { status: 'done', output_summary: `${blueprint.beats?.length || 0} 个剧情 beat`, diagnostics: blueprint.model_meta || {} });
-  storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done' });
-  return blueprint;
+async function generateBlueprintStage(taskId, options = {}) {
+  return blueprintLifecycle.generateBlueprintStage(taskId, options, { versionedBlueprint });
 }
 
 async function generateStoryboardStage(taskId) {

@@ -1,5 +1,10 @@
 const assert = require('assert');
-const { assessBlueprintQuality, similarity } = require('../src/services/newStoryAd/blueprintQualityService');
+const {
+  BLUEPRINT_RIGHTS_POLICY_VERSION,
+  assessBlueprintQuality,
+  assessBlueprintRights,
+  similarity,
+} = require('../src/services/newStoryAd/blueprintQualityService');
 
 const weak = {
   logline: 'A developer discovers a platform.',
@@ -35,5 +40,27 @@ const unverifiedLogo = { logline: '项目遇到问题后得到解决。', beats:
   { role: '结果', plot: '任务完成。', action: '她点击发送。', spoken_line: '赶上了。' },
 ] };
 assert(assessBlueprintQuality(unverifiedLogo).issues.some(issue => /第三方模型 Logo/.test(issue)));
+const rightsRisk = {
+  logline: '主角用一比一复刻知名动画角色的方式解决问题。',
+  beats: [
+    { role: '冲突', plot: '原样还原电影海报画面。', action: '明星换脸成为经典游戏角色。', spoken_line: '照着某导演的风格拍。' },
+    { role: '转折', plot: '品牌 Logo 从粒子中生成。', action: 'Logo 变形成角色。', spoken_line: '想办法绕过审核。' },
+    { role: '结果', plot: '复刻画面完成。', action: '主角展示结果。', spoken_line: '这样就好了。' },
+  ],
+};
+const rightsAssessment = assessBlueprintRights(rightsRisk);
+assert.equal(rightsAssessment.pass, false);
+assert.equal(rightsAssessment.policy_version, BLUEPRINT_RIGHTS_POLICY_VERSION);
+assert(rightsAssessment.issues.some(issue => /复刻/.test(issue)));
+assert(rightsAssessment.issues.some(issue => /公众人物|换脸/.test(issue)));
+assert(rightsAssessment.issues.some(issue => /审核/.test(issue)));
+assert(rightsAssessment.issues.some(issue => /品牌标识/.test(issue)));
+const authorizedOverlay = {
+  ...premium,
+  beats: premium.beats.map((beat, index) => index === 2
+    ? { ...beat, plot: `${beat.plot}，结尾后期叠加已授权品牌 Logo 素材。` }
+    : beat),
+};
+assert.equal(assessBlueprintRights(authorizedOverlay).pass, true, '已授权品牌素材必须允许后期叠加，不能要求模型生成 Logo');
 assert.equal(assessBlueprintQuality(premium).pass, true);
 console.log('PASS new story ad premium blueprint quality');
