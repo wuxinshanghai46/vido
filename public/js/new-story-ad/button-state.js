@@ -4,7 +4,7 @@
     const state = ctx.state || {};
     const btn = within(selector);
     if (!btn) return;
-    const busyLocked = !!state.busy && !options.allowBusy;
+    const busyLocked = !!(state.busy || state.restoringTask) && !options.allowBusy;
     btn.disabled = busyLocked || !!locked;
     if (btn.disabled) btn.setAttribute('aria-disabled', 'true');
     else btn.removeAttribute('aria-disabled');

@@ -141,6 +141,7 @@
     adminVideoMonitorLoading: false,
     busy: false,
     restoringTask: false,
+    pendingRestoreTaskId: '',
     restoreError: '',
     currentStep: 1,
     shotEditorIndex: -1,
@@ -224,7 +225,10 @@
 
   function rememberRouteStep(step = state.currentStep) {
     if (window.NewStoryAdTaskStore?.rememberRouteStep) {
-      window.NewStoryAdTaskStore.rememberRouteStep(step, state.taskId || '');
+      const pendingId = state.restoringTask
+        ? (state.pendingRestoreTaskId || routeTaskId() || storedTaskId())
+        : '';
+      window.NewStoryAdTaskStore.rememberRouteStep(step, state.taskId || pendingId || '');
       return;
     }
     try {
@@ -971,8 +975,9 @@
     state.mounted = true;
     setCopy();
     bind();
-    state.restoringTask = !!(routeTaskId() || storedTaskId()) && !state.taskId;
-    showStep(state.restoringTask ? 1 : routeStep(), { remember: false });
+    state.pendingRestoreTaskId = routeTaskId() || storedTaskId();
+    state.restoringTask = !!state.pendingRestoreTaskId && !state.taskId;
+    showStep(routeStep(), { remember: false });
     renderAll();
     restoreCurrentTask();
   }
@@ -1861,23 +1866,28 @@
   }
 
   async function restoreCurrentTask() {
-    const id = routeTaskId() || storedTaskId() || await fallbackLatestTaskId();
+    const id = state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId();
     if (!id || state.taskId) return false;
+    state.pendingRestoreTaskId = id;
     state.restoringTask = true;
     state.restoreError = '';
+    rememberTaskId(id);
     renderAll();
     try {
       const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`);
       const bundle = r.bundle || r;
       if (!bundle?.task) throw new Error('任务不存在');
       hydrateTaskBundle(bundle);
-      await recoverPersonAssetFromLibrary(bundle);
       const desiredStep = window.NewStoryAdTaskStore?.resumeStep
         ? window.NewStoryAdTaskStore.resumeStep(bundle.task || {}, bundle.outputs || {}, state.storyboardStatus)
         : routeStep();
       showStep(desiredStep, { remember: false });
       rememberRouteStep(desiredStep);
+      state.restoringTask = false;
       renderAll();
+      recoverPersonAssetFromLibrary(bundle).then(recovered => {
+        if (recovered) renderAll();
+      }).catch(() => {});
       resumeActiveGeneration();
       return true;
     } catch (err) {
@@ -1886,8 +1896,11 @@
       toast('当前任务恢复失败：' + state.restoreError, 'error');
       return false;
     } finally {
-      state.restoringTask = false;
-      renderAll();
+      state.pendingRestoreTaskId = '';
+      if (state.restoringTask) {
+        state.restoringTask = false;
+        renderAll();
+      }
     }
   }
 
@@ -3472,8 +3485,10 @@
   function renderStatus() {
     const badge = within('#dhNsaAdRequirementState');
     if (badge) {
-      badge.textContent = state.taskId ? `任务 ${String(state.taskId).slice(0, 8)}` : '待创建';
-      badge.className = 'dh-luxgen-badge';
+      badge.textContent = state.restoringTask
+        ? `正在恢复任务 ${String(state.pendingRestoreTaskId || routeTaskId() || '').slice(0, 8)}`
+        : (state.taskId ? `任务 ${String(state.taskId).slice(0, 8)}` : '待创建');
+      badge.className = `dh-luxgen-badge${state.restoringTask ? ' is-loading' : ''}`;
     }
     const stateBadge = within('#dhNsaAdFrameState');
     if (stateBadge) {
@@ -3495,7 +3510,7 @@
       fillMissing.hidden = !(kf.total && kf.needs_regeneration > 0);
       fillMissing.textContent = kf.needs_regeneration > 0 ? `补齐或修复镜头（${kf.needs_regeneration}）` : '补齐或修复镜头';
     }
-    showStep(state.currentStep);
+    showStep(state.currentStep, { remember: !state.restoringTask });
     syncPersonSpecControls();
     updateLocks();
   }

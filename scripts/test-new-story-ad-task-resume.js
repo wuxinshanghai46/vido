@@ -6,6 +6,7 @@ const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-store.js'), 'utf8');
 const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
+const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const values = new Map([['vido_new_story_ad_current_task_id', 'old-task']]);
 const location = {
   href: 'https://example.test/digital-human?tab=new-story-ad&nsa_task_id=old-task&nsa_step=4',
@@ -63,6 +64,23 @@ assert.match(taskCenterSource, /创建时间 \$\{escapeHtml\(created\)\} · 更�
 assert.match(taskCenterSource, /\(b\.updatedAt \|\| b\.startedAt \|\| 0\) - \(a\.updatedAt \|\| a\.startedAt \|\| 0\)/);
 assert.match(taskCenterSource, /\.filter\(taskBelongsToCurrentUser\)/, 'task center must remove stale tasks that belong to another signed-in user');
 assert.doesNotMatch(taskCenterSource, /\$\{isNewStoryAdTask\s*\?\s*`<button[^`]+data-new-story-ad-continue/);
+
+store.rememberRouteStep(1);
+assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_task_id'), 'old-task');
+assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_step'), '1');
+
+assert(legacyUiSource.includes("state.pendingRestoreTaskId = routeTaskId() || storedTaskId()"));
+assert(legacyUiSource.includes("showStep(routeStep(), { remember: false })"));
+assert(legacyUiSource.includes("showStep(state.currentStep, { remember: !state.restoringTask })"));
+assert(legacyUiSource.includes("state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId()"));
+const restoreBlock = legacyUiSource.slice(
+  legacyUiSource.indexOf('async function restoreCurrentTask()'),
+  legacyUiSource.indexOf('function resumeActiveGeneration()'),
+);
+assert(!restoreBlock.includes('await recoverPersonAssetFromLibrary(bundle)'));
+assert(restoreBlock.indexOf('state.restoringTask = false;\n      renderAll();') >= 0);
+assert(restoreBlock.indexOf('state.restoringTask = false;\n      renderAll();') < restoreBlock.indexOf('recoverPersonAssetFromLibrary(bundle).then'));
+assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
 
 store.rememberTaskId('', 1);
 assert.equal(values.has('vido_new_story_ad_current_task_id'), false);

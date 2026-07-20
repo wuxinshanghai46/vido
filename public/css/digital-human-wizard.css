@@ -640,6 +640,8 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 .dh-luxgen-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .dh-luxgen-badge { flex: 0 0 auto; border: 1px solid var(--dh-border); border-radius: 999px; padding: 7px 10px; color: var(--dh-text-soft); background: var(--dh-bg); font-size: 12px; font-weight: 700; }
 .dh-luxgen-badge.ready { border-color: rgba(33,255,243,.5); color: var(--dh-primary); background: rgba(33,255,243,.08); }
+.dh-luxgen-badge.is-loading { border-color: rgba(33,255,243,.5); color: var(--dh-primary); background: rgba(33,255,243,.08); animation: dhNsaRestorePulse 1.2s ease-in-out infinite; }
+@keyframes dhNsaRestorePulse { 50% { opacity: .58; } }
 .dh-luxgen-requirement-tip { margin: -4px 0 10px; padding: 9px 11px; border: 1px solid rgba(33,255,243,.18); border-radius: 8px; background: rgba(33,255,243,.045); color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
 .dh-luxgen-textarea { min-height: 260px; resize: vertical; }
 .dh-luxgen-product-stage { border-color: rgba(164,255,72,.22); background: linear-gradient(180deg, rgba(164,255,72,.035), rgba(255,255,255,.02)); }

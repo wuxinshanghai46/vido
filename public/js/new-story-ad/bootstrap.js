@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-instant-restore-select-state-v18';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v19';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
