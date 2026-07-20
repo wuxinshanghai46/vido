@@ -846,6 +846,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     },
   });
   const checkpoint = openedCheckpoint.checkpoint;
+  sceneCheckpoint.assertUniqueCandidateFilenames(checkpoint, progressViewKeys);
   const revision = checkpoint.candidate_revision;
   const generationBudget = sceneGenerationBudget(runOptions.generationBudget || {
     maxExtra: checkpoint.retry_budget?.max_extra,

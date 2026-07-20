@@ -15,11 +15,65 @@ const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const pipelineModels = require('../src/services/pipelineModelService');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
+const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
 
 async function main() {
   const taskId = 'spatial-generation-order-test';
+  const requiredViewKeys = ['layout', 'master', 'reverse', 'interaction', 'detail'];
+  const longCheckpoint = {
+    task_id: 'fd30ac4c-d54b-44c2-bab7-268fc622b5e5',
+    scene_id: 'scene_1784345241398_f8b685_with_an_even_longer_spatial_identity',
+    candidate_revision: 11,
+    input_fingerprint: 'e3a1ae58c6a98c42cf8645558838067766075862b36e897b70f835fd21824de9',
+  };
+  const legacySafePart = (value, max) => String(value || '')
+    .replace(/[^a-z0-9_-]/ig, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, max) || 'scene';
+  const legacyPersistedNames = requiredViewKeys.map(key => mediaAdapter.safeFilename([
+    'scene_asset',
+    legacySafePart(longCheckpoint.task_id, 32),
+    legacySafePart(longCheckpoint.scene_id, 32),
+    'r11',
+    'candidate',
+    longCheckpoint.input_fingerprint.slice(0, 12),
+    key,
+    'image',
+  ].join('_'), '.png'));
+  assert.equal(new Set(legacyPersistedNames).size, 1, '回归夹具必须复现旧版 96 字符截断碰撞');
+
+  const candidateRows = sceneCheckpoint.assertUniqueCandidateFilenames(longCheckpoint, requiredViewKeys);
+  assert.equal(new Set(candidateRows.map(row => row.persisted)).size, 5, '长任务和长场景 ID 的五个持久化文件名必须唯一');
+  candidateRows.forEach(row => {
+    assert.ok(row.persisted.includes(`_${row.key}_`), `持久化文件名必须保留机位键：${row.key}`);
+    assert.ok(row.persisted.length <= 100, '持久化文件名必须满足媒体层长度限制');
+  });
+
+  const originalSafeFilename = mediaAdapter.safeFilename;
+  mediaAdapter.safeFilename = () => 'forced-collision.png';
+  try {
+    assert.throws(
+      () => sceneCheckpoint.assertUniqueCandidateFilenames(longCheckpoint, requiredViewKeys),
+      error => error?.code === 'SCENE_CANDIDATE_FILENAME_COLLISION'
+        && Array.isArray(error.filename_diagnostics),
+      '运行时必须在图片调用前拒绝任何候选文件名碰撞',
+    );
+  } finally {
+    mediaAdapter.safeFilename = originalSafeFilename;
+  }
+
+  const concurrentSource = path.join(outputDir, 'candidate-concurrency-source.svg');
+  fs.writeFileSync(concurrentSource, '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="#446688"/></svg>');
+  const persistedCandidates = await Promise.all(candidateRows.map(row => mediaAdapter.persistImageResult({
+    result: { filePath: concurrentSource },
+    filename: row.requested,
+  })));
+  assert.equal(new Set(persistedCandidates.map(item => item.filePath)).size, 5, '五机位并发持久化不得写入同一路径');
+  persistedCandidates.forEach(item => assert.ok(fs.existsSync(item.filePath)));
+
   const context = {
     brief: 'Lock one reusable commercial interior before storyboard generation.',
     product_subject: 'current task subject',
@@ -178,6 +232,26 @@ async function main() {
   };
 
   try {
+    const filenameGateTaskId = 'spatial-candidate-filename-collision-preflight-test';
+    storage.createTask({ id: filenameGateTaskId, title: 'candidate filename collision preflight', request: context });
+    storage.saveOutput(filenameGateTaskId, 'context', context);
+    const callsBeforeFilenameGate = calls.length;
+    const safeFilenameBeforeGate = mediaAdapter.safeFilename;
+    mediaAdapter.safeFilename = () => 'forced-collision.png';
+    try {
+      await assert.rejects(
+        () => sceneAssets.generateSceneAsset(filenameGateTaskId, {
+          scene_id: 'long-scene-id-that-would-collide-before-any-provider-call',
+          scene_spec: context.scene_spec,
+        }),
+        error => error?.code === 'SCENE_CANDIDATE_FILENAME_COLLISION',
+        '场景生成服务必须在任何图片供应商调用前执行最终文件名唯一性门禁',
+      );
+    } finally {
+      mediaAdapter.safeFilename = safeFilenameBeforeGate;
+    }
+    assert.equal(calls.length, callsBeforeFilenameGate, '候选文件名碰撞不得产生任何图片模型调用');
+
     const generated = await sceneAssets.generateSceneAsset(taskId, {
       scene_id: 'locked-room',
       scene_spec: context.scene_spec,
@@ -186,7 +260,7 @@ async function main() {
     const asset = generated.scene_asset;
 
     assert.equal(sceneAssets.needsLayoutView({ layout: 'one simple wall' }), true);
-    assert.deepEqual(sceneAssets.REQUIRED_SCENE_VIEW_KEYS, ['layout', 'master', 'reverse', 'interaction', 'detail']);
+    assert.deepEqual(sceneAssets.REQUIRED_SCENE_VIEW_KEYS, requiredViewKeys);
     assert.deepEqual(sceneAssets.SCENE_GENERATION_ORDER, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.equal(calls.length, 5, 'one generation call per required asset, with no service-level retry');
     assert.equal(peakImageCalls, 3, 'reverse, interaction and detail must run in parallel after master and overview are ready');

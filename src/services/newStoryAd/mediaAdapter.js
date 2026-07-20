@@ -639,6 +639,7 @@ async function generateActorReference({ prompt = '', filename = '', aspectRatio 
 module.exports = {
   ASSET_DIR,
   THUMB_DIR,
+  safeFilename,
   assetPathFromName,
   assetThumbPathFromName,
   ensureAssetThumbnail,

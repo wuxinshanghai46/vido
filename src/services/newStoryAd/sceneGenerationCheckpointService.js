@@ -45,17 +45,47 @@ function outputKind(sceneId = '') {
   return `${CHECKPOINT_OUTPUT_PREFIX}${safePart(sceneId, 100)}`;
 }
 
+function shortHash(value = '', length = 10) {
+  return crypto.createHash('sha256')
+    .update(String(value || ''))
+    .digest('hex')
+    .slice(0, Math.max(6, Math.min(24, Number(length) || 10)));
+}
+
 function candidateFilename(checkpoint = {}, viewKey = '') {
   return [
     'scene_asset',
-    safePart(checkpoint.task_id, 32),
-    safePart(checkpoint.scene_id, 32),
+    `t${shortHash(checkpoint.task_id, 10)}`,
+    `s${shortHash(checkpoint.scene_id, 10)}`,
     `r${Math.max(1, Number(checkpoint.candidate_revision || 1) || 1)}`,
+    safePart(viewKey, 24),
     'candidate',
     String(checkpoint.input_fingerprint || '').slice(0, 12),
-    safePart(viewKey, 24),
     'image',
   ].join('_');
+}
+
+function assertUniqueCandidateFilenames(checkpoint = {}, viewKeys = []) {
+  const inputKeys = Array.isArray(viewKeys) ? viewKeys : [];
+  const keys = inputKeys.map(key => safePart(key, 24));
+  const rows = keys.map(key => {
+    const requested = candidateFilename(checkpoint, key);
+    const persisted = mediaAdapter.safeFilename(requested, '.png');
+    return { key, requested, persisted };
+  });
+  const persistedNames = rows.map(row => row.persisted);
+  const unique = new Set(persistedNames);
+  const missingViewKey = rows.filter(row => !row.persisted.includes(`_${row.key}_`));
+  const duplicateOrInvalidViewKeys = inputKeys.some(key => !String(key || '').trim())
+    || new Set(keys).size !== keys.length;
+  if (duplicateOrInvalidViewKeys || unique.size !== rows.length || missingViewKey.length) {
+    const error = new Error('场景五视图候选文件名发生截断碰撞，已在图片调用前停止');
+    error.code = 'SCENE_CANDIDATE_FILENAME_COLLISION';
+    error.retryable = false;
+    error.filename_diagnostics = rows;
+    throw error;
+  }
+  return rows;
 }
 
 function viewUrl(view = {}) {
@@ -276,6 +306,7 @@ module.exports = {
   inputFingerprint,
   outputKind,
   candidateFilename,
+  assertUniqueCandidateFilenames,
   reusableView,
   checkpointView,
   initialViewStates,
