@@ -13,10 +13,17 @@ git fetch origin
 git switch codex/story-ad-v3-upgrade
 git pull --ff-only origin codex/story-ad-v3-upgrade
 npm install
+```
+
+Windows PowerShell 启动 3007 端口：
+
+```powershell
+$env:PORT='3007'
+$env:VIDEO_CANVAS_WORKER_MODE='external'
 node src/server.js
 ```
 
-访问：`http://localhost:3007`
+`VIDEO_CANVAS_WORKER_MODE=external` 用于本机尚未迁移视频画布 V2 数据表时跳过内置 Worker；如果家中环境已完成该模块迁移，可按原配置启动。访问：`http://localhost:3007`。
 
 拉取后建议先执行：
 
