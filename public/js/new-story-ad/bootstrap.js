@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v24';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v25';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -32,8 +32,13 @@
 
   /** 更新剧情广告区域的按需加载状态。 */
   function setLoadingState(status = 'loading', message = '') {
-    if (status === 'loading') delete document.documentElement.dataset.nsaStoryReady;
-    else document.documentElement.dataset.nsaStoryReady = '1';
+    if (status === 'loading') {
+      document.documentElement.dataset.nsaStoryLoading = '1';
+      delete document.documentElement.dataset.nsaStoryReady;
+    } else {
+      delete document.documentElement.dataset.nsaStoryLoading;
+      document.documentElement.dataset.nsaStoryReady = '1';
+    }
     const pane = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]');
     if (!pane) return;
     pane.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false');
