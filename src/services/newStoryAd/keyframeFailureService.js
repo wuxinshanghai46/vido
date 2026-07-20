@@ -36,4 +36,26 @@ function batchError(failures = [], keyframes = [], attempts = []) {
   return error;
 }
 
-module.exports = { attempt, describeBatchFailures, batchError };
+function taskSummaryPatch(task = {}, keyframes = []) {
+  const supportId = task.support_id || task.generation_progress?.generation_id || '';
+  const legacyFailure = String(task.stage || '') === 'keyframes_failed'
+    && ['UNKNOWN', 'KEYFRAME_GENERATION_FAILED', ''].includes(String(task.error_code || ''));
+  if (!legacyFailure) return {
+    error: task.error || '',
+    error_code: task.error_code || '',
+    retryable: task.retryable === true,
+    support_id: supportId,
+  };
+  const failedShots = keyframes
+    .map((frame, index) => frame?.error || ['failed', 'rejected', 'qa_unavailable', 'blocked'].includes(frame?.current_generation_status) ? index + 1 : 0)
+    .filter(Boolean);
+  if (!failedShots.length) return { error: task.error || '', error_code: task.error_code || '', retryable: task.retryable === true, support_id: supportId };
+  return {
+    error: `${supportId ? `支持编号：${supportId}。` : ''}第 ${failedShots.join('、')} 镜未生成可用分镜图；已保留成功镜头，可仅补齐失败镜头。`,
+    error_code: 'KEYFRAME_BATCH_PARTIAL_FAILURE',
+    retryable: true,
+    support_id: supportId,
+  };
+}
+
+module.exports = { attempt, describeBatchFailures, batchError, taskSummaryPatch };

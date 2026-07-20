@@ -133,6 +133,23 @@ async function main() {
   const structuredStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
   assert.equal(structuredStage.diagnostics.failure_details[0].shot_number, 2);
   assert.equal(structuredStage.diagnostics.failure_details[0].code, 'PROVIDER_5XX_AMBIGUOUS');
+  const legacyTask = service.createTask({ brief: '历史错误兼容', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.saveOutput(legacyTask.id, 'keyframes', [
+    { image_url: 'https://example.test/1.png', current_generation_status: 'accepted', qa: { pass: true } },
+    { error: '供应商失败', error_code: 'PROVIDER_5XX_AMBIGUOUS', current_generation_status: 'failed' },
+    { image_url: 'https://example.test/3.png', current_generation_status: 'accepted', qa: { pass: true } },
+    { error: '场景 QA 失败', error_code: 'SCENE_CONSISTENCY_QA_FAILED', current_generation_status: 'rejected' },
+    { error: '供应商失败', error_code: 'PROVIDER_5XX_AMBIGUOUS', current_generation_status: 'failed' },
+  ]);
+  storage.updateTask(legacyTask.id, {
+    status: 'failed', stage: 'keyframes_failed', error: '操作失败，请联系管理员并提供请求编号', error_code: 'UNKNOWN',
+    generation_progress: { stage: 'keyframes', generation_id: 'legacy-generation-support-id' },
+  });
+  const legacySummary = service.taskSummary(storage.getTask(legacyTask.id));
+  assert.equal(legacySummary.error_code, 'KEYFRAME_BATCH_PARTIAL_FAILURE');
+  assert.equal(legacySummary.support_id, 'legacy-generation-support-id');
+  assert.match(legacySummary.error, /第 2、4、5 镜未生成可用分镜图/);
+  assert.match(legacySummary.error, /支持编号：legacy-generation-support-id/);
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });

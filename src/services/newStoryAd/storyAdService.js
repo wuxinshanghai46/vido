@@ -456,6 +456,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
   } : null);
   const storedStatus = String(task.status || '').toLowerCase();
   const hasFinalOutput = !!finalVideoUrl || /final_video_ready|compose_done/.test(String(task.stage || ''));
+  const failureSummary = keyframeFailure.taskSummaryPatch(task, keyframes);
   const taskStatus = hasFinalOutput
     ? 'done'
     : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status);
@@ -470,10 +471,10 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     saved_progress: task.saved_progress === true,
     active_stage: task.active_stage || '',
     active_generation_id: task.active_generation_id || '',
-    error: cleanText(task.error || '', 300),
-    error_code: task.error_code || '',
-    support_id: task.support_id || '',
-    retryable: task.retryable === true,
+    error: cleanText(failureSummary.error, 300),
+    error_code: failureSummary.error_code,
+    support_id: failureSummary.support_id,
+    retryable: failureSummary.retryable,
     actor_name: cleanText(context.person_asset?.name || context.person_spec?.displayName || context.person_spec?.roleName || '', 100),
     generation_queued_at: task.generation_queued_at || '',
     generation_started_at: task.generation_started_at || '',
