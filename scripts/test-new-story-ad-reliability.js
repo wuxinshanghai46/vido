@@ -96,6 +96,7 @@ async function main() {
   assert.equal(storage.getTask(taskId).status, 'done');
   assert.equal(storage.getOutput(taskId, 'storyboard_table').length, 1);
 
+  storage.saveStage(taskId, 'video', { status: 'cancelled', output_summary: '用户取消，已停止后续调用和结果写入' });
   const failed = jobs.queueStage({
     taskId,
     stage: 'video',
@@ -105,6 +106,8 @@ async function main() {
   await waitUntil(() => storage.getTask(taskId).stage === 'video_failed');
   assert.equal(storage.getTask(taskId).error_code, 'AUTH_CONFIG');
   assert.equal(storage.getTask(taskId).retryable, false);
+  const failedStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'video');
+  assert.equal(failedStage.output_summary, '执行失败，未保存可用结果', '失败重试必须覆盖旧的用户取消摘要');
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');
   assert.deepEqual(modelGateway.classifyError(new Error('HTTP 400: {"code":1102,"message":"Account balance not enough"}')), { code: 'PROVIDER_BILLING', retryable: false });
   assert.deepEqual(modelGateway.classifyError(new Error('Request timed out.')), { code: 'TIMEOUT_OR_NETWORK', retryable: true });

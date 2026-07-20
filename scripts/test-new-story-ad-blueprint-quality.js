@@ -3,6 +3,7 @@ const {
   BLUEPRINT_RIGHTS_POLICY_VERSION,
   assessBlueprintQuality,
   assessBlueprintRights,
+  normalizeAuthorizedBrandPresentation,
   similarity,
 } = require('../src/services/newStoryAd/blueprintQualityService');
 
@@ -62,5 +63,18 @@ const authorizedOverlay = {
     : beat),
 };
 assert.equal(assessBlueprintRights(authorizedOverlay).pass, true, '已授权品牌素材必须允许后期叠加，不能要求模型生成 Logo');
+const firstPartyBrandAppearance = {
+  ...premium,
+  beats: premium.beats.map((beat, index) => index === 2
+    ? { ...beat, plot: `${beat.plot}，佛山海和品牌标志在结尾出现。`, spoken_line: '佛山海和，让不锈钢成为空间设计的一部分。' }
+    : beat),
+};
+assert.equal(assessBlueprintRights(firstPartyBrandAppearance).pass, true, '自有品牌名称和普通品牌露出不能误判为模型生成 Logo');
+const normalizedBrandAppearance = normalizeAuthorizedBrandPresentation(firstPartyBrandAppearance);
+assert.match(normalizedBrandAppearance.beats[2].plot, /后期叠加的已授权品牌素材/);
+assert.doesNotMatch(normalizedBrandAppearance.beats[2].plot, /品牌标志/);
+assert.match(normalizedBrandAppearance.beats[2].spoken_line, /佛山海和/, '自有品牌名称必须保留在台词中');
+assert.equal(assessBlueprintQuality(normalizedBrandAppearance).pass, true);
+assert.equal(normalizeAuthorizedBrandPresentation(rightsRisk).beats[1].plot, rightsRisk.beats[1].plot, '明确要求生成或变形 Logo 时仍必须保留并拦截');
 assert.equal(assessBlueprintQuality(premium).pass, true);
 console.log('PASS new story ad premium blueprint quality');

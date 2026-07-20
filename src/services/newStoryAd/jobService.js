@@ -298,6 +298,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           status: 'failed',
           started_at: job.startedAt,
           finished_at: job.finishedAt,
+          output_summary: '执行失败，未保存可用结果',
           error: job.error,
           diagnostics: {
             generation_id: id,
@@ -349,6 +350,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
         status: 'failed',
         started_at: job.startedAt,
         finished_at: job.finishedAt,
+        output_summary: '执行超时，未保存可用结果',
         error: job.error,
         diagnostics: { generation_id: id, error_code: failure.code, retryable: true },
       }, { systemFinalization: true });

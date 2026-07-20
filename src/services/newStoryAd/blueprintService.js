@@ -229,7 +229,7 @@ async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
     'Never put explicitly forbidden people, objects, carrier forms, styles or wrong products into beats.',
     'Originality and rights are hard production constraints for every industry: create original characters, scenes, plot actions and visual compositions. Never reproduce or closely imitate a film, series, animation, game, advertisement, poster, album cover or protected character.',
     'Never request the style, likeness, face, voice or recognizable identity of a named artist, director, photographer, celebrity, public figure, influencer or third-party character. Do not write face-swap, identity-bypass or review-bypass instructions.',
-    'User-provided first-party brand and product facts may remain in text. Any logo, trademark or brand wordmark must be described only as an authorized asset added in post-production; never ask an image model to generate, transform, infer or imitate it.',
+    'User-provided first-party brand names and product facts may appear naturally in dialogue, narration and editable subtitles. A visual logo, trademark or brand wordmark must be represented only as an authorized asset added in post-production; never ask an image model to generate, transform, infer or imitate it.',
     'If the brief contains an inspiration reference, translate it into generic high-level traits such as pacing, lighting, framing, material mood or emotional tone without naming or copying the reference.',
   ].join('\n');
 
