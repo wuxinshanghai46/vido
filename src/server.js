@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const mediaDelivery = require('./services/mediaDeliveryService');
@@ -45,6 +46,19 @@ function requirePageAuth(req, res, next) {
 }
 
 app.use(cors({ origin: true, credentials: true }));
+const compressTextResponse = compression({ threshold: 1024 });
+/** 仅压缩页面、静态文本和剧情广告任务明细，避免影响 SSE 与媒体流。 */
+function shouldCompressTextResponse(req) {
+  const requestPath = String(req.path || '');
+  return req.method === 'GET' && (
+    requestPath === '/digital-human'
+    || /\.(?:html|js|css|svg|json)$/i.test(requestPath)
+    || /^\/api\/new-story-ad\/tasks\/[^/]+$/.test(requestPath)
+  );
+}
+app.use((req, res, next) => (
+  shouldCompressTextResponse(req) ? compressTextResponse(req, res, next) : next()
+));
 // 保留原始 body（签名验证用）仅对 /openapi/* 生效，避免影响其他路由的 JSON 解析
 app.use('/openapi', express.json({
   verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); },

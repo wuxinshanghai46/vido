@@ -9,6 +9,7 @@ const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digi
 const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap.js'), 'utf8');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
+const serverSource = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
 const storyService = require('../src/services/newStoryAd/storyAdService');
 const values = new Map([['vido_new_story_ad_current_task_id', 'old-task']]);
 const location = {
@@ -91,9 +92,13 @@ assert(bootstrapSource.includes('preloadScripts();'));
 assert(bootstrapSource.includes('prefetchRouteTask();'));
 assert(bootstrapSource.includes('await waitForStoryTemplate();'));
 assert(bootstrapSource.includes('(document.body || document.head || document.documentElement).appendChild(script)'));
+assert(bootstrapSource.includes('(restoring || routeTaskExpected) && !restoreFinished'));
 assert(bootstrapSource.includes("link.rel = 'preload'"));
 assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
 assert(routeSource.includes("String(req.query.compact || '') === '1'"));
+assert(serverSource.includes("const compression = require('compression')"));
+assert(serverSource.includes("requestPath === '/digital-human'"));
+assert(serverSource.includes("/^\\/api\\/new-story-ad\\/tasks\\/[^/]+$/.test(requestPath)"));
 
 const fullBundle = {
   task: { id: 'resume-task', request: { brief: 'original', scene_assets: [{ id: 'scene-1' }] } },

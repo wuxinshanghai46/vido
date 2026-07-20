@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v23';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v24';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -132,7 +132,11 @@
       await waitForStoryTemplate();
       document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
       const restoring = window.__newStoryAdLegacyUI?.state?.restoringTask === true;
-      if (restoring && !restoreFinished) {
+      let routeTaskExpected = false;
+      try {
+        routeTaskExpected = !!new URLSearchParams(location.search || '').get('nsa_task_id');
+      } catch {}
+      if ((restoring || routeTaskExpected) && !restoreFinished) {
         setLoadingState('loading', '正在恢复已保存的任务数据，任务内容不会丢失…');
       } else {
         document.removeEventListener('new-story-ad:restore-finished', onRestoreFinished);
