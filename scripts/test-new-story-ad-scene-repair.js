@@ -167,9 +167,9 @@ async function main() {
     viewKey: 'layout',
   });
   assert.ok(auditSafePrompt.length <= 2200);
-  assert.match(auditSafePrompt, /real high-oblique whole-space photograph/i);
+  assert.match(auditSafePrompt, /near-vertical top-down whole-space layout/i);
   assert.match(auditSafePrompt, /brushed stainless steel/i);
-  assert.match(auditSafePrompt, /not a neutral diagram, clay render, dollhouse/i);
+  assert.match(auditSafePrompt, /remove the ceiling.*low cutaway perimeter boundaries/i);
   assert.doesNotMatch(auditSafePrompt, /arms|hands|legs|body|silhouette|fingerprints/i);
   const gptPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt);
   assert.equal(gptPrompt, 'normal provider prompt');
@@ -372,7 +372,7 @@ async function main() {
   storage.saveOutput(taskId, 'scene_assets', [{
     id: sceneId,
     scene_id: sceneId,
-    generation_contract_version: 5,
+    generation_contract_version: 6,
     scene_revision: 1,
     name: 'repair scene',
     image_url: urls.master,
@@ -418,7 +418,7 @@ async function main() {
     storage.saveOutput(unavailableTaskId, 'scene_assets', [{
       id: unavailableSceneId,
       scene_id: unavailableSceneId,
-      generation_contract_version: 5,
+      generation_contract_version: 6,
       scene_revision: 1,
       name: 'preserve scene',
       image_url: urls.master,

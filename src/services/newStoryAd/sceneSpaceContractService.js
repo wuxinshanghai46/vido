@@ -208,7 +208,7 @@ function buildLayoutContract(input = {}, options = {}) {
   return {
     required: options.layoutRequired === true || !!layoutView,
     status: layoutView ? 'available' : (options.layoutRequired === true ? 'missing' : 'not_required'),
-    mode: layoutView ? 'topdown_or_axonometric_reference' : 'topology_contract',
+    mode: layoutView ? 'near_vertical_topdown_reference' : 'topology_contract',
     reference_image_url: cleanText(layoutView?.url || layoutView?.image_url || '', 1000),
     zones: normalizeZones(input.zones || input.spatial_zones || []),
     anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
@@ -514,7 +514,7 @@ async function analyzeSceneViews(options = {}) {
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
       + 'First verify that the generated scene obeys the requested layout, material/light, visual style or photographic medium, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
-      + 'The optional fifth layout image is a master-derived high-oblique photograph of the same finished location. Use it primarily for topology, coordinates, access points and anchor placement, but also reject it when it depicts an unrelated location, anchor system, material identity or lighting design. '
+      + 'The optional fifth layout image is a master-derived near-vertical top-down spatial survey of the same finished location. Use it primarily for topology, coordinates, access points and anchor placement, but also reject it when it depicts an unrelated location, anchor system, material identity or lighting design. '
       + 'For all five views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
       + 'Use requested.material_reference_available as the evidence flag. When it is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory; evaluate only the observable colour, grain, reflectance, roughness, directionality, patina, translucency or micro-relief cues explicitly stated in material_light. '
       + 'For continuous hidden-seam surfaces, distinguish illumination from construction: a smooth reflection or lighting gradient is not a seam by itself. Count a seam only when there is a coherent geometric edge, gap, groove, recess or sustained boundary that visibly divides the primary plane; a full-height or full-width dividing line is valid failure evidence. '
@@ -535,8 +535,8 @@ async function analyzeSceneViews(options = {}) {
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
       + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
-      + 'For a complete spatial lock, spatial_coverage_qa must fail if the layout/top-down/high-oblique reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
-      + 'A valid fifth layout view must use a genuinely elevated steep downward camera, show most of the usable ground/base footprint, make task-appropriate boundaries or edges, access points, fixed anchors, circulation and action-zone relations readable together, and relocate meaningfully from the master camera. Reject a mild high-angle commercial shot, frontal elevation, close crop, master reframe, ceiling-dominant enclosed view, or an unrelated plan/miniature/CGI view. '
+      + 'For a complete spatial lock, spatial_coverage_qa must fail if the near-vertical top-down layout reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
+      + 'A valid fifth layout view must use an 82-90 degree downward near-orthographic camera, fit the complete usable footprint and every scene boundary or task-defined edge inside one frame, make access points, fixed anchors, circulation and action-zone relations readable together, and remain the same location as the master. For enclosed spaces, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. Reject any visible horizon, dominant vertical wall face, mild high-angle commercial shot, frontal elevation, close crop, missing perimeter or master reframe. '
       + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes. '
       + 'Keep the complete JSON under 3500 characters. Put requirement_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts, 5 materials and 5 cameras; keep each description under 80 characters.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
@@ -616,6 +616,8 @@ async function analyzeSceneViews(options = {}) {
       layout_role_pass: layoutAcquisition.pass === true,
       layout_role_score: score(layoutAcquisition.layout_role_score),
       footprint_coverage_score: score(layoutAcquisition.footprint_coverage_score),
+      overhead_verticality_score: score(layoutAcquisition.overhead_verticality_score),
+      boundary_completeness_score: score(layoutAcquisition.boundary_completeness_score),
       camera_relocation_score: score(layoutAcquisition.camera_relocation_score),
       scene_identity_score: score(layoutAcquisition.scene_identity_score),
     };
@@ -626,16 +628,18 @@ async function analyzeSceneViews(options = {}) {
     contract.spatial_coverage_qa.layout_topology_score = Math.min(
       contract.spatial_coverage_qa.layout_topology_score,
       score(layoutAcquisition.footprint_coverage_score),
+      score(layoutAcquisition.overhead_verticality_score),
+      score(layoutAcquisition.boundary_completeness_score),
     );
     contract.spatial_coverage_qa.reasons = [...new Set([
       ...(contract.spatial_coverage_qa.reasons || []),
       ...(layoutAcquisition.reasons || []),
-      '第5张俯视布局未通过高俯角全貌角色验证',
+      '第5张俯视布局未通过近垂直全空间覆盖验证',
     ])].slice(0, 4);
     contract.view_issues = [...contract.view_issues, {
       code: 'LAYOUT_ROLE_INVALID',
       view_keys: ['layout'],
-      reason: cleanText(layoutAcquisition.reasons?.[0] || '俯视布局未通过全貌视角验证', 300),
+      reason: cleanText(layoutAcquisition.reasons?.[0] || '俯视布局未通过近垂直全貌视角验证', 300),
       evidence: 'layout preflight scores below role thresholds',
       confidence: 1,
     }];
@@ -662,13 +666,14 @@ async function validateLayoutAcquisition(options = {}) {
     stage: 'new_story_ad.scene_vision',
     systemPrompt: [
       'You are a strict role validator for a general-purpose spatial reference acquisition system.',
-      'Image 1 is the master appearance reference. Image 2 is the candidate high-oblique whole-location acquisition view.',
-      'Judge only camera role, footprint readability, same-location identity and camera relocation. Never assume a fixed industry, indoor room, outdoor site, material or object category.',
-      'Return JSON only with pass, layout_role_score, footprint_coverage_score, scene_identity_score, camera_relocation_score and reasons.',
+      'Image 1 is the master appearance reference. Image 2 is the candidate near-vertical top-down whole-location spatial survey.',
+      'Judge only overhead camera role, complete footprint and boundary readability, same-location identity and camera relocation. Never assume a fixed industry, indoor room, outdoor site, material or object category.',
+      'Return JSON only with pass, layout_role_score, footprint_coverage_score, overhead_verticality_score, boundary_completeness_score, scene_identity_score, camera_relocation_score and reasons.',
     ].join('\n'),
     userPrompt: 'Current task spatial constraints: ' + JSON.stringify(options.requested || {}).slice(0, 5000) + '\n'
-      + 'The candidate passes only when it uses a genuinely elevated 65-80 degree downward camera; shows most of the usable ground/base footprint; makes scene-appropriate boundaries or edges, access points, fixed anchors, circulation and action-zone relations readable together; remains the same physical location as the master; and does not preserve the master crop or camera sector. '
-      + 'For an enclosed location, a prominent ceiling plane is evidence that the camera is not steep enough. A mild high-angle commercial shot, frontal elevation, close crop, master reframe, plan illustration, miniature/dollhouse, cutaway, CGI view or unrelated location must fail. '
+      + 'The candidate passes only when it uses an 82-90 degree downward, near-orthographic camera; fits the complete usable ground/base footprint and every scene boundary or task-defined edge inside one frame; makes access points, fixed anchors, circulation and action-zone relations readable together; remains the same physical location as the master; and does not preserve the master crop or camera sector. '
+      + 'For an enclosed location, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. A visible horizon, dominant vertical wall face, perspective-led commercial composition, mild high-angle shot, frontal elevation, close crop, missing perimeter or master reframe must fail. A photoreal cutaway boundary is allowed; labels, watermark, CAD lines, dimensions and schematic annotation are forbidden. '
+      + 'Scoring anchor: if the camera is visibly below 82 degrees or any dominant wall face is seen frontally, overhead_verticality_score must be 0.35 or lower. If any task-defined perimeter or usable footprint edge is outside the frame, boundary_completeness_score must be 0.5 or lower. '
       + 'Every score must be an evaluated number from 0 to 1. Use concise Simplified Chinese reasons and never copy placeholder scores.',
     imageUrls,
     maxTokens: 1200,
@@ -682,6 +687,8 @@ async function validateLayoutAcquisition(options = {}) {
   const fields = [
     ['layout_role_score'],
     ['footprint_coverage_score'],
+    ['overhead_verticality_score'],
+    ['boundary_completeness_score'],
     ['scene_identity_score'],
     ['camera_relocation_score'],
   ];
@@ -694,6 +701,8 @@ async function validateLayoutAcquisition(options = {}) {
   const normalized = {
     layout_role_score: score(parsed.layout_role_score),
     footprint_coverage_score: score(parsed.footprint_coverage_score),
+    overhead_verticality_score: score(parsed.overhead_verticality_score),
+    boundary_completeness_score: score(parsed.boundary_completeness_score),
     scene_identity_score: score(parsed.scene_identity_score),
     camera_relocation_score: score(parsed.camera_relocation_score),
     reasons: stringList(parsed.reasons || parsed.mismatch_reasons || [], 4, 180),
@@ -701,11 +710,13 @@ async function validateLayoutAcquisition(options = {}) {
   };
   normalized.pass = parsed.pass === true
     && normalized.layout_role_score >= 0.82
-    && normalized.footprint_coverage_score >= 0.8
+    && normalized.footprint_coverage_score >= 0.85
+    && normalized.overhead_verticality_score >= 0.85
+    && normalized.boundary_completeness_score >= 0.85
     && normalized.scene_identity_score >= 0.75
     && normalized.camera_relocation_score >= 0.8;
   if (!normalized.pass && !normalized.reasons.length) {
-    normalized.reasons.push('俯视布局未达到高俯角、全貌覆盖、同场景或机位迁移要求');
+    normalized.reasons.push('俯视布局未达到近垂直机位、完整边界覆盖、同场景或机位迁移要求');
   }
   return normalized;
 }

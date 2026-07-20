@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260719-scene-upgrade-closure-v14';
+  const SCRIPT_VERSION = '20260720-near-vertical-layout-v15';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

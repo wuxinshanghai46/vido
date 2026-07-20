@@ -6,7 +6,7 @@
     detail: '材质细节',
     layout: '俯视布局',
   };
-  const SCENE_GENERATION_CONTRACT_VERSION = 5;
+  const SCENE_GENERATION_CONTRACT_VERSION = 6;
 
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;

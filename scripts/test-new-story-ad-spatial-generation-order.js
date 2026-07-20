@@ -128,6 +128,8 @@ async function main() {
         pass: false,
         layout_role_score: 0.2,
         footprint_coverage_score: 0.2,
+        overhead_verticality_score: 0.2,
+        boundary_completeness_score: 0.2,
         scene_identity_score: 0.95,
         camera_relocation_score: 0.2,
         reasons: ['机位仍接近主视图，没有展示完整可用范围'],
@@ -137,6 +139,8 @@ async function main() {
       pass: true,
       layout_role_score: 0.95,
       footprint_coverage_score: 0.94,
+      overhead_verticality_score: 0.96,
+      boundary_completeness_score: 0.95,
       scene_identity_score: 0.96,
       camera_relocation_score: 0.93,
       reasons: [],
@@ -171,24 +175,24 @@ async function main() {
     assert.equal(calls[1].requireReferences, true);
     assert.equal(calls[1].inputFidelity, 'low');
     assert.equal(calls[1].imageModel, 'gpt-image-2');
-    assert.match(calls[1].prompt, /PHOTOGRAPHIC HIGH-OBLIQUE WHOLE-SPACE OVERVIEW/i);
-    assert.match(calls[1].prompt, /65 to 80 degree downward pitch/i);
-    assert.match(calls[1].prompt, /usable ground\/base footprint must occupy most of the frame/i);
+    assert.match(calls[1].prompt, /NEAR-VERTICAL TOP-DOWN WHOLE-SPACE LAYOUT/i);
+    assert.match(calls[1].prompt, /82 to 90 degree downward/i);
+    assert.match(calls[1].prompt, /complete usable ground\/base footprint.*every scene boundary/i);
     assert.match(calls[1].prompt, /master reference controls scene identity.*not the target camera composition/i);
     assert.doesNotMatch(calls[1].prompt, /Scene interaction and camera position requirement/i);
     assert.ok(calls[1].prompt.length <= 6200, 'layout role prompt must remain compact enough for Image2 to prioritize camera acquisition');
     assert.match(calls[1].prompt, /Reference image 1 is the master establishing view/i);
     assert.match(calls[1].prompt, /same location|exact physical location/i);
-    assert.match(calls[1].prompt, /not a neutral diagram, clay render, dollhouse/i);
+    assert.match(calls[1].prompt, /remove the ceiling.*low cutaway perimeter boundaries/i);
     assert.match(calls[1].prompt, /Material identity and surface topology are independent constraints/i);
-    assert.match(calls[1].auditSafePrompt, /real high-oblique whole-space photograph/i);
+    assert.match(calls[1].auditSafePrompt, /near-vertical top-down whole-space layout/i);
 
     for (const call of calls.slice(2, 4)) {
       assert.deepEqual(call.referenceImages, ['/mock-scene-view-1.png', '/mock-scene-view-2.png']);
       assert.equal(call.requireReferences, true);
       assert.equal(call.inputFidelity, 'low');
       assert.equal(call.imageModel, 'gpt-image-2');
-      assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the master-derived high-oblique spatial overview/i);
+      assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the master-derived near-vertical top-down spatial layout/i);
       assert.match(call.prompt, /master as the primary scene\/appearance identity/i);
       assert.match(call.prompt, /no people/i);
       assert.ok(call.auditSafePrompt.length <= 2200);
@@ -209,11 +213,11 @@ async function main() {
     assert.deepEqual(asset.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail', 'layout']);
     assert.equal(asset.image_url, '/mock-scene-view-1.png', 'master remains the historical primary thumbnail');
     assert.equal(asset.view_count, 5);
-    assert.equal(asset.generation_contract_version, 5);
+    assert.equal(asset.generation_contract_version, 6);
     assert.equal(asset.layout_contract.required, true);
     assert.equal(asset.view_acquisition.layout_policy, 'required_for_all_new_scenes');
-    assert.equal(asset.view_acquisition.layout_appearance_role, 'master_derived_photographic_overview');
-    assert.equal(asset.view_acquisition.generation_contract_version, 5);
+    assert.equal(asset.view_acquisition.layout_appearance_role, 'master_derived_near_vertical_topdown');
+    assert.equal(asset.view_acquisition.generation_contract_version, 6);
     assert.deepEqual(asset.view_acquisition.generation_order, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.deepEqual(asset.view_acquisition.reference_graph, {
       master: [],
@@ -387,8 +391,8 @@ async function main() {
       });
       assert.ok(rolePrompt.length <= 3600);
       assert.ok(rolePrompt.includes(item.layout));
-      assert.match(rolePrompt, /65 to 80 degree downward pitch/i);
-      assert.match(rolePrompt, /usable ground\/base footprint must occupy most of the frame/i);
+      assert.match(rolePrompt, /82 to 90 degree downward/i);
+      assert.match(rolePrompt, /complete usable ground\/base footprint.*every scene boundary/i);
       assert.doesNotMatch(rolePrompt, /eye-level camera tracks parallel to the wall|close-up cinematic lens/i);
       assert.doesNotMatch(rolePrompt, item.forbidden);
     });

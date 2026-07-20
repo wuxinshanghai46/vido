@@ -226,6 +226,8 @@ async function main() {
               pass: true,
               layout_role_score: 0.95,
               footprint_coverage_score: 0.94,
+              overhead_verticality_score: 0.96,
+              boundary_completeness_score: 0.95,
               scene_identity_score: 0.96,
               camera_relocation_score: 0.92,
               reasons: [],
@@ -236,11 +238,35 @@ async function main() {
       },
     });
     assert.equal(layoutGate.pass, true);
-    assert.match(layoutGateRequest.userPrompt, /65-80 degree downward camera/i);
-    assert.match(layoutGateRequest.userPrompt, /usable ground\/base footprint/i);
-    assert.match(layoutGateRequest.userPrompt, /prominent ceiling plane/i);
-    assert.match(layoutGateRequest.userPrompt, /mild high-angle commercial shot/i);
+    assert.match(layoutGateRequest.userPrompt, /82-90 degree downward/i);
+    assert.match(layoutGateRequest.userPrompt, /complete usable ground\/base footprint/i);
+    assert.match(layoutGateRequest.userPrompt, /ceiling must be removed/i);
+    assert.match(layoutGateRequest.userPrompt, /mild high-angle shot/i);
+    assert.match(layoutGateRequest.userPrompt, /overhead_verticality_score must be 0\.35 or lower/i);
     assert.equal(layoutGateRequest.imageUrls[1], 'https://test.invalid/layout.png?w=560');
+
+    const shallowOverhead = await sceneSpace.validateLayoutAcquisition({
+      taskId: 'layout-role-shallow-angle-test',
+      masterUrl: 'https://test.invalid/master.png',
+      layoutUrl: 'https://test.invalid/shallow-layout.png',
+      requested: { layout: 'complete task-defined footprint' },
+      gateway: {
+        generateVision: async () => ({
+          text: JSON.stringify({
+            pass: true,
+            layout_role_score: 0.95,
+            footprint_coverage_score: 0.94,
+            overhead_verticality_score: 0.3,
+            boundary_completeness_score: 0.95,
+            scene_identity_score: 0.96,
+            camera_relocation_score: 0.92,
+            reasons: [],
+          }),
+          used_model: 'mock/layout-role-shallow',
+        }),
+      },
+    });
+    assert.equal(shallowOverhead.pass, false, 'a mild high-angle image must fail even when the model says pass');
 
     let successfulReviewCalls = 0;
     modelGateway.generateVision = async () => {
@@ -270,6 +296,8 @@ async function main() {
         pass: false,
         layout_role_score: 0.2,
         footprint_coverage_score: 0.3,
+        overhead_verticality_score: 0.2,
+        boundary_completeness_score: 0.3,
         scene_identity_score: 0.95,
         camera_relocation_score: 0.2,
         reasons: ['只是主视图的轻微抬高重构'],

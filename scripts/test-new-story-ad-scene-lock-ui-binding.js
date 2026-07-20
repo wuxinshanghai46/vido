@@ -10,7 +10,7 @@ function fullAsset() {
   return {
     scene_id: 'scene-v3',
     name: '完整空间场景',
-    generation_contract_version: 5,
+    generation_contract_version: 6,
     view_images: [
       { key: 'master', url: '/master.png' },
       { key: 'reverse', url: '/reverse.png' },
@@ -292,10 +292,10 @@ function main() {
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
-  assert(html.includes('20260719-scene-upgrade-closure-v14'));
+  assert(html.includes('bootstrap.js?v=20260720-near-vertical-layout-v15'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260719-scene-upgrade-closure-v14'));
+  assert(bootstrap.includes('20260720-near-vertical-layout-v15'));
   assert(generationFlow.includes('ctx.renderAll?.()'));
   assert(adminHtml.includes('20260719-story-ad-image2-only'));
   assert(adminUi.includes('_pmsCache.available_by_stage[stageId]'));
