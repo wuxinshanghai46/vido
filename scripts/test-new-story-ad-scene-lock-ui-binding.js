@@ -373,15 +373,15 @@ function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260720-custom-scene-select-v27'));
-  assert(html.includes('digital-human-wizard.css?v=20260720-custom-scene-select-v23'));
-  assert(html.indexOf('bootstrap.js?v=20260720-custom-scene-select-v27') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
+  assert(html.includes('bootstrap.js?v=20260720-story-ad-selects-v28'));
+  assert(html.includes('digital-human-wizard.css?v=20260720-story-ad-selects-v24'));
+  assert(html.indexOf('bootstrap.js?v=20260720-story-ad-selects-v28') < html.indexOf('digital-human.js?v=20260720-refresh-route-restore-v19'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260720-custom-scene-select-v27'));
+  assert(bootstrap.includes('20260720-story-ad-selects-v28'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),
@@ -396,6 +396,12 @@ function main() {
   assert(css.includes('color-scheme: dark'));
   assert(css.includes('.dh-nsa-custom-select-option.is-selected'));
   assert(css.includes('.dh-luxgen-story.has-open-scene-select'));
+  assert(sceneUi.includes('select.dh-input:not(.dh-luxgen-hidden-control):not([aria-hidden="true"])'));
+  assert(sceneUi.includes("String(control.id || '').startsWith('dhNsa')"));
+  assert(sceneUi.includes('new MutationObserver'));
+  assert(sceneUi.includes("new-story-ad:restore-finished"));
+  assert(legacyUi.includes('Dynamic script/storyboard/modal selects are created'));
+  assert(html.includes('id="dhNsaAdProductionMode"'));
   assert(sceneUi.includes("control.dispatchEvent(new Event('change', { bubbles: true }))"));
   assert(sceneUi.includes('if (control.value === nativeOption.value)'));
   assert(generationFlow.includes('ctx.renderAll?.()'));

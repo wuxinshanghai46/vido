@@ -103,8 +103,9 @@
 .dh-input option:disabled { color: var(--dh-text-muted); }
 .dh-input-sm { padding: 8px 10px; font-size: 13px; }
 
-/* Scene topology selects live on a permanently dark work surface. Keep the
-   browser-native popup in the same scheme and make explicit choices visible. */
+/* Story-ad selects live on a permanently dark work surface. The operating
+   system may ignore native option colors, so visible controls are rendered by
+   the custom selector below while the native value remains the data source. */
 .dh-nsa-scene-spec-grid select.dh-input {
   color-scheme: dark;
   background-color: #18242a;
@@ -201,7 +202,8 @@
 .dh-nsa-custom-select-option:hover,
 .dh-nsa-custom-select-option:focus-visible { outline: none; border-color: rgba(33,255,243,.34); background: rgba(33,255,243,.09); color: #ffffff; }
 .dh-nsa-custom-select-option.is-selected { border-color: rgba(33,255,243,.66); background: linear-gradient(135deg, rgba(33,255,243,.24), rgba(164,255,72,.10)); color: #8cfff8; }
-.dh-luxgen-story.has-open-scene-select { overflow: visible; z-index: 12; }
+.dh-luxgen-story.has-open-scene-select,
+.dh-tab-pane[data-pane="new-story-ad"]:has(.dh-nsa-custom-select.is-open) { overflow: visible; z-index: 12; }
 
 /* ——— Chip 行 ——— */
 .dh-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }

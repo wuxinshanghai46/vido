@@ -3550,6 +3550,9 @@
     renderMedia();
     renderStatus();
     renderAutoSaveStatus();
+    // Dynamic script/storyboard/modal selects are created during the render calls above.
+    // Run the workbench-wide enhancer last so every visible selector gets the same dark UI.
+    window.NewStoryAdSceneAssets?.syncSpecSelectionState?.();
   }
 
   async function ensureTask() {

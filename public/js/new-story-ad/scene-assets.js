@@ -255,6 +255,40 @@
   function syncCustomSpecSelect(control) {
     const shell = control?._nsaCustomSelect;
     if (!shell) return;
+    const optionSignature = Array.from(control.options || [])
+      .map(option => [option.value, option.textContent, option.disabled ? '1' : '0'].join('\u0001'))
+      .join('\u0002');
+    if (control._nsaCustomSelectOptionSignature !== optionSignature) {
+      const menu = shell.querySelector('[data-nsa-select-menu]');
+      if (menu) {
+        menu.replaceChildren();
+        Array.from(control.options || []).forEach(nativeOption => {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.className = 'dh-nsa-custom-select-option';
+          option.dataset.nsaSelectOption = 'true';
+          option.dataset.value = nativeOption.value;
+          option.setAttribute('role', 'option');
+          option.textContent = nativeOption.textContent;
+          option.disabled = !!nativeOption.disabled;
+          option.addEventListener('click', event => {
+            event.preventDefault();
+            if (option.disabled) return;
+            if (control.value === nativeOption.value) {
+              closeSpecSelect(control, { focus: true });
+              return;
+            }
+            control.value = nativeOption.value;
+            control.dispatchEvent(new Event('input', { bubbles: true }));
+            control.dispatchEvent(new Event('change', { bubbles: true }));
+            syncSpecSelectionState(control);
+            closeSpecSelect(control, { focus: true });
+          });
+          menu.appendChild(option);
+        });
+      }
+      control._nsaCustomSelectOptionSignature = optionSignature;
+    }
     const selected = Array.from(control.options || []).find(option => option.value === control.value)
       || control.options?.[0];
     const trigger = shell.querySelector('[data-nsa-select-trigger]');
@@ -288,37 +322,16 @@
     menu.dataset.nsaSelectMenu = 'true';
     menu.setAttribute('role', 'listbox');
     menu.setAttribute('hidden', '');
-    options.forEach(nativeOption => {
-      const option = document.createElement('button');
-      option.type = 'button';
-      option.className = 'dh-nsa-custom-select-option';
-      option.dataset.nsaSelectOption = 'true';
-      option.dataset.value = nativeOption.value;
-      option.setAttribute('role', 'option');
-      option.textContent = nativeOption.textContent;
-      option.disabled = !!nativeOption.disabled;
-      option.addEventListener('click', () => {
-        if (option.disabled) return;
-        if (control.value === nativeOption.value) {
-          closeSpecSelect(control, { focus: true });
-          return;
-        }
-        control.value = nativeOption.value;
-        control.dispatchEvent(new Event('input', { bubbles: true }));
-        control.dispatchEvent(new Event('change', { bubbles: true }));
-        syncSpecSelectionState(control);
-        closeSpecSelect(control, { focus: true });
-      });
-      menu.appendChild(option);
-    });
     control.parentNode.insertBefore(shell, control);
     shell.append(control, trigger, menu);
     control.classList.add('dh-nsa-custom-select-native');
     control._nsaCustomSelect = shell;
-    trigger.addEventListener('click', () => {
+    trigger.addEventListener('click', event => {
+      event.preventDefault();
+      syncCustomSpecSelect(control);
       const opening = !shell.classList.contains('is-open');
       document.querySelectorAll('.dh-nsa-custom-select.is-open').forEach(openShell => {
-        const native = openShell.querySelector('select[data-nsa-scene-spec]');
+        const native = openShell.querySelector('select');
         if (native && native !== control) closeSpecSelect(native);
       });
       shell.classList.toggle('is-open', opening);
@@ -346,7 +359,7 @@
       document.addEventListener('pointerdown', event => {
         document.querySelectorAll('.dh-nsa-custom-select.is-open').forEach(openShell => {
           if (openShell.contains(event.target)) return;
-          const native = openShell.querySelector('select[data-nsa-scene-spec]');
+          const native = openShell.querySelector('select');
           if (native) closeSpecSelect(native);
         });
       });
@@ -354,13 +367,56 @@
     syncCustomSpecSelect(control);
   }
 
+  function isStoryAdSelect(control) {
+    if (!control) return false;
+    if (control.matches?.('select[data-nsa-scene-spec], #dhNsaAdSceneMode')) return true;
+    if (control.tagName !== 'SELECT') return false;
+    if (control.classList?.contains?.('dh-luxgen-hidden-control') || control.getAttribute?.('aria-hidden') === 'true') return false;
+    if (!control.classList?.contains?.('dh-input')) return false;
+    if (root()?.contains?.(control)) return true;
+    if (String(control.id || '').startsWith('dhNsa')) return true;
+    if (Array.from(control.attributes || []).some(attribute => attribute.name.startsWith('data-nsa-'))) return true;
+    return !!control.closest('[class*="dh-nsa-"]');
+  }
+
+  function storyAdSelects(target = root()) {
+    if (target?.matches?.('select[data-nsa-scene-spec], #dhNsaAdSceneMode')) return [target];
+    if (target?.matches?.('select') && isStoryAdSelect(target)) return [target];
+    const controls = Array.from(target?.querySelectorAll?.('select.dh-input:not(.dh-luxgen-hidden-control):not([aria-hidden="true"])') || []);
+    return controls.filter(isStoryAdSelect);
+  }
+
+  function bindStoryAdSelectObserver() {
+    if (!document.documentElement || typeof MutationObserver !== 'function') return;
+    if (document.documentElement.dataset.nsaCustomSelectObserverBound) return;
+    document.documentElement.dataset.nsaCustomSelectObserverBound = 'true';
+    const observer = new MutationObserver(mutations => {
+      const targets = new Set();
+      mutations.forEach(mutation => {
+        if (mutation.target?.closest?.('select')) targets.add(mutation.target.closest('select'));
+        mutation.addedNodes?.forEach(node => {
+          if (node?.matches?.('select')) targets.add(node);
+          node?.querySelectorAll?.('select')?.forEach(select => targets.add(select));
+        });
+      });
+      targets.forEach(control => {
+        if (isStoryAdSelect(control)) syncSpecSelectionState(control);
+      });
+    });
+    observer.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['disabled'],
+    });
+    document.addEventListener('new-story-ad:restore-finished', () => syncSpecSelectionState(), true);
+  }
+
   function syncSpecSelectionState(target = root()) {
-    const selector = 'select[data-nsa-scene-spec], #dhNsaAdSceneMode';
-    const controls = target?.matches?.(selector)
-      ? [target]
-      : Array.from(target?.querySelectorAll?.(selector) || []);
+    bindStoryAdSelectObserver();
+    const controls = storyAdSelects(target);
     controls.forEach(control => {
-      const explicit = !['', 'auto'].includes(clean(control.value || '', 60));
+      const explicit = !['', 'auto', 'match_brief'].includes(clean(control.value || '', 60));
       control.classList.toggle('is-explicit-selection', explicit);
       control.dataset.nsaSelectionState = explicit ? 'explicit' : 'auto';
       enhanceSpecSelect(control);
