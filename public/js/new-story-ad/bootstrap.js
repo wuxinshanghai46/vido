@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-refresh-route-restore-v21';
+  const SCRIPT_VERSION = '20260720-refresh-route-restore-v22';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -32,10 +32,10 @@
 
   /** 更新剧情广告区域的按需加载状态。 */
   function setLoadingState(status = 'loading', message = '') {
-    const pane = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]');
-    if (!pane) return;
     if (status === 'loading') delete document.documentElement.dataset.nsaStoryReady;
     else document.documentElement.dataset.nsaStoryReady = '1';
+    const pane = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]');
+    if (!pane) return;
     pane.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false');
     let indicator = pane.querySelector('[data-nsa-lazy-loader]');
     if (!indicator) {
@@ -83,6 +83,35 @@
     });
   }
 
+  /** 在其余模块下载期间并行读取当前路由任务，减少恢复阶段的串行等待。 */
+  function prefetchRouteTask() {
+    if (window.__newStoryAdEarlyTask || !window.NewStoryAdApi?.request) return;
+    let taskId = '';
+    try {
+      taskId = new URLSearchParams(location.search || '').get('nsa_task_id') || '';
+    } catch {}
+    if (!taskId) return;
+    window.__newStoryAdEarlyTask = {
+      id: taskId,
+      promise: window.NewStoryAdApi.request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}?compact=1`)
+        .then(data => ({ data, error: null }))
+        .catch(error => ({ data: null, error })),
+    };
+  }
+
+  /** 等剧情广告静态表单完整解析后再挂载，避免依赖整页脚本下载完成。 */
+  function waitForStoryTemplate() {
+    if (document.querySelector('[data-nsa-template-ready]')) return Promise.resolve();
+    return new Promise(resolve => {
+      const observer = new MutationObserver(() => {
+        if (!document.querySelector('[data-nsa-template-ready]')) return;
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+    });
+  }
+
   /** 首次进入剧情广告时加载全部兼容模块，后续进入直接复用。 */
   async function loadStoryAd() {
     if (window.__newStoryAdLegacyUI) return window.__newStoryAdLegacyUI;
@@ -96,7 +125,11 @@
       };
       document.addEventListener('new-story-ad:restore-finished', onRestoreFinished, { once: true });
       preloadScripts();
-      for (const path of SCRIPT_PATHS) await loadScript(path);
+      for (const path of SCRIPT_PATHS) {
+        await loadScript(path);
+        if (path.endsWith('/api.js')) prefetchRouteTask();
+      }
+      await waitForStoryTemplate();
       document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
       const restoring = window.__newStoryAdLegacyUI?.state?.restoringTask === true;
       if (restoring && !restoreFinished) {

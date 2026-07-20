@@ -1874,7 +1874,12 @@
     rememberTaskId(id);
     renderAll();
     try {
-      const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}?compact=1`);
+      const prefetched = window.__newStoryAdEarlyTask?.id === id
+        ? await window.__newStoryAdEarlyTask.promise
+        : null;
+      if (prefetched?.error) throw prefetched.error;
+      const r = prefetched?.data || await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}?compact=1`);
+      if (window.__newStoryAdEarlyTask?.id === id) window.__newStoryAdEarlyTask = null;
       const bundle = r.bundle || r;
       if (!bundle?.task) throw new Error('任务不存在');
       hydrateTaskBundle(bundle);
