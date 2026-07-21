@@ -588,7 +588,7 @@
 
   // ══════════════ Toast ══════════════
   // ════════ 通用确认弹窗（替代 confirm()）════════
-  function DhConfirm({ title = '确认', message = '', detail = '', confirmText = '确定', cancelText = '取消', type = 'primary' } = {}) {
+  function DhConfirm({ title = '确认', message = '', detail = '', confirmText = '确定', cancelText = '取消', type = 'primary', showCancel = true } = {}) {
     return new Promise(resolve => {
       const old = document.getElementById('__dh_confirm_mask');
       if (old) old.remove();
@@ -606,17 +606,35 @@
             ${detail ? `<div style="font-size:12px;color:#6B7280;margin-top:10px;background:#1E2025;padding:10px 12px;border-radius:7px;line-height:1.6">${detail}</div>` : ''}
           </div>
           <div style="padding:12px 22px 18px;display:flex;justify-content:flex-end;gap:8px">
-            <button class="dh-btn dh-btn-ghost" id="__dhcCancel">${cancelText}</button>
+            ${showCancel ? `<button class="dh-btn dh-btn-ghost" id="__dhcCancel">${cancelText}</button>` : ''}
             <button class="dh-btn" style="${okColor};border:0;font-weight:700" id="__dhcOk">${confirmText}</button>
           </div>
         </div>
       `;
-      mask.addEventListener('click', e => { if (e.target === mask) { mask.remove(); resolve(false); } });
       document.body.appendChild(mask);
-      document.getElementById('__dhcOk').onclick = () => { mask.remove(); resolve(true); };
-      document.getElementById('__dhcCancel').onclick = () => { mask.remove(); resolve(false); };
+      const finish = value => {
+        document.removeEventListener('keydown', onKeyDown);
+        mask.remove();
+        resolve(value);
+      };
+      const onKeyDown = event => {
+        if (event.key === 'Escape') finish(false);
+      };
+      mask.addEventListener('click', event => { if (event.target === mask) finish(false); });
+      document.addEventListener('keydown', onKeyDown);
+      document.getElementById('__dhcOk').onclick = () => finish(true);
+      const cancelButton = document.getElementById('__dhcCancel');
+      if (cancelButton) cancelButton.onclick = () => finish(false);
+      document.getElementById('__dhcOk').focus();
     });
   }
+
+  function DhAlert({ title = '提示', message = '', detail = '', confirmText = '我知道了', type = 'primary' } = {}) {
+    return DhConfirm({ title, message, detail, confirmText, type, showCancel: false });
+  }
+
+  // 懒加载的剧情广告模块也必须复用同一套应用内弹窗，禁止回退到浏览器原生弹窗。
+  window.DhDialog = Object.freeze({ confirm: DhConfirm, alert: DhAlert });
 
   // 编辑形象的名称/性别
   async function editAvatar(id) {
@@ -2161,8 +2179,16 @@
   async function saveAvatar() {
     console.log('[saveAvatar] click, previewUrl=', !!state.s1.previewUrl, 'name=', $('#dhS1Name').value);
     const name = $('#dhS1Name').value.trim();
-    if (!name) { toast('请输入形象名称', 'error'); alert('保存失败：请输入形象名称'); return; }
-    if (!state.s1.previewUrl) { toast('请先生成或上传图片', 'error'); alert('保存失败：请先生成或上传图片'); return; }
+    if (!name) {
+      toast('请输入形象名称', 'error');
+      await DhAlert({ title: '保存失败', message: '请输入形象名称。', type: 'danger' });
+      return;
+    }
+    if (!state.s1.previewUrl) {
+      toast('请先生成或上传图片', 'error');
+      await DhAlert({ title: '保存失败', message: '请先生成或上传图片。', type: 'danger' });
+      return;
+    }
     const isProduct = isS1ProductMode();
     if (isProduct) state.s1.avatarType = 'product';
     if (isProduct && !isS1ProductFused()) {
@@ -2235,7 +2261,7 @@
     } catch (err) {
       console.error('[saveAvatar] failed:', err);
       toast('保存失败：' + err.message, 'error');
-      alert('保存失败：' + err.message);
+      await DhAlert({ title: '保存失败', message: escapeHtml(err.message || '未知错误'), type: 'danger' });
     } finally {
       const saveBtn = $('#dhS1Save');
       if (saveBtn) {
@@ -17721,7 +17747,12 @@
         // 把三家具体错因呈给用户，别再只说"占位失败"
         const reasons = (data.tried || []).map(t => `· ${t.id}: ${t.error || '未知'}`).join('\n');
         const msg = '⚠️ 三家克隆全部失败：\n' + reasons + '\n\n解决：拿阿里 sk-* 或 火山 appId:accessToken';
-        alert(msg);
+        await DhAlert({
+          title: '声音克隆失败',
+          message: '三家克隆服务均未成功。',
+          detail: escapeHtml(msg).replace(/\n/g, '<br>'),
+          type: 'danger',
+        });
         toast('三家克隆都失败了，详情见弹窗', 'error');
       }
       state.voiceClone.file = null;
@@ -17973,7 +18004,12 @@
           toast(`🎉 克隆成功（${data.cloneProvider}）`, 'success');
         } else {
           const reasons = (data.tried || []).map(t => `· ${t.id}: ${t.error || '未知'}`).join('\n');
-          alert('⚠️ 三家克隆全部失败：\n' + reasons);
+          await DhAlert({
+            title: '声音克隆失败',
+            message: '三家克隆服务均未成功。',
+            detail: escapeHtml(reasons).replace(/\n/g, '<br>'),
+            type: 'danger',
+          });
         }
         loadVoiceClones();
       } catch (err) {
@@ -18017,13 +18053,14 @@
       // 账号资源未开通是火山常见硬错（仅能通过控制台开通），用 alert 呈现完整原因 + 跳转指引。
       if (/not granted|resource not granted|未开通|3001|声音复刻合成/.test(msg)) {
         toast('测试失败（账号未开通火山声音复刻合成资源）', 'error');
-        const go = confirm(
-          '🛑 火山账号没有"声音复刻合成"资源，合成被火山服务器拒绝（HTTP 403 / code=3001）。\n\n' +
-          '完整返回：\n' + msg + '\n\n' +
-          '解决：去火山引擎控制台 → 语音技术 → 声音复刻 → 资源包，开通/购买"合成"资源包。\n\n' +
-          '训练资源和合成资源是两个独立购买项。你的账号目前只开了训练，没开合成。\n\n' +
-          '点"确定"打开火山控制台页面，"取消"留在当前页。'
-        );
+        const go = await DhConfirm({
+          title: '火山账号缺少合成资源',
+          message: '声音复刻合成被火山服务器拒绝（HTTP 403 / code=3001）。',
+          detail: `完整返回：<br>${escapeHtml(msg)}<br><br>请前往火山引擎控制台 → 语音技术 → 声音复刻 → 资源包，开通或购买“合成”资源包。训练资源和合成资源是两个独立购买项。`,
+          confirmText: '打开火山控制台',
+          cancelText: '留在当前页',
+          type: 'danger',
+        });
         if (go) window.open('https://console.volcengine.com/speech/service/8', '_blank');
         return;
       }

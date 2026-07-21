@@ -226,7 +226,7 @@ function classifyImageGenerationError(error = null) {
       code: 'PROVIDER_5XX_AMBIGUOUS',
       retryable: false,
       terminal: true,
-      message: '供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。',
+      message: '供应商返回未分类 5xx，内部错误码没有公开定义；目前无法确认是审核拦截还是服务故障，已停止自动付费重试。',
     };
   }
   // Preserve the existing provider-fallback behavior for ordinary failures.

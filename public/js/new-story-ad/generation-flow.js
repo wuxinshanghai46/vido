@@ -281,10 +281,19 @@
       if (payload.code !== 'KEYFRAME_SUBMISSION_BILLING_UNKNOWN'
         || details.requires_billing_acknowledgement !== true) throw error;
       const shots = (details.blockers || []).map(item => item.shot_number).filter(Boolean).join('、');
-      const accepted = window.confirm(
-        `第 ${shots || '相关'} 镜上一次请求已发给图片供应商，但超时后无法确认是否已经计费或仍会返回结果。\n\n`
-        + '继续会放弃等待旧结果，并重新提交一次，可能产生重复计费。系统不会自动替你继续。\n\n确认仍要重新提交吗？'
-      );
+      if (typeof window.DhDialog?.confirm !== 'function') {
+        const unavailable = new Error('统一确认弹窗尚未加载，请刷新页面后重试。');
+        unavailable.code = 'DIALOG_NOT_READY';
+        throw unavailable;
+      }
+      const accepted = await window.DhDialog.confirm({
+        title: '检测到上次请求计费状态未知',
+        message: `第 ${shots || '相关'} 镜上一次请求已发给图片供应商，但无法确认是否已经计费或仍会返回结果。`,
+        detail: '继续会放弃等待旧结果并重新提交一次，可能产生重复计费。系统不会自动替你继续。',
+        confirmText: '仍要重新提交',
+        cancelText: '暂不提交',
+        type: 'danger',
+      });
       if (!accepted) {
         const cancelled = new Error('已取消重新提交，没有产生新的图片模型调用。');
         cancelled.code = 'USER_CANCELLED';

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260721-keyframe-billing-guard-v3';
+  const SCRIPT_VERSION = '20260721-unified-dialog-v4';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

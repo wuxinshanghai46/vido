@@ -18,7 +18,7 @@ const ERROR_MESSAGES = Object.freeze({
   PROVIDER_BILLING: '供应商余额、额度或计费状态异常，已停止继续提交。',
   PROVIDER_RIGHTS_AUDIT: '供应商判定输入可能涉及版权、商标、角色或人物肖像授权，已停止自动重试；请确认素材权利或改用原创内容。',
   PROVIDER_CONTENT_AUDIT: '供应商内容审核未通过，已停止自动重试；请检查素材和生成要求。',
-  PROVIDER_5XX_AMBIGUOUS: '供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。',
+  PROVIDER_5XX_AMBIGUOUS: '供应商返回未分类 5xx，内部错误码没有公开定义；目前无法确认是审核拦截还是服务故障，已停止自动付费重试。',
   TIMEOUT_OR_NETWORK: '模型服务响应超时或网络中断，本次任务已停止，请稍后从当前阶段重试。',
   USER_CANCELLED: '用户已取消当前生成。',
 });

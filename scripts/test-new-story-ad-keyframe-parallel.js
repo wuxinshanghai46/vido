@@ -267,7 +267,7 @@ async function testFailedBatchKeepsStructuredState() {
     await delay(20);
     active -= 1;
     if (!/_02_/.test(filename)) return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/image' };
-    const error = new Error('图片生成失败，已尝试 1 个模型并停止继续调用：deyunai/gpt-image-2：供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。（供应商：500/UNKXXXO004IFR）');
+    const error = new Error('图片生成失败，已尝试 1 个模型并停止继续调用：deyunai/gpt-image-2：供应商返回未分类 5xx，内部错误码没有公开定义；目前无法确认是审核拦截还是服务故障，已停止自动付费重试。（供应商：500/UNKXXXO004IFR）');
     error.code = 'PROVIDER_5XX_AMBIGUOUS';
     error.retryable = false;
     throw error;

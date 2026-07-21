@@ -14,17 +14,35 @@ const deyunai = require('../src/services/deyunaiService');
 
 function testBrowserAndRouteGuardContract() {
   const flow = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
+  const workbench = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
   const route = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
   const html = fs.readFileSync(path.join(__dirname, '../public/digital-human.html'), 'utf8');
   assert(flow.includes("payload.code !== 'KEYFRAME_SUBMISSION_BILLING_UNKNOWN'"));
   assert(flow.includes('acknowledge_billing_unknown: true'));
   assert(flow.includes('可能产生重复计费'));
+  assert(flow.includes('window.DhDialog.confirm'));
+  assert(workbench.includes('window.DhDialog = Object.freeze({ confirm: DhConfirm, alert: DhAlert })'));
+  const stripComments = source => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const nativeDialogCall = /(^|[^\w$.])(?:window\.)?(?:alert|confirm|prompt)\s*\(/m;
+  const browserFiles = [
+    path.join(__dirname, '../public/js/digital-human.js'),
+    ...fs.readdirSync(path.join(__dirname, '../public/js/new-story-ad'))
+      .filter(name => name.endsWith('.js'))
+      .map(name => path.join(__dirname, '../public/js/new-story-ad', name)),
+  ];
+  browserFiles.forEach(file => {
+    assert(!nativeDialogCall.test(stripComments(fs.readFileSync(file, 'utf8'))),
+      `${path.basename(file)} must not call browser-native alert/confirm/prompt`);
+  });
   const routeStart = route.indexOf("router.post('/tasks/:id/keyframes'");
   const guardIndex = route.indexOf('service.keyframeSubmissionPreflight(req.params.id, body, userFromReq(req));', routeStart);
   const queueIndex = route.indexOf('return queueTaskStage(', routeStart);
   assert(routeStart >= 0 && guardIndex > routeStart && queueIndex > guardIndex,
   'billing preflight must run before a background keyframe job is queued');
-  assert(html.includes('bootstrap.js?v=20260721-keyframe-billing-guard-v3'));
+  assert(html.includes('bootstrap.js?v=20260721-unified-dialog-v4'));
+  assert(html.includes('digital-human.js?v=20260721-unified-dialog-v20'));
 }
 
 async function testSubmissionLifecycle() {
