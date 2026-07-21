@@ -180,6 +180,9 @@ async function main() {
   const staleVideoSummary = service.taskSummary(storage.getTask(staleVideoTask.id));
   assert.equal(staleVideoSummary.status, 'failed');
   assert.equal(staleVideoSummary.generation_progress.status, 'failed', '历史无 active job 的 running 视频进度必须只读归一为失败');
+  const staleVideoBundle = service.publicTaskBundle(staleVideoTask.id);
+  assert.equal(staleVideoBundle.task.status, 'failed');
+  assert.equal(staleVideoBundle.task.generation_progress.status, 'failed', '任务详情接口也不得继续返回历史 running 假状态');
   assert.match(legacySummary.error, /第 2、4、5 镜未生成可用分镜图/);
   assert.match(legacySummary.error, /支持编号：legacy-generation-support-id/);
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');

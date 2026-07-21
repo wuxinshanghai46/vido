@@ -372,6 +372,17 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       };
     }
   }
+  if (task) {
+    const hasFinalOutput = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl)
+      || /final_video_ready|compose_done/.test(String(task.stage || ''));
+    const generationProgress = terminalizedGenerationProgress(task, task.generation_progress, hasFinalOutput);
+    const failed = !hasFinalOutput && (task.error_code || generationProgress?.status === 'failed');
+    task = {
+      ...task,
+      ...(generationProgress ? { generation_progress: generationProgress } : {}),
+      ...(failed ? { status: 'failed' } : {}),
+    };
+  }
   const context = outputs.context || bundle.task?.request || {};
   return {
     ...bundle,
@@ -382,6 +393,20 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     storyboard_status: currentStoryboardStatus,
     keyframe_status: keyframeStatus,
   };
+}
+
+/** 只读归一没有活动任务却残留 queued/running 的历史进度，不改写数据库。 */
+function terminalizedGenerationProgress(task = {}, rawProgress = null, hasFinalOutput = false) {
+  if (!rawProgress || typeof rawProgress !== 'object' || task.active_generation_id) return rawProgress;
+  if (!['queued', 'running'].includes(String(rawProgress.status || '').toLowerCase())) return rawProgress;
+  const now = task.generation_finished_at || task.updated_at || new Date().toISOString();
+  const total = Number(rawProgress.total || 0);
+  const completed = Number(rawProgress.completed || 0);
+  const failed = Number(rawProgress.failed || 0);
+  const taskFailed = !!(task.error_code || task.error) || String(task.status || '').toLowerCase() === 'failed';
+  const status = hasFinalOutput ? 'done'
+    : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
+  return { ...rawProgress, status, finished_at: rawProgress.finished_at || now, updated_at: now };
 }
 
 /** 构建任务摘要；列表模式禁止读取完整分镜、关键帧和视频输出。 */
@@ -417,19 +442,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
   const rawGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
     ? task.generation_progress
     : null;
-  const storedGenerationProgress = (() => {
-    if (!rawGenerationProgress || task.active_generation_id) return rawGenerationProgress;
-    if (!['queued', 'running'].includes(String(rawGenerationProgress.status || '').toLowerCase())) return rawGenerationProgress;
-    const now = task.generation_finished_at || task.updated_at || new Date().toISOString();
-    const total = Number(rawGenerationProgress.total || 0);
-    const completed = Number(rawGenerationProgress.completed || 0);
-    const failed = Number(rawGenerationProgress.failed || 0);
-    const taskFailed = !!(task.error_code || task.error) || String(task.status || '').toLowerCase() === 'failed';
-    const status = hasFinalOutput
-      ? 'done'
-      : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
-    return { ...rawGenerationProgress, status, finished_at: rawGenerationProgress.finished_at || now, updated_at: now };
-  })();
+  const storedGenerationProgress = terminalizedGenerationProgress(task, rawGenerationProgress, hasFinalOutput);
   const storedVideoProgress = storedGenerationProgress?.stage === 'video' ? storedGenerationProgress : null;
   const videoProgress = storedVideoProgress || (videoShotStatuses.length ? {
     stage: 'video',
