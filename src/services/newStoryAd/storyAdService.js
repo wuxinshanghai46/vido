@@ -1591,6 +1591,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           referenceImages,
           requireReferences: referenceImages.length > 0,
           inputFidelity: 'high',
+          singleAttempt: keyframeTarget.missingImagesOnly(options),
           timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (5 * 60 * 1000))),
         });
         keyframeContractFreshness.assertCurrent(taskId, i, contracts[i] || {});

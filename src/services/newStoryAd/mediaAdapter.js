@@ -440,6 +440,7 @@ async function generateImage({
   requireReferences = false,
   inputFidelity = 'high',
   auditSafePrompt = '',
+  singleAttempt = false,
   timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
@@ -455,7 +456,7 @@ async function generateImage({
     : (preferredCandidates.length ? preferredCandidates : candidates);
   const filtered = candidatePool
     .filter(model => !modelGateway.healthState(model).circuit_open)
-    .slice(0, IMAGE_MAX_CANDIDATES);
+    .slice(0, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
   if (String(stage || '').startsWith('new_story_ad.')) {
@@ -518,7 +519,9 @@ async function generateImage({
         const governedAuditPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt;
         const candidatePrompt = promptForImageCandidate(governedPrompt, config, governedAuditPrompt);
         const retryPrompt = promptForImageCandidate(governedPrompt, config, governedAuditPrompt, true);
-        const generated = await invokeWithAuditSafeRetry(invokeDeyunai, candidatePrompt, retryPrompt, firstError => {
+        const generated = singleAttempt
+          ? await invokeDeyunai(candidatePrompt)
+          : await invokeWithAuditSafeRetry(invokeDeyunai, candidatePrompt, retryPrompt, firstError => {
           storage.saveModelCall({
             task_id: taskId,
             stage,
@@ -530,7 +533,7 @@ async function generateImage({
             latency_ms: Date.now() - startedAt,
             fallback_rank: candidateIndex + 1,
           });
-        });
+          });
         cancellation.throwIfCancelled(taskId);
         const url = Array.isArray(generated?.urls) ? generated.urls.find(Boolean) : '';
         if (!url) throw new Error('漫路图片生成未返回图片 URL');

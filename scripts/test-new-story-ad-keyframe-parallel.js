@@ -404,8 +404,10 @@ async function testStrictMissingFillNeverAutoRegeneratesAfterQaRejection() {
   const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
   const originalProductReview = productKeyframeQa.reviewProductKeyframe;
   let imageCalls = 0;
-  mediaAdapter.generateImage = async ({ filename = '' } = {}) => {
+  let strictSingleAttempt = null;
+  mediaAdapter.generateImage = async ({ filename = '', singleAttempt } = {}) => {
     imageCalls += 1;
+    strictSingleAttempt = singleAttempt;
     return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/no-charge' };
   };
   personKeyframeQa.reviewPersonKeyframe = async () => ({
@@ -422,6 +424,7 @@ async function testStrictMissingFillNeverAutoRegeneratesAfterQaRejection() {
       error => error?.code === 'KEYFRAME_BATCH_PARTIAL_FAILURE',
     );
     assert.equal(imageCalls, 1, '严格补齐模式即使 QA 拒绝也只能调用一次图片供应商');
+    assert.equal(strictSingleAttempt, true, '严格补齐必须把单次提交门禁传入图片供应商适配层');
     const frame = storage.getOutput(taskId, 'keyframes')[0];
     assert.equal(frame.candidates.length, 1, '首张结果应保留供人工检查，不得自动付费重生');
     assert.equal(frame.candidates[0].status, 'rejected');
