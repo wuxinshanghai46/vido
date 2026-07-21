@@ -78,7 +78,8 @@ const composing = sandbox.window.NewStoryAdProgress.snapshot({
   taskStage: 'compose', taskStatus: 'running',
   serverProgress: { stage: 'compose', generation_id: 'video-current', phase: 'timeline_ready', completed: 2, total: 3, percent: 67, message: '成片时间线已确认' },
 });
-assert.match(composing.stat, /2\/3 个合成里程碑 · 67%/);
+assert.match(composing.stat, /67%/);
+assert(!/2\/3|合成里程碑/.test(composing.stat), '最终成片是一次完整合成，界面不得显示 X/3');
 assert.strictEqual(composing.indeterminate, false);
 assert.match(composing.message, /成片时间线已确认/);
 

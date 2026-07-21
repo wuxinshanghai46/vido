@@ -3,6 +3,22 @@ const { sceneContractForShot } = require('./sceneBindingService');
 const productIdentity = require('./productIdentityContractService');
 const shotDesign = require('./shotDesignService');
 
+function canonicalContractValue(value, key = '') {
+  if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
+  if (!value || typeof value !== 'object') return value;
+  const ignored = new Set(['contract_fingerprint', 'contract_compiler_signature', 'compiled_at']);
+  return Object.keys(value).sort().reduce((out, childKey) => {
+    if (!ignored.has(childKey)) out[childKey] = canonicalContractValue(value[childKey], childKey);
+    return out;
+  }, {});
+}
+
+function contractCompilerSignature(contract = {}) {
+  return crypto.createHash('sha256')
+    .update(JSON.stringify(canonicalContractValue(contract)))
+    .digest('hex');
+}
+
 function contractFingerprint(contract = {}) {
   const personContract = contract.cast_lock?.person_contract || {};
   const productContract = contract.product_lock || {};
@@ -133,8 +149,9 @@ function buildKeyframeContracts(ctx, shots) {
     };
     contract.contract_fingerprint = contractFingerprint(contract);
     contract.contract_revision = 1;
+    contract.contract_compiler_signature = contractCompilerSignature(contract);
     return contract;
   });
 }
 
-module.exports = { buildKeyframeContracts, contractFingerprint };
+module.exports = { buildKeyframeContracts, contractFingerprint, contractCompilerSignature };

@@ -17,6 +17,7 @@ const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
+const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 const composeService = require('./composeService');
 const {
   bindShotsToScenes,
@@ -141,32 +142,6 @@ function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
       && !['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame.current_generation_status || ''))
       && frame.qa?.pass === true,
   });
-}
-
-function persistKeyframeContracts(taskId, contracts = [], { clearDownstream = false } = {}) {
-  const list = Array.isArray(contracts) ? contracts : [];
-  storage.saveOutput(taskId, 'keyframe_contracts', list);
-  const existingFrames = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-  let invalidated = 0;
-  const refreshedFrames = existingFrames.map((frame, index) => {
-    if (!frame || typeof frame !== 'object' || !keyframeImageUrl(frame)) return frame;
-    const currentFingerprint = list[index]?.contract_fingerprint || '';
-    const frameFingerprint = frame.contract_fingerprint || frame.contract?.contract_fingerprint || '';
-    if (currentFingerprint && frameFingerprint === currentFingerprint) return frame;
-    invalidated += 1;
-    return {
-      ...frame,
-      contract_outdated: true,
-      contract_outdated_reason: '镜头信息或生成约束已修改，需重新生成并按当前合同验证',
-      current_generation_status: 'outdated',
-    };
-  });
-  if (invalidated) storage.saveOutput(taskId, 'keyframes', refreshedFrames);
-  if (clearDownstream || invalidated) {
-    storage.deleteOutput(taskId, 'video_clips');
-    storage.deleteOutput(taskId, 'final_video');
-  }
-  return { contracts: list, invalidated };
 }
 
 function keyframeStageBudgetMs(taskId, options = {}) {
@@ -802,7 +777,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
-  persistKeyframeContracts(taskId, contracts, { clearDownstream: true });
+  keyframeContractFreshness.persist(taskId, contracts, { clearDownstream: true });
   storage.saveStage(taskId, 'storyboard', {
     status: 'done',
     output_summary: `${normalized.length} storyboard shots saved`,
@@ -1001,7 +976,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(shots));
   storage.saveOutput(taskId, 'quality_review', review);
-  persistKeyframeContracts(taskId, contracts);
+  keyframeContractFreshness.persist(taskId, contracts);
   storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${shots.length} 个镜头`, diagnostics: review });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', diagnostics: diagnostics.summarizeTask({ task, review }) });
@@ -1021,7 +996,7 @@ async function buildKeyframeContractStage(taskId) {
   shots = bindShotsToScenes(shots, ctx.scene_assets);
   storage.saveOutput(taskId, 'storyboard_table', shots);
   const contracts = buildKeyframeContracts(ctx, shots);
-  persistKeyframeContracts(taskId, contracts);
+  keyframeContractFreshness.persist(taskId, contracts);
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} 个关键帧合同` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready' });
   return contracts;
@@ -1478,12 +1453,8 @@ async function generateKeyframesStage(taskId, options = {}) {
     shots = boundShots;
     storage.saveOutput(taskId, 'storyboard_table', shots);
   }
-  let contracts = storage.getOutput(taskId, 'keyframe_contracts');
-  const needsSceneContract = ctx.scene_assets.length && (!Array.isArray(contracts) || contracts.some(contract => !contract?.scene_lock));
-  if (!Array.isArray(contracts) || contracts.length !== shots.length || needsSceneContract) {
-    contracts = buildKeyframeContracts(ctx, shots);
-    persistKeyframeContracts(taskId, contracts);
-  }
+  const contractRefresh = keyframeContractFreshness.refresh(taskId, { ctx, shots });
+  const contracts = contractRefresh.contracts;
   const existing = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   const targetIndexes = keyframeTargetIndexes(shots, existing, options);
   const keyframes = existing.slice();
@@ -1603,6 +1574,13 @@ async function generateKeyframesStage(taskId, options = {}) {
         const prompt = correction
           ? compactKeyframePrompt([...basePrompt.split('\n'), correction])
           : basePrompt;
+        keyframeContractFreshness.assertCurrent(taskId, i, contracts[i] || {});
+        keyframeContractFreshness.recordProviderAudit(taskId, {
+          generationId: generationProgress.generation_id,
+          index: i,
+          contract: contracts[i] || {},
+          prompt,
+        });
         const imageStartedMs = Date.now();
         const result = await mediaAdapter.generateImage({
           taskId,
@@ -1617,6 +1595,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           inputFidelity: 'high',
           timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (5 * 60 * 1000))),
         });
+        keyframeContractFreshness.assertCurrent(taskId, i, contracts[i] || {});
         const imageLatencyMs = Date.now() - imageStartedMs;
         const imageUrl = keyframeUrlFromResult(result);
         if (!imageUrl) throw new Error('图片供应商没有返回可用图片地址。');
@@ -1649,6 +1628,7 @@ async function generateKeyframesStage(taskId, options = {}) {
             status: 'qa_unavailable',
             qa_policy_version: 2,
             contract_fingerprint: contracts[i]?.contract_fingerprint || '',
+            contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
             generation_id: generationProgress.generation_id,
             image_latency_ms: imageLatencyMs,
             qa_latency_ms: Date.now() - qaStartedMs,
@@ -1688,6 +1668,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           status: qa.pass ? 'accepted' : 'rejected',
           qa_policy_version: 2,
           contract_fingerprint: contracts[i]?.contract_fingerprint || '',
+          contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
           generation_id: generationProgress.generation_id,
           image_latency_ms: imageLatencyMs,
           qa_latency_ms: qaLatencyMs,
@@ -1718,6 +1699,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         throw error;
       }
       const { result, imageUrl, prompt } = accepted;
+      keyframeContractFreshness.assertCurrent(taskId, i, contracts[i] || {});
       keyframes[i] = {
         ...(keyframes[i] || {}),
         shot_index: i,
@@ -1744,6 +1726,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         current_generation_id: generationProgress.generation_id,
         qa_policy_version: 2,
         contract_fingerprint: contracts[i]?.contract_fingerprint || '',
+        contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
         contract_outdated: false,
         contract_outdated_reason: '',
         accepted_revision: {
@@ -2127,14 +2110,9 @@ async function ensureStoryboardForMedia(taskId) {
 }
 
 async function ensureContractsForMedia(taskId, ctx, shots) {
-  let contracts = storage.getOutput(taskId, 'keyframe_contracts');
-  if (!Array.isArray(contracts) || contracts.length !== shots.length) {
-    const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
-    const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-    contracts = buildKeyframeContracts(contractCtx, shots);
-    persistKeyframeContracts(taskId, contracts);
-  }
-  return contracts;
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  return keyframeContractFreshness.refresh(taskId, { ctx: contractCtx, shots }).contracts;
 }
 
 function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [] } = {}) {
@@ -2291,10 +2269,12 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
-  const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const contracts = keyframeContractFreshness.refresh(taskId, { ctx: contractCtx, shots }).contracts;
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
   let pinnedModel = null;
   try {

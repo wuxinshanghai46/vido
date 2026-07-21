@@ -84,7 +84,7 @@
         };
         return {
           title: phaseLabels[trackedCompose?.phase] || '连续场景视频已完成，正在合成最终成片',
-          stat: `已耗时 ${formatElapsedText(elapsed)} · ${completedMilestones}/${totalMilestones} 个合成里程碑 · ${pct}%`,
+          stat: `已耗时 ${formatElapsedText(elapsed)} · ${pct}%`,
           percent: pct,
           indeterminate: false,
           message: trackedCompose?.message || '合成百分比按音频、时间线和最终封装三个真实完成里程碑计算。',
