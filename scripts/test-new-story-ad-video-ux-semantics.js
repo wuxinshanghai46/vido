@@ -41,6 +41,22 @@ function testGenerationUnitProjection() {
   assert.strictEqual(units[1].qa_status, 'passed');
   assert.strictEqual(units[2].mode, 'local_motion');
 
+  const regenerated = projectVideoGenerationUnits([
+    shot(1, 'old-block-1-3', [1, 2, 3], 'qa_passed', { providerTaskId: 'provider-old' }),
+    shot(2, 'new-block-2-3', [2, 3], 'qa_failed', { providerTaskId: 'provider-new' }),
+    shot(3, 'new-block-2-3', [2, 3], 'qa_passed', { providerTaskId: 'provider-new' }),
+    shot(4, 'old-block-4-5', [4, 5], 'qa_failed', { providerTaskId: 'provider-b' }),
+    shot(5, 'old-block-4-5', [4, 5], 'qa_passed', { providerTaskId: 'provider-b' }),
+    shot(6, 'old-block-6', [6], 'qa_passed', { local: true }),
+  ], [
+    { id: 'current-block-1', member_indexes: [0], continuous: false, duration_sec: 5 },
+    { id: 'new-block-2-3', member_indexes: [1, 2], continuous: true, duration_sec: 10 },
+    { id: 'current-block-4-5', member_indexes: [3, 4], continuous: true, duration_sec: 10 },
+    { id: 'current-block-6', member_indexes: [5], continuous: false, duration_sec: 5 },
+  ]);
+  assert.deepStrictEqual(regenerated.map(unit => unit.member_indexes), [[1], [2, 3], [4, 5], [6]], 'current topology must own every shot exactly once after a scoped regeneration');
+  assert.deepStrictEqual(regenerated.flatMap(unit => unit.member_indexes), [1, 2, 3, 4, 5, 6]);
+
   const historical = projectVideoGenerationUnits([
     shot(1, '', [1], 'qa_passed', { providerTaskId: 'legacy-provider' }),
     shot(2, '', [2], 'qa_passed', { providerTaskId: 'legacy-provider' }),

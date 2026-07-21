@@ -1,18 +1,13 @@
 const tokenTracker = require('../tokenTracker');
 const domain = require('./domainContract');
 const { VideoGenerationError } = require('./chineseError');
+const pricingCatalog = require('./pricingCatalog');
 
 const COST_POLICY_VERSION = 'video-cost-authorization-v1';
 
-/** 在全局视频定价表中按完整或部分模型名称查找美元每秒单价。 */
-function findVideoPrice(modelId = '') {
-  const normalized = domain.text(modelId).toLowerCase();
-  const table = tokenTracker.VIDEO_PRICING || {};
-  const keys = Object.keys(table).sort((left, right) => right.length - left.length);
-  const matched = keys.find(key => normalized === key.toLowerCase()
-    || normalized.includes(key.toLowerCase())
-    || key.toLowerCase().includes(normalized));
-  return matched ? { known: true, key: matched, usd_per_second: Number(table[matched]) || 0 } : { known: false, key: '', usd_per_second: 0 };
+/** 只按供应商和模型的精确路由查价，禁止同名模型跨渠道串价。 */
+function findVideoPrice(providerId = '', modelId = '') {
+  return pricingCatalog.findRoutePrice(providerId, modelId);
 }
 
 /** 读取美元兑人民币汇率，异常时采用保守的安全汇率。 */
@@ -34,36 +29,40 @@ function billableSeconds(unit = {}, options = {}) {
 
 /** 生成包含人民币最坏费用、单元明细和零自动重试的成本方案。 */
 function buildCostPlan({ executionPlan = {}, modelId = '', providerId = '', options = {} } = {}) {
-  const price = findVideoPrice(modelId);
+  const price = findVideoPrice(providerId, modelId);
   const rate = cnyRate(options.usd_cny_rate || options.usdCnyRate);
   const safetyFactor = Math.max(1, Math.min(2, Number(options.cost_safety_factor || options.costSafetyFactor || 1.15) || 1.15));
   const paidUnits = (executionPlan.generation_units || []).filter(unit => unit.paid !== false);
   const units = paidUnits.map(unit => {
     const seconds = billableSeconds(unit, options);
-    const estimatedUsd = seconds * price.usd_per_second;
+    const estimatedRmb = price.currency === 'CNY'
+      ? seconds * price.per_second
+      : seconds * price.per_second * rate;
     return {
       generation_unit_id: unit.id,
       edit_shot_indexes: unit.edit_shot_indexes,
       mode: unit.mode,
       billable_seconds: seconds,
-      estimated_cost_usd: Number(estimatedUsd.toFixed(6)),
-      estimated_cost_rmb: Number((estimatedUsd * rate).toFixed(2)),
+      estimated_cost_rmb: Number(estimatedRmb.toFixed(2)),
       automatic_retry_limit: 0,
       complexity_level: unit.complexity_level,
       requires_manual_review: unit.requires_manual_review === true,
     };
   });
-  const estimatedUsd = units.reduce((sum, unit) => sum + unit.estimated_cost_usd, 0);
-  const estimatedRmb = estimatedUsd * rate;
+  const estimatedRmb = units.reduce((sum, unit) => sum + unit.estimated_cost_rmb, 0);
   const plan = {
     version: COST_POLICY_VERSION,
     execution_plan_fingerprint: executionPlan.fingerprint || '',
     provider_id: domain.text(providerId),
     model_id: domain.text(modelId),
     price_known: price.known,
-    price_key: price.key,
-    unit_price_usd_per_second: price.usd_per_second,
-    usd_cny_rate: rate,
+    price_catalog_version: price.catalog_version,
+    price_route: price.route,
+    price_currency: price.currency,
+    price_source: price.source,
+    price_effective_from: price.effective_from,
+    unit_price_cny_per_second: price.currency === 'CNY' ? price.per_second : Number((price.per_second * rate).toFixed(6)),
+    usd_cny_rate: price.currency === 'CNY' ? null : rate,
     safety_factor: safetyFactor,
     paid_unit_count: units.length,
     automatic_paid_retry_count: 0,
@@ -116,8 +115,13 @@ function publicCostPlan(plan = {}) {
     provider_id: plan.provider_id,
     model_id: plan.model_id,
     price_known: plan.price_known === true,
-    unit_price_usd_per_second: Number(plan.unit_price_usd_per_second || 0),
-    usd_cny_rate: Number(plan.usd_cny_rate || 0),
+    price_catalog_version: plan.price_catalog_version || '',
+    price_route: plan.price_route || '',
+    price_currency: plan.price_currency || '',
+    price_source: plan.price_source || '',
+    price_effective_from: plan.price_effective_from || '',
+    unit_price_cny_per_second: Number(plan.unit_price_cny_per_second || 0),
+    usd_cny_rate: plan.usd_cny_rate == null ? null : Number(plan.usd_cny_rate || 0),
     paid_unit_count: Number(plan.paid_unit_count || 0),
     automatic_paid_retry_count: 0,
     estimated_cost_rmb: Number(plan.estimated_cost_rmb || 0),
@@ -135,4 +139,5 @@ module.exports = {
   assertComplexityReview,
   assertCostAuthorization,
   publicCostPlan,
+  pricingCatalog,
 };

@@ -103,6 +103,59 @@ async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
   return frames;
 }
 
+function frameEvidenceUsable(frame = {}) {
+  const imageUrl = cleanText(frame.image_url || frame.imageUrl || '', 1000);
+  const filePath = cleanText(frame.file_path || frame.filePath || '', 1000);
+  if (!imageUrl) return false;
+  return !filePath || fs.existsSync(filePath);
+}
+
+function hasReviewFrameEvidence(qa = {}) {
+  const frames = Array.isArray(qa.frames) ? qa.frames : [];
+  return frames.length > 0
+    && frameEvidenceUsable(frames[0])
+    && frameEvidenceUsable(frames[frames.length - 1]);
+}
+
+function evidenceError(index = 0, cause = null) {
+  const error = new Error(`第 ${index + 1} 镜缺少可用的首尾帧证据，已在付费视频提交前停止`);
+  error.code = 'VIDEO_QA_EVIDENCE_MISSING';
+  error.status = 409;
+  error.retryable = false;
+  error.details = { shot_index: index + 1, cause_code: cause?.code || '' };
+  return error;
+}
+
+/** Backfill reused boundary clips locally before any paid provider submission. */
+async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetIndexes = [] } = {}) {
+  const next = Array.isArray(clips) ? clips.slice() : [];
+  const targets = new Set((Array.isArray(targetIndexes) ? targetIndexes : [])
+    .map(Number).filter(index => Number.isInteger(index) && index >= 0));
+  const boundaryIndexes = [...targets]
+    .filter(index => index > 0 && !targets.has(index - 1))
+    .map(index => index - 1)
+    .sort((a, b) => a - b);
+  const backfilledIndexes = [];
+  for (const index of boundaryIndexes) {
+    const clip = next[index] || {};
+    if (clip.qa?.pass !== true || !(clip.file_path || clip.filePath || clip.scene_block_source_file)) {
+      throw evidenceError(index);
+    }
+    if (hasReviewFrameEvidence(clip.qa)) continue;
+    let frames = [];
+    try {
+      frames = await extractReviewFrames({ taskId, clip, index });
+    } catch (error) {
+      throw evidenceError(index, error);
+    }
+    const qa = { ...clip.qa, frames, evidence_backfilled_locally_at: new Date().toISOString() };
+    if (!hasReviewFrameEvidence(qa)) throw evidenceError(index);
+    next[index] = { ...clip, qa };
+    backfilledIndexes.push(index);
+  }
+  return { clips: next, backfilled_indexes: backfilledIndexes, boundary_indexes: boundaryIndexes };
+}
+
 function aggregatePass(parsed = {}) {
   const dimensions = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass', 'text_watermark_pass'];
   return parsed.pass === true && dimensions.every(key => parsed[key] === true);
@@ -320,7 +373,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
 }
 
 async function reviewCrossShot({ taskId = '', previous = null, current = null, previousShot = {}, currentShot = {}, ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
-  if (!previous?.frames?.length || !current?.frames?.length) return {
+  if (!hasReviewFrameEvidence(previous || {}) || !hasReviewFrameEvidence(current || {})) return {
     pass: false,
     status: 'rejected_missing_frame_evidence',
     code: 'VIDEO_QA_EVIDENCE_MISSING',
@@ -361,12 +414,25 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   };
 }
 
+function crossShotFailure(qa = {}, index = 1) {
+  const code = qa.error_code || qa.code || 'CROSS_SHOT_CONTINUITY_FAILED';
+  return {
+    code,
+    message: code === 'VIDEO_QA_EVIDENCE_MISSING'
+      ? `镜头 ${index}→${index + 1} 交接审核缺少尾帧或首帧证据`
+      : '相邻镜头视觉连续性 QA 未通过',
+  };
+}
+
 module.exports = {
   FRAME_POINTS,
   FRAME_DIMENSIONS,
   CROSS_DIMENSIONS,
   failedDimensionDetails,
   extractReviewFrames,
+  frameEvidenceUsable,
+  hasReviewFrameEvidence,
+  ensureBoundaryFrameEvidence,
   reviewDecision,
   expectedPeopleForShot,
   peopleProblemMatchesApprovedKeyframe,
@@ -376,4 +442,5 @@ module.exports = {
   verifyDeterministicLocalMotionClip,
   reviewVideoClip,
   reviewCrossShot,
+  crossShotFailure,
 };

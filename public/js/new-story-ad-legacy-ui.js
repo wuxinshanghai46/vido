@@ -64,6 +64,7 @@
     ttsAudio: null,
     videoClips: [],
     videoShotStatuses: [],
+    videoSceneBlocks: [],
     videoSelectedIndexes: [],
     videoSelectedUnitIds: [],
     finalVideo: null,
@@ -3310,14 +3311,33 @@
   }
 
   /** 将逐镜切分片段还原为真实生成单元；同一供应商任务只显示一次。 */
-  function videoGenerationUnits(clips = []) {
+  function videoGenerationUnits(clips = [], sceneBlocks = state.videoSceneBlocks) {
     const groups = new Map();
+    const canonicalOwner = new Map();
+    (Array.isArray(sceneBlocks) ? sceneBlocks : []).forEach((block, index) => {
+      const members = (block.member_indexes || []).map(value => Number(value) + 1)
+        .filter(value => Number.isInteger(value) && value > 0);
+      const key = String(block.id || `scene-block-${members.join('-') || index + 1}`);
+      const group = {
+        id: key,
+        members: new Set(members),
+        clips: [],
+        providerTaskId: '',
+        providerUsed: '',
+        local: false,
+        sourceUrl: '',
+        canonical: true,
+      };
+      groups.set(key, group);
+      members.forEach(member => canonicalOwner.set(member, group));
+    });
     (Array.isArray(clips) ? clips : []).forEach((clip, index) => {
       if (!clip) return;
-      const members = (Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
+      const canonical = canonicalOwner.get(index + 1);
+      const members = canonical ? [...canonical.members] : (Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
         ? clip.scene_block_members
         : [index + 1]).map(Number).filter(value => Number.isInteger(value) && value > 0);
-      const key = String(clip.scene_block_id || clip.provider_task_id || `shot-${members.join('-') || index + 1}`);
+      const key = canonical?.id || String(clip.scene_block_id || clip.provider_task_id || `shot-${members.join('-') || index + 1}`);
       if (!groups.has(key)) groups.set(key, {
         id: key,
         members: new Set(),
@@ -3328,8 +3348,9 @@
         sourceUrl: clip.scene_block_source_video_url || '',
       });
       const group = groups.get(key);
-      members.forEach(member => group.members.add(member));
+      if (!canonical) members.forEach(member => group.members.add(member));
       group.clips.push(clip);
+      if (canonical && group.clips.length === 1) group.local = clip.zero_cost_visual_generation === true || !clip.provider_task_id;
       if (!group.providerTaskId && clip.provider_task_id) group.providerTaskId = clip.provider_task_id;
       if (!group.providerUsed && clip.provider_used) group.providerUsed = clip.provider_used;
       if (clip.provider_task_id) group.local = false;

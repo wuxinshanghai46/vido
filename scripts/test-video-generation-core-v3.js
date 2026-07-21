@@ -93,6 +93,11 @@ function run() {
     options: { usd_cny_rate: 7.2 },
   });
   assert.strictEqual(costPlan.price_known, true);
+  assert.strictEqual(costPlan.price_route, 'deyunai/doubao-seedance-2-0-260128');
+  assert.strictEqual(costPlan.price_currency, 'CNY');
+  assert.strictEqual(costPlan.unit_price_cny_per_second, 1);
+  assert.strictEqual(costPlan.estimated_cost_rmb, 10, 'two five-second units must cost CNY 10 at CNY 1/second');
+  assert.strictEqual(costPlan.maximum_cost_rmb, 11.5);
   assert.strictEqual(costPlan.automatic_paid_retry_count, 0);
   assert(costPlan.maximum_cost_rmb >= costPlan.estimated_cost_rmb);
   const authorization = core.costGuard.assertCostAuthorization(costPlan, {
@@ -101,7 +106,25 @@ function run() {
   });
   assert.strictEqual(authorization.authorized, true);
 
-  const unknownCost = core.costGuard.buildCostPlan({ executionPlan: singleSingle, modelId: 'unknown-paid-video-model' });
+  const twentySecondCost = core.costGuard.buildCostPlan({
+    executionPlan: {
+      fingerprint: 'two-ten-second-units',
+      generation_units: [
+        { id: 'unit-a', paid: true, duration_sec: 10, edit_shot_indexes: [1, 2] },
+        { id: 'unit-b', paid: true, duration_sec: 10, edit_shot_indexes: [3, 4] },
+      ],
+    },
+    providerId: 'deyunai',
+    modelId: 'doubao-seedance-2-0-260128',
+  });
+  assert.strictEqual(twentySecondCost.estimated_cost_rmb, 20);
+  assert.strictEqual(twentySecondCost.maximum_cost_rmb, 23);
+  assert.deepStrictEqual(twentySecondCost.units.map(unit => unit.estimated_cost_rmb), [10, 10]);
+
+  const wrongProviderCost = core.costGuard.buildCostPlan({ executionPlan: singleSingle, providerId: 'other-provider', modelId: 'doubao-seedance-2-0-260128' });
+  assert.strictEqual(wrongProviderCost.price_known, false, 'another provider must not inherit Deyun pricing');
+
+  const unknownCost = core.costGuard.buildCostPlan({ executionPlan: singleSingle, providerId: 'deyunai', modelId: 'unknown-paid-video-model' });
   assert.throws(
     () => core.costGuard.assertCostAuthorization(unknownCost, {}),
     error => error.code === 'VIDEO_COST_PRICE_UNKNOWN' && /[\u3400-\u9fff]/.test(error.message),

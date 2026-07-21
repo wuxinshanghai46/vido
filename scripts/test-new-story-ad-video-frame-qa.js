@@ -161,6 +161,28 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   });
   assert.strictEqual(localMotionQa.pass, true, 'a pixel transform of the current approved keyframe should pass deterministic QA');
   assert.strictEqual(localMotionQa.used_model, 'none/local-ffmpeg-contract', 'deterministic local motion must not call a QA model');
+  const backfilled = await videoQa.ensureBoundaryFrameEvidence({
+    taskId: 'video-qa-boundary-backfill',
+    clips: [{ file_path: clipPath, duration_sec: 2, qa: { pass: true, frames: [] } }],
+    targetIndexes: [1],
+  });
+  assert.deepStrictEqual(backfilled.backfilled_indexes, [0]);
+  assert.strictEqual(backfilled.clips[0].qa.frames.length, 5);
+  assert.strictEqual(videoQa.hasReviewFrameEvidence(backfilled.clips[0].qa), true);
+
+  let invalidEvidenceGatewayCalls = 0;
+  const invalidEvidence = await videoQa.reviewCrossShot({
+    taskId: 'video-qa-invalid-boundary-evidence',
+    previous: { frames: [{}] },
+    current: qa,
+    previousShot: {},
+    currentShot: {},
+    ctx: {},
+    gateway: { generateVision: async () => { invalidEvidenceGatewayCalls += 1; return { text: '{}' }; } },
+  });
+  assert.strictEqual(invalidEvidence.pass, false);
+  assert.strictEqual(invalidEvidence.error_code, 'VIDEO_QA_EVIDENCE_MISSING');
+  assert.strictEqual(invalidEvidenceGatewayCalls, 0, 'invalid frame evidence must stop before any QA model call');
   process.env.NEW_STORY_AD_MOCK_LLM = '1';
   const cross = await videoQa.reviewCrossShot({ taskId: 'video-qa-test', previous: qa, current: qa, previousShot: {}, currentShot: {}, ctx: {} });
   assert.strictEqual(cross.pass, true);

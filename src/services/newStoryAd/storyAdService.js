@@ -1,5 +1,4 @@
-const fs = require('fs');
-const crypto = require('crypto');
+const fs = require('fs'), crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const modelGateway = require('./modelGateway');
@@ -20,6 +19,8 @@ const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 const videoSubmissionGate = require('./videoSubmissionGateService');
+const videoEvidencePreflight = require('./videoEvidencePreflightService');
+const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
@@ -369,7 +370,6 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     keyframe_status: keyframeStatus,
   };
 }
-
 /** 只读归一没有活动任务却残留 queued/running 的历史进度，不改写数据库。 */
 function terminalizedGenerationProgress(task = {}, rawProgress = null, hasFinalOutput = false) {
   if (!rawProgress || typeof rawProgress !== 'object' || task.active_generation_id) return rawProgress;
@@ -383,7 +383,6 @@ function terminalizedGenerationProgress(task = {}, rawProgress = null, hasFinalO
     : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
   return { ...rawProgress, status, finished_at: rawProgress.finished_at || now, updated_at: now };
 }
-
 /** 构建任务摘要；列表模式禁止读取完整分镜、关键帧和视频输出。 */
 function taskSummary(task = {}, { detailed = true } = {}) {
   const outputMap = detailed && task.id
@@ -2381,12 +2380,9 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
   if (!zeroCostOnly && Number(plan.paid_unit_count || 0) > 0) {
     videoCore.costGuard.assertComplexityReview(plan.authorized_execution_plan || plan.execution_plan, options);
     const authorization = videoCore.costGuard.assertCostAuthorization(plan.cost_plan, options);
-    storage.saveOutput(taskId, 'video_cost_authorization', {
-      ...authorization,
+    videoCostAuthorization.authorize(taskId, authorization, {
       execution_plan_fingerprint: plan.execution_plan.fingerprint,
       video_preflight_fingerprint: plan.fingerprint,
-      authorized_at: new Date().toISOString(),
-      status: 'authorized',
     });
   }
   storage.saveOutput(taskId, 'video_execution_plan', plan.execution_plan);
@@ -2406,6 +2402,7 @@ async function generateVideoStage(taskId, options = {}) {
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;
   const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
+  const previousClips = await videoEvidencePreflight.preparePaidBoundaryEvidence(taskId, preflightPlan, zeroCostOnly);
   const generationShots = generationMode === 'quality' ? preflightPlan.reconciled_shots : shots;
   const localMotionIndexSet = new Set(preflightPlan.local_motion_indexes || []);
   const preflightShotActions = new Map((preflightPlan.shots || []).map(item => [item.index, item]));
@@ -2440,7 +2437,6 @@ async function generateVideoStage(taskId, options = {}) {
   storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
-  const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const forceRegenerateAll = !zeroCostOnly
     && (options.force_regenerate_all === true || options.forceRegenerateAll === true);
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
@@ -2506,11 +2502,12 @@ async function generateVideoStage(taskId, options = {}) {
       const current = clips[index];
       if (!previous?.qa?.pass || !current?.qa?.pass) continue;
       const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
-      clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED' };
+      const { code: crossErrorCode, message: crossError } = videoFrameQa.crossShotFailure(crossQa, index);
+      clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? '' : crossError, error_code: crossQa.pass ? '' : crossErrorCode };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed', cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
         cross_shot_qa_problems: crossQa.problems || [], cross_shot_failure_dimensions: crossQa.failure_dimensions || [], cross_shot_failure_labels_zh: crossQa.failure_labels_zh || [],
-        error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED', retryable: !crossQa.pass,
+        error: crossQa.pass ? '' : crossError, error_code: crossQa.pass ? '' : crossErrorCode, retryable: !crossQa.pass,
       }, shots.length);
       if (!crossQa.pass) {
         failures.push({ index, kind: 'cross_shot_qa', dimensions: crossQa.failure_dimensions || [], labels_zh: crossQa.failure_labels_zh || [], problems: crossQa.problems || [], retry_instruction: crossQa.retry_instruction || '', repairable: true });
@@ -2690,6 +2687,7 @@ async function generateVideoStage(taskId, options = {}) {
         });
         storage.saveOutput(taskId, 'video_clips', clips);
         if (generationError) {
+          videoCostAuthorization.transition(taskId, 'failed', { failure_code: generationError.code || 'VIDEO_PROVIDER_FAILED' });
           generationError.partial_video_clips = clips.slice();
           generationError.completed_indexes = reviewedIndexes;
           throw generationError;
@@ -2722,6 +2720,7 @@ async function generateVideoStage(taskId, options = {}) {
     const mergedFailures = videoRepairPolicy.mergeFailures(qaFailures);
     storage.saveStage(taskId, 'video', { status: 'failed', output_summary: `${clips.filter(Boolean).length}/${shots.length} video clips`, error: '视频审片未通过', diagnostics: { qa_failures: mergedFailures, repair_attempts_used: repairAttempt, max_repair_attempts: maxRepairs } });
     storage.updateTask(taskId, { status: 'failed', stage: 'video_failed', error: `部分镜头在 ${repairAttempt} 次自动修复后仍未通过视觉审核`, error_code: 'VIDEO_QA_FAILED', retryable: true });
+    videoCostAuthorization.transition(taskId, 'failed', { failure_code: 'VIDEO_QA_FAILED' });
     const error = new Error('视频审片未通过：' + mergedFailures.map(item => `第 ${item.index + 1} 镜（${item.labels_zh.join('、') || '质量审核'}）`).join('；'));
     error.code = 'VIDEO_QA_FAILED'; error.retryable = true; error.video_clips = clips; error.qa_failures = mergedFailures;
     throw error;
@@ -2746,6 +2745,7 @@ async function generateVideoStage(taskId, options = {}) {
     diagnostics: { provider_used: lastGenerated.provider_used || pinnedRoute, schedule: lastGenerated.schedule || null, policy_version: policy.version, repair_attempts_used: repairAttempt },
   });
   storage.updateTask(taskId, { status: 'done', stage: 'video_ready' });
+  if (storage.getOutput(taskId, 'video_cost_authorization')?.status === 'authorized') videoCostAuthorization.transition(taskId, 'consumed');
   return { video_clips: clips };
 }
 
