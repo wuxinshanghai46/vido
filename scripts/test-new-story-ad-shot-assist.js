@@ -84,7 +84,7 @@ function testUiContractIsPresent() {
   assert.match(ui, /data-nsa-shot-jump/);
   assert.match(css, /\.dh-nsa-shot-ai-assist/);
   assert.match(css, /\.dh-nsa-editor-section-fields/);
-  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260718-person-assist-fix-v1/);
+  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260721-fill-missing-v1/);
 }
 
 testNormalizesGenericShotSettings();

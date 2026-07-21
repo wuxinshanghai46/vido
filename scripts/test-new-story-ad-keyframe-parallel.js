@@ -303,6 +303,80 @@ async function testFailedBatchKeepsStructuredState() {
   }
 }
 
+async function testStrictMissingFillPreservesExistingFrames() {
+  const owner = { id: 'strict-missing-owner', role: 'user' };
+  const taskId = service.createTask({
+    brief: '六个镜头只补齐两张真正缺失的图片',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+  }, owner).task.id;
+  const shots = Array.from({ length: 6 }, (_, index) => ({
+    index: index + 1,
+    title: `镜头 ${index + 1}`,
+    visual: `展示当前任务第 ${index + 1} 个信息点`,
+    action: '保持当前构图',
+    characters: [],
+  }));
+  const contracts = shots.map((_, index) => ({
+    contract_fingerprint: `strict-missing-contract-${index + 1}`,
+    visual_contract: {},
+    continuity_lock: { transition_type: index ? 'hard_cut' : 'none' },
+  }));
+  const retainedIndexes = new Set([0, 1, 2, 5]);
+  const existing = shots.map((_, index) => retainedIndexes.has(index) ? {
+    image_url: `https://example.test/retained-${index + 1}.png`,
+    qa_policy_version: 1,
+    contract_fingerprint: `older-contract-${index + 1}`,
+    contract_outdated: true,
+    current_generation_status: 'outdated',
+    qa: { pass: true, status: 'verified' },
+  } : {
+    error: 'previous image generation failed',
+    error_code: 'PROVIDER_5XX_AMBIGUOUS',
+    current_generation_status: 'failed',
+    qa: { pass: false, status: 'not_run' },
+  });
+  storage.saveOutput(taskId, 'context', {
+    brief: '六个镜头只补齐两张真正缺失的图片',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+    scene_assets: [],
+    assets: [],
+  });
+  storage.saveOutput(taskId, 'storyboard_table', shots);
+  storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  storage.saveOutput(taskId, 'keyframes', existing);
+
+  const originalGenerateImage = mediaAdapter.generateImage;
+  const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
+  const originalProductReview = productKeyframeQa.reviewProductKeyframe;
+  const generated = [];
+  mediaAdapter.generateImage = async ({ filename = '' } = {}) => {
+    generated.push(filename);
+    return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/no-charge' };
+  };
+  personKeyframeQa.reviewPersonKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  productKeyframeQa.reviewProductKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  try {
+    const result = await service.generateKeyframesStage(taskId, {
+      missing_only: true,
+      parallel_keyframes: true,
+      keyframe_concurrency: 3,
+    });
+    assert.equal(generated.length, 2, '兼容旧客户端的 missing_only 也只能产生两次图片调用');
+    assert.deepEqual(storage.getTask(taskId).generation_progress.target_indexes, [4, 5]);
+    [0, 1, 2, 5].forEach(index => {
+      assert.equal(result.keyframes[index].image_url, existing[index].image_url, `第 ${index + 1} 镜已有图片必须原样保留`);
+      assert.equal(result.keyframes[index].current_generation_status, 'outdated', '严格补图不能顺带改写已有图片状态');
+    });
+    assert(result.keyframes[3].image_url && result.keyframes[4].image_url, '第 4、5 镜必须得到新图片');
+  } finally {
+    mediaAdapter.generateImage = originalGenerateImage;
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
+  }
+}
+
 function testConfigurationAndContracts() {
   assert.strictEqual(scheduler.resolveConcurrency({}, 8, {}), 2);
   assert.strictEqual(scheduler.resolveConcurrency({ keyframe_concurrency: 99 }, 8, {}), 3);
@@ -446,7 +520,13 @@ function testConfigurationAndContracts() {
     null,
     { image_url: 'https://example.test/failed.png', error: 'failed' },
   ], { missing_only: true });
-  assert.deepStrictEqual(targetIndexes, [1, 2], '续作只能选择缺失或失败镜头');
+  assert.deepStrictEqual(targetIndexes, [1], '补齐动作只能选择真正没有图片的镜头');
+  const repairIndexes = service.keyframeTargetIndexes([{}, {}, {}], [
+    { image_url: 'https://example.test/accepted.png', qa_policy_version: 2, current_generation_status: 'accepted', qa: { pass: true } },
+    null,
+    { image_url: 'https://example.test/failed.png', error: 'failed' },
+  ], { needs_regeneration_only: true });
+  assert.deepStrictEqual(repairIndexes, [1, 2], '修复模式可以包含已有图片但状态异常的镜头');
 }
 
 async function main() {
@@ -458,6 +538,7 @@ async function main() {
   await testCancellationStopsNewWaves();
   await testStageIntegrationWithoutPaidProvider();
   await testFailedBatchKeepsStructuredState();
+  await testStrictMissingFillPreservesExistingFrames();
   console.log('new-story-ad keyframe parallel tests passed');
 }
 

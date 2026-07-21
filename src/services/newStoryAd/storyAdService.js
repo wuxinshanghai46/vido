@@ -16,6 +16,7 @@ const ttsAdapter = require('./ttsAdapter');
 const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
+const keyframeTarget = require('./keyframeTargetService');
 const composeService = require('./composeService');
 const {
   bindShotsToScenes,
@@ -128,22 +129,18 @@ function keyframeCompletion(keyframes = [], shots = []) {
 }
 
 function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
-  const onlyIndex = Number.isFinite(Number(options.only_index ?? options.onlyIndex))
-    ? Number(options.only_index ?? options.onlyIndex)
-    : null;
-  const indexes = onlyIndex === null
-    ? shots.map((_, index) => index)
-    : [Math.max(0, Math.min(Math.max(0, shots.length - 1), onlyIndex))];
-  const missingOnly = options.missing_only === true || options.missingOnly === true;
-  return missingOnly ? indexes.filter(index => {
-    const frame = existing[index] || {};
-    return !isCompleteKeyframe(frame)
-      || !!frame.regeneration_error
-      || Number(frame.qa_policy_version || 0) < 2
-      || frame.contract_outdated === true
-      || ['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame.current_generation_status || ''))
-      || frame.qa?.pass !== true;
-  }) : indexes;
+  return keyframeTarget.select(shots, existing, options, {
+    hasImage: frame => {
+      const url = keyframeImageUrl(frame);
+      return !!(url && localKeyframeAssetExists(url));
+    },
+    isCurrent: frame => isCompleteKeyframe(frame)
+      && !frame.regeneration_error
+      && Number(frame.qa_policy_version || 0) >= 2
+      && frame.contract_outdated !== true
+      && !['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(frame.current_generation_status || ''))
+      && frame.qa?.pass === true,
+  });
 }
 
 function persistKeyframeContracts(taskId, contracts = [], { clearDownstream = false } = {}) {

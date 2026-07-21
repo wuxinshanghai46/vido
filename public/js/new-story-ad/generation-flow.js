@@ -317,9 +317,9 @@
         showStep?.(4);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
-        if (state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
+        if (state.storyboardDirty === true && state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
-        r = await startStage(id, 'keyframes', missingOnly ? { missing_only: true } : {}, ctx);
+        r = await startStage(id, 'keyframes', missingOnly ? { missing_images_only: true } : {}, ctx);
         normalizeBundle?.(r);
         showStep?.(4);
       } else if (stage === 'tts') {

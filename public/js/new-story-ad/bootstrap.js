@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260720-blueprint-restore-v32';
+  const SCRIPT_VERSION = '20260721-fill-missing-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

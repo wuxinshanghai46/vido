@@ -3542,8 +3542,8 @@
     const fillMissing = within('#dhNsaAdFillMissingFramesTop');
     if (fillMissing) {
       const kf = keyframeStatus();
-      fillMissing.hidden = !(kf.total && kf.needs_regeneration > 0);
-      fillMissing.textContent = kf.needs_regeneration > 0 ? `补齐或修复镜头（${kf.needs_regeneration}）` : '补齐或修复镜头';
+      fillMissing.hidden = !(kf.total && kf.missing > 0);
+      fillMissing.textContent = kf.missing > 0 ? `补齐未生成镜头（${kf.missing}）` : '补齐未生成镜头';
     }
     showStep(state.currentStep, { remember: !state.restoringTask });
     syncPersonSpecControls();
@@ -3884,7 +3884,7 @@
     setButtonBusy(button, true, label);
     try {
       const id = await ensureTask();
-      await saveStoryboardEdits(id);
+      if (state.storyboardDirty === true) await saveStoryboardEdits(id);
       const r = window.NewStoryAdGenerationFlow?.startStage
         ? await window.NewStoryAdGenerationFlow.startStage(id, 'keyframes', { only_index: Number(index) || 0 }, generationFlowContext(button))
         : await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: { only_index: Number(index) || 0 } });
@@ -4040,9 +4040,9 @@
         showStep(4);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} }));
-        if (state.shots.length) await saveStoryboardEdits(id);
+        if (state.storyboardDirty === true && state.shots.length) await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
-        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_only: true } : {} });
+        r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_images_only: true } : {} });
         normalizeBundle(r);
         showStep(4);
       } else if (stage === 'tts') {

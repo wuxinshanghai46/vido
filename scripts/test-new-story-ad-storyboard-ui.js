@@ -39,6 +39,9 @@ assert(ui.includes('没有重新生成图片'), 'QA-only retry must explain that
 assert(ui.includes('当前版本通过 ${kf.fresh_pass || 0}/${kf.total}'), 'status summary must use fresh pass instead of URL count');
 assert(ui.includes('保留旧版 ${kf.retained_previous}'), 'status summary must expose retained old frames');
 assert(ui.includes('生成失败 ${kf.failed}'), 'status summary must expose hard failures');
+assert(ui.includes('补齐未生成镜头（${kf.missing}）'), 'fill action must count only frames without an image');
+assert(ui.includes("missingOnly ? { missing_images_only: true } : {}"), 'fill action must request strict missing-image targeting');
+assert(ui.includes("state.storyboardDirty === true && state.shots.length"), 'keyframe action must not rebuild all contracts when the storyboard was not edited');
 assert(css.includes('grid-template-areas:'), 'storyboard layout must use explicit compact regions');
 assert(css.includes('--dh-nsa-frame-ratio'), 'preview ratio must follow the task ratio instead of a fixed scene');
 assert(css.includes('.dh-nsa-frame-identity {'), 'storyboard header must have a dedicated compact identity region');
@@ -46,8 +49,8 @@ assert(css.includes('.dh-nsa-duration { min-height: 36px;'), 'duration control m
 assert(css.includes('.dh-nsa-frame-status-note { grid-area: notice;'), 'long status explanations must render in a separate full-width notice');
 assert(css.includes('.dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }'), 'dynamic preview ratio must explicitly reset the legacy max-height cap');
 assert(css.includes('@media (max-width: 600px)'), 'mobile storyboard layout must be covered');
-assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260718-person-assist-fix-v1'), '剧情广告入口必须使用人物补齐修复缓存版本');
-assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260718-person-assist-fix-v1'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
+assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260721-fill-missing-v1'), '剧情广告入口必须使用严格补齐修复缓存版本');
+assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260721-fill-missing-v1'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
 assert(ui.includes('data-nsa-admin-video-monitor'), 'super admin must have an in-context shot monitor entry');
 assert(ui.includes('/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor'), 'shot monitor must read the protected admin endpoint');
 assert(ui.includes("currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes"), 'ordinary users and non-video stages must not show the admin shot monitor entry');
