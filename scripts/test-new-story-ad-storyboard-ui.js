@@ -2,6 +2,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
@@ -55,5 +56,18 @@ assert(ui.includes('data-nsa-admin-video-monitor'), 'super admin must have an in
 assert(ui.includes('/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor'), 'shot monitor must read the protected admin endpoint');
 assert(ui.includes("currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes"), 'ordinary users and non-video stages must not show the admin shot monitor entry');
 assert(ui.includes('每 5 秒自动刷新'), 'admin shot monitor must explain its live refresh interval');
+
+const keyframeContext = { window: {} };
+vm.runInNewContext(fs.readFileSync(path.join(root, 'public/js/new-story-ad/keyframes.js'), 'utf8'), keyframeContext);
+assert.strictEqual(
+  keyframeContext.window.NewStoryAdKeyframes.isQaInfrastructureError('timeout of 300000ms exceeded', 'IMAGE_ATTEMPTS_EXHAUSTED'),
+  false,
+  'image provider timeout must not be displayed as a visual QA outage',
+);
+assert.strictEqual(
+  keyframeContext.window.NewStoryAdKeyframes.isQaInfrastructureError('视觉审核服务暂时不可用', 'VISION_QA_UNAVAILABLE'),
+  true,
+  'actual visual QA outage must retain its dedicated explanation',
+);
 
 console.log('new-story-ad storyboard UI tests passed');

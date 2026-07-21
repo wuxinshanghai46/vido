@@ -26,7 +26,9 @@
   }
 
   function isQaInfrastructureError(value = '', code = '') {
-    return /VISION_QA_UNAVAILABLE|VISION_CIRCUIT_OPEN|MODEL_ATTEMPTS_EXHAUSTED|TIMEOUT_OR_NETWORK/i.test(String(code || ''))
+    const normalizedCode = String(code || '').trim();
+    if (/^(?:IMAGE_|PROVIDER_|REFERENCE_IMAGE_|INPUT_)/i.test(normalizedCode)) return false;
+    return /VISION_QA_UNAVAILABLE|VISION_CIRCUIT_OPEN|MODEL_ATTEMPTS_EXHAUSTED|TIMEOUT_OR_NETWORK/i.test(normalizedCode)
       || /视觉模型全部失败|视觉审核服务|timed?\s*out|timeout|ECONNRESET|socket hang up|(?:HTTP\s*)?5\d\d/i.test(String(value || ''));
   }
 
