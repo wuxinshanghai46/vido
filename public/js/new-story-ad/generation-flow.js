@@ -384,6 +384,9 @@
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'media') {
+        // 用户已确认整条视频方案后立即进入“广告合成”，让真实生成、质检和封装进度都归属第 5 步。
+        showStep?.(5);
+        renderAll?.();
         r = await startStage(id, 'media', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
         showStep?.(5);

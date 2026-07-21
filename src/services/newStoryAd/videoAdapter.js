@@ -48,6 +48,19 @@ function updateVideoProgress(taskId = '', total = 0, extra = {}) {
   const now = new Date().toISOString();
   const terminal = new Set(['qa_passed', 'qa_failed', 'failed', 'cancelled']);
   const active = new Set(['queued', 'submitting', 'provider_submitted', 'provider_running', 'downloading', 'normalizing', 'generated', 'video_qa']);
+  const unitGroups = new Map();
+  statuses.filter(Boolean).forEach((item, index) => {
+    const key = String(item.scene_block_id || item.provider_task_id || `shot-${Number(item.index || 0) || index + 1}`);
+    if (!unitGroups.has(key)) unitGroups.set(key, []);
+    unitGroups.get(key).push(item);
+  });
+  const units = [...unitGroups.entries()].map(([id, members]) => ({
+    id,
+    member_indexes: [...new Set(members.flatMap(item => Array.isArray(item.scene_block_members) && item.scene_block_members.length ? item.scene_block_members : [item.index]).map(Number).filter(Boolean))].sort((a, b) => a - b),
+    active: members.some(item => active.has(item.lifecycle)),
+    generated: members.some(item => ['generated', 'video_qa', 'qa_passed', 'qa_failed'].includes(item.lifecycle)),
+    failed: members.some(item => item.lifecycle === 'failed') && !members.some(item => ['generated', 'video_qa', 'qa_passed', 'qa_failed'].includes(item.lifecycle)),
+  }));
   const progress = {
     ...previous,
     stage: 'video',
@@ -65,6 +78,11 @@ function updateVideoProgress(taskId = '', total = 0, extra = {}) {
     failed: statuses.filter(item => ['qa_failed', 'failed'].includes(item?.lifecycle)).length,
     completed: statuses.filter(item => terminal.has(item?.lifecycle)).length,
     active_indexes: statuses.filter(item => active.has(item?.lifecycle)).map(item => Number(item.index || 0)).filter(Boolean),
+    units_total: units.length,
+    units_active: units.filter(unit => unit.active).length,
+    units_generated: units.filter(unit => unit.generated).length,
+    units_failed: units.filter(unit => unit.failed).length,
+    active_units: units.filter(unit => unit.active).map(unit => ({ id: unit.id, member_indexes: unit.member_indexes })),
     last_heartbeat_at: statuses.map(item => item?.last_heartbeat_at || '').filter(Boolean).sort().slice(-1)[0] || '',
     ...extra,
   };

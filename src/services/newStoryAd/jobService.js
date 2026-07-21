@@ -90,6 +90,22 @@ function sanitizedFailureDetails(error = null) {
   }));
 }
 
+/**
+ * 媒体任务会依次写入 tts/video/compose 子阶段进度；收尾必须按同一个 generation_id
+ * 归档，不能要求子阶段名与外层 job stage（media）完全相同。
+ */
+function terminalGenerationProgress(task = {}, jobStage = '', generationId = '', patch = {}) {
+  const progress = task.generation_progress;
+  if (!progress || typeof progress !== 'object') return null;
+  const progressGenerationId = String(progress.generation_id || '');
+  const jobGenerationId = String(generationId || '');
+  const bothHaveGenerationIds = !!progressGenerationId && !!jobGenerationId;
+  const sameGeneration = bothHaveGenerationIds && progressGenerationId === jobGenerationId;
+  const sameStage = String(progress.stage || '') === String(jobStage || '');
+  if (bothHaveGenerationIds ? !sameGeneration : !sameStage) return null;
+  return { ...progress, ...patch };
+}
+
 function publicJob(job = {}) {
   return {
     id: job.id,
@@ -325,6 +341,15 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
       const failureDetails = sanitizedFailureDetails(error);
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') === id) {
+        const terminalProgress = terminalGenerationProgress(current, stage, id, {
+          status: 'failed',
+          error_code: failure.code,
+          support_id: id,
+          ...(failureDetails.length ? { failure_details: failureDetails } : {}),
+          message: job.error,
+          finished_at: job.finishedAt,
+          updated_at: job.finishedAt,
+        });
         storage.saveStage(taskId, stage, {
           status: 'failed',
           started_at: job.startedAt,
@@ -349,18 +374,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
           error_code: failure.code,
           support_id: id,
           retryable: failure.retryable,
-          ...(current.generation_progress?.stage === stage ? {
-            generation_progress: {
-              ...current.generation_progress,
-              status: 'failed',
-              error_code: failure.code,
-              support_id: id,
-              ...(failureDetails.length ? { failure_details: failureDetails } : {}),
-              message: job.error,
-              finished_at: job.finishedAt,
-              updated_at: job.finishedAt,
-            },
-          } : {}),
+          ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
         });
       }
     } finally {
@@ -383,6 +397,14 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
       job.retryable = true;
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') !== id) return;
+      const terminalProgress = terminalGenerationProgress(current, stage, id, {
+        status: 'failed',
+        error_code: failure.code,
+        support_id: id,
+        message: job.error,
+        finished_at: job.finishedAt,
+        updated_at: job.finishedAt,
+      });
       storage.saveStage(taskId, stage, {
         status: 'failed',
         started_at: job.startedAt,
@@ -401,17 +423,7 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
         error_code: failure.code,
         support_id: id,
         retryable: true,
-        ...(current.generation_progress?.stage === stage ? {
-          generation_progress: {
-            ...current.generation_progress,
-            status: 'failed',
-            error_code: failure.code,
-            support_id: id,
-            message: job.error,
-            finished_at: job.finishedAt,
-            updated_at: job.finishedAt,
-          },
-        } : {}),
+        ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
       });
     });
   });
@@ -425,6 +437,7 @@ module.exports = {
   stageBudgetMs,
   getJob,
   publicJob,
+  terminalGenerationProgress,
   queueStage,
   reconcileInterruptedJobs,
 };

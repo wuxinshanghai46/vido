@@ -15,6 +15,7 @@ const composeService = require('../services/newStoryAd/composeService');
 const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
 const jobService = require('../services/newStoryAd/jobService');
 const mediaPipeline = require('../services/newStoryAd/mediaPipelineService');
+const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnitProjection');
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
 const videoCore = require('../services/videoGenerationCore');
@@ -77,7 +78,7 @@ function taskForReq(req) {
 
 function adminOnly(req, res, next) {
   if (String(userFromReq(req).role || '').toLowerCase() !== 'admin') {
-    return res.status(403).json({ success: false, code: 'ADMIN_REQUIRED', error: '逐镜头生成监控仅管理员可见' });
+    return res.status(403).json({ success: false, code: 'ADMIN_REQUIRED', error: '视频生成单元监控仅管理员可见' });
   }
   return next();
 }
@@ -1063,6 +1064,7 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
   });
   const bundle = service.publicTaskBundle(task.id, { diagnostics: true, includeVideoMonitor: true });
   const summary = service.taskSummary(task);
+  const generationUnits = videoGenerationUnits.projectVideoGenerationUnits(shots, sceneBlocks);
   res.json({
     success: true,
     task_id: task.id,
@@ -1073,6 +1075,7 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
       verified: context.person_contract?.status === 'verified',
     },
     generation_progress: summary.generation_progress || null,
+    generation_units: generationUnits,
     shots,
     repair_history: repairHistory,
     pipeline_policy: pipelinePolicy,

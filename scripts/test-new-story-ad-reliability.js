@@ -112,6 +112,28 @@ async function main() {
   assert.equal(failedStage.output_summary, '执行失败，未保存可用结果', '失败重试必须覆盖旧的用户取消摘要');
   assert.equal(failedStage.diagnostics.support_id, failed.job.id);
 
+  const mediaFailure = jobs.queueStage({
+    taskId,
+    stage: 'media',
+    execute: async () => {
+      const active = storage.getTask(taskId);
+      storage.updateTask(taskId, {
+        generation_progress: {
+          stage: 'video', status: 'running', generation_id: active.active_generation_id,
+          total: 6, completed: 6, failed: 3,
+        },
+      });
+      const error = new Error('视频审片未通过');
+      error.code = 'VIDEO_QA_FAILED';
+      error.retryable = true;
+      throw error;
+    },
+  });
+  await waitUntil(() => storage.getTask(taskId).stage === 'media_failed');
+  const mediaFailedTask = storage.getTask(taskId);
+  assert.equal(mediaFailedTask.generation_progress.status, 'failed', 'media 外层失败必须归档同 generation 的 video 子进度');
+  assert.equal(mediaFailedTask.generation_progress.generation_id, mediaFailure.job.id);
+
   const structuredFailure = jobs.queueStage({
     taskId,
     stage: 'keyframes',
@@ -148,6 +170,16 @@ async function main() {
   const legacySummary = service.taskSummary(storage.getTask(legacyTask.id));
   assert.equal(legacySummary.error_code, 'KEYFRAME_BATCH_PARTIAL_FAILURE');
   assert.equal(legacySummary.support_id, 'legacy-generation-support-id');
+
+  const staleVideoTask = service.createTask({ brief: '历史视频进度兼容', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
+  storage.updateTask(staleVideoTask.id, {
+    status: 'done', stage: 'video_ready', error: '部分镜头未通过审核', error_code: 'VIDEO_QA_FAILED',
+    active_stage: '', active_generation_id: '', generation_finished_at: new Date().toISOString(),
+    generation_progress: { stage: 'video', status: 'running', generation_id: 'old-media', total: 6, completed: 6, failed: 3, qa_passed: 3 },
+  });
+  const staleVideoSummary = service.taskSummary(storage.getTask(staleVideoTask.id));
+  assert.equal(staleVideoSummary.status, 'failed');
+  assert.equal(staleVideoSummary.generation_progress.status, 'failed', '历史无 active job 的 running 视频进度必须只读归一为失败');
   assert.match(legacySummary.error, /第 2、4、5 镜未生成可用分镜图/);
   assert.match(legacySummary.error, /支持编号：legacy-generation-support-id/);
   assert.equal(modelGateway.classifyError(new Error('400 Token not valid')).code, 'AUTH_CONFIG');

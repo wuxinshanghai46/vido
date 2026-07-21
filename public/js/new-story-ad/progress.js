@@ -115,15 +115,17 @@
         .map(value => Math.round(Number(value) || 0)).filter(value => value >= 1 && value <= totalShots))].sort((a, b) => a - b);
       const pct = Math.round((processed / totalShots) * 100);
       const activeLabel = activeIndexes.length ? activeIndexes.join('、') : '';
+      const totalUnits = Math.max(0, Number(tracked.units_total || tracked.scene_block_count) || 0);
+      const generatedUnits = Math.max(0, Number(tracked.units_generated) || 0);
       const repairing = Number(tracked.repair_attempt || 0) > 0;
       return {
         title: activeLabel
-          ? `${repairing ? '自动修复' : '生成连续场景视频'}：第 ${activeLabel} 镜（共 ${totalShots} 镜）`
-          : (generated > processed ? '正在审核已生成场景段' : (label || '生成整条广告视频中...')),
-        stat: `已耗时 ${formatElapsedText(elapsed)} · 已完成 ${processed}/${totalShots} 镜 · ${pct}%`,
+          ? `${repairing ? '处理修复方案' : '正在生成连续场景组'}（覆盖镜头 ${activeLabel}）`
+          : (generated > processed ? '正在逐镜质检已生成场景组' : (label || '生成整条广告视频中...')),
+        stat: `已耗时 ${formatElapsedText(elapsed)} · 逐镜质检 ${processed}/${totalShots} · ${pct}%`,
         percent: pct,
         indeterminate: processed === 0,
-        message: `真实进度：已生成 ${generated}/${totalShots} 镜，审片通过 ${passed} 镜${failed ? `，失败 ${failed} 镜` : ''}${activeLabel ? `；当前处理第 ${activeLabel} 镜` : ''}。`,
+        message: `真实进度：${totalUnits ? `共 ${totalUnits} 个生成单元${generatedUnits ? `，已生成 ${generatedUnits} 个` : ''}；` : ''}已切分 ${generated}/${totalShots} 个镜头片段，质检通过 ${passed} 个${failed ? `，质检未通过 ${failed} 个` : ''}${activeLabel ? `；当前生成单元覆盖镜头 ${activeLabel}` : ''}。`,
       };
     }
 

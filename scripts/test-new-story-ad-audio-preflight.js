@@ -115,6 +115,21 @@ function testExplicitZeroVolumesArePreserved() {
   assert.strictEqual(storage.getOutput('volume-task', 'context').bgm_volume, 0, '持久化配置必须保留 0 音量');
 }
 
+/** 用户同时关闭配音和音乐时即为明确静音，不得再要求第二次勾选。 */
+function testSilentSelectionNeedsNoSecondAcknowledgement() {
+  const html = audioUi.html({ voices: [], music: [], voiceId: '', musicKey: '' }, String);
+  assert(!html.includes('data-nsa-audio-silent-ack'));
+  const modal = {
+    querySelector(selector) {
+      if (selector === '[data-nsa-audio-voice]' || selector === '[data-nsa-audio-music]') return { value: '' };
+      return null;
+    },
+  };
+  const selection = audioUi.read(modal, { voices: [], music: [] });
+  assert(!selection.error);
+  assert.strictEqual(selection.value.silent, true);
+}
+
 /** 验证页面和路由实际接入声音预检与解耦媒体流水线。 */
 function testIntegrationMarkers() {
   const root = path.resolve(__dirname, '..');
@@ -137,6 +152,7 @@ function testIntegrationMarkers() {
   await testDecoupledMediaPipeline();
   await testTtsFailureStopsVideo();
   testExplicitZeroVolumesArePreserved();
+  testSilentSelectionNeedsNoSecondAcknowledgement();
   testIntegrationMarkers();
   console.log('new story ad audio preflight and decoupled media pipeline: ok');
 })().catch(error => {

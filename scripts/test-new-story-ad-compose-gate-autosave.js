@@ -48,7 +48,7 @@ assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ st
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: invalidState }), false);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.keyframeReadiness({ state: keyframeReadyState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: keyframeReadyState }).ready, false);
-assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: keyframeReadyState }), false);
+assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: keyframeReadyState }), true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: validState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: validState }), true);
 
@@ -81,9 +81,9 @@ assert.strictEqual(selectedButton.classList.contains('is-selected'), false);
 assert.strictEqual(selectedButton.attributes['aria-pressed'], 'false');
 
 const outputs = { storyboard_table: shots, keyframes: invalidState.keyframes, tts_audio: { tracks: [] } };
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 4);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 5);
 assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 5);
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 4);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 5);
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots }), 'keyframe_contract_ready');
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots, keyframes: validState.keyframes }), 'keyframes_ready');
 const missingStoryboardState = {};
@@ -127,8 +127,8 @@ assert(ui.includes('function confirmNsaAction'), 'video cost confirmation must u
 assert(!ui.includes('window.confirm'), 'story-ad actions must not use poor browser-native confirmation dialogs');
 assert(ui.includes('点击取消不会改变按钮和任务状态'), 'full regeneration modal must explain that cancellation has no side effects');
 assert(ui.includes("querySelectorAll('.is-busy, [aria-busy=\"true\"]')"), 'successful cancellation must immediately clear the triggering button busy state');
-assert(ui.includes('视频尚未生成'), 'each storyboard row must distinguish missing video output');
-assert(ui.includes('视频已生成，等待审核'), 'each storyboard row must distinguish generated video awaiting review');
+assert(ui.includes('videoGenerationUnits(clips)'), 'step 5 must group split clips back into true generation units');
+assert(ui.includes('查看 ${failureRows.length} 个质检问题'), 'shot QA diagnostics must be collapsed under each generation unit');
 assert(ui.includes('videoShotStatuses'), 'the UI must hydrate persisted per-shot video lifecycle state');
 assert(!ui.includes('data-nsa-video-regenerate="${i}"'), 'storyboard rows must not expose paid per-shot video generation');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
@@ -137,12 +137,12 @@ assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
 assert(ui.includes('复审现有视频，不自动重做'), 'incremental repair must clearly preserve and re-review existing rejected media');
 assert(ui.includes('不会自动付费重做'), 'repair confirmation must disclose that failed re-review does not trigger paid regeneration');
-assert(ui.includes('分镜视频不会在本步骤重新生成'), 'step 5 failure copy must make the no-video-regeneration boundary explicit');
+assert(ui.includes('系统不会自动再次付费生成'), 'step 5 failure copy must make the no-auto-paid-regeneration boundary explicit');
 assert(ui.includes('NewStoryAdTaskStore.resumeStep(bundle.task'), 'task restore must derive the current step from persisted server progress');
 assert(!ui.includes('requestedStep === 3 && storyboardReady ? 4 : requestedStep'), 'task restore must not automatically advance from the URL step');
 assert(ui.includes('data-nsa-media-result-state'), 'media result must display an explicit success, running, incomplete or failed state');
 assert(ui.includes('最终成片没有生成，因此这里不会出现成片播放器'), 'failed media result must explain why no player is visible');
-assert(ui.includes('有效镜头 ${approvedVideoShots}/${totalVideoShots}'), 'media result must report QA-approved shots instead of raw clip array length');
+assert(ui.includes('逐镜质检通过 ${approvedVideoShots}/${totalVideoShots}'), 'media result must report QA-approved shots instead of raw clip array length');
 assert(!ui.includes('clips.length ? `视频镜头 ${clips.length} 条`'), 'raw clip records must never be presented as successful video shots');
 
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
@@ -155,7 +155,7 @@ const wizardCss = read('public/css/digital-human-wizard.css');
 assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-generating'), 'only the actively running step-4 action should receive the highlighted style');
 assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-selected'), 'the clicked action must have a persistent high-contrast selected state');
 assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
-assert(wizardCss.includes('.dh-nsa-video-status-badge'), 'each storyboard row must visibly label video state');
+assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 const route = read('src/routes/newStoryAd.js');
 const mediaPipeline = read('src/services/newStoryAd/mediaPipelineService.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');

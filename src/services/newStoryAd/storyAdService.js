@@ -413,9 +413,23 @@ function taskSummary(task = {}, { detailed = true } = {}) {
       };
     }).filter(Boolean);
   }
-  const storedGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
+  const hasFinalOutput = !!finalVideoUrl || /final_video_ready|compose_done/.test(String(task.stage || ''));
+  const rawGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
     ? task.generation_progress
     : null;
+  const storedGenerationProgress = (() => {
+    if (!rawGenerationProgress || task.active_generation_id) return rawGenerationProgress;
+    if (!['queued', 'running'].includes(String(rawGenerationProgress.status || '').toLowerCase())) return rawGenerationProgress;
+    const now = task.generation_finished_at || task.updated_at || new Date().toISOString();
+    const total = Number(rawGenerationProgress.total || 0);
+    const completed = Number(rawGenerationProgress.completed || 0);
+    const failed = Number(rawGenerationProgress.failed || 0);
+    const taskFailed = !!(task.error_code || task.error) || String(task.status || '').toLowerCase() === 'failed';
+    const status = hasFinalOutput
+      ? 'done'
+      : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
+    return { ...rawGenerationProgress, status, finished_at: rawGenerationProgress.finished_at || now, updated_at: now };
+  })();
   const storedVideoProgress = storedGenerationProgress?.stage === 'video' ? storedGenerationProgress : null;
   const videoProgress = storedVideoProgress || (videoShotStatuses.length ? {
     stage: 'video',
@@ -425,11 +439,12 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
   } : null);
   const storedStatus = String(task.status || '').toLowerCase();
-  const hasFinalOutput = !!finalVideoUrl || /final_video_ready|compose_done/.test(String(task.stage || ''));
   const failureSummary = keyframeFailure.taskSummaryPatch(task, keyframes);
   const taskStatus = hasFinalOutput
     ? 'done'
-    : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status);
+    : ((failureSummary.error_code || storedGenerationProgress?.status === 'failed')
+      ? 'failed'
+      : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status));
   return {
     id: task.id,
     type: task.type,

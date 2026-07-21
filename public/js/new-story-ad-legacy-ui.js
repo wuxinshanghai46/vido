@@ -935,7 +935,7 @@
     const title = within('#dhNsaAdModeTitle');
     const sub = within('#dhNsaAdModeSub');
     if (title) title.textContent = '剧情广告';
-    if (sub) sub.textContent = '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。';
+    if (sub) sub.textContent = '广告需求 → 场景配置 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
     const text = within('#dhNsaAdText');
     if (text) {
       text.placeholder = '例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后引导动作。';
@@ -2125,14 +2125,6 @@
     return { key: 'missing', label: '视频尚未生成', shortLabel: '未生成', tone: 'missing', hasVideo: false, clip, status };
   }
 
-  function videoStatusSummary() {
-    const items = state.shots.map((_, index) => videoShotView(index));
-    return items.reduce((summary, item) => {
-      summary[item.key] = Number(summary[item.key] || 0) + 1;
-      return summary;
-    }, { total: items.length, passed: 0, reviewing: 0, running: 0, failed: 0, cancelled: 0, missing: 0 });
-  }
-
   function videoPlanItems({ regenerateAll = false, onlyIndex = null, regenerateExisting = false } = {}) {
     return state.shots.map((shot, index) => ({
       index,
@@ -2154,20 +2146,12 @@
       && clip.cross_shot_qa?.pass !== false;
   }
 
-  function videoGenerationEstimate({ regenerateAll = false, onlyIndex = null } = {}) {
-    const indexes = onlyIndex !== null && onlyIndex !== undefined && Number.isInteger(Number(onlyIndex))
-      ? [Number(onlyIndex)]
-      : state.shots.map((_, index) => index);
-    const targets = regenerateAll ? indexes : indexes.filter(index => !videoClipApproved(videoClipAt(index)));
-    const generationIndexes = regenerateAll ? targets : targets.filter(index => !videoShotView(index).hasVideo);
-    return { count: targets.length, indexes: targets, generationCount: generationIndexes.length, generationIndexes, reviewCount: targets.length - generationIndexes.length, total: state.shots.length };
-  }
-
   function videoPreflightItems(preflight = {}) {
-    return (Array.isArray(preflight.shots) ? preflight.shots : []).map(item => ({
-      index: Math.max(0, Number(item.shot_index || 1) - 1),
+    const units = Array.isArray(preflight.units) && preflight.units.length ? preflight.units : null;
+    return (units || (Array.isArray(preflight.shots) ? preflight.shots : [])).map((item, itemIndex) => ({
+      index: units ? Number(item.unit_index ?? itemIndex) : Math.max(0, Number(item.shot_index || 1) - 1),
       title: item.title || `第 ${item.shot_index || 1} 镜`,
-      status: (item.changes || []).join('；') || (item.paid ? '会调用视频模型一次' : '不调用视频模型'),
+      status: [units && Array.isArray(item.shots) ? `包含镜头 ${item.shots.join('、')}` : '', (item.changes || []).join('；')].filter(Boolean).join('；') || (item.paid ? '会调用视频模型一次' : '不调用视频模型'),
       action: item.label || item.action || '',
     }));
   }
@@ -3129,20 +3113,12 @@
       return;
     }
     if (costHint) {
-      const estimate = videoGenerationEstimate();
-      const summary = videoStatusSummary();
-      const summaryChips = [
-        ['pass', `已通过 ${summary.passed}`],
-        ['review', `待审核 ${summary.reviewing}`],
-        ['running', `生成中 ${summary.running}`],
-        ['failed', `失败 ${summary.failed}`],
-        ['cancelled', `已取消 ${summary.cancelled}`],
-        ['missing', `未生成 ${summary.missing}`],
-      ].filter(([, label]) => !/ 0$/.test(label)).map(([tone, label]) => `<span class="is-${tone}">${label}</span>`).join('');
+      const keyframes = keyframeStatus();
       costHint.hidden = false;
-      costHint.innerHTML = `<div class="dh-nsa-video-status-summary"><b>镜头视频状态</b>${summaryChips}</div><p>${estimate.count
-        ? `还有 ${estimate.count} 个镜头需要处理。点击“生成整条广告视频”后，系统会先显示连续场景段与付费提交次数；确认后一次执行全部场景段并自动合成。`
-        : '当前镜头视频均已通过；如需重新生成整条广告，仍会先展示新的连续场景方案和费用。'}</p>`;
+      const ready = Number(keyframes.fresh_pass || 0) === Number(keyframes.total || 0) && Number(keyframes.total || 0) > 0;
+      costHint.innerHTML = `<div class="dh-nsa-video-status-summary"><b>真实分镜画面</b><span class="is-${ready ? 'pass' : 'review'}">已通过 ${Number(keyframes.fresh_pass || 0)}/${Number(keyframes.total || 0)}</span></div><p>${ready
+        ? '分镜画面已确认。点击“生成整条广告视频”并确认方案后，页面会立即进入第 5 步；连续场景生成、逐镜质检和最终封装都在那里显示。'
+        : '请先补齐并审核全部真实分镜画面，再提交整条广告视频。'}</p>`;
     }
     if (window.NewStoryAdStoryboard?.normalizeShots) {
       state.shots = window.NewStoryAdStoryboard.normalizeShots(state.shots, state.sceneAssets || []);
@@ -3162,22 +3138,6 @@
       const frame = state.keyframes[i] || {};
       const image = window.NewStoryAdKeyframes?.frameUrl ? window.NewStoryAdKeyframes.frameUrl(frame) : (frame.image_url || frame.imageUrl || frame.url || '');
       const preview = image ? withAuthQuery(image) : '';
-      const videoClip = videoClipAt(i);
-      const videoView = videoShotView(i);
-      const videoFailure = videoView.key === 'failed' ? (videoView.failure || videoShotFailureDetail(i)) : null;
-      const shotVideoUrl = videoClip.video_url || videoClip.videoUrl || '';
-      const shotVideoReady = !!shotVideoUrl;
-      const shotVideoBlockMembers = Array.isArray(videoClip.scene_block_members)
-        ? videoClip.scene_block_members.map(Number).filter(Number.isInteger)
-        : [];
-      const shotVideoIsContinuousBlock = shotVideoBlockMembers.length > 1;
-      const shotVideoQaPassed = shotVideoReady && videoClip.qa?.pass === true && videoClip.cross_shot_qa?.pass !== false;
-      const shotVideoQaFailed = shotVideoReady && (videoClip.qa?.pass === false || videoClip.cross_shot_qa?.pass === false || !!videoClip.error_code);
-      const shotVideoState = shotVideoQaPassed ? 'is-passed' : (shotVideoQaFailed ? 'is-failed' : 'is-review');
-      const shotVideoLabel = shotVideoQaPassed
-        ? '视频已生成并审核通过'
-        : (shotVideoQaFailed ? '视频已生成，但审核未通过，可播放检查' : '视频已生成，等待审核');
-      const shotVideoPoster = image ? withAuthQuery(assetThumbUrl(image, 520)) : '';
       const dialogue = Array.isArray(shot.dialogue_lines)
         ? shot.dialogue_lines.map(d => `${d.speaker || ''}${d.speaker ? '\uff1a' : ''}${d.line || d.text || ''}`).filter(Boolean).join('\uff1b')
         : (shot.dialogue || shot.voiceover || '');
@@ -3257,26 +3217,17 @@
           <div class="dh-nsa-frame-head-meta">
             <label class="dh-nsa-duration" title="镜头时长"><input type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" aria-label="第 ${i + 1} 镜时长" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"><em>秒</em></label>
             <span class="dh-nsa-qa-badge is-${qaState}" title="${escapeHtml(qaDetail)}">分镜图：${escapeHtml(qaLabel)}</span>
-            <span class="dh-nsa-video-status-badge is-${escapeHtml(videoView.tone)}" title="${escapeHtml(videoView.status.error || videoView.label)}">${escapeHtml(videoView.label)}</span>
           </div>
         </header>
         ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span>${reviewableCandidate ? `<button type="button" data-nsa-candidate-review="${i}:${escapeHtml(reviewableCandidate.id || '')}">重新验证此图</button>` : `<button type="button" data-nsa-shot-regenerate="${i}">重新生成</button>`}</div>` : ''}
         <div class="dh-nsa-frame-media">
-          ${shotVideoReady ? `<section class="dh-nsa-shot-video-result ${shotVideoState}">
-            <div><b>本镜视频</b><span>${shotVideoLabel}</span></div>
-            <video src="${escapeHtml(withAuthQuery(shotVideoUrl))}" ${shotVideoPoster ? `poster="${escapeHtml(shotVideoPoster)}"` : ''} controls playsinline preload="none"></video>
-          </section>` : (window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
+          ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}
             <b>${String(i + 1).padStart(2, '0')} \u00b7 ${escapeHtml(title)}</b>
             <small>${preview ? '\u70b9\u51fb\u67e5\u770b\u5927\u56fe' : '\u7b49\u5f85\u751f\u6210\u5173\u952e\u5e27'}</small>
-          </button>`)}
+          </button>`}
           ${candidateStrip}
         </div>
-        ${videoFailure ? `<div class="dh-nsa-video-failure-detail ${videoFailure.notSubmitted ? 'is-not-submitted' : ''}">
-          <b>${escapeHtml(videoFailure.title)}</b>
-          <span>${escapeHtml(videoFailure.text)}</span>
-          ${videoFailure.code ? `<small>状态码：${escapeHtml(videoFailure.code)}</small>` : ''}
-        </div>` : ''}
         <div class="dh-nsa-frame-editor">
           <div class="dh-nsa-frame-summary">
             <section><b>镜头 / 构图</b><span>${escapeHtml(cameraSummary)}</span></section>
@@ -3371,7 +3322,6 @@
             <button type="button" class="dh-luxgen-edit" data-nsa-prompt-preview="${i}">${shot._prompt_preview ? '刷新提示词预览' : '查看生成提示词'}</button>
             <button type="button" class="dh-luxgen-edit" data-nsa-shot-regenerate="${i}">重新生成分镜图</button>
             ${preview ? `<button type="button" class="dh-luxgen-edit" data-nsa-frame-preview="${i}">分镜图</button>` : ''}
-            ${shotVideoQaFailed ? `<button type="button" class="dh-luxgen-edit" data-nsa-video-accept="${i}">接受当前视频</button>` : ''}
           </div>
         </div>
       </article>`;
@@ -3409,6 +3359,45 @@
     }).filter(Boolean);
   }
 
+  /** 将逐镜切分片段还原为真实生成单元；同一供应商任务只显示一次。 */
+  function videoGenerationUnits(clips = []) {
+    const groups = new Map();
+    (Array.isArray(clips) ? clips : []).forEach((clip, index) => {
+      if (!clip) return;
+      const members = (Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
+        ? clip.scene_block_members
+        : [index + 1]).map(Number).filter(value => Number.isInteger(value) && value > 0);
+      const key = String(clip.scene_block_id || clip.provider_task_id || `shot-${members.join('-') || index + 1}`);
+      if (!groups.has(key)) groups.set(key, {
+        id: key,
+        members: new Set(),
+        clips: [],
+        providerTaskId: clip.provider_task_id || '',
+        providerUsed: clip.provider_used || '',
+        local: clip.zero_cost_visual_generation === true || !clip.provider_task_id,
+      });
+      const group = groups.get(key);
+      members.forEach(member => group.members.add(member));
+      group.clips.push(clip);
+      if (!group.providerTaskId && clip.provider_task_id) group.providerTaskId = clip.provider_task_id;
+      if (!group.providerUsed && clip.provider_used) group.providerUsed = clip.provider_used;
+      if (clip.provider_task_id) group.local = false;
+    });
+    return [...groups.values()].map((group, index) => {
+      const members = [...group.members].sort((a, b) => a - b);
+      const views = members.map(member => ({ member, view: videoShotView(member - 1) }));
+      const hasMedia = group.clips.some(clip => clip.video_url || clip.videoUrl || clip.file_path);
+      const generationFailed = !hasMedia && views.some(item => item.view.key === 'failed');
+      const generationRunning = views.some(item => ['running', 'reviewing'].includes(item.view.key)) && !hasMedia;
+      const qaPassed = views.filter(item => item.view.key === 'passed').length;
+      const qaFailedMembers = views.filter(item => item.view.key === 'failed').map(item => item.member);
+      const qaPending = Math.max(0, members.length - qaPassed - qaFailedMembers.length);
+      const generation = generationFailed ? 'failed' : (generationRunning ? 'running' : (hasMedia ? 'succeeded' : 'pending'));
+      const qa = qaFailedMembers.length ? 'failed' : (members.length && qaPassed === members.length ? 'passed' : (hasMedia ? 'reviewing' : 'pending'));
+      return { ...group, index, members, generation, qa, qaPassed, qaFailedMembers, qaPending };
+    });
+  }
+
   function renderMedia() {
     const voiceSummary = within('#dhNsaAdVoiceSummary');
     const subtitleSummary = within('#dhNsaAdSubtitleSummary');
@@ -3424,7 +3413,7 @@
     const host = ensureMediaHost();
     const tracks = Array.isArray(state.ttsAudio?.tracks) ? state.ttsAudio.tracks : [];
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
-    const continuousBlocks = [...new Set(clips.filter(clip => Array.isArray(clip?.scene_block_members) && clip.scene_block_members.length > 1).map(clip => clip.scene_block_id).filter(Boolean))];
+    const generationUnits = videoGenerationUnits(clips);
     const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
     const videoProgress = state.generationProgress?.stage === 'video' || state.generationProgress?.stage === 'compose'
       ? state.generationProgress
@@ -3441,7 +3430,8 @@
     const mediaActive = !!state.activeGenerationId
       || state.stageProgress?.active === true
       || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
-    const mediaFailed = !mediaActive && state.taskStatus === 'failed';
+    const mediaFailed = !mediaActive && (state.taskStatus === 'failed'
+      || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError);
     const failureDetails = videoFailureDetails(clips);
     const compose = composeReadiness();
     const composeSummary = within('#dhNsaAdComposeSummary');
@@ -3464,7 +3454,7 @@
         : (restoring
         ? '正在读取已确认的分镜和关键帧，请稍候'
         : (compose.ready
-        ? '分镜视频已全部通过；本步骤只生成可选配音、字幕、音乐并拼接最终成片'
+        ? '全部视频片段质检通过，系统将自动完成配音、字幕、音乐和最终成片封装'
         : compose.message));
     }
     if (gate) {
@@ -3476,11 +3466,11 @@
         : (restoring
         ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
         : (failed
-        ? `<b>本次合成未完成</b><span>${escapeHtml(state.taskError)}</span><span>分镜视频不会在本步骤重新生成；请检查配音、字幕、音乐或拼接设置后重试。</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>查看分镜视频</button>`
-        : `<b>暂不能合成</b><span>${escapeHtml(compose.message || '请先完成全部分镜视频审核')}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-return-keyframes>返回分镜处理</button>`));
+        ? `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`
+        : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`));
     }
-    if (!tracks.length && !clips.length && !finalUrl) {
-      host.innerHTML = '<div class="dh-task-empty-note">分镜视频已在第 4 步确认；这里尚未生成最终成片。</div>';
+    if (!tracks.length && !clips.length && !finalUrl && !mediaActive) {
+      host.innerHTML = '<div class="dh-task-empty-note">确认整条广告生成方案后，连续场景生成、逐镜质检和最终成片都会显示在这里。</div>';
       return;
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
@@ -3497,13 +3487,23 @@
       ${finalUrl ? `<video class="dh-task-detail-preview-video" src="${escapeHtml(finalUrl)}" controls playsinline></video>` : ''}
       <div class="dh-task-detail-value">${escapeHtml([
         tracks.length ? `配音 ${tracks.length} 条` : '',
-        totalVideoShots ? `有效镜头 ${approvedVideoShots}/${totalVideoShots}` : '',
-        generatedVideoShots > approvedVideoShots ? `已落地待审核 ${generatedVideoShots - approvedVideoShots}` : '',
-        failedVideoShots ? `未通过 ${failedVideoShots}` : '',
-        continuousBlocks.length ? `连续场景段 ${continuousBlocks.length} 组` : '',
+        generationUnits.length ? `视频生成单元 ${generationUnits.length} 组` : '',
+        totalVideoShots ? `逐镜质检通过 ${approvedVideoShots}/${totalVideoShots}` : '',
+        generatedVideoShots > approvedVideoShots ? `质检中 ${generatedVideoShots - approvedVideoShots}` : '',
+        failedVideoShots ? `质检未通过 ${failedVideoShots}` : '',
         finalUrl ? '最终成片已生成' : '最终成片未生成',
       ].filter(Boolean).join(' · ') || '等待生成')}</div>
-      ${mediaFailed && failureDetails.length ? `<div class="dh-nsa-media-failure-list">${failureDetails.map(item => `<div><b>第 ${item.index} 镜${item.title ? `「${escapeHtml(item.title)}」` : ''}</b><span>${escapeHtml(item.reason)}${item.attempt ? `（已自动修复 ${item.attempt} 次）` : ''}</span></div>`).join('')}</div>` : ''}
+      ${generationUnits.length ? `<div class="dh-nsa-video-unit-list">${generationUnits.map(unit => {
+        const generationLabels = { pending: '等待生成', running: '生成中', succeeded: '母片已生成', failed: '生成失败' };
+        const qaLabels = { pending: '等待质检', reviewing: '质检中', passed: '质检通过', failed: '质检未通过' };
+        const memberText = unit.members.length > 1 ? `镜头 ${unit.members.join('、')}` : `镜头 ${unit.members[0] || '--'}`;
+        const failureRows = failureDetails.filter(item => unit.members.includes(item.index));
+        return `<article class="dh-nsa-video-unit is-${escapeHtml(unit.generation === 'failed' || unit.qa === 'failed' ? 'failed' : (unit.qa === 'passed' ? 'passed' : 'running'))}">
+          <div class="dh-nsa-video-unit-head"><div><b>${unit.local ? '本地运镜单元' : `连续场景组 ${unit.index + 1}`}</b><span>${escapeHtml(memberText)} · ${unit.local ? '不调用视频模型' : '一次模型生成'}</span></div><em>${escapeHtml(generationLabels[unit.generation])}</em></div>
+          <div class="dh-nsa-video-unit-status"><span>生成：${escapeHtml(generationLabels[unit.generation])}</span><span>质检：${escapeHtml(qaLabels[unit.qa])} ${unit.qaPassed}/${unit.members.length}</span></div>
+          ${failureRows.length ? `<details><summary>查看 ${failureRows.length} 个质检问题（不会自动付费重做）</summary>${failureRows.map(item => `<div class="dh-nsa-video-unit-failure"><b>镜头 ${item.index}${item.title ? `「${escapeHtml(item.title)}」` : ''}</b><span>${escapeHtml(item.reason)}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-video-accept="${item.index - 1}">人工接受此片段</button></div>`).join('')}</details>` : ''}
+        </article>`;
+      }).join('')}</div>` : ''}
     </div>`;
   }
 
@@ -4515,59 +4515,56 @@
 
   function adminVideoMonitorHtml(data = {}) {
     const shots = Array.isArray(data.shots) ? data.shots : [];
+    const units = Array.isArray(data.generation_units) ? data.generation_units : [];
     const progress = data.generation_progress || {};
-    const healthLabels = {
-      pending: '待处理', running: '运行中', provider_running: '模型生成中',
-      suspected_stuck: '疑似卡住', passed: '审核通过', failed: '失败',
-    };
     const lifecycleLabels = {
       pending: '待处理', queued: '排队', submitting: '提交模型', provider_submitted: '模型已接收',
       provider_running: '模型生成中', downloading: '下载视频', normalizing: '视频标准化',
       generated: '视频已生成', video_qa: '质量审核中', qa_passed: '审核通过', qa_failed: '审核失败',
       failed: '生成失败', cancelled: '已取消',
     };
+    const generationLabels = { pending: '等待生成', running: '生成中', succeeded: '母片已生成', failed: '生成失败', cancelled: '已取消' };
+    const qaLabels = { pending: '等待质检', reviewing: '质检中', passed: '质检通过', failed: '质检未通过' };
     const fmtTime = value => {
       const time = Date.parse(value || '');
       return time ? new Date(time).toLocaleString('zh-CN', { hour12: false }) : '--';
     };
     const summary = [
-      `总镜头 ${Number(progress.total ?? shots.length)}`,
-      `已生成 ${Number(progress.generated ?? shots.filter(shot => shot.file_exists).length)}`,
-      `已通过 ${Number(progress.qa_passed ?? shots.filter(shot => shot.health === 'passed').length)}`,
-      `失败 ${Number(progress.failed ?? shots.filter(shot => shot.health === 'failed').length)}`,
-      progress.effective_concurrency ? `并发 ${Number(progress.effective_concurrency)}` : '',
-      progress.scene_block_count ? `场景段 ${Number(progress.scene_block_count)}（连续 ${Number(progress.continuous_scene_block_count || 0)}）` : '',
+      `生成单元 ${units.length}`,
+      `模型生成 ${units.filter(unit => unit.mode !== 'local_motion').length} 组`,
+      `本地运镜 ${units.filter(unit => unit.mode === 'local_motion').length} 组`,
+      `母片成功 ${units.filter(unit => unit.generation_status === 'succeeded').length} 组`,
+      `质检通过 ${Number(progress.qa_passed ?? shots.filter(shot => shot.health === 'passed').length)}/${Number(progress.total ?? shots.length)} 镜`,
+      `质检未通过 ${units.reduce((sum, unit) => sum + Number(unit.qa_failed || 0), 0)} 镜`,
     ].filter(Boolean).join(' · ');
-    if (!shots.length) return `<div class="dh-nsa-admin-monitor-empty"><b>尚未进入逐镜视频生成</b><span>${escapeHtml(summary || '等待后台生成任务启动。')}</span></div>`;
+    if (!units.length) return `<div class="dh-nsa-admin-monitor-empty"><b>尚未进入视频生成</b><span>${escapeHtml(summary || '等待后台生成任务启动。')}</span></div>`;
     return `<div class="dh-nsa-admin-monitor-summary">
       <b>${escapeHtml(summary)}</b><span>每 5 秒自动刷新 · 数据更新时间 ${escapeHtml(fmtTime(data.generated_at))}</span>
-    </div><div class="dh-nsa-admin-monitor-grid">${shots.map((shot, index) => {
-      const started = Date.parse(shot.started_at || shot.provider_submitted_at || '') || 0;
-      const finished = Date.parse(shot.finished_at || '') || Date.now();
+    </div><div class="dh-nsa-admin-monitor-grid">${units.map((unit, index) => {
+      const started = Date.parse(unit.started_at || '') || 0;
+      const finished = Date.parse(unit.finished_at || '') || Date.now();
       const elapsed = started ? formatElapsedText(Math.max(0, finished - started)) : '--';
-      const provider = shot.provider_used || [shot.provider_id, shot.model_id].filter(Boolean).join('/') || '--';
-      const problems = [
-        ...(Array.isArray(shot.qa_problems) ? shot.qa_problems : []),
-        ...(Array.isArray(shot.cross_shot_qa_problems) ? shot.cross_shot_qa_problems : []),
-      ].filter(Boolean);
-      return `<article class="dh-nsa-admin-shot is-${escapeHtml(shot.health || 'pending')}">
-        <div class="dh-nsa-admin-shot-head"><b>第 ${Number(shot.index || index + 1)} 镜 · ${escapeHtml(shot.title || `镜头 ${index + 1}`)}</b><em>${escapeHtml(healthLabels[shot.health] || shot.health || '待处理')}</em></div>
-        <div class="dh-nsa-admin-shot-stage">${escapeHtml(lifecycleLabels[shot.lifecycle] || shot.lifecycle || '待处理')} · 耗时 ${escapeHtml(elapsed)}</div>
-        ${shot.scene_block_id ? `<div>连续场景段：${escapeHtml(shot.scene_block_id)} · 包含镜头 ${(shot.scene_block_members || []).map(Number).filter(Boolean).join('、') || Number(shot.index || index + 1)}</div>` : ''}
+      const provider = unit.provider_used || '--';
+      const members = (unit.member_indexes || []).map(Number).filter(Boolean);
+      const tone = unit.generation_status === 'failed' || unit.qa_status === 'failed' ? 'failed' : (unit.qa_status === 'passed' ? 'passed' : 'running');
+      return `<article class="dh-nsa-admin-shot is-${escapeHtml(tone)}">
+        <div class="dh-nsa-admin-shot-head"><b>${unit.mode === 'local_motion' ? '本地运镜单元' : `连续场景生成单元 ${index + 1}`} · 镜头 ${members.join('、') || '--'}</b><em>${escapeHtml(generationLabels[unit.generation_status] || unit.generation_status || '待处理')}</em></div>
+        <div class="dh-nsa-admin-shot-stage">生成：${escapeHtml(generationLabels[unit.generation_status] || unit.generation_status)} · 质检：${escapeHtml(qaLabels[unit.qa_status] || unit.qa_status)} ${Number(unit.qa_passed || 0)}/${members.length} · 耗时 ${escapeHtml(elapsed)}</div>
+        <div>单元：${escapeHtml(unit.id || '--')} · ${unit.continuous ? '连续母片一次生成' : (unit.mode === 'local_motion' ? '本地处理' : '独立生成')}</div>
         <div>模型：${escapeHtml(provider)}</div>
-        <div>供应商任务：${escapeHtml(shot.provider_task_id || '--')} · ${escapeHtml(shot.provider_status || '--')}</div>
-        <div>最后心跳：${escapeHtml(fmtTime(shot.last_heartbeat_at || shot.updated_at))} · 文件落地：${shot.file_exists ? '是' : '否'}</div>
-        <div>自动修复：${Number(shot.repair_attempt || 0)} 次 · QA：${escapeHtml(shot.qa_status || '--')}</div>
-        ${shot.video_url ? `<video src="${escapeHtml(withAuthQuery(shot.video_url))}" controls playsinline preload="metadata"></video>` : ''}
-        ${problems.length ? `<div class="dh-nsa-admin-shot-error">审核问题：${escapeHtml(problems.join('；'))}</div>` : ''}
-        ${shot.error ? `<div class="dh-nsa-admin-shot-error">错误：${escapeHtml(shot.error)}${shot.error_code ? `（${escapeHtml(shot.error_code)}）` : ''}</div>` : ''}
+        <div>供应商任务：${escapeHtml(unit.provider_task_id || (unit.mode === 'local_motion' ? '不调用' : '--'))} · ${escapeHtml(unit.provider_status || '--')}</div>
+        <div>最后心跳：${escapeHtml(fmtTime(unit.last_heartbeat_at))}</div>
+        <details><summary>展开逐镜切片质检（${(unit.shot_results || []).length} 镜）</summary>${(unit.shot_results || []).map(shot => {
+          const problems = [...(shot.qa_problems || []), ...(shot.cross_shot_qa_problems || [])].filter(Boolean);
+          return `<div class="dh-nsa-admin-unit-shot"><b>第 ${Number(shot.index || 0)} 镜 · ${escapeHtml(shot.title || '')}</b><span>${escapeHtml(lifecycleLabels[shot.lifecycle] || shot.lifecycle || '待处理')}</span>${problems.length ? `<small>${escapeHtml(problems.join('；'))}</small>` : ''}${shot.error ? `<small>${escapeHtml(shot.error)}${shot.error_code ? `（${escapeHtml(shot.error_code)}）` : ''}</small>` : ''}</div>`;
+        }).join('')}</details>
       </article>`;
     }).join('')}</div>`;
   }
 
   async function refreshAdminVideoMonitor() {
     if (!currentUserIsAdmin() || !state.taskId || state.adminVideoMonitorLoading) return;
-    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 分镜生成监控');
+    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 视频生成单元监控');
     const body = modal.querySelector('[data-nsa-modal-body]');
     state.adminVideoMonitorLoading = true;
     if (body && !body.dataset.loaded) body.innerHTML = '<div class="dh-nsa-admin-monitor-empty"><b>正在读取真实生成状态...</b></div>';
@@ -4599,7 +4596,7 @@
       const modal = document.createElement('div');
       modal.className = `dh-nsa-modal dh-nsa-confirm-modal is-${tone}`;
       const factHtml = facts.length ? `<div class="dh-nsa-confirm-facts">${facts.map(fact => `<span class="is-${escapeHtml(fact.tone || 'neutral')}"><b>${escapeHtml(fact.value)}</b><small>${escapeHtml(fact.label)}</small></span>`).join('')}</div>` : '';
-      const itemHtml = items.length ? `<div class="dh-nsa-confirm-list"><div class="dh-nsa-confirm-list-head"><b>本次处理范围</b><span>共 ${items.length} 个镜头</span></div>${items.map(item => `<div class="dh-nsa-confirm-shot"><i>${String(Number(item.index || 0) + 1).padStart(2, '0')}</i><span><b>${escapeHtml(item.title || `第 ${Number(item.index || 0) + 1} 镜`)}</b><small>${escapeHtml(item.view?.label || item.status || '')}</small></span><em>${escapeHtml(item.action || '')}</em></div>`).join('')}</div>` : '';
+      const itemHtml = items.length ? `<div class="dh-nsa-confirm-list"><div class="dh-nsa-confirm-list-head"><b>本次处理范围</b><span>共 ${items.length} 项</span></div>${items.map(item => `<div class="dh-nsa-confirm-shot"><i>${String(Number(item.index || 0) + 1).padStart(2, '0')}</i><span><b>${escapeHtml(item.title || `第 ${Number(item.index || 0) + 1} 项`)}</b><small>${escapeHtml(item.view?.label || item.status || '')}</small></span><em>${escapeHtml(item.action || '')}</em></div>`).join('')}</div>` : '';
       modal.innerHTML = `<div class="dh-nsa-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="dhNsaConfirmTitle">
         <div class="dh-nsa-confirm-head">
           <span class="dh-nsa-confirm-icon" aria-hidden="true">${tone === 'danger' ? '!' : '✓'}</span>
@@ -4651,7 +4648,7 @@
 
   function openAdminVideoMonitor() {
     if (!currentUserIsAdmin() || !state.taskId) return;
-    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 分镜生成监控');
+    const modal = ensureNsaModal('dhNsaAdminVideoMonitorModal', '超管 · 视频生成单元监控');
     showNsaModal(modal);
     refreshAdminVideoMonitor();
     if (state.adminVideoMonitorTimer) clearInterval(state.adminVideoMonitorTimer);
@@ -6122,13 +6119,15 @@
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
         dhNsaAdGenerateFinalFrames: () => runStage('keyframes', btn),
         dhNsaAdGenerateShotVideos: async () => {
-          const confirmed = await confirmVideoPreflight('quality');
-          if (!confirmed) return false;
-          rememberVideoAuthorization(confirmed, 'quality');
+          setButtonBusy(btn, true, '正在准备整条广告方案...');
           try {
+            const confirmed = await confirmVideoPreflight('quality');
+            if (!confirmed) return false;
+            rememberVideoAuthorization(confirmed, 'quality');
             return await runStage('media', btn);
           } finally {
             clearVideoAuthorization();
+            setButtonBusy(btn, false);
           }
         },
         dhNsaAdFillMissingFramesTop: () => runStage('keyframes', btn),

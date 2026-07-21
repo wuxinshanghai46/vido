@@ -4644,7 +4644,7 @@
       progress.scene_block_count ? `场景段 ${progress.scene_block_count}（连续 ${progress.continuous_scene_block_count || 0}）` : '',
     ].filter(Boolean).join(' · ');
     return `<section class="dh-task-create-section dh-task-create-section-wide">
-      <div class="dh-task-detail-title">管理员 · 逐镜头生成监控</div>
+      <div class="dh-task-detail-title">管理员 · 视频生成单元监控</div>
       <div class="dh-task-segment-meta" style="margin-bottom:10px">${escapeHtml(summary || '尚未进入视频生成阶段')} · 自动刷新 6 秒</div>
       <div class="dh-task-segment-list dh-task-storyboard-list">${shots.map((shot, i) => {
         const started = Date.parse(shot.started_at || shot.provider_submitted_at || '') || 0;
@@ -6844,7 +6844,7 @@
     if (sub) {
       sub.textContent = material
         ? '选择演员、上传多张素材，AI 生成广告词后直接合成基础广告；不生成分镜图片。'
-        : '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成。点击合成后进入任务中心查看全量内容。';
+        : '广告需求 → 场景配置 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
     }
     const labels = material
       ? [

@@ -93,7 +93,7 @@
     });
     if (finalVideo.video_url || finalVideo.videoUrl) return 5;
     if (/(?:compose|final|tts)/.test(stage)) return 5;
-    if (/video|media/.test(stage) || currentVideosReady || clips.length) return 4;
+    if (/video|media/.test(stage) || currentVideosReady || clips.length) return 5;
     if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready

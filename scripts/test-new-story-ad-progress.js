@@ -59,10 +59,12 @@ const video = sandbox.window.NewStoryAdProgress.snapshot({
   serverProgress: {
     stage: 'video', generation_id: 'video-current', total: 6, generated: 3,
     completed: 2, qa_passed: 2, failed: 0, active_indexes: [3, 4],
+    units_total: 3, units_generated: 1,
   },
 });
-assert.match(video.stat, /已完成 2\/6 镜 · 33%/);
-assert.match(video.message, /已生成 3\/6 镜，审片通过 2 镜/);
+assert.match(video.title, /连续场景组.*覆盖镜头 3、4/);
+assert.match(video.stat, /逐镜质检 2\/6 · 33%/);
+assert.match(video.message, /共 3 个生成单元，已生成 1 个；已切分 3\/6 个镜头片段，质检通过 2 个/);
 assert(!video.stat.includes('86%'), '视频进度不得再按耗时模拟并封顶在 86%');
 
 const videoWaiting = sandbox.window.NewStoryAdProgress.snapshot({
@@ -70,7 +72,7 @@ const videoWaiting = sandbox.window.NewStoryAdProgress.snapshot({
   taskStage: 'video', taskStatus: 'running',
   serverProgress: { stage: 'video', generation_id: 'video-current', total: 6, generated: 0, completed: 0, qa_passed: 0, active_indexes: [1, 2, 3] },
 });
-assert.match(videoWaiting.stat, /已完成 0\/6 镜 · 0%/);
+assert.match(videoWaiting.stat, /逐镜质检 0\/6 · 0%/);
 assert.strictEqual(videoWaiting.indeterminate, true);
 
 const composing = sandbox.window.NewStoryAdProgress.snapshot({

@@ -51,9 +51,9 @@ store.syncBlueprintFailureHost({ taskStatus: 'failed', taskStage: 'blueprint_fai
 assert.equal(failureHost.hidden, false);
 assert.match(failureHost.innerHTML, /人物、场景和已通过的空间验证均已保留/);
 assert.equal(store.resumeStep({ stage: 'keyframes_failed', shot_count: 6 }, {}), 4);
-assert.equal(store.resumeStep({ stage: 'video_failed' }, {}), 4);
-assert.equal(store.resumeStep({ stage: 'video_ready' }, { video_clips: [{ video_url: '/shot.mp4', qa: { pass: true } }] }), 4);
-assert.equal(store.resumeStep({ stage: 'media_failed' }, { video_clips: [{ video_url: '/shot.mp4' }] }), 4);
+assert.equal(store.resumeStep({ stage: 'video_failed' }, {}), 5);
+assert.equal(store.resumeStep({ stage: 'video_ready' }, { video_clips: [{ video_url: '/shot.mp4', qa: { pass: true } }] }), 5);
+assert.equal(store.resumeStep({ stage: 'media_failed' }, { video_clips: [{ video_url: '/shot.mp4' }] }), 5);
 assert.equal(store.resumeStep({ stage: 'tts_ready' }, { tts_audio: { tracks: [] } }), 5);
 assert.equal(store.resumeStep({ stage: 'compose_failed' }, {}), 5);
 assert.equal(store.resumeStep({}, [

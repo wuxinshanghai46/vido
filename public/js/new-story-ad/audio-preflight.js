@@ -75,7 +75,6 @@
       <label><span>旁白配音</span><div><select class="dh-input" data-nsa-audio-voice>${voiceOptions}</select><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-voice-preview>试听</button></div></label>
       <label><span>背景音乐</span><div><select class="dh-input" data-nsa-audio-music>${musicOptions}</select><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-music-preview>试听</button></div></label>
       ${warning}
-      <label class="dh-nsa-audio-silent-ack" data-nsa-audio-silent-ack hidden><input type="checkbox">我确认生成无旁白、无背景音乐的静音成片</label>
       <div class="dh-nsa-audio-preflight-error" data-nsa-audio-error hidden></div>
     </section>`;
   }
@@ -87,14 +86,10 @@
     previewAudio = null;
   }
 
-  /** 绑定试听与静音确认状态，不触发任何生成或导入操作。 */
+  /** 绑定试听，不触发任何生成或导入操作。 */
   function bind(modal, plan = {}, { previewVoice } = {}) {
     const voice = modal.querySelector('[data-nsa-audio-voice]');
     const music = modal.querySelector('[data-nsa-audio-music]');
-    const ack = modal.querySelector('[data-nsa-audio-silent-ack]');
-    const refreshAck = () => { if (ack) ack.hidden = !!(voice?.value || music?.value); };
-    voice?.addEventListener('change', refreshAck);
-    music?.addEventListener('change', refreshAck);
     modal.querySelector('[data-nsa-audio-voice-preview]')?.addEventListener('click', event => {
       if (voice?.value && typeof previewVoice === 'function') previewVoice(voice.value, event.currentTarget);
     });
@@ -107,15 +102,12 @@
       previewAudio.addEventListener('ended', stopPreview, { once: true });
       previewAudio.play().catch(() => { event.currentTarget.textContent = '无法试听'; stopPreview(); });
     });
-    refreshAck();
   }
 
-  /** 读取最终选择；完全静音必须由用户额外明确确认。 */
+  /** 读取最终选择；同时关闭配音和音乐即为明确的静音选择。 */
   function read(modal, plan = {}) {
     const voiceId = String(modal.querySelector('[data-nsa-audio-voice]')?.value || '');
     const selectedMusicKey = String(modal.querySelector('[data-nsa-audio-music]')?.value || '');
-    const silentAccepted = modal.querySelector('[data-nsa-audio-silent-ack] input')?.checked === true;
-    if (!voiceId && !selectedMusicKey && !silentAccepted) return { error: '配音和背景音乐都已关闭；如需静音成片，请勾选确认。' };
     const voice = (plan.voices || []).find(item => String(item.id) === voiceId) || null;
     const music = (plan.music || []).find(item => item._key === selectedMusicKey) || null;
     return { value: { voiceId, voiceName: voice?.name || '', music, silent: !voiceId && !music } };

@@ -1778,8 +1778,28 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-audio-preflight > label > div { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; }
 .dh-nsa-audio-preflight select { min-width: 0; height: 38px; }
 .dh-nsa-audio-preflight-warning { margin-top: 9px; color: #fbbf24; font-size: 11px; line-height: 1.5; }
-.dh-nsa-audio-silent-ack { display: flex; align-items: center; gap: 8px; margin-top: 11px; padding: 9px 10px; border: 1px solid rgba(251,191,36,.3); border-radius: 9px; color: #fcd34d; background: rgba(251,191,36,.07); font-size: 12px; }
 .dh-nsa-audio-preflight-error { margin-top: 9px; color: #fb7185; font-size: 12px; }
+.dh-nsa-video-unit-list { display: grid; gap: 12px; margin-top: 14px; }
+.dh-nsa-video-unit { border: 1px solid rgba(125,211,252,.22); border-radius: 14px; padding: 14px; background: rgba(9,18,28,.7); }
+.dh-nsa-video-unit.is-passed { border-color: rgba(52,211,153,.45); }
+.dh-nsa-video-unit.is-failed { border-color: rgba(248,113,113,.5); }
+.dh-nsa-video-unit-head,
+.dh-nsa-video-unit-status,
+.dh-nsa-video-unit-failure { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dh-nsa-video-unit-head > div,
+.dh-nsa-video-unit-failure { align-items: flex-start; flex-direction: column; }
+.dh-nsa-video-unit-head span,
+.dh-nsa-video-unit-status,
+.dh-nsa-video-unit-failure span { color: var(--dh-text-muted, #94a3b8); font-size: 12px; }
+.dh-nsa-video-unit-head em { border-radius: 999px; padding: 5px 9px; background: rgba(56,189,248,.12); color: #bae6fd; font-style: normal; white-space: nowrap; }
+.dh-nsa-video-unit-status { justify-content: flex-start; margin-top: 10px; }
+.dh-nsa-video-unit details { margin-top: 12px; border-top: 1px solid rgba(148,163,184,.16); padding-top: 10px; }
+.dh-nsa-video-unit summary { cursor: pointer; color: #fca5a5; }
+.dh-nsa-video-unit-failure { margin-top: 10px; }
+.dh-nsa-admin-shot details { margin-top: 10px; border-top: 1px solid rgba(148,163,184,.18); padding-top: 9px; }
+.dh-nsa-admin-shot details summary { cursor: pointer; color: var(--dh-text-soft, #cbd5e1); }
+.dh-nsa-admin-unit-shot { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; margin-top: 9px; padding: 9px; border-radius: 8px; background: rgba(15,23,42,.45); }
+.dh-nsa-admin-unit-shot small { grid-column: 1 / -1; color: #fca5a5; }
 .dh-nsa-confirm-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; background: #20242d; border-top: 1px solid rgba(255,255,255,.1); }
 .dh-nsa-confirm-actions .dh-btn { min-width: 112px; min-height: 42px; }
 .dh-nsa-confirm-submit { color: #062626; border: 0; background: linear-gradient(135deg,#22d3ee,#a3e635); box-shadow: 0 8px 24px rgba(34,211,238,.18); }

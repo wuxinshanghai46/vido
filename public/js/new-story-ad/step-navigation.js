@@ -66,8 +66,8 @@
     const ready = frames.ready && total > 0 && passed === total;
     let message = '';
     if (!frames.ready) message = frames.message;
-    else if (!clips.length) message = '请先在第 4 步生成分镜视频';
-    else if (!ready) message = `当前只有 ${passed}/${total} 镜视频审核通过，请先在第 4 步补齐或修复分镜视频`;
+    else if (!clips.length) message = '尚未开始整条广告视频生成';
+    else if (!ready) message = `当前有 ${passed}/${total} 镜质检通过，请在广告合成页查看未通过原因`;
     return { ready, message, total, passed, needs_regeneration: Math.max(0, total - passed), keyframes: frames };
   }
 
@@ -77,7 +77,7 @@
     if (step === 1) return !!state.taskId || !!(within('#dhNsaAdText')?.value || '').trim();
     if (step === 2) return !!state.sceneConfig;
     if (step === 3) return !!state.blueprint;
-    if (step === 4) return composeReadiness({ state }).ready;
+    if (step === 4) return keyframeReadiness({ state }).ready;
     if (step === 5) return !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl);
     return false;
   }
@@ -88,7 +88,7 @@
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
     if (step === 3) return !!state.blueprint;
     if (step === 4) return (Array.isArray(state.shots) && state.shots.length > 0) || !!state.blueprint;
-    if (step === 5) return composeReadiness({ state }).ready;
+    if (step === 5) return keyframeReadiness({ state }).ready;
     return true;
   }
 
