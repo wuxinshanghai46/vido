@@ -23,13 +23,7 @@ const videoSubmissionGate = require('./videoSubmissionGateService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
-const {
-  bindShotsToScenes,
-  selectSceneAsset,
-  assertVerifiedSceneAssets,
-  completeSpaceLock,
-  layoutSceneReference,
-} = require('./sceneBindingService');
+const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService');
 const personIdentity = require('./personIdentityContractService');
@@ -50,7 +44,6 @@ const sceneAssetLifecycle = require('./sceneAssetService');
 const stageProgress = require('./stageProgressService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection');
 const videoCore = require('../videoGenerationCore');
-
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -58,7 +51,6 @@ function storyAdV3RuntimePolicy(env = process.env) {
     && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
   return { version: videoCore.planner.PLAN_VERSION, enabled, paid_video_enabled: paidVideoEnabled };
 }
-
 function withAssetContracts(ctx = {}) {
   const next = { ...ctx };
   if (next.person_asset) {
@@ -74,16 +66,13 @@ function withAssetContracts(ctx = {}) {
   next.product_contract = next.product_contract || productIdentity.buildProductContract(next, { revision: next.revisions?.product || 1 });
   return next;
 }
-
 function taskTitle(ctx) {
   return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
 }
-
 function keyframeImageUrl(frame = {}) {
   const value = frame && typeof frame === 'object' ? frame : {};
   return String(value.image_url || value.imageUrl || value.url || '').trim();
 }
-
 function localKeyframeAssetExists(url = '') {
   const clean = String(url || '').split('?')[0];
   // Historical frames may still use a provider URL. Keep them available for a
@@ -93,17 +82,14 @@ function localKeyframeAssetExists(url = '') {
   const filePath = mediaAdapter.assetPathFromName(filename);
   return !!(filePath && fs.existsSync(filePath));
 }
-
 function isCompleteKeyframe(frame = {}) {
   const url = keyframeImageUrl(frame);
   return !!(url && !frame.error && !frame.error_code && localKeyframeAssetExists(url));
 }
-
 function hasUsablePreviousKeyframe(frame = {}) {
   const url = keyframeImageUrl(frame);
   return !!(url && localKeyframeAssetExists(url) && frame.qa?.pass === true);
 }
-
 function keyframeCompletion(keyframes = [], shots = []) {
   const total = Math.max(
     Array.isArray(shots) ? shots.length : 0,
@@ -133,7 +119,6 @@ function keyframeCompletion(keyframes = [], shots = []) {
     || keyframes[index]?.qa?.pass !== true).length;
   return { total, completed, fresh_pass, outdated, retained_previous, latest_failed: retained_previous + failed, needs_regeneration, missing: Math.max(0, total - completed), failed, missing_indexes };
 }
-
 function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
   return keyframeTarget.select(shots, existing, options, {
     hasImage: frame => {
@@ -148,7 +133,6 @@ function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
       && frame.qa?.pass === true,
   });
 }
-
 function keyframeStageBudgetMs(taskId, options = {}) {
   const shots = storage.getOutput(taskId, 'storyboard_table');
   const existing = storage.getOutput(taskId, 'keyframes');
@@ -160,9 +144,7 @@ function keyframeStageBudgetMs(taskId, options = {}) {
   // without making the browser stop at an arbitrary 15-minute boundary.
   return Math.min(60 * 60 * 1000, Math.max(10 * 60 * 1000, (4 + targetCount * 4) * 60 * 1000));
 }
-
 const isQaInfrastructureError = keyframeFailure.isQaInfrastructureError;
-
 async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
   let lastError = null;
   for (let attempt = 0; attempt < Math.max(1, attempts); attempt += 1) {
@@ -176,7 +158,6 @@ async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
   }
   throw lastError;
 }
-
 function structuredQaFeedback(sceneQa = {}, personQa = {}, productQa = {}) {
   const groups = [
     ['场景空间', [...(sceneQa.mismatch_reasons || []), ...(sceneQa.forbidden_new_elements || [])]],
@@ -191,11 +172,9 @@ function structuredQaFeedback(sceneQa = {}, personQa = {}, productQa = {}) {
     .filter(Boolean)
     .join('\n');
 }
-
 function isBeforeOrAtKeyframes(stage = '') {
   return !['tts', 'tts_ready', 'video', 'video_ready', 'compose', 'final_video_ready'].includes(String(stage || ''));
 }
-
 function persistProgressSnapshot(taskId, snapshot = {}) {
   if (!snapshot || typeof snapshot !== 'object') return;
   const allowedOutputs = {
@@ -230,7 +209,6 @@ function persistProgressSnapshot(taskId, snapshot = {}) {
     storage.saveOutput(taskId, outputKind, value);
   });
 }
-
 function assertTaskOwner(taskId, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -250,7 +228,6 @@ function assertTaskOwner(taskId, user = {}) {
   }
   return task;
 }
-
 function canonicalBlueprintValue(value) {
   if (Array.isArray(value)) return value.map(canonicalBlueprintValue);
   if (!value || typeof value !== 'object') return value;
@@ -260,13 +237,11 @@ function canonicalBlueprintValue(value) {
     return out;
   }, {});
 }
-
 function blueprintFingerprint(blueprint = {}) {
   return crypto.createHash('sha256')
     .update(JSON.stringify(canonicalBlueprintValue(blueprint || {})))
     .digest('hex');
 }
-
 function versionedBlueprint(blueprint = {}, previous = {}) {
   const fingerprint = blueprintFingerprint(blueprint);
   const previousFingerprint = previous.fingerprint || (Object.keys(previous || {}).length ? blueprintFingerprint(previous) : '');
@@ -277,7 +252,6 @@ function versionedBlueprint(blueprint = {}, previous = {}) {
     fingerprint,
   };
 }
-
 function storyboardStatus(bundle = {}, outputs = {}) {
   const rows = Array.isArray(bundle.outputs) ? bundle.outputs : [];
   const rowByKind = kind => rows.find(row => row?.kind === kind) || null;
@@ -305,7 +279,6 @@ function storyboardStatus(bundle = {}, outputs = {}) {
     checkpoint_total: Number(checkpoint?.expected_total || 0),
   };
 }
-
 function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
   const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
   const videoShotStatuses = (rawBundle.outputs || [])
@@ -2493,7 +2466,7 @@ async function generateVideoStage(taskId, options = {}) {
     sceneBlock: sceneBlockService.blockForIndex(sceneBlocks, index),
   }));
   let clips = previousClips.slice();
-  async function reviewVideoIndexes(reviewedIndexes = [], repairAttempt = 0) {
+  async function reviewVideoIndexes(reviewedIndexes = [], repairAttempt = 0, { stopOnFailure = false } = {}) {
     const failures = [];
     for (const index of reviewedIndexes) {
       const clip = clips[index];
@@ -2517,7 +2490,13 @@ async function generateVideoStage(taskId, options = {}) {
         qa_problems: qa.problems || [], qa_failure_dimensions: qa.failure_dimensions || [], qa_failure_labels_zh: qa.failure_labels_zh || [],
         error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED', retryable: !qa.pass,
       }, shots.length);
-      if (!qa.pass) failures.push({ index, kind: 'frame_qa', dimensions: qa.failure_dimensions || [], labels_zh: qa.failure_labels_zh || [], problems: qa.problems || [], retry_instruction: qa.retry_instruction || '', repairable: true });
+      if (!qa.pass) {
+        failures.push({ index, kind: 'frame_qa', dimensions: qa.failure_dimensions || [], labels_zh: qa.failure_labels_zh || [], problems: qa.problems || [], retry_instruction: qa.retry_instruction || '', repairable: true });
+        if (stopOnFailure) {
+          storage.saveOutput(taskId, 'video_clips', clips);
+          return failures;
+        }
+      }
     }
     const crossIndexes = zeroCostOnly
       ? []
@@ -2533,7 +2512,13 @@ async function generateVideoStage(taskId, options = {}) {
         cross_shot_qa_problems: crossQa.problems || [], cross_shot_failure_dimensions: crossQa.failure_dimensions || [], cross_shot_failure_labels_zh: crossQa.failure_labels_zh || [],
         error: crossQa.pass ? '' : '相邻镜头视觉连续性 QA 未通过', error_code: crossQa.pass ? '' : 'CROSS_SHOT_CONTINUITY_FAILED', retryable: !crossQa.pass,
       }, shots.length);
-      if (!crossQa.pass) failures.push({ index, kind: 'cross_shot_qa', dimensions: crossQa.failure_dimensions || [], labels_zh: crossQa.failure_labels_zh || [], problems: crossQa.problems || [], retry_instruction: crossQa.retry_instruction || '', repairable: true });
+      if (!crossQa.pass) {
+        failures.push({ index, kind: 'cross_shot_qa', dimensions: crossQa.failure_dimensions || [], labels_zh: crossQa.failure_labels_zh || [], problems: crossQa.problems || [], retry_instruction: crossQa.retry_instruction || '', repairable: true });
+        if (stopOnFailure) {
+          storage.saveOutput(taskId, 'video_clips', clips);
+          return failures;
+        }
+      }
     }
     storage.saveOutput(taskId, 'video_clips', clips);
     return failures;
@@ -2649,55 +2634,70 @@ async function generateVideoStage(taskId, options = {}) {
       generation_progress: { ...(storage.getTask(taskId)?.generation_progress || {}), repair_attempt: repairAttempt, max_repair_attempts: maxRepairs, repair_indexes: targetIndexes.map(index => index + 1) },
     });
     targetIndexes = sceneBlockService.expandIndexesToBlocks(targetIndexes, sceneBlocks);
-    let generationError = null;
-    try {
-      lastGenerated = await videoAdapter.generateSceneBlockVideos({
-        taskId, shots: generationShots, keyframes, ttsAudio, contracts, ctx,
-        sceneBlocks,
-        options: {
-          ...options,
-          only_indexes: targetIndexes,
-          _pinnedVideoModel: pinnedModel,
-          _expectedLineages: expectedLineages,
-          _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions },
-          _localMotionIndexes: [...localMotionIndexSet],
-          _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [],
-          _repairAttempt: repairAttempt,
-        },
-        existingClips: clips,
-        onClip: async (clip, nextClips) => {
-          storage.saveOutput(taskId, 'video_clips', nextClips);
-          storage.saveStage(taskId, 'video', {
-            status: 'running', input_summary: `${shots.length} shot videos`,
-            output_summary: `${nextClips.filter(Boolean).length}/${shots.length} video clips`,
-            diagnostics: { last_provider_used: clip.provider_used || '', repair_attempt: repairAttempt },
-          });
-        },
-      });
-      clips = lastGenerated.clips.slice();
-    } catch (error) {
-      generationError = error;
-      const partialClips = Array.isArray(error.partial_video_clips)
-        ? error.partial_video_clips
-        : storage.getOutput(taskId, 'video_clips');
-      if (Array.isArray(partialClips)) clips = partialClips.slice();
-      lastGenerated = {
-        provider_used: pinnedRoute,
-        schedule: null,
-        target_indexes: Array.isArray(error.target_indexes) ? error.target_indexes : targetIndexes,
-      };
-    }
-    const candidateReviewedIndexes = generationError && Array.isArray(generationError.completed_indexes)
-      ? generationError.completed_indexes
-      : (Array.isArray(lastGenerated.target_indexes) ? lastGenerated.target_indexes : targetIndexes);
-    const reviewedIndexes = candidateReviewedIndexes.filter(index => videoLineage.clipHasUsableFile(clips[index]));
-    qaFailures = await reviewVideoIndexes(reviewedIndexes, repairAttempt);
-    if (generationError) {
-      generationError.partial_video_clips = clips.slice();
-      generationError.completed_indexes = reviewedIndexes;
-      storage.saveOutput(taskId, 'video_clips', clips);
-      throw generationError;
-    }
+    const generationUnits = sceneBlocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
+    await videoSubmissionGate.runUnitsFailFast(generationUnits, async (unit, unitPosition, remainingUnits) => {
+      const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index));
+      let generationError = null;
+      try {
+        lastGenerated = await videoAdapter.generateSceneBlockVideos({
+          taskId, shots: generationShots, keyframes, ttsAudio, contracts, ctx,
+          sceneBlocks,
+          options: {
+            ...options,
+            only_indexes: unitIndexes,
+            _pinnedVideoModel: pinnedModel,
+            _expectedLineages: expectedLineages,
+            _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions },
+            _localMotionIndexes: [...localMotionIndexSet],
+            _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [],
+            _repairAttempt: repairAttempt,
+          },
+          existingClips: clips,
+          onClip: async (clip, nextClips) => {
+            storage.saveOutput(taskId, 'video_clips', nextClips);
+            storage.saveStage(taskId, 'video', {
+              status: 'running', input_summary: `${shots.length} shot videos`,
+              output_summary: `${nextClips.filter(Boolean).length}/${shots.length} video clips`,
+              diagnostics: { last_provider_used: clip.provider_used || '', repair_attempt: repairAttempt },
+            });
+          },
+        });
+        clips = lastGenerated.clips.slice();
+      } catch (error) {
+        generationError = error;
+        const partialClips = Array.isArray(error.partial_video_clips)
+          ? error.partial_video_clips
+          : storage.getOutput(taskId, 'video_clips');
+        if (Array.isArray(partialClips)) clips = partialClips.slice();
+      }
+      const candidateReviewedIndexes = generationError && Array.isArray(generationError.completed_indexes)
+        ? generationError.completed_indexes
+        : unitIndexes;
+      const reviewedIndexes = candidateReviewedIndexes.filter(index => videoLineage.clipHasUsableFile(clips[index]));
+      const unitQaFailures = await reviewVideoIndexes(reviewedIndexes, repairAttempt, { stopOnFailure: true });
+      qaFailures.push(...unitQaFailures);
+      if (generationError || unitQaFailures.length) {
+        const remainingIndexes = remainingUnits.flatMap(item => item.member_indexes);
+        remainingIndexes.forEach(index => {
+          clips[index] = previousClips[index] || clips[index] || null;
+          const previousStatus = storage.getOutput(taskId, `video_shot_status_${index + 1}`) || {};
+          videoAdapter.updateVideoShotStatus(taskId, index, {
+            ...previousStatus,
+            last_attempt_provider_submission_state: 'not_submitted',
+            last_attempt_billing_state: 'not_submitted',
+            stopped_after_unit_failure: true,
+          }, shots.length);
+        });
+        storage.saveOutput(taskId, 'video_clips', clips);
+        if (generationError) {
+          generationError.partial_video_clips = clips.slice();
+          generationError.completed_indexes = reviewedIndexes;
+          throw generationError;
+        }
+        return false;
+      }
+      return true;
+    });
     if (!qaFailures.length) break;
     const plan = videoRepairPolicy.buildRepairPlan(qaFailures, { attempt: repairAttempt, maxAttempts: maxRepairs });
     const history = Array.isArray(storage.getOutput(taskId, 'video_repair_history')) ? storage.getOutput(taskId, 'video_repair_history') : [];

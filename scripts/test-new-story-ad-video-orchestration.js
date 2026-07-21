@@ -14,6 +14,7 @@ const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const storage = require('../src/services/newStoryAd/storageService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
+const videoSubmissionGate = require('../src/services/newStoryAd/videoSubmissionGateService');
 
 /** 等待指定毫秒，用于构造可重复的并发波次。 */
 function delay(ms) {
@@ -84,6 +85,21 @@ async function testExplicitThrottleDowngrade() {
   assert.strictEqual(calls.get(1), 1);
   assert.strictEqual(schedule.effective_concurrency, 1, '限流后必须降为串行');
   assert.strictEqual(schedule.throttle_retries['0'], 1);
+}
+
+/** A QA failure in one paid unit must prevent every later unit from being submitted. */
+async function testQaFailureStopsLaterPaidUnits() {
+  const providerSubmissions = [];
+  const qaReviews = [];
+  const result = await videoSubmissionGate.runUnitsFailFast(['unit-1', 'unit-2', 'unit-3'], async unit => {
+    providerSubmissions.push(unit);
+    qaReviews.push(unit);
+    return unit !== 'unit-2';
+  });
+  assert.deepStrictEqual(providerSubmissions, ['unit-1', 'unit-2']);
+  assert.deepStrictEqual(qaReviews, ['unit-1', 'unit-2']);
+  assert.deepStrictEqual(result.remaining, ['unit-3']);
+  assert.strictEqual(result.stopped, true);
 }
 
 /** 验证默认画外音不会错误驱动人物口型。 */
@@ -173,6 +189,7 @@ function testManualVideoAcceptanceDoesNotGenerate() {
     await testAdaptiveDependencyAwareConcurrency();
     await testPaidThrottleDoesNotRetry();
     await testExplicitThrottleDowngrade();
+    await testQaFailureStopsLaterPaidUnits();
     testUniversalNonSpeakingDefault();
     testPersistedShotMonitor();
     testManualVideoAcceptanceDoesNotGenerate();

@@ -79,4 +79,16 @@ function assertForceScope(options = {}, plan = {}) {
   return true;
 }
 
-module.exports = { normalizeOnlyIndexes, addInputBlocker, validateBeforeProvider, assertForceScope };
+/** Run paid units in order and expose the untouched remainder at the first failure boundary. */
+async function runUnitsFailFast(units = [], worker) {
+  const list = Array.isArray(units) ? units : [];
+  const completed = [];
+  for (let index = 0; index < list.length; index += 1) {
+    const proceed = await worker(list[index], index, list.slice(index + 1));
+    completed.push(list[index]);
+    if (proceed === false) return { completed, remaining: list.slice(index + 1), stopped: true };
+  }
+  return { completed, remaining: [], stopped: false };
+}
+
+module.exports = { normalizeOnlyIndexes, addInputBlocker, validateBeforeProvider, assertForceScope, runUnitsFailFast };
