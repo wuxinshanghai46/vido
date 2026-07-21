@@ -1153,19 +1153,22 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   });
   let schedule = { results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1, max_concurrency: 1, throttle_retries: {} };
   const unitFailures = [];
+  const failFast = options.continue_after_unit_failure !== true && options.continueAfterUnitFailure !== true;
   if (units.length) {
     try {
       schedule = await videoScheduler.runSchedule({
-      indexes: units.map((_, index) => index), options, signal: cancellation.signal(), dependencyOf: () => null,
-      onWaveStart: wave => updateVideoProgress(taskId, list.length, {
-        configured_concurrency: wave.configured_concurrency, effective_concurrency: wave.concurrency,
-        max_concurrency: wave.max_concurrency, current_wave: wave.wave_number,
-        wave_indexes: wave.indexes.flatMap(unitIndex => units[unitIndex].member_indexes.map(index => index + 1)),
-        scheduler: 'adaptive_scene_block_parallel',
-        scene_block_count: units.length,
-        continuous_scene_block_count: units.filter(block => block.continuous).length,
-      }),
-      worker: async (unitIndex, wave) => {
+        indexes: units.map((_, index) => index),
+        options: failFast ? { ...options, parallel_videos: false, allow_throttle_retry: false } : options,
+        signal: cancellation.signal(), dependencyOf: () => null,
+        onWaveStart: wave => updateVideoProgress(taskId, list.length, {
+          configured_concurrency: wave.configured_concurrency, effective_concurrency: wave.concurrency,
+          max_concurrency: wave.max_concurrency, current_wave: wave.wave_number,
+          wave_indexes: wave.indexes.flatMap(unitIndex => units[unitIndex].member_indexes.map(index => index + 1)),
+          scheduler: 'adaptive_scene_block_parallel',
+          scene_block_count: units.length,
+          continuous_scene_block_count: units.filter(block => block.continuous).length,
+        }),
+        worker: async (unitIndex, wave) => {
         const block = units[unitIndex];
         const first = block.first_index;
         try {
@@ -1242,9 +1245,13 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             provider_submission_state: submitted ? 'submitted' : 'not_submitted',
             billing_state: failure.billing_state,
           }, list.length));
+          if (failFast) {
+            error.unit_failure = failure;
+            throw error;
+          }
           return { failed: true, ...failure };
         }
-      },
+        },
       });
     } catch (error) {
       const cancelled = error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted;
@@ -1266,6 +1273,8 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           error: cancelled ? '任务已取消' : (current.error || '连续场景段生成未完成'),
           error_code: cancelled ? 'USER_CANCELLED' : (current.error_code || 'SCENE_BLOCK_GENERATION_FAILED'),
           retryable: error?.retryable === true,
+          provider_submission_state: current.provider_task_id ? 'submitted' : 'not_submitted',
+          billing_state: current.provider_task_id ? 'unknown' : 'not_submitted',
         }, list.length);
       });
       storage.saveOutput(taskId, 'video_clips', clips);

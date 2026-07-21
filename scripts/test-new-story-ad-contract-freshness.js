@@ -128,11 +128,140 @@ function testProviderAuditPersistsVerifiedContractAndPrompt() {
   assert.deepEqual(audit.entries.map(entry => entry.shot_number), [1, 2, 3]);
 }
 
-try {
-  testSemanticChangeInvalidatesEveryAffectedFrame();
-  testLegacyMetadataUpgradeDoesNotInvalidateEquivalentFrames();
-  testProviderAuditPersistsVerifiedContractAndPrompt();
-  console.log('new-story-ad contract freshness tests passed');
-} finally {
-  fs.rmSync(tempDir, { recursive: true, force: true });
+function testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift() {
+  const storyboard = shots(2);
+  const verifiedProduct = {
+    advertised_subject: '已验证的通用产品主体',
+    product_revision: 3,
+    reference_fingerprint: 'stable-product-reference',
+    status: 'verified',
+    updated_at: '2026-07-20T01:00:00.000Z',
+  };
+  const oldCtx = {
+    ...context('稳定人物'),
+    product_subject: '最初用户输入的产品描述',
+    product_contract: verifiedProduct,
+  };
+  const nextCtx = {
+    ...oldCtx,
+    product_subject: '系统后来补充得更详细、但仍属于同一已验证产品的规范化描述',
+    product_contract: { ...verifiedProduct, updated_at: '2026-07-21T02:00:00.000Z' },
+  };
+  const taskId = createStoredTask('freshness-read-only-preflight', oldCtx, storyboard);
+  const oldContracts = buildKeyframeContracts(oldCtx, storyboard);
+  const nextContracts = buildKeyframeContracts(nextCtx, storyboard);
+  assert.deepEqual(
+    oldContracts.map(item => item.contract_fingerprint),
+    nextContracts.map(item => item.contract_fingerprint),
+    '同一已验证产品的规范化描述和审计时间变化不得改变镜头身份',
+  );
+  assert.deepEqual(
+    oldContracts.map(item => freshness.signatureOf(item)),
+    nextContracts.map(item => freshness.signatureOf(item)),
+    '审计时间不得进入视觉语义签名',
+  );
+  storage.saveOutput(taskId, 'keyframe_contracts', oldContracts);
+  storage.saveOutput(taskId, 'keyframes', oldContracts.map((contract, index) => ({
+    image_url: `https://example.test/stable-${index}.png`,
+    contract_fingerprint: contract.contract_fingerprint,
+    contract,
+    current_generation_status: 'accepted',
+    qa_policy_version: 2,
+    qa: { pass: true },
+  })));
+  storage.saveOutput(taskId, 'video_clips', [{ video_url: 'https://example.test/preserved.mp4' }]);
+  storage.saveOutput(taskId, 'context', nextCtx);
+  const before = JSON.stringify(storage.getTaskBundle(taskId));
+  const inspection = freshness.inspect(taskId, { ctx: nextCtx, shots: storyboard });
+  const after = JSON.stringify(storage.getTaskBundle(taskId));
+  assert.deepEqual(inspection.changed_indexes, []);
+  assert.strictEqual(after, before, '只读预检不得写合同、关键帧、视频或任务时间');
+  assert(storage.getOutput(taskId, 'video_clips'), '只读预检不得删除旧视频片段');
 }
+
+function testVideoPreflightBlocksWithoutMutatingExistingMedia() {
+  const storyboard = shots(1);
+  const oldCtx = context('合同旧语义');
+  const nextCtx = context('合同新语义');
+  const taskId = createStoredTask('freshness-preflight-no-write', oldCtx, storyboard);
+  const oldContracts = buildKeyframeContracts(oldCtx, storyboard);
+  storage.saveOutput(taskId, 'keyframe_contracts', oldContracts);
+  storage.saveOutput(taskId, 'keyframes', [{
+    image_url: 'https://example.test/original-frame.png',
+    contract_fingerprint: oldContracts[0].contract_fingerprint,
+    contract_compiler_signature: oldContracts[0].contract_compiler_signature,
+    contract: oldContracts[0],
+    current_generation_status: 'accepted',
+    qa_policy_version: 2,
+    qa: { pass: true, status: 'accepted' },
+  }]);
+  storage.saveOutput(taskId, 'video_clips', [{
+    video_url: 'https://example.test/original-clip.mp4',
+    qa: { pass: true },
+    cross_shot_qa: { pass: true },
+  }]);
+  storage.saveOutput(taskId, 'context', nextCtx);
+  const before = JSON.stringify(storage.getTaskBundle(taskId));
+  const plan = service.buildVideoPreflightPlan(taskId, { video_generation_mode: 'quality' });
+  const after = JSON.stringify(storage.getTaskBundle(taskId));
+  assert(plan.blockers.some(item => item.code === 'VIDEO_INPUT_QA_REQUIRED'));
+  assert.strictEqual(plan.status, 'blocked');
+  assert.strictEqual(after, before, '预检失败不得写授权、合同、关键帧、预检缓存或视频片段');
+  assert(storage.getOutput(taskId, 'video_clips'), '合同不一致时必须保留旧视频恢复证据');
+  assert.strictEqual(storage.getOutput(taskId, 'video_cost_authorization'), null);
+  assert.throws(
+    () => service.buildVideoPreflightPlan(taskId, { only_indexes: '' }),
+    error => error?.code === 'VIDEO_SHOT_INDEX_INVALID',
+    '空范围不得退化为全量预检',
+  );
+  assert.throws(
+    () => service.buildVideoPreflightPlan(taskId, { only_indexes: [99] }),
+    error => error?.code === 'VIDEO_SHOT_INDEX_INVALID',
+    '越界范围不得退化为全量预检',
+  );
+}
+
+async function testPreProviderFailureVoidsAuthorization() {
+  const storyboard = shots(1);
+  const oldCtx = context('授权旧语义');
+  const nextCtx = context('授权新语义');
+  const taskId = createStoredTask('freshness-authorization-void', oldCtx, storyboard);
+  const contracts = buildKeyframeContracts(oldCtx, storyboard);
+  storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  storage.saveOutput(taskId, 'keyframes', [{
+    image_url: 'https://example.test/authorized-frame.png',
+    contract_fingerprint: contracts[0].contract_fingerprint,
+    contract: contracts[0],
+    current_generation_status: 'accepted',
+    qa_policy_version: 2,
+    qa: { pass: true },
+  }]);
+  storage.saveOutput(taskId, 'context', nextCtx);
+  storage.saveOutput(taskId, 'video_cost_authorization', { status: 'authorized', fingerprint: 'test-authorization' });
+  const beforeCalls = storage.getTaskBundle(taskId).model_calls.length;
+  await assert.rejects(
+    () => service.generateTtsStage(taskId, { include_voiceover: false }),
+    error => error?.code === 'VIDEO_INPUT_QA_REQUIRED',
+  );
+  const authorization = storage.getOutput(taskId, 'video_cost_authorization');
+  assert.strictEqual(authorization.status, 'voided');
+  assert.strictEqual(authorization.provider_submitted, false);
+  assert.strictEqual(storage.getTaskBundle(taskId).model_calls.length, beforeCalls, '供应商前失败不得产生模型调用');
+}
+
+(async () => {
+  try {
+    testSemanticChangeInvalidatesEveryAffectedFrame();
+    testLegacyMetadataUpgradeDoesNotInvalidateEquivalentFrames();
+    testProviderAuditPersistsVerifiedContractAndPrompt();
+    testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift();
+    testVideoPreflightBlocksWithoutMutatingExistingMedia();
+    await testPreProviderFailureVoidsAuthorization();
+    console.log('new-story-ad contract freshness tests passed');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+})().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

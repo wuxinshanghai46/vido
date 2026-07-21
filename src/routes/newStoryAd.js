@@ -978,11 +978,10 @@ router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
 router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
   taskForReq(req);
   const rawIndexes = req.query.only_indexes !== undefined ? req.query.only_indexes : req.query.only_index;
-  const requestedIndexes = rawIndexes === undefined ? null : [...new Set(
-    (Array.isArray(rawIndexes) ? rawIndexes : [rawIndexes])
-      .flatMap(value => String(value).split(','))
-      .map(value => Number(String(value).trim())),
-  )];
+  const rawIndexParts = rawIndexes === undefined ? null : (Array.isArray(rawIndexes) ? rawIndexes : [rawIndexes])
+    .flatMap(value => String(value).split(','))
+    .map(value => String(value).trim());
+  const requestedIndexes = rawIndexParts === null ? null : [...new Set(rawIndexParts.map(value => value === '' ? NaN : Number(value)))];
   if (requestedIndexes && (!requestedIndexes.length || requestedIndexes.some(index => !Number.isInteger(index) || index < 0))) {
     const error = new Error('指定的镜头序号无效，本次没有提交视频模型');
     error.code = 'VIDEO_SHOT_INDEX_INVALID';

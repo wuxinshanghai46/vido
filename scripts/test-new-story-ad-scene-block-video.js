@@ -134,24 +134,27 @@ async function run() {
   const partialShots = [
     { id: 'partial-a', title: '成功单元', scene_id: 'space-partial-a', duration: 2, characters: [] },
     { id: 'partial-b', title: '失败单元', scene_id: 'space-partial-b', duration: 2, characters: [] },
+    { id: 'partial-c', title: '失败后不得提交的单元', scene_id: 'space-partial-c', duration: 2, characters: [] },
   ];
   const partialContracts = partialShots.map(shot => ({ scene_lock: sceneLock(shot.scene_id) }));
   const partialBlocks = sceneBlocks.buildSceneBlocks(partialShots, partialContracts);
   storage.createTask({ id: partialTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
-  let partialResult;
+  let partialError;
+  const calledIndexes = [];
   try {
-    partialResult = await videoAdapter.generateSceneBlockVideos({
+    await videoAdapter.generateSceneBlockVideos({
       taskId: partialTaskId,
       shots: partialShots,
       contracts: partialContracts,
-      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
+      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }, { image_url: '/frame-c.png' }],
       sceneBlocks: partialBlocks,
       ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
       options: {
-        only_indexes: [0, 1],
-        video_concurrency: 1,
+        only_indexes: [0, 1, 2],
+        video_concurrency: 3,
         _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
         _generateShotVideo: async ({ taskId, shot, index }) => {
+          calledIndexes.push(index);
           if (index === 1) {
             const error = new Error('simulated provider billing failure');
             error.code = 'PROVIDER_BILLING';
@@ -165,16 +168,19 @@ async function run() {
       },
       existingClips: [],
     });
-  } catch (error) { throw error; }
+  } catch (error) { partialError = error; }
   try {
-    assert.deepStrictEqual(partialResult.failed_indexes, [1], 'a failed independent block must be reported without aborting sibling blocks');
-    assert.strictEqual(partialResult.clips[0].error_code || '', '', 'successful paid output must not be poisoned by a sibling failure');
-    assert.ok(fs.existsSync(partialResult.clips[0].file_path));
+    assert(partialError, '付费单元失败必须终止本批后续提交');
+    assert.deepStrictEqual(calledIndexes, [0, 1], '失败后尚未开始的付费单元不得继续调用模型');
+    const partialClips = partialError.partial_video_clips || [];
+    assert.strictEqual(partialClips[0].error_code || '', '', '失败前已完成的付费输出必须保留');
+    assert.ok(fs.existsSync(partialClips[0].file_path));
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_1').lifecycle, 'generated');
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').lifecycle, 'failed');
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').provider_submission_state, 'not_submitted');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_3').provider_submission_state, 'not_submitted');
   } finally {
-    (partialResult?.clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
+    (partialError?.partial_video_clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
     storage.deleteTask(partialTaskId);
   }
   console.log('new story ad continuous scene block video: ok');

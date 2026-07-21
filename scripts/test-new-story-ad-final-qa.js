@@ -223,6 +223,7 @@ function testModuleResponsibilityBoundaries() {
   const lineCount = relative => fs.readFileSync(path.join(root, relative), 'utf8').split(/\r?\n/).length;
   assert(lineCount('src/services/newStoryAd/motionAwareEditService.js') <= 280, '运动分析应保持独立小模块，不能回灌主服务');
   assert(lineCount('src/services/newStoryAd/finalVideoQaService.js') <= 280, '最终 QA 应保持独立小模块，不能回灌主服务');
+  assert(lineCount('src/services/newStoryAd/videoSubmissionGateService.js') <= 140, '范围、费用与提交门禁应保持独立小模块');
   assert(lineCount('src/services/newStoryAd/storyAdService.js') <= 3800, '剧情广告主服务不能继续堆叠跨职责实现');
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
   assert(!storySource.includes('grayscale_mean_absolute_frame_difference'), '主服务不得重复实现母片运动分析');

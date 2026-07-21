@@ -115,6 +115,49 @@ function testExplicitZeroVolumesArePreserved() {
   assert.strictEqual(storage.getOutput('volume-task', 'context').bgm_volume, 0, '持久化配置必须保留 0 音量');
 }
 
+/** 已有背景音乐时也必须加载公开曲库，并稳定去重和限制候选数量。 */
+async function testExistingMusicCanBeReplaced() {
+  const existing = {
+    id: 'track-current', provider: 'openverse', title: '当前音乐', creator: '作者 A',
+    preview_url: 'https://example.test/current.mp3',
+  };
+  const remote = [
+    { ...existing },
+    ...Array.from({ length: 15 }, (_, index) => ({
+      id: `track-${index}`, provider: 'curated', title: `候选 ${index}`, creator: '公共曲库',
+      preview_url: `https://example.test/${index}.mp3`,
+    })),
+  ];
+  let searchCalls = 0;
+  const plan = await audioUi.load({
+    state: { bgmAsset: existing, voiceList: [] },
+    api: async url => { searchCalls += 1; assert(url.includes('/music/search?')); return { results: remote }; },
+  });
+  assert.strictEqual(searchCalls, 1, '已有 BGM 时仍须查询曲库，不能只显示当前一首');
+  assert.strictEqual(plan.music[0]._existing, true);
+  assert.strictEqual(plan.music.filter(item => !item._existing).length, 12, '远端替换候选最多展示 12 首');
+  assert.strictEqual(new Set(plan.music.map(item => item._identity)).size, plan.music.length, '当前音乐与远端结果必须去重');
+  const firstKey = audioUi.musicKey(remote[1]);
+  assert.strictEqual(firstKey, audioUi.musicKey(remote[1]));
+  assert.strictEqual(firstKey, audioUi.musicKey({ ...remote[1] }), '曲目页面键不得依赖结果顺序');
+
+  const rendered = audioUi.html(plan, String);
+  assert(rendered.includes('data-nsa-audio-picker="voice"'));
+  assert(rendered.includes('data-nsa-audio-picker="music"'));
+  assert(rendered.includes('role="listbox"'));
+  assert(!rendered.includes('<select'), '声音选择改为弹窗内联列表，避免原生下拉遮挡弹窗');
+}
+
+async function testMusicSearchFailureKeepsExistingChoice() {
+  const plan = await audioUi.load({
+    state: { bgmAsset: { id: 'keep', title: '保留当前音乐' }, voiceList: [] },
+    api: async () => { throw new Error('曲库暂不可用'); },
+  });
+  assert.strictEqual(plan.music.length, 1);
+  assert.strictEqual(plan.music[0]._existing, true);
+  assert(plan.warnings.some(message => message.includes('公开曲库暂时不可用')));
+}
+
 /** 用户同时关闭配音和音乐时即为明确静音，不得再要求第二次勾选。 */
 function testSilentSelectionNeedsNoSecondAcknowledgement() {
   const html = audioUi.html({ voices: [], music: [], voiceId: '', musicKey: '' }, String);
@@ -143,12 +186,15 @@ function testIntegrationMarkers() {
   assert(route.includes('mediaPipeline.runMediaPipeline'));
   assert(!route.slice(route.indexOf("router.post('/tasks/:id/media'"), route.indexOf("router.post('/storyboard'")).includes('service.generateVideoStage'));
   assert(bootstrap.includes("'/js/new-story-ad/audio-preflight.js'"));
+  assert(read('public/js/new-story-ad/audio-preflight.js').split(/\r?\n/).length <= 320, '声音选择交互必须留在独立小模块，不能回灌旧主前端');
   assert(!read('public/js/new-story-ad/audio-preflight.js').match(/苏晚|不锈钢|墙面|设计师的困境/), '声音推荐不得写死当前人物、行业或场景');
 }
 
 (async () => {
   testUniversalVoiceRecommendation();
   await testAudioSelectionApplication();
+  await testExistingMusicCanBeReplaced();
+  await testMusicSearchFailureKeepsExistingChoice();
   await testDecoupledMediaPipeline();
   await testTtsFailureStopsVideo();
   testExplicitZeroVolumesArePreserved();

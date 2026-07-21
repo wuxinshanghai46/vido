@@ -8,7 +8,9 @@ function imageUrl(frame = {}) {
 }
 
 function signatureOf(contract = {}) {
-  return String(contract.contract_compiler_signature || contractCompilerSignature(contract));
+  // Always recalculate with the current canonicalizer. Persisted signatures may
+  // have been produced by an older compiler that included audit timestamps.
+  return String(contractCompilerSignature(contract));
 }
 
 function contractMatches(stored = {}, current = {}) {
@@ -31,9 +33,7 @@ function persist(taskId, contracts = [], { clearDownstream = false, changedIndex
     const currentFingerprint = String(current.contract_fingerprint || '');
     const currentSignature = signatureOf(current);
     const frameFingerprint = String(frame.contract_fingerprint || frame.contract?.contract_fingerprint || '');
-    const embeddedSignature = frame.contract_compiler_signature
-      || frame.contract?.contract_compiler_signature
-      || (frame.contract ? contractCompilerSignature(frame.contract) : '');
+    const embeddedSignature = frame.contract ? signatureOf(frame.contract) : String(frame.contract_compiler_signature || '');
     const semanticsMatch = !embeddedSignature || embeddedSignature === currentSignature;
     if (!changed.has(index) && currentFingerprint && frameFingerprint === currentFingerprint && semanticsMatch) {
       if (frame.contract_compiler_signature === currentSignature) return frame;
@@ -56,7 +56,8 @@ function persist(taskId, contracts = [], { clearDownstream = false, changedIndex
   return { contracts: list, invalidated, metadata_upgraded: metadataUpgraded };
 }
 
-function refresh(taskId, { ctx = {}, shots = [], clearDownstream = false } = {}) {
+/** Compile and compare contracts without changing task state or deleting media. */
+function inspect(taskId, { ctx = {}, shots = [] } = {}) {
   const current = buildKeyframeContracts(ctx, shots);
   const stored = storage.getOutput(taskId, 'keyframe_contracts');
   const previous = Array.isArray(stored) ? stored : [];
@@ -66,11 +67,25 @@ function refresh(taskId, { ctx = {}, shots = [], clearDownstream = false } = {})
   const needsMetadataUpgrade = previous.length === current.length
     && current.some((contract, index) => contractMatches(previous[index], contract)
       && !previous[index]?.contract_compiler_signature);
-  if (previous.length !== current.length || changedIndexes.length || needsMetadataUpgrade) {
-    const result = persist(taskId, current, { clearDownstream, changedIndexes });
-    return { ...result, changed_indexes: changedIndexes, refreshed: true };
+  return {
+    contracts: current,
+    previous_contracts: previous,
+    changed_indexes: changedIndexes,
+    needs_metadata_upgrade: needsMetadataUpgrade,
+    needs_refresh: previous.length !== current.length || changedIndexes.length > 0 || needsMetadataUpgrade,
+  };
+}
+
+function refresh(taskId, { ctx = {}, shots = [], clearDownstream = false } = {}) {
+  const inspection = inspect(taskId, { ctx, shots });
+  if (inspection.needs_refresh) {
+    const result = persist(taskId, inspection.contracts, {
+      clearDownstream,
+      changedIndexes: inspection.changed_indexes,
+    });
+    return { ...result, changed_indexes: inspection.changed_indexes, refreshed: true };
   }
-  return { contracts: current, invalidated: 0, metadata_upgraded: 0, changed_indexes: [], refreshed: false };
+  return { contracts: inspection.contracts, invalidated: 0, metadata_upgraded: 0, changed_indexes: [], refreshed: false };
 }
 
 function compileCurrentTask(taskId) {
@@ -115,6 +130,7 @@ function recordProviderAudit(taskId, { generationId = '', index = 0, contract = 
 module.exports = {
   signatureOf,
   contractMatches,
+  inspect,
   persist,
   refresh,
   compileCurrentTask,

@@ -19,6 +19,7 @@ const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
+const videoSubmissionGate = require('./videoSubmissionGateService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
@@ -2127,9 +2128,8 @@ async function ensureStoryboardForMedia(taskId) {
 async function ensureContractsForMedia(taskId, ctx, shots) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-  return keyframeContractFreshness.refresh(taskId, { ctx: contractCtx, shots }).contracts;
+  return keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
 }
-
 function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contracts = [] } = {}) {
   assertVerifiedSceneAssets(ctx.scene_assets || []);
   const personContract = personIdentity.assertVerifiedPerson(ctx);
@@ -2242,7 +2242,7 @@ async function generateTtsStage(taskId, options = {}) {
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   // “合成广告”会先执行 TTS。必须在产生配音费用之前执行与视频阶段
   // 相同的审核门禁，避免未通过的关键帧仍然消耗一次配音调用。
-  assertVideoInputsReady({ ctx, shots, keyframes, contracts });
+  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts }) });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
   const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
@@ -2287,7 +2287,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-  const contracts = keyframeContractFreshness.refresh(taskId, { ctx: contractCtx, shots }).contracts;
+  const contracts = keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
@@ -2306,9 +2306,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     businessProfile: ctx.business_profile || ctx.businessProfile || ctx.ad_type || 'story_ad',
     options,
   });
-  const requestedOnlyIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
-    ? (options.only_indexes || options.onlyIndexes).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < shots.length)
-    : ((options.only_index ?? options.onlyIndex) !== undefined ? [Number(options.only_index ?? options.onlyIndex)] : null);
+  const requestedOnlyIndexes = videoSubmissionGate.normalizeOnlyIndexes(options, shots.length);
   const plan = videoPreflight.buildVideoPreflight({
     taskId,
     shots,
@@ -2360,6 +2358,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   }
   const runtimePolicy = storyAdV3RuntimePolicy();
   plan.runtime_policy = runtimePolicy;
+  videoSubmissionGate.addInputBlocker(plan, () => assertVideoInputsReady({ ctx: contractCtx, shots, keyframes, contracts }));
   if (plan.paid_unit_count > 0 && !runtimePolicy.paid_video_enabled) {
     plan.blockers.push({
       code: 'VIDEO_V3_PAID_DISABLED',
@@ -2373,8 +2372,6 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     cost_plan_fingerprint: costPlan.fingerprint,
     runtime_policy: runtimePolicy,
   });
-  storage.saveOutput(taskId, 'video_execution_plan', executionPlan);
-  storage.saveOutput(taskId, 'video_preflight', videoPreflight.publicVideoPreflight(plan));
   return plan;
 }
 
@@ -2407,6 +2404,7 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
     error.preflight = videoPreflight.publicVideoPreflight(plan);
     throw error;
   }
+  videoSubmissionGate.assertForceScope(options, plan);
   if (!zeroCostOnly && Number(plan.paid_unit_count || 0) > 0) {
     videoCore.costGuard.assertComplexityReview(plan.authorized_execution_plan || plan.execution_plan, options);
     const authorization = videoCore.costGuard.assertCostAuthorization(plan.cost_plan, options);
@@ -2418,6 +2416,8 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
       status: 'authorized',
     });
   }
+  storage.saveOutput(taskId, 'video_execution_plan', plan.execution_plan);
+  storage.saveOutput(taskId, 'video_preflight', videoPreflight.publicVideoPreflight(plan));
   return plan;
 }
 
@@ -2428,7 +2428,7 @@ async function generateVideoStage(taskId, options = {}) {
   const shots = await ensureStoryboardForMedia(taskId);
   const contracts = await ensureContractsForMedia(taskId, ctx, shots);
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-  assertVideoInputsReady({ ctx, shots, keyframes, contracts });
+  videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts }) });
   // 视频供应商调用必须经过不可绕过的方案与人民币费用确认。
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;

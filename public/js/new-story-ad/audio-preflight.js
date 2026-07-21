@@ -32,18 +32,38 @@
     return ranked[0]?.voice || null;
   }
 
-  /** 为弹窗中的候选曲目生成稳定但不泄露外部地址的页面键。 */
-  function musicKey(item = {}, index = 0) {
-    return `music_${index}_${String(item.id || item.title || item.name || '').replace(/[^a-z0-9_-]/ig, '_').slice(0, 48)}`;
+  function stableHash(value = '') {
+    let hash = 2166136261;
+    for (const character of String(value)) {
+      hash ^= character.codePointAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
   }
 
-  /** 并行读取音色和公开曲目候选；任一来源失败都保留另一来源供用户选择。 */
+  /** 使用来源身份去重，页面键不再依赖搜索结果顺序。 */
+  function musicIdentity(item = {}) {
+    return [
+      item.provider || item.source || '', item.id || item.audio_id || '',
+      item.preview_url || item.previewUrl || item.file_url || item.url || '',
+      item.title || item.title_zh || item.name || '', item.creator || '',
+    ].map(value => String(value || '').trim().toLowerCase()).join('|');
+  }
+
+  function musicKey(item = {}) {
+    return `music_${stableHash(musicIdentity(item))}`;
+  }
+
+  /** 并行读取音色和公开曲目候选；已有 BGM 也必须加载曲库以便替换。 */
   async function load({ state = {}, api, loadVoices, musicText = '' } = {}) {
+    const musicRequest = typeof api === 'function'
+      ? api(`/api/new-story-ad/music/search?${new URLSearchParams({
+        q: '', profile_id: state.bgmProfile || 'auto', text: String(musicText || '').slice(0, 600), page: '1', page_size: '20',
+      }).toString()}`)
+      : Promise.resolve({ results: [] });
     const [voiceResult, musicResult] = await Promise.allSettled([
       typeof loadVoices === 'function' ? loadVoices(false) : Promise.resolve(state.voiceList || []),
-      state.bgmAsset ? Promise.resolve({ results: [] }) : api(`/api/new-story-ad/music/search?${new URLSearchParams({
-        q: '', profile_id: state.bgmProfile || 'auto', text: String(musicText || '').slice(0, 600), page: '1', page_size: '20',
-      }).toString()}`),
+      musicRequest,
     ]);
     const loadedVoices = voiceResult.status === 'fulfilled' ? (voiceResult.value || []) : (state.voiceList || []);
     const voices = Array.isArray(loadedVoices) ? loadedVoices.slice() : [];
@@ -52,28 +72,61 @@
     }
     const recommendedVoice = recommendVoice(voices, state);
     const remoteMusic = musicResult.status === 'fulfilled' && Array.isArray(musicResult.value?.results) ? musicResult.value.results : [];
-    const music = [
-      ...(state.bgmAsset ? [{ ...state.bgmAsset, _existing: true, _key: 'existing_bgm' }] : []),
-      ...remoteMusic.slice(0, 12).map((item, index) => ({ ...item, _key: musicKey(item, index) })),
-    ];
+    const music = [];
+    const seenMusic = new Set();
+    if (state.bgmAsset) {
+      const identity = musicIdentity(state.bgmAsset);
+      seenMusic.add(identity);
+      music.push({ ...state.bgmAsset, _existing: true, _identity: identity, _key: 'existing_bgm' });
+    }
+    for (const item of remoteMusic) {
+      const identity = musicIdentity(item);
+      if (!identity || seenMusic.has(identity)) continue;
+      seenMusic.add(identity);
+      music.push({ ...item, _identity: identity, _key: musicKey(item) });
+      if (music.filter(row => !row._existing).length >= 12) break;
+    }
     return {
-      voices: (Array.isArray(voices) ? voices : []).filter(voice => voice && voice.selectable !== false && String(voice.id || '').trim()),
+      voices: voices.filter(voice => voice && voice.selectable !== false && String(voice.id || '').trim()),
       voiceId: String(state.voiceId || recommendedVoice?.id || ''),
       music,
       musicKey: state.bgmAsset ? 'existing_bgm' : (music[0]?._key || ''),
-      warnings: [voiceResult.status === 'rejected' ? '音色列表暂时不可用' : '', musicResult.status === 'rejected' ? '公开曲库暂时不可用' : ''].filter(Boolean),
+      warnings: [voiceResult.status === 'rejected' ? '音色列表暂时不可用' : '', musicResult.status === 'rejected' ? '公开曲库暂时不可用，请稍后重新打开本窗口' : ''].filter(Boolean),
     };
+  }
+
+  function pickerHtml({ kind, value = '', options = [] } = {}, escapeHtml = text => String(text || '')) {
+    const selected = options.find(option => String(option.value) === String(value)) || options[0] || { value: '', label: '' };
+    const optionHtml = options.map(option => {
+      const isSelected = String(option.value) === String(selected.value);
+      return `<button type="button" class="dh-nsa-audio-picker-option${isSelected ? ' is-selected' : ''}" role="option" aria-selected="${isSelected}" data-nsa-audio-picker-option data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</button>`;
+    }).join('');
+    return `<div class="dh-nsa-audio-picker" data-nsa-audio-picker="${kind}">
+      <input type="hidden" data-nsa-audio-${kind} value="${escapeHtml(selected.value)}">
+      <button type="button" class="dh-nsa-audio-picker-trigger" aria-haspopup="listbox" aria-expanded="false" data-nsa-audio-picker-trigger><span data-nsa-audio-picker-label>${escapeHtml(selected.label)}</span><i aria-hidden="true"></i></button>
+      <div class="dh-nsa-audio-picker-options" role="listbox" tabindex="-1" data-nsa-audio-picker-options hidden>${optionHtml}</div>
+    </div>`;
   }
 
   /** 渲染自动推荐但可由用户关闭或替换的轻量声音配置。 */
   function html(plan = {}, escapeHtml = value => String(value || '')) {
-    const voiceOptions = ['<option value="">不使用配音</option>', ...(plan.voices || []).map(voice => `<option value="${escapeHtml(voice.id)}" ${String(voice.id) === String(plan.voiceId) ? 'selected' : ''}>${escapeHtml(`${voice.name || voice.id} · ${voice.provider || voice.providerId || '系统'}`)}</option>`)].join('');
-    const musicOptions = ['<option value="">不使用背景音乐</option>', ...(plan.music || []).map(item => `<option value="${escapeHtml(item._key)}" ${item._key === plan.musicKey ? 'selected' : ''}>${escapeHtml(`${item.title_zh || item.title || item.name || '公开曲目'} · ${item.creator || item.source || item.license_label || item.license || '已授权'}`)}</option>`)].join('');
+    const voicePicker = pickerHtml({
+      kind: 'voice', value: plan.voiceId,
+      options: [{ value: '', label: '不使用配音' }, ...(plan.voices || []).map(voice => ({
+        value: String(voice.id || ''), label: `${voice.name || voice.id} · ${voice.provider || voice.providerId || '系统'}`,
+      }))],
+    }, escapeHtml);
+    const musicPicker = pickerHtml({
+      kind: 'music', value: plan.musicKey,
+      options: [{ value: '', label: '不使用背景音乐' }, ...(plan.music || []).map(item => ({
+        value: String(item._key || ''), label: `${item.title_zh || item.title || item.name || '公开曲目'} · ${item.creator || item.source || item.license_label || item.license || '已授权'}`,
+      }))],
+    }, escapeHtml);
     const warning = plan.warnings?.length ? `<div class="dh-nsa-audio-preflight-warning">${escapeHtml(plan.warnings.join('；'))}</div>` : '';
     return `<section class="dh-nsa-audio-preflight" data-nsa-audio-preflight>
       <div class="dh-nsa-audio-preflight-head"><b>声音配置</b><span>系统已自动推荐，提交前可更换或关闭；不会改变视频人物与场景。</span></div>
-      <label><span>旁白配音</span><div><select class="dh-input" data-nsa-audio-voice>${voiceOptions}</select><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-voice-preview>试听</button></div></label>
-      <label><span>背景音乐</span><div><select class="dh-input" data-nsa-audio-music>${musicOptions}</select><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-music-preview>试听</button></div></label>
+      <label><span>旁白配音</span><div>${voicePicker}<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-voice-preview>试听</button></div></label>
+      <label><span>背景音乐</span><div>${musicPicker}<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-audio-music-preview>试听</button></div></label>
       ${warning}
       <div class="dh-nsa-audio-preflight-error" data-nsa-audio-error hidden></div>
     </section>`;
@@ -86,10 +139,68 @@
     previewAudio = null;
   }
 
-  /** 绑定试听，不触发任何生成或导入操作。 */
+  function bindPicker(modal, picker) {
+    const trigger = picker.querySelector('[data-nsa-audio-picker-trigger]');
+    const list = picker.querySelector('[data-nsa-audio-picker-options]');
+    const input = picker.querySelector('input[type="hidden"]');
+    const label = picker.querySelector('[data-nsa-audio-picker-label]');
+    const options = () => [...picker.querySelectorAll('[data-nsa-audio-picker-option]')];
+    const close = () => {
+      list?.setAttribute('hidden', '');
+      trigger?.setAttribute('aria-expanded', 'false');
+    };
+    const open = focusSelected => {
+      modal.querySelectorAll('[data-nsa-audio-picker]').forEach(other => {
+        if (other === picker) return;
+        other.querySelector('[data-nsa-audio-picker-options]')?.setAttribute('hidden', '');
+        other.querySelector('[data-nsa-audio-picker-trigger]')?.setAttribute('aria-expanded', 'false');
+      });
+      list?.removeAttribute('hidden');
+      trigger?.setAttribute('aria-expanded', 'true');
+      if (focusSelected) (options().find(option => option.getAttribute('aria-selected') === 'true') || options()[0])?.focus();
+    };
+    const choose = option => {
+      if (!option || !input) return;
+      input.value = String(option.dataset.value || '');
+      if (label) label.textContent = option.textContent || '';
+      options().forEach(row => {
+        const selected = row === option;
+        row.classList.toggle('is-selected', selected);
+        row.setAttribute('aria-selected', String(selected));
+      });
+      if (picker.dataset.nsaAudioPicker === 'music') stopPreview();
+      close();
+      trigger?.focus();
+    };
+    trigger?.addEventListener('click', () => list?.hasAttribute('hidden') ? open(false) : close());
+    trigger?.addEventListener('keydown', event => {
+      if (['Enter', ' ', 'ArrowDown'].includes(event.key)) { event.preventDefault(); open(event.key === 'ArrowDown'); }
+      else if (event.key === 'Escape') close();
+    });
+    options().forEach(option => {
+      option.addEventListener('click', () => choose(option));
+      option.addEventListener('keydown', event => {
+        const rows = options();
+        const index = rows.indexOf(option);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          rows[(index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length]?.focus();
+        } else if (['Enter', ' '].includes(event.key)) { event.preventDefault(); choose(option); }
+        else if (event.key === 'Escape') { event.preventDefault(); close(); trigger?.focus(); }
+      });
+    });
+    return close;
+  }
+
+  /** 绑定列表与试听；选择、试听和关闭都不会触发生成或导入。 */
   function bind(modal, plan = {}, { previewVoice } = {}) {
     const voice = modal.querySelector('[data-nsa-audio-voice]');
     const music = modal.querySelector('[data-nsa-audio-music]');
+    const pickers = [...(modal.querySelectorAll?.('[data-nsa-audio-picker]') || [])];
+    const closePickers = pickers.map(picker => bindPicker(modal, picker));
+    modal.addEventListener?.('click', event => {
+      pickers.forEach((picker, index) => { if (!picker.contains(event.target)) closePickers[index](); });
+    });
     modal.querySelector('[data-nsa-audio-voice-preview]')?.addEventListener('click', event => {
       if (voice?.value && typeof previewVoice === 'function') previewVoice(voice.value, event.currentTarget);
     });
@@ -97,7 +208,7 @@
       stopPreview();
       const item = (plan.music || []).find(row => row._key === music?.value);
       const url = item?.preview_url || item?.previewUrl || item?.file_url || item?.url || '';
-      if (!url) return;
+      if (!url) { event.currentTarget.textContent = '暂无试听'; return; }
       previewAudio = new Audio(url);
       previewAudio.addEventListener('ended', stopPreview, { once: true });
       previewAudio.play().catch(() => { event.currentTarget.textContent = '无法试听'; stopPreview(); });
@@ -129,7 +240,7 @@
     return { voiceId: state.voiceId, voiceName: state.voiceName, bgmAsset };
   }
 
-  const api = { explicitVoiceGender, recommendVoice, load, html, bind, read, apply, stopPreview };
+  const api = { explicitVoiceGender, recommendVoice, musicIdentity, musicKey, load, html, bind, read, apply, stopPreview };
   if (typeof window !== 'undefined') window.NewStoryAdAudioPreflight = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

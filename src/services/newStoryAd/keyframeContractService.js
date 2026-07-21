@@ -6,7 +6,13 @@ const shotDesign = require('./shotDesignService');
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
   if (!value || typeof value !== 'object') return value;
-  const ignored = new Set(['contract_fingerprint', 'contract_compiler_signature', 'compiled_at']);
+  // Audit and transport timestamps are not part of the visual contract. Including
+  // them made an unchanged product identity look semantically different whenever
+  // it was re-saved or re-verified.
+  const ignored = new Set([
+    'contract_fingerprint', 'contract_compiler_signature', 'compiled_at',
+    'created_at', 'updated_at', 'checked_at', 'verified_at',
+  ]);
   return Object.keys(value).sort().reduce((out, childKey) => {
     if (!ignored.has(childKey)) out[childKey] = canonicalContractValue(value[childKey], childKey);
     return out;
@@ -72,7 +78,10 @@ function buildKeyframeContracts(ctx, shots) {
       role: shot.role || shot.purpose || '',
       output_ratio: ctx.output_ratio,
       subject_lock: {
-        advertised_subject: ctx.product_subject,
+        // Once a product identity has been verified it is the canonical subject
+        // source. Generated/normalized brief text may become more descriptive,
+        // but must not silently invalidate media for the same product revision.
+        advertised_subject: ctx.product_contract?.advertised_subject || ctx.product_subject,
         forbidden: ctx.forbidden || [],
         task_isolation: 'only use current new_story_ad task context',
       },
