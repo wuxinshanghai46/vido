@@ -460,7 +460,6 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     updated_at: task.updated_at,
   };
 }
-
 function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = {}) {
   let tasks = storage.listTaskRows({ status, userId });
   const total = tasks.length;
@@ -2595,6 +2594,7 @@ async function generateVideoStage(taskId, options = {}) {
       if ((options.missing_only === true || options.missingOnly === true) && videoLineage.clipHasMediaFile(clips[index])) {
         return;
       }
+      if (preflightShotActions.get(index)?.action === 'review_only') return;
       initialIndexes.push(index);
       clips[index] = null;
     });

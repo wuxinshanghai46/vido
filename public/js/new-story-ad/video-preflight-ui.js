@@ -53,7 +53,8 @@
       toast('服务器返回的精确预检范围与所选单元不一致，本次没有提交视频模型', 'error'); return null;
     }
     const scopedBlocked = Array.isArray(scopedPreflight.blockers) && scopedPreflight.blockers.length > 0;
-    const scopedZeroCostOnly = scopedBlocked && Number(scopedPreflight.zero_cost_action_count || 0) > 0;
+    const scopedZeroCostOnly = Number(scopedPreflight.paid_unit_count || 0) === 0
+      && Number(scopedPreflight.zero_cost_action_count || 0) > 0;
     const audioPlan = mode === 'quality' && !scopedBlocked && loadAudioPlan ? await loadAudioPlan() : null;
     const accepted = await confirmAction({
       title: '确认精确执行范围与费用',

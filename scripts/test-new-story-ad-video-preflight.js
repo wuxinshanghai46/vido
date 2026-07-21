@@ -62,6 +62,9 @@ assert.strictEqual(evidenceOnly.paid_unit_count, 0, 'missing cross-shot evidence
 assert.strictEqual(evidenceOnly.review_only_count, 1);
 assert.strictEqual(evidenceOnly.shots[0].review_scope, 'cross_shot');
 assert.match(evidenceOnly.shots[0].label, /不重新生成/);
+assert.strictEqual(evidenceOnly.units.length, 1, 'evidence-only review must be selectable in the unit picker');
+assert.strictEqual(evidenceOnly.units[0].paid, false);
+assert.strictEqual(evidenceOnly.units[0].review_scope, 'cross_shot');
 
 const targeted = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses, mode: 'economy', providerRoute: 'deyunai/seedance', onlyIndexes: [3],

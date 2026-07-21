@@ -242,11 +242,11 @@ function buildVideoPreflight({
       ? new Set(onlyIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < reconciledShots.length))
       : null;
     if (requested?.size) shotPlans = shotPlans.filter(item => requested.has(item.index));
-    units = shotPlans.filter(item => !['reuse', 'review_only'].includes(item.action)).map(item => ({
-      id: `economy-shot-${item.shot_index}`,
+    units = shotPlans.filter(item => item.action !== 'reuse').map(item => ({
+      id: `${item.action === 'review_only' ? 'review' : 'economy'}-shot-${item.shot_index}`,
       member_indexes: [item.index], shots: [item.shot_index], title: item.title,
       action: item.action, label: item.label, paid: item.paid, duration_sec: sceneBlockService.durationOf(shots[item.index] || {}),
-      input_strategy: item.input_strategy || '', changes: item.changes || [],
+      input_strategy: item.input_strategy || '', review_scope: item.review_scope || '', changes: item.changes || [],
     }));
     sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, { ...executionOptions, preserve_existing_topology: true });
   }
@@ -350,7 +350,7 @@ function publicVideoPreflight(plan = {}) {
     units: (plan.units || []).map(unit => ({
       id: unit.id, shots: unit.shots, title: unit.title, action: unit.action, label: unit.label,
       paid: unit.paid, continuous: unit.continuous === true, duration_sec: unit.duration_sec,
-      input_strategy: unit.input_strategy || '', changes: unit.changes || [],
+      input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', changes: unit.changes || [],
     })),
     scope: plan.scope || {},
     generated_at: plan.generated_at,
