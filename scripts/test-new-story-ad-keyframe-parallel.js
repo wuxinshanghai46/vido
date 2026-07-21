@@ -377,6 +377,62 @@ async function testStrictMissingFillPreservesExistingFrames() {
   }
 }
 
+async function testStrictMissingFillNeverAutoRegeneratesAfterQaRejection() {
+  const owner = { id: 'strict-missing-qa-owner', role: 'user' };
+  const taskId = service.createTask({
+    brief: '补齐模式 QA 拒绝后不得自动产生第二次付费图片调用',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+  }, owner).task.id;
+  storage.saveOutput(taskId, 'context', {
+    brief: '补齐模式 QA 拒绝后不得自动产生第二次付费图片调用',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+    scene_assets: [],
+    assets: [],
+  });
+  storage.saveOutput(taskId, 'storyboard_table', [{
+    index: 1,
+    title: '唯一缺失镜头',
+    visual: '产品静态展示，不得出现人物',
+    action: '保持稳定',
+    subject_type: 'product_only',
+    characters: [],
+  }]);
+
+  const originalGenerateImage = mediaAdapter.generateImage;
+  const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
+  const originalProductReview = productKeyframeQa.reviewProductKeyframe;
+  let imageCalls = 0;
+  mediaAdapter.generateImage = async ({ filename = '' } = {}) => {
+    imageCalls += 1;
+    return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/no-charge' };
+  };
+  personKeyframeQa.reviewPersonKeyframe = async () => ({
+    pass: false,
+    status: 'rejected',
+    visible_human: true,
+    conflicts: ['画面出现了合同禁止的人物'],
+    retry_instruction: '移除人物',
+  });
+  productKeyframeQa.reviewProductKeyframe = async () => ({ pass: true, status: 'not_applicable', conflicts: [] });
+  try {
+    await assert.rejects(
+      () => service.generateKeyframesStage(taskId, { missing_images_only: true }),
+      error => error?.code === 'KEYFRAME_BATCH_PARTIAL_FAILURE',
+    );
+    assert.equal(imageCalls, 1, '严格补齐模式即使 QA 拒绝也只能调用一次图片供应商');
+    const frame = storage.getOutput(taskId, 'keyframes')[0];
+    assert.equal(frame.candidates.length, 1, '首张结果应保留供人工检查，不得自动付费重生');
+    assert.equal(frame.candidates[0].status, 'rejected');
+    assert.equal(frame.current_generation_status, 'failed');
+  } finally {
+    mediaAdapter.generateImage = originalGenerateImage;
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
+  }
+}
+
 function testConfigurationAndContracts() {
   assert.strictEqual(scheduler.resolveConcurrency({}, 8, {}), 2);
   assert.strictEqual(scheduler.resolveConcurrency({ keyframe_concurrency: 99 }, 8, {}), 3);
@@ -539,6 +595,7 @@ async function main() {
   await testStageIntegrationWithoutPaidProvider();
   await testFailedBatchKeepsStructuredState();
   await testStrictMissingFillPreservesExistingFrames();
+  await testStrictMissingFillNeverAutoRegeneratesAfterQaRejection();
   console.log('new-story-ad keyframe parallel tests passed');
 }
 

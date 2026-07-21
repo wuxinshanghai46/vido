@@ -1561,9 +1561,7 @@ async function generateKeyframesStage(taskId, options = {}) {
       const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
       const productRequired = productIdentity.shotProductRequired(ctx, shot, contracts[i] || {});
       const requireVisualQa = !!sceneReference || shotNeedsPerson || personForbidden || productRequired;
-      const maxQaRetries = requireVisualQa
-          ? Math.max(0, Math.min(1, Number(options.max_scene_retries ?? options.maxSceneRetries ?? 1) || 0))
-        : 0;
+      const maxQaRetries = keyframeTarget.qaRetryLimit(options, requireVisualQa);
       let accepted = null;
       let qa = null;
       let feedback = '';
