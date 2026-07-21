@@ -175,6 +175,8 @@ async function main() {
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('视觉模型全部失败'), { code: 'VISION_QA_UNAVAILABLE' })), true);
   assert.strictEqual(service.isQaInfrastructureError(new Error('视觉模型未返回有效 JSON')), true);
   assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('vision response schema invalid'), { code: 'VISION_QA_SCHEMA_INVALID' })), true);
+  assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('供应商返回 5xx（供应商：500/UNKXXXO004IFR）'), { code: 'PROVIDER_5XX_AMBIGUOUS' })), false);
+  assert.strictEqual(service.isQaInfrastructureError(Object.assign(new Error('图片模型请求超时'), { code: 'IMAGE_ATTEMPTS_EXHAUSTED' })), false);
   assert.match(service.structuredQaFeedback({ mismatch_reasons: ['机位不一致'] }, { conflicts: ['人物身份不一致'] }, {}), /场景空间：机位不一致[\s\S]*人物身份：人物身份不一致/);
   storage.saveOutput(taskId, 'storyboard_table', Array.from({ length: 6 }, (_, index) => ({ index: index + 1 })));
   assert(service.keyframeStageBudgetMs(taskId, {}) > 15 * 60 * 1000, '多镜头批次不应再受固定 15 分钟限制');

@@ -241,38 +241,65 @@ async function testFailedBatchKeepsStructuredState() {
     scene_assets: [],
     assets: [],
   });
-  storage.saveOutput(taskId, 'storyboard_table', [{
-    index: 1, title: '失败镜头', visual: '任务主体静态展示', action: '保持静止', subject_type: 'product_only', characters: [],
-  }]);
-  storage.saveOutput(taskId, 'keyframe_contracts', [{
-    contract_fingerprint: 'failure-contract-v1', visual_contract: {}, continuity_lock: { transition_type: 'hard_cut' },
-  }]);
+  storage.saveOutput(taskId, 'storyboard_table', Array.from({ length: 3 }, (_, index) => ({
+    index: index + 1,
+    title: index === 1 ? '失败镜头' : `成功镜头 ${index + 1}`,
+    visual: `任务主体静态展示 ${index + 1}`,
+    action: '保持静止',
+    scene_id: `independent-scene-${index + 1}`,
+    subject_type: 'product_only',
+    characters: [],
+  })));
+  storage.saveOutput(taskId, 'keyframe_contracts', Array.from({ length: 3 }, (_, index) => ({
+    contract_fingerprint: `failure-contract-v${index + 1}`,
+    visual_contract: {},
+    continuity_lock: { transition_type: 'hard_cut' },
+  })));
 
   const originalGenerateImage = mediaAdapter.generateImage;
-  mediaAdapter.generateImage = async () => {
-    const error = new Error('供应商暂时不可用');
+  const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
+  const originalProductReview = productKeyframeQa.reviewProductKeyframe;
+  let active = 0;
+  let peak = 0;
+  mediaAdapter.generateImage = async ({ filename = '' } = {}) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await delay(20);
+    active -= 1;
+    if (!/_02_/.test(filename)) return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/image' };
+    const error = new Error('图片生成失败，已尝试 1 个模型并停止继续调用：deyunai/gpt-image-2：供应商返回 5xx；该状态可能同时表示版权/审核拦截或服务异常，已停止自动付费重试，请先检查授权和输入内容。（供应商：500/UNKXXXO004IFR）');
     error.code = 'PROVIDER_5XX_AMBIGUOUS';
     error.retryable = false;
     throw error;
   };
+  personKeyframeQa.reviewPersonKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  productKeyframeQa.reviewProductKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
   try {
     await assert.rejects(
-      () => service.generateKeyframesStage(taskId, { parallel_keyframes: false }),
+      () => service.generateKeyframesStage(taskId, { parallel_keyframes: true, keyframe_concurrency: 3 }),
       error => error?.code === 'KEYFRAME_BATCH_PARTIAL_FAILURE'
         && error?.retryable === true
-        && error?.details?.[0]?.shot_number === 1,
+        && error?.details?.length === 1
+        && error?.details?.[0]?.shot_number === 2,
     );
-    const [frame] = storage.getOutput(taskId, 'keyframes');
+    const frames = storage.getOutput(taskId, 'keyframes');
+    const frame = frames[1];
+    assert.equal(frames[0].current_generation_status, 'accepted');
+    assert.equal(frames[2].current_generation_status, 'accepted');
     assert.equal(frame.current_generation_status, 'failed');
     assert.equal(frame.latest_attempt.status, 'failed');
     assert.equal(frame.latest_attempt.error_code, 'PROVIDER_5XX_AMBIGUOUS');
+    assert.equal(frame.candidates.length, 0, '供应商失败前没有候选图，不能伪装成 QA-only 异常');
+    assert.equal(peak, 3, '供应商错误分类必须覆盖允许的最大并发场景');
     const task = storage.getTask(taskId);
     assert.equal(task.error_code, 'KEYFRAME_BATCH_PARTIAL_FAILURE');
-    assert.deepEqual(task.generation_progress.failed_shots, [1]);
+    assert.deepEqual(task.generation_progress.failed_shots, [2]);
     const stage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
-    assert.equal(stage.diagnostics.failures[0].shot_number, 1);
+    assert.equal(stage.diagnostics.failures[0].shot_number, 2);
   } finally {
     mediaAdapter.generateImage = originalGenerateImage;
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
   }
 }
 

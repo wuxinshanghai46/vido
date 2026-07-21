@@ -11,6 +11,17 @@ function attempt({ generationId = '', status = 'failed', error = null, candidate
   };
 }
 
+function isQaInfrastructureError(error) {
+  const code = String(error?.code || '').toUpperCase();
+  // Explicit media-generation codes are authoritative even when their text
+  // contains the same 5xx wording as a downstream vision-QA outage.
+  if (/^(?:IMAGE_|PROVIDER_|REFERENCE_IMAGE_|INPUT_)/.test(code)
+    || ['INVALID_PROVIDER_INPUT', 'AUTH_CONFIG', 'MODEL_CONFIG', 'PROVIDER_BILLING', 'RATE_LIMIT'].includes(code)) return false;
+  if (['VISION_QA_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID', 'VISION_QA_IMAGE_UNREADABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
+  const message = String(error?.message || error || '');
+  return /视觉模型全部失败|视觉模型未返回有效\s*JSON|视觉\s*QA.*(?:JSON|结构|评分)|vision.*invalid\s*json|invalid\s*json.*vision|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
+}
+
 function describeBatchFailures({ targetIndexes = [], keyframes = [], shots = [], isComplete = () => false } = {}) {
   return targetIndexes
     .filter(index => !isComplete(keyframes[index]) || keyframes[index]?.qa?.pass !== true)
@@ -58,4 +69,4 @@ function taskSummaryPatch(task = {}, keyframes = []) {
   };
 }
 
-module.exports = { attempt, describeBatchFailures, batchError, taskSummaryPatch };
+module.exports = { attempt, isQaInfrastructureError, describeBatchFailures, batchError, taskSummaryPatch };

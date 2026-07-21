@@ -184,12 +184,7 @@ function keyframeStageBudgetMs(taskId, options = {}) {
   return Math.min(60 * 60 * 1000, Math.max(10 * 60 * 1000, (4 + targetCount * 4) * 60 * 1000));
 }
 
-function isQaInfrastructureError(error) {
-  const code = String(error?.code || '').toUpperCase();
-  if (['VISION_QA_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID', 'VISION_QA_IMAGE_UNREADABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
-  const message = String(error?.message || error || '');
-  return /视觉模型全部失败|视觉模型未返回有效\s*JSON|视觉\s*QA.*(?:JSON|结构|评分)|vision.*invalid\s*json|invalid\s*json.*vision|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
-}
+const isQaInfrastructureError = keyframeFailure.isQaInfrastructureError;
 
 async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
   let lastError = null;
@@ -1773,13 +1768,17 @@ async function generateKeyframesStage(taskId, options = {}) {
       currentAttemptFailed = true;
       currentError = err;
       retryRequired = keyframeParallel.isThrottleError(err) && err.keyframe_candidate_generated !== true && scheduleMeta.throttle_retry !== true;
+      // A QA outage is possible only after a candidate image exists. This
+      // phase boundary prevents raw/unknown image-provider 5xx text from being
+      // misclassified as a QA-only failure before the first state checkpoint.
+      const qaUnavailable = err.keyframe_candidate_generated === true && isQaInfrastructureError(err);
       attempts.push({ index: i, ok: false, code: err.code || 'KEYFRAME_FAILED', error: String(err.message || err) });
       if (previousAcceptedFrame) {
         if (!retryRequired) {
           retainedRegenerationFailures.push({
             index: i,
             error: String(err.message || err),
-            code: isQaInfrastructureError(err) ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
+            code: qaUnavailable ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
           });
         }
         keyframes[i] = {
@@ -1790,9 +1789,9 @@ async function generateKeyframesStage(taskId, options = {}) {
           error: '',
           error_code: '',
           regeneration_error: String(err.message || err),
-          regeneration_error_code: isQaInfrastructureError(err) ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
+          regeneration_error_code: qaUnavailable ? 'VISION_QA_UNAVAILABLE' : (err.code || 'KEYFRAME_FAILED'),
           regeneration_failed_at: new Date().toISOString(),
-          current_generation_status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected'),
+          current_generation_status: retryRequired ? 'retrying_serial' : (qaUnavailable ? 'qa_unavailable' : 'rejected'),
           current_generation_id: generationProgress.generation_id,
           contract: contracts[i] || previousAcceptedFrame.contract || null,
           candidates: [...(Array.isArray(previousAcceptedFrame.candidates) ? previousAcceptedFrame.candidates : []), ...shotCandidates]
@@ -1800,13 +1799,13 @@ async function generateKeyframesStage(taskId, options = {}) {
             .slice(-8),
           latest_attempt: keyframeFailure.attempt({
             generationId: generationProgress.generation_id,
-            status: retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'rejected'),
+            status: retryRequired ? 'retrying_serial' : (qaUnavailable ? 'qa_unavailable' : 'rejected'),
             error: err,
             candidates: shotCandidates,
           }),
         };
       } else {
-        const failedStatus = retryRequired ? 'retrying_serial' : (isQaInfrastructureError(err) ? 'qa_unavailable' : 'failed');
+        const failedStatus = retryRequired ? 'retrying_serial' : (qaUnavailable ? 'qa_unavailable' : 'failed');
         keyframes[i] = {
           ...(keyframes[i] || {}),
           shot_index: i,
