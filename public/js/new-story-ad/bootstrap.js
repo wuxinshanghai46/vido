@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260721-unified-dialog-v4';
+  const SCRIPT_VERSION = '20260721-audio-preflight-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',
@@ -14,6 +14,7 @@
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/actor-library.js',
+    '/js/new-story-ad/audio-preflight.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad-legacy-ui.js',
   ];

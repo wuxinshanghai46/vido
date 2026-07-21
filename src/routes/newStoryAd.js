@@ -14,6 +14,7 @@ const videoAdapter = require('../services/newStoryAd/videoAdapter');
 const composeService = require('../services/newStoryAd/composeService');
 const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
 const jobService = require('../services/newStoryAd/jobService');
+const mediaPipeline = require('../services/newStoryAd/mediaPipelineService');
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
 const videoCore = require('../services/videoGenerationCore');
@@ -1086,9 +1087,13 @@ router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
   const body = { ...(req.body || {}), require_video_preflight: true };
   service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'media', async job => {
-    // 视频阶段负责幂等配音判断；整个媒体链保持一个后台任务，关闭浏览器也不会中断。
-    await service.generateVideoStage(req.params.id, { ...body, missing_only: true, generation_id: job.generationId });
-    await service.composeStage(req.params.id, { ...body, generation_id: job.generationId });
+    // 同一后台任务先验证可选配音，再生成纯视觉连续段，最后只在本地混音合成。
+    await mediaPipeline.runMediaPipeline({
+      taskId: req.params.id,
+      options: body,
+      generationId: job.generationId,
+      service,
+    });
   }, { deadlineMs: 60 * 60 * 1000 });
 }));
 

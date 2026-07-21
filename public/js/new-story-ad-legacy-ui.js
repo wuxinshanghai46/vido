@@ -2191,6 +2191,9 @@
     const quality = mode === 'quality';
     const blocked = Array.isArray(preflight.blockers) && preflight.blockers.length > 0;
     const zeroCostOnly = blocked && Number(preflight.zero_cost_action_count || 0) > 0;
+    let audioPlan = null; if (quality && !blocked && window.NewStoryAdAudioPreflight) audioPlan = await window.NewStoryAdAudioPreflight.load({
+      state, api, loadVoices: loadNsaVoices, musicText: musicSearchText(),
+    });
     const description = quality
       ? '整条广告只需提交一次。系统会把空间、时间、人物状态和动作交接兼容的相邻分镜组织成 15 秒以内的连续场景段；明确的转场、场景变化和人物模式变化仍保持独立，避免为了合并而破坏剧情。'
       : '系统已根据关键帧、上次失败原因和供应商状态自动选择：复用已有证据、执行本地确定性运镜，或真正改变输入方式后再生成。不会拿原提示词原样重抽；复审仍未通过也不会自动付费重做。';
@@ -2210,12 +2213,22 @@
         { value: `¥${Number(costPlan.maximum_cost_rmb || 0).toFixed(2)}`, label: '人民币最高费用', tone: Number(costPlan.maximum_cost_rmb || 0) ? 'warning' : 'pass' },
         { value: '0', label: '自动重试', tone: 'pass' },
       ],
+      customHtml: audioPlan ? window.NewStoryAdAudioPreflight.html(audioPlan, escapeHtml) : '',
+      onMount: audioPlan ? modal => window.NewStoryAdAudioPreflight.bind(modal, audioPlan, { previewVoice: previewNsaVoice }) : null,
+      readSelection: audioPlan ? modal => window.NewStoryAdAudioPreflight.read(modal, audioPlan) : null,
       items: videoPreflightItems(preflight),
       note: quality
         ? `整条广告预计生成 ${Number(preflight.paid_video_seconds || 0)} 秒付费视频素材；系统按连续场景段提交并自动合成，确认后仍不会自动重试。点击取消不会改变按钮和任务状态。`
         : '只有方案中明确标记为“按修正方案生成一次”的镜头会产生视频模型费用；费用或内容变化后必须重新确认。',
     });
-    if (!accepted || (blocked && !zeroCostOnly)) return null;
+    window.NewStoryAdAudioPreflight?.stopPreview?.(); if (!accepted || (blocked && !zeroCostOnly)) return null;
+    if (audioPlan) try {
+      await window.NewStoryAdAudioPreflight.apply(accepted, { state, api });
+      renderAll(); scheduleAutoSave('video_audio_preflight');
+    } catch (error) {
+      toast(error.message || '声音配置没有准备完成，本次没有提交视频模型', 'error');
+      return null;
+    }
     return {
       preflight,
       zeroCostOnly,
@@ -4580,7 +4593,7 @@
     tone = 'primary',
     facts = [],
     items = [],
-    note = '',
+    note = '', customHtml = '', onMount = null, readSelection = null,
   } = {}) {
     return new Promise(resolve => {
       const modal = document.createElement('div');
@@ -4596,6 +4609,7 @@
         <div class="dh-nsa-confirm-body">
           ${description ? `<p>${escapeHtml(description)}</p>` : ''}
           ${factHtml}
+          ${customHtml || ''}
           ${itemHtml}
           ${note ? `<div class="dh-nsa-confirm-note">${escapeHtml(note)}</div>` : ''}
         </div>
@@ -4614,7 +4628,12 @@
       };
       modal.addEventListener('click', event => {
         if (event.target === modal || event.target.closest('[data-nsa-confirm-cancel]')) finish(false);
-        else if (event.target.closest('[data-nsa-confirm-submit]')) finish(true);
+        else if (event.target.closest('[data-nsa-confirm-submit]')) {
+          const selected = typeof readSelection === 'function' ? readSelection(modal) : { value: true };
+          const error = modal.querySelector('[data-nsa-audio-error]');
+          if (selected?.error) { if (error) { error.textContent = selected.error; error.hidden = false; } return; }
+          finish(Object.prototype.hasOwnProperty.call(selected || {}, 'value') ? selected.value : selected);
+        }
       });
       modal.addEventListener('keydown', event => {
         if (event.key === 'Escape') {
@@ -4625,6 +4644,7 @@
       document.body.appendChild(modal);
       document.documentElement.classList.add('dh-nsa-modal-open');
       modal.style.display = 'flex';
+      if (typeof onMount === 'function') onMount(modal);
       modal.querySelector('[data-nsa-confirm-cancel]')?.focus();
     });
   }

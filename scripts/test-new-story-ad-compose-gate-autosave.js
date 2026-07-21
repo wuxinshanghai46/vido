@@ -157,8 +157,11 @@ assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-selected'), 'the cli
 assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
 assert(wizardCss.includes('.dh-nsa-video-status-badge'), 'each storyboard row must visibly label video state');
 const route = read('src/routes/newStoryAd.js');
+const mediaPipeline = read('src/services/newStoryAd/mediaPipelineService.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
-assert(route.includes("missing_only: true"), 'media retries must preserve completed video clips');
+assert(mediaPipeline.includes('missing_only: true'), 'media retries must preserve completed video clips');
+assert(mediaPipeline.includes('visual_only: true'), 'whole-ad media generation must keep paid video clips visual-only');
+assert(mediaPipeline.indexOf('generateTtsStage') < mediaPipeline.indexOf('generateVideoStage'), 'selected TTS must be validated before paid video generation');
 assert(route.includes("router.get('/tasks/:id/video/preflight'"), 'server must expose a zero-generation video preflight endpoint');
 assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body)'), 'server must reject unconfirmed or stale video plans before queueing');
 
