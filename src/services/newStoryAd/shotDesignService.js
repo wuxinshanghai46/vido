@@ -68,7 +68,7 @@ function hasExplicitFinishRegionMapping(value = '') {
 function hasSegmentedSurfaceIntent(value = '') {
   const text = structuredText(value, 3000);
   if (!text) return false;
-  return /拼接|拼板|板块|模块(?:化)?|网格(?:墙)?|样品墙|展示墙|分区(?:墙|饰面|表面)|不同(?:材质|质感|饰面)[^。；;]{0,24}(?:拼|组合|并列)|panel(?:led|s)?|tile(?:d|s)?|grid|modular|segmented|patchwork|visible\s+(?:joint|seam)|sample\s+(?:wall|grid|blocks?)/i.test(text);
+  return /拼接|拼板|板块|模块(?:化)?|网格(?:墙)?|样品墙|展示墙|分区(?:墙|饰面|表面)|不同(?:材质|质感|饰面|颜色|色彩|涂层|面料|车漆|样品)[^。；;]{0,30}(?:拼|组合|并列)|panel(?:led|s)?|tile(?:d|s)?|grid|modular|segmented|patchwork|visible\s+(?:joint|seam)|sample\s+(?:wall|grid|blocks?)|(?:different|multiple|contrasting)\s+(?:materials?|finishes?|textures?|colou?rs?|coatings?)[^.;]{0,40}(?:combin|splic|contrast|arrang|side\s+by\s+side)/i.test(text);
 }
 
 /** Resolve contradictory select values and free-text requirements before generation. */
@@ -189,6 +189,7 @@ function compileShotDesign({ shot = {}, sceneSurface = null, sceneText = '' } = 
         reason: shotRequestsSegmentation
           ? 'shot_segmentation_intent_reinterpreted_as_finish_variation'
           : 'scene_continuous_surface_inherited',
+        ...(shotRequestsSegmentation ? { prompt_semantics_version: 2 } : {}),
       },
     };
   }
@@ -220,7 +221,87 @@ function compileBoundShotDesign(shot = {}, sceneLock = null, sceneAsset = null) 
 
 function surfaceConflictPrompt(resolution = null) {
   if (resolution?.conflict !== true) return '';
-  return 'Surface conflict resolution (authoritative): any narrative words about combining, splicing or contrasting multiple finishes describe optical colour, reflectivity or microtexture variation on the SAME monolithic plane. They do not authorize panels, tiles, sample blocks, grids, borders, grooves, gaps or visible joints.';
+  return 'Surface conflict resolution (authoritative): interpret all combining, splicing or contrasting finishes only as boundary-free colour, reflectivity and microtexture variation on the SAME monolithic plane. They do not authorize panels, tiles, sample blocks, grids, zones or joints.';
+}
+
+function negativeSurfaceSentence(value = '') {
+  return /(?:禁止|不得|不要|严禁|避免|不能|不可)[^。；;]{0,80}(?:拼接|拼板|板块|模块|网格|样品墙|展示墙|分区|接缝)|\b(?:no|never|forbid|avoid|without)\b[^.;]{0,100}(?:panel|tile|grid|module|segment|patchwork|sample|seam|joint)/i.test(value);
+}
+
+/**
+ * Rewrite only the narrative rendering sent to image providers. The stored
+ * storyboard remains untouched, but a scene-authoritative continuous surface
+ * must never be described to the provider as physically segmented.
+ */
+function resolveSurfaceNarrative(value = '', resolution = null) {
+  const source = clean(value, 3000);
+  if (!source || resolution?.conflict !== true) return source;
+  return source
+    .split(/([。！？；;.!?])/)
+    .map(segment => {
+      if (!segment || /^[。！？；;.!?]$/.test(segment) || negativeSurfaceSentence(segment)) return segment;
+      let next = segment;
+      next = next.replace(
+        /(?:等)?不同(?:材质|质感|饰面|颜色|色彩|涂层|面料|车漆|样品)[^。；;]{0,30}?(?:和谐|自然|无缝)?(?:拼接|组合|并列)(?:并列|组合)?(?:而成)?/g,
+        '这些任务指定质感在同一连续基面上通过无边界的颜色、反射率和微纹理变化自然过渡',
+      );
+      next = next.replace(/(?:和谐|自然)?拼接(?:而成)?/g, '在同一连续基面上无边界自然过渡');
+      next = next.replace(/(?:拼板|模块化板块|矩形拼板|网格分割|样品墙|展示墙|分区墙)/g, '同一连续基面上的微观纹理变化');
+      next = next.replace(/不同区域/g, '同一连续基面上的不同观察位置');
+      next = next.replace(
+        /((?:材质|质感|饰面|颜色|色彩)[^。；;]{0,24}?)(?:组合|并列)(?:并列|组合)?/g,
+        '$1在同一连续基面上无边界过渡呈现',
+      );
+      next = next.replace(
+        /\b(?:(?:patchwork|panelled|paneled|tiled|modular|segmented|sample\s+(?:wall|grid|blocks?))(?:\s+(?:patchwork|panelled|paneled|tiled|modular|segmented))*)\b/gi,
+        'boundary-free optical and microtexture variation across one continuous plane',
+      );
+      next = next.replace(
+        /\b(?:different|multiple|contrasting)\s+(?:materials?|finishes?|textures?|colou?rs?|coatings?)(?:\s+(?:are|is|be|being|to\s+be))?\s+(?:combine|combining|combined|splice|splicing|spliced|contrast|contrasted|arrange|arranged)\b/gi,
+        'task-supported finish qualities transition without boundaries across one continuous plane',
+      );
+      return next.replace(/呈现呈现/g, '呈现');
+    })
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function narrativeSegments(prompt = '') {
+  const labels = /^(?:Campaign brief|Advertised subject|User-edited visual override|Visual|Action|Current shot action|Dialogue or copy|Composition|Subject lock|Commercial evidence|Style):/i;
+  return String(prompt || '')
+    .split(/\r?\n|\s+\|\s+/)
+    .map(value => value.trim())
+    .filter(value => labels.test(value));
+}
+
+function unresolvedSurfaceNarratives(prompt = '') {
+  return narrativeSegments(prompt)
+    .filter(value => !negativeSurfaceSentence(value))
+    .filter(value => hasSegmentedSurfaceIntent(value));
+}
+
+function surfacePromptInvariantIssues(prompt = '', design = {}) {
+  if (design?.surface_resolution?.conflict !== true) return [];
+  const source = String(prompt || '');
+  const issues = [];
+  if (!/Surface conflict resolution \(authoritative\):/i.test(source)) issues.push('missing_surface_conflict_resolution');
+  if (!/Surface topology lock: ONE monolithic uninterrupted visual plane/i.test(source)) issues.push('missing_continuous_surface_lock');
+  if (!/Seam policy: ZERO visible joints/i.test(source)) issues.push('missing_hidden_seam_lock');
+  const unresolved = unresolvedSurfaceNarratives(source);
+  if (unresolved.length) issues.push('unresolved_segmented_surface_narrative');
+  return issues;
+}
+
+function assertSurfacePromptConsistent(prompt = '', design = {}) {
+  const issues = surfacePromptInvariantIssues(prompt, design);
+  if (!issues.length) return prompt;
+  const error = new Error(`关键帧提示词仍包含未消解的场景表面冲突：${issues.join(', ')}`);
+  error.code = 'KEYFRAME_PROMPT_CONTRACT_CONFLICT';
+  error.status = 422;
+  error.retryable = false;
+  error.details = { issues, unresolved_segments: unresolvedSurfaceNarratives(prompt).map(value => clean(value, 240)).slice(0, 4) };
+  throw error;
 }
 
 function surfacePrompt(surface = null, shotScope = 'auto') {
@@ -233,20 +314,20 @@ function surfacePrompt(surface = null, shotScope = 'auto') {
     lines.push('This is an isolated product/sample comparison insert. Divisions between samples belong only to this insert and must not redefine the topology of the master environment used by other shots.');
   }
   if (topology?.mode === 'continuous') {
-    lines.push('Surface topology lock: ONE monolithic uninterrupted visual plane. ZERO full-height/full-width boundaries, gaps, grooves, grids, sample zones or modules. Task construction nouns do not authorize segmentation.');
+    lines.push('Surface topology lock: ONE monolithic uninterrupted visual plane; ZERO full-height/full-width boundaries, gaps, grooves, grids, sample zones, panels or modules.');
   } else if (topology?.mode === 'segmented') {
     lines.push('Surface topology lock: intentional segmented construction is required; make the segment logic physically coherent and task-specific.');
   } else if (topology?.mode === 'modular') {
     lines.push('Surface topology lock: a modular system is required; preserve its repeat logic and physical assembly details.');
   }
-  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: ZERO visible joints, including faint or recessive ones. Fully conceal assembly; no floor-to-ceiling or full-width line or tonal edge.');
+  if (topology?.seam_policy === 'hidden') lines.push('Seam policy: ZERO visible joints or sustained dividing edges; conceal all assembly.');
   if (topology?.seam_policy === 'visible') lines.push('Seam policy: visible joints are intentional evidence and must follow the task-defined construction logic.');
   if (topology?.seam_policy === 'task_defined') lines.push('Seam policy: follow only seams explicitly required by this shot or its task references; do not add generic decorative divisions.');
-  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: one coherent dominant finish over the primary surface. Allow only boundary-free micro-variation; no blocks, bands, swatches or region edges.');
+  if (topology?.finish_distribution === 'uniform') lines.push('Finish distribution: one coherent dominant finish over the primary surface with boundary-free micro-variation; no blocks, bands, swatches or region edges.');
   if (topology?.finish_distribution === 'gradient') lines.push('Finish distribution: use one continuous gradient without turning it into separate swatches or sample blocks.');
   if (topology?.finish_distribution === 'regional') lines.push('Finish distribution: use regional variation only at the explicitly named task location. Blend the transition without a seam, border, groove, gap or full-span tonal division, and preserve one continuous construction topology.');
   if (topology?.finish_distribution === 'sample_comparison') lines.push('Finish distribution: show clearly distinguishable comparison samples as product evidence within this shot only.');
-  if (topology?.notes) lines.push(`Task-specific surface note: ${topology.notes}`);
+  if (topology?.notes) lines.push(`Task-specific surface note: ${clean(topology.notes, 240)}`);
   return lines.join('\n');
 }
 
@@ -299,6 +380,10 @@ module.exports = {
   compileBoundShotDesign,
   surfacePrompt,
   surfaceConflictPrompt,
+  resolveSurfaceNarrative,
+  unresolvedSurfaceNarratives,
+  surfacePromptInvariantIssues,
+  assertSurfacePromptConsistent,
   keyframeEffectPrompt,
   motionEffectPrompt,
 };

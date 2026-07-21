@@ -18,6 +18,7 @@ const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
+const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const composeService = require('./composeService');
 const {
   bindShotsToScenes,
@@ -1195,15 +1196,26 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const personAsset = ctx.person_asset || {};
   const personSpec = ctx.person_spec || {};
   const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
-  const visualText = cleanText(shot.visual || shot.content_prompt || '', 900);
   const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
-  const actionText = cleanText(shot.action || shot.visual_action || '', 500);
   const previousFrame = options.previousFrame || null;
   const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
   const contractDesign = visualContract.shot_design;
   const design = contractDesign?.surface_resolution
     ? contractDesign
     : shotDesign.compileBoundShotDesign(shot, sceneLock, sceneAsset);
+  const resolveNarrative = (value, max) => cleanText(
+    shotDesign.resolveSurfaceNarrative(value, design.surface_resolution),
+    max,
+  );
+  const campaignBriefText = resolveNarrative(ctx.brief, 900);
+  const advertisedSubjectText = resolveNarrative(ctx.product_subject, 160);
+  const visualText = resolveNarrative(shot.visual || shot.content_prompt || '', 900);
+  const actionText = resolveNarrative(shot.action || shot.visual_action || '', 500);
+  const dialogueText = resolveNarrative(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300);
+  const compositionText = resolveNarrative(visualContract.composition, 300);
+  const subjectText = resolveNarrative(visualContract.subject, 300);
+  const evidenceText = resolveNarrative(visualContract.evidence, 300);
+  const styleText = resolveNarrative(visualContract.style, 260);
   const surfaceDesignText = shotDesign.surfacePrompt(design.surface_topology, design.shot_scope);
   const surfaceConflictText = shotDesign.surfaceConflictPrompt(design.surface_resolution);
   const keyframeEffectText = shotDesign.keyframeEffectPrompt(design.motion_effect);
@@ -1250,8 +1262,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   ].filter(Boolean).join('\n') : '';
   const parts = [
     'Photorealistic live-action commercial storyboard keyframe.',
-    `Campaign brief: ${cleanText(ctx.brief, 900)}`,
-    `Advertised subject: ${cleanText(ctx.product_subject, 160)}`,
+    `Campaign brief: ${campaignBriefText}`,
+    `Advertised subject: ${advertisedSubjectText}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
     userVisualOverride ? `User-edited visual override, highest priority: ${visualText}` : '',
     userVisualOverride ? 'User override mode: rebuild the keyframe from the edited visual and current style controls. Keep the current shot action when it is physically compatible with the edited visual; minimally adapt only to make the action plausible and visibly grounded.' : '',
@@ -1263,11 +1275,11 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     surfaceDesignText,
     surfaceConflictText,
     keyframeEffectText,
-    `Dialogue or copy: ${cleanText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '', 300)}`,
-    !userVisualOverride && visualContract.composition ? `Composition: ${cleanText(visualContract.composition, 300)}` : '',
-    !userVisualOverride && visualContract.subject ? `Subject lock: ${cleanText(visualContract.subject, 300)}` : '',
-    !userVisualOverride && visualContract.evidence ? `Commercial evidence: ${cleanText(visualContract.evidence, 300)}` : '',
-    visualContract.style ? `Style: ${cleanText(visualContract.style, 260)}` : '',
+    `Dialogue or copy: ${dialogueText}`,
+    !userVisualOverride && compositionText ? `Composition: ${compositionText}` : '',
+    !userVisualOverride && subjectText ? `Subject lock: ${subjectText}` : '',
+    !userVisualOverride && evidenceText ? `Commercial evidence: ${evidenceText}` : '',
+    styleText ? `Style: ${styleText}` : '',
     visualContract.scene_direction && visualContract.scene_direction !== 'auto' ? `Scene direction: ${cleanText(visualContract.scene_direction, 80)}` : '',
     visualContract.custom_scene_requirement ? `Custom scene requirement: ${cleanText(visualContract.custom_scene_requirement, 240)}` : '',
     !userVisualOverride && shotNeedsProduct ? `Product visibility: required, presence ${cleanText(visualContract.product_presence || 'medium', 40)}, lock ${cleanText(visualContract.product_lock_strength || 'standard', 40)}.` : '',
@@ -1290,14 +1302,24 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
     userVisualOverride ? 'The edited visual is the only source of truth for object layout, surface type, carrier, material form and composition.' : '',
     previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its lighting mood, material realism, framing discipline and commercial tone only where compatible with the edited visual.` : '',
-    !userVisualOverride && previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${cleanText(previousFrame.prompt, 500)}` : '',
+    !userVisualOverride && previousFrame?.prompt ? `Previous keyframe prompt summary for continuity only: ${resolveNarrative(previousFrame.prompt, 500)}` : '',
     userVisualOverride ? `Final priority: generate only this edited visual: ${visualText}. Any composition, object layout, carrier and material form must come from this edited visual, not from cached or generated fields.` : '',
     // 通用语义忠实约束：防止模型把抽象业务词擅自转成无关行业画面。
     'Semantic fidelity rule: visualize the current task brief, advertised subject, locked scene asset and current shot action literally. Do not replace an abstract business concept with unrelated industry symbols, charts, trading screens, stock-market dashboards, generic finance UI, random data walls or abstract technology panels unless the user brief or the edited shot explicitly asks for that visual category.',
     'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
     'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
   ];
-  return compactKeyframePrompt(parts);
+  const prompt = compactKeyframePrompt(parts);
+  return keyframePromptInvariants.assertPrompt(prompt, {
+    design,
+    sceneRequired: !!sceneLock,
+    personRequired: shotNeedsPerson,
+    personForbidden,
+    actorLocked: !!ctx.person_asset,
+    productRequired: shotNeedsProduct,
+    productLocked: !!productContract.identity,
+    userVisualOverride,
+  });
 }
 
 // Image providers commonly cap prompts around 2,500 characters. Keep every
@@ -1361,12 +1383,13 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
       const rank = value => /Semantic fidelity rule/i.test(value) ? 0 : (/^Forbidden:|Negative visual|no-human lock/i.test(value) ? 1 : (/Use a real camera look/i.test(value) ? 2 : 3));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
     } else if (category.name === 'design') {
-      const rank = value => /isolated product\/sample comparison insert/i.test(value) ? 0
-        : (/^Surface topology lock:/i.test(value) ? 1
-          : (/^Seam policy:/i.test(value) ? 2
-            : (/^Finish distribution:/i.test(value) ? 3
-              : (/^Task-specific surface note:/i.test(value) ? 4
-                : (/^Master environment only/i.test(value) ? 5 : 6)))));
+      const rank = value => /^Surface conflict resolution \(authoritative\):/i.test(value) ? 0
+        : (/isolated product\/sample comparison insert/i.test(value) ? 1
+          : (/^Surface topology lock:/i.test(value) ? 2
+            : (/^Seam policy:/i.test(value) ? 3
+              : (/^Finish distribution:/i.test(value) ? 4
+                : (/^Task-specific surface note:/i.test(value) ? 5
+                  : (/^Master environment only/i.test(value) ? 6 : 7))))));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
     }
     const selected = [...new Set(values)].slice(0, category.items || 1);
