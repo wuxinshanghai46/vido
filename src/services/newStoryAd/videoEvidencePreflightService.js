@@ -3,14 +3,16 @@ const videoFrameQa = require('./videoFrameQaService');
 const costAuthorization = require('./videoCostAuthorizationService');
 
 /** Prepare only local evidence needed at the boundary of paid scoped units. */
-async function preparePaidBoundaryEvidence(taskId, preflightPlan = {}, zeroCostOnly = false) {
+async function prepareRequiredBoundaryEvidence(taskId, preflightPlan = {}) {
   let clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
     ? storage.getOutput(taskId, 'video_clips')
     : [];
   const targetIndexes = [...new Set((preflightPlan.units || [])
     .filter(unit => unit.paid !== false)
-    .flatMap(unit => unit.member_indexes || []))];
-  if (zeroCostOnly || !targetIndexes.length) return clips;
+    .flatMap(unit => unit.member_indexes || []).concat(
+      (preflightPlan.shots || []).filter(item => item.action === 'review_only' && item.review_scope === 'cross_shot').map(item => item.index),
+    ))];
+  if (!targetIndexes.length) return clips;
   try {
     const evidence = await videoFrameQa.ensureBoundaryFrameEvidence({ taskId, clips, targetIndexes });
     clips = evidence.clips;
@@ -22,4 +24,4 @@ async function preparePaidBoundaryEvidence(taskId, preflightPlan = {}, zeroCostO
   }
 }
 
-module.exports = { preparePaidBoundaryEvidence };
+module.exports = { prepareRequiredBoundaryEvidence };

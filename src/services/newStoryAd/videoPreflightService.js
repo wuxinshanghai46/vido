@@ -130,6 +130,13 @@ function providerBillingBlocked(statuses = [], clips = [], indexes = null) {
   });
 }
 
+function continuityEvidenceOnlyFailureCanBeRechecked(clip = {}) {
+  if (!clipHasMedia(clip) || clip.qa?.pass !== true) return false;
+  const codes = [clip.error_code, clip.cross_shot_qa?.error_code, clip.cross_shot_qa?.code]
+    .map(value => text(value).toUpperCase());
+  return codes.includes('VIDEO_QA_EVIDENCE_MISSING');
+}
+
 function shotTitle(shot = {}, index = 0) {
   return text(shot.title) || `第 ${index + 1} 镜`;
 }
@@ -138,6 +145,10 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
   const title = shotTitle(shot, index);
   const changes = [];
   if (clipApproved(clip)) return { index, shot_index: index + 1, title, action: 'reuse', label: '保留已通过视频', paid: false, changes };
+  if (continuityEvidenceOnlyFailureCanBeRechecked(clip)) {
+    changes.push('保留现有视频，仅本地补齐上一镜尾帧证据并复审镜头交接，不重新调用视频生成模型');
+    return { index, shot_index: index + 1, title, action: 'review_only', review_scope: 'cross_shot', label: '只补证并复审交接（不重新生成）', paid: false, changes };
+  }
   if (peopleOnlyFailureCanBeRechecked(shot, keyframe, contract, clip)) {
     changes.push('以已确认关键帧中的人物/手部为准，修正人数与场景审核冲突');
     return { index, shot_index: index + 1, title, action: 'review_only', label: '只复审现有视频', paid: false, changes };
@@ -354,6 +365,7 @@ module.exports = {
   reconcileShots,
   cameraOnlyShot,
   peopleOnlyFailureCanBeRechecked,
+  continuityEvidenceOnlyFailureCanBeRechecked,
   repairInstruction,
   buildVideoPreflight,
   publicVideoPreflight,

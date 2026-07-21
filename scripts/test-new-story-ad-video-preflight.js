@@ -47,6 +47,22 @@ assert.strictEqual(economy.status, 'partial_ready');
 assert.strictEqual(economy.blockers[0].code, 'VIDEO_PROVIDER_BILLING_BLOCKED');
 assert(economy.shots[0].repair_instruction.includes('only visual reference'));
 
+const evidenceOnlyClips = clips.slice();
+evidenceOnlyClips[1] = {
+  ...media(1),
+  qa: { pass: true, frames: [{ image_url: '/shot-2-head.jpg' }] },
+  cross_shot_qa: { pass: false, error_code: 'VIDEO_QA_EVIDENCE_MISSING' },
+  error_code: 'CROSS_SHOT_CONTINUITY_FAILED',
+};
+const evidenceOnly = preflight.buildVideoPreflight({
+  taskId: 'preflight-evidence-only', shots, keyframes, contracts, clips: evidenceOnlyClips, statuses: [],
+  mode: 'economy', providerRoute: 'deyunai/seedance', onlyIndexes: [1],
+});
+assert.strictEqual(evidenceOnly.paid_unit_count, 0, 'missing cross-shot evidence must never require another video generation');
+assert.strictEqual(evidenceOnly.review_only_count, 1);
+assert.strictEqual(evidenceOnly.shots[0].review_scope, 'cross_shot');
+assert.match(evidenceOnly.shots[0].label, /不重新生成/);
+
 const targeted = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses, mode: 'economy', providerRoute: 'deyunai/seedance', onlyIndexes: [3],
 });

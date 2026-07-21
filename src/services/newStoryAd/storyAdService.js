@@ -2402,7 +2402,7 @@ async function generateVideoStage(taskId, options = {}) {
   const preflightPlan = assertVideoPreflightConfirmation(taskId, options);
   const generationMode = preflightPlan.mode;
   const zeroCostOnly = options.zero_cost_only === true || options.zeroCostOnly === true;
-  const previousClips = await videoEvidencePreflight.preparePaidBoundaryEvidence(taskId, preflightPlan, zeroCostOnly);
+  const previousClips = await videoEvidencePreflight.prepareRequiredBoundaryEvidence(taskId, preflightPlan);
   const generationShots = generationMode === 'quality' ? preflightPlan.reconciled_shots : shots;
   const localMotionIndexSet = new Set(preflightPlan.local_motion_indexes || []);
   const preflightShotActions = new Map((preflightPlan.shots || []).map(item => [item.index, item]));
@@ -2472,14 +2472,14 @@ async function generateVideoStage(taskId, options = {}) {
         file_path: clip.file_path || '', file_exists: !!(clip.file_path && fs.existsSync(clip.file_path)),
         video_url: clip.video_url || clip.videoUrl || '',
       }, shots.length);
-      const plannedAction = preflightShotActions.get(index)?.action || '';
-      const savedContractQa = plannedAction === 'review_only'
+      const planned = preflightShotActions.get(index) || {}, plannedAction = planned.action || '', continuityReviewOnly = plannedAction === 'review_only' && planned.review_scope === 'cross_shot';
+      const savedContractQa = plannedAction === 'review_only' && !continuityReviewOnly
         ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: clip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
         : null;
       const localMotionQa = plannedAction === 'local_motion'
         ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
-      const qa = savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
+      const qa = continuityReviewOnly ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
       clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
@@ -2495,7 +2495,7 @@ async function generateVideoStage(taskId, options = {}) {
       }
     }
     const crossIndexes = zeroCostOnly
-      ? []
+      ? reviewedIndexes.filter(index => index > 0 && index < clips.length && preflightShotActions.get(index)?.review_scope === 'cross_shot')
       : [...new Set(reviewedIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
     for (const index of crossIndexes) {
       const previous = clips[index - 1];
