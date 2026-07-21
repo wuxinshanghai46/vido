@@ -212,6 +212,89 @@ assert.deepStrictEqual(keyframePromptInvariants.issues(maxConflictPrompt, {
 }), []);
 assert.doesNotMatch(maxConflictPrompt, /和谐拼接|拼接而成|墙面不同区域/i);
 
+const overflowContract = JSON.parse(JSON.stringify(maxConflictContract));
+overflowContract.scene_lock = {
+  scene_id: 'scene-overflow',
+  scene_name: '当前任务已验证主场景',
+  scene_view: 'reverse',
+  anchor_ids: ['anchor-a', 'anchor-b', 'anchor-c'],
+  zone_ids: ['zone-a', 'zone-b'],
+  scene_zone_id: 'zone-a',
+  scene_zone_label_zh: '任务指定交互区域与连续主表面',
+  transition_from: 'scene-overflow/master',
+  transition_reason: '保持同一物理空间与任务叙事连续性'.repeat(8),
+};
+overflowContract.continuity_lock = {
+  requires_previous_frame: true,
+  transition_type: 'cut_on_action',
+  continuity_from: '上一镜已接受关键帧',
+  entry_frame_state: '人物、产品、灯光、相机轴线和道具状态必须继承'.repeat(12),
+  exit_frame_state: '动作完成后仍保持同一人物、产品和场景身份'.repeat(12),
+  action_start: '人物开始观察任务指定对象'.repeat(8),
+  action_end: '人物完成当前镜头动作'.repeat(8),
+  object_states: '所有任务对象的位置、朝向、状态与上一镜一致'.repeat(12),
+  transition_reason: '连续动作匹配'.repeat(12),
+};
+overflowContract.visual_contract = {
+  ...overflowContract.visual_contract,
+  composition: '严格保持任务指定主体、环境证据、相机关系和视觉层级'.repeat(20),
+  subject: '当前任务人物与产品身份不可替换'.repeat(20),
+  evidence: '任务指定产品、交互动作和场景锚点必须清晰可见'.repeat(20),
+  style: '真实商业摄影、自然材质、任务指定灯光和镜头质感'.repeat(20),
+  style_direction: '保持同一任务的真实摄影方向'.repeat(20),
+  negative_requirements: '禁止替换行业、地点、人物、产品、结构或视觉载体'.repeat(20),
+};
+overflowContract.visual_contract.shot_design.motion_effect = {
+  type: 'controlled_transition',
+  source_state: '当前任务连续表面与全部身份锁定保持稳定'.repeat(12),
+  target_state: '仅允许任务指定的光学与微纹理变化'.repeat(12),
+  timeline: '按任务镜头节奏渐进变化并在结束帧稳定'.repeat(12),
+  preserve_scene_geometry: true,
+  target_reference_asset: 'task-reference-asset',
+  notes: '不得引入新结构、新行业或新对象'.repeat(12),
+};
+const overflowPrompt = storyAd.buildKeyframePrompt(
+  maxConflictContext,
+  maxConflictShot,
+  overflowContract,
+  0,
+  {
+    sceneAsset: {
+      id: 'scene-overflow',
+      name: '当前任务已验证主场景',
+      image_url: 'https://example.test/scene.png',
+      lock_strength: 'strict',
+      material_summary: '任务指定材质和连续表面结构'.repeat(30),
+      layout_summary: '任务指定空间拓扑、功能区域和相机关系'.repeat(30),
+      style_summary: '任务指定真实商业摄影风格'.repeat(30),
+      view_images: [
+        { key: 'master', url: 'https://example.test/master.png' },
+        { key: 'reverse', url: 'https://example.test/reverse.png' },
+      ],
+    },
+    previousFrame: {
+      index: 1,
+      title: '上一镜',
+      image_url: 'https://example.test/previous.png',
+      prompt: '上一镜的任务人物、产品、场景、灯光、道具和相机关系均已确认'.repeat(40),
+    },
+  },
+);
+assert.ok(overflowPrompt.length <= 2400);
+assert.match(overflowPrompt, /Semantic fidelity rule:/i);
+assert.match(overflowPrompt, /Surface conflict resolution \(authoritative\):/i);
+assert.match(overflowPrompt, /Shot scene binding:/i);
+assert.match(overflowPrompt, /Locked real actor\/person asset:/i);
+assert.match(overflowPrompt, /Product identity lock:/i);
+assert.deepStrictEqual(keyframePromptInvariants.issues(overflowPrompt, {
+  design: overflowContract.visual_contract.shot_design,
+  sceneRequired: true,
+  personRequired: true,
+  actorLocked: true,
+  productRequired: true,
+  productLocked: true,
+}), []);
+
 assert.throws(
   () => shotDesign.assertSurfacePromptConsistent(
     'Visual: multiple finishes are spliced into panels\nSurface topology lock: ONE monolithic uninterrupted visual plane\nSeam policy: ZERO visible joints',
