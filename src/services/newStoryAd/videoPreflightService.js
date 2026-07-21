@@ -239,6 +239,14 @@ function buildVideoPreflight({
     }));
     sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, { ...executionOptions, preserve_existing_topology: true });
   }
+  if (normalizedMode === 'quality' && Array.isArray(onlyIndexes) && onlyIndexes.length) {
+    const requested = new Set(onlyIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < reconciledShots.length));
+    const scopedUnits = units.filter(unit => (unit.member_indexes || []).some(index => requested.has(index)));
+    const scopedIndexes = new Set(scopedUnits.flatMap(unit => unit.member_indexes || []));
+    units = scopedUnits;
+    shotPlans = shotPlans.filter(item => scopedIndexes.has(item.index));
+    sceneBlocks = sceneBlocks.filter(block => (block.member_indexes || []).some(index => scopedIndexes.has(index)));
+  }
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
   const billingBlocked = providerBillingBlocked(statuses, clips, paidIndexes);
@@ -255,6 +263,7 @@ function buildVideoPreflight({
     policy_version: VIDEO_PREFLIGHT_POLICY_VERSION,
     task_id: taskId,
     mode: normalizedMode,
+    requested_only_indexes: Array.isArray(onlyIndexes) ? onlyIndexes.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
     only_indexes: shotPlans.map(item => item.index),
     provider_route: providerRoute,
     execution_plan_fingerprint: resolvedExecutionPlan.fingerprint,
@@ -289,6 +298,11 @@ function buildVideoPreflight({
     shots: shotPlans,
     units,
     scene_blocks: sceneBlocks,
+    scope: {
+      requested_indexes: Array.isArray(onlyIndexes) ? onlyIndexes.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
+      expanded_indexes: shotPlans.map(item => item.index).sort((a, b) => a - b),
+      unit_ids: units.map(unit => unit.id),
+    },
     reconciled_shots: reconciledShots,
     repair_instructions: Object.fromEntries(shotPlans.filter(item => item.repair_instruction).map(item => [item.index, item.repair_instruction])),
     local_motion_indexes: [...new Set(units.filter(unit => unit.action === 'local_motion').flatMap(unit => unit.member_indexes))],
@@ -327,6 +341,7 @@ function publicVideoPreflight(plan = {}) {
       paid: unit.paid, continuous: unit.continuous === true, duration_sec: unit.duration_sec,
       input_strategy: unit.input_strategy || '', changes: unit.changes || [],
     })),
+    scope: plan.scope || {},
     generated_at: plan.generated_at,
   };
 }

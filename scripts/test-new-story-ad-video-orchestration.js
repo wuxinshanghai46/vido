@@ -157,7 +157,7 @@ function testManualVideoAcceptanceDoesNotGenerate() {
     file_path: clipPath,
     video_url: '/existing.mp4',
     lineage_fingerprint: 'current-lineage',
-    qa: { pass: false, problems: ['visible seam'] },
+    qa: { pass: false, problems: ['minor framing crop'], failure_dimensions: ['framing'] },
     error: '视频抽帧 QA 未通过',
     error_code: 'VIDEO_FRAME_QA_FAILED',
   }]);

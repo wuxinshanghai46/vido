@@ -26,8 +26,8 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260721-audio-preflight-v1">
-  <script src="/js/new-story-ad/bootstrap.js?v=20260721-audio-preflight-v1"></script>
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260721-video-review-v1">
+  <script src="/js/new-story-ad/bootstrap.js?v=20260721-video-review-v1"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -522,7 +522,7 @@
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdFillMissingFramesTop" type="button" hidden>补齐未生成镜头</button>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm dh-nsa-step4-generate-action" id="dhNsaAdGenerateFinalFrames" type="button">按脚本生成真实画面</button>
-                  <button class="dh-btn dh-btn-primary dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">生成整条广告视频</button>
+                  <button class="dh-btn dh-btn-primary dh-nsa-step4-generate-action" id="dhNsaAdGenerateShotVideos" type="button">选择生成单元并生成整条广告视频</button>
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-step4-progress" id="dhNsaAdStep4ScriptProgress" hidden></div>
@@ -545,11 +545,11 @@
               <div class="dh-demo-headline">
                 <div>
                   <h3><span class="dh-luxgen-step-pill">5</span>广告合成</h3>
-                  <p class="dh-demo-copy">整条广告在这里完成：先按连续场景组生成视频并逐镜质检，全部通过后自动加入可选配音、背景音乐和字幕，最后封装为一个成片。</p>
+                   <p class="dh-demo-copy">整条广告在这里完成：连续生成单元是提交与付费边界；展开后可审看母片、切分片段、失败时间与相邻交接证据，全部通过后再封装为一个成片。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
-                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdConfirmGenerate" type="button">合成广告</button>
+                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdConfirmGenerate" type="button">封装最终成片</button>
                 </div>
               </div>
               <div class="dh-nsa-compose-gate is-warning" id="dhNsaAdComposeGate" role="status" hidden></div>

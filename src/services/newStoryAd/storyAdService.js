@@ -37,6 +37,7 @@ const productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
+const videoQualityPolicy = require('./videoQualityPolicyService');
 const videoLineage = require('./videoLineageService');
 const videoRepairPolicy = require('./videoRepairPolicy');
 const videoPreflight = require('./videoPreflightService');
@@ -2305,6 +2306,9 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     businessProfile: ctx.business_profile || ctx.businessProfile || ctx.ad_type || 'story_ad',
     options,
   });
+  const requestedOnlyIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
+    ? (options.only_indexes || options.onlyIndexes).map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < shots.length)
+    : ((options.only_index ?? options.onlyIndex) !== undefined ? [Number(options.only_index ?? options.onlyIndex)] : null);
   const plan = videoPreflight.buildVideoPreflight({
     taskId,
     shots,
@@ -2317,9 +2321,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     providerRoute,
     executionPlan,
     executionOptions: options,
-    onlyIndexes: Array.isArray(options.only_indexes || options.onlyIndexes)
-      ? (options.only_indexes || options.onlyIndexes)
-      : ((options.only_index ?? options.onlyIndex) !== undefined ? [Number(options.only_index ?? options.onlyIndex)] : null),
+    onlyIndexes: requestedOnlyIndexes,
   });
   const authorizedExecutionPlan = {
     ...executionPlan,
@@ -2466,8 +2468,8 @@ async function generateVideoStage(taskId, options = {}) {
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const previousClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
-  const forceRegenerateAll = !zeroCostOnly && (generationMode === 'quality'
-    || options.force_regenerate_all === true || options.forceRegenerateAll === true);
+  const forceRegenerateAll = !zeroCostOnly
+    && (options.force_regenerate_all === true || options.forceRegenerateAll === true);
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
   const preserveExistingTopology = generationMode !== 'quality' && !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
@@ -2506,7 +2508,7 @@ async function generateVideoStage(taskId, options = {}) {
         ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: clip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
         : null;
       const localMotionQa = plannedAction === 'local_motion'
-        ? videoFrameQa.deterministicLocalMotionQa({ clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
+        ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
       const qa = savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index });
       clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
@@ -2765,6 +2767,15 @@ function acceptVideoClipOverride(taskId, shotIndex, input = {}, user = {}) {
     const error = new Error('该视频没有当前分镜版本来源记录，不能人工确认，请重新生成本镜视频');
     error.code = 'VIDEO_LINEAGE_REQUIRED';
     error.status = 422;
+    throw error;
+  }
+  const manualAccept = videoQualityPolicy.manualAcceptDecision(clip);
+  if (!manualAccept.allowed) {
+    const error = new Error('该镜头存在身份、场景拓扑、动作承接或其他阻塞级质量问题，服务器禁止通过人工接受跳过。');
+    error.code = 'VIDEO_MANUAL_ACCEPT_BLOCKED_P0';
+    error.status = 409;
+    error.retryable = false;
+    error.details = manualAccept;
     throw error;
   }
   const acceptedAt = new Date().toISOString();
@@ -3248,6 +3259,7 @@ async function composeStage(taskId, options = {}) {
     error.retryable = true;
     throw error;
   }
+  storage.deleteOutput(taskId, 'final_video');
   const composeGenerationId = cleanText(options.generation_id || options.generationId || '', 80);
   const composeStartedAt = new Date().toISOString();
   stageProgress.update(taskId, { stage: 'compose', phase: 'audio_preparing', completed: 0, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '正在检查配音、音乐和字幕配置' });

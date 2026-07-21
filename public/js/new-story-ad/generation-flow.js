@@ -13,6 +13,9 @@
   function mediaStageBody(ctx = {}) {
     if (typeof ctx.mediaStagePayload === 'function') return ctx.mediaStagePayload();
     const state = ctx.state || {};
+    const selectedIndexes = Array.isArray(state.videoSelectedIndexes)
+      ? [...new Set(state.videoSelectedIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0))]
+      : [];
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
@@ -35,7 +38,10 @@
       confirmed_cost_limit_rmb: Number(state.videoConfirmedCostLimitRmb || 0),
       complexity_review_confirmed: state.videoComplexityReviewConfirmed === true,
       zero_cost_only: state.videoZeroCostOnly === true,
-      force_regenerate_all: true,
+      only_indexes: selectedIndexes,
+      force_regenerate_indexes: selectedIndexes,
+      force_regenerate_all: false,
+      missing_only: false,
       auto_repair: false,
       max_auto_repairs: 0,
     };
@@ -384,6 +390,9 @@
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'media') {
+        if (!Array.isArray(state.videoSelectedIndexes) || !state.videoSelectedIndexes.length) {
+          throw new Error('尚未选择并二次确认生成单元，本次没有提交。');
+        }
         // 用户已确认整条视频方案后立即进入“广告合成”，让真实生成、质检和封装进度都归属第 5 步。
         showStep?.(5);
         renderAll?.();

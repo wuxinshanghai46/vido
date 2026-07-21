@@ -8,6 +8,7 @@ const mediaAdapter = require('./mediaAdapter');
 const cancellation = require('./cancellationContext');
 const personIdentity = require('./personIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
+const motionAwareEdit = require('./motionAwareEditService');
 const { cleanText } = require('./contextBuilder');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
@@ -55,23 +56,49 @@ function runFfmpeg(args) {
 }
 
 async function extractReviewFrames({ taskId = '', clip = {}, index = 0 } = {}) {
-  const input = clip.file_path || clip.filePath || '';
+  const sourceInput = clip.scene_block_source_file && fs.existsSync(clip.scene_block_source_file)
+    ? clip.scene_block_source_file
+    : (clip.file_path || clip.filePath || '');
+  const input = sourceInput;
   if (!input || !fs.existsSync(input)) {
     const error = new Error(`第 ${index + 1} 镜视频文件不存在，无法执行抽帧 QA`);
     error.code = 'VIDEO_FILE_MISSING';
     throw error;
   }
   const duration = Math.max(0.2, Number(clip.duration_sec || clip.duration || 5) || 5);
+  const sourceOffset = sourceInput === clip.scene_block_source_file ? Number(clip.scene_block_start_sec || 0) : 0;
+  const sourceDuration = sourceInput === clip.scene_block_source_file
+    ? Number(clip.scene_block_edit_evidence?.planned_duration_sec || clip.scene_block_end_sec || duration)
+    : duration;
+  const motionEvidence = await motionAwareEdit.analyzeMotionSamples(input, { startSec: 0, durationSec: sourceDuration, fps: 6 });
+  const localSamples = motionEvidence.samples
+    .filter(sample => Number(sample.second) >= sourceOffset && Number(sample.second) <= sourceOffset + duration)
+    .map(sample => ({ ...sample, second: Number(sample.second) - sourceOffset }));
+  const representativeTimes = motionAwareEdit.chooseRepresentativeTimes(localSamples, duration, FRAME_POINTS.length);
   const frames = [];
-  for (let i = 0; i < FRAME_POINTS.length; i += 1) {
+  for (let i = 0; i < representativeTimes.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
-    const point = FRAME_POINTS[i];
-    const second = Math.max(0, Math.min(duration - 0.05, duration * point));
+    const second = representativeTimes[i];
+    const point = FRAME_POINTS[i] ?? (duration > 0 ? Number((second / duration).toFixed(4)) : 0);
     const filename = `video_qa_${String(taskId).replace(/[^a-z0-9_-]/ig, '_')}_${index + 1}_${i}_${Date.now()}.jpg`;
     const output = path.join(mediaAdapter.ASSET_DIR, filename);
     fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
-    await runFfmpeg(['-y', '-ss', second.toFixed(3), '-i', input, '-frames:v', '1', '-q:v', '3', output]);
-    frames.push({ point, second, filename, file_path: output, image_url: mediaAdapter.publicAssetUrl(filename) });
+    await runFfmpeg(['-y', '-ss', (second + sourceOffset).toFixed(3), '-i', input, '-frames:v', '1', '-q:v', '3', output]);
+    frames.push({
+      point, second, filename, file_path: output, image_url: mediaAdapter.publicAssetUrl(filename),
+      selection: 'dense_full_timeline_motion_representative',
+      sampled_timeline_ratio: duration > 0 ? Number((second / duration).toFixed(4)) : 0,
+      local_motion_evidence: {
+        policy_version: motionEvidence.policy_version,
+        method: motionEvidence.method,
+        fps: motionEvidence.fps,
+        analyzed_frame_count: motionEvidence.frame_count,
+        sample_count: motionEvidence.samples.length,
+        analysis_cache_hit: motionEvidence.cache_hit === true,
+        source_range_start_sec: sourceOffset,
+        source_range_duration_sec: duration,
+      },
+    });
   }
   return frames;
 }
@@ -193,6 +220,24 @@ function deterministicLocalMotionQa({ clip = {}, keyframe = {}, contract = {} } 
   };
 }
 
+async function verifyDeterministicLocalMotionClip({ taskId = '', clip = {}, keyframe = {}, contract = {}, index = 0 } = {}) {
+  const base = deterministicLocalMotionQa({ clip, keyframe, contract });
+  if (!base) return null;
+  const frames = await extractReviewFrames({ taskId, clip, index });
+  if (frames.length < 2) {
+    return {
+      ...base,
+      pass: false,
+      status: 'rejected_missing_local_frame_evidence',
+      problems: ['Local deterministic clip did not yield enough technical frame evidence.'],
+      failure_dimensions: ['frame_evidence'],
+      failure_labels_zh: ['视频帧证据'],
+      frames,
+    };
+  }
+  return { ...base, frames, local_motion_evidence: frames[0].local_motion_evidence };
+}
+
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -275,7 +320,17 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
 }
 
 async function reviewCrossShot({ taskId = '', previous = null, current = null, previousShot = {}, currentShot = {}, ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
-  if (!previous?.frames?.length || !current?.frames?.length) return { pass: true, status: 'not_applicable', problems: [] };
+  if (!previous?.frames?.length || !current?.frames?.length) return {
+    pass: false,
+    status: 'rejected_missing_frame_evidence',
+    code: 'VIDEO_QA_EVIDENCE_MISSING',
+    error_code: 'VIDEO_QA_EVIDENCE_MISSING',
+    problems: ['Adjacent-shot continuity QA requires both previous-tail and current-head frame evidence.'],
+    failure_dimensions: ['frame_evidence'],
+    failure_labels_zh: ['相邻镜头帧证据'],
+    checked_at: new Date().toISOString(),
+    used_model: 'none/local-evidence-gate',
+  };
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return { pass: true, status: 'verified', problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-cross-shot-video-qa' };
   const previousTail = previous.frames[previous.frames.length - 1];
   const currentHead = current.frames[0];
@@ -318,6 +373,7 @@ module.exports = {
   keyframeIsCurrentAndApproved,
   reconcileExistingApprovedPartialPersonQa,
   deterministicLocalMotionQa,
+  verifyDeterministicLocalMotionClip,
   reviewVideoClip,
   reviewCrossShot,
 };

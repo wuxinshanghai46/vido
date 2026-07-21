@@ -5,6 +5,7 @@ const cancellation = require('./cancellationContext');
 const ffmpegPath = require('ffmpeg-static');
 const videoAdapter = require('./videoAdapter');
 const ttsAdapter = require('./ttsAdapter');
+const finalVideoQa = require('./finalVideoQaService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const COMPOSE_DIR = path.join(OUTPUT_DIR, 'new-story-ad-compose');
@@ -78,13 +79,85 @@ function localAudioPath(track = {}) {
   return filePath && fs.existsSync(filePath) ? filePath : '';
 }
 
+function buildVisualComposeUnits(clips = []) {
+  const units = [];
+  (Array.isArray(clips) ? clips : []).forEach((clip, index) => {
+    const source = clip?.scene_block_source_file && fs.existsSync(clip.scene_block_source_file)
+      ? clip.scene_block_source_file
+      : localVideoPath(clip || {});
+    if (!source) return;
+    const previous = units[units.length - 1];
+    const canJoinMother = !!clip.scene_block_id
+      && !!clip.scene_block_source_file
+      && previous?.scene_block_id === clip.scene_block_id
+      && previous.file_path === source;
+    if (canJoinMother) {
+      previous.clips.push(clip);
+      previous.member_indexes.push(index);
+      previous.timeline_beats.push({
+        shot_index: index + 1,
+        start_sec: Number(clip.scene_block_start_sec || 0),
+        end_sec: Number(clip.scene_block_end_sec || 0),
+        planned_start_sec: Number(clip.planned_scene_block_start_sec ?? clip.scene_block_start_sec ?? 0),
+        planned_end_sec: Number(clip.planned_scene_block_end_sec ?? clip.scene_block_end_sec ?? 0),
+      });
+      previous.last_index = index;
+      return;
+    }
+    units.push({
+      file_path: source,
+      source_file_path: source,
+      scene_block_id: clip.scene_block_id || '',
+      clips: [clip],
+      member_indexes: [index],
+      first_index: index,
+      last_index: index,
+      preserved_continuous_source: !!(clip.scene_block_id && clip.scene_block_source_file),
+      timeline_beats: [{
+        shot_index: index + 1,
+        start_sec: Number(clip.scene_block_start_sec || 0),
+        end_sec: Number(clip.scene_block_end_sec || clip.duration_sec || 0),
+        planned_start_sec: Number(clip.planned_scene_block_start_sec ?? clip.scene_block_start_sec ?? 0),
+        planned_end_sec: Number(clip.planned_scene_block_end_sec ?? clip.scene_block_end_sec ?? clip.duration_sec ?? 0),
+      }],
+    });
+  });
+  return units;
+}
+
+async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPath = '', durationSec = 0, voiceVolume = 1, ensureAudio = false) {
+  const duration = Math.max(0.2, Number(durationSec) || await videoAdapter.probeDuration(videoPath));
+  const valid = placements.filter(item => item.audio_path && fs.existsSync(item.audio_path));
+  if (!valid.length && !ensureAudio) return videoPath;
+  const args = ['-y', '-i', videoPath];
+  valid.forEach(item => args.push('-i', item.audio_path));
+  const filters = [`anullsrc=r=44100:cl=stereo,atrim=0:${duration.toFixed(3)}[abase]`];
+  const audioLabels = ['[abase]'];
+  valid.forEach((item, index) => {
+    const delay = Math.max(0, Math.round(Number(item.offset_sec || 0) * 1000));
+    const clipDuration = Math.max(0.1, Number(item.duration_sec || duration));
+    filters.push(`[${index + 1}:a]atrim=0:${clipDuration.toFixed(3)},asetpts=PTS-STARTPTS,adelay=${delay}|${delay},volume=${clampVolume(voiceVolume, 1, 0.6, 1.2)}[av${index}]`);
+    audioLabels.push(`[av${index}]`);
+  });
+  filters.push(`${audioLabels.join('')}amix=inputs=${audioLabels.length}:duration=first:dropout_transition=0,atrim=0:${duration.toFixed(3)}[aout]`);
+  args.push(
+    '-filter_complex', filters.join(';'), '-map', '0:v:0', '-map', '[aout]',
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-t', duration.toFixed(3),
+    '-movflags', '+faststart', outputPath,
+  );
+  await execFfmpeg(args, 240000);
+  return outputPath;
+}
+
 async function muxVoiceTrack(videoPath = '', audioPath = '', outputPath = '') {
   if (!videoPath || !audioPath || !outputPath) return videoPath;
+  const duration = Math.max(0.2, await videoAdapter.probeDuration(videoPath));
   await execFfmpeg([
     '-y', '-i', videoPath, '-i', audioPath,
     '-map', '0:v:0', '-map', '1:a:0',
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
-    '-af', 'apad', '-shortest', '-movflags', '+faststart', outputPath,
+    '-af', `apad,atrim=0:${duration.toFixed(3)}`, '-t', duration.toFixed(3),
+    '-movflags', '+faststart', outputPath,
   ], 240000);
   return outputPath;
 }
@@ -158,6 +231,7 @@ function buildTransitionPlan(clips = [], transitions = [], durations = []) {
       : 0;
     return {
       shot_index: index + 1,
+      first_shot_index: Number(clip?._first_shot_index || index + 1),
       type: authored,
       reason: transitions[index]?.transition_reason || transitions[index]?.transitionReason || '',
       audio_bridge: transitions[index]?.audio_bridge || transitions[index]?.audioBridge || '',
@@ -211,7 +285,8 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
 function adjustSubtitlesForTransitionOverlaps(subtitles = [], plan = []) {
   return subtitles.map(item => {
     const shotIndex = Math.max(1, Number(item?.shot_index || 1));
-    const shift = plan.slice(1, shotIndex).reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
+    const shift = plan.slice(1).filter(row => Number(row.first_shot_index || row.shot_index || 1) <= shotIndex)
+      .reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
     return {
       ...item,
       startTime: Math.max(0, Number(item.startTime || 0) - shift),
@@ -233,27 +308,38 @@ async function concatVideos({
   transitions = [],
 } = {}) {
   ensureDir(COMPOSE_DIR);
-  const rawInputs = (Array.isArray(clips) ? clips : []).map(localVideoPath).filter(Boolean);
+  const visualUnits = buildVisualComposeUnits(clips);
+  const rawInputs = visualUnits.map(unit => unit.file_path);
   if (!rawInputs.length) throw new Error('最终合成至少需要一个已通过审核的本地视频镜头。');
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
+  const transitionRows = visualUnits.map(unit => transitions[unit.first_index] || {});
+  const anyVoiceTrack = visualUnits.some(unit => unit.member_indexes.some(index => !!localAudioPath(tracks[index] || {})));
+  const authoredAudioTransitions = transitionRows.some((row, index) => index > 0 && ['dissolve', 'fade'].includes(transitionType(row)));
   const inputs = [];
+  const durations = [];
   let voiceTrackCount = 0;
-  for (let index = 0; index < rawInputs.length; index += 1) {
-    const audioPath = localAudioPath(tracks[index] || {});
-    if (!audioPath) {
-      inputs.push(rawInputs[index]);
-      continue;
-    }
-    const voiceFilename = `${safeBase(`voice_${taskId || 'task'}_${index + 1}_${Date.now()}`)}.mp4`;
+  for (let index = 0; index < visualUnits.length; index += 1) {
+    const unit = visualUnits[index];
+    const duration = Math.max(0.2, await videoAdapter.probeDuration(unit.file_path));
+    const placements = unit.member_indexes.map((shotIndex, memberPosition) => {
+      const audioPath = localAudioPath(tracks[shotIndex] || {});
+      if (audioPath) voiceTrackCount += 1;
+      const clip = unit.clips[memberPosition] || {};
+      return {
+        audio_path: audioPath,
+        offset_sec: unit.preserved_continuous_source ? Number(clip.scene_block_start_sec || 0) : 0,
+        duration_sec: Number(clip.duration_sec || duration),
+      };
+    }).filter(item => item.audio_path);
+    const voiceFilename = `${safeBase(`voice_${taskId || 'task'}_unit_${index + 1}_${Date.now()}`)}.mp4`;
     const voicedPath = path.join(COMPOSE_DIR, voiceFilename);
-    inputs.push(await muxVoiceTrack(rawInputs[index], audioPath, voicedPath));
-    voiceTrackCount += 1;
+    inputs.push(await muxTimelineVoiceTracks(unit.file_path, placements, voicedPath, duration, voiceVolume, anyVoiceTrack || authoredAudioTransitions));
+    durations.push(duration);
   }
   const filename = `${safeBase(`nsa_final_${taskId || 'task'}_${Date.now()}`)}.mp4`;
   const out = path.join(COMPOSE_DIR, filename);
-  const durations = [];
-  for (const input of inputs) durations.push(await videoAdapter.probeDuration(input));
-  const transitionPlan = buildTransitionPlan(clips, transitions, durations);
+  const transitionClips = visualUnits.map(unit => ({ ...unit.clips[0], _first_shot_index: unit.first_index + 1 }));
+  const transitionPlan = buildTransitionPlan(transitionClips, transitionRows, durations);
   const needsTransitionFilters = transitionPlan.some(row => Number(row.overlap_sec || 0) > 0);
   if (inputs.length === 1) {
     fs.copyFileSync(inputs[0], out);
@@ -280,11 +366,11 @@ async function concatVideos({
       bgm: bgmPath ? {
         path: bgmPath,
         volume: clampVolume(bgmVolume, 0.16, 0, 0.35),
-        voice_volume: clampVolume(voiceVolume, 1, 0.6, 1.2),
+        voice_volume: 1,
         fadeIn: 1,
         fadeOut: 2,
       } : null,
-      voiceVolume: clampVolume(voiceVolume, 1, 0.6, 1.2),
+      voiceVolume: 1,
       subtitleStyle: subtitleStyle || 'popup',
     });
     if (fx?.outputPath && fs.existsSync(fx.outputPath)) {
@@ -293,13 +379,31 @@ async function concatVideos({
       providerUsed += '+effects';
     }
   }
+  const expectedDurationSec = durations.reduce((sum, value) => sum + Number(value || 0), 0)
+    - transitionPlan.reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
+  const technicalQa = await finalVideoQa.inspectFinalVideo({
+    filePath: finalPath,
+    expectedDurationSec,
+    requireAudio: voiceTrackCount > 0 || !!bgmPath,
+    transitionPlan,
+    inputDurations: durations,
+  });
+  if (!technicalQa.pass) {
+    const error = new Error(`Final video technical QA failed: ${(technicalQa.problems || []).join('; ')}`);
+    error.code = 'FINAL_VIDEO_TECHNICAL_QA_FAILED';
+    error.status = 422;
+    error.retryable = true;
+    error.technical_qa = technicalQa;
+    throw error;
+  }
   return {
     filename,
     file_path: finalPath,
     source_file_path: out,
     video_url: finalUrl,
     videoUrl: finalUrl,
-    clip_count: inputs.length,
+    clip_count: clips.length,
+    visual_input_count: inputs.length,
     voiceover_applied: voiceTrackCount > 0,
     voiceover_track_count: voiceTrackCount,
     bgm_applied: !!bgmPath,
@@ -307,6 +411,13 @@ async function concatVideos({
     subtitle_style: subtitleStyle || 'popup',
     provider_used: providerUsed,
     transition_plan: transitionPlan,
+    visual_units: visualUnits.map(unit => ({
+      source_file_path: unit.source_file_path,
+      member_indexes: unit.member_indexes,
+      preserved_continuous_source: unit.preserved_continuous_source,
+      timeline_beats: unit.timeline_beats,
+    })),
+    technical_qa: technicalQa,
   };
 }
 
@@ -314,6 +425,9 @@ module.exports = {
   COMPOSE_DIR,
   composePathFromName,
   publicComposeUrl,
+  buildVisualComposeUnits,
+  muxVoiceTrack,
+  muxTimelineVoiceTracks,
   buildTransitionPlan,
   adjustSubtitlesForTransitionOverlaps,
   concatVideos,

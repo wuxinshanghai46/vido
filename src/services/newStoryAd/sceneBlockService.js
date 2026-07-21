@@ -1,8 +1,9 @@
 const revisionService = require('./revisionService');
 const videoCore = require('../videoGenerationCore');
 
-const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v4';
-const DEFAULT_MAX_BLOCK_DURATION = 15;
+const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v5';
+const DEFAULT_MIN_BLOCK_DURATION = 6;
+const DEFAULT_MAX_BLOCK_DURATION = 10;
 const DEFAULT_MAX_BLOCK_SHOTS = 4;
 
 function text(value = '') {
@@ -133,6 +134,35 @@ function finalizeBlock(block, shots, contracts) {
  * 将通用执行方案转换为旧视频适配器可读取的兼容块。
  * 注意：块现在代表付费生成单元，不再代表“同场景镜头自动合并”。
  */
+function partitionContinuousRun(run = {}, shots = [], options = {}) {
+  const members = Array.isArray(run.member_indexes) ? run.member_indexes : [];
+  if (!members.length) return [];
+  const minDuration = Math.max(1, Math.min(10, Number(options.minDuration || DEFAULT_MIN_BLOCK_DURATION) || DEFAULT_MIN_BLOCK_DURATION));
+  const maxDuration = Math.max(minDuration, Math.min(10, Number(options.maxDuration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
+  const maxShots = Math.max(1, Math.min(6, Number(options.maxShots || DEFAULT_MAX_BLOCK_SHOTS) || DEFAULT_MAX_BLOCK_SHOTS));
+  const idealDuration = (minDuration + maxDuration) / 2;
+  const size = members.length;
+  const best = Array(size + 1).fill(null);
+  best[0] = { cost: 0, groups: [] };
+  for (let end = 1; end <= size; end += 1) {
+    for (let start = Math.max(0, end - maxShots); start < end; start += 1) {
+      if (!best[start]) continue;
+      const slice = members.slice(start, end);
+      const duration = slice.reduce((sum, member) => sum + durationOf(shots[member] || {}), 0);
+      const unavoidableOversize = slice.length === 1 && duration > maxDuration;
+      if (duration > maxDuration && !unavoidableOversize) continue;
+      const edgeRemainder = start === 0 || end === size;
+      const underMinPenalty = duration < minDuration ? (minDuration - duration) * (edgeRemainder ? 8 : 20) : 0;
+      const oversizePenalty = duration > maxDuration ? (duration - maxDuration) * 50 : 0;
+      const cost = best[start].cost + underMinPenalty + oversizePenalty + Math.abs(duration - idealDuration);
+      if (!best[end] || cost < best[end].cost) {
+        best[end] = { cost, groups: [...best[start].groups, { ...run, member_indexes: slice, duration_sec: duration }] };
+      }
+    }
+  }
+  return best[size]?.groups || members.map(member => ({ ...run, member_indexes: [member], duration_sec: durationOf(shots[member] || {}) }));
+}
+
 function buildSceneBlocks(shots = [], contracts = [], options = {}) {
   const list = Array.isArray(shots) ? shots : [];
   if (!list.length) return [];
@@ -143,9 +173,10 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
     options,
   });
   if (options.scene_block_generation === true && options.continuous_quality_mode === true) {
-    const maxDuration = Math.max(1, Math.min(15, Number(options.scene_block_max_duration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
+    const minDuration = Math.max(1, Math.min(10, Number(options.scene_block_min_duration || DEFAULT_MIN_BLOCK_DURATION) || DEFAULT_MIN_BLOCK_DURATION));
+    const maxDuration = Math.max(minDuration, Math.min(10, Number(options.scene_block_max_duration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
     const maxShots = Math.max(1, Math.min(6, Number(options.scene_block_max_shots || DEFAULT_MAX_BLOCK_SHOTS) || DEFAULT_MAX_BLOCK_SHOTS));
-    const groups = [];
+    const structuralRuns = [];
     let current = null;
     list.forEach((shot, index) => {
       const contract = contracts[index] || {};
@@ -158,18 +189,17 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
         && !!identity
         && identity === current.scene_identity
         && temporal === current.temporal_identity
-        && current.member_indexes.length < maxShots
-        && current.duration_sec + shotDuration <= maxDuration
         && !isExplicitBoundary(shot, previousShot || {}, options)
         && !hasCastModeBoundary(shot, previousShot || {}, options);
       if (!canContinue) {
         current = { scene_identity: identity || `unbound-shot-${index + 1}`, temporal_identity: temporal, member_indexes: [index], duration_sec: shotDuration };
-        groups.push(current);
+        structuralRuns.push(current);
         return;
       }
       current.member_indexes.push(index);
       current.duration_sec += shotDuration;
     });
+    const groups = structuralRuns.flatMap(run => partitionContinuousRun(run, list, { minDuration, maxDuration, maxShots }));
     return groups.map((group) => {
       const block = finalizeBlock(group, list, contracts);
       const continuous = block.member_indexes.length > 1;
@@ -299,6 +329,7 @@ function generationPrompt(block = {}, shots = [], contracts = [], repairInstruct
 
 module.exports = {
   SCENE_BLOCK_POLICY_VERSION,
+  DEFAULT_MIN_BLOCK_DURATION,
   DEFAULT_MAX_BLOCK_DURATION,
   DEFAULT_MAX_BLOCK_SHOTS,
   durationOf,
@@ -308,6 +339,7 @@ module.exports = {
   visiblePersonPresence,
   hasCastModeBoundary,
   spatialReferenceUrls,
+  partitionContinuousRun,
   buildSceneBlocks,
   blockForIndex,
   expandIndexesToBlocks,

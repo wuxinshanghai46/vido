@@ -3,19 +3,23 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const ffmpegPath = require('ffmpeg-static');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-nsa-compose-transitions-'));
 process.env.OUTPUT_DIR = tempDir;
 
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const composeService = require('../src/services/newStoryAd/composeService');
+const runFfmpeg = promisify(execFile);
 
 (async () => {
   try {
     const first = path.join(tempDir, 'first.mp4');
     const second = path.join(tempDir, 'second.mp4');
-    await videoAdapter.renderLocalClip({ outputPath: first, durationSec: 2, aspectRatio: '16:9' });
-    await videoAdapter.renderLocalClip({ outputPath: second, durationSec: 2, aspectRatio: '16:9' });
+    await runFfmpeg(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=24:d=2', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', first]);
+    await runFfmpeg(ffmpegPath, ['-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=24:d=2', '-vf', 'hue=h=45', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', second]);
     const result = await composeService.concatVideos({
       taskId: 'compose-transition-test',
       clips: [

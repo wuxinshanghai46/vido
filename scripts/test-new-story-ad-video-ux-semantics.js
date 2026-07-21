@@ -62,7 +62,7 @@ async function testMediaImmediatelyOwnsStepFive() {
   const events = [];
   let resolvePost;
   const pendingPost = new Promise(resolve => { resolvePost = resolve; });
-  const state = { shots: [], videoClips: [], voiceId: '', stageProgress: null };
+  const state = { shots: [], videoClips: [], voiceId: '', stageProgress: null, videoSelectedIndexes: [0] };
   const run = flow.runStage('media', {
     state,
     button: {},
@@ -87,7 +87,7 @@ async function testMediaImmediatelyOwnsStepFive() {
 
   const failureEvents = [];
   const failed = await flow.runStage('media', {
-    state: { shots: [], videoClips: [], voiceId: '', stageProgress: null },
+    state: { shots: [], videoClips: [], voiceId: '', stageProgress: null, videoSelectedIndexes: [0] },
     button: {}, ensureTask: async () => 'task-2',
     api: async () => { failureEvents.push('post'); throw new Error('服务器拒绝任务'); },
     showStep: step => failureEvents.push(`step-${step}`), renderAll: () => failureEvents.push('render'),

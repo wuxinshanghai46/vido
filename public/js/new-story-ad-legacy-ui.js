@@ -64,6 +64,8 @@
     ttsAudio: null,
     videoClips: [],
     videoShotStatuses: [],
+    videoSelectedIndexes: [],
+    videoSelectedUnitIds: [],
     finalVideo: null,
     actorAsset: null,
     personAsset: null,
@@ -952,8 +954,8 @@
       ['#dhNsaAdStoryboard', '确认基础信息，生成剧本'],
       ['#dhNsaAdPreviewFrames', '确认剧本，生成分镜'],
       ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
-      ['#dhNsaAdGenerateShotVideos', '生成整条广告视频'],
-      ['#dhNsaAdConfirmGenerate', '合成广告'],
+      ['#dhNsaAdGenerateShotVideos', '选择生成单元并生成整条广告视频'],
+      ['#dhNsaAdConfirmGenerate', '封装最终成片'],
     ];
     stepButtons.forEach(([selector, label]) => {
       const btn = within(selector);
@@ -2146,80 +2148,19 @@
       && clip.cross_shot_qa?.pass !== false;
   }
 
-  function videoPreflightItems(preflight = {}) {
-    const units = Array.isArray(preflight.units) && preflight.units.length ? preflight.units : null;
-    return (units || (Array.isArray(preflight.shots) ? preflight.shots : [])).map((item, itemIndex) => ({
-      index: units ? Number(item.unit_index ?? itemIndex) : Math.max(0, Number(item.shot_index || 1) - 1),
-      title: item.title || `第 ${item.shot_index || 1} 镜`,
-      status: [units && Array.isArray(item.shots) ? `包含镜头 ${item.shots.join('、')}` : '', (item.changes || []).join('；')].filter(Boolean).join('；') || (item.paid ? '会调用视频模型一次' : '不调用视频模型'),
-      action: item.label || item.action || '',
-    }));
-  }
-
   /** 展示整条广告的连续场景段、人民币最高费用和高复杂度风险，并取得一次性用户授权。 */
   async function confirmVideoPreflight(mode = 'economy', onlyIndex = null) {
-    let id = '';
-    let data = null;
-    try {
-      id = await ensureTask();
-      const onlyQuery = onlyIndex !== null && onlyIndex !== undefined && Number.isInteger(Number(onlyIndex))
-        ? `&only_index=${Number(onlyIndex)}`
-        : '';
-      data = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video/preflight?mode=${encodeURIComponent(mode)}${onlyQuery}&_t=${Date.now()}`);
-    } catch (error) {
-      toast(error.message || '暂时无法读取生成前方案，本次没有提交视频模型', 'error');
-      return null;
-    }
-    const preflight = data.preflight || {};
-    const costPlan = preflight.cost_plan || {};
-    const quality = mode === 'quality';
-    const blocked = Array.isArray(preflight.blockers) && preflight.blockers.length > 0;
-    const zeroCostOnly = blocked && Number(preflight.zero_cost_action_count || 0) > 0;
-    let audioPlan = null; if (quality && !blocked && window.NewStoryAdAudioPreflight) audioPlan = await window.NewStoryAdAudioPreflight.load({
-      state, api, loadVoices: loadNsaVoices, musicText: musicSearchText(),
-    });
-    const description = quality
-      ? '整条广告只需提交一次。系统会把空间、时间、人物状态和动作交接兼容的相邻分镜组织成 15 秒以内的连续场景段；明确的转场、场景变化和人物模式变化仍保持独立，避免为了合并而破坏剧情。'
-      : '系统已根据关键帧、上次失败原因和供应商状态自动选择：复用已有证据、执行本地确定性运镜，或真正改变输入方式后再生成。不会拿原提示词原样重抽；复审仍未通过也不会自动付费重做。';
-    const accepted = await confirmNsaAction({
-      title: quality ? '整条广告视频生成方案' : (blocked ? '生成通道已暂停，可先做无需视频生成的处理' : '成本优化后的生成方案'),
-      summary: blocked
-        ? preflight.blockers.map(item => item.message).join('；')
-        : `预计付费提交 ${Number(preflight.paid_unit_count || 0)} 组，本地处理 ${Number(preflight.local_unit_count || 0)} 组；人民币最高费用 ¥${Number(costPlan.maximum_cost_rmb || 0).toFixed(2)}`,
-      description,
-      confirmLabel: zeroCostOnly ? `仅应用 ${Number(preflight.zero_cost_action_count || 0)} 项无需视频生成的处理` : (blocked ? '关闭' : (quality ? '确认生成整条广告视频' : '确认按优化方案处理')),
-      cancelLabel: blocked && !zeroCostOnly ? '返回' : '取消',
-      tone: blocked ? 'danger' : 'primary',
-      facts: [
-        { value: String(Number(preflight.paid_unit_count || 0)), label: '付费生成组数', tone: Number(preflight.paid_unit_count || 0) ? 'warning' : 'pass' },
-        { value: String(Number(preflight.local_unit_count || 0)), label: '不调用视频模型', tone: 'pass' },
-        { value: String(Number(preflight.review_only_count || 0)), label: '只复审现有视频', tone: 'pass' },
-        { value: `¥${Number(costPlan.maximum_cost_rmb || 0).toFixed(2)}`, label: '人民币最高费用', tone: Number(costPlan.maximum_cost_rmb || 0) ? 'warning' : 'pass' },
-        { value: '0', label: '自动重试', tone: 'pass' },
-      ],
-      customHtml: audioPlan ? window.NewStoryAdAudioPreflight.html(audioPlan, escapeHtml) : '',
-      onMount: audioPlan ? modal => window.NewStoryAdAudioPreflight.bind(modal, audioPlan, { previewVoice: previewNsaVoice }) : null,
-      readSelection: audioPlan ? modal => window.NewStoryAdAudioPreflight.read(modal, audioPlan) : null,
-      items: videoPreflightItems(preflight),
-      note: quality
-        ? `整条广告预计生成 ${Number(preflight.paid_video_seconds || 0)} 秒付费视频素材；系统按连续场景段提交并自动合成，确认后仍不会自动重试。点击取消不会改变按钮和任务状态。`
-        : '只有方案中明确标记为“按修正方案生成一次”的镜头会产生视频模型费用；费用或内容变化后必须重新确认。',
-    });
-    window.NewStoryAdAudioPreflight?.stopPreview?.(); if (!accepted || (blocked && !zeroCostOnly)) return null;
-    if (audioPlan) try {
-      await window.NewStoryAdAudioPreflight.apply(accepted, { state, api });
-      renderAll(); scheduleAutoSave('video_audio_preflight');
-    } catch (error) {
-      toast(error.message || '声音配置没有准备完成，本次没有提交视频模型', 'error');
-      return null;
-    }
-    return {
-      preflight,
-      zeroCostOnly,
-      costPlanFingerprint: zeroCostOnly ? '' : (costPlan.fingerprint || ''),
-      confirmedCostLimitRmb: zeroCostOnly ? 0 : Number(costPlan.maximum_cost_rmb || 0),
-      complexityReviewConfirmed: !zeroCostOnly,
-    };
+    // 预检模块必须展示：预计付费提交；点击取消不会改变按钮和任务状态；复审未通过不会自动付费重做。
+    return window.NewStoryAdVideoPreflightUi?.runScopedPreflight?.({
+      mode, onlyIndex, ensureTask, api, toast, confirmAction: confirmNsaAction,
+      videoReview: window.NewStoryAdVideoReview, escapeHtml,
+      loadAudioPlan: () => window.NewStoryAdAudioPreflight.load({ state, api, loadVoices: loadNsaVoices, musicText: musicSearchText() }),
+      audioHtml: (plan, escape) => window.NewStoryAdAudioPreflight.html(plan, escape),
+      bindAudio: (modal, plan) => window.NewStoryAdAudioPreflight.bind(modal, plan, { previewVoice: previewNsaVoice }),
+      readAudio: (modal, plan) => window.NewStoryAdAudioPreflight.read(modal, plan),
+      stopAudio: () => window.NewStoryAdAudioPreflight?.stopPreview?.(),
+      applyAudio: async accepted => { await window.NewStoryAdAudioPreflight.apply(accepted, { state, api }); renderAll(); scheduleAutoSave('video_audio_preflight'); },
+    }) || null;
   }
 
   /** 把当前预检授权写入一次性页面状态，供后台提交时校验。 */
@@ -2230,6 +2171,8 @@
     state.videoComplexityReviewConfirmed = confirmed?.complexityReviewConfirmed === true;
     state.videoGenerationMode = mode;
     state.videoZeroCostOnly = confirmed?.zeroCostOnly === true;
+    state.videoSelectedIndexes = Array.isArray(confirmed?.selectedIndexes) ? confirmed.selectedIndexes.slice() : [];
+    state.videoSelectedUnitIds = Array.isArray(confirmed?.selectedUnitIds) ? confirmed.selectedUnitIds.slice() : [];
   }
 
   /** 清除一次性费用授权，禁止同一确认被后续内容重复使用。 */
@@ -2240,6 +2183,8 @@
     state.videoComplexityReviewConfirmed = false;
     state.videoGenerationMode = '';
     state.videoZeroCostOnly = false;
+    state.videoSelectedIndexes = [];
+    state.videoSelectedUnitIds = [];
   }
 
   function stopStageProgress() {
@@ -3342,6 +3287,8 @@
   function videoFailureDetails(clips = []) {
     return (Array.isArray(clips) ? clips : []).map((clip, index) => {
       if (!clip || (!clip.error_code && clip.qa?.pass !== false && clip.cross_shot_qa?.pass !== false)) return null;
+      const review = window.NewStoryAdVideoReview;
+      const status = videoShotStatusAt(index);
       const labels = [
         ...(Array.isArray(clip.qa?.failure_labels_zh) ? clip.qa.failure_labels_zh : []),
         ...(Array.isArray(clip.cross_shot_qa?.failure_labels_zh) ? clip.cross_shot_qa.failure_labels_zh : []),
@@ -3355,6 +3302,9 @@
         title: state.shots?.[index]?.title || `镜头 ${index + 1}`,
         reason: [...new Set(labels.concat(problems))].filter(Boolean).join('；') || clip.error || '当前版本视频审核未通过',
         attempt: Number(clip.repair_attempt || 0),
+        dimensions: review?.failureDimensions?.(clip, status) || [],
+        p0: review?.isManualAcceptAllowed?.(clip, status) !== true,
+        time: review?.failureTime?.(clip, status) || { known: false, seconds: null },
       };
     }).filter(Boolean);
   }
@@ -3375,6 +3325,7 @@
         providerTaskId: clip.provider_task_id || '',
         providerUsed: clip.provider_used || '',
         local: clip.zero_cost_visual_generation === true || !clip.provider_task_id,
+        sourceUrl: clip.scene_block_source_video_url || '',
       });
       const group = groups.get(key);
       members.forEach(member => group.members.add(member));
@@ -3382,6 +3333,7 @@
       if (!group.providerTaskId && clip.provider_task_id) group.providerTaskId = clip.provider_task_id;
       if (!group.providerUsed && clip.provider_used) group.providerUsed = clip.provider_used;
       if (clip.provider_task_id) group.local = false;
+      if (!group.sourceUrl && clip.scene_block_source_video_url) group.sourceUrl = clip.scene_block_source_video_url;
     });
     return [...groups.values()].map((group, index) => {
       const members = [...group.members].sort((a, b) => a - b);
@@ -3433,6 +3385,7 @@
     const mediaFailed = !mediaActive && (state.taskStatus === 'failed'
       || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError);
     const failureDetails = videoFailureDetails(clips);
+    const videoReview = window.NewStoryAdVideoReview;
     const compose = composeReadiness();
     const composeSummary = within('#dhNsaAdComposeSummary');
     const progressHint = within('#dhNsaAdProgressHint');
@@ -3469,22 +3422,18 @@
         ? `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`
         : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`));
     }
-    if (!tracks.length && !clips.length && !finalUrl && !mediaActive) {
-      host.innerHTML = '<div class="dh-task-empty-note">确认整条广告生成方案后，连续场景生成、逐镜质检和最终成片都会显示在这里。</div>';
-      return;
-    }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
-      <div class="dh-task-detail-title">媒体生成结果</div>
+      <div class="dh-task-detail-title">整条广告审片与合成结果</div>
       <div class="dh-nsa-media-result-state ${finalUrl ? 'is-success' : (mediaFailed ? 'is-failed' : (mediaActive ? 'is-running' : 'is-incomplete'))}" data-nsa-media-result-state>
         <b>${finalUrl ? '成片合成成功' : (mediaFailed ? '本次合成失败' : (mediaActive ? '正在生成媒体' : '最终成片尚未生成'))}</b>
         <span>${finalUrl
           ? '最终成片已生成，可以直接播放。'
           : (mediaFailed
             ? `最终成片没有生成，因此这里不会出现成片播放器。${state.taskError ? `失败原因：${escapeHtml(state.taskError)}` : ''}`
-            : (mediaActive ? '后台仍在处理镜头或最终封装，请等待真实状态更新。' : '当前只有中间片段记录，不代表最终成片成功。'))}</span>
+            : (mediaActive ? '后台仍在处理生成单元或最终封装，请等待真实状态更新。' : '完整母片播放器未完成；当前中间片段不代表最终成片成功。'))}</span>
         ${mediaFailed && state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}
       </div>
-      ${finalUrl ? `<video class="dh-task-detail-preview-video" src="${escapeHtml(finalUrl)}" controls playsinline></video>` : ''}
+      ${finalUrl ? `<video class="dh-task-detail-preview-video" src="${escapeHtml(finalUrl)}" controls playsinline preload="metadata" aria-label="整条广告完整母片"></video>` : '<div class="dh-nsa-review-missing is-master"><b>完整母片播放器未完成</b><span>最终封装成功后，这里会显示唯一的整条广告播放器。</span></div>'}
       <div class="dh-task-detail-value">${escapeHtml([
         tracks.length ? `配音 ${tracks.length} 条` : '',
         generationUnits.length ? `视频生成单元 ${generationUnits.length} 组` : '',
@@ -3496,15 +3445,16 @@
       ${generationUnits.length ? `<div class="dh-nsa-video-unit-list">${generationUnits.map(unit => {
         const generationLabels = { pending: '等待生成', running: '生成中', succeeded: '母片已生成', failed: '生成失败' };
         const qaLabels = { pending: '等待质检', reviewing: '质检中', passed: '质检通过', failed: '质检未通过' };
-        const memberText = unit.members.length > 1 ? `镜头 ${unit.members.join('、')}` : `镜头 ${unit.members[0] || '--'}`;
+        const memberText = unit.members.length > 1 ? `包含镜头 ${unit.members.join('、')}` : `包含镜头 ${unit.members[0] || '--'}`;
         const failureRows = failureDetails.filter(item => unit.members.includes(item.index));
         return `<article class="dh-nsa-video-unit is-${escapeHtml(unit.generation === 'failed' || unit.qa === 'failed' ? 'failed' : (unit.qa === 'passed' ? 'passed' : 'running'))}">
-          <div class="dh-nsa-video-unit-head"><div><b>${unit.local ? '本地运镜单元' : `连续场景组 ${unit.index + 1}`}</b><span>${escapeHtml(memberText)} · ${unit.local ? '不调用视频模型' : '一次模型生成'}</span></div><em>${escapeHtml(generationLabels[unit.generation])}</em></div>
-          <div class="dh-nsa-video-unit-status"><span>生成：${escapeHtml(generationLabels[unit.generation])}</span><span>质检：${escapeHtml(qaLabels[unit.qa])} ${unit.qaPassed}/${unit.members.length}</span></div>
-          ${failureRows.length ? `<details><summary>查看 ${failureRows.length} 个质检问题（不会自动付费重做）</summary>${failureRows.map(item => `<div class="dh-nsa-video-unit-failure"><b>镜头 ${item.index}${item.title ? `「${escapeHtml(item.title)}」` : ''}</b><span>${escapeHtml(item.reason)}</span><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-video-accept="${item.index - 1}">人工接受此片段</button></div>`).join('')}</details>` : ''}
+          <div class="dh-nsa-video-unit-head"><div><b>${unit.local ? '本地运镜单元' : `连续生成单元 ${unit.index + 1}`}</b><span>${escapeHtml(memberText)} · ${unit.local ? '不调用视频模型' : '一个提交 / 一个付费边界'}${failureRows.length ? ` · 查看 ${failureRows.length} 个质检问题` : ''}</span></div><em>${escapeHtml(generationLabels[unit.generation])}</em></div>
+          <div class="dh-nsa-video-unit-status"><span><b>生成状态：</b>${escapeHtml(generationLabels[unit.generation])}（供应商母片是否产出）</span><span><b>质量状态：</b>${escapeHtml(qaLabels[unit.qa])} ${unit.qaPassed}/${unit.members.length}（切分后逐段审核）</span></div>
+          ${videoReview?.unitReviewHtml?.(unit, { failureDetails, shots: state.shots, clipAt: videoClipAt, viewAt: videoShotView, escapeHtml }) || '<div class="dh-nsa-review-missing">审片组件未完成</div>'}
         </article>`;
       }).join('')}</div>` : ''}
     </div>`;
+    videoReview?.bindReviewDetails?.(host);
   }
 
   function syncPersonSpecControls() {
@@ -3960,6 +3910,9 @@
   }
 
   function mediaStagePayload() {
+    const selectedIndexes = Array.isArray(state.videoSelectedIndexes)
+      ? [...new Set(state.videoSelectedIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0))]
+      : [];
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
@@ -3982,7 +3935,10 @@
       confirmed_cost_limit_rmb: Number(state.videoConfirmedCostLimitRmb || 0),
       complexity_review_confirmed: state.videoComplexityReviewConfirmed === true,
       zero_cost_only: state.videoZeroCostOnly === true,
-      force_regenerate_all: true,
+      only_indexes: selectedIndexes,
+      force_regenerate_indexes: selectedIndexes,
+      force_regenerate_all: false,
+      missing_only: false,
       auto_repair: false,
       max_auto_repairs: 0,
     };
@@ -4627,7 +4583,7 @@
         if (event.target === modal || event.target.closest('[data-nsa-confirm-cancel]')) finish(false);
         else if (event.target.closest('[data-nsa-confirm-submit]')) {
           const selected = typeof readSelection === 'function' ? readSelection(modal) : { value: true };
-          const error = modal.querySelector('[data-nsa-audio-error]');
+          const error = modal.querySelector('[data-nsa-confirm-error], [data-nsa-audio-error]');
           if (selected?.error) { if (error) { error.textContent = selected.error; error.hidden = false; } return; }
           finish(Object.prototype.hasOwnProperty.call(selected || {}, 'value') ? selected.value : selected);
         }
@@ -6082,6 +6038,10 @@
         e.preventDefault();
         e.stopPropagation();
         const index = Number(videoAccept.dataset.nsaVideoAccept || 0);
+        if (window.NewStoryAdVideoReview?.isManualAcceptAllowed?.(videoClipAt(index), videoShotStatusAt(index)) !== true) {
+          toast('该片段涉及人物身份、人数、场景拓扑、瞬移或运动方向等 P0 连续性问题，不能人工接受；请选择所属生成单元重做。', 'error');
+          return;
+        }
         if (!await confirmNsaAction({
           title: `接受第 ${index + 1} 镜当前视频`,
           summary: '人工确认后允许进入最终合成',

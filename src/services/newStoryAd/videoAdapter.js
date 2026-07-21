@@ -18,6 +18,7 @@ const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService');
+const motionAwareEdit = require('./motionAwareEditService');
 const videoCore = require('../videoGenerationCore');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
@@ -1007,13 +1008,52 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
 }
 
 async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, shots = [], tracks = [], ctx = {}, options = {} } = {}) {
-  const output = [];
-  for (const beat of block.beats || []) {
-    cancellation.throwIfCancelled(taskId);
+  let editPlan;
+  try {
+    editPlan = await motionAwareEdit.selectSafeCutPoints({
+      filePath: sourceClip.file_path,
+      beats: block.beats || [],
+      searchWindowSec: Number(options.motion_safe_cut_window_sec || 0.8),
+      fps: Number(options.local_motion_analysis_fps || 6),
+    });
+  } catch (error) {
+    editPlan = {
+      beats: (block.beats || []).map(beat => ({ ...beat, planned_start_sec: beat.start_sec, planned_end_sec: beat.end_sec })),
+      evidence: {
+        policy_version: motionAwareEdit.POLICY_VERSION,
+        method: 'planned_boundary_fallback',
+        boundaries: [],
+        fallback_reason: `motion_analysis_failed:${String(error.code || error.message || 'unknown').slice(0, 120)}`,
+      },
+    };
+  }
+  const audioDurations = [];
+  for (const beat of editPlan.beats) {
     const index = Number(beat.shot_index || 1) - 1;
     const audio = tracks[index] || {};
     const audioPath = localAudioPath(audio.audio_url || audio.audioUrl || audio.url || '');
-    const audioDuration = await probeDuration(audioPath);
+    audioDurations.push({ index, audioPath, duration: await probeDuration(audioPath) });
+  }
+  const adjustedAudioOverflow = editPlan.beats.some((beat, position) => audioDurations[position].duration > Number(beat.duration_sec || 0) + 0.35);
+  if (adjustedAudioOverflow) {
+    editPlan = {
+      beats: (block.beats || []).map(beat => ({ ...beat, planned_start_sec: beat.start_sec, planned_end_sec: beat.end_sec })),
+      evidence: {
+        ...editPlan.evidence,
+        method: 'planned_boundary_fallback',
+        fallback_reason: 'motion_adjustment_would_truncate_authored_audio',
+        boundaries: (editPlan.evidence?.boundaries || []).map(boundary => ({ ...boundary, selected_sec: boundary.planned_sec, shift_sec: 0, shift_direction: 'unchanged', used_fallback: true })),
+      },
+    };
+  }
+  const output = [];
+  for (let position = 0; position < editPlan.beats.length; position += 1) {
+    const beat = editPlan.beats[position];
+    cancellation.throwIfCancelled(taskId);
+    const index = Number(beat.shot_index || 1) - 1;
+    const audio = tracks[index] || {};
+    const audioPath = audioDurations[position]?.audioPath || '';
+    const audioDuration = audioDurations[position]?.duration || 0;
     if (audioDuration > Number(beat.duration_sec || 0) + 0.35) {
       const error = new Error(`第 ${index + 1} 镜配音 ${audioDuration.toFixed(2)} 秒超过连续场景段分配时长 ${Number(beat.duration_sec || 0).toFixed(2)} 秒`);
       error.code = 'AUDIO_DURATION_EXCEEDS_SHOT';
@@ -1048,6 +1088,9 @@ async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, s
       scene_block_source_video_url: sourceClip.video_url || '',
       scene_block_start_sec: beat.start_sec,
       scene_block_end_sec: beat.end_sec,
+      planned_scene_block_start_sec: Number(beat.planned_start_sec ?? beat.start_sec),
+      planned_scene_block_end_sec: Number(beat.planned_end_sec ?? beat.end_sec),
+      scene_block_edit_evidence: editPlan.evidence,
       mode: 'continuous_scene_block_segment',
       audio_source: audioPath ? (audio.audio_url || audio.audioUrl || audio.url || '') : '',
       audio_muxed: !!audioPath,

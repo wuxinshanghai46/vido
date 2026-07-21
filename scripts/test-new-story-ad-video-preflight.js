@@ -58,9 +58,10 @@ assert.strictEqual(targeted.blockers.length, 0, 'an unrelated billing failure mu
 const quality = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
 });
-assert.deepStrictEqual(quality.units.map(unit => unit.shots), [[1, 2, 3], [4], [5], [6]]);
-assert.deepStrictEqual(quality.units.map(unit => unit.action), ['provider_generate', 'local_motion', 'provider_generate', 'provider_generate']);
-assert.strictEqual(quality.paid_unit_count, 3, '高质量整条广告模式应按兼容连续场景段计费，而不是逐镜提交');
+assert.deepStrictEqual(quality.units.map(unit => unit.shots), [[1], [2, 3], [4], [5], [6]]);
+assert.deepStrictEqual(quality.units.map(unit => unit.action), ['provider_generate', 'provider_generate', 'local_motion', 'provider_generate', 'provider_generate']);
+assert(quality.units.every(unit => unit.duration_sec <= 10), '高质量连续生成单元必须遵守 10 秒硬上限');
+assert.strictEqual(quality.paid_unit_count, 4, '高质量整条广告模式应按 6–10 秒兼容连续单元计费，而不是逐镜提交');
 assert.strictEqual(quality.local_unit_count, 1);
 assert.strictEqual(quality.paid_video_seconds, 25);
 assert.strictEqual(quality.fingerprint, preflight.buildVideoPreflight({
