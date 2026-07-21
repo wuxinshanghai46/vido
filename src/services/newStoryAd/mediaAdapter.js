@@ -193,7 +193,7 @@ function providerErrorDiagnostics(error = null) {
   return {
     provider_status: cleanField(error?.response?.status || payload?.status || payload?.code || ''),
     provider_reason: cleanField(payload?.reason || nested?.reason || ''),
-    provider_request_id: cleanField(payload?.request_id || payload?.requestId || nested?.request_id || nested?.requestId || error?.response?.headers?.['x-request-id'] || ''),
+    provider_request_id: cleanField(error?.providerRequestId || error?.provider_request_id || payload?.request_id || payload?.requestId || nested?.request_id || nested?.requestId || error?.response?.headers?.['x-request-id'] || ''),
     provider_error_code: cleanField(payload?.code || nested?.code || ''),
   };
 }
@@ -441,6 +441,12 @@ async function generateImage({
   inputFidelity = 'high',
   auditSafePrompt = '',
   singleAttempt = false,
+  clientRequestId = '',
+  shotIndex = null,
+  generationId = '',
+  onSubmitting = null,
+  onSubmitted = null,
+  onProgress = null,
   timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
@@ -513,6 +519,10 @@ async function generateImage({
           referenceImages: referenceCapable ? references : [],
           inputFidelity,
           signal: cancellation.signal(),
+          clientRequestId,
+          onSubmitting,
+          onSubmitted,
+          onProgress,
           timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
         });
         const governedPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(prompt) : prompt;
@@ -546,6 +556,9 @@ async function generateImage({
           remote: true,
           reference_count: references.length,
           reference_preserving: references.length > 0,
+          provider_request_id: generated.providerRequestId || '',
+          provider_task_id: generated.taskId || '',
+          submission_id: clientRequestId || '',
         };
         const stablePayload = await persistImageResult({
           result: payload,
@@ -553,7 +566,13 @@ async function generateImage({
           thumbnailWidths: [520, 640],
         });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
-        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        storage.saveModelCall({
+          task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+          status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1,
+          shot_index: shotIndex, generation_id: generationId, submission_id: clientRequestId,
+          provider_task_id: generated.taskId || '', provider_request_id: generated.providerRequestId || '',
+          provider_submission_state: 'completed', billing_state: 'confirmed',
+        });
         return stablePayload;
       }
       const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
@@ -614,6 +633,7 @@ async function generateImage({
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = classifyImageGenerationError(err);
       const providerDiagnostics = providerErrorDiagnostics(err);
+      const billingUnknown = err.billingState === 'unknown' || err.billing_state === 'unknown';
       if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(classified.code)) {
         modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
       }
@@ -626,6 +646,12 @@ async function generateImage({
         error_code: classified.code || err.code,
         error_message: String(classified.message || err.message || err).slice(0, 500),
         ...providerDiagnostics,
+        shot_index: shotIndex,
+        generation_id: generationId,
+        submission_id: clientRequestId,
+        provider_task_id: err.providerTaskId || err.provider_task_id || '',
+        provider_submission_state: err.providerSubmissionState || err.provider_submission_state || '',
+        billing_state: err.billingState || err.billing_state || '',
         latency_ms: Date.now() - startedAt,
         fallback_rank: candidateIndex + 1,
       });
@@ -635,8 +661,11 @@ async function generateImage({
         retryable: classified.retryable === true,
         message: String(classified.message || err.message || err).slice(0, 240),
         ...providerDiagnostics,
+        provider_task_id: err.providerTaskId || err.provider_task_id || '',
+        provider_submission_state: err.providerSubmissionState || err.provider_submission_state || '',
+        billing_state: err.billingState || err.billing_state || '',
       });
-      if (classified.terminal === true) break;
+      if (billingUnknown || classified.terminal === true) break;
     }
   }
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
@@ -653,6 +682,13 @@ async function generateImage({
   error.code = errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE');
   error.retryable = errors.some(item => item.retryable);
   error.attempts = errors;
+  const uncertain = errors.find(item => item.billing_state === 'unknown');
+  if (uncertain) {
+    error.billingState = 'unknown';
+    error.providerSubmissionState = uncertain.provider_submission_state || 'submitted_unknown';
+    error.providerRequestId = uncertain.provider_request_id || '';
+    error.providerTaskId = uncertain.provider_task_id || '';
+  }
   throw error;
 }
 

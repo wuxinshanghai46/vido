@@ -93,6 +93,8 @@ function buildHeaders(modelId, options = {}) {
     'Authorization': `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   };
+  const clientRequestId = String(options.clientRequestId || '').replace(/[\r\n]/g, '').trim().slice(0, 100);
+  if (clientRequestId) headers['X-Request-ID'] = clientRequestId;
   if (!options.forceDomestic && isOverseasModel(modelId)) headers.vendor = 'API_VENDOR';
   return headers;
 }
@@ -569,9 +571,49 @@ function isReadableStream(value) {
   return !!value && typeof value.on === 'function' && typeof value.pipe === 'function';
 }
 
-function readStreamText(stream, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS) {
+function providerRequestIdFromHeaders(headers = {}) {
+  return String(headers?.['x-request-id'] || headers?.['request-id'] || headers?.['x-trace-id'] || '').trim().slice(0, 160);
+}
+
+function streamPayloadSnapshot(text = '') {
+  const payloads = parseSseDataPayloads(text);
+  let taskId = '';
+  let providerRequestId = '';
+  let status = '';
+  for (const payload of payloads) {
+    if (!payload || typeof payload !== 'object') continue;
+    taskId = payload.task_id || payload.taskId || payload.data?.task_id || payload.data?.taskId || taskId;
+    providerRequestId = payload.request_id || payload.requestId || payload.data?.request_id || payload.data?.requestId || providerRequestId;
+    status = payload.status || payload.task_status || payload.data?.status || payload.data?.task_status || payload.type || status;
+  }
+  return {
+    taskId: String(taskId || '').slice(0, 160),
+    providerRequestId: String(providerRequestId || '').slice(0, 160),
+    status: String(status || '').slice(0, 80),
+  };
+}
+
+function extractCompletedImageUrlsFromStreamText(text = '') {
+  const urls = new Set();
+  for (const payload of parseSseDataPayloads(text)) {
+    if (!payload || typeof payload !== 'object') continue;
+    const marker = String(payload.type || payload.status || payload.task_status || payload.data?.status || payload.data?.task_status || '').toLowerCase();
+    const explicitlyComplete = /(?:^|[._-])(completed?|succeeded?|success|succeed)(?:$|[._-])/.test(marker);
+    const explicitlyPartial = /partial|progress|processing|running|queued|submitted/.test(marker);
+    const openAiStyleFinal = !explicitlyPartial && Array.isArray(payload.data)
+      && payload.data.some(item => item && typeof item === 'object' && (item.url || item.image_url));
+    if (!explicitlyComplete && !openAiStyleFinal) continue;
+    extractImageUrlsFromAnyPayload(payload).forEach(url => urls.add(url));
+  }
+  return Array.from(urls);
+}
+
+function readStreamText(stream, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, options = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
+    let pending = '';
+    let observedText = '';
+    let snapshot = { taskId: '', providerRequestId: '', status: '' };
     let settled = false;
     const finish = (fn, value) => {
       if (settled) return;
@@ -583,11 +625,50 @@ function readStreamText(stream, timeoutMs = MODEL_PROVIDER_TIMEOUT_MS) {
       try { stream.destroy?.(); } catch {}
       const err = new Error(`DeyunAI gpt-image-2 stream did not finish within ${timeoutMs}ms`);
       err.code = 'DEYUNAI_GPT_IMAGE2_STREAM_TIMEOUT';
+      const partialResponseText = Buffer.concat(chunks).toString('utf8').slice(-1024 * 1024);
+      const finalSnapshot = streamPayloadSnapshot(partialResponseText);
+      err.partialResponseText = partialResponseText;
+      err.providerTaskId = finalSnapshot.taskId || snapshot.taskId || '';
+      err.providerRequestId = finalSnapshot.providerRequestId || snapshot.providerRequestId || options.providerRequestId || '';
+      err.generatedUrls = extractCompletedImageUrlsFromStreamText(partialResponseText);
+      err.providerSubmissionState = err.generatedUrls.length ? 'completed' : 'submitted_unknown';
+      err.billingState = 'unknown';
       finish(reject, err);
     }, Math.max(1000, Number(timeoutMs) || MODEL_PROVIDER_TIMEOUT_MS));
-    timer.unref?.();
-    stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
-    stream.on('error', err => finish(reject, err));
+    stream.on('data', chunk => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+      chunks.push(buffer);
+      pending += buffer.toString('utf8');
+      const lastBoundary = Math.max(pending.lastIndexOf('\n\n'), pending.lastIndexOf('\r\n\r\n'));
+      if (lastBoundary < 0) return;
+      const consumed = pending.slice(0, lastBoundary + (pending.slice(lastBoundary, lastBoundary + 4) === '\r\n\r\n' ? 4 : 2));
+      pending = pending.slice(consumed.length);
+      observedText += consumed;
+      snapshot = { ...snapshot, ...Object.fromEntries(Object.entries(streamPayloadSnapshot(observedText)).filter(([, value]) => value)) };
+      const completedUrls = extractCompletedImageUrlsFromStreamText(observedText);
+      void notifyGenerationObserver(options.onProgress, {
+        ...snapshot,
+        providerRequestId: snapshot.providerRequestId || options.providerRequestId || '',
+        completedUrls,
+        at: new Date().toISOString(),
+      });
+      if (completedUrls.length) {
+        const text = Buffer.concat(chunks).toString('utf8');
+        finish(resolve, text);
+        try { stream.destroy?.(); } catch {}
+      }
+    });
+    stream.on('error', err => {
+      const partialResponseText = Buffer.concat(chunks).toString('utf8').slice(-1024 * 1024);
+      const finalSnapshot = streamPayloadSnapshot(partialResponseText);
+      err.partialResponseText = partialResponseText;
+      err.providerTaskId = err.providerTaskId || finalSnapshot.taskId || snapshot.taskId || '';
+      err.providerRequestId = err.providerRequestId || finalSnapshot.providerRequestId || snapshot.providerRequestId || options.providerRequestId || '';
+      err.generatedUrls = err.generatedUrls || extractCompletedImageUrlsFromStreamText(partialResponseText);
+      err.providerSubmissionState = err.providerSubmissionState || (err.generatedUrls.length ? 'completed' : 'submitted_unknown');
+      err.billingState = 'unknown';
+      finish(reject, err);
+    });
     stream.on('end', () => finish(resolve, Buffer.concat(chunks).toString('utf8')));
   });
 }
@@ -807,9 +888,9 @@ async function chat({ model, messages, maxTokens = 4096, userId = null, agentId 
  * @param {string} [opts.agentId]
  * @returns {Promise<{ urls:string[], taskId:string }>}
  */
-async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null, signal = null }) {
+async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectRatio = '', referenceImages = [], inputFidelity = 'high', timeoutMs = MODEL_PROVIDER_TIMEOUT_MS, userId = null, agentId = null, signal = null, clientRequestId = '', onSubmitting = null, onSubmitted = null, onProgress = null }) {
   const _started = Date.now();
-  let _ok = false; let _err = null; let _taskId = null;
+  let _ok = false; let _err = null; let _taskId = null; let _providerRequestId = ''; let _submissionStarted = false;
   try {
     if (isGptImage2Model(model)) {
       const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
@@ -837,12 +918,27 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       assertGptImage2BodyContract(body);
       const endpoint = isEdit ? '/images/edits' : '/images/generations';
       const requestSummary = summarizeGptImage2Request(endpoint, body);
+      await notifyGenerationObserver(onSubmitting, {
+        clientRequestId,
+        status: 'submitting',
+        submittedAt: new Date().toISOString(),
+      });
+      _submissionStarted = true;
       const submitRes = await axios.post(
         buildEnterpriseImageUrl(endpoint),
         body,
-        { headers: buildHeaders(model, { forceDomestic: true }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true, signal }
+        { headers: buildHeaders(model, { forceDomestic: true, clientRequestId }), timeout: timeoutMs, responseType: 'stream', validateStatus: () => true, signal }
       );
-      const streamText = isReadableStream(submitRes.data) ? await readStreamText(submitRes.data, timeoutMs) : '';
+      _providerRequestId = providerRequestIdFromHeaders(submitRes.headers);
+      await notifyGenerationObserver(onSubmitted, {
+        clientRequestId,
+        providerRequestId: _providerRequestId,
+        status: submitRes.status >= 400 ? 'rejected' : 'submitted',
+        submittedAt: new Date().toISOString(),
+      });
+      const streamText = isReadableStream(submitRes.data)
+        ? await readStreamText(submitRes.data, timeoutMs, { onProgress, providerRequestId: _providerRequestId })
+        : '';
       if (streamText) submitRes.data = parseStreamResponsePayload(streamText);
       if (submitRes.status >= 400) {
         const err = buildProviderImageError(`漫路 GPT Image 2 ${isEdit ? 'edits' : 'generations'} HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
@@ -856,7 +952,11 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         throw err;
       }
       _taskId = submitRes.data?.task_id || submitRes.data?.data?.task_id || null;
-      const streamUrls = streamText ? extractImageUrlsFromStreamText(streamText) : [];
+      const streamSnapshot = streamText ? streamPayloadSnapshot(streamText) : {};
+      _taskId = _taskId || streamSnapshot.taskId || null;
+      _providerRequestId = _providerRequestId || streamSnapshot.providerRequestId || '';
+      const completedStreamUrls = streamText ? extractCompletedImageUrlsFromStreamText(streamText) : [];
+      const streamUrls = completedStreamUrls.length ? completedStreamUrls : (streamText ? extractImageUrlsFromStreamText(streamText) : []);
       const urls = streamUrls.length ? streamUrls : extractImageUrlsFromSyncPayload(submitRes.data);
       if (!urls.length) {
         const err = new Error('漫路 GPT Image 2 未返回图片数据: ' + JSON.stringify(submitRes.data).slice(0, 300));
@@ -864,7 +964,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         throw err;
       }
       _ok = true;
-      return { urls, taskId: _taskId, raw: submitRes.data, stream: !!streamText, partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES };
+      return { urls, taskId: _taskId, providerRequestId: _providerRequestId, raw: submitRes.data, stream: !!streamText, partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES };
     }
 
     const body = { model, prompt, n, size };
@@ -880,21 +980,35 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
       body.image_url = refs[0];
       if (refs.length > 1) body.image_urls = refs;
     }
+    await notifyGenerationObserver(onSubmitting, {
+      clientRequestId,
+      status: 'submitting',
+      submittedAt: new Date().toISOString(),
+    });
+    _submissionStarted = true;
     const submitRes = await axios.post(
       buildImageUrl('/images/generations', model),
       body,
-      { headers: buildHeaders(model), timeout: timeoutMs, validateStatus: () => true, signal }
+      { headers: buildHeaders(model, { clientRequestId }), timeout: timeoutMs, validateStatus: () => true, signal }
     );
+    _providerRequestId = providerRequestIdFromHeaders(submitRes.headers);
     if (submitRes.status >= 400) {
       throw buildProviderImageError(`漫路 images 提交 HTTP ${submitRes.status}: ${JSON.stringify(submitRes.data).slice(0, 300)}`, submitRes.data);
     }
     _taskId = submitRes.data?.data?.task_id || submitRes.data?.task_id;
+    await notifyGenerationObserver(onSubmitted, {
+      clientRequestId,
+      taskId: _taskId || '',
+      providerRequestId: _providerRequestId,
+      status: _taskId ? 'submitted' : 'responded',
+      submittedAt: new Date().toISOString(),
+    });
     // 同步返回 (OpenAI 风格)
     if (!_taskId && submitRes.data?.data) {
       const arr = submitRes.data.data;
       if (Array.isArray(arr) && arr[0]?.url) {
         _ok = true;
-        return { urls: arr.map(x => x.url || x.b64_json).filter(Boolean), taskId: null };
+        return { urls: arr.map(x => x.url || x.b64_json).filter(Boolean), taskId: null, providerRequestId: _providerRequestId };
       }
     }
     if (!_taskId) {
@@ -910,11 +1024,19 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         { headers: buildHeaders(model), timeout: 15000, signal }
       );
       const d = queryRes.data?.data || {};
+      await notifyGenerationObserver(onProgress, {
+        clientRequestId,
+        taskId: _taskId,
+        providerRequestId: _providerRequestId,
+        status: d.task_status || 'processing',
+        completedUrls: d.task_status === 'succeed' ? (d.task_result?.images || []).map(im => im.url).filter(Boolean) : [],
+        polledAt: new Date().toISOString(),
+      });
       if (d.task_status === 'succeed') {
         const urls = (d.task_result?.images || []).map(im => im.url).filter(Boolean);
         if (!urls.length) throw new Error('图像生成成功但 url 列表为空');
         _ok = true;
-        return { urls, taskId: _taskId };
+        return { urls, taskId: _taskId, providerRequestId: _providerRequestId };
       }
       if (d.task_status === 'failed' || d.task_status === 'fail') {
         throw buildProviderImageError(`漫路图像生成失败: ${d.error_msg || d.message || JSON.stringify(d)}`, d);
@@ -923,6 +1045,15 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
     }
     throw new Error(`漫路图像生成超时（${timeoutMs}ms）`);
   } catch (e) {
+    const status = Number(e?.response?.status || 0);
+    const ambiguous = _submissionStarted && (!status || status >= 500
+      || /timeout|timed\s*out|ECONNRESET|socket hang up/i.test(`${e?.code || ''} ${e?.message || ''}`));
+    if (_submissionStarted) {
+      e.providerRequestId = e.providerRequestId || _providerRequestId || providerRequestIdFromHeaders(e?.response?.headers);
+      e.providerTaskId = e.providerTaskId || _taskId || '';
+      e.providerSubmissionState = e.providerSubmissionState || (ambiguous ? 'submitted_unknown' : 'rejected');
+      if (ambiguous) e.billingState = 'unknown';
+    }
     _err = e.message; throw e;
   } finally {
     try {
@@ -931,7 +1062,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         category: 'image', imageCount: _ok ? n : 0,
         durationMs: Date.now() - _started,
         status: _ok ? 'success' : 'fail', errorMsg: _err,
-        userId, agentId, requestId: _taskId,
+        userId, agentId, requestId: _taskId || _providerRequestId || clientRequestId,
+        billingState: _ok ? 'confirmed' : (_submissionStarted ? 'unknown' : 'not_submitted'),
       });
     } catch {}
   }
@@ -1045,6 +1177,10 @@ module.exports = {
   listAssets,
   ensurePersonImageAsset,
   getDeyunaiKey,
+  readStreamText,
+  parseSseDataPayloads,
+  streamPayloadSnapshot,
+  extractCompletedImageUrlsFromStreamText,
   chat,
   generateImage,
   generateVideo,

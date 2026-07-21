@@ -17,6 +17,7 @@ const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
+const keyframeSubmissions = require('./keyframeSubmissionService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
@@ -1323,6 +1324,20 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   });
 }
 
+function keyframeSubmissionPreflight(taskId, options = {}, actor = {}) {
+  const shots = storage.getOutput(taskId, 'storyboard_table');
+  const existing = storage.getOutput(taskId, 'keyframes');
+  const shotList = Array.isArray(shots) ? shots : [];
+  const keyframes = Array.isArray(existing) ? existing : [];
+  const targetIndexes = keyframeTargetIndexes(shotList, keyframes, options);
+  return keyframeSubmissions.preflight(taskId, targetIndexes, {
+    frames: keyframes,
+    acknowledgeBillingUnknown: options.acknowledge_billing_unknown === true
+      || options.acknowledgeBillingUnknown === true,
+    acknowledgedBy: actor.id || actor.user_id || actor.userId || '',
+  });
+}
+
 function previewShotPrompts(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
@@ -1383,6 +1398,11 @@ async function generateKeyframesStage(taskId, options = {}) {
   const contracts = contractRefresh.contracts;
   const existing = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
   const targetIndexes = keyframeTargetIndexes(shots, existing, options);
+  keyframeSubmissions.preflight(taskId, targetIndexes, {
+    frames: existing,
+    acknowledgeBillingUnknown: options.acknowledge_billing_unknown === true
+      || options.acknowledgeBillingUnknown === true,
+  });
   const keyframes = existing.slice();
   const dependencyPlan = buildKeyframeDependencyPlan(shots, contracts, ctx);
   const targetIndexSet = new Set(targetIndexes);
@@ -1506,20 +1526,61 @@ async function generateKeyframesStage(taskId, options = {}) {
           prompt,
         });
         const imageStartedMs = Date.now();
-        const result = await mediaAdapter.generateImage({
-          taskId,
-          prompt,
-          filename: filename + '_a' + (qaAttempt + 1),
-          stage: 'new_story_ad.keyframe',
-          aspectRatio: ctx.output_ratio || '9:16',
-          resolution: options.resolution || '2K',
-          imageModel: options.image_model || options.imageModel || 'auto',
-          referenceImages,
-          requireReferences: referenceImages.length > 0,
-          inputFidelity: 'high',
-          singleAttempt: keyframeTarget.missingImagesOnly(options),
-          timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (5 * 60 * 1000))),
-        });
+        const recoveredSubmission = qaAttempt === 0 ? keyframeSubmissions.takeRecoverable(taskId, i) : null;
+        let submission = recoveredSubmission;
+        let result;
+        try {
+          if (recoveredSubmission) {
+            const recoveredUrl = recoveredSubmission.completed_urls.find(Boolean);
+            result = await mediaAdapter.persistImageResult({
+              result: {
+                image_url: recoveredUrl,
+                url: recoveredUrl,
+                provider_used: [recoveredSubmission.provider_id, recoveredSubmission.model_id].filter(Boolean).join('/'),
+                provider_request_id: recoveredSubmission.provider_request_id || '',
+                provider_task_id: recoveredSubmission.provider_task_id || '',
+                recovered_provider_result: true,
+              },
+              filename: filename + '_a' + (qaAttempt + 1),
+              thumbnailWidths: [520, 640],
+            });
+          } else {
+            submission = keyframeSubmissions.begin(taskId, {
+              shotIndex: i,
+              generationId: generationProgress.generation_id,
+              qaAttempt: qaAttempt + 1,
+              prompt,
+              contractFingerprint: contracts[i]?.contract_fingerprint || '',
+            });
+            result = await mediaAdapter.generateImage({
+              taskId,
+              prompt,
+              filename: filename + '_a' + (qaAttempt + 1),
+              stage: 'new_story_ad.keyframe',
+              aspectRatio: ctx.output_ratio || '9:16',
+              resolution: options.resolution || '2K',
+              imageModel: options.image_model || options.imageModel || 'auto',
+              referenceImages,
+              requireReferences: referenceImages.length > 0,
+              inputFidelity: 'high',
+              singleAttempt: keyframeTarget.missingImagesOnly(options),
+              clientRequestId: submission.id,
+              shotIndex: i,
+              generationId: generationProgress.generation_id,
+              onSubmitting: event => keyframeSubmissions.markSubmitting(taskId, submission.id, event),
+              onSubmitted: event => keyframeSubmissions.markSubmitted(taskId, submission.id, event),
+              onProgress: event => keyframeSubmissions.markProgress(taskId, submission.id, event),
+              timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(options.image_timeout_ms ?? options.imageTimeoutMs) || (8 * 60 * 1000))),
+            });
+          }
+          keyframeSubmissions.markSuccess(taskId, submission.id, result);
+        } catch (error) {
+          if (submission) {
+            if (recoveredSubmission) keyframeSubmissions.restoreRecoverable(taskId, submission.id, error);
+            else keyframeSubmissions.markFailure(taskId, submission.id, error);
+          }
+          throw error;
+        }
         keyframeContractFreshness.assertCurrent(taskId, i, contracts[i] || {});
         const imageLatencyMs = Date.now() - imageStartedMs;
         const imageUrl = keyframeUrlFromResult(result);
@@ -3683,6 +3744,7 @@ module.exports = {
   keyframeCompletion,
   keyframeTargetIndexes,
   keyframeStageBudgetMs,
+  keyframeSubmissionPreflight,
   isQaInfrastructureError,
   structuredQaFeedback,
   buildKeyframeDependencyPlan,

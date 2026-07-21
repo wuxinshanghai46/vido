@@ -927,6 +927,8 @@ router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/keyframes', asyncRoute(async (req, res) => {
   const body = req.body || {};
+  taskForReq(req);
+  service.keyframeSubmissionPreflight(req.params.id, body, userFromReq(req));
   return queueTaskStage(
     req,
     res,

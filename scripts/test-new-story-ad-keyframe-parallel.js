@@ -436,6 +436,75 @@ async function testStrictMissingFillNeverAutoRegeneratesAfterQaRejection() {
   }
 }
 
+async function testTimeoutCannotAutoResubmitWithoutBillingAcknowledgement() {
+  const owner = { id: 'timeout-billing-owner', role: 'user' };
+  const taskId = service.createTask({
+    brief: '验证图片供应商超时后不得自动重复付费提交',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+  }, owner).task.id;
+  storage.saveOutput(taskId, 'context', {
+    brief: '验证图片供应商超时后不得自动重复付费提交',
+    product_subject: '通用测试主体',
+    cast_mode: 'no_human',
+    scene_assets: [],
+    assets: [],
+  });
+  storage.saveOutput(taskId, 'storyboard_table', [{
+    index: 1,
+    title: '唯一缺失镜头',
+    visual: '展示当前任务主体',
+    action: '保持稳定',
+    subject_type: 'product_only',
+    characters: [],
+  }]);
+
+  const originalGenerateImage = mediaAdapter.generateImage;
+  const originalPersonReview = personKeyframeQa.reviewPersonKeyframe;
+  const originalProductReview = productKeyframeQa.reviewProductKeyframe;
+  let imageCalls = 0;
+  let shouldTimeout = true;
+  mediaAdapter.generateImage = async ({ filename = '', onSubmitting, onSubmitted } = {}) => {
+    imageCalls += 1;
+    await onSubmitting?.({ status: 'submitting' });
+    await onSubmitted?.({ status: 'submitted', providerRequestId: 'provider-request-1' });
+    if (shouldTimeout) {
+      const error = new Error('timeout of 300000ms exceeded');
+      error.code = 'DEYUNAI_GPT_IMAGE2_STREAM_TIMEOUT';
+      error.billingState = 'unknown';
+      error.providerSubmissionState = 'submitted_unknown';
+      throw error;
+    }
+    return { image_url: `https://example.test/${filename}.png`, provider_used: 'mock/no-charge' };
+  };
+  personKeyframeQa.reviewPersonKeyframe = async () => ({ pass: true, status: 'verified', conflicts: [] });
+  productKeyframeQa.reviewProductKeyframe = async () => ({ pass: true, status: 'not_applicable', conflicts: [] });
+  try {
+    await assert.rejects(
+      () => service.generateKeyframesStage(taskId, { missing_images_only: true }),
+      error => error?.code === 'KEYFRAME_BATCH_PARTIAL_FAILURE',
+    );
+    assert.equal(imageCalls, 1);
+    await assert.rejects(
+      () => service.generateKeyframesStage(taskId, { missing_images_only: true }),
+      error => error?.code === 'KEYFRAME_SUBMISSION_BILLING_UNKNOWN'
+        && error?.details?.requires_billing_acknowledgement === true,
+    );
+    assert.equal(imageCalls, 1, '未明确确认计费风险时不得产生第二次图片调用');
+    shouldTimeout = false;
+    const result = await service.generateKeyframesStage(taskId, {
+      missing_images_only: true,
+      acknowledge_billing_unknown: true,
+    });
+    assert.equal(imageCalls, 2, '明确确认后只允许新增一次图片调用');
+    assert.equal(result.keyframes[0].current_generation_status, 'accepted');
+  } finally {
+    mediaAdapter.generateImage = originalGenerateImage;
+    personKeyframeQa.reviewPersonKeyframe = originalPersonReview;
+    productKeyframeQa.reviewProductKeyframe = originalProductReview;
+  }
+}
+
 function testConfigurationAndContracts() {
   assert.strictEqual(scheduler.resolveConcurrency({}, 8, {}), 2);
   assert.strictEqual(scheduler.resolveConcurrency({ keyframe_concurrency: 99 }, 8, {}), 3);
@@ -599,6 +668,7 @@ async function main() {
   await testFailedBatchKeepsStructuredState();
   await testStrictMissingFillPreservesExistingFrames();
   await testStrictMissingFillNeverAutoRegeneratesAfterQaRejection();
+  await testTimeoutCannotAutoResubmitWithoutBillingAcknowledgement();
   console.log('new-story-ad keyframe parallel tests passed');
 }
 

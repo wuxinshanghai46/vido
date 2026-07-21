@@ -272,6 +272,28 @@
     return waitForStage(taskId, expectedStage, ctx);
   }
 
+  async function startKeyframesWithBillingGuard(taskId, body, ctx = {}) {
+    try {
+      return await startStage(taskId, 'keyframes', body, ctx);
+    } catch (error) {
+      const payload = error?.data || {};
+      const details = payload.details || {};
+      if (payload.code !== 'KEYFRAME_SUBMISSION_BILLING_UNKNOWN'
+        || details.requires_billing_acknowledgement !== true) throw error;
+      const shots = (details.blockers || []).map(item => item.shot_number).filter(Boolean).join('、');
+      const accepted = window.confirm(
+        `第 ${shots || '相关'} 镜上一次请求已发给图片供应商，但超时后无法确认是否已经计费或仍会返回结果。\n\n`
+        + '继续会放弃等待旧结果，并重新提交一次，可能产生重复计费。系统不会自动替你继续。\n\n确认仍要重新提交吗？'
+      );
+      if (!accepted) {
+        const cancelled = new Error('已取消重新提交，没有产生新的图片模型调用。');
+        cancelled.code = 'USER_CANCELLED';
+        throw cancelled;
+      }
+      return startStage(taskId, 'keyframes', { ...body, acknowledge_billing_unknown: true }, ctx);
+    }
+  }
+
   /** 提交单个后台阶段，并在视频阶段携带不可复用的费用授权。 */
   async function runStage(stage, ctx = {}) {
     const {
@@ -319,7 +341,7 @@
         if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
         if (state.storyboardDirty === true && state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
-        r = await startStage(id, 'keyframes', missingOnly ? { missing_images_only: true } : {}, ctx);
+        r = await startKeyframesWithBillingGuard(id, missingOnly ? { missing_images_only: true } : {}, ctx);
         normalizeBundle?.(r);
         showStep?.(4);
       } else if (stage === 'tts') {
@@ -448,6 +470,7 @@
     assist,
     mediaStageBody,
     startStage,
+    startKeyframesWithBillingGuard,
     waitForStage,
     cancelStage,
     isNetworkError,

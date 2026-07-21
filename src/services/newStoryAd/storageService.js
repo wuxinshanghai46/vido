@@ -300,6 +300,13 @@ function saveModelCall(call) {
     provider_status: call.provider_status || '',
     provider_reason: call.provider_reason || '',
     provider_request_id: call.provider_request_id || '',
+    provider_task_id: call.provider_task_id || '',
+    provider_submission_state: call.provider_submission_state || '',
+    billing_state: call.billing_state || '',
+    submission_id: call.submission_id || '',
+    generation_id: call.generation_id || '',
+    shot_index: call.shot_index !== null && call.shot_index !== undefined && call.shot_index !== ''
+      && Number.isInteger(Number(call.shot_index)) ? Number(call.shot_index) : null,
     provider_error_code: call.provider_error_code || '',
     latency_ms: call.latency_ms || 0,
     fallback_rank: call.fallback_rank || 0,
