@@ -51,6 +51,13 @@ async function main() {
   );
   assert.strictEqual(storage.getOutput('boundary-compose-block', 'final_video'), null, 'blocked composition must not create or overwrite final output');
 
+  const rejectedClips = clips.map((item, index) => index === 3 ? { ...item, cross_shot_qa: { pass: false, failure_labels_zh: ['运动与视线方向连续性', '动作承接连续性'] }, error_code: 'CROSS_SHOT_CONTINUITY_FAILED' } : item);
+  storage.saveOutput('boundary-compose-block', 'video_clips', rejectedClips);
+  storage.updateTask('boundary-compose-block', { status: 'failed', stage: 'media_failed', error: '当前版本仍有未审片或来源不匹配的镜头：第 4 镜', error_code: 'COMPOSE_CLIP_LINEAGE_INVALID' });
+  const restored = storyAd.publicTaskBundle('boundary-compose-block');
+  assert.strictEqual(restored.task.error_code, 'VIDEO_QA_FAILED', 'task restore must replace a stale generic compose error with persisted boundary QA evidence');
+  assert.match(restored.task.error, /第 3→4 镜衔接未通过.*运动与视线方向连续性.*动作承接连续性/);
+
   const source = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/storyAdService.js'), 'utf8');
   assert(source.includes('videoBoundaryPolicy.requiredBoundaryIndexes(clips, reviewedIndexes)'), 'shot re-review must automatically close adjacent required boundaries');
   assert(source.includes('let qaFailures = pendingReviewFailures.slice()'), 'a failed zero-cost boundary review must become a video QA failure instead of a partial success');

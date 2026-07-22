@@ -316,7 +316,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
   const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
   const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
   const keyframeStatus = keyframeCompletion(keyframes, storyboard);
-  let task = bundle.task;
+  let task = bundle.task; const boundaryFailure = videoBoundaryPolicy.taskFailurePatch(outputs.video_clips || [], storyboard.length); if (task && !task.active_generation_id && boundaryFailure) task = { ...task, ...boundaryFailure };
   if (task && !task.active_generation_id && keyframeStatus.failed > 0 && /keyframes_(ready|partial)|^keyframes$/.test(String(task.stage || ''))) {
     task = {
       ...task,
@@ -425,7 +425,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
   } : null);
   const storedStatus = String(task.status || '').toLowerCase();
-  const failureSummary = keyframeFailure.taskSummaryPatch(task, keyframes);
+  const failureSummary = videoBoundaryPolicy.taskFailurePatch(outputMap.video_clips || [], storyboard.length) || keyframeFailure.taskSummaryPatch(task, keyframes);
   const taskStatus = hasFinalOutput
     ? 'done'
     : ((failureSummary.error_code || storedGenerationProgress?.status === 'failed')

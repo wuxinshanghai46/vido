@@ -48,4 +48,14 @@ function requiredBoundaryIndexes(clips = [], reviewedIndexes = []) {
   return candidates.filter(index => Number.isInteger(index) && boundaryRequired(clips, index));
 }
 
-module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes };
+function taskFailurePatch(clips = [], shotCount = clips.length) {
+  const result = audit(clips, shotCount);
+  if (!result.failed_indexes.length) return null;
+  const details = result.boundaries.filter(item => item.status === 'failed').map(item => {
+    const labels = Array.isArray(item.qa?.failure_labels_zh) ? item.qa.failure_labels_zh.filter(Boolean) : [];
+    return `第 ${item.index}→${item.index + 1} 镜衔接未通过${labels.length ? `（${labels.join('、')}）` : ''}`;
+  });
+  return { status: 'failed', stage: 'video_failed', error: details.join('；'), error_code: 'VIDEO_QA_FAILED', retryable: true };
+}
+
+module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, taskFailurePatch };
