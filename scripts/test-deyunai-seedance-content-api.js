@@ -175,6 +175,19 @@ const fakeHttpClient = {
     }),
     error => error?.code === 'DEYUNAI_LIVENESS_GROUP_BINDING_REQUIRED',
   );
+  await assert.rejects(
+    () => ensurePersonImageAsset({
+      sourceUrl: 'https://example.com/provider-generated-tail.png',
+      groupType: 'AIGC', groupName: 'subscription_required',
+      httpClient: { post: async url => {
+        if (url.endsWith('/ListAssetGroups')) return { data: { Result: { Items: [] } } };
+        const error = new Error('HTTP 403');
+        error.response = { status: 403, data: { ResponseMetadata: { Error: { Code: 'SubscriptionRequired', Message: 'advanced plan required' } } } };
+        throw error;
+      } },
+    }),
+    error => error?.code === 'DEYUNAI_ASSET_SUBSCRIPTION_REQUIRED' && error?.retryable === false && error?.providerCode === 'SubscriptionRequired',
+  );
   console.log('DEYUNAI_SEEDANCE_CONTENT_API_TEST_OK');
 })().catch(error => {
   console.error(error.stack || error.message);

@@ -205,14 +205,32 @@ function assetApiError(payload = {}) {
   return String(err.Message || err.message || err.Code || err.code || JSON.stringify(err)).slice(0, 500);
 }
 
+function mappedAssetApiError(action, payload = {}, status = 502) {
+  const metadata = payload?.ResponseMetadata || payload?.response_metadata || {};
+  const detail = metadata.Error || metadata.error || payload?.Error || payload?.error || {};
+  const providerCode = String(detail.Code || detail.code || '').trim();
+  const providerMessage = String(detail.Message || detail.message || providerCode || 'unknown provider error').slice(0, 500);
+  const error = new Error(`漫路素材库 ${action} 失败 [${providerCode || 'Unknown'}]: ${providerMessage}`);
+  error.code = /SubscriptionRequired/i.test(providerCode) ? 'DEYUNAI_ASSET_SUBSCRIPTION_REQUIRED'
+    : /NotFound\.group_id/i.test(providerCode) ? 'DEYUNAI_ASSET_GROUP_NOT_FOUND' : 'DEYUNAI_ASSET_API_FAILED';
+  error.providerCode = providerCode;
+  error.status = Number(status || 502);
+  error.retryable = false;
+  return error;
+}
+
 async function requestAssetApi(action, body = {}, { httpClient = axios, signal = null } = {}) {
-  const response = await httpClient.post(`${ASSET_API_BASE_URL}/${encodeURIComponent(action)}`, body, {
-    headers: buildHeaders('', { forceDomestic: true }),
-    timeout: 30000,
-    signal,
-  });
+  let response;
+  try {
+    response = await httpClient.post(`${ASSET_API_BASE_URL}/${encodeURIComponent(action)}`, body, {
+      headers: buildHeaders('', { forceDomestic: true }), timeout: 30000, signal,
+    });
+  } catch (error) {
+    if (assetApiError(error?.response?.data || {})) throw mappedAssetApiError(action, error.response.data, error.response.status);
+    throw error;
+  }
   const businessError = assetApiError(response.data);
-  if (businessError) throw new Error(`漫路素材库 ${action} 失败: ${businessError}`);
+  if (businessError) throw mappedAssetApiError(action, response.data, response.status);
   return response.data;
 }
 

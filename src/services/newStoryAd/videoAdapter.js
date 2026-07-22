@@ -623,13 +623,13 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     throw error;
   }
   const candidates = [pinnedModel];
-  const imageUrl = absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
+  const imageUrl = options._boundaryFirstFrameUrl || absoluteAssetUrl(keyframe.image_url || keyframe.imageUrl || keyframe.url || '', options);
   if (!imageUrl) throw new Error(`第 ${index + 1} 镜缺少关键帧，不能提交图生视频`);
   const prompt = String(options._promptOverride || '').trim()
     || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
   const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
-  const forceReferenceAssetMode = !!options._boundaryRepairContract?.fingerprint;
-  const personReferenceAsset = (useSeedanceReferenceAssets(options, { personRequired: shotNeedsPerson }) || forceReferenceAssetMode)
+  const directBoundary = options._boundaryRepairInputMode === boundaryRepair.DIRECT_TAIL_FIRST_FRAME, forceReferenceAssetMode = options._boundaryRepairInputMode === boundaryRepair.MANAGED_DUAL_REFERENCE;
+  const personReferenceAsset = !directBoundary && (useSeedanceReferenceAssets(options, { personRequired: shotNeedsPerson }) || forceReferenceAssetMode)
     && options._deyunaiPersonAsset?.asset_url
     && (shotNeedsPerson || forceReferenceAssetMode)
     ? options._deyunaiPersonAsset.asset_url
@@ -638,7 +638,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     ? [...new Set((Array.isArray(options._sceneReferenceAssetUrls) ? options._sceneReferenceAssetUrls : []).filter(Boolean))].slice(0, 2)
     : [];
   const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
-  boundaryGeneration.assertProviderInput({ contract: options._boundaryRepairContract, providerRoute: modelRoute(pinnedModel), currentKeyframeAssetUrl: personReferenceAsset, previousTailAssetUrl: options._boundaryReferenceAssetUrl, referenceAssetUrls: sceneReferenceAssets });
+  boundaryGeneration.assertProviderInput({ contract: options._boundaryRepairContract, providerRoute: modelRoute(pinnedModel), inputMode: options._boundaryRepairInputMode, firstFrameUrl: options._boundaryFirstFrameUrl, currentKeyframeAssetUrl: personReferenceAsset, previousTailAssetUrl: options._boundaryReferenceAssetUrl, referenceAssetUrls: sceneReferenceAssets });
   const audioDuration = await probeDuration(audioPath);
   if (audioDuration > duration + 0.35) {
     const error = new Error(`第 ${index + 1} 镜配音 ${audioDuration.toFixed(2)} 秒超过镜头 ${duration.toFixed(2)} 秒，请缩短台词或增加镜头时长`);
@@ -667,7 +667,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         model_id: model.model_id,
         input_mode: inputMode,
         boundary_repair_fingerprint: options._boundaryRepairContract?.fingerprint || '',
-        boundary_reference_attached: !!options._boundaryReferenceAssetUrl,
+        boundary_reference_attached: !!(options._boundaryFirstFrameUrl || options._boundaryReferenceAssetUrl),
         scene_block_id: options._sceneBlock?.id || '',
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
         speech_mode: explicitShotSpeechMode(shot, contract),
@@ -756,7 +756,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         mode: options._sceneBlock?.continuous ? 'provider_continuous_scene_block' : (personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video'),
         seedance_input_mode: inputMode,
         boundary_repair_fingerprint: options._boundaryRepairContract?.fingerprint || '',
-        boundary_reference_attached: !!options._boundaryReferenceAssetUrl,
+        boundary_reference_attached: !!(options._boundaryFirstFrameUrl || options._boundaryReferenceAssetUrl),
         scene_block_id: options._sceneBlock?.id || '',
         scene_block_fingerprint: options._sceneBlock?.fingerprint || '',
         scene_block_members: options._sceneBlock?.member_indexes?.map(member => member + 1) || [],
@@ -1129,10 +1129,11 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
   const localMotionIndexes = new Set((Array.isArray(options._localMotionIndexes) ? options._localMotionIndexes : []).map(Number));
   const keyframeReferenceOnlyIndexes = new Set((Array.isArray(options._keyframeReferenceOnlyIndexes) ? options._keyframeReferenceOnlyIndexes : []).map(Number));
+  const directBoundaryIndexes = new Set(Object.entries(options._boundaryRepairContracts || {}).filter(([, contract]) => (contract?.input_strategy || boundaryRepair.inputStrategy(options)) === boundaryRepair.DIRECT_TAIL_FIRST_FRAME).map(([index]) => Number(index)));
   const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
   const allPersonUnitsUseKeyframeOnly = units
     .filter(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}))
-    .every(block => keyframeReferenceOnlyIndexes.has(block.first_index));
+    .every(block => keyframeReferenceOnlyIndexes.has(block.first_index) || directBoundaryIndexes.has(block.first_index));
   const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && !allPersonUnitsUseKeyframeOnly && useSeedanceReferenceAssets(options, { personRequired: hasPersonUnit })
     ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
     : null;
@@ -1184,14 +1185,15 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           const localMotion = block.member_indexes.length === 1 && localMotionIndexes.has(first);
           const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
           const boundaryContract = options._boundaryRepairContracts?.[first] || null;
-          const referenceAssetMode = useSeedanceReferenceAssets(options, { personRequired }) || !!boundaryContract;
+          const boundaryInputs = await boundaryGeneration.prepareInputs({ taskId, index: first, keyframe: keyframes[first] || {}, contract: boundaryContract, pinnedModelRoute: modelRoute(pinnedModel), options, prepareKeyframeReferenceAsset: prepareDeyunaiKeyframeReferenceAsset });
+          const managedBoundary = boundaryInputs?.inputMode === boundaryRepair.MANAGED_DUAL_REFERENCE;
+          const referenceAssetMode = boundaryContract ? managedBoundary : useSeedanceReferenceAssets(options, { personRequired });
           const sceneAssets = referenceAssetMode && personRequired && block.continuous && !boundaryContract
             ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
             : [];
-          const boundaryInputs = await boundaryGeneration.prepareInputs({ taskId, index: first, keyframe: keyframes[first] || {}, contract: boundaryContract, pinnedModelRoute: modelRoute(pinnedModel), options, prepareKeyframeReferenceAsset: prepareDeyunaiKeyframeReferenceAsset });
           const keyframeAsset = boundaryInputs?.keyframeAsset || (referenceAssetMode ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options }) : null);
           const boundaryAsset = boundaryInputs?.boundaryAsset || null;
-          const keyframeReferenceOnly = (boundaryContract || (personRequired && keyframeReferenceOnlyIndexes.has(first))) && !!keyframeAsset?.asset_url;
+          const keyframeReferenceOnly = (managedBoundary || (personRequired && keyframeReferenceOnlyIndexes.has(first))) && !!keyframeAsset?.asset_url;
           block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
             lifecycle: 'queued', scheduler_wave: wave.wave_number, scheduler_concurrency: wave.concurrency,
             global_queue_ms: wave.global_queue_ms || 0,
@@ -1201,14 +1203,12 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             _deyunaiPersonAsset: keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset,
             _totalShots: list.length,
             _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
-            _sceneReferenceAssetUrls: boundaryContract
+            _sceneReferenceAssetUrls: managedBoundary
               ? [boundaryAsset.asset_url]
               : (keyframeReferenceOnly ? [] : [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean)),
             _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
-            _inputModeOverride: boundaryContract
-              ? 'approved_keyframe_and_previous_tail_private_references'
-              : (keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : ''),
-            _boundaryRepairContract: boundaryContract,
+            _inputModeOverride: boundaryContract ? (managedBoundary ? 'approved_keyframe_and_previous_tail_private_references' : 'previous_unit_tail_first_frame') : (keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : ''),
+            _boundaryRepairContract: boundaryContract, _boundaryRepairInputMode: boundaryInputs?.inputMode || '', _boundaryFirstFrameUrl: boundaryInputs?.firstFrameUrl || '',
             _boundaryReferenceAssetUrl: boundaryAsset?.asset_url || '',
           };
           const sourceClip = localMotion

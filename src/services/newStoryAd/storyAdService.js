@@ -17,7 +17,7 @@ const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
-const videoSubmissionGate = require('./videoSubmissionGateService');
+const videoSubmissionGate = require('./videoSubmissionGateService'), videoFailureRecovery = require('./videoFailureRecoveryService');
 const videoEvidencePreflight = require('./videoEvidencePreflightService');
 const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
@@ -2669,15 +2669,15 @@ async function generateVideoStage(taskId, options = {}) {
       const unitQaFailures = await reviewVideoIndexes(reviewedIndexes, repairAttempt, { stopOnFailure: true });
       qaFailures.push(...unitQaFailures);
       if (generationError || unitQaFailures.length) {
-        const remainingIndexes = remainingUnits.flatMap(item => item.member_indexes);
-        remainingIndexes.forEach(index => {
-          clips[index] = previousClips[index] || clips[index] || null;
+        const rollbackIndexes = videoFailureRecovery.rollbackIndexes({ generationError, unitIndexes, remainingUnits });
+        videoFailureRecovery.restorePreviousClips({ clips, previousClips, indexes: rollbackIndexes });
+        rollbackIndexes.forEach(index => {
           const previousStatus = storage.getOutput(taskId, `video_shot_status_${index + 1}`) || {};
           videoAdapter.updateVideoShotStatus(taskId, index, {
             ...previousStatus,
             last_attempt_provider_submission_state: 'not_submitted',
             last_attempt_billing_state: 'not_submitted',
-            stopped_after_unit_failure: true,
+            stopped_after_unit_failure: true, previous_clip_restored: generationError && !!previousClips[index],
           }, shots.length);
         });
         storage.saveOutput(taskId, 'video_clips', clips);

@@ -311,10 +311,11 @@ function buildVideoPreflight({
   const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, indexes: [...paidIndexes] });
   Object.entries(boundaryRepairContracts).forEach(([rawIndex, contract]) => {
     const index = Number(rawIndex);
+    contract.input_strategy = boundaryRepair.inputStrategy(executionOptions);
     const instruction = boundaryRepair.repairInstruction(contract);
     const shotPlan = shotPlans.find(item => item.index === index);
     if (shotPlan) {
-      shotPlan.input_strategy = 'approved_keyframe_and_previous_tail_private_assets';
+      shotPlan.input_strategy = contract.input_strategy;
       shotPlan.repair_instruction = [shotPlan.repair_instruction, instruction].filter(Boolean).join(' ');
       shotPlan.boundary_repair = contract;
       shotPlan.changes = [
@@ -324,7 +325,7 @@ function buildVideoPreflight({
     }
     const unit = units.find(item => (item.member_indexes || []).includes(index));
     if (unit) {
-      unit.input_strategy = 'approved_keyframe_and_previous_tail_private_assets';
+      unit.input_strategy = contract.input_strategy;
       unit.boundary_repair = contract;
       unit.changes = shotPlan?.changes || unit.changes || [];
     }

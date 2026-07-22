@@ -1,6 +1,8 @@
 const revisionService = require('./revisionService');
 
 const BOUNDARY_REPAIR_POLICY_VERSION = 'cross-unit-visual-anchor-v1';
+const DIRECT_TAIL_FIRST_FRAME = 'previous_tail_first_frame';
+const MANAGED_DUAL_REFERENCE = 'approved_keyframe_and_previous_tail_private_assets';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -21,6 +23,13 @@ function previousTailImageUrl(clips = [], index = 0) {
 
 function providerSupportsBoundaryReference(providerRoute = '') {
   return /^deyunai\/doubao-seedance-2-0(?:-|$)/i.test(text(providerRoute));
+}
+
+function inputStrategy(options = {}) {
+  const requested = text(options.boundary_repair_input_mode || options.boundaryRepairInputMode).toLowerCase();
+  return ['managed_dual_reference', 'managed_dual_references', MANAGED_DUAL_REFERENCE].includes(requested)
+    ? MANAGED_DUAL_REFERENCE
+    : DIRECT_TAIL_FIRST_FRAME;
 }
 
 function buildContract({ clips = [], shots = [], index = 0 } = {}) {
@@ -63,11 +72,15 @@ function repairInstruction(contract = {}) {
     contract.previous_screen_direction ? `Previous screen direction: ${contract.previous_screen_direction}.` : '',
     contract.current_screen_direction ? `Current screen direction: ${contract.current_screen_direction}.` : '',
   ].filter(Boolean).join(' ');
+  const managed = contract.input_strategy === MANAGED_DUAL_REFERENCE;
   return [
     'BOUNDARY REPAIR IS MANDATORY.',
-    'Reference image 1 is the approved current-unit keyframe and controls identity, wardrobe, scene and composition.',
-    'Reference image 2 is the actual tail frame of the preceding generated unit and controls the opening hand position, body pose, gaze/screen direction, prop state and action handoff.',
-    'Open from a state that is visually compatible with reference image 2, then continue into reference image 1 and the authored current action. Do not restart, recast, mirror, teleport or duplicate the person.',
+    managed
+      ? 'Reference image 1 is the approved current-unit keyframe and controls identity, wardrobe, scene and composition. Reference image 2 is the actual tail frame of the preceding generated unit and controls the opening hand position, body pose, gaze/screen direction, prop state and action handoff.'
+      : 'The supplied first frame is the actual tail frame of the preceding generated unit and is the authoritative opening state for hand position, body pose, gaze/screen direction, prop state and action handoff. The approved current-unit keyframe remains the QA target, not a second provider image input.',
+    managed
+      ? 'Open from a state that is visually compatible with reference image 2, then continue into reference image 1 and the authored current action. Do not restart, recast, mirror, teleport or duplicate the person.'
+      : 'Continue directly from the supplied first frame into the authored current action while preserving identity, wardrobe and scene. Do not restart, recast, mirror, teleport or duplicate the person.',
     details,
     `Boundary repair contract: ${contract.fingerprint}.`,
   ].filter(Boolean).join(' ');
@@ -84,8 +97,11 @@ function buildContracts({ clips = [], shots = [], indexes = [] } = {}) {
 
 module.exports = {
   BOUNDARY_REPAIR_POLICY_VERSION,
+  DIRECT_TAIL_FIRST_FRAME,
+  MANAGED_DUAL_REFERENCE,
   previousTailImageUrl,
   providerSupportsBoundaryReference,
+  inputStrategy,
   buildContract,
   buildContracts,
   repairInstruction,

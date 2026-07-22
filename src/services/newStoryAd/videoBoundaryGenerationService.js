@@ -37,10 +37,13 @@ async function prepareBoundaryReferenceAsset({ taskId = '', contract = {}, optio
   return asset;
 }
 
-function assertProviderInput({ contract = null, providerRoute = '', currentKeyframeAssetUrl = '', previousTailAssetUrl = '', referenceAssetUrls = [] } = {}) {
+function assertProviderInput({ contract = null, providerRoute = '', inputMode = '', firstFrameUrl = '', currentKeyframeAssetUrl = '', previousTailAssetUrl = '', referenceAssetUrls = [] } = {}) {
   if (!contract?.fingerprint) return;
-  if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute)
-    || !currentKeyframeAssetUrl || !previousTailAssetUrl || !referenceAssetUrls.includes(previousTailAssetUrl)) {
+  const direct = inputMode === boundaryRepair.DIRECT_TAIL_FIRST_FRAME;
+  const complete = direct
+    ? !!firstFrameUrl
+    : !!(currentKeyframeAssetUrl && previousTailAssetUrl && referenceAssetUrls.includes(previousTailAssetUrl));
+  if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute) || !complete) {
     const error = new Error('跨镜修复输入未同时绑定当前关键帧和上一单元真实尾帧，已在付费提交前停止。');
     error.code = 'VIDEO_BOUNDARY_REPAIR_INPUT_INCOMPLETE'; error.status = 409; error.retryable = false;
     throw error;
@@ -54,6 +57,12 @@ async function prepareInputs({ taskId = '', index = 0, keyframe = {}, contract =
     error.code = 'VIDEO_BOUNDARY_REPAIR_MODEL_UNSUPPORTED'; error.status = 409; error.retryable = false;
     throw error;
   }
+  const strategy = contract.input_strategy || boundaryRepair.inputStrategy(options);
+  const firstFrameUrl = absoluteAssetUrl(contract.previous_tail_image_url || '', options);
+  if (strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME) {
+    assertProviderInput({ contract, providerRoute: pinnedModelRoute, inputMode: strategy, firstFrameUrl });
+    return { contract, inputMode: strategy, firstFrameUrl, keyframeAsset: null, boundaryAsset: null };
+  }
   const prepareKeyframe = typeof options._prepareKeyframeReferenceAsset === 'function' ? options._prepareKeyframeReferenceAsset : prepareKeyframeReferenceAsset;
   const prepareBoundary = typeof options._prepareBoundaryReferenceAsset === 'function' ? options._prepareBoundaryReferenceAsset : prepareBoundaryReferenceAsset;
   const [keyframeAsset, boundaryAsset] = await Promise.all([
@@ -61,11 +70,11 @@ async function prepareInputs({ taskId = '', index = 0, keyframe = {}, contract =
     prepareBoundary({ taskId, contract, options }),
   ]);
   assertProviderInput({
-    contract, providerRoute: pinnedModelRoute,
+    contract, providerRoute: pinnedModelRoute, inputMode: strategy,
     currentKeyframeAssetUrl: keyframeAsset?.asset_url || '', previousTailAssetUrl: boundaryAsset?.asset_url || '',
     referenceAssetUrls: [boundaryAsset?.asset_url].filter(Boolean),
   });
-  return { contract, keyframeAsset, boundaryAsset };
+  return { contract, inputMode: strategy, firstFrameUrl: '', keyframeAsset, boundaryAsset };
 }
 
 module.exports = { prepareBoundaryReferenceAsset, assertProviderInput, prepareInputs };

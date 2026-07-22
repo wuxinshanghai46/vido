@@ -187,8 +187,8 @@ async function run() {
 
   const boundaryTaskId = `scene_block_boundary_${Date.now()}`;
   const boundaryShots = [
-    { id: 'boundary-a', title: 'Previous', scene_id: 'space-boundary', duration: 5, characters: [], exit_frame_state: 'hand touches wall', screen_direction: 'left_to_right' },
-    { id: 'boundary-b', title: 'Current', scene_id: 'space-boundary', duration: 5, characters: [], transition_type: 'hard_cut', entry_frame_state: 'same hand continues', screen_direction: 'left_to_right' },
+    { id: 'boundary-a', title: 'Previous', scene_id: 'space-boundary', duration: 5, characters: [{ name: 'actor' }], exit_frame_state: 'hand touches wall', screen_direction: 'left_to_right' },
+    { id: 'boundary-b', title: 'Current', scene_id: 'space-boundary', duration: 5, characters: [{ name: 'actor' }], transition_type: 'hard_cut', entry_frame_state: 'same hand continues', screen_direction: 'left_to_right' },
   ];
   const boundaryContracts = boundaryShots.map(() => ({ scene_lock: sceneLock('space-boundary') }));
   const boundaryBlocks = sceneBlocks.buildSceneBlocks(boundaryShots, boundaryContracts, { preserve_existing_topology: true });
@@ -206,17 +206,14 @@ async function run() {
       contracts: boundaryContracts,
       keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
       sceneBlocks: boundaryBlocks,
-      ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
+      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' },
       options: {
         only_indexes: [1],
         _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
         _boundaryRepairContracts: { 1: boundaryContract },
         _repairInstructions: { 1: boundaryRepair.repairInstruction(boundaryContract) },
-        _prepareKeyframeReferenceAsset: async () => ({ asset_url: 'asset://current-keyframe' }),
-        _prepareBoundaryReferenceAsset: async ({ contract }) => {
-          assert.strictEqual(contract.previous_tail_image_url, '/previous-tail.jpg');
-          return { asset_url: 'asset://previous-tail' };
-        },
+        _prepareKeyframeReferenceAsset: async () => { throw new Error('direct tail mode must not create a keyframe asset'); },
+        _prepareBoundaryReferenceAsset: async () => { throw new Error('direct tail mode must not create a boundary asset'); },
         _generateShotVideo: async ({ index, options }) => {
           submittedOptions = options;
           return { shot_index: index, file_path: __filename, video_url: '/mock-boundary.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-boundary' };
@@ -224,11 +221,30 @@ async function run() {
       },
       existingClips: boundaryClips,
     });
+    assert.strictEqual(submittedOptions._deyunaiPersonAsset, null);
+    assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, []);
+    assert.strictEqual(submittedOptions._boundaryReferenceAssetUrl, '');
+    assert.match(submittedOptions._boundaryFirstFrameUrl, /^https:\/\/[^/]+\/previous-tail\.jpg$/);
+    assert.strictEqual(submittedOptions._inputModeOverride, 'previous_unit_tail_first_frame');
+    assert.match(submittedOptions._repairInstructions[1], /supplied first frame is the actual tail frame/);
+
+    const managedContract = { ...boundaryContract, input_strategy: boundaryRepair.MANAGED_DUAL_REFERENCE };
+    await videoAdapter.generateSceneBlockVideos({
+      taskId: boundaryTaskId, shots: boundaryShots, contracts: boundaryContracts,
+      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }], sceneBlocks: boundaryBlocks,
+      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' }, existingClips: boundaryClips,
+      options: {
+        only_indexes: [1], _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _keyframeReferenceOnlyIndexes: [1],
+        _boundaryRepairContracts: { 1: managedContract }, _repairInstructions: { 1: boundaryRepair.repairInstruction(managedContract) },
+        _prepareKeyframeReferenceAsset: async () => ({ asset_url: 'asset://current-keyframe' }),
+        _prepareBoundaryReferenceAsset: async () => ({ asset_url: 'asset://previous-tail' }),
+        _generateShotVideo: async ({ index, options }) => { submittedOptions = options; return { shot_index: index, file_path: __filename, video_url: '/mock-managed-boundary.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-managed-boundary' }; },
+      },
+    });
     assert.strictEqual(submittedOptions._deyunaiPersonAsset.asset_url, 'asset://current-keyframe');
     assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, ['asset://previous-tail']);
-    assert.strictEqual(submittedOptions._boundaryReferenceAssetUrl, 'asset://previous-tail');
     assert.strictEqual(submittedOptions._inputModeOverride, 'approved_keyframe_and_previous_tail_private_references');
-    assert.match(submittedOptions._repairInstructions[1], /actual tail frame of the preceding generated unit/);
   } finally {
     storage.deleteTask(boundaryTaskId);
   }
