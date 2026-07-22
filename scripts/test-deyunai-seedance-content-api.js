@@ -2,6 +2,8 @@
 const assert = require('assert');
 const {
   isSeedanceContentGenerationModel,
+  buildSeedanceStructuredPrompt,
+  assertSeedanceStructuredPrompt,
   buildSeedanceContentTaskBody,
   extractSeedanceContentTaskVideoUrl,
   seedanceContentTaskError,
@@ -12,6 +14,15 @@ assert.strictEqual(isSeedanceContentGenerationModel('doubao-seedance-2-0-260128'
 assert.strictEqual(isSeedanceContentGenerationModel('doubao-seedance-2-0-fast-260128'), true);
 assert.strictEqual(isSeedanceContentGenerationModel('sora-2'), false);
 
+const structured = buildSeedanceStructuredPrompt('A cinematic camera move through a coherent showroom.');
+const structuredData = assertSeedanceStructuredPrompt(structured);
+assert.ok(structuredData.style_caption, 'Seedance 2.0 prompt must always contain style_caption');
+assert.match(structuredData.dense_caption, /coherent showroom/);
+
+const oversizedStructured = buildSeedanceStructuredPrompt(`Generation unit contract: ${'x'.repeat(8000)}`);
+assert.doesNotThrow(() => assertSeedanceStructuredPrompt(oversizedStructured));
+assert.ok(oversizedStructured.length <= 4000, 'structured prompt must remain inside the provider text limit');
+
 const t2v = buildSeedanceContentTaskBody({
   model: 'doubao-seedance-2-0-260128',
   prompt: '测试提示词',
@@ -20,7 +31,7 @@ const t2v = buildSeedanceContentTaskBody({
 });
 assert.deepStrictEqual(t2v, {
   model: 'doubao-seedance-2-0-260128',
-  content: [{ type: 'text', text: '测试提示词' }],
+  content: [{ type: 'text', text: buildSeedanceStructuredPrompt('测试提示词') }],
   ratio: '16:9',
   duration: 5,
   resolution: '720p',

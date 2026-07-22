@@ -509,7 +509,6 @@ async function prepareDeyunaiKeyframeReferenceAsset({ taskId = '', index = 0, ke
   storage.saveOutput(taskId, 'deyunai_keyframe_reference_assets', { ...saved, [identity]: asset });
   return asset;
 }
-
 function publicBaseUrl(options = {}) {
   return String(
     options.public_base_url
@@ -769,21 +768,22 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     } catch (error) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = modelGateway.classifyError(error);
+      const persistedStatus = storage.getOutput(taskId, videoShotStatusKind(index)) || {};
+      const providerTaskId = String(error.providerTaskId || persistedStatus.provider_task_id || '').trim();
+      const providerSubmissionState = providerTaskId ? 'submitted' : 'not_submitted';
+      const billingState = String(error.billingState || (providerTaskId ? 'unknown' : 'not_submitted'));
       modelGateway.recordHealth(model, { ok: false, error });
-      storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'failed', error_code: error.code || classified.code, error_message: String(error.message || error).slice(0, 500), fallback_rank: attempts.length + 1 });
-      attempts.push({
-        provider_id: model.provider_id,
-        model_id: model.model_id,
-        code: error.code || classified.code,
-        retryable: error.retryable === true || classified.retryable,
-        error: videoCore.chineseError.classifyChineseMessage(error),
-      });
+      storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, status: 'failed', error_code: error.code || classified.code, error_message: String(error.message || error).slice(0, 500), fallback_rank: attempts.length + 1, provider_task_id: providerTaskId, provider_submission_state: providerSubmissionState, billing_state: billingState, generation_id: options._generationId || options.generation_id || '', shot_index: index });
+      attempts.push({ provider_id: model.provider_id, model_id: model.model_id, code: error.code || classified.code, retryable: error.retryable === true || classified.retryable, provider_task_id: providerTaskId, provider_submission_state: providerSubmissionState, billing_state: billingState, error: videoCore.chineseError.classifyChineseMessage(error) });
     }
   }
   const error = new Error(`第 ${index + 1} 镜视频生成失败，系统已停止自动重试。请查看供应商任务状态后再决定是否重新提交。`);
   error.code = attempts.some(item => item.retryable) ? 'VIDEO_ATTEMPTS_EXHAUSTED' : (attempts[0]?.code || 'VIDEO_MODEL_UNAVAILABLE');
   error.retryable = attempts.some(item => item.retryable);
   error.attempts = attempts;
+  error.providerTaskId = attempts.find(item => item.provider_task_id)?.provider_task_id || '';
+  error.billingState = attempts.find(item => item.provider_task_id)?.billing_state || 'not_submitted';
+  error.requestedVideoSeconds = error.providerTaskId ? duration : 0;
   updateGenerationUnitStatus(taskId, index, {
     lifecycle: 'failed',
     total_shots: totalShots,

@@ -140,8 +140,80 @@ function normalizeSeedanceAssetUri(value = '') {
   throw new Error('漫路 Seedance 人物参考必须是已入库的 asset:// 素材 ID');
 }
 
+const SEEDANCE_STRUCTURED_PROMPT_MAX_CHARS = 4000;
+
+function seedancePromptStyleCaption(prompt = '') {
+  const raw = String(prompt || '').trim();
+  const match = raw.match(/\"style_summary\"\s*:\s*\"((?:\\.|[^\"\\])*)\"/i);
+  if (match?.[1]) {
+    try {
+      const decoded = JSON.parse(`\"${match[1]}\"`).trim();
+      if (decoded) return decoded.slice(0, 320);
+    } catch {}
+  }
+  return 'cinematic photorealistic commercial storytelling, coherent lighting, materials, identity and spatial continuity';
+}
+
+/** Seedance 2.0 validates content-generation text as a structured caption. */
+function buildSeedanceStructuredPrompt(prompt = '') {
+  const raw = String(prompt || '').trim();
+  let parsed = null;
+  try {
+    const candidate = JSON.parse(raw);
+    if (candidate && !Array.isArray(candidate) && typeof candidate === 'object') parsed = candidate;
+  } catch {}
+
+  const styleCaption = String(parsed?.style_caption || seedancePromptStyleCaption(raw)).trim().slice(0, 320);
+  const sourceCaption = String(parsed?.dense_caption || parsed?.prompt || raw).trim();
+  const base = {
+    style_caption: styleCaption,
+    short_caption: String(parsed?.short_caption || sourceCaption).trim().slice(0, 280),
+    dense_caption: sourceCaption,
+  };
+  let encoded = JSON.stringify(base);
+  if (encoded.length > SEEDANCE_STRUCTURED_PROMPT_MAX_CHARS) {
+    const overflow = encoded.length - SEEDANCE_STRUCTURED_PROMPT_MAX_CHARS;
+    base.dense_caption = sourceCaption.slice(0, Math.max(1, sourceCaption.length - overflow - 8));
+    encoded = JSON.stringify(base);
+  }
+  if (encoded.length > SEEDANCE_STRUCTURED_PROMPT_MAX_CHARS) {
+    const error = new Error('Seedance 2.0 structured prompt exceeds the provider limit');
+    error.code = 'INVALID_PROVIDER_INPUT';
+    error.retryable = false;
+    throw error;
+  }
+  return encoded;
+}
+
+function assertSeedanceStructuredPrompt(prompt = '') {
+  let parsed;
+  try {
+    parsed = JSON.parse(String(prompt || ''));
+  } catch {
+    const error = new Error('Seedance 2.0 prompt must be valid structured JSON before submission');
+    error.code = 'INVALID_PROVIDER_INPUT';
+    error.retryable = false;
+    throw error;
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || !String(parsed.style_caption || '').trim()) {
+    const error = new Error("Seedance 2.0 prompt must contain a non-empty 'style_caption' field before submission");
+    error.code = 'INVALID_PROVIDER_INPUT';
+    error.retryable = false;
+    throw error;
+  }
+  if (!String(parsed.dense_caption || '').trim()) {
+    const error = new Error("Seedance 2.0 prompt must contain a non-empty 'dense_caption' field before submission");
+    error.code = 'INVALID_PROVIDER_INPUT';
+    error.retryable = false;
+    throw error;
+  }
+  return parsed;
+}
+
 function buildSeedanceContentTaskBody({ model, prompt, duration, size, imageUrl, referenceAssetUrls = [] }) {
-  const content = [{ type: 'text', text: String(prompt || '').trim().substring(0, 4000) }];
+  const structuredPrompt = buildSeedanceStructuredPrompt(prompt);
+  assertSeedanceStructuredPrompt(structuredPrompt);
+  const content = [{ type: 'text', text: structuredPrompt }];
   // Seedance 2.0 rejects mixed first/last-frame and reference-media requests.
   // A verified private-library asset must win whenever one is supplied: this
   // is the compliant route for person shots. Shots without an asset keep the
@@ -1183,6 +1255,8 @@ module.exports = {
   isOverseasModel,
   isSeedanceContentGenerationModel,
   normalizeSeedanceAssetUri,
+  buildSeedanceStructuredPrompt,
+  assertSeedanceStructuredPrompt,
   buildSeedanceContentTaskBody,
   seedanceContentTaskError,
   extractSeedanceContentTaskVideoUrl,
