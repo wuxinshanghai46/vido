@@ -73,6 +73,11 @@ function deterministicTransitionQa(previous = {}, current = {}, transition = 'di
   };
 }
 
+function usesDeterministicTransition(plan = {}) {
+  return plan.action === 'transition_bridge'
+    || (plan.action === 'provider_generate' && plan.review_scope === 'post_generation_deterministic_transition');
+}
+
 function taskFailurePatch(clips = [], shotCount = clips.length) {
   const result = audit(clips, shotCount);
   if (!result.failed_indexes.length) return null;
@@ -83,4 +88,4 @@ function taskFailurePatch(clips = [], shotCount = clips.length) {
   return { status: 'failed', stage: 'video_failed', error: details.join('；'), error_code: 'VIDEO_QA_FAILED', retryable: true };
 }
 
-module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, deterministicTransitionQa, taskFailurePatch };
+module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, deterministicTransitionQa, usesDeterministicTransition, taskFailurePatch };

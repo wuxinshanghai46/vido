@@ -1120,13 +1120,15 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
   const localMotionIndexes = new Set((Array.isArray(options._localMotionIndexes) ? options._localMotionIndexes : []).map(Number));
   const keyframeReferenceOnlyIndexes = new Set((Array.isArray(options._keyframeReferenceOnlyIndexes) ? options._keyframeReferenceOnlyIndexes : []).map(Number));
+  const keyframeFirstFrameOnlyIndexes = new Set((Array.isArray(options._keyframeFirstFrameOnlyIndexes) ? options._keyframeFirstFrameOnlyIndexes : []).map(Number));
   const directBoundaryIndexes = new Set(Object.entries(options._boundaryRepairContracts || {}).filter(([, contract]) => (contract?.input_strategy || boundaryRepair.inputStrategy(options)) === boundaryRepair.DIRECT_TAIL_FIRST_FRAME).map(([index]) => Number(index)));
   const hasPersonUnit = units.some(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}));
   const allPersonUnitsUseKeyframeOnly = units
     .filter(block => personIdentity.shotPersonRequired(ctx, sceneBlockService.generationShot(block, list), contracts[block.first_index] || {}))
-    .every(block => keyframeReferenceOnlyIndexes.has(block.first_index) || directBoundaryIndexes.has(block.first_index));
+    .every(block => keyframeReferenceOnlyIndexes.has(block.first_index) || keyframeFirstFrameOnlyIndexes.has(block.first_index) || directBoundaryIndexes.has(block.first_index));
+  const preparePersonAsset = typeof options._preparePersonAsset === 'function' ? options._preparePersonAsset : prepareDeyunaiPersonAsset;
   const deyunaiPersonAsset = isDeyunaiSeedance && hasPersonUnit && !allPersonUnitsUseKeyframeOnly && useSeedanceReferenceAssets(options, { personRequired: hasPersonUnit })
-    ? await prepareDeyunaiPersonAsset({ taskId, ctx, options })
+    ? await preparePersonAsset({ taskId, ctx, options })
     : null;
   const shotTitles = Object.fromEntries(list.map((shot, index) => [index, shot.title || `镜头 ${index + 1}`]));
   const unitGenerator = typeof options._generateShotVideo === 'function' ? options._generateShotVideo : generateShotVideo;
@@ -1175,14 +1177,16 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           const syntheticShot = sceneBlockService.generationShot(block, list);
           const localMotion = block.member_indexes.length === 1 && localMotionIndexes.has(first);
           const personRequired = personIdentity.shotPersonRequired(ctx, syntheticShot, contracts[first] || {});
+          const keyframeFirstFrameOnly = keyframeFirstFrameOnlyIndexes.has(first);
           const boundaryContract = options._boundaryRepairContracts?.[first] || null;
           const boundaryInputs = await boundaryGeneration.prepareInputs({ taskId, index: first, keyframe: keyframes[first] || {}, contract: boundaryContract, pinnedModelRoute: modelRoute(pinnedModel), options, prepareKeyframeReferenceAsset: prepareDeyunaiKeyframeReferenceAsset });
           const managedBoundary = boundaryInputs?.inputMode === boundaryRepair.MANAGED_DUAL_REFERENCE;
-          const referenceAssetMode = boundaryContract ? managedBoundary : useSeedanceReferenceAssets(options, { personRequired });
+          const referenceAssetMode = !keyframeFirstFrameOnly && (boundaryContract ? managedBoundary : useSeedanceReferenceAssets(options, { personRequired }));
+          const prepareKeyframeReferenceAsset = typeof options._prepareKeyframeReferenceAsset === 'function' ? options._prepareKeyframeReferenceAsset : prepareDeyunaiKeyframeReferenceAsset;
           const sceneAssets = referenceAssetMode && personRequired && block.continuous && !boundaryContract
             ? await prepareDeyunaiSceneReferenceAssets({ taskId, block, options })
             : [];
-          const keyframeAsset = boundaryInputs?.keyframeAsset || (referenceAssetMode ? await prepareDeyunaiKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options }) : null);
+          const keyframeAsset = boundaryInputs?.keyframeAsset || (referenceAssetMode ? await prepareKeyframeReferenceAsset({ taskId, index: first, keyframe: keyframes[first] || {}, options }) : null);
           const boundaryAsset = boundaryInputs?.boundaryAsset || null;
           const keyframeReferenceOnly = (managedBoundary || (personRequired && keyframeReferenceOnlyIndexes.has(first))) && !!keyframeAsset?.asset_url;
           block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
@@ -1191,14 +1195,16 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           }, list.length));
           const runOptions = {
             ...options, _pinnedVideoModel: pinnedModel,
-            _deyunaiPersonAsset: keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset,
+            _deyunaiPersonAsset: keyframeFirstFrameOnly ? null : (keyframeReferenceOnly ? keyframeAsset : deyunaiPersonAsset),
             _totalShots: list.length,
             _sceneBlock: block, _sceneBlockShotTitles: shotTitles,
             _sceneReferenceAssetUrls: managedBoundary
               ? [boundaryAsset.asset_url]
               : (keyframeReferenceOnly ? [] : [keyframeAsset?.asset_url, ...sceneAssets.map(asset => asset.asset_url)].filter(Boolean)),
             _promptOverride: block.continuous ? sceneBlockService.generationPrompt(block, list, contracts, options._repairInstructions || {}) : '',
-            _inputModeOverride: boundaryContract ? (managedBoundary ? 'approved_keyframe_and_previous_tail_private_references' : 'previous_unit_tail_first_frame') : (keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : ''),
+            _inputModeOverride: boundaryContract
+              ? (managedBoundary ? 'approved_keyframe_and_previous_tail_private_references' : 'previous_unit_tail_first_frame')
+              : (keyframeFirstFrameOnly ? 'approved_keyframe_first_frame_only' : (keyframeReferenceOnly ? 'approved_keyframe_private_reference_only' : '')),
             _boundaryRepairContract: boundaryContract, _boundaryRepairInputMode: boundaryInputs?.inputMode || '', _boundaryFirstFrameUrl: boundaryInputs?.firstFrameUrl || '',
             _boundaryReferenceAssetUrl: boundaryAsset?.asset_url || '',
           };

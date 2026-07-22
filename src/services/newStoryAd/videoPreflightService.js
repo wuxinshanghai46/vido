@@ -5,7 +5,8 @@ const boundaryPolicy = require('./videoBoundaryPolicyService');
 const boundaryRepair = require('./videoBoundaryRepairService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v6';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v7';
+const POST_GENERATION_TRANSITION_SCOPE = 'post_generation_deterministic_transition';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -145,6 +146,47 @@ function boundaryOnlyFailureCanUseTransition(clip = {}) {
     && clip.qa?.pass === true
     && clip.cross_shot_qa?.pass === false
     && failureDimensions(clip).length > 0;
+}
+
+function transitionForFailure(clip = {}, contract = {}) {
+  const dimensions = [...new Set([
+    ...failureDimensions(clip),
+    ...(Array.isArray(contract.failure_dimensions) ? contract.failure_dimensions : []),
+  ])];
+  return dimensions.some(value => [
+    'person_position', 'person_identity', 'wardrobe', 'prop_state',
+    'scene_continuity', 'scene_consistency',
+  ].includes(value)) ? 'fade' : 'dissolve';
+}
+
+function applyKeyframeTransitionFallback({ index = -1, clip = {}, contract = {}, shotPlans = [], units = [] } = {}) {
+  const shotPlan = shotPlans.find(item => item.index === index);
+  const unit = units.find(item => (item.member_indexes || []).includes(index));
+  if (!shotPlan || shotPlan.action !== 'provider_generate' || !unit || unit.action !== 'provider_generate') return false;
+  if ((unit.member_indexes || []).length !== 1) return false;
+  const transitionOverride = transitionForFailure(clip, contract);
+  const changes = [
+    ...(shotPlan.changes || []),
+    '仅以当前已批准关键帧作为视觉输入独立生成本镜，不再沿用失败的上一镜尾帧输入',
+    `生成并通过单镜质检后，在上一镜与本镜之间应用${transitionOverride === 'fade' ? '淡出淡入' : '短溶解'}转场，明确隔离不连续边界`,
+  ];
+  Object.assign(shotPlan, {
+    input_strategy: 'approved_keyframe_first_frame_only',
+    review_scope: POST_GENERATION_TRANSITION_SCOPE,
+    transition_override: transitionOverride,
+    boundary_resolution: 'keyframe_regenerate_with_transition',
+    changes,
+  });
+  delete shotPlan.boundary_repair;
+  Object.assign(unit, {
+    input_strategy: 'approved_keyframe_first_frame_only',
+    review_scope: POST_GENERATION_TRANSITION_SCOPE,
+    transition_override: transitionOverride,
+    boundary_resolution: 'keyframe_regenerate_with_transition',
+    changes,
+  });
+  delete unit.boundary_repair;
+  return true;
 }
 
 function shotTitle(shot = {}, index = 0) {
@@ -327,9 +369,17 @@ function buildVideoPreflight({
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
   const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, keyframes, contracts, indexes: [...paidIndexes] });
+  const transitionFallbackIndexes = new Set();
   Object.entries(boundaryRepairContracts).forEach(([rawIndex, contract]) => {
     const index = Number(rawIndex);
     contract.input_strategy = boundaryRepair.inputStrategy(executionOptions);
+    if (contract.input_strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME && applyKeyframeTransitionFallback({
+      index, clip: clips[index] || {}, contract, shotPlans, units,
+    })) {
+      transitionFallbackIndexes.add(index);
+      delete boundaryRepairContracts[index];
+      return;
+    }
     const instruction = boundaryRepair.repairInstruction(contract);
     const shotPlan = shotPlans.find(item => item.index === index);
     if (shotPlan) {
@@ -374,7 +424,7 @@ function buildVideoPreflight({
   });
   paidIndexes.forEach(index => {
     const clip = clips[index] || {};
-    if (!boundaryRepair.isLegacyDirectTailFailure(clip) || boundaryRepairContracts[index]) return;
+    if (!boundaryRepair.isLegacyDirectTailFailure(clip) || boundaryRepairContracts[index] || transitionFallbackIndexes.has(index)) return;
     const capability = boundaryRepair.assessDirectTailCapability({
       previousShot: reconciledShots[index - 1] || {},
       currentShot: reconciledShots[index] || {},
@@ -383,6 +433,10 @@ function buildVideoPreflight({
       previousContract: contracts[index - 1] || {},
       currentContract: contracts[index] || {},
     });
+    if (applyKeyframeTransitionFallback({ index, clip, shotPlans, units })) {
+      transitionFallbackIndexes.add(index);
+      return;
+    }
     blockers.push({
       code: 'VIDEO_LEGACY_BOUNDARY_REPAIR_RETRY_BLOCKED',
       message: `第 ${index}→${index + 1} 镜的历史尾帧修复片段未通过单镜质检，且旧记录缺少可复用的完整双视觉锚点。为避免沿用同一输入再次付费失败，已在供应商提交前停止。`,
@@ -393,6 +447,9 @@ function buildVideoPreflight({
       },
     });
   });
+  if (transitionFallbackIndexes.size) {
+    sceneBlocks = sceneBlockService.isolateIndexes(sceneBlocks, reconciledShots, contracts, [...transitionFallbackIndexes]);
+  }
   if (billingBlocked && paidUnits.length) {
     blockers.push({
       code: 'VIDEO_PROVIDER_BILLING_BLOCKED',
@@ -415,7 +472,7 @@ function buildVideoPreflight({
       clip_lineage: clips[index]?.lineage_fingerprint || clips[index]?.lineage?.fingerprint || '',
       clip_qa: clips[index]?.qa?.pass,
     })),
-    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, transition_override: unit.transition_override || '', boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
+    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, review_scope: unit.review_scope || '', transition_override: unit.transition_override || '', boundary_resolution: unit.boundary_resolution || '', boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
     blockers: blockers.map(item => item.code),
   };
   const fingerprint = revisionService.signature(source);
@@ -431,6 +488,7 @@ function buildVideoPreflight({
     paid_video_seconds: paidUnits.reduce((sum, unit) => sum + Number(unit.duration_sec || 0), 0),
     local_unit_count: localUnits.length,
     transition_unit_count: transitionUnits.length,
+    paid_transition_fallback_count: transitionFallbackIndexes.size,
     review_only_count: reviewOnly.length,
     reuse_count: shotPlans.filter(item => item.action === 'reuse').length,
     zero_cost_action_count: localUnits.length + reviewOnly.length + transitionUnits.length,
@@ -449,7 +507,9 @@ function buildVideoPreflight({
     boundary_repair_contracts: boundaryRepairContracts,
     local_motion_indexes: [...new Set(units.filter(unit => unit.action === 'local_motion').flatMap(unit => unit.member_indexes))],
     transition_bridge_indexes: [...new Set(units.filter(unit => unit.action === 'transition_bridge').flatMap(unit => unit.member_indexes))],
-    keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid).flatMap(unit => unit.member_indexes))],
+    transition_fallback_indexes: [...transitionFallbackIndexes],
+    keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid).flatMap(unit => unit.member_indexes).filter(index => !transitionFallbackIndexes.has(index)))],
+    keyframe_first_frame_only_indexes: [...transitionFallbackIndexes],
     generated_at: new Date().toISOString(),
   };
 }
@@ -468,6 +528,7 @@ function publicVideoPreflight(plan = {}) {
     paid_video_seconds: plan.paid_video_seconds,
     local_unit_count: plan.local_unit_count,
     transition_unit_count: plan.transition_unit_count || 0,
+    paid_transition_fallback_count: plan.paid_transition_fallback_count || 0,
     review_only_count: plan.review_only_count,
     reuse_count: plan.reuse_count,
     zero_cost_action_count: plan.zero_cost_action_count,
@@ -478,12 +539,12 @@ function publicVideoPreflight(plan = {}) {
     runtime_policy: plan.runtime_policy || {},
     shots: (plan.shots || []).map(item => ({
       shot_index: item.shot_index, title: item.title, action: item.action, label: item.label,
-      paid: item.paid, unit_id: item.unit_id || '', transition_override: item.transition_override || '', changes: item.changes || [],
+      paid: item.paid, unit_id: item.unit_id || '', input_strategy: item.input_strategy || '', review_scope: item.review_scope || '', transition_override: item.transition_override || '', boundary_resolution: item.boundary_resolution || '', changes: item.changes || [],
     })),
     units: (plan.units || []).map(unit => ({
       id: unit.id, shots: unit.shots, title: unit.title, action: unit.action, label: unit.label,
       paid: unit.paid, continuous: unit.continuous === true, duration_sec: unit.duration_sec,
-      input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', transition_override: unit.transition_override || '', changes: unit.changes || [],
+      input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', transition_override: unit.transition_override || '', boundary_resolution: unit.boundary_resolution || '', changes: unit.changes || [],
       boundary_repair: unit.boundary_repair ? {
         boundary: `${unit.boundary_repair.previous_shot_index + 1}→${unit.boundary_repair.current_shot_index + 1}`,
         failure_dimensions: unit.boundary_repair.failure_dimensions || [],

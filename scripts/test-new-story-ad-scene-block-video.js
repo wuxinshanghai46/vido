@@ -39,6 +39,11 @@ async function run() {
   assert.strictEqual(qualityBlocks[0].generation_mode, 'one_take');
   assert.strictEqual(qualityBlocks[0].duration_sec, 10);
   assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], qualityBlocks), [0, 1, 2], '连续场景段必须作为一个生成与修复单元');
+  const isolatedQualityBlocks = sceneBlocks.isolateIndexes(qualityBlocks, shots, contracts, [1]);
+  assert.deepStrictEqual(isolatedQualityBlocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4]], 'keyframe-transition recovery must isolate the authorized shot from an older multi-shot paid unit');
+  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], isolatedQualityBlocks), [1]);
+  assert.strictEqual(sceneBlocks.blockForIndex(isolatedQualityBlocks, 1).duration_sec, 4, 'isolated paid duration must equal the current authored shot only');
+  assert.strictEqual(sceneBlocks.blockForIndex(isolatedQualityBlocks, 1).isolated_for_keyframe_transition, true);
 
   const authoredOneTakeShots = shots.map((shot, index) => index < 3 ? { ...shot, one_take_group_id: 'take-alpha' } : shot);
   const oneTakeBlocks = sceneBlocks.buildSceneBlocks(authoredOneTakeShots, contracts, {
@@ -219,6 +224,32 @@ async function run() {
         _generateShotVideo: async () => { throw new Error('unsafe direct-tail input must be blocked before provider submission'); },
       },
     }), error => error?.code === 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT');
+
+    const fallbackOptionsByIndex = {};
+    let personAssetPreparations = 0;
+    await videoAdapter.generateSceneBlockVideos({
+      taskId: boundaryTaskId, shots: boundaryShots, contracts: boundaryContracts,
+      keyframes: boundaryKeyframes, sceneBlocks: boundaryBlocks,
+      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' }, existingClips: boundaryClips,
+      options: {
+        only_indexes: [0, 1], _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _keyframeFirstFrameOnlyIndexes: [1], _boundaryRepairContracts: {},
+        _preparePersonAsset: async () => { personAssetPreparations += 1; return { asset_url: 'asset://shared-person' }; },
+        _prepareKeyframeReferenceAsset: async ({ index }) => {
+          if (index === 1) throw new Error('direct current-keyframe fallback must not require the advanced asset library');
+          return { asset_url: 'asset://ordinary-keyframe' };
+        },
+        _prepareBoundaryReferenceAsset: async () => { throw new Error('keyframe fallback must not prepare the previous-tail asset'); },
+        _generateShotVideo: async ({ index, options }) => { fallbackOptionsByIndex[index] = options; return { shot_index: index, file_path: __filename, video_url: '/mock-keyframe-fallback.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-keyframe-fallback' }; },
+      },
+    });
+    submittedOptions = fallbackOptionsByIndex[1];
+    assert.strictEqual(personAssetPreparations, 1, 'a mixed request may prepare one shared person asset for its ordinary unit');
+    assert.strictEqual(fallbackOptionsByIndex[0]._deyunaiPersonAsset.asset_url, 'asset://shared-person');
+    assert.strictEqual(submittedOptions._deyunaiPersonAsset, null);
+    assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, []);
+    assert.strictEqual(submittedOptions._boundaryReferenceAssetUrl, '');
+    assert.strictEqual(submittedOptions._inputModeOverride, 'approved_keyframe_first_frame_only');
 
     const managedContract = { ...boundaryContract, input_strategy: boundaryRepair.MANAGED_DUAL_REFERENCE };
     await videoAdapter.generateSceneBlockVideos({

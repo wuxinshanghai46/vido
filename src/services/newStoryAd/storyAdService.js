@@ -2435,12 +2435,13 @@ async function generateVideoStage(taskId, options = {}) {
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
   const preserveExistingTopology = generationMode !== 'quality' && !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
-  const sceneBlocks = sceneBlockService.buildSceneBlocks(generationShots, contracts, {
+  let sceneBlocks = sceneBlockService.buildSceneBlocks(generationShots, contracts, {
     ...options,
     preserve_existing_topology: preserveExistingTopology,
     continuous_quality_mode: generationMode === 'quality',
     scene_block_generation: generationMode === 'quality',
   });
+  sceneBlocks = sceneBlockService.isolateIndexes(sceneBlocks, generationShots, contracts, preflightPlan.transition_fallback_indexes || []);
   storage.saveOutput(taskId, 'scene_worlds', preflightPlan.execution_plan?.scene_worlds || []);
   storage.saveOutput(taskId, 'continuity_runs', preflightPlan.execution_plan?.continuity_runs || []);
   storage.saveOutput(taskId, 'generation_units', preflightPlan.execution_plan?.generation_units || []);
@@ -2494,14 +2495,14 @@ async function generateVideoStage(taskId, options = {}) {
       const current = clips[index];
       if (!previous?.qa?.pass || !current?.qa?.pass) continue;
       const planned = preflightShotActions.get(index) || {};
-      const transitionBridge = planned.action === 'transition_bridge';
-      const crossQa = transitionBridge
+      const deterministicTransition = videoBoundaryPolicy.usesDeterministicTransition(planned);
+      const crossQa = deterministicTransition
         ? videoBoundaryPolicy.deterministicTransitionQa(previous, current, planned.transition_override || 'dissolve')
         : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
       const { code: crossErrorCode, message: crossError } = videoFrameQa.crossShotFailure(crossQa, index);
       clips[index] = {
         ...current,
-        ...(transitionBridge && crossQa.pass ? { transition_override: crossQa.transition_type, transition_decision_source: crossQa.decision_source } : {}),
+        ...(deterministicTransition && crossQa.pass ? { transition_override: crossQa.transition_type, transition_decision_source: crossQa.decision_source } : {}),
         cross_shot_qa: crossQa, error: crossQa.pass ? '' : crossError, error_code: crossQa.pass ? '' : crossErrorCode,
       };
       videoAdapter.updateVideoShotStatus(taskId, index, {
@@ -2650,7 +2651,7 @@ async function generateVideoStage(taskId, options = {}) {
             _expectedLineages: expectedLineages,
             _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions }, _boundaryRepairContracts: preflightPlan.boundary_repair_contracts || {},
             _localMotionIndexes: [...localMotionIndexSet],
-            _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [],
+            _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [], _keyframeFirstFrameOnlyIndexes: preflightPlan.keyframe_first_frame_only_indexes || [],
             _repairAttempt: repairAttempt,
           },
           existingClips: clips,

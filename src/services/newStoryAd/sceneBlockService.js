@@ -1,7 +1,7 @@
 const revisionService = require('./revisionService');
 const videoCore = require('../videoGenerationCore');
 
-const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v5';
+const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v6';
 const DEFAULT_MIN_BLOCK_DURATION = 6;
 const DEFAULT_MAX_BLOCK_DURATION = 10;
 const DEFAULT_MAX_BLOCK_SHOTS = 4;
@@ -255,6 +255,44 @@ function expandIndexesToBlocks(indexes = [], blocks = []) {
   return [...expanded].sort((a, b) => a - b);
 }
 
+function isolateIndexes(blocks = [], shots = [], contracts = [], indexes = []) {
+  const isolated = new Set((Array.isArray(indexes) ? indexes : []).map(Number).filter(Number.isInteger));
+  if (!isolated.size) return Array.isArray(blocks) ? blocks : [];
+  return (Array.isArray(blocks) ? blocks : []).flatMap((block) => {
+    const members = Array.isArray(block.member_indexes) ? block.member_indexes : [];
+    if (!members.some(index => isolated.has(index))) return [block];
+    const groups = [];
+    let current = [];
+    members.forEach((index) => {
+      if (isolated.has(index)) {
+        if (current.length) groups.push(current);
+        groups.push([index]);
+        current = [];
+        return;
+      }
+      current.push(index);
+    });
+    if (current.length) groups.push(current);
+    return groups.map((memberIndexes) => {
+      const finalized = finalizeBlock({
+        ...block,
+        member_indexes: memberIndexes,
+      }, shots, contracts);
+      const continuous = block.generation_mode === 'one_take' && memberIndexes.length > 1;
+      return {
+        ...block,
+        ...finalized,
+        generation_mode: continuous ? 'one_take' : 'single_shot',
+        continuous,
+        complexity_level: continuous ? block.complexity_level : 'standard',
+        requires_manual_review: continuous && block.requires_manual_review === true,
+        isolated_for_keyframe_transition: memberIndexes.length === 1 && isolated.has(memberIndexes[0]),
+        policy_version: SCENE_BLOCK_POLICY_VERSION,
+      };
+    });
+  });
+}
+
 /** 为单镜或经批准的一镜到底生成供应商镜头合同。 */
 function generationShot(block = {}, shots = []) {
   const memberShots = block.member_indexes.map(index => shots[index] || {});
@@ -343,6 +381,7 @@ module.exports = {
   buildSceneBlocks,
   blockForIndex,
   expandIndexesToBlocks,
+  isolateIndexes,
   generationShot,
   compactSceneLock,
   generationPrompt,
