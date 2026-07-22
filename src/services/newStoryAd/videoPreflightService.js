@@ -2,9 +2,10 @@ const revisionService = require('./revisionService');
 const sceneBlockService = require('./sceneBlockService');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryPolicy = require('./videoBoundaryPolicyService');
+const boundaryRepair = require('./videoBoundaryRepairService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v3';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v4';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -307,10 +308,44 @@ function buildVideoPreflight({
   }
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
+  const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, indexes: [...paidIndexes] });
+  Object.entries(boundaryRepairContracts).forEach(([rawIndex, contract]) => {
+    const index = Number(rawIndex);
+    const instruction = boundaryRepair.repairInstruction(contract);
+    const shotPlan = shotPlans.find(item => item.index === index);
+    if (shotPlan) {
+      shotPlan.input_strategy = 'approved_keyframe_and_previous_tail_private_assets';
+      shotPlan.repair_instruction = [shotPlan.repair_instruction, instruction].filter(Boolean).join(' ');
+      shotPlan.boundary_repair = contract;
+      shotPlan.changes = [
+        ...(shotPlan.changes || []),
+        `使用上一生成单元真实尾帧修复第 ${index}→${index + 1} 镜衔接，并绑定本次失败维度，禁止同输入盲重试`,
+      ];
+    }
+    const unit = units.find(item => (item.member_indexes || []).includes(index));
+    if (unit) {
+      unit.input_strategy = 'approved_keyframe_and_previous_tail_private_assets';
+      unit.boundary_repair = contract;
+      unit.changes = shotPlan?.changes || unit.changes || [];
+    }
+  });
   const billingBlocked = providerBillingBlocked(statuses, clips, paidIndexes);
   const localUnits = units.filter(unit => !unit.paid && unit.action === 'local_motion');
   const reviewOnly = shotPlans.filter(item => item.action === 'review_only');
   const blockers = [];
+  Object.values(boundaryRepairContracts).forEach(contract => {
+    if (!contract.previous_tail_image_url) {
+      blockers.push({
+        code: 'VIDEO_BOUNDARY_REPAIR_EVIDENCE_MISSING',
+        message: `第 ${contract.previous_shot_index + 1}→${contract.current_shot_index + 1} 镜缺少上一生成单元真实尾帧，已停止付费重生成。请先补齐审片证据。`,
+      });
+    } else if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute)) {
+      blockers.push({
+        code: 'VIDEO_BOUNDARY_REPAIR_MODEL_UNSUPPORTED',
+        message: `当前视频模型不支持“当前关键帧 + 上一单元尾帧”的双私有素材修复输入，已停止付费重生成。`,
+      });
+    }
+  });
   if (billingBlocked && paidUnits.length) {
     blockers.push({
       code: 'VIDEO_PROVIDER_BILLING_BLOCKED',
@@ -333,7 +368,7 @@ function buildVideoPreflight({
       clip_lineage: clips[index]?.lineage_fingerprint || clips[index]?.lineage?.fingerprint || '',
       clip_qa: clips[index]?.qa?.pass,
     })),
-    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy })),
+    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
     blockers: blockers.map(item => item.code),
   };
   const fingerprint = revisionService.signature(source);
@@ -363,6 +398,7 @@ function buildVideoPreflight({
     },
     reconciled_shots: reconciledShots,
     repair_instructions: Object.fromEntries(shotPlans.filter(item => item.repair_instruction).map(item => [item.index, item.repair_instruction])),
+    boundary_repair_contracts: boundaryRepairContracts,
     local_motion_indexes: [...new Set(units.filter(unit => unit.action === 'local_motion').flatMap(unit => unit.member_indexes))],
     keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid).flatMap(unit => unit.member_indexes))],
     generated_at: new Date().toISOString(),
@@ -398,6 +434,13 @@ function publicVideoPreflight(plan = {}) {
       id: unit.id, shots: unit.shots, title: unit.title, action: unit.action, label: unit.label,
       paid: unit.paid, continuous: unit.continuous === true, duration_sec: unit.duration_sec,
       input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', changes: unit.changes || [],
+      boundary_repair: unit.boundary_repair ? {
+        boundary: `${unit.boundary_repair.previous_shot_index + 1}→${unit.boundary_repair.current_shot_index + 1}`,
+        failure_dimensions: unit.boundary_repair.failure_dimensions || [],
+        failure_labels_zh: unit.boundary_repair.failure_labels_zh || [],
+        previous_tail_ready: !!unit.boundary_repair.previous_tail_image_url,
+        fingerprint: unit.boundary_repair.fingerprint,
+      } : null,
     })),
     scope: plan.scope || {},
     generated_at: plan.generated_at,

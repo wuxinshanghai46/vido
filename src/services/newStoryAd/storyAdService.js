@@ -2639,7 +2639,7 @@ async function generateVideoStage(taskId, options = {}) {
             only_indexes: unitIndexes,
             _pinnedVideoModel: pinnedModel,
             _expectedLineages: expectedLineages,
-            _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions },
+            _repairInstructions: { ...(preflightPlan.repair_instructions || {}), ...repairInstructions }, _boundaryRepairContracts: preflightPlan.boundary_repair_contracts || {},
             _localMotionIndexes: [...localMotionIndexSet],
             _keyframeReferenceOnlyIndexes: preflightPlan.keyframe_reference_only_indexes || [],
             _repairAttempt: repairAttempt,

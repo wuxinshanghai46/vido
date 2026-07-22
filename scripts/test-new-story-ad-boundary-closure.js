@@ -12,6 +12,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const storyAd = require('../src/services/newStoryAd/storyAdService');
 const boundaries = require('../src/services/newStoryAd/videoBoundaryPolicyService');
 const preflight = require('../src/services/newStoryAd/videoPreflightService');
+const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairService');
 
 const clip = (index, block, cross = undefined) => ({
   shot_index: index,
@@ -51,7 +52,47 @@ async function main() {
   );
   assert.strictEqual(storage.getOutput('boundary-compose-block', 'final_video'), null, 'blocked composition must not create or overwrite final output');
 
-  const rejectedClips = clips.map((item, index) => index === 3 ? { ...item, cross_shot_qa: { pass: false, failure_labels_zh: ['运动与视线方向连续性', '动作承接连续性'] }, error_code: 'CROSS_SHOT_CONTINUITY_FAILED' } : item);
+  const rejectedClips = clips.map((item, index) => index === 3 ? { ...item, cross_shot_qa: {
+    pass: false,
+    failure_labels_zh: ['运动与视线方向连续性', '动作承接连续性'],
+    failure_dimensions: ['screen_direction', 'action_continuity'],
+    problems: ['hand position changed', 'action restarted'],
+    retry_instruction: 'Preserve the hand contact and continue the same movement.',
+  }, error_code: 'CROSS_SHOT_CONTINUITY_FAILED' } : item);
+  const repairPlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair', shots, keyframes, contracts: [{}, {}, {}, {}], clips: rejectedClips, statuses: [],
+    mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(repairPlan.status, 'ready');
+  assert.strictEqual(repairPlan.paid_unit_count, 1);
+  assert.strictEqual(repairPlan.units[0].input_strategy, 'approved_keyframe_and_previous_tail_private_assets');
+  assert.strictEqual(repairPlan.units[0].boundary_repair.previous_tail_image_url, '/shot-3-tail.jpg');
+  assert.match(repairPlan.repair_instructions[3], /Reference image 2 is the actual tail frame/);
+  assert.deepStrictEqual(repairPlan.units[0].boundary_repair.failure_dimensions, ['screen_direction', 'action_continuity']);
+
+  const missingEvidence = rejectedClips.map((item, index) => index === 2 ? { ...item, qa: { ...item.qa, frames: [] } } : item);
+  const missingEvidencePlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair-missing', shots, keyframes, contracts: [{}, {}, {}, {}], clips: missingEvidence, statuses: [],
+    mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(missingEvidencePlan.status, 'blocked');
+  assert(missingEvidencePlan.blockers.some(item => item.code === 'VIDEO_BOUNDARY_REPAIR_EVIDENCE_MISSING'));
+
+  const unsupportedPlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair-unsupported', shots, keyframes, contracts: [{}, {}, {}, {}], clips: rejectedClips, statuses: [],
+    mode: 'economy', providerRoute: 'other/image-to-video', onlyIndexes: [3],
+  });
+  assert.strictEqual(unsupportedPlan.status, 'blocked');
+  assert(unsupportedPlan.blockers.some(item => item.code === 'VIDEO_BOUNDARY_REPAIR_MODEL_UNSUPPORTED'));
+
+  const longClips = Array.from({ length: 18 }, (_, index) => clip(index, `block-${index}`));
+  const longShots = Array.from({ length: 18 }, (_, index) => ({ title: `Shot ${index + 1}`, action: `Action ${index + 1}` }));
+  [1, 9, 17].forEach(index => {
+    longClips[index].cross_shot_qa = { pass: false, failure_dimensions: ['action_continuity'], problems: [`boundary-${index}`] };
+  });
+  const longContracts = boundaryRepair.buildContracts({ clips: longClips, shots: longShots, indexes: [1, 9, 17] });
+  assert.strictEqual(Object.keys(longContracts).length, 3, 'maximum storyboard indexes must keep independent boundary repair contracts');
+  assert.strictEqual(new Set(Object.values(longContracts).map(item => item.fingerprint)).size, 3, 'concurrent boundary repairs must not reuse another boundary fingerprint');
   storage.saveOutput('boundary-compose-block', 'video_clips', rejectedClips);
   storage.updateTask('boundary-compose-block', { status: 'failed', stage: 'media_failed', error: '当前版本仍有未审片或来源不匹配的镜头：第 4 镜', error_code: 'COMPOSE_CLIP_LINEAGE_INVALID' });
   const restored = storyAd.publicTaskBundle('boundary-compose-block');

@@ -92,6 +92,20 @@ assert.deepStrictEqual(personAndSceneReferences.content.slice(1).map(item => [it
 ]);
 assert.strictEqual(personAndSceneReferences.content.some(item => item.role === 'first_frame'), false, '人物+场景素材仍必须保持单一 reference-media 输入模式');
 
+const currentKeyframeAndPreviousTail = buildSeedanceContentTaskBody({
+  model: 'doubao-seedance-2-0-260128',
+  prompt: 'repair a failed cross-unit boundary',
+  duration: 5,
+  size: '720x1280',
+  referenceAssetUrls: ['asset://current-keyframe', 'asset://previous-tail'],
+});
+assert.deepStrictEqual(
+  currentKeyframeAndPreviousTail.content.filter(item => item.type === 'image_url').map(item => [item.image_url.url, item.role]),
+  [['asset://current-keyframe', 'reference_image'], ['asset://previous-tail', 'reference_image']],
+  'boundary repair must submit both private visual anchors in stable semantic order',
+);
+assert(!currentKeyframeAndPreviousTail.content.some(item => item.role === 'first_frame'), 'Seedance boundary repair must not mix first_frame with managed references');
+
 assert.strictEqual(
   extractSeedanceContentTaskVideoUrl({ content: { video_url: 'https://cdn.example.com/a.mp4' } }),
   'https://cdn.example.com/a.mp4'

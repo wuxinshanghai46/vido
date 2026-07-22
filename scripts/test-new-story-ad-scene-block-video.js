@@ -5,6 +5,7 @@ const sceneBlocks = require('../src/services/newStoryAd/sceneBlockService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const lineage = require('../src/services/newStoryAd/videoLineageService');
 const storage = require('../src/services/newStoryAd/storageService');
+const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairService');
 
 async function run() {
   const shots = [
@@ -182,6 +183,54 @@ async function run() {
   } finally {
     (partialError?.partial_video_clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });
     storage.deleteTask(partialTaskId);
+  }
+
+  const boundaryTaskId = `scene_block_boundary_${Date.now()}`;
+  const boundaryShots = [
+    { id: 'boundary-a', title: 'Previous', scene_id: 'space-boundary', duration: 5, characters: [], exit_frame_state: 'hand touches wall', screen_direction: 'left_to_right' },
+    { id: 'boundary-b', title: 'Current', scene_id: 'space-boundary', duration: 5, characters: [], transition_type: 'hard_cut', entry_frame_state: 'same hand continues', screen_direction: 'left_to_right' },
+  ];
+  const boundaryContracts = boundaryShots.map(() => ({ scene_lock: sceneLock('space-boundary') }));
+  const boundaryBlocks = sceneBlocks.buildSceneBlocks(boundaryShots, boundaryContracts, { preserve_existing_topology: true });
+  const boundaryClips = [
+    { shot_index: 0, file_path: __filename, video_url: '/previous.mp4', qa: { pass: true, frames: [{ image_url: '/previous-head.jpg', second: 0 }, { image_url: '/previous-tail.jpg', second: 4.95 }] } },
+    { shot_index: 1, file_path: __filename, video_url: '/current.mp4', qa: { pass: true }, cross_shot_qa: { pass: false, failure_dimensions: ['screen_direction', 'action_continuity'], problems: ['action restarted'] } },
+  ];
+  const boundaryContract = boundaryRepair.buildContract({ clips: boundaryClips, shots: boundaryShots, index: 1 });
+  let submittedOptions;
+  storage.createTask({ id: boundaryTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
+  try {
+    await videoAdapter.generateSceneBlockVideos({
+      taskId: boundaryTaskId,
+      shots: boundaryShots,
+      contracts: boundaryContracts,
+      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
+      sceneBlocks: boundaryBlocks,
+      ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
+      options: {
+        only_indexes: [1],
+        _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _boundaryRepairContracts: { 1: boundaryContract },
+        _repairInstructions: { 1: boundaryRepair.repairInstruction(boundaryContract) },
+        _prepareKeyframeReferenceAsset: async () => ({ asset_url: 'asset://current-keyframe' }),
+        _prepareBoundaryReferenceAsset: async ({ contract }) => {
+          assert.strictEqual(contract.previous_tail_image_url, '/previous-tail.jpg');
+          return { asset_url: 'asset://previous-tail' };
+        },
+        _generateShotVideo: async ({ index, options }) => {
+          submittedOptions = options;
+          return { shot_index: index, file_path: __filename, video_url: '/mock-boundary.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-boundary' };
+        },
+      },
+      existingClips: boundaryClips,
+    });
+    assert.strictEqual(submittedOptions._deyunaiPersonAsset.asset_url, 'asset://current-keyframe');
+    assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, ['asset://previous-tail']);
+    assert.strictEqual(submittedOptions._boundaryReferenceAssetUrl, 'asset://previous-tail');
+    assert.strictEqual(submittedOptions._inputModeOverride, 'approved_keyframe_and_previous_tail_private_references');
+    assert.match(submittedOptions._repairInstructions[1], /actual tail frame of the preceding generated unit/);
+  } finally {
+    storage.deleteTask(boundaryTaskId);
   }
   console.log('new story ad continuous scene block video: ok');
 }
