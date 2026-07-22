@@ -5,7 +5,7 @@ const boundaryPolicy = require('./videoBoundaryPolicyService');
 const boundaryRepair = require('./videoBoundaryRepairService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v4';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v5';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -140,6 +140,13 @@ function continuityEvidenceOnlyFailureCanBeRechecked(clip = {}) {
   return codes.includes('VIDEO_QA_EVIDENCE_MISSING');
 }
 
+function boundaryOnlyFailureCanUseTransition(clip = {}) {
+  return clipHasMedia(clip)
+    && clip.qa?.pass === true
+    && clip.cross_shot_qa?.pass === false
+    && failureDimensions(clip).length > 0;
+}
+
 function shotTitle(shot = {}, index = 0) {
   return text(shot.title) || `第 ${index + 1} 镜`;
 }
@@ -151,6 +158,17 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
   if (continuityEvidenceOnlyFailureCanBeRechecked(clip)) {
     changes.push('保留现有视频，仅本地补齐上一镜尾帧证据并复审镜头交接，不重新调用视频生成模型');
     return { index, shot_index: index + 1, title, action: 'review_only', review_scope: 'cross_shot', label: '只补证并复审交接（不重新生成）', paid: false, changes };
+  }
+  if (boundaryOnlyFailureCanUseTransition(clip)) {
+    const dimensions = failureDimensions(clip);
+    const transitionOverride = dimensions.some(value => ['person_position', 'wardrobe', 'prop_state', 'scene_continuity'].includes(value))
+      ? 'fade' : 'dissolve';
+    changes.push(`保留前后两个已经通过单镜质检的视频，使用确定性的${transitionOverride === 'fade' ? '淡出淡入' : '短溶解'}转场隔离不连续边界；不重新调用视频生成模型`);
+    return {
+      index, shot_index: index + 1, title, action: 'transition_bridge',
+      review_scope: 'deterministic_transition', transition_override: transitionOverride,
+      label: '保留合格素材并应用转场（不重新生成）', paid: false, changes,
+    };
   }
   if (peopleOnlyFailureCanBeRechecked(shot, keyframe, contract, clip)) {
     changes.push('以已确认关键帧中的人物/手部为准，修正人数与场景审核冲突');
@@ -245,7 +263,7 @@ function qualityPlan({ shots, reconciledShots, keyframes, contracts, clips, stat
         action: item.action, label: item.label, paid: false, continuous: false,
         duration_sec: sceneBlockService.durationOf(shots[index] || {}),
         input_strategy: item.action === 'local_motion' ? 'approved_keyframe_local_motion' : '',
-        review_scope: item.review_scope || '', changes: item.changes || [],
+        review_scope: item.review_scope || '', transition_override: item.transition_override || '', changes: item.changes || [],
       });
     });
   });
@@ -294,7 +312,7 @@ function buildVideoPreflight({
       id: `${item.action === 'review_only' ? 'review' : 'economy'}-shot-${item.shot_index}`,
       member_indexes: [item.index], shots: [item.shot_index], title: item.title,
       action: item.action, label: item.label, paid: item.paid, duration_sec: sceneBlockService.durationOf(shots[item.index] || {}),
-      input_strategy: item.input_strategy || '', review_scope: item.review_scope || '', changes: item.changes || [],
+      input_strategy: item.input_strategy || '', review_scope: item.review_scope || '', transition_override: item.transition_override || '', changes: item.changes || [],
     }));
     sceneBlocks = sceneBlockService.buildSceneBlocks(shots, contracts, { ...executionOptions, preserve_existing_topology: true });
   }
@@ -308,7 +326,7 @@ function buildVideoPreflight({
   }
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
-  const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, indexes: [...paidIndexes] });
+  const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, keyframes, contracts, indexes: [...paidIndexes] });
   Object.entries(boundaryRepairContracts).forEach(([rawIndex, contract]) => {
     const index = Number(rawIndex);
     contract.input_strategy = boundaryRepair.inputStrategy(executionOptions);
@@ -332,6 +350,7 @@ function buildVideoPreflight({
   });
   const billingBlocked = providerBillingBlocked(statuses, clips, paidIndexes);
   const localUnits = units.filter(unit => !unit.paid && unit.action === 'local_motion');
+  const transitionUnits = units.filter(unit => !unit.paid && unit.action === 'transition_bridge');
   const reviewOnly = shotPlans.filter(item => item.action === 'review_only');
   const blockers = [];
   Object.values(boundaryRepairContracts).forEach(contract => {
@@ -339,6 +358,12 @@ function buildVideoPreflight({
       blockers.push({
         code: 'VIDEO_BOUNDARY_REPAIR_EVIDENCE_MISSING',
         message: `第 ${contract.previous_shot_index + 1}→${contract.current_shot_index + 1} 镜缺少上一生成单元真实尾帧，已停止付费重生成。请先补齐审片证据。`,
+      });
+    } else if (contract.input_strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME && contract.direct_tail_capability?.safe !== true) {
+      blockers.push({
+        code: 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT',
+        message: `第 ${contract.previous_shot_index + 1}→${contract.current_shot_index + 1} 镜的上一镜尾帧无法同时证明下一镜所需的完整人物、服装和场景锁定，已在付费提交前停止。请保留已合格素材并使用转场，或改用经过验证的双参考输入。`,
+        details: contract.direct_tail_capability || {},
       });
     } else if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute)) {
       blockers.push({
@@ -369,7 +394,7 @@ function buildVideoPreflight({
       clip_lineage: clips[index]?.lineage_fingerprint || clips[index]?.lineage?.fingerprint || '',
       clip_qa: clips[index]?.qa?.pass,
     })),
-    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
+    units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, transition_override: unit.transition_override || '', boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
     blockers: blockers.map(item => item.code),
   };
   const fingerprint = revisionService.signature(source);
@@ -378,15 +403,16 @@ function buildVideoPreflight({
     task_id: taskId,
     mode: normalizedMode,
     fingerprint,
-    status: blockers.length ? (localUnits.length || reviewOnly.length ? 'partial_ready' : 'blocked') : 'ready',
+    status: blockers.length ? (localUnits.length || reviewOnly.length || transitionUnits.length ? 'partial_ready' : 'blocked') : 'ready',
     provider_route: providerRoute,
     execution_plan: resolvedExecutionPlan,
     paid_unit_count: paidUnits.length,
     paid_video_seconds: paidUnits.reduce((sum, unit) => sum + Number(unit.duration_sec || 0), 0),
     local_unit_count: localUnits.length,
+    transition_unit_count: transitionUnits.length,
     review_only_count: reviewOnly.length,
     reuse_count: shotPlans.filter(item => item.action === 'reuse').length,
-    zero_cost_action_count: localUnits.length + reviewOnly.length,
+    zero_cost_action_count: localUnits.length + reviewOnly.length + transitionUnits.length,
     automatic_retry_count: 0,
     blockers,
     shots: shotPlans,
@@ -401,6 +427,7 @@ function buildVideoPreflight({
     repair_instructions: Object.fromEntries(shotPlans.filter(item => item.repair_instruction).map(item => [item.index, item.repair_instruction])),
     boundary_repair_contracts: boundaryRepairContracts,
     local_motion_indexes: [...new Set(units.filter(unit => unit.action === 'local_motion').flatMap(unit => unit.member_indexes))],
+    transition_bridge_indexes: [...new Set(units.filter(unit => unit.action === 'transition_bridge').flatMap(unit => unit.member_indexes))],
     keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid).flatMap(unit => unit.member_indexes))],
     generated_at: new Date().toISOString(),
   };
@@ -419,6 +446,7 @@ function publicVideoPreflight(plan = {}) {
     paid_unit_count: plan.paid_unit_count,
     paid_video_seconds: plan.paid_video_seconds,
     local_unit_count: plan.local_unit_count,
+    transition_unit_count: plan.transition_unit_count || 0,
     review_only_count: plan.review_only_count,
     reuse_count: plan.reuse_count,
     zero_cost_action_count: plan.zero_cost_action_count,
@@ -429,12 +457,12 @@ function publicVideoPreflight(plan = {}) {
     runtime_policy: plan.runtime_policy || {},
     shots: (plan.shots || []).map(item => ({
       shot_index: item.shot_index, title: item.title, action: item.action, label: item.label,
-      paid: item.paid, unit_id: item.unit_id || '', changes: item.changes || [],
+      paid: item.paid, unit_id: item.unit_id || '', transition_override: item.transition_override || '', changes: item.changes || [],
     })),
     units: (plan.units || []).map(unit => ({
       id: unit.id, shots: unit.shots, title: unit.title, action: unit.action, label: unit.label,
       paid: unit.paid, continuous: unit.continuous === true, duration_sec: unit.duration_sec,
-      input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', changes: unit.changes || [],
+      input_strategy: unit.input_strategy || '', review_scope: unit.review_scope || '', transition_override: unit.transition_override || '', changes: unit.changes || [],
       boundary_repair: unit.boundary_repair ? {
         boundary: `${unit.boundary_repair.previous_shot_index + 1}→${unit.boundary_repair.current_shot_index + 1}`,
         failure_dimensions: unit.boundary_repair.failure_dimensions || [],

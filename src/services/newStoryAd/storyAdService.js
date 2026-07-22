@@ -2466,13 +2466,14 @@ async function generateVideoStage(taskId, options = {}) {
         video_url: clip.video_url || clip.videoUrl || '',
       }, shots.length);
       const planned = preflightShotActions.get(index) || {}, plannedAction = planned.action || '', continuityReviewOnly = plannedAction === 'review_only' && planned.review_scope === 'cross_shot';
+      const transitionBridge = plannedAction === 'transition_bridge';
       const savedContractQa = plannedAction === 'review_only' && !continuityReviewOnly
         ? videoFrameQa.reconcileExistingApprovedPartialPersonQa({ qa: clip.qa || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {} })
         : null;
       const localMotionQa = plannedAction === 'local_motion'
         ? await videoFrameQa.verifyDeterministicLocalMotionClip({ taskId, clip, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, index })
         : null;
-      const qa = continuityReviewOnly ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
+      const qa = (continuityReviewOnly || transitionBridge) ? clip.qa : (savedContractQa || localMotionQa || await videoFrameQa.reviewVideoClip({ taskId, clip, shot: preflightPlan.reconciled_shots[index] || shots[index] || {}, keyframe: keyframes[index] || {}, contract: contracts[index] || {}, ctx, index }));
       clips[index] = { ...clip, qa, error: qa.pass ? '' : '视频抽帧 QA 未通过', error_code: qa.pass ? '' : 'VIDEO_FRAME_QA_FAILED' };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: qa.pass ? 'qa_passed' : 'qa_failed', qa_status: qa.pass ? 'passed' : 'failed',
@@ -2492,9 +2493,17 @@ async function generateVideoStage(taskId, options = {}) {
       const previous = clips[index - 1];
       const current = clips[index];
       if (!previous?.qa?.pass || !current?.qa?.pass) continue;
-      const crossQa = await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
+      const planned = preflightShotActions.get(index) || {};
+      const transitionBridge = planned.action === 'transition_bridge';
+      const crossQa = transitionBridge
+        ? videoBoundaryPolicy.deterministicTransitionQa(previous, current, planned.transition_override || 'dissolve')
+        : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
       const { code: crossErrorCode, message: crossError } = videoFrameQa.crossShotFailure(crossQa, index);
-      clips[index] = { ...current, cross_shot_qa: crossQa, error: crossQa.pass ? '' : crossError, error_code: crossQa.pass ? '' : crossErrorCode };
+      clips[index] = {
+        ...current,
+        ...(transitionBridge && crossQa.pass ? { transition_override: crossQa.transition_type, transition_decision_source: crossQa.decision_source } : {}),
+        cross_shot_qa: crossQa, error: crossQa.pass ? '' : crossError, error_code: crossQa.pass ? '' : crossErrorCode,
+      };
       videoAdapter.updateVideoShotStatus(taskId, index, {
         lifecycle: crossQa.pass ? 'qa_passed' : 'qa_failed', cross_shot_qa_status: crossQa.pass ? 'passed' : 'failed',
         cross_shot_qa_problems: crossQa.problems || [], cross_shot_failure_dimensions: crossQa.failure_dimensions || [], cross_shot_failure_labels_zh: crossQa.failure_labels_zh || [],
@@ -2531,8 +2540,8 @@ async function generateVideoStage(taskId, options = {}) {
   shots.forEach((_, index) => {
     if (requestedIndexSet && !requestedIndexSet.has(index)) return;
     const planned = preflightShotActions.get(index) || {};
-    if (zeroCostOnly && !['local_motion', 'review_only'].includes(planned.action)) return;
-    if (planned.action === 'review_only') {
+    if (zeroCostOnly && !['local_motion', 'review_only', 'transition_bridge'].includes(planned.action)) return;
+    if (['review_only', 'transition_bridge'].includes(planned.action)) {
       if (videoLineage.clipHasMediaFile(clips[index])) pendingReviewIndexes.push(index);
       return;
     }
@@ -2588,7 +2597,7 @@ async function generateVideoStage(taskId, options = {}) {
       if ((options.missing_only === true || options.missingOnly === true) && videoLineage.clipHasMediaFile(clips[index])) {
         return;
       }
-      if (preflightShotActions.get(index)?.action === 'review_only') return;
+      if (['review_only', 'transition_bridge'].includes(preflightShotActions.get(index)?.action)) return;
       initialIndexes.push(index);
       clips[index] = null;
     });
@@ -2669,18 +2678,8 @@ async function generateVideoStage(taskId, options = {}) {
       const unitQaFailures = await reviewVideoIndexes(reviewedIndexes, repairAttempt, { stopOnFailure: true });
       qaFailures.push(...unitQaFailures);
       if (generationError || unitQaFailures.length) {
-        const rollbackIndexes = videoFailureRecovery.rollbackIndexes({ generationError, unitIndexes, remainingUnits });
-        videoFailureRecovery.restorePreviousClips({ clips, previousClips, indexes: rollbackIndexes });
-        rollbackIndexes.forEach(index => {
-          const previousStatus = storage.getOutput(taskId, `video_shot_status_${index + 1}`) || {};
-          videoAdapter.updateVideoShotStatus(taskId, index, {
-            ...previousStatus,
-            last_attempt_provider_submission_state: 'not_submitted',
-            last_attempt_billing_state: 'not_submitted',
-            stopped_after_unit_failure: true, previous_clip_restored: generationError && !!previousClips[index],
-          }, shots.length);
-        });
-        storage.saveOutput(taskId, 'video_clips', clips);
+        videoFailureRecovery.recordFailedCandidates({ storage, taskId, options, unitIndexes, clips, qaFailures: unitQaFailures });
+        videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips, unitIndexes, remainingUnits, totalShots: shots.length });
         if (generationError) {
           videoCostAuthorization.transition(taskId, 'failed', { failure_code: generationError.code || 'VIDEO_PROVIDER_FAILED' });
           generationError.partial_video_clips = clips.slice();

@@ -18,7 +18,7 @@ const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService');
-const motionAwareEdit = require('./motionAwareEditService');
+const semanticCut = require('./semanticCutService');
 const videoCore = require('../videoGenerationCore');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService');
@@ -509,6 +509,17 @@ async function prepareDeyunaiKeyframeReferenceAsset({ taskId = '', index = 0, ke
   storage.saveOutput(taskId, 'deyunai_keyframe_reference_assets', { ...saved, [identity]: asset });
   return asset;
 }
+
+function successfulProviderAccounting(providerTaskId = '', durationSec = 0) {
+  const taskId = String(providerTaskId || '').trim();
+  const requestedSeconds = taskId ? Math.max(0, Number(durationSec) || 0) : 0;
+  return {
+    provider_task_id: taskId,
+    provider_submission_state: taskId ? 'completed' : 'not_submitted',
+    billing_state: taskId ? 'confirmed' : 'not_submitted',
+    requested_video_seconds: requestedSeconds,
+  };
+}
 function publicBaseUrl(options = {}) {
   return String(
     options.public_base_url
@@ -733,10 +744,17 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
-      storage.saveModelCall({ task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id, adapter: generated.resumed ? 'provider_task_resume' : '', status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: attempts.length + 1 });
+      const successfulProviderTaskId = generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '';
+      const successfulAccounting = successfulProviderAccounting(successfulProviderTaskId, duration);
+      storage.saveModelCall({
+        task_id: taskId, stage: VIDEO_STAGE, provider_id: model.provider_id, model_id: model.model_id,
+        adapter: generated.resumed ? 'provider_task_resume' : '', status: 'success', latency_ms: Date.now() - startedAt,
+        fallback_rank: attempts.length + 1, ...successfulAccounting,
+        generation_id: options._generationId || options.generation_id || '', shot_index: index,
+      });
       updateGenerationUnitStatus(taskId, index, {
         lifecycle: 'generated',
-        provider_task_id: generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '',
+        ...successfulAccounting,
         provider_status: 'succeeded',
         provider_elapsed_ms: Date.now() - startedAt,
         file_path: normalizedPath,
@@ -749,7 +767,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         title: shot.title || `Shot ${index + 1}`,
         duration_sec: duration,
         provider_used: `${model.provider_id}/${model.model_id}`,
-        provider_task_id: generated.providerTaskId || '',
+        ...successfulAccounting,
         image_source: imageUrl,
         motion_prompt: prompt,
         mode: options._sceneBlock?.continuous ? 'provider_continuous_scene_block' : (personReferenceAsset ? 'provider_person_reference_video' : 'provider_image_to_video'),
@@ -1015,43 +1033,16 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
 }
 
 async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, shots = [], tracks = [], ctx = {}, options = {} } = {}) {
-  let editPlan;
-  try {
-    editPlan = await motionAwareEdit.selectSafeCutPoints({
-      filePath: sourceClip.file_path,
-      beats: block.beats || [],
-      searchWindowSec: Number(options.motion_safe_cut_window_sec || 0.8),
-      fps: Number(options.local_motion_analysis_fps || 6),
-    });
-  } catch (error) {
-    editPlan = {
-      beats: (block.beats || []).map(beat => ({ ...beat, planned_start_sec: beat.start_sec, planned_end_sec: beat.end_sec })),
-      evidence: {
-        policy_version: motionAwareEdit.POLICY_VERSION,
-        method: 'planned_boundary_fallback',
-        boundaries: [],
-        fallback_reason: `motion_analysis_failed:${String(error.code || error.message || 'unknown').slice(0, 120)}`,
-      },
-    };
-  }
+  const editPlan = await semanticCut.buildLockedEditPlan({
+    filePath: sourceClip.file_path, beats: block.beats || [],
+    searchWindowSec: Number(options.motion_safe_cut_window_sec || 0.8), fps: Number(options.local_motion_analysis_fps || 6),
+  });
   const audioDurations = [];
   for (const beat of editPlan.beats) {
     const index = Number(beat.shot_index || 1) - 1;
     const audio = tracks[index] || {};
     const audioPath = localAudioPath(audio.audio_url || audio.audioUrl || audio.url || '');
     audioDurations.push({ index, audioPath, duration: await probeDuration(audioPath) });
-  }
-  const adjustedAudioOverflow = editPlan.beats.some((beat, position) => audioDurations[position].duration > Number(beat.duration_sec || 0) + 0.35);
-  if (adjustedAudioOverflow) {
-    editPlan = {
-      beats: (block.beats || []).map(beat => ({ ...beat, planned_start_sec: beat.start_sec, planned_end_sec: beat.end_sec })),
-      evidence: {
-        ...editPlan.evidence,
-        method: 'planned_boundary_fallback',
-        fallback_reason: 'motion_adjustment_would_truncate_authored_audio',
-        boundaries: (editPlan.evidence?.boundaries || []).map(boundary => ({ ...boundary, selected_sec: boundary.planned_sec, shift_sec: 0, shift_direction: 'unchanged', used_fallback: true })),
-      },
-    };
   }
   const output = [];
   for (let position = 0; position < editPlan.beats.length; position += 1) {
@@ -1240,15 +1231,17 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           return generatedClips;
         } catch (error) {
           if (error?.code === 'USER_CANCELLED' || error?.cancelled === true || cancellation.signal()?.aborted) throw error;
-          const currentStatus = storage.getOutput(taskId, videoShotStatusKind(block.first_index)) || {};
-          const submitted = !!currentStatus.provider_task_id;
-          const failure = {
+      const currentStatus = storage.getOutput(taskId, videoShotStatusKind(block.first_index)) || {};
+      const submitted = !!currentStatus.provider_task_id;
+      const billingState = String(error.billingState || currentStatus.billing_state || (submitted ? 'unknown' : 'not_submitted'));
+      const submissionState = String(currentStatus.provider_submission_state || (submitted ? 'submitted' : 'not_submitted'));
+      const failure = {
             scene_block_id: block.id,
             indexes: block.member_indexes.slice(),
             error: videoCore.chineseError.classifyChineseMessage(error, '当前镜头生成失败，系统已停止自动重试。'),
             error_code: error.code || 'SCENE_BLOCK_GENERATION_FAILED',
             retryable: error.retryable === true,
-            billing_state: submitted ? 'unknown' : 'not_submitted',
+            billing_state: billingState,
           };
           unitFailures.push(failure);
           block.member_indexes.forEach(index => updateVideoShotStatus(taskId, index, {
@@ -1256,7 +1249,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
             error: failure.error,
             error_code: failure.error_code,
             retryable: failure.retryable,
-            provider_submission_state: submitted ? 'submitted' : 'not_submitted',
+            provider_submission_state: submissionState,
             billing_state: failure.billing_state,
           }, list.length));
           if (failFast) {
@@ -1287,8 +1280,8 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
           error: cancelled ? '任务已取消' : (current.error || '连续场景段生成未完成'),
           error_code: cancelled ? 'USER_CANCELLED' : (current.error_code || 'SCENE_BLOCK_GENERATION_FAILED'),
           retryable: error?.retryable === true,
-          provider_submission_state: current.provider_task_id ? 'submitted' : 'not_submitted',
-          billing_state: current.provider_task_id ? 'unknown' : 'not_submitted',
+          provider_submission_state: current.provider_submission_state || (current.provider_task_id ? 'submitted' : 'not_submitted'),
+          billing_state: current.billing_state || (current.provider_task_id ? 'unknown' : 'not_submitted'),
         }, list.length);
       });
       storage.saveOutput(taskId, 'video_clips', clips);
@@ -1330,6 +1323,7 @@ module.exports = {
   useSeedanceReferenceAssets,
   videoPathFromName,
   publicVideoUrl,
+  successfulProviderAccounting,
   generateShotVideo,
   generateShotVideos,
   generateSceneBlockVideos,

@@ -13,6 +13,7 @@ const storyAd = require('../src/services/newStoryAd/storyAdService');
 const boundaries = require('../src/services/newStoryAd/videoBoundaryPolicyService');
 const preflight = require('../src/services/newStoryAd/videoPreflightService');
 const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairService');
+const boundaryGeneration = require('../src/services/newStoryAd/videoBoundaryGenerationService');
 const videoFailureRecovery = require('../src/services/newStoryAd/videoFailureRecoveryService');
 
 const clip = (index, block, cross = undefined) => ({
@@ -65,33 +66,80 @@ async function main() {
     mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
   });
   assert.strictEqual(repairPlan.status, 'ready');
-  assert.strictEqual(repairPlan.paid_unit_count, 1);
-  assert.strictEqual(repairPlan.units[0].input_strategy, 'previous_tail_first_frame');
-  assert.strictEqual(repairPlan.units[0].boundary_repair.previous_tail_image_url, '/shot-3-tail.jpg');
-  assert.match(repairPlan.repair_instructions[3], /supplied first frame is the actual tail frame/);
-  assert.deepStrictEqual(repairPlan.units[0].boundary_repair.failure_dimensions, ['screen_direction', 'action_continuity']);
+  assert.strictEqual(repairPlan.paid_unit_count, 0, 'individually approved clips with only a boundary failure must not be regenerated');
+  assert.strictEqual(repairPlan.units[0].action, 'transition_bridge');
+  assert.strictEqual(repairPlan.units[0].transition_override, 'dissolve');
+  assert.strictEqual(repairPlan.zero_cost_action_count, 1);
+
+  const providerRepairClips = rejectedClips.map((item, index) => index === 3 ? {
+    ...item,
+    qa: { pass: false, failure_dimensions: ['person_identity', 'action_fulfillment'] },
+    error_code: 'VIDEO_FRAME_QA_FAILED',
+  } : item);
+  const safeDirectRepairPlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair-provider', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })),
+    clips: providerRepairClips, statuses: [], mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(safeDirectRepairPlan.status, 'ready');
+  assert.strictEqual(safeDirectRepairPlan.paid_unit_count, 1);
+  assert.strictEqual(safeDirectRepairPlan.units[0].input_strategy, 'previous_tail_first_frame');
+  assert.strictEqual(safeDirectRepairPlan.units[0].boundary_repair.direct_tail_capability.safe, true);
   const managedRepairPlan = preflight.buildVideoPreflight({
-    taskId: 'boundary-repair-managed', shots, keyframes, contracts: [{}, {}, {}, {}], clips: rejectedClips, statuses: [],
+    taskId: 'boundary-repair-managed', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })), clips: providerRepairClips, statuses: [],
     mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3], executionOptions: { boundary_repair_input_mode: 'managed_dual_reference' },
   });
   assert.strictEqual(managedRepairPlan.units[0].input_strategy, 'approved_keyframe_and_previous_tail_private_assets');
   assert.match(managedRepairPlan.repair_instructions[3], /Reference image 2 is the actual tail frame/);
   assert.deepStrictEqual(videoFailureRecovery.rollbackIndexes({ generationError: new Error('pre-submit failure'), unitIndexes: [3, 4], remainingUnits: [{ member_indexes: [5] }] }), [3, 4, 5]);
-  assert.deepStrictEqual(videoFailureRecovery.rollbackIndexes({ unitIndexes: [3, 4], remainingUnits: [{ member_indexes: [5] }] }), [5], 'QA failure preserves the new failed unit for evidence but protects later untouched clips');
+  assert.deepStrictEqual(videoFailureRecovery.rollbackIndexes({ unitIndexes: [3, 4], remainingUnits: [{ member_indexes: [5] }] }), [3, 4, 5], 'QA failure must restore the current unit and protect later untouched clips');
   const overwritten = ['new-1', 'new-2', null, null], previous = ['old-1', 'old-2', 'old-3', 'old-4'];
   videoFailureRecovery.restorePreviousClips({ clips: overwritten, previousClips: previous, indexes: [0, 1, 2, 3] });
   assert.deepStrictEqual(overwritten, previous, 'a pre-submission failure must restore every paid clip reference from the preflight snapshot');
+  const recoveredClips = ['new-paid'], recoveryWrites = [];
+  videoFailureRecovery.restoreUnitFailure({
+    storage: {
+      getOutput: () => ({ provider_task_id: 'paid-provider-task', provider_submission_state: 'completed', billing_state: 'confirmed' }),
+      saveOutput: (_taskId, _kind, value) => { assert.strictEqual(value, recoveredClips); },
+    },
+    videoAdapter: { updateVideoShotStatus: (_taskId, index, patch) => recoveryWrites.push({ index, patch }) },
+    taskId: 'recovery-accounting', clips: recoveredClips, previousClips: ['old-approved'], unitIndexes: [0], totalShots: 1,
+  });
+  assert.deepStrictEqual(recoveredClips, ['old-approved']);
+  assert.strictEqual(recoveryWrites[0].patch.last_attempt_billing_state, 'confirmed', 'QA rollback must not rewrite an already billed success as not_submitted');
 
-  const missingEvidence = rejectedClips.map((item, index) => index === 2 ? { ...item, qa: { ...item.qa, frames: [] } } : item);
+  const partialToFullKeyframes = keyframes.map((item, index) => index === 2
+    ? { ...item, qa: { pass: true, person: { person_presence: 'partial' } } }
+    : (index === 3 ? { ...item, qa: { pass: true, person: { person_presence: 'person' } } } : item));
+  const personContracts = shots.map(() => ({
+    scene_lock: { scene_id: 'scene-a', scene_revision: 1 },
+    cast_lock: { person_contract: { person_id: 'actor-1', person_revision: 1, wardrobe_fingerprint: 'dark-red-dress' } },
+  }));
+  const unsafeTailPlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair-unsafe-tail', shots, keyframes: partialToFullKeyframes, contracts: personContracts,
+    clips: providerRepairClips, statuses: [], mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(unsafeTailPlan.status, 'blocked');
+  assert(unsafeTailPlan.blockers.some(item => item.code === 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'));
+  assert(unsafeTailPlan.boundary_repair_contracts[3].direct_tail_capability.reasons.includes('partial_tail_cannot_lock_full_person'));
+  await assert.rejects(
+    () => boundaryGeneration.prepareInputs({
+      taskId: 'unsafe-tail-hard-gate', index: 3, keyframe: partialToFullKeyframes[3],
+      contract: unsafeTailPlan.boundary_repair_contracts[3], pinnedModelRoute: 'deyunai/doubao-seedance-2-0-260128', options: {},
+    }),
+    error => error?.code === 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT',
+    'provider adapter must reject an unsafe tail even if preflight is bypassed',
+  );
+
+  const missingEvidence = providerRepairClips.map((item, index) => index === 2 ? { ...item, qa: { ...item.qa, frames: [] } } : item);
   const missingEvidencePlan = preflight.buildVideoPreflight({
-    taskId: 'boundary-repair-missing', shots, keyframes, contracts: [{}, {}, {}, {}], clips: missingEvidence, statuses: [],
+    taskId: 'boundary-repair-missing', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })), clips: missingEvidence, statuses: [],
     mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
   });
   assert.strictEqual(missingEvidencePlan.status, 'blocked');
   assert(missingEvidencePlan.blockers.some(item => item.code === 'VIDEO_BOUNDARY_REPAIR_EVIDENCE_MISSING'));
 
   const unsupportedPlan = preflight.buildVideoPreflight({
-    taskId: 'boundary-repair-unsupported', shots, keyframes, contracts: [{}, {}, {}, {}], clips: rejectedClips, statuses: [],
+    taskId: 'boundary-repair-unsupported', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })), clips: providerRepairClips, statuses: [],
     mode: 'economy', providerRoute: 'other/image-to-video', onlyIndexes: [3],
   });
   assert.strictEqual(unsupportedPlan.status, 'blocked');
@@ -121,7 +169,7 @@ async function main() {
   assert(source.includes('videoBoundaryPolicy.requiredBoundaryIndexes(clips, reviewedIndexes)'), 'shot re-review must automatically close adjacent required boundaries');
   assert(source.includes('let qaFailures = pendingReviewFailures.slice()'), 'a failed zero-cost boundary review must become a video QA failure instead of a partial success');
   assert(source.includes('if (pendingReviewFailures.length) { initialIndexes.forEach'), 'a failed review must stop later paid generation units and preserve their existing clips');
-  assert(source.includes('videoFailureRecovery.rollbackIndexes({ generationError, unitIndexes, remainingUnits })'), 'the orchestrator must apply atomic current-unit rollback on provider/pre-submission failure');
+  assert(source.includes('videoFailureRecovery.restoreUnitFailure({'), 'the orchestrator must apply atomic current-unit rollback after provider or QA failure');
   const composeSource = source.slice(source.indexOf('async function composeStage('), source.indexOf('function mediaDependencyReady('));
   assert(composeSource.indexOf('videoBoundaryPolicy.audit') < composeSource.indexOf('const unapproved ='), 'composition must report a failed boundary before the generic lineage gate');
   console.log('new story ad boundary closure: ok');

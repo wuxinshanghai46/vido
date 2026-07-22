@@ -60,6 +60,11 @@ async function prepareInputs({ taskId = '', index = 0, keyframe = {}, contract =
   const strategy = contract.input_strategy || boundaryRepair.inputStrategy(options);
   const firstFrameUrl = absoluteAssetUrl(contract.previous_tail_image_url || '', options);
   if (strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME) {
+    if (contract.direct_tail_capability?.safe !== true) {
+      const error = new Error('上一镜尾帧不能完整锁定当前镜头要求的人物、服装和场景，已在付费提交前停止。');
+      error.code = 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'; error.status = 409; error.retryable = false;
+      throw error;
+    }
     assertProviderInput({ contract, providerRoute: pinnedModelRoute, inputMode: strategy, firstFrameUrl });
     return { contract, inputMode: strategy, firstFrameUrl, keyframeAsset: null, boundaryAsset: null };
   }

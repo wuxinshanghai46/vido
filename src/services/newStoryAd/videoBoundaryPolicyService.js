@@ -48,6 +48,31 @@ function requiredBoundaryIndexes(clips = [], reviewedIndexes = []) {
   return candidates.filter(index => Number.isInteger(index) && boundaryRequired(clips, index));
 }
 
+function deterministicTransitionQa(previous = {}, current = {}, transition = 'dissolve') {
+  const normalized = text(transition).toLowerCase();
+  const supported = ['dissolve', 'fade'].includes(normalized);
+  const inputsApproved = previous?.qa?.pass === true && current?.qa?.pass === true;
+  const pass = supported && inputsApproved;
+  return {
+    pass,
+    decision_source: 'deterministic_transition',
+    boundary_mode: 'intentional_discontinuity',
+    continuity_waived_by_transition: pass,
+    transition_type: supported ? normalized : '',
+    policy_version: 'deterministic-boundary-transition-v1',
+    person_position_score: pass ? null : 0,
+    wardrobe_score: pass ? null : 0,
+    prop_state_score: pass ? null : 0,
+    scene_score: pass ? null : 0,
+    screen_direction_score: pass ? null : 0,
+    action_continuity_score: pass ? null : 0,
+    failure_dimensions: pass ? [] : ['deterministic_transition_input'],
+    failure_labels_zh: pass ? [] : ['转场输入素材未通过单镜质检'],
+    problems: pass ? [] : ['Deterministic transition requires two individually approved clips and a supported transition.'],
+    reviewed_at: new Date().toISOString(),
+  };
+}
+
 function taskFailurePatch(clips = [], shotCount = clips.length) {
   const result = audit(clips, shotCount);
   if (!result.failed_indexes.length) return null;
@@ -58,4 +83,4 @@ function taskFailurePatch(clips = [], shotCount = clips.length) {
   return { status: 'failed', stage: 'video_failed', error: details.join('；'), error_code: 'VIDEO_QA_FAILED', retryable: true };
 }
 
-module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, taskFailurePatch };
+module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, deterministicTransitionQa, taskFailurePatch };

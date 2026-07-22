@@ -91,6 +91,9 @@ async function run() {
   assert.strictEqual(parts.length, 2);
   assert.strictEqual(parts[0].scene_block_start_sec, 0);
   assert.strictEqual(parts[1].scene_block_start_sec, 2);
+  assert.strictEqual(parts[0].scene_block_end_sec, 2, 'motion analysis must not move an authored semantic shot boundary');
+  assert.strictEqual(parts[0].scene_block_edit_evidence.semantic_boundaries_locked, true);
+  assert.strictEqual(parts[0].scene_block_edit_evidence.method, 'authored_semantic_boundaries');
   assert.ok((await videoAdapter.probeDuration(parts[0].file_path)) >= 1.9);
   assert.ok((await videoAdapter.probeDuration(parts[1].file_path)) >= 2.9);
   [tmp, ...parts.map(part => part.file_path)].forEach(file => { try { fs.unlinkSync(file); } catch {} });
@@ -190,13 +193,18 @@ async function run() {
     { id: 'boundary-a', title: 'Previous', scene_id: 'space-boundary', duration: 5, characters: [{ name: 'actor' }], exit_frame_state: 'hand touches wall', screen_direction: 'left_to_right' },
     { id: 'boundary-b', title: 'Current', scene_id: 'space-boundary', duration: 5, characters: [{ name: 'actor' }], transition_type: 'hard_cut', entry_frame_state: 'same hand continues', screen_direction: 'left_to_right' },
   ];
-  const boundaryContracts = boundaryShots.map(() => ({ scene_lock: sceneLock('space-boundary') }));
+  const boundaryContracts = boundaryShots.map(() => ({
+    scene_lock: sceneLock('space-boundary'),
+    cast_lock: { person_contract: { person_id: 'actor-1', person_revision: 1, wardrobe_fingerprint: 'wardrobe-1' } },
+  }));
+  const boundaryKeyframes = boundaryShots.map((_, index) => ({ image_url: `/frame-${index + 1}.png`, qa: { pass: true, person: { person_presence: 'person' } } }));
   const boundaryBlocks = sceneBlocks.buildSceneBlocks(boundaryShots, boundaryContracts, { preserve_existing_topology: true });
   const boundaryClips = [
     { shot_index: 0, file_path: __filename, video_url: '/previous.mp4', qa: { pass: true, frames: [{ image_url: '/previous-head.jpg', second: 0 }, { image_url: '/previous-tail.jpg', second: 4.95 }] } },
     { shot_index: 1, file_path: __filename, video_url: '/current.mp4', qa: { pass: true }, cross_shot_qa: { pass: false, failure_dimensions: ['screen_direction', 'action_continuity'], problems: ['action restarted'] } },
   ];
-  const boundaryContract = boundaryRepair.buildContract({ clips: boundaryClips, shots: boundaryShots, index: 1 });
+  const boundaryContract = boundaryRepair.buildContract({ clips: boundaryClips, shots: boundaryShots, keyframes: boundaryKeyframes, contracts: boundaryContracts, index: 1 });
+  assert.strictEqual(boundaryContract.direct_tail_capability.safe, true);
   let submittedOptions;
   storage.createTask({ id: boundaryTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
   try {
@@ -204,7 +212,7 @@ async function run() {
       taskId: boundaryTaskId,
       shots: boundaryShots,
       contracts: boundaryContracts,
-      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }],
+      keyframes: boundaryKeyframes,
       sceneBlocks: boundaryBlocks,
       ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' },
       options: {
@@ -231,7 +239,7 @@ async function run() {
     const managedContract = { ...boundaryContract, input_strategy: boundaryRepair.MANAGED_DUAL_REFERENCE };
     await videoAdapter.generateSceneBlockVideos({
       taskId: boundaryTaskId, shots: boundaryShots, contracts: boundaryContracts,
-      keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }], sceneBlocks: boundaryBlocks,
+      keyframes: boundaryKeyframes, sceneBlocks: boundaryBlocks,
       ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' }, existingClips: boundaryClips,
       options: {
         only_indexes: [1], _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },

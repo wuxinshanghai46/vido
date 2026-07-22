@@ -1,6 +1,6 @@
 const revisionService = require('./revisionService');
 
-const BOUNDARY_REPAIR_POLICY_VERSION = 'cross-unit-visual-anchor-v1';
+const BOUNDARY_REPAIR_POLICY_VERSION = 'cross-unit-visual-anchor-v2';
 const DIRECT_TAIL_FIRST_FRAME = 'previous_tail_first_frame';
 const MANAGED_DUAL_REFERENCE = 'approved_keyframe_and_previous_tail_private_assets';
 
@@ -25,6 +25,60 @@ function providerSupportsBoundaryReference(providerRoute = '') {
   return /^deyunai\/doubao-seedance-2-0(?:-|$)/i.test(text(providerRoute));
 }
 
+function keyframePresence(keyframe = {}) {
+  const value = text(keyframe.qa?.person?.person_presence || keyframe.person_presence).toLowerCase();
+  if (['person', 'full', 'principal'].includes(value)) return 'person';
+  if (['partial', 'hand', 'arm', 'body_part'].includes(value)) return 'partial';
+  if (['none', 'no_human', 'empty'].includes(value)) return 'none';
+  return 'unknown';
+}
+
+function approvedKeyframe(keyframe = {}) {
+  return !!text(keyframe.image_url || keyframe.imageUrl || keyframe.url) && keyframe.qa?.pass === true;
+}
+
+function sceneLockIdentity(contract = {}, shot = {}) {
+  const lock = contract.scene_lock || {};
+  const id = text(lock.scene_id || lock.id || shot.scene_id || shot.sceneId);
+  const revision = text(lock.scene_revision ?? lock.revision ?? shot.scene_revision ?? shot.sceneRevision);
+  return id ? `${id}@${revision || 'unknown'}` : '';
+}
+
+function personLockIdentity(contract = {}) {
+  const person = contract.cast_lock?.person_contract || contract.person_contract || {};
+  const id = text(person.person_id || person.identity_id || person.id || person.name);
+  const revision = text(person.person_revision ?? person.revision);
+  const wardrobe = text(person.wardrobe_fingerprint || person.wardrobe_id || person.wardrobe_lock || person.wardrobe);
+  if (!id && !revision && !wardrobe) return '';
+  return `${id || 'verified-person'}@${revision || 'unknown'}#${wardrobe || 'unknown'}`;
+}
+
+function assessDirectTailCapability({ previousShot = {}, currentShot = {}, previousKeyframe = {}, currentKeyframe = {}, previousContract = {}, currentContract = {} } = {}) {
+  const previousPresence = keyframePresence(previousKeyframe);
+  const currentPresence = keyframePresence(currentKeyframe);
+  const previousScene = sceneLockIdentity(previousContract, previousShot);
+  const currentScene = sceneLockIdentity(currentContract, currentShot);
+  const previousPerson = personLockIdentity(previousContract);
+  const currentPerson = personLockIdentity(currentContract);
+  const reasons = [];
+  if (!approvedKeyframe(previousKeyframe) || !approvedKeyframe(currentKeyframe)) reasons.push('approved_keyframe_evidence_incomplete');
+  if (currentPresence === 'person' && previousPresence !== 'person') reasons.push('partial_tail_cannot_lock_full_person');
+  if (currentPresence === 'partial' && !['person', 'partial'].includes(previousPresence)) reasons.push('tail_missing_required_person_state');
+  if (previousScene && currentScene && previousScene !== currentScene) reasons.push('scene_lock_changes_across_boundary');
+  if (!previousScene || !currentScene) reasons.push('scene_lock_identity_incomplete');
+  if (currentPresence === 'person' && (!previousPerson || !currentPerson || previousPerson !== currentPerson)) reasons.push('person_or_wardrobe_lock_not_proven_equal');
+  return {
+    safe: reasons.length === 0,
+    reasons,
+    previous_person_presence: previousPresence,
+    current_person_presence: currentPresence,
+    previous_scene_lock: previousScene,
+    current_scene_lock: currentScene,
+    previous_person_lock: previousPerson,
+    current_person_lock: currentPerson,
+  };
+}
+
 function inputStrategy(options = {}) {
   const requested = text(options.boundary_repair_input_mode || options.boundaryRepairInputMode).toLowerCase();
   return ['managed_dual_reference', 'managed_dual_references', MANAGED_DUAL_REFERENCE].includes(requested)
@@ -32,12 +86,17 @@ function inputStrategy(options = {}) {
     : DIRECT_TAIL_FIRST_FRAME;
 }
 
-function buildContract({ clips = [], shots = [], index = 0 } = {}) {
+function buildContract({ clips = [], shots = [], keyframes = [], contracts = [], index = 0 } = {}) {
   if (!Number.isInteger(index) || index <= 0) return null;
   const qa = clips[index]?.cross_shot_qa || {};
   if (qa.pass !== false) return null;
   const previousShot = shots[index - 1] || {};
   const currentShot = shots[index] || {};
+  const directTailCapability = assessDirectTailCapability({
+    previousShot, currentShot,
+    previousKeyframe: keyframes[index - 1] || {}, currentKeyframe: keyframes[index] || {},
+    previousContract: contracts[index - 1] || {}, currentContract: contracts[index] || {},
+  });
   const failureDimensions = [...new Set((Array.isArray(qa.failure_dimensions) ? qa.failure_dimensions : []).slice(0, 8).map(value => clipped(value, 80)).filter(Boolean))];
   const failureLabels = [...new Set((Array.isArray(qa.failure_labels_zh) ? qa.failure_labels_zh : []).slice(0, 8).map(value => clipped(value, 120)).filter(Boolean))];
   const problems = [...new Set((Array.isArray(qa.problems) ? qa.problems : []).slice(0, 8).map(value => clipped(value, 240)).filter(Boolean))];
@@ -57,6 +116,7 @@ function buildContract({ clips = [], shots = [], index = 0 } = {}) {
     current_screen_direction: clipped(currentShot.screen_direction, 80),
     previous_action: clipped(previousShot.action || previousShot.visual_action, 300),
     current_action: clipped(currentShot.action || currentShot.visual_action, 300),
+    direct_tail_capability: directTailCapability,
   };
   return { ...source, fingerprint: revisionService.signature(source) };
 }
@@ -86,12 +146,12 @@ function repairInstruction(contract = {}) {
   ].filter(Boolean).join(' ');
 }
 
-function buildContracts({ clips = [], shots = [], indexes = [] } = {}) {
+function buildContracts({ clips = [], shots = [], keyframes = [], contracts = [], indexes = [] } = {}) {
   const requested = indexes.length ? indexes : clips.map((_, index) => index);
   return Object.fromEntries(requested
     .map(Number)
     .filter(Number.isInteger)
-    .map(index => [index, buildContract({ clips, shots, index })])
+    .map(index => [index, buildContract({ clips, shots, keyframes, contracts, index })])
     .filter(([, contract]) => contract));
 }
 
@@ -101,6 +161,7 @@ module.exports = {
   MANAGED_DUAL_REFERENCE,
   previousTailImageUrl,
   providerSupportsBoundaryReference,
+  assessDirectTailCapability,
   inputStrategy,
   buildContract,
   buildContracts,

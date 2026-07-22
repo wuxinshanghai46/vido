@@ -82,6 +82,11 @@ const runFfmpeg = promisify(execFile);
     ], [{}, { transition_type: 'fade' }], [2, 2]);
     assert.strictEqual(continuousPlan[1].execution, 'continuous_source_cut');
     assert.strictEqual(continuousPlan[1].overlap_sec, 0, 'segments from one continuous provider clip must not be blurred by another transition');
+    const repairedPlan = composeService.buildTransitionPlan([
+      { shot_index: 0 },
+      { shot_index: 1, transition_override: 'fade' },
+    ], [{}, { transition_type: 'hard_cut' }], [5, 5]);
+    assert.strictEqual(repairedPlan[1].execution, 'fade_black', 'a deterministic repair transition must override the stale authored hard cut');
     console.log('new story ad compose transitions: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

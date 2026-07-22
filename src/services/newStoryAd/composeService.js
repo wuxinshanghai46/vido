@@ -215,7 +215,10 @@ function transitionType(item = {}) {
 
 function buildTransitionPlan(clips = [], transitions = [], durations = []) {
   return clips.map((clip, index) => {
-    const authored = transitionType(transitions[index] || {});
+    const authored = transitionType({
+      ...(transitions[index] || {}),
+      ...(clip?.transition_override ? { transition_type: clip.transition_override } : {}),
+    });
     const previous = index > 0 ? clips[index - 1] || {} : {};
     const sameContinuousSource = index > 0
       && clip?.scene_block_id
