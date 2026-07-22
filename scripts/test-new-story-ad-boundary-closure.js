@@ -93,6 +93,12 @@ async function main() {
   const longContracts = boundaryRepair.buildContracts({ clips: longClips, shots: longShots, indexes: [1, 9, 17] });
   assert.strictEqual(Object.keys(longContracts).length, 3, 'maximum storyboard indexes must keep independent boundary repair contracts');
   assert.strictEqual(new Set(Object.values(longContracts).map(item => item.fingerprint)).size, 3, 'concurrent boundary repairs must not reuse another boundary fingerprint');
+  const oversized = boundaryRepair.buildContract({
+    clips: [clip(0, 'long-a'), { ...clip(1, 'long-b'), cross_shot_qa: { pass: false, failure_dimensions: Array(20).fill('x'.repeat(200)), problems: Array(20).fill('problem'.repeat(200)), retry_instruction: 'retry'.repeat(1000) } }],
+    shots: [{ exit_frame_state: 'exit'.repeat(500) }, { entry_frame_state: 'entry'.repeat(500) }], index: 1,
+  });
+  assert(oversized.qa_retry_instruction.length <= 500 && oversized.problems.length <= 8 && oversized.problems.every(item => item.length <= 240));
+  assert(boundaryRepair.repairInstruction(oversized).length < 4000, 'extreme QA evidence must not crowd the provider prompt beyond its safe budget');
   storage.saveOutput('boundary-compose-block', 'video_clips', rejectedClips);
   storage.updateTask('boundary-compose-block', { status: 'failed', stage: 'media_failed', error: '当前版本仍有未审片或来源不匹配的镜头：第 4 镜', error_code: 'COMPOSE_CLIP_LINEAGE_INVALID' });
   const restored = storyAd.publicTaskBundle('boundary-compose-block');

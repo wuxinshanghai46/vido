@@ -6,6 +6,10 @@ function text(value = '') {
   return String(value || '').trim();
 }
 
+function clipped(value = '', limit = 240) {
+  return text(value).slice(0, Math.max(1, Number(limit) || 240));
+}
+
 function previousTailImageUrl(clips = [], index = 0) {
   const frames = Array.isArray(clips[index - 1]?.qa?.frames) ? clips[index - 1].qa.frames : [];
   const ordered = frames
@@ -25,9 +29,9 @@ function buildContract({ clips = [], shots = [], index = 0 } = {}) {
   if (qa.pass !== false) return null;
   const previousShot = shots[index - 1] || {};
   const currentShot = shots[index] || {};
-  const failureDimensions = [...new Set((Array.isArray(qa.failure_dimensions) ? qa.failure_dimensions : []).map(text).filter(Boolean))];
-  const failureLabels = [...new Set((Array.isArray(qa.failure_labels_zh) ? qa.failure_labels_zh : []).map(text).filter(Boolean))];
-  const problems = [...new Set((Array.isArray(qa.problems) ? qa.problems : []).map(text).filter(Boolean))];
+  const failureDimensions = [...new Set((Array.isArray(qa.failure_dimensions) ? qa.failure_dimensions : []).slice(0, 8).map(value => clipped(value, 80)).filter(Boolean))];
+  const failureLabels = [...new Set((Array.isArray(qa.failure_labels_zh) ? qa.failure_labels_zh : []).slice(0, 8).map(value => clipped(value, 120)).filter(Boolean))];
+  const problems = [...new Set((Array.isArray(qa.problems) ? qa.problems : []).slice(0, 8).map(value => clipped(value, 240)).filter(Boolean))];
   const source = {
     policy_version: BOUNDARY_REPAIR_POLICY_VERSION,
     boundary_index: index,
@@ -37,13 +41,13 @@ function buildContract({ clips = [], shots = [], index = 0 } = {}) {
     failure_dimensions: failureDimensions,
     failure_labels_zh: failureLabels,
     problems,
-    qa_retry_instruction: text(qa.retry_instruction),
-    previous_exit_frame_state: text(previousShot.exit_frame_state),
-    current_entry_frame_state: text(currentShot.entry_frame_state),
-    previous_screen_direction: text(previousShot.screen_direction),
-    current_screen_direction: text(currentShot.screen_direction),
-    previous_action: text(previousShot.action || previousShot.visual_action),
-    current_action: text(currentShot.action || currentShot.visual_action),
+    qa_retry_instruction: clipped(qa.retry_instruction, 500),
+    previous_exit_frame_state: clipped(previousShot.exit_frame_state, 220),
+    current_entry_frame_state: clipped(currentShot.entry_frame_state, 220),
+    previous_screen_direction: clipped(previousShot.screen_direction, 80),
+    current_screen_direction: clipped(currentShot.screen_direction, 80),
+    previous_action: clipped(previousShot.action || previousShot.visual_action, 300),
+    current_action: clipped(currentShot.action || currentShot.visual_action, 300),
   };
   return { ...source, fingerprint: revisionService.signature(source) };
 }
