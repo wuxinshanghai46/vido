@@ -3,7 +3,6 @@ const path = require('path');
 const { spawn } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
-
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
 const mediaAdapter = require('./mediaAdapter');
@@ -21,7 +20,7 @@ const sceneBlockService = require('./sceneBlockService');
 const semanticCut = require('./semanticCutService');
 const videoCore = require('../videoGenerationCore');
 const contractFreshness = require('./keyframeContractFreshnessService');
-const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService');
+const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService'), videoAttemptState = require('./videoAttemptStateService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs')), VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
@@ -1147,6 +1146,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       scene_block_duration_sec: block?.duration_sec || sceneBlockService.durationOf(list[index] || {}),
       provider_task_id: resumeProviderTaskId, provider_status: resumeProviderTaskId ? 'resume_pending' : '',
       resume_provider_task_id: resumeProviderTaskId, resumed_after_interruption: !!resumeProviderTaskId,
+      ...videoAttemptState.queuedProviderState(previousStatus, resumeProviderTaskId),
       file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '',
       repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
       lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',

@@ -148,6 +148,11 @@ async function run() {
   const partialContracts = partialShots.map(shot => ({ scene_lock: sceneLock(shot.scene_id) }));
   const partialBlocks = sceneBlocks.buildSceneBlocks(partialShots, partialContracts);
   storage.createTask({ id: partialTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
+  storage.saveOutput(partialTaskId, 'video_shot_status_2', {
+    index: 2, shot_index: 1, lifecycle: 'qa_failed', provider_task_id: 'old-provider-task',
+    provider_submission_state: 'submitted', billing_state: 'unknown', provider_submitted_at: '2026-07-21T00:00:00.000Z',
+    provider_started_at: '2026-07-21T00:00:01.000Z', last_polled_at: '2026-07-21T00:01:00.000Z', requested_video_seconds: 10,
+  });
   let partialError;
   const calledIndexes = [];
   try {
@@ -187,6 +192,9 @@ async function run() {
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_1').lifecycle, 'generated');
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').lifecycle, 'failed');
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').provider_submission_state, 'not_submitted');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').billing_state, 'not_submitted', '新尝试提交前失败不得继承旧计费状态');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').provider_submitted_at, '', '新尝试必须清空旧提交时间');
+    assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_2').last_polled_at, '', '新尝试必须清空旧轮询时间');
     assert.strictEqual(storage.getOutput(partialTaskId, 'video_shot_status_3').provider_submission_state, 'not_submitted');
   } finally {
     (partialError?.partial_video_clips || []).map(clip => clip?.file_path).filter(Boolean).forEach(file => { try { fs.unlinkSync(file); } catch {} });

@@ -1393,6 +1393,9 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-compose-gate.is-ready b { color: var(--dh-primary); }
 .dh-nsa-compose-gate b { flex: 0 0 auto; }
 .dh-nsa-compose-gate span { flex: 1 1 auto; min-width: 0; line-height: 1.55; }
+.dh-nsa-compose-gate.has-outcome { align-items: flex-start; flex-wrap: wrap; }
+.dh-nsa-compose-gate.has-outcome b { flex: 1 0 100%; }
+.dh-nsa-compose-gate.has-outcome span { flex: 1 1 calc(50% - 10px); }
 #dhNsaAdConfirmGenerate.is-next:not(:disabled) { min-width: 230px; font-weight: 950; letter-spacing: .01em; box-shadow: 0 0 0 3px rgba(33,255,243,.13), 0 14px 34px rgba(33,255,243,.28); animation: dhNsaComposeCtaPulse 1.8s ease-in-out infinite; }
 @keyframes dhNsaComposeCtaPulse { 50% { transform: translateY(-2px); box-shadow: 0 0 0 6px rgba(33,255,243,.08), 0 18px 40px rgba(33,255,243,.34); } }
 @media (prefers-reduced-motion: reduce) { #dhNsaAdConfirmGenerate.is-next:not(:disabled) { animation: none; } }

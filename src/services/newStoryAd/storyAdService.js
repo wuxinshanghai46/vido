@@ -41,7 +41,7 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
-const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
+const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection');
 const videoCore = require('../videoGenerationCore');
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -297,7 +297,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       qa_failure_labels_zh: Array.isArray(status.qa_failure_labels_zh) ? status.qa_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
       cross_shot_qa_problems: Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
       cross_shot_failure_labels_zh: Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
-      provider_submission_state: cleanText(status.provider_submission_state || '', 40),
+      provider_submission_state: cleanText(status.provider_submission_state || '', 40), billing_state: cleanText(status.billing_state || '', 40),
       error: cleanText(status.error || '', 300),
       error_code: cleanText(status.error_code || '', 80),
       retryable: status.retryable === true,
@@ -364,7 +364,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     task,
     context,
     outputs,
-    video_shot_statuses: videoShotStatuses,
+    video_shot_statuses: videoShotStatuses, media_result: mediaResultProjection.projectMediaResult({ task, outputs, videoShotStatuses, storyboard }),
     storyboard_status: currentStoryboardStatus,
     keyframe_status: keyframeStatus,
   };

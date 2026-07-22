@@ -165,6 +165,12 @@
     return `预计重做 ${summary.paidUnits} 个付费单元 / ${summary.billableSeconds.toFixed(0)} 秒 · 预计 ¥${summary.estimatedCost.toFixed(2)} · 最高 ¥${summary.maximumCost.toFixed(2)} · 自动重试 0`;
   }
 
+  function outcomeBannerHtml(result = {}, escapeHtml = value => String(value || '')) {
+    if (!result || typeof result !== 'object' || !result.title) return '';
+    const rows = [result.success_text, result.failure_text, result.cost_text, result.compose_text].filter(Boolean);
+    return `<b>${escapeHtml(result.title)}</b>${rows.map(row => `<span>${escapeHtml(row)}</span>`).join('')}`;
+  }
+
   function bindSelection(modal, preflight = {}) {
     const update = () => {
       const ids = [...modal.querySelectorAll('[data-nsa-video-unit]:checked')].map(input => input.value);
@@ -306,6 +312,7 @@
     bindSelection,
     readSelection,
     totalsText,
+    outcomeBannerHtml,
     costConfirmationHtml,
     readCostConfirmation,
     unitReviewHtml,

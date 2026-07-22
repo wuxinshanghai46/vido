@@ -13,6 +13,7 @@ const ERROR_MESSAGES = Object.freeze({
   VIDEO_COMPLEXITY_REVIEW_REQUIRED: '当前人物或场景复杂度较高，请先确认动画预演和镜头拆分方案。',
   VIDEO_DEPENDENCY_CYCLE: '镜头连续性依赖存在循环，请调整镜头顺序后重试。',
   VIDEO_SHOT_INDEX_INVALID: '指定的镜头序号无效，已停止生成以避免误生成全部镜头。',
+  DEYUNAI_ASSET_SUBSCRIPTION_REQUIRED: '当前漫路账号未开通高级素材库，无法创建关键帧私有参考素材组；本次已在视频模型提交前停止，未自动重试。',
   MODEL_CAPACITY: '当前模型服务繁忙，请稍后重试或选择其他可用模型。',
   MODEL_CONFIG: '当前模型配置不可用，请联系管理员检查模型设置。',
   PROVIDER_BILLING: '供应商余额、额度或计费状态异常，已停止继续提交。',
@@ -40,6 +41,7 @@ function messageForCode(code = '', fallback = '') {
 function classifyChineseMessage(error = null, fallback = '') {
   const raw = String(error?.message || error || fallback || '').trim();
   const code = String(error?.code || '').trim().toUpperCase();
+  if (code === 'DEYUNAI_ASSET_SUBSCRIPTION_REQUIRED') return ERROR_MESSAGES[code];
   if (containsChinese(raw)) return raw;
   if (/capacity|overloaded|too busy|model.*busy/i.test(raw)) return ERROR_MESSAGES.MODEL_CAPACITY;
   if (/billing|balance|credit|quota|payment|insufficient/i.test(raw)) return ERROR_MESSAGES.PROVIDER_BILLING;

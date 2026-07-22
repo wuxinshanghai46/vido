@@ -1101,6 +1101,7 @@
     state.ttsAudio = null;
     state.videoClips = [];
     state.videoShotStatuses = [];
+    state.mediaResult = null;
     state.finalVideo = null;
   }
 
@@ -1554,6 +1555,7 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.videoShotStatuses = response.video_shot_statuses || bundle.video_shot_statuses || state.videoShotStatuses || [];
+    state.mediaResult = response.media_result || bundle.media_result || state.mediaResult || null;
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, {
@@ -3417,6 +3419,7 @@
       || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError));
     const failureDetails = videoFailureDetails(clips);
     const videoReview = window.NewStoryAdVideoReview;
+    const outcomeBanner = videoReview?.outcomeBannerHtml?.(state.mediaResult, escapeHtml) || '';
     const composeSummary = within('#dhNsaAdComposeSummary');
     const progressHint = within('#dhNsaAdProgressHint');
     const gate = within('#dhNsaAdComposeGate');
@@ -3444,7 +3447,7 @@
       const failed = mediaFailed && state.taskError;
       const actionReady = composeView.action_ready && !finalUrl;
       gate.hidden = !restoreFailed && !restoring && !actionReady && !failed && !compose.message;
-      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}`;
+      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}${outcomeBanner ? ' has-outcome' : ''}`;
       gate.innerHTML = restoreFailed
         ? `<b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span>`
         : (restoring
@@ -3452,13 +3455,13 @@
         : (actionReady
         ? `<b>${composeView.retry_ready ? '素材已就绪，可重新封装' : '素材已全部就绪'}</b><span>${composeView.retry_ready ? '上次封装未完成，但已生成素材均已保留。' : '全部镜头已通过审核。'}</span><span>请点击右上角“下一步：封装最终成片 →”，不会重新生成视频。</span>`
         : (failed
-        ? `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`
+        ? (outcomeBanner || `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`)
         : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`)));
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
       <div class="dh-task-detail-title">整条广告审片与合成结果</div>
       <div class="dh-nsa-media-result-state ${finalUrl ? 'is-success' : (mediaFailed ? 'is-failed' : (mediaActive ? 'is-running' : 'is-incomplete'))}" data-nsa-media-result-state>
-        <b>${finalUrl ? '成片合成成功' : (mediaFailed ? '本次合成失败' : (mediaActive ? '正在生成媒体' : '最终成片尚未生成'))}</b>
+        <b>${finalUrl ? '成片合成成功' : (mediaFailed ? escapeHtml(state.mediaResult?.title || '本次合成失败') : (mediaActive ? '正在生成媒体' : '最终成片尚未生成'))}</b>
         <span>${finalUrl
           ? '最终成片已生成，可以直接播放。'
           : (mediaFailed
