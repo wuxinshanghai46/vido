@@ -372,6 +372,27 @@ function buildVideoPreflight({
       });
     }
   });
+  paidIndexes.forEach(index => {
+    const clip = clips[index] || {};
+    if (!boundaryRepair.isLegacyDirectTailFailure(clip) || boundaryRepairContracts[index]) return;
+    const capability = boundaryRepair.assessDirectTailCapability({
+      previousShot: reconciledShots[index - 1] || {},
+      currentShot: reconciledShots[index] || {},
+      previousKeyframe: keyframes[index - 1] || {},
+      currentKeyframe: keyframes[index] || {},
+      previousContract: contracts[index - 1] || {},
+      currentContract: contracts[index] || {},
+    });
+    blockers.push({
+      code: 'VIDEO_LEGACY_BOUNDARY_REPAIR_RETRY_BLOCKED',
+      message: `第 ${index}→${index + 1} 镜的历史尾帧修复片段未通过单镜质检，且旧记录缺少可复用的完整双视觉锚点。为避免沿用同一输入再次付费失败，已在供应商提交前停止。`,
+      details: {
+        boundary_repair_fingerprint: text(clip.boundary_repair_fingerprint),
+        seedance_input_mode: text(clip.seedance_input_mode || clip.input_mode),
+        direct_tail_capability: capability,
+      },
+    });
+  });
   if (billingBlocked && paidUnits.length) {
     blockers.push({
       code: 'VIDEO_PROVIDER_BILLING_BLOCKED',

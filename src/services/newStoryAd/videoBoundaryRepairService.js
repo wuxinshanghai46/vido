@@ -62,6 +62,7 @@ function assessDirectTailCapability({ previousShot = {}, currentShot = {}, previ
   const currentPerson = personLockIdentity(currentContract);
   const reasons = [];
   if (!approvedKeyframe(previousKeyframe) || !approvedKeyframe(currentKeyframe)) reasons.push('approved_keyframe_evidence_incomplete');
+  if (['person', 'partial'].includes(currentPresence)) reasons.push('tail_only_cannot_bind_current_person_keyframe');
   if (currentPresence === 'person' && previousPresence !== 'person') reasons.push('partial_tail_cannot_lock_full_person');
   if (currentPresence === 'partial' && !['person', 'partial'].includes(previousPresence)) reasons.push('tail_missing_required_person_state');
   if (previousScene && currentScene && previousScene !== currentScene) reasons.push('scene_lock_changes_across_boundary');
@@ -77,6 +78,13 @@ function assessDirectTailCapability({ previousShot = {}, currentShot = {}, previ
     previous_person_lock: previousPerson,
     current_person_lock: currentPerson,
   };
+}
+
+function isLegacyDirectTailFailure(clip = {}) {
+  const mode = text(clip.seedance_input_mode || clip.input_mode).toLowerCase();
+  return clip.qa?.pass === false
+    && !!text(clip.boundary_repair_fingerprint)
+    && ['previous_unit_tail_first_frame', DIRECT_TAIL_FIRST_FRAME].includes(mode);
 }
 
 function inputStrategy(options = {}) {
@@ -162,6 +170,7 @@ module.exports = {
   previousTailImageUrl,
   providerSupportsBoundaryReference,
   assessDirectTailCapability,
+  isLegacyDirectTailFailure,
   inputStrategy,
   buildContract,
   buildContracts,

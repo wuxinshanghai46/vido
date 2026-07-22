@@ -204,37 +204,21 @@ async function run() {
     { shot_index: 1, file_path: __filename, video_url: '/current.mp4', qa: { pass: true }, cross_shot_qa: { pass: false, failure_dimensions: ['screen_direction', 'action_continuity'], problems: ['action restarted'] } },
   ];
   const boundaryContract = boundaryRepair.buildContract({ clips: boundaryClips, shots: boundaryShots, keyframes: boundaryKeyframes, contracts: boundaryContracts, index: 1 });
-  assert.strictEqual(boundaryContract.direct_tail_capability.safe, true);
+  assert.strictEqual(boundaryContract.direct_tail_capability.safe, false);
+  assert(boundaryContract.direct_tail_capability.reasons.includes('tail_only_cannot_bind_current_person_keyframe'));
   let submittedOptions;
   storage.createTask({ id: boundaryTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
   try {
-    await videoAdapter.generateSceneBlockVideos({
-      taskId: boundaryTaskId,
-      shots: boundaryShots,
-      contracts: boundaryContracts,
-      keyframes: boundaryKeyframes,
-      sceneBlocks: boundaryBlocks,
-      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' },
+    await assert.rejects(() => videoAdapter.generateSceneBlockVideos({
+      taskId: boundaryTaskId, shots: boundaryShots, contracts: boundaryContracts,
+      keyframes: boundaryKeyframes, sceneBlocks: boundaryBlocks,
+      ctx: { cast_mode: 'single', person_asset: { image_url: '/actor.png' }, output_ratio: '16:9', video_resolution: '480p' }, existingClips: boundaryClips,
       options: {
-        only_indexes: [1],
-        _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
-        _boundaryRepairContracts: { 1: boundaryContract },
-        _repairInstructions: { 1: boundaryRepair.repairInstruction(boundaryContract) },
-        _prepareKeyframeReferenceAsset: async () => { throw new Error('direct tail mode must not create a keyframe asset'); },
-        _prepareBoundaryReferenceAsset: async () => { throw new Error('direct tail mode must not create a boundary asset'); },
-        _generateShotVideo: async ({ index, options }) => {
-          submittedOptions = options;
-          return { shot_index: index, file_path: __filename, video_url: '/mock-boundary.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-boundary' };
-        },
+        only_indexes: [1], _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
+        _boundaryRepairContracts: { 1: boundaryContract }, _repairInstructions: { 1: boundaryRepair.repairInstruction(boundaryContract) },
+        _generateShotVideo: async () => { throw new Error('unsafe direct-tail input must be blocked before provider submission'); },
       },
-      existingClips: boundaryClips,
-    });
-    assert.strictEqual(submittedOptions._deyunaiPersonAsset, null);
-    assert.deepStrictEqual(submittedOptions._sceneReferenceAssetUrls, []);
-    assert.strictEqual(submittedOptions._boundaryReferenceAssetUrl, '');
-    assert.match(submittedOptions._boundaryFirstFrameUrl, /^https:\/\/[^/]+\/previous-tail\.jpg$/);
-    assert.strictEqual(submittedOptions._inputModeOverride, 'previous_unit_tail_first_frame');
-    assert.match(submittedOptions._repairInstructions[1], /supplied first frame is the actual tail frame/);
+    }), error => error?.code === 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT');
 
     const managedContract = { ...boundaryContract, input_strategy: boundaryRepair.MANAGED_DUAL_REFERENCE };
     await videoAdapter.generateSceneBlockVideos({

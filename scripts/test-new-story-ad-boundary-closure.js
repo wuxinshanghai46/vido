@@ -130,6 +130,30 @@ async function main() {
     'provider adapter must reject an unsafe tail even if preflight is bypassed',
   );
 
+  const partialPersonKeyframes = keyframes.map((item, index) => [2, 3].includes(index)
+    ? { ...item, qa: { pass: true, person: { person_presence: 'partial' } } }
+    : item);
+  const partialTailPlan = preflight.buildVideoPreflight({
+    taskId: 'boundary-repair-partial-person', shots, keyframes: partialPersonKeyframes, contracts: personContracts,
+    clips: providerRepairClips, statuses: [], mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(partialTailPlan.status, 'blocked', 'a tail-only input must not replace the approved current person keyframe even when both frames are partial');
+  assert(partialTailPlan.boundary_repair_contracts[3].direct_tail_capability.reasons.includes('tail_only_cannot_bind_current_person_keyframe'));
+
+  const legacyPollutedClips = providerRepairClips.map((item, index) => index === 3 ? {
+    ...item,
+    cross_shot_qa: undefined,
+    seedance_input_mode: 'previous_unit_tail_first_frame',
+    boundary_repair_fingerprint: 'legacy-boundary-attempt',
+  } : item);
+  const legacyPollutedPlan = preflight.buildVideoPreflight({
+    taskId: 'legacy-polluted-boundary-retry', shots, keyframes: partialPersonKeyframes, contracts: personContracts,
+    clips: legacyPollutedClips, statuses: [], mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
+  });
+  assert.strictEqual(legacyPollutedPlan.status, 'blocked', 'a persisted failed direct-tail candidate must never fall back to an ordinary paid retry');
+  assert.strictEqual(legacyPollutedPlan.paid_unit_count, 1, 'the unsafe paid action remains visible for cost disclosure');
+  assert(legacyPollutedPlan.blockers.some(item => item.code === 'VIDEO_LEGACY_BOUNDARY_REPAIR_RETRY_BLOCKED'));
+
   const missingEvidence = providerRepairClips.map((item, index) => index === 2 ? { ...item, qa: { ...item.qa, frames: [] } } : item);
   const missingEvidencePlan = preflight.buildVideoPreflight({
     taskId: 'boundary-repair-missing', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })), clips: missingEvidence, statuses: [],
