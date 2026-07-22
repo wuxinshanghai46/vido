@@ -2535,7 +2535,7 @@ async function generateVideoStage(taskId, options = {}) {
       return;
     }
     if (['review_only', 'transition_bridge'].includes(planned.action)) {
-      if (videoLineage.clipHasMediaFile(clips[index])) pendingReviewIndexes.push(index);
+      if (videoLineage.clipHasMediaFile(clips[index])) { clips[index] = videoLineage.adoptExpectedLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString(), adopted_before_boundary_review: true }); pendingReviewIndexes.push(index); }
       return;
     }
     if (planned.action === 'local_motion') {
@@ -2584,7 +2584,7 @@ async function generateVideoStage(taskId, options = {}) {
     const rejectedIndexes = new Set(pendingFailures.map(item => item.index));
     pendingReviewIndexes.forEach((index) => {
       if (!rejectedIndexes.has(index) && videoLineage.qaApproved(clips[index])) {
-        clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString(), recovered_before_regeneration: true });
+        clips[index] = videoLineage.adoptExpectedLineage(clips[index], expectedLineages[index], { lineage_adopted_at: new Date().toISOString(), recovered_before_regeneration: true });
         return;
       }
       if ((options.missing_only === true || options.missingOnly === true) && videoLineage.clipHasMediaFile(clips[index])) {

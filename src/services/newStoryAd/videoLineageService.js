@@ -180,6 +180,12 @@ function attachLineage(clip = {}, lineage = {}, extra = {}) {
   };
 }
 
+/** Adopt metadata before boundary review so the verdict binds the final fingerprint. */
+function adoptExpectedLineage(clip = {}, expected = {}, extra = {}) {
+  const current = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
+  return expected?.fingerprint && current !== expected.fingerprint ? attachLineage(clip, expected, extra) : clip;
+}
+
 module.exports = {
   VIDEO_PIPELINE_POLICY_VERSION,
   buildShotLineage,
@@ -192,4 +198,5 @@ module.exports = {
   reviewableDecision,
   reuseDecision,
   attachLineage,
+  adoptExpectedLineage,
 };

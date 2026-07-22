@@ -16,6 +16,7 @@ const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairSe
 const boundaryGeneration = require('../src/services/newStoryAd/videoBoundaryGenerationService');
 const videoFailureRecovery = require('../src/services/newStoryAd/videoFailureRecoveryService');
 const videoFrameQa = require('../src/services/newStoryAd/videoFrameQaService');
+const videoLineage = require('../src/services/newStoryAd/videoLineageService');
 
 const clip = (index, block, cross = undefined) => ({
   shot_index: index,
@@ -75,6 +76,10 @@ async function main() {
   assert.strictEqual(repairPlan.units[0].transition_override, 'dissolve');
   assert.strictEqual(repairPlan.zero_cost_action_count, 1);
   assert.deepStrictEqual(repairPlan.boundary_repair_contracts, {}, 'an empty paid scope must not expand back to all failed boundaries');
+  const adoptedPrevious = clip(0, 'lineage-order-a');
+  const adoptedCurrent = videoLineage.adoptExpectedLineage(clip(1, 'lineage-order-b'), { fingerprint: 'current-lineage-after-adoption' });
+  adoptedCurrent.cross_shot_qa = boundaries.deterministicTransitionQa(adoptedPrevious, adoptedCurrent, 'fade');
+  assert.strictEqual(boundaries.audit([adoptedPrevious, adoptedCurrent], 2).ready, true, 'deterministic QA must bind the final adopted lineage instead of becoming stale immediately');
 
   const providerRepairClips = rejectedClips.map((item, index) => index === 3 ? {
     ...item,
@@ -239,6 +244,7 @@ async function main() {
   assert(source.includes('if (pendingReviewFailures.length) { initialIndexes.forEach'), 'a failed review must stop later paid generation units and preserve their existing clips');
   assert(source.includes('videoFailureRecovery.restoreUnitFailure({'), 'the orchestrator must apply atomic current-unit rollback after provider or QA failure');
   assert(source.includes('videoBoundaryPolicy.usesDeterministicTransition(planned)'), 'zero-cost and post-generation transitions must share the deterministic boundary verdict');
+  assert(source.indexOf('adopted_before_boundary_review: true') < source.indexOf('const pendingFailures = await reviewVideoIndexes'), 'review-only lineage adoption must happen before boundary QA binding');
   const composeSource = source.slice(source.indexOf('async function composeStage('), source.indexOf('function mediaDependencyReady('));
   assert(composeSource.indexOf('videoBoundaryPolicy.audit') < composeSource.indexOf('const unapproved ='), 'composition must report a failed boundary before the generic lineage gate');
   console.log('new story ad boundary closure: ok');
