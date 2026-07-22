@@ -1,6 +1,6 @@
 const revisionService = require('./revisionService');
 
-const BOUNDARY_REPAIR_POLICY_VERSION = 'cross-unit-visual-anchor-v2';
+const BOUNDARY_REPAIR_POLICY_VERSION = 'cross-unit-visual-anchor-v3';
 const DIRECT_TAIL_FIRST_FRAME = 'previous_tail_first_frame';
 const MANAGED_DUAL_REFERENCE = 'approved_keyframe_and_previous_tail_private_assets';
 
@@ -62,7 +62,7 @@ function assessDirectTailCapability({ previousShot = {}, currentShot = {}, previ
   const currentPerson = personLockIdentity(currentContract);
   const reasons = [];
   if (!approvedKeyframe(previousKeyframe) || !approvedKeyframe(currentKeyframe)) reasons.push('approved_keyframe_evidence_incomplete');
-  if (['person', 'partial'].includes(currentPresence)) reasons.push('tail_only_cannot_bind_current_person_keyframe');
+  reasons.push('tail_only_cannot_bind_current_approved_keyframe');
   if (currentPresence === 'person' && previousPresence !== 'person') reasons.push('partial_tail_cannot_lock_full_person');
   if (currentPresence === 'partial' && !['person', 'partial'].includes(previousPresence)) reasons.push('tail_missing_required_person_state');
   if (previousScene && currentScene && previousScene !== currentScene) reasons.push('scene_lock_changes_across_boundary');
@@ -154,8 +154,8 @@ function repairInstruction(contract = {}) {
   ].filter(Boolean).join(' ');
 }
 
-function buildContracts({ clips = [], shots = [], keyframes = [], contracts = [], indexes = [] } = {}) {
-  const requested = indexes.length ? indexes : clips.map((_, index) => index);
+function buildContracts({ clips = [], shots = [], keyframes = [], contracts = [], indexes = null } = {}) {
+  const requested = Array.isArray(indexes) ? indexes : clips.map((_, index) => index);
   return Object.fromEntries(requested
     .map(Number)
     .filter(Number.isInteger)

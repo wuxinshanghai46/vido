@@ -205,7 +205,7 @@ async function run() {
   ];
   const boundaryContract = boundaryRepair.buildContract({ clips: boundaryClips, shots: boundaryShots, keyframes: boundaryKeyframes, contracts: boundaryContracts, index: 1 });
   assert.strictEqual(boundaryContract.direct_tail_capability.safe, false);
-  assert(boundaryContract.direct_tail_capability.reasons.includes('tail_only_cannot_bind_current_person_keyframe'));
+  assert(boundaryContract.direct_tail_capability.reasons.includes('tail_only_cannot_bind_current_approved_keyframe'));
   let submittedOptions;
   storage.createTask({ id: boundaryTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
   try {

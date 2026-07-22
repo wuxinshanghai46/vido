@@ -5,7 +5,7 @@ const boundaryPolicy = require('./videoBoundaryPolicyService');
 const boundaryRepair = require('./videoBoundaryRepairService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v5';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v6';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -362,7 +362,7 @@ function buildVideoPreflight({
     } else if (contract.input_strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME && contract.direct_tail_capability?.safe !== true) {
       blockers.push({
         code: 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT',
-        message: `第 ${contract.previous_shot_index + 1}→${contract.current_shot_index + 1} 镜的上一镜尾帧无法同时证明下一镜所需的完整人物、服装和场景锁定，已在付费提交前停止。请保留已合格素材并使用转场，或改用经过验证的双参考输入。`,
+        message: `第 ${contract.previous_shot_index + 1}→${contract.current_shot_index + 1} 镜的上一镜尾帧无法同时绑定当前已批准关键帧要求的人物、服装、场景、构图和镜头意图，已在付费提交前停止。请保留已合格素材并使用转场，或改用经过验证的双参考输入。`,
         details: contract.direct_tail_capability || {},
       });
     } else if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute)) {

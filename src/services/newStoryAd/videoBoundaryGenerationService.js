@@ -37,12 +37,15 @@ async function prepareBoundaryReferenceAsset({ taskId = '', contract = {}, optio
   return asset;
 }
 
-function assertProviderInput({ contract = null, providerRoute = '', inputMode = '', firstFrameUrl = '', currentKeyframeAssetUrl = '', previousTailAssetUrl = '', referenceAssetUrls = [] } = {}) {
+function assertProviderInput({ contract = null, providerRoute = '', inputMode = '', currentKeyframeAssetUrl = '', previousTailAssetUrl = '', referenceAssetUrls = [] } = {}) {
   if (!contract?.fingerprint) return;
   const direct = inputMode === boundaryRepair.DIRECT_TAIL_FIRST_FRAME;
-  const complete = direct
-    ? !!firstFrameUrl
-    : !!(currentKeyframeAssetUrl && previousTailAssetUrl && referenceAssetUrls.includes(previousTailAssetUrl));
+  if (direct) {
+    const error = new Error('上一镜尾帧不能替代当前已批准关键帧，已在付费提交前停止。');
+    error.code = 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'; error.status = 409; error.retryable = false;
+    throw error;
+  }
+  const complete = !!(currentKeyframeAssetUrl && previousTailAssetUrl && referenceAssetUrls.includes(previousTailAssetUrl));
   if (!boundaryRepair.providerSupportsBoundaryReference(providerRoute) || !complete) {
     const error = new Error('跨镜修复输入未同时绑定当前关键帧和上一单元真实尾帧，已在付费提交前停止。');
     error.code = 'VIDEO_BOUNDARY_REPAIR_INPUT_INCOMPLETE'; error.status = 409; error.retryable = false;
@@ -58,15 +61,10 @@ async function prepareInputs({ taskId = '', index = 0, keyframe = {}, contract =
     throw error;
   }
   const strategy = contract.input_strategy || boundaryRepair.inputStrategy(options);
-  const firstFrameUrl = absoluteAssetUrl(contract.previous_tail_image_url || '', options);
   if (strategy === boundaryRepair.DIRECT_TAIL_FIRST_FRAME) {
-    if (contract.direct_tail_capability?.safe !== true) {
-      const error = new Error('上一镜尾帧不能完整锁定当前镜头要求的人物、服装和场景，已在付费提交前停止。');
-      error.code = 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'; error.status = 409; error.retryable = false;
-      throw error;
-    }
-    assertProviderInput({ contract, providerRoute: pinnedModelRoute, inputMode: strategy, firstFrameUrl });
-    return { contract, inputMode: strategy, firstFrameUrl, keyframeAsset: null, boundaryAsset: null };
+    const error = new Error('上一镜尾帧不能替代当前已批准关键帧所定义的人物、服装、场景、构图和镜头意图，已在付费提交前停止。');
+    error.code = 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'; error.status = 409; error.retryable = false;
+    throw error;
   }
   const prepareKeyframe = typeof options._prepareKeyframeReferenceAsset === 'function' ? options._prepareKeyframeReferenceAsset : prepareKeyframeReferenceAsset;
   const prepareBoundary = typeof options._prepareBoundaryReferenceAsset === 'function' ? options._prepareBoundaryReferenceAsset : prepareBoundaryReferenceAsset;
