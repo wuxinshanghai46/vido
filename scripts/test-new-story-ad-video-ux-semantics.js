@@ -7,6 +7,7 @@ const vm = require('vm');
 const { projectVideoGenerationUnits } = require('../src/services/newStoryAd/videoGenerationUnitProjection');
 const { terminalGenerationProgress } = require('../src/services/newStoryAd/jobService');
 const videoReview = require('../public/js/new-story-ad/video-review');
+const videoPreflightUi = require('../public/js/new-story-ad/video-preflight-ui');
 
 function shot(index, block, members, lifecycle, extra = {}) {
   return {
@@ -144,12 +145,79 @@ function testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits() {
   assert.doesNotMatch(selection, /data-nsa-video-unit[^>]*checked/, '默认确认不得顺带选择任何付费生成单元');
 }
 
+function testUnitScopedBlockerDoesNotDisableSafePaidUnits() {
+  const preflight = {
+    units: [
+      { id: 'shot-2', shots: [2], title: '镜头 2', paid: true, duration_sec: 5 },
+      { id: 'shot-4', shots: [4], title: '镜头 4', paid: true, duration_sec: 5 },
+      { id: 'shot-6-local', shots: [6], title: '镜头 6', paid: false, duration_sec: 5 },
+    ],
+    blockers: [{
+      code: 'VIDEO_PRIVACY_INPUT_REQUIRES_CHANGE', scope: 'unit', unit_id: 'shot-2', shots: [2],
+      message: '第 2 镜原关键帧不可原样重试。',
+    }],
+    zero_cost_action_count: 1,
+    cost_plan: { units: [] },
+  };
+  const availability = videoReview.selectionAvailability(preflight);
+  assert.strictEqual(availability.selectablePaidUnits, 1, '单镜 blocker 不能禁用其他安全付费单元');
+  assert.strictEqual(availability.selectableZeroCostUnits, 1, '零费用单元必须保持独立可选');
+  assert.strictEqual(availability.blockedPaidUnits, 1);
+  assert.strictEqual(availability.units.find(row => row.id === 'shot-2').disabled, true);
+  assert.strictEqual(availability.units.find(row => row.id === 'shot-4').disabled, false);
+  const html = videoReview.selectionHtml(preflight);
+  assert.strictEqual((html.match(/data-nsa-unit-blocked="1"/g) || []).length, 1, '只能渲染一个被阻断单元');
+  assert.match(html, /当前不可选择：第 2 镜原关键帧不可原样重试。/, '被禁用单元必须直接显示原因');
+
+  const globalAvailability = videoReview.selectionAvailability({
+    ...preflight,
+    blockers: [{ code: 'VIDEO_PROVIDER_BILLING_BLOCKED', message: '供应商计费通道暂停。' }],
+  });
+  assert.strictEqual(globalAvailability.selectablePaidUnits, 0, '全局 blocker 必须继续禁用全部付费单元');
+  assert.strictEqual(globalAvailability.selectableZeroCostUnits, 1, '全局付费 blocker 不得阻断安全零费用动作');
+}
+
+async function testScopedBlockerStillAllowsSafeSelectionFlow() {
+  const broad = {
+    paid_unit_count: 2, zero_cost_action_count: 1,
+    units: [
+      { id: 'shot-2', shots: [2], paid: true, duration_sec: 5 },
+      { id: 'shot-4', shots: [4], paid: true, duration_sec: 5 },
+      { id: 'shot-6-local', shots: [6], paid: false, duration_sec: 5 },
+    ],
+    blockers: [{ scope: 'unit', unit_id: 'shot-2', shots: [2], message: '第 2 镜不可原样重试。' }],
+    cost_plan: { units: [] },
+  };
+  const scoped = {
+    paid_unit_count: 1, zero_cost_action_count: 0, units: [{ id: 'shot-4', shots: [4], paid: true, duration_sec: 5 }], blockers: [],
+    cost_plan: { fingerprint: 'cost-shot-4', estimated_cost_rmb: 5, maximum_cost_rmb: 5.75, units: [{ generation_unit_id: 'shot-4', billable_seconds: 5, estimated_cost_rmb: 5 }] },
+  };
+  let apiCalls = 0;
+  const dialogs = [];
+  const result = await videoPreflightUi.runScopedPreflight({
+    mode: 'economy', ensureTask: async () => 'task', api: async () => ({ preflight: apiCalls++ === 0 ? broad : scoped }),
+    toast: message => assert.fail(message), videoReview, escapeHtml: value => String(value || ''),
+    confirmAction: async options => {
+      dialogs.push(options);
+      return dialogs.length === 1
+        ? { indexes: [3], unitIds: ['shot-4'] }
+        : { videoSelection: { indexes: [3], unitIds: ['shot-4'] } };
+    },
+  });
+  assert.strictEqual(dialogs.length, 2, '存在单镜 blocker 时仍必须进入安全单元选择和精确费用确认');
+  assert.match(dialogs[0].summary, /1 个付费单元可选，1 个付费单元被单独阻止/);
+  assert.deepStrictEqual(result.selectedIndexes, [3]);
+  assert.strictEqual(result.costPlanFingerprint, 'cost-shot-4');
+}
+
 (async () => {
   testGenerationUnitProjection();
   await testMediaImmediatelyOwnsStepFive();
   testCrossStageTerminalizationIsGenerationSafe();
   testRecoveryEntryUsesScopedEconomyMode();
   testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits();
+  testUnitScopedBlockerDoesNotDisableSafePaidUnits();
+  await testScopedBlockerStillAllowsSafeSelectionFlow();
   console.log('new story ad video UX semantics: ok');
 })().catch(error => {
   console.error(error);

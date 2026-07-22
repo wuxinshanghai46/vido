@@ -33,8 +33,13 @@ function applyPrivacyRetryBlockers({ plan = {}, statuses = [], expectedLineages 
     if (errorCode !== PRIVACY_ERROR_CODE || !unit || !sameRejectedInput(status, expectedLineages[index] || {}, unit)) return;
     blockers.push({
       code: BLOCKER_CODE,
+      scope: 'unit',
+      unit_id: unit.id,
+      shots: unit.shots || [index + 1],
       message: `第 ${index + 1} 镜当前关键帧在“直接首帧”路径被供应商判定为可能含真人隐私信息。本任务其他镜头也可以有人物；本次只拒绝第 ${index + 1} 镜，是对这张具体输入图的判定，不代表其他镜头没有真人。供应商未创建视频生成任务，本次视频费用为 ¥0；系统已阻止同图同路径原样重试。请先换用脸部更小、可识别特征更弱的远景关键帧，或改用已经验证支持该真人输入的模型能力。`,
       details: {
+        unit_id: unit.id,
+        shots: unit.shots || [index + 1],
         shot_index: index + 1,
         rejected_input_strategy: unit.input_strategy,
         rejected_lineage_fingerprint: expectedLineages[index]?.fingerprint || '',

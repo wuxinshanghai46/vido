@@ -16,22 +16,29 @@
     }
     const preflight = data.preflight || {};
     const blocked = Array.isArray(preflight.blockers) && preflight.blockers.length > 0;
-    const zeroCostOnly = blocked && Number(preflight.zero_cost_action_count || 0) > 0;
     if (!videoReview?.selectionHtml || !videoReview?.readSelection) {
       toast('生成单元选择组件未就绪，本次没有提交视频模型', 'error'); return null;
     }
-    if (blocked && !zeroCostOnly) {
+    const availability = videoReview.selectionAvailability?.(preflight) || {
+      selectablePaidUnits: blocked ? 0 : Number(preflight.paid_unit_count || 0),
+      selectableZeroCostUnits: Number(preflight.zero_cost_action_count || 0),
+      blockedPaidUnits: blocked ? Number(preflight.paid_unit_count || 0) : 0,
+      selectableUnitCount: blocked ? Number(preflight.zero_cost_action_count || 0) : Number((preflight.units || []).length),
+    };
+    if (blocked && !availability.selectableUnitCount) {
       await confirmAction({ title: '生成通道已暂停', summary: preflight.blockers.map(item => item.message).join('；'), description: '当前没有可安全执行的生成单元，本次不会提交视频模型。', confirmLabel: '关闭', cancelLabel: '返回', tone: 'danger' });
       return null;
     }
     const selected = await confirmAction({
       title: mode === 'quality' ? '选择整条广告的生成单元' : '选择本次重做单元',
-      summary: `候选方案预计付费提交 ${Number(preflight.paid_unit_count || 0)} 个连续生成单元；成员镜头只用于审片。`,
+      summary: blocked
+        ? `当前有 ${availability.selectablePaidUnits} 个付费单元可选，${availability.blockedPaidUnits} 个付费单元被单独阻止；未被阻止的单元可以继续。`
+        : `候选方案预计付费提交 ${Number(preflight.paid_unit_count || 0)} 个连续生成单元；成员镜头只用于审片。`,
       description: '先明确勾选本次要生成或重做的单元。页面不会默认全选，未选择时不会提交。',
       confirmLabel: '按所选范围重新计算费用', cancelLabel: '取消', tone: blocked ? 'danger' : 'primary',
       facts: [
-        { value: String(Number(preflight.paid_unit_count || 0)), label: '可选付费单元', tone: 'warning' },
-        { value: String(Number(preflight.local_unit_count || 0)), label: '可选本地单元', tone: 'pass' },
+        { value: String(availability.selectablePaidUnits), label: '可选付费单元', tone: 'warning' },
+        { value: String(availability.selectableZeroCostUnits), label: '可选零费用单元', tone: 'pass' },
         { value: '0', label: '自动重试', tone: 'pass' },
       ],
       customHtml: videoReview.selectionHtml(preflight, escapeHtml),

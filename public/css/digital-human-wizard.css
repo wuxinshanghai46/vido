@@ -1855,13 +1855,16 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-rework-picker-head b, .dh-nsa-rework-picker-head span { display: block; }
 .dh-nsa-rework-picker-head b { color: var(--dh-text); font-size: 13px; }
 .dh-nsa-rework-picker-head span { margin-top: 3px; color: var(--dh-text-muted); font-size: 11px; line-height: 1.45; }
+.dh-nsa-rework-availability { padding: 9px 12px; border-bottom: 1px solid rgba(148,163,184,.12); color: #a5f3fc; font-size: 11px; line-height: 1.5; }
 .dh-nsa-rework-unit-list { display: grid; }
 .dh-nsa-rework-unit { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 11px 12px; border-bottom: 1px solid rgba(148,163,184,.12); cursor: pointer; }
-.dh-nsa-rework-unit.is-disabled { opacity: .48; cursor: not-allowed; }
+.dh-nsa-rework-unit.is-disabled { background: rgba(248,113,113,.055); cursor: not-allowed; }
+.dh-nsa-rework-unit.is-disabled input, .dh-nsa-rework-unit.is-disabled em { opacity: .55; }
 .dh-nsa-rework-unit input { width: 17px; height: 17px; accent-color: #22d3ee; }
 .dh-nsa-rework-unit b, .dh-nsa-rework-unit small { display: block; }
 .dh-nsa-rework-unit b { color: var(--dh-text); font-size: 12px; }
 .dh-nsa-rework-unit small { margin-top: 3px; color: var(--dh-text-muted); font-size: 10px; line-height: 1.4; }
+.dh-nsa-rework-unit small.dh-nsa-unit-blocked-reason { color: #fca5a5; font-size: 11px; }
 .dh-nsa-rework-unit em { color: #bae6fd; font-size: 11px; font-style: normal; white-space: nowrap; }
 .dh-nsa-rework-totals { margin: 11px 12px 0; padding: 10px; border-radius: 9px; color: #fde68a; background: rgba(245,158,11,.08); font-size: 12px; font-weight: 800; line-height: 1.5; }
 .dh-nsa-rework-ack { display: flex; align-items: flex-start; gap: 9px; margin: 10px 12px 12px; color: var(--dh-text-soft); font-size: 11px; line-height: 1.5; cursor: pointer; }

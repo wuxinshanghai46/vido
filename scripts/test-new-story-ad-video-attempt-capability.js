@@ -187,7 +187,7 @@ function testCapabilityGateNeverUsesMutationAsProbe() {
 function testPrivacyFailureBlocksOnlySameDirectFirstFrameInput() {
   const plan = {
     blockers: [], status: 'ready', zero_cost_action_count: 0,
-    units: [{ paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
+    units: [{ id: 'economy-shot-2', shots: [2], paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
   };
   privacyRetryPolicy.applyPrivacyRetryBlockers({
     plan,
@@ -196,12 +196,15 @@ function testPrivacyFailureBlocksOnlySameDirectFirstFrameInput() {
   });
   assert.strictEqual(plan.status, 'blocked');
   assert.strictEqual(plan.blockers[0].code, 'VIDEO_PRIVACY_INPUT_REQUIRES_CHANGE');
+  assert.strictEqual(plan.blockers[0].scope, 'unit');
+  assert.strictEqual(plan.blockers[0].unit_id, 'economy-shot-2');
+  assert.deepStrictEqual(plan.blockers[0].shots, [2]);
   assert.match(plan.blockers[0].message, /本任务其他镜头也可以有人物/);
   assert.match(plan.blockers[0].message, /本次视频费用为 ¥0/);
 
   const changedInputPlan = {
     blockers: [], status: 'ready', zero_cost_action_count: 0,
-    units: [{ paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
+    units: [{ id: 'economy-shot-2', shots: [2], paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
   };
   privacyRetryPolicy.applyPrivacyRetryBlockers({
     plan: changedInputPlan,

@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260722-media-state-truth-v2';
+  const SCRIPT_VERSION = '20260722-unit-block-scope-v3';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/task-store.js',
@@ -15,7 +15,7 @@
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/actor-library.js',
     '/js/new-story-ad/audio-preflight.js',
-    '/js/new-story-ad/video-review.js',
+    '/js/new-story-ad/video-unit-availability.js', '/js/new-story-ad/video-review.js',
     '/js/new-story-ad/video-preflight-ui.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad-legacy-ui.js',

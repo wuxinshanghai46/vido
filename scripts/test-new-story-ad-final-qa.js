@@ -241,8 +241,10 @@ function testStep5RenderingPerformanceBoundaries() {
   const root = path.resolve(__dirname, '..');
   const legacy = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const reviewModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-review.js'), 'utf8');
+  const availabilityModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-unit-availability.js'), 'utf8');
   const renderMedia = legacy.slice(legacy.indexOf('function renderMedia()'), legacy.indexOf('function syncPersonSpecControls'));
   assert(reviewModule.split(/\r?\n/).length <= 360, '视频选择、费用与 P0 语义应保持在独立前端模块中');
+  assert(availabilityModule.split(/\r?\n/).length <= 140, '生成单元阻断范围计算必须保持为独立小模块');
   assert(!legacy.includes('const P0_DIMENSIONS = new Set'), '旧主前端不得重复实现 P0 维度合同');
   assert(!legacy.includes('function selectionSummary('), '旧主前端不得重复实现生成单元费用选择逻辑');
   assert(renderMedia.includes('preload="metadata"'), 'Step 5 唯一最终成片播放器只预取 metadata');

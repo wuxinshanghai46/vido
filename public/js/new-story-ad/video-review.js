@@ -1,4 +1,7 @@
 (() => {
+  const unitAvailability = typeof module !== 'undefined' && module.exports
+    ? require('./video-unit-availability')
+    : window.NewStoryAdVideoUnitAvailability;
   const P0_DIMENSIONS = new Set([
     'person_identity',
     'product_identity',
@@ -104,6 +107,11 @@
     return units.find(item => (item.edit_shot_indexes || []).some(index => indexes.has(Number(index)))) || null;
   }
 
+  function selectionAvailability(preflight = {}) {
+    if (!unitAvailability?.selectionAvailability) throw new Error('生成单元可选范围组件未加载');
+    return unitAvailability.selectionAvailability(preflight);
+  }
+
   function selectionSummary(preflight = {}, selectedIds = []) {
     const units = Array.isArray(preflight.units) ? preflight.units : [];
     const selected = new Set((selectedIds || []).map(String));
@@ -137,22 +145,27 @@
 
   function selectionHtml(preflight = {}, escapeHtml = value => String(value || '')) {
     const units = Array.isArray(preflight.units) ? preflight.units : [];
-    const zeroCostOnly = Array.isArray(preflight.blockers) && preflight.blockers.length > 0
-      && number(preflight.zero_cost_action_count) > 0;
+    const availability = selectionAvailability(preflight);
     const rows = units.map((unit, index) => {
       const members = unitMembers(unit);
       const cost = costUnitFor(unit, preflight.cost_plan || {});
       const seconds = unit.paid === false ? number(unit.duration_sec) : number(cost?.billable_seconds, number(unit.duration_sec));
       const expected = unit.paid === false ? 0 : number(cost?.estimated_cost_rmb);
-      const disabled = zeroCostOnly && unit.paid !== false;
-      return `<label class="dh-nsa-rework-unit ${disabled ? 'is-disabled' : ''}">
+      const availabilityRow = availability.units[index] || { disabled: false, blockers: [] };
+      const disabled = availabilityRow.disabled;
+      const blockerText = unique(availabilityRow.blockers.map(blocker => blocker.message || blocker.code || '当前输入不可安全提交'));
+      return `<label class="dh-nsa-rework-unit ${disabled ? 'is-disabled' : ''}" ${disabled ? 'data-nsa-unit-blocked="1"' : ''}>
         <input type="checkbox" data-nsa-video-unit value="${escapeHtml(unit.id || `unit-${index + 1}`)}" ${disabled ? 'disabled' : ''}>
-        <span><b>${escapeHtml(unit.title || `生成单元 ${index + 1}`)}</b><small>${escapeHtml(members.length ? `包含镜头 ${members.join('、')}` : '成员镜头信息未完成')} · ${escapeHtml(unit.label || (unit.paid === false ? '本地处理' : '一次模型生成'))}</small></span>
+        <span><b>${escapeHtml(unit.title || `生成单元 ${index + 1}`)}</b><small>${escapeHtml(members.length ? `包含镜头 ${members.join('、')}` : '成员镜头信息未完成')} · ${escapeHtml(unit.label || (unit.paid === false ? '本地处理' : '一次模型生成'))}</small>${disabled ? `<small class="dh-nsa-unit-blocked-reason">当前不可选择：${escapeHtml(blockerText.join('；'))}</small>` : ''}</span>
         <em>${seconds.toFixed(0)} 秒 · ${unit.paid === false ? '¥0.00' : `预计 ¥${expected.toFixed(2)}`}</em>
       </label>`;
     }).join('');
+    const availabilityText = availability.blockedPaidUnits
+      ? `当前可选 ${availability.selectablePaidUnits} 个付费单元、${availability.selectableZeroCostUnits} 个零费用单元；${availability.blockedPaidUnits} 个付费单元因明确原因不可选择。`
+      : `当前可选 ${availability.selectablePaidUnits} 个付费单元、${availability.selectableZeroCostUnits} 个零费用单元。`;
     return `<section class="dh-nsa-rework-picker" data-nsa-rework-picker>
       <div class="dh-nsa-rework-picker-head"><div><b>选择本次生成 / 重做单元</b><span>连续生成单元是付费与提交边界；成员镜头只用于审片，不会被分别提交。</span></div><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-select-all-units>全选可用单元</button></div>
+      <div class="dh-nsa-rework-availability">${escapeHtml(availabilityText)}</div>
       <div class="dh-nsa-rework-unit-list">${rows || '<div class="dh-task-empty-note">预检没有返回可选择的生成单元，信息未完成。</div>'}</div>
       <div class="dh-nsa-rework-totals" data-nsa-rework-totals>尚未选择：不会提交生成</div>
       <label class="dh-nsa-rework-ack"><input type="checkbox" data-nsa-rework-ack checked><span>我确认选择这些连续生成单元，并进入下一步读取精确费用；当前候选估算不作为最终授权。</span></label>
@@ -200,6 +213,9 @@
 
   function readSelection(modal, preflight = {}) {
     const ids = [...modal.querySelectorAll('[data-nsa-video-unit]:checked')].map(input => input.value);
+    const availability = selectionAvailability(preflight);
+    const blockedIds = new Set(availability.units.filter(row => row.disabled).map(row => row.id));
+    if (ids.some(id => blockedIds.has(String(id)))) return { error: '所选范围包含当前不可安全提交的生成单元，请修改输入后重新预检。' };
     const summary = selectionSummary(preflight, ids);
     if (!summary.unitCount || !summary.indexes.length) return { error: '请至少选择一个生成单元；未选择时不会提交。' };
     if (!modal.querySelector('[data-nsa-rework-ack]')?.checked) return { error: '请确认所选连续生成单元，再进入精确费用预检。' };
@@ -316,6 +332,7 @@
     failureTime,
     qaFrames,
     boundaryEvidence,
+    selectionAvailability,
     selectionSummary,
     selectionHtml,
     bindSelection,
