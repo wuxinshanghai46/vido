@@ -155,7 +155,7 @@
       <div class="dh-nsa-rework-picker-head"><div><b>选择本次生成 / 重做单元</b><span>连续生成单元是付费与提交边界；成员镜头只用于审片，不会被分别提交。</span></div><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-select-all-units>全选可用单元</button></div>
       <div class="dh-nsa-rework-unit-list">${rows || '<div class="dh-task-empty-note">预检没有返回可选择的生成单元，信息未完成。</div>'}</div>
       <div class="dh-nsa-rework-totals" data-nsa-rework-totals>尚未选择：不会提交生成</div>
-      <label class="dh-nsa-rework-ack"><input type="checkbox" data-nsa-rework-ack><span>我确认选择这些连续生成单元，并进入下一步读取精确费用；当前候选估算不作为最终授权。</span></label>
+      <label class="dh-nsa-rework-ack"><input type="checkbox" data-nsa-rework-ack checked><span>我确认选择这些连续生成单元，并进入下一步读取精确费用；当前候选估算不作为最终授权。</span></label>
       <div class="dh-nsa-audio-preflight-error" data-nsa-confirm-error hidden></div>
     </section>`;
   }
@@ -218,7 +218,7 @@
       <div class="dh-nsa-scoped-cost-head"><b>二次确认：精确执行范围与费用</b><span>以下数据来自按所选镜头重新计算的 scoped preflight；提交时只使用这份指纹与费用上限。</span></div>
       <div class="dh-nsa-scoped-cost-rows">${rows}</div>
       <div class="dh-nsa-rework-totals">${escapeHtml(totalsText(summary))}</div>
-      <label class="dh-nsa-rework-ack"><input type="checkbox" data-nsa-scoped-cost-ack><span>我确认只提交以上连续生成单元，并接受这里显示的最高费用；自动付费重试为 0。</span></label>
+      <label class="dh-nsa-rework-ack"><input type="checkbox" data-nsa-scoped-cost-ack checked><span>我确认只提交以上连续生成单元，并接受这里显示的最高费用；自动付费重试为 0。</span></label>
       <div class="dh-nsa-audio-preflight-error" data-nsa-confirm-error hidden></div>
     </section>`;
   }

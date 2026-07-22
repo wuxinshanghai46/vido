@@ -132,11 +132,24 @@ function testRecoveryEntryUsesScopedEconomyMode() {
   assert(source.includes('rememberVideoAuthorization(confirmed, mode)'), 'the confirmed recovery mode must be bound to the submitted authorization');
 }
 
+function testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits() {
+  const preflight = {
+    units: [{ id: 'shot-5', shots: [5], title: '镜头 5', paid: true, duration_sec: 5 }],
+    cost_plan: { estimated_cost_rmb: 5, maximum_cost_rmb: 5.75, units: [{ generation_unit_id: 'shot-5', billable_seconds: 5, estimated_cost_rmb: 5 }] },
+  };
+  const selection = videoReview.selectionHtml(preflight);
+  const confirmation = videoReview.costConfirmationHtml(preflight);
+  assert.match(selection, /data-nsa-rework-ack checked/, '范围确认框必须默认勾选');
+  assert.match(confirmation, /data-nsa-scoped-cost-ack checked/, '精确费用确认框必须默认勾选');
+  assert.doesNotMatch(selection, /data-nsa-video-unit[^>]*checked/, '默认确认不得顺带选择任何付费生成单元');
+}
+
 (async () => {
   testGenerationUnitProjection();
   await testMediaImmediatelyOwnsStepFive();
   testCrossStageTerminalizationIsGenerationSafe();
   testRecoveryEntryUsesScopedEconomyMode();
+  testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits();
   console.log('new story ad video UX semantics: ok');
 })().catch(error => {
   console.error(error);

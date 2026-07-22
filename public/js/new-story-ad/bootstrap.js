@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260722-media-outcome-v2';
+  const SCRIPT_VERSION = '20260722-default-acks-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/task-store.js',
