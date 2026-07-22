@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260721-video-review-v1';
+  const SCRIPT_VERSION = '20260722-compose-retry-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js',
     '/js/new-story-ad/task-store.js',

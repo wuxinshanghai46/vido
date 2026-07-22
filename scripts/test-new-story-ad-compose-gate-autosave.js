@@ -106,6 +106,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
+assert(html.includes('20260722-compose-retry-v1'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -171,6 +172,8 @@ assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-selected'), 'the cli
 assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
+const bootstrap = read('public/js/new-story-ad/bootstrap.js');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-compose-retry-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
 const failedComposeTask = { status: 'failed', stage: 'compose_failed', error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1' };
