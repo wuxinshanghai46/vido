@@ -64,6 +64,12 @@
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
     lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
+    const composeBtn = within('#dhNsaAdConfirmGenerate');
+    const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || { action_ready: compose.ready && !state.busy };
+    if (composeBtn) {
+      composeBtn.classList.toggle('is-next', composeView.action_ready && !state.busy && !state.restoringTask);
+      composeBtn.textContent = composeView.action_ready ? '下一步：封装最终成片 →' : '封装最终成片';
+    }
     lock('#dhNsaAdGeneratePersonSheet', noHuman || (!hasBrief && !hasActorInput), noHuman ? '无人物模式不需要生成演员' : '请先填写广告需求或人物设定', { allowBusy: true });
     lock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     lock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });

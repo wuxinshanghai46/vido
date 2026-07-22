@@ -2001,6 +2001,12 @@
     setButtonLock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     setButtonLock('#dhNsaAdGenerateShotVideos', !hasShots, '请先生成并审核全部真实画面');
     setButtonLock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜');
+    const composeBtn = within('#dhNsaAdConfirmGenerate');
+    const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || { action_ready: compose.ready && !state.busy };
+    if (composeBtn) {
+      composeBtn.classList.toggle('is-next', composeView.action_ready && !state.busy && !state.restoringTask);
+      composeBtn.textContent = composeView.action_ready ? '下一步：封装最终成片 →' : '封装最终成片';
+    }
     setButtonLock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
     setButtonLock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     setButtonLock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
@@ -3387,10 +3393,10 @@
     const tracks = Array.isArray(state.ttsAudio?.tracks) ? state.ttsAudio.tracks : [];
     const clips = Array.isArray(state.videoClips) ? state.videoClips : [];
     const generationUnits = videoGenerationUnits(clips);
-    const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
-    const videoProgress = state.generationProgress?.stage === 'video' || state.generationProgress?.stage === 'compose'
-      ? state.generationProgress
-      : null;
+    const compose = composeReadiness();
+    const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || {};
+    const finalUrl = composeView.final_url ?? (state.finalVideo?.video_url || state.finalVideo?.videoUrl || '');
+    const videoProgress = composeView.progress ?? (state.generationProgress?.stage === 'video' || state.generationProgress?.stage === 'compose' ? state.generationProgress : null);
     const totalVideoShots = Math.max(Number(videoProgress?.total || 0), state.shots.length, clips.length);
     const qaApprovedFromClips = clips.filter(clip => clip
       && (clip.video_url || clip.videoUrl || clip.file_path)
@@ -3400,14 +3406,13 @@
     const approvedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.qa_passed ?? qaApprovedFromClips) || 0));
     const generatedVideoShots = Math.max(approvedVideoShots, Math.min(totalVideoShots, Number(videoProgress?.generated ?? 0) || 0));
     const failedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.failed ?? Math.max(0, totalVideoShots - approvedVideoShots)) || 0));
-    const mediaActive = !!state.activeGenerationId
+    const mediaActive = composeView.active ?? (!!state.activeGenerationId
       || state.stageProgress?.active === true
-      || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
-    const mediaFailed = !mediaActive && (state.taskStatus === 'failed'
-      || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError);
+      || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || ''))));
+    const mediaFailed = composeView.failed ?? (!mediaActive && (state.taskStatus === 'failed'
+      || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError));
     const failureDetails = videoFailureDetails(clips);
     const videoReview = window.NewStoryAdVideoReview;
-    const compose = composeReadiness();
     const composeSummary = within('#dhNsaAdComposeSummary');
     const progressHint = within('#dhNsaAdProgressHint');
     const gate = within('#dhNsaAdComposeGate');
@@ -3428,20 +3433,23 @@
         : (restoring
         ? '正在读取已确认的分镜和关键帧，请稍候'
         : (compose.ready
-        ? '全部视频片段质检通过，系统将自动完成配音、字幕、音乐和最终成片封装'
+        ? '全部视频片段质检通过，请点击右上角“下一步：封装最终成片”完成成片。'
         : compose.message));
     }
     if (gate) {
       const failed = mediaFailed && state.taskError;
-      gate.hidden = !restoreFailed && !restoring && compose.ready && !failed;
-      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : 'is-warning')}`;
+      const actionReady = composeView.action_ready && !finalUrl;
+      gate.hidden = !restoreFailed && !restoring && !actionReady && !failed;
+      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}`;
       gate.innerHTML = restoreFailed
         ? `<b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span>`
         : (restoring
         ? '<b>正在恢复任务</b><span>已确认的分镜和真实关键帧正在载入，请勿重新生成。</span>'
+        : (actionReady
+        ? `<b>${composeView.retry_ready ? '素材已就绪，可重新封装' : '素材已全部就绪'}</b><span>${composeView.retry_ready ? '上次封装未完成，但已生成素材均已保留。' : '全部镜头已通过审核。'}</span><span>请点击右上角“下一步：封装最终成片 →”，不会重新生成视频。</span>`
         : (failed
         ? `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`
-        : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`));
+        : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`)));
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
       <div class="dh-task-detail-title">整条广告审片与合成结果</div>

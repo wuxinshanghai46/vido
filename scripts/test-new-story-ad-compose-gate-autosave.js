@@ -1,7 +1,12 @@
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
+
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-nsa-compose-autosave-'));
+process.env.OUTPUT_DIR = tempDir;
+process.env.DB_ENABLED = '0';
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -51,6 +56,10 @@ assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ st
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: keyframeReadyState }), true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: validState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: validState }), true);
+const retryReadyState = { ...validState, taskStatus: 'failed', taskError: '上次封装失败', taskErrorCode: 'UNKNOWN', generationProgress: { stage: 'compose', status: 'failed' } };
+const retryPresentation = context.window.NewStoryAdStepNavigation.composePresentation({ state: retryReadyState });
+assert.strictEqual(retryPresentation.retry_ready, true);
+assert.strictEqual(retryPresentation.failed, false, 'a preserved compose failure must become retry-ready after all current clips pass QA');
 
 const buttons = {
   '#dhNsaAdText': { value: '足够长的剧情广告需求' },
@@ -71,6 +80,10 @@ context.window.NewStoryAdButtonState.updateLocks({
   getPersonSpec: () => '',
 });
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, false);
+context.window.NewStoryAdButtonState.updateLocks({ state: retryReadyState, within: selector => buttons[selector] || null, getPersonSpec: () => '' });
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, false);
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].classList.contains('is-next'), true);
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].textContent, '下一步：封装最终成片 →');
 const selectedButton = fakeButton('生成整条广告视频');
 context.window.NewStoryAdButtonState.setButtonBusy(selectedButton, true, '生成整条广告视频中...');
 assert.strictEqual(selectedButton.classList.contains('is-selected'), true);
@@ -133,7 +146,8 @@ assert(ui.includes('videoShotStatuses'), 'the UI must hydrate persisted per-shot
 assert(!ui.includes('data-nsa-video-regenerate="${i}"'), 'storyboard rows must not expose paid per-shot video generation');
 assert(ui.includes('正在恢复任务</b>'), 'compose view must show a restore state instead of a false missing-storyboard warning');
 assert(ui.includes('任务内容读取失败'), 'restore failures must be visible instead of leaving an empty editor');
-assert(ui.includes('const mediaFailed = !mediaActive'), 'a new active generation must hide the previous batch failure banner');
+assert(ui.includes('const mediaFailed = composeView.failed'), 'compose failure visibility must use the centralized active/retry-ready presentation state');
+assert(ui.includes('素材已就绪，可重新封装'), 'a preserved compose failure must be presented as a retry-ready action, not a current blocking error');
 assert(ui.includes('videoFailureDetails(clips)'), 'failed video QA must expose per-shot reasons to the task owner');
 assert(ui.includes('复审现有视频，不自动重做'), 'incremental repair must clearly preserve and re-review existing rejected media');
 assert(ui.includes('不会自动付费重做'), 'repair confirmation must disclose that failed re-review does not trigger paid regeneration');
@@ -156,6 +170,27 @@ assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-generating'), 'only 
 assert(wizardCss.includes('.dh-nsa-step4-generate-action.is-selected'), 'the clicked action must have a persistent high-contrast selected state');
 assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use a responsive product modal');
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
+assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
+
+const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
+const failedComposeTask = { status: 'failed', stage: 'compose_failed', error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1' };
+assert.deepStrictEqual(progressSave.taskPatch(failedComposeTask, { progressStage: 'video_ready', changeScope: 'none' }), {},
+  'an unchanged autosave must not rewrite terminal failure status while retaining its error fields');
+const editedFailurePatch = progressSave.taskPatch(failedComposeTask, { progressStage: 'video_ready', changeScope: 'source' });
+assert.strictEqual(editedFailurePatch.status, 'working');
+assert.strictEqual(editedFailurePatch.error_code, '');
+assert.strictEqual(editedFailurePatch.generation_progress, null);
+const storage = require('../src/services/newStoryAd/storageService');
+const storyAdService = require('../src/services/newStoryAd/storyAdService');
+storyAdService.createTask({ task_id: 'failed-compose-autosave', brief: '保持封装失败真实状态' }, { id: 'owner-1' });
+storage.updateTask('failed-compose-autosave', { error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1', generation_progress: { stage: 'compose', status: 'failed' } });
+storage.updateTask('failed-compose-autosave', { status: 'failed', stage: 'compose_failed' });
+storyAdService.updateTaskRequest('failed-compose-autosave', { brief: '保持封装失败真实状态', change_scope: 'none', save_progress: true, progress_stage: 'video_ready' }, { id: 'owner-1' });
+const persistedFailedCompose = storage.getTask('failed-compose-autosave');
+assert.strictEqual(persistedFailedCompose.status, 'failed');
+assert.strictEqual(persistedFailedCompose.stage, 'compose_failed');
+assert.strictEqual(persistedFailedCompose.error_code, 'UNKNOWN');
+assert.strictEqual(persistedFailedCompose.support_id, 'support-1');
 const route = read('src/routes/newStoryAd.js');
 const mediaPipeline = read('src/services/newStoryAd/mediaPipelineService.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');

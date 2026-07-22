@@ -71,6 +71,19 @@
     return { ready, message, total, passed, needs_regeneration: Math.max(0, total - passed), keyframes: frames };
   }
 
+  function composePresentation(ctx = {}) {
+    const state = ctx.state || {};
+    const compose = ctx.compose || composeReadiness({ state });
+    const finalUrl = state.finalVideo?.video_url || state.finalVideo?.videoUrl || '';
+    const progress = ['video', 'compose'].includes(String(state.generationProgress?.stage || '')) ? state.generationProgress : null;
+    const active = !!state.activeGenerationId || state.stageProgress?.active === true
+      || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
+    const retryReady = !active && !finalUrl && compose.ready && progress?.stage === 'compose' && progress?.status === 'failed';
+    const failed = !active && !retryReady && (state.taskStatus === 'failed'
+      || progress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError);
+    return { active, failed, retry_ready: retryReady, action_ready: !active && !finalUrl && compose.ready, final_url: finalUrl, progress };
+  }
+
   function stepReady(step, ctx = {}) {
     const state = ctx.state || {};
     const within = typeof ctx.within === 'function' ? ctx.within : sel => document.querySelector(sel);
@@ -123,6 +136,7 @@
   window.NewStoryAdStepNavigation = {
     keyframeReadiness,
     composeReadiness,
+    composePresentation,
     showStep,
     stepReady,
     canOpenStep,

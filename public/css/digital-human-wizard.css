@@ -1389,8 +1389,13 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 }
 .dh-nsa-compose-gate[hidden] { display: none !important; }
 .dh-nsa-compose-gate.is-error { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+.dh-nsa-compose-gate.is-ready { border-color: rgba(33,255,243,.58); background: rgba(33,255,243,.09); color: var(--dh-text); box-shadow: inset 4px 0 0 var(--dh-primary), 0 10px 28px rgba(33,255,243,.08); }
+.dh-nsa-compose-gate.is-ready b { color: var(--dh-primary); }
 .dh-nsa-compose-gate b { flex: 0 0 auto; }
 .dh-nsa-compose-gate span { flex: 1 1 auto; min-width: 0; line-height: 1.55; }
+#dhNsaAdConfirmGenerate.is-next:not(:disabled) { min-width: 230px; font-weight: 950; letter-spacing: .01em; box-shadow: 0 0 0 3px rgba(33,255,243,.13), 0 14px 34px rgba(33,255,243,.28); animation: dhNsaComposeCtaPulse 1.8s ease-in-out infinite; }
+@keyframes dhNsaComposeCtaPulse { 50% { transform: translateY(-2px); box-shadow: 0 0 0 6px rgba(33,255,243,.08), 0 18px 40px rgba(33,255,243,.34); } }
+@media (prefers-reduced-motion: reduce) { #dhNsaAdConfirmGenerate.is-next:not(:disabled) { animation: none; } }
 #dhLuxAdGenerateFinalFrames, #dhLuxAdGoCompose { min-width: 148px; justify-content: center; }
 .dh-demo-script-mainline, .dh-demo-script-overview { margin: 12px; padding: 13px 16px; border-radius: var(--dh-radius-sm); background: rgba(33,255,243,.055); color: var(--dh-text); border: 1px solid rgba(33,255,243,.20); }
 .dh-demo-script-mainline b, .dh-demo-script-overview b { display: block; color: var(--dh-primary); font-size: 13px; margin-bottom: 5px; }

@@ -41,7 +41,7 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
-const stageProgress = require('./stageProgressService');
+const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection');
 const videoCore = require('../videoGenerationCore');
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -527,11 +527,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   };
   if (savingProgress) {
     const progressStage = cleanText(body.progress_stage || body.progressStage || task.stage || 'draft', 80) || 'draft';
-    if (!hasActiveGeneration) {
-      const finalDone = ['final_video_ready', 'done'].includes(progressStage);
-      patch.status = finalDone ? (task.status || 'done') : 'working';
-      patch.stage = progressStage;
-    }
+    Object.assign(patch, taskProgressSave.taskPatch(task, { progressStage, hasActiveGeneration, changeScope: scope }));
     patch.saved_progress = true;
     patch.saved_progress_at = new Date().toISOString();
     persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});
