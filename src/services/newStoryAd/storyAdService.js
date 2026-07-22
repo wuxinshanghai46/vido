@@ -33,7 +33,7 @@ const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoQualityPolicy = require('./videoQualityPolicyService');
-const videoLineage = require('./videoLineageService');
+const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService');
 const videoRepairPolicy = require('./videoRepairPolicy');
 const videoPreflight = require('./videoPreflightService');
 const sceneBlockService = require('./sceneBlockService');
@@ -2487,9 +2487,7 @@ async function generateVideoStage(taskId, options = {}) {
         }
       }
     }
-    const crossIndexes = zeroCostOnly
-      ? reviewedIndexes.filter(index => index > 0 && index < clips.length && preflightShotActions.get(index)?.review_scope === 'cross_shot')
-      : [...new Set(reviewedIndexes.flatMap(index => [index, index + 1]).filter(index => index > 0 && index < clips.length))];
+    const crossIndexes = videoBoundaryPolicy.requiredBoundaryIndexes(clips, reviewedIndexes);
     for (const index of crossIndexes) {
       const previous = clips[index - 1];
       const current = clips[index];
@@ -2722,7 +2720,8 @@ async function generateVideoStage(taskId, options = {}) {
     error.code = 'VIDEO_QA_FAILED'; error.retryable = true; error.video_clips = clips; error.qa_failures = mergedFailures;
     throw error;
   }
-  const remainingUnapproved = shots.map((_, index) => index).filter(index => !videoLineage.qaApproved(clips[index] || {}));
+  const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length);
+  const remainingUnapproved = [...new Set(shots.map((_, index) => index).filter(index => !videoLineage.qaApproved(clips[index] || {})).concat(boundaryAudit.unready_indexes))];
   if (remainingUnapproved.length) {
     storage.saveStage(taskId, 'video', {
       status: 'partial',
@@ -3253,6 +3252,11 @@ async function composeStage(taskId, options = {}) {
     const error = new Error(`当前版本仍有未审片或来源不匹配的镜头：${unapproved.map(index => `第 ${index + 1} 镜`).join('、')}`);
     error.code = 'COMPOSE_CLIP_LINEAGE_INVALID';
     error.retryable = true;
+    throw error;
+  }
+  const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) {
+    const error = new Error(`当前版本仍有未完成的跨生成单元衔接审核：${boundaryAudit.unready_indexes.map(index => `第 ${index}→${index + 1} 镜`).join('、')}`);
+    error.code = 'COMPOSE_BOUNDARY_QA_INCOMPLETE'; error.retryable = true;
     throw error;
   }
   storage.deleteOutput(taskId, 'final_video');

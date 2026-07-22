@@ -79,17 +79,18 @@
       && frame?.qa?.pass === true
     ));
     const clips = Array.isArray(outputs.video_clips) ? outputs.video_clips : [];
-    const currentVideosReady = shotCount > 0 && clips.length >= shotCount && Array.from({ length: shotCount }).every((_, index) => {
-      const clip = clips.find((item, clipIndex) => {
+    const orderedClips = Array.from({ length: shotCount }).map((_, index) => clips.find((item, clipIndex) => {
         if (!item) return false;
         if (Number.isInteger(Number(item.shot_index))) return Number(item.shot_index) === index;
         if (Number.isInteger(Number(item.index))) return Number(item.index) === index + 1;
         return clipIndex === index;
-      });
+      }) || null);
+    const boundaryReady = window.NewStoryAdVideoBoundaries?.audit?.(orderedClips, shotCount)?.ready
+      ?? (shotCount <= 1 || orderedClips.slice(1).every(clip => clip?.cross_shot_qa?.pass === true));
+    const currentVideosReady = shotCount > 0 && clips.length >= shotCount && boundaryReady && orderedClips.every(clip => {
       return !!(clip?.video_url || clip?.videoUrl || clip?.file_path)
         && !clip?.error && !clip?.error_code
-        && clip?.qa?.pass === true
-        && clip?.cross_shot_qa?.pass !== false;
+        && clip?.qa?.pass === true;
     });
     if (finalVideo.video_url || finalVideo.videoUrl) return 5;
     if (/(?:compose|final|tts)/.test(stage)) return 5;

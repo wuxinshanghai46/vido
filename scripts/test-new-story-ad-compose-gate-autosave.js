@@ -29,7 +29,7 @@ context.window.NewStoryAdKeyframes = {
   },
 };
 vm.createContext(context);
-['public/js/new-story-ad/step-navigation.js', 'public/js/new-story-ad/button-state.js', 'public/js/new-story-ad/task-store.js', 'public/js/new-story-ad/task-persistence.js', 'public/js/new-story-ad/state-sync.js']
+['public/js/new-story-ad/video-boundaries.js', 'public/js/new-story-ad/step-navigation.js', 'public/js/new-story-ad/button-state.js', 'public/js/new-story-ad/task-store.js', 'public/js/new-story-ad/task-persistence.js', 'public/js/new-story-ad/state-sync.js']
   .forEach(file => vm.runInContext(read(file), context, { filename: file }));
 
 const shots = Array.from({ length: 6 }, (_, index) => ({ index: index + 1 }));
@@ -56,6 +56,13 @@ assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ st
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: keyframeReadyState }), true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: validState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: validState }), true);
+const boundaryBlocks = ['block-a', 'block-b', 'block-b', 'block-c', 'block-c', 'block-d'];
+const boundaryGapState = { ...keyframeReadyState, videoClips: validState.videoClips.map((clip, index) => ({ ...clip, scene_block_id: boundaryBlocks[index] })) };
+delete boundaryGapState.videoClips[3].cross_shot_qa;
+const boundaryGapReadiness = context.window.NewStoryAdStepNavigation.composeReadiness({ state: boundaryGapState });
+assert.strictEqual(boundaryGapReadiness.ready, false);
+assert.deepStrictEqual(Array.from(boundaryGapReadiness.boundaries.missing_indexes), [3]);
+assert.match(boundaryGapReadiness.message, /跨生成单元衔接未审核/);
 const retryReadyState = { ...validState, taskStatus: 'failed', taskError: '上次封装失败', taskErrorCode: 'UNKNOWN', generationProgress: { stage: 'compose', status: 'failed' } };
 const retryPresentation = context.window.NewStoryAdStepNavigation.composePresentation({ state: retryReadyState });
 assert.strictEqual(retryPresentation.retry_ready, true);
@@ -80,6 +87,8 @@ context.window.NewStoryAdButtonState.updateLocks({
   getPersonSpec: () => '',
 });
 assert.strictEqual(buttons['#dhNsaAdGenerateShotVideos'].disabled, false);
+context.window.NewStoryAdButtonState.updateLocks({ state: boundaryGapState, within: selector => buttons[selector] || null, getPersonSpec: () => '' });
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, true, 'missing cross-unit QA must disable final composition');
 context.window.NewStoryAdButtonState.updateLocks({ state: retryReadyState, within: selector => buttons[selector] || null, getPersonSpec: () => '' });
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, false);
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].classList.contains('is-next'), true);
@@ -106,7 +115,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('20260722-compose-retry-v1'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('20260722-boundary-closure-v1'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -173,7 +182,8 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-compose-retry-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-boundary-closure-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
 const failedComposeTask = { status: 'failed', stage: 'compose_failed', error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1' };

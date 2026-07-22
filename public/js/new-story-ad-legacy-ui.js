@@ -2054,9 +2054,13 @@
     }
     const kf = keyframeStatus();
     const total = Math.max(Number(kf.total || 0), state.shots.length || 0);
-    const passed = Number(kf.fresh_pass || 0);
-    const ready = total > 0 && total === state.shots.length && passed === total && Number(kf.needs_regeneration || 0) === 0;
-    return { ready, total, passed, message: ready ? '' : `当前版本仅通过 ${passed}/${total} 镜，请先修复未通过审核的镜头` };
+    const framePassed = Number(kf.fresh_pass || 0);
+    const clips = state.shots.map((_, index) => videoClipAt(index));
+    const passed = clips.filter(clip => (clip.video_url || clip.videoUrl || clip.file_path) && !clip.error && !clip.error_code && clip.qa?.pass === true).length;
+    const boundaries = window.NewStoryAdVideoBoundaries?.audit?.(clips, total) || { ready: total <= 1 || clips.slice(1).every(clip => clip.cross_shot_qa?.pass === true), total: Math.max(0, total - 1), passed: clips.slice(1).filter(clip => clip.cross_shot_qa?.pass === true).length, unready_indexes: [] };
+    const ready = total > 0 && total === state.shots.length && framePassed === total && passed === total && boundaries.ready && Number(kf.needs_regeneration || 0) === 0;
+    const message = framePassed < total ? `当前版本仅通过 ${framePassed}/${total} 镜关键帧，请先修复未通过审核的镜头` : (passed < total ? `当前仅有 ${passed}/${total} 镜单镜质检通过` : (!boundaries.ready ? `仍有 ${boundaries.unready_indexes.length} 个跨生成单元衔接未审核` : ''));
+    return { ready, total, passed, boundaries, message };
   }
 
   function videoClipAt(index) {
@@ -3424,7 +3428,7 @@
         : (restoring
         ? '正在恢复任务数据'
         : (compose.total
-        ? `${compose.passed}/${compose.total} 镜当前版本审核通过`
+        ? `${compose.passed}/${compose.total} 镜单镜审核通过${compose.boundaries?.total ? ` · 跨单元衔接 ${compose.boundaries.passed}/${compose.boundaries.total}` : ''}`
         : '尚未生成真实分镜'));
     }
     if (progressHint) {
@@ -3439,7 +3443,7 @@
     if (gate) {
       const failed = mediaFailed && state.taskError;
       const actionReady = composeView.action_ready && !finalUrl;
-      gate.hidden = !restoreFailed && !restoring && !actionReady && !failed;
+      gate.hidden = !restoreFailed && !restoring && !actionReady && !failed && !compose.message;
       gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}`;
       gate.innerHTML = restoreFailed
         ? `<b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span>`

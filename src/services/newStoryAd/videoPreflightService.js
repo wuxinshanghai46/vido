@@ -1,9 +1,10 @@
 const revisionService = require('./revisionService');
 const sceneBlockService = require('./sceneBlockService');
 const contractFreshness = require('./keyframeContractFreshnessService');
+const boundaryPolicy = require('./videoBoundaryPolicyService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v2';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v3';
 
 function text(value = '') {
   return String(value || '').trim();
@@ -172,16 +173,30 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
   };
 }
 
+function applyMissingBoundaryReviews(plans = [], clips = [], shotCount = plans.length) {
+  const missing = new Set(boundaryPolicy.audit(clips, shotCount).missing_indexes);
+  return plans.map(item => {
+    const clip = clips[item.index] || {};
+    if (item.action !== 'reuse' || !missing.has(item.index) || !clipHasMedia(clip) || clip.qa?.pass !== true) return item;
+    return {
+      ...item,
+      action: 'review_only', review_scope: 'cross_shot', paid: false,
+      label: '补查相邻镜头衔接（不重新生成）',
+      changes: ['保留现有视频，补查上一生成单元尾帧与当前生成单元首帧，不重新调用视频生成模型'],
+    };
+  });
+}
+
 /** 将通用生成单元转换为质量模式的前端预检明细。 */
 function qualityPlan({ shots, reconciledShots, keyframes, contracts, clips, statuses, sceneBlocks }) {
-  const basePlans = reconciledShots.map((shot, index) => economyShotPlan({
+  const basePlans = applyMissingBoundaryReviews(reconciledShots.map((shot, index) => economyShotPlan({
     shot: shots[index] || shot,
     keyframe: keyframes[index] || {},
     contract: contracts[index] || {},
     clip: clips[index] || {},
     status: statuses[index] || {},
     index,
-  }));
+  })), clips, reconciledShots.length);
   const paidBlockIds = new Set(basePlans
     .filter(item => item.action === 'provider_generate')
     .map(item => sceneBlockService.blockForIndex(sceneBlocks, item.index)?.id)
@@ -262,14 +277,14 @@ function buildVideoPreflight({
       shots, reconciledShots, keyframes, contracts, clips, statuses, sceneBlocks,
     }));
   } else {
-    shotPlans = reconciledShots.map((shot, index) => economyShotPlan({
+    shotPlans = applyMissingBoundaryReviews(reconciledShots.map((shot, index) => economyShotPlan({
       shot: shots[index] || shot,
       keyframe: keyframes[index] || {},
       contract: contracts[index] || {},
       clip: clips[index] || {},
       status: statuses[index] || {},
       index,
-    }));
+    })), clips, reconciledShots.length);
     const requested = Array.isArray(onlyIndexes)
       ? new Set(onlyIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0 && index < reconciledShots.length))
       : null;

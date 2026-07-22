@@ -24,7 +24,7 @@ const frame = (index, presence, manual = false) => ({
   qa: { pass: true, manual_override: manual, person: { person_presence: presence } },
 });
 const keyframes = [frame(0, 'person'), frame(1, 'person'), frame(2, 'partial', true), frame(3, 'none', true), frame(4, 'person'), frame(5, 'partial')];
-const media = index => ({ video_url: `/video-${index + 1}.mp4`, lineage_fingerprint: `lineage-${index + 1}` });
+const media = index => ({ video_url: `/video-${index + 1}.mp4`, lineage_fingerprint: `lineage-${index + 1}`, cross_shot_qa: { pass: true } });
 const clips = [
   { ...media(0), qa: { pass: false, failure_dimensions: ['person_identity', 'action_fulfillment'] }, error_code: 'VIDEO_FRAME_QA_FAILED' },
   { ...media(1), qa: { pass: true } },
