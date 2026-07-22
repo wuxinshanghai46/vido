@@ -129,14 +129,22 @@ function evidenceError(index = 0, cause = null) {
 }
 
 /** Backfill reused boundary clips locally before any paid provider submission. */
-async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetIndexes = [] } = {}) {
-  const next = Array.isArray(clips) ? clips.slice() : [];
+function boundaryEvidenceIndexes({ clips = [], targetIndexes = [], includeTargetIndexes = [] } = {}) {
+  const count = Array.isArray(clips) ? clips.length : 0;
   const targets = new Set((Array.isArray(targetIndexes) ? targetIndexes : [])
     .map(Number).filter(index => Number.isInteger(index) && index >= 0));
-  const boundaryIndexes = [...targets]
-    .filter(index => index > 0 && !targets.has(index - 1))
-    .map(index => index - 1)
-    .sort((a, b) => a - b);
+  const included = new Set((Array.isArray(includeTargetIndexes) ? includeTargetIndexes : [])
+    .map(Number).filter(index => targets.has(index) && index < count));
+  for (const index of targets) {
+    if (index > 0 && index - 1 < count && !targets.has(index - 1)) included.add(index - 1);
+    if (index + 1 < count && !targets.has(index + 1)) included.add(index + 1);
+  }
+  return [...included].sort((a, b) => a - b);
+}
+
+async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetIndexes = [], includeTargetIndexes = [] } = {}) {
+  const next = Array.isArray(clips) ? clips.slice() : [];
+  const boundaryIndexes = boundaryEvidenceIndexes({ clips: next, targetIndexes, includeTargetIndexes });
   const backfilledIndexes = [];
   for (const index of boundaryIndexes) {
     const clip = next[index] || {};
@@ -441,6 +449,7 @@ module.exports = {
   extractReviewFrames,
   frameEvidenceUsable,
   hasReviewFrameEvidence,
+  boundaryEvidenceIndexes,
   ensureBoundaryFrameEvidence,
   reviewDecision,
   expectedPeopleForShot,

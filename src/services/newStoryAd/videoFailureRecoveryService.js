@@ -10,6 +10,15 @@ function restorePreviousClips({ clips = [], previousClips = [], indexes = [] } =
   return clips;
 }
 
+/** 供应商失败或单镜 QA 失败才回滚；相邻交接失败必须保留已付费且单镜合格的新产物。 */
+function shouldRestoreUnitFailure({ generationError = null, unitIndexes = [], qaFailures = [] } = {}) {
+  if (generationError) return true;
+  const members = new Set((Array.isArray(unitIndexes) ? unitIndexes : []).map(Number));
+  return (Array.isArray(qaFailures) ? qaFailures : []).some(failure => (
+    members.has(Number(failure?.index)) && String(failure?.kind || '') !== 'cross_shot_qa'
+  ));
+}
+
 function recordFailedCandidates({ storage, taskId = '', options = {}, unitIndexes = [], clips = [], qaFailures = [] } = {}) {
   if (!qaFailures.length) return;
   const history = Array.isArray(storage.getOutput(taskId, 'video_failed_candidates')) ? storage.getOutput(taskId, 'video_failed_candidates') : [];
@@ -37,4 +46,4 @@ function restoreUnitFailure({ storage, videoAdapter, taskId = '', clips = [], pr
   return indexes;
 }
 
-module.exports = { rollbackIndexes, restorePreviousClips, recordFailedCandidates, restoreUnitFailure };
+module.exports = { rollbackIndexes, restorePreviousClips, shouldRestoreUnitFailure, recordFailedCandidates, restoreUnitFailure };

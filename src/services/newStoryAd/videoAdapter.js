@@ -908,7 +908,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     file_exists: false,
     video_url: '',
     qa_status: '',
-    qa_problems: [],
+    qa_problems: [], previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false,
     error: '',
     error_code: '',
     repair_attempt: Number(options._repairAttempt || 0),
@@ -1147,7 +1147,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       provider_task_id: resumeProviderTaskId, provider_status: resumeProviderTaskId ? 'resume_pending' : '',
       resume_provider_task_id: resumeProviderTaskId, resumed_after_interruption: !!resumeProviderTaskId,
       ...videoAttemptState.queuedProviderState(previousStatus, resumeProviderTaskId),
-      file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '',
+      file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '', previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false,
       repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
       lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
     }, list.length);

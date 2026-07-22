@@ -2676,7 +2676,7 @@ async function generateVideoStage(taskId, options = {}) {
       else videoArtifactWorkflow.finishUnitAttempts({ ledger: videoAttemptLedger, taskId, claims: attemptClaims, clips, statusFor: index => videoAdapter.listVideoShotStatuses(taskId, shots.length)[index] || {} });
       if (generationError || unitQaFailures.length) {
         videoFailureRecovery.recordFailedCandidates({ storage, taskId, options, unitIndexes, clips, qaFailures: unitQaFailures });
-        videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips, unitIndexes, remainingUnits, totalShots: shots.length });
+        if (videoFailureRecovery.shouldRestoreUnitFailure({ generationError, unitIndexes, qaFailures: unitQaFailures })) videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips, unitIndexes, remainingUnits, totalShots: shots.length });
         if (generationError) {
           videoCostAuthorization.transition(taskId, 'failed', { failure_code: generationError.code || 'VIDEO_PROVIDER_FAILED' });
           generationError.partial_video_clips = clips.slice();

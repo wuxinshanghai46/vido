@@ -7,14 +7,12 @@ async function prepareRequiredBoundaryEvidence(taskId, preflightPlan = {}) {
   let clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
     ? storage.getOutput(taskId, 'video_clips')
     : [];
-  const targetIndexes = [...new Set((preflightPlan.units || [])
-    .filter(unit => unit.paid !== false)
-    .flatMap(unit => unit.member_indexes || []).concat(
-      (preflightPlan.shots || []).filter(item => item.action === 'review_only' && item.review_scope === 'cross_shot').map(item => item.index),
-    ))];
+  const paidIndexes = (preflightPlan.units || []).filter(unit => unit.paid !== false).flatMap(unit => unit.member_indexes || []);
+  const reviewIndexes = (preflightPlan.shots || []).filter(item => item.action === 'review_only' && item.review_scope === 'cross_shot').map(item => item.index);
+  const targetIndexes = [...new Set(paidIndexes.concat(reviewIndexes))];
   if (!targetIndexes.length) return clips;
   try {
-    const evidence = await videoFrameQa.ensureBoundaryFrameEvidence({ taskId, clips, targetIndexes });
+    const evidence = await videoFrameQa.ensureBoundaryFrameEvidence({ taskId, clips, targetIndexes, includeTargetIndexes: reviewIndexes });
     clips = evidence.clips;
     if (evidence.backfilled_indexes.length) storage.saveOutput(taskId, 'video_clips', clips);
     return clips;

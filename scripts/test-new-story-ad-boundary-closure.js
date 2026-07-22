@@ -15,6 +15,7 @@ const preflight = require('../src/services/newStoryAd/videoPreflightService');
 const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairService');
 const boundaryGeneration = require('../src/services/newStoryAd/videoBoundaryGenerationService');
 const videoFailureRecovery = require('../src/services/newStoryAd/videoFailureRecoveryService');
+const videoFrameQa = require('../src/services/newStoryAd/videoFrameQaService');
 
 const clip = (index, block, cross = undefined) => ({
   shot_index: index,
@@ -32,6 +33,8 @@ async function main() {
   assert.deepStrictEqual(audit.missing_indexes, [3], 'the first clip of a new generation unit must have an explicit boundary verdict');
   assert.deepStrictEqual(boundaries.requiredBoundaryIndexes(clips, [3]), [3], 'a successful shot re-review must schedule its previous cross-unit boundary');
   assert.deepStrictEqual(boundaries.requiredBoundaryIndexes(clips, [2]), [3], 're-reviewing the previous shot must also schedule the following cross-unit boundary');
+  assert.deepStrictEqual(videoFrameQa.boundaryEvidenceIndexes({ clips: Array(6).fill({}), targetIndexes: [4] }), [3, 5], 'scoped paid generation must prefill both reused neighbors before provider submission');
+  assert.deepStrictEqual(videoFrameQa.boundaryEvidenceIndexes({ clips: Array(6).fill({}), targetIndexes: [5], includeTargetIndexes: [5] }), [4, 5], 'review-only recovery must prefill the reused target itself and its previous neighbor');
 
   const shots = Array.from({ length: 4 }, (_, index) => ({ index: index + 1, title: `镜头 ${index + 1}`, duration: 5, scene_id: 'scene-a', visual: `画面 ${index + 1}`, action: '轻微动作' }));
   const keyframes = shots.map((_, index) => ({ image_url: `/frame-${index + 1}.jpg`, qa: { pass: true, person: { person_presence: 'none' } } }));
@@ -138,6 +141,10 @@ async function main() {
   });
   assert.deepStrictEqual(recoveredClips, ['old-approved']);
   assert.strictEqual(recoveryWrites[0].patch.last_attempt_billing_state, 'confirmed', 'QA rollback must not rewrite an already billed success as not_submitted');
+  assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ generationError: new Error('provider failed'), unitIndexes: [4], qaFailures: [] }), true);
+  assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ unitIndexes: [4], qaFailures: [{ index: 4, kind: 'frame_qa' }] }), true, 'single-shot QA failure must still restore the previous approved clip');
+  assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ unitIndexes: [4], qaFailures: [{ index: 4, kind: 'cross_shot_qa' }] }), false, 'an upstream boundary failure must preserve the newly paid single-shot success');
+  assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ unitIndexes: [4], qaFailures: [{ index: 5, kind: 'cross_shot_qa' }] }), false, 'a downstream boundary failure must not overwrite the newly paid single-shot success');
 
   const partialToFullKeyframes = keyframes.map((item, index) => index === 2
     ? { ...item, qa: { pass: true, person: { person_presence: 'partial' } } }

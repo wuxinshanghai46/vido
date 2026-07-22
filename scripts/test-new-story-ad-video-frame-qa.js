@@ -169,6 +169,8 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.deepStrictEqual(backfilled.backfilled_indexes, [0]);
   assert.strictEqual(backfilled.clips[0].qa.frames.length, 5);
   assert.strictEqual(videoQa.hasReviewFrameEvidence(backfilled.clips[0].qa), true);
+  assert.deepStrictEqual(videoQa.boundaryEvidenceIndexes({ clips: [{}, {}, {}, {}, {}, {}], targetIndexes: [4] }), [3, 5]);
+  assert.deepStrictEqual(videoQa.boundaryEvidenceIndexes({ clips: [{}, {}, {}, {}, {}, {}], targetIndexes: [5], includeTargetIndexes: [5] }), [4, 5]);
 
   let invalidEvidenceGatewayCalls = 0;
   const invalidEvidence = await videoQa.reviewCrossShot({
