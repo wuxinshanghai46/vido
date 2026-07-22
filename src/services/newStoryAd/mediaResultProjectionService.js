@@ -233,9 +233,10 @@ function projectShot({ index = 0, clips = [], statuses = [], task = {}, total = 
     ...currentBilling,
   };
 
-  const hasLastAttempt = restored
-    || !!(rawStatus.last_attempt_provider_task_id || rawStatus.last_attempt_provider_submission_state || rawStatus.last_attempt_billing_state)
-    || rawStatus.last_attempt_status === 'failed';
+  const lastAttemptStatus = text(rawStatus.last_attempt_status).toLowerCase();
+  const hasLastAttempt = ['failed', 'review_required', 'cancelled'].includes(lastAttemptStatus)
+    || !!rawStatus.last_attempt_error_code
+    || (restored && !!rawStatus.error_code);
   let lastAttempt = null;
   if (hasLastAttempt) {
     const code = text(rawStatus.last_attempt_error_code || rawStatus.error_code || taskFailure?.code);

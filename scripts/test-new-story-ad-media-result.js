@@ -219,6 +219,26 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
   assert.strictEqual(legacy.shot_results[0].state, 'passed');
 }
 
+// 仅有历史供应商/计费字段但没有失败状态或错误码，不能被误报成“最近一次失败”。
+{
+  const successfulHistory = result({
+    count: 1,
+    clips: [passedClip(0, { provider_task_id: 'provider-success', billing_state: 'confirmed' })],
+    statuses: [{
+      ...passedStatus(0),
+      last_attempt_provider_task_id: 'provider-success',
+      last_attempt_provider_submission_state: 'completed',
+      last_attempt_billing_state: 'confirmed',
+      last_attempt_status: '',
+      last_attempt_error_code: '',
+    }],
+  });
+  assert.deepStrictEqual(successfulHistory.last_attempt_failed_shots, []);
+  assert.strictEqual(successfulHistory.shot_results[0].last_attempt, null);
+  assert.strictEqual(successfulHistory.outcome, 'ready_to_compose');
+  assert.strictEqual(successfulHistory.compose.status, 'ready');
+}
+
 // DOM 片段必须使用结构化结果并转义用户可控文本。
 {
   const media = result({ count: 1 });
