@@ -6,6 +6,7 @@ const vm = require('vm');
 
 const { projectVideoGenerationUnits } = require('../src/services/newStoryAd/videoGenerationUnitProjection');
 const { terminalGenerationProgress } = require('../src/services/newStoryAd/jobService');
+const videoReview = require('../public/js/new-story-ad/video-review');
 
 function shot(index, block, members, lifecycle, extra = {}) {
   return {
@@ -122,10 +123,20 @@ function testCrossStageTerminalizationIsGenerationSafe() {
   assert.strictEqual(stale, null, '旧 generation 收尾不得覆盖新 generation');
 }
 
+function testRecoveryEntryUsesScopedEconomyMode() {
+  assert.strictEqual(videoReview.generationModeForEntry([]), 'quality', 'a first generation must preserve continuous quality planning');
+  assert.strictEqual(videoReview.generationModeForEntry([{ video_url: '/existing.mp4', qa: { pass: false } }]), 'economy', 'an existing-video recovery must expose exact per-shot selection');
+  assert.strictEqual(videoReview.generationModeForEntry([{ file_path: '/existing.mp4', error_code: 'VIDEO_QA_FAILED' }]), 'economy', 'a failed persisted clip must not be expanded back into an old quality block');
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+  assert(source.includes('generationModeForEntry?.(state.videoClips)'), 'the main user entry must route recovery tasks through exact economy preflight');
+  assert(source.includes('rememberVideoAuthorization(confirmed, mode)'), 'the confirmed recovery mode must be bound to the submitted authorization');
+}
+
 (async () => {
   testGenerationUnitProjection();
   await testMediaImmediatelyOwnsStepFive();
   testCrossStageTerminalizationIsGenerationSafe();
+  testRecoveryEntryUsesScopedEconomyMode();
   console.log('new story ad video UX semantics: ok');
 })().catch(error => {
   console.error(error);

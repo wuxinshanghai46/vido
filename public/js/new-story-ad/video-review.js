@@ -26,6 +26,12 @@
     return [...new Set(values.filter(value => value !== null && value !== undefined && String(value).trim() !== ''))];
   }
 
+  function generationModeForEntry(clips = []) {
+    return (Array.isArray(clips) ? clips : []).some(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)
+      ? 'economy'
+      : 'quality';
+  }
+
   function unitMembers(unit = {}) {
     if (Array.isArray(unit.shots) && unit.shots.length) {
       return unique(unit.shots.map(Number).filter(value => Number.isInteger(value) && value > 0)).sort((a, b) => a - b);
@@ -287,6 +293,7 @@
 
   const api = {
     P0_DIMENSIONS,
+    generationModeForEntry,
     unitMembers,
     failureDimensions,
     isP0Failure,

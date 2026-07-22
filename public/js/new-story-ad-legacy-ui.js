@@ -6114,9 +6114,10 @@
         dhNsaAdGenerateShotVideos: async () => {
           setButtonBusy(btn, true, '正在准备整条广告方案...');
           try {
-            const confirmed = await confirmVideoPreflight('quality');
+            const mode = window.NewStoryAdVideoReview?.generationModeForEntry?.(state.videoClips) || 'quality';
+            const confirmed = await confirmVideoPreflight(mode);
             if (!confirmed) return false;
-            rememberVideoAuthorization(confirmed, 'quality');
+            rememberVideoAuthorization(confirmed, mode);
             return await runStage('media', btn);
           } finally {
             clearVideoAuthorization();
