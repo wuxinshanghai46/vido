@@ -10,8 +10,7 @@ const { reviewStoryboard } = require('./qualityReviewService');
 const { buildKeyframeContracts } = require('./keyframeContractService');
 const { withContinuityContracts } = require('./continuityService');
 const diagnostics = require('./diagnosticsService');
-const mediaAdapter = require('./mediaAdapter');
-const ttsAdapter = require('./ttsAdapter');
+const mediaAdapter = require('./mediaAdapter'), ttsAdapter = require('./ttsAdapter'), ttsReuse = require('./ttsReuseService');
 const videoAdapter = require('./videoAdapter');
 const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
@@ -2228,6 +2227,7 @@ async function generateTtsStage(taskId, options = {}) {
     storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
     return { tts_audio, skipped: true };
   }
+  const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
   const tts_audio = await ttsAdapter.generateVoiceover({
     taskId,
     shots,
@@ -2420,7 +2420,7 @@ async function generateVideoStage(taskId, options = {}) {
   };
   storage.saveOutput(taskId, 'context', persistedCtx);
   const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
-  const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
+  const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId);
   if (visualOnly) {
     ttsAudio = silentTtsOutput('visual_only_storyboard_video');
   } else if (!includeVoiceover) {
@@ -3266,7 +3266,7 @@ async function composeStage(taskId, options = {}) {
   let ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const composeVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const includeVoiceover = voiceoverEnabled(options, ctx, composeVoiceId);
-  if (includeVoiceover && !ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, composeVoiceId)) {
+  if (includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, composeVoiceId)) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
     ctx = storage.getOutput(taskId, 'context') || ctx;

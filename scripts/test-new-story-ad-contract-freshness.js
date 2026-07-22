@@ -11,6 +11,7 @@ process.env.DB_ENABLED = '0';
 const service = require('../src/services/newStoryAd/storyAdService');
 const storage = require('../src/services/newStoryAd/storageService');
 const freshness = require('../src/services/newStoryAd/keyframeContractFreshnessService');
+const ttsAdapter = require('../src/services/newStoryAd/ttsAdapter');
 const { buildKeyframeContracts, contractFingerprint } = require('../src/services/newStoryAd/keyframeContractService');
 
 function context(characterName) {
@@ -301,6 +302,44 @@ async function testPreProviderFailureVoidsAuthorization() {
   assert.strictEqual(storage.getTaskBundle(taskId).model_calls.length, beforeCalls, '供应商前失败不得产生模型调用');
 }
 
+async function testMatchingTtsIsReusedBeforeProviderCall() {
+  const storyboard = [{ ...shots(1)[0], voiceover: '现有配音必须直接复用' }];
+  const ctx = context('配音复用');
+  const taskId = createStoredTask('tts-reuse-before-provider', ctx, storyboard);
+  const contracts = buildKeyframeContracts(ctx, storyboard);
+  storage.saveOutput(taskId, 'keyframe_contracts', contracts);
+  storage.saveOutput(taskId, 'keyframes', [{
+    image_url: 'https://example.test/tts-reuse-frame.png',
+    contract_fingerprint: contracts[0].contract_fingerprint,
+    contract_compiler_signature: contracts[0].contract_compiler_signature,
+    contract: contracts[0],
+    current_generation_status: 'accepted',
+    qa_policy_version: 2,
+    qa: { pass: true, status: 'accepted', person: { pass: true, status: 'verified' }, product: { pass: true, status: 'verified' } },
+  }]);
+  fs.mkdirSync(ttsAdapter.AUDIO_DIR, { recursive: true });
+  const audioPath = path.join(ttsAdapter.AUDIO_DIR, 'existing-voice.wav');
+  fs.writeFileSync(audioPath, 'existing-audio-evidence');
+  const existing = {
+    voice_id: 'voice-a',
+    provider_used: 'existing/provider',
+    tracks: [{ text: '现有配音必须直接复用', file_path: audioPath }],
+  };
+  storage.saveOutput(taskId, 'tts_audio', existing);
+  const originalGenerateVoiceover = ttsAdapter.generateVoiceover;
+  let providerCalls = 0;
+  ttsAdapter.generateVoiceover = async () => { providerCalls += 1; throw new Error('不应调用配音供应商'); };
+  try {
+    const result = await service.generateTtsStage(taskId, { voice_id: 'voice-a', include_voiceover: true });
+    assert.strictEqual(result.reused, true);
+    assert.strictEqual(result.skipped, true);
+    assert.strictEqual(providerCalls, 0, '相同脚本、音色和有效音频文件不得重复调用配音供应商');
+    assert.deepStrictEqual(storage.getOutput(taskId, 'tts_audio'), existing, '复用不得覆盖已有配音证据');
+  } finally {
+    ttsAdapter.generateVoiceover = originalGenerateVoiceover;
+  }
+}
+
 (async () => {
   try {
     testSemanticChangeInvalidatesEveryAffectedFrame();
@@ -310,6 +349,7 @@ async function testPreProviderFailureVoidsAuthorization() {
     await testAuditAndTransportDriftIsGloballyNonSemantic();
     testVideoPreflightBlocksWithoutMutatingExistingMedia();
     await testPreProviderFailureVoidsAuthorization();
+    await testMatchingTtsIsReusedBeforeProviderCall();
     console.log('new-story-ad contract freshness tests passed');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

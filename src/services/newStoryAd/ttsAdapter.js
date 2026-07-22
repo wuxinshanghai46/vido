@@ -91,6 +91,27 @@ function voiceoverPlanMatches(ttsAudio = {}, shots = [], voiceId = '') {
   ));
 }
 
+function voiceoverFilesReady(ttsAudio = {}) {
+  const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : [];
+  if (!tracks.length) return false;
+  return tracks.every(track => {
+    if (track?.file_path && fs.existsSync(track.file_path)) return true;
+    const raw = String(track?.audio_url || track?.audioUrl || track?.url || '').trim().split('?')[0];
+    const prefix = '/api/new-story-ad/audio/';
+    if (!raw.startsWith(prefix)) return false;
+    try {
+      const filePath = audioPathFromName(decodeURIComponent(raw.slice(prefix.length)));
+      return !!filePath && fs.existsSync(filePath);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function voiceoverReady(ttsAudio = {}, shots = [], voiceId = '') {
+  return voiceoverPlanMatches(ttsAudio, shots, voiceId) && voiceoverFilesReady(ttsAudio);
+}
+
 function wavHeader({ sampleRate, channels, bitsPerSample, dataBytes }) {
   const blockAlign = channels * bitsPerSample / 8;
   const byteRate = sampleRate * blockAlign;
@@ -247,6 +268,8 @@ module.exports = {
   speechMode,
   shotSpeechText,
   voiceoverPlanMatches,
+  voiceoverFilesReady,
+  voiceoverReady,
   generateShotAudio,
   generateVoiceover,
 };

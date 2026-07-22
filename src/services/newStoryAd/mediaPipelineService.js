@@ -11,6 +11,7 @@ function voiceoverPlanIsReady(taskId = '', voiceId = '', storage = defaultStorag
     ? storage.getOutput(taskId, 'storyboard_table')
     : [];
   const ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
+  if (typeof ttsAdapter.voiceoverReady === 'function') return ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId);
   return ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
 }
 
