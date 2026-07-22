@@ -247,7 +247,7 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
   inputs.forEach(input => args.push('-i', input));
   const filters = [];
   inputs.forEach((_, index) => {
-    filters.push(`[${index}:v]settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v${index}]`);
+    filters.push(`[${index}:v]fps=30,settb=AVTB,setpts=PTS-STARTPTS,format=yuv420p[v${index}]`);
     filters.push(`[${index}:a]aresample=44100,asetpts=PTS-STARTPTS[a${index}]`);
   });
   let videoLabel = 'v0';
@@ -259,13 +259,35 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
     const nextVideo = `vj${index}`;
     const nextAudio = `aj${index}`;
     if (overlap > 0) {
-      const xfade = row.execution === 'fade_black' ? 'fadeblack' : 'fade';
       const offset = Math.max(0, timeline - overlap);
-      filters.push(`[${videoLabel}][v${index}]xfade=transition=${xfade}:duration=${overlap.toFixed(3)}:offset=${offset.toFixed(3)}[${nextVideo}]`);
+      const previousHead = `vhead${index}`;
+      const previousTail = `vtail${index}`;
+      const previousVisible = `vpre${index}`;
+      const outgoing = `vout${index}`;
+      const incomingHead = `vinhead${index}`;
+      const incomingTail = `vintail${index}`;
+      const incoming = `vin${index}`;
+      const incomingVisible = `vpost${index}`;
+      const blended = `vblend${index}`;
+      const rawVideo = `vraw${index}`;
+      const blendExpression = row.execution === 'fade_black'
+        ? `if(lt(T,${(overlap / 2).toFixed(6)}),A*(1-T/${(overlap / 2).toFixed(6)}),B*((T-${(overlap / 2).toFixed(6)})/${(overlap / 2).toFixed(6)}))`
+        : `A*(1-T/${overlap.toFixed(6)})+B*(T/${overlap.toFixed(6)})`;
+      filters.push(`[${videoLabel}]split=2[${previousHead}][${previousTail}]`);
+      filters.push(`[${previousHead}]trim=start=0:end=${offset.toFixed(3)},setpts=PTS-STARTPTS[${previousVisible}]`);
+      filters.push(`[${previousTail}]trim=start=${offset.toFixed(3)}:end=${timeline.toFixed(3)},setpts=PTS-STARTPTS[${outgoing}]`);
+      filters.push(`[v${index}]split=2[${incomingHead}][${incomingTail}]`);
+      filters.push(`[${incomingHead}]trim=start=0:end=${overlap.toFixed(3)},setpts=PTS-STARTPTS[${incoming}]`);
+      filters.push(`[${incomingTail}]trim=start=${overlap.toFixed(3)},setpts=PTS-STARTPTS[${incomingVisible}]`);
+      filters.push(`[${outgoing}][${incoming}]blend=all_expr='${blendExpression}'[${blended}]`);
+      filters.push(`[${previousVisible}][${blended}][${incomingVisible}]concat=n=3:v=1:a=0[${rawVideo}]`);
+      filters.push(`[${rawVideo}]fps=30,settb=AVTB,setpts=PTS-STARTPTS[${nextVideo}]`);
       filters.push(`[${audioLabel}][a${index}]acrossfade=d=${overlap.toFixed(3)}:c1=tri:c2=tri[${nextAudio}]`);
       timeline += Number(durations[index] || 0) - overlap;
     } else {
-      filters.push(`[${videoLabel}][v${index}]concat=n=2:v=1:a=0[${nextVideo}]`);
+      const rawVideo = `vraw${index}`;
+      filters.push(`[${videoLabel}][v${index}]concat=n=2:v=1:a=0[${rawVideo}]`);
+      filters.push(`[${rawVideo}]fps=30,settb=AVTB,setpts=PTS-STARTPTS[${nextVideo}]`);
       filters.push(`[${audioLabel}][a${index}]concat=n=2:v=0:a=1[${nextAudio}]`);
       timeline += Number(durations[index] || 0);
     }

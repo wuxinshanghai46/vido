@@ -38,6 +38,44 @@ const runFfmpeg = promisify(execFile);
     const duration = await videoAdapter.probeDuration(result.file_path);
     assert(duration > 3.45 && duration < 3.85, `dissolve should overlap the two clips, got ${duration}`);
 
+    const fadeResult = await composeService.concatVideos({
+      taskId: 'compose-fade-black-transition-test',
+      clips: [
+        { shot_index: 0, file_path: first },
+        { shot_index: 1, file_path: second },
+      ],
+      transitions: [
+        { transition_type: 'none' },
+        { transition_type: 'fade', transition_reason: 'authored fade test transition' },
+      ],
+    });
+    assert.ok(fs.existsSync(fadeResult.file_path));
+    assert.strictEqual(fadeResult.transition_plan[1].execution, 'fade_black');
+
+    const mixedFrameRateClips = [];
+    const mixedSpecs = [[24, 1.042], [30, 1], [24, 1.042], [30, 1]];
+    for (const [index, [fps, sourceDuration]] of mixedSpecs.entries()) {
+      const filePath = path.join(tempDir, `mixed-${index + 1}-${fps}fps.mp4`);
+      await runFfmpeg(ffmpegPath, ['-y', '-f', 'lavfi', '-i', `testsrc2=s=320x180:r=${fps}:d=${sourceDuration}`, '-vf', `hue=h=${index * 30}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', filePath]);
+      mixedFrameRateClips.push({ shot_index: index, file_path: filePath });
+    }
+    const mixedSourceDurations = await Promise.all(mixedFrameRateClips.map(clip => videoAdapter.probeDuration(clip.file_path)));
+    const mixedResult = await composeService.concatVideos({
+      taskId: 'compose-mixed-frame-rate-transition-test',
+      clips: mixedFrameRateClips,
+      transitions: [
+        { transition_type: 'none' },
+        { transition_type: 'hard_cut' },
+        { transition_type: 'hard_cut' },
+        { transition_type: 'dissolve' },
+      ],
+    });
+    assert.ok(fs.existsSync(mixedResult.file_path));
+    assert.strictEqual(mixedResult.transition_plan[3].execution, 'dissolve');
+    const mixedDuration = await videoAdapter.probeDuration(mixedResult.file_path);
+    const expectedMixedDuration = mixedSourceDurations.reduce((sum, value) => sum + value, 0) - 0.35;
+    assert(Math.abs(mixedDuration - expectedMixedDuration) < 0.2, `mixed 24/30 fps clips with hard cuts before dissolve must preserve the authored timeline, expected ${expectedMixedDuration}, got ${mixedDuration}`);
+
     const continuousPlan = composeService.buildTransitionPlan([
       { scene_block_id: 'one-source', scene_block_members: [1, 2] },
       { scene_block_id: 'one-source', scene_block_members: [1, 2] },
