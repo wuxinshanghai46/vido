@@ -2126,9 +2126,7 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
       failures.push(`第 ${index + 1} 镜仍是旧版视觉 QA 结果，请按新规则重新生成并验证`);
       continue;
     }
-    const currentFingerprint = contracts[index]?.contract_fingerprint || '';
-    const frameFingerprint = frame.contract_fingerprint || frame.contract?.contract_fingerprint || '';
-    if (!currentFingerprint || frameFingerprint !== currentFingerprint || frame.contract_outdated === true) {
+    if (!keyframeContractFreshness.artifactMatchesContract(frame, contracts[index] || {})) {
       failures.push(`第 ${index + 1} 镜的画面与当前镜头合同不一致，请重新生成`);
       continue;
     }
@@ -2550,6 +2548,9 @@ async function generateVideoStage(taskId, options = {}) {
       clips[index] = null;
       return;
     }
+    if (planned.action === 'reuse' && videoLineage.clipHasMediaFile(clips[index]) && videoLineage.qaApproved(clips[index])) {
+      return;
+    }
     if (planned.action === 'provider_generate' && videoLineage.clipHasMediaFile(clips[index]) && (planned.changes || []).length) {
       initialIndexes.push(index);
       clips[index] = null;
@@ -2839,6 +2840,7 @@ function acceptVideoClipOverride(taskId, shotIndex, input = {}, user = {}) {
 function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, candidate, options = {}) {
   const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
   const currentFingerprint = contracts[index]?.contract_fingerprint || '';
+  const currentCompilerSignature = keyframeContractFreshness.signatureOf(contracts[index] || {});
   if (!currentFingerprint) {
     const error = new Error('当前镜头生成约束不存在，请先重新生成分镜合同');
     error.code = 'KEYFRAME_CONTRACT_REQUIRED';
@@ -2853,8 +2855,8 @@ function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, ca
   const acceptedCandidate = {
     ...candidate,
     qa: acceptedQa,
-    qa_policy_version: 2,
-    contract_fingerprint: currentFingerprint,
+    qa_policy_version: 2, contract_fingerprint: currentFingerprint,
+    contract_compiler_signature: currentCompilerSignature,
     status: acceptedStatus,
     ...(manualAcceptance ? { manual_acceptance: manualAcceptance } : {}),
   };
@@ -2869,7 +2871,7 @@ function finalizeKeyframeCandidateAcceptance(taskId, index, keyframes, frame, ca
     qa: acceptedQa,
     qa_policy_version: 2,
     contract_fingerprint: currentFingerprint,
-    contract_outdated: false,
+    contract_compiler_signature: currentCompilerSignature, contract_outdated: false,
     contract_outdated_reason: '',
     provider_used: candidate.provider_used || frame.provider_used,
     selected_candidate_id: candidate.id,
@@ -2946,8 +2948,7 @@ function selectKeyframeCandidate(taskId, shotIndex, candidateId) {
     throw error;
   }
   const contracts = Array.isArray(storage.getOutput(taskId, 'keyframe_contracts')) ? storage.getOutput(taskId, 'keyframe_contracts') : [];
-  const currentFingerprint = contracts[index]?.contract_fingerprint || '';
-  if (!currentFingerprint || candidate.contract_fingerprint !== currentFingerprint) {
+  if (!keyframeContractFreshness.artifactMatchesContract(candidate, contracts[index] || {})) {
     const error = new Error('该候选与当前镜头信息或生成约束不一致，请重新生成本镜头');
     error.code = 'KEYFRAME_CANDIDATE_CONTRACT_OUTDATED';
     error.status = 422;
@@ -3042,8 +3043,7 @@ async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
     throw error;
   }
   const candidate = candidates[candidateIndex];
-  const currentFingerprint = contract.contract_fingerprint || '';
-  if (!currentFingerprint || candidate.contract_fingerprint !== currentFingerprint) {
+  if (!keyframeContractFreshness.artifactMatchesContract(candidate, contract)) {
     const error = new Error('该候选与当前镜头设置不一致，不能重新验证');
     error.code = 'KEYFRAME_CANDIDATE_CONTRACT_OUTDATED';
     error.status = 422;

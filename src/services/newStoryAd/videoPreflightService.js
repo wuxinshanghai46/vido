@@ -1,5 +1,6 @@
 const revisionService = require('./revisionService');
 const sceneBlockService = require('./sceneBlockService');
+const contractFreshness = require('./keyframeContractFreshnessService');
 const videoCore = require('../videoGenerationCore');
 
 const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v2';
@@ -19,7 +20,7 @@ function keyframePersonPresence(keyframe = {}) {
 function approvedKeyframe(keyframe = {}, contract = {}) {
   return !!(keyframe.image_url || keyframe.imageUrl || keyframe.url)
     && keyframe.qa?.pass === true
-    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
+    && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
 }
 
 function reconcileShot(shot = {}, keyframe = {}, contract = {}) {
@@ -172,30 +173,67 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
 }
 
 /** 将通用生成单元转换为质量模式的前端预检明细。 */
-function qualityUnits({ reconciledShots, keyframes, contracts, sceneBlocks }) {
-  return sceneBlocks.map((block, unitIndex) => {
-    const cameraOnly = block.member_indexes.every(index => cameraOnlyShot(reconciledShots[index] || {}, keyframes[index] || {}, contracts[index] || {}));
-    const action = cameraOnly && block.member_indexes.length === 1 ? 'local_motion' : 'provider_generate';
+function qualityPlan({ shots, reconciledShots, keyframes, contracts, clips, statuses, sceneBlocks }) {
+  const basePlans = reconciledShots.map((shot, index) => economyShotPlan({
+    shot: shots[index] || shot,
+    keyframe: keyframes[index] || {},
+    contract: contracts[index] || {},
+    clip: clips[index] || {},
+    status: statuses[index] || {},
+    index,
+  }));
+  const paidBlockIds = new Set(basePlans
+    .filter(item => item.action === 'provider_generate')
+    .map(item => sceneBlockService.blockForIndex(sceneBlocks, item.index)?.id)
+    .filter(Boolean));
+  const paidIndexes = new Set(sceneBlocks
+    .filter(block => paidBlockIds.has(block.id))
+    .flatMap(block => block.member_indexes || []));
+  const shotPlans = basePlans.map(item => {
+    if (!paidIndexes.has(item.index)) return item;
+    const block = sceneBlockService.blockForIndex(sceneBlocks, item.index);
     return {
-      id: block.id,
-      unit_index: unitIndex,
-      member_indexes: block.member_indexes,
-      shots: block.member_indexes.map(index => index + 1),
-      title: block.member_indexes.length > 1
-        ? `连续镜组 ${block.member_indexes.map(index => index + 1).join('→')}`
-        : shotTitle(reconciledShots[block.first_index] || {}, block.first_index),
-      action,
-      label: action === 'local_motion' ? '本地确定性运镜（不调用视频模型）' : (block.continuous ? '整组一次生成' : '单镜一次生成'),
-      paid: action === 'provider_generate',
-      continuous: block.continuous,
-      duration_sec: block.duration_sec,
-      input_strategy: action === 'provider_generate' ? 'approved_keyframe_private_asset_only' : 'approved_keyframe_local_motion',
+      ...item,
+      action: 'provider_generate',
+      label: block?.continuous ? '整组一次生成' : '单镜一次生成',
+      paid: true,
+      unit_id: block?.id || '',
       changes: [
-        ...(block.continuous ? [`第 ${block.member_indexes.map(index => index + 1).join('、')} 镜已明确批准为一镜到底，并通过供应商能力检查`] : ['保持真实剪辑边界，本镜独立生成并共享场景世界资产']),
-        ...(action === 'local_motion' ? ['只做可控的平移/推进/聚焦，保持关键帧人物、材质与构图不变'] : ['以本镜已确认关键帧作为唯一视觉起点，不使用其他镜头的错误机位']),
+        ...(block?.continuous ? [`第 ${(block.member_indexes || []).map(index => index + 1).join('、')} 镜作为连续单元一次生成`] : ['保持真实剪辑边界，本镜独立生成并共享场景世界资产']),
+        '以当前已确认关键帧作为唯一视觉起点，不使用其他镜头的错误机位',
       ],
     };
   });
+  const units = [];
+  sceneBlocks.forEach((block, unitIndex) => {
+    if (paidBlockIds.has(block.id)) {
+      units.push({
+        id: block.id, unit_index: unitIndex, member_indexes: block.member_indexes,
+        shots: block.member_indexes.map(index => index + 1),
+        title: block.member_indexes.length > 1
+          ? `连续镜组 ${block.member_indexes.map(index => index + 1).join('→')}`
+          : shotTitle(reconciledShots[block.first_index] || {}, block.first_index),
+        action: 'provider_generate', label: block.continuous ? '整组一次生成' : '单镜一次生成',
+        paid: true, continuous: block.continuous, duration_sec: block.duration_sec,
+        input_strategy: 'approved_keyframe_private_asset_only',
+        changes: shotPlans.find(item => item.index === block.first_index)?.changes || [],
+      });
+      return;
+    }
+    (block.member_indexes || []).forEach(index => {
+      const item = shotPlans[index];
+      if (!item || item.action === 'reuse') return;
+      units.push({
+        id: `${item.action === 'review_only' ? 'review' : 'quality'}-shot-${item.shot_index}`,
+        unit_index: unitIndex, member_indexes: [index], shots: [item.shot_index], title: item.title,
+        action: item.action, label: item.label, paid: false, continuous: false,
+        duration_sec: sceneBlockService.durationOf(shots[index] || {}),
+        input_strategy: item.action === 'local_motion' ? 'approved_keyframe_local_motion' : '',
+        review_scope: item.review_scope || '', changes: item.changes || [],
+      });
+    });
+  });
+  return { shotPlans, units };
 }
 
 /** 生成零自动付费重试的视频预检方案，并绑定通用执行计划指纹。 */
@@ -220,15 +258,9 @@ function buildVideoPreflight({
       continuous_quality_mode: true,
       scene_block_generation: true,
     });
-    units = qualityUnits({ reconciledShots, keyframes, contracts, sceneBlocks });
-    shotPlans = reconciledShots.map((shot, index) => {
-      const unit = units.find(item => item.member_indexes.includes(index));
-      return {
-        index, shot_index: index + 1, title: shotTitle(shot, index), action: unit?.action || 'provider_generate',
-        label: unit?.label || '按连续方案生成', paid: unit?.paid !== false, unit_id: unit?.id || '',
-        changes: unit?.changes || [],
-      };
-    });
+    ({ shotPlans, units } = qualityPlan({
+      shots, reconciledShots, keyframes, contracts, clips, statuses, sceneBlocks,
+    }));
   } else {
     shotPlans = reconciledShots.map((shot, index) => economyShotPlan({
       shot: shots[index] || shot,

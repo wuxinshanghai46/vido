@@ -12,6 +12,10 @@ function canonicalContractValue(value, key = '') {
   const ignored = new Set([
     'contract_fingerprint', 'contract_compiler_signature', 'compiled_at',
     'created_at', 'updated_at', 'checked_at', 'verified_at',
+    // Provider/file bookkeeping describes how an already-selected reference
+    // was transported. It is not part of the visual scene contract. The
+    // stable URL/image identity remains in the surrounding `url` fields.
+    'filename', 'provider_used', 'source_url',
   ]);
   return Object.keys(value).sort().reduce((out, childKey) => {
     if (!ignored.has(childKey)) out[childKey] = canonicalContractValue(value[childKey], childKey);
@@ -50,7 +54,10 @@ function contractFingerprint(contract = {}) {
     visual_contract: contract.visual_contract,
     negative_prompt: contract.negative_prompt,
   };
-  return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  // Use the same semantic canonicalizer as the compiler signature. Older
+  // fingerprints included audit timestamps and optional transport metadata,
+  // so re-verifying an unchanged scene could invalidate every keyframe.
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalContractValue(payload))).digest('hex');
 }
 
 function buildKeyframeContracts(ctx, shots) {

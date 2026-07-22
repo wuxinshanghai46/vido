@@ -10,6 +10,7 @@ const personIdentity = require('./personIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
 const motionAwareEdit = require('./motionAwareEditService');
 const { cleanText } = require('./contextBuilder');
+const contractFreshness = require('./keyframeContractFreshnessService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
 const FRAME_DIMENSIONS = {
@@ -214,7 +215,7 @@ function peopleProblemMatchesApprovedKeyframe(problem = '') {
 function keyframeIsCurrentAndApproved(keyframe = {}, contract = {}) {
   return !!(keyframe.image_url || keyframe.imageUrl || keyframe.url)
     && keyframe.qa?.pass === true
-    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
+    && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
 }
 
 function reconcileExistingApprovedPartialPersonQa({ qa = {}, keyframe = {}, contract = {} } = {}) {
@@ -303,7 +304,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
   const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
   const currentKeyframeAccepted = !!(keyframe.image_url || keyframe.imageUrl)
     && keyframe.qa?.pass === true
-    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
+    && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
   const acceptedKeyframeRef = currentKeyframeAccepted ? mediaAdapter.absolutePublicImageUrl(keyframe.image_url || keyframe.imageUrl || '') : '';
   const references = currentKeyframeAccepted
     ? [acceptedKeyframeRef, personRef, productRef].filter(Boolean)

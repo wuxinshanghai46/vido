@@ -15,8 +15,25 @@ function signatureOf(contract = {}) {
 
 function contractMatches(stored = {}, current = {}) {
   return !!stored && !!current
-    && String(stored.contract_fingerprint || '') === String(current.contract_fingerprint || '')
     && signatureOf(stored) === signatureOf(current);
+}
+
+/** Match a persisted keyframe/candidate to the current semantic contract.
+ * New artifacts carry the compiler signature. Historical artifacts may embed
+ * the full contract or only the old fingerprint, so keep a strict fallback.
+ */
+function artifactMatchesContract(artifact = {}, current = {}) {
+  if (!artifact || !current) return false;
+  const currentSignature = signatureOf(current);
+  const embeddedSignature = artifact.contract
+    ? signatureOf(artifact.contract)
+    : String(artifact.contract_compiler_signature || '');
+  if (embeddedSignature) return embeddedSignature === currentSignature;
+  const artifactFingerprint = String(
+    artifact.contract_fingerprint || artifact.current_contract_fingerprint || '',
+  );
+  return !!artifactFingerprint
+    && artifactFingerprint === String(current.contract_fingerprint || '');
 }
 
 function persist(taskId, contracts = [], { clearDownstream = false, changedIndexes = [] } = {}) {
@@ -30,15 +47,20 @@ function persist(taskId, contracts = [], { clearDownstream = false, changedIndex
   const refreshed = frames.map((frame, index) => {
     if (!frame || typeof frame !== 'object' || !imageUrl(frame)) return frame;
     const current = list[index] || {};
-    const currentFingerprint = String(current.contract_fingerprint || '');
     const currentSignature = signatureOf(current);
-    const frameFingerprint = String(frame.contract_fingerprint || frame.contract?.contract_fingerprint || '');
-    const embeddedSignature = frame.contract ? signatureOf(frame.contract) : String(frame.contract_compiler_signature || '');
-    const semanticsMatch = !embeddedSignature || embeddedSignature === currentSignature;
-    if (!changed.has(index) && currentFingerprint && frameFingerprint === currentFingerprint && semanticsMatch) {
-      if (frame.contract_compiler_signature === currentSignature) return frame;
+    if (!changed.has(index) && artifactMatchesContract(frame, current)) {
+      const metadataCurrent = frame.contract_compiler_signature === currentSignature
+        && frame.contract_fingerprint === current.contract_fingerprint
+        && frame.contract_outdated !== true;
+      if (metadataCurrent) return frame;
       metadataUpgraded += 1;
-      return { ...frame, contract_compiler_signature: currentSignature };
+      return {
+        ...frame,
+        contract_fingerprint: current.contract_fingerprint,
+        contract_compiler_signature: currentSignature,
+        contract_outdated: false,
+        contract_outdated_reason: '',
+      };
     }
     invalidated += 1;
     return {
@@ -130,6 +152,7 @@ function recordProviderAudit(taskId, { generationId = '', index = 0, contract = 
 module.exports = {
   signatureOf,
   contractMatches,
+  artifactMatchesContract,
   inspect,
   persist,
   refresh,

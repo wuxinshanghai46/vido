@@ -77,14 +77,24 @@ assert.strictEqual(targeted.blockers.length, 0, 'an unrelated billing failure mu
 const quality = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
 });
-assert.deepStrictEqual(quality.units.map(unit => unit.shots), [[1], [2, 3], [4], [5], [6]]);
-assert.deepStrictEqual(quality.units.map(unit => unit.action), ['provider_generate', 'provider_generate', 'local_motion', 'provider_generate', 'provider_generate']);
+assert.deepStrictEqual(quality.units.map(unit => unit.shots), [[1], [3], [4], [5]]);
+assert.deepStrictEqual(quality.units.map(unit => unit.action), ['provider_generate', 'review_only', 'local_motion', 'provider_generate']);
 assert(quality.units.every(unit => unit.duration_sec <= 10), '高质量连续生成单元必须遵守 10 秒硬上限');
-assert.strictEqual(quality.paid_unit_count, 4, '高质量整条广告模式应按 6–10 秒兼容连续单元计费，而不是逐镜提交');
+assert.strictEqual(quality.paid_unit_count, 2, '已有合格视频必须复用，不能因进入整条广告模式而重新付费生成');
 assert.strictEqual(quality.local_unit_count, 1);
-assert.strictEqual(quality.paid_video_seconds, 25);
+assert.strictEqual(quality.review_only_count, 1);
+assert.strictEqual(quality.reuse_count, 2);
+assert.strictEqual(quality.paid_video_seconds, 10);
 assert.strictEqual(quality.fingerprint, preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
 }).fingerprint, 'preflight confirmation fingerprint must be stable');
+
+const freshQuality = preflight.buildVideoPreflight({
+  taskId: 'preflight-fresh-task', shots, keyframes, contracts, clips: Array(6).fill(null), statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
+});
+assert.deepStrictEqual(freshQuality.units.map(unit => unit.shots), [[1], [2, 3], [4], [5], [6]]);
+assert.deepStrictEqual(freshQuality.units.map(unit => unit.action), ['provider_generate', 'provider_generate', 'local_motion', 'provider_generate', 'provider_generate']);
+assert.strictEqual(freshQuality.paid_unit_count, 4, '全新任务仍应按连续生成单元提交，而不是退化为逐镜提交');
+assert.strictEqual(freshQuality.paid_video_seconds, 25);
 
 console.log('new story ad video preflight: ok');

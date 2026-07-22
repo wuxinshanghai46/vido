@@ -1,5 +1,6 @@
 const fs = require('fs');
 const revisionService = require('./revisionService');
+const { contractCompilerSignature } = require('./keyframeContractService');
 
 // Keep the lineage version stable so already-approved clips are not invalidated
 // merely because future generations now use a stricter keyframe-first input.
@@ -36,14 +37,18 @@ function buildShotLineage({
     storyboard_revision: Number(storyboardMeta.revision || storyboardMeta.storyboard_revision || 0),
     storyboard_fingerprint: String(storyboardMeta.fingerprint || storyboardMeta.storyboard_fingerprint || ''),
     contract_revision: Number(contract.contract_revision || contract.revision || 0),
-    contract_fingerprint: String(contract.contract_fingerprint || ''),
+    contract_fingerprint: String(contractCompilerSignature(contract)),
     keyframe_generation_id: String(keyframe.current_generation_id || keyframe.generation_id || keyframe.id || ''),
-    keyframe_contract_fingerprint: String(keyframe.contract_fingerprint || keyframe.current_contract_fingerprint || ''),
+    keyframe_contract_fingerprint: String(
+      keyframe.contract
+        ? contractCompilerSignature(keyframe.contract)
+        : (keyframe.contract_compiler_signature || keyframe.contract_fingerprint || keyframe.current_contract_fingerprint || ''),
+    ),
     keyframe_asset: cleanAssetIdentity(keyframe.image_url || keyframe.imageUrl || keyframe.url || ''),
     keyframe_acceptance: String(keyframe.current_generation_status || keyframe.status || ''),
     person_contract_fingerprint: String(contract.cast_lock?.person_contract?.person_fingerprint || ctx.person_contract?.person_fingerprint || ''),
     product_contract_fingerprint: String(contract.product_lock?.product_fingerprint || ctx.product_contract?.product_fingerprint || ''),
-    scene_contract_signature: revisionService.signature(contract.scene_lock || {}),
+    scene_contract_signature: contractCompilerSignature({ scene_lock: contract.scene_lock || {} }),
     speech_mode: String(speechMode || ''),
     motion_prompt_signature: revisionService.signature(String(motionPrompt || '')),
     audio_signature: revisionService.signature({

@@ -11,7 +11,7 @@ process.env.DB_ENABLED = '0';
 const service = require('../src/services/newStoryAd/storyAdService');
 const storage = require('../src/services/newStoryAd/storageService');
 const freshness = require('../src/services/newStoryAd/keyframeContractFreshnessService');
-const { buildKeyframeContracts } = require('../src/services/newStoryAd/keyframeContractService');
+const { buildKeyframeContracts, contractFingerprint } = require('../src/services/newStoryAd/keyframeContractService');
 
 function context(characterName) {
   return {
@@ -107,7 +107,7 @@ function testLegacyMetadataUpgradeDoesNotInvalidateEquivalentFrames() {
   assert.equal(result.invalidated, 0, '仅缺新签名的等价历史合同不得误伤已有画面');
   assert(storage.getOutput(taskId, 'keyframe_contracts')[0].contract_compiler_signature);
   assert(storage.getOutput(taskId, 'keyframes')[0].contract_compiler_signature);
-  assert.equal(storage.getOutput(taskId, 'keyframes')[0].contract_outdated, undefined);
+  assert.equal(storage.getOutput(taskId, 'keyframes')[0].contract_outdated, false);
   assert(storage.getOutput(taskId, 'video_clips'), '等价升级不得清除下游视频');
 }
 
@@ -177,6 +177,58 @@ function testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift() {
   assert.deepEqual(inspection.changed_indexes, []);
   assert.strictEqual(after, before, '只读预检不得写合同、关键帧、视频或任务时间');
   assert(storage.getOutput(taskId, 'video_clips'), '只读预检不得删除旧视频片段');
+}
+
+async function testAuditAndTransportDriftIsGloballyNonSemantic() {
+  const storyboard = shots(18);
+  const ctx = context('全局语义兼容');
+  const contracts = buildKeyframeContracts(ctx, storyboard);
+  const legacy = contracts.map((contract, index) => ({
+    ...contract,
+    scene_lock: {
+      ...contract.scene_lock,
+      scene_contract: {
+        ...(contract.scene_lock?.scene_contract || {}),
+        verified_at: `2026-07-20T00:00:${String(index).padStart(2, '0')}.000Z`,
+        verification: { checked_at: '2026-07-20T00:00:00.000Z', pass: true },
+      },
+      view_images: [{ view: 'master', url: `https://example.test/scene-${index}.png` }],
+    },
+  }));
+  const normalized = legacy.map(contract => ({
+    ...contract,
+    scene_lock: {
+      ...contract.scene_lock,
+      scene_contract: {
+        ...contract.scene_lock.scene_contract,
+        verified_at: '2026-07-22T08:00:00.000Z',
+        verification: { checked_at: '2026-07-22T08:00:00.000Z', pass: true },
+      },
+      view_images: contract.scene_lock.view_images.map(view => ({
+        ...view, filename: '', provider_used: '', source_url: '',
+      })),
+    },
+  }));
+  legacy.forEach((contract, index) => {
+    assert.equal(contractFingerprint(contract), contractFingerprint(normalized[index]));
+    assert.equal(freshness.signatureOf(contract), freshness.signatureOf(normalized[index]));
+    assert(freshness.contractMatches(contract, normalized[index]));
+    assert(freshness.artifactMatchesContract({
+      contract,
+      contract_fingerprint: contract.contract_fingerprint,
+      contract_compiler_signature: freshness.signatureOf(contract),
+    }, normalized[index]));
+  });
+  const concurrent = await Promise.all(Array.from({ length: 12 }, async () => (
+    normalized.map((contract, index) => freshness.contractMatches(legacy[index], contract))
+  )));
+  assert(concurrent.every(batch => batch.length === 18 && batch.every(Boolean)),
+    '最大 18 镜并发只读比较不得把审计/运输字段漂移误判为视觉变化');
+
+  const realChange = JSON.parse(JSON.stringify(normalized[0]));
+  realChange.scene_lock.material_summary = '真实材质语义已经改变';
+  assert(!freshness.contractMatches(legacy[0], realChange), '真实材质变化必须继续阻断旧关键帧');
+  assert(!freshness.artifactMatchesContract({ contract: legacy[0] }, realChange));
 }
 
 function testVideoPreflightBlocksWithoutMutatingExistingMedia() {
@@ -255,6 +307,7 @@ async function testPreProviderFailureVoidsAuthorization() {
     testLegacyMetadataUpgradeDoesNotInvalidateEquivalentFrames();
     testProviderAuditPersistsVerifiedContractAndPrompt();
     testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift();
+    await testAuditAndTransportDriftIsGloballyNonSemantic();
     testVideoPreflightBlocksWithoutMutatingExistingMedia();
     await testPreProviderFailureVoidsAuthorization();
     console.log('new-story-ad contract freshness tests passed');

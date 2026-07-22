@@ -20,6 +20,7 @@ const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService');
 const motionAwareEdit = require('./motionAwareEditService');
 const videoCore = require('../videoGenerationCore');
+const contractFreshness = require('./keyframeContractFreshnessService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
 const VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -288,7 +289,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
   const humanApproved = keyframe.qa?.manual_override === true || keyframe.current_generation_status === 'manual_accepted';
   const currentKeyframeAccepted = !!(keyframe.image_url || keyframe.imageUrl || keyframe.url)
     && keyframe.qa?.pass === true
-    && (!contract.contract_fingerprint || keyframe.contract_fingerprint === contract.contract_fingerprint);
+    && (!contract.contract_fingerprint || contractFreshness.artifactMatchesContract(keyframe, contract));
   return [
     `Advertised subject: ${ctx.product_subject || ''}`,
     `Shot purpose: ${shot.purpose || shot.role || ''}`,
