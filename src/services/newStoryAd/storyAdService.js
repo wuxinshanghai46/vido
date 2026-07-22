@@ -2511,8 +2511,7 @@ async function generateVideoStage(taskId, options = {}) {
     storage.saveOutput(taskId, 'video_clips', clips);
     return failures;
   }
-  const initialIndexes = [];
-  const pendingReviewIndexes = [];
+  const initialIndexes = [], pendingReviewIndexes = []; let pendingReviewFailures = [];
   const requestedOnlyIndex = options.only_index ?? options.onlyIndex;
   const requestedIndexes = Array.isArray(options.only_indexes || options.onlyIndexes)
     ? (options.only_indexes || options.onlyIndexes)
@@ -2579,7 +2578,7 @@ async function generateVideoStage(taskId, options = {}) {
     clips[index] = null;
   });
   if (pendingReviewIndexes.length) {
-    const pendingFailures = await reviewVideoIndexes(pendingReviewIndexes, 0);
+    const pendingFailures = await reviewVideoIndexes(pendingReviewIndexes, 0); pendingReviewFailures = pendingFailures;
     const rejectedIndexes = new Set(pendingFailures.map(item => item.index));
     pendingReviewIndexes.forEach((index) => {
       if (!rejectedIndexes.has(index) && videoLineage.qaApproved(clips[index])) {
@@ -2594,6 +2593,7 @@ async function generateVideoStage(taskId, options = {}) {
       clips[index] = null;
     });
   }
+  if (pendingReviewFailures.length) { initialIndexes.forEach(index => { clips[index] = previousClips[index] || clips[index] || null; }); initialIndexes.length = 0; }
   const expandedInitialIndexes = sceneBlockService.expandIndexesToBlocks(initialIndexes, sceneBlocks);
   expandedInitialIndexes.forEach(index => { clips[index] = null; });
   if (expandedInitialIndexes.length) storage.deleteOutput(taskId, 'final_video');
@@ -2619,7 +2619,7 @@ async function generateVideoStage(taskId, options = {}) {
   let repairAttempt = 0;
   let repairInstructions = {};
   let lastGenerated = { provider_used: pinnedRoute, schedule: null };
-  let qaFailures = [];
+  let qaFailures = pendingReviewFailures.slice();
   while (targetIndexes.length) {
     storage.updateTask(taskId, {
       status: 'running', stage: repairAttempt ? 'video_repair' : 'video', error: '', error_code: '', retryable: false,
@@ -3245,6 +3245,11 @@ async function composeStage(taskId, options = {}) {
   const clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
     ? storage.getOutput(taskId, 'video_clips')
     : [];
+  const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) { const failed = boundaryAudit.failed_indexes.length > 0;
+    const error = new Error(`当前版本仍有跨生成单元衔接审核${failed ? '未通过' : '未完成'}：${boundaryAudit.unready_indexes.map(index => `第 ${index}→${index + 1} 镜`).join('、')}`);
+    error.code = failed ? 'COMPOSE_BOUNDARY_QA_FAILED' : 'COMPOSE_BOUNDARY_QA_INCOMPLETE'; error.retryable = true;
+    throw error;
+  }
   const unapproved = shots.map((_, index) => index).filter(index => (
     !videoLineage.clipHasUsableFile(clips[index]) || !videoLineage.qaApproved(clips[index]) || !clips[index]?.lineage_fingerprint
   ));
@@ -3252,11 +3257,6 @@ async function composeStage(taskId, options = {}) {
     const error = new Error(`当前版本仍有未审片或来源不匹配的镜头：${unapproved.map(index => `第 ${index + 1} 镜`).join('、')}`);
     error.code = 'COMPOSE_CLIP_LINEAGE_INVALID';
     error.retryable = true;
-    throw error;
-  }
-  const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) {
-    const error = new Error(`当前版本仍有未完成的跨生成单元衔接审核：${boundaryAudit.unready_indexes.map(index => `第 ${index}→${index + 1} 镜`).join('、')}`);
-    error.code = 'COMPOSE_BOUNDARY_QA_INCOMPLETE'; error.retryable = true;
     throw error;
   }
   storage.deleteOutput(taskId, 'final_video');

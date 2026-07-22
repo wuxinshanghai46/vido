@@ -39,13 +39,18 @@ async function runMediaPipeline({
   if (payload.include_voiceover && !voiceoverPlanIsReady(taskId, payload.voice_id, storage, ttsAdapter)) {
     await service.generateTtsStage(taskId, payload);
   }
-  await service.generateVideoStage(taskId, {
+  const videoResult = await service.generateVideoStage(taskId, {
     ...payload,
     missing_only: true,
     visual_only: true,
     include_voiceover: false,
     auto_tts: false,
   });
+  if (videoResult?.partial === true) {
+    const indexes = Array.isArray(videoResult.remaining_unapproved_indexes) ? videoResult.remaining_unapproved_indexes : [];
+    const error = new Error(`视频审核尚未完成${indexes.length ? `：第 ${indexes.map(index => index + 1).join('、')} 镜` : ''}，已停止最终封装`);
+    error.code = 'VIDEO_STAGE_INCOMPLETE'; error.retryable = true; throw error;
+  }
   return service.composeStage(taskId, payload);
 }
 

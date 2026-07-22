@@ -103,6 +103,21 @@ async function testTtsFailureStopsVideo() {
   assert.strictEqual(videoCalls, 0, '配音失败后不得产生付费视频调用');
 }
 
+/** 视频补审返回部分完成时必须停止流水线，不能继续封装并覆盖真实审核错误。 */
+async function testPartialVideoReviewStopsCompose() {
+  const storage = fakeStorage({ task: { id: 'partial-video-task', request: {} }, outputs: { storyboard_table: [{}] } });
+  let composeCalls = 0;
+  await assert.rejects(() => mediaPipeline.runMediaPipeline({
+    taskId: 'partial-video-task', storage,
+    service: {
+      generateVideoStage: async () => ({ partial: true, remaining_unapproved_indexes: [3] }),
+      composeStage: async () => { composeCalls += 1; },
+    },
+    options: { include_voiceover: false },
+  }), error => error.code === 'VIDEO_STAGE_INCOMPLETE' && /第 4 镜/.test(error.message));
+  assert.strictEqual(composeCalls, 0, '补审未通过后不得进入最终封装');
+}
+
 /** 验证用户明确设置的静音音量不会被默认值覆盖。 */
 function testExplicitZeroVolumesArePreserved() {
   const storage = fakeStorage({ task: { id: 'volume-task', request: {} }, outputs: {} });
@@ -197,6 +212,7 @@ function testIntegrationMarkers() {
   await testMusicSearchFailureKeepsExistingChoice();
   await testDecoupledMediaPipeline();
   await testTtsFailureStopsVideo();
+  await testPartialVideoReviewStopsCompose();
   testExplicitZeroVolumesArePreserved();
   testSilentSelectionNeedsNoSecondAcknowledgement();
   testIntegrationMarkers();
