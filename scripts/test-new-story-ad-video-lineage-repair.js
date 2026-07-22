@@ -31,8 +31,9 @@ function run() {
   const baseCtx = { revisions: { source: 1, scene: 1, person: 1, product: 1 }, output_ratio: '9:16', video_resolution: '720p' };
   const legacyPrompt = videoAdapter.clipPrompt(baseShot, baseCtx, baseContract, null, baseKeyframe);
   assert.ok(legacyPrompt.includes('current approved keyframe is authoritative'), 'video prompt must make the current contract-matched keyframe authoritative');
-  const legacy = { file_path: __filename, provider_used: 'provider/model', qa: { pass: true, contract_fingerprint: 'contract-v1' }, motion_prompt: legacyPrompt };
-  assert.strictEqual(lineageService.reuseDecision(legacy, expected).adopted, true, 'matching legacy output should be safely adopted');
+  const legacy = { file_path: __filename, provider_used: 'provider/model', qa: { pass: true, contract_fingerprint: expected.contract_fingerprint }, motion_prompt: legacyPrompt };
+  assert.strictEqual(lineageService.reuseDecision(legacy, expected).reusable, false, 'legacy output must not be adopted implicitly');
+  assert.strictEqual(lineageService.reuseDecision(legacy, expected, { allowLegacyAdoption: true }).adopted, true, 'an explicit migration context may adopt verified legacy output');
   assert.strictEqual(lineageService.reuseDecision({ ...legacy, motion_prompt: `${legacyPrompt}\nchanged` }, expected).reusable, false, 'unverifiable legacy prompt must not be reused');
 
   const oldBlockLineage = fixture({ sceneBlock: { policy_version: 'spatial-scene-block-v1', id: 'old-1-3', fingerprint: 'old-block', member_indexes: [0, 1, 2] } });

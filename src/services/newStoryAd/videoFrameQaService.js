@@ -13,6 +13,7 @@ const { cleanText } = require('./contextBuilder');
 const contractFreshness = require('./keyframeContractFreshnessService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
+const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v2';
 const FRAME_DIMENSIONS = {
   person_pass: ['person_identity', '人物身份与造型'],
   product_pass: ['product_identity', '产品与主体一致性'],
@@ -295,7 +296,7 @@ async function verifyDeterministicLocalMotionClip({ taskId = '', clip = {}, keyf
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
-    return { pass: true, status: 'verified', frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, text_watermark_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
+    return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, text_watermark_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
   }
   const sceneRef = contract.scene_lock?.view_images?.find(view => view.key === contract.scene_lock?.scene_view)
     || contract.scene_lock?.view_images?.[0] || {};
@@ -350,6 +351,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
   };
   const decision = reviewDecision(normalized, problems, clip);
   return {
+    qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION,
     pass: decision.pass,
     status: decision.pass ? 'verified' : 'rejected',
     person_pass: normalized.person_pass,
@@ -373,10 +375,13 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
   };
 }
 
-async function reviewCrossShot({ taskId = '', previous = null, current = null, previousShot = {}, currentShot = {}, ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
+async function reviewCrossShot({ taskId = '', previous = null, current = null, previousShot = {}, currentShot = {}, previousLineageFingerprint = '', currentLineageFingerprint = '', ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
+  const lineageBinding = { previous_lineage_fingerprint: String(previousLineageFingerprint || ''), current_lineage_fingerprint: String(currentLineageFingerprint || '') };
   if (!hasReviewFrameEvidence(previous || {}) || !hasReviewFrameEvidence(current || {})) return {
     pass: false,
     status: 'rejected_missing_frame_evidence',
+    qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION,
+    ...lineageBinding,
     code: 'VIDEO_QA_EVIDENCE_MISSING',
     error_code: 'VIDEO_QA_EVIDENCE_MISSING',
     problems: ['Adjacent-shot continuity QA requires both previous-tail and current-head frame evidence.'],
@@ -385,7 +390,7 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
     checked_at: new Date().toISOString(),
     used_model: 'none/local-evidence-gate',
   };
-  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return { pass: true, status: 'verified', problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-cross-shot-video-qa' };
+  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, ...lineageBinding, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-cross-shot-video-qa' };
   const previousTail = previous.frames[previous.frames.length - 1];
   const currentHead = current.frames[0];
   const result = await gateway.generateVision({
@@ -407,6 +412,8 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
     problems.length ? `Observed problems: ${problems.join('; ')}.` : '',
   ].filter(Boolean).join(' '), 1000);
   return {
+    qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION,
+    ...lineageBinding,
     pass, status: pass ? 'verified' : 'rejected', ...normalized, problems,
     failure_dimensions: failed.map(item => item.code),
     failure_labels_zh: failed.map(item => item.label),
@@ -427,6 +434,7 @@ function crossShotFailure(qa = {}, index = 1) {
 
 module.exports = {
   FRAME_POINTS,
+  VIDEO_FRAME_QA_POLICY_VERSION,
   FRAME_DIMENSIONS,
   CROSS_DIMENSIONS,
   failedDimensionDetails,

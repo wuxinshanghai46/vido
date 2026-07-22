@@ -3,6 +3,8 @@ const sceneBlockService = require('./sceneBlockService');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryPolicy = require('./videoBoundaryPolicyService');
 const boundaryRepair = require('./videoBoundaryRepairService');
+const artifactCompatibility = require('./videoArtifactCompatibilityService');
+const artifactWorkflow = require('./videoArtifactWorkflowService');
 const videoCore = require('../videoGenerationCore');
 
 const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v7';
@@ -227,7 +229,7 @@ function economyShotPlan({ shot, keyframe, contract, clip, status, index }) {
   if (!clipHasMedia(clip)) changes.push('当前没有可用视频，只生成一次且自动重试为 0');
   return {
     index, shot_index: index + 1, title, action: 'provider_generate', label: '按修正方案生成一次', paid: true,
-    input_strategy: 'approved_keyframe_private_asset_only',
+    input_strategy: 'approved_keyframe_first_frame_only',
     repair_instruction: instruction,
     changes,
     blocked_by_billing: /BILLING|BALANCE|CREDIT|QUOTA/.test(text(status?.error_code || clip?.error_code).toUpperCase()),
@@ -246,6 +248,57 @@ function applyMissingBoundaryReviews(plans = [], clips = [], shotCount = plans.l
       changes: ['保留现有视频，补查上一生成单元尾帧与当前生成单元首帧，不重新调用视频生成模型'],
     };
   });
+}
+
+function applyArtifactCompatibility({ shotPlans = [], units = [], clips = [], shots = [], report = null } = {}) {
+  if (!report?.decisions?.length) return { shotPlans, units };
+  const byIndex = new Map(report.decisions.map(item => [item.index, item]));
+  shotPlans.forEach((plan) => {
+    const decision = byIndex.get(plan.index);
+    if (!decision) return;
+    if (!plan.input_strategy) plan.input_strategy = artifactCompatibility.inputStrategy(clips[plan.index] || {});
+    plan.compatibility_status = decision.status;
+    plan.compatibility_reason_codes = decision.reason_codes || [];
+    if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.CURRENT) Object.assign(plan, { action: 'reuse', paid: false, label: '保留当前兼容视频' });
+    if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.METADATA_MIGRATION_READY) Object.assign(plan, { action: 'metadata_migration', paid: false, label: '迁移视频版本元数据（不重新生成）' });
+    if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.REVERIFY_REQUIRED) Object.assign(plan, { action: 'review_only', review_scope: 'frame_and_boundary', paid: false, label: '复审现有视频（不重新生成）' });
+    if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.DETERMINISTIC_REPAIR_READY) Object.assign(plan, { action: 'transition_bridge', review_scope: 'deterministic_transition', transition_override: 'fade', paid: false, label: '应用确定性淡入淡出并重建边界证据' });
+    if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.REGENERATE_REQUIRED) {
+      const retiredTail = (decision.reason_codes || []).includes('INPUT_STRATEGY_RETIRED');
+      Object.assign(plan, {
+        action: 'provider_generate', paid: true, label: '按当前流程重新生成一次',
+        ...(retiredTail ? {
+          input_strategy: 'approved_keyframe_first_frame_only',
+          review_scope: POST_GENERATION_TRANSITION_SCOPE,
+          transition_override: 'fade',
+          boundary_resolution: 'keyframe_regenerate_with_transition',
+          changes: [...(plan.changes || []), '旧版上一镜尾帧输入策略已退役；改用当前已批准关键帧作为唯一首帧输入，并在前一镜与本镜之间应用淡入淡出。'],
+        } : {}),
+      });
+    }
+  });
+  shotPlans.filter(plan => plan.action !== 'reuse' && !units.some(unit => (unit.member_indexes || []).includes(plan.index))).forEach(plan => units.push({
+    id: `${plan.action}-shot-${plan.shot_index}`, member_indexes: [plan.index], shots: [plan.shot_index], title: plan.title,
+    action: plan.action, label: plan.label, paid: plan.paid, continuous: false, duration_sec: sceneBlockService.durationOf(shots[plan.index] || {}),
+    input_strategy: plan.input_strategy || '', review_scope: plan.review_scope || '', transition_override: plan.transition_override || '', changes: plan.changes || [],
+  }));
+  units.forEach((unit) => {
+    const plans = (unit.member_indexes || []).map(index => shotPlans.find(item => item.index === index)).filter(Boolean);
+    if (!plans.length) return;
+    const paid = plans.some(item => item.action === 'provider_generate');
+    const primary = plans.find(item => item.action === 'provider_generate') || plans[0];
+    Object.assign(unit, {
+      action: paid ? 'provider_generate' : primary.action,
+      paid,
+      input_strategy: primary.input_strategy || unit.input_strategy || '',
+      review_scope: primary.review_scope || '',
+      transition_override: primary.transition_override || '',
+      boundary_resolution: primary.boundary_resolution || '',
+      compatibility_statuses: plans.map(item => item.compatibility_status).filter(Boolean),
+      changes: primary.changes || unit.changes || [],
+    });
+  });
+  return { shotPlans, units: units.filter(unit => unit.action !== 'reuse') };
 }
 
 /** 将通用生成单元转换为质量模式的前端预检明细。 */
@@ -291,7 +344,7 @@ function qualityPlan({ shots, reconciledShots, keyframes, contracts, clips, stat
           : shotTitle(reconciledShots[block.first_index] || {}, block.first_index),
         action: 'provider_generate', label: block.continuous ? '整组一次生成' : '单镜一次生成',
         paid: true, continuous: block.continuous, duration_sec: block.duration_sec,
-        input_strategy: 'approved_keyframe_private_asset_only',
+        input_strategy: 'approved_keyframe_first_frame_only',
         changes: shotPlans.find(item => item.index === block.first_index)?.changes || [],
       });
       return;
@@ -314,7 +367,7 @@ function qualityPlan({ shots, reconciledShots, keyframes, contracts, clips, stat
 
 /** 生成零自动付费重试的视频预检方案，并绑定通用执行计划指纹。 */
 function buildVideoPreflight({
-  taskId = '', shots = [], keyframes = [], contracts = [], clips = [], statuses = [], ctx = {}, mode = 'economy', providerRoute = '', onlyIndexes = null, executionPlan = null, executionOptions = {},
+  taskId = '', shots = [], keyframes = [], contracts = [], clips = [], statuses = [], ctx = {}, mode = 'economy', providerRoute = '', providerId = '', modelId = '', providerCapabilityRegistry = {}, compatibilityReport = null, onlyIndexes = null, executionPlan = null, executionOptions = {},
 } = {}) {
   const normalizedMode = text(mode).toLowerCase() === 'quality' ? 'quality' : 'economy';
   const reconciledShots = reconcileShots(shots, keyframes, contracts);
@@ -366,10 +419,12 @@ function buildVideoPreflight({
     shotPlans = shotPlans.filter(item => scopedIndexes.has(item.index));
     sceneBlocks = sceneBlocks.filter(block => (block.member_indexes || []).some(index => scopedIndexes.has(index)));
   }
+  ({ shotPlans, units } = applyArtifactCompatibility({ shotPlans, units, clips, shots, report: compatibilityReport }));
   const paidUnits = units.filter(unit => unit.paid);
   const paidIndexes = new Set(paidUnits.flatMap(unit => unit.member_indexes || []));
   const boundaryRepairContracts = boundaryRepair.buildContracts({ clips, shots: reconciledShots, keyframes, contracts, indexes: [...paidIndexes] });
   const transitionFallbackIndexes = new Set();
+  shotPlans.filter(item => item.boundary_resolution === 'keyframe_regenerate_with_transition').forEach(item => transitionFallbackIndexes.add(item.index));
   Object.entries(boundaryRepairContracts).forEach(([rawIndex, contract]) => {
     const index = Number(rawIndex);
     contract.input_strategy = boundaryRepair.inputStrategy(executionOptions);
@@ -402,7 +457,13 @@ function buildVideoPreflight({
   const localUnits = units.filter(unit => !unit.paid && unit.action === 'local_motion');
   const transitionUnits = units.filter(unit => !unit.paid && unit.action === 'transition_bridge');
   const reviewOnly = shotPlans.filter(item => item.action === 'review_only');
+  const metadataMigrations = shotPlans.filter(item => item.action === 'metadata_migration');
   const blockers = [];
+  (compatibilityReport?.decisions || []).filter(item => item.status === artifactCompatibility.COMPATIBILITY_STATUS.BLOCKED).forEach(item => blockers.push({
+    code: item.reason_codes?.[0] || 'VIDEO_ARTIFACT_COMPATIBILITY_BLOCKED',
+    message: `第 ${item.shot_index} 镜的现有视频来源或计费状态无法安全判定，已在供应商提交前停止。`,
+    details: item,
+  }));
   Object.values(boundaryRepairContracts).forEach(contract => {
     if (!contract.previous_tail_image_url) {
       blockers.push({
@@ -456,6 +517,8 @@ function buildVideoPreflight({
       message: '视频供应商刚刚返回余额/计费错误。为避免先生成一部分后再次中断，所有付费提交已暂停；可先应用不调用视频生成模型的复审和本地运镜。',
     });
   }
+  const capabilityAssessment = artifactWorkflow.assessUnitCapabilities({ units, providerId, modelId, registry: providerCapabilityRegistry });
+  blockers.push(...capabilityAssessment.blockers);
   const source = {
     policy_version: VIDEO_PREFLIGHT_POLICY_VERSION,
     task_id: taskId,
@@ -474,6 +537,8 @@ function buildVideoPreflight({
     })),
     units: units.map(unit => ({ shots: unit.shots, action: unit.action, paid: unit.paid, duration_sec: unit.duration_sec, input_strategy: unit.input_strategy, review_scope: unit.review_scope || '', transition_override: unit.transition_override || '', boundary_resolution: unit.boundary_resolution || '', boundary_repair_fingerprint: unit.boundary_repair?.fingerprint || '' })),
     blockers: blockers.map(item => item.code),
+    compatibility_fingerprint: compatibilityReport?.fingerprint || '',
+    provider_capabilities: capabilityAssessment.assessments.map(item => ({ unit_id: item.unit_id, input_strategy: item.input_strategy, required_capabilities: item.required_capabilities, status: item.status })),
   };
   const fingerprint = revisionService.signature(source);
   return {
@@ -481,7 +546,7 @@ function buildVideoPreflight({
     task_id: taskId,
     mode: normalizedMode,
     fingerprint,
-    status: blockers.length ? (localUnits.length || reviewOnly.length || transitionUnits.length ? 'partial_ready' : 'blocked') : 'ready',
+    status: blockers.length ? (localUnits.length || reviewOnly.length || transitionUnits.length || metadataMigrations.length ? 'partial_ready' : 'blocked') : 'ready',
     provider_route: providerRoute,
     execution_plan: resolvedExecutionPlan,
     paid_unit_count: paidUnits.length,
@@ -490,10 +555,13 @@ function buildVideoPreflight({
     transition_unit_count: transitionUnits.length,
     paid_transition_fallback_count: transitionFallbackIndexes.size,
     review_only_count: reviewOnly.length,
+    metadata_migration_count: metadataMigrations.length,
     reuse_count: shotPlans.filter(item => item.action === 'reuse').length,
-    zero_cost_action_count: localUnits.length + reviewOnly.length + transitionUnits.length,
+    zero_cost_action_count: localUnits.length + reviewOnly.length + transitionUnits.length + metadataMigrations.length,
     automatic_retry_count: 0,
     blockers,
+    compatibility_report: compatibilityReport,
+    provider_capability_assessment: capabilityAssessment,
     shots: shotPlans,
     units,
     scene_blocks: sceneBlocks,
@@ -508,8 +576,8 @@ function buildVideoPreflight({
     local_motion_indexes: [...new Set(units.filter(unit => unit.action === 'local_motion').flatMap(unit => unit.member_indexes))],
     transition_bridge_indexes: [...new Set(units.filter(unit => unit.action === 'transition_bridge').flatMap(unit => unit.member_indexes))],
     transition_fallback_indexes: [...transitionFallbackIndexes],
-    keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid).flatMap(unit => unit.member_indexes).filter(index => !transitionFallbackIndexes.has(index)))],
-    keyframe_first_frame_only_indexes: [...transitionFallbackIndexes],
+    keyframe_reference_only_indexes: [...new Set(units.filter(unit => unit.paid && unit.input_strategy === 'approved_keyframe_private_asset_only').flatMap(unit => unit.member_indexes))],
+    keyframe_first_frame_only_indexes: [...new Set(units.filter(unit => unit.paid && unit.input_strategy === 'approved_keyframe_first_frame_only').flatMap(unit => unit.member_indexes))],
     generated_at: new Date().toISOString(),
   };
 }
@@ -530,6 +598,7 @@ function publicVideoPreflight(plan = {}) {
     transition_unit_count: plan.transition_unit_count || 0,
     paid_transition_fallback_count: plan.paid_transition_fallback_count || 0,
     review_only_count: plan.review_only_count,
+    metadata_migration_count: plan.metadata_migration_count || 0,
     reuse_count: plan.reuse_count,
     zero_cost_action_count: plan.zero_cost_action_count,
     automatic_retry_count: 0,
@@ -537,9 +606,12 @@ function publicVideoPreflight(plan = {}) {
     warnings: plan.warnings || [],
     cost_plan: plan.cost_plan ? videoCore.costGuard.publicCostPlan(plan.cost_plan) : null,
     runtime_policy: plan.runtime_policy || {},
+    compatibility_report: plan.compatibility_report || null,
+    provider_capability_assessment: plan.provider_capability_assessment || { ready: true, assessments: [], blockers: [] },
     shots: (plan.shots || []).map(item => ({
       shot_index: item.shot_index, title: item.title, action: item.action, label: item.label,
       paid: item.paid, unit_id: item.unit_id || '', input_strategy: item.input_strategy || '', review_scope: item.review_scope || '', transition_override: item.transition_override || '', boundary_resolution: item.boundary_resolution || '', changes: item.changes || [],
+      compatibility_status: item.compatibility_status || '', compatibility_reason_codes: item.compatibility_reason_codes || [],
     })),
     units: (plan.units || []).map(unit => ({
       id: unit.id, shots: unit.shots, title: unit.title, action: unit.action, label: unit.label,

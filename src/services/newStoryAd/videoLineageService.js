@@ -1,6 +1,7 @@
 const fs = require('fs');
 const revisionService = require('./revisionService');
 const { contractCompilerSignature } = require('./keyframeContractService');
+const artifactCompatibility = require('./videoArtifactCompatibilityService');
 
 // Keep the lineage version stable so already-approved clips are not invalidated
 // merely because future generations now use a stricter keyframe-first input.
@@ -17,8 +18,12 @@ function shotIdentity(shot = {}, index = 0) {
 function buildShotLineage({
   shot = {}, index = 0, contract = {}, keyframe = {}, ctx = {}, blueprint = {},
   storyboardMeta = {}, modelRoute = '', speechMode = '', motionPrompt = '', audio = {}, sceneBlock = null,
+  inputStrategy = '', input_strategy = '',
+  boundaryRepairFingerprint = '', boundary_repair_fingerprint = '',
+  transitionPolicyVersion = '', transition_policy_version = '',
+  qaPolicyVersion = '', qa_policy_version = '',
 } = {}) {
-  const payload = {
+  const semanticPayload = {
     policy_version: VIDEO_PIPELINE_POLICY_VERSION,
     shot_id: shotIdentity(shot, index),
     shot_index: index + 1,
@@ -64,6 +69,16 @@ function buildShotLineage({
     scene_block_members: Array.isArray(sceneBlock?.member_indexes) ? sceneBlock.member_indexes.map(index => index + 1) : [],
     model_route: String(modelRoute || '').toLowerCase(),
   };
+  const payload = {
+    ...semanticPayload,
+    semantic_lineage_fingerprint: revisionService.signature(semanticPayload),
+    input_strategy: String(inputStrategy || input_strategy || '').trim().toLowerCase(),
+    boundary_repair_fingerprint: String(boundaryRepairFingerprint || boundary_repair_fingerprint || '').trim(),
+    transition_policy_version: String(transitionPolicyVersion || transition_policy_version || '').trim(),
+    qa_policy_version: typeof (qaPolicyVersion || qa_policy_version) === 'number'
+      ? Math.max(0, Number(qaPolicyVersion || qa_policy_version) || 0)
+      : String(qaPolicyVersion || qa_policy_version || '').trim(),
+  };
   return { ...payload, fingerprint: revisionService.signature(payload) };
 }
 
@@ -74,7 +89,8 @@ function clipHasUsableFile(clip = {}) {
 }
 
 function qaApproved(clip = {}) {
-  return clip.qa?.pass === true && clip.cross_shot_qa?.pass !== false;
+  return artifactCompatibility.qaState(clip.qa) === artifactCompatibility.QA_STATE.APPROVED
+    && artifactCompatibility.qaState(clip.cross_shot_qa) !== artifactCompatibility.QA_STATE.REJECTED;
 }
 
 function canAdoptLegacyClip(clip = {}, expected = {}) {
@@ -92,6 +108,7 @@ function lineageWithoutSceneBlock(lineage = {}) {
   const comparable = { ...(lineage || {}) };
   [
     'fingerprint',
+    'semantic_lineage_fingerprint',
     'scene_block_policy_version',
     'scene_block_id',
     'scene_block_fingerprint',
@@ -103,8 +120,14 @@ function lineageWithoutSceneBlock(lineage = {}) {
 function baseLineageMatches(clip = {}, expected = {}) {
   const actual = clip.lineage || {};
   if (!actual.fingerprint && !clip.lineage_fingerprint) return false;
-  return revisionService.signature(lineageWithoutSceneBlock(actual))
-    === revisionService.signature(lineageWithoutSceneBlock(expected));
+  return artifactCompatibility.semanticLineageFingerprint(lineageWithoutSceneBlock(actual))
+    === artifactCompatibility.semanticLineageFingerprint(lineageWithoutSceneBlock(expected));
+}
+
+function producerPolicyMatches(clip = {}, expected = {}) {
+  const actual = clip.lineage || {};
+  return ['input_strategy', 'boundary_repair_fingerprint', 'transition_policy_version', 'qa_policy_version']
+    .every(key => String(actual[key] ?? '') === String(expected[key] ?? ''));
 }
 
 function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
@@ -133,16 +156,16 @@ function reviewableDecision(clip = {}, expected = {}) {
   if (qaApproved(clip)) return { reviewable: false, reason: 'already_reviewed' };
   const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
   if (actual && actual === expected.fingerprint) return { reviewable: true, reason: 'lineage_match_pending_qa' };
-  if (actual && canAdoptSceneBlockTopology(clip, expected)) return { reviewable: true, adopted: true, reason: 'topology_match_pending_qa' };
+  if (actual && canAdoptSceneBlockTopology(clip, expected) && producerPolicyMatches(clip, expected)) return { reviewable: true, adopted: true, reason: 'topology_match_pending_qa' };
   return { reviewable: false, reason: actual ? 'lineage_changed' : 'legacy_lineage_unverified' };
 }
 
-function reuseDecision(clip = {}, expected = {}, { allowLegacyAdoption = true } = {}) {
+function reuseDecision(clip = {}, expected = {}, { allowLegacyAdoption = false } = {}) {
   if (!clipHasUsableFile(clip)) return { reusable: false, reason: 'missing_or_failed_clip' };
   if (!qaApproved(clip)) return { reusable: false, reason: 'qa_not_approved' };
   const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
   if (actual && actual === expected.fingerprint) return { reusable: true, reason: 'lineage_match' };
-  if (actual && canAdoptSceneBlockTopology(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_scene_block_topology_adoption' };
+  if (actual && canAdoptSceneBlockTopology(clip, expected) && producerPolicyMatches(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_scene_block_topology_adoption' };
   if (!actual && allowLegacyAdoption && canAdoptLegacyClip(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_legacy_adoption' };
   return { reusable: false, reason: actual ? 'lineage_changed' : 'legacy_lineage_unverified' };
 }
@@ -164,6 +187,7 @@ module.exports = {
   clipHasUsableFile,
   qaApproved,
   baseLineageMatches,
+  producerPolicyMatches,
   canAdoptSceneBlockTopology,
   reviewableDecision,
   reuseDecision,

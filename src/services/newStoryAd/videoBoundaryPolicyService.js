@@ -1,5 +1,22 @@
+const artifactCompatibility = require('./videoArtifactCompatibilityService');
+
 function text(value = '') {
   return String(value || '').trim();
+}
+
+const BOUNDARY_LINEAGE_POLICY_VERSION = 'cross-shot-lineage-boundary-v1';
+
+function lineageFingerprint(clip = {}) {
+  return artifactCompatibility.lineageFingerprint(clip);
+}
+
+function bindBoundaryQa(qa = {}, previous = {}, current = {}, { policyVersion = BOUNDARY_LINEAGE_POLICY_VERSION } = {}) {
+  return {
+    ...(qa || {}),
+    boundary_lineage_policy_version: text(policyVersion) || BOUNDARY_LINEAGE_POLICY_VERSION,
+    previous_lineage_fingerprint: lineageFingerprint(previous),
+    current_lineage_fingerprint: lineageFingerprint(current),
+  };
 }
 
 function sceneBlockId(clip = {}) {
@@ -19,25 +36,41 @@ function boundaryRequired(clips = [], index = 0) {
   return index > 0 && index < clips.length && !sameContinuousUnit(clips[index - 1] || {}, clips[index] || {});
 }
 
-function boundaryStatus(clips = [], index = 0) {
+function boundaryStatus(clips = [], index = 0, { allowUnboundLegacy = false } = {}) {
   if (!boundaryRequired(clips, index)) return { index, required: false, pass: true, status: 'same_generation_unit' };
+  const previous = clips[index - 1] || {};
+  const current = clips[index] || {};
   const qa = clips[index]?.cross_shot_qa;
-  if (qa?.pass === true) return { index, required: true, pass: true, status: 'passed', qa };
-  if (qa?.pass === false) return { index, required: true, pass: false, status: 'failed', qa };
-  return { index, required: true, pass: false, status: 'missing', qa: null };
+  const assessment = artifactCompatibility.boundaryQaState(qa, {
+    required: true,
+    previousLineageFingerprint: lineageFingerprint(previous),
+    currentLineageFingerprint: lineageFingerprint(current),
+    allowUnboundLegacy,
+  });
+  return {
+    index,
+    required: true,
+    pass: assessment.status === 'passed',
+    status: assessment.status,
+    qa: qa || null,
+    stale: assessment.stale,
+    reason_codes: assessment.reason_codes,
+  };
 }
 
-function audit(clips = [], shotCount = clips.length) {
+function audit(clips = [], shotCount = clips.length, options = {}) {
   const scoped = Array.from({ length: Math.max(0, Number(shotCount) || 0) }, (_, index) => clips[index] || {});
-  const boundaries = scoped.map((_, index) => boundaryStatus(scoped, index)).filter(item => item.required);
+  const boundaries = scoped.map((_, index) => boundaryStatus(scoped, index, options)).filter(item => item.required);
   const missing = boundaries.filter(item => item.status === 'missing');
   const failed = boundaries.filter(item => item.status === 'failed');
+  const stale = boundaries.filter(item => item.status === 'stale');
   return {
     ready: boundaries.every(item => item.pass),
     total: boundaries.length,
     passed: boundaries.filter(item => item.pass).length,
     missing_indexes: missing.map(item => item.index),
     failed_indexes: failed.map(item => item.index),
+    stale_indexes: stale.map(item => item.index),
     unready_indexes: boundaries.filter(item => !item.pass).map(item => item.index),
     boundaries,
   };
@@ -53,7 +86,7 @@ function deterministicTransitionQa(previous = {}, current = {}, transition = 'di
   const supported = ['dissolve', 'fade'].includes(normalized);
   const inputsApproved = previous?.qa?.pass === true && current?.qa?.pass === true;
   const pass = supported && inputsApproved;
-  return {
+  return bindBoundaryQa({
     pass,
     decision_source: 'deterministic_transition',
     boundary_mode: 'intentional_discontinuity',
@@ -70,7 +103,7 @@ function deterministicTransitionQa(previous = {}, current = {}, transition = 'di
     failure_labels_zh: pass ? [] : ['转场输入素材未通过单镜质检'],
     problems: pass ? [] : ['Deterministic transition requires two individually approved clips and a supported transition.'],
     reviewed_at: new Date().toISOString(),
-  };
+  }, previous, current, { policyVersion: 'deterministic-boundary-transition-v1' });
 }
 
 function usesDeterministicTransition(plan = {}) {
@@ -88,4 +121,17 @@ function taskFailurePatch(clips = [], shotCount = clips.length) {
   return { status: 'failed', stage: 'video_failed', error: details.join('；'), error_code: 'VIDEO_QA_FAILED', retryable: true };
 }
 
-module.exports = { sceneBlockId, sameContinuousUnit, boundaryRequired, boundaryStatus, audit, requiredBoundaryIndexes, deterministicTransitionQa, usesDeterministicTransition, taskFailurePatch };
+module.exports = {
+  BOUNDARY_LINEAGE_POLICY_VERSION,
+  lineageFingerprint,
+  bindBoundaryQa,
+  sceneBlockId,
+  sameContinuousUnit,
+  boundaryRequired,
+  boundaryStatus,
+  audit,
+  requiredBoundaryIndexes,
+  deterministicTransitionQa,
+  usesDeterministicTransition,
+  taskFailurePatch,
+};

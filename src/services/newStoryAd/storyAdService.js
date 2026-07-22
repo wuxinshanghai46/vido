@@ -33,9 +33,10 @@ const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoQualityPolicy = require('./videoQualityPolicyService');
-const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService');
+const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService'), videoArtifactWorkflow = require('./videoArtifactWorkflowService'), videoArtifactCompatibility = require('./videoArtifactCompatibilityService');
 const videoRepairPolicy = require('./videoRepairPolicy');
 const videoPreflight = require('./videoPreflightService');
+const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStore(storage);
 const sceneBlockService = require('./sceneBlockService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
@@ -47,18 +48,13 @@ const videoCore = require('../videoGenerationCore');
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
-  const paidVideoEnabled = enabled
-    && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
+  const paidVideoEnabled = enabled && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
   return { version: videoCore.planner.PLAN_VERSION, enabled, paid_video_enabled: paidVideoEnabled };
 }
 function withAssetContracts(ctx = {}) {
   const next = { ...ctx };
   if (next.person_asset) {
-    next.person_contract = next.person_contract || personIdentity.buildPersonContract(
-      next.person_asset,
-      next.person_spec || {},
-      { revision: next.revisions?.person || 1 },
-    );
+    next.person_contract = next.person_contract || personIdentity.buildPersonContract(next.person_asset, next.person_spec || {}, { revision: next.revisions?.person || 1 });
     next.person_asset = { ...next.person_asset, person_contract: next.person_contract, person_revision: next.person_contract.person_revision };
   } else {
     next.person_contract = null;
@@ -281,12 +277,13 @@ function storyboardStatus(bundle = {}, outputs = {}) {
 }
 function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
   const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
+  const persistedPreflight = (rawBundle.outputs || []).find(row => row.kind === 'video_preflight')?.payload || {}, compatibilityByIndex = new Map((persistedPreflight.compatibility_report?.decisions || []).map(item => [Number(item.index), item]));
   const videoShotStatuses = (rawBundle.outputs || [])
     .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
     .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
     .map(row => row.payload || {})
     .filter(Boolean)
-    .map((status, index) => ({
+    .map((status, index) => { const attempts = videoAttemptLedger.projectCurrentAndLast({ taskId, shotIndex: index }), failedCurrent = attempts.current && ['failed', 'review_required', 'cancelled'].includes(attempts.current.status), lastAttempt = status.previous_clip_restored && failedCurrent ? attempts.current : attempts.last, currentAttempt = status.previous_clip_restored && failedCurrent ? null : attempts.current, artifact = compatibilityByIndex.get(index) || status.artifact_compatibility || {}; return ({
       index: Number(status.index || status.shot_index || index + 1),
       title: cleanText(status.title || '', 120),
       lifecycle: cleanText(status.lifecycle || 'pending', 40),
@@ -297,12 +294,14 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       qa_failure_labels_zh: Array.isArray(status.qa_failure_labels_zh) ? status.qa_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
       cross_shot_qa_problems: Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
       cross_shot_failure_labels_zh: Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
-      provider_submission_state: cleanText(status.provider_submission_state || '', 40), billing_state: cleanText(status.billing_state || '', 40),
+      provider_submission_state: cleanText(currentAttempt?.provider_submission_state || status.provider_submission_state || '', 40), billing_state: cleanText(currentAttempt?.billing_state || status.billing_state || '', 40),
+      previous_clip_restored: status.previous_clip_restored === true, last_attempt_provider_submission_state: cleanText(lastAttempt?.provider_submission_state || status.last_attempt_provider_submission_state || '', 40), last_attempt_billing_state: cleanText(lastAttempt?.billing_state || status.last_attempt_billing_state || '', 40), last_attempt_error_code: cleanText(lastAttempt?.error_code || status.last_attempt_error_code || '', 160), last_attempt_status: cleanText(lastAttempt?.status || status.last_attempt_status || '', 40),
+      compatibility_status: cleanText(artifact.status || status.compatibility_status || '', 60), artifact_compatibility: artifact, compatibility_reason_codes: Array.isArray(artifact.reason_codes || status.compatibility_reason_codes) ? (artifact.reason_codes || status.compatibility_reason_codes).slice(0, 12) : [], regenerate_required: (artifact.status || status.compatibility_status) === 'regenerate_required', legacy_inferred: status.legacy_inferred === true,
       error: cleanText(status.error || '', 300),
       error_code: cleanText(status.error_code || '', 80),
       retryable: status.retryable === true,
       updated_at: status.updated_at || '',
-    }));
+    }); });
   const visibleOutputs = (includeVideoMonitor
     ? (rawBundle.outputs || [])
     : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'))).filter(row => !String(row.kind || '').startsWith('scene_asset_checkpoint:'))
@@ -472,7 +471,6 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
     tasks: tasks.map(task => taskSummary(task, { detailed: false })),
   };
 }
-
 function createTask(body = {}, user = {}) {
   const ctx = withAssetContracts(buildContext(body, user));
   const id = cleanText(body.task_id || body.taskId || '', 80) || uuidv4();
@@ -487,7 +485,6 @@ function createTask(body = {}, user = {}) {
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
   return { task, context: ctx };
 }
-
 function updateTaskRequest(taskId, body = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -567,7 +564,6 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
   return { task: updated, context: ctx, change_scope: scope, invalidated_outputs: invalidated };
 }
-
 async function verifyPersonContract(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
@@ -2262,9 +2258,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   } catch {
     pinnedModel = videoAdapter.videoCandidates(options, { includeCircuitOpen: true })[0] || null;
   }
-  const providerRoute = pinnedModel
-    ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`
-    : '';
+  const providerRoute = pinnedModel ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}` : '';
   const executionPlan = videoCore.planner.compileExecutionPlan({
     shots,
     contracts,
@@ -2272,20 +2266,21 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     options,
   });
   const requestedOnlyIndexes = videoSubmissionGate.normalizeOnlyIndexes(options, shots.length);
-  const plan = videoPreflight.buildVideoPreflight({
-    taskId,
-    shots,
-    keyframes,
-    contracts,
-    clips,
-    statuses,
-    ctx,
-    mode: options.video_generation_mode || options.videoGenerationMode || options.mode || 'economy',
-    providerRoute,
-    executionPlan,
-    executionOptions: options,
-    onlyIndexes: requestedOnlyIndexes,
-  });
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {}, storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
+  const ttsAudio = storage.getOutput(taskId, 'tts_audio') || {}, audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
+  const providerCapabilityRegistry = videoArtifactWorkflow.capabilityRegistry({ route: providerRoute, model: pinnedModel || {}, configured: options.provider_capability_registry || options.providerCapabilityRegistry || {} });
+  const baseArgs = { taskId, shots, keyframes, contracts, clips, statuses, ctx, mode: options.video_generation_mode || options.videoGenerationMode || options.mode || 'economy', providerRoute, providerId: pinnedModel?.provider_id || '', modelId: pinnedModel?.model_id || '', providerCapabilityRegistry, executionPlan, executionOptions: options, onlyIndexes: requestedOnlyIndexes };
+  let plan, compatibilityReport = null, expectedLineages = [], appliedCompatibilityFingerprint = '';
+  for (let pass = 0; pass < 3; pass += 1) {
+    appliedCompatibilityFingerprint = compatibilityReport?.fingerprint || '';
+    plan = videoPreflight.buildVideoPreflight({ ...baseArgs, compatibilityReport });
+    expectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots: plan.reconciled_shots || shots, contracts, keyframes, ctx, blueprint, storyboardMeta, modelRoute: providerRoute, audioTracks, sceneBlocks: plan.scene_blocks || [], shotPlans: plan.shots || [], qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => ((plan.shots || []).find(item => item.index === index)?.action !== 'provider_generate' && clips[index]?.motion_prompt) || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, keyframes[index] || {}, plan.repair_instructions?.[index] || '') });
+    const nextReport = videoArtifactWorkflow.buildCompatibilityReport({ clips, expectedLineages, onlyIndexes: requestedOnlyIndexes });
+    if (compatibilityReport?.fingerprint === nextReport.fingerprint) { compatibilityReport = nextReport; break; }
+    compatibilityReport = nextReport;
+  }
+  plan.compatibility_report = compatibilityReport; plan.expected_lineages = expectedLineages;
+  if (appliedCompatibilityFingerprint !== (compatibilityReport?.fingerprint || '')) { plan.blockers.push({ code: 'VIDEO_ARTIFACT_PLAN_UNSTABLE', message: '视频产物兼容方案未能稳定收敛，已在供应商提交前停止。' }); plan.status = 'blocked'; }
   const authorizedExecutionPlan = {
     ...executionPlan,
     generation_units: (plan.units || []).filter(unit => unit.paid).map(unit => ({
@@ -2336,6 +2331,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     execution_plan_fingerprint: executionPlan.fingerprint,
     cost_plan_fingerprint: costPlan.fingerprint,
     runtime_policy: runtimePolicy,
+    compatibility_fingerprint: compatibilityReport?.fingerprint || '',
   });
   return plan;
 }
@@ -2430,24 +2426,16 @@ async function generateVideoStage(taskId, options = {}) {
   storage.saveStage(taskId, 'video', { status: 'running', input_summary: `${shots.length} shot videos` });
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
-  const forceRegenerateAll = !zeroCostOnly
-    && (options.force_regenerate_all === true || options.forceRegenerateAll === true);
+  const forceRegenerateAll = !zeroCostOnly && (options.force_regenerate_all === true || options.forceRegenerateAll === true);
   const pinnedModel = videoAdapter.resolvePinnedVideoModel(options, previousClips);
   const pinnedRoute = `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}`;
-  const preserveExistingTopology = generationMode !== 'quality' && !forceRegenerateAll && previousClips.some(clip => videoLineage.qaApproved(clip || {}));
-  let sceneBlocks = sceneBlockService.buildSceneBlocks(generationShots, contracts, {
-    ...options,
-    preserve_existing_topology: preserveExistingTopology,
-    continuous_quality_mode: generationMode === 'quality',
-    scene_block_generation: generationMode === 'quality',
-  });
-  sceneBlocks = sceneBlockService.isolateIndexes(sceneBlocks, generationShots, contracts, preflightPlan.transition_fallback_indexes || []);
+  let sceneBlocks = Array.isArray(preflightPlan.scene_blocks) && preflightPlan.scene_blocks.length ? preflightPlan.scene_blocks : sceneBlockService.buildSceneBlocks(generationShots, contracts, { ...options, preserve_existing_topology: false, continuous_quality_mode: generationMode === 'quality', scene_block_generation: generationMode === 'quality' });
   storage.saveOutput(taskId, 'scene_worlds', preflightPlan.execution_plan?.scene_worlds || []);
   storage.saveOutput(taskId, 'continuity_runs', preflightPlan.execution_plan?.continuity_runs || []);
   storage.saveOutput(taskId, 'generation_units', preflightPlan.execution_plan?.generation_units || []);
   storage.saveOutput(taskId, 'video_scene_blocks', sceneBlocks);
   const audioTracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
-  const expectedLineages = generationShots.map((shot, index) => videoLineage.buildShotLineage({
+  const expectedLineages = Array.isArray(preflightPlan.expected_lineages) && preflightPlan.expected_lineages.length === generationShots.length ? preflightPlan.expected_lineages : generationShots.map((shot, index) => videoLineage.buildShotLineage({
     shot, index, contract: contracts[index] || {}, keyframe: keyframes[index] || {}, ctx,
     blueprint, storyboardMeta, modelRoute: pinnedRoute,
     speechMode: videoAdapter.explicitShotSpeechMode(shot, contracts[index] || {}),
@@ -2498,7 +2486,7 @@ async function generateVideoStage(taskId, options = {}) {
       const deterministicTransition = videoBoundaryPolicy.usesDeterministicTransition(planned);
       const crossQa = deterministicTransition
         ? videoBoundaryPolicy.deterministicTransitionQa(previous, current, planned.transition_override || 'dissolve')
-        : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, ctx });
+        : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, previousLineageFingerprint: previous.lineage_fingerprint || '', currentLineageFingerprint: current.lineage_fingerprint || '', ctx });
       const { code: crossErrorCode, message: crossError } = videoFrameQa.crossShotFailure(crossQa, index);
       clips[index] = {
         ...current,
@@ -2541,7 +2529,11 @@ async function generateVideoStage(taskId, options = {}) {
   shots.forEach((_, index) => {
     if (requestedIndexSet && !requestedIndexSet.has(index)) return;
     const planned = preflightShotActions.get(index) || {};
-    if (zeroCostOnly && !['local_motion', 'review_only', 'transition_bridge'].includes(planned.action)) return;
+    if (zeroCostOnly && !['local_motion', 'review_only', 'transition_bridge', 'metadata_migration'].includes(planned.action)) return;
+    if (planned.action === 'metadata_migration' && videoLineage.clipHasMediaFile(clips[index])) {
+      clips[index] = videoLineage.attachLineage(clips[index], expectedLineages[index], { metadata_migrated_at: new Date().toISOString() });
+      return;
+    }
     if (['review_only', 'transition_bridge'].includes(planned.action)) {
       if (videoLineage.clipHasMediaFile(clips[index])) pendingReviewIndexes.push(index);
       return;
@@ -2639,6 +2631,8 @@ async function generateVideoStage(taskId, options = {}) {
     const generationUnits = sceneBlocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
     await videoSubmissionGate.runUnitsFailFast(generationUnits, async (unit, unitPosition, remainingUnits) => {
       const unitIndexes = unit.member_indexes.filter(index => targetIndexes.includes(index));
+      const paidUnit = (preflightPlan.units || []).find(item => item.paid && (item.member_indexes || []).some(index => unitIndexes.includes(index)));
+      const attemptClaims = paidUnit ? videoArtifactWorkflow.claimUnitAttempts({ ledger: videoAttemptLedger, taskId, indexes: unitIndexes, generationId: options.generation_id || options.generationId || task.active_generation_id || preflightPlan.fingerprint, lineages: expectedLineages, providerId: pinnedModel.provider_id, modelId: pinnedModel.model_id, costFingerprint: preflightPlan.cost_plan?.fingerprint || '' }) : [];
       let generationError = null;
       try {
         lastGenerated = await videoAdapter.generateSceneBlockVideos({
@@ -2678,6 +2672,8 @@ async function generateVideoStage(taskId, options = {}) {
       const reviewedIndexes = candidateReviewedIndexes.filter(index => videoLineage.clipHasUsableFile(clips[index]));
       const unitQaFailures = await reviewVideoIndexes(reviewedIndexes, repairAttempt, { stopOnFailure: true });
       qaFailures.push(...unitQaFailures);
+      if (generationError) videoArtifactWorkflow.failUnitAttempts({ ledger: videoAttemptLedger, taskId, claims: attemptClaims, error: generationError, statusFor: index => videoAdapter.listVideoShotStatuses(taskId, shots.length)[index] || {} });
+      else videoArtifactWorkflow.finishUnitAttempts({ ledger: videoAttemptLedger, taskId, claims: attemptClaims, clips, statusFor: index => videoAdapter.listVideoShotStatuses(taskId, shots.length)[index] || {} });
       if (generationError || unitQaFailures.length) {
         videoFailureRecovery.recordFailedCandidates({ storage, taskId, options, unitIndexes, clips, qaFailures: unitQaFailures });
         videoFailureRecovery.restoreUnitFailure({ storage, videoAdapter, taskId, clips, previousClips, unitIndexes, remainingUnits, totalShots: shots.length });
@@ -3242,9 +3238,13 @@ async function composeStage(taskId, options = {}) {
   // Composition must never generate visual clips. Step 4 owns storyboard video
   // generation and review; step 5 only mixes optional audio/effects and joins
   // the already-approved clips.
-  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
-    ? storage.getOutput(taskId, 'video_clips')
-    : [];
+  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const composeSceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [], composeContracts = keyframeContractFreshness.inspect(taskId, { ctx: { ...ctx, scene_assets: composeSceneAssets }, shots }).contracts;
+  const composeKeyframes = storage.getOutput(taskId, 'keyframes') || [], composeBlueprint = storage.getOutput(taskId, 'blueprint') || {}, composeStoryboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {}, composeTts = storage.getOutput(taskId, 'tts_audio') || {}, composeAudioTracks = Array.isArray(composeTts?.tracks) ? composeTts.tracks : (Array.isArray(composeTts) ? composeTts : []);
+  const composeSceneBlocks = storage.getOutput(taskId, 'video_scene_blocks') || [], composeModelRoute = String(clips.find(clip => clip?.provider_used)?.provider_used || '').toLowerCase();
+  const composeExpectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots, contracts: composeContracts, keyframes: composeKeyframes, ctx, blueprint: composeBlueprint, storyboardMeta: composeStoryboardMeta, modelRoute: composeModelRoute, audioTracks: composeAudioTracks, sceneBlocks: composeSceneBlocks, shotPlans: clips.map((clip, index) => ({ index, input_strategy: videoArtifactCompatibility.inputStrategy(clip), boundary_repair: { fingerprint: clip?.boundary_repair_fingerprint || clip?.lineage?.boundary_repair_fingerprint || '' }, transition_override: clip?.transition_override || '' })), qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => clips[index]?.motion_prompt || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, composeKeyframes[index] || {}, '') });
+  const composeCompatibility = videoArtifactWorkflow.buildCompatibilityReport({ clips, expectedLineages: composeExpectedLineages });
+  videoArtifactWorkflow.assertComposeCompatible(composeCompatibility);
   const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) { const failed = boundaryAudit.failed_indexes.length > 0;
     const error = new Error(`当前版本仍有跨生成单元衔接审核${failed ? '未通过' : '未完成'}：${boundaryAudit.unready_indexes.map(index => `第 ${index}→${index + 1} 镜`).join('、')}`);
     error.code = failed ? 'COMPOSE_BOUNDARY_QA_FAILED' : 'COMPOSE_BOUNDARY_QA_INCOMPLETE'; error.retryable = true;

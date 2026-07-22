@@ -167,8 +167,17 @@
 
   function outcomeBannerHtml(result = {}, escapeHtml = value => String(value || '')) {
     if (!result || typeof result !== 'object' || !result.title) return '';
+    const tone = result.outcome === 'success' || result.outcome === 'ready_to_compose'
+      ? 'success'
+      : (result.outcome === 'not_started' || result.outcome === 'incomplete' ? 'incomplete' : 'failed');
     const rows = [result.success_text, result.failure_text, result.cost_text, result.compose_text].filter(Boolean);
-    return `<b>${escapeHtml(result.title)}</b>${rows.map(row => `<span>${escapeHtml(row)}</span>`).join('')}`;
+    const currentAttemptFailures = Array.isArray(result.failed_shots) ? result.failed_shots : [];
+    const lastAttemptFailures = Array.isArray(result.last_attempt_failed_shots) ? result.last_attempt_failed_shots : [];
+    const attemptSummary = [
+      currentAttemptFailures.length ? `当前状态阻断 ${currentAttemptFailures.length} 镜` : '',
+      lastAttemptFailures.length ? `最近一次尝试失败 ${lastAttemptFailures.length} 镜，当前可用结果未覆盖` : '',
+    ].filter(Boolean).join('；');
+    return `<div class="dh-nsa-media-outcome is-${escapeHtml(tone)}" data-nsa-media-outcome="${escapeHtml(result.outcome || 'incomplete')}"><b>${escapeHtml(result.title)}</b>${rows.map(row => `<span>${escapeHtml(row)}</span>`).join('')}${attemptSummary ? `<small>${escapeHtml(attemptSummary)}</small>` : ''}</div>`;
   }
 
   function bindSelection(modal, preflight = {}) {

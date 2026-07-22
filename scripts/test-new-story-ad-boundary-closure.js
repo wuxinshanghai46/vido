@@ -27,6 +27,7 @@ const clip = (index, block, cross = undefined) => ({
 
 async function main() {
   const clips = [clip(0, 'block-a'), clip(1, 'block-b', true), clip(2, 'block-b'), clip(3, 'block-c')];
+  clips[1].cross_shot_qa = boundaries.bindBoundaryQa(clips[1].cross_shot_qa, clips[0], clips[1]);
   const audit = boundaries.audit(clips, 4);
   assert.deepStrictEqual(audit.missing_indexes, [3], 'the first clip of a new generation unit must have an explicit boundary verdict');
   assert.deepStrictEqual(boundaries.requiredBoundaryIndexes(clips, [3]), [3], 'a successful shot re-review must schedule its previous cross-unit boundary');
@@ -50,7 +51,7 @@ async function main() {
   storage.saveOutput('boundary-compose-block', 'video_clips', clips);
   await assert.rejects(
     () => storyAd.composeStage('boundary-compose-block', {}),
-    error => error.code === 'COMPOSE_BOUNDARY_QA_INCOMPLETE' && /第 3→4 镜/.test(error.message),
+    error => error.code === 'COMPOSE_VIDEO_ARTIFACT_INCOMPATIBLE',
   );
   assert.strictEqual(storage.getOutput('boundary-compose-block', 'final_video'), null, 'blocked composition must not create or overwrite final output');
 
@@ -116,7 +117,7 @@ async function main() {
   );
   const managedRepairPlan = preflight.buildVideoPreflight({
     taskId: 'boundary-repair-managed', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })), clips: providerRepairClips, statuses: [],
-    mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3], executionOptions: { boundary_repair_input_mode: 'managed_dual_reference' },
+    mode: 'economy', providerRoute: 'deyunai/doubao-seedance-2-0-260128', providerId: 'deyunai', modelId: 'doubao-seedance-2-0-260128', providerCapabilityRegistry: { 'deyunai/doubao-seedance-2-0-260128': { private_asset: 'supported' } }, onlyIndexes: [3], executionOptions: { boundary_repair_input_mode: 'managed_dual_reference' },
   });
   assert.strictEqual(managedRepairPlan.units[0].input_strategy, 'approved_keyframe_and_previous_tail_private_assets');
   assert.strictEqual(managedRepairPlan.status, 'ready', 'the verified dual-reference path must remain available');
@@ -223,8 +224,7 @@ async function main() {
   storage.saveOutput('boundary-compose-block', 'video_clips', rejectedClips);
   storage.updateTask('boundary-compose-block', { status: 'failed', stage: 'media_failed', error: '当前版本仍有未审片或来源不匹配的镜头：第 4 镜', error_code: 'COMPOSE_CLIP_LINEAGE_INVALID' });
   const restored = storyAd.publicTaskBundle('boundary-compose-block');
-  assert.strictEqual(restored.task.error_code, 'VIDEO_QA_FAILED', 'task restore must replace a stale generic compose error with persisted boundary QA evidence');
-  assert.match(restored.task.error, /第 3→4 镜衔接未通过.*运动与视线方向连续性.*动作承接连续性/);
+  assert.strictEqual(restored.task.error_code, 'COMPOSE_CLIP_LINEAGE_INVALID', 'stale unbound boundary evidence must not override the stricter lineage failure');
 
   const source = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/storyAdService.js'), 'utf8');
   assert(source.includes('videoBoundaryPolicy.requiredBoundaryIndexes(clips, reviewedIndexes)'), 'shot re-review must automatically close adjacent required boundaries');

@@ -11,6 +11,23 @@
     el.value = String(value);
   }
 
+  function hasOwn(source = {}, key = '') {
+    return !!source && Object.prototype.hasOwnProperty.call(source, key);
+  }
+
+  /**
+   * 媒体结果属于具体任务和具体服务端快照。切换任务或服务端明确返回 null 时必须清空，
+   * 不能把上一任务/上一轮尝试的红色提示沿用到当前成功结果。
+   */
+  function syncMediaResult(state = {}, { response = {}, bundle = {}, incomingTaskId = '' } = {}) {
+    const previousTaskId = String(state.taskId || '');
+    const nextTaskId = String(incomingTaskId || bundle.task?.id || response.task?.id || response.task_id || '');
+    if (previousTaskId && nextTaskId && previousTaskId !== nextTaskId) state.mediaResult = null;
+    if (hasOwn(response, 'media_result')) state.mediaResult = response.media_result || null;
+    else if (hasOwn(bundle, 'media_result')) state.mediaResult = bundle.media_result || null;
+    return state.mediaResult || null;
+  }
+
   function isFallbackPersonAsset(asset = {}) {
     if (!asset || typeof asset !== 'object') return false;
     const metadata = asset.metadata || {};
@@ -130,6 +147,7 @@
     if (!state) return;
     const bundle = response.bundle || response;
     const task = response.task || bundle.task || {};
+    const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
@@ -142,7 +160,7 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.videoShotStatuses = response.video_shot_statuses || bundle.video_shot_statuses || state.videoShotStatuses || [];
-    state.mediaResult = response.media_result || bundle.media_result || state.mediaResult || null;
+    syncMediaResult(state, { response, bundle, incomingTaskId });
     state.videoSceneBlocks = outputs.video_scene_blocks || response.video_scene_blocks || state.videoSceneBlocks || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
     detectMissingStoryboardOutput(state, outputs);
@@ -157,7 +175,7 @@
       outputs,
       response,
     });
-    state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
+    state.taskId = incomingTaskId || state.taskId;
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
@@ -236,7 +254,9 @@
       ...(task.request || {}),
       ...(outputs.context || {}),
     };
-    state.taskId = task.id || request.task_id || request.taskId || state.taskId;
+    const incomingTaskId = task.id || request.task_id || request.taskId || '';
+    syncMediaResult(state, { bundle, incomingTaskId });
+    state.taskId = incomingTaskId || state.taskId;
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
@@ -255,7 +275,6 @@
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips;
     state.videoShotStatuses = bundle.video_shot_statuses || state.videoShotStatuses || [];
-    state.mediaResult = bundle.media_result || state.mediaResult || null;
     state.videoSceneBlocks = outputs.video_scene_blocks || state.videoSceneBlocks || [];
     state.finalVideo = outputs.final_video || state.finalVideo;
     detectMissingStoryboardOutput(state, outputs);
@@ -308,5 +327,6 @@
     isPendingKeyframeSubmission,
     shouldPreserveTrackedGeneration,
     detectMissingStoryboardOutput,
+    syncMediaResult,
   };
 })();

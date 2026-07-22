@@ -68,6 +68,7 @@
     videoSelectedIndexes: [],
     videoSelectedUnitIds: [],
     finalVideo: null,
+    mediaResult: null,
     actorAsset: null,
     personAsset: null,
     personSpecLock: null,
@@ -1544,6 +1545,8 @@
     }
     const bundle = response.bundle || response;
     const task = response.task || bundle.task || {};
+    const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
+    if (state.taskId && incomingTaskId && String(state.taskId) !== String(incomingTaskId)) state.mediaResult = null;
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
@@ -1555,7 +1558,8 @@
     state.ttsAudio = outputs.tts_audio || response.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || response.video_clips || state.videoClips || [];
     state.videoShotStatuses = response.video_shot_statuses || bundle.video_shot_statuses || state.videoShotStatuses || [];
-    state.mediaResult = response.media_result || bundle.media_result || state.mediaResult || null;
+    if (Object.prototype.hasOwnProperty.call(response, 'media_result')) state.mediaResult = response.media_result || null;
+    else if (Object.prototype.hasOwnProperty.call(bundle, 'media_result')) state.mediaResult = bundle.media_result || null;
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, {
@@ -1566,7 +1570,7 @@
     } else {
       state.sceneAssets = outputs.scene_assets || response.scene_assets || state.context?.scene_assets || state.sceneAssets || [];
     }
-    state.taskId = response.task_id || response.task?.id || bundle.task?.id || state.taskId;
+    state.taskId = incomingTaskId || state.taskId;
     const pendingKeyframeSubmission = state.stageProgress?.active === true
       && state.stageProgress?.stage === 'keyframes'
       && state.stageProgress?.submissionPending === true;
@@ -3412,19 +3416,14 @@
     const approvedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.qa_passed ?? qaApprovedFromClips) || 0));
     const generatedVideoShots = Math.max(approvedVideoShots, Math.min(totalVideoShots, Number(videoProgress?.generated ?? 0) || 0));
     const failedVideoShots = Math.max(0, Math.min(totalVideoShots, Number(videoProgress?.failed ?? Math.max(0, totalVideoShots - approvedVideoShots)) || 0));
-    const mediaActive = composeView.active ?? (!!state.activeGenerationId
-      || state.stageProgress?.active === true
-      || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || ''))));
-    const mediaFailed = composeView.failed ?? (!mediaActive && (state.taskStatus === 'failed'
-      || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError));
-    const failureDetails = videoFailureDetails(clips);
-    const videoReview = window.NewStoryAdVideoReview;
-    const outcomeBanner = videoReview?.outcomeBannerHtml?.(state.mediaResult, escapeHtml) || '';
-    const composeSummary = within('#dhNsaAdComposeSummary');
-    const progressHint = within('#dhNsaAdProgressHint');
-    const gate = within('#dhNsaAdComposeGate');
-    const restoreFailed = !!state.restoreError && (!Array.isArray(state.shots) || !state.shots.length);
-    const restoring = !restoreFailed && state.restoringTask && (!Array.isArray(state.shots) || !state.shots.length);
+    const mediaActive = composeView.active ?? (!!state.activeGenerationId || state.stageProgress?.active === true || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || ''))));
+    const mediaFailed = composeView.failed ?? (!mediaActive && (state.taskStatus === 'failed' || videoProgress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError));
+    const failureDetails = videoFailureDetails(clips), videoReview = window.NewStoryAdVideoReview;
+    const outcomeBanner = videoReview?.outcomeBannerHtml?.(state.mediaResult, escapeHtml) || '', mediaOutcome = String(state.mediaResult?.outcome || '');
+    const structuredFailure = ['partial_failed', 'failed', 'pre_submit_failed', 'provider_failed', 'qa_failed', 'boundary_failed', 'compatibility_blocked', 'compose_failed'].includes(mediaOutcome), structuredIncomplete = ['not_started', 'incomplete'].includes(mediaOutcome), structuredSuccess = ['success', 'ready_to_compose'].includes(mediaOutcome);
+    const resultFailed = !finalUrl && (structuredFailure || mediaFailed), resultIncomplete = !finalUrl && !resultFailed && (structuredIncomplete || !mediaActive);
+    const composeSummary = within('#dhNsaAdComposeSummary'), progressHint = within('#dhNsaAdProgressHint'), gate = within('#dhNsaAdComposeGate');
+    const restoreFailed = !!state.restoreError && (!Array.isArray(state.shots) || !state.shots.length), restoring = !restoreFailed && state.restoringTask && (!Array.isArray(state.shots) || !state.shots.length);
     if (composeSummary) {
       composeSummary.textContent = restoreFailed
         ? '任务内容读取失败'
@@ -3444,10 +3443,11 @@
         : compose.message));
     }
     if (gate) {
-      const failed = mediaFailed && state.taskError;
+      const failed = resultFailed && (state.taskError || structuredFailure);
       const actionReady = composeView.action_ready && !finalUrl;
-      gate.hidden = !restoreFailed && !restoring && !actionReady && !failed && !compose.message;
-      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}${outcomeBanner ? ' has-outcome' : ''}`;
+      const showStructuredOutcome = !!outcomeBanner && !structuredSuccess;
+      gate.hidden = !restoreFailed && !restoring && !actionReady && !failed && !compose.message && !showStructuredOutcome;
+      gate.className = `dh-nsa-compose-gate ${restoring ? 'is-loading' : ((restoreFailed || failed) ? 'is-error' : (actionReady ? 'is-ready' : 'is-warning'))}${showStructuredOutcome ? ' has-outcome' : ''}`;
       gate.innerHTML = restoreFailed
         ? `<b>任务内容读取失败</b><span>${escapeHtml(state.restoreError)}。请返回任务中心刷新；普通用户只能继续制作自己的任务。</span>`
         : (restoring
@@ -3456,18 +3456,22 @@
         ? `<b>${composeView.retry_ready ? '素材已就绪，可重新封装' : '素材已全部就绪'}</b><span>${composeView.retry_ready ? '上次封装未完成，但已生成素材均已保留。' : '全部镜头已通过审核。'}</span><span>请点击右上角“下一步：封装最终成片 →”，不会重新生成视频。</span>`
         : (failed
         ? (outcomeBanner || `<b>整条广告尚未完成</b><span>${escapeHtml(state.taskError || '视频生成或质检未通过')}</span><span>已完成的生成单元会保留；系统不会自动再次付费生成。</span>`)
-        : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`)));
+        : (showStructuredOutcome
+          ? outcomeBanner
+          : `<b>正在准备整条广告</b><span>${escapeHtml(compose.message || '等待视频生成和逐镜质检完成')}</span>`))));
     }
     host.innerHTML = `<div class="dh-task-create-section dh-task-create-section-wide">
       <div class="dh-task-detail-title">整条广告审片与合成结果</div>
-      <div class="dh-nsa-media-result-state ${finalUrl ? 'is-success' : (mediaFailed ? 'is-failed' : (mediaActive ? 'is-running' : 'is-incomplete'))}" data-nsa-media-result-state>
-        <b>${finalUrl ? '成片合成成功' : (mediaFailed ? escapeHtml(state.mediaResult?.title || '本次合成失败') : (mediaActive ? '正在生成媒体' : '最终成片尚未生成'))}</b>
+      <div class="dh-nsa-media-result-state ${finalUrl ? 'is-success' : (resultFailed ? 'is-failed' : (mediaActive ? 'is-running' : 'is-incomplete'))}" data-nsa-media-result-state>
+        <b>${finalUrl ? '成片合成成功' : (state.mediaResult?.title ? escapeHtml(state.mediaResult.title) : (resultFailed ? '本次处理尚未完成' : (mediaActive ? '正在生成媒体' : '最终成片尚未生成')))}</b>
         <span>${finalUrl
           ? '最终成片已生成，可以直接播放。'
-          : (mediaFailed
-            ? `最终成片没有生成，因此这里不会出现成片播放器。${state.taskError ? `失败原因：${escapeHtml(state.taskError)}` : ''}`
-            : (mediaActive ? '后台仍在处理生成单元或最终封装，请等待真实状态更新。' : '完整母片播放器未完成；当前中间片段不代表最终成片成功。'))}</span>
-        ${mediaFailed && state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}
+          : (state.mediaResult?.failure_text
+            ? escapeHtml(state.mediaResult.failure_text)
+            : (resultFailed
+              ? `最终成片没有生成，因此这里不会出现成片播放器。${state.taskError ? `失败原因：${escapeHtml(state.taskError)}` : ''}`
+              : (mediaActive ? '后台仍在处理生成单元或最终封装，请等待真实状态更新。' : (resultIncomplete ? '完整母片播放器未完成；当前中间片段不代表最终成片成功。' : escapeHtml(state.mediaResult?.compose_text || '等待最终状态更新。')))))}</span>
+        ${resultFailed && state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}
       </div>
       ${finalUrl ? `<video class="dh-task-detail-preview-video" src="${escapeHtml(finalUrl)}" controls playsinline preload="metadata" aria-label="整条广告完整母片"></video>` : '<div class="dh-nsa-review-missing is-master"><b>完整母片播放器未完成</b><span>最终封装成功后，这里会显示唯一的整条广告播放器。</span></div>'}
       <div class="dh-task-detail-value">${escapeHtml([

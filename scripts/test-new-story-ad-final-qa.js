@@ -19,6 +19,9 @@ const composeService = require('../src/services/newStoryAd/composeService');
 const finalVideoQa = require('../src/services/newStoryAd/finalVideoQaService');
 const storage = require('../src/services/newStoryAd/storageService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
+const artifactWorkflow = require('../src/services/newStoryAd/videoArtifactWorkflowService');
+const keyframeFreshness = require('../src/services/newStoryAd/keyframeContractFreshnessService');
+const frameQa = require('../src/services/newStoryAd/videoFrameQaService');
 
 function shot(index, duration) {
   return {
@@ -171,14 +174,18 @@ async function testFinalQaFailureIsNotPersisted() {
   await videoAdapter.renderLocalClip({ outputPath: clipPath, durationSec: 2, aspectRatio: '16:9' });
   storage.createTask({ id: taskId, type: 'new_story_ad', status: 'done', stage: 'video_ready', user_id: 'test', request: {} });
   storage.saveOutput(taskId, 'context', { include_voiceover: false, subtitle: false, output_ratio: '16:9' });
-  storage.saveOutput(taskId, 'storyboard_table', [{ index: 1, duration: 2, title: '当前任务镜头' }]);
+  const composeShots = [{ index: 1, duration: 2, title: '当前任务镜头' }];
+  storage.saveOutput(taskId, 'storyboard_table', composeShots);
+  const composeCtx = storage.getOutput(taskId, 'context'), composeContracts = keyframeFreshness.inspect(taskId, { ctx: composeCtx, shots: composeShots }).contracts;
+  const currentLineage = artifactWorkflow.buildExpectedLineages({ shots: composeShots, contracts: composeContracts, ctx: composeCtx, shotPlans: [{ index: 0, input_strategy: 'approved_keyframe_first_frame_only' }], qaPolicyVersion: frameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shotItem, contractItem) => videoAdapter.explicitShotSpeechMode(shotItem, contractItem), motionPromptFor: (shotItem, contractItem) => videoAdapter.clipPrompt(shotItem, composeCtx, contractItem, null, {}, '') })[0];
   storage.saveOutput(taskId, 'video_clips', [{
     shot_index: 0,
     file_path: clipPath,
     video_url: '/approved-input.mp4',
-    lineage_fingerprint: 'approved-current-lineage',
-    qa: { pass: true },
-    cross_shot_qa: { pass: true },
+    lineage: currentLineage,
+    lineage_fingerprint: currentLineage.fingerprint,
+    seedance_input_mode: 'approved_keyframe_first_frame_only',
+    qa: { pass: true, qa_policy_version: frameQa.VIDEO_FRAME_QA_POLICY_VERSION },
   }]);
 
   const originalInspect = finalVideoQa.inspectFinalVideo;
