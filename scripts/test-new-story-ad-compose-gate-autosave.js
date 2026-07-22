@@ -67,6 +67,26 @@ const retryReadyState = { ...validState, taskStatus: 'failed', taskError: '上�
 const retryPresentation = context.window.NewStoryAdStepNavigation.composePresentation({ state: retryReadyState });
 assert.strictEqual(retryPresentation.retry_ready, true);
 assert.strictEqual(retryPresentation.failed, false, 'a preserved compose failure must become retry-ready after all current clips pass QA');
+const preservedClipsButVideoFailedState = {
+  ...validState,
+  taskStatus: 'failed',
+  taskError: '第 2 镜供应商未创建视频任务',
+  taskErrorCode: 'INPUT_PERSON_PRIVACY',
+  mediaResult: {
+    outcome: 'partial_failed',
+    compose: { status: 'blocked' },
+    title: '第 1–6 镜历史片段仍保留；本次第 2 镜生成失败',
+    failure_text: '第 2 镜在供应商任务创建前失败；第 4 镜尚未执行。',
+    compose_text: '最终封装已阻止。',
+  },
+};
+const blockedCompose = context.window.NewStoryAdStepNavigation.composeReadiness({ state: preservedClipsButVideoFailedState });
+const blockedPresentation = context.window.NewStoryAdStepNavigation.composePresentation({ state: preservedClipsButVideoFailedState, compose: blockedCompose });
+assert.strictEqual(blockedCompose.materials_ready, true, 'preserved historical clips may still pass their old QA');
+assert.strictEqual(blockedCompose.ready, false, 'a structured video failure must override preserved clip readiness');
+assert.match(blockedCompose.message, /第 2 镜在供应商任务创建前失败/);
+assert.strictEqual(blockedPresentation.failed, true);
+assert.strictEqual(blockedPresentation.action_ready, false);
 
 const buttons = {
   '#dhNsaAdText': { value: '足够长的剧情广告需求' },
@@ -93,6 +113,10 @@ context.window.NewStoryAdButtonState.updateLocks({ state: retryReadyState, withi
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, false);
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].classList.contains('is-next'), true);
 assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].textContent, '下一步：封装最终成片 →');
+context.window.NewStoryAdButtonState.updateLocks({ state: preservedClipsButVideoFailedState, within: selector => buttons[selector] || null, getPersonSpec: () => '' });
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].disabled, true, 'a failed current attempt must disable final composition even when old clips remain');
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].classList.contains('is-next'), false);
+assert.strictEqual(buttons['#dhNsaAdConfirmGenerate'].textContent, '封装最终成片');
 const selectedButton = fakeButton('生成整条广告视频');
 context.window.NewStoryAdButtonState.setButtonBusy(selectedButton, true, '生成整条广告视频中...');
 assert.strictEqual(selectedButton.classList.contains('is-selected'), true);
@@ -115,7 +139,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260722-default-acks-v1'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260722-media-state-truth-v2'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -182,7 +206,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-default-acks-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-media-state-truth-v2'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');

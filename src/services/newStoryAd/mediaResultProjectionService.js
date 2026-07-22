@@ -11,6 +11,7 @@ const PRE_SUBMIT_FAILURES = new Set([
   'VIDEO_COST_CONFIRMATION_REQUIRED',
   'VIDEO_COST_LIMIT_EXCEEDED',
   'VIDEO_DUPLICATE_SUBMISSION',
+  'INPUT_PERSON_PRIVACY',
 ]);
 
 const MESSAGE_ZH = Object.freeze({
@@ -18,6 +19,7 @@ const MESSAGE_ZH = Object.freeze({
   DEYUNAI_ASSET_GROUP_NOT_FOUND: '当前镜头所需的漫路素材组不存在，视频模型尚未提交。',
   DEYUNAI_ASSET_API_FAILED: '漫路素材库准备失败，视频模型尚未提交。',
   DEYUNAI_LIVENESS_GROUP_BINDING_REQUIRED: '真人素材尚未绑定已授权的漫路人物素材组，视频模型尚未提交。',
+  INPUT_PERSON_PRIVACY: '当前关键帧被供应商判定为可能含真人隐私信息，供应商未创建视频生成任务。请更换为脸部更小、可识别特征更弱的远景关键帧，或改用已验证支持该真人输入的模型能力；不要原样重试。',
 });
 
 const ACTIVE_LIFECYCLES = new Set([
@@ -131,12 +133,14 @@ function failureState(phase = '') {
 
 function taskFailureIndexes(task = {}, total = 0) {
   const progress = task.generation_progress || {};
-  const candidates = [
-    ...(Array.isArray(progress.repair_indexes) ? progress.repair_indexes : []),
+  const failed = uniqueIndexes(Array.isArray(progress.failed_indexes) ? progress.failed_indexes : []);
+  if (failed.length) return failed.filter(index => index <= total);
+  const current = uniqueIndexes([progress.current_index]);
+  if (current.length) return current.filter(index => index <= total);
+  const candidates = task.status === 'failed' ? [] : [
     ...(Array.isArray(progress.active_indexes) ? progress.active_indexes : []),
-    ...(Array.isArray(progress.failed_indexes) ? progress.failed_indexes : []),
     ...(Array.isArray(progress.target_indexes) ? progress.target_indexes : []),
-    progress.current_index,
+    ...(Array.isArray(progress.repair_indexes) ? progress.repair_indexes : []),
   ];
   return uniqueIndexes(candidates).filter(index => index <= total);
 }
@@ -300,6 +304,7 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
   const currentFailures = shots.filter(shot => ['pre_submit_failed', 'provider_failed', 'qa_failed', 'boundary_failed'].includes(shot.state));
   const failed = currentFailures.map(shot => failureEntry(shot));
   const lastAttemptFailed = shots.filter(shot => shot.last_attempt).map(shot => failureEntry(shot, shot.last_attempt));
+  const notExecuted = uniqueIndexes((Array.isArray(videoShotStatuses) ? videoShotStatuses : []).filter(status => status?.stopped_after_unit_failure === true && status?.previous_clip_restored !== true).map((status, index) => Number(status.index || status.shot_index || index + 1)));
   const pending = uniqueIndexes([...qaPending, ...regenerateRequired, ...compatibilityRepairRequired, ...compatibilityBlocked, ...notStarted, ...running]);
 
   const finalReady = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
@@ -307,8 +312,9 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
   const composeRunning = /^compose(?:_running)?$/.test(text(task.stage)) && text(task.status).toLowerCase() === 'running';
   const allPassed = total > 0 && passed.length === total;
   const anyMedia = clips.some(hasMedia);
+  const mediaBlocked = failed.length > 0 || lastAttemptFailed.length > 0 || pending.length > 0;
   const compose = {
-    status: finalReady ? 'done' : (composeFailed ? 'failed' : (composeRunning ? 'running' : (allPassed ? 'ready' : (anyMedia ? 'blocked' : 'not_started')))),
+    status: finalReady ? 'done' : (composeFailed ? 'failed' : (composeRunning ? 'running' : (allPassed && !mediaBlocked ? 'ready' : (anyMedia ? 'blocked' : 'not_started')))),
     started: finalReady || composeFailed || composeRunning,
     final_video_ready: finalReady,
   };
@@ -336,6 +342,7 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
   let title = [successLabel ? `${successLabel}已成功` : '', blockedLabel ? `${blockedLabel}尚未成功` : ''].filter(Boolean).join('；');
   if (finalReady) title = '整条广告已成功生成';
   else if (composeFailed) title = '全部镜头已成功；最终封装失败';
+  else if (lastAttemptFailed.length) title = `现有已审核片段仍保留；本次${formatIndexes(lastAttemptFailed.map(item => item.index))}生成失败`;
   else if (outcome === 'not_started') title = '整条广告尚未开始生成';
   else if (outcome === 'qa_failed' && qaFailed.length) title = `${formatIndexes(qaFailed)}视频已生成，但质量审核未通过`;
   else if (outcome === 'boundary_failed' && boundaryFailed.length) title = `${formatIndexes(boundaryFailed)}相邻衔接审核未通过`;
@@ -346,6 +353,7 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
   const failureRows = [];
   failed.forEach(item => failureRows.push(`${formatIndexes([item.index])}${phaseText(item)}：${item.message_zh}`));
   lastAttemptFailed.forEach(item => failureRows.push(`${formatIndexes([item.index])}当前可用结果已保留；最近一次尝试${phaseText(item)}：${item.message_zh}`));
+  if (notExecuted.length) failureRows.push(`${formatIndexes(notExecuted)}因前一生成单元失败，本次未执行；现有历史片段继续保留。`);
   if (qaPending.length) failureRows.push(`${formatIndexes(qaPending)}视频已生成，质量审核尚未完成。`);
   if (regenerateRequired.length) failureRows.push(`${formatIndexes(regenerateRequired)}与当前版本不兼容，需要重新生成；旧文件继续保留供查看。`);
   if (compatibilityRepairRequired.length) failureRows.push(`${formatIndexes(compatibilityRepairRequired)}需要完成当前版本的本地元数据修复或重新审核，不会自动重新生成视频。`);
@@ -402,6 +410,7 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
     compatibility_repair_required_indexes: compatibilityRepairRequired,
     compatibility_blocked_indexes: compatibilityBlocked,
     not_started_indexes: notStarted,
+    not_executed_indexes: notExecuted,
     compatibility,
     failure_phases: [...new Set([...failed, ...lastAttemptFailed].map(item => item.phase))],
     compose,

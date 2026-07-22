@@ -146,6 +146,22 @@ async function main() {
   });
   assert.deepStrictEqual(recoveredClips, ['old-approved']);
   assert.strictEqual(recoveryWrites[0].patch.last_attempt_billing_state, 'confirmed', 'QA rollback must not rewrite an already billed success as not_submitted');
+  const mixedRecoveryClips = ['new-failed', 'untouched-old'], mixedWrites = [];
+  videoFailureRecovery.restoreUnitFailure({
+    storage: {
+      getOutput: (_taskId, kind) => kind.endsWith('_1')
+        ? { lifecycle: 'failed', error_code: 'INPUT_PERSON_PRIVACY', provider_submission_state: 'not_submitted', billing_state: 'not_submitted' }
+        : { lifecycle: 'qa_passed', qa_status: 'passed', provider_task_id: 'old-shot-2' },
+      saveOutput: () => {},
+    },
+    videoAdapter: { updateVideoShotStatus: (_taskId, index, patch) => mixedWrites.push({ index, patch }) },
+    taskId: 'recovery-fail-fast-attribution', clips: mixedRecoveryClips, previousClips: ['old-failed-shot', 'untouched-old'],
+    unitIndexes: [0], remainingUnits: [{ member_indexes: [1] }], totalShots: 2,
+  });
+  assert.strictEqual(mixedWrites[0].patch.last_attempt_error_code, undefined);
+  assert.strictEqual(mixedWrites[0].patch.last_attempt_provider_submission_state, 'not_submitted');
+  assert.strictEqual(mixedWrites[1].patch.last_attempt_provider_submission_state, undefined, 'untouched later unit must not be recorded as a failed attempt');
+  assert.strictEqual(mixedWrites[1].patch.previous_clip_restored, undefined);
   assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ generationError: new Error('provider failed'), unitIndexes: [4], qaFailures: [] }), true);
   assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ unitIndexes: [4], qaFailures: [{ index: 4, kind: 'frame_qa' }] }), true, 'single-shot QA failure must still restore the previous approved clip');
   assert.strictEqual(videoFailureRecovery.shouldRestoreUnitFailure({ unitIndexes: [4], qaFailures: [{ index: 4, kind: 'cross_shot_qa' }] }), false, 'an upstream boundary failure must preserve the newly paid single-shot success');

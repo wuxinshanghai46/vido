@@ -17,7 +17,7 @@ const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
-const videoSubmissionGate = require('./videoSubmissionGateService'), videoFailureRecovery = require('./videoFailureRecoveryService');
+const videoSubmissionGate = require('./videoSubmissionGateService'), videoFailureRecovery = require('./videoFailureRecoveryService'), videoPrivacyRetryPolicy = require('./videoPrivacyRetryPolicyService');
 const videoEvidencePreflight = require('./videoEvidencePreflightService');
 const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
@@ -283,7 +283,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
     .map(row => row.payload || {})
     .filter(Boolean)
-    .map((status, index) => { const attempts = videoAttemptLedger.projectCurrentAndLast({ taskId, shotIndex: index }), failedCurrent = attempts.current && ['failed', 'review_required', 'cancelled'].includes(attempts.current.status), lastAttempt = status.previous_clip_restored && failedCurrent ? attempts.current : attempts.last, currentAttempt = status.previous_clip_restored && failedCurrent ? null : attempts.current, artifact = compatibilityByIndex.get(index) || status.artifact_compatibility || {}; return ({
+    .map((status, index) => { const attempts = videoAttemptLedger.projectCurrentAndLast({ taskId, shotIndex: index }), untouched = status.stopped_after_unit_failure === true && !attempts.current && !attempts.last, failedCurrent = attempts.current && ['failed', 'review_required', 'cancelled'].includes(attempts.current.status), lastAttempt = status.previous_clip_restored && failedCurrent ? attempts.current : attempts.last, currentAttempt = status.previous_clip_restored && failedCurrent ? null : attempts.current, artifact = compatibilityByIndex.get(index) || status.artifact_compatibility || {}; return ({
       index: Number(status.index || status.shot_index || index + 1),
       title: cleanText(status.title || '', 120),
       lifecycle: cleanText(status.lifecycle || 'pending', 40),
@@ -295,7 +295,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       cross_shot_qa_problems: Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
       cross_shot_failure_labels_zh: Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
       provider_submission_state: cleanText(currentAttempt?.provider_submission_state || status.provider_submission_state || '', 40), billing_state: cleanText(currentAttempt?.billing_state || status.billing_state || '', 40),
-      previous_clip_restored: status.previous_clip_restored === true, last_attempt_provider_submission_state: cleanText(lastAttempt?.provider_submission_state || status.last_attempt_provider_submission_state || '', 40), last_attempt_billing_state: cleanText(lastAttempt?.billing_state || status.last_attempt_billing_state || '', 40), last_attempt_error_code: cleanText(lastAttempt?.error_code || status.last_attempt_error_code || '', 160), last_attempt_status: cleanText(lastAttempt?.status || status.last_attempt_status || '', 40),
+      previous_clip_restored: !untouched && status.previous_clip_restored === true, stopped_after_unit_failure: status.stopped_after_unit_failure === true, last_attempt_provider_submission_state: cleanText(untouched ? '' : (lastAttempt?.provider_submission_state || status.last_attempt_provider_submission_state || ''), 40), last_attempt_billing_state: cleanText(untouched ? '' : (lastAttempt?.billing_state || status.last_attempt_billing_state || ''), 40), last_attempt_error_code: cleanText(untouched ? '' : (lastAttempt?.error_code || status.last_attempt_error_code || ''), 160), last_attempt_status: cleanText(untouched ? '' : (lastAttempt?.status || status.last_attempt_status || ''), 40),
       compatibility_status: cleanText(artifact.status || status.compatibility_status || '', 60), artifact_compatibility: artifact, compatibility_reason_codes: Array.isArray(artifact.reason_codes || status.compatibility_reason_codes) ? (artifact.reason_codes || status.compatibility_reason_codes).slice(0, 12) : [], regenerate_required: (artifact.status || status.compatibility_status) === 'regenerate_required', legacy_inferred: status.legacy_inferred === true,
       error: cleanText(status.error || '', 300),
       error_code: cleanText(status.error_code || '', 80),
@@ -2279,7 +2279,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     if (compatibilityReport?.fingerprint === nextReport.fingerprint) { compatibilityReport = nextReport; break; }
     compatibilityReport = nextReport;
   }
-  plan.compatibility_report = compatibilityReport; plan.expected_lineages = expectedLineages;
+  plan.compatibility_report = compatibilityReport; plan.expected_lineages = expectedLineages; videoPrivacyRetryPolicy.applyPrivacyRetryBlockers({ plan, statuses, expectedLineages });
   if (appliedCompatibilityFingerprint !== (compatibilityReport?.fingerprint || '')) { plan.blockers.push({ code: 'VIDEO_ARTIFACT_PLAN_UNSTABLE', message: '视频产物兼容方案未能稳定收敛，已在供应商提交前停止。' }); plan.status = 'blocked'; }
   const authorizedExecutionPlan = {
     ...executionPlan,
@@ -2331,7 +2331,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     execution_plan_fingerprint: executionPlan.fingerprint,
     cost_plan_fingerprint: costPlan.fingerprint,
     runtime_policy: runtimePolicy,
-    compatibility_fingerprint: compatibilityReport?.fingerprint || '',
+    compatibility_fingerprint: compatibilityReport?.fingerprint || '', privacy_retry_blockers: plan.blockers.filter(item => item.code === videoPrivacyRetryPolicy.BLOCKER_CODE).map(item => item.details?.rejected_lineage_fingerprint || ''),
   });
   return plan;
 }

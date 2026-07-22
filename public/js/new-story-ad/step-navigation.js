@@ -65,13 +65,18 @@
     const boundaries = window.NewStoryAdVideoBoundaries?.audit
       ? window.NewStoryAdVideoBoundaries.audit(orderedClips, total)
       : { ready: total <= 1 || orderedClips.slice(1).every(clip => clip?.cross_shot_qa?.pass === true), total: Math.max(0, total - 1), passed: orderedClips.slice(1).filter(clip => clip?.cross_shot_qa?.pass === true).length, unready_indexes: [] };
-    const ready = frames.ready && total > 0 && passed === total && boundaries.ready;
+    const materialsReady = frames.ready && total > 0 && passed === total && boundaries.ready;
+    const mediaResult = state.mediaResult && typeof state.mediaResult === 'object' ? state.mediaResult : null;
+    const mediaOutcome = String(mediaResult?.outcome || '');
+    const structuredReady = !mediaResult || ['success', 'ready_to_compose', 'compose_failed'].includes(mediaOutcome);
+    const ready = materialsReady && structuredReady;
     let message = '';
     if (!frames.ready) message = frames.message;
     else if (!clips.length) message = '尚未开始整条广告视频生成';
     else if (passed < total) message = `当前有 ${passed}/${total} 镜单镜质检通过，请在广告合成页查看未通过原因`;
     else if (!boundaries.ready) message = `当前仍有 ${boundaries.unready_indexes.length} 个跨生成单元衔接未审核，必须补查后才能封装`;
-    return { ready, message, total, passed, needs_regeneration: Math.max(0, total - passed), keyframes: frames, boundaries };
+    else if (!structuredReady) message = mediaResult.failure_text || mediaResult.compose_text || mediaResult.title || '本次视频处理未成功，最终封装已阻止';
+    return { ready, materials_ready: materialsReady, structured_ready: structuredReady, media_outcome: mediaOutcome, message, total, passed, needs_regeneration: Math.max(0, total - passed), keyframes: frames, boundaries };
   }
 
   function composePresentation(ctx = {}) {
@@ -82,10 +87,12 @@
     const active = !!state.activeGenerationId || state.stageProgress?.active === true
       || (state.taskStatus === 'running' && ['video', 'video_repair', 'compose', 'media'].includes(String(state.taskStage || state.activeStage || '')));
     const reviewRequired = !active && !finalUrl && compose.total > 0 && compose.passed === compose.total && compose.boundaries?.ready === false;
-    const retryReady = !active && !finalUrl && compose.ready && progress?.stage === 'compose' && progress?.status === 'failed';
-    const failed = !active && !retryReady && !reviewRequired && (state.taskStatus === 'failed'
+    const composeFailed = compose.media_outcome === 'compose_failed' || (progress?.stage === 'compose' && progress?.status === 'failed');
+    const retryReady = !active && !finalUrl && compose.materials_ready === true && composeFailed;
+    const structuredFailed = !!compose.media_outcome && !['success', 'ready_to_compose', 'compose_failed', 'not_started', 'incomplete'].includes(compose.media_outcome);
+    const failed = !active && !retryReady && !reviewRequired && (structuredFailed || state.taskStatus === 'failed'
       || progress?.status === 'failed' || !!state.taskErrorCode || !!state.taskError);
-    return { active, failed, retry_ready: retryReady, review_required: reviewRequired, action_ready: !active && !finalUrl && compose.ready, final_url: finalUrl, progress };
+    return { active, failed, retry_ready: retryReady, review_required: reviewRequired, action_ready: !active && !finalUrl && (compose.ready || retryReady), final_url: finalUrl, progress };
   }
 
   function stepReady(step, ctx = {}) {

@@ -3,6 +3,7 @@ const assert = require('assert');
 
 const attempts = require('../src/services/newStoryAd/videoAttemptStore');
 const capabilities = require('../src/services/newStoryAd/videoProviderCapabilityService');
+const privacyRetryPolicy = require('../src/services/newStoryAd/videoPrivacyRetryPolicyService');
 
 function memoryStorage() {
   const values = new Map();
@@ -183,7 +184,35 @@ function testCapabilityGateNeverUsesMutationAsProbe() {
   assert.strictEqual(capabilities.CREATE_ASSET_GROUP_PROBE_ALLOWED, false);
 }
 
+function testPrivacyFailureBlocksOnlySameDirectFirstFrameInput() {
+  const plan = {
+    blockers: [], status: 'ready', zero_cost_action_count: 0,
+    units: [{ paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
+  };
+  privacyRetryPolicy.applyPrivacyRetryBlockers({
+    plan,
+    statuses: [{}, { error_code: 'INPUT_PERSON_PRIVACY', input_mode: 'approved_keyframe_first_frame_only', lineage_fingerprint: 'lineage-shot-2' }],
+    expectedLineages: [{}, { fingerprint: 'lineage-shot-2' }],
+  });
+  assert.strictEqual(plan.status, 'blocked');
+  assert.strictEqual(plan.blockers[0].code, 'VIDEO_PRIVACY_INPUT_REQUIRES_CHANGE');
+  assert.match(plan.blockers[0].message, /本任务其他镜头也可以有人物/);
+  assert.match(plan.blockers[0].message, /本次视频费用为 ¥0/);
+
+  const changedInputPlan = {
+    blockers: [], status: 'ready', zero_cost_action_count: 0,
+    units: [{ paid: true, member_indexes: [1], input_strategy: 'approved_keyframe_first_frame_only' }],
+  };
+  privacyRetryPolicy.applyPrivacyRetryBlockers({
+    plan: changedInputPlan,
+    statuses: [{}, { error_code: 'INPUT_PERSON_PRIVACY', input_mode: 'approved_keyframe_first_frame_only', lineage_fingerprint: 'lineage-old' }],
+    expectedLineages: [{}, { fingerprint: 'lineage-new' }],
+  });
+  assert.deepStrictEqual(changedInputPlan.blockers, [], 'a changed keyframe/model lineage may be preflighted again');
+}
+
 testAttemptClaimAndAppendOnlyEvents();
 testCurrentAndLastProjection();
 testCapabilityGateNeverUsesMutationAsProbe();
+testPrivacyFailureBlocksOnlySameDirectFirstFrameInput();
 console.log('new story ad video attempt and provider capability tests: ok');

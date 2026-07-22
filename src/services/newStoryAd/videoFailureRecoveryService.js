@@ -33,8 +33,13 @@ function recordFailedCandidates({ storage, taskId = '', options = {}, unitIndexe
 function restoreUnitFailure({ storage, videoAdapter, taskId = '', clips = [], previousClips = [], unitIndexes = [], remainingUnits = [], totalShots = 0 } = {}) {
   const indexes = rollbackIndexes({ unitIndexes, remainingUnits });
   restorePreviousClips({ clips, previousClips, indexes });
+  const failedIndexes = new Set((Array.isArray(unitIndexes) ? unitIndexes : []).map(Number));
   indexes.forEach(index => {
     const status = storage.getOutput(taskId, `video_shot_status_${index + 1}`) || {};
+    if (!failedIndexes.has(index)) {
+      videoAdapter.updateVideoShotStatus(taskId, index, { ...status, stopped_after_unit_failure: true }, totalShots);
+      return;
+    }
     videoAdapter.updateVideoShotStatus(taskId, index, {
       ...status, last_attempt_provider_task_id: status.provider_task_id || '',
       last_attempt_provider_submission_state: status.provider_submission_state || (status.provider_task_id ? 'submitted' : 'not_submitted'),

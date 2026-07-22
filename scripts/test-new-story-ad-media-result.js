@@ -178,6 +178,35 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
   assert.match(restored.failure_text, /当前可用结果已保留；最近一次尝试在视频模型提交前失败/);
 }
 
+// 生产同构：选择第 2、4 镜后第 2 镜 fail-fast，第 4 镜未执行，任务错误不得污染第 4 镜。
+{
+  const privacy = result({
+    count: 4,
+    task: {
+      status: 'failed', stage: 'media_failed', error_code: 'INPUT_PERSON_PRIVACY',
+      error: '第 2 镜输入图片可能包含真人',
+      generation_progress: { repair_indexes: [2, 4], failed_indexes: [2], current_index: 2 },
+    },
+    clips: [0, 1, 2, 3].map(passedClip),
+    statuses: [
+      passedStatus(0),
+      { index: 2, lifecycle: 'failed', error_code: 'INPUT_PERSON_PRIVACY', previous_clip_restored: true, last_attempt_error_code: 'INPUT_PERSON_PRIVACY', last_attempt_status: 'failed', last_attempt_provider_submission_state: 'not_submitted', last_attempt_billing_state: 'not_submitted' },
+      passedStatus(2),
+      { ...passedStatus(3), stopped_after_unit_failure: true },
+    ],
+  });
+  assert.deepStrictEqual(privacy.passed_shot_indexes, [1, 2, 3, 4]);
+  assert.deepStrictEqual(privacy.last_attempt_failed_shots.map(item => item.index), [2]);
+  assert.deepStrictEqual(privacy.not_executed_indexes, [4]);
+  assert.strictEqual(privacy.shot_results[3].last_attempt, null, 'untouched shot 4 must not inherit shot 2 failure');
+  assert.match(privacy.title, /现有已审核片段仍保留；本次第 2 镜生成失败/);
+  assert.match(privacy.failure_text, /第 2 镜当前可用结果已保留/);
+  assert.match(privacy.failure_text, /真人隐私信息/);
+  assert.match(privacy.failure_text, /第 4 镜因前一生成单元失败，本次未执行/);
+  assert(!privacy.failure_text.includes('第 4 镜当前可用结果已保留'));
+  assert.strictEqual(privacy.compose.status, 'blocked');
+}
+
 // 历史兼容状态要公开为 compatibility 结果，不应强制判失败。
 {
   const legacy = result({

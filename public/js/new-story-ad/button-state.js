@@ -51,6 +51,7 @@
     const compose = window.NewStoryAdStepNavigation?.composeReadiness
       ? window.NewStoryAdStepNavigation.composeReadiness({ state })
       : { ready: false, message: '请先在第 4 步生成并审核全部分镜视频' };
+    const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || { action_ready: compose.ready && !state.busy };
     const hasActorInput = !!getPersonSpec('appearanceText');
     const noHuman = getPersonSpec('castMode') === 'no_human';
 
@@ -63,9 +64,8 @@
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
-    lock('#dhNsaAdConfirmGenerate', !compose.ready, compose.message || '请先生成并审核全部分镜视频');
+    lock('#dhNsaAdConfirmGenerate', !composeView.action_ready, compose.message || '请先生成并审核全部分镜视频');
     const composeBtn = within('#dhNsaAdConfirmGenerate');
-    const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || { action_ready: compose.ready && !state.busy };
     if (composeBtn) {
       composeBtn.classList.toggle('is-next', composeView.action_ready && !state.busy && !state.restoringTask);
       composeBtn.textContent = composeView.action_ready ? '下一步：封装最终成片 →' : '封装最终成片';
