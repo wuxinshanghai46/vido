@@ -177,8 +177,9 @@ function classifyCurrentState({ clip = {}, status = {}, previousClip = {}, compa
   if (media && !qaPass) return { state: 'generated_qa_pending', phase: 'qa_pending' };
   if (media && qaPass) {
     const boundaryRequired = !!previousClip && hasMedia(previousClip) && !sameGenerationUnit(previousClip, clip);
-    if (boundaryRequired && clip?.cross_shot_qa?.pass === false) return { state: 'boundary_failed', phase: 'boundary_failed' };
-    if (boundaryRequired && clip?.cross_shot_qa?.pass !== true) return { state: 'generated_qa_pending', phase: 'boundary_pending' };
+    const boundaryStatus = text(status.cross_shot_qa_status).toLowerCase();
+    if (boundaryRequired && (clip?.cross_shot_qa?.pass === false || boundaryStatus === 'failed')) return { state: 'boundary_failed', phase: 'boundary_failed' };
+    if (boundaryRequired && clip?.cross_shot_qa?.pass !== true && boundaryStatus !== 'passed') return { state: 'generated_qa_pending', phase: 'boundary_pending' };
     return { state: 'passed', phase: 'complete' };
   }
   const code = text(status.error_code || taskFailure?.code);
@@ -305,7 +306,7 @@ function projectMediaResult({ task = {}, outputs = {}, videoShotStatuses = [], s
   const currentFailures = shots.filter(shot => ['pre_submit_failed', 'provider_failed', 'qa_failed', 'boundary_failed'].includes(shot.state));
   const failed = currentFailures.map(shot => failureEntry(shot));
   const lastAttemptFailed = shots.filter(shot => shot.last_attempt).map(shot => failureEntry(shot, shot.last_attempt));
-  const notExecuted = uniqueIndexes((Array.isArray(videoShotStatuses) ? videoShotStatuses : []).filter(status => status?.stopped_after_unit_failure === true && status?.previous_clip_restored !== true).map((status, index) => Number(status.index || status.shot_index || index + 1)));
+  const notExecuted = uniqueIndexes((Array.isArray(videoShotStatuses) ? videoShotStatuses : []).filter(status => status?.stopped_after_unit_failure === true && status?.previous_clip_restored !== true && status?.executed_in_current_generation !== true).map((status, index) => Number(status.index || status.shot_index || index + 1)));
   const pending = uniqueIndexes([...qaPending, ...regenerateRequired, ...compatibilityRepairRequired, ...compatibilityBlocked, ...notStarted, ...running]);
 
   const finalReady = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl);

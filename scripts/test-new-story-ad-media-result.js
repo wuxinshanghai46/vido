@@ -94,6 +94,23 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
   assert.strictEqual(boundary.compose.status, 'blocked');
 }
 
+// 当前代次已经执行并通过的镜头，即使失败恢复流程残留 stopped 标记，
+// 也必须采用持久化的跨镜 QA 结论，不能显示成“未执行/待审核”。
+{
+  const executed = result({
+    count: 2,
+    clips: [passedClip(0), { ...passedClip(1), cross_shot_qa: null }],
+    statuses: [
+      passedStatus(0),
+      { ...passedStatus(1), cross_shot_qa_status: 'passed', stopped_after_unit_failure: true, executed_in_current_generation: true },
+    ],
+  });
+  assert.deepStrictEqual(executed.passed_shot_indexes, [1, 2]);
+  assert.deepStrictEqual(executed.not_executed_indexes, []);
+  assert.deepStrictEqual(executed.generated_qa_pending_indexes, []);
+  assert.strictEqual(executed.outcome, 'ready_to_compose');
+}
+
 // provider 已提交后的失败不得被显示成“未提交/未计费”。
 {
   const provider = result({
