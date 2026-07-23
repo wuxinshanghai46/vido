@@ -1,5 +1,7 @@
 # VIDO 剧情广告 V2.0 · 2026-07-23 回家继续优化交接
 
+> **明日回公司请优先读取：** `docs/handoffs/2026-07-23-home-to-office-complete.md`。该最终交接补充了全中文门禁、人物年龄修复、十五秒验证任务以及互动视角计费状态不明确的硬停止条件。
+
 > 交接时间：2026-07-23 18:34（Asia/Shanghai）
 > 目标分支：`codex/story-ad-v3-upgrade`
 > V2.0 最终业务提交：`dbf2519edd99f55c4180f35e8572e17fe2e5fd54`
