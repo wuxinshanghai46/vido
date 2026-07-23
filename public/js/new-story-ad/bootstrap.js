@@ -1,5 +1,5 @@
 (() => {
-  const SCRIPT_VERSION = '20260722-unit-block-scope-v3';
+  const SCRIPT_VERSION = '20260723-storyboard-state-sync-v1';
   const SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/task-store.js',

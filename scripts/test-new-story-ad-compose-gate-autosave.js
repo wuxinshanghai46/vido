@@ -132,6 +132,28 @@ assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_r
 assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 5);
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots }), 'keyframe_contract_ready');
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots, keyframes: validState.keyframes }), 'keyframes_ready');
+const authoritativeFrames = shots.map((_, index) => ({ ...accepted(), image_url: `/authoritative-${index}.png` }));
+authoritativeFrames[2] = { ...authoritativeFrames[2], contract_outdated: true, current_generation_status: 'outdated' };
+const storyboardSaveState = {
+  keyframes: shots.map((_, index) => ({ ...accepted(), image_url: `/stale-${index}.png` })),
+  review: { status: 'stale' },
+  ttsAudio: { tracks: [{ file_path: '/stale.wav' }] },
+  videoClips: [{ video_url: '/stale.mp4' }],
+  finalVideo: { video_url: '/stale-final.mp4' },
+};
+context.window.NewStoryAdTaskPersistence.syncStoryboardArtifacts(storyboardSaveState, {
+  keyframes: authoritativeFrames,
+  quality_review: null,
+  tts_audio: null,
+  video_clips: [],
+  final_video: null,
+});
+assert.deepStrictEqual(JSON.parse(JSON.stringify(storyboardSaveState.keyframes)), authoritativeFrames,
+  'storyboard autosave must adopt the complete server frame list instead of clearing every card');
+assert.strictEqual(storyboardSaveState.review, null);
+assert.strictEqual(storyboardSaveState.ttsAudio, null);
+assert.deepStrictEqual(Array.from(storyboardSaveState.videoClips), []);
+assert.strictEqual(storyboardSaveState.finalVideo, null);
 const missingStoryboardState = {};
 context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboardState, { storyboard_meta: { status: 'ready' } });
 assert.strictEqual(missingStoryboardState.restoreErrorCode, 'STORYBOARD_OUTPUT_MISSING');
@@ -139,7 +161,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260722-unit-block-scope-v3'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260723-storyboard-state-sync-v1'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -158,6 +180,10 @@ assert(html.includes('id="dhNsaAdBgmClear"'), 'BGM must provide an explicit no-m
 
 const ui = read('public/js/new-story-ad-legacy-ui.js');
 assert(ui.includes("el.hidden = status !== 'error'"), 'autosave UI must only appear when saving fails');
+const storyboardAutosaveBranch = ui.match(/if \(state\.storyboardDirty[\s\S]*?return id;\s*\}/)?.[0] || '';
+assert(storyboardAutosaveBranch, 'storyboard autosave branch must remain present');
+assert(!storyboardAutosaveBranch.includes('state.keyframes = []'),
+  'storyboard autosave must not erase all keyframes after the server returns scoped freshness state');
 assert(ui.includes('data-nsa-candidate-override'), 'rejected keyframes must offer an explicit human override action');
 assert(ui.includes('/manual-accept'), 'human override must call the auditable manual acceptance endpoint');
 assert(ui.includes("person_spec: noHuman ? { castMode: 'no_human' } : person"), 'no-human payload must suppress stale person details');
@@ -206,7 +232,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260722-unit-block-scope-v3'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260723-storyboard-state-sync-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');

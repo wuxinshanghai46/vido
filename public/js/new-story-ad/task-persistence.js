@@ -18,6 +18,26 @@
     }));
   }
 
+  function syncStoryboardArtifacts(state = {}, response = {}) {
+    const outputs = response?.outputs && typeof response.outputs === 'object' ? response.outputs : {};
+    const hasOwn = (source, key) => Object.prototype.hasOwnProperty.call(source, key);
+    const apply = (keys, stateKey, fallback) => {
+      for (const source of [outputs, response]) {
+        for (const key of keys) {
+          if (!hasOwn(source, key)) continue;
+          state[stateKey] = source[key] ?? fallback;
+          return;
+        }
+      }
+    };
+    apply(['keyframes'], 'keyframes', []);
+    apply(['quality_review', 'review'], 'review', null);
+    apply(['tts_audio'], 'ttsAudio', null);
+    apply(['video_clips'], 'videoClips', []);
+    apply(['final_video'], 'finalVideo', null);
+    return state;
+  }
+
   async function recoverSavedOutput(taskId, outputKey, intended, ctx, originalError) {
     if (!isNetworkError(originalError)) throw originalError;
     const bundle = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
@@ -126,6 +146,7 @@
       response = await recoverSavedOutput(taskId, 'storyboard_table', shots, ctx, error);
     }
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    syncStoryboardArtifacts(state, response);
     return response;
   }
 
@@ -205,6 +226,7 @@
     saveSceneAssetsProgress,
     saveBlueprintEdits,
     saveStoryboardEdits,
+    syncStoryboardArtifacts,
     progressStageForState,
   };
 })();

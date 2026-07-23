@@ -180,6 +180,62 @@ function testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift() {
   assert(storage.getOutput(taskId, 'video_clips'), '只读预检不得删除旧视频片段');
 }
 
+function testStoryboardEditsInvalidateOnlyChangedFrames() {
+  const cases = [
+    { count: 1, changed: [0] },
+    { count: 2, changed: [1] },
+    { count: 6, changed: [0, 2, 5] },
+    { count: 18, changed: [8] },
+  ];
+
+  cases.forEach(({ count, changed }, caseIndex) => {
+    const ctx = context(`generic-owner-${caseIndex}`);
+    const taskId = createStoredTask(`storyboard-subset-${caseIndex}`, ctx, shots(count));
+    const initial = service.updateStoryboardTable(taskId, shots(count), { id: 'regression-user' });
+    const frames = initial.keyframe_contracts.map((contract, index) => ({
+      image_url: `https://example.test/subset-${caseIndex}-${index}.png`,
+      candidates: [{ id: `candidate-${index}`, image_url: `https://example.test/candidate-${index}.png` }],
+      selected_candidate_id: `candidate-${index}`,
+      accepted_revision: index + 1,
+      contract_fingerprint: contract.contract_fingerprint,
+      contract_compiler_signature: contract.contract_compiler_signature,
+      contract,
+      current_generation_status: 'accepted',
+      qa: { pass: true, status: 'accepted', evidence: { index } },
+    }));
+    storage.saveOutput(taskId, 'keyframes', frames);
+    const persistedFrames = storage.getOutput(taskId, 'keyframes');
+
+    const edited = initial.shots.map((shot, index) => (
+      changed.includes(index) ? { ...shot, visual: `${shot.visual} - semantic edit ${index}` } : shot
+    ));
+    const result = service.updateStoryboardTable(taskId, edited, { id: 'regression-user' });
+    const stored = storage.getOutput(taskId, 'keyframes');
+
+    assert.deepStrictEqual(result.changed_indexes, changed,
+      `case ${caseIndex}: the response must identify exactly the edited frame indexes`);
+    assert.strictEqual(result.keyframes.length, count,
+      `case ${caseIndex}: the save response must return the complete authoritative frame list`);
+    assert.strictEqual(stored.length, count,
+      `case ${caseIndex}: editing a subset must never truncate the frame list`);
+
+    stored.forEach((frame, index) => {
+      if (!changed.includes(index)) {
+        assert.deepStrictEqual(frame, persistedFrames[index],
+          `case ${caseIndex}: unchanged frame ${index} must retain all image and QA evidence`);
+        return;
+      }
+      assert.strictEqual(frame.image_url, persistedFrames[index].image_url);
+      assert.deepStrictEqual(frame.candidates, persistedFrames[index].candidates);
+      assert.deepStrictEqual(frame.qa, persistedFrames[index].qa);
+      assert.strictEqual(frame.selected_candidate_id, persistedFrames[index].selected_candidate_id);
+      assert.strictEqual(frame.accepted_revision, persistedFrames[index].accepted_revision);
+      assert.strictEqual(frame.contract_outdated, true);
+      assert.strictEqual(frame.current_generation_status, 'outdated');
+    });
+  });
+}
+
 async function testAuditAndTransportDriftIsGloballyNonSemantic() {
   const storyboard = shots(18);
   const ctx = context('全局语义兼容');
@@ -344,6 +400,7 @@ async function testMatchingTtsIsReusedBeforeProviderCall() {
   try {
     testSemanticChangeInvalidatesEveryAffectedFrame();
     testLegacyMetadataUpgradeDoesNotInvalidateEquivalentFrames();
+    testStoryboardEditsInvalidateOnlyChangedFrames();
     testProviderAuditPersistsVerifiedContractAndPrompt();
     testReadOnlyInspectionIgnoresAuditTimeAndNormalizedBriefDrift();
     await testAuditAndTransportDriftIsGloballyNonSemantic();

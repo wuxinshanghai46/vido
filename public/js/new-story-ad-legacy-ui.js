@@ -3712,11 +3712,6 @@
     if (state.storyboardDirty && Array.isArray(state.shots) && state.shots.length) {
       await saveStoryboardEdits(id);
       state.storyboardDirty = false;
-      state.keyframes = [];
-      state.review = null;
-      state.ttsAudio = null;
-      state.videoClips = [];
-      state.finalVideo = null;
       return id;
     }
     return saveCurrentTaskProgress({ silent: true, render: false });

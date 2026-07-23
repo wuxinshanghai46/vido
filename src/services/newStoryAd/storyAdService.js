@@ -16,7 +16,7 @@ const keyframeParallel = require('./keyframeParallelScheduler');
 const keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
-const keyframeContractFreshness = require('./keyframeContractFreshnessService');
+const keyframeContractFreshness = require('./keyframeContractFreshnessService'), storyboardArtifactState = require('./storyboardArtifactStateService');
 const videoSubmissionGate = require('./videoSubmissionGateService'), videoFailureRecovery = require('./videoFailureRecoveryService'), videoPrivacyRetryPolicy = require('./videoPrivacyRetryPolicyService');
 const videoEvidencePreflight = require('./videoEvidencePreflightService');
 const videoCostAuthorization = require('./videoCostAuthorizationService');
@@ -772,7 +772,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
-  keyframeContractFreshness.persist(taskId, contracts, { clearDownstream: true });
+  const artifactState = storyboardArtifactState.persistAndSnapshot(taskId, contracts);
   storage.saveStage(taskId, 'storyboard', {
     status: 'done',
     output_summary: `${normalized.length} storyboard shots saved`,
@@ -783,7 +783,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} keyframe contracts rebuilt` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', error: '', error_code: '', retryable: false });
-  return { shots: normalized, keyframe_contracts: contracts };
+  return { shots: normalized, keyframe_contracts: contracts, ...artifactState };
 }
 
 async function generateSceneConfig(taskId, options = {}) {
