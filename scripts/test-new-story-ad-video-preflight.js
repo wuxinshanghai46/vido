@@ -104,7 +104,7 @@ const quality = preflight.buildVideoPreflight({
 });
 assert.deepStrictEqual(quality.units.map(unit => unit.shots), [[1], [3], [4], [5]]);
 assert.deepStrictEqual(quality.units.map(unit => unit.action), ['provider_generate', 'review_only', 'local_motion', 'provider_generate']);
-assert(quality.units.every(unit => unit.duration_sec <= 10), '高质量连续生成单元必须遵守 10 秒硬上限');
+assert(quality.units.every(unit => unit.duration_sec <= 10), '高质量逐镜生成单元必须遵守 10 秒硬上限');
 assert.strictEqual(quality.paid_unit_count, 2, '已有合格视频必须复用，不能因进入整条广告模式而重新付费生成');
 assert.strictEqual(quality.local_unit_count, 1);
 assert.strictEqual(quality.review_only_count, 1);
@@ -117,9 +117,10 @@ assert.strictEqual(quality.fingerprint, preflight.buildVideoPreflight({
 const freshQuality = preflight.buildVideoPreflight({
   taskId: 'preflight-fresh-task', shots, keyframes, contracts, clips: Array(6).fill(null), statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
 });
-assert.deepStrictEqual(freshQuality.units.map(unit => unit.shots), [[1], [2, 3], [4], [5], [6]]);
-assert.deepStrictEqual(freshQuality.units.map(unit => unit.action), ['provider_generate', 'provider_generate', 'local_motion', 'provider_generate', 'provider_generate']);
-assert.strictEqual(freshQuality.paid_unit_count, 4, '全新任务仍应按连续生成单元提交，而不是退化为逐镜提交');
-assert.strictEqual(freshQuality.paid_video_seconds, 25);
+assert.deepStrictEqual(freshQuality.units.map(unit => unit.shots), [[1], [2], [3], [4], [5], [6]]);
+assert.deepStrictEqual(freshQuality.units.map(unit => unit.action), ['provider_generate', 'provider_generate', 'local_motion', 'local_motion', 'provider_generate', 'provider_generate']);
+assert.strictEqual(freshQuality.paid_unit_count, 4, '全新任务必须让每个付费镜头分别使用自己的批准关键帧，本地运镜不能被相邻镜头升级为付费');
+assert.strictEqual(freshQuality.local_unit_count, 2);
+assert.strictEqual(freshQuality.paid_video_seconds, 20);
 
 console.log('new story ad video preflight: ok');

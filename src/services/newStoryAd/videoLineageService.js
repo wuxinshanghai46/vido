@@ -131,16 +131,21 @@ function producerPolicyMatches(clip = {}, expected = {}) {
 }
 
 function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
-  // Never adopt a segment cut from a multi-shot provider clip as an independent
-  // shot. The shared source video may have rebuilt scene geometry to satisfy a
-  // neighbouring beat even when the per-shot text and keyframe did not change.
+  // A segment cut from a multi-shot provider clip may be adopted as an
+  // independent shot only when it is the first member: that segment was
+  // directly anchored by its own approved keyframe. Later members were prompt
+  // text only and must never be promoted after the topology is split.
   const actualMembers = Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
     ? clip.scene_block_members.map(Number)
     : (Array.isArray(clip.lineage?.scene_block_members) ? clip.lineage.scene_block_members.map(Number) : []);
   const expectedMembers = Array.isArray(expected.scene_block_members) ? expected.scene_block_members.map(Number) : [];
-  return actualMembers.length === 1
+  const sameSingleMember = actualMembers.length === 1
     && expectedMembers.length === 1
-    && actualMembers[0] === expectedMembers[0]
+    && actualMembers[0] === expectedMembers[0];
+  const anchoredFirstMember = actualMembers.length > 1
+    && expectedMembers.length === 1
+    && expectedMembers[0] === actualMembers[0];
+  return (sameSingleMember || anchoredFirstMember)
     && baseLineageMatches(clip, expected);
 }
 

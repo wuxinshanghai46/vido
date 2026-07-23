@@ -5,6 +5,9 @@ const path = require('path');
 const vm = require('vm');
 
 const projection = require('../src/services/newStoryAd/mediaResultProjectionService');
+const storyAdService = require('../src/services/newStoryAd/storyAdService');
+const storage = require('../src/services/newStoryAd/storageService');
+const videoAttemptStore = require('../src/services/newStoryAd/videoAttemptStore');
 const videoReview = require('../public/js/new-story-ad/video-review');
 
 const storyboard = count => Array.from({ length: count }, (_, index) => ({ index: index + 1, title: `镜头 ${index + 1}` }));
@@ -261,6 +264,76 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
   assert.strictEqual(state.mediaResult, null);
   sync.syncMediaResult(state, { bundle: { task: { id: 'task-new' }, media_result: { outcome: 'success' } }, incomingTaskId: 'task-new' });
   assert.strictEqual(state.mediaResult.outcome, 'success');
+}
+
+// 生产同构：旧隐私失败后新尝试成功，旧失败和生成前 MEDIA_MISSING
+// 都不得覆盖当前已通过的视频结果。
+{
+  const taskId = `media_result_attempt_projection_${Date.now()}`;
+  const ledger = videoAttemptStore.createVideoAttemptStore(storage);
+  storage.createTask({ id: taskId, type: 'new_story_ad', status: 'done', stage: 'video_qa', request: {}, user_id: 'test' });
+  try {
+    storage.saveOutput(taskId, 'storyboard_table', storyboard(1));
+    storage.saveOutput(taskId, 'video_clips', [passedClip(0, {
+      provider_task_id: 'provider-current-success',
+      provider_submission_state: 'completed',
+      billing_state: 'confirmed',
+    })]);
+    storage.saveOutput(taskId, 'video_preflight', {
+      compatibility_report: {
+        decisions: [{ index: 0, status: 'regenerate_required', reason_codes: ['MEDIA_MISSING'] }],
+      },
+    });
+    storage.saveOutput(taskId, 'video_shot_status_1', {
+      index: 1,
+      shot_index: 0,
+      lifecycle: 'qa_passed',
+      qa_status: 'passed',
+      previous_clip_restored: true,
+      provider_submission_state: 'completed',
+      billing_state: 'confirmed',
+      last_attempt_status: 'failed',
+      last_attempt_error_code: 'INPUT_PERSON_PRIVACY',
+      last_attempt_provider_submission_state: 'not_submitted',
+      last_attempt_billing_state: 'not_submitted',
+    });
+    const oldAttempt = ledger.claim({
+      taskId, shotIndex: 0, generationId: 'generation-old-privacy',
+      lineageFingerprint: 'lineage-old', providerId: 'deyunai', modelId: 'seedance', costFingerprint: 'cost-old',
+      at: '2026-07-22T15:00:00.000Z',
+    }).attempt;
+    ledger.appendEvent({
+      taskId, attemptId: oldAttempt.attempt_id, type: 'pre_provider_failed',
+      eventKey: 'privacy-failed', errorCode: 'INPUT_PERSON_PRIVACY',
+      errorMessage: '旧隐私失败', at: '2026-07-22T15:00:01.000Z',
+    });
+    const currentAttempt = ledger.claim({
+      taskId, shotIndex: 0, generationId: 'generation-current-success',
+      lineageFingerprint: 'lineage-current', providerId: 'deyunai', modelId: 'seedance', costFingerprint: 'cost-current',
+      at: '2026-07-23T03:58:25.000Z',
+    }).attempt;
+    ledger.appendEvent({
+      taskId, attemptId: currentAttempt.attempt_id, type: 'provider_submitted',
+      eventKey: 'provider-current-success', providerTaskId: 'provider-current-success',
+      billingState: 'unknown', at: '2026-07-23T03:58:26.000Z',
+    });
+    ledger.appendEvent({
+      taskId, attemptId: currentAttempt.attempt_id, type: 'succeeded',
+      eventKey: 'current-clip-persisted', providerTaskId: 'provider-current-success',
+      billingState: 'confirmed', at: '2026-07-23T04:10:00.000Z',
+    });
+
+    const bundle = storyAdService.publicTaskBundle(taskId);
+    assert.strictEqual(bundle.video_shot_statuses[0].last_attempt_status, '', 'successful current attempt must suppress an older failed attempt');
+    assert.strictEqual(bundle.video_shot_statuses[0].last_attempt_error_code, '');
+    assert.strictEqual(bundle.video_shot_statuses[0].compatibility_status, '', 'persisted preflight compatibility is planning evidence, not current media state');
+    assert.strictEqual(bundle.video_shot_statuses[0].regenerate_required, false);
+    assert.deepStrictEqual(bundle.media_result.last_attempt_failed_shots, []);
+    assert.strictEqual(bundle.media_result.shot_results[0].state, 'passed');
+    assert.strictEqual(bundle.media_result.outcome, 'ready_to_compose');
+  } finally {
+    storage.deleteTask(taskId);
+  }
 }
 
 console.log('new story ad media result projection: ok');

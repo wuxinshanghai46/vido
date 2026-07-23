@@ -52,7 +52,7 @@ function renderTestPatternVideo(filePath, durationSec = 3) {
   assert.strictEqual(rendered.status, 0, rendered.stderr || '无法生成视觉合成去重测试视频');
 }
 
-function testGenericSixToTenSecondUnits() {
+function testGenericKeyframeAnchoredUnits() {
   assert.strictEqual(sceneBlocks.DEFAULT_MIN_BLOCK_DURATION, 6);
   assert.strictEqual(sceneBlocks.DEFAULT_MAX_BLOCK_DURATION, 10);
   const durations = [3, 3, 4, 2, 4, 4];
@@ -61,9 +61,9 @@ function testGenericSixToTenSecondUnits() {
     continuous_quality_mode: true,
     scene_block_generation: true,
   });
-  assert.deepStrictEqual(blocks.flatMap(block => block.member_indexes), [0, 1, 2, 3, 4, 5], '每个镜头必须且只能进入一个连续生成单元');
-  assert(blocks.every(block => block.duration_sec >= 6 && block.duration_sec <= 10), '非硬边界连续单元必须落在通用 6-10 秒窗口');
-  assert(blocks.every(block => block.automatic_retry_limit === 0), '连续单元不得自动产生第二次付费调用');
+  assert.deepStrictEqual(blocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4], [5]], '每个批准关键帧必须且只能进入一个独立供应商生成单元');
+  assert.deepStrictEqual(blocks.map(block => block.duration_sec), durations, '逐镜生成必须保留脚本时长，不能为了供应商时长窗口吞并镜头');
+  assert(blocks.every(block => block.automatic_retry_limit === 0), '单镜单元不得自动产生第二次付费调用');
 
   const shortBoundaryShots = [
     genericShot(0, 3),
@@ -225,7 +225,7 @@ function testP0CannotBeManuallyAccepted() {
 
 (async () => {
   try {
-    testGenericSixToTenSecondUnits();
+    testGenericKeyframeAnchoredUnits();
     await testMotionAwareBoundariesAndFallback();
     await testContinuousSourceVisualDeduplication();
     await testMissingCrossShotEvidenceIsBlocking();

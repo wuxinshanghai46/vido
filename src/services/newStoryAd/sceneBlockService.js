@@ -1,6 +1,8 @@
 const revisionService = require('./revisionService');
 const videoCore = require('../videoGenerationCore');
 
+// Keep the lineage token stable so already-approved single-shot clips are not
+// invalidated merely because automatic multi-shot provider units are retired.
 const SCENE_BLOCK_POLICY_VERSION = 'continuous-scene-workflow-v6';
 const DEFAULT_MIN_BLOCK_DURATION = 6;
 const DEFAULT_MAX_BLOCK_DURATION = 10;
@@ -172,74 +174,33 @@ function buildSceneBlocks(shots = [], contracts = [], options = {}) {
     businessProfile: options.business_profile || options.businessProfile || 'story_ad',
     options,
   });
-  if (options.scene_block_generation === true && options.continuous_quality_mode === true) {
-    const minDuration = Math.max(1, Math.min(10, Number(options.scene_block_min_duration || DEFAULT_MIN_BLOCK_DURATION) || DEFAULT_MIN_BLOCK_DURATION));
-    const maxDuration = Math.max(minDuration, Math.min(10, Number(options.scene_block_max_duration || DEFAULT_MAX_BLOCK_DURATION) || DEFAULT_MAX_BLOCK_DURATION));
-    const maxShots = Math.max(1, Math.min(6, Number(options.scene_block_max_shots || DEFAULT_MAX_BLOCK_SHOTS) || DEFAULT_MAX_BLOCK_SHOTS));
-    const structuralRuns = [];
-    let current = null;
-    list.forEach((shot, index) => {
-      const contract = contracts[index] || {};
-      const identity = sceneIdentity(shot, contract);
-      const temporal = temporalIdentity(shot, contract);
-      const shotDuration = durationOf(shot);
-      const previousIndex = current?.member_indexes?.[current.member_indexes.length - 1];
-      const previousShot = Number.isInteger(previousIndex) ? list[previousIndex] : null;
-      const canContinue = !!current
-        && !!identity
-        && identity === current.scene_identity
-        && temporal === current.temporal_identity
-        && !isExplicitBoundary(shot, previousShot || {}, options)
-        && !hasCastModeBoundary(shot, previousShot || {}, options);
-      if (!canContinue) {
-        current = { scene_identity: identity || `unbound-shot-${index + 1}`, temporal_identity: temporal, member_indexes: [index], duration_sec: shotDuration };
-        structuralRuns.push(current);
-        return;
-      }
-      current.member_indexes.push(index);
-      current.duration_sec += shotDuration;
-    });
-    const groups = structuralRuns.flatMap(run => partitionContinuousRun(run, list, { minDuration, maxDuration, maxShots }));
-    return groups.map((group) => {
-      const block = finalizeBlock(group, list, contracts);
-      const continuous = block.member_indexes.length > 1;
-      return {
-        ...block,
-        generation_mode: continuous ? 'one_take' : 'single_shot',
-        continuous,
-        paid: true,
-        complexity_level: continuous ? 'complex' : 'standard',
-        requires_manual_review: continuous,
-        automatic_retry_limit: 0,
-        execution_plan_fingerprint: executionPlan.fingerprint,
-        policy_version: SCENE_BLOCK_POLICY_VERSION,
-      };
-    });
-  }
-  return executionPlan.generation_units.map((unit) => {
-    const firstIndex = unit.edit_shot_indexes[0];
+  // Each approved storyboard keyframe is an authoritative visual contract.
+  // The current provider accepts one temporal first-frame anchor, so combining
+  // multiple edit shots would leave every later keyframe as prompt text only.
+  // Keep provider submissions at the edit-shot boundary until the provider
+  // offers verified temporal multi-keyframe anchoring.
+  return executionPlan.generation_units.flatMap(unit => unit.edit_shot_indexes.map((shotIndex) => {
+    const firstIndex = shotIndex;
     const firstShot = list[firstIndex] || {};
     const firstContract = contracts[firstIndex] || {};
     const compatible = finalizeBlock({
       scene_identity: sceneIdentity(firstShot, firstContract) || `unbound-shot-${firstIndex + 1}`,
       temporal_identity: temporalIdentity(firstShot, firstContract),
-      member_indexes: unit.edit_shot_indexes.slice(),
-      duration_sec: unit.duration_sec,
+      member_indexes: [firstIndex],
+      duration_sec: durationOf(firstShot),
     }, list, contracts);
     return {
       ...compatible,
-      id: unit.id,
-      fingerprint: unit.fingerprint,
-      generation_mode: unit.mode,
-      continuous: unit.mode === 'one_take',
+      generation_mode: unit.mode === 'local_motion' ? 'local_motion' : 'single_shot',
+      continuous: false,
       paid: unit.paid !== false,
-      complexity_level: unit.complexity_level,
-      requires_manual_review: unit.requires_manual_review === true,
+      complexity_level: videoCore.planner.complexityOf(executionPlan.edit_shots[firstIndex] || {}),
+      requires_manual_review: false,
       automatic_retry_limit: 0,
       execution_plan_fingerprint: executionPlan.fingerprint,
       policy_version: SCENE_BLOCK_POLICY_VERSION,
     };
-  });
+  }));
 }
 
 function blockForIndex(blocks = [], index = 0) {

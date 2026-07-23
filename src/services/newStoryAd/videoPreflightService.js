@@ -7,7 +7,7 @@ const artifactCompatibility = require('./videoArtifactCompatibilityService');
 const artifactWorkflow = require('./videoArtifactWorkflowService');
 const videoCore = require('../videoGenerationCore');
 
-const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v7';
+const VIDEO_PREFLIGHT_POLICY_VERSION = 'cost-aware-video-preflight-v8';
 const POST_GENERATION_TRANSITION_SCOPE = 'post_generation_deterministic_transition';
 
 function text(value = '') {

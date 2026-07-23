@@ -108,9 +108,11 @@ async function main() {
     taskId: 'boundary-repair-quality-expanded', shots, keyframes, contracts: shots.map(() => ({ scene_lock: { scene_id: 'scene-a', scene_revision: 1 } })),
     clips: providerRepairClips, statuses: [], mode: 'quality', providerRoute: 'deyunai/doubao-seedance-2-0-260128', onlyIndexes: [3],
   });
-  assert.strictEqual(qualityExpandedPlan.status, 'blocked', 'the fallback must not silently regenerate an expanded multi-shot quality unit');
-  assert.strictEqual(qualityExpandedPlan.paid_transition_fallback_count, 0);
-  assert(qualityExpandedPlan.blockers.some(item => item.code === 'VIDEO_BOUNDARY_REPAIR_TAIL_INSUFFICIENT'));
+  assert.strictEqual(qualityExpandedPlan.status, 'ready', 'quality mode must isolate the failed shot instead of expanding it into an unanchored multi-shot unit');
+  assert.strictEqual(qualityExpandedPlan.paid_unit_count, 1);
+  assert.deepStrictEqual(qualityExpandedPlan.units[0].shots, [4]);
+  assert.strictEqual(qualityExpandedPlan.paid_transition_fallback_count, 1);
+  assert.deepStrictEqual(qualityExpandedPlan.blockers, []);
   await assert.rejects(
     () => boundaryGeneration.prepareInputs({
       taskId: 'unsafe-no-person-tail-hard-gate', index: 3, keyframe: keyframes[3],

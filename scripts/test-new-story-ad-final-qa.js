@@ -67,15 +67,15 @@ function testSelectiveRedoAndCostAuthorization() {
     clips: [], statuses: [], mode: 'quality', providerRoute: 'deyunai/doubao-seedance-2-0-260128',
   };
   const firstGroup = videoPreflight.buildVideoPreflight({ ...common, onlyIndexes: [1] });
-  assert.strictEqual(firstGroup.paid_unit_count, 1, '选择一个失败镜头只能授权它所属的一个连续母片单元');
-  assert.deepStrictEqual(firstGroup.units.map(unit => unit.member_indexes), [[0, 1, 2]], '选择性重做必须扩展到真实母片边界');
-  assert.deepStrictEqual(firstGroup.shots.map(item => item.index), [0, 1, 2], '预检明细必须与实际付费目标完全一致');
-  assert.strictEqual(firstGroup.paid_video_seconds, 10);
+  assert.strictEqual(firstGroup.paid_unit_count, 1, '选择一个失败镜头只能授权该镜自己的关键帧锚定单元');
+  assert.deepStrictEqual(firstGroup.units.map(unit => unit.member_indexes), [[1]], '选择性重做不得扩张到相邻已通过镜头');
+  assert.deepStrictEqual(firstGroup.shots.map(item => item.index), [1], '预检明细必须与实际付费目标完全一致');
+  assert.strictEqual(firstGroup.paid_video_seconds, 3);
   assert.strictEqual(firstGroup.automatic_retry_count, 0);
   assert(firstGroup.units.every(unit => unit.automatic_retry_limit === 0 || unit.automatic_retry_limit === undefined));
 
   const secondGroup = videoPreflight.buildVideoPreflight({ ...common, onlyIndexes: [4] });
-  assert.deepStrictEqual(secondGroup.units.map(unit => unit.member_indexes), [[3, 4, 5]]);
+  assert.deepStrictEqual(secondGroup.units.map(unit => unit.member_indexes), [[4]]);
   assert.notStrictEqual(firstGroup.fingerprint, secondGroup.fingerprint, '不同选择性重做目标必须产生不同费用/执行确认指纹');
 
   const authorizedExecutionPlan = {
@@ -98,7 +98,7 @@ function testSelectiveRedoAndCostAuthorization() {
     options: { usd_cny_rate: 7.2 },
   });
   assert.strictEqual(costPlan.paid_unit_count, 1);
-  assert.deepStrictEqual(costPlan.units[0].edit_shot_indexes, [0, 1, 2], '费用确认单元必须与实际选择性重做目标一致');
+  assert.deepStrictEqual(costPlan.units[0].edit_shot_indexes, [1], '费用确认单元必须与实际选择性重做目标一致');
   assert.strictEqual(costPlan.automatic_paid_retry_count, 0);
   assert.throws(
     () => videoCore.costGuard.assertCostAuthorization(costPlan, {}),

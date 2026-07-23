@@ -35,10 +35,10 @@ async function run() {
     continuous_quality_mode: true,
     scene_block_generation: true,
   });
-  assert.deepStrictEqual(qualityBlocks.map(block => block.member_indexes), [[0, 1, 2], [3], [4]], '整条广告质量模式应把兼容镜头组织为 15 秒以内的连续场景段');
-  assert.strictEqual(qualityBlocks[0].generation_mode, 'one_take');
-  assert.strictEqual(qualityBlocks[0].duration_sec, 10);
-  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], qualityBlocks), [0, 1, 2], '连续场景段必须作为一个生成与修复单元');
+  assert.deepStrictEqual(qualityBlocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4]], '质量模式也必须让每个已批准关键帧成为独立供应商首帧');
+  assert.strictEqual(qualityBlocks[0].generation_mode, 'single_shot');
+  assert.strictEqual(qualityBlocks[0].duration_sec, 3);
+  assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], qualityBlocks), [1], '单镜失败不得扩张为相邻镜头重复付费');
   const isolatedQualityBlocks = sceneBlocks.isolateIndexes(qualityBlocks, shots, contracts, [1]);
   assert.deepStrictEqual(isolatedQualityBlocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4]], 'keyframe-transition recovery must isolate the authorized shot from an older multi-shot paid unit');
   assert.deepStrictEqual(sceneBlocks.expandIndexesToBlocks([1], isolatedQualityBlocks), [1]);
@@ -50,9 +50,8 @@ async function run() {
     allow_one_take: true,
     provider_supports_one_take: true,
   });
-  assert.deepStrictEqual(oneTakeBlocks.map(block => block.member_indexes), [[0, 1, 2], [3], [4]], '只有明确标记并通过能力检查的一镜到底才允许合并');
-  assert.strictEqual(oneTakeBlocks[0].continuous, true);
-  assert.ok(sceneBlocks.generationPrompt(oneTakeBlocks[0], authoredOneTakeShots, contracts).includes('uninterrupted take'));
+  assert.deepStrictEqual(oneTakeBlocks.map(block => block.member_indexes), [[0], [1], [2], [3], [4]], '供应商没有时间多关键帧能力时，即使脚本标记一镜到底也不得合并已批准镜头');
+  assert.strictEqual(oneTakeBlocks[0].continuous, false);
 
   const semanticShots = [
     { id: 'semantic-a', scene_id: 'space-semantic', duration: 5, characters: ['角色一'] },
@@ -84,6 +83,42 @@ async function run() {
   });
   assert.notStrictEqual(baseLineage.fingerprint, changedLineage.fingerprint, 'scene block changes must invalidate derived shot clips');
   assert.strictEqual(lineage.reuseDecision({ file_path: __filename, provider_used: 'provider/model', qa: { pass: true }, motion_prompt: '' }, baseLineage).reusable, false, 'independent legacy clips cannot masquerade as a continuous block');
+  const legacyGroupedBlock = {
+    ...oneTakeBlocks[0],
+    id: 'legacy-group-1-2',
+    fingerprint: 'legacy-group-fingerprint',
+    member_indexes: [0, 1],
+    first_index: 0,
+    last_index: 1,
+    generation_mode: 'one_take',
+    continuous: true,
+  };
+  const groupedFirstLineage = lineage.buildShotLineage({
+    shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
+    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: legacyGroupedBlock,
+  });
+  const singleFirstLineage = lineage.buildShotLineage({
+    shot: shots[0], index: 0, contract: contracts[0], keyframe: { image_url: '/frame.png' },
+    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: oneTakeBlocks[0],
+  });
+  const groupedFirstClip = lineage.attachLineage({
+    file_path: __filename, provider_used: 'provider/model', qa: { pass: true }, cross_shot_qa: { pass: true },
+    scene_block_members: [1, 2],
+  }, groupedFirstLineage);
+  assert.strictEqual(lineage.reuseDecision(groupedFirstClip, singleFirstLineage).reusable, true, 'multi-shot母片的首镜由自己的关键帧直接锚定，QA通过后可安全迁移为单镜');
+  const groupedSecondLineage = lineage.buildShotLineage({
+    shot: shots[1], index: 1, contract: contracts[1], keyframe: { image_url: '/frame-b.png' },
+    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: legacyGroupedBlock,
+  });
+  const singleSecondLineage = lineage.buildShotLineage({
+    shot: shots[1], index: 1, contract: contracts[1], keyframe: { image_url: '/frame-b.png' },
+    ctx: { revisions: { source: 1, scene: 2, person: 1, product: 1 } }, modelRoute: 'provider/model', sceneBlock: oneTakeBlocks[1],
+  });
+  const groupedSecondClip = lineage.attachLineage({
+    file_path: __filename, provider_used: 'provider/model', qa: { pass: true }, cross_shot_qa: { pass: true },
+    scene_block_members: [1, 2],
+  }, groupedSecondLineage);
+  assert.strictEqual(lineage.reuseDecision(groupedSecondClip, singleSecondLineage).reusable, false, 'multi-shot母片的后续镜头没有自己的时间首帧锚点，禁止迁移为可信单镜');
 
   const tmp = path.join(__dirname, '..', 'outputs', 'analysis', 'scene-block-test-source.mp4');
   fs.mkdirSync(path.dirname(tmp), { recursive: true });
@@ -106,9 +141,8 @@ async function run() {
   const integrationTaskId = `scene_block_pipeline_${Date.now()}`;
   storage.createTask({ id: integrationTaskId, type: 'new_story_ad', status: 'running', stage: 'video', request: {}, user_id: 'test' });
   let providerCalls = 0;
-  let pipelineResult;
   try {
-    pipelineResult = await videoAdapter.generateSceneBlockVideos({
+    await assert.rejects(() => videoAdapter.generateSceneBlockVideos({
       taskId: integrationTaskId,
       shots: shots.slice(0, 2),
       contracts: contracts.slice(0, 2),
@@ -127,15 +161,11 @@ async function run() {
         },
       },
       existingClips: [],
-    });
-    assert.strictEqual(providerCalls, 1, 'two storyboard beats in one block must make one provider generation call');
-    assert.strictEqual(pipelineResult.clips.filter(Boolean).length, 2, 'one block must split back into per-shot QA clips');
-    assert.strictEqual(pipelineResult.clips[0].scene_block_id, pipelineResult.clips[1].scene_block_id);
-    assert.deepStrictEqual(pipelineResult.target_indexes, [0, 1]);
+    }), error => error?.code === 'VIDEO_MULTI_KEYFRAME_ANCHOR_UNSUPPORTED'
+      && error?.providerSubmitted === false
+      && error?.billingState === 'not_submitted');
+    assert.strictEqual(providerCalls, 0, '未锚定后续关键帧的多镜单元必须在供应商提交前停止');
   } finally {
-    const generatedFiles = (pipelineResult?.clips || []).map(clip => clip?.file_path).filter(Boolean);
-    const sourceFiles = (pipelineResult?.clips || []).map(clip => clip?.scene_block_source_file).filter(Boolean);
-    [...generatedFiles, ...sourceFiles].forEach(file => { try { fs.unlinkSync(file); } catch {} });
     storage.deleteTask(integrationTaskId);
   }
 

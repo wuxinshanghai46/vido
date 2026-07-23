@@ -16,7 +16,7 @@ const personIdentity = require('./personIdentityContractService');
 const deyunaiService = require('../deyunaiService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
-const sceneBlockService = require('./sceneBlockService');
+const sceneBlockService = require('./sceneBlockService'), videoSceneBlockGuard = require('./videoSceneBlockGuardService');
 const semanticCut = require('./semanticCutService');
 const videoCore = require('../videoGenerationCore');
 const contractFreshness = require('./keyframeContractFreshnessService');
@@ -25,7 +25,6 @@ const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
 const VIDEO_SHOT_STATUS_PREFIX = 'video_shot_status_';
-
 function videoShotStatusKind(index = 0) {
   return `${VIDEO_SHOT_STATUS_PREFIX}${Math.max(0, Number(index) || 0) + 1}`;
 }
@@ -908,7 +907,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     file_exists: false,
     video_url: '',
     qa_status: '',
-    qa_problems: [], previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false,
+    qa_problems: [], previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false, artifact_compatibility: null, compatibility_status: '', compatibility_reason_codes: [], regenerate_required: false,
     error: '',
     error_code: '',
     repair_attempt: Number(options._repairAttempt || 0),
@@ -1117,6 +1116,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
     : list.map((_, index) => index);
   const targetIndexes = sceneBlockService.expandIndexesToBlocks(requested, blocks);
   const units = blocks.filter(block => block.member_indexes.some(index => targetIndexes.includes(index)));
+  videoSceneBlockGuard.assertTemporalKeyframeAnchors(units);
   const localMotionIndexes = new Set((Array.isArray(options._localMotionIndexes) ? options._localMotionIndexes : []).map(Number));
   const keyframeReferenceOnlyIndexes = new Set((Array.isArray(options._keyframeReferenceOnlyIndexes) ? options._keyframeReferenceOnlyIndexes : []).map(Number));
   const keyframeFirstFrameOnlyIndexes = new Set((Array.isArray(options._keyframeFirstFrameOnlyIndexes) ? options._keyframeFirstFrameOnlyIndexes : []).map(Number));
@@ -1147,7 +1147,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       provider_task_id: resumeProviderTaskId, provider_status: resumeProviderTaskId ? 'resume_pending' : '',
       resume_provider_task_id: resumeProviderTaskId, resumed_after_interruption: !!resumeProviderTaskId,
       ...videoAttemptState.queuedProviderState(previousStatus, resumeProviderTaskId),
-      file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '', previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false,
+      file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '', previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false, artifact_compatibility: null, compatibility_status: '', compatibility_reason_codes: [], regenerate_required: false,
       repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
       lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
     }, list.length);
