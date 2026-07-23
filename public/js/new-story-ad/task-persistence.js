@@ -211,6 +211,7 @@
       },
     });
     state.pendingChangeScope = 'none';
+    state.pendingMediaChange = 'none';
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});

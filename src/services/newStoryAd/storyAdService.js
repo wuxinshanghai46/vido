@@ -346,8 +346,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     }
   }
   if (task) {
-    const hasFinalOutput = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl)
-      || /final_video_ready|compose_done/.test(String(task.stage || ''));
+    const hasFinalOutput = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
     const generationProgress = terminalizedGenerationProgress(task, task.generation_progress, hasFinalOutput);
     const failed = !hasFinalOutput && (task.error_code || generationProgress?.status === 'failed');
     task = {
@@ -387,7 +386,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
     : {};
   const storyboard = outputMap.storyboard_table || [];
   const keyframes = outputMap.keyframes || [];
-  const finalVideo = outputMap.final_video || null;
+  const finalVideo = outputMap.final_video || (!detailed && task.id ? storage.getOutput(task.id, 'final_video') : null);
   const context = outputMap.context || task.request || {};
   const sceneAssets = outputMap.scene_assets || [];
   const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
@@ -409,7 +408,7 @@ function taskSummary(task = {}, { detailed = true } = {}) {
       };
     }).filter(Boolean);
   }
-  const hasFinalOutput = !!finalVideoUrl || /final_video_ready|compose_done/.test(String(task.stage || ''));
+  const hasFinalOutput = !!finalVideoUrl;
   const rawGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
     ? task.generation_progress
     : null;
@@ -488,12 +487,15 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const existingFinalVideo = storage.getOutput(taskId, 'final_video');
   const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
-  const builtCtx = buildContext(
+  let builtCtx = buildContext(
     { ...(task.request || {}), ...(body || {}), task_id: taskId },
     { ...user, id: ownerId, userId: ownerId },
   );
   const savingProgress = body.save_progress === true || body.saveProgress === true;
+  const mediaChangeScope = body.media_change_scope || body.mediaChangeScope || '';
+  builtCtx = taskProgressSave.preserveUnconfirmedMediaSettings(previousCtx, builtCtx, { savingProgress, mediaChangeScope });
   const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
   // A progress save can race with a background stage (for example when the
   // user closes an editor while keyframes are running). Never invalidate the
@@ -529,33 +531,21 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});
   }
   invalidated = revisionService.invalidateOutputs(storage, taskId, scope);
-  const previousVoiceSettings = JSON.stringify({
-    voice_id: previousCtx.voice_id || '',
-    include_voiceover: previousCtx.include_voiceover !== false && !!previousCtx.voice_id,
-    voice_volume: Number(previousCtx.voice_volume ?? 1),
+  const mediaInvalidated = taskProgressSave.mediaInvalidatedOutputs(previousCtx, ctx, {
+    savingProgress,
+    mediaChangeScope,
   });
-  const nextVoiceSettings = JSON.stringify({
-    voice_id: ctx.voice_id || '',
-    include_voiceover: ctx.include_voiceover !== false && !!ctx.voice_id,
-    voice_volume: Number(ctx.voice_volume ?? 1),
+  if (mediaInvalidated.includes('final_video')) Object.assign(patch, {
+    status: 'working',
+    stage: mediaInvalidated.includes('video_clips') ? 'keyframes_ready' : 'video_ready',
   });
-  const previousComposeSettings = JSON.stringify({
-    bgm_asset: previousCtx.bgm_asset || null,
-    bgm_volume: Number(previousCtx.bgm_volume ?? 0.16),
-    subtitle: previousCtx.subtitle !== false,
-    subtitle_style: previousCtx.subtitle_style || 'popup',
-    subtitle_config: previousCtx.subtitle_config || {},
+  else if (invalidated.includes('final_video')) Object.assign(patch, {
+    status: 'working',
+    ...(/final|compose/.test(String(patch.stage || '')) ? { stage: 'draft' } : {}),
   });
-  const nextComposeSettings = JSON.stringify({
-    bgm_asset: ctx.bgm_asset || null,
-    bgm_volume: Number(ctx.bgm_volume ?? 0.16),
-    subtitle: ctx.subtitle !== false,
-    subtitle_style: ctx.subtitle_style || 'popup',
-    subtitle_config: ctx.subtitle_config || {},
+  else if (!invalidated.includes('final_video') && (existingFinalVideo?.video_url || existingFinalVideo?.videoUrl)) Object.assign(patch, {
+    status: 'done', stage: 'final_video_ready', saved_progress: false,
   });
-  const mediaInvalidated = previousVoiceSettings !== nextVoiceSettings
-    ? ['tts_audio', 'video_clips', 'final_video']
-    : (previousComposeSettings !== nextComposeSettings ? ['final_video'] : []);
   mediaInvalidated.forEach(kind => storage.deleteOutput(taskId, kind));
   invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
   const updated = storage.updateTask(taskId, patch);

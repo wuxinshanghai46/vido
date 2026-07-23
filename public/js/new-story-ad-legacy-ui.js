@@ -75,7 +75,7 @@
     castProfiles: [],
     personGenerationProgress: null,
     sceneAssets: [],
-    pendingChangeScope: 'none',
+    pendingChangeScope: 'none', pendingMediaChange: 'none',
     sceneGenerationProgress: null,
     productAsset: null,
     referenceAssets: [],
@@ -1048,7 +1048,7 @@
       controlled_production: ctrl,
       forbidden: negative,
       source: 'new_story_ad_legacy_style_ui',
-      change_scope: state.pendingChangeScope || 'none',
+      change_scope: state.pendingChangeScope || 'none', media_change_scope: state.pendingMediaChange || 'none',
     };
   }
 
@@ -1106,6 +1106,11 @@
     state.finalVideo = null;
   }
 
+  function markMediaDirty(scope = 'compose') {
+    const priority = { none: 0, compose: 1, voice: 2 }; const current = state.pendingMediaChange || 'none';
+    state.pendingMediaChange = priority[scope] >= priority[current] ? scope : current;
+  }
+
   function resetForNewSession() {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
@@ -1115,6 +1120,7 @@
     state.taskId = '';
     rememberTaskId('');
     markSourceDirty();
+    state.pendingMediaChange = 'none';
     revokePreview(state.actorAsset);
     revokePreview(state.personAsset);
     revokePreview(state.productAsset);
@@ -2176,7 +2182,7 @@
       bindAudio: (modal, plan) => window.NewStoryAdAudioPreflight.bind(modal, plan, { previewVoice: previewNsaVoice }),
       readAudio: (modal, plan) => window.NewStoryAdAudioPreflight.read(modal, plan),
       stopAudio: () => window.NewStoryAdAudioPreflight?.stopPreview?.(),
-      applyAudio: async accepted => { await window.NewStoryAdAudioPreflight.apply(accepted, { state, api }); renderAll(); scheduleAutoSave('video_audio_preflight'); },
+      applyAudio: async accepted => { await window.NewStoryAdAudioPreflight.apply(accepted, { state, api }); markMediaDirty('voice'); renderAll(); scheduleAutoSave('video_audio_preflight'); },
     }) || null;
   }
 
@@ -3652,7 +3658,7 @@
         },
       },
     });
-    state.pendingChangeScope = 'none';
+    state.pendingChangeScope = 'none'; state.pendingMediaChange = 'none';
     normalizeBundle(r);
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});
@@ -4430,7 +4436,7 @@
     try {
       const asset = await uploadAsset(file, 'bgm');
       revokePreview(state.bgmAsset);
-      state.bgmAsset = { ...asset, previewUrl: asset.file_url || asset.url, uploading: false };
+      state.bgmAsset = { ...asset, previewUrl: asset.file_url || asset.url, uploading: false }; markMediaDirty('compose');
       renderAll();
       scheduleAutoSave('bgm_upload');
       toast('BGM 已上传', 'success');
@@ -4898,7 +4904,7 @@
       state.voiceId = id;
       state.voiceName = voice.name || id || '';
       if (changed) {
-        state.ttsAudio = null;
+        markMediaDirty('voice'); state.ttsAudio = null;
         state.videoClips = [];
         state.finalVideo = null;
       }
@@ -5000,7 +5006,7 @@
       openNsaMusicLibrary(e.currentTarget.value || '');
     });
     body.querySelectorAll('[data-nsa-music-profile]').forEach(btn => btn.addEventListener('click', () => {
-      state.bgmProfile = btn.dataset.nsaMusicProfile || 'auto';
+      state.bgmProfile = btn.dataset.nsaMusicProfile || 'auto'; markMediaDirty('compose');
       scheduleAutoSave('bgm_profile');
       const q = body.querySelector('[data-nsa-music-query]')?.value || '';
       openNsaMusicLibrary(q);
@@ -5031,7 +5037,7 @@
       btn.textContent = '导入中...';
       try {
         const r = await api('/api/new-story-ad/music/import', { method: 'POST', body: { item } });
-        state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item;
+        state.bgmAsset = r.bgm_asset || r.bgmAsset || r.asset || item; markMediaDirty('compose');
         renderAll();
         stopNsaMusicPreview();
         hideNsaModal(ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库'));
@@ -5182,7 +5188,7 @@
         fontSize: Number(body.querySelector('[data-nsa-sub-size]')?.value) || 72,
         color: useCustom ? (body.querySelector('[data-nsa-sub-color]')?.value || '#FFFFFF') : '',
         outlineColor: useCustom ? (body.querySelector('[data-nsa-sub-outline]')?.value || '#000000') : '',
-      };
+      }; markMediaDirty('compose');
       renderAll();
       hideNsaModal(modal);
       scheduleAutoSave('subtitle_style');
@@ -6150,7 +6156,7 @@
         dhNsaAdBgmClear: () => {
           revokePreview(state.bgmAsset);
           state.bgmAsset = null;
-          state.finalVideo = null;
+          state.finalVideo = null; markMediaDirty('compose');
           renderAll();
           scheduleAutoSave('bgm_clear');
           toast('已设为无背景音乐，可直接合成', 'success');
@@ -6211,12 +6217,12 @@
         return;
       }
       if (target?.id === 'dhNsaAdVoiceVolume') {
-        state.voiceVolume = Math.max(0.6, Math.min(1.2, Number(target.value || 100) / 100));
+        state.voiceVolume = Math.max(0.6, Math.min(1.2, Number(target.value || 100) / 100)); markMediaDirty('voice');
         renderAudio();
         return;
       }
       if (target?.id === 'dhNsaAdBgmVolume') {
-        state.bgmVolume = Math.max(0, Math.min(0.35, Number(target.value || 16) / 100));
+        state.bgmVolume = Math.max(0, Math.min(0.35, Number(target.value || 16) / 100)); markMediaDirty('compose');
         renderAudio();
         return;
       }
@@ -6297,14 +6303,14 @@
         return;
       }
       if (target?.id === 'dhNsaAdSubtitleToggle') {
-        state.subtitleEnabled = !!target.checked;
+        state.subtitleEnabled = !!target.checked; markMediaDirty('compose');
         const select = within('#dhNsaAdSubtitle');
         if (select) select.value = state.subtitleEnabled ? 'on' : 'off';
         renderStatus();
         return;
       }
       if (target?.id === 'dhNsaAdSubtitle') {
-        state.subtitleEnabled = target.value !== 'off';
+        state.subtitleEnabled = target.value !== 'off'; markMediaDirty('compose');
         const toggle = within('#dhNsaAdSubtitleToggle');
         if (toggle) toggle.checked = state.subtitleEnabled;
         renderStatus();

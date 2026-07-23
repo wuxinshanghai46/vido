@@ -161,7 +161,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260723-storyboard-state-sync-v1'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260723-completed-autosave-authority-v1'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -232,7 +232,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260723-storyboard-state-sync-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260723-completed-autosave-authority-v1'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
@@ -254,6 +254,60 @@ assert.strictEqual(persistedFailedCompose.status, 'failed');
 assert.strictEqual(persistedFailedCompose.stage, 'compose_failed');
 assert.strictEqual(persistedFailedCompose.error_code, 'UNKNOWN');
 assert.strictEqual(persistedFailedCompose.support_id, 'support-1');
+storyAdService.createTask({
+  task_id: 'completed-autosave-authority',
+  brief: 'completed autosave authority regression',
+  cast_mode: 'no_human',
+  voice_id: 'voice-original',
+  subtitle: true,
+  bgm_volume: 0.16,
+}, { id: 'owner-1' });
+storage.saveOutput('completed-autosave-authority', 'final_video', { video_url: '/outputs/final-authoritative.mp4' });
+storage.updateTask('completed-autosave-authority', { status: 'done', stage: 'final_video_ready', saved_progress: false });
+storyAdService.updateTaskRequest('completed-autosave-authority', {
+  brief: 'completed autosave authority regression',
+  cast_mode: 'no_human',
+  voice_id: '',
+  subtitle: false,
+  bgm_volume: 0.3,
+  change_scope: 'none',
+  save_progress: true,
+  progress_stage: 'video_ready',
+  progress_snapshot: { final_video: null },
+}, { id: 'owner-1' });
+assert.strictEqual(storage.getOutput('completed-autosave-authority', 'final_video').video_url, '/outputs/final-authoritative.mp4',
+  'an unconfirmed stale autosave must preserve the authoritative completed output');
+assert.strictEqual(storage.getOutput('completed-autosave-authority', 'context').voice_id, 'voice-original');
+assert.strictEqual(storage.getOutput('completed-autosave-authority', 'context').subtitle, true);
+assert.strictEqual(storage.getTask('completed-autosave-authority').status, 'done');
+assert.strictEqual(storage.getTask('completed-autosave-authority').stage, 'final_video_ready');
+assert.strictEqual(storage.getTask('completed-autosave-authority').saved_progress, false);
+assert.strictEqual(storyAdService.taskSummary(storage.getTask('completed-autosave-authority'), { detailed: false }).status, 'done',
+  'summary-only task-center reads must recognize the persisted final output');
+assert.strictEqual(storyAdService.listTaskSummaries({ userId: 'owner-1' }).tasks
+  .find(task => task.id === 'completed-autosave-authority').status, 'done');
+storyAdService.updateTaskRequest('completed-autosave-authority', {
+  brief: 'completed autosave authority regression',
+  cast_mode: 'no_human',
+  subtitle: false,
+  media_change_scope: 'compose',
+  change_scope: 'none',
+  save_progress: true,
+  progress_stage: 'final_video_ready',
+}, { id: 'owner-1' });
+assert.strictEqual(storage.getOutput('completed-autosave-authority', 'final_video'), null,
+  'an explicitly confirmed compose-setting edit must invalidate the old final output');
+assert.strictEqual(storage.getTask('completed-autosave-authority').status, 'working');
+assert.strictEqual(storage.getTask('completed-autosave-authority').stage, 'video_ready');
+const missingFinalTask = storage.createTask({
+  id: 'missing-final-must-not-complete',
+  title: 'missing final regression',
+  user_id: 'owner-1',
+  status: 'done',
+  stage: 'final_video_ready',
+});
+assert.strictEqual(storyAdService.taskSummary(missingFinalTask).status, 'working',
+  'a terminal stage label without a persisted final output must not appear completed');
 const route = read('src/routes/newStoryAd.js');
 const mediaPipeline = read('src/services/newStoryAd/mediaPipelineService.js');
 assert(route.includes("queueTaskStage(req, res, 'media'"), 'server must queue the complete media chain');
