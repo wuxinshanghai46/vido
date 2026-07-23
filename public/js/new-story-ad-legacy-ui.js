@@ -25,7 +25,6 @@
     ['premium', '高级质感', '适合品牌、空间、产品质感表达。'],
     ['tech', '科技律动', '适合软件、数据、效率工具。'],
   ];
-
   const SUBTITLE_STYLES = [
     ['popup', '弹跳出现', '主流推荐 · 抖音同款'],
     ['bouncy', '律动跳字', '节奏感 · 黄字'],
@@ -44,11 +43,9 @@
     ['wave', '波浪摇摆', '活力感 · 综艺'],
     ['zoom', '冲击放大', '爆款感 · 开场'],
   ];
-
   function subtitleStyleLabel(id = '') {
     return (SUBTITLE_STYLES.find(([key]) => key === id) || SUBTITLE_STYLES[0])[1];
   }
-
   const state = {
     mounted: false,
     token: sessionStorage.getItem('vido_token') || localStorage.getItem('vido_token') || localStorage.getItem('token') || '',
@@ -2170,9 +2167,9 @@
       && clip.qa?.pass === true
       && clip.cross_shot_qa?.pass !== false;
   }
-
   /** 展示整条广告的连续场景段、人民币最高费用和高复杂度风险，并取得一次性用户授权。 */
   async function confirmVideoPreflight(mode = 'economy', onlyIndex = null) {
+    await window.NewStoryAdBootstrap?.loadMedia?.();
     // 预检模块必须展示：预计付费提交；点击取消不会改变按钮和任务状态；复审未通过不会自动付费重做。
     return window.NewStoryAdVideoPreflightUi?.runScopedPreflight?.({
       mode, onlyIndex, ensureTask, api, toast, confirmAction: confirmNsaAction,
@@ -2185,7 +2182,6 @@
       applyAudio: async accepted => { await window.NewStoryAdAudioPreflight.apply(accepted, { state, api }); markMediaDirty('voice'); renderAll(); scheduleAutoSave('video_audio_preflight'); },
     }) || null;
   }
-
   /** 把当前预检授权写入一次性页面状态，供后台提交时校验。 */
   function rememberVideoAuthorization(confirmed = null, mode = 'economy') {
     state.videoPreflightFingerprint = confirmed?.preflight?.fingerprint || '';
@@ -2343,12 +2339,14 @@
     }
     const serverTrackedStages = new Set(['scene', 'blueprint', 'storyboard', 'keyframes', 'video', 'media', 'compose']);
     const intervalMs = serverTrackedStages.has(stage) ? 2000 : 1000;
+    let progressRevision = '';
     state.stageProgressTimer = setInterval(async () => {
       const activeProgress = state.stageProgress;
       if (!activeProgress?.active) return;
       if (serverTrackedStages.has(stage) && state.taskId) {
         try {
-          const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}`);
+          const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/progress${progressRevision ? `?since=${encodeURIComponent(progressRevision)}` : ''}`);
+          progressRevision = String(r.revision || progressRevision);
           if (!state.stageProgress?.active || state.stageProgress !== activeProgress) return;
           normalizeBundle(r);
         } catch {}
@@ -2396,8 +2394,9 @@
     });
     updateLocks();
   }
-
   function showStep(step, opts = {}) {
+    // 第 5 步按需加载审片、音频和费用模块，完成后只补绘对应区域。
+    if (Number(step) === 5 && !window.NewStoryAdBootstrap?.mediaReady?.()) window.NewStoryAdBootstrap?.loadMedia?.().then(() => state.currentStep === 5 && (renderAudio(), renderMedia())).catch(() => {});
     if (window.NewStoryAdStepNavigation?.showStep) {
       return window.NewStoryAdStepNavigation.showStep(step, opts, {
         state,
@@ -3568,7 +3567,6 @@
     }
     syncSceneUpgradeActions();
   }
-
   function renderAll() {
     syncOptionControls();
     window.NewStoryAdSceneAssets?.syncSpecSelectionState?.();
@@ -3938,6 +3936,8 @@
       ensureTask,
       normalizeBundle,
       renderAll,
+      // 轻量轮询只更新进度与交互锁，不重建分镜、素材、音频和视频 DOM。
+      renderProgress: () => { renderStatus(); if (state.busy) setBusy(true, state.stageProgress?.label || '处理中...'); },
       toast,
       showStep,
       saveBlueprintEdits,

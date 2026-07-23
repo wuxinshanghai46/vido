@@ -1,6 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-const { spawn } = require('child_process');
+const fs = require('fs'), path = require('path'), { spawn } = require('child_process');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const pipeline = require('../pipelineModelService');
@@ -28,7 +26,6 @@ const VIDEO_SHOT_STATUS_PREFIX = 'video_shot_status_';
 function videoShotStatusKind(index = 0) {
   return `${VIDEO_SHOT_STATUS_PREFIX}${Math.max(0, Number(index) || 0) + 1}`;
 }
-
 function listVideoShotStatuses(taskId = '', total = 0) {
   const count = Math.max(0, Number(total) || 0);
   if (count) return Array.from({ length: count }, (_, index) => storage.getOutput(taskId, videoShotStatusKind(index)) || null);
@@ -294,6 +291,8 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
     `Required movement: ${shot.action || shot.visual_action || ''}`,
     `Camera: ${shot.camera || shot.camera_movement || contract.camera_strategy || ''}`,
     continuityPrompt(shot, previousShot),
+    // V2.0 与关键帧共用状态合同，只执行 intended_changes 并保持 invariants。
+    (contract.temporal_evidence_lock || shot.temporal_evidence) ? `剧情广告 V2.0 时序证据合同：\n${JSON.stringify(contract.temporal_evidence_lock || shot.temporal_evidence)}\n只执行 intended_changes；保持 invariants；在片段结束前呈现 evidence_requirements。` : '',
     speechPrompt(shot, contract),
     shotDesign.surfacePrompt(design.surface_topology, design.shot_scope),
     shotDesign.motionEffectPrompt(design.motion_effect),
@@ -1034,6 +1033,7 @@ async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, s
   const editPlan = await semanticCut.buildLockedEditPlan({
     filePath: sourceClip.file_path, beats: block.beats || [],
     searchWindowSec: Number(options.motion_safe_cut_window_sec || 0.8), fps: Number(options.local_motion_analysis_fps || 6),
+    allowSemanticShift: block.continuous === true && !!block.temporal_plan_policy_version, // 仅证据完整的 V2.0 连续母片允许微调切点。
   });
   const audioDurations = [];
   for (const beat of editPlan.beats) {

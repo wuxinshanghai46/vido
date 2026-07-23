@@ -225,31 +225,39 @@
     const { api, normalizeBundle } = ctx;
     const started = Date.now();
     const timeoutMs = stageTimeoutMs(stage, ctx);
+    let progressRevision = '';
     while (Date.now() - started < timeoutMs) {
-      const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`);
-      normalizeBundle?.(bundle);
-      ctx.renderAll?.();
-      const task = bundle.task || {};
+      // 处理中只读取轻量进度，不再每 2.5 秒下载并重绘分镜、图片和视频。
+      const progressBundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/progress${progressRevision ? `?since=${encodeURIComponent(progressRevision)}` : ''}`);
+      progressRevision = String(progressBundle.revision || progressRevision);
+      normalizeBundle?.(progressBundle);
+      ctx.renderProgress?.();
+      const task = progressBundle.task || {};
       const active = String(task.active_generation_id || '');
       const status = String(task.status || '').toLowerCase();
       const currentStage = String(task.stage || '');
-      if (stage === 'storyboard' && !active && storyboardIsReady(bundle, ctx.state || {})) return bundle;
       if (status === 'cancelled' || currentStage.endsWith('_cancelled')) {
         const error = new Error('已取消当前生成');
         error.code = 'USER_CANCELLED';
         error.retryable = true;
-        error.data = bundle;
+        error.data = progressBundle;
         throw error;
       }
       if (!active && status === 'failed') {
         const error = new Error(task.error || `${stage} 阶段执行失败`);
         error.code = task.error_code || 'STAGE_FAILED';
         error.retryable = task.retryable === true;
-        error.data = bundle;
+        error.data = progressBundle;
         throw error;
       }
-      if (!active && !['queued', 'running'].includes(status)) return bundle;
-      if (!active && currentStage && currentStage !== stage && !currentStage.endsWith('_queued')) return bundle;
+      if (!active && (!['queued', 'running'].includes(status)
+        || (currentStage && currentStage !== stage && !currentStage.endsWith('_queued')))) {
+        // 阶段结束后只获取一次完整快照，用于展示产物和执行最终就绪判断。
+        const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}?compact=1`);
+        normalizeBundle?.(bundle);
+        ctx.renderAll?.();
+        return bundle;
+      }
       await sleep(2500);
     }
     const error = new Error(`${STAGE_LABELS[stage] || stage}超过 ${Math.round(timeoutMs / 60000)} 分钟，已停止页面等待；请在任务中心查看状态或取消后重试`);

@@ -4,6 +4,7 @@ const { contextPrompt, normalizeCharacters, looksLikeDescriptorName } = require(
 const { bindShotsToScenes, sceneBindingPrompt } = require('./sceneBindingService');
 const { withContinuityContracts } = require('./continuityService');
 const shotDesign = require('./shotDesignService');
+const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -173,6 +174,13 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     shot_scope: design.shot_scope,
     surface_topology: design.surface_topology,
     motion_effect: design.motion_effect,
+    // V2.0 允许模型直接描述任意行业的状态、变化、证据和连续性约束；
+    // 这里仅做开放结构归一化，不把内容限制为预设行业或预设场景。
+    temporal_state: temporalEvidenceGraph.normalizeShotState(
+      shot.temporal_state || shot.temporal_evidence?.shot_state || shot.evidence_state || {},
+      shot,
+      idx,
+    ),
   };
   return normalized;
 }
@@ -277,6 +285,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers, speech_mode and continuity fields.',
     'For every shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that beat. Never copy one camera template across unrelated beats.',
     'For every shot, write entry_frame_state, exit_frame_state, action_start, action_end and object_states as visible states, even for the first shot.',
+    'For every shot, write temporal_state with open-vocabulary entity_refs, relation_refs, state_before, state_after, intended_changes, invariants, evidence_requirements and continuity_links. Never choose values from an industry template.',
     'keyframe_notes must contain three explicit task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”. Derive them from this user task; never use a fixed scene, person, product or industry.',
     'Never emit replacement characters, mojibake, placeholder text, or runs of question marks.',
     'Default speech_mode to offscreen_voiceover so visible people do not speak. Use on_camera_dialogue only when the user explicitly requests a visible person to speak; never infer it from an industry, profession or the mere presence of a person.',
@@ -288,7 +297,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -370,9 +379,10 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'The visual must be production-ready and state the task-relevant subject/product, environment, spatial relationship and proportions, plus material and lighting only where they matter. Do not pad it with irrelevant fixed details.',
       'keyframe_notes must use exactly three task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”. Each clause must be derived from the current brief, scene contract and beat, never from a fixed scene/person/product template.',
       'Never output replacement characters, mojibake, placeholder values, or runs of question marks in any user-visible field.',
-      'shot_scope, surface_topology and motion_effect are optional task-scoped controls. Set them only when the current brief/beat explicitly needs an environment topology, a comparison insert or a within-shot effect; otherwise use shot_scope=auto and omit the two objects. Never infer an industry-specific surface, scene, character or effect template.',
+      'shot_scope, surface_topology and motion_effect are optional compatibility controls with open task-authored values. Set them only when the current brief/beat explicitly needs them; otherwise omit them. Never infer an industry-specific surface, scene, character or effect template.',
       'Add ambient_sound, sfx, music_cue and voiceover_timing only when they serve the current shot. Never assume a fixed genre or industry sound.',
       'Continuity values must be derived only from the current brief, current scene assets and adjacent beats. Never assume a fixed location, profession, person, product or industry.',
+      'For every shot, author temporal_state as an open-vocabulary evidence contract. It must describe state_before, state_after, intended_changes, invariants, evidence_requirements and continuity_links. These values come only from the current task and may contain any industry-specific words supplied by the task; never select from a built-in industry list.',
     ].join('\n');
 
     const userPrompt = `${contextPrompt(ctx)}
@@ -390,12 +400,12 @@ Return JSON array for current beats only. Fields:
   "role": "story function",
   "duration": 3,
   "purpose": "short label",
-  "subject_type": "human_scene/product_only/ui_screen/proof_scene/environment/brand_endcard",
-  "shot_type": "medium / close_up / insert / product_detail / reaction / endcard",
-  "shot_scope": "auto/environment/product_comparison/character/brand_endcard",
-  "surface_topology": {"mode":"auto/continuous/segmented/modular","seam_policy":"auto/hidden/visible/task_defined","finish_distribution":"auto/uniform/gradient/regional/sample_comparison","notes":"optional task-specific structure only"},
-  "motion_effect": {"type":"none/particle_assembly/fade/dissolve/material_flow/custom","source_state":"visible start state","target_state":"authored end state","timeline":"within-shot timing","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"optional exact target asset id","notes":"optional task-specific effect only"},
-  "visual_layers": [{"type":"story/product/material/space/ui/proof/comparison/emotion/brand/offer/process/result/other","content":"specific visual content"}],
+  "subject_type": "open task-authored subject description; compatibility field only",
+  "shot_type": "open cinematography description chosen for this beat",
+  "shot_scope": "optional open task-authored scope; compatibility field only",
+  "surface_topology": {"mode":"open task-authored topology","seam_policy":"open task-authored seam rule","finish_distribution":"open task-authored distribution","notes":"optional task-specific structure only"},
+  "motion_effect": {"type":"open task-authored effect or none","source_state":"visible start state","target_state":"authored end state","timeline":"within-shot timing","intensity":"task-authored value","preserve_scene_geometry":true,"reference_asset_id":"optional exact target asset id","notes":"optional task-specific effect only"},
+  "visual_layers": [{"type":"open task-authored layer name","content":"specific visible content"}],
   "story_visual": "optional, only if this shot needs story/character/emotion",
   "promo_visual": "optional, only if this shot needs product/service/brand proof",
   "emotional_turn": "emotion or story change",
@@ -411,7 +421,7 @@ Return JSON array for current beats only. Fields:
   "keyframe_notes": "subject, proof and composition to lock for keyframe",
   "scene_id": "must match one current task scene_id when scene assets exist",
   "scene_revision": "must match the selected current task scene revision",
-  "scene_view": "master/reverse/interaction/detail",
+  "scene_view": "stable open view ID from the selected current-task scene asset",
   "camera_id": "camera id from the selected scene contract",
   "scene_zone": "the concrete zone inside this task scene",
   "scene_zone_id": "stable machine zone id; normally zone_ids[0]",
@@ -442,6 +452,16 @@ Return JSON array for current beats only. Fields:
   "sfx": ["specific action or object sound"],
   "music_cue": "music change serving the current story beat",
   "voiceover_timing": "timing relationship between spoken line and visible action"
+  ,"temporal_state": {
+    "entity_refs": ["optional entity IDs or stable names used by this shot"],
+    "relation_refs": ["optional relation IDs used by this shot"],
+    "state_before": ["visible facts at the beginning"],
+    "state_after": ["visible facts at the end"],
+    "intended_changes": ["only the changes this shot is allowed to introduce"],
+    "invariants": ["identity, geometry, material, wardrobe, UI, product or other facts that must not change"],
+    "evidence_requirements": ["visible evidence proving this shot completed its purpose"],
+    "continuity_links": ["open continuity links to adjacent shots when required"]
+  }
 }`;
 
     const result = await modelGateway.generateText({
@@ -526,6 +546,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } 
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
     'Preserve scene_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
     'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type and audio bridge.',
+    'Preserve and repair temporal_state. It is an open-vocabulary contract: only intended_changes may change; invariants and evidence_requirements must remain task-specific and must never be replaced by an industry template.',
   ].join('\n');
 
   const userPrompt = `${contextPrompt(ctx)}

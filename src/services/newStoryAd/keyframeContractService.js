@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { sceneContractForShot } = require('./sceneBindingService');
 const productIdentity = require('./productIdentityContractService');
 const shotDesign = require('./shotDesignService');
+const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -40,6 +41,7 @@ function contractFingerprint(contract = {}) {
     subject_lock: contract.subject_lock,
     scene_lock: contract.scene_lock,
     continuity_lock: contract.continuity_lock,
+    temporal_evidence_lock: contract.temporal_evidence_lock,
     cast_lock: {
       cast_mode: contract.cast_lock?.cast_mode,
       shot_characters: contract.cast_lock?.shot_characters,
@@ -79,6 +81,8 @@ function buildKeyframeContracts(ctx, shots) {
         sceneLock?.scene_contract?.material_summary,
       ],
     });
+    const temporalEvidence = shot.temporal_evidence
+      || temporalEvidenceGraph.graphForShot(ctx.temporal_evidence_graph || {}, idx + 1);
     const contract = {
       shot_index: idx + 1,
       title: shot.title || `镜头 ${idx + 1}`,
@@ -119,6 +123,9 @@ function buildKeyframeContracts(ctx, shots) {
         voiceover_timing: shot.voiceover_timing || '',
         requires_previous_frame: shot.requires_previous_frame === true,
       },
+      // V2.0 合同只携带当前镜头所需的图切片，避免把整张任务图复制到每个合同，
+      // 同时让关键帧、视频和质检共享完全相同的状态与证据边界。
+      temporal_evidence_lock: temporalEvidence || null,
       cast_lock: {
         cast_mode: ctx.cast_mode,
         characters: ctx.characters || [],

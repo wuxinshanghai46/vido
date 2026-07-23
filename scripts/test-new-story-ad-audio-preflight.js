@@ -194,13 +194,13 @@ function testIntegrationMarkers() {
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
   const ui = read('public/js/new-story-ad-legacy-ui.js');
   const route = read('src/routes/newStoryAd.js');
-  const bootstrap = read('public/js/new-story-ad/bootstrap.js');
+  const mediaLoader = read('public/js/new-story-ad/bootstrap-media-loader.js');
   assert(ui.includes('NewStoryAdAudioPreflight.load'));
   assert(ui.includes('NewStoryAdAudioPreflight.read'));
   assert(ui.includes("scheduleAutoSave('video_audio_preflight')"));
   assert(route.includes('mediaPipeline.runMediaPipeline'));
   assert(!route.slice(route.indexOf("router.post('/tasks/:id/media'"), route.indexOf("router.post('/storyboard'")).includes('service.generateVideoStage'));
-  assert(bootstrap.includes("'/js/new-story-ad/audio-preflight.js'"));
+  assert(mediaLoader.includes("'/js/new-story-ad/audio-preflight.js'"));
   assert(read('public/js/new-story-ad/audio-preflight.js').split(/\r?\n/).length <= 320, '声音选择交互必须留在独立小模块，不能回灌旧主前端');
   assert(!read('public/js/new-story-ad/audio-preflight.js').match(/苏晚|不锈钢|墙面|设计师的困境/), '声音推荐不得写死当前人物、行业或场景');
 }

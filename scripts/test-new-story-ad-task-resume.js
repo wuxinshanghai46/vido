@@ -8,6 +8,7 @@ const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/t
 const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
 const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap.js'), 'utf8');
+const bootstrapSupportSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap-support.js'), 'utf8');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(__dirname, '../src/server.js'), 'utf8');
 const storyService = require('../src/services/newStoryAd/storyAdService');
@@ -99,8 +100,8 @@ assert(bootstrapSource.includes('prefetchRouteTask();'));
 assert(bootstrapSource.includes('await waitForStoryTemplate();'));
 assert(bootstrapSource.includes('(document.body || document.head || document.documentElement).appendChild(script)'));
 assert(bootstrapSource.includes('(restoring || routeTaskExpected) && !restoreFinished'));
-assert(bootstrapSource.includes("document.documentElement.dataset.nsaStoryLoading = '1'"));
-assert(bootstrapSource.includes('delete document.documentElement.dataset.nsaStoryLoading'));
+assert(bootstrapSupportSource.includes("document.documentElement.dataset.nsaStoryLoading = '1'"));
+assert(bootstrapSupportSource.includes('delete document.documentElement.dataset.nsaStoryLoading'));
 assert(bootstrapSource.includes("link.rel = 'preload'"));
 assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
 assert(routeSource.includes("String(req.query.compact || '') === '1'"));

@@ -43,8 +43,7 @@ const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService');
-const { compactPublicTaskBundle } = require('./taskBundleProjection');
-const videoCore = require('../videoGenerationCore');
+const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
 /** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -747,8 +746,9 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   const normalizedRaw = source
     .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
     .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
-  const normalized = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
+  const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
   storage.saveOutput(taskId, 'storyboard_table', normalized);
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'ready',
@@ -759,7 +759,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   });
   storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
-  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], temporal_evidence_graph: compiled.graph };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
   const artifactState = storyboardArtifactState.persistAndSnapshot(taskId, contracts);
   storage.saveStage(taskId, 'storyboard', {
@@ -929,6 +929,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     if (!review.blocking_issues.length && !review.rewrite_issues.length) break;
   }
   if (review.blocking_issues.length) {
+    const failedCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = failedCompiled.shots;
     storage.saveOutput(taskId, 'storyboard_table', shots);
     storage.saveOutput(taskId, 'storyboard_meta', {
       status: 'failed',
@@ -948,7 +949,9 @@ async function generateStoryboardStage(taskId, options = {}) {
     throw err;
   }
   assertBlueprintUnchanged();
-  const contracts = buildKeyframeContracts(stageCtx, shots);
+  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = compiled.shots;
+  const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph };
+  const contracts = buildKeyframeContracts(contractCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'ready',
@@ -974,10 +977,13 @@ async function buildKeyframeContractStage(taskId) {
   if (!task) throw new Error('任务不存在');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
   shots = bindShotsToScenes(shots, ctx.scene_assets);
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots });
+  shots = compiled.shots; ctx = { ...ctx, temporal_evidence_graph: compiled.graph };
   storage.saveOutput(taskId, 'storyboard_table', shots);
   const contracts = buildKeyframeContracts(ctx, shots);
   keyframeContractFreshness.persist(taskId, contracts);
@@ -1159,6 +1165,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const visualContract = contract.visual_contract || {};
   const sceneLock = contract.scene_lock || null;
   const continuityLock = contract.continuity_lock || shot.continuity || {};
+  const temporalEvidenceLock = contract.temporal_evidence_lock || shot.temporal_evidence || null;
   const transitionType = cleanText(continuityLock.transition_type || 'hard_cut', 40).toLowerCase();
   const inheritsPreviousState = continuityLock.requires_previous_frame === true || ['cut_on_action', 'match_cut'].includes(transitionType);
   const continuityText = [
@@ -1272,6 +1279,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.negative_requirements ? `Negative visual requirements: ${cleanText(visualContract.negative_requirements, 360)}` : '',
     Array.isArray(shot.characters) && shot.characters.length ? `Characters: ${cleanText(JSON.stringify(shot.characters), 500)}` : '',
     continuityText ? `Strict shot continuity lock:\n${continuityText}` : '',
+    temporalEvidenceLock ? `剧情广告 V2.0 时序证据合同：\n${cleanText(JSON.stringify(temporalEvidenceLock), 2600)}\n只允许 intended_changes 中声明的变化；invariants 必须保持；最终画面必须能直接看见 evidence_requirements 指定的证据。` : '',
     sceneBindingText ? `Storyboard scene binding lock:\n${sceneBindingText}` : '',
     sceneReferenceText ? `Strict scene consistency lock:\n${sceneReferenceText}` : '',
     shotNeedsPerson && ctx.person_asset ? `Locked real actor/person asset: ${cleanText(personAsset.id || personAsset.actor_asset_id || personAsset.name || 'verified actor', 160)}; person revision ${Number(ctx.person_contract?.person_revision || personAsset.person_revision || 1) || 1}.` : '',
@@ -1324,7 +1332,7 @@ function previewShotPrompts(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const stored = storage.getOutput(taskId, 'storyboard_table') || [];
   if (!Array.isArray(stored) || !stored.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   const rawIndex = Number(options.shot_index ?? options.shotIndex ?? 0);
@@ -1332,7 +1340,9 @@ function previewShotPrompts(taskId, options = {}) {
   const draft = options.shot && typeof options.shot === 'object' ? options.shot : {};
   const merged = normalizeStoryboardShot({ ...stored[index], ...draft }, index, stored[index - 1] || {});
   const shots = stored.map((shot, shotIndex) => shotIndex === index ? merged : shot);
-  const boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  let boundShots = bindShotsToScenes(shots, ctx.scene_assets);
+  const previewCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint: storage.getOutput(taskId, 'blueprint') || {}, shots: boundShots, persist: false });
+  boundShots = previewCompiled.shots; ctx = { ...ctx, temporal_evidence_graph: previewCompiled.graph };
   const contracts = buildKeyframeContracts(ctx, boundShots);
   const shot = boundShots[index];
   const contract = contracts[index] || {};
@@ -3454,9 +3464,7 @@ const ASSISTED_SHOT_ENUMS = {
   camera_angle: ['', 'eye_level', 'high_angle', 'low_angle', 'overhead', 'dutch', 'over_shoulder', 'pov'],
   depth_of_field: ['', 'deep', 'medium', 'shallow', 'ultra_shallow'],
   transition_type: ['none', 'hard_cut', 'cut_on_action', 'match_cut', 'dissolve', 'fade'],
-  scene_view: ['', 'master', 'reverse', 'interaction', 'detail'],
 };
-
 function normalizeAssistedShotSettings(input = {}, current = {}) {
   const source = input?.shot_settings || input?.shotSettings || input || {};
   const existing = current && typeof current === 'object' ? current : {};
@@ -3471,6 +3479,8 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
     const requested = cleanText(source[key] ?? existing[key] ?? fallback, 60);
     return allowed.includes(requested) ? requested : (allowed.includes(existing[key]) ? existing[key] : fallback);
   };
+  // scene_view 来自当前任务的场景资产，必须保留开放 ID，不能套用固定四镜位枚举。
+  const openSceneView = cleanText(source.scene_view ?? source.sceneView ?? existing.scene_view ?? '', 40);
   const design = shotDesign.normalizeShotDesign({
     shot_scope: source.shot_scope ?? source.shotScope ?? existing.shot_scope ?? existing.shotScope,
     surface_topology: source.surface_topology ?? source.surfaceTopology ?? existing.surface_topology ?? existing.surfaceTopology,
@@ -3487,7 +3497,7 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
     shot_scope: design.shot_scope || 'auto',
     surface_topology: surface,
     motion_effect: motion,
-    scene_view: enumValue('scene_view', cleanText(existing.scene_view || '', 40)),
+    scene_view: openSceneView,
     scene_zone: textValue('scene_zone', ['scene_zone_label_zh'], 180),
     shot_size: enumValue('shot_size', ''),
     camera_angle: enumValue('camera_angle', ''),
@@ -3583,10 +3593,10 @@ async function assistBrief(body = {}, user = {}) {
     "action": "镜头内主体动作与变化",
     "voiceover": "保留或按明确要求微调的台词/旁白",
     "purpose": "本镜叙事或广告目的",
-    "shot_scope": "auto/environment/product_comparison/character/brand_endcard",
-    "surface_topology": {"mode":"auto/continuous/segmented/modular","seam_policy":"auto/hidden/visible/task_defined","finish_distribution":"auto/uniform/gradient/regional/sample_comparison","notes":"任务专属补充"},
-    "motion_effect": {"type":"none/particle_assembly/fade/dissolve/material_flow/custom","source_state":"起始状态","target_state":"目标状态","timeline":"按本镜时长编写的时间轴","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"已有素材 ID 或空","notes":"任务专属效果补充"},
-    "scene_view": "master/reverse/interaction/detail",
+    "shot_scope": "开放的任务语义键；没有明确需要时写 auto，不得套行业模板",
+    "surface_topology": {"mode":"开放任务语义键或 auto","seam_policy":"开放任务语义键或 auto","finish_distribution":"开放任务语义键或 auto","notes":"当前任务证据支持的专属补充"},
+    "motion_effect": {"type":"开放任务语义键或 none","source_state":"起始状态","target_state":"目标状态","timeline":"按本镜时长编写的时间轴","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"已有素材 ID 或空","notes":"当前任务专属效果补充"},
+    "scene_view": "从当前所选场景资产 available_views 中复制开放镜位 ID",
     "scene_zone": "使用当前任务已有空间区域，不编造新场景",
     "shot_size": "extreme_wide/wide/full/medium/medium_close/close_up/extreme_close_up/macro",
     "camera_angle": "eye_level/high_angle/low_angle/overhead/dutch/over_shoulder/pov",

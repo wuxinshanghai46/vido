@@ -17,6 +17,7 @@ const jobService = require('../services/newStoryAd/jobService');
 const mediaPipeline = require('../services/newStoryAd/mediaPipelineService');
 const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnitProjection');
 const cancellation = require('../services/newStoryAd/cancellationContext');
+const taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
 const videoCore = require('../services/videoGenerationCore');
 const db = require('../models/database');
@@ -857,6 +858,13 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   const body = req.body || {};
   return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, body));
+}));
+
+router.get('/tasks/:id/progress', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  const task = taskForReq(req);
+  const projection = taskProgressProjection.projectTaskProgress(task, String(req.query.since || ''));
+  res.json({ success: true, task_id: task.id, ...projection });
 }));
 
 router.get('/tasks/:id', asyncRoute(async (req, res) => {

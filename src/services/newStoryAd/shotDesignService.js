@@ -25,6 +25,13 @@ function enumValue(value, allowed = [], fallback = '') {
   return allowed.includes(normalized) ? normalized : fallback;
 }
 
+function openValue(value, fallback = '') {
+  const normalized = clean(value, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  // 开放字段允许任务创造新语义，但过滤无法成为稳定机器键的内容。
+  return /^[a-z0-9_:\u4e00-\u9fff]+$/i.test(normalized) ? normalized : fallback;
+}
+
+// 下列值是旧任务兼容建议，不是 V2.0 的行业或场景白名单。
 const SHOT_SCOPES = ['auto', 'environment', 'product_comparison', 'character', 'brand_endcard'];
 const SURFACE_MODES = ['auto', 'continuous', 'segmented', 'modular'];
 const SEAM_POLICIES = ['auto', 'hidden', 'visible', 'task_defined'];
@@ -35,9 +42,9 @@ const EFFECT_INTENSITIES = ['low', 'medium', 'high'];
 function normalizeSurfaceTopology(input = null) {
   const raw = typeof input === 'string' ? { mode: input } : (input && typeof input === 'object' ? input : {});
   const topology = {
-    mode: enumValue(raw.mode, SURFACE_MODES, 'auto'),
-    seam_policy: enumValue(raw.seam_policy || raw.seamPolicy, SEAM_POLICIES, 'auto'),
-    finish_distribution: enumValue(raw.finish_distribution || raw.finishDistribution, FINISH_DISTRIBUTIONS, 'auto'),
+    mode: openValue(raw.mode, 'auto'),
+    seam_policy: openValue(raw.seam_policy || raw.seamPolicy, 'auto'),
+    finish_distribution: openValue(raw.finish_distribution || raw.finishDistribution, 'auto'),
     notes: clean(raw.notes || raw.requirement || '', 500),
   };
   const meaningful = topology.mode !== 'auto'
@@ -119,7 +126,7 @@ function normalizeMaterialContract(input = {}, options = {}) {
 function normalizeMotionEffect(input = null) {
   const raw = typeof input === 'string' ? { type: input } : (input && typeof input === 'object' ? input : {});
   const effect = {
-    type: enumValue(raw.type, MOTION_EFFECTS, 'none'),
+    type: openValue(raw.type, 'none'),
     source_state: clean(raw.source_state || raw.sourceState || '', 500),
     target_state: clean(raw.target_state || raw.targetState || '', 500),
     timeline: clean(raw.timeline || '', 700),
@@ -138,7 +145,7 @@ function normalizeMotionEffect(input = null) {
 }
 
 function normalizeShotDesign(shot = {}) {
-  const scope = enumValue(shot.shot_scope || shot.shotScope, SHOT_SCOPES, 'auto');
+  const scope = openValue(shot.shot_scope || shot.shotScope, 'auto');
   return {
     shot_scope: scope,
     surface_topology: normalizeSurfaceTopology(shot.surface_topology || shot.surfaceTopology),
@@ -306,7 +313,7 @@ function assertSurfacePromptConsistent(prompt = '', design = {}) {
 
 function surfacePrompt(surface = null, shotScope = 'auto') {
   const topology = normalizeSurfaceTopology(surface);
-  const scope = enumValue(shotScope, SHOT_SCOPES, 'auto');
+  const scope = openValue(shotScope, 'auto');
   if (!topology && scope === 'auto') return '';
   const lines = [];
   if (scope !== 'auto') lines.push(`Shot scope: ${scope}.`);
@@ -327,6 +334,9 @@ function surfacePrompt(surface = null, shotScope = 'auto') {
   if (topology?.finish_distribution === 'gradient') lines.push('Finish distribution: use one continuous gradient without turning it into separate swatches or sample blocks.');
   if (topology?.finish_distribution === 'regional') lines.push('Finish distribution: use regional variation only at the explicitly named task location. Blend the transition without a seam, border, groove, gap or full-span tonal division, and preserve one continuous construction topology.');
   if (topology?.finish_distribution === 'sample_comparison') lines.push('Finish distribution: show clearly distinguishable comparison samples as product evidence within this shot only.');
+  if (topology?.mode && !SURFACE_MODES.includes(topology.mode)) lines.push(`Task-authored surface mode: ${topology.mode}; interpret it only through this task's evidence and notes.`);
+  if (topology?.seam_policy && !SEAM_POLICIES.includes(topology.seam_policy)) lines.push(`Task-authored seam policy: ${topology.seam_policy}; do not replace it with a generic industry convention.`);
+  if (topology?.finish_distribution && !FINISH_DISTRIBUTIONS.includes(topology.finish_distribution)) lines.push(`Task-authored finish distribution: ${topology.finish_distribution}; preserve the current task's explicit spatial mapping.`);
   if (topology?.notes) lines.push(`Task-specific surface note: ${clean(topology.notes, 240)}`);
   return lines.join('\n');
 }

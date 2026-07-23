@@ -6,6 +6,7 @@
     detail: '材质细节',
   };
 
+  // 默认四镜位只服务旧场景资产；V2.0 优先读取每个任务自己的开放视图清单。
   const VIEW_ORDER = ['master', 'reverse', 'interaction', 'detail'];
 
   const SCENE_ZONE_LABELS = {
@@ -38,10 +39,21 @@
     return clean(asset.name || `场景 ${index + 1}`, 120);
   }
 
-  function viewValue(value = '', index = 0) {
+  function sceneViews(asset = {}) {
+    const declared = (Array.isArray(asset.view_images) ? asset.view_images : [])
+      .map((view, index) => ({
+        key: clean(view?.key || view?.view || `view_${index + 1}`, 40),
+        label: clean(view?.label || view?.name || '', 80),
+      }))
+      .filter(view => view.key && view.key !== 'layout');
+    return declared.length ? declared : VIEW_ORDER.map(key => ({ key, label: VIEW_LABELS[key] || key }));
+  }
+
+  function viewValue(value = '', index = 0, asset = {}) {
     const raw = clean(value, 40);
-    if (VIEW_ORDER.includes(raw)) return raw;
-    return VIEW_ORDER[index % VIEW_ORDER.length] || 'master';
+    const views = sceneViews(asset);
+    if (views.some(view => view.key === raw)) return raw;
+    return views[index % views.length]?.key || raw || 'master';
   }
 
   function sceneZoneLabel(value = '') {
@@ -86,7 +98,7 @@
     if (!shot.scene_id) shot.scene_id = id;
     if (!shot.scene_asset_id) shot.scene_asset_id = shot.scene_id;
     if (!shot.scene_name) shot.scene_name = sceneName(selected, selectedIndex);
-    if (!shot.scene_view) shot.scene_view = viewValue('', index);
+    if (!shot.scene_view) shot.scene_view = viewValue('', index, selected);
     if (!shot.scene_zone) shot.scene_zone = clean(shot.purpose || shot.title || `第 ${index + 1} 镜区域`, 160);
     if (!shot.scene_zone_id) shot.scene_zone_id = shotZoneId(shot);
     if (!shot.scene_zone_label_zh) shot.scene_zone_label_zh = shotZoneLabel(shot);
@@ -112,7 +124,10 @@
     }
 
     const currentScene = clean(shot.scene_id || shot.scene_asset_id || (assets.length === 1 ? sceneId(assets[0], 0) : ''), 120);
-    const currentView = viewValue(shot.scene_view, index);
+    const selectedAssetIndex = assets.findIndex((asset, assetIndex) => sceneId(asset, assetIndex) === currentScene);
+    const selectedAsset = assets[selectedAssetIndex >= 0 ? selectedAssetIndex : 0] || {};
+    const availableViews = sceneViews(selectedAsset);
+    const currentView = viewValue(shot.scene_view, index, selectedAsset);
     return `<div class="dh-nsa-frame-scene" data-nsa-editor-section="scene">
       <div class="dh-nsa-frame-scene-title">
         <b>场景绑定</b>
@@ -128,7 +143,7 @@
       <label>
         <span>场景视角</span>
         <select class="dh-input" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_view">
-          ${VIEW_ORDER.map(key => optionHtml(key, VIEW_LABELS[key] || key, currentView, esc)).join('')}
+          ${availableViews.map(view => optionHtml(view.key, view.label || VIEW_LABELS[view.key] || view.key, currentView, esc)).join('')}
         </select>
       </label>
       <label>

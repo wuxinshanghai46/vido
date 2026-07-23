@@ -1,5 +1,6 @@
 const { cleanText } = require('./contextBuilder');
 
+// 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SPACE_VIEW_KEYS = [...VIEW_KEYS, 'layout'];
 
@@ -9,19 +10,19 @@ function normalizeSceneId(asset = {}, index = 0) {
 
 function normalizeSceneView(value = '') {
   const raw = cleanText(value, 40);
-  if (VIEW_KEYS.includes(raw)) return raw;
-  return '';
+  // layout 是空间证据图，不是商业成片镜位；其余任务自定义镜位 ID 均原样保留。
+  return raw && raw !== 'layout' ? raw : '';
 }
 
 function sceneViewKey(view = {}, index = 0) {
   const raw = cleanText(view?.key || view?.view || '', 40);
-  if (VIEW_KEYS.includes(raw) || raw === 'layout') return raw;
+  if (raw) return raw;
   return VIEW_KEYS[index] || '';
 }
 
 function primarySceneViews(asset = {}) {
   return (Array.isArray(asset.view_images) ? asset.view_images : [])
-    .filter((view, index) => VIEW_KEYS.includes(sceneViewKey(view, index)));
+    .filter((view, index) => sceneViewKey(view, index) !== 'layout');
 }
 
 function layoutSceneReference(asset = {}) {
@@ -94,6 +95,14 @@ function semanticSceneView(shot = {}, asset = {}) {
   return [...available][0] || 'master';
 }
 
+function resolveSceneView(shot = {}, asset = {}) {
+  const requested = normalizeSceneView(shot.scene_view || shot.sceneView);
+  const available = new Set(primarySceneViews(asset).map((view, index) => sceneViewKey(view, index)).filter(Boolean));
+  // 已声明视图时只允许绑定当前任务资产真实存在的键；没有视图清单时兼容旧任务的开放值。
+  if (requested && (!available.size || available.has(requested))) return requested;
+  return semanticSceneView(shot, asset);
+}
+
 function textUnits(value = '') {
   const text = cleanText(value, 1200).toLowerCase();
   const words = text.match(/[a-z0-9]{2,}|[\u4e00-\u9fff]{2,}/g) || [];
@@ -135,10 +144,11 @@ function spatialBindingForShot(shot = {}, asset = {}, sceneView = 'master') {
   const eligibleAnchors = (Array.isArray(contract.anchors) ? contract.anchors : [])
     .filter(anchor => anchor.required !== false
       && (!Array.isArray(anchor.visible_in_views) || !anchor.visible_in_views.length || anchor.visible_in_views.includes(sceneView)));
-  // A close-up cannot prove every wide-scene anchor at once. Select only the
-  // most relevant anchors for the requested view, while master shots retain the
-  // broader spatial lock. This is semantic and works for any scene or industry.
-  const anchorLimit = sceneView === 'detail' ? 1 : (sceneView === 'master' ? 4 : 2);
+  // 锚点数量由镜头景别决定，不再把某个固定镜位名称等同于某类行业画面。
+  const shotSize = cleanText(shot.shot_size || shot.shotSize || '', 40);
+  const anchorLimit = /close|macro|特写|近景/i.test(shotSize)
+    ? 1
+    : (/wide|full|establish|全景|远景/i.test(shotSize) ? 4 : 2);
   const anchors = eligibleAnchors
     .map(anchor => ({
       anchor,
@@ -187,7 +197,7 @@ function sceneAssetDigest(sceneAssets = []) {
         })).slice(0, 16),
       available_views: views.length
         ? views.map((view, viewIndex) => ({
-          key: normalizeSceneView(view.key || view.view) || VIEW_KEYS[viewIndex] || 'master',
+          key: sceneViewKey(view, viewIndex) || `view_${viewIndex + 1}`,
           label: cleanText(view.label || view.name || '', 80),
         }))
         : VIEW_KEYS.map(key => ({ key, label: key })),
@@ -279,7 +289,7 @@ function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = 
     error.retryable = true;
     throw error;
   }
-  const sceneView = normalizeSceneView(shot.scene_view || shot.sceneView) || semanticSceneView(shot, matched);
+  const sceneView = resolveSceneView(shot, matched);
   const spatial = spatialBindingForShot(shot, matched, sceneView);
   const requestedLabel = cleanText(shot.scene_zone_label_zh || shot.zone_label_zh || '', 160);
   const displayLabelZh = hasChinese(requestedLabel) ? requestedLabel : cleanText(spatial.zone_label || requestedLabel, 160);
@@ -327,7 +337,7 @@ function sceneBindingPrompt(sceneAssets = []) {
     `Available task scene assets: ${JSON.stringify(digest)}`,
     `Every storyboard shot must choose one scene_id from: ${ids}.`,
     'For each shot, also output scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from and transition_reason.',
-    'scene_view is a commercial camera binding and may only be master, reverse, interaction or detail. The layout reference is auxiliary spatial evidence only and must never be selected as scene_view.',
+    'scene_view must use one open view ID listed in available_views for that selected task scene. Never invent a fixed industry view template. The layout reference is auxiliary spatial evidence only and must never be selected as scene_view.',
     'scene_zone_id and zone_ids are stable machine bindings copied from the selected scene contract. Never translate or rename them.',
     'scene_zone_label_zh is presentation-only and must be a concise Simplified Chinese zone name. Translation must never alter scene_zone_id or zone_ids.',
     'Single-scene task: keep all shots on the same scene_id and vary only scene_view or scene_zone.',
@@ -342,7 +352,7 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
   if (!asset) return null;
   const assetIndex = Math.max(0, assets.indexOf(asset));
   const sceneId = normalizeSceneId(asset, assetIndex);
-  const sceneView = normalizeSceneView(shot.scene_view || '') || semanticSceneView(shot, asset);
+  const sceneView = resolveSceneView(shot, asset);
   const spatial = spatialBindingForShot(shot, asset, sceneView);
   const contract = asset.scene_contract || {};
   const layoutReference = layoutSceneReference(asset);
@@ -393,6 +403,7 @@ module.exports = {
   assertVerifiedSceneAssets,
   selectSceneAsset,
   semanticSceneView,
+  resolveSceneView,
   spatialBindingForShot,
   completeSpaceLock,
   completeSceneViewEvidence,

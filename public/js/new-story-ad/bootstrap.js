@@ -1,7 +1,9 @@
 (() => {
-  const SCRIPT_VERSION = '20260723-completed-autosave-authority-v1';
-  const SCRIPT_PATHS = [
+  // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
+  const SCRIPT_VERSION = '20260723-story-ad-v2-release1';
+  const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
+    '/js/new-story-ad/bootstrap-media-loader.js',
     '/js/new-story-ad/task-store.js',
     '/js/new-story-ad/progress.js',
     '/js/new-story-ad/scene-assets.js',
@@ -14,50 +16,13 @@
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/actor-library.js',
-    '/js/new-story-ad/audio-preflight.js',
-    '/js/new-story-ad/video-unit-availability.js', '/js/new-story-ad/video-review.js',
-    '/js/new-story-ad/video-preflight-ui.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad-legacy-ui.js',
   ];
   let loadPromise = null;
-  /** 判断当前路由或可见标签是否已经进入剧情广告。 */
-  function storyAdIsActive() {
-    const initial = document.documentElement.dataset.dhInitialTab === 'new-story-ad';
-    let routeActive = false;
-    try {
-      routeActive = new URLSearchParams(location.search || '').get('tab') === 'new-story-ad';
-    } catch {}
-    const paneActive = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]')?.classList.contains('active');
-    return initial || routeActive || paneActive;
-  }
-
-  /** 更新剧情广告区域的按需加载状态。 */
-  function setLoadingState(status = 'loading', message = '') {
-    if (status === 'loading') {
-      document.documentElement.dataset.nsaStoryLoading = '1';
-      delete document.documentElement.dataset.nsaStoryReady;
-    } else {
-      delete document.documentElement.dataset.nsaStoryLoading;
-      document.documentElement.dataset.nsaStoryReady = '1';
-    }
-    const pane = document.querySelector('.dh-tab-pane[data-pane="new-story-ad"]');
-    if (!pane) return;
-    pane.setAttribute('aria-busy', status === 'loading' ? 'true' : 'false');
-    let indicator = pane.querySelector('[data-nsa-lazy-loader]');
-    if (!indicator) {
-      indicator = document.createElement('div');
-      indicator.dataset.nsaLazyLoader = 'true';
-      indicator.style.cssText = 'margin:12px 20px;padding:10px 14px;border-radius:10px;background:rgba(59,130,246,.10);color:#bfdbfe;font-size:13px;';
-      pane.prepend(indicator);
-    }
-    indicator.textContent = message || (status === 'loading' ? '正在加载剧情广告工作台…' : '');
-    indicator.style.display = status === 'ready' ? 'none' : 'block';
-    if (status === 'error') {
-      indicator.style.background = 'rgba(239,68,68,.12)';
-      indicator.style.color = '#fecaca';
-    }
-  }
+  let mediaLoader = null;
+  const storyAdIsActive = window.NewStoryAdBootstrapSupport?.isActive || (() => false);
+  const setLoadingState = window.NewStoryAdBootstrapSupport?.setLoadingState || (() => {});
 
   /** 顺序加载一个脚本，保证旧模块的全局依赖顺序不被破坏。 */
   function loadScript(path = '') {
@@ -77,9 +42,9 @@
     });
   }
 
-  /** 并行预取全部剧情广告脚本，同时继续按依赖顺序执行。 */
+  /** 只预取首次渲染需要的核心脚本；审片和费用模块进入第 5 步时再加载。 */
   function preloadScripts() {
-    SCRIPT_PATHS.forEach(path => {
+    CORE_SCRIPT_PATHS.forEach(path => {
       if (document.querySelector(`link[data-nsa-script-preload="${path}"]`)) return;
       const link = document.createElement('link');
       link.rel = 'preload';
@@ -132,7 +97,7 @@
       };
       document.addEventListener('new-story-ad:restore-finished', onRestoreFinished, { once: true });
       preloadScripts();
-      for (const path of SCRIPT_PATHS) {
+      for (const path of CORE_SCRIPT_PATHS) {
         await loadScript(path);
         if (path.endsWith('/api.js')) prefetchRouteTask();
       }
@@ -163,6 +128,10 @@
     if (storyAdIsActive()) loadStoryAd().catch(() => {});
     document.addEventListener('click', (event) => {
       if (event.target?.closest?.('.dh-nav-item[data-tab="new-story-ad"]')) loadStoryAd().catch(() => {});
+      if (event.target?.closest?.('[data-nsa-step="5"], #dhNsaAdGenerateVideos, #dhNsaAdCompose')) loadMediaModules().catch(() => {});
+    }, true);
+    document.addEventListener('pointerover', event => {
+      if (event.target?.closest?.('[data-nsa-step="5"]')) loadMediaModules().catch(() => {});
     }, true);
     window.addEventListener('popstate', () => {
       if (storyAdIsActive()) loadStoryAd().catch(() => {});
@@ -173,7 +142,23 @@
     }).observe(pane, { attributes: true, attributeFilter: ['class'] });
   }
 
-  window.NewStoryAdBootstrap = { load: loadStoryAd, isActive: storyAdIsActive };
+  // 媒体加载器本身属于核心小模块，但四个大型媒体模块只在第 5 步请求。
+  const getMediaLoader = () => mediaLoader || (mediaLoader = window.NewStoryAdMediaLoader?.create({
+    loadCore: loadStoryAd,
+    loadScript,
+  }));
+  const loadMediaModules = async () => {
+    await loadStoryAd();
+    return getMediaLoader()?.load();
+  };
+  const mediaModulesReady = () => getMediaLoader()?.ready() === true;
+
+  window.NewStoryAdBootstrap = {
+    load: loadStoryAd,
+    loadMedia: loadMediaModules,
+    mediaReady: mediaModulesReady,
+    isActive: storyAdIsActive,
+  };
   // 脚本位于 body 末尾，所需工作台 DOM 已经存在；立即绑定可与主工作台脚本并行加载。
   bindLazyEntry();
 })();

@@ -203,8 +203,12 @@ function localReview(ctx, shots) {
         blocking.push(`第 ${n} 镜场景版本不一致：需要 r${expectedRevision}`);
       }
       if (!String(shot.scene_view || '').trim()) rewrite.push(`第 ${n} 镜缺少场景视角 scene_view`);
-      if (shot.scene_view && !['master', 'reverse', 'interaction', 'detail'].includes(String(shot.scene_view))) {
-        blocking.push(`第 ${n} 镜场景视角无效：${shot.scene_view}`);
+      const availableSceneViews = new Set((sceneAsset?.view_images || [])
+        .map(view => String(view?.key || view?.view || '').trim())
+        .filter(view => view && view !== 'layout'));
+      // V2.0 按当前任务场景资产校验开放镜位，禁止再用四个固定名称卡死所有行业。
+      if (shot.scene_view && availableSceneViews.size && !availableSceneViews.has(String(shot.scene_view))) {
+        blocking.push(`第 ${n} 镜场景视角不属于当前场景资产：${shot.scene_view}`);
       }
       if (!String(shot.camera_id || '').trim()) rewrite.push(`第 ${n} 镜缺少场景机位 camera_id`);
       if (!String(shot.scene_zone || '').trim()) rewrite.push(`第 ${n} 镜缺少场景区域 scene_zone`);

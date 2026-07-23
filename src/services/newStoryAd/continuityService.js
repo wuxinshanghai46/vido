@@ -23,9 +23,15 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
   const transitionFallback = !previousShot ? 'none' : 'hard_cut';
   const explicitPreviousFrame = shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
     || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true';
+  const temporalState = shot.temporal_state && typeof shot.temporal_state === 'object'
+    ? shot.temporal_state
+    : (shot.temporal_evidence?.shot_state || {});
+  const temporalLinks = Array.isArray(temporalState.continuity_links)
+    ? temporalState.continuity_links.map(value => clean(value, 120)).filter(Boolean)
+    : [];
   const normalizedTransition = normalizeTransitionType(explicitTransition, transitionFallback);
   const inheritsPreviousState = !!previousShot
-    && (explicitPreviousFrame || ['cut_on_action', 'match_cut'].includes(normalizedTransition));
+    && (explicitPreviousFrame || temporalLinks.length > 0 || ['cut_on_action', 'match_cut'].includes(normalizedTransition));
   // Ordinary adjacent shots are editorial hard cuts. A cut-on-action must be
   // explicitly authored; inferring it from the mere presence of an action
   // serializes nearly every storyboard and invents continuity requirements.
@@ -42,6 +48,8 @@ function continuityContract(shot = {}, previousShot = null, index = 0) {
     object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 320),
     transition_type: normalizedTransition,
     requires_previous_frame: inheritsPreviousState,
+    // V2.0 的连续关系来自分镜显式写入的开放式链接，不再由行业、动作词或场景模板猜测。
+    temporal_continuity_links: temporalLinks,
     transition_reason: clean(shot.transition_reason || shot.transitionReason || '', 240),
     audio_bridge: clean(shot.audio_bridge || shot.audioBridge || '', 180),
     same_scene_as_previous: sameScene,

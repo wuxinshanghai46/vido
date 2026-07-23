@@ -6,6 +6,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
 const sceneAssetService = require('../src/services/newStoryAd/sceneAssetService');
+const qualityReview = require('../src/services/newStoryAd/qualityReviewService');
 
 function fullAsset() {
   return {
@@ -86,6 +87,38 @@ function main() {
 
   const boundLayoutRequest = sceneBinding.bindShotToScene({ scene_id: 'scene-v3', scene_view: 'layout', visual: '完整空间建立镜头' }, [asset]);
   assert.equal(boundLayoutRequest.scene_view, 'master', '商业镜头不得绑定 layout 辅助视图');
+  const openViewAsset = fullAsset();
+  openViewAsset.scene_id = 'scene-open-view';
+  openViewAsset.view_images.splice(3, 0, { key: 'runner_follow_left', label: '跑者左后跟随位', url: '/runner-follow.png' });
+  // 自定义镜位来自当前任务资产，因此应贯穿绑定、摘要与前端选项，而不是被改回固定四镜位。
+  const openViewShot = sceneBinding.bindShotToScene({
+    scene_id: 'scene-open-view',
+    scene_view: 'runner_follow_left',
+    visual: '跟随当前任务主体',
+  }, [openViewAsset]);
+  assert.equal(openViewShot.scene_view, 'runner_follow_left');
+  assert.equal(sceneBinding.sceneAssetDigest([openViewAsset])[0].available_views.some(view => view.key === 'runner_follow_left'), true);
+  const openViewReview = qualityReview.localReview({ scene_assets: [openViewAsset] }, [{
+    ...openViewShot,
+    title: '开放镜位',
+    visual: '主体在当前任务场景中连续运动，镜位来自场景资产。',
+    action: '主体沿当前任务定义的路径持续向前移动。',
+    voiceover: '保持动作连续。',
+    purpose: '验证开放镜位不会被旧枚举误判。',
+    shot_size: 'medium',
+    camera_angle: 'eye_level',
+    composition: '主体与环境关系清晰。',
+    subject_position: '主体位于画面中心偏左。',
+    camera_movement: '稳定跟随。',
+    entry_frame_state: '主体开始移动。',
+    exit_frame_state: '主体完成本镜动作。',
+    screen_direction: 'left_to_right',
+    eyeline: 'forward',
+    camera_axis: 'same_side',
+    object_states: '当前任务对象状态保持。',
+    transition_type: 'cut_on_action',
+  }]);
+  assert.equal(openViewReview.blocking_issues.some(item => item.includes('场景视角')), false);
   const lock = sceneBinding.sceneContractForShot({ scene_assets: [asset] }, boundLayoutRequest);
   assert.equal(lock.view_images.length, 4);
   assert.equal(lock.layout_reference.url, '/layout.png');
@@ -406,15 +439,15 @@ function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260723-completed-autosave-authority-v1'));
+  assert(html.includes('bootstrap.js?v=20260723-story-ad-v2-release1'));
   assert(html.includes('digital-human-wizard.css?v=20260722-unit-block-scope-v3'));
-  assert(html.indexOf('bootstrap.js?v=20260723-completed-autosave-authority-v1') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
+  assert(html.indexOf('bootstrap.js?v=20260723-story-ad-v2-release1') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260723-completed-autosave-authority-v1'));
+  assert(bootstrap.includes('20260723-story-ad-v2-release1'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),

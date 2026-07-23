@@ -10,13 +10,6 @@ function testNormalizesGenericShotSettings() {
     shot_settings: {
       visual: '主体位于画面右侧，环境保持当前任务已确认的空间。',
       action: '主体自然转身，镜头缓慢推进。',
-      shot_scope: 'character',
-      surface_topology: {
-        mode: 'continuous',
-        seam_policy: 'hidden',
-        finish_distribution: 'uniform',
-        notes: '保持一体化表面。',
-      },
       motion_effect: {
         type: 'particle_assembly',
         source_state: '少量粒子分散',
@@ -25,18 +18,27 @@ function testNormalizesGenericShotSettings() {
         intensity: 'low',
         preserve_scene_geometry: true,
       },
-      scene_view: 'master',
       shot_size: 'medium',
       camera_angle: 'eye_level',
       lens_mm: 999,
       depth_of_field: 'shallow',
       transition_type: 'cut_on_action',
+      scene_view: 'runner_follow_left',
+      shot_scope: 'dynamic_product_trial',
+      surface_topology: {
+        mode: 'task_authored_flexible_surface',
+        seam_policy: 'brief_defined',
+        finish_distribution: 'evidence_mapped',
+        notes: '仅服从当前任务的可见证据。',
+      },
     },
   });
 
-  assert.equal(result.shot_scope, 'character');
-  assert.equal(result.surface_topology.mode, 'continuous');
-  assert.equal(result.surface_topology.seam_policy, 'hidden');
+  // V2.0 开放字段不得被旧行业枚举吞掉。
+  assert.equal(result.shot_scope, 'dynamic_product_trial');
+  assert.equal(result.surface_topology.mode, 'task_authored_flexible_surface');
+  assert.equal(result.surface_topology.seam_policy, 'brief_defined');
+  assert.equal(result.scene_view, 'runner_follow_left');
   assert.equal(result.motion_effect.type, 'particle_assembly');
   assert.equal(result.motion_effect.preserve_scene_geometry, true);
   assert.equal(result.shot_size, 'medium');
@@ -84,7 +86,7 @@ function testUiContractIsPresent() {
   assert.match(ui, /data-nsa-shot-jump/);
   assert.match(css, /\.dh-nsa-shot-ai-assist/);
   assert.match(css, /\.dh-nsa-editor-section-fields/);
-  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260723-completed-autosave-authority-v1/);
+  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260723-story-ad-v2-release1/);
 }
 
 testNormalizesGenericShotSettings();
