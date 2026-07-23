@@ -103,6 +103,18 @@
     return '';
   }
 
+  function ageValue(value = '') {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/^young_adult$|25\s*(?:-|–|—|至|到)\s*32|(?:二十六|二十七|二十八|二十九|三十|三十一|三十二)岁/.test(raw)) return 'young_adult';
+    if (/young_adult_17_25|17\s*(?:-|–|—|至|到)\s*25|(?:十七|十八|十九|二十|二十一|二十二|二十三|二十四|二十五)岁/.test(raw)) return 'young_adult_17_25';
+    if (/adult_30_40|30\s*(?:-|–|—|至|到)\s*40/.test(raw)) return 'adult_30_40';
+    if (/middle_40_55|40\s*(?:-|–|—|至|到)\s*55/.test(raw)) return 'middle_40_55';
+    if (/senior_55_plus|55\+|55岁以上|五十五岁以上/.test(raw)) return 'senior_55_plus';
+    if (/teen_13_17|13\s*(?:-|–|—|至|到)\s*17/.test(raw)) return 'teen_13_17';
+    return '';
+  }
+
   function formatElapsedText(ms = 0) {
     const sec = Math.max(0, Math.round(Number(ms) / 1000) || 0);
     if (sec >= 60) return `${Math.floor(sec / 60)}分${String(sec % 60).padStart(2, '0')}秒`;
@@ -135,6 +147,7 @@
     referenceKind,
     referenceLabel,
     genderValue,
+    ageValue,
     progressHtml,
   };
 })();

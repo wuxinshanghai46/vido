@@ -3,6 +3,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 process.env.DB_ENABLED = '0';
 
@@ -60,6 +61,23 @@ function testFrontendCompletenessGuardIsWired() {
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
   assert.match(source, /function completeSceneSpecSuggestion\(/);
   assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
+}
+
+function testGeneratedActorAgeConstraintDoesNotDowngrade() {
+  const actorSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/actors.js'), 'utf8');
+  const sandbox = { window: {} };
+  vm.runInNewContext(actorSource, sandbox);
+  const ageValue = sandbox.window.NewStoryAdActors.ageValue;
+  assert.equal(ageValue('young_adult'), 'young_adult');
+  assert.equal(ageValue('25-32 years old'), 'young_adult');
+  assert.equal(ageValue('二十七岁中国女性'), 'young_adult');
+  assert.equal(ageValue('young_adult_17_25'), 'young_adult_17_25');
+  assert.equal(ageValue('17-25 years old'), 'young_adult_17_25');
+  assert.equal(ageValue('25'), '', '单独的边界数字不能覆盖已锁定年龄段');
+
+  const legacySource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+  assert.match(legacySource, /asset\.person_contract\?\.identity\?\.age_range/);
+  assert.match(legacySource, /personAgeValue\(structuredAge \|\| \(!spec\.age \? asset\.description \|\| '' : ''\)\) \|\| spec\.age/);
 }
 
 /** 验证真实 assist 服务在模型部分返回时也会输出完整人物设定。 */
@@ -149,6 +167,7 @@ async function main() {
   testPartialModelResponseIsCompleted();
   testExistingUserDetailsArePreserved();
   testFrontendCompletenessGuardIsWired();
+  testGeneratedActorAgeConstraintDoesNotDowngrade();
   testSceneAssistFallbackIsComplete();
   await testAssistServiceCompletesPartialResponse();
   await testSceneAssistPreservesCompleteExistingSpec();

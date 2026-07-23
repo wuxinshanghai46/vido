@@ -544,13 +544,7 @@
   }
 
   function personAgeValue(value = '') {
-    const raw = String(value || '').toLowerCase();
-    if (/55|60|senior|年长|老年/.test(raw)) return 'senior_55_plus';
-    if (/40|45|50|middle|中年/.test(raw)) return 'middle_40_55';
-    if (/30|35|成熟/.test(raw)) return 'adult_30_40';
-    if (/17|18|20|25|young|青年/.test(raw)) return 'young_adult_17_25';
-    if (/teen|13|14|15|16|青少年/.test(raw)) return 'teen_13_17';
-    return '';
+    return window.NewStoryAdActors?.ageValue?.(value) || '';
   }
 
   function personOriginValue(value = '') {
@@ -615,6 +609,8 @@
       expected_people: asset.expected_people || metadata.expected_people || '',
       person_count: asset.person_count || metadata.person_count || '',
       view_count: Number(asset.view_count || urls.length) || 1,
+      person_revision: asset.person_revision || metadata.person_revision || asset.person_contract?.person_revision || metadata.person_contract?.person_revision || 1,
+      person_contract: asset.person_contract || metadata.person_contract || null,
       description: asset.description || metadata.description || '授权真人/演员素材，会作为剧情广告人物一致性参考。',
       metadata,
     };
@@ -624,7 +620,9 @@
     if (!asset || typeof asset !== 'object') return;
     const spec = collectPersonSpec();
     const gender = personGenderValue(asset.detected_gender || asset.gender || asset.metadata?.detected_gender || asset.metadata?.gender || '');
-    const age = personAgeValue(asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range || asset.description || '');
+    const structuredAge = asset.age || asset.age_range || asset.metadata?.age || asset.metadata?.age_range
+      || asset.person_contract?.identity?.age_range || asset.metadata?.person_contract?.identity?.age_range || '';
+    const age = personAgeValue(structuredAge || (!spec.age ? asset.description || '' : '')) || spec.age || '';
     const origin = personOriginValue(asset.origin || asset.region || asset.ethnicity || asset.metadata?.origin || asset.metadata?.region || asset.description || '');
     const rawCastMode = String(asset.cast_mode || asset.castMode || asset.metadata?.cast_mode || '').toLowerCase();
     const memberCount = Array.isArray(asset.cast_assets) ? asset.cast_assets.length : 0;
