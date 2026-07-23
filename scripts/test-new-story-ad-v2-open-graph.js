@@ -206,17 +206,39 @@ async function main() {
   const evidenceChecks = Object.fromEntries(requiredQaDimensions.map(key => [key, {
     pass: true,
     evidence: `${key}在画面中可见`,
-    frame_indexes: [0, 4],
+    frame_indexes: [0, 2, 4],
   }]));
   const passedEvidence = videoQa.normalizeTemporalEvidenceChecks(
     { evidence_checks: evidenceChecks },
     requiredQaDimensions,
+    { minimumEvidencePoints: 2, transitionEvidencePoints: 3 },
   );
   assert.strictEqual(passedEvidence.pass, true);
+  const sparseEvidence = videoQa.normalizeTemporalEvidenceChecks(
+    { evidence_checks: {
+      ...evidenceChecks,
+      state_transition: { pass: true, evidence: '只写结论但没有完整过程', frame_indexes: [0, 4] },
+    } },
+    requiredQaDimensions,
+    { minimumEvidencePoints: 2, transitionEvidencePoints: 3 },
+  );
+  assert.strictEqual(sparseEvidence.pass, false, '状态变化缺少起承果三点证据时不得仅凭 pass 放行');
+  assert.ok(sparseEvidence.failed.includes('state_transition'));
+  const inventedFrameEvidence = videoQa.normalizeTemporalEvidenceChecks(
+    { evidence_checks: Object.fromEntries(requiredQaDimensions.map(key => [key, {
+      pass: true,
+      evidence: '引用了不存在的抽帧序号',
+      frame_indexes: [10, 20, 30],
+    }])) },
+    requiredQaDimensions,
+    { minimumEvidencePoints: 2, transitionEvidencePoints: 3, maxFrameIndex: 4 },
+  );
+  assert.strictEqual(inventedFrameEvidence.pass, false, '超出真实五点抽帧范围的证据序号不得计入通过条件');
   delete evidenceChecks.event_completion;
   const failedEvidence = videoQa.normalizeTemporalEvidenceChecks(
     { evidence_checks: evidenceChecks },
     requiredQaDimensions,
+    { minimumEvidencePoints: 2, transitionEvidencePoints: 3 },
   );
   assert.strictEqual(failedEvidence.pass, false);
   assert.ok(failedEvidence.failed.includes('event_completion'));

@@ -3,6 +3,7 @@ const DEFAULT_MAX_CONCURRENCY = 4;
 const HARD_MAX_CONCURRENCY = 4;
 const DEFAULT_GLOBAL_CONCURRENCY = 4;
 const videoCore = require('../videoGenerationCore');
+const paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 
 let globalActive = 0;
 const globalQueue = [];
@@ -108,7 +109,8 @@ async function runSchedule({
   const results = [];
   const waves = [];
   const resolved = resolveConcurrency(options, pending.length);
-  const allowThrottleRetry = options.allow_throttle_retry === true || options.allowThrottleRetry === true;
+  const allowThrottleRetry = !paidExecutionPolicy.isPaidExecution(options)
+    && (options.allow_throttle_retry === true || options.allowThrottleRetry === true);
   let effective = resolved.configured;
 
   while (pending.length) {

@@ -16,7 +16,7 @@ const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService'), videoSceneBlockGuard = require('./videoSceneBlockGuardService');
 const semanticCut = require('./semanticCutService');
-const videoCore = require('../videoGenerationCore');
+const videoCore = require('../videoGenerationCore'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService'), videoAttemptState = require('./videoAttemptStateService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs')), VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
@@ -380,7 +380,8 @@ function resolvePinnedVideoModel(options = {}, existingClips = []) {
     }
     return pinned;
   }
-  const allowFallback = options.allow_video_model_fallback === true || options.allowVideoModelFallback === true;
+  const allowFallback = !paidExecutionPolicy.isPaidExecution(options)
+    && (options.allow_video_model_fallback === true || options.allowVideoModelFallback === true);
   if (allowFallback) {
     const available = configured.find(candidate => !modelGateway.healthState(candidate).circuit_open);
     if (available) return available;
@@ -823,9 +824,7 @@ async function generateShotVideo({ taskId = '', shot = {}, previousShot = null, 
     return await generateProviderClip({ taskId, shot, previousShot, keyframe, audio, contract, ctx, index, duration, options });
   } catch (error) {
     if (error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
-    const allowLocalFallback = options.allow_local_fallback === true
-      || options.allowLocalFallback === true
-      || process.env.NEW_STORY_AD_ALLOW_LOCAL_VIDEO_FALLBACK === '1';
+    const allowLocalFallback = paidExecutionPolicy.localFallbackAllowed(options);
     if (!allowLocalFallback) throw error;
     const base = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
     const out = path.join(VIDEO_DIR, `${base}.mp4`);
@@ -1154,7 +1153,8 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
   });
   let schedule = { results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1, max_concurrency: 1, throttle_retries: {} };
   const unitFailures = [];
-  const failFast = options.continue_after_unit_failure !== true && options.continueAfterUnitFailure !== true;
+  const failFast = paidExecutionPolicy.isPaidExecution(options)
+    || (options.continue_after_unit_failure !== true && options.continueAfterUnitFailure !== true);
   if (units.length) {
     try {
       schedule = await videoScheduler.runSchedule({

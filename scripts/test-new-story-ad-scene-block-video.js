@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const sceneBlocks = require('../src/services/newStoryAd/sceneBlockService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
+const paidExecutionPolicy = require('../src/services/newStoryAd/paidVideoExecutionPolicyService');
 const lineage = require('../src/services/newStoryAd/videoLineageService');
 const storage = require('../src/services/newStoryAd/storageService');
 const boundaryRepair = require('../src/services/newStoryAd/videoBoundaryRepairService');
@@ -193,9 +194,17 @@ async function run() {
       keyframes: [{ image_url: '/frame-a.png' }, { image_url: '/frame-b.png' }, { image_url: '/frame-c.png' }],
       sceneBlocks: partialBlocks,
       ctx: { cast_mode: 'no_human', output_ratio: '16:9', video_resolution: '480p' },
-      options: {
+      options: paidExecutionPolicy.canonicalize({
         only_indexes: [0, 1, 2],
         video_concurrency: 3,
+        continue_after_unit_failure: true,
+        continueAfterUnitFailure: true,
+        allow_throttle_retry: true,
+        allowThrottleRetry: true,
+        allow_local_fallback: true,
+        allowLocalFallback: true,
+        parallel_videos: true,
+        parallelVideos: true,
         _pinnedVideoModel: { provider_id: 'deyunai', model_id: 'doubao-seedance-2-0-260128' },
         _generateShotVideo: async ({ taskId, shot, index }) => {
           calledIndexes.push(index);
@@ -209,7 +218,7 @@ async function run() {
           await videoAdapter.renderLocalClip({ outputPath: filePath, durationSec: shot.duration_sec, aspectRatio: '16:9' });
           return { shot_index: index, file_path: filePath, video_url: '/mock-partial.mp4', provider_used: 'deyunai/doubao-seedance-2-0-260128', provider_task_id: 'mock-partial-success' };
         },
-      },
+      }),
       existingClips: [],
     });
   } catch (error) { partialError = error; }

@@ -13,7 +13,7 @@ const { cleanText } = require('./contextBuilder');
 const contractFreshness = require('./keyframeContractFreshnessService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
-const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v3';
+const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v4';
 const FRAME_DIMENSIONS = {
   person_pass: ['person_identity', '人物身份与造型'],
   product_pass: ['product_identity', '产品与主体一致性'],
@@ -65,22 +65,36 @@ function requiredTemporalDimensions(temporalEvidence = null, { hasScene = false 
   return [...new Set(required)];
 }
 
-function normalizeTemporalEvidenceChecks(parsed = {}, required = []) {
+function normalizeTemporalEvidenceChecks(parsed = {}, required = [], {
+  minimumEvidencePoints = 1,
+  transitionEvidencePoints = minimumEvidencePoints,
+  maxFrameIndex = Number.POSITIVE_INFINITY,
+  maxTimeSec = Number.POSITIVE_INFINITY,
+} = {}) {
   const source = parsed.evidence_checks && typeof parsed.evidence_checks === 'object'
     ? parsed.evidence_checks
     : {};
   const checks = {};
   required.forEach((key) => {
     const raw = source[key] && typeof source[key] === 'object' ? source[key] : {};
+    const evidence = cleanText(raw.evidence || raw.reason || '', 500);
+    const frameIndexes = Array.isArray(raw.frame_indexes)
+      ? [...new Set(raw.frame_indexes.map(Number).filter(value => Number.isInteger(value) && value >= 0 && value <= maxFrameIndex))].slice(0, 8)
+      : [];
+    const timeSec = Array.isArray(raw.time_sec)
+      ? [...new Set(raw.time_sec.map(Number).filter(value => Number.isFinite(value) && value >= 0 && value <= maxTimeSec).map(value => Number(value.toFixed(3))))].slice(0, 8)
+      : [];
+    const requiredPoints = ['state_transition', 'event_completion'].includes(key)
+      ? transitionEvidencePoints
+      : minimumEvidencePoints;
+    const observedPoints = Math.max(frameIndexes.length, timeSec.length);
     checks[key] = {
-      pass: raw.pass === true,
-      evidence: cleanText(raw.evidence || raw.reason || '', 500),
-      frame_indexes: Array.isArray(raw.frame_indexes)
-        ? raw.frame_indexes.map(Number).filter(Number.isInteger).slice(0, 8)
-        : [],
-      time_sec: Array.isArray(raw.time_sec)
-        ? raw.time_sec.map(Number).filter(Number.isFinite).slice(0, 8)
-        : [],
+      pass: raw.pass === true && !!evidence && observedPoints >= requiredPoints,
+      evidence,
+      frame_indexes: frameIndexes,
+      time_sec: timeSec,
+      required_evidence_points: requiredPoints,
+      observed_evidence_points: observedPoints,
     };
   });
   const failed = required.filter(key => checks[key]?.pass !== true);
@@ -391,7 +405,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
       'The first optional images are current-task scene/person/product references. The remaining images are ordered samples from one generated clip.',
       'The task may cover any lawful industry, scene, person, product or visual medium. Never impose a fixed template. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null, temporal_evidence: temporalEvidence })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, expected_person_presence: keyframePersonPresence || 'unknown', reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople, expected_person_presence: keyframePersonPresence || null, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. The structured expected_person_presence value comes from the already-approved keyframe review and is authoritative: when it is partial, the hand/arm/body part already present in the approved keyframe is allowed and must not be treated as a newly introduced person merely because characters is empty. In that case set keyframe_people_match=true and people_count_pass=true when the clip preserves that partial-person state. Still reject a genuinely new principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"what is visibly proved","frame_indexes":[ordered sample indexes],"time_sec":[visible times]}. Missing visible proof is false; never infer proof from the prompt. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"text_watermark_pass":boolean,"evidence_checks":object,"problems":string[],"retry_instruction":string}. Use true for a legacy dimension only when it is genuinely not applicable.`,
+    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null, temporal_evidence: temporalEvidence })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, expected_person_presence: keyframePersonPresence || 'unknown', reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, duration: shot.duration, expected_people: expectedPeople, expected_person_presence: keyframePersonPresence || null, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. The structured expected_person_presence value comes from the already-approved keyframe review and is authoritative: when it is partial, the hand/arm/body part already present in the approved keyframe is allowed and must not be treated as a newly introduced person merely because characters is empty. In that case set keyframe_people_match=true and people_count_pass=true when the clip preserves that partial-person state. Still reject a genuinely new principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. action_pass is true only when the authored action visibly progresses through a physically plausible start, interaction/movement phase and causal result; reject teleporting, morphing, sliding without contact, disappearing/duplicated subjects, reversed events, frozen-photo motion or a result with no visible cause. For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"what is visibly proved","frame_indexes":[ordered sample indexes],"time_sec":[visible times]}. Every required dimension needs at least two distinct timeline points; state_transition and event_completion need at least three distinct start/middle/result points. Missing visible proof is false; never infer proof from the prompt. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"text_watermark_pass":boolean,"evidence_checks":object,"problems":string[],"retry_instruction":string}. Use true for a legacy dimension only when it is genuinely not applicable.`,
     maxTokens: 3000,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
@@ -417,7 +431,12 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     text_watermark_pass: parsed.text_watermark_pass === true,
   };
   const decision = reviewDecision(normalized, problems, clip);
-  const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions);
+  const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions, {
+    minimumEvidencePoints: 2,
+    transitionEvidencePoints: 3,
+    maxFrameIndex: frames.length - 1,
+    maxTimeSec: Math.max(0, ...frames.map(frame => Number(frame.second) || 0)) + 0.1,
+  });
   const legacyFailures = failedDimensionDetails(normalized, FRAME_DIMENSIONS);
   const temporalProblems = temporalDecision.failed.map(key => `${TEMPORAL_EVIDENCE_DIMENSIONS[key] || key}缺少可见证据`);
   return {
@@ -437,6 +456,14 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     accepted_provenance_watermark: decision.accepted_provenance_watermark,
     retry_instruction: cleanText(parsed.retry_instruction || (temporalProblems.length ? `请修复：${temporalProblems.join('；')}` : ''), 800),
     evidence_checks: temporalDecision.checks,
+    hard_failures: [
+      ...legacyFailures.map(item => ({ dimension: item.code, label_zh: item.label, evidence: '' })),
+      ...temporalDecision.failed.map(key => ({
+        dimension: key,
+        label_zh: TEMPORAL_EVIDENCE_DIMENSIONS[key] || key,
+        evidence: temporalDecision.checks[key]?.evidence || '',
+      })),
+    ],
     failure_dimensions: [...legacyFailures.map(item => item.code), ...temporalDecision.failed],
     failure_labels_zh: [...legacyFailures.map(item => item.label), ...temporalDecision.failure_labels_zh],
     contract_fingerprint: String(contract.contract_fingerprint || ''),
@@ -483,7 +510,11 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   const scores = ['person_position_score', 'wardrobe_score', 'prop_state_score', 'scene_score', 'screen_direction_score', 'action_continuity_score'];
   const normalized = Object.fromEntries(scores.map(key => [key, Math.max(0, Math.min(1, Number(parsed[key]) || 0))]));
   const failed = failedDimensionDetails(normalized, CROSS_DIMENSIONS, 0.7);
-  const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions);
+  const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions, {
+    minimumEvidencePoints: 2,
+    transitionEvidencePoints: 2,
+    maxFrameIndex: 1,
+  });
   const pass = parsed.pass === true && !failed.length && temporalDecision.pass && !problems.length;
   const retryInstruction = cleanText(parsed.retry_instruction || [
     failed.length ? `Repair continuity dimensions: ${failed.map(item => item.code).join(', ')}.` : '',
@@ -499,6 +530,14 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
       ...temporalDecision.failed.map(key => `${TEMPORAL_EVIDENCE_DIMENSIONS[key] || key}缺少跨镜可见证据`),
     ],
     evidence_checks: temporalDecision.checks,
+    hard_failures: [
+      ...failed.map(item => ({ dimension: item.code, label_zh: item.label, evidence: '' })),
+      ...temporalDecision.failed.map(key => ({
+        dimension: key,
+        label_zh: TEMPORAL_EVIDENCE_DIMENSIONS[key] || key,
+        evidence: temporalDecision.checks[key]?.evidence || '',
+      })),
+    ],
     failure_dimensions: [...failed.map(item => item.code), ...temporalDecision.failed],
     failure_labels_zh: [...failed.map(item => item.label), ...temporalDecision.failure_labels_zh],
     retry_instruction: retryInstruction,

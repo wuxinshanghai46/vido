@@ -440,7 +440,7 @@ function main() {
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
   assert(html.includes('bootstrap.js?v=20260723-story-ad-v2-release1'));
-  assert(html.includes('digital-human-wizard.css?v=20260722-unit-block-scope-v3'));
+  assert(html.includes('digital-human-wizard.css?v=20260723-story-ad-v2-release2'));
   assert(html.indexOf('bootstrap.js?v=20260723-story-ad-v2-release1') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));

@@ -19,6 +19,7 @@ const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnit
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
+const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const videoCore = require('../services/videoGenerationCore');
 const db = require('../models/database');
 
@@ -1005,7 +1006,8 @@ router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const body = { ...(req.body || {}), require_video_preflight: true };
+  paidExecutionPolicy.assertExternalRequest(req.body || {});
+  const body = paidExecutionPolicy.canonicalize({ ...(req.body || {}), require_video_preflight: true });
   service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'video', job => service.generateVideoStage(req.params.id, { ...body, generation_id: job.generationId }));
 }));
@@ -1099,7 +1101,8 @@ router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, r
 }));
 
 router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
-  const body = { ...(req.body || {}), require_video_preflight: true };
+  paidExecutionPolicy.assertExternalRequest(req.body || {});
+  const body = paidExecutionPolicy.canonicalize({ ...(req.body || {}), require_video_preflight: true });
   service.assertVideoPreflightConfirmation(req.params.id, body);
   return queueTaskStage(req, res, 'media', async job => {
     // 同一后台任务先验证可选配音，再生成纯视觉连续段，最后只在本地混音合成。

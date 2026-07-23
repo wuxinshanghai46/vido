@@ -42,9 +42,9 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
 const sceneAssetLifecycle = require('./sceneAssetService');
-const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService');
+const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
-/** 读取剧情广告 V3 灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
+/** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
   const paidVideoEnabled = enabled && !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED ?? '1').trim().toLowerCase());
@@ -2322,15 +2322,15 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   if (plan.paid_unit_count > 0 && !runtimePolicy.paid_video_enabled) {
     plan.blockers.push({
       code: 'VIDEO_V3_PAID_DISABLED',
-      message: '剧情广告 V3 当前处于只读或零费用灰度状态，新的付费视频提交已暂停。',
+      message: '剧情广告 V2.0 当前处于只读或零费用灰度状态，新的付费视频提交已暂停。',
     });
     plan.status = plan.zero_cost_action_count > 0 ? 'partial_ready' : 'blocked';
   }
-  plan.fingerprint = revisionService.signature({
+  plan.paid_execution_policy = paidExecutionPolicy.publicPolicy(); plan.fingerprint = revisionService.signature({
     video_preflight_fingerprint: plan.fingerprint,
     execution_plan_fingerprint: executionPlan.fingerprint,
     cost_plan_fingerprint: costPlan.fingerprint,
-    runtime_policy: runtimePolicy,
+    runtime_policy: runtimePolicy, paid_execution_policy: plan.paid_execution_policy,
     compatibility_fingerprint: compatibilityReport?.fingerprint || '', privacy_retry_blockers: plan.blockers.filter(item => item.code === videoPrivacyRetryPolicy.BLOCKER_CODE).map(item => item.details?.rejected_lineage_fingerprint || ''),
   });
   return plan;
@@ -2370,8 +2370,7 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
     videoCore.costGuard.assertComplexityReview(plan.authorized_execution_plan || plan.execution_plan, options);
     const authorization = videoCore.costGuard.assertCostAuthorization(plan.cost_plan, options);
     videoCostAuthorization.authorize(taskId, authorization, {
-      execution_plan_fingerprint: plan.execution_plan.fingerprint,
-      video_preflight_fingerprint: plan.fingerprint,
+      execution_plan_fingerprint: plan.execution_plan.fingerprint, video_preflight_fingerprint: plan.fingerprint, paid_execution_policy: paidExecutionPolicy.publicPolicy(),
     });
   }
   storage.saveOutput(taskId, 'video_execution_plan', plan.execution_plan);
@@ -2379,7 +2378,7 @@ function assertVideoPreflightConfirmation(taskId, options = {}) {
   return plan;
 }
 
-async function generateVideoStage(taskId, options = {}) {
+async function generateVideoStage(taskId, options = {}) { options = paidExecutionPolicy.canonicalize(options);
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   let ctx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -2604,7 +2603,7 @@ async function generateVideoStage(taskId, options = {}) {
   const initialBlockIds = new Set(expandedInitialIndexes.map(index => sceneBlockService.blockForIndex(sceneBlocks, index)?.id).filter(Boolean));
   const initialVideoSeconds = sceneBlocks.filter(block => initialBlockIds.has(block.id)).reduce((sum, block) => sum + Number(block.duration_sec || 0), 0);
   const policy = {
-    version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
+    version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION, paid_execution_policy: paidExecutionPolicy.publicPolicy(),
     scene_block_policy_version: sceneBlockService.SCENE_BLOCK_POLICY_VERSION,
     model_route: pinnedRoute,
     max_auto_repairs: maxRepairs,
@@ -2659,6 +2658,7 @@ async function generateVideoStage(taskId, options = {}) {
           },
         });
         clips = lastGenerated.clips.slice();
+        paidExecutionPolicy.assertBatchSucceeded(lastGenerated, clips, unitIndexes);
       } catch (error) {
         generationError = error;
         const partialClips = Array.isArray(error.partial_video_clips)

@@ -619,6 +619,7 @@ function publicVideoPreflight(plan = {}) {
     warnings: plan.warnings || [],
     cost_plan: plan.cost_plan ? videoCore.costGuard.publicCostPlan(plan.cost_plan) : null,
     runtime_policy: plan.runtime_policy || {},
+    paid_execution_policy: plan.paid_execution_policy || {},
     compatibility_report: plan.compatibility_report || null,
     provider_capability_assessment: plan.provider_capability_assessment || { ready: true, assessments: [], blockers: [] },
     shots: (plan.shots || []).map(item => ({
