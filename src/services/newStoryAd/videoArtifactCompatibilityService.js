@@ -163,10 +163,11 @@ function classifyVideoArtifact({
   const expectedFingerprint = text(expectedLineage.fingerprint);
   const actualSemanticFingerprint = semanticLineageFingerprint(clip);
   const expectedSemanticFingerprint = semanticLineageFingerprint(expectedLineage);
-  if (!actualFingerprint || !expectedFingerprint || !actualSemanticFingerprint || !expectedSemanticFingerprint) {
+  const exactFingerprint = !!actualFingerprint && !!expectedFingerprint && actualFingerprint === expectedFingerprint;
+  if (!exactFingerprint && (!actualFingerprint || !expectedFingerprint || !actualSemanticFingerprint || !expectedSemanticFingerprint)) {
     return decision(COMPATIBILITY_STATUS.BLOCKED, ['PROVENANCE_UNKNOWN']);
   }
-  if (actualSemanticFingerprint !== expectedSemanticFingerprint) {
+  if (!exactFingerprint && actualSemanticFingerprint !== expectedSemanticFingerprint) {
     return decision(COMPATIBILITY_STATUS.REGENERATE_REQUIRED, ['SEMANTIC_LINEAGE_MISMATCH']);
   }
 

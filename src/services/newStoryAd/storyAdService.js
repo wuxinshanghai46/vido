@@ -37,7 +37,7 @@ const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = req
 const videoRepairPolicy = require('./videoRepairPolicy');
 const videoPreflight = require('./videoPreflightService'), videoStatusProjection = require('./videoStatusProjectionService');
 const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStore(storage);
-const sceneBlockService = require('./sceneBlockService');
+const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
@@ -308,7 +308,7 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(row.payload || []) }
       : row);
   const bundle = { ...rawBundle, outputs: visibleOutputs };
-  const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload]));
+  const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload])); outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
   const currentStoryboardStatus = storyboardStatus(bundle, outputs);
   const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
   const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
@@ -2249,8 +2249,9 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
   const keyframes = Array.isArray(storage.getOutput(taskId, 'keyframes')) ? storage.getOutput(taskId, 'keyframes') : [];
-  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const storedClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
+  const clips = videoClipStatusRecovery.recover(storedClips, statuses);
   let pinnedModel = null;
   try {
     pinnedModel = videoAdapter.resolvePinnedVideoModel(options, clips);

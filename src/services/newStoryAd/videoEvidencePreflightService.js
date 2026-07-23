@@ -1,12 +1,16 @@
 const storage = require('./storageService');
 const videoFrameQa = require('./videoFrameQaService');
 const costAuthorization = require('./videoCostAuthorizationService');
+const clipStatusRecovery = require('./videoClipStatusRecoveryService');
 
 /** Prepare only local evidence needed at the boundary of paid scoped units. */
 async function prepareRequiredBoundaryEvidence(taskId, preflightPlan = {}) {
   let clips = Array.isArray(storage.getOutput(taskId, 'video_clips'))
     ? storage.getOutput(taskId, 'video_clips')
     : [];
+  const recoveredClips = clipStatusRecovery.recoverFromOutputRows(storage.listOutputs(taskId), clips);
+  if (recoveredClips.some((clip, index) => clip && !clips[index])) storage.saveOutput(taskId, 'video_clips', recoveredClips);
+  clips = recoveredClips;
   const paidIndexes = (preflightPlan.units || []).filter(unit => unit.paid !== false).flatMap(unit => unit.member_indexes || []);
   const reviewIndexes = (preflightPlan.shots || []).filter(item => item.action === 'review_only' && item.review_scope === 'cross_shot').map(item => item.index);
   const targetIndexes = [...new Set(paidIndexes.concat(reviewIndexes))];

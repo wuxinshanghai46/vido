@@ -64,6 +64,22 @@ const currentDecision = compatibility.classifyVideoArtifact({
 });
 assert.strictEqual(currentDecision.status, compatibility.COMPATIBILITY_STATUS.CURRENT);
 
+const exactStatusSnapshotDecision = compatibility.classifyVideoArtifact({
+  clip: {
+    file_path: __filename,
+    video_url: '/status-snapshot.mp4',
+    seedance_input_mode: current.input_strategy,
+    lineage_fingerprint: current.fingerprint,
+    boundary_repair_fingerprint: current.boundary_repair_fingerprint,
+    transition_policy_version: current.transition_policy_version,
+    qa_policy_version: current.qa_policy_version,
+    qa: { pass: true },
+  },
+  expectedLineage: current,
+  allowedInputStrategies: ['approved_keyframe_first_frame_only'],
+});
+assert.strictEqual(exactStatusSnapshotDecision.status, compatibility.COMPATIBILITY_STATUS.CURRENT, 'exact full fingerprint is sufficient to recover a verified status snapshot without inventing lineage payload fields');
+
 const metadataExpected = expectedLineage({ boundaryRepairFingerprint: '', transitionPolicyVersion: '', qaPolicyVersion: 0 });
 const legacyLineage = { ...metadataExpected };
 delete legacyLineage.fingerprint;

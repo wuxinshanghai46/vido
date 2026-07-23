@@ -8,6 +8,7 @@ const projection = require('../src/services/newStoryAd/mediaResultProjectionServ
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
 const storage = require('../src/services/newStoryAd/storageService');
 const videoAttemptStore = require('../src/services/newStoryAd/videoAttemptStore');
+const clipStatusRecovery = require('../src/services/newStoryAd/videoClipStatusRecoveryService');
 const videoReview = require('../public/js/new-story-ad/video-review');
 
 const storyboard = count => Array.from({ length: count }, (_, index) => ({ index: index + 1, title: `镜头 ${index + 1}` }));
@@ -97,13 +98,35 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
 // 当前代次已经执行并通过的镜头，即使失败恢复流程残留 stopped 标记，
 // 也必须采用持久化的跨镜 QA 结论，不能显示成“未执行/待审核”。
 {
+  const statuses = [
+    passedStatus(0),
+    {
+      ...passedStatus(1),
+      shot_index: 1,
+      video_url: '/shot-2.mp4',
+      file_exists: true,
+      lineage_fingerprint: 'lineage-shot-2',
+      provider_id: 'deyunai',
+      model_id: 'seedance',
+      provider_task_id: 'provider-shot-2',
+      provider_submission_state: 'completed',
+      billing_state: 'confirmed',
+      input_mode: 'approved_keyframe_first_frame_only',
+      scene_block_members: [2],
+      cross_shot_qa_status: 'passed',
+      stopped_after_unit_failure: true,
+      executed_in_current_generation: true,
+    },
+  ];
+  const recoveredClips = clipStatusRecovery.recover([passedClip(0, { lineage_fingerprint: 'lineage-shot-1' }), null], statuses);
+  assert.strictEqual(recoveredClips[1].recovered_from_status_snapshot, true);
+  assert.strictEqual(recoveredClips[1].qa.pass, true);
+  assert.strictEqual(recoveredClips[1].cross_shot_qa.previous_lineage_fingerprint, 'lineage-shot-1');
+  assert.strictEqual(recoveredClips[1].cross_shot_qa.current_lineage_fingerprint, 'lineage-shot-2');
   const executed = result({
     count: 2,
-    clips: [passedClip(0), { ...passedClip(1), cross_shot_qa: null }],
-    statuses: [
-      passedStatus(0),
-      { ...passedStatus(1), cross_shot_qa_status: 'passed', stopped_after_unit_failure: true, executed_in_current_generation: true },
-    ],
+    clips: recoveredClips,
+    statuses,
   });
   assert.deepStrictEqual(executed.passed_shot_indexes, [1, 2]);
   assert.deepStrictEqual(executed.not_executed_indexes, []);
