@@ -19,6 +19,90 @@ function internalProcessHits(value = '') {
   return INTERNAL_PROCESS_PATTERNS.filter(([, pattern]) => pattern.test(text)).map(([label]) => label);
 }
 
+const STORYBOARD_DETAIL_POLICY_VERSION = 2;
+const GARBLED_TEXT_PATTERN = /\uFFFD|\?{3,}|(?:锛|銆|鈥|鈦|馃|绗\?|闀滃ご|鐢婚潰|瑙嗛)/;
+const PLACEHOLDER_TEXT_PATTERN = /^(?:待定|待补充|暂无|无|默认|自动|自动生成|由\s*AI\s*决定|TBD|N\/?A|-+)$/i;
+
+function textValue(value = '') {
+  return String(value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function storyboardTextValues(shot = {}) {
+  const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
+  const characters = Array.isArray(shot.characters) ? shot.characters : [];
+  const layers = Array.isArray(shot.visual_layers) ? shot.visual_layers : [];
+  return [
+    shot.title, shot.role, shot.purpose, shot.visual, shot.action, shot.voiceover,
+    shot.material_usage, shot.keyframe_notes, shot.composition, shot.subject_position,
+    shot.entry_frame_state, shot.exit_frame_state, shot.action_start, shot.action_end,
+    shot.screen_direction, shot.eyeline, shot.camera_axis, shot.camera_movement,
+    shot.object_states, shot.transition_reason, shot.audio_bridge, shot.ambient_sound,
+    shot.music_cue, shot.voiceover_timing,
+    ...dialogue.flatMap(item => [item?.speaker, item?.line]),
+    ...characters.flatMap(item => [item?.name, item?.action]),
+    ...layers.flatMap(item => [item?.type, item?.content]),
+  ].map(textValue).filter(Boolean);
+}
+
+function hasGarbledStoryboardText(shot = {}) {
+  return storyboardTextValues(shot).some(value => GARBLED_TEXT_PATTERN.test(value));
+}
+
+function detailContractIssues(shot = {}, index = 0) {
+  const n = index + 1;
+  const issues = [];
+  const requiredText = [
+    ['景别 shot_size', shot.shot_size],
+    ['机位角度 camera_angle', shot.camera_angle],
+    ['景深 depth_of_field', shot.depth_of_field],
+    ['构图 composition', shot.composition],
+    ['主体位置 subject_position', shot.subject_position],
+    ['入镜状态 entry_frame_state', shot.entry_frame_state],
+    ['出镜状态 exit_frame_state', shot.exit_frame_state],
+    ['动作起点 action_start', shot.action_start],
+    ['动作终点 action_end', shot.action_end],
+    ['镜头运动 camera_movement', shot.camera_movement],
+    ['物体状态 object_states', shot.object_states],
+  ];
+  requiredText.forEach(([label, value]) => {
+    const normalized = textValue(value);
+    if (!normalized || PLACEHOLDER_TEXT_PATTERN.test(normalized)) {
+      issues.push(`第 ${n} 镜缺少动态生成的${label}`);
+    }
+  });
+  const lens = Number(shot.lens_mm || 0);
+  if (!Number.isFinite(lens) || lens < 8 || lens > 300) issues.push(`第 ${n} 镜缺少有效焦段 lens_mm`);
+
+  const visual = textValue(shot.visual);
+  const action = textValue(shot.action);
+  if (visual.length < 32) issues.push(`第 ${n} 镜完整画面说明过短，必须写清主体、场景、位置关系、光线及本镜相关材质`);
+  if (action.length < 18) issues.push(`第 ${n} 镜镜头动作过短，必须写清人物/产品动作与镜头如何运动`);
+
+  const notes = textValue(shot.keyframe_notes);
+  if (!/本镜目的/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“本镜目的”`);
+  if (!/必须出现/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“必须出现”`);
+  if (!/禁止出现/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“禁止出现”`);
+  return issues;
+}
+
+function repeatedCameraTemplateIssue(shots = []) {
+  const list = Array.isArray(shots) ? shots : [];
+  if (list.length < 4) return '';
+  const signatures = list.map(shot => [
+    textValue(shot.shot_size),
+    textValue(shot.camera_angle),
+    Number(shot.lens_mm || 0),
+    textValue(shot.depth_of_field),
+    textValue(shot.composition),
+    textValue(shot.subject_position),
+  ].join('|'));
+  const counts = signatures.reduce((map, signature) => map.set(signature, (map.get(signature) || 0) + 1), new Map());
+  const repeated = Math.max(0, ...counts.values());
+  return repeated >= Math.max(4, Math.ceil(list.length * 0.75))
+    ? '多数镜头复用了同一套景别、机位、焦段、景深、构图和主体位置，必须按各镜叙事目的分别设计，不能套固定模板'
+    : '';
+}
+
 function localReview(ctx, shots) {
   const blocking = [];
   const rewrite = [];
@@ -59,6 +143,8 @@ function localReview(ctx, shots) {
     const hasProductLayer = /(product|material|proof|comparison|brand|offer|result|ui|商品|产品|材料|材质|证据|证明|品牌|细节|展示|演示|使用|手持|收束|引导)/i.test(`${layerText} ${promoVisual} ${shot.material_usage || ''} ${shot.keyframe_notes || ''}`);
     const sceneId = String(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '').trim();
 
+    if (hasGarbledStoryboardText(shot)) blocking.push(`第 ${n} 镜含乱码或连续问号，必须重新生成干净的简体中文字段`);
+    blocking.push(...detailContractIssues(shot, idx));
     if (!visual.trim()) blocking.push(`第 ${n} 镜缺少画面`);
     if (!action.trim()) blocking.push(`第 ${n} 镜缺少动作`);
     if (!voice.trim() && !dialogue.some(d => String(d?.line || '').trim())) blocking.push(`第 ${n} 镜缺少台词/旁白`);
@@ -146,6 +232,9 @@ function localReview(ctx, shots) {
     }
   });
 
+  const cameraTemplateIssue = repeatedCameraTemplateIssue(list);
+  if (cameraTemplateIssue) blocking.push(cameraTemplateIssue);
+
   return {
     pass: blocking.length === 0,
     blocking_issues: Array.from(new Set(blocking)),
@@ -205,6 +294,10 @@ async function reviewStoryboard(ctx, shots, { taskId = '' } = {}) {
     'Do not treat "premium feel / texture / atmosphere" as hard blocking by itself.',
     'Only structural breakage, subject drift, explicit forbidden items, or multi-person identity conflict should be blocking.',
     'Weak required visual dimensions, vague action, or unnatural line should be rewrite_issues or warnings.',
+    'Check every shot for a task-specific production-ready visual, action, shot size, angle, lens, depth of field, composition, subject position, camera movement, entry/exit state, action start/end and object states.',
+    'Check keyframe_notes for the three explicit task-specific clauses 本镜目的、必须出现、禁止出现.',
+    'Reject mojibake, replacement characters, placeholders and repeated question marks.',
+    'Flag copied camera signatures across unrelated beats. Do not demand a fixed lens, angle, scene, person, product or industry; all values must be derived from this task.',
   ].join('\n');
   const userPrompt = `Context: ${JSON.stringify(ctx).slice(0, 8000)}
 Storyboard: ${JSON.stringify(shots).slice(0, 18000)}
@@ -241,6 +334,11 @@ Return JSON:
 }
 
 module.exports = {
+  STORYBOARD_DETAIL_POLICY_VERSION,
+  GARBLED_TEXT_PATTERN,
+  hasGarbledStoryboardText,
+  detailContractIssues,
+  repeatedCameraTemplateIssue,
   internalProcessHits,
   localReview,
   reviewStoryboard,

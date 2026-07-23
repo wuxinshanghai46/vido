@@ -259,6 +259,19 @@ function applyArtifactCompatibility({ shotPlans = [], units = [], clips = [], sh
     if (!plan.input_strategy) plan.input_strategy = artifactCompatibility.inputStrategy(clips[plan.index] || {});
     plan.compatibility_status = decision.status;
     plan.compatibility_reason_codes = decision.reason_codes || [];
+    // A deterministic local-motion plan is a producer decision, not a legacy
+    // artifact reuse decision. Missing or stale video media must never promote
+    // this zero-cost path into a paid provider submission.
+    if (plan.action === 'local_motion'
+      && decision.status !== artifactCompatibility.COMPATIBILITY_STATUS.CURRENT) {
+      plan.paid = false;
+      plan.input_strategy = 'approved_keyframe_local_motion';
+      plan.changes = [
+        ...(plan.changes || []),
+        '旧视频产物状态仅供审计；本镜仍由已批准关键帧执行本地确定性运镜，不调用视频供应商。',
+      ];
+      return;
+    }
     if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.CURRENT) Object.assign(plan, { action: 'reuse', paid: false, label: '保留当前兼容视频' });
     if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.METADATA_MIGRATION_READY) Object.assign(plan, { action: 'metadata_migration', paid: false, label: '迁移视频版本元数据（不重新生成）' });
     if (decision.status === artifactCompatibility.COMPATIBILITY_STATUS.REVERIFY_REQUIRED) Object.assign(plan, { action: 'review_only', review_scope: 'frame_and_boundary', paid: false, label: '复审现有视频（不重新生成）' });

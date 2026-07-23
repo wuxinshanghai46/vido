@@ -74,6 +74,31 @@ assert.strictEqual(targeted.paid_unit_count, 0);
 assert.strictEqual(targeted.local_unit_count, 1);
 assert.strictEqual(targeted.blockers.length, 0, 'an unrelated billing failure must not block a zero-cost targeted fix');
 
+const localMotionWithMissingArtifact = preflight.buildVideoPreflight({
+  taskId: 'preflight-local-motion-compatibility',
+  shots,
+  keyframes,
+  contracts,
+  clips,
+  statuses: [],
+  mode: 'economy',
+  providerRoute: 'deyunai/seedance',
+  onlyIndexes: [3],
+  compatibilityReport: {
+    fingerprint: 'compatibility-missing-media',
+    decisions: [{
+      index: 3,
+      status: 'regenerate_required',
+      reason_codes: ['MEDIA_MISSING'],
+    }],
+  },
+});
+assert.strictEqual(localMotionWithMissingArtifact.paid_unit_count, 0, 'missing legacy media must not promote local motion into a paid provider call');
+assert.strictEqual(localMotionWithMissingArtifact.local_unit_count, 1);
+assert.strictEqual(localMotionWithMissingArtifact.shots[0].action, 'local_motion');
+assert.strictEqual(localMotionWithMissingArtifact.shots[0].paid, false);
+assert.strictEqual(localMotionWithMissingArtifact.units[0].input_strategy, 'approved_keyframe_local_motion');
+
 const quality = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses: [], mode: 'quality', providerRoute: 'deyunai/seedance',
 });

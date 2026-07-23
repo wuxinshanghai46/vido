@@ -33,6 +33,46 @@ const dialogueDriftReview = localReview({}, [{
 }]);
 assert(dialogueDriftReview.blocking_issues.some(issue => /偏离已确认剧本/.test(issue)), '分镜不得把已确认台词再次压薄');
 
+const detailedShots = Array.from({ length: 4 }, (_, index) => ({
+  index: index + 1,
+  title: `动态镜头 ${index + 1}`,
+  purpose: `推进第 ${index + 1} 个叙事节点`,
+  visual: `当前任务主体位于经过明确描述的场景区域 ${index + 1}，画面写清前后层次、主体比例、任务相关材质与光线关系，并保留相邻镜头需要的空间锚点。`,
+  action: `主体从本镜起始姿态完成第 ${index + 1} 个可见动作，镜头按本镜目的运动并停在明确的结束状态。`,
+  voiceover: `这是第 ${index + 1} 个经过确认的叙事信息。`,
+  dialogue_function: 'progress',
+  shot_size: ['wide', 'medium', 'close_up', 'medium_close'][index],
+  camera_angle: ['eye_level', 'over_shoulder', 'high_angle', 'low_angle'][index],
+  lens_mm: [24, 35, 50, 85][index],
+  depth_of_field: ['deep', 'medium', 'shallow', 'ultra_shallow'][index],
+  composition: `按第 ${index + 1} 镜叙事目的设计的构图`,
+  subject_position: `主体位于第 ${index + 1} 镜所需位置`,
+  entry_frame_state: `第 ${index + 1} 镜可见的初始人物与物体状态`,
+  exit_frame_state: `第 ${index + 1} 镜可见的结束人物与物体状态`,
+  action_start: `第 ${index + 1} 镜动作起点`,
+  action_end: `第 ${index + 1} 镜动作终点`,
+  camera_movement: ['static', 'push_in', 'tracking', 'pull_out'][index],
+  object_states: `第 ${index + 1} 镜道具位置与开关状态保持明确`,
+  keyframe_notes: `本镜目的：完成节点 ${index + 1}；必须出现：当前任务主体与场景锚点；禁止出现：未授权人物、产品和场景。`,
+}));
+const detailedReview = localReview({ expected_storyboard_count: 4 }, detailedShots);
+assert.deepStrictEqual(detailedReview.blocking_issues, [], '动态精细分镜应通过本地硬门禁');
+
+const garbledReview = localReview({}, [{ ...detailedShots[0], subject_position: '????????????????' }]);
+assert(garbledReview.blocking_issues.some(issue => /乱码或连续问号/.test(issue)), '连续问号必须在分镜阶段硬阻断');
+
+const copiedCameraReview = localReview({}, detailedShots.map((shot, index) => ({
+  ...shot,
+  index: index + 1,
+  shot_size: 'medium',
+  camera_angle: 'eye_level',
+  lens_mm: 50,
+  depth_of_field: 'medium',
+  composition: '固定模板构图',
+  subject_position: '固定模板主体位置',
+})));
+assert(copiedCameraReview.blocking_issues.some(issue => /固定模板/.test(issue)), '全局精细化不得把同一机位模板复制给多数镜头');
+
 const beats = Array.from({ length: 6 }, (_, index) => ({ beat_index: index + 1 }));
 const aligned = alignShotsToBeats([{ index: 1 }, { index: 2 }], beats.slice(4));
 assert.deepStrictEqual(aligned.map(shot => shot.index), [5, 6], '分块模型的局部索引应映射回全局 beat 索引');

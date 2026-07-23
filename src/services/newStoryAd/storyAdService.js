@@ -6,7 +6,7 @@ const jsonRepair = require('./jsonRepairService');
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent } = require('./contextBuilder');
 const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
-const { reviewStoryboard } = require('./qualityReviewService');
+const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService');
 const { withContinuityContracts } = require('./continuityService');
 const diagnostics = require('./diagnosticsService');
@@ -2096,7 +2096,7 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
   assertVerifiedSceneAssets(ctx.scene_assets || []);
   const personContract = personIdentity.assertVerifiedPerson(ctx);
   productIdentity.assertVerifiedProduct(ctx);
-  const failures = [];
+  const failures = [...storyboardContinuityGate.reviewContinuity({ shots, contracts }).issues];
   const personRequired = personIdentity.personRequired(ctx);
   for (let index = 0; index < shots.length; index += 1) {
     const frame = keyframes[index] || {};
