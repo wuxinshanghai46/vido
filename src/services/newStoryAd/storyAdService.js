@@ -1,8 +1,7 @@
 const fs = require('fs'), crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
-const modelGateway = require('./modelGateway');
-const jsonRepair = require('./jsonRepairService');
+const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepairService'), outputLanguage = require('./outputLanguageService');
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent } = require('./contextBuilder');
 const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
@@ -809,19 +808,11 @@ async function generateSceneConfig(taskId, options = {}) {
     maxTokens: 3000,
   });
   stageProgress.update(taskId, { stage: 'scene_config', phase: 'draft_ready', completed: 1, total: 3, generationId, message: '场景配置初稿已返回，正在校验结构' });
-  const sceneConfig = await jsonRepair.parseOrRepair({
-    raw: result.text,
-    expected: 'object',
-    modelGateway,
-    taskId,
-    stage: 'new_story_ad.json_repair',
-  });
+  const sceneConfigDraft = await jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId, stage: 'new_story_ad.json_repair' });
+  const language = await outputLanguage.ensureChineseOutput({ payload: sceneConfigDraft, kind: 'scene_config', taskId, context: ctx });
+  const sceneConfig = language.payload;
   stageProgress.update(taskId, { stage: 'scene_config', phase: 'structure_validated', completed: 2, total: 3, generationId, message: '场景配置结构已通过，正在保存' });
-  sceneConfig.model_meta = {
-    used_model: result.used_model,
-    fallback_used: result.fallback_used,
-    failed_models: result.failed_models,
-  };
+  sceneConfig.model_meta = { used_model: result.used_model, fallback_used: result.fallback_used, failed_models: result.failed_models, language_repaired: language.repaired, language_assessment: language.assessment };
   storage.saveOutput(taskId, 'scene_config', sceneConfig);
   storage.saveStage(taskId, 'scene_config', { status: 'done', output_summary: '场景配置已生成', diagnostics: sceneConfig.model_meta });
   storage.updateTask(taskId, { status: 'running', stage: 'scene_config_done' });

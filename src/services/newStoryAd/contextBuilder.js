@@ -303,6 +303,30 @@ function normalizeProductionMode(value = '') {
   return ['auto', 'narrative_live_action', 'product_story', 'service_app_story'].includes(normalized) ? normalized : 'auto';
 }
 
+function inferVisibleTextPolicy(body = {}, brief = '') {
+  const raw = body.visible_text_policy || body.visibleTextPolicy || {};
+  const language = typeof raw === 'string'
+    ? cleanText(raw, 40).toLowerCase()
+    : cleanText(raw.language || raw.mode || '', 40).toLowerCase();
+  const explicitStrict = language === 'zh_only'
+    || language === 'chinese_only'
+    || body.strict_chinese_only === true
+    || body.strictChineseOnly === true;
+  const requestText = cleanText(brief, 3000);
+  const inferredStrict = /(?:纯中文|全中文|只(?:能|用|使用)中文|仅(?:能|用|使用)中文|禁止(?:出现|使用).{0,12}(?:英文|英文字母|拉丁字母)|不得(?:出现|使用).{0,12}(?:英文|英文字母|拉丁字母)|无英文)/u.test(requestText);
+  const strictChineseOnly = explicitStrict || inferredStrict;
+  return {
+    language: strictChineseOnly ? 'zh_only' : (language || 'auto'),
+    forbid_question_marks: strictChineseOnly
+      || raw.forbid_question_marks === true
+      || raw.forbidQuestionMarks === true,
+    forbid_replacement_character: strictChineseOnly
+      || raw.forbid_replacement_character === true
+      || raw.forbidReplacementCharacter === true,
+    source: explicitStrict ? 'explicit_field' : (inferredStrict ? 'explicit_brief_requirement' : 'default'),
+  };
+}
+
 function buildContext(body = {}, user = {}) {
   const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
@@ -345,6 +369,7 @@ function buildContext(body = {}, user = {}) {
     shot_count: shotCount,
     output_ratio: outputRatio,
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
+    visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
     voice_id: voiceId,
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
@@ -538,5 +563,6 @@ module.exports = {
   normalizeSceneSpec,
   normalizeSceneAssets,
   normalizeProductionMode,
+  inferVisibleTextPolicy,
   contextConflicts,
 };

@@ -3,6 +3,7 @@ const {
   assessChineseContent,
   ensureChineseOutput,
 } = require('../src/services/newStoryAd/outputLanguageService');
+const { inferVisibleTextPolicy } = require('../src/services/newStoryAd/contextBuilder');
 
 async function main() {
   const source = {
@@ -51,6 +52,62 @@ async function main() {
   assert.equal(result.payload.beats[0].subject_type, 'human_scene');
   assert.equal(result.payload.beats[0].scene_id, 'scene_001');
   assert.equal(result.payload.beats[0].duration, 5);
+
+  const strictContext = {
+    visible_text_policy: inferVisibleTextPolicy({}, '所有内容必须使用全中文，禁止出现英文字母和问号'),
+  };
+  assert.equal(strictContext.visible_text_policy.language, 'zh_only');
+  const strictSource = {
+    business_boundary: '展示维度智能视频创作平台',
+    advertised_subject: '维度智能视频创作平台',
+    story_strategy: ['结尾使用中文Slogan?', '展示完整创作流程'],
+    cast_mode: 'single',
+  };
+  const strictTranslated = {
+    business_boundary: '展示维度智能视频创作平台',
+    advertised_subject: '维度智能视频创作平台',
+    story_strategy: ['结尾使用中文宣传语', '展示完整创作流程'],
+    cast_mode: 'wrong-but-invisible',
+  };
+  assert.equal(assessChineseContent(strictSource, { strict_chinese_only: true }).needsRepair, true);
+  const strictResult = await ensureChineseOutput({
+    payload: strictSource,
+    kind: 'scene_config',
+    taskId: 'strict-language-test',
+    context: strictContext,
+    gateway: {
+      generateText: async () => ({
+        text: JSON.stringify(strictTranslated),
+        used_model: 'test/translator',
+        fallback_used: false,
+        failed_models: [],
+      }),
+    },
+    repair,
+  });
+  assert.equal(strictResult.repaired, true);
+  assert.equal(strictResult.payload.story_strategy[0], '结尾使用中文宣传语');
+  assert.equal(strictResult.payload.cast_mode, 'single');
+  assert.equal(assessChineseContent(strictResult.payload, { strict_chinese_only: true }).needsRepair, false);
+
+  await assert.rejects(
+    ensureChineseOutput({
+      payload: strictSource,
+      kind: 'scene_config',
+      taskId: 'strict-language-failure-test',
+      context: strictContext,
+      gateway: {
+        generateText: async () => ({
+          text: JSON.stringify(strictSource),
+          used_model: 'test/translator',
+          fallback_used: false,
+          failed_models: [],
+        }),
+      },
+      repair,
+    }),
+    error => error?.code === 'OUTPUT_LANGUAGE_INVALID',
+  );
   console.log('PASS new story ad Chinese output guard');
 }
 

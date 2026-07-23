@@ -10,7 +10,28 @@ const VISIBLE_KEYS = new Set([
   'screen_direction', 'eyeline', 'camera_axis', 'camera_movement', 'object_states', 'audio_bridge',
   'composition', 'subject_position', 'ambient_sound', 'sfx', 'music_cue', 'voiceover_timing',
   'content', 'space_anchor', 'fixed_subjects', 'continuity_rules',
+  'business_boundary', 'advertised_subject', 'story_strategy', 'forbidden', 'usage',
 ]);
+
+function normalizeVisibleTextPolicy(context = {}) {
+  const raw = context.visible_text_policy || context.visibleTextPolicy || {};
+  const language = typeof raw === 'string'
+    ? raw
+    : String(raw.language || raw.mode || '').trim().toLowerCase();
+  const strictChineseOnly = language === 'zh_only'
+    || language === 'chinese_only'
+    || context.strict_chinese_only === true
+    || context.strictChineseOnly === true;
+  return {
+    strict_chinese_only: strictChineseOnly,
+    forbid_question_marks: strictChineseOnly
+      || raw.forbid_question_marks === true
+      || raw.forbidQuestionMarks === true,
+    forbid_replacement_character: strictChineseOnly
+      || raw.forbid_replacement_character === true
+      || raw.forbidReplacementCharacter === true,
+  };
+}
 
 function collectVisibleStrings(value, key = '', out = []) {
   if (typeof value === 'string') {
@@ -27,15 +48,28 @@ function collectVisibleStrings(value, key = '', out = []) {
   return out;
 }
 
-function assessChineseContent(payload) {
+function assessChineseContent(payload, policy = {}) {
   const strings = collectVisibleStrings(payload);
   const text = strings.join(' ');
   const chineseCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
   const latinCount = (text.match(/[A-Za-z]/g) || []).length;
   const latinWords = (text.match(/[A-Za-z][A-Za-z'-]*/g) || []).length;
   const chineseRatio = chineseCount / Math.max(1, chineseCount + latinCount);
-  const needsRepair = latinWords >= 8 && (chineseCount < 6 || chineseRatio < 0.12);
-  return { needsRepair, strings: strings.length, chinese_count: chineseCount, latin_count: latinCount, latin_words: latinWords, chinese_ratio: chineseRatio };
+  const strictChineseOnly = policy.strict_chinese_only === true;
+  const forbiddenGlyphCount = (text.match(/[?？�]/gu) || []).length;
+  const needsRepair = strictChineseOnly
+    ? latinCount > 0 || forbiddenGlyphCount > 0
+    : latinWords >= 8 && (chineseCount < 6 || chineseRatio < 0.12);
+  return {
+    needsRepair,
+    strings: strings.length,
+    chinese_count: chineseCount,
+    latin_count: latinCount,
+    latin_words: latinWords,
+    chinese_ratio: chineseRatio,
+    forbidden_glyph_count: forbiddenGlyphCount,
+    strict_chinese_only: strictChineseOnly,
+  };
 }
 
 function mergeVisibleStrings(original, translated, key = '') {
@@ -59,11 +93,16 @@ function mergeVisibleStrings(original, translated, key = '') {
 }
 
 async function ensureChineseOutput({ payload, kind, taskId = '', context = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
-  const before = assessChineseContent(payload);
+  const policy = normalizeVisibleTextPolicy(context);
+  const before = assessChineseContent(payload, policy);
   if (!before.needsRepair) return { payload, repaired: false, assessment: before, model_meta: null };
 
   const expected = Array.isArray(payload) ? 'array' : 'object';
-  const stage = kind === 'storyboard' ? 'new_story_ad.storyboard_language_repair' : 'new_story_ad.blueprint_language_repair';
+  const stage = kind === 'storyboard'
+    ? 'new_story_ad.storyboard_language_repair'
+    : (kind === 'scene_config'
+      ? 'new_story_ad.scene_config_language_repair'
+      : 'new_story_ad.blueprint_language_repair');
   const result = await gateway.generateText({
     taskId,
     stage,
@@ -74,6 +113,9 @@ async function ensureChineseOutput({ payload, kind, taskId = '', context = {}, g
       '不得改变 JSON 键名、数组长度、镜头顺序、数字、时长、ID、枚举值、场景绑定、镜头绑定和技术参数。',
       'scene_zone_label_zh 和 scene_zone 必须使用简体中文；scene_zone_id、zone_ids、anchor_ids 是稳定机器标识，绝对不得翻译或改写。',
       '不得新增、删除、合并或改写剧情事实；只校正显示语言。',
+      policy.strict_chinese_only
+        ? '本任务采用纯中文显示策略。所有用户可见文字必须改为自然简体中文，不得保留任何英文字母，不得出现半角问号、全角问号或替换字符。品牌英文名也要使用用户给出的中文名称。'
+        : '',
     ].join('\n'),
     userPrompt: `任务中文上下文：${JSON.stringify({ brief: context.brief || '', product_subject: context.product_subject || '', characters: context.characters || [] }).slice(0, 5000)}\n\n待校正 JSON：${JSON.stringify(payload)}`,
     maxTokens: kind === 'storyboard' ? 9000 : 7500,
@@ -81,9 +123,9 @@ async function ensureChineseOutput({ payload, kind, taskId = '', context = {}, g
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected, modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const merged = mergeVisibleStrings(payload, parsed);
-  const after = assessChineseContent(merged);
+  const after = assessChineseContent(merged, policy);
   if (after.needsRepair) {
-    const error = new Error(`${kind || '剧情广告'}用户可见内容未通过中文输出校验，已停止保存英文结果`);
+    const error = new Error(`${kind || '剧情广告'}的用户可见内容未通过中文输出校验，已停止保存违规结果`);
     error.code = 'OUTPUT_LANGUAGE_INVALID';
     error.retryable = false;
     error.language_diagnostics = { before, after };
@@ -97,4 +139,10 @@ async function ensureChineseOutput({ payload, kind, taskId = '', context = {}, g
   };
 }
 
-module.exports = { assessChineseContent, collectVisibleStrings, mergeVisibleStrings, ensureChineseOutput };
+module.exports = {
+  assessChineseContent,
+  collectVisibleStrings,
+  mergeVisibleStrings,
+  ensureChineseOutput,
+  normalizeVisibleTextPolicy,
+};
