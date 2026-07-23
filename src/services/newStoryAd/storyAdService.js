@@ -33,7 +33,7 @@ const personKeyframeQa = require('./personConsistencyQaService');
 const productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoQualityPolicy = require('./videoQualityPolicyService');
-const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService'), videoArtifactWorkflow = require('./videoArtifactWorkflowService'), videoArtifactCompatibility = require('./videoArtifactCompatibilityService');
+const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService'), videoArtifactWorkflow = require('./videoArtifactWorkflowService'), videoArtifactCompatibility = require('./videoArtifactCompatibilityService'), videoComposeCompatibility = require('./videoComposeCompatibilityService');
 const videoRepairPolicy = require('./videoRepairPolicy');
 const videoPreflight = require('./videoPreflightService'), videoStatusProjection = require('./videoStatusProjectionService');
 const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStore(storage);
@@ -3238,12 +3238,12 @@ async function composeStage(taskId, options = {}) {
   // Composition must never generate visual clips. Step 4 owns storyboard video
   // generation and review; step 5 only mixes optional audio/effects and joins
   // the already-approved clips.
-  const clips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [];
+  const storedComposeClips = Array.isArray(storage.getOutput(taskId, 'video_clips')) ? storage.getOutput(taskId, 'video_clips') : [], composeStatuses = videoAdapter.listVideoShotStatuses(taskId, shots.length), clips = videoClipStatusRecovery.recover(storedComposeClips, composeStatuses);
   const composeSceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [], composeContracts = keyframeContractFreshness.inspect(taskId, { ctx: { ...ctx, scene_assets: composeSceneAssets }, shots }).contracts;
   const composeKeyframes = storage.getOutput(taskId, 'keyframes') || [], composeBlueprint = storage.getOutput(taskId, 'blueprint') || {}, composeStoryboardMeta = storage.getOutput(taskId, 'storyboard_meta') || {}, composeTts = storage.getOutput(taskId, 'tts_audio') || {}, composeAudioTracks = Array.isArray(composeTts?.tracks) ? composeTts.tracks : (Array.isArray(composeTts) ? composeTts : []);
   const composeSceneBlocks = storage.getOutput(taskId, 'video_scene_blocks') || [], composeModelRoute = String(clips.find(clip => clip?.provider_used)?.provider_used || '').toLowerCase();
   const composeExpectedLineages = videoArtifactWorkflow.buildExpectedLineages({ shots, contracts: composeContracts, keyframes: composeKeyframes, ctx, blueprint: composeBlueprint, storyboardMeta: composeStoryboardMeta, modelRoute: composeModelRoute, audioTracks: composeAudioTracks, sceneBlocks: composeSceneBlocks, shotPlans: clips.map((clip, index) => ({ index, input_strategy: videoArtifactCompatibility.inputStrategy(clip), boundary_repair: { fingerprint: clip?.boundary_repair_fingerprint || clip?.lineage?.boundary_repair_fingerprint || '' }, transition_override: clip?.transition_override || '' })), qaPolicyVersion: videoFrameQa.VIDEO_FRAME_QA_POLICY_VERSION, speechModeFor: (shot, contract) => videoAdapter.explicitShotSpeechMode(shot, contract), motionPromptFor: (shot, contract, index) => clips[index]?.motion_prompt || videoAdapter.clipPrompt(shot, ctx, contract, index > 0 ? shots[index - 1] : null, composeKeyframes[index] || {}, '') });
-  const composeCompatibility = videoArtifactWorkflow.buildCompatibilityReport({ clips, expectedLineages: composeExpectedLineages });
+  const composeCompatibility = videoComposeCompatibility.buildReport({ clips, statuses: composeStatuses, expectedLineages: composeExpectedLineages });
   videoArtifactWorkflow.assertComposeCompatible(composeCompatibility);
   const boundaryAudit = videoBoundaryPolicy.audit(clips, shots.length); if (!boundaryAudit.ready) { const failed = boundaryAudit.failed_indexes.length > 0;
     const error = new Error(`当前版本仍有跨生成单元衔接审核${failed ? '未通过' : '未完成'}：${boundaryAudit.unready_indexes.map(index => `第 ${index}→${index + 1} 镜`).join('、')}`);

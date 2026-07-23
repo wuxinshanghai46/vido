@@ -3,6 +3,7 @@ const revisionService = require('../src/services/newStoryAd/revisionService');
 const compatibility = require('../src/services/newStoryAd/videoArtifactCompatibilityService');
 const lineage = require('../src/services/newStoryAd/videoLineageService');
 const boundaryPolicy = require('../src/services/newStoryAd/videoBoundaryPolicyService');
+const composeCompatibility = require('../src/services/newStoryAd/videoComposeCompatibilityService');
 
 function expectedLineage(overrides = {}) {
   return lineage.buildShotLineage({
@@ -63,6 +64,86 @@ const currentDecision = compatibility.classifyVideoArtifact({
   allowedInputStrategies: ['approved_keyframe_first_frame_only'],
 });
 assert.strictEqual(currentDecision.status, compatibility.COMPATIBILITY_STATUS.CURRENT);
+
+// A later scoped plan may use a different generation topology. Compose must
+// retain the approved clip's producer topology/prompt while still comparing the
+// current script, contract, keyframe, revisions, audio and output settings.
+{
+  const laterPlan = expectedLineage({
+    motionPrompt: 'later scoped generation prompt',
+    sceneBlock: {
+      policy_version: 'continuous-scene-workflow-v6',
+      id: 'later-single-shot-block',
+      fingerprint: 'later-block-fingerprint',
+      member_indexes: [0],
+    },
+  });
+  const produced = expectedLineage({
+    motionPrompt: 'original producer prompt',
+    sceneBlock: {
+      policy_version: 'continuous-scene-workflow-v6',
+      id: 'original-block',
+      fingerprint: 'original-block-fingerprint',
+      member_indexes: [0, 1],
+    },
+  });
+  const clip = clipFor(produced, {
+    motion_prompt: 'provider block prompt stored separately',
+    scene_block_id: produced.scene_block_id,
+    scene_block_fingerprint: produced.scene_block_fingerprint,
+    scene_block_members: produced.scene_block_members,
+  });
+  const rebased = composeCompatibility.rebaseExpectedLineage(laterPlan, clip);
+  assert.strictEqual(rebased.fingerprint, produced.fingerprint);
+
+  const changedScript = expectedLineage({
+    shot: { id: 'shot-1', title: 'Changed shot', visual: 'Changed visual', action: 'Changed action', duration_sec: 5 },
+  });
+  const changedRebased = composeCompatibility.rebaseExpectedLineage(changedScript, clip);
+  assert.notStrictEqual(changedRebased.fingerprint, produced.fingerprint);
+}
+
+// Snapshot-only legacy media can pass compose only through an explicit receipt
+// bound to both the current source fingerprint and exact media lineage.
+{
+  const expected = expectedLineage({ boundaryRepairFingerprint: '', transitionPolicyVersion: '' });
+  const receipt = composeCompatibility.createReceipt(expected, expected.fingerprint, { approved_by: 'test' });
+  const snapshot = {
+    file_path: __filename,
+    video_url: '/snapshot.mp4',
+    seedance_input_mode: expected.input_strategy,
+    lineage_fingerprint: expected.fingerprint,
+    qa: { pass: true },
+    compose_compatibility_receipt: receipt,
+  };
+  const status = {
+    file_path: __filename,
+    file_exists: true,
+    video_url: '/snapshot.mp4',
+    lifecycle: 'qa_passed',
+    qa_status: 'passed',
+    lineage_fingerprint: expected.fingerprint,
+    error_code: '',
+    compose_compatibility_receipt: receipt,
+  };
+  const accepted = composeCompatibility.buildReport({
+    clips: [snapshot],
+    statuses: [status],
+    expectedLineages: [{ ...expected, fingerprint: 'planner-only-different-fingerprint' }],
+  });
+  assert.strictEqual(accepted.ready_for_compose, true);
+  assert.strictEqual(accepted.decisions[0].compose_receipt_verified, true);
+
+  const changed = expectedLineage({
+    shot: { id: 'shot-1', title: 'Changed', visual: 'Changed', action: 'Changed', duration_sec: 5 },
+  });
+  const rejected = composeCompatibility.buildReport({
+    clips: [snapshot],
+    statuses: [status],
+    expectedLineages: [changed],
+  });
+  assert.strictEqual(rejected.ready_for_compose, false);
+}
 
 const exactStatusSnapshotDecision = compatibility.classifyVideoArtifact({
   clip: {

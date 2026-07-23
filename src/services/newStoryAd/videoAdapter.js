@@ -912,7 +912,7 @@ async function generateShotVideos({ taskId = '', shots = [], keyframes = [], tts
     error_code: '',
     repair_attempt: Number(options._repairAttempt || 0),
     pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
-    lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
+    lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '', lineage: options._expectedLineages?.[index] || null,
   }, list.length));
 
   let schedule = {
@@ -1149,7 +1149,7 @@ async function generateSceneBlockVideos({ taskId = '', shots = [], keyframes = [
       ...videoAttemptState.queuedProviderState(previousStatus, resumeProviderTaskId),
       file_path: '', file_exists: false, video_url: '', qa_status: '', qa_problems: [], error: '', error_code: '', previous_clip_restored: false, recovered_existing_paid_clip: false, stopped_after_unit_failure: false, artifact_compatibility: null, compatibility_status: '', compatibility_reason_codes: [], regenerate_required: false,
       repair_attempt: Number(options._repairAttempt || 0), pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
-      lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '',
+      lineage_fingerprint: options._expectedLineages?.[index]?.fingerprint || '', lineage: options._expectedLineages?.[index] || null,
     }, list.length);
   });
   let schedule = { results: [], waves: [], configured_concurrency: 1, effective_concurrency: 1, max_concurrency: 1, throttle_retries: {} };

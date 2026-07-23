@@ -68,6 +68,9 @@ function recoveredClip(status = {}, previousStatus = {}) {
     scene_block_fingerprint: text(status.scene_block_fingerprint),
     scene_block_members: Array.isArray(status.scene_block_members) ? status.scene_block_members.map(Number).filter(Number.isInteger) : [],
     lineage_fingerprint: currentFingerprint,
+    ...(status.compose_compatibility_receipt ? {
+      compose_compatibility_receipt: status.compose_compatibility_receipt,
+    } : {}),
     qa: {
       pass: true,
       status: 'verified_status_snapshot',
@@ -106,6 +109,15 @@ function recover(clips = [], statuses = []) {
         next[index] = {
           ...existing,
           cross_shot_qa: boundaryEvidence,
+          status_evidence_enriched: true,
+          ...(status.compose_compatibility_receipt ? {
+            compose_compatibility_receipt: status.compose_compatibility_receipt,
+          } : {}),
+        };
+      } else if (status.compose_compatibility_receipt) {
+        next[index] = {
+          ...existing,
+          compose_compatibility_receipt: status.compose_compatibility_receipt,
           status_evidence_enriched: true,
         };
       }
