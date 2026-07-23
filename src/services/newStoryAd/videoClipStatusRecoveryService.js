@@ -24,6 +24,28 @@ function inputStrategy(status = {}) {
   return local ? 'approved_keyframe_local_motion' : '';
 }
 
+function clipFingerprint(clip = {}) {
+  return text(clip.lineage_fingerprint || clip.lineage?.fingerprint);
+}
+
+function verifiedBoundaryEvidence(clip = {}, status = {}, previousClip = {}, previousStatus = {}) {
+  if (text(status.cross_shot_qa_status).toLowerCase() !== 'passed') return null;
+  const currentFingerprint = text(status.lineage_fingerprint);
+  const previousFingerprint = text(previousStatus.lineage_fingerprint);
+  if (!currentFingerprint || currentFingerprint !== clipFingerprint(clip)) return null;
+  if (!previousFingerprint || previousFingerprint !== clipFingerprint(previousClip)) return null;
+  if (!statusHasVerifiedMedia(previousStatus)) return null;
+  return {
+    pass: true,
+    status: 'verified_status_snapshot',
+    previous_lineage_fingerprint: previousFingerprint,
+    current_lineage_fingerprint: currentFingerprint,
+    problems: [],
+    failure_dimensions: [],
+    checked_at: status.finished_at || status.updated_at || '',
+  };
+}
+
 function recoveredClip(status = {}, previousStatus = {}) {
   status = status && typeof status === 'object' ? status : {};
   previousStatus = previousStatus && typeof previousStatus === 'object' ? previousStatus : {};
@@ -74,8 +96,21 @@ function recover(clips = [], statuses = []) {
   (Array.isArray(statuses) ? statuses : []).forEach((status, position) => {
     if (!statusHasVerifiedMedia(status)) return;
     const index = Math.max(0, Number(status.shot_index ?? status.index - 1 ?? position) || 0);
-    if (next[index]?.video_url || next[index]?.file_path) return;
     const previousStatus = statuses[index - 1] || {};
+    const existing = next[index];
+    if (existing?.video_url || existing?.file_path) {
+      const boundaryEvidence = index > 0
+        ? verifiedBoundaryEvidence(existing, status, next[index - 1] || {}, previousStatus)
+        : null;
+      if (boundaryEvidence) {
+        next[index] = {
+          ...existing,
+          cross_shot_qa: boundaryEvidence,
+          status_evidence_enriched: true,
+        };
+      }
+      return;
+    }
     next[index] = recoveredClip(status, {
       ...previousStatus,
       lineage_fingerprint: previousStatus.lineage_fingerprint || next[index - 1]?.lineage_fingerprint || next[index - 1]?.lineage?.fingerprint || '',
@@ -98,6 +133,8 @@ function recoverFromOutputRows(rows = [], clips = []) {
 module.exports = {
   statusHasVerifiedMedia,
   inputStrategy,
+  clipFingerprint,
+  verifiedBoundaryEvidence,
   recoveredClip,
   recover,
   statusesFromOutputRows,

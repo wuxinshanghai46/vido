@@ -134,6 +134,47 @@ function result({ count = 1, task = {}, clips = [], statuses = [], finalVideo = 
   assert.strictEqual(executed.outcome, 'ready_to_compose');
 }
 
+// 片段本体已经持久化，但跨镜 QA 只写入逐镜状态快照时，公开页面必须在
+// 血缘完全一致后同步补齐证据，不能把后端已通过误显示为“仍有 1 个未审核”。
+{
+  const clips = [
+    passedClip(0, { lineage_fingerprint: 'lineage-existing-1' }),
+    passedClip(1, {
+      lineage_fingerprint: 'lineage-existing-2',
+      cross_shot_qa: undefined,
+    }),
+  ];
+  const statuses = [
+    {
+      ...passedStatus(0),
+      shot_index: 0,
+      video_url: '/shot-1.mp4',
+      file_exists: true,
+      lineage_fingerprint: 'lineage-existing-1',
+    },
+    {
+      ...passedStatus(1),
+      shot_index: 1,
+      video_url: '/shot-2.mp4',
+      file_exists: true,
+      lineage_fingerprint: 'lineage-existing-2',
+      cross_shot_qa_status: 'passed',
+    },
+  ];
+  const enriched = clipStatusRecovery.recover(clips, statuses);
+  assert.strictEqual(enriched[1].status_evidence_enriched, true);
+  assert.strictEqual(enriched[1].cross_shot_qa.pass, true);
+  assert.strictEqual(enriched[1].cross_shot_qa.previous_lineage_fingerprint, 'lineage-existing-1');
+  assert.strictEqual(enriched[1].cross_shot_qa.current_lineage_fingerprint, 'lineage-existing-2');
+
+  const mismatched = clipStatusRecovery.recover(clips, [
+    statuses[0],
+    { ...statuses[1], lineage_fingerprint: 'different-lineage' },
+  ]);
+  assert.strictEqual(mismatched[1].cross_shot_qa, undefined);
+  assert.strictEqual(mismatched[1].status_evidence_enriched, undefined);
+}
+
 // provider 已提交后的失败不得被显示成“未提交/未计费”。
 {
   const provider = result({
