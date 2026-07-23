@@ -587,3 +587,4 @@ node src/server.js
 - 回滚备份：`/opt/vido/backups/story-ad-v2-20260723135320`。
 - 生产完整 V2.0/V3 回归、PM2 online、内外网健康 HTTP 200、公网新 CSS 资源 HTTP 200、SQLite `quick_check=ok`。
 - 目标任务保持 `done/final_video_ready`、6/6 视频 QA、268 条模型调用、无活动生成；部署没有触发真实供应商或新增费用。
+- 新版只读预检结果为 `blocked / VIDEO_INPUT_QA_REQUIRED`，6 个旧片段在 QA v4 血缘下均为 `regenerate_required`；这证明旧 QA 不会被静默续用，也表示当前不得点击该旧任务生成。后续应使用完成输入 QA 的受控新任务，并重新确认 6 个付费单元、30 秒和人民币费用上限。
