@@ -463,6 +463,41 @@ async function assertMultiSpacePromptsAndRecovery() {
     );
     assert.strictEqual(calls.length - unknownStart, 2, 'unacknowledged unknown billing must make zero new supplier calls');
 
+    const legacyUnknownTask = 'multi-space-legacy-layout-unknown';
+    storage.createTask({ id: legacyUnknownTask, title: legacyUnknownTask, request: baseContext });
+    storage.saveOutput(legacyUnknownTask, 'context', baseContext);
+    storage.saveOutput(legacyUnknownTask, 'scene_config', sceneConfig);
+    storage.saveOutput(legacyUnknownTask, sceneCheckpoint.outputKind('space_park'), {
+      task_id: legacyUnknownTask,
+      scene_id: 'space_park',
+      status: 'partial',
+      input_fingerprint: 'legacy-checkpoint-without-billing-fields',
+      views: {
+        master: {
+          status: 'succeeded',
+          attempts: 1,
+          url: '/mock-legacy-master.png',
+          image_url: '/mock-legacy-master.png',
+        },
+        layout: {
+          status: 'failed',
+          attempts: 1,
+          error_code: 'PROVIDER_5XX_AMBIGUOUS',
+        },
+      },
+    });
+    const callsBeforeLegacyGuard = calls.length;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(legacyUnknownTask, { space_id: 'space_park' }),
+      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
+        && error?.details?.failed_views?.[0]?.key === 'layout',
+    );
+    assert.strictEqual(
+      calls.length,
+      callsBeforeLegacyGuard,
+      'legacy ambiguous 5xx without billing fields must make zero supplier calls',
+    );
+
     const recovered = await sceneAssets.generateSceneAsset(unknownTask, {
       space_id: 'space_park',
       acknowledge_billing_unknown: true,

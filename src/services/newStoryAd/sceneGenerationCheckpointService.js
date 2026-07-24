@@ -141,6 +141,13 @@ function checkpointExpired(checkpoint = {}) {
   return updated > 0 && Date.now() - updated > CHECKPOINT_TTL_MS;
 }
 
+function hasUnknownBillingRisk(view = {}) {
+  if (view?.status !== 'failed') return false;
+  return view.billing_state === 'unknown'
+    || view.provider_submission_state === 'submitted_unknown'
+    || view.error_code === 'PROVIDER_5XX_AMBIGUOUS';
+}
+
 function cleanupUnpublishedFiles(checkpoint = {}) {
   if (!checkpoint || checkpoint.status === 'published') return 0;
   const assetRoot = path.resolve(mediaAdapter.ASSET_DIR);
@@ -181,7 +188,7 @@ function open({
   const kind = outputKind(sceneId);
   const existing = storage.getOutput(taskId, kind);
   const unknownBillingViews = Object.entries(existing?.views || {})
-    .filter(([, view]) => view?.status === 'failed' && view?.billing_state === 'unknown')
+    .filter(([, view]) => hasUnknownBillingRisk(view))
     .map(([key, view]) => ({
       key,
       error_code: String(view.error_code || ''),
