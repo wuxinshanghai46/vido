@@ -677,7 +677,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   const requestedPeople = Number(spec.expected_people || spec.expectedPeople || spec.person_count || body.expected_people || body.expectedPeople || 0) || 0;
   const expectedPeople = requestedPeople > 0
     ? Math.max(1, Math.min(12, Math.round(requestedPeople)))
-    : (castMode === 'dual' ? 2 : (castMode === 'single' ? 1 : 0));
+    : (castMode === 'dual' ? 2 : (['single', 'human_pet'].includes(castMode) ? 1 : 0));
   const actorId = `new_story_actor_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const description = buildActorDescription({
     brief,

@@ -22,6 +22,10 @@ function changeScope(previous = {}, next = {}, explicit = '') {
     person_context: previous.person_context,
     characters: previous.characters,
     cast_mode: previous.cast_mode,
+    expected_people: previous.expected_people,
+    expected_animals: previous.expected_animals,
+    pet_profiles: previous.pet_profiles,
+    pet_contract: previous.pet_contract,
   };
   const personAfter = {
     person_spec: next.person_spec,
@@ -30,6 +34,10 @@ function changeScope(previous = {}, next = {}, explicit = '') {
     person_context: next.person_context,
     characters: next.characters,
     cast_mode: next.cast_mode,
+    expected_people: next.expected_people,
+    expected_animals: next.expected_animals,
+    pet_profiles: next.pet_profiles,
+    pet_contract: next.pet_contract,
   };
   const sceneBefore = {
     scene_spec: previous.scene_spec,

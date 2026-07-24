@@ -161,7 +161,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260724-realism-layout-restore-v2'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260724-human-pet-contract-v3'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -187,7 +187,7 @@ assert(!storyboardAutosaveBranch.includes('state.keyframes = []'),
 assert(ui.includes('data-nsa-candidate-override'), 'rejected keyframes must offer an explicit human override action');
 assert(ui.includes('/manual-accept'), 'human override must call the auditable manual acceptance endpoint');
 assert(ui.includes("person_spec: noHuman ? { castMode: 'no_human' } : person"), 'no-human payload must suppress stale person details');
-assert(ui.includes('assetPayloadList({ includePerson: !noHuman })'), 'no-human payload must exclude person reference assets');
+assert(ui.includes('assetPayloadList({ includePerson: !noHuman && !animalOnly })'), 'no-human and animal-only payloads must exclude person reference assets');
 assert(ui.includes('不使用配音（选填）'), 'voice picker must immediately offer a no-voiceover choice');
 assert(ui.includes("api(`/api/avatar/voice-list${query}`)"), 'normal voice loading must reuse browser/server cache');
 assert(ui.includes("sessionStorage.setItem('vido_nsa_voice_catalog'"), 'voice catalog must be cached for later opens');
@@ -232,7 +232,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260724-realism-layout-restore-v2'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260724-human-pet-contract-v3'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');

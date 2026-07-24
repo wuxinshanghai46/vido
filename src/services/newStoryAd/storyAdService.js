@@ -24,8 +24,7 @@ const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
 const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 const sceneSpace = require('./sceneSpaceContractService');
-const revisionService = require('./revisionService');
-const personIdentity = require('./personIdentityContractService');
+const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService');
 const productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService');
@@ -39,8 +38,7 @@ const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStor
 const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
-const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
-const assistTextFormatter = require('./assistTextFormatterService');
+const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistTextFormatter = require('./assistTextFormatterService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
@@ -788,7 +786,7 @@ async function generateSceneConfig(taskId, options = {}) {
     '你是剧情广告场景配置 agent。只输出 JSON 对象。',
     '你的职责是把用户需求整理成业务边界、主体、人物模式、素材使用、禁止项和建议镜头策略。',
     '不能自行继承旧任务、不能写固定行业模板。',
-    '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色。',
+    '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、human_pet、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色；human_pet 必须分别维护人物和宠物数量及一致性。',
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
 
@@ -796,7 +794,7 @@ async function generateSceneConfig(taskId, options = {}) {
 {
   "business_boundary": "本任务只允许使用的业务/行业/主体边界",
   "advertised_subject": "广告主体",
-  "cast_mode": "single/dual/multi/no_human/animal/auto",
+  "cast_mode": "single/dual/multi/no_human/animal/human_pet/auto",
   "asset_strategy": [{"asset_id":"素材ID","usage":"如何使用"}],
   "story_strategy": ["剧情策略"],
   "forbidden": ["禁止项"],
@@ -1286,6 +1284,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     shotNeedsPerson && actorReferenceText ? 'A hand-only or partial-person frame is allowed only when this storyboard explicitly requires that visible body part and it remains bound to the locked actor. A no-person shot forbids hands and sleeves too.' : '',
     shotNeedsPerson && Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     shotNeedsPerson && ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
+    petIdentity.keyframePrompt(ctx, shot),
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
     userVisualOverride ? 'The edited visual is the only source of truth for object layout, surface type, carrier, material form and composition.' : '',
     previousFrame ? `Continuity reference from previous accepted keyframe: shot ${previousFrame.index}, title ${cleanText(previousFrame.title, 120)}, image ${previousFrame.image_url}. Match its lighting mood, material realism, framing discipline and commercial tone only where compatible with the edited visual.` : '',
@@ -3427,6 +3426,7 @@ function enforceAssistedPersonSpec(spec = {}, current = {}, context = {}) {
   preserve('origin', ['match_brief']);
   preserve('roleName');
   preserve('displayName');
+  petIdentity.preserveAssistedFields(output, source);
   const fallback = assistedPersonSpecFallback(output, source, context);
   output.appearanceText = alignPersonAgeDescription(
     output.appearanceText || output.appearance || output.description
@@ -3532,7 +3532,7 @@ async function assistBrief(body = {}, user = {}) {
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
-    '当 mode 是 person_spec 时，只补齐人物设定字段，必须包含外貌、穿着、发型妆造和人物禁止项。',
+    '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。',
     '当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
@@ -3553,7 +3553,7 @@ async function assistBrief(body = {}, user = {}) {
       : isPersonSpec
         ? `{
   "person_spec": {
-    "castMode": "auto/single/dual/group",
+    "castMode": "auto/single/dual/group/no_human/animal/human_pet",
     "gender": "auto/male/female/mixed/all_male/all_female",
     "age": "match_brief/young_adult_17_25/young_adult/adult_30_40/middle_40_55/senior_55_plus",
     "origin": "match_brief/east_asian_cn/southeast_asian/white_european/black_african/middle_eastern/south_asian/latino/mixed_global",
@@ -3562,7 +3562,8 @@ async function assistBrief(body = {}, user = {}) {
     "appearanceText": "脸型、体型、年龄感、商业真实感、气质、表情可信度，80-160 字",
     "wardrobeText": "上衣、下装、鞋、配饰、颜色、材质、与产品/场景的关系，80-160 字",
     "hairMakeupText": "发型、妆容、眼镜、胡须或其它妆造细节，50-120 字",
-    "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔"
+    "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔",
+    "expectedAnimals": "动物/宠物主体或人物+宠物模式填写 1-8 的整数，其它模式留空", "petType": "宠物类型或品种，例如金毛犬、英短猫", "petDescription": "毛色、体型、年龄感、面部花纹、项圈和独特识别特征；用于跨镜头保持同一只宠物"
   }
 }`
       : isSceneSpec
@@ -3621,7 +3622,7 @@ async function assistBrief(body = {}, user = {}) {
           : `{
   "brief": "可直接放入广告需求文本框的完整纯文本；使用【标题】内容分段和真实换行；不要 Markdown；不要字面量反斜杠换行",
   "product_subject": "广告主体",
-  "cast_mode": "auto/single/dual/multi/no_human",
+  "cast_mode": "auto/single/dual/multi/no_human/animal/human_pet",
   "shot_count": 0,
   "forbidden": ["禁止项"],
   "characters": [{"name":"角色名","role":"剧情职责","description":"简短说明"}]
@@ -3637,7 +3638,7 @@ async function assistBrief(body = {}, user = {}) {
 
 模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 
-${isPersonSpec ? '人物设定中用户已经明确选择的数量、性别、年龄、地域、身份和姓名是硬约束，必须原样保留；外貌、穿着、发型妆造和禁止项必须根据这些选择重新生成，不能保留与当前年龄冲突的旧描述。' : ''}
+${isPersonSpec ? '人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。' : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 
 输出 JSON：
@@ -3684,6 +3685,7 @@ ${outputSchema}`;
         wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
         hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),
         negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
+        ...petIdentity.assistedResponseFields(spec),
       },
       mode,
       model_meta: {

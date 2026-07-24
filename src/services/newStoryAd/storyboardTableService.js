@@ -116,6 +116,22 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     duration: Math.max(2, Math.min(6, Number(shot.duration || shot.duration_sec || 0) || defaultDuration)),
     purpose: clampText(shot.purpose || shot.script_purpose || shot.objective || shot.role || '', 40),
     subject_type: shot.subject_type || shot.subjectType || 'auto',
+    expected_people: Math.max(0, Math.min(12, Math.round(Number(
+      Object.prototype.hasOwnProperty.call(shot, 'expected_people')
+        ? shot.expected_people
+        : (Array.isArray(shot.characters) && shot.characters.length ? shot.characters.length : (ctx.expected_people || 0)),
+    ) || 0))),
+    expected_animals: Math.max(0, Math.min(8, Math.round(Number(
+      Object.prototype.hasOwnProperty.call(shot, 'expected_animals')
+        ? shot.expected_animals
+        : (ctx.expected_animals || ctx.pet_contract?.expected_animals || 0),
+    ) || 0))),
+    pets: (Array.isArray(shot.pets) ? shot.pets : []).map((pet, petIndex) => ({
+      id: clampText(pet?.id || `pet_${petIndex + 1}`, 80),
+      name: clampText(pet?.name || '', 80),
+      type: clampText(pet?.type || pet?.species || pet?.breed || '', 100),
+      action: clampText(pet?.action || '', 120),
+    })).filter(pet => pet.name || pet.type || pet.action).slice(0, 8),
     shot_type: shotType,
     visual_layers: visualLayers,
     story_visual: storyVisual,
@@ -297,7 +313,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -361,6 +377,8 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Use visual_layers as the source of truth; story_visual and promo_visual are optional compatibility fields only.',
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
+      'Every shot must set expected_people and expected_animals independently. Use 0 when that subject is intentionally absent in the shot. In human_pet mode, never merge the two counts or replace a human with a pet.',
+      'When expected_animals is greater than 0, pets must identify the stable pet id/name/type from the current pet contract and describe its shot action. Preserve species/breed, coat, size, markings and accessories; never add, remove, replace or duplicate a pet.',
       'voiceover must be a natural short line that can be heard in the final video.',
       'The blueprint spoken_line and dialogue_function are approved story contracts. Copy spoken_line verbatim into voiceover and preserve dialogue_function; do not shorten it into a generic reaction or replace it with a new slogan.',
       'The heard lines across adjacent shots must retain the blueprint causal arc: goal/obstacle, discovery/proof, then decision/result. Do not move this meaning back into visuals only.',
@@ -401,6 +419,9 @@ Return JSON array for current beats only. Fields:
   "duration": 3,
   "purpose": "short label",
   "subject_type": "open task-authored subject description; compatibility field only",
+  "expected_people": 0,
+  "expected_animals": 0,
+  "pets": [{"id":"stable pet id from pet_contract","name":"pet name or empty","type":"species/breed","action":"this shot action"}],
   "shot_type": "open cinematography description chosen for this beat",
   "shot_scope": "optional open task-authored scope; compatibility field only",
   "surface_topology": {"mode":"open task-authored topology","seam_policy":"open task-authored seam rule","finish_distribution":"open task-authored distribution","notes":"optional task-specific structure only"},

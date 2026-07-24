@@ -3,6 +3,7 @@ const { sceneContractForShot } = require('./sceneBindingService');
 const productIdentity = require('./productIdentityContractService');
 const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
+const petIdentity = require('./petIdentityContractService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -49,6 +50,7 @@ function contractFingerprint(contract = {}) {
       person_revision: personContract.person_revision,
       person_fingerprint: personContract.reference_fingerprint,
     },
+    pet_lock: contract.pet_lock,
     product_lock: {
       product_revision: productContract.product_revision,
       product_fingerprint: productContract.reference_fingerprint,
@@ -83,6 +85,7 @@ function buildKeyframeContracts(ctx, shots) {
     });
     const temporalEvidence = shot.temporal_evidence
       || temporalEvidenceGraph.graphForShot(ctx.temporal_evidence_graph || {}, idx + 1);
+    const expectedAnimals = petIdentity.expectedAnimalsForShot(ctx, shot);
     const contract = {
       shot_index: idx + 1,
       title: shot.title || `镜头 ${idx + 1}`,
@@ -137,6 +140,11 @@ function buildKeyframeContracts(ctx, shots) {
         production_usable_actor: ctx.person_context?.production_usable_actor === true,
         person_contract: ctx.person_contract || ctx.person_asset?.person_contract || null,
       },
+      pet_lock: {
+        expected_animals: expectedAnimals,
+        shot_pets: shot.pets || [],
+        pet_contract: ctx.pet_contract || null,
+      },
       product_lock: ctx.product_contract || null,
       visual_contract: {
         must_show: shot.visual,
@@ -159,7 +167,7 @@ function buildKeyframeContracts(ctx, shots) {
         'wrong advertised subject',
         'old task subject contamination',
         'unconfirmed character',
-        'unrequested pet or robot',
+        expectedAnimals > 0 ? 'missing, extra, replaced, duplicated or inconsistent required pet' : 'unrequested pet or robot',
         'poster-only abstract scene',
         'unrequested stock-market or finance dashboard',
         'unrelated charts, K-line candles or trading screens',

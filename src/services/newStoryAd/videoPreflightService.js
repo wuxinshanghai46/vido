@@ -38,9 +38,10 @@ function reconcileShot(shot = {}, keyframe = {}, contract = {}) {
       source: 'approved_keyframe',
       presence,
     }];
+  const authoredExpectedPeople = Math.max(0, Number(shot.expected_people || shot.person_count || 0) || 0);
   const expectedPeople = ['person', 'partial'].includes(presence)
-    ? Math.max(1, characters.length)
-    : characters.length;
+    ? Math.max(1, authoredExpectedPeople, characters.length)
+    : (presence === 'none' ? 0 : Math.max(authoredExpectedPeople, characters.length));
   return {
     ...shot,
     characters,
@@ -543,6 +544,7 @@ function buildVideoPreflight({
     shot_contracts: reconciledShots.map((shot, index) => ({
       index, title: shot.title || '', visual: shot.visual || '', action: shot.action || '', characters: shot.characters || [],
       expected_people: shot.expected_people, person_presence: shot.video_person_presence,
+      expected_animals: shot.expected_animals, pets: shot.pets || [],
       keyframe_generation_id: keyframes[index]?.current_generation_id || keyframes[index]?.generation_id || '',
       keyframe_contract: keyframes[index]?.contract_fingerprint || '',
       clip_lineage: clips[index]?.lineage_fingerprint || clips[index]?.lineage?.fingerprint || '',

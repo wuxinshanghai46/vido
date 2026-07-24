@@ -90,16 +90,46 @@ function normalizeCharacters(input, seed = '') {
     .filter(x => x.name || x.role || x.description);
 }
 
+function normalizePetProfiles(input, fallback = {}) {
+  const raw = Array.isArray(input) ? input : [];
+  const profiles = raw.map((item, idx) => ({
+    id: cleanText(item?.id || `pet_${idx + 1}`, 80),
+    name: cleanText(item?.name || item?.display_name || item?.displayName || '', 80),
+    type: cleanText(item?.type || item?.species || item?.pet_type || item?.petType || '', 80),
+    breed: cleanText(item?.breed || '', 100),
+    appearance: cleanText(item?.appearance || item?.description || item?.pet_description || item?.petDescription || '', 500),
+    reference_images: (Array.isArray(item?.reference_images) ? item.reference_images : [])
+      .map(value => cleanText(value, 1000)).filter(Boolean).slice(0, 8),
+  })).filter(item => item.name || item.type || item.breed || item.appearance || item.reference_images.length);
+  if (profiles.length) return profiles.slice(0, 8);
+  const type = cleanText(fallback.petType || fallback.pet_type || '', 80);
+  const appearance = cleanText(fallback.petDescription || fallback.pet_description || '', 500);
+  if (!type && !appearance) return [];
+  return [{
+    id: 'pet_1',
+    name: '',
+    type,
+    breed: '',
+    appearance,
+    reference_images: [],
+  }];
+}
+
 function inferCastMode({ castMode = '', characters = [], brief = '' } = {}) {
   const explicit = cleanText(castMode, 40);
   if (/no_human|none|无人物|无人|只拍主体|只拍产品|只拍空间/i.test(explicit)) return 'no_human';
+  if (/human_pet|person_pet|人物.*宠物|人.*宠物|人物.*动物|人.*动物/i.test(explicit)) return 'human_pet';
   if (/animal|pet|动物|宠物/i.test(explicit)) return 'animal';
   if (/multi|多人|三人|群像|团队/i.test(explicit)) return 'multi';
   if (/dual|双人|两人/i.test(explicit)) return 'dual';
   if (/single|单人|一人/i.test(explicit)) return 'single';
   const text = `${brief} ${characters.map(c => `${c.name}${c.role}`).join(' ')}`;
   if (/无人|无人物|不出现人|不要人物|只拍产品|只拍空间|纯产品|纯空间/.test(text)) return 'no_human';
-  if (/动物|宠物|萌宠/.test(text)) return 'animal';
+  const hasPet = /动物|宠物|萌宠|猫|狗|犬|金毛|柯基|萨摩耶|拉布拉多/.test(text);
+  const hasHuman = characters.length > 0
+    || /人物|真人|演员|主人|一家人|一家(?:[一二三四五六七八九十\d]+)口|家庭|父母|妈妈|母亲|爸爸|父亲|孩子|儿童|夫妻|男女|男士|女士|顾问|客户|用户|员工|团队/.test(text);
+  if (hasPet && hasHuman) return 'human_pet';
+  if (hasPet) return 'animal';
   if (characters.length >= 3 || /多人|三人|四人|团队|群像/.test(text)) return 'multi';
   if (characters.length === 2 || /双人|两人|夫妻|同事|客户.*顾问|主播.*助理/.test(text)) return 'dual';
   return 'auto';
@@ -327,6 +357,31 @@ function inferVisibleTextPolicy(body = {}, brief = '') {
   };
 }
 
+function inferExpectedPeopleCount(brief = '', characters = []) {
+  if (Array.isArray(characters) && characters.length) return Math.min(12, characters.length);
+  const text = cleanText(brief, 1200);
+  const arabic = text.match(/(?:一家|家庭|共|有)?\s*(\d{1,2})\s*(?:口|人|位)(?:家庭成员|家人|人物|真人|演员)?/);
+  if (arabic) return Math.max(1, Math.min(12, Number(arabic[1]) || 0));
+  const chinese = [
+    [/一家十二口|十二人/, 12], [/一家十一口|十一人/, 11], [/一家十口|十人/, 10],
+    [/一家九口|九人/, 9], [/一家八口|八人/, 8], [/一家七口|七人/, 7],
+    [/一家六口|六人/, 6], [/一家五口|五人/, 5], [/一家四口|四人/, 4],
+    [/一家三口|三人/, 3], [/一家两口|两人|双人|夫妻/, 2], [/一人|单人/, 1],
+  ].find(([pattern]) => pattern.test(text));
+  return chinese ? chinese[1] : 0;
+}
+
+function inferExpectedAnimalCount(brief = '') {
+  const text = cleanText(brief, 1200);
+  const arabic = text.match(/(\d{1,2})\s*(?:只|条|头)(?:宠物|动物|猫|狗|犬)?/);
+  if (arabic) return Math.max(1, Math.min(8, Number(arabic[1]) || 0));
+  const chinese = [
+    [/八只/, 8], [/七只/, 7], [/六只/, 6], [/五只/, 5],
+    [/四只/, 4], [/三只/, 3], [/两只|二只/, 2], [/一只/, 1],
+  ].find(([pattern]) => pattern.test(text));
+  return chinese ? chinese[1] : 0;
+}
+
 const DEFAULT_TARGET_DURATION = 30;
 const MIN_TARGET_DURATION = 10;
 const MAX_TARGET_DURATION = 120;
@@ -424,15 +479,40 @@ function buildContext(body = {}, user = {}) {
     ? body.forbidden.map(x => cleanText(x, 100)).filter(Boolean)
     : cleanText(body.forbidden || body.negative || '', 500).split(/[，,;\n]/).map(x => cleanText(x, 100)).filter(Boolean);
   const castMode = inferCastMode({ castMode: body.cast_mode || body.castMode, characters, brief });
-  const expectedPeopleRaw = Number(body.expected_people || body.expectedPeople || body.person_count || body.personCount || 0) || 0;
+  const expectedPeopleRaw = Number(body.expected_people || body.expectedPeople || body.person_count || body.personCount || 0)
+    || inferExpectedPeopleCount(brief, characters)
+    || 0;
   const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
   const personSpec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
+  const petProfiles = normalizePetProfiles(
+    body.pet_profiles || body.petProfiles || body.pet_contract?.profiles || body.petContract?.profiles,
+    personSpec,
+  );
+  const expectedAnimalsRaw = Number(
+    body.expected_animals || body.expectedAnimals
+      || body.pet_count || body.petCount
+      || personSpec.expectedAnimals || personSpec.expected_animals
+      || 0,
+  ) || inferExpectedAnimalCount(brief) || 0;
   const personAsset = normalizePersonAsset(body.person_asset || body.personAsset);
   const sceneAssets = normalizeSceneAssets(body.scene_assets || body.sceneAssets);
   const sceneSpec = normalizeSceneSpec(body.scene_spec || body.sceneSpec);
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
   const noHuman = castMode === 'no_human';
+  const animalOnly = castMode === 'animal';
+  const petRequired = ['animal', 'human_pet'].includes(castMode);
+  const expectedPeople = noHuman || animalOnly
+    ? 0
+    : (expectedPeopleRaw > 0
+      ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw)))
+      : (castMode === 'single' ? 1 : (castMode === 'dual' ? 2 : 0)));
+  const expectedAnimals = petRequired
+    ? Math.max(1, Math.min(8, Math.round(expectedAnimalsRaw || petProfiles.length || 1)))
+    : 0;
+  const normalizedPetProfiles = petRequired
+    ? (petProfiles.length ? petProfiles : [{ id: 'pet_1', name: '', type: '按广告需求判断', breed: '', appearance: '', reference_images: [] }])
+    : [];
   const voiceId = cleanText(body.voice_id || body.voiceId || '', 120);
   const includeVoiceover = body.include_voiceover === false || body.includeVoiceover === false
     ? false
@@ -441,7 +521,7 @@ function buildContext(body = {}, user = {}) {
   const subtitleEnabled = body.subtitle !== false && rawSubtitleConfig.show !== false;
   const subtitleStyle = cleanText(body.subtitle_style || body.subtitleStyle || rawSubtitleConfig.style || 'popup', 60);
   const bgmAsset = body.bgm_asset || body.bgmAsset || null;
-  const contextAssets = noHuman
+  const contextAssets = noHuman || animalOnly
     ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
     : assets;
   return {
@@ -470,14 +550,21 @@ function buildContext(body = {}, user = {}) {
       style: subtitleStyle,
     },
     cast_mode: castMode,
-    expected_people: noHuman ? 0 : (expectedPeopleRaw > 0 ? Math.max(1, Math.min(12, Math.round(expectedPeopleRaw))) : 0),
-    characters: noHuman ? [] : characters,
+    expected_people: expectedPeople,
+    expected_animals: expectedAnimals,
+    characters: noHuman || animalOnly ? [] : characters,
+    pet_profiles: normalizedPetProfiles,
+    pet_contract: petRequired ? {
+      status: 'declared',
+      expected_animals: expectedAnimals,
+      profiles: normalizedPetProfiles,
+    } : null,
     assets: contextAssets,
     forbidden,
     controlled_production: controlledProduction,
     person_spec: noHuman ? { castMode: 'no_human' } : personSpec,
-    person_asset: noHuman ? null : personAsset,
-    person_contract: noHuman ? null : (body.person_contract && typeof body.person_contract === 'object'
+    person_asset: noHuman || animalOnly ? null : personAsset,
+    person_contract: noHuman || animalOnly ? null : (body.person_contract && typeof body.person_contract === 'object'
       ? body.person_contract
       : (personAsset?.person_contract || null)),
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
@@ -489,9 +576,9 @@ function buildContext(body = {}, user = {}) {
       person: Math.max(1, Number(body.revisions.person || 1) || 1),
       product: Math.max(1, Number(body.revisions.product || 1) || 1),
     } : { source: 1, scene: 1, person: 1, product: 1 },
-    cast_profiles: noHuman ? [] : castProfiles,
-    person_context: noHuman ? {
-      source: 'no_human_mode',
+    cast_profiles: noHuman || animalOnly ? [] : castProfiles,
+    person_context: noHuman || animalOnly ? {
+      source: noHuman ? 'no_human_mode' : 'animal_only_mode',
       real_person_locked: false,
       production_usable_actor: false,
       person_notes: [],
@@ -588,12 +675,16 @@ function contextPrompt(ctx) {
     `画面比例：${ctx.output_ratio}`,
     `人物/主体模式：${ctx.cast_mode}`,
     ctx.expected_people ? `精确人数：${ctx.expected_people}（必须保持，不得用默认群体数量替代）` : '',
+    ctx.expected_animals ? `精确宠物/动物数量：${ctx.expected_animals}（与人物数量独立计数，人物不得替代宠物，宠物不得替代人物）` : '',
     `生产模式：${ctx.production_mode || 'auto'}（只控制当前任务的制作与 QA 策略，不是行业或场景模板）`,
     ctx.cast_mode === 'no_human'
       ? '角色设定：本任务选择无人物模式，不得强行加入真人、手部、背影或人形主体，除非用户需求另有明确要求。'
       : (ctx.cast_mode === 'animal'
         ? '角色设定：本任务为动物/宠物主体时，按用户需求建立动物主体一致性，不得强行改成人类角色。'
-        : (ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。')),
+        : (ctx.cast_mode === 'human_pet'
+          ? `角色设定：本任务为人物 + 宠物混合主体。人物和宠物是两个独立合同，必须分别保持数量、身份、外观和动作关系；人物设定：${ctx.characters.length ? JSON.stringify(ctx.characters) : '按当前任务建立稳定正式姓名'}。`
+          : (ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。'))),
+    ctx.pet_contract ? `宠物一致性合同：${JSON.stringify(ctx.pet_contract)}。每镜必须明确 expected_animals 和实际出镜宠物，不得增删、换品种、换毛色或把同一只复制成多只。` : '',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
     ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',
@@ -615,7 +706,7 @@ function contextConflicts(ctx = {}) {
   const forbidden = (Array.isArray(ctx.forbidden) ? ctx.forbidden : []).join('；');
   const negative = String(ctx.controlled_production?.negative_control?.text || '');
   const noPerson = /(?:不能|不要|禁止|不得)出现(?:任何)?(?:人物|真人|演员|人像|人类)|(?:完全)?无人物|无人出镜/.test(`${forbidden}；${negative}`);
-  const personRequired = ['single', 'dual', 'multi', 'group'].includes(String(ctx.cast_mode || ''))
+  const personRequired = ['single', 'dual', 'multi', 'group', 'human_pet'].includes(String(ctx.cast_mode || ''))
     || (Array.isArray(ctx.characters) && ctx.characters.length > 0)
     || !!ctx.person_asset
     || /(?:人物|真人|演员|老师|顾问|客户|用户|主持人|模特|主角|面对镜头|出镜)/.test(String(ctx.brief || ''));
@@ -648,6 +739,9 @@ module.exports = {
   controlledProductionPrompt,
   cleanText,
   normalizeCharacters,
+  normalizePetProfiles,
+  inferExpectedPeopleCount,
+  inferExpectedAnimalCount,
   normalizeCharacter,
   looksLikeDescriptorName,
   normalizeSceneSpec,

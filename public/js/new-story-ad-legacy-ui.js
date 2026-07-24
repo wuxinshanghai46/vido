@@ -989,11 +989,20 @@
     const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '剧情广告';
     const person = collectPersonSpec();
     const noHuman = person.castMode === 'no_human';
-    const personAsset = noHuman ? null : personAssetPayload();
+    const animalOnly = person.castMode === 'animal';
+    const petRequired = ['animal', 'human_pet'].includes(person.castMode);
+    const personAsset = noHuman || animalOnly ? null : personAssetPayload();
+    const expectedAnimals = petRequired ? (Number(person.expectedAnimals || 0) || 1) : 0;
+    const petProfiles = petRequired ? [{
+      id: 'pet_1',
+      type: person.petType || '按广告需求判断',
+      appearance: person.petDescription || '',
+      reference_images: [],
+    }] : [];
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
-    const castProfiles = noHuman ? [] : (state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []));
-    const assets = assetPayloadList({ includePerson: !noHuman });
+    const castProfiles = noHuman || animalOnly ? [] : (state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []));
+    const assets = assetPayloadList({ includePerson: !noHuman && !animalOnly });
     const ctrl = controlledPayload();
     const negative = [
       ...splitNegativeText(ctrl.negative_control.text),
@@ -1007,7 +1016,10 @@
       output_size: size,
       video_resolution: videoResolution,
       cast_mode: noHuman ? 'no_human' : (person.castMode || 'auto'),
-      expected_people: noHuman ? 0 : (Number(person.expectedPeople || 0) || undefined),
+      expected_people: noHuman || animalOnly ? 0 : (Number(person.expectedPeople || 0) || undefined),
+      expected_animals: expectedAnimals,
+      pet_profiles: petProfiles,
+      pet_contract: petRequired ? { status: 'declared', expected_animals: expectedAnimals, profiles: petProfiles } : null,
       production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
       voice_id: voiceId,
       voice_name: state.voiceName || '',
@@ -1031,7 +1043,7 @@
       scene_assets: sceneAssets,
       cast_profiles: castProfiles,
       person_context: {
-        source: noHuman ? 'no_human_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'),
+        source: noHuman ? 'no_human_mode' : (animalOnly ? 'animal_only_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec')),
         person_spec: noHuman ? { castMode: 'no_human' } : person,
         person_asset: personAsset,
         cast_profiles: castProfiles,
@@ -1421,6 +1433,12 @@
     if (!host) return;
     if (isNoHumanMode()) {
       host.innerHTML = '<span class="dh-luxgen-person-badge">无人物</span><div class="dh-luxgen-person-copy"><b>纯产品 / 纯场景广告</b><small>人物素材、演员、人数和人物描述均不会进入剧本、分镜或视频生成。</small></div>';
+      return;
+    }
+    if (isAnimalOnlyMode()) {
+      const petCount = Number(personSpec('expectedAnimals') || 0) || 1;
+      const petType = personSpec('petType') || '按广告需求判断';
+      host.innerHTML = `<span class="dh-luxgen-person-badge">宠物主体</span><div class="dh-luxgen-person-copy"><b>${escapeHtml(`${petCount} 只 · ${petType}`)}</b><small>人物素材和演员不会进入生成；宠物数量、品种和识别特征由独立宠物合同锁定。</small></div>`;
       return;
     }
     if (state.personGenerationProgress?.active) {
@@ -2015,7 +2033,10 @@
       composeBtn.classList.toggle('is-next', composeView.action_ready && !state.busy && !state.restoringTask);
       composeBtn.textContent = composeView.action_ready ? '下一步：封装最终成片 →' : '封装最终成片';
     }
-    setButtonLock('#dhNsaAdGeneratePersonSheet', !hasBrief && !hasActorInput, '请先填写广告需求或人物设定', { allowBusy: true });
+    const personDisabledByMode = isNoHumanMode() || isAnimalOnlyMode();
+    setButtonLock('#dhNsaAdGeneratePersonSheet', personDisabledByMode || (!hasBrief && !hasActorInput), personDisabledByMode ? '当前主体模式不生成真人演员' : '请先填写广告需求或人物设定', { allowBusy: true });
+    setButtonLock('#dhNsaAdUploadPersonRef', personDisabledByMode, '当前主体模式不使用真人参考');
+    setButtonLock('#dhNsaAdPickActorAsset', personDisabledByMode, '当前主体模式不使用真人演员');
     setButtonLock('#dhNsaAdGenerateSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     setButtonLock('#dhNsaAdAddSceneSheet', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
     setButtonLock('#dhNsaAdAiSceneSpec', !hasBrief, '请先填写至少 8 个字的广告需求', { allowBusy: true });
@@ -2032,6 +2053,10 @@
       '#dhNsaAdPickActorAsset',
       '#dhNsaAdAiPersonSpec',
     ].forEach(sel => setButtonLock(sel, false));
+    if (personDisabledByMode) {
+      setButtonLock('#dhNsaAdUploadPersonRef', true, '当前主体模式不使用真人参考');
+      setButtonLock('#dhNsaAdPickActorAsset', true, '当前主体模式不使用真人演员');
+    }
   }
 
   function stageItemCount(stage = '') {
@@ -2054,6 +2079,10 @@
 
   function isNoHumanMode() {
     return personSpec('castMode') === 'no_human';
+  }
+
+  function isAnimalOnlyMode() {
+    return personSpec('castMode') === 'animal';
   }
 
   function composeReadiness() {
@@ -2445,19 +2474,7 @@
   }
 
   function formatCastMode(value = '') {
-    const raw = String(value || '').trim().toLowerCase();
-    const labels = {
-      auto: '自动判断',
-      single: '单人物展示 / 导览',
-      dual: '双人物对话 / 互动',
-      multi: '多人剧情 / 群体展示',
-      group: '多人剧情 / 群体展示',
-      no_human: '无人物，仅产品 / 空间 / 材料',
-      none: '无人物，仅产品 / 空间 / 材料',
-      animal: '动物 / 宠物主体',
-      pet: '动物 / 宠物主体',
-    };
-    return labels[raw] || value || '-';
+    return window.NewStoryAdPersonPetSpec.formatCastMode(value);
   }
 
   function renderDraftSceneInfo() {
@@ -3505,6 +3522,16 @@
     const lock = state.personSpecLock || null;
     const generating = !!state.personGenerationProgress?.active;
     const noHuman = isNoHumanMode();
+    const castMode = personSpec('castMode');
+    const animalOnly = castMode === 'animal';
+    const petRequired = ['animal', 'human_pet'].includes(castMode);
+    const humanOnlyFields = new Set([
+      'gender', 'expectedPeople', 'age', 'origin', 'roleName', 'displayName',
+      'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
+    ]);
+    $$('[data-nsa-pet-field]', root()).forEach(el => {
+      el.hidden = !petRequired;
+    });
     within('#dhNsaAdPostScriptPerson')?.classList.toggle('is-no-human', noHuman);
     $$('[data-nsa-cast-mode-quick]', root()).forEach(button => {
       const active = button.dataset.nsaCastModeQuick === personSpec('castMode');
@@ -3515,12 +3542,18 @@
     $$('[data-nsa-person-spec]', root()).forEach(el => {
       const field = el.dataset.nsaPersonSpec;
       const locked = !!(lock && ['gender', 'age', 'origin'].includes(field) && (field !== 'origin' || lock.origin) && (field !== 'age' || lock.age));
-      el.disabled = generating || (noHuman && field !== 'castMode') || locked;
+      el.disabled = generating
+        || (noHuman && field !== 'castMode')
+        || (animalOnly && humanOnlyFields.has(field))
+        || (!petRequired && ['expectedAnimals', 'petType', 'petDescription'].includes(field))
+        || locked;
       el.title = generating
         ? '正在生成拟真演员，人物设定暂时锁定。'
         : (noHuman && field !== 'castMode'
           ? '无人物模式下不会使用人物设定。'
-          : (locked ? `已按人物一致性参考「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : ''));
+          : (animalOnly && humanOnlyFields.has(field)
+            ? '动物 / 宠物主体模式不会使用人物设定。'
+            : (locked ? `已按人物一致性参考「${lock.source || '演员'}」锁定；如需更改，请重新选择或上传真人参考。` : '')));
     });
   }
 
@@ -5235,26 +5268,7 @@
   }
 
   function personDescription(spec = collectPersonSpec()) {
-    const labels = {
-      castMode: { auto: '按内容判断', no_human: '无人物 / 只拍主体', animal: '动物 / 宠物主体', single: '单人', dual: '双人对话', group: '多人 / 群体' },
-      gender: { auto: '按故事判断', male: '男性', female: '女性', mixed: '双人/多人混合', all_male: '双人/多人全男性', all_female: '双人/多人全女性' },
-      age: { match_brief: '按广告需求判断', young_adult_17_25: '年轻成人 / 17-25', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
-      origin: { east_asian_cn: '中国 / 东亚面孔', match_brief: '按广告需求判断', mixed_global: '多种族 / 国际化' },
-    };
-    return [
-      `人物数量：${labels.castMode[spec.castMode] || spec.castMode || '按内容判断'}`,
-      `人物性别：${labels.gender[spec.gender] || spec.gender || '按故事判断'}`,
-      `人物年龄：${labels.age[spec.age] || spec.age || '按广告需求判断'}`,
-      `地域/种族：${labels.origin[spec.origin] || spec.origin || '按广告需求判断'}`,
-      spec.displayName ? `人物姓名：${spec.displayName}` : '',
-      spec.roleName ? `人物身份：${spec.roleName}` : '',
-      spec.appearanceText ? `外貌气质：${spec.appearanceText}` : '',
-      spec.wardrobeText ? `穿着服装：${spec.wardrobeText}` : '',
-      spec.hairMakeupText ? `发型妆造：${spec.hairMakeupText}` : '',
-      spec.negativeText ? `人物禁止项：${spec.negativeText}` : '',
-      'AI 生成只作为拟真演员参考；需要真人请上传真人照片或使用授权真人演员素材。',
-      '没有手动填写姓名时，编剧必须为每个出场人物生成正式姓名；服装、发型、妆造和身份必须进入人物档案。',
-    ].filter(Boolean).join('；');
+    return window.NewStoryAdPersonPetSpec.description(spec);
   }
 
   function applyPersonSpecSuggestion(suggestion = {}) {
@@ -5282,6 +5296,9 @@
     changed += set('wardrobeText', normalized.wardrobeText || '', { overwrite: true });
     changed += set('hairMakeupText', normalized.hairMakeupText || '', { overwrite: true });
     changed += set('negativeText', normalized.negativeText || '', { overwrite: true });
+    changed += set('expectedAnimals', normalized.expectedAnimals || normalized.expected_animals || '');
+    changed += set('petType', normalized.petType || normalized.pet_type || '');
+    changed += set('petDescription', normalized.petDescription || normalized.pet_description || '', { overwrite: true });
     return changed;
   }
 
@@ -5289,40 +5306,11 @@
    * 将模型的部分人物建议与当前表单、任务兜底逐字段合并，避免任一必需内容留空。
    */
   function completePersonSpecSuggestion(suggestion = {}, current = {}, fallback = {}) {
-    const source = suggestion && typeof suggestion === 'object' ? suggestion : {};
-    const existing = current && typeof current === 'object' ? current : {};
-    const defaults = fallback && typeof fallback === 'object' ? fallback : {};
-    const keys = [
-      'castMode', 'gender', 'age', 'origin', 'roleName', 'displayName',
-      'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
-    ];
-    return keys.reduce((result, key) => {
-      const suggested = String(source[key] ?? '').trim();
-      const currentValue = String(existing[key] ?? '').trim();
-      const fallbackValue = String(defaults[key] ?? '').trim();
-      result[key] = suggested || currentValue || fallbackValue;
-      return result;
-    }, {});
+    return window.NewStoryAdPersonPetSpec.complete(suggestion, current, fallback);
   }
 
   function fallbackPersonSpecFromBrief(brief = '') {
-    const isMale = /男|先生|老板|师傅|经理/.test(brief) && !/女|女士|美女|太太/.test(brief);
-    const isFemale = /女|女士|美女|太太|模特/.test(brief);
-    const isDual = /双人|两人|对话|客户.*顾问|销售.*客户|经销商.*客户/.test(brief);
-    const isGroup = /多人|团队|群像|一家人|员工/.test(brief);
-    const noHuman = /无人|无人物|不出现人|不要人物|只拍产品|只拍空间|纯产品|纯空间/.test(brief);
-    const animal = /动物|宠物|萌宠/.test(brief);
-    return {
-      castMode: noHuman ? 'no_human' : (animal ? 'animal' : (isGroup ? 'group' : (isDual ? 'dual' : 'single'))),
-      gender: isMale ? 'male' : (isFemale ? 'female' : 'auto'),
-      age: /老板|经理|经销商|顾问|专家|负责人/.test(brief) ? 'adult_30_40' : 'match_brief',
-      origin: 'match_brief',
-      roleName: /顾问|销售|经销商|导购/.test(brief) ? '品牌顾问 / 商业讲解人' : '广告主角',
-      appearanceText: '符合当前广告需求的真实商业广告人物，五官自然，表情可信，气质干净专业；根据任务内容、目标用户和剧情关系判断年龄感、职业感和亲和度，避免网红脸和过度磨皮。',
-      wardrobeText: '服装贴合当前产品定位、使用场景和目标客群，干净真实，颜色克制；鞋、配饰和整体风格保持商业广告质感，不抢主体画面。',
-      hairMakeupText: '发型整洁自然，妆容清爽克制，皮肤保留真实质感；可有轻微商务妆、自然眉眼和干净发际线，避免厚重滤镜、夸张美瞳或塑料感皮肤。',
-      negativeText: '不要卡通、不要塑料感皮肤、不要多余人物、不要水印文字、不要夸张变形；不要网红脸、廉价服装、过度磨皮、表情浮夸或与产品定位不符的造型。',
-    };
+    return window.NewStoryAdPersonPetSpec.fallbackFromBrief(brief);
   }
 
   async function fillPersonSpecFromBrief(button = null) {
@@ -5515,6 +5503,7 @@
   }
 
   async function generatePersonSheet(button) {
+    if (isNoHumanMode() || isAnimalOnlyMode()) return toast('当前主体模式不需要生成真人演员；如需人物和宠物同时出镜，请选择“人物 + 宠物（混合主体）”。', 'info');
     if (state.personGenerationProgress?.active) return toast('正在生成拟真演员，人物数量、性别、年龄、外貌、穿着等约束已提交给后台，生成完成或失败后再修改。', 'error');
     const description = [
       personSpec('appearanceText'),
@@ -6346,9 +6335,12 @@
         markSourceDirty('person');
         if (target.dataset.nsaPersonSpec === 'castMode') {
           renderAll();
-          toast(target.value === 'no_human'
-            ? '已切换为无人物模式，人物素材和演员不会进入后续生成'
-            : '已恢复按内容判断人物，当前设置会自动保存', 'success');
+          const modeMessages = {
+            no_human: '已切换为无人物模式，人物素材和演员不会进入后续生成',
+            animal: '已切换为动物 / 宠物主体，人物设定不会进入后续生成',
+            human_pet: '已切换为人物 + 宠物混合主体，人数与宠物数量将分别锁定',
+          };
+          toast(modeMessages[target.value] || '人物/主体模式已更新，当前设置会自动保存', 'success');
         } else {
           renderStatus();
         }

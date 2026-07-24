@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260724-realism-layout-restore-v2">
-  <script src="/js/new-story-ad/bootstrap-support.js?v=20260724-realism-layout-restore-v2"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260724-realism-layout-restore-v2"></script>
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260724-human-pet-contract-v3">
+  <script src="/js/new-story-ad/bootstrap-support.js?v=20260724-human-pet-contract-v3"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260724-human-pet-contract-v3"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -305,6 +305,7 @@
                           <option value="auto">按内容判断</option>
                           <option value="no_human">无人物 / 只拍主体</option>
                           <option value="animal">动物 / 宠物主体</option>
+                          <option value="human_pet">人物 + 宠物（混合主体）</option>
                           <option value="single">单人</option>
                           <option value="dual">双人对话</option>
                           <option value="group">多人 / 群体</option>
@@ -324,6 +325,18 @@
                       <label>
                         <span>精确人数</span>
                         <input class="dh-input" type="number" min="1" max="12" step="1" data-nsa-person-spec="expectedPeople" placeholder="单/双人可自动，多人请填 3-12">
+                      </label>
+                      <label data-nsa-pet-field hidden>
+                        <span>精确宠物数量</span>
+                        <input class="dh-input" type="number" min="1" max="8" step="1" data-nsa-person-spec="expectedAnimals" placeholder="如：1">
+                      </label>
+                      <label data-nsa-pet-field hidden>
+                        <span>宠物类型 / 品种</span>
+                        <input class="dh-input" data-nsa-person-spec="petType" maxlength="100" placeholder="如：金毛犬、英短猫">
+                      </label>
+                      <label class="dh-luxgen-person-text-field" data-nsa-pet-field hidden>
+                        <span>宠物外观 / 识别特征</span>
+                        <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="petDescription" maxlength="500" placeholder="毛色、体型、年龄感、项圈、独特斑纹等；用于跨镜头保持同一只宠物"></textarea>
                       </label>
                       <label>
                         <span>人物年龄</span>

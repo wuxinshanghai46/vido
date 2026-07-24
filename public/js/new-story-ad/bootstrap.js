@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260724-realism-layout-restore-v2';
+  const SCRIPT_VERSION = '20260724-human-pet-contract-v3';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -12,6 +12,7 @@
     '/js/new-story-ad/step-navigation.js',
     '/js/new-story-ad/task-persistence.js',
     '/js/new-story-ad/storyboard.js',
+    '/js/new-story-ad/person-pet-spec.js',
     '/js/new-story-ad/actors.js',
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',

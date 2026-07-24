@@ -17,6 +17,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
     { name: 'design', cap: 880, items: 10, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Surface conflict resolution \(authoritative\):|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
     { name: 'actor', cap: 700, items: 7, match: /Actor photorealism lock|Actor compliance lock|Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
+    { name: 'pet', cap: 340, items: 2, match: /Pet consistency lock/i },
     { name: 'scene', cap: 430, items: 6, match: /Scene photorealism lock|scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
     { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
@@ -26,7 +27,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'other', cap: 40, items: 1, match: /.*/ },
   ];
   const buckets = new Map(categories.map(category => [category.name, []]));
-  const classificationOrder = ['repair', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'scene', 'continuity', 'product', 'style', 'other']
+  const classificationOrder = ['repair', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'pet', 'scene', 'continuity', 'product', 'style', 'other']
     .map(name => categories.find(category => category.name === name))
     .filter(Boolean);
   lines.forEach(line => {
@@ -114,6 +115,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     if (excerpt.name === 'design') return /Surface conflict resolution \(authoritative\):/i.test(excerpt.text);
     if (excerpt.name === 'scene') return /Shot scene binding:/i.test(excerpt.text);
     if (excerpt.name === 'actor') return /Locked real actor\/person asset:|Explicit no-human lock:/i.test(excerpt.text);
+    if (excerpt.name === 'pet') return /Pet consistency lock:/i.test(excerpt.text);
     if (excerpt.name === 'product') return /Product identity lock:/i.test(excerpt.text);
     if (excerpt.name === 'visual') return /User-edited visual override, highest priority:/i.test(excerpt.text);
     return false;

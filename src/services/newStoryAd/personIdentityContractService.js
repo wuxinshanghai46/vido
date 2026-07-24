@@ -181,7 +181,7 @@ function personRequired(ctx = {}) {
   return !!(
     ctx.person_asset
     || ctx.person_contract
-    || ['single', 'dual', 'multi', 'group'].includes(mode)
+    || ['single', 'dual', 'multi', 'group', 'human_pet'].includes(mode)
     || (Array.isArray(ctx.characters) && ctx.characters.length)
     || (Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length)
   );
@@ -256,7 +256,7 @@ function shotForbidsPerson(ctx = {}, shot = {}) {
   const castMode = String(ctx.cast_mode || ctx.person_asset?.cast_mode || '').toLowerCase();
   const subjectType = String(shot.subject_type || '').trim();
   const declaredNonHuman = /^(?:product_only|scene_only|brand_endcard|object_only|no_human|environment)$/i.test(subjectType);
-  return castMode === 'no_human' || shot.no_person === true || shot.noHuman === true
+  return ['no_human', 'animal'].includes(castMode) || shot.no_person === true || shot.noHuman === true
     || /^(?:no_human)$/i.test(subjectType)
     || (declaredNonHuman && !shotPersonPresence(shot, {}).required);
 }
