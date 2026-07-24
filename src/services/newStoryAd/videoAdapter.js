@@ -405,9 +405,9 @@ function deyunaiAssetGroupType(ctx = {}) {
 function personReferenceUrl(ctx = {}) {
   const contract = ctx.person_contract || ctx.person_asset?.person_contract || {};
   const refs = contract.reference_views || {};
-  return refs.front || Object.values(refs).find(Boolean) || ctx.person_asset?.image_url || ctx.person_asset?.url || '';
+  return [refs.front_closeup, refs.headshot, refs.portrait, refs.front, ...Object.values(refs), ctx.person_asset?.image_url, ctx.person_asset?.url]
+    .find(Boolean) || '';
 }
-
 async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} } = {}) {
   if (!personIdentity.personRequired(ctx)) return null;
   personIdentity.assertVerifiedPerson(ctx);

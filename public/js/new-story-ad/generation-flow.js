@@ -72,6 +72,20 @@
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  function formatBriefText(value = '', max = 3000) {
+    return String(value || '')
+      .replace(/\\r\\n|\\n|\\r/g, '\n')
+      .replace(/\\t/g, ' ')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .replace(/__([^_\n]+)__/g, '$1')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .slice(0, max);
+  }
+
   function isNetworkError(error) {
     const message = String(error?.message || error || '');
     return error instanceof TypeError
@@ -481,7 +495,7 @@
     try {
       const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...body, mode } });
       const input = typeof getBriefInput === 'function' ? getBriefInput() : null;
-      if (r.brief && input) input.value = r.brief;
+      if (r.brief && input) input.value = formatBriefText(r.brief);
       toast?.('需求已整理', 'success');
       return r;
     } catch (err) {
@@ -507,6 +521,7 @@
     taskConfirmsSubmission,
     storyboardIsReady,
     blueprintIsReady,
+    formatBriefText,
     STAGE_LABELS,
   };
 })();

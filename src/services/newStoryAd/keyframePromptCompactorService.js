@@ -16,8 +16,8 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
     { name: 'design', cap: 880, items: 10, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Surface conflict resolution \(authoritative\):|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
-    { name: 'actor', cap: 320, items: 5, match: /Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
-    { name: 'scene', cap: 300, items: 5, match: /scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
+    { name: 'actor', cap: 520, items: 7, match: /Actor photorealism lock|Actor compliance lock|Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
+    { name: 'scene', cap: 430, items: 6, match: /Scene photorealism lock|scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
     { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
     { name: 'product', cap: 200, items: 5, match: /Product visibility|Product presentation|Commercial evidence|Product identity lock|Product shape lock|Product material lock|Product color lock|Product reference images/i },
@@ -36,8 +36,10 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
   const excerpts = categories.map((category, categoryIndex) => {
     let values = buckets.get(category.name) || [];
     if (category.name === 'actor') {
-      const rank = value => /actor consistency lock|Actor wardrobe lock/i.test(value) ? 0
-        : (/Person QA required/i.test(value) ? 1 : (/If the shot includes any body part/i.test(value) ? 2 : 3));
+      const rank = value => /Actor photorealism lock/i.test(value) ? 0
+        : (/Actor compliance lock/i.test(value) ? 1
+          : (/actor consistency lock|Actor wardrobe lock/i.test(value) ? 2
+            : (/Person QA required/i.test(value) ? 3 : (/If the shot includes any body part/i.test(value) ? 4 : 5))));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
     } else if (category.name === 'context') {
       values = values.slice().sort((a, b) => (/^Campaign brief:/i.test(a) ? 0 : 1) - (/^Campaign brief:/i.test(b) ? 0 : 1));
@@ -52,8 +54,9 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
         : (/^Entry frame state:/i.test(value) ? 1 : (/^Exit frame state:/i.test(value) ? 2 : (/^Transition:/i.test(value) ? 3 : 4)));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
     } else if (category.name === 'scene') {
-      const rank = value => /scene consistency lock|scene binding lock|Required visible scene anchors|Scene material lock/i.test(value) ? 0
-        : (/Shot scene binding|Locked scene asset|Required scene view/i.test(value) ? 1 : 2);
+      const rank = value => /Scene photorealism lock/i.test(value) ? 0
+        : (/scene consistency lock|scene binding lock|Required visible scene anchors|Scene material lock/i.test(value) ? 1
+          : (/Shot scene binding|Locked scene asset|Required scene view/i.test(value) ? 2 : 3));
       values = values.slice().sort((a, b) => rank(a) - rank(b));
     } else if (category.name === 'style') {
       values = values.slice().sort((a, b) => (/Visual style direction/i.test(a) ? 0 : 1) - (/Visual style direction/i.test(b) ? 0 : 1));

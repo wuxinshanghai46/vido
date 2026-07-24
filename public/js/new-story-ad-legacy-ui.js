@@ -289,7 +289,6 @@
   function normalizeText(value = '', max = 1000) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
-
   const TECHNICAL_LABELS = {
     extreme_wide: '大远景', wide: '远景', full: '全身景', medium: '中景', medium_close: '中近景',
     close_up: '近景', extreme_close_up: '特写', macro: '微距',
@@ -728,6 +727,7 @@
       view_count: asset.view_count || asset.view_images?.length || urls.length || 1,
       person_revision: asset.person_revision || asset.person_contract?.person_revision || 1,
       person_contract: asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : null,
+      deyunai_asset_id: asset.deyunai_asset_id || asset.metadata?.deyunai_asset_id || '', deyunai_asset_status: asset.deyunai_asset_status || asset.metadata?.deyunai_asset_status || '', deyunai_asset_group_id: asset.deyunai_asset_group_id || asset.metadata?.deyunai_asset_group_id || '', deyunai_asset_group_type: asset.deyunai_asset_group_type || asset.metadata?.deyunai_asset_group_type || '',
       description: asset.spec_description || asset.description || personDescription(),
     };
   }
@@ -4140,7 +4140,7 @@
     setButtonBusy(button, true, label);
     try {
       const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...body, mode } });
-      if (r.brief && within('#dhNsaAdText')) within('#dhNsaAdText').value = r.brief;
+      if (r.brief && within('#dhNsaAdText')) within('#dhNsaAdText').value = window.NewStoryAdGenerationFlow?.formatBriefText?.(r.brief) || r.brief;
       markSourceDirty('source');
       scheduleAutoSave('brief_assist');
       toast('需求已整理', 'success');

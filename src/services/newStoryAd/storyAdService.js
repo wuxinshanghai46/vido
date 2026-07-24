@@ -40,6 +40,8 @@ const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecover
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService');
+const assistTextFormatter = require('./assistTextFormatterService');
+const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
@@ -1243,6 +1245,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   ].filter(Boolean).join('\n') : '';
   const parts = [
     'Photorealistic live-action commercial storyboard keyframe.',
+    `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}`,
+    shotNeedsPerson ? `Actor photorealism lock: ${visualRealismPolicy.compactPersonRealismPrompt()}` : '',
+    shotNeedsPerson ? `Actor compliance lock: ${visualRealismPolicy.compactImage2CompliancePrompt()}` : '',
     `Campaign brief: ${campaignBriefText}`,
     `Advertised subject: ${advertisedSubjectText}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
@@ -3534,6 +3539,8 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
+    'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
+    'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
   ].join('\n');
   const outputSchema = isStyleControl
     ? `{
@@ -3612,7 +3619,7 @@ async function assistBrief(body = {}, user = {}) {
   }
 }`
           : `{
-  "brief": "可直接放入广告需求文本框的完整需求",
+  "brief": "可直接放入广告需求文本框的完整纯文本；使用【标题】内容分段和真实换行；不要 Markdown；不要字面量反斜杠换行",
   "product_subject": "广告主体",
   "cast_mode": "auto/single/dual/multi/no_human",
   "shot_count": 0,
@@ -3718,7 +3725,7 @@ ${outputSchema}`;
     };
   }
   return {
-    brief: cleanText(parsed.brief || parsed.content || ctx.brief, 3000),
+    brief: assistTextFormatter.formatAssistedBrief(parsed.brief || parsed.content || ctx.brief, 3000),
     product_subject: cleanText(parsed.product_subject || parsed.productSubject || ctx.product_subject, 200),
     cast_mode: cleanText(parsed.cast_mode || parsed.castMode || ctx.cast_mode || 'auto', 40),
     shot_count: Math.max(0, Math.min(18, Number(parsed.shot_count || parsed.shotCount || ctx.shot_count || 0) || 0)),

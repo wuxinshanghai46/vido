@@ -11,6 +11,7 @@ const sceneViewStrategy = require('./sceneViewStrategyService');
 const shotDesign = require('./shotDesignService');
 const sceneCheckpoint = require('./sceneGenerationCheckpointService');
 const sceneBinding = require('./sceneBindingService');
+const visualRealismPolicy = require('./visualRealismPolicyService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -481,6 +482,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     outputRole === 'layout'
       ? 'Use a near-vertical spatial-survey camera over the same location. Preserve the final materials, furniture, openings and lighting identity from the master while making the complete footprint readable. For an enclosed space, remove the ceiling and use low cutaway wall boundaries when necessary; for an open site, use a near-vertical aerial survey.'
       : 'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
+    visualRealismPolicy.sceneRealismPrompt(),
   ].join('\n');
   const antiAiNegative = [
     'Strict anti-AI / anti-render negatives:',
