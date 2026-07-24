@@ -427,6 +427,14 @@ function harness({ cancelAt = 0 } = {}) {
   assert(storySource.includes('subjectReferences.keyframeReferenceUrls'), 'keyframes must use the reference-capacity orchestrator');
   assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling must load before the legacy UI');
 
+  const subjectUiSandbox = { window: {} };
+  vm.createContext(subjectUiSandbox);
+  vm.runInContext(subjectUi, subjectUiSandbox, { filename: 'subject-assets-ui.js' });
+  const assetCastMode = subjectUiSandbox.window.NewStoryAdSubjectAssetsUI.assetCastMode;
+  assert.strictEqual(assetCastMode('dual', 2, 'human_pet'), 'human_pet', 'a two-person asset must not remove the task pet mode');
+  assert.strictEqual(assetCastMode('human_pet', 2, 'dual'), 'human_pet', 'a persisted mixed-subject asset must restore the mixed mode');
+  assert.strictEqual(assetCastMode('dual', 2, 'dual'), 'dual', 'human-only dual mode must remain backward compatible');
+
   const documentMock = { querySelector: () => null };
   const stateSyncSandbox = {
     window: {},

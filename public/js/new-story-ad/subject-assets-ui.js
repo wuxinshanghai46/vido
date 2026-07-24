@@ -28,6 +28,14 @@
     if (!required) return [];
     return Array.isArray(state.petProfiles) ? state.petProfiles : [];
   }
+  function assetCastMode(rawMode = '', count = 0, currentMode = '') {
+    const raw = String(rawMode || '').toLowerCase();
+    const current = String(currentMode || '').toLowerCase();
+    if (raw === 'human_pet' || current === 'human_pet') return 'human_pet';
+    if (['single', 'dual', 'group'].includes(raw)) return raw;
+    const people = Math.max(0, Number(count) || 0);
+    return people >= 3 ? 'group' : (people === 2 ? 'dual' : 'single');
+  }
   function counts(spec = {}, animalOnly = false, state = {}) {
     const castProfiles = Array.isArray(state.castProfiles) ? state.castProfiles : [];
     const petProfiles = Array.isArray(state.petProfiles) ? state.petProfiles : [];
@@ -221,7 +229,7 @@
     }).join('')}</div>`;
   }
   window.NewStoryAdSubjectAssetsUI = {
-    castProfiles, petProfiles, counts, normalizeHumanProfile, normalizePetProfile,
+    castProfiles, petProfiles, assetCastMode, counts, normalizeHumanProfile, normalizePetProfile,
     reconcileProfiles, profileErrors, updateProfileFromField, subjectEditorHtml, renderProfiles, adoptAssistedProfiles,
     confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
   };

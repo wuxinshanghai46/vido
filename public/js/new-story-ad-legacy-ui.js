@@ -627,9 +627,7 @@
     const rawCastMode = String(asset.cast_mode || asset.castMode || asset.metadata?.cast_mode || '').toLowerCase();
     const memberCount = Array.isArray(asset.cast_assets) ? asset.cast_assets.length : 0;
     const count = Number(asset.expected_people || asset.person_count || asset.metadata?.expected_people || memberCount || 0);
-    const castMode = ['single', 'dual', 'group'].includes(rawCastMode)
-      ? rawCastMode
-      : (count >= 3 ? 'group' : (count === 2 ? 'dual' : 'single'));
+    const castMode = window.NewStoryAdSubjectAssetsUI.assetCastMode(rawCastMode, count, spec.castMode);
     const next = { ...spec, castMode, expectedPeople: count || '' };
     if (gender) next.gender = gender;
     if (age) next.age = age;
