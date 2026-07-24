@@ -27,12 +27,40 @@ function testBriefFormatter() {
 }
 
 function testFrontendDefensiveFormatter() {
-  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
-  const sandbox = { window: {}, setTimeout, clearTimeout };
-  vm.runInNewContext(source, sandbox);
-  const output = sandbox.window.NewStoryAdGenerationFlow.formatBriefText(String.raw`**广告主题**：测试\n\n**场景设定**：真实空间`);
+  const stateSyncSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
+  const generationSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
+  const fields = new Map([
+    ['#dhNsaAdText', { value: '', dataset: {} }],
+    ['#dhNsaAdDuration', { value: '30', dataset: {} }],
+    ['#dhNsaAdProductionMode', { value: '', dataset: {} }],
+    ['#dhNsaAdVoiceId', { value: '', dataset: {} }],
+  ]);
+  const sandbox = { window: {}, document: { querySelector: () => null }, setTimeout, clearTimeout };
+  vm.runInNewContext(stateSyncSource, sandbox);
+  vm.runInNewContext(generationSource, sandbox);
+  const screenshotLikeBrief = String.raw`【狗狗狗粮广告需求】 \n\n**广告主题**：真实家庭日常\n\n**核心故事线**：\n1. **活力展现**：主人与宠物自然互动\n2. **产品时刻**：狗粮自然进入生活`;
+  const output = sandbox.window.NewStoryAdGenerationFlow.formatBriefText(screenshotLikeBrief);
   assert.doesNotMatch(output, /\\n|\*\*/);
-  assert.match(output, /\n\n/);
+  assert.match(output, /【广告主题】真实家庭日常/);
+  assert.match(output, /\n\n【核心故事线】\n1\. 活力展现：/);
+
+  const state = { subtitleOptions: {}, sceneAssets: [], castProfiles: [] };
+  sandbox.window.NewStoryAdStateSync.hydrateTaskBundle({
+    task: {
+      id: 'escaped-layout-restore',
+      request: { brief: screenshotLikeBrief, target_duration: 30 },
+    },
+    outputs: {},
+  }, {
+    state,
+    within: selector => fields.get(selector) || null,
+    rememberTaskId: () => {},
+    hydrateControlledProduction: () => {},
+    applyPersonAssetConstraints: () => {},
+    root: () => ({ querySelector: () => null }),
+  });
+  assert.equal(fields.get('#dhNsaAdText').value, output, '恢复旧任务必须走同一个需求排版器');
+  assert.equal(state.context.brief, output, '恢复后的内存上下文不能继续保留字面量转义符');
 }
 
 async function testAssistServiceFormatsDoubleEscapes() {
@@ -60,7 +88,7 @@ async function testAssistServiceFormatsDoubleEscapes() {
   }
 }
 
-function testPersonPortraitAndRealismPolicy() {
+function testPersonFullBodyAndRealismPolicy() {
   const description = newStoryAdRouter.buildActorDescription({
     brief: '真实办公服务广告',
     spec: { age: 'young_adult_17_25', gender: 'female' },
@@ -69,10 +97,12 @@ function testPersonPortraitAndRealismPolicy() {
   assert.match(description, /18-25 years old adult/);
   assert.match(description, /distance-appropriate pores/i);
   assert.match(description, /no beauty filter/i);
-  assert.match(sheet, /top-left FRONT SHOULDER-UP PORTRAIT/i);
-  assert.match(sheet, /face about two thirds/i);
-  assert.match(sheet, /never generate or submit a portrait video/i);
-  assert.doesNotMatch(sheet, /top-left FRONT full body/i);
+  assert.match(description, /standardized digital face/i);
+  assert.match(description, /mouth-only smile/i);
+  assert.match(description, /pasted onto the background/i);
+  assert.match(sheet, /top-left FRONT full body/i);
+  assert.match(sheet, /All four panels must be full-body/i);
+  assert.doesNotMatch(sheet, /SHOULDER-UP|face about two thirds|portrait video/i);
 }
 
 function testSceneAndKeyframeRealismPolicy() {
@@ -95,7 +125,9 @@ function testSceneAndKeyframeRealismPolicy() {
     characters: [{ name: '测试演员' }],
   }, { visual_contract: {} }, 0);
   assert.match(keyframePrompt, /Actor photorealism lock/i);
-  assert.match(keyframePrompt, /real pores/i);
+  assert.match(keyframePrompt, /distance-scaled pores/i);
+  assert.match(keyframePrompt, /standardized influencer face/i);
+  assert.match(keyframePrompt, /story emotion/i);
   assert.match(keyframePrompt, /No beauty filter/i);
   assert.match(keyframePrompt, /Actor compliance lock/i);
 }
@@ -109,7 +141,7 @@ function testProviderReferencePriority() {
       },
     },
   });
-  assert.equal(url, '/outputs/person/front-closeup.png');
+  assert.equal(url, '/outputs/person/front-full.png');
   const payloadSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
   assert.match(payloadSource, /deyunai_asset_id:/);
   assert.match(payloadSource, /deyunai_asset_group_type:/);
@@ -121,6 +153,7 @@ function testComplianceKnowledgeBase() {
   assert.match(entry.content, /单张参考图必须小于 25MB/);
   assert.match(entry.content, /默认最多使用 6 张/);
   assert.match(entry.content, /默认只传图片，不传视频/);
+  assert.match(entry.content, /不额外生成或上传大头照/);
   assert.match(entry.content, /不得自动重试|不可自动重试/);
   assert.match(entry.content, /不用于规避供应商审核/);
   assert.doesNotMatch(visualPolicy.image2CompliancePrompt(), /bypass moderation|evade review/i);
@@ -130,7 +163,7 @@ async function main() {
   testBriefFormatter();
   testFrontendDefensiveFormatter();
   await testAssistServiceFormatsDoubleEscapes();
-  testPersonPortraitAndRealismPolicy();
+  testPersonFullBodyAndRealismPolicy();
   testSceneAndKeyframeRealismPolicy();
   testProviderReferencePriority();
   testComplianceKnowledgeBase();

@@ -1,8 +1,11 @@
 const PERSON_REALISM_PROMPT = [
   'Unretouched real-camera human realism is mandatory.',
-  'Preserve distance-appropriate pores, fine skin texture, subtle local color variation, natural nasolabial and under-eye structure, realistic lip texture, restrained oil highlights, eye moisture, individual hair strands and slight facial asymmetry.',
-  'Skin detail must follow lighting and focal distance instead of appearing as a uniform texture overlay.',
-  'Use believable facial muscle tension and an imperfect natural commercial expression.',
+  'Preserve distance-appropriate pores, fine skin grain, subtle local redness and color variation, faint vellus hair, natural nasolabial and under-eye folds, realistic lip lines, restrained oil highlights, eye moisture, individual hair strands, flyaways and slight facial asymmetry.',
+  'Skin detail must follow lighting, focal distance and depth of field instead of appearing as a uniform roughness overlay; retain natural highlight roll-off and avoid over-sharpened pores.',
+  'Avoid a standardized digital face: keep identity-specific bone structure, non-idealized proportions and small memorable asymmetries rather than the same high nose, narrow jaw and default influencer smile.',
+  'Expression must be caused by the story action. Coordinate gaze, eyelids, brows, cheeks, mouth corners and jaw tension as one restrained micro-expression; no empty gaze, mouth-only smile or neutral ID-photo face during an emotional beat.',
+  'Integrate the actor into the photographed location: match environmental key/fill direction, color temperature, edge light and contact shadows so hair and skin do not look pasted onto the background.',
+  'Across shot distance, wardrobe and background changes, preserve the same actor identity, facial proportions, age impression and distinguishing traits.',
   'No beauty filter, no face smoothing, no wax or plastic skin, no porcelain doll face, no perfect bilateral symmetry, no inflated lips, no glassy eyes, no excessive sharpening and no glamour retouching.',
 ].join(' ');
 
@@ -21,7 +24,7 @@ const IMAGE2_COMPLIANCE_PROMPT = [
   'Do not include watermark removal, captcha bypass, privacy extraction or moderation-evasion instructions.',
 ].join(' ');
 
-const PERSON_REALISM_COMPACT = 'No beauty filter or wax/plastic skin; keep real pores, local skin color variation, natural folds and slight asymmetry appropriate to camera distance; no face smoothing, doll symmetry or glassy eyes.';
+const PERSON_REALISM_COMPACT = 'Real distance-scaled pores, fine skin grain, local color, folds, lip lines and flyaway hair; no beauty filter or wax/plastic skin. Keep identity-specific bone structure and asymmetry, not a standardized influencer face. Match gaze, eyelids, brows, cheeks and mouth tension to story emotion; match skin/hair light, color temperature and contact shadows to the location.';
 const SCENE_REALISM_COMPACT = 'Physically photographed location with task-relevant wear, contact marks, fine dust, natural lens falloff, coherent sensor detail and grounded shadows; no sterile CGI showroom, repeated procedural texture, synthetic HDR or impossible glow.';
 const IMAGE2_COMPLIANCE_COMPACT = 'Original synthetic or verified-authorized adult identity only, natural non-suggestive pose; no unlicensed celebrity, public figure, protected character, brand, logo, named living artist/style or moderation-evasion instruction.';
 

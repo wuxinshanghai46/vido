@@ -16,7 +16,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'visual', cap: 300, items: 2, match: /User-edited visual override|^Visual:|Final priority:/i },
     { name: 'action', cap: 180, items: 2, match: /^Action:|^Current shot action:|Visible interaction grounding/i },
     { name: 'design', cap: 880, items: 10, whole_lines: true, match: /^Shot scope:|^This is an isolated product\/sample comparison insert|^Master environment only|Surface topology lock:|Surface conflict resolution \(authoritative\):|Seam policy:|Finish distribution:|Task-specific surface note:|Motion effect plan:|START KEYFRAME|Effect source state|Later animation target|Preserve the locked scene geometry|Target reference asset|Task-specific effect note:/i },
-    { name: 'actor', cap: 520, items: 7, match: /Actor photorealism lock|Actor compliance lock|Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
+    { name: 'actor', cap: 700, items: 7, match: /Actor photorealism lock|Actor compliance lock|Person QA required|no-human lock|If the shot includes any body part|actor consistency lock|Actor wardrobe lock|Actor identity|Actor hair|Actor appearance|Actor name|Actor reference|Locked real actor|Locked cast profiles|Do not crop/i },
     { name: 'scene', cap: 430, items: 6, match: /Scene photorealism lock|scene consistency lock|scene binding lock|Locked scene asset|Scene lock strength|Scene material lock|Scene layout lock|Scene style lock|Scene reference images|Required scene view|Required visible scene anchors|Required scene zone|Shot scene binding|keyframe must be generated inside/i },
     { name: 'repair', cap: 220, items: 4, match: /Previous visual QA rejected|structured consistency conflicts|^(?:场景空间|人物身份|产品主体)：/i },
     { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
@@ -85,6 +85,21 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
         used += nextSize;
       }
       return { name: category.name, index: categoryIndex, text: complete.join(' | ') };
+    }
+    if (category.name === 'actor') {
+      let remaining = category.cap - Math.max(0, selected.length - 1) * 3;
+      const rendered = selected.map((value, index) => {
+        const preferred = /Actor photorealism lock/i.test(value)
+          ? 350
+          : (/Actor compliance lock/i.test(value) ? 110 : 48);
+        const remainingItems = selected.length - index - 1;
+        const reservedTail = remainingItems * 40;
+        const allowance = Math.max(40, Math.min(preferred, remaining - reservedTail));
+        const text = cleanText(value, allowance);
+        remaining -= text.length;
+        return text;
+      }).filter(Boolean);
+      return { name: category.name, index: categoryIndex, text: rendered.join(' | ') };
     }
     const perItem = Math.max(40, Math.floor((category.cap - Math.max(0, selected.length - 1) * 3) / Math.max(1, selected.length)));
     return {

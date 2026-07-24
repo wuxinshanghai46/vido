@@ -73,6 +73,9 @@
   }
 
   function formatBriefText(value = '', max = 3000) {
+    if (window.NewStoryAdStateSync?.formatBriefText) {
+      return window.NewStoryAdStateSync.formatBriefText(value, max);
+    }
     return String(value || '')
       .replace(/\\r\\n|\\n|\\r/g, '\n')
       .replace(/\\t/g, ' ')

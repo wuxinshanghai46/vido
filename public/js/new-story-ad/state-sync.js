@@ -1,4 +1,70 @@
 (() => {
+  const BRIEF_SECTION_LABELS = new Set([
+    '广告主题',
+    '核心故事线',
+    '人物与宠物设定',
+    '人物设定',
+    '宠物设定',
+    '场景设定',
+    '产品卖点',
+    '核心卖点',
+    '目标受众',
+    '叙事节奏',
+    '画面风格',
+    '禁止项',
+    '补充要求',
+  ]);
+
+  function formatBriefSectionLine(line = '') {
+    const text = String(line).trim();
+    const match = text.match(/^\s*(?:【([^】]+)】|([^：:\n]{2,18}))\s*[：:]\s*(.*)$/);
+    if (!match) return text;
+    const label = String(match[1] || match[2] || '').trim();
+    const content = String(match[3] || '').trim();
+    if (!BRIEF_SECTION_LABELS.has(label)) return text;
+    return content ? `【${label}】${content}` : `【${label}】`;
+  }
+
+  /**
+   * Tasks created before the assisted-brief formatter may persist escaped
+   * newlines and Markdown. Normalize at the restore boundary so every caller
+   * receives the same readable brief without rewriting historical storage.
+   */
+  function formatBriefText(value = '', max = 3000) {
+    const normalized = String(value || '')
+      .replace(/\\r\\n|\\n|\\r/g, '\n')
+      .replace(/\\t/g, ' ')
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+      .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+      .replace(/__([^_\n]+)__/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '• ')
+      .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+    if (!normalized) return '';
+
+    const lines = normalized
+      .split(/\n+/)
+      .map(formatBriefSectionLine)
+      .filter(Boolean);
+    const output = [];
+    for (const line of lines) {
+      const isSection = /^【[^】]+】/.test(line);
+      if (isSection && output.length && output[output.length - 1] !== '') output.push('');
+      output.push(line);
+    }
+    return output.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+  }
+
+  function normalizeBriefContext(context = {}) {
+    if (!context || typeof context !== 'object') return context;
+    const rawBrief = context.brief || context.content || '';
+    if (!rawBrief) return context;
+    return { ...context, brief: formatBriefText(rawBrief) };
+  }
+
   function normalizeTaskOutputs(bundle = {}) {
     const raw = bundle.outputs || {};
     if (!Array.isArray(raw)) return raw && typeof raw === 'object' ? raw : {};
@@ -161,7 +227,7 @@
     const task = response.task || bundle.task || {};
     const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
     const outputs = bundle.outputs || {};
-    state.context = outputs.context || response.context || state.context;
+    state.context = normalizeBriefContext(outputs.context || response.context || state.context);
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
     state.storyboardStatus = response.storyboard_status || bundle.storyboard_status || state.storyboardStatus || null;
@@ -266,6 +332,8 @@
       ...(task.request || {}),
       ...(outputs.context || {}),
     };
+    const restoredBrief = formatBriefText(request.brief || request.content || task.brief || '');
+    if (restoredBrief) request.brief = restoredBrief;
     const incomingTaskId = task.id || request.task_id || request.taskId || '';
     syncMediaResult(state, { bundle, incomingTaskId });
     state.taskId = incomingTaskId || state.taskId;
@@ -276,7 +344,11 @@
     syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
     if (!state.activeGenerationId) state.cancelRequested = false;
-    state.context = outputs.context || request || state.context;
+    state.context = normalizeBriefContext({
+      ...request,
+      ...(outputs.context || {}),
+      ...(restoredBrief ? { brief: restoredBrief } : {}),
+    }) || state.context;
     state.sceneConfig = outputs.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || state.blueprint;
     state.storyboardStatus = bundle.storyboard_status || state.storyboardStatus || null;
@@ -296,7 +368,7 @@
     state.taskErrorCode = task.error_code || '';
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
-    setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '', { within });
+    setFieldValue('#dhNsaAdText', restoredBrief, { within });
     setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30, { within });
     const durationControl = within('#dhNsaAdDuration');
     if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';
@@ -343,5 +415,6 @@
     detectMissingStoryboardOutput,
     syncMediaResult,
     collectDurationContract,
+    formatBriefText,
   };
 })();

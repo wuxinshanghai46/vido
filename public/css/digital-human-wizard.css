@@ -722,6 +722,16 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 .dh-luxgen-badge.is-loading { border-color: rgba(33,255,243,.5); color: var(--dh-primary); background: rgba(33,255,243,.08); animation: dhNsaRestorePulse 1.2s ease-in-out infinite; }
 @keyframes dhNsaRestorePulse { 50% { opacity: .58; } }
 .dh-luxgen-requirement-tip { margin: -4px 0 10px; padding: 9px 11px; border: 1px solid rgba(33,255,243,.18); border-radius: 8px; background: rgba(33,255,243,.045); color: var(--dh-text-soft); font-size: 12px; line-height: 1.55; }
+.dh-luxgen-requirement-textarea {
+  min-height: 220px;
+  padding: 16px 18px;
+  line-height: 1.75;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
 .dh-luxgen-textarea { min-height: 260px; resize: vertical; }
 .dh-luxgen-product-stage { border-color: rgba(164,255,72,.22); background: linear-gradient(180deg, rgba(164,255,72,.035), rgba(255,255,255,.02)); }
 .dh-luxgen-product-grid { display: grid; grid-template-columns: minmax(280px, 1fr) 280px; gap: 14px; align-items: stretch; }

@@ -446,7 +446,7 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
     'Use realistic hands, real fabric wrinkles, normal body proportions, believable commercial wardrobe and a clean studio casting background.',
     'The actor must be reusable across multiple storyboard shots. Preserve face identity, age impression, hairstyle, body proportions and the exact same outfit across every generated view.',
     'Wardrobe consistency is mandatory: keep the same clothing category, color, fabric, cut, sleeve/hem length, shoes, accessories and styling in all views. If wardrobe is not specified, choose one simple commercial outfit and repeat that exact outfit in all views.',
-    'The package must include one clear frontal shoulder-up portrait plus full-body side, back and action references. Show realistic clothing and shoes in the full-body views; no cartoon, anime, 3D render, poster text or watermark.',
+    'The package must include frontal, side, back and natural action full-body references. Show the complete actor, clothing and shoes in every view; no cartoon, anime, 3D render, poster text or watermark.',
     brief ? `Campaign brief: ${String(brief).slice(0, 1200)}` : '',
     description ? `User actor description: ${String(description).slice(0, 800)}` : '',
     castMode ? `Cast mode lock: ${castMode}. This is a hard constraint.` : '',
@@ -463,7 +463,7 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
 
 function buildActorViewPrompt(basePrompt = '', view = 'front') {
   const viewPrompts = {
-    front: 'View requirement: FRONT SHOULDER-UP PORTRAIT, vertical close-up, neutral natural expression, face about two thirds of the frame, both eyes visible, hair not covering the face, no hands near the face, clean neutral background.',
+    front: 'View requirement: FRONT full-body casting reference of the same actor, standing naturally, facing the camera, both eyes visible, complete clothing and both feet visible.',
     side: 'View requirement: SIDE or three-quarter profile full-body casting reference of the same actor, same face identity, same age impression, same body proportions and the exact same outfit, both feet visible.',
     back: 'View requirement: BACK full-body casting reference of the same actor, same hairstyle, same body proportions and the exact same outfit, both feet visible.',
     action: 'View requirement: NATURAL COMMERCIAL ACTION POSE full-body casting reference of the same actor. Use only a subtle presenting gesture or walking-ready pose in the same studio. Keep the exact same outfit, shoes, accessories, hairstyle, body proportions and identity. This is not a storyboard scene.',
@@ -481,12 +481,11 @@ function buildActorSheetPrompt(basePrompt = '') {
   return [
     basePrompt,
     'Generate one single 2x2 actor casting reference sheet, not four separate images.',
-    'Panel order is mandatory: top-left FRONT SHOULDER-UP PORTRAIT, top-right SIDE or three-quarter full body, bottom-left BACK full body, bottom-right SUBTLE COMMERCIAL ACTION POSE full body.',
-    'Top-left provider portrait requirement: vertical frontal close-up, neutral natural expression, shoulders visible, face about two thirds of the panel, both eyes visible, no hair or hands covering the face. This still image is the preferred AIGC virtual-library source; never generate or submit a portrait video.',
+    'Panel order is mandatory: top-left FRONT full body, top-right SIDE or three-quarter full body, bottom-left BACK full body, bottom-right SUBTLE COMMERCIAL ACTION POSE full body.',
     'Every panel must show the same adult actor identity, same face, same age impression, same body proportions, same hairstyle, and the exact same outfit.',
     'Wardrobe lock is mandatory across all four panels: identical clothing items, color, fabric, cut, sleeve length, hem length, shoes, accessories and styling. Do not change clothing in the action pose.',
     'Use the same clean light-gray studio casting background in all panels. No showroom, no interior scene, no product wall, no furniture, no props, no text, no labels, no logo, no watermark.',
-    'The other three panels must be full-body casting photos from head to feet with realistic hands and feet. Use natural commercial expressions throughout; no cartoon, anime, 3D render, beauty poster, face smoothing or waxy/plastic skin.',
+    'All four panels must be full-body casting photos from head to feet with realistic hands and feet. Use natural commercial expressions throughout; no cartoon, anime, 3D render, beauty poster, face smoothing or waxy/plastic skin.',
   ].filter(Boolean).join('\n\n');
 }
 
