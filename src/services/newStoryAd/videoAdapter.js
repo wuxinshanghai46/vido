@@ -34,7 +34,6 @@ function listVideoShotStatuses(taskId = '', total = 0) {
     .sort((a, b) => Number(String(a.kind).slice(VIDEO_SHOT_STATUS_PREFIX.length)) - Number(String(b.kind).slice(VIDEO_SHOT_STATUS_PREFIX.length)))
     .map(row => row.payload || null);
 }
-
 function updateVideoProgress(taskId = '', total = 0, extra = {}) {
   const statuses = listVideoShotStatuses(taskId, total);
   const task = storage.getTask(taskId) || {};
@@ -401,7 +400,6 @@ function deyunaiAssetGroupType(ctx = {}) {
     ? 'LivenessFace'
     : 'AIGC';
 }
-
 function personReferenceUrl(ctx = {}) {
   const contract = ctx.person_contract || ctx.person_asset?.person_contract || {};
   const refs = contract.reference_views || {};
@@ -411,6 +409,9 @@ function personReferenceUrl(ctx = {}) {
 async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} } = {}) {
   if (!personIdentity.personRequired(ctx)) return null;
   personIdentity.assertVerifiedPerson(ctx);
+  const castCount = Number(ctx.expected_people || ctx.person_asset?.expected_people || ctx.person_asset?.cast_assets?.length || 1) || 1;
+  // One provider asset cannot truthfully represent a multi-person cast; use the approved keyframe instead.
+  if (castCount > 1) return null;
   const sourceUrl = absoluteAssetUrl(personReferenceUrl(ctx), options);
   if (!sourceUrl) {
     const error = new Error('人物合同没有可上传到漫路素材库的正面参考图');
@@ -447,7 +448,6 @@ async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} }
   storage.saveOutput(taskId, 'deyunai_person_asset', asset);
   return asset;
 }
-
 async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, options = {} } = {}) {
   const sources = (Array.isArray(block.spatial_reference_urls) ? block.spatial_reference_urls : [])
     .map(url => absoluteAssetUrl(url, options))

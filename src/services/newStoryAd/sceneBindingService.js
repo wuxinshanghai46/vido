@@ -252,6 +252,27 @@ function assertVerifiedSceneAssets(sceneAssets = []) {
   throw error;
 }
 
+function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = []) {
+  const mode = cleanText(sceneMode || 'auto', 20).toLowerCase();
+  const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
+  if (mode === 'multi' && assets.length < 2) {
+    const error = new Error('当前选择了多场景锁定，但独立场景资产少于 2 套；请为每个空间分别生成场景资产后再生成分镜');
+    error.code = 'MULTI_SCENE_ASSETS_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  if (mode === 'single' && assets.length !== 1) {
+    const error = new Error('当前选择了单场景锁定，请保留并验证 1 套场景资产后再生成分镜');
+    error.code = 'SINGLE_SCENE_ASSET_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  if (assets.length) assertVerifiedSceneAssets(assets);
+  return true;
+}
+
 function bindShotToScene(shot = {}, sceneAssets = [], index = 0, previousShot = null) {
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
   if (!assets.length) {
@@ -401,6 +422,7 @@ module.exports = {
   sceneContractForShot,
   sceneVerificationState,
   assertVerifiedSceneAssets,
+  assertSceneModeAssets,
   selectSceneAsset,
   semanticSceneView,
   resolveSceneView,

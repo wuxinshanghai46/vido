@@ -19,6 +19,8 @@ const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnit
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
+const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
+const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
@@ -814,6 +816,59 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       person_contract: committed?.person_contract || fallbackContract,
     }));
   }
+  });
+}));
+
+router.post('/subject-assets', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const user = userFromReq(req);
+  const taskId = String(body.task_id || body.taskId || '').trim();
+  if (taskId) service.assertTaskOwner(taskId, user);
+  const generationId = String(body.generation_id || body.generationId || uuidv4());
+  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
+  return cancellation.run({ generationId, taskId, stage: 'subject_assets', ownerId }, async () => {
+    const bundle = await subjectAssets.generateSubjectBundle({ body, taskId, generationId });
+    const persistedCast = bundle.cast_assets.map((asset) => ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, asset, {
+      generated_by: 'new_story_ad.subject_assets',
+      cast_member_index: asset.cast_member_index,
+      cast_role: asset.cast_role,
+    }));
+    const normalizedBundle = { ...bundle, cast_assets: persistedCast.map((row, index) => ({
+      ...row,
+      person_contract: bundle.cast_assets[index]?.person_contract || row.person_contract || row.metadata?.person_contract || null,
+      cast_member_index: index + 1,
+      cast_role: bundle.cast_assets[index]?.cast_role || row.cast_role || `角色${index + 1}`,
+    })) };
+    const committed = taskId
+      ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {})
+      : {
+          person_asset: normalizedBundle.cast_assets.length ? {
+            id: `cast_bundle_${generationId}`,
+            name: normalizedBundle.cast_assets.length > 1 ? `剧情广告人物组（${normalizedBundle.cast_assets.length}人）` : normalizedBundle.cast_assets[0].name,
+            source: 'new_story_ad_cast_bundle',
+            cast_mode: normalizedBundle.counts.mode,
+            expected_people: normalizedBundle.cast_assets.length,
+            image_url: normalizedBundle.cast_assets[0]?.image_url || '',
+            view_images: normalizedBundle.cast_assets[0]?.view_images || [],
+            cast_assets: normalizedBundle.cast_assets,
+            person_contract: normalizedBundle.person_contract,
+          } : null,
+          person_contract: normalizedBundle.person_contract,
+          cast_profiles: [],
+          pet_profiles: normalizedBundle.pet_profiles,
+          pet_contract: normalizedBundle.pet_contract,
+        };
+    return res.json({
+      success: true,
+      module: 'new_story_ad',
+      status: 'done',
+      counts: normalizedBundle.counts,
+      ...committed,
+      verification_status: {
+        people: committed.person_contract?.status || 'not_required',
+        pets: committed.pet_contract?.status || 'not_required',
+      },
+    });
   });
 }));
 

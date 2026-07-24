@@ -98,8 +98,15 @@ function normalizePetProfiles(input, fallback = {}) {
     type: cleanText(item?.type || item?.species || item?.pet_type || item?.petType || '', 80),
     breed: cleanText(item?.breed || '', 100),
     appearance: cleanText(item?.appearance || item?.description || item?.pet_description || item?.petDescription || '', 500),
+    image_url: cleanText(item?.image_url || item?.url || '', 1000),
+    view_images: Array.isArray(item?.view_images) ? item.view_images.map(view => ({
+      key: cleanText(view?.key || view?.view || '', 40),
+      url: cleanText(view?.url || view?.image_url || '', 1000),
+      image_url: cleanText(view?.image_url || view?.url || '', 1000),
+    })).filter(view => view.url || view.image_url).slice(0, 4) : [],
     reference_images: (Array.isArray(item?.reference_images) ? item.reference_images : [])
       .map(value => cleanText(value, 1000)).filter(Boolean).slice(0, 8),
+    pet_contract: item?.pet_contract && typeof item.pet_contract === 'object' ? item.pet_contract : null,
   })).filter(item => item.name || item.type || item.breed || item.appearance || item.reference_images.length);
   if (profiles.length) return profiles.slice(0, 8);
   const type = cleanText(fallback.petType || fallback.pet_type || '', 80);
@@ -243,8 +250,17 @@ function normalizePersonAsset(input = null) {
       cast_member_index: Number(member?.cast_member_index || member?.index || idx + 1) || idx + 1,
       cast_role: cleanText(member?.cast_role || member?.role || member?.name || `角色${idx + 1}`, 80),
       name: cleanText(member?.name || member?.cast_role || `角色${idx + 1}`, 80),
+      id: cleanText(member?.id || member?.actor_asset_id || `cast_${idx + 1}`, 120),
+      actor_asset_id: cleanText(member?.actor_asset_id || member?.id || '', 120),
+      actor_id: cleanText(member?.actor_id || '', 120),
       image_url: cleanText(member?.image_url || member?.url || '', 1000),
       extra_image_urls: Array.isArray(member?.extra_image_urls) ? member.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 6) : [],
+      view_images: Array.isArray(member?.view_images) ? member.view_images.map(view => ({
+        key: cleanText(view?.key || view?.view || '', 40),
+        url: cleanText(view?.url || view?.image_url || '', 1000),
+        image_url: cleanText(view?.image_url || view?.url || '', 1000),
+      })).filter(view => view.url || view.image_url).slice(0, 4) : [],
+      person_contract: member?.person_contract && typeof member.person_contract === 'object' ? member.person_contract : null,
     })).filter(member => member.image_url || member.name).slice(0, 8) : [],
     description: cleanText(input.description || input.spec_description || '', 1000),
   };
@@ -266,6 +282,12 @@ function normalizeCastProfiles(input) {
       referenceImageUrl: cleanText(profile.referenceImageUrl || profile.image_url || profile.url || '', 1000),
       image_url: cleanText(profile.image_url || profile.referenceImageUrl || profile.url || '', 1000),
       extra_image_urls: Array.isArray(profile.extra_image_urls) ? profile.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 8) : [],
+      view_images: Array.isArray(profile.view_images) ? profile.view_images.map(view => ({
+        key: cleanText(view?.key || view?.view || '', 40),
+        url: cleanText(view?.url || view?.image_url || '', 1000),
+        image_url: cleanText(view?.image_url || view?.url || '', 1000),
+      })).filter(view => view.url || view.image_url).slice(0, 4) : [],
+      person_contract: profile.person_contract && typeof profile.person_contract === 'object' ? profile.person_contract : null,
       appearance: profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {},
       wardrobe: profile.wardrobe && typeof profile.wardrobe === 'object' ? profile.wardrobe : {},
       hairMakeup: profile.hairMakeup && typeof profile.hairMakeup === 'object' ? profile.hairMakeup : {},
@@ -570,6 +592,9 @@ function buildContext(body = {}, user = {}) {
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
+    scene_mode: ['auto', 'single', 'multi'].includes(cleanText(body.scene_mode || body.sceneMode || 'auto', 20))
+      ? cleanText(body.scene_mode || body.sceneMode || 'auto', 20)
+      : 'auto',
     revisions: body.revisions && typeof body.revisions === 'object' ? {
       source: Math.max(1, Number(body.revisions.source || 1) || 1),
       scene: Math.max(1, Number(body.revisions.scene || 1) || 1),

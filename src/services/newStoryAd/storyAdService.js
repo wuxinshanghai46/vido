@@ -22,7 +22,8 @@ const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
-const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
+const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
+const subjectReferences = require('./subjectReferenceService');
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService');
@@ -301,7 +302,8 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
     }); });
   const visibleOutputs = (includeVideoMonitor
     ? (rawBundle.outputs || [])
-    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_'))).filter(row => !String(row.kind || '').startsWith('scene_asset_checkpoint:'))
+    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
+    .filter(row => !/^(?:scene|subject)_asset_checkpoint:/.test(String(row.kind || '')))
     .map(row => String(row.kind || '') === 'scene_assets'
       ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(row.payload || []) }
       : row);
@@ -829,6 +831,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+  assertSceneModeAssets(ctx.scene_mode, sceneAssets);
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   if (!blueprint.fingerprint) {
@@ -2045,28 +2048,22 @@ function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = 
   const personViews = Array.isArray(person.view_images) ? person.view_images : [];
   const includePerson = personIdentity.shotPersonRequired(ctx, shot, contract) && !personIdentity.shotForbidsPerson(ctx, shot);
   const includeProduct = productIdentity.shotProductRequired(ctx, shot, contract);
-  const personPrimary = includePerson ? (person.image_url || person.url || personViews[0]?.url || personViews[0]?.image_url || '') : '';
+  const castReferences = subjectReferences.castReferenceUrls(ctx, shot);
+  const personPrimary = includePerson ? (castReferences[0] || person.image_url || person.url || personViews[0]?.url || personViews[0]?.image_url || '') : '';
+  const secondaryPersonReferences = includePerson ? castReferences.slice(1) : [];
+  const petReferences = subjectReferences.petReferenceUrls(ctx);
   const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
   const product = assets.find(asset => /product|subject|商品|产品|主体/i.test(String(asset.type || '') + ' ' + String(asset.name || '')));
   const productReference = includeProduct ? (product?.url || product?.image_url || ctx.product_contract?.reference_images?.[0] || '') : '';
   const continuityReference = previousFrame?.image_url || '';
-  const personFallback = includePerson && !continuityReference
-    ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '')
-    : '';
+  const personFallback = includePerson && !continuityReference ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '') : '';
   const continuityOrFallback = continuityReference || personFallback;
   const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
-  // Providers accept at most four references. Commercial scene, actor, product
-  // and accepted-frame continuity have priority. The layout blueprint fills a
-  // remaining slot, so it improves spatial grounding without weakening identity
-  // or temporal continuity in reference-heavy shots.
-  const refs = [sceneReference, personPrimary, productReference, continuityOrFallback];
+  // Providers accept at most four references; subject and scene anchors take priority.
+  const refs = [sceneReference, personPrimary, ...secondaryPersonReferences, ...petReferences, productReference, continuityOrFallback];
   if (layoutReference && refs.filter(Boolean).length < 4) refs.push(layoutReference);
   const seen = new Set();
-  return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => {
-    if (!url || seen.has(url)) return false;
-    seen.add(url);
-    return true;
-  }).slice(0, 4);
+  return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url)).slice(0, 4);
 }
 
 async function ensureStoryboardForMedia(taskId) {

@@ -271,7 +271,15 @@ function assertVerifiedPerson(ctx = {}) {
     error.retryable = false;
     throw error;
   }
-  if (contract?.status === 'verified' && normalizeQa(contract.cross_view_qa).pass) return contract;
+  if (contract?.contract_type === 'cast_bundle') {
+    const members = Array.isArray(contract.member_contracts) ? contract.member_contracts : [];
+    const expected = Math.max(1, Number(contract.expected_people || ctx.expected_people || members.length) || 1);
+    const verified = members.length === expected && members.every(member => (
+      member?.status === 'verified' && normalizeQa(member.cross_view_qa).pass
+    ));
+    if (contract.status === 'verified' && contract.cross_view_qa?.pass === true
+      && contract.cross_view_qa?.member_count_pass === true && verified) return contract;
+  } else if (contract?.status === 'verified' && normalizeQa(contract.cross_view_qa).pass) return contract;
   const error = new Error('人物参考尚未通过身份、年龄、服装和体态一致性验证，请先重新验证人物资产');
   error.code = 'PERSON_VERIFICATION_REQUIRED';
   error.status = 422;

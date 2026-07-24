@@ -53,7 +53,16 @@ async function reviewPersonKeyframe({
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return { pass: true, status: 'verified', identity_score: 0.95, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.92, hand_owner_score: 0.9, conflicts: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-person-keyframe-qa' };
   }
-  const refs = Object.values(contract.reference_views || {}).filter(Boolean).slice(0, 4);
+  const memberContracts = contract.contract_type === 'cast_bundle' && Array.isArray(contract.member_contracts)
+    ? contract.member_contracts
+    : [contract];
+  const requestedCharacters = new Set((Array.isArray(shot.characters) ? shot.characters : [])
+    .map(value => cleanText(value?.id || value?.name || value, 120).toLowerCase()).filter(Boolean));
+  const selectedContracts = requestedCharacters.size
+    ? memberContracts.filter(member => requestedCharacters.has(cleanText(member.person_id || member.identity?.name || '', 120).toLowerCase()))
+    : memberContracts;
+  const refs = [...new Set((selectedContracts.length ? selectedContracts : memberContracts)
+    .flatMap(member => Object.values(member.reference_views || {}).filter(Boolean).slice(0, 2)))].slice(0, 8);
   const result = await gateway.generateVision({
     taskId,
     stage: 'new_story_ad.person_keyframe_qa',

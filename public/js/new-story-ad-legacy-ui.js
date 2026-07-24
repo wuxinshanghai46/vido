@@ -70,6 +70,7 @@
     personAsset: null,
     personSpecLock: null,
     castProfiles: [],
+    petProfiles: [],
     personGenerationProgress: null,
     sceneAssets: [],
     pendingChangeScope: 'none', pendingMediaChange: 'none',
@@ -688,6 +689,8 @@
   }
 
   function syncCastProfilesFromPersonAsset(asset = state.personAsset || state.actorAsset) {
+    const profiles = window.NewStoryAdSubjectAssetsUI.castProfiles(asset, { actorUrls, actorReferenceKind });
+    if (profiles) { state.castProfiles = profiles; return; }
     const profile = castProfileFromPersonAsset(asset);
     state.castProfiles = profile ? [profile] : [];
   }
@@ -993,12 +996,7 @@
     const petRequired = ['animal', 'human_pet'].includes(person.castMode);
     const personAsset = noHuman || animalOnly ? null : personAssetPayload();
     const expectedAnimals = petRequired ? (Number(person.expectedAnimals || 0) || 1) : 0;
-    const petProfiles = petRequired ? [{
-      id: 'pet_1',
-      type: person.petType || '按广告需求判断',
-      appearance: person.petDescription || '',
-      reference_images: [],
-    }] : [];
+    const petProfiles = window.NewStoryAdSubjectAssetsUI.petProfiles(state, person, petRequired);
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
     const castProfiles = noHuman || animalOnly ? [] : (state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []));
@@ -1019,7 +1017,7 @@
       expected_people: noHuman || animalOnly ? 0 : (Number(person.expectedPeople || 0) || undefined),
       expected_animals: expectedAnimals,
       pet_profiles: petProfiles,
-      pet_contract: petRequired ? { status: 'declared', expected_animals: expectedAnimals, profiles: petProfiles } : null,
+      pet_contract: petRequired ? (state.context?.pet_contract || { status: 'declared', expected_animals: expectedAnimals, profiles: petProfiles }) : null,
       production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
       voice_id: voiceId,
       voice_name: state.voiceName || '',
@@ -1041,6 +1039,7 @@
       person_asset: personAsset,
       scene_spec: sceneSpec,
       scene_assets: sceneAssets,
+      scene_mode: within('#dhNsaAdSceneMode')?.value || 'auto',
       cast_profiles: castProfiles,
       person_context: {
         source: noHuman ? 'no_human_mode' : (animalOnly ? 'animal_only_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec')),
@@ -1428,6 +1427,10 @@
     renderActorRows();
   }
 
+  function petAssetsHtml() {
+    return window.NewStoryAdSubjectAssetsUI.petGrid(state.petProfiles, { escapeHtml, assetThumbUrl });
+  }
+
   function renderPerson() {
     const host = within('#dhNsaAdPersonCurrent');
     if (!host) return;
@@ -1438,14 +1441,14 @@
     if (isAnimalOnlyMode()) {
       const petCount = Number(personSpec('expectedAnimals') || 0) || 1;
       const petType = personSpec('petType') || '按广告需求判断';
-      host.innerHTML = `<span class="dh-luxgen-person-badge">宠物主体</span><div class="dh-luxgen-person-copy"><b>${escapeHtml(`${petCount} 只 · ${petType}`)}</b><small>人物素材和演员不会进入生成；宠物数量、品种和识别特征由独立宠物合同锁定。</small></div>`;
+      host.innerHTML = `<div class="dh-luxgen-character-sheet"><span class="dh-luxgen-person-badge">宠物主体</span><div class="dh-luxgen-person-copy"><b>${escapeHtml(`${petCount} 只 · ${petType}`)}</b><small>人物素材不会进入生成；每只宠物使用独立四视图身份资产与一致性合同。</small></div>${petAssetsHtml()}</div>`;
       return;
     }
     if (state.personGenerationProgress?.active) {
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
         <div class="dh-luxgen-person-thumb">生成中</div>
-        <b>拟真一致性演员</b>
-        <small>正在根据广告需求、人物设定和当前剧本上下文生成演员参考。</small>
+        <b>主体身份资产</b>
+        <small>正在逐个生成人物 / 宠物四视图，并分别执行身份一致性验证。</small>
         ${personGenerationProgressHtml()}
       </div>`;
       return;
@@ -1507,6 +1510,7 @@
       </div>
       ${verificationDetailsHtml(personVerification)}
       ${warning}
+      ${petAssetsHtml()}
     </div>`;
   }
 
@@ -1567,6 +1571,8 @@
     if (state.taskId && incomingTaskId && String(state.taskId) !== String(incomingTaskId)) state.mediaResult = null;
     const outputs = bundle.outputs || {};
     state.context = outputs.context || response.context || state.context;
+    state.castProfiles = state.context?.cast_profiles || state.castProfiles || [];
+    state.petProfiles = state.context?.pet_profiles || state.petProfiles || [];
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
     state.shots = outputs.storyboard_table || response.shots || state.shots || [];
@@ -5503,7 +5509,7 @@
   }
 
   async function generatePersonSheet(button) {
-    if (isNoHumanMode() || isAnimalOnlyMode()) return toast('当前主体模式不需要生成真人演员；如需人物和宠物同时出镜，请选择“人物 + 宠物（混合主体）”。', 'info');
+    if (isNoHumanMode()) return toast('当前是无人物模式，不需要生成主体身份资产。', 'info');
     if (state.personGenerationProgress?.active) return toast('正在生成拟真演员，人物数量、性别、年龄、外貌、穿着等约束已提交给后台，生成完成或失败后再修改。', 'error');
     const description = [
       personSpec('appearanceText'),
@@ -5514,19 +5520,19 @@
     ].filter(Boolean).join('；');
     if (description.length < 8) return toast('请先填写广告需求或人物设定', 'error');
     const generationSpec = collectPersonSpec();
+    const subjectCounts = window.NewStoryAdSubjectAssetsUI.counts(generationSpec, isAnimalOnlyMode());
+    const { people: peopleCount, pets: petCount, total: subjectCount } = subjectCounts;
+    if (subjectCount > 1 || petCount > 0) {
+      const confirmed = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions(subjectCounts));
+      if (!confirmed) return;
+    }
     const generationId = window.crypto?.randomUUID?.() || `person_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     await ensureTask();
     state.activeGenerationId = generationId;
     state.activeStage = 'person_sheet';
     state.cancelRequested = false;
     const specDescription = personDescription(generationSpec);
-    const stages = [
-      { at: 0, percent: 10, message: '已完成 0/4 张，正在生成第 1/4 张。' },
-      { at: 2500, percent: 28, message: '已完成 0/4 张，正在生成第 1/4 张。' },
-      { at: 8500, percent: 58, message: '已完成 1/4 张，正在生成第 2/4 张。' },
-      { at: 15000, percent: 78, message: '已完成 2/4 张，正在生成第 3/4 张。' },
-      { at: 21500, percent: 88, message: '已完成 3/4 张，正在生成第 4/4 张。' },
-    ];
+    const stages = window.NewStoryAdSubjectAssetsUI.progressStages(subjectCount);
     const updateProgress = () => {
       const start = state.personGenerationProgress?.startedAt || Date.now();
       const elapsed = Date.now() - start;
@@ -5541,18 +5547,13 @@
       };
       renderPerson();
     };
-    state.personGenerationProgress = {
-      active: true,
-      startedAt: Date.now(),
-      label: '拟真演员',
-      percent: 10,
-      message: '已完成 0/4 张，正在生成第 1/4 张。',
-    };
+    state.personGenerationProgress = window.NewStoryAdSubjectAssetsUI.initialProgress(subjectCount);
     setButtonBusy(button, true, '生成拟真演员中...');
     renderPerson();
     const timer = setInterval(updateProgress, 1400);
     try {
-      const r = await api('/api/new-story-ad/person-sheet', {
+      const useBundle = peopleCount !== 1 || petCount > 0;
+      const r = await api(useBundle ? '/api/new-story-ad/subject-assets' : '/api/new-story-ad/person-sheet', {
         method: 'POST',
         body: {
           brief: payload().brief,
@@ -5567,7 +5568,7 @@
           generation_id: generationId,
         },
       });
-      state.actorAsset = r.actor_asset || r.character || r.actor || r.asset || r;
+      state.actorAsset = r.person_asset || r.actor_asset || r.character || r.actor || r.asset || (useBundle ? null : r);
       if (state.actorAsset && typeof state.actorAsset === 'object') {
         state.actorAsset.name = state.actorAsset.name || '拟真一致性演员';
         state.actorAsset.description = state.actorAsset.description || '拟真一致性演员：可用于后续分镜人物一致性锁定。';
@@ -5577,6 +5578,8 @@
         applyPersonAssetConstraints(state.actorAsset);
       }
       state.personAsset = null;
+      state.castProfiles = r.cast_profiles || state.context?.cast_profiles || state.castProfiles || [];
+      state.petProfiles = r.pet_profiles || state.context?.pet_profiles || state.petProfiles || [];
       state.personGenerationProgress = null;
       state.pendingChangeScope = 'none';
       state.context = {
@@ -5584,15 +5587,19 @@
         person_spec: generationSpec,
         person_asset: state.actorAsset,
         person_contract: state.actorAsset?.person_contract || r.person_contract || null,
+        cast_profiles: state.castProfiles,
+        pet_profiles: state.petProfiles,
+        pet_contract: r.pet_contract || state.context?.pet_contract || null,
       };
       renderPerson();
-      persistPersonAssetToLibrary(state.actorAsset, 'new_story_ad_person_sheet').catch(() => {});
-      const verificationResult = verificationView(state.actorAsset?.person_contract || r.person_contract, 'cross_view_qa', '人物');
+      if (state.actorAsset) persistPersonAssetToLibrary(state.actorAsset, 'new_story_ad_person_sheet').catch(() => {});
+      const verifiedSubjects = window.NewStoryAdSubjectAssetsUI.verificationTarget({ people: peopleCount, pets: petCount, personContract: state.actorAsset?.person_contract || r.person_contract, petContract: r.pet_contract });
+      const verificationResult = verificationView(verifiedSubjects.contract, 'cross_view_qa', verifiedSubjects.label);
       toast(
-        verificationResult.tone === 'verified'
-          ? '拟真一致性演员已生成、自动验证并保存'
+        verifiedSubjects.passed
+          ? `主体资产已生成并验证：${peopleCount}个人物、${petCount}个宠物`
           : (verificationResult.message || verificationResult.label),
-        verificationResult.tone === 'verified' ? 'success' : (verificationResult.tone === 'unavailable' ? 'warning' : 'error'),
+        verifiedSubjects.passed ? 'success' : (verificationResult.tone === 'unavailable' ? 'warning' : 'error'),
       );
     } catch (err) {
       state.personGenerationProgress = null;
