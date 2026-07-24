@@ -852,11 +852,13 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
             view_images: normalizedBundle.cast_assets[0]?.view_images || [],
             cast_assets: normalizedBundle.cast_assets,
             person_contract: normalizedBundle.person_contract,
+            subject_board_url: normalizedBundle.subject_board_url || '',
           } : null,
           person_contract: normalizedBundle.person_contract,
           cast_profiles: [],
           pet_profiles: normalizedBundle.pet_profiles,
           pet_contract: normalizedBundle.pet_contract,
+          subject_board_url: normalizedBundle.subject_board_url || '',
         };
     return res.json({
       success: true,

@@ -21,4 +21,38 @@ function petReferenceUrls(ctx = {}) {
     .flatMap(profile => [profile.image_url, ...(profile.reference_images || [])]).filter(Boolean))];
 }
 
-module.exports = { castReferenceUrls, petReferenceUrls };
+function subjectBoardUrl(ctx = {}) {
+  return cleanText(ctx.subject_board_url || ctx.person_asset?.subject_board_url
+    || ctx.person_contract?.subject_board_url || ctx.pet_contract?.subject_board_url || '', 1000);
+}
+
+function keyframeReferenceUrls(ctx = {}, options = {}) {
+  const person = ctx.person_asset || {};
+  const personViews = Array.isArray(person.view_images) ? person.view_images : [];
+  const castReferences = castReferenceUrls(ctx, options.shot || {});
+  const personPrimary = options.includePerson
+    ? (castReferences[0] || person.image_url || person.url || personViews[0]?.url || personViews[0]?.image_url || '')
+    : '';
+  const secondaryPersonReferences = options.includePerson ? castReferences.slice(1) : [];
+  const petReferences = petReferenceUrls(ctx);
+  const allCastReferences = castReferenceUrls(ctx, {});
+  const subjectCount = (options.includePerson ? castReferences.length : 0) + petReferences.length;
+  const boardCanRepresentThisShot = options.includePerson || allCastReferences.length === 0;
+  const subjectBoard = subjectCount > 1 && boardCanRepresentThisShot ? subjectBoardUrl(ctx) : '';
+  const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
+  const product = assets.find(asset => /product|subject|商品|产品|主体/i.test(String(asset.type || '') + ' ' + String(asset.name || '')));
+  const productReference = options.includeProduct
+    ? (product?.url || product?.image_url || ctx.product_contract?.reference_images?.[0] || '')
+    : '';
+  const continuityReference = options.previousFrame?.image_url || '';
+  const personFallback = options.includePerson && !continuityReference
+    ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '')
+    : '';
+  const refs = subjectBoard
+    ? [options.sceneReference, subjectBoard, productReference, continuityReference || personFallback]
+    : [options.sceneReference, personPrimary, ...petReferences, ...secondaryPersonReferences, productReference, continuityReference || personFallback];
+  if (options.layoutReference && refs.filter(Boolean).length < 4) refs.push(options.layoutReference);
+  return [...new Set(refs.filter(Boolean))].slice(0, 4);
+}
+
+module.exports = { castReferenceUrls, petReferenceUrls, subjectBoardUrl, keyframeReferenceUrls };

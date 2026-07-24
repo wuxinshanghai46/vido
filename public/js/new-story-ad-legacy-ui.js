@@ -729,7 +729,7 @@
       view_images: Array.isArray(asset.view_images) ? asset.view_images : [],
       view_count: asset.view_count || asset.view_images?.length || urls.length || 1,
       person_revision: asset.person_revision || asset.person_contract?.person_revision || 1,
-      person_contract: asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : null,
+      person_contract: asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : null, subject_board_url: asset.subject_board_url || asset.person_contract?.subject_board_url || '',
       deyunai_asset_id: asset.deyunai_asset_id || asset.metadata?.deyunai_asset_id || '', deyunai_asset_status: asset.deyunai_asset_status || asset.metadata?.deyunai_asset_status || '', deyunai_asset_group_id: asset.deyunai_asset_group_id || asset.metadata?.deyunai_asset_group_id || '', deyunai_asset_group_type: asset.deyunai_asset_group_type || asset.metadata?.deyunai_asset_group_type || '',
       description: asset.spec_description || asset.description || personDescription(),
     };
@@ -1036,7 +1036,7 @@
       assets,
       references: assets,
       person_spec: noHuman ? { castMode: 'no_human' } : person,
-      person_asset: personAsset,
+      person_asset: personAsset, subject_board_url: state.context?.subject_board_url || personAsset?.subject_board_url || '',
       scene_spec: sceneSpec,
       scene_assets: sceneAssets,
       scene_mode: within('#dhNsaAdSceneMode')?.value || 'auto',

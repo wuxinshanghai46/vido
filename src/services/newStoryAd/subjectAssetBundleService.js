@@ -1,4 +1,7 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
 const mediaAdapterDefault = require('./mediaAdapter');
 const personIdentityDefault = require('./personIdentityContractService');
 const petIdentityDefault = require('./petIdentityContractService');
@@ -7,6 +10,7 @@ const storageDefault = require('./storageService');
 const { cleanText } = require('./contextBuilder');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
+const activeBundleKinds = new Set();
 
 function boundedCount(value, fallback, max) {
   const n = Number(value);
@@ -24,8 +28,16 @@ function resolveCounts(spec = {}, body = {}) {
   };
 }
 
-function checkpointKind(taskId, brief, spec, counts) {
-  const hash = crypto.createHash('sha256').update(JSON.stringify({ brief, spec, counts })).digest('hex').slice(0, 20);
+function checkpointKind(taskId, brief, spec, counts, body = {}) {
+  const hash = crypto.createHash('sha256').update(JSON.stringify({
+    brief,
+    spec,
+    counts,
+    description: cleanText(body.description || '', 2000),
+    cast_profiles: Array.isArray(body.cast_profiles) ? body.cast_profiles : [],
+    pet_profiles: Array.isArray(body.pet_profiles) ? body.pet_profiles : [],
+    image_model: cleanText(body.image_model || body.imageModel || 'auto', 120),
+  })).digest('hex').slice(0, 20);
   return `subject_asset_checkpoint:${cleanText(taskId || 'detached', 80)}:${hash}`;
 }
 
@@ -132,6 +144,42 @@ function aggregatePetContract(profiles, revision = 1) {
   };
 }
 
+async function buildSubjectBoard(humans = [], pets = [], mediaAdapter = mediaAdapterDefault) {
+  const subjects = [...humans, ...pets];
+  if (subjects.length < 2 || !mediaAdapter?.ASSET_DIR || typeof mediaAdapter.publicAssetUrl !== 'function') return '';
+  const files = subjects.map(subject => {
+    const url = subject.image_url || subject.reference_images?.[0] || '';
+    const filename = path.basename(String(url).split('?')[0]);
+    const candidate = path.join(mediaAdapter.ASSET_DIR, filename);
+    return filename && fs.existsSync(candidate) ? candidate : '';
+  }).filter(Boolean);
+  if (files.length !== subjects.length) return '';
+  const columns = Math.ceil(Math.sqrt(files.length));
+  const rows = Math.ceil(files.length / columns);
+  const tileWidth = 360;
+  const tileHeight = 480;
+  const composites = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const input = await sharp(files[index]).resize(tileWidth, tileHeight, {
+      fit: 'contain', background: { r: 238, g: 238, b: 236, alpha: 1 },
+    }).jpeg({ quality: 92 }).toBuffer();
+    composites.push({ input, left: (index % columns) * tileWidth, top: Math.floor(index / columns) * tileHeight });
+  }
+  const filename = `subject_board_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.jpg`;
+  fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
+  const output = path.join(mediaAdapter.ASSET_DIR, filename);
+  await sharp({
+    create: { width: columns * tileWidth, height: rows * tileHeight, channels: 3, background: { r: 238, g: 238, b: 236 } },
+  }).composite(composites).jpeg({ quality: 92 }).toFile(output);
+  return mediaAdapter.publicAssetUrl(filename);
+}
+
+function hasLocalSubjectBoard(url = '', mediaAdapter = mediaAdapterDefault) {
+  if (!url || !mediaAdapter?.ASSET_DIR) return false;
+  const filename = path.basename(String(url).split('?')[0]);
+  return !!filename && fs.existsSync(path.join(mediaAdapter.ASSET_DIR, filename));
+}
+
 async function generateSubjectBundle(options = {}, deps = {}) {
   const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
   const personIdentity = deps.personIdentity || personIdentityDefault;
@@ -146,7 +194,16 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   const counts = resolveCounts(spec, body);
   const humans = humanMemberSpecs(spec, body, counts.people);
   const pets = petMemberSpecs(spec, body, counts.pets);
-  const kind = checkpointKind(taskId, brief, spec, counts);
+  const kind = checkpointKind(taskId, brief, spec, counts, body);
+  if (activeBundleKinds.has(kind)) {
+    const error = new Error('相同主体资产批次正在生成，请等待当前批次完成');
+    error.code = 'SUBJECT_ASSET_GENERATION_IN_PROGRESS';
+    error.status = 409;
+    error.retryable = true;
+    throw error;
+  }
+  activeBundleKinds.add(kind);
+  try {
   const previous = taskId ? (storage.getOutput(taskId, kind) || {}) : {};
   const checkpoint = {
     schema_version: 1,
@@ -154,6 +211,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     counts,
     humans: Array.isArray(previous.humans) ? previous.humans : [],
     pets: Array.isArray(previous.pets) ? previous.pets : [],
+    subject_board_url: cleanText(previous.subject_board_url || '', 1000),
     updated_at: new Date().toISOString(),
   };
   const save = () => {
@@ -210,14 +268,28 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     checkpoint.pets.push({ ...profile, ...asset, reference_images: views.map(view => view.url).filter(Boolean) });
     save();
   }
-  checkpoint.status = 'complete';
-  save();
   const personContract = checkpoint.humans.length ? aggregatePersonContract(checkpoint.humans) : null;
   const petContract = checkpoint.pets.length ? aggregatePetContract(checkpoint.pets) : null;
-  return { counts, cast_assets: checkpoint.humans, pet_profiles: checkpoint.pets, person_contract: personContract, pet_contract: petContract, checkpoint_kind: kind };
+  let subjectBoardUrl = checkpoint.subject_board_url;
+  if (!hasLocalSubjectBoard(subjectBoardUrl, mediaAdapter)) {
+    subjectBoardUrl = await buildSubjectBoard(checkpoint.humans, checkpoint.pets, mediaAdapter);
+    checkpoint.subject_board_url = subjectBoardUrl;
+  }
+  checkpoint.status = 'complete';
+  save();
+  if (personContract) personContract.subject_board_url = subjectBoardUrl;
+  if (petContract) petContract.subject_board_url = subjectBoardUrl;
+  return {
+    counts, cast_assets: checkpoint.humans, pet_profiles: checkpoint.pets,
+    person_contract: personContract, pet_contract: petContract,
+    subject_board_url: subjectBoardUrl, checkpoint_kind: kind,
+  };
+  } finally {
+    activeBundleKinds.delete(kind);
+  }
 }
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
-  aggregatePersonContract, aggregatePetContract, generateSubjectBundle,
+  aggregatePersonContract, aggregatePetContract, buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle,
 };

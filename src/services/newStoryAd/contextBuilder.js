@@ -245,7 +245,8 @@ function normalizePersonAsset(input = null) {
       image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
     })).filter(view => view.url || view.image_url).slice(0, 8) : [],
     person_revision: Math.max(1, Number(input.person_revision || input.personRevision || input.person_contract?.person_revision || 1) || 1),
-    person_contract: input.person_contract && typeof input.person_contract === 'object' ? input.person_contract : null,
+      person_contract: input.person_contract && typeof input.person_contract === 'object' ? input.person_contract : null,
+      subject_board_url: cleanText(input.subject_board_url || input.subjectBoardUrl || '', 1000),
     cast_assets: Array.isArray(input.cast_assets) ? input.cast_assets.map((member, idx) => ({
       cast_member_index: Number(member?.cast_member_index || member?.index || idx + 1) || idx + 1,
       cast_role: cleanText(member?.cast_role || member?.role || member?.name || `角色${idx + 1}`, 80),
@@ -581,6 +582,7 @@ function buildContext(body = {}, user = {}) {
       expected_animals: expectedAnimals,
       profiles: normalizedPetProfiles,
     } : null,
+    subject_board_url: cleanText(body.subject_board_url || body.subjectBoardUrl || personAsset?.subject_board_url || body.person_contract?.subject_board_url || body.pet_contract?.subject_board_url || '', 1000),
     assets: contextAssets,
     forbidden,
     controlled_production: controlledProduction,

@@ -648,6 +648,10 @@
   function render({ host, state = {} } = {}) {
     if (!host) return;
     const assets = normalizeAssets(state.sceneAssets || []);
+    const plannedSpaces = Array.isArray(state.sceneConfig?.spaces) ? state.sceneConfig.spaces : [];
+    const detectedMulti = state.sceneConfig?.scene_mode === 'multi' || plannedSpaces.length > 1;
+    const modeControl = root()?.querySelector?.('#dhNsaAdSceneMode') || null;
+    if (detectedMulti && modeControl?.value === 'auto') modeControl.value = 'multi';
     const progress = state.sceneGenerationProgress || null;
     if (progress?.active) {
       const view = sceneProgressView(progress);
@@ -669,9 +673,9 @@
     if (!assets.length) {
       host.innerHTML = `<div class="dh-nsa-scene-card is-empty">
         <div class="dh-nsa-scene-thumb">空间</div>
-        <div class="dh-nsa-scene-body">
-          <b>未生成场景参考</b>
-          <span>可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。</span>
+          <div class="dh-nsa-scene-body">
+            <b>未生成场景参考</b>
+            <span>${detectedMulti ? `剧情已识别 ${plannedSpaces.length || 2} 个独立空间，请分别生成并验证同等数量的场景资产后再生成分镜。` : '可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。'}</span>
         </div>
       </div>`;
       return;

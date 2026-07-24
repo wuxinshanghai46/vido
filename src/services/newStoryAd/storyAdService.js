@@ -22,7 +22,7 @@ const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
-const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
+const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, normalizeScenePlan, resolveSceneMode, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 const subjectReferences = require('./subjectReferenceService');
 const sceneSpace = require('./sceneSpaceContractService');
 const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
@@ -789,6 +789,7 @@ async function generateSceneConfig(taskId, options = {}) {
     '你的职责是把用户需求整理成业务边界、主体、人物模式、素材使用、禁止项和建议镜头策略。',
     '不能自行继承旧任务、不能写固定行业模板。',
     '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、human_pet、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色；human_pet 必须分别维护人物和宠物数量及一致性。',
+    '识别剧情实际发生的每个独立物理空间；家庭、办公室、门店、户外等不同地点必须拆成独立空间，不得合并成一套场景资产。',
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
 
@@ -797,6 +798,8 @@ async function generateSceneConfig(taskId, options = {}) {
   "business_boundary": "本任务只允许使用的业务/行业/主体边界",
   "advertised_subject": "广告主体",
   "cast_mode": "single/dual/multi/no_human/animal/human_pet/auto",
+  "scene_mode": "single/multi",
+  "spaces": [{"id":"稳定空间ID","name":"中文空间名","description":"空间布局与识别特征","story_purpose":"该空间承载的剧情作用"}],
   "asset_strategy": [{"asset_id":"素材ID","usage":"如何使用"}],
   "story_strategy": ["剧情策略"],
   "forbidden": ["禁止项"],
@@ -812,7 +815,7 @@ async function generateSceneConfig(taskId, options = {}) {
   stageProgress.update(taskId, { stage: 'scene_config', phase: 'draft_ready', completed: 1, total: 3, generationId, message: '场景配置初稿已返回，正在校验结构' });
   const sceneConfigDraft = await jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId, stage: 'new_story_ad.json_repair' });
   const language = await outputLanguage.ensureChineseOutput({ payload: sceneConfigDraft, kind: 'scene_config', taskId, context: ctx });
-  const sceneConfig = language.payload;
+  const sceneConfig = normalizeScenePlan(language.payload);
   stageProgress.update(taskId, { stage: 'scene_config', phase: 'structure_validated', completed: 2, total: 3, generationId, message: '场景配置结构已通过，正在保存' });
   sceneConfig.model_meta = { used_model: result.used_model, fallback_used: result.fallback_used, failed_models: result.failed_models, language_repaired: language.repaired, language_assessment: language.assessment };
   storage.saveOutput(taskId, 'scene_config', sceneConfig);
@@ -831,7 +834,8 @@ async function generateStoryboardStage(taskId, options = {}) {
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
-  assertSceneModeAssets(ctx.scene_mode, sceneAssets);
+  const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
+  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
   let blueprint = storage.getOutput(taskId, 'blueprint');
   if (!blueprint) blueprint = await generateBlueprintStage(taskId);
   if (!blueprint.fingerprint) {
@@ -1227,6 +1231,9 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const shotNeedsProduct = productIdentity.shotProductRequired(ctx, shot, contract);
   const personContract = ctx.person_contract || personAsset.person_contract || {};
   const productContract = ctx.product_contract || {};
+  const subjectBoardReferenceText = subjectReferences.subjectBoardUrl(ctx)
+    ? 'Actor/pet multi-subject reference board: treat the attached board only as an identity atlas. Render exactly the people and pets required by this shot; never copy the grid or studio background, and never add a subject merely because it appears on the board.'
+    : '';
   const actorReferenceText = [
     (personSpec.wardrobeText || personContract.wardrobe?.description) ? `Actor wardrobe lock: ${cleanText(personSpec.wardrobeText || personContract.wardrobe?.description, 520)}` : '',
     (personSpec.appearanceText || personContract.identity?.face_description) ? `Actor identity and appearance lock: ${cleanText(personSpec.appearanceText || personContract.identity?.face_description, 420)}` : '',
@@ -1286,6 +1293,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     shotNeedsPerson && actorReferenceText ? `Strict actor consistency lock:\n${actorReferenceText}` : '',
     shotNeedsPerson && actorReferenceText ? 'A hand-only or partial-person frame is allowed only when this storyboard explicitly requires that visible body part and it remains bound to the locked actor. A no-person shot forbids hands and sleeves too.' : '',
     shotNeedsPerson && Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
+    subjectBoardReferenceText,
     shotNeedsPerson && ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     petIdentity.keyframePrompt(ctx, shot),
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',
@@ -2044,26 +2052,14 @@ function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference 
 }
 
 function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
-  const person = ctx.person_asset || {};
-  const personViews = Array.isArray(person.view_images) ? person.view_images : [];
   const includePerson = personIdentity.shotPersonRequired(ctx, shot, contract) && !personIdentity.shotForbidsPerson(ctx, shot);
   const includeProduct = productIdentity.shotProductRequired(ctx, shot, contract);
-  const castReferences = subjectReferences.castReferenceUrls(ctx, shot);
-  const personPrimary = includePerson ? (castReferences[0] || person.image_url || person.url || personViews[0]?.url || personViews[0]?.image_url || '') : '';
-  const secondaryPersonReferences = includePerson ? castReferences.slice(1) : [];
-  const petReferences = subjectReferences.petReferenceUrls(ctx);
-  const assets = Array.isArray(ctx.assets) ? ctx.assets : [];
-  const product = assets.find(asset => /product|subject|商品|产品|主体/i.test(String(asset.type || '') + ' ' + String(asset.name || '')));
-  const productReference = includeProduct ? (product?.url || product?.image_url || ctx.product_contract?.reference_images?.[0] || '') : '';
-  const continuityReference = previousFrame?.image_url || '';
-  const personFallback = includePerson && !continuityReference ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '') : '';
-  const continuityOrFallback = continuityReference || personFallback;
   const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
-  // Providers accept at most four references; subject and scene anchors take priority.
-  const refs = [sceneReference, personPrimary, ...secondaryPersonReferences, ...petReferences, productReference, continuityOrFallback];
-  if (layoutReference && refs.filter(Boolean).length < 4) refs.push(layoutReference);
+  const refs = subjectReferences.keyframeReferenceUrls(ctx, {
+    sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
+  });
   const seen = new Set();
-  return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url)).slice(0, 4);
+  return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url));
 }
 
 async function ensureStoryboardForMedia(taskId) {

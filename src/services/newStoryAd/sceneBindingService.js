@@ -252,14 +252,41 @@ function assertVerifiedSceneAssets(sceneAssets = []) {
   throw error;
 }
 
-function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = []) {
+function normalizeScenePlan(input = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const spaces = (Array.isArray(source.spaces) ? source.spaces : [])
+    .map((space, index) => ({
+      id: cleanText(space?.id || space?.space_id || space?.space_key || `space_${index + 1}`, 100),
+      name: cleanText(space?.name || space?.label || `独立空间 ${index + 1}`, 120),
+      description: cleanText(space?.description || space?.layout || '', 500),
+      story_purpose: cleanText(space?.story_purpose || space?.purpose || '', 300),
+    }))
+    .filter(space => space.name || space.description)
+    .slice(0, 12);
+  const declaredMode = cleanText(source.scene_mode || source.sceneMode || '', 20).toLowerCase();
+  const sceneMode = spaces.length > 1 ? 'multi' : (['single', 'multi'].includes(declaredMode) ? declaredMode : (spaces.length === 1 ? 'single' : 'auto'));
+  return { ...source, scene_mode: sceneMode, spaces };
+}
+
+function resolveSceneMode(requestedMode = 'auto', scenePlan = {}) {
+  const requested = cleanText(requestedMode || 'auto', 20).toLowerCase();
+  if (['single', 'multi'].includes(requested)) return requested;
+  return normalizeScenePlan(scenePlan).scene_mode === 'multi' ? 'multi' : 'auto';
+}
+
+function assertSceneModeAssets(sceneMode = 'auto', sceneAssets = [], requiredSpaces = []) {
   const mode = cleanText(sceneMode || 'auto', 20).toLowerCase();
   const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
-  if (mode === 'multi' && assets.length < 2) {
-    const error = new Error('当前选择了多场景锁定，但独立场景资产少于 2 套；请为每个空间分别生成场景资产后再生成分镜');
+  const requiredCount = mode === 'multi'
+    ? Math.max(2, Array.isArray(requiredSpaces) ? requiredSpaces.length : 0)
+    : 0;
+  if (mode === 'multi' && assets.length < requiredCount) {
+    const error = new Error(`当前任务需要 ${requiredCount} 套独立场景资产，现有 ${assets.length} 套；请为每个空间分别生成并验证后再生成分镜`);
     error.code = 'MULTI_SCENE_ASSETS_REQUIRED';
     error.status = 422;
     error.retryable = false;
+    error.required_scene_count = requiredCount;
+    error.current_scene_count = assets.length;
     throw error;
   }
   if (mode === 'single' && assets.length !== 1) {
@@ -423,6 +450,8 @@ module.exports = {
   sceneVerificationState,
   assertVerifiedSceneAssets,
   assertSceneModeAssets,
+  normalizeScenePlan,
+  resolveSceneMode,
   selectSceneAsset,
   semanticSceneView,
   resolveSceneView,

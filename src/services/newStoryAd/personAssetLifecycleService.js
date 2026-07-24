@@ -84,6 +84,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     cast_assets: castAssets,
     person_revision: personRevision,
     person_contract: personContract,
+    subject_board_url: bundle.subject_board_url || '',
     production_usable_actor: personContract?.status === 'verified',
   } : null;
   const castProfiles = castAssets.map((asset, index) => ({
@@ -113,6 +114,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     cast_profiles: castProfiles,
     pet_profiles: petProfiles,
     pet_contract: bundle.pet_contract || null,
+    subject_board_url: bundle.subject_board_url || '',
     revisions: { ...(previousCtx.revisions || {}), person: personRevision },
   };
   const invalidated = revisionService.invalidateOutputs(storage, taskId, 'person');
@@ -126,7 +128,8 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
   });
   return {
     person_asset: personAsset, person_contract: personContract, cast_profiles: castProfiles,
-    pet_profiles: petProfiles, pet_contract: bundle.pet_contract || null, invalidated_outputs: invalidated,
+    pet_profiles: petProfiles, pet_contract: bundle.pet_contract || null,
+    subject_board_url: bundle.subject_board_url || '', invalidated_outputs: invalidated,
   };
 }
 
