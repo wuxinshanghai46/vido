@@ -71,7 +71,7 @@
     personSpecLock: null,
     castProfiles: [],
     petProfiles: [],
-    personGenerationProgress: null,
+    personGenerationProgress: null, subjectCheckpointTimer: null,
     sceneAssets: [],
     pendingChangeScope: 'none', pendingMediaChange: 'none',
     sceneGenerationProgress: null,
@@ -1930,6 +1930,7 @@
       recoverPersonAssetFromLibrary(bundle).then(recovered => {
         if (recovered) renderAll();
       }).catch(() => {});
+      window.NewStoryAdSubjectCheckpointPolling?.resume({ state, api, hydrateTaskBundle, renderAll });
       resumeActiveGeneration();
       return true;
     } catch (err) {
@@ -1948,7 +1949,6 @@
       }
     }
   }
-
   function resumeActiveGeneration() {
     if (!state.activeGenerationId || !state.taskId || !window.NewStoryAdGenerationFlow?.waitForStage) return false;
     const persistedStage = state.activeStage || 'generation';

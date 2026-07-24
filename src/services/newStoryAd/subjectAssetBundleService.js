@@ -361,9 +361,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     throw error;
   }
   activeBundleKinds.add(kind);
+  let checkpoint = null;
+  let save = () => {};
   try {
   const previous = taskId ? (storage.getOutput(taskId, kind) || {}) : {};
-  const checkpoint = {
+  checkpoint = {
     schema_version: 1,
     status: 'running',
     counts,
@@ -372,7 +374,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     subject_board_url: cleanText(previous.subject_board_url || '', 1000),
     updated_at: new Date().toISOString(),
   };
-  const save = () => {
+  save = () => {
     checkpoint.updated_at = new Date().toISOString();
     if (taskId) storage.saveOutput(taskId, kind, checkpoint);
   };
@@ -443,6 +445,29 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     person_contract: personContract, pet_contract: petContract,
     subject_board_url: subjectBoardUrl, checkpoint_kind: kind,
   };
+  } catch (error) {
+    if (checkpoint) {
+      const completedPeople = Array.isArray(checkpoint.humans) ? checkpoint.humans.length : 0;
+      const completedPets = Array.isArray(checkpoint.pets) ? checkpoint.pets.length : 0;
+      checkpoint.status = completedPeople + completedPets > 0 ? 'partial' : 'failed';
+      checkpoint.error_code = cleanText(error?.code || 'SUBJECT_ASSET_GENERATION_FAILED', 120);
+      save();
+      const checkpointDetails = {
+        status: checkpoint.status,
+        checkpoint_kind: kind,
+        counts: checkpoint.counts,
+        completed_people: completedPeople,
+        completed_pets: completedPets,
+        error_code: checkpoint.error_code,
+      };
+      error.partial_subject_checkpoint = true;
+      error.partial = checkpointDetails;
+      error.details = {
+        ...(error.details && typeof error.details === 'object' ? error.details : {}),
+        subject_checkpoint: checkpointDetails,
+      };
+    }
+    throw error;
   } finally {
     activeBundleKinds.delete(kind);
   }

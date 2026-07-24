@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260724-scene-subject-isolation-v6';
+  const SCRIPT_VERSION = '20260724-subject-checkpoint-v7';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -15,6 +15,7 @@
     '/js/new-story-ad/person-pet-spec.js',
     '/js/new-story-ad/actors.js',
     '/js/new-story-ad/subject-assets-ui.js',
+    '/js/new-story-ad/subject-checkpoint-polling.js',
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/actor-library.js',

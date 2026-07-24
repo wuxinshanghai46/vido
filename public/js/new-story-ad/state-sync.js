@@ -71,6 +71,117 @@
     return Object.fromEntries(raw.map(item => [item.kind, item.payload]));
   }
 
+  function latestSubjectCheckpoint(outputs = {}) {
+    return Object.entries(outputs || {})
+      .filter(([kind, value]) => kind.startsWith('subject_asset_checkpoint:')
+        && value && typeof value === 'object')
+      .map(([kind, value]) => ({ ...value, checkpoint_kind: kind }))
+      .sort((left, right) => {
+        const leftTime = Date.parse(left.updated_at || left.created_at || '') || 0;
+        const rightTime = Date.parse(right.updated_at || right.created_at || '') || 0;
+        return rightTime - leftTime;
+      })[0] || null;
+  }
+
+  function subjectAssetReady(asset = {}) {
+    return !!(asset && typeof asset === 'object'
+      && (asset.image_url || asset.url || asset.previewUrl || asset.actor_asset_id || asset.id));
+  }
+
+  function mergeSubjectProfiles(baseProfiles = [], generatedProfiles = [], profileKey = '') {
+    const base = Array.isArray(baseProfiles) ? baseProfiles : [];
+    const generated = Array.isArray(generatedProfiles) ? generatedProfiles : [];
+    const length = Math.max(base.length, generated.length);
+    return Array.from({ length }, (_, index) => {
+      const generatedProfile = profileKey && generated[index]?.[profileKey]
+        && typeof generated[index][profileKey] === 'object'
+        ? generated[index][profileKey]
+        : {};
+      return {
+        ...(base[index] || {}),
+        ...generatedProfile,
+        ...(generated[index] || {}),
+      };
+    });
+  }
+
+  function hydrateSubjectCheckpoint(state = {}, outputs = {}, request = {}) {
+    const checkpoint = latestSubjectCheckpoint(outputs);
+    state.subjectGenerationCheckpoint = checkpoint;
+    if (!checkpoint) {
+      if (state.personGenerationProgress?.restoredFromCheckpoint) state.personGenerationProgress = null;
+      return null;
+    }
+
+    const counts = checkpoint.counts && typeof checkpoint.counts === 'object' ? checkpoint.counts : {};
+    const expectedPeople = Math.max(0, Number(counts.people) || 0);
+    const expectedPets = Math.max(0, Number(counts.pets) || 0);
+    const humans = Array.isArray(checkpoint.humans) ? checkpoint.humans : [];
+    const pets = Array.isArray(checkpoint.pets) ? checkpoint.pets : [];
+    const completed = humans.length + pets.length;
+    const total = Math.max(1, expectedPeople + expectedPets);
+    const finalPersonAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
+    const finalPetProfiles = Array.isArray(request.pet_profiles || request.petProfiles)
+      ? (request.pet_profiles || request.petProfiles)
+      : [];
+    const checkpointComplete = checkpoint.status === 'complete';
+    const checkpointAge = Date.now() - (Date.parse(checkpoint.updated_at || checkpoint.created_at || '') || 0);
+    const checkpointFresh = checkpointAge >= 0 && checkpointAge < 120000;
+    const peopleCommitted = expectedPeople === 0
+      || (checkpointComplete && subjectAssetReady(finalPersonAsset)
+        && (!Array.isArray(finalPersonAsset.cast_assets) || finalPersonAsset.cast_assets.length >= expectedPeople));
+    const petsCommitted = expectedPets === 0
+      || (checkpointComplete && finalPetProfiles.length >= expectedPets && finalPetProfiles.every(subjectAssetReady));
+    const commitPending = checkpointComplete && checkpointFresh && (!peopleCommitted || !petsCommitted);
+
+    if (!peopleCommitted && humans.length) {
+      const provisionalAsset = {
+        id: `subject_checkpoint_${state.taskId || 'task'}`,
+        name: humans.length > 1 ? `剧情广告人物组（${humans.length}人）` : (humans[0].name || '剧情广告人物'),
+        source: 'new_story_ad_subject_checkpoint',
+        cast_mode: counts.mode || '',
+        expected_people: expectedPeople,
+        image_url: humans[0].image_url || '',
+        view_images: humans[0].view_images || [],
+        cast_assets: humans,
+        production_usable_actor: false,
+        checkpoint_status: checkpoint.status,
+      };
+      state.personAsset = provisionalAsset;
+      state.actorAsset = provisionalAsset;
+    } else if (!peopleCommitted && expectedPeople > 0 && checkpoint.status !== 'complete') {
+      state.personAsset = null;
+      state.actorAsset = null;
+    }
+    if (!peopleCommitted && humans.length) {
+      state.castProfiles = mergeSubjectProfiles(state.castProfiles, humans, 'subject_profile');
+    }
+    if (!petsCommitted && pets.length) {
+      state.petProfiles = mergeSubjectProfiles(state.petProfiles, pets);
+    }
+
+    const active = checkpoint.status === 'running' || commitPending;
+    if (active) {
+      const percent = checkpoint.status === 'complete'
+        ? 96
+        : Math.max(10, Math.min(92, Math.round((completed / total) * 88)));
+      state.personGenerationProgress = {
+        active: true,
+        restoredFromCheckpoint: true,
+        checkpointKind: checkpoint.checkpoint_kind,
+        startedAt: Date.parse(checkpoint.started_at || checkpoint.updated_at || '') || Date.now(),
+        label: '主体身份资产',
+        percent,
+        message: checkpoint.status === 'complete'
+          ? '人物和宠物资产已生成，正在写入当前任务，请勿重复提交。'
+          : `后台正在逐个生成主体资产，已完成 ${completed}/${total}；刷新页面不会重复生成。`,
+      };
+    } else if (state.personGenerationProgress?.restoredFromCheckpoint) {
+      state.personGenerationProgress = null;
+    }
+    return checkpoint;
+  }
+
   function setFieldValue(selector, value, { within } = {}) {
     const el = typeof within === 'function' ? within(selector) : document.querySelector(selector);
     if (!el || value === undefined || value === null) return;
@@ -226,7 +337,7 @@
     const bundle = response.bundle || response;
     const task = response.task || bundle.task || {};
     const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
-    const outputs = bundle.outputs || {};
+    const outputs = normalizeTaskOutputs(bundle);
     state.context = normalizeBriefContext(outputs.context || response.context || state.context);
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
@@ -253,6 +364,9 @@
       outputs,
       response,
     });
+    hydratePersonSpec(state.context || {}, { state });
+    hydrateAssets(state, state.context || {});
+    hydrateSubjectCheckpoint(state, outputs, state.context || {});
     state.taskId = incomingTaskId || state.taskId;
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
@@ -301,6 +415,12 @@
       const el = (typeof root === 'function' ? root() : document)?.querySelector(`[data-nsa-person-spec="${key}"]`);
       if (el && value !== undefined && value !== null) el.value = String(value);
     });
+    state.castProfiles = Array.isArray(request.cast_profiles || request.castProfiles)
+      ? (request.cast_profiles || request.castProfiles)
+      : [];
+    state.petProfiles = Array.isArray(request.pet_profiles || request.petProfiles)
+      ? (request.pet_profiles || request.petProfiles)
+      : [];
     const personAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
     if (personAsset && typeof personAsset === 'object' && !isFallbackPersonAsset(personAsset)) {
       state.personAsset = {
@@ -309,10 +429,6 @@
       };
       state.actorAsset = state.personAsset;
       if (typeof applyPersonAssetConstraints === 'function') applyPersonAssetConstraints(state.personAsset);
-    } else {
-      state.castProfiles = Array.isArray(request.cast_profiles || request.castProfiles)
-        ? (request.cast_profiles || request.castProfiles)
-        : [];
     }
   }
 
@@ -398,6 +514,7 @@
     if (typeof hydrateControlledProduction === 'function') hydrateControlledProduction(request);
     hydratePersonSpec(request, { state, root, applyPersonAssetConstraints });
     hydrateAssets(state, request);
+    hydrateSubjectCheckpoint(state, outputs, request);
     if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
   }
 
@@ -407,6 +524,8 @@
     hydrateTaskBundle,
     hydrateAssets,
     hydratePersonSpec,
+    latestSubjectCheckpoint,
+    hydrateSubjectCheckpoint,
     progressStageMatches,
     syncActiveGenerationClock,
     syncGenerationProgress,

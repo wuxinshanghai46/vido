@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const vm = require('vm');
 const sharp = require('sharp');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
@@ -280,12 +281,57 @@ function harness({ cancelAt = 0 } = {}) {
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
   assert.strictEqual(first.submissions(), 1, 'cancellation must stop before the second paid image submission');
+  const cancelledCheckpoint = Array.from(resumeStore.values())[0];
+  assert.strictEqual(cancelledCheckpoint.status, 'partial', 'a cancelled batch with completed assets must not remain stuck in running state');
+  assert.strictEqual(cancelledCheckpoint.error_code, 'USER_CANCELLED');
   const second = harness();
   second.deps.storage.getOutput = (taskId, kind) => resumeStore.get(`${taskId}:${kind}`) || null;
   second.deps.storage.saveOutput = (taskId, kind, value) => resumeStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
   const resumed = await subjectAssets.generateSubjectBundle(request, second.deps);
   assert.strictEqual(second.submissions(), 1, 'resume must reuse the completed first member and generate only the missing member');
   assert.strictEqual(resumed.cast_assets.length, 2);
+
+  const failureStore = new Map();
+  const failedBatch = harness();
+  failedBatch.deps.storage.getOutput = (taskId, kind) => failureStore.get(`${taskId}:${kind}`) || null;
+  failedBatch.deps.storage.saveOutput = (taskId, kind, value) => failureStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
+  let verificationCalls = 0;
+  failedBatch.deps.personIdentity.verifyPersonAsset = async ({ asset }) => {
+    verificationCalls += 1;
+    if (verificationCalls === 2) {
+      const error = new Error('verification infrastructure unavailable');
+      error.code = 'VISION_QA_UNAVAILABLE';
+      error.status = 503;
+      throw error;
+    }
+    return verifiedPerson(asset);
+  };
+  const failureRequest = {
+    taskId: 'task_partial_failure_bundle',
+    body: {
+      brief: 'Two distinct coworkers present the product',
+      cast_mode: 'dual',
+      expected_people: 2,
+      person_spec: { castMode: 'dual', expectedPeople: 2 },
+      cast_profiles: [castProfile(1), castProfile(2)],
+    },
+  };
+  await assert.rejects(
+    () => subjectAssets.generateSubjectBundle(failureRequest, failedBatch.deps),
+    error => error.code === 'VISION_QA_UNAVAILABLE'
+      && error.details?.subject_checkpoint?.status === 'partial'
+      && error.details?.subject_checkpoint?.completed_people === 1,
+    'a failure after one verified member must expose a resumable partial checkpoint',
+  );
+  const failedCheckpoint = Array.from(failureStore.values())[0];
+  assert.strictEqual(failedCheckpoint.status, 'partial');
+  assert.strictEqual(failedCheckpoint.humans.length, 1);
+  const failureResume = harness();
+  failureResume.deps.storage.getOutput = (taskId, kind) => failureStore.get(`${taskId}:${kind}`) || null;
+  failureResume.deps.storage.saveOutput = (taskId, kind, value) => failureStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
+  const recoveredFailure = await subjectAssets.generateSubjectBundle(failureRequest, failureResume.deps);
+  assert.strictEqual(failureResume.submissions(), 1, 'retry after a partial failure must not regenerate the completed paid member');
+  assert.strictEqual(recoveredFailure.cast_assets.length, 2);
 
   const concurrent = harness();
   const concurrentRequest = {
@@ -369,6 +415,9 @@ function harness({ cancelAt = 0 } = {}) {
   const sceneBinding = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneBindingService.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(root, 'src/services/newStoryAd/videoAdapter.js'), 'utf8');
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
+  const stateSyncSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/state-sync.js'), 'utf8');
+  const checkpointPollingSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-checkpoint-polling.js'), 'utf8');
+  const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   assert(ui.includes("'/api/new-story-ad/subject-assets'"), 'multi-person/pet UI must use the subject bundle endpoint');
   assert(subjectUi.includes('state.petProfiles') && ui.includes('NewStoryAdSubjectAssetsUI.petProfiles'), 'generated pet references must be preserved in request payloads');
   assert(ui.includes('cast_profiles: state.castProfiles') && ui.includes('expected_animals: petCount'), 'subject generation payload must submit exact counts and independent profiles');
@@ -376,6 +425,178 @@ function harness({ cancelAt = 0 } = {}) {
   assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
   assert(adapter.includes('castCount > 1'), 'multi-person video must not upload only the first actor as the whole cast');
   assert(storySource.includes('subjectReferences.keyframeReferenceUrls'), 'keyframes must use the reference-capacity orchestrator');
+  assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling must load before the legacy UI');
+
+  const documentMock = { querySelector: () => null };
+  const stateSyncSandbox = {
+    window: {},
+    document: documentMock,
+    URL,
+    URLSearchParams,
+    console,
+  };
+  vm.createContext(stateSyncSandbox);
+  vm.runInContext(stateSyncSource, stateSyncSandbox, { filename: 'state-sync.js' });
+  const sync = stateSyncSandbox.window.NewStoryAdStateSync;
+  const restoredState = {
+    taskId: '',
+    castProfiles: [],
+    petProfiles: [],
+    personGenerationProgress: null,
+    sceneAssets: [],
+    referenceAssets: [],
+    videoClips: [],
+    videoShotStatuses: [],
+  };
+  sync.hydrateTaskBundle({
+    task: { id: 'task_mixed_restore', request: {} },
+    outputs: {
+      context: {
+        cast_mode: 'human_pet',
+        expected_people: 2,
+        expected_animals: 1,
+        cast_profiles: [castProfile(1), castProfile(2)],
+        pet_profiles: [{ ...petProfile(1, { name: '雪球' }), image_url: '/pets/snowball.jpg' }],
+        person_asset: {
+          id: 'cast_bundle_restore',
+          image_url: '/people/person-1.jpg',
+          cast_assets: [
+            { ...castProfile(1), image_url: '/people/person-1.jpg' },
+            { ...castProfile(2), image_url: '/people/person-2.jpg' },
+          ],
+        },
+      },
+    },
+  }, {
+    state: restoredState,
+    within: () => null,
+    root: () => documentMock,
+    rememberTaskId: () => {},
+  });
+  assert.strictEqual(restoredState.castProfiles.length, 2, 'mixed-subject restore must retain all independent human profiles');
+  assert.strictEqual(restoredState.petProfiles.length, 1, 'a committed person asset must not suppress pet profile hydration');
+  assert.strictEqual(restoredState.petProfiles[0].name, '雪球');
+  assert.strictEqual(restoredState.petProfiles[0].image_url, '/pets/snowball.jpg');
+
+  const checkpointState = {
+    taskId: '',
+    castProfiles: [],
+    petProfiles: [],
+    personGenerationProgress: null,
+    sceneAssets: [],
+    referenceAssets: [],
+    videoClips: [],
+    videoShotStatuses: [],
+  };
+  sync.hydrateTaskBundle({
+    task: { id: 'task_running_restore', request: {} },
+    outputs: {
+      context: {
+        cast_mode: 'human_pet',
+        cast_profiles: [castProfile(1), castProfile(2)],
+        pet_profiles: [petProfile(1)],
+        person_asset: {
+          id: 'stale_previous_cast',
+          image_url: '/people/stale-person.jpg',
+          cast_assets: [{ name: 'stale', image_url: '/people/stale-person.jpg' }],
+        },
+      },
+      'subject_asset_checkpoint:task_running_restore:contract': {
+        status: 'running',
+        counts: { mode: 'human_pet', people: 2, pets: 1 },
+        humans: [{
+          name: '人物1',
+          image_url: '/people/person-1.jpg',
+          subject_profile: castProfile(1),
+        }],
+        pets: [],
+        updated_at: new Date().toISOString(),
+      },
+    },
+  }, {
+    state: checkpointState,
+    within: () => null,
+    root: () => documentMock,
+    rememberTaskId: () => {},
+  });
+  assert.strictEqual(checkpointState.personGenerationProgress.active, true, 'refresh during generation must restore visible background progress');
+  assert.strictEqual(checkpointState.personGenerationProgress.restoredFromCheckpoint, true);
+  assert.strictEqual(checkpointState.actorAsset.cast_assets.length, 1, 'completed members must remain recoverable while the batch continues');
+  assert.strictEqual(checkpointState.actorAsset.cast_assets[0].image_url, '/people/person-1.jpg', 'the current running checkpoint must replace a stale cast from an older generation');
+  assert(checkpointState.personGenerationProgress.message.includes('1/3'));
+
+  const partialState = {
+    taskId: '',
+    castProfiles: [],
+    petProfiles: [],
+    personGenerationProgress: null,
+    sceneAssets: [],
+    referenceAssets: [],
+    videoClips: [],
+    videoShotStatuses: [],
+  };
+  sync.hydrateTaskBundle({
+    task: { id: 'task_partial_restore', request: {} },
+    outputs: {
+      context: { cast_profiles: [castProfile(1), castProfile(2)] },
+      'subject_asset_checkpoint:task_partial_restore:contract': {
+        status: 'partial',
+        error_code: 'VISION_QA_UNAVAILABLE',
+        counts: { mode: 'dual', people: 2, pets: 0 },
+        humans: [{ name: '人物1', image_url: '/people/person-1.jpg', subject_profile: castProfile(1) }],
+        pets: [],
+        updated_at: new Date().toISOString(),
+      },
+    },
+  }, {
+    state: partialState,
+    within: () => null,
+    root: () => documentMock,
+    rememberTaskId: () => {},
+  });
+  assert.strictEqual(partialState.personGenerationProgress, null, 'a failed batch must not remain visually stuck as actively generating');
+  assert.strictEqual(partialState.actorAsset.cast_assets.length, 1, 'partial assets must remain visible and resumable after refresh');
+
+  let pollingCallback = null;
+  let clearedTimer = null;
+  const pollingSandbox = {
+    window: {},
+    encodeURIComponent,
+    setInterval(callback) {
+      pollingCallback = callback;
+      return 42;
+    },
+    clearInterval(timer) {
+      clearedTimer = timer;
+    },
+  };
+  vm.createContext(pollingSandbox);
+  vm.runInContext(checkpointPollingSource, pollingSandbox, { filename: 'subject-checkpoint-polling.js' });
+  const pollingState = {
+    taskId: 'task_polling_restore',
+    personGenerationProgress: { active: true, restoredFromCheckpoint: true },
+    subjectCheckpointTimer: null,
+  };
+  let polledPath = '';
+  let rendered = 0;
+  assert.strictEqual(pollingSandbox.window.NewStoryAdSubjectCheckpointPolling.resume({
+    state: pollingState,
+    api: async pathValue => {
+      polledPath = pathValue;
+      return { task: { id: pollingState.taskId }, outputs: {} };
+    },
+    hydrateTaskBundle: () => {
+      pollingState.personGenerationProgress = null;
+    },
+    renderAll: () => {
+      rendered += 1;
+    },
+    intervalMs: 1,
+  }), true);
+  await pollingCallback();
+  assert.strictEqual(polledPath, '/api/new-story-ad/tasks/task_polling_restore?compact=1');
+  assert.strictEqual(rendered, 1, 'checkpoint polling must re-render after the server bundle changes');
+  assert.strictEqual(clearedTimer, 42, 'checkpoint polling must stop after the task is committed');
 
   console.log('New story ad subject asset bundle regression passed.');
 })().catch(error => {
