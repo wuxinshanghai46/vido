@@ -4,9 +4,34 @@ const os = require('os');
 const path = require('path');
 const sharp = require('sharp');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
+const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
 const sceneBindingService = require('../src/services/newStoryAd/sceneBindingService');
+
+function castProfile(index, overrides = {}) {
+  return {
+    id: `cast_${index}`,
+    displayName: `人物${index}`,
+    roleName: `独立角色${index}`,
+    appearanceText: `人物${index}的独立脸型、年龄、体型与气质特征`,
+    wardrobeText: `人物${index}专属的上衣、下装、鞋和配饰`,
+    hairMakeupText: `人物${index}专属的发型与妆造`,
+    negativeText: '不得改变该人物的身份、年龄、服装和发型',
+    ...overrides,
+  };
+}
+
+function petProfile(index, overrides = {}) {
+  return {
+    id: `pet_${index}`,
+    name: `宠物${index}`,
+    type: index % 2 ? '金毛犬' : '英短猫',
+    breed: index % 2 ? '金毛寻回犬' : '英国短毛猫',
+    appearance: `宠物${index}独立的毛色、体型、面部花纹和项圈`,
+    ...overrides,
+  };
+}
 
 function verifiedPerson(asset = {}) {
   return {
@@ -40,9 +65,11 @@ function harness({ cancelAt = 0 } = {}) {
   const outputs = new Map();
   let submissions = 0;
   let cancellationChecks = 0;
+  const prompts = [];
   const mediaAdapter = {
     async generateActorReference({ filename, prompt }) {
       submissions += 1;
+      prompts.push(prompt);
       assert(prompt.includes('2x2 grid'));
       return { image_url: `/sheet/${filename}.png`, provider_used: 'mock-image' };
     },
@@ -72,6 +99,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
     outputs,
     submissions: () => submissions,
+    prompts,
   };
 }
 
@@ -92,6 +120,12 @@ function harness({ cancelAt = 0 } = {}) {
         petType: '金毛犬',
         petDescription: '浅金色毛发，红色项圈，左耳尖有一小撮深色毛',
       },
+      cast_profiles: [
+        castProfile(1, { displayName: '妈妈林悦', roleName: '母亲' }),
+        castProfile(2, { displayName: '爸爸周屿', roleName: '父亲' }),
+        castProfile(3, { displayName: '孩子小满', roleName: '8岁女儿' }),
+      ],
+      pet_profiles: [petProfile(1, { name: '豆包', type: '金毛犬' })],
     },
   }, batch.deps);
   assert.strictEqual(batch.submissions(), 4, 'three people plus one pet must submit four independent identity sheets');
@@ -102,6 +136,24 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(bundle.person_contract.cross_view_qa.member_count_pass, true);
   assert.strictEqual(bundle.pet_contract.status, 'verified');
   assert.strictEqual(bundle.pet_profiles[0].reference_images.length, 4);
+  assert(batch.prompts[0].includes('妈妈林悦') && !batch.prompts[0].includes('爸爸周屿'), 'each human prompt must contain only the selected member');
+  assert(batch.prompts[1].includes('爸爸周屿') && !batch.prompts[1].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
+  assert(batch.prompts[3].includes('豆包') && !batch.prompts[3].includes('妈妈林悦'), 'pet prompt must not contain any human member');
+  const normalizedContext = contextBuilder.buildContext({
+    brief: '一家三口与一只金毛在客厅互动',
+    cast_mode: 'human_pet',
+    expected_people: 3,
+    expected_animals: 1,
+    cast_profiles: [
+      castProfile(1, { displayName: '妈妈林悦' }),
+      castProfile(2, { displayName: '爸爸周屿' }),
+      castProfile(3, { displayName: '孩子小满' }),
+    ],
+    pet_profiles: [petProfile(1)],
+  });
+  assert.strictEqual(normalizedContext.cast_profiles[0].appearanceText, castProfile(1).appearanceText, 'context normalization must preserve per-member appearance');
+  assert.strictEqual(normalizedContext.cast_profiles[1].wardrobe.userPrompt, castProfile(2).wardrobeText, 'context normalization must preserve per-member wardrobe');
+  assert.strictEqual(normalizedContext.cast_profiles[2].hairMakeup.userPrompt, castProfile(3).hairMakeupText, 'context normalization must preserve per-member hair and makeup');
   assert.notStrictEqual(
     subjectAssets.checkpointKind('task', 'brief', {}, { people: 1, pets: 1 }, {
       pet_profiles: [{ appearance: 'white coat' }],
@@ -223,6 +275,7 @@ function harness({ cancelAt = 0 } = {}) {
       cast_mode: 'dual',
       expected_people: 2,
       person_spec: { castMode: 'dual', expectedPeople: 2 },
+      cast_profiles: [castProfile(1), castProfile(2)],
     },
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
@@ -242,6 +295,7 @@ function harness({ cancelAt = 0 } = {}) {
       cast_mode: 'dual',
       expected_people: 2,
       person_spec: { castMode: 'dual', expectedPeople: 2 },
+      cast_profiles: [castProfile(1), castProfile(2)],
     },
   };
   const firstConcurrent = subjectAssets.generateSubjectBundle(concurrentRequest, concurrent.deps);
@@ -253,6 +307,62 @@ function harness({ cancelAt = 0 } = {}) {
   await firstConcurrent;
   assert.strictEqual(concurrent.submissions(), 2, 'only one concurrent batch may submit paid subject generations');
 
+  const missingProfiles = harness();
+  await assert.rejects(
+    () => subjectAssets.generateSubjectBundle({
+      taskId: 'task_missing_profiles',
+      body: {
+        brief: '两位人物共同出镜',
+        cast_mode: 'dual',
+        expected_people: 2,
+        person_spec: { castMode: 'dual', expectedPeople: 2 },
+      },
+    }, missingProfiles.deps),
+    error => error.code === 'SUBJECT_PROFILES_REQUIRED' && error.actual_count === 0,
+    'multi-person requests without member profiles must fail before supplier submission',
+  );
+  assert.strictEqual(missingProfiles.submissions(), 0, 'profile contract failure must happen before any paid supplier call');
+
+  const single = harness();
+  const singleBundle = await subjectAssets.generateSubjectBundle({
+    taskId: 'task_single_profile',
+    body: {
+      brief: '一位品牌顾问独立出镜',
+      cast_mode: 'single',
+      expected_people: 1,
+      expected_animals: 0,
+      person_spec: { castMode: 'single', expectedPeople: 1 },
+      cast_profiles: [castProfile(1, { displayName: '顾问林晓', roleName: '品牌顾问' })],
+      pet_profiles: [],
+    },
+  }, single.deps);
+  assert.strictEqual(singleBundle.cast_assets.length, 1);
+  assert.strictEqual(singleBundle.pet_profiles.length, 0);
+  assert.strictEqual(single.submissions(), 1, 'single person must use one independent profile and one submission');
+
+  const petOnly = harness();
+  const petOnlyBundle = await subjectAssets.generateSubjectBundle({
+    taskId: 'task_pet_only_profile',
+    body: {
+      brief: '两只不同宠物展示宠物食品',
+      cast_mode: 'animal',
+      expected_people: 0,
+      expected_animals: 2,
+      person_spec: { castMode: 'animal', expectedPeople: 0, expectedAnimals: 2 },
+      cast_profiles: [],
+      pet_profiles: [petProfile(1), petProfile(2)],
+    },
+  }, petOnly.deps);
+  assert.strictEqual(petOnlyBundle.cast_assets.length, 0);
+  assert.strictEqual(petOnlyBundle.pet_profiles.length, 2);
+  assert.strictEqual(petOnly.submissions(), 2, 'pure-pet mode must generate one independent asset per pet');
+
+  const boundaryCounts = subjectAssets.resolveCounts(
+    { castMode: 'human_pet', expectedPeople: 99, expectedAnimals: 99 },
+    { cast_profiles: Array.from({ length: 12 }, (_, index) => castProfile(index + 1)), pet_profiles: Array.from({ length: 8 }, (_, index) => petProfile(index + 1)) },
+  );
+  assert.deepStrictEqual(boundaryCounts, { mode: 'human_pet', people: 12, pets: 8 }, 'subject counts must enforce the 12-person and 8-pet upper bounds');
+
   const root = path.resolve(__dirname, '..');
   const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const subjectUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
@@ -261,6 +371,7 @@ function harness({ cancelAt = 0 } = {}) {
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
   assert(ui.includes("'/api/new-story-ad/subject-assets'"), 'multi-person/pet UI must use the subject bundle endpoint');
   assert(subjectUi.includes('state.petProfiles') && ui.includes('NewStoryAdSubjectAssetsUI.petProfiles'), 'generated pet references must be preserved in request payloads');
+  assert(ui.includes('cast_profiles: state.castProfiles') && ui.includes('expected_animals: petCount'), 'subject generation payload must submit exact counts and independent profiles');
   assert(sceneBinding.includes('MULTI_SCENE_ASSETS_REQUIRED'), 'multi-scene storyboard must be blocked until independent scene assets exist');
   assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
   assert(adapter.includes('castCount > 1'), 'multi-person video must not upload only the first actor as the whole cast');

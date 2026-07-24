@@ -22,14 +22,12 @@ const videoCostAuthorization = require('./videoCostAuthorizationService');
 const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
-const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, normalizeScenePlan, resolveSceneMode, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
+const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, normalizeScenePlan, assertScenePlanContract, resolveSceneMode, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 const subjectReferences = require('./subjectReferenceService');
-const sceneSpace = require('./sceneSpaceContractService');
+const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
 const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
-const personAssetLifecycle = require('./personAssetLifecycleService');
-const productIdentity = require('./productIdentityContractService');
-const personKeyframeQa = require('./personConsistencyQaService');
-const productKeyframeQa = require('./productConsistencyQaService');
+const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
+const personKeyframeQa = require('./personConsistencyQaService'), productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
 const videoQualityPolicy = require('./videoQualityPolicyService');
 const videoLineage = require('./videoLineageService'), videoBoundaryPolicy = require('./videoBoundaryPolicyService'), videoArtifactWorkflow = require('./videoArtifactWorkflowService'), videoArtifactCompatibility = require('./videoArtifactCompatibilityService'), videoComposeCompatibility = require('./videoComposeCompatibilityService');
@@ -799,7 +797,18 @@ async function generateSceneConfig(taskId, options = {}) {
   "advertised_subject": "广告主体",
   "cast_mode": "single/dual/multi/no_human/animal/human_pet/auto",
   "scene_mode": "single/multi",
-  "spaces": [{"id":"稳定空间ID","name":"中文空间名","description":"空间布局与识别特征","story_purpose":"该空间承载的剧情作用"}],
+  "spaces": [{
+    "id":"稳定空间ID，后续 scene_id 必须与它相同",
+    "name":"中文空间名",
+    "description":"只描述这个物理空间的布局与识别特征，不得混入其它地点",
+    "story_purpose":"该空间承载的剧情作用",
+    "scene_spec":{
+      "layoutText":"仅属于这个空间的完整布局、出入口、固定结构、前后景和可复用身份",
+      "materialLightText":"仅属于这个空间的材质、色彩、光线方向和真实拍摄质感",
+      "interactionText":"仅属于这个空间的人物/商品动作区、通行路线和可用机位",
+      "negativeText":"这个空间不得出现的地点、布局、材质、人物、文字水印及其它空间元素"
+    }
+  }],
   "asset_strategy": [{"asset_id":"素材ID","usage":"如何使用"}],
   "story_strategy": ["剧情策略"],
   "forbidden": ["禁止项"],
@@ -816,6 +825,7 @@ async function generateSceneConfig(taskId, options = {}) {
   const sceneConfigDraft = await jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId, stage: 'new_story_ad.json_repair' });
   const language = await outputLanguage.ensureChineseOutput({ payload: sceneConfigDraft, kind: 'scene_config', taskId, context: ctx });
   const sceneConfig = normalizeScenePlan(language.payload);
+  assertScenePlanContract(sceneConfig);
   stageProgress.update(taskId, { stage: 'scene_config', phase: 'structure_validated', completed: 2, total: 3, generationId, message: '场景配置结构已通过，正在保存' });
   sceneConfig.model_meta = { used_model: result.used_model, fallback_used: result.fallback_used, failed_models: result.failed_models, language_repaired: language.repaired, language_assessment: language.assessment };
   storage.saveOutput(taskId, 'scene_config', sceneConfig);
@@ -3419,6 +3429,7 @@ function enforceAssistedPersonSpec(spec = {}, current = {}, context = {}) {
   preserve('origin', ['match_brief']);
   preserve('roleName');
   preserve('displayName');
+  preserve('expectedPeople');
   petIdentity.preserveAssistedFields(output, source);
   const fallback = assistedPersonSpecFallback(output, source, context);
   output.appearanceText = alignPersonAgeDescription(
@@ -3526,6 +3537,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
+    'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。',
     '当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
@@ -3552,12 +3564,29 @@ async function assistBrief(body = {}, user = {}) {
     "origin": "match_brief/east_asian_cn/southeast_asian/white_european/black_african/middle_eastern/south_asian/latino/mixed_global",
     "roleName": "人物身份或职业",
     "displayName": "正式人物姓名，可留空",
+    "expectedPeople": "需要人物时填写 1-12 的精确整数；无人物或纯宠物模式填写 0",
     "appearanceText": "脸型、体型、年龄感、商业真实感、气质、表情可信度，80-160 字",
     "wardrobeText": "上衣、下装、鞋、配饰、颜色、材质、与产品/场景的关系，80-160 字",
     "hairMakeupText": "发型、妆容、眼镜、胡须或其它妆造细节，50-120 字",
     "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔",
     "expectedAnimals": "动物/宠物主体或人物+宠物模式填写 1-8 的整数，其它模式留空", "petType": "宠物类型或品种，例如金毛犬、英短猫", "petDescription": "毛色、体型、年龄感、面部花纹、项圈和独特识别特征；用于跨镜头保持同一只宠物"
-  }
+  },
+  "cast_profiles": [{
+    "id": "稳定且唯一的 cast_1/cast_2 等 ID",
+    "displayName": "该人物正式姓名或关系称呼",
+    "roleName": "该人物在剧情中的独立身份、年龄关系或职责",
+    "appearanceText": "只描述该人物的年龄、脸型、体型、气质和可识别外貌，不得包含其他成员",
+    "wardrobeText": "只描述该人物自己的上衣、下装、鞋、配饰、颜色和材质",
+    "hairMakeupText": "只描述该人物自己的发型和妆造",
+    "negativeText": "只适用于该人物的禁止项"
+  }],
+  "pet_profiles": [{
+    "id": "稳定且唯一的 pet_1/pet_2 等 ID",
+    "name": "宠物名字，可留空",
+    "type": "物种或品种",
+    "breed": "细分品种，可留空",
+    "appearance": "只描述该只宠物自己的毛色、体型、年龄感、花纹、项圈和识别特征"
+  }]
 }`
       : isSceneSpec
         ? `{
@@ -3631,7 +3660,7 @@ async function assistBrief(body = {}, user = {}) {
 
 模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 
-${isPersonSpec ? '人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。' : ''}
+${isPersonSpec ? '人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。' : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 
 输出 JSON：
@@ -3664,29 +3693,7 @@ ${outputSchema}`;
     };
   }
   if (isPersonSpec) {
-    const raw = parsed.person_spec || parsed.personSpec || parsed;
-    const spec = enforceAssistedPersonSpec(raw && typeof raw === 'object' ? raw : {}, ctx.person_spec, ctx);
-    return {
-      person_spec: {
-        castMode: cleanText(spec.castMode || spec.cast_mode || 'auto', 40),
-        gender: cleanText(spec.gender || 'auto', 40),
-        age: cleanText(spec.age || 'match_brief', 40),
-        origin: cleanText(spec.origin || 'match_brief', 60),
-        roleName: cleanText(spec.roleName || spec.role_name || '', 100),
-        displayName: cleanText(spec.displayName || spec.display_name || '', 60),
-        appearanceText: cleanText(spec.appearanceText || spec.appearance || spec.description || '', 360),
-        wardrobeText: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || '', 420),
-        hairMakeupText: cleanText(spec.hairMakeupText || spec.hair_makeup || spec.hair || '', 280),
-        negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
-        ...petIdentity.assistedResponseFields(spec),
-      },
-      mode,
-      model_meta: {
-        used_model: result.used_model,
-        fallback_used: result.fallback_used,
-        failed_models: result.failed_models,
-      },
-    };
+    return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec });
   }
   if (isSceneSpec) {
     const raw = parsed.scene_spec || parsed.sceneSpec || parsed;

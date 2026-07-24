@@ -88,10 +88,11 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     production_usable_actor: personContract?.status === 'verified',
   } : null;
   const castProfiles = castAssets.map((asset, index) => ({
+    ...(asset.subject_profile && typeof asset.subject_profile === 'object' ? asset.subject_profile : {}),
     id: asset.actor_id || asset.id || `cast_${index + 1}`,
-    name: asset.name || `人物${index + 1}`,
-    displayName: asset.name || `人物${index + 1}`,
-    roleName: asset.cast_role || `角色${index + 1}`,
+    name: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
+    displayName: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
+    roleName: asset.subject_profile?.roleName || asset.cast_role || `角色${index + 1}`,
     assetId: asset.actor_asset_id || asset.id || '',
     actor_asset_id: asset.actor_asset_id || asset.id || '',
     actor_id: asset.actor_id || '',

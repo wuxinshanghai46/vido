@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260724-subject-assets-v5';
+  const SCRIPT_VERSION = '20260724-scene-subject-isolation-v6';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',

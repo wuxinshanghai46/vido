@@ -14,17 +14,35 @@ const activeBundleKinds = new Set();
 
 function boundedCount(value, fallback, max) {
   const n = Number(value);
-  return Math.max(0, Math.min(max, Math.round(Number.isFinite(n) && n > 0 ? n : fallback)));
+  const resolved = Number.isFinite(n) && n >= 0 ? n : fallback;
+  return Math.max(0, Math.min(max, Math.round(resolved)));
+}
+
+function firstDeclaredCount(values = [], fallback = 0, max = 12) {
+  const declared = values.find(value => value !== undefined && value !== null && String(value).trim() !== '');
+  return boundedCount(declared, fallback, max);
 }
 
 function resolveCounts(spec = {}, body = {}) {
   const mode = cleanText(spec.castMode || spec.cast_mode || body.cast_mode || body.castMode || 'single', 40).toLowerCase();
-  const peopleFallback = mode === 'dual' ? 2 : (['no_human', 'animal'].includes(mode) ? 0 : 1);
-  const petFallback = ['animal', 'human_pet'].includes(mode) ? 1 : 0;
+  const suppliedPeople = Array.isArray(body.cast_profiles) ? body.cast_profiles.length : 0;
+  const suppliedPets = Array.isArray(body.pet_profiles) ? body.pet_profiles.length : 0;
+  const peopleFallback = ['no_human', 'animal'].includes(mode)
+    ? 0
+    : (suppliedPeople || (mode === 'dual' ? 2 : (mode === 'single' ? 1 : 0)));
+  const petFallback = ['animal', 'human_pet'].includes(mode) ? (suppliedPets || 0) : 0;
   return {
     mode,
-    people: boundedCount(spec.expectedPeople || spec.expected_people || body.expected_people, peopleFallback, 12),
-    pets: boundedCount(spec.expectedAnimals || spec.expected_animals || body.expected_animals, petFallback, 8),
+    people: firstDeclaredCount(
+      [body.expected_people, body.expectedPeople, spec.expectedPeople, spec.expected_people],
+      peopleFallback,
+      12,
+    ),
+    pets: firstDeclaredCount(
+      [body.expected_animals, body.expectedAnimals, spec.expectedAnimals, spec.expected_animals],
+      petFallback,
+      8,
+    ),
   };
 }
 
@@ -43,38 +61,180 @@ function checkpointKind(taskId, brief, spec, counts, body = {}) {
 
 function humanMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
-  return Array.from({ length: count }, (_, index) => {
-    const source = supplied[index] || {};
-    const role = cleanText(source.roleName || source.role || source.name || (index === 0 ? spec.roleName : '') || `角色${index + 1}`, 120);
+  return supplied.slice(0, count).map((source, index) => {
+    const role = cleanText(source.roleName || source.role || '', 120);
     return {
-      ...spec,
       ...source,
+      id: cleanText(source.id || source.cast_id || source.castId || '', 80),
       member_index: index + 1,
-      displayName: cleanText(source.displayName || source.name || (index === 0 ? spec.displayName : '') || `人物${index + 1}`, 120),
+      displayName: cleanText(source.displayName || source.name || '', 120),
       roleName: role,
-      appearanceText: cleanText(source.appearance?.userPrompt || source.appearanceText || spec.appearanceText || '', 800),
-      wardrobeText: cleanText(source.outfit || source.wardrobe?.userPrompt || source.wardrobeText || spec.wardrobeText || '', 600),
-      hairMakeupText: cleanText(source.hairMakeup?.userPrompt || source.hairMakeupText || spec.hairMakeupText || '', 400),
+      appearanceText: cleanText(source.appearance?.userPrompt || source.appearanceText || source.appearance || '', 800),
+      wardrobeText: cleanText(source.outfit || source.wardrobe?.userPrompt || source.wardrobeText || '', 600),
+      hairMakeupText: cleanText(source.hairMakeup?.userPrompt || source.hairMakeupText || '', 400),
+      negativeText: cleanText(source.negativeText || source.negative || '', 400),
     };
   });
 }
 
 function petMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.pet_profiles) ? body.pet_profiles : [];
-  return Array.from({ length: count }, (_, index) => {
-    const source = supplied[index] || {};
+  return supplied.slice(0, count).map((source, index) => {
     return {
-      id: cleanText(source.id || `pet_${index + 1}`, 80),
-      name: cleanText(source.name || (count === 1 ? spec.petName : '') || `宠物${index + 1}`, 120),
-      type: cleanText(source.type || spec.petType || '按广告需求判断', 120),
-      breed: cleanText(source.breed || spec.petBreed || '', 160),
-      appearance: cleanText(source.appearance || spec.petAppearance || '', 600),
+      id: cleanText(source.id || source.pet_id || source.petId || '', 80),
+      name: cleanText(source.name || '', 120),
+      type: cleanText(source.type || source.species || '', 120),
+      breed: cleanText(source.breed || '', 160),
+      appearance: cleanText(source.appearance || source.description || '', 600),
       member_index: index + 1,
     };
   });
 }
 
-function humanPrompt(brief, description, member, count) {
+function subjectProfilesError(message, details = {}) {
+  const error = new Error(message);
+  error.code = 'SUBJECT_PROFILES_REQUIRED';
+  error.status = 400;
+  error.retryable = false;
+  Object.assign(error, details);
+  return error;
+}
+
+function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
+  if (counts.mode === 'single' && counts.people !== 1) {
+    throw subjectProfilesError('单人模式必须且只能提供 1 份人物档案', {
+      subject_type: 'human',
+      expected_count: 1,
+      actual_count: counts.people,
+    });
+  }
+  if (counts.mode === 'dual' && counts.people !== 2) {
+    throw subjectProfilesError('双人模式必须且只能提供 2 份独立人物档案', {
+      subject_type: 'human',
+      expected_count: 2,
+      actual_count: counts.people,
+    });
+  }
+  if (counts.mode === 'multi' && counts.people < 3) {
+    throw subjectProfilesError('多人模式必须填写 3-12 的精确人数并提供对应独立档案', {
+      subject_type: 'human',
+      expected_min: 3,
+      actual_count: counts.people,
+    });
+  }
+  if (['no_human', 'animal'].includes(counts.mode) && counts.people !== 0) {
+    throw subjectProfilesError('无人物或纯宠物模式不能提交人物数量或人物档案', {
+      subject_type: 'human',
+      expected_count: 0,
+      actual_count: counts.people,
+    });
+  }
+  if (!['animal', 'human_pet'].includes(counts.mode) && counts.pets !== 0) {
+    throw subjectProfilesError('当前主体模式不能提交宠物数量或宠物档案', {
+      subject_type: 'pet',
+      expected_count: 0,
+      actual_count: counts.pets,
+    });
+  }
+  if (counts.mode === 'animal' && counts.pets < 1) {
+    throw subjectProfilesError('纯宠物模式必须填写精确宠物数量并提供逐宠物档案', {
+      subject_type: 'pet',
+      expected_count: counts.pets,
+    });
+  }
+  if (counts.mode === 'human_pet' && (counts.people < 1 || counts.pets < 1)) {
+    throw subjectProfilesError('人物 + 宠物模式必须分别填写精确人物数、宠物数和对应独立档案', {
+      subject_type: 'mixed',
+      expected_people: counts.people,
+      expected_animals: counts.pets,
+    });
+  }
+  if (!['no_human', 'animal'].includes(counts.mode) && counts.people < 1) {
+    throw subjectProfilesError('当前人物模式必须填写 1-12 的精确人数并提供逐人物档案', {
+      subject_type: 'human',
+      expected_count: counts.people,
+    });
+  }
+  if (humans.length !== counts.people) {
+    throw subjectProfilesError(`人物档案数量与精确人数不一致：需要 ${counts.people} 份，当前 ${humans.length} 份`, {
+      subject_type: 'human',
+      expected_count: counts.people,
+      actual_count: humans.length,
+    });
+  }
+  if (pets.length !== counts.pets) {
+    throw subjectProfilesError(`宠物档案数量与精确数量不一致：需要 ${counts.pets} 份，当前 ${pets.length} 份`, {
+      subject_type: 'pet',
+      expected_count: counts.pets,
+      actual_count: pets.length,
+    });
+  }
+  const subjectIds = [...humans, ...pets].map(item => item.id);
+  const duplicateIds = subjectIds.filter((id, index, ids) => id && ids.indexOf(id) !== index);
+  if (duplicateIds.length) {
+    throw subjectProfilesError('每个人物和宠物必须使用互不重复的稳定 ID', {
+      duplicate_ids: [...new Set(duplicateIds)],
+    });
+  }
+  humans.forEach((member, index) => {
+    const missing = [
+      ['id', member.id],
+      ['displayName', member.displayName],
+      ['roleName', member.roleName],
+      ['appearanceText', member.appearanceText],
+      ['wardrobeText', member.wardrobeText],
+      ['hairMakeupText', member.hairMakeupText],
+    ].filter(([, value]) => !cleanText(value || '', 20)).map(([field]) => field);
+    if (missing.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个人物档案不完整：缺少 ${missing.join('、')}`, {
+        subject_type: 'human',
+        member_index: index + 1,
+        missing_fields: missing,
+      });
+    }
+    const text = [member.roleName, member.appearanceText, member.wardrobeText, member.hairMakeupText, member.negativeText].join('\n');
+    const otherNames = humans
+      .filter((_, otherIndex) => otherIndex !== index)
+      .map(item => cleanText(item.displayName || '', 120))
+      .filter(name => name.length >= 2 && text.includes(name));
+    if (otherNames.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个人物档案混入了其他成员：${otherNames.join('、')}`, {
+        subject_type: 'human',
+        member_index: index + 1,
+        mixed_member_names: otherNames,
+      });
+    }
+  });
+  pets.forEach((profile, index) => {
+    const missing = [
+      ['id', profile.id],
+      ['type', profile.type],
+      ['appearance', profile.appearance],
+    ].filter(([, value]) => !cleanText(value || '', 20)).map(([field]) => field);
+    if (missing.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个宠物档案不完整：缺少 ${missing.join('、')}`, {
+        subject_type: 'pet',
+        member_index: index + 1,
+        missing_fields: missing,
+      });
+    }
+    const text = [profile.type, profile.breed, profile.appearance].join('\n');
+    const otherNames = pets
+      .filter((_, otherIndex) => otherIndex !== index)
+      .map(item => cleanText(item.name || '', 120))
+      .filter(name => name.length >= 2 && text.includes(name));
+    if (otherNames.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个宠物档案混入了其他宠物：${otherNames.join('、')}`, {
+        subject_type: 'pet',
+        member_index: index + 1,
+        mixed_member_names: otherNames,
+      });
+    }
+  });
+  return true;
+}
+
+function humanPrompt(member, count) {
   return [
     'Generate one production-ready photorealistic commercial actor identity sheet as an exact 2x2 grid.',
     'The same single person appears in all four cells: front full-body, side full-body, back full-body, and natural action full-body.',
@@ -85,11 +245,10 @@ function humanPrompt(brief, description, member, count) {
     member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
     member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
     member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
-    description || brief,
   ].filter(Boolean).join('\n');
 }
 
-function petPrompt(brief, profile, count) {
+function petPrompt(profile, count) {
   return [
     'Generate one production-ready photorealistic animal identity sheet as an exact 2x2 grid.',
     'The same single animal appears in all four cells: front full-body, side full-body, back full-body, and natural action full-body.',
@@ -97,7 +256,6 @@ function petPrompt(brief, profile, count) {
     'Preserve the exact species, breed traits, coat color and pattern, face markings, eye color, body proportions, tail, ears and collar/accessories across all views.',
     count > 1 ? `This is animal ${profile.member_index} of ${count}; it must have a distinct stable identity.` : '',
     `Pet: ${profile.name}; type ${profile.type}; breed ${profile.breed || 'as required by brief'}; appearance ${profile.appearance || 'as required by brief'}.`,
-    brief,
   ].filter(Boolean).join('\n');
 }
 
@@ -189,11 +347,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   const body = options.body || {};
   const spec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const brief = cleanText(body.brief || body.content || '', 4000);
-  const description = cleanText(body.description || '', 2000);
   const taskId = cleanText(options.taskId || body.task_id || '', 120);
   const counts = resolveCounts(spec, body);
   const humans = humanMemberSpecs(spec, body, counts.people);
   const pets = petMemberSpecs(spec, body, counts.pets);
+  assertCompleteSubjectProfiles(counts, humans, pets);
   const kind = checkpointKind(taskId, brief, spec, counts, body);
   if (activeBundleKinds.has(kind)) {
     const error = new Error('相同主体资产批次正在生成，请等待当前批次完成');
@@ -225,7 +383,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const actorId = `new_story_actor_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`;
     const sheet = await mediaAdapter.generateActorReference({
       filename: `actor_${actorId}_sheet`,
-      prompt: humanPrompt(brief, description, member, humans.length),
+      prompt: humanPrompt(member, humans.length),
       aspectRatio: '3:4',
       imageModel: body.image_model || body.imageModel || 'auto',
     });
@@ -236,7 +394,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       name: member.displayName, cast_role: member.roleName, cast_member_index: index + 1,
       source: 'new_story_ad_actor_sheet', reference_kind: 'synthetic_realistic_actor', is_ai_generated: true,
       image_url: views[0]?.url || '', extra_image_urls: views.slice(1).map(view => view.url).filter(Boolean),
-      view_images: views, view_count: views.length, description: humanPrompt(brief, description, member, humans.length),
+      view_images: views, view_count: views.length, description: humanPrompt(member, humans.length),
+      subject_profile: member,
     };
     asset.person_contract = await personIdentity.verifyPersonAsset({ taskId: taskId || options.generationId, asset, spec: member, revision: 1 });
     asset.person_contract.display_name = member.displayName;
@@ -252,7 +411,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const petId = `new_story_pet_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`;
     const sheet = await mediaAdapter.generateActorReference({
       filename: `pet_${petId}_sheet`,
-      prompt: petPrompt(brief, profile, pets.length),
+      prompt: petPrompt(profile, pets.length),
       aspectRatio: '3:4',
       imageModel: body.image_model || body.imageModel || 'auto',
     });
@@ -291,5 +450,6 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
+  assertCompleteSubjectProfiles, humanPrompt, petPrompt,
   aggregatePersonContract, aggregatePetContract, buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle,
 };

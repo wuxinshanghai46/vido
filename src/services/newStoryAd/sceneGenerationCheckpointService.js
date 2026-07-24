@@ -175,9 +175,56 @@ function open({
   viewKeys = [],
   retryBudget = null,
   metadata = {},
+  acknowledgeBillingUnknown = false,
+  acknowledgedBy = '',
 } = {}) {
   const kind = outputKind(sceneId);
   const existing = storage.getOutput(taskId, kind);
+  const unknownBillingViews = Object.entries(existing?.views || {})
+    .filter(([, view]) => view?.status === 'failed' && view?.billing_state === 'unknown')
+    .map(([key, view]) => ({
+      key,
+      error_code: String(view.error_code || ''),
+      provider_request_id: String(view.provider_request_id || ''),
+      provider_task_id: String(view.provider_task_id || ''),
+      failed_at: view.failed_at || '',
+    }));
+  if (unknownBillingViews.length && acknowledgeBillingUnknown !== true) {
+    const error = new Error(`场景 ${sceneId} 有 ${unknownBillingViews.length} 个图片请求计费状态未知，系统禁止自动重复提交；如确认放弃等待旧结果并接受可能的重复计费，请二次确认后只补失败视图。`);
+    error.code = 'SCENE_ASSET_BILLING_UNKNOWN';
+    error.status = 409;
+    error.retryable = false;
+    error.billingState = 'unknown';
+    error.partial_scene_checkpoint = true;
+    error.details = {
+      requires_billing_acknowledgement: true,
+      scene_id: String(sceneId),
+      failed_views: unknownBillingViews,
+    };
+    throw error;
+  }
+  if (unknownBillingViews.length) {
+    const acknowledgedAt = nowIso();
+    unknownBillingViews.forEach(({ key }) => {
+      existing.views[key] = {
+        ...existing.views[key],
+        billing_state: 'accepted_unknown',
+        billing_resolution: 'explicit_user_acknowledgement',
+        billing_acknowledged_at: acknowledgedAt,
+        billing_acknowledged_by: String(acknowledgedBy || 'task_owner').slice(0, 100),
+      };
+    });
+    existing.billing_acknowledgements = [
+      ...(Array.isArray(existing.billing_acknowledgements) ? existing.billing_acknowledgements : []),
+      {
+        resolution: 'explicit_user_acknowledgement',
+        view_keys: unknownBillingViews.map(item => item.key),
+        acknowledged_at: acknowledgedAt,
+        acknowledged_by: String(acknowledgedBy || 'task_owner').slice(0, 100),
+      },
+    ].slice(-20);
+    save(existing);
+  }
   const canResume = existing
     && existing.schema_version === CHECKPOINT_SCHEMA_VERSION
     && existing.input_fingerprint === fingerprint
@@ -240,6 +287,8 @@ function markSucceeded(checkpoint = {}, viewKey = '', view = {}, budget = null) 
     attempts: Math.max(1, Number(view.attempts || checkpoint.views[viewKey]?.attempts || 1) || 1),
     error: '',
     error_code: '',
+    billing_state: 'confirmed',
+    provider_submission_state: 'completed',
     succeeded_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -252,6 +301,8 @@ function markSucceeded(checkpoint = {}, viewKey = '', view = {}, budget = null) 
 }
 
 function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) {
+  const providerTaskId = String(error?.providerTaskId || error?.provider_task_id || '');
+  const billingState = String(error?.billingState || error?.billing_state || (providerTaskId ? 'unknown' : 'not_submitted'));
   checkpoint.status = 'partial';
   checkpoint.views[viewKey] = {
     ...(checkpoint.views[viewKey] || {}),
@@ -261,6 +312,10 @@ function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) 
     error: String(error?.message || error || '').slice(0, 500),
     error_code: String(error?.code || 'SCENE_VIEW_GENERATION_FAILED').slice(0, 100),
     retryable: error?.retryable === true,
+    billing_state: billingState,
+    provider_submission_state: String(error?.providerSubmissionState || error?.provider_submission_state || (billingState === 'unknown' ? 'submitted_unknown' : '')),
+    provider_request_id: String(error?.providerRequestId || error?.provider_request_id || '').slice(0, 180),
+    provider_task_id: providerTaskId.slice(0, 180),
     failed_at: nowIso(),
     updated_at: nowIso(),
   };

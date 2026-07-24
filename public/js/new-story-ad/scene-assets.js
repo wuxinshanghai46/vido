@@ -517,6 +517,7 @@
       ...asset,
       id: clean(asset.id || asset.scene_id || `scene_${index + 1}`, 120),
       scene_id: clean(asset.scene_id || asset.id || `scene_${index + 1}`, 120),
+      space_id: clean(asset.space_id || asset.spaceId || asset.scene_id || asset.id || `scene_${index + 1}`, 120),
       name: clean(asset.name || `任务场景 ${index + 1}`, 120),
       lock_strength: clean(asset.lock_strength || asset.lockStrength || 'standard', 40),
       image_url: url,
@@ -755,6 +756,41 @@
     return normalizeAssets(state.sceneAssets || []);
   }
 
+  function configInfoHtml({ sceneConfig = null, brief = '', subject = '', castMode = 'auto', formatCastMode = value => value } = {}) {
+    const rows = sceneConfig ? [
+      ['广告主体', sceneConfig.advertised_subject],
+      ['业务边界', sceneConfig.business_boundary],
+      ['人物/主体模式', formatCastMode(sceneConfig.cast_mode || sceneConfig.castMode)],
+      ['独立空间', Array.isArray(sceneConfig.spaces) ? sceneConfig.spaces.map(space => space.name || space.id || space.space_id).filter(Boolean).join('；') : ''],
+      ['剧情策略', Array.isArray(sceneConfig.story_strategy) ? sceneConfig.story_strategy.join('；') : ''],
+      ['禁止项', Array.isArray(sceneConfig.forbidden || sceneConfig.forbidden_elements) ? (sceneConfig.forbidden || sceneConfig.forbidden_elements).join('；') : ''],
+    ] : [
+      ['广告主体', subject || '按广告需求判断'],
+      ['业务边界', brief ? '待 AI 根据当前广告需求确认，不继承其他任务。' : '待填写广告需求'],
+      ['人物/主体模式', formatCastMode(castMode)],
+      ['剧情策略', '待生成基础信息后确认'],
+      ['禁止项', '按当前任务禁止项和高级设置判断'],
+    ];
+    return `<div class="dh-lux-asset-manifest${sceneConfig ? '' : ' is-draft'}">${rows.map(([key, value]) => `<div><b>${escapeHtml(key)}</b><span>${escapeHtml(value || '-')}</span></div>`).join('')}</div>`;
+  }
+
+  function plannedGenerationTarget(state = {}, { append = false } = {}) {
+    const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
+    const plannedSpaces = Array.isArray(state.sceneConfig?.spaces) ? state.sceneConfig.spaces : [];
+    const multiScene = state.sceneConfig?.scene_mode === 'multi' || plannedSpaces.length > 1;
+    const currentIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+    const currentAsset = !append ? assets[currentIndex] : null;
+    const existingIds = new Set(assets.map(asset => clean(asset.space_id || asset.scene_id || asset.id, 120)));
+    const currentId = clean(currentAsset?.space_id || currentAsset?.scene_id || currentAsset?.id || '', 120);
+    const targetSpace = currentId
+      ? plannedSpaces.find(space => clean(space.space_id || space.id || space.scene_id, 120) === currentId)
+      : (append
+        ? plannedSpaces.find(space => !existingIds.has(clean(space.space_id || space.id || space.scene_id, 120)))
+        : plannedSpaces[0]);
+    const targetSpaceId = clean(targetSpace?.space_id || targetSpace?.id || targetSpace?.scene_id || currentId, 120);
+    return { currentAsset, multiScene, targetSpace, targetSpaceId };
+  }
+
   function hydrate(state = {}, { request = {}, outputs = {}, response = {} } = {}) {
     const assets = normalizeAssets(
       outputs.scene_assets
@@ -779,6 +815,7 @@
     setBusy,
     setButtonBusy,
     toast,
+    confirmAction,
     button,
     append = false,
     fullUpgrade = false,
@@ -789,7 +826,6 @@
     if (reconciled.changed) {
       toast?.('检测到完整连续墙面要求，已自动改为“连续完整表面 + 隐藏可见拼缝”', 'info');
     }
-    const layoutRequired = requiresLayoutView(sceneSpec);
     const totalViews = 5;
     const label = append ? '追加场景参考中...' : '生成场景参考中...';
     const startedAt = Date.now();
@@ -820,24 +856,61 @@
       const taskId = await ensureTask();
       const body = typeof buildPayload === 'function' ? buildPayload() : {};
       const currentIndex = Math.max(0, Math.min((state.sceneAssets || []).length - 1, Number(state.sceneSelectedIndex || 0) || 0));
-      const currentAsset = !append && Array.isArray(state.sceneAssets) ? state.sceneAssets[currentIndex] : null;
-      const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
-        method: 'POST',
-        body: {
-          ...body,
-          scene_spec: sceneSpec,
-          include_layout_view: layoutRequired,
-          scene_assets: payload(state),
-          scene_id: append ? undefined : (currentAsset?.scene_id || currentAsset?.id || undefined),
-          lock_strength: 'standard',
-          require_complete_scene_spec: fullUpgrade === true,
-        },
-      });
-      const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
-        ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
-            api, normalizeBundle, renderAll, state,
-          })
-        : submitted;
+      const { currentAsset, multiScene, targetSpace, targetSpaceId } = plannedGenerationTarget(state, { append });
+      if (multiScene && !targetSpaceId) {
+        const error = new Error(append
+          ? '场景计划中的独立空间都已生成；如需修改，请先选择对应场景再重新生成。'
+          : '多场景计划缺少可生成的稳定空间 ID，已停止图片调用。');
+        error.code = 'SCENE_GENERATION_TARGET_REQUIRED';
+        throw error;
+      }
+      const targetSceneSpec = targetSpace?.scene_spec || targetSpace?.sceneSpec || sceneSpec;
+      const submit = async acknowledgeBillingUnknown => {
+        const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
+          method: 'POST',
+          body: {
+            ...body,
+            scene_spec: targetSceneSpec,
+            include_layout_view: requiresLayoutView(targetSceneSpec),
+            scene_assets: payload(state),
+            space_id: targetSpaceId || undefined,
+            scene_id: targetSpaceId || undefined,
+            acknowledge_billing_unknown: acknowledgeBillingUnknown === true,
+            lock_strength: 'standard',
+            require_complete_scene_spec: fullUpgrade === true,
+          },
+        });
+        return submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
+          ? window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
+              api, normalizeBundle, renderAll, state,
+            })
+          : submitted;
+      };
+      let r;
+      try {
+        r = await submit(false);
+      } catch (error) {
+        if (error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN' || typeof confirmAction !== 'function') throw error;
+        const accepted = await confirmAction({
+          title: '检测到上次场景图片计费状态未知',
+          summary: targetSpace?.name || targetSpaceId || '当前场景',
+          description: '上一次图片请求可能已经提交给供应商，但尚不能确认是否计费或是否仍会返回结果。',
+          confirmLabel: '接受风险，仅补失败视图',
+          cancelLabel: '暂不提交',
+          tone: 'danger',
+          facts: [
+            { label: '已成功视图', value: '保留', tone: 'success' },
+            { label: '本次范围', value: '仅失败视图', tone: 'warning' },
+          ],
+          note: '继续可能产生一次重复计费；系统不会自动替你继续。',
+        });
+        if (!accepted) {
+          const cancelled = new Error('已取消重新提交，没有产生新的图片模型调用。');
+          cancelled.code = 'USER_CANCELLED';
+          throw cancelled;
+        }
+        r = await submit(true);
+      }
       if (typeof normalizeBundle === 'function') normalizeBundle(r);
       state.sceneAssets = normalizeAssets(r.scene_assets || r.outputs?.scene_assets || r.bundle?.outputs?.scene_assets || []);
       state.sceneSelectedIndex = append ? Math.max(0, state.sceneAssets.length - 1) : currentIndex;
@@ -983,6 +1056,8 @@
     syncSpecSelectionState,
     render,
     payload,
+    configInfoHtml,
+    plannedGenerationTarget,
     hydrate,
     generate,
     repair,

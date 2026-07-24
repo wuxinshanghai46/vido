@@ -110,6 +110,7 @@ async function main() {
   let transientFilenamePattern = null;
   let transientFailureMessage = 'socket hang up ECONNRESET';
   let transientFailureCode = '';
+  let transientBillingUnknown = false;
   let layoutPreflightFailuresRemaining = 0;
   let finalQaLayoutFailuresRemaining = 0;
   let finalQaUnavailableRemaining = 0;
@@ -128,6 +129,10 @@ async function main() {
       activeImageCalls -= 1;
       const error = new Error(transientFailureMessage);
       if (transientFailureCode) error.code = transientFailureCode;
+      if (transientBillingUnknown) {
+        error.billingState = 'unknown';
+        error.providerSubmissionState = 'submitted_unknown';
+      }
       throw error;
     }
     const url = `/mock-scene-view-${callNumber}.png`;
@@ -422,6 +427,7 @@ async function main() {
     transientFilenamePattern = /_detail(?:_|\.)/;
     transientFailureMessage = 'HTTP 500 Internal Server Error; provider review may include copyright policy';
     transientFailureCode = 'PROVIDER_5XX_AMBIGUOUS';
+    transientBillingUnknown = true;
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(checkpointTaskId, {
         scene_id: 'checkpoint-room',
@@ -442,10 +448,23 @@ async function main() {
     transientFilenamePattern = null;
     transientFailureMessage = 'socket hang up ECONNRESET';
     transientFailureCode = '';
+    transientBillingUnknown = false;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(checkpointTaskId, {
+        scene_id: 'checkpoint-room',
+        scene_spec: context.scene_spec,
+        aspect_ratio: '16:9',
+      }),
+      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
+        && error?.details?.requires_billing_acknowledgement === true,
+      'unknown billing must block a blind checkpoint resubmission before another provider call',
+    );
+    assert.equal(calls.length - callsBeforeCheckpoint, 5, 'billing review gate must not call the provider');
     const resumedCheckpoint = await sceneAssets.generateSceneAsset(checkpointTaskId, {
       scene_id: 'checkpoint-room',
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
+      acknowledge_billing_unknown: true,
     });
     assert.equal(calls.length - callsBeforeCheckpoint, 6, 'resume must call the provider only for the one missing view');
     assert.equal(resumedCheckpoint.scene_asset.view_count, 5);
@@ -457,6 +476,87 @@ async function main() {
       false,
       'private checkpoint metadata must not leak into the public task bundle',
     );
+
+    const multiSpaceTaskId = 'multi-space-prompt-isolation-layout-resume-test';
+    const mixedContext = {
+      ...context,
+      scene_mode: 'multi',
+      scene_spec: {
+        ...context.scene_spec,
+        layoutText: '错误的全局混合设定：PARK_ONLY_TOKEN 与 HOME_ONLY_TOKEN 被放在同一空间。',
+      },
+    };
+    const parkSpec = {
+      layoutText: 'PARK_ONLY_TOKEN：开阔公园草坪、弧形步道、长椅与树荫形成独立户外空间。',
+      materialLightText: '自然草地、浅灰步道和午后侧逆光，仅属于户外公园。',
+      interactionText: '草坪中央保留人物与宠物活动区，步道作为进出路线。',
+      negativeText: '禁止人物、文字水印、空间边界断裂和不相关室内陈设。',
+    };
+    const homeSpec = {
+      layoutText: 'HOME_ONLY_TOKEN：家庭客厅与相邻厨房形成一个连续室内空间。',
+      materialLightText: '木地板、布艺沙发、暖色窗光，仅属于家庭室内。',
+      interactionText: '沙发前为家庭互动区，厨房通道保持畅通。',
+      negativeText: '禁止人物、文字水印、空间边界断裂和不相关户外陈设。',
+    };
+    storage.createTask({ id: multiSpaceTaskId, title: 'multi space prompt isolation', request: mixedContext });
+    storage.saveOutput(multiSpaceTaskId, 'context', mixedContext);
+    storage.saveOutput(multiSpaceTaskId, 'scene_config', {
+      scene_mode: 'multi',
+      advertised_subject: '当前任务主体',
+      spaces: [
+        { id: 'park', name: '公园草坪', description: 'PARK_ONLY_TOKEN 户外草坪空间', story_purpose: '户外相遇', scene_spec: parkSpec },
+        { id: 'home', name: '家庭客厅与厨房', description: 'HOME_ONLY_TOKEN 家庭室内空间', story_purpose: '家庭收束', scene_spec: homeSpec },
+      ],
+    });
+    const callsBeforeMissingTarget = calls.length;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(multiSpaceTaskId, {}),
+      error => error?.code === 'SCENE_GENERATION_TARGET_REQUIRED',
+      'multi-space generation must reject an ambiguous target before any paid call',
+    );
+    assert.equal(calls.length, callsBeforeMissingTarget);
+    transientFailuresRemaining = 1;
+    transientFilenamePattern = /_layout(?:_|\.)/;
+    transientFailureMessage = 'HTTP 500 Internal Server Error UNKXXXO004IFR';
+    transientFailureCode = 'PROVIDER_5XX_AMBIGUOUS';
+    transientBillingUnknown = true;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(multiSpaceTaskId, { space_id: 'park', aspect_ratio: '16:9' }),
+      error => error?.code === 'PROVIDER_5XX_AMBIGUOUS'
+        && error?.scene_id === 'park'
+        && error?.partial_scene_checkpoint === true,
+      'master success plus layout 500 must preserve the original stable scene id',
+    );
+    const multiCheckpoint = storage.getOutput(multiSpaceTaskId, 'scene_asset_checkpoint:park');
+    assert.equal(multiCheckpoint.scene_id, 'park');
+    assert.ok(sceneCheckpoint.checkpointView(multiCheckpoint, 'master'), 'paid master must remain reusable');
+    assert.equal(multiCheckpoint.views.layout.billing_state, 'unknown');
+    const callsAfterMultiFailure = calls.length;
+    await assert.rejects(
+      () => sceneAssets.generateSceneAsset(multiSpaceTaskId, { scene_id: 'park', aspect_ratio: '16:9' }),
+      error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN',
+      'layout unknown billing must not be blindly resubmitted',
+    );
+    assert.equal(calls.length, callsAfterMultiFailure);
+    transientFailuresRemaining = 0;
+    transientFilenamePattern = null;
+    transientFailureMessage = 'socket hang up ECONNRESET';
+    transientFailureCode = '';
+    transientBillingUnknown = false;
+    const resumedMulti = await sceneAssets.generateSceneAsset(multiSpaceTaskId, {
+      scene_id: 'park',
+      acknowledge_billing_unknown: true,
+      aspect_ratio: '16:9',
+    });
+    const multiCalls = calls.slice(callsBeforeMissingTarget);
+    assert.equal(multiCalls.length, 6, 'resume must reuse master and submit only layout plus three dependent views');
+    multiCalls.forEach(call => {
+      assert.match(call.prompt, /PARK_ONLY_TOKEN|公园草坪|户外草坪/);
+      assert.doesNotMatch(call.prompt, /HOME_ONLY_TOKEN|家庭客厅|相邻厨房/);
+    });
+    assert.equal(resumedMulti.scene_asset.scene_id, 'park');
+    assert.equal(resumedMulti.scene_asset.space_id, 'park');
+    assert.equal(storage.getOutput(multiSpaceTaskId, 'scene_asset_checkpoint:park').status, 'published');
 
     const preflightTaskId = 'spatial-layout-preflight-retry-test';
     storage.createTask({ id: preflightTaskId, title: 'layout preflight retry', request: context });

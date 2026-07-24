@@ -1330,6 +1330,17 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-luxgen-person-spec label.dh-luxgen-person-text-field { grid-column: span 6; }
 .dh-luxgen-person-spec span { color: var(--dh-text-muted); font-size: 11px; font-weight: 900; }
 .dh-luxgen-person-spec .dh-input { min-height: 42px; font-size: 13px; }
+.dh-nsa-subject-profiles { display: grid; gap: 10px; margin-top: 14px; }
+.dh-nsa-subject-profile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px; }
+.dh-nsa-subject-profile-head b { color: var(--dh-text); font-size: 13px; }
+.dh-nsa-subject-profile-head small { color: var(--dh-text-muted); font-size: 11px; line-height: 1.5; text-align: right; }
+.dh-nsa-subject-profile { border: 1px solid rgba(56,189,248,.24); border-radius: 12px; background: rgba(56,189,248,.045); overflow: hidden; }
+.dh-nsa-subject-profile > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; cursor: pointer; list-style: none; }
+.dh-nsa-subject-profile > summary::-webkit-details-marker { display: none; }
+.dh-nsa-subject-profile > summary b { color: var(--dh-text); font-size: 13px; }
+.dh-nsa-subject-profile > summary span { color: var(--dh-text-soft); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-nsa-subject-profile[open] > summary { border-bottom: 1px solid rgba(56,189,248,.18); background: rgba(56,189,248,.055); }
+.dh-nsa-subject-profile > .dh-luxgen-person-spec { margin: 0; padding: 13px; }
 .dh-nsa-cast-mode-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(56,189,248,.24); border-radius: 10px; background: rgba(56,189,248,.055); }
 .dh-nsa-cast-mode-quick > span { color: var(--dh-text); font-size: 12px; font-weight: 900; margin-right: 2px; }
 .dh-nsa-cast-mode-quick > button { min-height: 34px; padding: 0 13px; border: 1px solid var(--dh-border); border-radius: 999px; background: var(--dh-surface); color: var(--dh-text-soft); font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; }
@@ -2628,6 +2639,8 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   .dh-luxgen-person-spec { grid-template-columns: 1fr; }
   .dh-luxgen-person-spec label,
   .dh-luxgen-person-spec label.dh-luxgen-person-text-field { grid-column: 1 / -1; }
+  .dh-nsa-subject-profile-head { align-items: flex-start; flex-direction: column; }
+  .dh-nsa-subject-profile-head small { text-align: left; }
 }
 @media (max-width: 600px) {
   .dh-nsa-frame-card { padding: 11px; }

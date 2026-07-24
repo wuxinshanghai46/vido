@@ -1,4 +1,4 @@
-const { cleanText } = require('./contextBuilder');
+const { cleanText, normalizeSceneSpec } = require('./contextBuilder');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -255,17 +255,158 @@ function assertVerifiedSceneAssets(sceneAssets = []) {
 function normalizeScenePlan(input = {}) {
   const source = input && typeof input === 'object' ? input : {};
   const spaces = (Array.isArray(source.spaces) ? source.spaces : [])
-    .map((space, index) => ({
-      id: cleanText(space?.id || space?.space_id || space?.space_key || `space_${index + 1}`, 100),
-      name: cleanText(space?.name || space?.label || `独立空间 ${index + 1}`, 120),
-      description: cleanText(space?.description || space?.layout || '', 500),
-      story_purpose: cleanText(space?.story_purpose || space?.purpose || '', 300),
-    }))
+    .map((space, index) => {
+      const id = cleanText(space?.id || space?.space_id || space?.scene_id || space?.space_key || `space_${index + 1}`, 100);
+      const rawSceneSpec = space?.scene_spec || space?.sceneSpec;
+      return {
+        id,
+        space_id: id,
+        scene_id: id,
+        name: cleanText(space?.name || space?.label || `独立空间 ${index + 1}`, 120),
+        description: cleanText(space?.description || space?.layout || '', 500),
+        story_purpose: cleanText(space?.story_purpose || space?.purpose || '', 300),
+        scene_spec: rawSceneSpec && typeof rawSceneSpec === 'object'
+          ? normalizeSceneSpec(rawSceneSpec)
+          : null,
+      };
+    })
     .filter(space => space.name || space.description)
     .slice(0, 12);
   const declaredMode = cleanText(source.scene_mode || source.sceneMode || '', 20).toLowerCase();
   const sceneMode = spaces.length > 1 ? 'multi' : (['single', 'multi'].includes(declaredMode) ? declaredMode : (spaces.length === 1 ? 'single' : 'auto'));
   return { ...source, scene_mode: sceneMode, spaces };
+}
+
+function sceneSpecMissingFields(spec = null) {
+  if (!spec || typeof spec !== 'object') {
+    return ['layoutText', 'materialLightText', 'interactionText', 'negativeText'];
+  }
+  return ['layoutText', 'materialLightText', 'interactionText', 'negativeText']
+    .filter(key => !cleanText(spec[key] || '', 1000));
+}
+
+function assertScenePlanContract(sceneConfig = {}) {
+  const duplicateSpaceIds = sceneConfig.spaces
+    .map(space => space.id)
+    .filter((id, index, ids) => ids.indexOf(id) !== index);
+  const incompleteSpaces = sceneConfig.spaces
+    .map(space => ({ space_id: space.id, missing_fields: sceneSpecMissingFields(space.scene_spec) }))
+    .filter(item => item.missing_fields.length);
+  if ((sceneConfig.scene_mode === 'multi' && sceneConfig.spaces.length < 2)
+    || !sceneConfig.spaces.length
+    || duplicateSpaceIds.length
+    || incompleteSpaces.length) {
+    const error = new Error('场景配置未形成逐空间独立合同，已停止保存；每个物理空间必须有唯一稳定 ID 和完整 scene_spec');
+    error.code = 'SCENE_CONFIG_SPACE_CONTRACT_INVALID';
+    error.status = 422;
+    error.retryable = true;
+    error.details = {
+      scene_mode: sceneConfig.scene_mode,
+      space_count: sceneConfig.spaces.length,
+      duplicate_space_ids: [...new Set(duplicateSpaceIds)],
+      incomplete_spaces: incompleteSpaces,
+    };
+    throw error;
+  }
+  return sceneConfig;
+}
+
+function generationTargetError(message, code, details = {}) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = 422;
+  error.retryable = false;
+  Object.assign(error, details);
+  return error;
+}
+
+function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {} } = {}) {
+  const scenePlan = normalizeScenePlan(sceneConfig);
+  const spaces = scenePlan.spaces;
+  const requestedSpaceId = cleanText(body.space_id || body.spaceId || '', 100);
+  const requestedSceneId = cleanText(body.scene_id || body.sceneId || '', 100);
+  if (requestedSpaceId && requestedSceneId && requestedSpaceId !== requestedSceneId) {
+    throw generationTargetError(
+      `space_id(${requestedSpaceId}) 与 scene_id(${requestedSceneId}) 不一致，已在图片调用前停止`,
+      'SCENE_TARGET_ID_CONFLICT',
+      { requested_space_id: requestedSpaceId, requested_scene_id: requestedSceneId },
+    );
+  }
+  const requestedId = requestedSpaceId || requestedSceneId;
+  const contextMode = cleanText(context.scene_mode || context.sceneMode || '', 20).toLowerCase();
+  const multiScene = scenePlan.scene_mode === 'multi' || contextMode === 'multi' || spaces.length > 1;
+  const ids = spaces.map(space => space.id);
+  const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+  if (duplicateIds.length) {
+    throw generationTargetError(
+      `多场景计划存在重复稳定空间 ID：${duplicateIds.join('、')}`,
+      'SCENE_PLAN_DUPLICATE_SPACE_ID',
+      { duplicate_space_ids: duplicateIds },
+    );
+  }
+  if (multiScene && spaces.length < 2) {
+    throw generationTargetError(
+      '任务声明为多场景，但 scene_config.spaces 未提供至少两个独立物理空间',
+      'MULTI_SCENE_PLAN_REQUIRED',
+      { required_scene_count: 2, current_scene_count: spaces.length },
+    );
+  }
+  if (multiScene) {
+    const incomplete = spaces
+      .map(space => ({ space_id: space.id, missing_fields: sceneSpecMissingFields(space.scene_spec) }))
+      .filter(item => item.missing_fields.length);
+    if (incomplete.length) {
+      throw generationTargetError(
+        `多场景计划缺少逐空间 scene_spec：${incomplete.map(item => item.space_id).join('、')}`,
+        'MULTI_SCENE_SPEC_REQUIRED',
+        { incomplete_spaces: incomplete },
+      );
+    }
+    if (!requestedId) {
+      throw generationTargetError(
+        '多场景任务必须明确指定本次只生成哪一个 space_id/scene_id',
+        'SCENE_GENERATION_TARGET_REQUIRED',
+        { available_space_ids: ids },
+      );
+    }
+  }
+  let space = null;
+  if (spaces.length) {
+    space = requestedId
+      ? spaces.find(item => item.id === requestedId)
+      : spaces[0];
+    if (!space) {
+      throw generationTargetError(
+        `目标空间 ${requestedId} 不在当前 scene_config.spaces 中`,
+        'SCENE_GENERATION_TARGET_INVALID',
+        { requested_space_id: requestedId, available_space_ids: ids },
+      );
+    }
+  }
+  const sceneId = cleanText(space?.id || requestedId || 'scene_1', 100);
+  const sceneSpec = space?.scene_spec
+    || normalizeSceneSpec(body.scene_spec || body.sceneSpec || context.scene_spec || context.sceneSpec || {});
+  const missingFields = sceneSpecMissingFields(sceneSpec);
+  if (spaces.length && missingFields.length) {
+    throw generationTargetError(
+      `目标空间 ${sceneId} 的 scene_spec 不完整：${missingFields.join('、')}`,
+      'SCENE_SPEC_REQUIRED_FOR_SPACE',
+      { space_id: sceneId, missing_fields: missingFields },
+    );
+  }
+  return {
+    scene_id: sceneId,
+    space_id: sceneId,
+    space,
+    scene_spec: sceneSpec,
+    scene_plan: scenePlan,
+    multi_scene: multiScene,
+    isolated_scene_config: {
+      ...scenePlan,
+      scene_mode: 'single',
+      spaces: space ? [space] : [],
+    },
+  };
 }
 
 function resolveSceneMode(requestedMode = 'auto', scenePlan = {}) {
@@ -451,6 +592,9 @@ module.exports = {
   assertVerifiedSceneAssets,
   assertSceneModeAssets,
   normalizeScenePlan,
+  resolveSceneGenerationTarget,
+  sceneSpecMissingFields,
+  assertScenePlanContract,
   resolveSceneMode,
   selectSceneAsset,
   semanticSceneView,

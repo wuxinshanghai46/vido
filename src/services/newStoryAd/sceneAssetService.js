@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -26,6 +25,7 @@ const SCENE_IMAGE_CIRCUIT_COOLDOWN_MS = Math.max(5000, Math.min(300000, Number(p
 const imageCircuit = { consecutiveTransientFailures: 0, openUntil: 0 };
 
 function isTransientImageError(error) {
+  if (error?.billingState === 'unknown' || error?.billing_state === 'unknown') return false;
   if (['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(String(error?.code || ''))) return false;
   return /(?:timeout|timed out|econnreset|econnrefused|socket hang up|connection termination|reset before headers|upstream connect error|\b429\b|rate.?limit|unkxxxo004ifr|temporar(?:y|ily))/i
     .test(String(error?.message || error || ''));
@@ -86,6 +86,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
   return {
     id: cleanText(asset.id || asset.scene_id || `scene_${index + 1}`, 120),
     scene_id: cleanText(asset.scene_id || asset.id || `scene_${index + 1}`, 120),
+    space_id: cleanText(asset.space_id || asset.spaceId || asset.scene_id || asset.id || `scene_${index + 1}`, 120),
     name: cleanText(asset.name || `任务场景 ${index + 1}`, 120),
     source: cleanText(asset.source || 'new_story_ad_scene_asset', 120),
     lock_strength: cleanText(asset.lock_strength || asset.lockStrength || 'standard', 40),
@@ -361,6 +362,11 @@ async function generateCheckpointedSceneView(taskId, key, options = {}, progress
   } catch (error) {
     if (error?.code !== 'USER_CANCELLED' && error?.cancelled !== true) {
       sceneCheckpoint.markFailed(checkpoint, key, error, budget);
+      error.partial_scene_checkpoint = true;
+      error.completed_view_keys = Object.keys(checkpoint.views || {})
+        .filter(viewKey => sceneCheckpoint.checkpointView(checkpoint, viewKey));
+      error.failed_view_keys = [key];
+      error.scene_id = checkpoint.scene_id;
     }
     throw error;
   }
@@ -783,13 +789,32 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
 
 async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
-  assertCompleteUpgradeSceneSpec(body);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
-  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const sceneConfig = storage.getOutput(taskId, 'scene_config') || {};
-  const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
-  const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
+  const baseCtx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const storedSceneConfig = storage.getOutput(taskId, 'scene_config') || {};
+  const target = sceneBinding.resolveSceneGenerationTarget({
+    sceneConfig: storedSceneConfig,
+    context: baseCtx,
+    body,
+  });
+  const ctx = { ...baseCtx, scene_spec: target.scene_spec };
+  const sceneConfig = target.isolated_scene_config;
+  body = {
+    ...body,
+    scene_id: target.scene_id,
+    space_id: target.space_id,
+    scene_spec: target.scene_spec,
+    ...(target.space ? {
+      name: target.space.name,
+      description: target.space.description,
+      scene_description: target.space.description,
+      prompt: target.space.description,
+    } : {}),
+  };
+  assertCompleteUpgradeSceneSpec(body);
+  const existing = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const sceneId = target.scene_id;
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
   const repairViewKeys = previous ? normalizeRepairViewKeys(runOptions.repairViewKeys) : [];
   const repairMode = !!previous && repairViewKeys.length > 0;
@@ -841,8 +866,16 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     candidateRevision: requestedRevision,
     viewKeys: progressViewKeys,
     retryBudget: initialBudget,
+    acknowledgeBillingUnknown: body.acknowledge_billing_unknown === true
+      || body.acknowledgeBillingUnknown === true,
+    acknowledgedBy: cleanText(
+      body.billing_acknowledged_by || body.billingAcknowledgedBy || baseCtx.user_id || '',
+      100,
+    ),
     metadata: {
       mode: progressMode,
+      space_id: target.space_id,
+      multi_scene: target.multi_scene,
       generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
       reference_graph: {
         master: [],
@@ -1110,7 +1143,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const asset = normalizeSceneAsset({
     id: sceneId,
     scene_id: sceneId,
-    name: body.name || sceneConfig.advertised_subject || '剧情广告任务场景',
+    space_id: target.space_id,
+    name: target.space?.name || body.name || sceneConfig.advertised_subject || '剧情广告任务场景',
     source: 'new_story_ad_scene_sheet',
     scene_revision: revision,
     lock_strength: body.lock_strength || body.lockStrength || 'standard',
@@ -1166,7 +1200,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
   saveSceneAssetsToTask(taskId, sceneAssets, {
-    sceneSpec: resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
+    sceneSpec: target.multi_scene
+      ? null
+      : resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
   });
   sceneCheckpoint.markPublished(checkpoint, asset);
   const autoRepairPass = Math.max(0, Number(runOptions.autoRepairPass || 0) || 0);

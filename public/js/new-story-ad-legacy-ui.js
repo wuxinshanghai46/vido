@@ -994,8 +994,9 @@
     const noHuman = person.castMode === 'no_human';
     const animalOnly = person.castMode === 'animal';
     const petRequired = ['animal', 'human_pet'].includes(person.castMode);
+    const subjectCounts = window.NewStoryAdSubjectAssetsUI.reconcileProfiles(state, person);
     const personAsset = noHuman || animalOnly ? null : personAssetPayload();
-    const expectedAnimals = petRequired ? (Number(person.expectedAnimals || 0) || 1) : 0;
+    const expectedAnimals = petRequired ? subjectCounts.pets : 0;
     const petProfiles = window.NewStoryAdSubjectAssetsUI.petProfiles(state, person, petRequired);
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
     const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
@@ -1014,7 +1015,7 @@
       output_size: size,
       video_resolution: videoResolution,
       cast_mode: noHuman ? 'no_human' : (person.castMode || 'auto'),
-      expected_people: noHuman || animalOnly ? 0 : (Number(person.expectedPeople || 0) || undefined),
+      expected_people: noHuman || animalOnly ? 0 : subjectCounts.people,
       expected_animals: expectedAnimals,
       pet_profiles: petProfiles,
       pet_contract: petRequired ? (state.context?.pet_contract || { status: 'declared', expected_animals: expectedAnimals, profiles: petProfiles }) : null,
@@ -2483,36 +2484,17 @@
     return window.NewStoryAdPersonPetSpec.formatCastMode(value);
   }
 
-  function renderDraftSceneInfo() {
-    const brief = (within('#dhNsaAdText')?.value || '').trim();
-    const subject = state.context?.product_subject || payload().product_subject || (brief ? brief.slice(0, 36) : '当前广告主体');
-    const rows = [
-      ['广告主体', subject || '按广告需求判断'],
-      ['业务边界', brief ? '待 AI 根据当前广告需求确认，不继承其他任务。' : '待填写广告需求'],
-      ['人物/主体模式', formatCastMode(personSpec('castMode') || state.context?.cast_mode || 'auto')],
-      ['剧情策略', '待生成基础信息后确认'],
-      ['禁止项', '按当前任务禁止项和高级设置判断'],
-    ];
-    return `<div class="dh-lux-asset-manifest is-draft">${rows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
-  }
-
   function renderScene() {
     const host = within('#dhNsaAdSceneConfigHost');
     if (!host) return;
-    if (!state.sceneConfig) {
-      host.innerHTML = renderDraftSceneInfo();
-      return;
-    }
-    const sc = state.sceneConfig || {};
-    const rows = [
-      ['广告主体', sc.advertised_subject],
-      ['业务边界', sc.business_boundary],
-      ['人物/主体模式', sc.cast_mode],
-      ['剧情策略', Array.isArray(sc.story_strategy) ? sc.story_strategy.join('；') : ''],
-      ['禁止项', Array.isArray(sc.forbidden || sc.forbidden_elements) ? (sc.forbidden || sc.forbidden_elements).join('；') : ''],
-    ];
-    const displayRows = rows.map(([k, v]) => (v === sc.cast_mode ? [k, formatCastMode(sc.cast_mode || sc.castMode)] : [k, v]));
-    host.innerHTML = `<div class="dh-lux-asset-manifest">${displayRows.map(([k, v]) => `<div><b>${escapeHtml(k)}</b><span>${escapeHtml(v || '-')}</span></div>`).join('')}</div>`;
+    const brief = (within('#dhNsaAdText')?.value || '').trim();
+    host.innerHTML = window.NewStoryAdSceneAssets.configInfoHtml({
+      sceneConfig: state.sceneConfig,
+      brief,
+      subject: state.context?.product_subject || payload().product_subject || brief.slice(0, 36),
+      castMode: personSpec('castMode') || state.context?.cast_mode || 'auto',
+      formatCastMode,
+    });
   }
 
   function blueprintBeats() {
@@ -3610,6 +3592,7 @@
     window.NewStoryAdSceneAssets?.syncSpecSelectionState?.();
     renderAdvancedControls();
     renderAssets();
+    window.NewStoryAdSubjectAssetsUI.renderProfiles(within('#dhNsaAdSubjectProfiles'), state, collectPersonSpec(), escapeHtml);
     renderPerson();
     renderSceneAssets();
     renderAudio();
@@ -5298,6 +5281,7 @@
     changed += set('origin', normalized.origin || 'match_brief', { defaults: ['match_brief'] });
     changed += set('roleName', normalized.roleName || '');
     changed += set('displayName', normalized.displayName || '');
+    changed += set('expectedPeople', normalized.expectedPeople || normalized.expected_people || '');
     changed += set('appearanceText', normalized.appearanceText || '', { overwrite: true });
     changed += set('wardrobeText', normalized.wardrobeText || '', { overwrite: true });
     changed += set('hairMakeupText', normalized.hairMakeupText || '', { overwrite: true });
@@ -5325,7 +5309,7 @@
     const label = '补齐中...';
     setButtonBusy(button, true, label);
     try {
-      let suggestion = null;
+      let suggestion = null, assistedProfiles = null;
       try {
         const r = await api('/api/new-story-ad/assist', {
           method: 'POST',
@@ -5337,13 +5321,14 @@
           },
         });
         suggestion = r.person_spec || r.personSpec || null;
+        assistedProfiles = r;
       } catch (err) {
         suggestion = fallbackPersonSpecFromBrief(brief);
       }
-      const current = collectPersonSpec();
-      const fallback = fallbackPersonSpecFromBrief(brief);
+      const current = collectPersonSpec(), fallback = fallbackPersonSpecFromBrief(brief);
       const completedSuggestion = completePersonSpecSuggestion(suggestion, current, fallback);
       const changed = applyPersonSpecSuggestion(completedSuggestion);
+      window.NewStoryAdSubjectAssetsUI.adoptAssistedProfiles(state, assistedProfiles, collectPersonSpec());
       markSourceDirty('person');
       renderAll();
       scheduleAutoSave('person_spec_assist');
@@ -5477,6 +5462,7 @@
       setBusy,
       setButtonBusy,
       toast,
+      confirmAction: confirmNsaAction,
       button,
       append,
       fullUpgrade: options.upgradePrepared === true,
@@ -5520,8 +5506,13 @@
     ].filter(Boolean).join('；');
     if (description.length < 8) return toast('请先填写广告需求或人物设定', 'error');
     const generationSpec = collectPersonSpec();
-    const subjectCounts = window.NewStoryAdSubjectAssetsUI.counts(generationSpec, isAnimalOnlyMode());
+    const subjectCounts = window.NewStoryAdSubjectAssetsUI.reconcileProfiles(state, generationSpec);
     const { people: peopleCount, pets: petCount, total: subjectCount } = subjectCounts;
+    const profileErrors = window.NewStoryAdSubjectAssetsUI.profileErrors(state, generationSpec);
+    if (profileErrors.length) {
+      window.NewStoryAdSubjectAssetsUI.renderProfiles(within('#dhNsaAdSubjectProfiles'), state, generationSpec, escapeHtml);
+      return toast(`请先补齐逐主体档案：${profileErrors.join('；')}`, 'error');
+    }
     if (subjectCount > 1 || petCount > 0) {
       const confirmed = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions(subjectCounts));
       if (!confirmed) return;
@@ -5552,8 +5543,7 @@
     renderPerson();
     const timer = setInterval(updateProgress, 1400);
     try {
-      const useBundle = peopleCount !== 1 || petCount > 0;
-      const r = await api(useBundle ? '/api/new-story-ad/subject-assets' : '/api/new-story-ad/person-sheet', {
+      const r = await api('/api/new-story-ad/subject-assets', {
         method: 'POST',
         body: {
           brief: payload().brief,
@@ -5563,12 +5553,15 @@
           gender: personSpec('gender') || 'auto',
           age: personSpec('age') || '',
           cast_mode: personSpec('castMode') || 'auto',
-          expected_people: Number(personSpec('expectedPeople') || 0) || undefined,
+          expected_people: peopleCount,
+          expected_animals: petCount,
+          cast_profiles: state.castProfiles,
+          pet_profiles: state.petProfiles,
           task_id: state.taskId || '',
           generation_id: generationId,
         },
       });
-      state.actorAsset = r.person_asset || r.actor_asset || r.character || r.actor || r.asset || (useBundle ? null : r);
+      state.actorAsset = r.person_asset || r.actor_asset || r.character || r.actor || r.asset || null;
       if (state.actorAsset && typeof state.actorAsset === 'object') {
         state.actorAsset.name = state.actorAsset.name || '拟真一致性演员';
         state.actorAsset.description = state.actorAsset.description || '拟真一致性演员：可用于后续分镜人物一致性锁定。';
@@ -6221,6 +6214,12 @@
         renderAudio();
         return;
       }
+      if (target?.matches?.('[data-nsa-subject-field]')) {
+        window.NewStoryAdSubjectAssetsUI.updateProfileFromField(state, target);
+        markSourceDirty('person');
+        renderStatus();
+        return;
+      }
       if (target?.matches?.('[data-nsa-person-spec]')) {
         markSourceDirty('person');
         renderStatus();
@@ -6340,14 +6339,16 @@
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
         markSourceDirty('person');
-        if (target.dataset.nsaPersonSpec === 'castMode') {
+        if (['castMode', 'expectedPeople', 'expectedAnimals'].includes(target.dataset.nsaPersonSpec)) {
           renderAll();
           const modeMessages = {
             no_human: '已切换为无人物模式，人物素材和演员不会进入后续生成',
             animal: '已切换为动物 / 宠物主体，人物设定不会进入后续生成',
             human_pet: '已切换为人物 + 宠物混合主体，人数与宠物数量将分别锁定',
           };
-          toast(modeMessages[target.value] || '人物/主体模式已更新，当前设置会自动保存', 'success');
+          if (target.dataset.nsaPersonSpec === 'castMode') {
+            toast(modeMessages[target.value] || '人物/主体模式已更新，当前设置会自动保存', 'success');
+          }
         } else {
           renderStatus();
         }

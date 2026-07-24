@@ -178,6 +178,27 @@ function main() {
   assert.equal(sceneBinding.sceneVerificationState(normalizedLegacy), 'legacy_partial');
 
   const frontend = loadFrontend();
+  const park = { id: 'space_park', name: 'Park', scene_spec: { layoutText: 'park' } };
+  const home = { id: 'space_home', name: 'Home', scene_spec: { layoutText: 'home' } };
+  const firstPlanned = frontend.plannedGenerationTarget({
+    sceneConfig: { scene_mode: 'multi', spaces: [park, home] },
+    sceneAssets: [],
+  });
+  assert.equal(firstPlanned.targetSpaceId, 'space_park', 'first multi-scene generation must submit the first planned stable space ID');
+  const nextPlanned = frontend.plannedGenerationTarget({
+    sceneConfig: { scene_mode: 'multi', spaces: [park, home] },
+    sceneAssets: [{ id: 'space_park', scene_id: 'space_park', space_id: 'space_park', image_url: '/park.png' }],
+  }, { append: true });
+  assert.equal(nextPlanned.targetSpaceId, 'space_home', 'append must submit the next missing planned stable space ID');
+  const selectedPlanned = frontend.plannedGenerationTarget({
+    sceneConfig: { scene_mode: 'multi', spaces: [park, home] },
+    sceneAssets: [
+      { id: 'space_park', scene_id: 'space_park', space_id: 'space_park', image_url: '/park.png' },
+      { id: 'space_home', scene_id: 'space_home', space_id: 'space_home', image_url: '/home.png' },
+    ],
+    sceneSelectedIndex: 1,
+  });
+  assert.equal(selectedPlanned.targetSpaceId, 'space_home', 'regeneration must keep the selected space stable ID');
   const certifiedAssessment = frontend.sceneLockAssessment(certifiedExisting);
   assert.equal(certifiedAssessment.complete, true);
   assert.equal(certifiedAssessment.upgradeRequired, false);
@@ -439,15 +460,18 @@ function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260724-subject-assets-v5'));
-  assert(html.includes('digital-human-wizard.css?v=20260724-subject-assets-v5'));
-  assert(html.indexOf('bootstrap.js?v=20260724-subject-assets-v5') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
+  assert(html.includes('bootstrap.js?v=20260724-scene-subject-isolation-v6'));
+  assert(html.includes('digital-human-wizard.css?v=20260724-scene-subject-isolation-v6'));
+  assert(html.indexOf('bootstrap.js?v=20260724-scene-subject-isolation-v6') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260724-subject-assets-v5'));
+  assert(bootstrap.includes('20260724-scene-subject-isolation-v6'));
+  assert(sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
+  assert(sceneUi.includes('acknowledge_billing_unknown: acknowledgeBillingUnknown === true'));
+  assert(legacyUi.includes('confirmAction: confirmNsaAction'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),

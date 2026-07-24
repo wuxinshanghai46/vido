@@ -289,12 +289,25 @@ function normalizeCastProfiles(input) {
         image_url: cleanText(view?.image_url || view?.url || '', 1000),
       })).filter(view => view.url || view.image_url).slice(0, 4) : [],
       person_contract: profile.person_contract && typeof profile.person_contract === 'object' ? profile.person_contract : null,
-      appearance: profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {},
-      wardrobe: profile.wardrobe && typeof profile.wardrobe === 'object' ? profile.wardrobe : {},
-      hairMakeup: profile.hairMakeup && typeof profile.hairMakeup === 'object' ? profile.hairMakeup : {},
-      outfit: cleanText(profile.outfit || '', 500),
+      appearanceText: cleanText(profile.appearanceText || profile.appearance?.userPrompt || profile.appearance || '', 800),
+      wardrobeText: cleanText(profile.wardrobeText || profile.wardrobe?.userPrompt || profile.outfit || '', 600),
+      hairMakeupText: cleanText(profile.hairMakeupText || profile.hairMakeup?.userPrompt || '', 400),
+      appearance: profile.appearance && typeof profile.appearance === 'object'
+        ? profile.appearance
+        : { userPrompt: cleanText(profile.appearanceText || profile.appearance || '', 800) },
+      wardrobe: profile.wardrobe && typeof profile.wardrobe === 'object'
+        ? profile.wardrobe
+        : { userPrompt: cleanText(profile.wardrobeText || profile.outfit || '', 600) },
+      hairMakeup: profile.hairMakeup && typeof profile.hairMakeup === 'object'
+        ? profile.hairMakeup
+        : { userPrompt: cleanText(profile.hairMakeupText || '', 400) },
+      outfit: cleanText(profile.outfit || profile.wardrobeText || '', 600),
       negativeText: cleanText(profile.negativeText || '', 500),
-      description: cleanText(profile.description || '', 1000),
+      description: cleanText(profile.description || [
+        profile.appearanceText,
+        profile.wardrobeText ? `服装：${profile.wardrobeText}` : '',
+        profile.hairMakeupText ? `发型妆造：${profile.hairMakeupText}` : '',
+      ].filter(Boolean).join('；'), 1000),
       identityLock: profile.identityLock && typeof profile.identityLock === 'object' ? profile.identityLock : {},
     };
   }).filter(Boolean);

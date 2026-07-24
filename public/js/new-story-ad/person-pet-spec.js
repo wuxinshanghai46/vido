@@ -49,7 +49,7 @@
     const keys = [
       'castMode', 'gender', 'age', 'origin', 'roleName', 'displayName',
       'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
-      'expectedAnimals', 'petType', 'petDescription',
+      'expectedPeople', 'expectedAnimals', 'petType', 'petDescription',
     ];
     return keys.reduce((result, key) => {
       result[key] = String(source[key] ?? '').trim()
