@@ -15,6 +15,18 @@
     return !!source && Object.prototype.hasOwnProperty.call(source, key);
   }
 
+  function collectDurationContract(control) {
+    const targetDuration = Number(control?.value || 30);
+    const durationSource = control?.dataset?.durationSource
+      || (control?.classList?.contains('dh-luxgen-hidden-control') ? 'ui_default' : 'user_selected');
+    return {
+      duration_sec: targetDuration,
+      duration: targetDuration,
+      target_duration: targetDuration,
+      duration_source: durationSource,
+    };
+  }
+
   /**
    * 媒体结果属于具体任务和具体服务端快照。切换任务或服务端明确返回 null 时必须清空，
    * 不能把上一任务/上一轮尝试的红色提示沿用到当前成功结果。
@@ -285,7 +297,9 @@
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
     setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '', { within });
-    setFieldValue('#dhNsaAdDuration', request.duration_sec || request.duration || 30, { within });
+    setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30, { within });
+    const durationControl = within('#dhNsaAdDuration');
+    if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';
     state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
@@ -328,5 +342,6 @@
     shouldPreserveTrackedGeneration,
     detectMissingStoryboardOutput,
     syncMediaResult,
+    collectDurationContract,
   };
 })();

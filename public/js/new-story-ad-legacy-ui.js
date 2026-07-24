@@ -981,7 +981,7 @@
 
   function payload() {
     const brief = (within('#dhNsaAdText')?.value || '').trim();
-    const duration = Number(within('#dhNsaAdDuration')?.value || 30);
+    const durationContract = window.NewStoryAdStateSync.collectDurationContract(within('#dhNsaAdDuration'));
     const ratio = within('#dhNsaAdRatio')?.value || state.outputRatio || '9:16';
     const size = within('#dhNsaAdSize')?.value || state.outputSize || 'standard';
     const videoResolution = within('#dhNsaAdVideoResolution')?.value || state.videoResolution || '720p';
@@ -1002,8 +1002,7 @@
       brief,
       content: brief,
       product_subject: subject,
-      duration_sec: duration,
-      duration,
+      ...durationContract,
       output_ratio: ratio,
       output_size: size,
       video_resolution: videoResolution,
@@ -1763,7 +1762,9 @@
     }
 
     setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '');
-    setFieldValue('#dhNsaAdDuration', request.duration_sec || request.duration || 30);
+    setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30);
+    const durationControl = within('#dhNsaAdDuration');
+    if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';
     state.outputRatio = request.output_ratio || request.outputRatio || state.outputRatio || '9:16';
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
@@ -6272,6 +6273,7 @@
         return;
       }
       if (target?.id === 'dhNsaAdDuration') {
+        target.dataset.durationSource = 'user_selected';
         markSourceDirty('source');
         syncOptionControls();
         renderStatus();

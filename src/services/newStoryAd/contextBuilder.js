@@ -327,13 +327,96 @@ function inferVisibleTextPolicy(body = {}, brief = '') {
   };
 }
 
+const DEFAULT_TARGET_DURATION = 30;
+const MIN_TARGET_DURATION = 10;
+const MAX_TARGET_DURATION = 120;
+
+function chineseDurationNumber(value = '') {
+  const raw = cleanText(value, 20).replace(/[秒分钟钟\s]/g, '');
+  if (!raw) return 0;
+  if (/^\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
+  const digits = { 零: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
+  let total = 0;
+  let current = 0;
+  for (const char of raw) {
+    if (Object.prototype.hasOwnProperty.call(digits, char)) {
+      current = digits[char];
+      continue;
+    }
+    if (char === '十') {
+      total += (current || 1) * 10;
+      current = 0;
+      continue;
+    }
+    if (char === '百') {
+      total += (current || 1) * 100;
+      current = 0;
+      continue;
+    }
+    return 0;
+  }
+  return total + current;
+}
+
+function inferBriefTargetDuration(brief = '') {
+  const text = cleanText(brief, 3000);
+  if (!text) return 0;
+  const numberToken = '([0-9]+(?:\\.[0-9]+)?|[零一二两三四五六七八九十百]{1,8})';
+  const unitToken = '(秒(?:钟)?|分钟|分(?:钟)?)';
+  const patterns = [
+    new RegExp(`(?:目标时长|总时长|成片时长|视频时长|广告时长|宣传片时长|短片时长|时长(?:为|约|控制在)?)\\s*${numberToken}\\s*${unitToken}`, 'gu'),
+    new RegExp(`(?:制作|生成)(?:一条|一个|一段)?[^，。；;\\n]{0,8}?${numberToken}\\s*${unitToken}(?:横屏|竖屏|的)?(?:广告|宣传片|视频|短片)?`, 'gu'),
+    new RegExp(`(?:一条|一个|一段)\\s*${numberToken}\\s*${unitToken}(?:横屏|竖屏|的)?(?:广告|宣传片|视频|短片)`, 'gu'),
+  ];
+  const candidates = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const amount = chineseDurationNumber(match[1]);
+      const seconds = /分/.test(match[2]) ? amount * 60 : amount;
+      if (Number.isFinite(seconds) && seconds >= MIN_TARGET_DURATION && seconds <= MAX_TARGET_DURATION) {
+        candidates.push(Math.round(seconds));
+      }
+    }
+  }
+  const unique = [...new Set(candidates)];
+  return unique.length === 1 ? unique[0] : 0;
+}
+
+function resolveTargetDuration(body = {}, brief = '') {
+  const durationSource = cleanText(body.duration_source || body.durationSource || '', 40).toLowerCase();
+  const structuredCandidates = [
+    body.target_duration,
+    body.targetDuration,
+    body.duration_sec,
+    body.durationSec,
+    body.duration,
+  ];
+  const structuredDuration = structuredCandidates
+    .map(Number)
+    .find(value => Number.isFinite(value) && value > 0) || 0;
+  const briefDuration = inferBriefTargetDuration(brief);
+  const injectedDefault = ['ui_default', 'hidden_ui_default', 'default_control'].includes(durationSource);
+  const chosen = briefDuration && (!structuredDuration || injectedDefault)
+    ? briefDuration
+    : (structuredDuration || briefDuration || DEFAULT_TARGET_DURATION);
+  return {
+    value: Math.max(MIN_TARGET_DURATION, Math.min(MAX_TARGET_DURATION, Math.round(chosen))),
+    source: briefDuration && chosen === briefDuration
+      ? 'explicit_brief'
+      : (durationSource || (structuredDuration ? 'structured_request' : 'system_default')),
+    brief_duration: briefDuration || 0,
+    structured_duration: structuredDuration || 0,
+  };
+}
+
 function buildContext(body = {}, user = {}) {
   const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
   const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
   const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);
   const assets = normalizeAssets(body.assets || body.references || body.images);
-  const targetDuration = Math.max(10, Math.min(120, Number(body.duration || body.target_duration || body.targetDuration || 30) || 30));
+  const durationContract = resolveTargetDuration(body, brief);
+  const targetDuration = durationContract.value;
   const rawShotCount = Number(body.shot_count || body.shotCount || 0) || 0;
   const shotCount = rawShotCount > 0 ? Math.max(1, Math.min(18, rawShotCount)) : 0;
   const outputRatio = cleanText(body.output_ratio || body.outputRatio || body.ratio || '9:16', 20);
@@ -366,6 +449,7 @@ function buildContext(body = {}, user = {}) {
     brief,
     product_subject: productSubject || inferSubjectFromBrief(brief),
     target_duration: targetDuration,
+    duration_source: durationContract.source,
     shot_count: shotCount,
     output_ratio: outputRatio,
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
@@ -538,6 +622,12 @@ function contextConflicts(ctx = {}) {
   if (personRequired && noPerson) {
     conflicts.push('任务要求人物出镜，但全局禁止项同时要求不出现人物');
   }
+  const briefDuration = inferBriefTargetDuration(ctx.brief || '');
+  const storedDuration = Number(ctx.target_duration || ctx.targetDuration || ctx.duration_sec || ctx.durationSec || ctx.duration || 0) || 0;
+  const durationSource = cleanText(ctx.duration_source || ctx.durationSource || '', 40).toLowerCase();
+  if (briefDuration && storedDuration && briefDuration !== storedDuration && durationSource !== 'user_selected') {
+    conflicts.push(`需求文本明确要求 ${briefDuration} 秒，但任务结构化时长为 ${storedDuration} 秒`);
+  }
   return conflicts;
 }
 
@@ -564,5 +654,7 @@ module.exports = {
   normalizeSceneAssets,
   normalizeProductionMode,
   inferVisibleTextPolicy,
+  inferBriefTargetDuration,
+  resolveTargetDuration,
   contextConflicts,
 };

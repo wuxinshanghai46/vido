@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const storage = require('./storageService');
 const mediaAdapter = require('./mediaAdapter');
-const { cleanText } = require('./contextBuilder');
+const { assertContextConsistent, cleanText } = require('./contextBuilder');
 const sceneSpace = require('./sceneSpaceContractService');
 const cancellation = require('./cancellationContext');
 const sceneViewStrategy = require('./sceneViewStrategyService');
@@ -762,9 +762,9 @@ function mergeSceneAssets(existing = [], asset = {}) {
 function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const normalized = normalizeSceneAssets(sceneAssets);
   storage.saveOutput(taskId, 'scene_assets', normalized);
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const nextCtx = {
     ...ctx,
     ...(options.sceneSpec ? { scene_spec: options.sceneSpec } : {}),
@@ -784,7 +784,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   assertCompleteUpgradeSceneSpec(body);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const sceneConfig = storage.getOutput(taskId, 'scene_config') || {};
   const existing = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const sceneId = cleanText(body.scene_id || body.sceneId || `scene_${Date.now()}_${uuidv4().slice(0, 6)}`, 120);
@@ -1218,7 +1218,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
 async function repairSceneAsset(taskId, sceneId, body = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
   const asset = assets.find(item => String(item.scene_id || item.id) === String(sceneId || ''));
   if (!asset) {
@@ -1268,7 +1268,7 @@ async function repairSceneAsset(taskId, sceneId, body = {}) {
 async function reverifySceneAsset(taskId, sceneId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const assets = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || []);
   const index = assets.findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
   if (index < 0) {

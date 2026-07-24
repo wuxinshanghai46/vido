@@ -197,7 +197,7 @@ function taskFingerprint(task = {}) {
   const brief = clean(task.brief || request.brief || request.content || '');
   if (!brief) return `id:${String(task.id || '')}`;
   const user = clean(task.user_id || request.user_id || 'legacy');
-  const duration = Number(request.duration_sec || request.duration || 30) || 30;
+  const duration = Number(request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30) || 30;
   const ratio = clean(request.output_ratio || request.outputRatio || '9:16');
   return JSON.stringify([user, brief, duration, ratio]);
 }
