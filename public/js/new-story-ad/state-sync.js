@@ -412,8 +412,14 @@
     if (!state) return;
     const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
     Object.entries(spec || {}).forEach(([key, value]) => {
-      const el = (typeof root === 'function' ? root() : document)?.querySelector(`[data-nsa-person-spec="${key}"]`);
-      if (el && value !== undefined && value !== null) el.value = String(value);
+      const scope = typeof root === 'function' ? root() : document;
+      const selector = `[data-nsa-person-spec="${key}"]`;
+      const fields = typeof scope?.querySelectorAll === 'function'
+        ? Array.from(scope.querySelectorAll(selector))
+        : [scope?.querySelector?.(selector)].filter(Boolean);
+      if (value !== undefined && value !== null) {
+        fields.forEach(field => { field.value = String(value); });
+      }
     });
     state.castProfiles = Array.isArray(request.cast_profiles || request.castProfiles)
       ? (request.cast_profiles || request.castProfiles)

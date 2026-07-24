@@ -478,6 +478,34 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(restoredState.petProfiles[0].name, '雪球');
   assert.strictEqual(restoredState.petProfiles[0].image_url, '/pets/snowball.jpg');
 
+  const duplicatedCastModeFields = [{ value: 'dual' }, { value: 'dual' }];
+  const duplicatedAnimalFields = [{ value: '0' }, { value: '0' }];
+  const duplicatedFormRoot = {
+    querySelectorAll(selector) {
+      if (selector === '[data-nsa-person-spec="castMode"]') return duplicatedCastModeFields;
+      if (selector === '[data-nsa-person-spec="expectedAnimals"]') return duplicatedAnimalFields;
+      return [];
+    },
+  };
+  sync.hydratePersonSpec({
+    person_spec: { castMode: 'human_pet', expectedAnimals: '1' },
+    cast_profiles: [castProfile(1), castProfile(2)],
+    pet_profiles: [{ ...petProfile(1, { name: '雪球' }), image_url: '/pets/snowball.jpg' }],
+  }, {
+    state: { castProfiles: [], petProfiles: [] },
+    root: () => duplicatedFormRoot,
+  });
+  assert.deepStrictEqual(
+    duplicatedCastModeFields.map(field => field.value),
+    ['human_pet', 'human_pet'],
+    'every responsive copy of the cast-mode control must restore the persisted mixed-subject mode',
+  );
+  assert.deepStrictEqual(
+    duplicatedAnimalFields.map(field => field.value),
+    ['1', '1'],
+    'every responsive copy of the pet count must restore the persisted value before profile reconciliation',
+  );
+
   const checkpointState = {
     taskId: '',
     castProfiles: [],

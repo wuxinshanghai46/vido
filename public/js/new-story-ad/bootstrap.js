@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260724-subject-checkpoint-v7';
+  const SCRIPT_VERSION = '20260725-subject-form-restore-v8';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
