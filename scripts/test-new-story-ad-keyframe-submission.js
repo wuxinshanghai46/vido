@@ -41,7 +41,7 @@ function testBrowserAndRouteGuardContract() {
   const queueIndex = route.indexOf('return queueTaskStage(', routeStart);
   assert(routeStart >= 0 && guardIndex > routeStart && queueIndex > guardIndex,
   'billing preflight must run before a background keyframe job is queued');
-  assert(html.includes('bootstrap.js?v=20260725-subject-asset-mode-v9'));
+  assert(html.includes('bootstrap.js?v=20260725-subject-scene-contract-v10'));
   assert(html.includes('digital-human.js?v=20260721-unified-dialog-v20'));
 }
 

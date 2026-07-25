@@ -491,6 +491,59 @@
     applySpec({}, { clearMissing: true });
   }
 
+  /** 规范化前端场景计划；场景数量只由 spaces 数组决定，不再从混合文本猜测。 */
+  function normalizePlan(plan = {}) {
+    const source = plan && typeof plan === 'object' ? plan : {};
+    const spaces = (Array.isArray(source.spaces) ? source.spaces : []).map((space, index) => {
+      const item = space && typeof space === 'object' ? space : {};
+      const id = clean(item.id || item.space_id || item.scene_id || `space_${index + 1}`, 120);
+      return {
+        ...item,
+        id,
+        space_id: id,
+        scene_id: id,
+        name: clean(item.name || item.label || `独立空间 ${index + 1}`, 120),
+        description: clean(item.description || item.layout || '', 500),
+        story_purpose: clean(item.story_purpose || item.storyPurpose || item.purpose || '', 300),
+        scene_spec: item.scene_spec && typeof item.scene_spec === 'object'
+          ? item.scene_spec
+          : (item.sceneSpec && typeof item.sceneSpec === 'object' ? item.sceneSpec : {}),
+      };
+    }).filter(space => space.id);
+    return {
+      ...source,
+      scene_mode: spaces.length > 1 ? 'multi' : (spaces.length === 1 ? 'single' : 'auto'),
+      spaces,
+    };
+  }
+
+  /** 应用结构化场景计划并把当前空间同步到编辑表单，供用户逐空间检查。 */
+  function applyPlan(state = {}, plan = {}) {
+    const normalized = normalizePlan(plan);
+    if (!normalized.spaces.length) return null;
+    state.sceneConfig = normalized;
+    const mode = root()?.querySelector?.('#dhNsaAdSceneMode');
+    if (mode) mode.value = normalized.scene_mode;
+    const target = plannedGenerationTarget(state, { append: false }).targetSpace || normalized.spaces[0];
+    applySpec(target.scene_spec || {}, { clearMissing: true });
+    if (mode) mode.value = normalized.scene_mode;
+    syncSpecSelectionState(root());
+    return { plan: normalized, active_space: target, scene_spec: target.scene_spec || {} };
+  }
+
+  /** 保存前将当前表单写回对应 space，避免自动保存持久化旧的场景计划。 */
+  function planPayload(state = {}) {
+    const plan = normalizePlan(state.sceneConfig || {});
+    if (!plan.spaces.length) return null;
+    const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
+    const selectedIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+    const selectedId = clean(assets[selectedIndex]?.space_id || assets[selectedIndex]?.scene_id || assets[selectedIndex]?.id || '', 120);
+    const foundIndex = plan.spaces.findIndex(space => space.id === selectedId);
+    const targetIndex = foundIndex >= 0 ? foundIndex : 0;
+    plan.spaces[targetIndex] = { ...plan.spaces[targetIndex], scene_spec: specPayload() };
+    return normalizePlan(plan);
+  }
+
   function normalizeView(view = {}, index = 0) {
     const key = clean(view.key || view.view || ['master', 'reverse', 'interaction', 'detail'][index] || `view_${index + 1}`, 40);
     const url = clean(view.url || view.image_url || view.imageUrl || view.file_url || '', 1000);
@@ -1052,6 +1105,9 @@
     sceneProgressView,
     applySpec,
     clearSpecInputs,
+    normalizePlan,
+    applyPlan,
+    planPayload,
     applySpecSuggestion,
     syncSpecSelectionState,
     render,

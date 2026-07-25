@@ -2602,6 +2602,17 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-lux-actor-views button:hover { border-color: rgba(33,255,243,.68); color: var(--dh-primary); background: rgba(33,255,243,.06); }
 .dh-lux-actor-views img { height: 56px; border: 0; border-radius: 0; }
 .dh-lux-actor-views span { display: block; padding: 0 4px 5px; font-size: 10px; font-weight: 800; line-height: 1.2; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh-nsa-subject-gallery { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.dh-nsa-subject-member { min-width: 0; display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px 10px; align-items: center; padding: 9px; border: 1px solid rgba(33,255,243,.18); border-radius: 9px; background: rgba(0,0,0,.2); }
+.dh-nsa-subject-main { width: 76px; height: 94px; padding: 0; border: 1px solid rgba(255,255,255,.12); border-radius: 7px; background: rgba(0,0,0,.28); overflow: hidden; cursor: zoom-in; }
+.dh-nsa-subject-main img { width: 100%; height: 100%; object-fit: contain; }
+.dh-nsa-subject-member-copy { min-width: 0; display: grid; gap: 4px; }
+.dh-nsa-subject-member-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.dh-nsa-subject-member-copy small { color: var(--dh-text-muted); font-size: 11px; }
+.dh-nsa-subject-views { grid-column: 1 / -1; min-width: 0; }
+.dh-nsa-subject-views summary { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 6px; color: var(--dh-primary); background: rgba(33,255,243,.05); cursor: pointer; font-size: 11px; font-weight: 800; }
+.dh-nsa-subject-views summary em { color: var(--dh-text-muted); font-style: normal; font-weight: 600; }
+.dh-nsa-subject-views[open] .dh-lux-actor-views { margin-top: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .dh-lux-actor-view-status { margin-top: 8px; padding: 9px 10px; border: 1px solid rgba(33,255,243,.28); border-radius: 8px; background: rgba(33,255,243,.08); color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; display: grid; gap: 6px; }
 .dh-lux-actor-view-status-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dh-primary); font-weight: 900; }
 .dh-lux-actor-view-status-head b { color: var(--dh-text); }

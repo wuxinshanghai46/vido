@@ -37,7 +37,7 @@ const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStor
 const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
-const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistTextFormatter = require('./assistTextFormatterService');
+const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
@@ -486,11 +486,20 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const existingFinalVideo = storage.getOutput(taskId, 'final_video');
+  const explicitScenePlanInput = body.scene_plan || body.scenePlan || null;
   const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
   let builtCtx = buildContext(
     { ...(task.request || {}), ...(body || {}), task_id: taskId },
     { ...user, id: ownerId, userId: ownerId },
   );
+  const explicitScenePlan = explicitScenePlanInput
+    ? assertScenePlanContract(normalizeScenePlan(explicitScenePlanInput))
+    : null;
+  if (explicitScenePlan) builtCtx = {
+    ...builtCtx,
+    scene_mode: explicitScenePlan.scene_mode,
+    scene_spec: explicitScenePlan.spaces[0]?.scene_spec || builtCtx.scene_spec,
+  };
   const savingProgress = body.save_progress === true || body.saveProgress === true;
   const mediaChangeScope = body.media_change_scope || body.mediaChangeScope || '';
   builtCtx = taskProgressSave.preserveUnconfirmedMediaSettings(previousCtx, builtCtx, { savingProgress, mediaChangeScope });
@@ -548,6 +557,9 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
   const updated = storage.updateTask(taskId, patch);
   storage.saveOutput(taskId, 'context', ctx);
+  if (explicitScenePlan && ['scene', 'none'].includes(scope)) {
+    storage.saveOutput(taskId, 'scene_config', explicitScenePlan);
+  }
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
   return { task: updated, context: ctx, change_scope: scope, invalidated_outputs: invalidated };
 }
@@ -3539,6 +3551,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
+    'scene_spec 模式必须识别剧情实际发生的每个独立物理空间，并输出 scene_plan.spaces；两个地点不得合并进同一个 layoutText。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。',
     '当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
@@ -3589,24 +3602,7 @@ async function assistBrief(body = {}, user = {}) {
   }]
 }`
       : isSceneSpec
-        ? `{
-  "scene_spec": {
-    "layoutText": "空间布局、主体位置、前景/背景关系、可持续复用的场景身份，80-180 字",
-    "materialLightText": "材质、色彩、光线方向、真实拍摄质感和商业高级感，80-180 字",
-    "interactionText": "人物或商品可在空间中出现的位置、动作区域、镜头可运动范围，60-140 字",
-    "negativeText": "场景四视图不能出现的空间错误、材质错误、风格错误、文字水印或无关元素，分号分隔",
-    "surfaceTopology": {
-      "mode": "auto/continuous/segmented/modular，仅在需求明确时选择",
-      "seam_policy": "auto/hidden/visible/task_defined",
-      "finish_distribution": "auto/uniform/gradient/regional/sample_comparison",
-      "notes": "只写当前任务明确要求的表面结构，不得套用行业或场景模板"
-    },
-    "materialContract": {
-      "dominant_finish": "原样保留专有名称，并说明其在本任务中的主导饰面表达",
-      "observable_cues": ["仅填写需求可支持的颜色、纹理、反射、粗糙度、肌理、尺度等可见证据"]
-    }
-  }
-}`
+        ? assistScenePlan.outputSchema()
         : isShotSettings
           ? `{
   "shot_settings": {
@@ -3696,21 +3692,10 @@ ${outputSchema}`;
     return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec });
   }
   if (isSceneSpec) {
-    const raw = parsed.scene_spec || parsed.sceneSpec || parsed;
-    const spec = sceneAssistCompleteness.enforceAssistedSceneSpec(
-      raw && typeof raw === 'object' ? raw : {},
-      ctx.scene_spec || ctx.sceneSpec || {},
-      ctx,
-    );
-    return {
-      scene_spec: spec,
-      mode,
-      model_meta: {
-        used_model: result.used_model,
-        fallback_used: result.fallback_used,
-        failed_models: result.failed_models,
-      },
-    };
+    return assistScenePlan.buildResponse({
+      parsed, context: ctx, currentPlan: body.scene_plan || body.scenePlan || body.scene_config || body.sceneConfig || {},
+      mode, modelResult: result,
+    });
   }
   if (isShotSettings) {
     const currentShot = shotAssistContext?.current_shot && typeof shotAssistContext.current_shot === 'object'

@@ -1427,7 +1427,7 @@
   }
 
   function petAssetsHtml() {
-    return window.NewStoryAdSubjectAssetsUI.petGrid(state.petProfiles, { escapeHtml, assetThumbUrl });
+    return window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(null, state.petProfiles, { escapeHtml, assetThumbUrl });
   }
 
   function renderPerson() {
@@ -1485,23 +1485,14 @@
       : isSynthetic
         ? '这是可复用的拟真一致性演员，会作为后续剧本、分镜和关键帧的人物锁。'
         : '这是 AI 拟真演员参考；需要真人广告请上传真人照片或选择授权真人演员。';
-    const castGrid = castMembers.length > 1
-      ? `<div class="dh-lux-actor-cast-grid">${castMembers.map((member, i) => `<span>
-          ${member.image_url ? `<img src="${escapeHtml(assetThumbUrl(member.image_url, 320))}" alt="${escapeHtml(member.name || `角色${i + 1}`)}" loading="lazy" decoding="async">` : '<i class="dh-lux-actor-cast-placeholder">未生成</i>'}
-          <b>${escapeHtml(member.name || member.cast_role || `角色${i + 1}`)}</b>
-        </span>`).join('')}</div>`
-      : '';
-    const viewStrip = !castGrid && viewEntries.length > 1
-      ? `<div class="dh-lux-actor-views">${viewEntries.slice(0, 6).map((view, i) => `<button type="button" data-nsa-person-preview="${i}" title="${escapeHtml(view.label)}"><img src="${escapeHtml(assetThumbUrl(view.url, 360))}" alt="${escapeHtml(view.label)}" loading="lazy" decoding="async"><span>${escapeHtml(view.label)}</span></button>`).join('')}</div>`
-      : '';
+    const subjectGallery = window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(asset, state.petProfiles, { escapeHtml, assetThumbUrl });
     const warning = isAi && !isReal && !isSynthetic
       ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#b7791f;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考；真人广告请上传真人照片或选择授权真人演员。</div>'
       : '';
     host.innerHTML = `<div class="dh-luxgen-character-sheet ${asset.failed ? 'is-failed' : ''}">
-      ${castGrid || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-nsa-person-preview="0" title="${escapeHtml(viewEntries[0]?.label || '演员参考图')}"><img src="${escapeHtml(assetThumbUrl(src, 480))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
+      ${subjectGallery || (src ? `<button type="button" class="dh-lux-actor-main-preview" data-nsa-person-preview="0" title="${escapeHtml(viewEntries[0]?.label || '演员参考图')}"><img src="${escapeHtml(assetThumbUrl(src, 480))}" alt="${escapeHtml(asset.name || defaultName)}" loading="lazy" decoding="async"></button>` : '<div class="dh-luxgen-person-thumb">已选择</div>')}
       <b>${escapeHtml(asset.name || defaultName)}</b>
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
-      ${viewStrip}
       <div class="dh-nsa-verification-row">
         <span class="dh-nsa-verification-badge is-${escapeHtml(personVerification.tone)}">${escapeHtml(personVerification.label)}</span>
         ${canReverifyPerson && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>再次验证（不重新生成）</button>' : ''}
@@ -1509,7 +1500,6 @@
       </div>
       ${verificationDetailsHtml(personVerification)}
       ${warning}
-      ${petAssetsHtml()}
     </div>`;
   }
 
@@ -3658,6 +3648,9 @@
       body: {
         ...payload(),
         task_id: id,
+        scene_plan: state.pendingChangeScope === 'scene'
+          ? window.NewStoryAdSceneAssets?.planPayload?.(state)
+          : null,
         save_progress: true,
         progress_stage: progressStage,
         progress_snapshot: {
@@ -5404,6 +5397,7 @@
     setButtonBusy(button, true, label);
     try {
       let suggestion = null;
+      let suggestionPlan = null;
       try {
         const r = await api('/api/new-story-ad/assist', {
           method: 'POST',
@@ -5415,6 +5409,7 @@
           },
         });
         suggestion = r.scene_spec || r.sceneSpec || null;
+        suggestionPlan = r.scene_plan || r.scenePlan || r.scene_config || r.sceneConfig || null;
       } catch (err) {
         if (requireAi) {
           toast('AI 空间设定补齐失败，已停止操作，没有提交任何图片生成', 'error');
@@ -5425,7 +5420,9 @@
       const fallbackSpec = fallbackSceneSpecFromBrief(brief);
       const nextSpec = completeSceneSpecSuggestion(suggestion, currentSpec, fallbackSpec);
       let changed = false;
-      if (replaceExisting && window.NewStoryAdSceneAssets?.applySpec) {
+      if (suggestionPlan && window.NewStoryAdSceneAssets?.applyPlan) {
+        changed = !!window.NewStoryAdSceneAssets.applyPlan(state, suggestionPlan);
+      } else if (replaceExisting && window.NewStoryAdSceneAssets?.applySpec) {
         window.NewStoryAdSceneAssets.applySpec(nextSpec, { clearMissing: false });
         changed = true;
       } else {
@@ -5741,6 +5738,9 @@
         openPreview(previewUrl(asset), asset?.name || '参考素材');
         return;
       }
+      if (window.NewStoryAdSubjectAssetsUI.handleGalleryClick(
+        e, host, (url, title) => openPreview(withAuthQuery(url), title),
+      )) return;
       const personPreview = target.closest('[data-nsa-person-preview]');
       if (personPreview && host.contains(personPreview)) {
         e.preventDefault();

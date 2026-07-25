@@ -1,4 +1,97 @@
 (() => {
+  const VIEW_LABELS = {
+    front: '正面',
+    side: '侧面',
+    back: '背面',
+    action: '动作',
+  };
+
+  /** 统一读取人物或宠物的四视图；单人、双人、多人和宠物共用同一数据合同。 */
+  function subjectViews(asset = {}) {
+    const raw = Array.isArray(asset.view_images) && asset.view_images.length
+      ? asset.view_images
+      : (Array.isArray(asset.reference_images) ? asset.reference_images : []);
+    const seen = new Set();
+    return raw.map((view, index) => {
+      const item = view && typeof view === 'object' ? view : {};
+      const key = clean(item.key || item.view || ['front', 'side', 'back', 'action'][index] || `view_${index + 1}`, 40);
+      const url = clean(typeof view === 'string' ? view : (item.url || item.image_url || item.imageUrl || ''), 1000);
+      return { key, label: clean(item.label || VIEW_LABELS[key] || `视图 ${index + 1}`, 80), url };
+    }).filter(view => view.url && !seen.has(view.url) && seen.add(view.url));
+  }
+
+  /** 汇总当前任务全部主体；每个成员保持自己的视图数组，不按模式复制展示分支。 */
+  function subjectMembers(personAsset = null, petProfiles = []) {
+    const cast = Array.isArray(personAsset?.cast_assets) && personAsset.cast_assets.length
+      ? personAsset.cast_assets
+      : (personAsset ? [personAsset] : []);
+    const pets = Array.isArray(petProfiles) ? petProfiles : [];
+    return [
+      ...cast.map((asset, index) => ({ kind: 'person', asset, name: asset.name || asset.cast_role || `人物${index + 1}` })),
+      ...pets.map((asset, index) => ({ kind: 'pet', asset, name: asset.name || asset.type || `宠物${index + 1}` })),
+    ];
+  }
+
+  /** 渲染按需加载的统一主体图库；首图立即显示，四视图仅在展开时请求缩略图。 */
+  function subjectGalleryHtml(personAsset = null, petProfiles = [], { escapeHtml = value => String(value), assetThumbUrl = value => value } = {}) {
+    const members = subjectMembers(personAsset, petProfiles);
+    if (!members.length) return '';
+    return `<div class="dh-nsa-subject-gallery">${members.map(({ kind, asset, name }, memberIndex) => {
+      const views = subjectViews(asset);
+      const mainUrl = asset.image_url || views[0]?.url || '';
+      const title = `${name} · ${kind === 'pet' ? '宠物' : '人物'}参考`;
+      const viewGrid = views.length > 1
+        ? `<details class="dh-nsa-subject-views" data-nsa-subject-gallery>
+            <summary data-nsa-subject-gallery-toggle>查看四视图 <em>${views.length} 张</em></summary>
+            <div class="dh-lux-actor-views">${views.map((view, viewIndex) => `<button type="button" data-nsa-subject-preview-url="${escapeHtml(view.url)}" data-nsa-subject-preview-title="${escapeHtml(`${name} · ${view.label}`)}" title="${escapeHtml(view.label)}">
+              <img data-src="${escapeHtml(assetThumbUrl(view.url, 280))}" alt="${escapeHtml(`${name} ${view.label}`)}" loading="lazy" decoding="async">
+              <span>${escapeHtml(view.label)}</span>
+            </button>`).join('')}</div>
+          </details>`
+        : '';
+      return `<article class="dh-nsa-subject-member" data-nsa-subject-kind="${kind}" data-nsa-subject-index="${memberIndex}">
+        ${mainUrl ? `<button type="button" class="dh-nsa-subject-main" data-nsa-subject-preview-url="${escapeHtml(mainUrl)}" data-nsa-subject-preview-title="${escapeHtml(title)}">
+          <img src="${escapeHtml(assetThumbUrl(mainUrl, 360))}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">
+        </button>` : '<i class="dh-lux-actor-cast-placeholder">未生成</i>'}
+        <div class="dh-nsa-subject-member-copy"><b>${escapeHtml(name)}</b><small>${kind === 'pet' ? '宠物身份资产' : '人物身份资产'} · ${views.length || 1} 张参考</small></div>
+        ${viewGrid}
+      </article>`;
+    }).join('')}</div>`;
+  }
+
+  /** 用户展开某个成员时才设置缩略图 src，避免多人宠物任务首屏并发下载全部图片。 */
+  function loadGalleryImages(container = null) {
+    if (!container?.querySelectorAll) return 0;
+    let loaded = 0;
+    container.querySelectorAll('img[data-src]').forEach(image => {
+      if (!image.dataset.src) return;
+      image.src = image.dataset.src;
+      delete image.dataset.src;
+      loaded += 1;
+    });
+    return loaded;
+  }
+
+  /** 统一处理图库展开和大图预览事件，避免旧工作台继续复制模式分支。 */
+  function handleGalleryClick(event, host, openPreview) {
+    const target = event?.target;
+    const toggle = target?.closest?.('[data-nsa-subject-gallery-toggle]');
+    if (toggle && host?.contains?.(toggle)) {
+      const gallery = toggle.closest('[data-nsa-subject-gallery]');
+      requestAnimationFrame(() => loadGalleryImages(gallery));
+      return true;
+    }
+    const preview = target?.closest?.('[data-nsa-subject-preview-url]');
+    if (!preview || !host?.contains?.(preview)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const url = preview.dataset.nsaSubjectPreviewUrl || '';
+    if (url && typeof openPreview === 'function') {
+      openPreview(url, preview.dataset.nsaSubjectPreviewTitle || '主体参考');
+    }
+    return true;
+  }
+
   function castProfiles(asset, { actorUrls, actorReferenceKind } = {}) {
     const members = Array.isArray(asset?.cast_assets) ? asset.cast_assets : [];
     if (!members.length) return null;
@@ -229,6 +322,7 @@
     }).join('')}</div>`;
   }
   window.NewStoryAdSubjectAssetsUI = {
+    subjectViews, subjectMembers, subjectGalleryHtml, loadGalleryImages, handleGalleryClick,
     castProfiles, petProfiles, assetCastMode, counts, normalizeHumanProfile, normalizePetProfile,
     reconcileProfiles, profileErrors, updateProfileFromField, subjectEditorHtml, renderProfiles, adoptAssistedProfiles,
     confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
