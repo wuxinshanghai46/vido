@@ -16,9 +16,50 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 
+function cameraEvidence(views = [], { pass = true } = {}) {
+  const perspectiveViews = views.filter(view => view.key !== 'layout');
+  const source = perspectiveViews.length
+    ? perspectiveViews
+    : ['master', 'reverse', 'interaction', 'detail'].map(key => ({ key, url: `https://test.invalid/${key}.png` }));
+  return {
+    camera_design_qa: {
+      pass,
+      role_definition_score: pass ? 0.94 : 0.6,
+      requirement_mapping_score: pass ? 0.92 : 0.6,
+      direction_evidence_score: pass ? 0.91 : 0.5,
+      parameter_completeness_score: 0.95,
+      layout_mapping_score: pass ? 0.9 : 0.6,
+      mismatch_reasons: pass ? [] : ['互动机位未覆盖目标区域'],
+    },
+    cameras: source.map((view, index) => ({
+      view_id: view.key,
+      reference_image_url: view.url,
+      label: view.key,
+      role: `${view.key} role`,
+      framing: view.key === 'detail' ? 'close detail' : 'wide',
+      lens_class: view.key === 'detail' ? '50-85mm detail' : '24-35mm wide',
+      height_class: view.key === 'detail' ? 'surface_level' : 'eye_level',
+      orientation: `${view.key} direction`,
+      estimated_azimuth_degrees: [20, 130, 75, 70][index],
+      estimated_pitch_degrees: [2, 1, 0, -12][index],
+      azimuth_delta_from_master_degrees: view.key === 'reverse' ? 110 : null,
+      normalized_position: [[0.12, 0.82], [0.82, 0.25], [0.32, 0.68], [0.5, 0.55]][index],
+      look_at: [[0.55, 0.45], [0.42, 0.58], [0.58, 0.48], [0.57, 0.5]][index],
+      position_confidence: 0.9,
+      target_description: `${view.key} target`,
+      allowed_zone_ids: ['zone_action'],
+      requirement_refs: view.key === 'interaction' ? ['interaction']
+        : (view.key === 'detail' ? ['material_light'] : ['layout']),
+      visible_evidence: `${view.key} visible evidence`,
+      pass: pass || view.key !== 'interaction',
+      mismatch_reasons: pass || view.key !== 'interaction' ? [] : ['互动机位未覆盖目标区域'],
+    })),
+  };
+}
+
 function passingContract(views = []) {
   return {
-    schema_version: 4,
+    schema_version: 6,
     status: 'verified',
     full_space_lock: true,
     space_lock_status: 'complete',
@@ -30,6 +71,16 @@ function passingContract(views = []) {
       interaction_match_score: 0.93,
       surface_topology_match_score: 0.96,
       negative_compliance_score: 0.98,
+      mismatch_reasons: [],
+    },
+    photographic_realism_qa: {
+      pass: true,
+      photographic_realism_score: 0.94,
+      physical_material_score: 0.93,
+      natural_variation_score: 0.9,
+      optical_capture_score: 0.92,
+      real_photo_evidence: ['natural lens falloff', 'localized physical variation'],
+      synthetic_signals: [],
       mismatch_reasons: [],
     },
     cross_view_qa: {
@@ -49,13 +100,13 @@ function passingContract(views = []) {
     },
     layout_contract: { required: true, status: 'available' },
     view_issues: [],
-    cameras: views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
+    ...cameraEvidence(views),
   };
 }
 
 function rejectedReverseContract() {
   return {
-    schema_version: 4,
+    schema_version: 6,
     status: 'rejected',
     full_space_lock: false,
     verification: {
@@ -71,6 +122,16 @@ function rejectedReverseContract() {
       interaction_match_score: 0.93,
       surface_topology_match_score: 0.96,
       negative_compliance_score: 0.98,
+      mismatch_reasons: [],
+    },
+    photographic_realism_qa: {
+      pass: true,
+      photographic_realism_score: 0.94,
+      physical_material_score: 0.93,
+      natural_variation_score: 0.9,
+      optical_capture_score: 0.92,
+      real_photo_evidence: ['natural lens falloff', 'localized physical variation'],
+      synthetic_signals: [],
       mismatch_reasons: [],
     },
     cross_view_qa: {
@@ -89,6 +150,7 @@ function rejectedReverseContract() {
       reasons: ['第2张反向/侧向图与主视图差异极小', '反向或侧向空间覆盖不足'],
     },
     layout_contract: { required: true, status: 'available' },
+    ...cameraEvidence(),
     view_issues: [{
       code: 'REVERSE_COVERAGE_LOW',
       view_keys: ['reverse'],
@@ -107,13 +169,29 @@ async function main() {
     status: 'rejected',
     observed_summary: 'same scene except interaction view',
     requirement_qa: { pass: true, layout_match_score: 0.95, material_light_match_score: 0.92, interaction_match_score: 0.9, surface_topology_match_score: 0.94, negative_compliance_score: 0.98, mismatch_reasons: [] },
+    photographic_realism_qa: {
+      pass: true,
+      photographic_realism_score: 0.94,
+      physical_material_score: 0.93,
+      natural_variation_score: 0.9,
+      optical_capture_score: 0.92,
+      real_photo_evidence: ['natural lens falloff', 'localized physical variation'],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+    },
     cross_view_qa: { pass: false, scene_consistency_score: 0.4, geometry_consistency_score: 0.4, material_consistency_score: 0.5, mismatch_reasons: ['interaction view differs'] },
     spatial_coverage_qa: { pass: false, layout_topology_score: 0.9, camera_diversity_score: 0.8, reverse_coverage_score: 0.8, interaction_zone_score: 0.2, reasons: ['interaction zone missing'] },
+    ...cameraEvidence([], { pass: false }),
     view_issues: [{ code: 'INTERACTION_ZONE_MISSING', view_keys: ['interaction'], reason: '互动位缺少空置区', evidence: '未见可达目标与通路', confidence: 0.95 }],
   };
   const truncatedOptionalJson = `${JSON.stringify(completeDecision).slice(0, -1)},"anchors":[{"id":"anchor_1","visible_in`;
-  modelGateway.generateVision = async () => {
+  modelGateway.generateVision = async request => {
     visionCalls += 1;
+    if (request?.stage === 'new_story_ad.scene_camera_qa') {
+      const camera = passingContract().camera_design_qa;
+      const cameras = passingContract().cameras;
+      return { text: JSON.stringify({ camera_design_qa: camera, cameras }), used_model: 'mock/camera-split' };
+    }
     return { text: `\`\`\`json\n${truncatedOptionalJson}`, used_model: 'mock/truncated-optional-json' };
   };
   const salvagedContract = await sceneSpace.analyzeSceneViews({
@@ -124,7 +202,7 @@ async function main() {
     requested: {},
     layoutRequired: true,
   });
-  assert.equal(visionCalls, 1, 'complete QA gates must be salvaged without another vision request');
+  assert.equal(visionCalls, 2, 'complete scene QA gates must be salvaged, followed only by the independent camera evidence request');
   assert.equal(salvagedContract.status, 'rejected');
   assert.equal(salvagedContract.cross_view_qa.scene_consistency_score, 0.4);
   assert.equal(salvagedContract.spatial_coverage_qa.interaction_zone_score, 0.2);
@@ -250,6 +328,43 @@ async function main() {
     'direct repair-plan callers must not send a legacy generation contract back to reverify',
   );
 
+  const staleCompletePlanAsset = sceneAssets.normalizeSceneAssets([{
+    id: 'schema5-camera-proof-missing',
+    scene_id: 'schema5-camera-proof-missing',
+    generation_contract_version: 7,
+    image_url: '/schema5-master.png',
+    view_images: ['master', 'reverse', 'interaction', 'detail', 'layout']
+      .map(key => ({ key, url: `/schema5-${key}.png` })),
+    repair_plan: {
+      version: 5,
+      action: 'none',
+      view_keys: [],
+      count: 0,
+      message: 'legacy contract was previously accepted',
+    },
+    scene_contract: {
+      ...passingContract(),
+      schema_version: 5,
+      cameras: [
+        { view_id: 'master', label: 'master' },
+        { view_id: 'reverse', label: 'reverse' },
+        { view_id: 'interaction', label: 'interaction' },
+        { view_id: 'detail', label: 'detail' },
+      ],
+      camera_design_qa: undefined,
+    },
+  }])[0];
+  assert.equal(staleCompletePlanAsset.scene_contract.schema_version, 6);
+  assert.equal(staleCompletePlanAsset.scene_contract.space_lock_status, 'camera_review_required');
+  assert.equal(staleCompletePlanAsset.scene_contract.full_space_lock, false);
+  assert.equal(staleCompletePlanAsset.camera_design_qa.legacy, true);
+  assert.equal(
+    staleCompletePlanAsset.repair_plan.action,
+    'reverify',
+    'normalization must replace a stale complete repair plan when the current contract needs camera proof',
+  );
+  assert.equal(staleCompletePlanAsset.repair_plan.count, 0, 'camera proof re-verification must not spend image calls');
+
   const explicitInteractionFailurePlan = sceneAssets.buildSceneRepairPlan({
     scene_contract: {
       schema_version: 3,
@@ -368,11 +483,15 @@ async function main() {
   const context = { brief: 'Repair only the failed spatial view.', scene_spec: sceneSpec };
   storage.createTask({ id: taskId, title: 'scene repair', request: context });
   storage.saveOutput(taskId, 'context', context);
+  storage.saveOutput(taskId, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{ id: sceneId, name: 'repair scene', scene_spec: sceneSpec }],
+  });
   const urls = Object.fromEntries(['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => [key, `/old-${key}.png`]));
   storage.saveOutput(taskId, 'scene_assets', [{
     id: sceneId,
     scene_id: sceneId,
-    generation_contract_version: 6,
+    generation_contract_version: 7,
     scene_revision: 1,
     name: 'repair scene',
     image_url: urls.master,
@@ -415,10 +534,14 @@ async function main() {
     const unavailableSceneId = 'scene-repair-qa-unavailable';
     storage.createTask({ id: unavailableTaskId, title: 'preserve generated scene', request: context });
     storage.saveOutput(unavailableTaskId, 'context', context);
+    storage.saveOutput(unavailableTaskId, 'scene_config', {
+      scene_mode: 'single',
+      spaces: [{ id: unavailableSceneId, name: 'preserve scene', scene_spec: sceneSpec }],
+    });
     storage.saveOutput(unavailableTaskId, 'scene_assets', [{
       id: unavailableSceneId,
       scene_id: unavailableSceneId,
-      generation_contract_version: 6,
+      generation_contract_version: 7,
       scene_revision: 1,
       name: 'preserve scene',
       image_url: urls.master,
@@ -455,6 +578,14 @@ async function main() {
     assert.equal(calls.length, callsBeforeReverify, 'reverification must never call the image generator');
     assert.equal(reverified.scene_asset.scene_revision, 2);
     assert.equal(reverified.scene_asset.scene_contract.full_space_lock, true);
+    assert.equal(reverified.scene_asset.photographic_realism_qa.pass, true);
+    assert.equal(reverified.scene_asset.camera_design_qa.pass, true);
+    assert.equal(reverified.scene_asset.spatial_coverage_qa.pass, true);
+    assert.deepEqual(
+      reverified.scene_asset.camera_design_qa,
+      reverified.scene_asset.scene_contract.camera_design_qa,
+      'reverification response must atomically replace stale top-level camera QA with the new contract result',
+    );
     assert.equal(reverified.scene_asset.repair_plan.action, 'none');
     console.log(JSON.stringify({
       success: true,

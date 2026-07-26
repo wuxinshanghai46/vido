@@ -78,7 +78,18 @@ assert.match(normalizedBrandAppearance.beats[2].plot, /后期叠加的已授权�
 assert.doesNotMatch(normalizedBrandAppearance.beats[2].plot, /品牌标志/);
 assert.match(normalizedBrandAppearance.beats[2].spoken_line, /佛山海和/, '自有品牌名称必须保留在台词中');
 assert.equal(assessBlueprintQuality(normalizedBrandAppearance).pass, true);
-assert.equal(normalizeAuthorizedBrandPresentation(rightsRisk).beats[1].plot, rightsRisk.beats[1].plot, '明确要求生成或变形 Logo 时仍必须保留并拦截');
+const normalizedGeneratedBrandMark = normalizeAuthorizedBrandPresentation(rightsRisk);
+assert.match(
+  normalizedGeneratedBrandMark.beats[1].plot,
+  /后期叠加的已授权品牌素材/,
+  '精修结果中的 Logo 生成要求必须在再次调用模型前确定性改写为授权素材后期叠加',
+);
+assert.doesNotMatch(normalizedGeneratedBrandMark.beats[1].plot, /生成|变形/);
+assert.equal(
+  assessBlueprintRights(normalizedGeneratedBrandMark).issues.some(issue => /品牌标识/.test(issue)),
+  false,
+  '确定性版权修正后不能再因同一 Logo 表达耗尽精修重试',
+);
 assert.equal(assessBlueprintQuality(premium).pass, true);
 
 const productionThinDialogue = {

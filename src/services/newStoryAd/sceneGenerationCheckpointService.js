@@ -65,6 +65,18 @@ function candidateFilename(checkpoint = {}, viewKey = '') {
   ].join('_');
 }
 
+function submissionId(checkpoint = {}, viewKey = '', attempt = 1) {
+  return [
+    'scene',
+    shortHash(checkpoint.task_id, 10),
+    shortHash(checkpoint.scene_id, 10),
+    `r${Math.max(1, Number(checkpoint.candidate_revision || 1) || 1)}`,
+    safePart(viewKey, 24),
+    `a${Math.max(1, Number(attempt || 1) || 1)}`,
+    String(checkpoint.input_fingerprint || '').slice(0, 8),
+  ].join('_').slice(0, 100);
+}
+
 function assertUniqueCandidateFilenames(checkpoint = {}, viewKeys = []) {
   const inputKeys = Array.isArray(viewKeys) ? viewKeys : [];
   const keys = inputKeys.map(key => safePart(key, 24));
@@ -182,6 +194,7 @@ function open({
   viewKeys = [],
   retryBudget = null,
   metadata = {},
+  compatibleFingerprints = [],
   acknowledgeBillingUnknown = false,
   acknowledgedBy = '',
 } = {}) {
@@ -191,6 +204,8 @@ function open({
     .filter(([, view]) => hasUnknownBillingRisk(view))
     .map(([key, view]) => ({
       key,
+      generation_id: String(view.generation_id || ''),
+      submission_id: String(view.submission_id || ''),
       error_code: String(view.error_code || ''),
       provider_request_id: String(view.provider_request_id || ''),
       provider_task_id: String(view.provider_task_id || ''),
@@ -232,13 +247,24 @@ function open({
     ].slice(-20);
     save(existing);
   }
+  const acceptedFingerprints = new Set([
+    String(fingerprint || ''),
+    ...(Array.isArray(compatibleFingerprints) ? compatibleFingerprints : [])
+      .map(value => String(value || ''))
+      .filter(Boolean),
+  ]);
   const canResume = existing
     && existing.schema_version === CHECKPOINT_SCHEMA_VERSION
-    && existing.input_fingerprint === fingerprint
+    && acceptedFingerprints.has(String(existing.input_fingerprint || ''))
     && RESUMABLE_STATUSES.has(existing.status)
     && !checkpointExpired(existing);
 
   if (canResume) {
+    if (existing.input_fingerprint !== fingerprint) {
+      existing.migrated_from_input_fingerprint = existing.input_fingerprint;
+      existing.input_fingerprint = String(fingerprint);
+      existing.prompt_policy_migrated_at = nowIso();
+    }
     existing.status = 'running';
     existing.resume_count = Math.max(0, Number(existing.resume_count || 0) || 0) + 1;
     existing.last_resumed_at = nowIso();
@@ -307,6 +333,42 @@ function markSucceeded(checkpoint = {}, viewKey = '', view = {}, budget = null) 
   return save(checkpoint);
 }
 
+function markSubmitting(checkpoint = {}, viewKey = '', event = {}) {
+  const existing = checkpoint.views[viewKey] || {};
+  checkpoint.views[viewKey] = {
+    ...existing,
+    key: viewKey,
+    status: 'running',
+    attempts: Math.max(1, Number(event.attempt || existing.attempts || 1) || 1),
+    generation_id: String(event.generationId || event.generation_id || existing.generation_id || '').slice(0, 100),
+    submission_id: String(event.clientRequestId || event.submissionId || event.submission_id || existing.submission_id || '').slice(0, 100),
+    provider_submission_state: 'submitted_unknown',
+    billing_state: 'unknown',
+    submitting_at: event.submittedAt || nowIso(),
+    updated_at: nowIso(),
+  };
+  return save(checkpoint);
+}
+
+function markSubmitted(checkpoint = {}, viewKey = '', event = {}) {
+  const existing = checkpoint.views[viewKey] || {};
+  checkpoint.views[viewKey] = {
+    ...existing,
+    key: viewKey,
+    status: 'running',
+    attempts: Math.max(1, Number(event.attempt || existing.attempts || 1) || 1),
+    generation_id: String(event.generationId || event.generation_id || existing.generation_id || '').slice(0, 100),
+    submission_id: String(event.clientRequestId || event.submissionId || event.submission_id || existing.submission_id || '').slice(0, 100),
+    provider_request_id: String(event.providerRequestId || event.provider_request_id || existing.provider_request_id || '').slice(0, 180),
+    provider_task_id: String(event.taskId || event.providerTaskId || event.provider_task_id || existing.provider_task_id || '').slice(0, 180),
+    provider_submission_state: String(event.status || 'submitted').slice(0, 60),
+    billing_state: 'unknown',
+    submitted_at: event.submittedAt || nowIso(),
+    updated_at: nowIso(),
+  };
+  return save(checkpoint);
+}
+
 function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) {
   const providerTaskId = String(error?.providerTaskId || error?.provider_task_id || '');
   const billingState = String(error?.billingState || error?.billing_state || (providerTaskId ? 'unknown' : 'not_submitted'));
@@ -315,7 +377,9 @@ function markFailed(checkpoint = {}, viewKey = '', error = null, budget = null) 
     ...(checkpoint.views[viewKey] || {}),
     key: viewKey,
     status: 'failed',
-    attempts: Math.max(1, Number(checkpoint.views[viewKey]?.attempts || 0) + 1),
+    attempts: Math.max(1, Number(error?.attempt || checkpoint.views[viewKey]?.attempts || 1) || 1),
+    generation_id: String(error?.generationId || error?.generation_id || checkpoint.views[viewKey]?.generation_id || '').slice(0, 100),
+    submission_id: String(error?.submissionId || error?.submission_id || checkpoint.views[viewKey]?.submission_id || '').slice(0, 100),
     error: String(error?.message || error || '').slice(0, 500),
     error_code: String(error?.code || 'SCENE_VIEW_GENERATION_FAILED').slice(0, 100),
     retryable: error?.retryable === true,
@@ -352,6 +416,24 @@ function markPartial(checkpoint = {}, error = null) {
   return save(checkpoint);
 }
 
+function markCancelled(checkpoint = {}, viewKey = '', error = null, budget = null) {
+  const succeeded = Object.values(checkpoint.views || {}).filter(view => view?.status === 'succeeded').length;
+  checkpoint.status = succeeded > 0 ? 'partial' : 'cancelled';
+  checkpoint.cancelled_at = nowIso();
+  checkpoint.last_error = String(error?.message || '用户已取消场景生成').slice(0, 500);
+  checkpoint.last_error_code = 'USER_CANCELLED';
+  checkpoint.cancelled_view_keys = [...new Set([
+    ...(Array.isArray(checkpoint.cancelled_view_keys) ? checkpoint.cancelled_view_keys : []),
+    String(viewKey || ''),
+  ].filter(Boolean))];
+  if (budget) checkpoint.retry_budget = {
+    max_extra: budget.maxExtra,
+    used_extra: budget.usedExtra,
+    reasons: Array.isArray(budget.reasons) ? budget.reasons.slice(-20) : [],
+  };
+  return save(checkpoint);
+}
+
 function markPublished(checkpoint = {}, asset = {}) {
   checkpoint.status = 'published';
   checkpoint.published_revision = Number(asset.scene_revision || checkpoint.candidate_revision || 1) || 1;
@@ -368,6 +450,7 @@ module.exports = {
   inputFingerprint,
   outputKind,
   candidateFilename,
+  submissionId,
   assertUniqueCandidateFilenames,
   reusableView,
   checkpointView,
@@ -375,10 +458,13 @@ module.exports = {
   open,
   syncRetryBudget,
   markSucceeded,
+  markSubmitting,
+  markSubmitted,
   markFailed,
   setLayoutAcquisition,
   markReadyForQa,
   markPartial,
+  markCancelled,
   markPublished,
   cleanupUnpublishedFiles,
 };

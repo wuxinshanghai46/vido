@@ -17,7 +17,7 @@ function isQaInfrastructureError(error) {
   // contains the same 5xx wording as a downstream vision-QA outage.
   if (/^(?:IMAGE_|PROVIDER_|REFERENCE_IMAGE_|INPUT_)/.test(code)
     || ['INVALID_PROVIDER_INPUT', 'AUTH_CONFIG', 'MODEL_CONFIG', 'PROVIDER_BILLING', 'RATE_LIMIT'].includes(code)) return false;
-  if (['VISION_QA_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID', 'VISION_QA_IMAGE_UNREADABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
+  if (['VISION_QA_UNAVAILABLE', 'VISION_QA_SCHEMA_INVALID', 'CAMERA_QA_SCHEMA_INVALID', 'VISION_QA_IMAGE_UNREADABLE', 'VISION_CIRCUIT_OPEN', 'MODEL_ATTEMPTS_EXHAUSTED', 'TIMEOUT_OR_NETWORK'].includes(code)) return true;
   const message = String(error?.message || error || '');
   return /视觉模型全部失败|视觉模型未返回有效\s*JSON|视觉\s*QA.*(?:JSON|结构|评分)|vision.*invalid\s*json|invalid\s*json.*vision|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
 }

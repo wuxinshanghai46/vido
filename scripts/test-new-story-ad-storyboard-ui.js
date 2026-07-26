@@ -8,6 +8,9 @@ const root = path.resolve(__dirname, '..');
 const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
 const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
+const storyboardUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/storyboard.js'), 'utf8');
+const videoReviewUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-review.js'), 'utf8');
+const transitionReviewUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/transition-review.js'), 'utf8');
 
 [
   'data-nsa-shot-field="duration"',
@@ -50,12 +53,25 @@ assert(css.includes('.dh-nsa-duration { min-height: 36px;'), 'duration control m
 assert(css.includes('.dh-nsa-frame-status-note { grid-area: notice;'), 'long status explanations must render in a separate full-width notice');
 assert(css.includes('.dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }'), 'dynamic preview ratio must explicitly reset the legacy max-height cap');
 assert(css.includes('@media (max-width: 600px)'), 'mobile storyboard layout must be covered');
-assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260725-subject-scene-contract-v10'), '剧情广告入口必须使用统一弹窗缓存版本');
-assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260725-subject-scene-contract-v10'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
+assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260726-scene-reverify-persist-v31'), '剧情广告入口必须使用统一弹窗缓存版本');
+assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260726-scene-reverify-persist-v31'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
 assert(ui.includes('data-nsa-admin-video-monitor'), 'super admin must have an in-context shot monitor entry');
 assert(ui.includes('/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor'), 'shot monitor must read the protected admin endpoint');
 assert(ui.includes("currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes"), 'ordinary users and non-video stages must not show the admin shot monitor entry');
 assert(ui.includes('每 5 秒自动刷新'), 'admin shot monitor must explain its live refresh interval');
+[
+  'data-nsa-shot-field="transition_type"',
+  'data-nsa-shot-field="transition_duration_sec"',
+  'data-nsa-shot-field="transition_match_anchor"',
+  'data-nsa-shot-field="audio_bridge"',
+  'data-nsa-shot-field="audio_bridge_duration_sec"',
+  '系统推荐',
+  '已覆盖自动推荐',
+].forEach(token => assert(storyboardUi.includes(token), `main storyboard transition director is missing: ${token}`));
+assert(transitionReviewUi.includes('上一片段尾帧 / 当前片段首帧'), 'transition review must show side-by-side boundary evidence');
+assert(transitionReviewUi.includes('跨场景意图验收'), 'transition review must expose the dedicated cross-scene QA mode');
+assert(transitionReviewUi.includes('转场验收未通过'), 'transition review must render the structured QA verdict');
+assert(videoReviewUi.includes('NewStoryAdTransitionReview'), 'the bounded review module must delegate transition evidence rendering');
 
 const keyframeContext = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.join(root, 'public/js/new-story-ad/keyframes.js'), 'utf8'), keyframeContext);

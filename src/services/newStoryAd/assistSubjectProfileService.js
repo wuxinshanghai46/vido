@@ -1,19 +1,39 @@
 const { cleanText } = require('./contextBuilder');
 const petIdentity = require('./petIdentityContractService');
+const subjectProfileText = require('./subjectProfileTextService');
 
-function normalizeCastProfiles(parsed = {}, context = {}) {
-  const source = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
+function resolveAssistSubjectTarget(body = {}, context = {}) {
+  const raw = body.assist_subject_target || body.assistSubjectTarget;
+  if (!raw || typeof raw !== 'object') return null;
+  const kind = cleanText(raw.kind || raw.type || '', 20).toLowerCase();
+  if (!['human', 'cast', 'person'].includes(kind)) return null;
+  const profiles = Array.isArray(context.cast_profiles) ? context.cast_profiles : [];
+  const index = Number(raw.index);
+  if (!Number.isInteger(index) || index < 0 || index >= profiles.length) return null;
+  const current = profiles[index] || {};
+  const currentId = cleanText(current.id || current.cast_id || current.castId || `cast_${index + 1}`, 80);
+  const requestedId = cleanText(raw.id || raw.cast_id || raw.castId || '', 80);
+  if (requestedId && requestedId !== currentId) return null;
+  return { kind: 'human', index, id: currentId, profile: current };
+}
+
+function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
+  let source = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
     ? (parsed.cast_profiles || parsed.castProfiles)
     : (Array.isArray(context.cast_profiles) ? context.cast_profiles : []);
+  if (target?.kind === 'human') {
+    const candidate = source.find(profile => cleanText(profile?.id || profile?.cast_id || profile?.castId || '', 80) === target.id)
+      || source[0]
+      || target.profile
+      || {};
+    source = [{ ...candidate, id: target.id }];
+  }
   return source.slice(0, 12).map((profile, index) => ({
+    ...subjectProfileText.canonicalProfile(profile || {}),
     id: cleanText(profile?.id || `cast_${index + 1}`, 80),
     displayName: cleanText(profile?.displayName || profile?.name || '', 120),
     name: cleanText(profile?.displayName || profile?.name || '', 120),
     roleName: cleanText(profile?.roleName || profile?.role || '', 120),
-    appearanceText: cleanText(profile?.appearanceText || profile?.appearance?.userPrompt || profile?.appearance || '', 800),
-    wardrobeText: cleanText(profile?.wardrobeText || profile?.wardrobe?.userPrompt || profile?.outfit || '', 600),
-    hairMakeupText: cleanText(profile?.hairMakeupText || profile?.hairMakeup?.userPrompt || '', 400),
-    negativeText: cleanText(profile?.negativeText || profile?.negative || '', 400),
   }));
 }
 
@@ -37,6 +57,7 @@ function buildResponse({
   mode = 'person_spec',
   modelResult = {},
   enforcePersonSpec,
+  target = null,
 } = {}) {
   if (typeof enforcePersonSpec !== 'function') {
     throw new TypeError('enforcePersonSpec is required');
@@ -62,8 +83,9 @@ function buildResponse({
       negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
       ...petIdentity.assistedResponseFields(spec),
     },
-    cast_profiles: normalizeCastProfiles(parsed, context),
-    pet_profiles: normalizePetProfiles(parsed, context),
+    cast_profiles: normalizeCastProfiles(parsed, context, target),
+    pet_profiles: target?.kind === 'human' ? [] : normalizePetProfiles(parsed, context),
+    assist_subject_target: target ? { kind: target.kind, index: target.index, id: target.id } : null,
     mode,
     model_meta: {
       used_model: modelResult.used_model,
@@ -76,5 +98,6 @@ function buildResponse({
 module.exports = {
   normalizeCastProfiles,
   normalizePetProfiles,
+  resolveAssistSubjectTarget,
   buildResponse,
 };

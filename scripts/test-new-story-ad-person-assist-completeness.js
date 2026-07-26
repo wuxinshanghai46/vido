@@ -83,12 +83,16 @@ function testGeneratedActorAgeConstraintDoesNotDowngrade() {
 /** 验证真实 assist 服务在模型部分返回时也会输出完整人物设定。 */
 async function testAssistServiceCompletesPartialResponse() {
   const originalGenerateText = modelGateway.generateText;
-  modelGateway.generateText = async () => ({
+  let capturedRequest = null;
+  modelGateway.generateText = async request => {
+    capturedRequest = request;
+    return ({
     text: JSON.stringify({ person_spec: { appearanceText: '成熟可信的真实商业人物。' } }),
     used_model: 'mock/partial-person-spec',
     fallback_used: false,
     failed_models: [],
-  });
+    });
+  };
   try {
     const response = await service.assistBrief({
       mode: 'person_spec',
@@ -108,6 +112,68 @@ async function testAssistServiceCompletesPartialResponse() {
     assert.ok(response.person_spec.hairMakeupText);
     assert.ok(response.person_spec.negativeText);
     assert.equal(response.person_spec.roleName, '品牌形象代表');
+    assert.match(capturedRequest.systemPrompt, /四视图固定状态规则/);
+    assert.match(capturedRequest.systemPrompt, /不得使用“户外时、室内时、运动时/);
+    assert.match(capturedRequest.userPrompt, /帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴/);
+    assert.match(capturedRequest.userPrompt, /禁止四视图之间增减、更换、变色或移动/);
+  } finally {
+    modelGateway.generateText = originalGenerateText;
+  }
+}
+
+async function testSinglePersonAssistIsScoped() {
+  const originalGenerateText = modelGateway.generateText;
+  let capturedRequest = null;
+  let calls = 0;
+  modelGateway.generateText = async request => {
+    calls += 1;
+    capturedRequest = request;
+    return {
+      text: JSON.stringify({
+        person_spec: { castMode: 'dual', expectedPeople: 2 },
+        cast_profiles: [{
+          id: 'cast_2',
+          displayName: '小杰',
+          roleName: '儿子',
+          appearanceText: '东亚男孩，约八岁，圆脸，健康活泼。',
+          wardrobeText: '固定穿蓝白条纹短袖、卡其短裤和白色运动鞋，不佩戴首饰。',
+          hairMakeupText: '固定自然黑色短发，四视图均不佩戴帽子、眼镜或发饰。',
+          negativeText: '禁止改变发型、服装、鞋和配饰。',
+        }],
+        pet_profiles: [],
+      }),
+      used_model: 'mock/scoped-person-assist',
+      fallback_used: false,
+      failed_models: [],
+    };
+  };
+  const body = {
+    mode: 'person_spec',
+    brief: '母子与宠物在家庭和公园互动',
+    cast_mode: 'human_pet',
+    person_spec: { castMode: 'human_pet', expectedPeople: 2, expectedAnimals: 1 },
+    cast_profiles: [
+      { id: 'cast_1', displayName: '林悦', roleName: '母亲', appearanceText: '完整外貌', wardrobeText: '完整服装', hairMakeupText: '完整发型' },
+      { id: 'cast_2', displayName: '', roleName: '', appearanceText: '', wardrobeText: '', hairMakeupText: '' },
+    ],
+    pet_profiles: [{ id: 'pet_1', name: '雪球', type: '犬', appearance: '白色蓬松犬' }],
+    assist_subject_target: { kind: 'human', index: 1, id: 'cast_2' },
+  };
+  try {
+    const response = await service.assistBrief(body, { id: 'test-user' });
+    assert.strictEqual(calls, 1);
+    assert.strictEqual(response.cast_profiles.length, 1);
+    assert.strictEqual(response.cast_profiles[0].id, 'cast_2');
+    assert.strictEqual(response.pet_profiles.length, 0);
+    assert.deepStrictEqual(response.assist_subject_target, { kind: 'human', index: 1, id: 'cast_2' });
+    assert.match(capturedRequest.systemPrompt, /只能输出目标人物的一条 cast_profiles 记录/);
+    assert.match(capturedRequest.userPrompt, /不得返回或改写其他人物和宠物/);
+
+    await assert.rejects(
+      () => service.assistBrief({ ...body, assist_subject_target: { kind: 'human', index: 8, id: 'missing' } }, { id: 'test-user' }),
+      error => error.code === 'ASSIST_SUBJECT_TARGET_INVALID',
+    );
+    assert.strictEqual(calls, 1, 'invalid scoped target must fail before the text model call');
   } finally {
     modelGateway.generateText = originalGenerateText;
   }
@@ -170,6 +236,7 @@ async function main() {
   testGeneratedActorAgeConstraintDoesNotDowngrade();
   testSceneAssistFallbackIsComplete();
   await testAssistServiceCompletesPartialResponse();
+  await testSinglePersonAssistIsScoped();
   await testSceneAssistPreservesCompleteExistingSpec();
   console.log('剧情广告人物/场景辅助补齐完整性：全部测试通过');
 }

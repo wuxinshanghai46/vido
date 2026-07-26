@@ -71,6 +71,7 @@
     personSpecLock: null,
     castProfiles: [],
     petProfiles: [],
+    subjectGalleryOpenKeys: new Set(),
     personGenerationProgress: null, subjectCheckpointTimer: null,
     sceneAssets: [],
     pendingChangeScope: 'none', pendingMediaChange: 'none',
@@ -252,11 +253,12 @@
     const qa = contract?.[qaKey] && typeof contract[qaKey] === 'object' ? contract[qaKey] : {};
     const status = String(contract?.status || 'unverified');
     const details = contract?.verification && typeof contract.verification === 'object' ? contract.verification : {};
+    const verificationLanguage = window.NewStoryAdVerificationLanguage;
     const reasons = [
       ...(Array.isArray(details.reasons) ? details.reasons : []),
       ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
       ...(Array.isArray(qa.conflicts) ? qa.conflicts : []),
-    ].map(value => String(value || '').trim()).filter(Boolean);
+    ].map(value => verificationLanguage?.reason?.(value, subject) || String(value || '').trim()).filter(Boolean);
     const uniqueReasons = [...new Set(reasons)].slice(0, 6);
     const scoreLabels = {
       identity_score: '身份', age_score: '年龄', wardrobe_score: '服装', body_score: '体态',
@@ -269,10 +271,10 @@
       return { status, tone: 'verified', label: `${subject}已验证`, message: details.message || '当前资产版本已通过一致性验证', reasons: [], scores };
     }
     if (status === 'rejected') {
-      return { status, tone: 'rejected', label: `${subject}未通过`, message: details.message || uniqueReasons[0] || '视觉一致性未达到使用要求', reasons: uniqueReasons, scores };
+      return { status, tone: 'rejected', label: `${subject}未通过`, message: verificationLanguage?.message?.(details.message, subject, 'rejected') || uniqueReasons[0] || '视觉一致性未达到使用要求', reasons: uniqueReasons, scores };
     }
     if (details.state === 'unavailable' || contract?.qa_unavailable === true) {
-      return { status, tone: 'unavailable', label: `${subject}验证异常`, message: details.message || '视觉审核暂时不可用，请稍后重试', reasons: uniqueReasons, scores: [] };
+      return { status, tone: 'unavailable', label: `${subject}验证异常`, message: verificationLanguage?.message?.(details.message, subject, 'unavailable') || '视觉审核暂时不可用，请稍后重试', reasons: uniqueReasons, scores: [] };
     }
     return { status, tone: 'unverified', label: `${subject}待验证`, message: details.message || '首次使用或资产版本变化后需要验证一次', reasons: uniqueReasons, scores };
   }
@@ -809,6 +811,11 @@
       const el = activeField(`[data-nsa-person-spec="${key}"]`);
       spec[key] = String(el?.value || '').trim();
     });
+    if (!['animal', 'human_pet'].includes(spec.castMode)) {
+      delete spec.expectedAnimals;
+      delete spec.petType;
+      delete spec.petDescription;
+    }
     return spec;
   }
 
@@ -1427,7 +1434,11 @@
   }
 
   function petAssetsHtml() {
-    return window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(null, state.petProfiles, { escapeHtml, assetThumbUrl });
+    return window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(null, state.petProfiles, {
+      escapeHtml,
+      assetThumbUrl,
+      openKeys: state.subjectGalleryOpenKeys,
+    });
   }
 
   function renderPerson() {
@@ -1469,7 +1480,8 @@
     const verificationStatus = personContract?.status || (asset.production_usable_actor === true ? 'legacy_unverified' : 'unverified');
     const verified = verificationStatus === 'verified' && personContract?.cross_view_qa?.pass === true;
     const personVerification = verificationView(personContract, 'cross_view_qa', '人物');
-    const canReverifyPerson = !verified && ['unavailable', 'unverified'].includes(personVerification.tone);
+    const verificationActive = state.personVerificationProgress?.active === true;
+    const canReverifyPerson = !verificationActive && !verified && ['unavailable', 'unverified'].includes(personVerification.tone);
     const meta = [
       actorReferenceLabel(asset),
       actorId ? '已绑定人物参考' : '',
@@ -1485,7 +1497,11 @@
       : isSynthetic
         ? '这是可复用的拟真一致性演员，会作为后续剧本、分镜和关键帧的人物锁。'
         : '这是 AI 拟真演员参考；需要真人广告请上传真人照片或选择授权真人演员。';
-    const subjectGallery = window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(asset, state.petProfiles, { escapeHtml, assetThumbUrl });
+    const subjectGallery = window.NewStoryAdSubjectAssetsUI.subjectGalleryHtml(asset, state.petProfiles, {
+      escapeHtml,
+      assetThumbUrl,
+      openKeys: state.subjectGalleryOpenKeys,
+    });
     const warning = isAi && !isReal && !isSynthetic
       ? '<div style="margin-top:8px;padding:8px 10px;border:1px solid rgba(255,184,76,.5);border-radius:8px;color:#b7791f;background:rgba(255,184,76,.08);font-size:12px;line-height:1.5">非真人素材：只能作为 AI 拟真参考；真人广告请上传真人照片或选择授权真人演员。</div>'
       : '';
@@ -1494,8 +1510,9 @@
       <b>${escapeHtml(asset.name || defaultName)}</b>
       <small>${escapeHtml(asset.uploading ? '真人照片上传中。' : (meta || asset.description || defaultDesc))}</small>
       <div class="dh-nsa-verification-row">
-        <span class="dh-nsa-verification-badge is-${escapeHtml(personVerification.tone)}">${escapeHtml(personVerification.label)}</span>
+        <span class="dh-nsa-verification-badge is-${escapeHtml(verificationActive ? 'unverified' : personVerification.tone)}">${escapeHtml(verificationActive ? '人物验证中' : personVerification.label)}</span>
         ${canReverifyPerson && state.taskId ? '<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-person-verify>再次验证（不重新生成）</button>' : ''}
+        ${verificationActive ? '<span class="dh-nsa-verification-hint">正在逐人核对各自四视图；已验证成员不会重复调用，图片不会重新生成。</span>' : ''}
         ${personVerification.tone === 'rejected' ? '<span class="dh-nsa-verification-hint">请修改人物设定后重新生成，当前图片已保留供对照</span>' : ''}
       </div>
       ${verificationDetailsHtml(personVerification)}
@@ -2757,9 +2774,11 @@
     const field = target.dataset.nsaShotField || '';
     const shot = state.shots[index];
     if (!shot || !field) return true;
-    const value = field === 'duration'
-      ? Math.max(1, Math.min(15, Number(target.value || 0) || Number(shot.duration || 3) || 3))
-      : (target.type === 'checkbox' ? target.checked : target.value || '');
+    let value = target.type === 'checkbox' ? target.checked : target.value || '';
+    if (field === 'duration') value = Math.max(1, Math.min(15, Number(target.value || 0) || Number(shot.duration || 3) || 3));
+    else if (field === 'transition_duration_sec') value = Math.max(0, Math.min(2, Number(target.value || 0) || 0));
+    else if (field === 'audio_bridge_duration_sec') value = Math.max(0, Math.min(1.5, Number(target.value || 0) || 0));
+    if (['transition_type', 'transition_duration_sec', 'transition_reason', 'transition_match_anchor', 'audio_bridge', 'audio_bridge_duration_sec'].includes(field)) shot.transition_source = 'authored';
     shot._nsa_user_edited_fields = { ...(shot._nsa_user_edited_fields || {}), [field]: true };
     if (field === 'duration') { shot.duration = value; shot.duration_sec = value; }
     else if (field === 'visual') {
@@ -3263,13 +3282,13 @@
             <label><span>产品与道具状态</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'object_states'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="object_states"></label>
             <label><span>转场类型</span><select class="dh-input" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_type">
               ${['none','hard_cut','cut_on_action','match_cut','dissolve','fade'].map(value => `<option value="${value}" ${String(shot.transition_type || '') === value ? 'selected' : ''}>${technicalLabel(value)}</option>`).join('')}
-            </select></label>
-            <label><span>转场原因</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_reason'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_reason"></label>
+            </select></label><label><span>转场时长（秒）</span><input class="dh-input" type="number" min="0" max="2" step="0.05" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_duration_sec'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_duration_sec"></label>
+            <label><span>转场原因</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_reason'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_reason"></label><label><span>匹配锚点</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'transition_match_anchor'))}" placeholder="匹配切换时必填" data-nsa-shot-index="${i}" data-nsa-shot-field="transition_match_anchor"></label>
             <label><span>环境声</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'ambient_sound'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="ambient_sound"></label>
             <label><span>动作 / 物体音效</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'sfx'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="sfx"></label>
             <label><span>音乐节点</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'music_cue'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="music_cue"></label>
             <label><span>旁白与动作时机</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'voiceover_timing'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="voiceover_timing"></label>
-            <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label>
+            <label><span>跨镜声音桥</span><input class="dh-input" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge"></label><label><span>声音提前量（秒）</span><input class="dh-input" type="number" min="0" max="1.5" step="0.05" value="${escapeHtml(shotFieldValue(shot, contract, 'audio_bridge_duration_sec'))}" data-nsa-shot-index="${i}" data-nsa-shot-field="audio_bridge_duration_sec"></label>
             </div>
               </details>
               ${contract.subject_strategy ? `<details class="dh-nsa-frame-contract"><summary>查看生成约束</summary><p>${escapeHtml(contract.subject_strategy)}</p></details>` : ''}
@@ -3618,64 +3637,22 @@
   }
 
   async function saveCurrentTaskProgress(opts = {}) {
-    if (window.NewStoryAdTaskPersistence?.saveCurrentTaskProgress) {
-      return window.NewStoryAdTaskPersistence.saveCurrentTaskProgress(opts, {
-        state,
-        payload,
-        api,
-        rememberTaskId,
-        renderStatus,
-        renderAll,
-        toast,
-        normalizeBundle,
-        normalizeBlueprintForSave,
-        normalizeSpeechText,
-        saveSceneAssetsProgress,
-      });
+    if (!window.NewStoryAdTaskPersistence?.saveCurrentTaskProgress) {
+      throw new Error('任务持久化模块未加载，已停止保存以避免使用重复或不完整的备用路径');
     }
-    const id = await ensureTask();
-    let progressStage = 'draft';
-    if (state.sceneConfig) progressStage = 'scene_config_done';
-    if (state.blueprint) progressStage = 'blueprint_done';
-    if (Array.isArray(state.shots) && state.shots.length) progressStage = 'keyframe_contract_ready';
-    if (Array.isArray(state.keyframes) && state.keyframes.some(frame => frame && (frame.image_url || frame.imageUrl || frame.url))) progressStage = 'keyframes_ready';
-    if (Array.isArray(state.ttsAudio?.tracks) && state.ttsAudio.tracks.length) progressStage = 'tts_ready';
-    if (Array.isArray(state.videoClips) && state.videoClips.some(clip => clip?.video_url || clip?.videoUrl || clip?.file_path)) progressStage = 'video_ready';
-    if (state.finalVideo?.video_url || state.finalVideo?.videoUrl) progressStage = 'final_video_ready';
-    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
-    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: {
-        ...payload(),
-        task_id: id,
-        scene_plan: state.pendingChangeScope === 'scene'
-          ? window.NewStoryAdSceneAssets?.planPayload?.(state)
-          : null,
-        save_progress: true,
-        progress_stage: progressStage,
-        progress_snapshot: {
-          context: state.context || null,
-          scene_config: state.sceneConfig || null,
-          blueprint: state.blueprint ? normalizeBlueprintForSave() : null,
-          storyboard_table: Array.isArray(state.shots) ? state.shots : [],
-          keyframe_contracts: Array.isArray(state.contracts) ? state.contracts : [],
-          keyframes: Array.isArray(state.keyframes) ? state.keyframes : [],
-          scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
-          quality_review: state.review || null,
-          tts_audio: state.ttsAudio || null,
-          video_clips: Array.isArray(state.videoClips) ? state.videoClips : [],
-          final_video: state.finalVideo || null,
-        },
-      },
+    return window.NewStoryAdTaskPersistence.saveCurrentTaskProgress(opts, {
+      state,
+      payload,
+      api,
+      rememberTaskId,
+      renderStatus,
+      renderAll,
+      toast,
+      normalizeBundle,
+      normalizeBlueprintForSave,
+      normalizeSpeechText,
+      saveSceneAssetsProgress,
     });
-    state.pendingChangeScope = 'none'; state.pendingMediaChange = 'none';
-    normalizeBundle(r);
-    if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
-      window.__dhRefreshNewStoryAdTasks().catch(() => {});
-    }
-    renderAll();
-    if (opts.silent !== true) toast('剧情广告任务已保存，可在任务中心继续制作', 'success');
-    return id;
   }
 
   function renderAutoSaveStatus() {
@@ -4605,7 +4582,7 @@
       const modal = document.createElement('div');
       modal.className = `dh-nsa-modal dh-nsa-confirm-modal is-${tone}`;
       const factHtml = facts.length ? `<div class="dh-nsa-confirm-facts">${facts.map(fact => `<span class="is-${escapeHtml(fact.tone || 'neutral')}"><b>${escapeHtml(fact.value)}</b><small>${escapeHtml(fact.label)}</small></span>`).join('')}</div>` : '';
-      const itemHtml = items.length ? `<div class="dh-nsa-confirm-list"><div class="dh-nsa-confirm-list-head"><b>本次处理范围</b><span>共 ${items.length} 项</span></div>${items.map(item => `<div class="dh-nsa-confirm-shot"><i>${String(Number(item.index || 0) + 1).padStart(2, '0')}</i><span><b>${escapeHtml(item.title || `第 ${Number(item.index || 0) + 1} 项`)}</b><small>${escapeHtml(item.view?.label || item.status || '')}</small></span><em>${escapeHtml(item.action || '')}</em></div>`).join('')}</div>` : '';
+      const itemHtml = items.length ? `<div class="dh-nsa-confirm-list"><div class="dh-nsa-confirm-list-head"><b>本次处理范围</b><span>共 ${items.length} 项</span></div>${items.map(item => { const content = `<i>${String(Number(item.index || 0) + 1).padStart(2, '0')}</i><span><b>${escapeHtml(item.title || `第 ${Number(item.index || 0) + 1} 项`)}</b><small>${escapeHtml(item.view?.label || item.status || '')}</small></span><em>${escapeHtml(item.action || '')}</em>`; return item.selectable ? `<label class="dh-nsa-confirm-shot is-selectable"><input type="checkbox" data-nsa-confirm-item value="${escapeHtml(item.key || `${item.kind || 'item'}:${item.index || 0}`)}" ${item.checked ? 'checked' : ''} ${item.disabled ? 'disabled' : ''}>${content}</label>` : `<div class="dh-nsa-confirm-shot">${content}</div>`; }).join('')}</div>` : '';
       modal.innerHTML = `<div class="dh-nsa-confirm-panel" role="dialog" aria-modal="true" aria-labelledby="dhNsaConfirmTitle">
         <div class="dh-nsa-confirm-head">
           <span class="dh-nsa-confirm-icon" aria-hidden="true">${tone === 'danger' ? '!' : '✓'}</span>
@@ -4617,6 +4594,7 @@
           ${factHtml}
           ${customHtml || ''}
           ${itemHtml}
+          <div class="dh-task-warning" data-nsa-confirm-error hidden></div>
           ${note ? `<div class="dh-nsa-confirm-note">${escapeHtml(note)}</div>` : ''}
         </div>
         <div class="dh-nsa-confirm-actions">
@@ -5369,7 +5347,6 @@
   function selectedSceneUpgradeRequired() {
     return window.NewStoryAdSceneAssets?.selectedSceneUpgradeRequired?.(state) === true;
   }
-
   function syncSceneUpgradeActions() {
     const upgradeRequired = selectedSceneUpgradeRequired();
     ['#dhNsaAdAiSceneSpec', '#dhNsaAdGenerateSceneSheet'].forEach(selector => {
@@ -5393,6 +5370,8 @@
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
     const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
+    const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(state) || state.sceneConfig || {};
+    const targetSpaceId = state.scenePlanSelectedId || currentPlan.spaces?.[state.scenePlanSelectedIndex || 0]?.id || '';
     const label = '补齐场景中...';
     setButtonBusy(button, true, label);
     try {
@@ -5406,6 +5385,8 @@
             brief,
             mode: 'scene_spec',
             scene_spec: window.NewStoryAdSceneAssets?.specPayload?.() || {},
+            scene_plan: currentPlan,
+            target_space_id: targetSpaceId,
           },
         });
         suggestion = r.scene_spec || r.sceneSpec || null;
@@ -5437,7 +5418,6 @@
       setButtonBusy(button, false);
     }
   }
-
   function generateSceneSheet(button, append = false, options = {}) {
     if (!append && options.upgradePrepared !== true && selectedSceneUpgradeRequired()) {
       toast('旧版场景不能绕过空间设定重编译直接生成，请使用场景卡片中的完整升级按钮', 'warning');
@@ -5463,10 +5443,10 @@
       fullUpgrade: options.upgradePrepared === true,
     });
   }
-
   async function upgradeAndRegenerateScene(button = null, sceneId = '') {
     const index = (state.sceneAssets || []).findIndex(asset => String(asset.scene_id || asset.id) === String(sceneId || ''));
     if (index >= 0) state.sceneSelectedIndex = index;
+    window.NewStoryAdSceneAssets?.selectPlanSpaceById?.(state, sceneId);
     const resumable = window.NewStoryAdSceneAssets?.resumableUpgradeProgress?.(state, sceneId) === true;
     if (!resumable) {
       const completed = await fillSceneSpecFromBrief(button, {
@@ -5492,7 +5472,7 @@
   async function generatePersonSheet(button) {
     if (isNoHumanMode()) return toast('当前是无人物模式，不需要生成主体身份资产。', 'info');
     if (state.personGenerationProgress?.active) return toast('正在生成拟真演员，人物数量、性别、年龄、外貌、穿着等约束已提交给后台，生成完成或失败后再修改。', 'error');
-    const description = [
+    window.NewStoryAdSubjectAssetsUI.syncProfileFieldsFromDom?.(state, root()); const description = [
       personSpec('appearanceText'),
       personSpec('wardrobeText') ? `服装：${personSpec('wardrobeText')}` : '',
       personSpec('hairMakeupText') ? `发型妆造：${personSpec('hairMakeupText')}` : '',
@@ -5508,17 +5488,15 @@
       window.NewStoryAdSubjectAssetsUI.renderProfiles(within('#dhNsaAdSubjectProfiles'), state, generationSpec, escapeHtml);
       return toast(`请先补齐逐主体档案：${profileErrors.join('；')}`, 'error');
     }
-    if (subjectCount > 1 || petCount > 0) {
-      const confirmed = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions(subjectCounts));
-      if (!confirmed) return;
-    }
+    const selectedTargets = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions({ ...subjectCounts, state }));
+    if (!selectedTargets) return; const selectedCount = selectedTargets.length;
     const generationId = window.crypto?.randomUUID?.() || `person_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     await ensureTask();
     state.activeGenerationId = generationId;
     state.activeStage = 'person_sheet';
     state.cancelRequested = false;
     const specDescription = personDescription(generationSpec);
-    const stages = window.NewStoryAdSubjectAssetsUI.progressStages(subjectCount);
+    const stages = window.NewStoryAdSubjectAssetsUI.progressStages(selectedCount);
     const updateProgress = () => {
       const start = state.personGenerationProgress?.startedAt || Date.now();
       const elapsed = Date.now() - start;
@@ -5533,7 +5511,7 @@
       };
       renderPerson();
     };
-    state.personGenerationProgress = window.NewStoryAdSubjectAssetsUI.initialProgress(subjectCount);
+    state.personGenerationProgress = window.NewStoryAdSubjectAssetsUI.initialProgress(selectedCount);
     setButtonBusy(button, true, '生成拟真演员中...');
     renderPerson();
     const timer = setInterval(updateProgress, 1400);
@@ -5552,6 +5530,7 @@
           expected_animals: petCount,
           cast_profiles: state.castProfiles,
           pet_profiles: state.petProfiles,
+          subject_targets: selectedTargets,
           task_id: state.taskId || '',
           generation_id: generationId,
         },
@@ -5585,7 +5564,7 @@
       const verificationResult = verificationView(verifiedSubjects.contract, 'cross_view_qa', verifiedSubjects.label);
       toast(
         verifiedSubjects.passed
-          ? `主体资产已生成并验证：${peopleCount}个人物、${petCount}个宠物`
+          ? `所选 ${selectedCount} 个主体已重新生成并验证，其余主体保持原图`
           : (verificationResult.message || verificationResult.label),
         verifiedSubjects.passed ? 'success' : (verificationResult.tone === 'unavailable' ? 'warning' : 'error'),
       );
@@ -5609,7 +5588,6 @@
   function renderActor() {
     renderPerson();
   }
-
   function bind() {
     const host = root();
     if (!host || host.dataset.bound === '1') return;
@@ -5634,6 +5612,7 @@
         return;
       }
       const btn = target.closest('button, [role="button"], a');
+      const subjectAssist = target.closest('[data-nsa-subject-assist-index]'); if (subjectAssist && host.contains(subjectAssist)) { e.preventDefault(); e.stopPropagation(); await window.NewStoryAdSubjectProfileAssist?.assistHumanProfile?.({ state, index: Number(subjectAssist.dataset.nsaSubjectAssistIndex || 0) || 0, api, buildPayload: payload, collectSpec: collectPersonSpec, renderAll, setButtonBusy, toast, button: subjectAssist, onChanged: () => { markSourceDirty('person'); scheduleAutoSave('single_person_assist'); } }); return; }
       const adminVideoMonitor = target.closest('[data-nsa-admin-video-monitor]');
       if (adminVideoMonitor && host.contains(adminVideoMonitor)) {
         e.preventDefault();
@@ -5740,6 +5719,7 @@
       }
       if (window.NewStoryAdSubjectAssetsUI.handleGalleryClick(
         e, host, (url, title) => openPreview(withAuthQuery(url), title),
+        state.subjectGalleryOpenKeys,
       )) return;
       const personPreview = target.closest('[data-nsa-person-preview]');
       if (personPreview && host.contains(personPreview)) {
@@ -5860,20 +5840,30 @@
         e.preventDefault();
         e.stopPropagation();
         setButtonBusy(personVerify, true, '验证中...');
+        state.personVerificationProgress = { active: true, startedAt: Date.now() };
+        renderPerson();
         try {
           const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/person-verify`, { method: 'POST', body: {} });
           const asset = state.personAsset || state.actorAsset || {};
           const next = { ...asset, ...(response.person_asset || {}), person_contract: response.person_contract };
           if (state.personAsset) state.personAsset = next;
           else state.actorAsset = next;
-          state.context = { ...(state.context || {}), person_asset: next, person_contract: response.person_contract };
+          if (Array.isArray(response.cast_profiles)) state.castProfiles = response.cast_profiles;
+          state.context = {
+            ...(state.context || {}),
+            person_asset: next,
+            person_contract: response.person_contract,
+            ...(Array.isArray(response.cast_profiles) ? { cast_profiles: response.cast_profiles } : {}),
+          };
           renderAll();
           const result = verificationView(response.person_contract, 'cross_view_qa', '人物');
           toast(result.message || result.label, result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'));
         } catch (error) {
           toast(error.message || '人物重新验证失败', 'error');
         } finally {
+          state.personVerificationProgress = null;
           setButtonBusy(personVerify, false);
+          renderPerson();
         }
         return;
       }
@@ -5935,18 +5925,30 @@
         const [assetRaw, viewRaw] = String(scenePreview.dataset.nsaScenePreview || '0:0').split(':');
         const asset = (state.sceneAssets || [])[Number(assetRaw || 0)] || null;
         const views = Array.isArray(asset?.view_images) ? asset.view_images : [];
-        const entry = views[Number(viewRaw || 0)] || null;
+        const entry = viewRaw === 'atlas'
+          ? {
+            url: asset?.space_asset_contract?.canonical_source?.url
+              || asset?.space_asset_contract?.canonical_source?.image_url
+              || '',
+            label: 'V7 母图（2×2）',
+          }
+          : (views[Number(viewRaw || 0)] || null);
         const url = entry?.url || entry?.image_url || '';
         if (url) openPreview(withAuthQuery(url), `${asset?.name || '场景参考'} · ${entry.label || ''}`);
         return;
       }
       const sceneSelect = target.closest('[data-nsa-scene-select]');
       if (sceneSelect && host.contains(sceneSelect)) {
-        e.preventDefault();
-        e.stopPropagation();
+        e.preventDefault(); e.stopPropagation();
         state.sceneSelectedIndex = Number(sceneSelect.dataset.nsaSceneSelect || 0) || 0;
         renderAll();
         return;
+      }
+      const scenePlanSelect = target.closest('[data-nsa-scene-plan-select]');
+      if (scenePlanSelect && host.contains(scenePlanSelect)) {
+        e.preventDefault(); e.stopPropagation();
+        window.NewStoryAdSceneAssets?.selectPlanSpace?.(state, Number(scenePlanSelect.dataset.nsaScenePlanSelect || 0) || 0);
+        markSourceDirty('scene'); renderAll(); scheduleAutoSave('scene_plan_select'); return;
       }
       const sceneDelete = target.closest('[data-nsa-scene-delete]');
       if (sceneDelete && host.contains(sceneDelete)) {
@@ -6135,7 +6137,7 @@
         dhNsaAdGeneratePersonSheet: () => generatePersonSheet(btn),
         dhNsaAdAiSceneSpec: () => fillSceneSpecFromBrief(btn),
         dhNsaAdGenerateSceneSheet: () => generateSceneSheet(btn, false),
-        dhNsaAdAddSceneSheet: () => generateSceneSheet(btn, true),
+        dhNsaAdAddSceneSheet: () => window.NewStoryAdSceneAssets?.addDraft?.({ state, renderAll, toast, onChanged: () => { markSourceDirty('scene'); scheduleAutoSave('scene_plan_add'); } }),
         dhNsaAdVoiceOpen: () => openNsaVoiceModal(),
         dhNsaAdMusicLibrary: () => openNsaMusicLibrary(),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),

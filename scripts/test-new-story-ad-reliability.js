@@ -155,6 +155,27 @@ async function main() {
   const structuredStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'keyframes');
   assert.equal(structuredStage.diagnostics.failure_details[0].shot_number, 2);
   assert.equal(structuredStage.diagnostics.failure_details[0].code, 'PROVIDER_5XX_AMBIGUOUS');
+  const sceneFailure = jobs.queueStage({
+    taskId,
+    stage: 'scene_asset',
+    failureContext: {
+      scene_id: 'space_home',
+      scene_name: '现代家庭空间',
+    },
+    execute: async () => {
+      const error = new Error('当前空间未通过权利预检');
+      error.code = 'SCENE_RIGHTS_PREFLIGHT_FAILED';
+      throw error;
+    },
+  });
+  await waitUntil(() => storage.getTask(taskId).stage === 'scene_asset_failed');
+  const sceneFailedTask = storage.getTask(taskId);
+  assert.equal(sceneFailedTask.generation_progress.scene_id, 'space_home');
+  assert.equal(sceneFailedTask.generation_progress.scene_name, '现代家庭空间');
+  assert.equal(sceneFailedTask.generation_progress.generation_id, sceneFailure.job.id);
+  assert.equal(sceneFailedTask.generation_progress.error_code, 'SCENE_RIGHTS_PREFLIGHT_FAILED');
+  const sceneFailedStage = storage.readDb().stages.find(item => item.task_id === taskId && item.stage === 'scene_asset');
+  assert.equal(sceneFailedStage.diagnostics.scene_id, 'space_home');
   const legacyTask = service.createTask({ brief: '历史错误兼容', product_subject: '测试主体', cast_mode: 'no_human' }, owner).task;
   storage.saveOutput(legacyTask.id, 'keyframes', [
     { image_url: 'https://example.test/1.png', current_generation_status: 'accepted', qa: { pass: true } },

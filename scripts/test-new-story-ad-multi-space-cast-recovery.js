@@ -16,6 +16,12 @@ const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const generateSceneAssetWithLegacyMaintenancePath = sceneAssets.generateSceneAsset;
+sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generateSceneAssetWithLegacyMaintenancePath(
+  taskId,
+  { view_strategy: 'image_derived', ...body },
+  { ...runOptions, maintenanceLegacyAcquisition: true },
+);
 const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const subjectBundles = require('../src/services/newStoryAd/subjectAssetBundleService');
 
@@ -188,6 +194,25 @@ function assertCountsAndMemberIsolation() {
     { mode: 'animal', people: 0, pets: 0 },
     'explicit zero must not be overwritten by a truthy fallback',
   );
+  const recoveredFromContract = subjectBundles.humanMemberSpecs({}, {
+    cast_profiles: [{
+      id: 'contract_only',
+      displayName: 'Contract Actor',
+      roleName: 'lead',
+      appearanceText: '[object Object]',
+      appearance: { userPrompt: '' },
+      wardrobe: { userPrompt: '' },
+      hairMakeup: { userPrompt: '' },
+      person_contract: {
+        identity: { face_description: 'CONTRACT_FACE' },
+        wardrobe: { description: 'CONTRACT_WARDROBE' },
+        appearance: { hair_style: 'CONTRACT_HAIR' },
+      },
+    }],
+  }, 1)[0];
+  assert.strictEqual(recoveredFromContract.appearanceText, 'CONTRACT_FACE');
+  assert.strictEqual(recoveredFromContract.wardrobeText, 'CONTRACT_WARDROBE');
+  assert.strictEqual(recoveredFromContract.hairMakeupText, 'CONTRACT_HAIR');
   assert.throws(
     () => subjectBundles.assertCompleteSubjectProfiles(
       subjectBundles.resolveCounts({}, {
@@ -517,6 +542,22 @@ async function assertMultiSpacePromptsAndRecovery() {
 
 async function main() {
   assertCountsAndMemberIsolation();
+  const cancelledCheckpoint = {
+    status: 'running',
+    views: {
+      master: { status: 'succeeded', url: '/master.png', image_url: '/master.png' },
+    },
+  };
+  sceneCheckpoint.markCancelled(
+    cancelledCheckpoint,
+    'layout',
+    Object.assign(new Error('cancelled by user'), { code: 'USER_CANCELLED', cancelled: true }),
+  );
+  assert.strictEqual(cancelledCheckpoint.status, 'partial');
+  assert.strictEqual(cancelledCheckpoint.last_error_code, 'USER_CANCELLED');
+  assert.deepStrictEqual(cancelledCheckpoint.cancelled_view_keys, ['layout']);
+  assert.strictEqual(cancelledCheckpoint.views.master.status, 'succeeded');
+  assert.strictEqual(cancelledCheckpoint.views.layout, undefined, '取消不得虚构供应商提交或计费状态');
   await assertSubjectSupplierPreflightAndConcurrency();
   await assertMultiSpacePromptsAndRecovery();
   console.log('New Story Ad multi-space, cast isolation and recovery regression tests passed');

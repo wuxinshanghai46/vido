@@ -109,6 +109,9 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     stage,
     execute,
     deadlineMs,
+    failureContext: typeof options.failureContext === 'function'
+      ? options.failureContext(task)
+      : (options.failureContext || {}),
   });
   return res.status(202).json({
     success: true,
@@ -836,6 +839,7 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
     const normalizedBundle = { ...bundle, cast_assets: persistedCast.map((row, index) => ({
       ...row,
       person_contract: bundle.cast_assets[index]?.person_contract || row.person_contract || row.metadata?.person_contract || null,
+      subject_profile: bundle.cast_assets[index]?.subject_profile || row.subject_profile || row.metadata?.subject_profile || null,
       cast_member_index: index + 1,
       cast_role: bundle.cast_assets[index]?.cast_role || row.cast_role || `角色${index + 1}`,
     })) };
@@ -865,6 +869,8 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
       module: 'new_story_ad',
       status: 'done',
       counts: normalizedBundle.counts,
+      generated_counts: normalizedBundle.generated_counts || normalizedBundle.counts,
+      subject_targets: normalizedBundle.subject_targets || [],
       ...committed,
       verification_status: {
         people: committed.person_contract?.status || 'not_required',
@@ -884,12 +890,22 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.generateSceneAsset(req.params.id, body));
+  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.generateSceneAsset(req.params.id, {
+    ...body,
+    generation_id: job.generationId,
+  }, {
+    generationId: job.generationId,
+  }), {
+    failureContext: {
+      scene_id: body.space_id || body.spaceId || body.scene_id || body.sceneId || '',
+      scene_name: body.name || body.scene_name || body.sceneName || '',
+    },
+  });
 }));
 
 router.post('/tasks/:id/person-verify', asyncRoute(async (req, res) => {
   taskForReq(req);
-  const result = await service.verifyPersonContract(req.params.id);
+  const result = await service.verifyPersonContract(req.params.id, req.body || {});
   res.json({ success: true, task_id: req.params.id, ...result });
 }));
 
@@ -918,7 +934,17 @@ router.post('/tasks/:id/scene-assets/:sceneId/verify', asyncRoute(async (req, re
 
 router.post('/tasks/:id/scene-assets/:sceneId/repair', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'scene_asset', () => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, body));
+  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.repairSceneAsset(req.params.id, req.params.sceneId, {
+    ...body,
+    generation_id: job.generationId,
+  }, {
+    generationId: job.generationId,
+  }), {
+    failureContext: {
+      scene_id: req.params.sceneId,
+      scene_name: body.name || body.scene_name || body.sceneName || '',
+    },
+  });
 }));
 
 router.get('/tasks/:id/progress', asyncRoute(async (req, res) => {

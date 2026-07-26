@@ -17,6 +17,12 @@ const pipelineModels = require('../src/services/pipelineModelService');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+const generateSceneAssetWithLegacyMaintenancePath = sceneAssets.generateSceneAsset;
+sceneAssets.generateSceneAsset = (taskId, body = {}, runOptions = {}) => generateSceneAssetWithLegacyMaintenancePath(
+  taskId,
+  { view_strategy: 'image_derived', ...body },
+  { ...runOptions, maintenanceLegacyAcquisition: true },
+);
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
 
 async function main() {
@@ -89,6 +95,20 @@ async function main() {
       },
     },
   };
+  const seedSingleSceneTask = (id, title, sceneId) => {
+    storage.createTask({ id, title, request: context });
+    storage.saveOutput(id, 'context', context);
+    storage.saveOutput(id, 'scene_config', {
+      scene_mode: 'single',
+      spaces: [{
+        id: sceneId,
+        name: title,
+        description: context.scene_spec.layoutText,
+        story_purpose: '场景生成回归',
+        scene_spec: context.scene_spec,
+      }],
+    });
+  };
   assert.throws(
     () => sceneAssets.assertCompleteUpgradeSceneSpec({
       require_complete_scene_spec: true,
@@ -100,8 +120,7 @@ async function main() {
       && error.missing_fields.includes('negativeText'),
     '完整升级必须在任何图片调用前拒绝缺字段空间设定',
   );
-  storage.createTask({ id: taskId, title: 'spatial generation order', request: context });
-  storage.saveOutput(taskId, 'context', context);
+  seedSingleSceneTask(taskId, 'spatial generation order', 'locked-room');
 
   const calls = [];
   let activeImageCalls = 0;
@@ -156,7 +175,7 @@ async function main() {
     const layoutRejected = finalQaLayoutFailuresRemaining > 0;
     if (layoutRejected) finalQaLayoutFailuresRemaining -= 1;
     return {
-      schema_version: 4,
+      schema_version: 6,
       status: layoutRejected ? 'rejected' : 'verified',
       full_space_lock: !layoutRejected,
       observed_summary: 'One locked location represented by five distinct spatial views.',
@@ -179,6 +198,25 @@ async function main() {
         negative_compliance_score: 0.97,
         mismatch_reasons: [],
       },
+      photographic_realism_qa: {
+        pass: true,
+        photographic_realism_score: 0.94,
+        physical_material_score: 0.93,
+        natural_variation_score: 0.9,
+        optical_capture_score: 0.92,
+        real_photo_evidence: ['natural lens falloff', 'localized physical variation'],
+        synthetic_signals: [],
+        mismatch_reasons: [],
+      },
+      camera_design_qa: {
+        pass: !layoutRejected,
+        role_definition_score: layoutRejected ? 0.6 : 0.94,
+        requirement_mapping_score: layoutRejected ? 0.6 : 0.93,
+        direction_evidence_score: layoutRejected ? 0.5 : 0.91,
+        parameter_completeness_score: 0.96,
+        layout_mapping_score: layoutRejected ? 0.4 : 0.9,
+        mismatch_reasons: layoutRejected ? ['俯视定位不足'] : [],
+      },
       spatial_coverage_qa: {
         pass: !layoutRejected,
         layout_topology_score: layoutRejected ? 0.2 : 0.95,
@@ -195,7 +233,29 @@ async function main() {
         evidence: '未覆盖完整可用范围',
         confidence: 0.98,
       }] : [],
-      cameras: options.views.map(view => ({ view_id: view.key, reference_image_url: view.url })),
+      cameras: options.views.filter(view => view.key !== 'layout').map((view, index) => ({
+        view_id: view.key,
+        reference_image_url: view.url,
+        label: view.key,
+        role: `${view.key} role`,
+        framing: view.key === 'detail' ? 'close detail' : 'wide',
+        lens_class: view.key === 'detail' ? '50-85mm detail' : '24-35mm wide',
+        height_class: view.key === 'detail' ? 'surface_level' : 'eye_level',
+        orientation: `${view.key} direction`,
+        estimated_azimuth_degrees: [20, 130, 75, 70][index],
+        estimated_pitch_degrees: [2, 1, 0, -12][index],
+        azimuth_delta_from_master_degrees: view.key === 'reverse' ? 110 : null,
+        normalized_position: [[0.12, 0.82], [0.82, 0.25], [0.32, 0.68], [0.5, 0.55]][index],
+        look_at: [[0.55, 0.45], [0.42, 0.58], [0.58, 0.48], [0.57, 0.5]][index],
+        position_confidence: 0.9,
+        target_description: `${view.key} target`,
+        allowed_zone_ids: ['zone_action'],
+        requirement_refs: view.key === 'interaction' ? ['interaction']
+          : (view.key === 'detail' ? ['material_light'] : ['layout']),
+        visible_evidence: `${view.key} visible evidence`,
+        pass: !layoutRejected,
+        mismatch_reasons: layoutRejected ? ['俯视定位不足'] : [],
+      })),
     };
   };
   sceneSpace.validateLayoutAcquisition = async () => {
@@ -238,8 +298,7 @@ async function main() {
 
   try {
     const filenameGateTaskId = 'spatial-candidate-filename-collision-preflight-test';
-    storage.createTask({ id: filenameGateTaskId, title: 'candidate filename collision preflight', request: context });
-    storage.saveOutput(filenameGateTaskId, 'context', context);
+    seedSingleSceneTask(filenameGateTaskId, 'candidate filename collision preflight', 'long-scene-id-that-would-collide-before-any-provider-call');
     const callsBeforeFilenameGate = calls.length;
     const safeFilenameBeforeGate = mediaAdapter.safeFilename;
     mediaAdapter.safeFilename = () => 'forced-collision.png';
@@ -303,7 +362,7 @@ async function main() {
       assert.equal(call.imageModel, 'gpt-image-2');
       assert.match(call.prompt, /Reference image 1 is the master establishing view.*Reference image 2 is the master-derived near-vertical top-down spatial layout/i);
       assert.match(call.prompt, /master as the primary scene\/appearance identity/i);
-      assert.match(call.prompt, /no people/i);
+      assert.match(call.prompt, /unoccupied/i);
       assert.ok(call.auditSafePrompt.length <= 2200);
     }
     assert.match(calls[2].filename, /_reverse_/);
@@ -322,11 +381,11 @@ async function main() {
     assert.deepEqual(asset.view_images.map(view => view.key), ['master', 'reverse', 'interaction', 'detail', 'layout']);
     assert.equal(asset.image_url, '/mock-scene-view-1.png', 'master remains the historical primary thumbnail');
     assert.equal(asset.view_count, 5);
-    assert.equal(asset.generation_contract_version, 6);
+    assert.equal(asset.generation_contract_version, 7);
     assert.equal(asset.layout_contract.required, true);
     assert.equal(asset.view_acquisition.layout_policy, 'required_for_all_new_scenes');
     assert.equal(asset.view_acquisition.layout_appearance_role, 'master_derived_near_vertical_topdown');
-    assert.equal(asset.view_acquisition.generation_contract_version, 6);
+    assert.equal(asset.view_acquisition.generation_contract_version, 7);
     assert.deepEqual(asset.view_acquisition.generation_order, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.deepEqual(asset.view_acquisition.reference_graph, {
       master: [],
@@ -347,8 +406,7 @@ async function main() {
     assert.equal(publicSceneAsset.repair_plan.version, 5, 'the public bundle must normalize scene assets before rendering the repair action');
 
     const legacyUpgradeTaskId = 'spatial-legacy-v0-full-upgrade-test';
-    storage.createTask({ id: legacyUpgradeTaskId, title: 'legacy v0 full upgrade', request: context });
-    storage.saveOutput(legacyUpgradeTaskId, 'context', context);
+    seedSingleSceneTask(legacyUpgradeTaskId, 'legacy v0 full upgrade', 'legacy-room');
     const legacyUrls = ['/legacy-master.png', '/legacy-reverse.png', '/legacy-interaction.png', '/legacy-detail.png'];
     storage.saveOutput(legacyUpgradeTaskId, 'scene_assets', [{
       id: 'legacy-room',
@@ -370,20 +428,19 @@ async function main() {
       scene_spec: context.scene_spec,
       aspect_ratio: '16:9',
     });
-    assert.equal(calls.length - callsBeforeLegacyUpgrade, 5, 'v0 upgrade must generate all five v6 views instead of reusing old images');
+    assert.equal(calls.length - callsBeforeLegacyUpgrade, 5, 'legacy API upgrade must generate all five v7-compatible views instead of reusing old images');
     assert.equal(upgradedLegacy.scene_asset.scene_id, 'legacy-room');
     assert.equal(upgradedLegacy.scene_asset.scene_revision, 2);
-    assert.equal(upgradedLegacy.scene_asset.generation_contract_version, 6);
-    assert.equal(upgradedLegacy.scene_asset.view_acquisition.generation_contract_version, 6);
+    assert.equal(upgradedLegacy.scene_asset.generation_contract_version, 7);
+    assert.equal(upgradedLegacy.scene_asset.view_acquisition.generation_contract_version, 7);
     assert.equal(upgradedLegacy.scene_asset.view_count, 5);
     assert(upgradedLegacy.scene_asset.view_images.every(view => !legacyUrls.includes(view.url || view.image_url)));
     const storedLegacyUpgrade = storage.getOutput(legacyUpgradeTaskId, 'scene_assets')[0];
-    assert.equal(storedLegacyUpgrade.generation_contract_version, 6, 'published storage must replace v0 with v6 atomically');
+    assert.equal(storedLegacyUpgrade.generation_contract_version, 7, 'published storage must replace legacy data with v7 atomically');
     assert.equal(storedLegacyUpgrade.scene_revision, 2);
 
     const duplicateTaskId = 'spatial-exact-duplicate-gate-test';
-    storage.createTask({ id: duplicateTaskId, title: 'exact duplicate layout gate', request: context });
-    storage.saveOutput(duplicateTaskId, 'context', context);
+    seedSingleSceneTask(duplicateTaskId, 'exact duplicate layout gate', 'duplicate-room');
     const callsBeforeDuplicateTask = calls.length;
     exactDuplicateFiles = true;
     await assert.rejects(
@@ -405,8 +462,7 @@ async function main() {
     assert.equal(duplicateCheckpoint.views.reverse, undefined);
 
     const retryTaskId = 'spatial-generation-transient-retry-test';
-    storage.createTask({ id: retryTaskId, title: 'transient image2 retry', request: context });
-    storage.saveOutput(retryTaskId, 'context', context);
+    seedSingleSceneTask(retryTaskId, 'transient image2 retry', 'retry-room');
     const callsBeforeRetryTask = calls.length;
     transientFailuresRemaining = 1;
     transientFilenamePattern = /_reverse_/;
@@ -420,8 +476,16 @@ async function main() {
     assert.equal(storage.getTask(retryTaskId).generation_progress.status, 'completed');
 
     const checkpointTaskId = 'spatial-partial-checkpoint-resume-test';
-    storage.createTask({ id: checkpointTaskId, title: 'partial checkpoint resume', request: context });
-    storage.saveOutput(checkpointTaskId, 'context', context);
+    seedSingleSceneTask(checkpointTaskId, 'partial checkpoint resume', 'checkpoint-room');
+    storage.saveOutput(checkpointTaskId, 'scene_assets', [{
+      id: 'checkpoint-room',
+      scene_id: 'checkpoint-room',
+      space_id: 'checkpoint-room',
+      name: 'checkpoint room',
+      scene_revision: 3,
+      image_url: '/api/new-story-ad/assets/checkpoint-room-r3.png',
+      view_images: [],
+    }]);
     const callsBeforeCheckpoint = calls.length;
     transientFailuresRemaining = 1;
     transientFilenamePattern = /_detail(?:_|\.)/;
@@ -439,6 +503,7 @@ async function main() {
     assert.equal(calls.length - callsBeforeCheckpoint, 5, 'a rights-ambiguous 500 must stop without an automatic paid retry');
     const partialCheckpoint = storage.getOutput(checkpointTaskId, 'scene_asset_checkpoint:checkpoint-room');
     assert.equal(partialCheckpoint.status, 'partial');
+    assert.equal(partialCheckpoint.candidate_revision, 4);
     assert.deepEqual(
       Object.entries(partialCheckpoint.views).filter(([, view]) => view.status === 'succeeded').map(([key]) => key).sort(),
       ['interaction', 'layout', 'master', 'reverse'],
@@ -449,6 +514,15 @@ async function main() {
     transientFailureMessage = 'socket hang up ECONNRESET';
     transientFailureCode = '';
     transientBillingUnknown = false;
+    storage.saveOutput(checkpointTaskId, 'scene_assets', [{
+      id: 'checkpoint-room',
+      scene_id: 'checkpoint-room',
+      space_id: 'checkpoint-room',
+      name: 'checkpoint room',
+      scene_revision: 1,
+      image_url: '/api/new-story-ad/assets/checkpoint-room-r1.png',
+      view_images: [],
+    }]);
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(checkpointTaskId, {
         scene_id: 'checkpoint-room',
@@ -559,8 +633,7 @@ async function main() {
     assert.equal(storage.getOutput(multiSpaceTaskId, 'scene_asset_checkpoint:park').status, 'published');
 
     const preflightTaskId = 'spatial-layout-preflight-retry-test';
-    storage.createTask({ id: preflightTaskId, title: 'layout preflight retry', request: context });
-    storage.saveOutput(preflightTaskId, 'context', context);
+    seedSingleSceneTask(preflightTaskId, 'layout preflight retry', 'preflight-room');
     const callsBeforePreflightTask = calls.length;
     layoutPreflightFailuresRemaining = 1;
     const preflightRetried = await sceneAssets.generateSceneAsset(preflightTaskId, {
@@ -577,8 +650,7 @@ async function main() {
     assert.equal(preflightRetried.scene_asset.view_count, 5);
 
     const autoRepairTaskId = 'spatial-final-qa-auto-repair-test';
-    storage.createTask({ id: autoRepairTaskId, title: 'bounded auto repair', request: context });
-    storage.saveOutput(autoRepairTaskId, 'context', context);
+    seedSingleSceneTask(autoRepairTaskId, 'bounded auto repair', 'auto-repair-location');
     const callsBeforeAutoRepair = calls.length;
     finalQaLayoutFailuresRemaining = 1;
     const autoRepaired = await sceneAssets.generateSceneAsset(autoRepairTaskId, {
@@ -592,8 +664,7 @@ async function main() {
     assert.deepEqual(autoRepaired.scene_asset.repair_history[0].regenerated_view_keys, ['layout']);
 
     const boundedTaskId = 'spatial-final-qa-bounded-repair-test';
-    storage.createTask({ id: boundedTaskId, title: 'bounded repeated rejection', request: context });
-    storage.saveOutput(boundedTaskId, 'context', context);
+    seedSingleSceneTask(boundedTaskId, 'bounded repeated rejection', 'bounded-repair-location');
     const callsBeforeBounded = calls.length;
     finalQaLayoutFailuresRemaining = 2;
     const bounded = await sceneAssets.generateSceneAsset(boundedTaskId, {
@@ -607,8 +678,7 @@ async function main() {
     assert.deepEqual(bounded.scene_asset.repair_plan.view_keys, ['layout']);
 
     const unavailableTaskId = 'spatial-final-qa-unavailable-test';
-    storage.createTask({ id: unavailableTaskId, title: 'qa unavailable preservation', request: context });
-    storage.saveOutput(unavailableTaskId, 'context', context);
+    seedSingleSceneTask(unavailableTaskId, 'qa unavailable preservation', 'qa-unavailable-location');
     const callsBeforeUnavailable = calls.length;
     finalQaUnavailableRemaining = 1;
     const qaUnavailable = await sceneAssets.generateSceneAsset(unavailableTaskId, {
@@ -701,7 +771,38 @@ async function main() {
       { provider_id: 'deyunai', model_id: 'nano-banana' },
     ]);
     assert.deepEqual(policyCandidates.map(item => item.model_id), ['gpt-image-2'], 'story-ad image policy must remove every Nano Banana fallback');
-    assert.match(mediaAdapter.rightsAwareImagePrompt('original commercial scene'), /Rights and originality rule:/);
+    const governedPrompt = mediaAdapter.rightsAwareImagePrompt('original commercial scene');
+    assert.match(governedPrompt, /Originality requirement:/);
+    assert.doesNotMatch(
+      governedPrompt,
+      /celebrity|public-figure|copyrighted|protected artwork|trademark|brand logo|watermark|bypass|evade/i,
+      '平台自动附加的原创要求不得枚举国内供应商容易聚类误判的敏感词',
+    );
+    const supplierScenePrompt = sceneAssets.buildDerivedViewPrompt(
+      sceneAssets.buildLayoutAcquisitionPrompt({
+        ctx: {
+          scene_spec: {
+            layoutText: 'A task-defined logistics warehouse with one loading lane and complete perimeter.',
+            materialLightText: 'Real concrete floor and neutral industrial lighting.',
+            interactionText: 'Keep the loading route readable.',
+            negativeText: '禁止人物、宠物、文字、水印和无关商品',
+          },
+        },
+      }),
+      'layout',
+      { referenceOrder: ['atlas'] },
+    );
+    assert.match(supplierScenePrompt, /task-defined scope boundary/i);
+    assert.doesNotMatch(supplierScenePrompt, /禁止人物|宠物|水印|Task prohibitions/i,
+      '精确排除项保留给本地 QA，供应商提示词应使用正向任务边界，避免负面词清单聚类误判');
+    assert.throws(
+      () => sceneAssets.assertSceneRightsPreflight({}, {
+        scene_spec: { layoutText: '照着某位导演的受保护电影画面进行一比一复刻' },
+      }),
+      error => error?.code === 'SCENE_RIGHTS_PREFLIGHT_FAILED'
+        && error?.rights_policy_version === 'original-rights-v2',
+      '供应商提示词改为正向合同后，本地原创与权利预检仍必须阻止真实违规要求',
+    );
     assert.equal(mediaAdapter.isProviderRightsAuditError(new Error('copyright infringement policy')), true);
     assert.deepEqual(
       mediaAdapter.classifyImageGenerationError(new Error('HTTP 500 Internal Server Error')),
@@ -731,8 +832,7 @@ async function main() {
     assert.deepEqual(sanitizedPipeline.stages['new_story_ad.scene_asset'].map(item => item.model_id), ['gpt-image-2']);
 
     const circuitTaskId = 'spatial-image2-circuit-test';
-    storage.createTask({ id: circuitTaskId, title: 'image2 circuit', request: context });
-    storage.saveOutput(circuitTaskId, 'context', context);
+    seedSingleSceneTask(circuitTaskId, 'image2 circuit', 'circuit-room');
     const callsBeforeCircuit = calls.length;
     transientFailuresRemaining = 2;
     transientFilenamePattern = /_master_/;
@@ -744,8 +844,7 @@ async function main() {
     );
     assert.equal(calls.length - callsBeforeCircuit, 2, 'two consecutive network failures must stop after one shared-budget retry');
     const cooldownTaskId = 'spatial-image2-cooldown-test';
-    storage.createTask({ id: cooldownTaskId, title: 'image2 cooldown', request: context });
-    storage.saveOutput(cooldownTaskId, 'context', context);
+    seedSingleSceneTask(cooldownTaskId, 'image2 cooldown', 'cooldown-room');
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(cooldownTaskId, { scene_id: 'cooldown-room', scene_spec: context.scene_spec }),
       error => error?.code === 'SCENE_IMAGE_PROVIDER_COOLDOWN',

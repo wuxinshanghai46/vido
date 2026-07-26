@@ -11,12 +11,14 @@ const shotDesign = require('./shotDesignService');
 const sceneCheckpoint = require('./sceneGenerationCheckpointService');
 const sceneBinding = require('./sceneBindingService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
+const sceneAtlas = require('./sceneAtlasService');
+const blueprintQuality = require('./blueprintQualityService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
 const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'detail'];
 const SCENE_REPAIR_PLAN_VERSION = 5;
-const SCENE_GENERATION_CONTRACT_VERSION = 6;
+const SCENE_GENERATION_CONTRACT_VERSION = 7;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_near_vertical_topdown';
 const SCENE_IMAGE_EXTRA_ATTEMPTS = Math.max(0, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_EXTRA_ATTEMPTS || 2) || 0));
 const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
@@ -58,6 +60,7 @@ function sceneViewLabel(key = '') {
     interaction: '互动位',
     detail: '材质细节',
     layout: '俯视布局',
+    atlas: '2×2 空间母图',
   }[key] || key || '场景视角';
 }
 
@@ -73,6 +76,21 @@ function normalizeSceneView(view = {}, index = 0) {
     filename: cleanText(view.filename || '', 160),
     provider_used: cleanText(view.provider_used || '', 160),
     camera_id: cleanText(view.camera_id || 'camera_' + key, 100),
+    source_kind: cleanText(view.source_kind || '', 60),
+    source_role: cleanText(view.source_role || '', 80),
+    derived_locally: view.derived_locally === true,
+    parent_asset_id: cleanText(view.parent_asset_id || '', 120),
+    parent_sha256: cleanText(view.parent_sha256 || '', 64),
+    file_sha256: cleanText(view.file_sha256 || '', 64),
+    crop: view.crop && typeof view.crop === 'object'
+      ? {
+        x: Number(view.crop.x) || 0,
+        y: Number(view.crop.y) || 0,
+        width: Number(view.crop.width) || 0,
+        height: Number(view.crop.height) || 0,
+        role: cleanText(view.crop.role || '', 80),
+      }
+      : null,
   };
 }
 
@@ -83,6 +101,27 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     : [];
   const primary = cleanText(asset.image_url || asset.url || viewImages[0]?.url || viewImages[0]?.image_url || '', 1000);
   if (!primary && !viewImages.length && !asset.layout_summary && !asset.material_summary) return null;
+  const normalizedContract = asset.scene_contract && typeof asset.scene_contract === 'object'
+    ? sceneSpace.normalizeContract(asset.scene_contract, {
+      sceneId: asset.scene_id || asset.id,
+      revision: asset.scene_revision || 1,
+      views: viewImages,
+    })
+    : null;
+  const normalizedForPlan = {
+    ...asset,
+    view_images: viewImages,
+    scene_contract: normalizedContract,
+  };
+  const storedRepairPlan = asset.repair_plan && typeof asset.repair_plan === 'object'
+    && Number(asset.repair_plan.version || 0) >= SCENE_REPAIR_PLAN_VERSION
+    ? asset.repair_plan
+    : null;
+  const repairPlan = sceneGenerationUpgradeRequired(normalizedForPlan)
+    ? fullSceneUpgradePlan()
+    : (normalizedContract
+      ? buildSceneRepairPlan(normalizedForPlan)
+      : (storedRepairPlan || buildSceneRepairPlan(normalizedForPlan)));
   return {
     id: cleanText(asset.id || asset.scene_id || `scene_${index + 1}`, 120),
     scene_id: cleanText(asset.scene_id || asset.id || `scene_${index + 1}`, 120),
@@ -104,26 +143,29 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     view_count: Number(asset.view_count || viewImages.length || (primary ? 1 : 0)) || 0,
     view_strategy: cleanText(asset.view_strategy || asset.viewStrategy || 'image_derived', 40),
     view_acquisition: asset.view_acquisition && typeof asset.view_acquisition === 'object' ? asset.view_acquisition : null,
+    space_asset_contract: asset.space_asset_contract && typeof asset.space_asset_contract === 'object'
+      ? asset.space_asset_contract
+      : null,
     generation_contract_version: sceneGenerationContractVersion(asset),
     scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
-    scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object'
-      ? sceneSpace.normalizeContract(asset.scene_contract, {
-        sceneId: asset.scene_id || asset.id,
-        revision: asset.scene_revision || 1,
-        views: viewImages,
-      })
-      : null,
-    cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
-    requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
-    layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
+    scene_contract: normalizedContract,
+    cross_view_qa: normalizedContract?.cross_view_qa || asset.cross_view_qa || null,
+    requirement_qa: normalizedContract?.requirement_qa || asset.requirement_qa || null,
+    photographic_realism_qa: normalizedContract?.photographic_realism_qa || asset.photographic_realism_qa || null,
+    camera_design_qa: normalizedContract?.camera_design_qa || asset.camera_design_qa || null,
+    layout_contract: normalizedContract?.layout_contract || asset.layout_contract || null,
+    spatial_coverage_qa: normalizedContract?.spatial_coverage_qa || asset.spatial_coverage_qa || null,
+    verification: normalizedContract?.verification
+      || (asset.verification && typeof asset.verification === 'object' ? asset.verification : null),
+    partial_checkpoint: asset.partial_checkpoint === true,
+    checkpoint_status: cleanText(asset.checkpoint_status || '', 40),
+    checkpoint_error_code: cleanText(asset.checkpoint_error_code || '', 120),
+    completed_view_keys: Array.isArray(asset.completed_view_keys) ? asset.completed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
+    failed_view_keys: Array.isArray(asset.failed_view_keys) ? asset.failed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
+    billing_review_required: asset.billing_review_required === true,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
-    repair_plan: sceneGenerationUpgradeRequired(asset)
-      ? fullSceneUpgradePlan()
-      : (asset.repair_plan && typeof asset.repair_plan === 'object'
-        && Number(asset.repair_plan.version || 0) >= SCENE_REPAIR_PLAN_VERSION
-        ? asset.repair_plan
-        : buildSceneRepairPlan(asset)),
+    repair_plan: repairPlan,
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     created_at: asset.created_at || new Date().toISOString(),
   };
@@ -155,7 +197,7 @@ function fullSceneUpgradePlan() {
     count: SCENE_GENERATION_ORDER.length,
     reasons: ['场景图片生成于旧版空间合同，不能通过重复审核升级'],
     issue_codes: ['GENERATION_CONTRACT_UPGRADE_REQUIRED'],
-    message: '系统将先重新补齐当前空间设定，再完整生成 5 张新版场景参考并自动验收。',
+    message: '系统将先重新补齐当前空间设定，再用 2 次图片调用生成 5 张新版参考（2×2 母图本地裁切 4 张 + 1 张俯视布局）并自动验收。',
   };
 }
 
@@ -245,6 +287,22 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
       maxAttempts: 1 + remainingExtraAttempts(budget),
       retrying: attempt > 1,
     });
+    const absoluteAttempt = Math.max(1, Number(options.baseAttempt || 0) + attempt);
+    const clientRequestId = typeof options.submissionIdFactory === 'function'
+      ? options.submissionIdFactory(absoluteAttempt)
+      : cleanText(options.clientRequestId || '', 100);
+    const attemptOptions = {
+      ...options,
+      clientRequestId,
+      onSubmitting: typeof options.onSubmitting === 'function'
+        ? event => options.onSubmitting({ ...event, attempt: absoluteAttempt, generationId: options.generationId })
+        : null,
+      onSubmitted: typeof options.onSubmitted === 'function'
+        ? event => options.onSubmitted({ ...event, attempt: absoluteAttempt, generationId: options.generationId })
+        : null,
+    };
+    delete attemptOptions.submissionIdFactory;
+    delete attemptOptions.baseAttempt;
     try {
       if (imageCircuit.openUntil > Date.now()) {
         const error = new Error('Image2 provider is temporarily cooling down after repeated upstream failures');
@@ -252,7 +310,7 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
         error.retryable = false;
         throw error;
       }
-      const result = await mediaAdapter.generateImage(options);
+      const result = await mediaAdapter.generateImage(attemptOptions);
       imageCircuit.consecutiveTransientFailures = 0;
       imageCircuit.openUntil = 0;
       updateSceneGenerationProgress(taskId, {
@@ -265,6 +323,9 @@ async function generateTrackedSceneView(taskId, key, options = {}, progress = {}
       });
       return result;
     } catch (error) {
+      error.generationId = cleanText(error.generationId || options.generationId || '', 100);
+      error.submissionId = cleanText(error.submissionId || clientRequestId || '', 100);
+      error.attempt = absoluteAttempt;
       const transient = isTransientImageError(error);
       if (transient) {
         imageCircuit.consecutiveTransientFailures += 1;
@@ -342,12 +403,55 @@ function assertCompleteUpgradeSceneSpec(body = {}) {
   error.code = 'SCENE_SPEC_INCOMPLETE';
   error.retryable = false;
   error.missing_fields = missing;
+  error.details = missing.map(field => ({
+    code: 'SCENE_SPEC_FIELD_MISSING',
+    title: field,
+    message: `场景空间设定字段 ${field} 未达到完整生成要求`,
+    status: 'missing',
+  }));
+  throw error;
+}
+
+function assertSceneRightsPreflight(ctx = {}, body = {}) {
+  // Inspect the exact current-space provider prompt. A later storyboard or
+  // end-card instruction must not block an unoccupied scene that never
+  // receives that content.
+  const visibleTaskText = buildSceneSheetPrompt({
+    ctx,
+    sceneConfig: {},
+    body,
+    outputRole: 'contract',
+  });
+  const rights = blueprintQuality.assessBlueprintRights({
+    story_title: 'scene asset preflight',
+    logline: visibleTaskText,
+    beats: [{ visual: visibleTaskText }],
+  });
+  if (rights.pass) return rights;
+  const error = new Error(`场景生成要求未通过原创与权利预检：${rights.issues.join('；')}`);
+  error.code = 'SCENE_RIGHTS_PREFLIGHT_FAILED';
+  error.status = 422;
+  error.retryable = false;
+  error.rights_policy_version = rights.policy_version;
+  error.details = { issues: rights.issues };
+  error.scene_id = cleanText(body.space_id || body.spaceId || body.scene_id || body.sceneId || '', 120);
+  error.scene_name = cleanText(body.name || body.scene_name || body.sceneName || '', 120);
   throw error;
 }
 
 async function generateCheckpointedSceneView(taskId, key, options = {}, progress = {}, budget, checkpoint) {
+  const generationId = cleanText(options.generationId || checkpoint.metadata?.generation_id || '', 100);
+  const baseAttempt = Math.max(0, Number(checkpoint.views?.[key]?.attempts || 0) || 0);
+  const trackedOptions = {
+    ...options,
+    generationId,
+    baseAttempt,
+    submissionIdFactory: attempt => sceneCheckpoint.submissionId(checkpoint, key, attempt),
+    onSubmitting: event => sceneCheckpoint.markSubmitting(checkpoint, key, event),
+    onSubmitted: event => sceneCheckpoint.markSubmitted(checkpoint, key, event),
+  };
   try {
-    const generated = await generateTrackedSceneView(taskId, key, options, progress, budget);
+    const generated = await generateTrackedSceneView(taskId, key, trackedOptions, progress, budget);
     sceneCheckpoint.markSucceeded(checkpoint, key, {
       key,
       label: sceneViewLabel(key),
@@ -360,7 +464,14 @@ async function generateCheckpointedSceneView(taskId, key, options = {}, progress
     }, budget);
     return generated;
   } catch (error) {
-    if (error?.code !== 'USER_CANCELLED' && error?.cancelled !== true) {
+    if (error?.code === 'USER_CANCELLED' || error?.cancelled === true) {
+      sceneCheckpoint.markCancelled(checkpoint, key, error, budget);
+      error.partial_scene_checkpoint = true;
+      error.completed_view_keys = Object.keys(checkpoint.views || {})
+        .filter(viewKey => sceneCheckpoint.checkpointView(checkpoint, viewKey));
+      error.cancelled_view_keys = [...(checkpoint.cancelled_view_keys || [])];
+      error.scene_id = checkpoint.scene_id;
+    } else {
       sceneCheckpoint.markFailed(checkpoint, key, error, budget);
       error.partial_scene_checkpoint = true;
       error.completed_view_keys = Object.keys(checkpoint.views || {})
@@ -403,7 +514,9 @@ function buildSceneRepairPlan(asset = {}) {
   const issues = (Array.isArray(contract.view_issues) ? contract.view_issues : [])
     .filter(issue => cleanText(issue?.evidence || issue?.visual_evidence || '', 300));
   const reasons = issues.map(issue => cleanText(issue.reason || issue.code, 300)).filter(Boolean).slice(0, 8);
-  if (contract.full_space_lock === true) {
+  if (contract.full_space_lock === true
+    && Number(contract.schema_version || 0) >= 6
+    && contract.camera_design_qa?.pass === true) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'none', view_keys: [], view_labels: [], count: 0, reasons: [], message: '完整空间已经锁定，无需修复。' };
   }
   if (contract.qa_unavailable === true || verificationState === 'unavailable') {
@@ -422,6 +535,26 @@ function buildSceneRepairPlan(asset = {}) {
   const viewKeys = SCENE_GENERATION_ORDER.filter(key => keys.has(key));
   if (!viewKeys.length) {
     return { version: SCENE_REPAIR_PLAN_VERSION, action: 'reverify', view_keys: [], view_labels: [], count: 0, reasons, message: '审核证据未定位到具体视图，禁止付费重生，请先再次验证。' };
+  }
+  const atlasStrategy = cleanText(
+    asset.view_strategy
+    || asset.view_acquisition?.selected
+    || asset.space_asset_contract?.strategy
+    || '',
+    40,
+  ) === 'atlas_2x2';
+  if (atlasStrategy && viewKeys.some(key => key !== 'layout')) {
+    return {
+      version: SCENE_REPAIR_PLAN_VERSION,
+      action: 'rebuild_atlas',
+      view_keys: [...SCENE_GENERATION_ORDER],
+      view_labels: SCENE_GENERATION_ORDER.map(sceneViewLabel),
+      count: 2,
+      provider_image_call_count: 2,
+      reasons: reasons.slice(0, 6),
+      issue_codes: [...new Set(issues.map(issue => issue.code))],
+      message: '透视视图来自同一张 2×2 空间母图，不能单独重做某一格；系统将重建整张母图并重新生成俯视布局，共 2 次图片调用。',
+    };
   }
   return {
     version: SCENE_REPAIR_PLAN_VERSION,
@@ -468,12 +601,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       ? 'The correction feedback has higher authority than appearance inherited from previous images. Preserve valid geometry, but replace any rejected appearance instead of imitating it.'
       : '',
   ].filter(Boolean).join(' ');
-  const noHumanNegative = [
-    'Absolutely empty scene only.',
-    'No people, no human figure, no actor, no model, no presenter, no customer, no staff.',
-    'No back view, no side profile, no face, no head, no hair, no body, no arms, no hands, no legs, no silhouette, no reflection of a person.',
-    'Do not use human scale figures or mannequins as spatial references; use furniture, product plinths, counters, empty walking space or neutral props instead.',
-  ].join(' ');
+  const occupancyContract = 'Occupancy contract: capture the task-defined location before cast or action blocking, with every circulation path and interaction zone clear. Furnish the frame only with explicitly defined fixed structures, fixtures and spatial anchors.';
   const photographicRealism = [
     outputRole === 'layout'
       ? 'Visual medium lock: this must be a photoreal spatial-survey image of the task-appropriate physical environment, whether enclosed, semi-open or outdoor. Materials and lighting must remain physically believable, but camera coverage has priority over commercial-photo composition.'
@@ -490,12 +618,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       : 'Composition should feel like a still from a real commercial shoot: natural framing, usable negative space, practical foreground/background depth, not a perfect symmetric AI-generated set.',
     visualRealismPolicy.sceneRealismPrompt(),
   ].join('\n');
-  const antiAiNegative = [
-    'Strict anti-AI / anti-render negatives:',
-    'No CGI render look, no Unreal/Octane/3D render look, no plastic texture, no waxy surface, no over-smoothed material, no fantasy environment.',
-    'No generic luxury template, no repeated procedural texture, no melted details, no impossible reflections, no glowing seams, no excessive contrast, no heavy HDR, no fake bokeh.',
-    'No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent physical material cues across one authored finish.',
-  ].join(' ');
+  const photographicEvidenceContract = 'Photographic evidence contract: use plausible optical behaviour, grounded contact shadows, physically consistent reflections, natural local variation, realistic wear and coherent constructed geometry throughout the frame.';
   const outputInstruction = outputRole === 'layout'
     ? [
       'Create one PHOTOREALISTIC NEAR-VERTICAL TOP-DOWN WHOLE-SPACE LAYOUT derived from the supplied master photograph of the same physical location.',
@@ -510,12 +633,17 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       'Create one photorealistic MASTER REFERENCE VIEW for a reusable commercial video scene.',
       'Use a wide eye-level or slightly elevated three-quarter establishing composition derived from the locked spatial blueprint, clearly showing the usable ground/base, task-appropriate boundaries or edges, access points and anchor relations without looking top-down.',
       ];
+  const outputCardinalityInstruction = outputRole === 'contract'
+    ? 'This is an unoccupied scene content contract for a spatial asset. The outer acquisition instruction controls whether the result is a single view or a multi-panel atlas. Every requested perspective must remain clean and physically coherent.'
+    : 'This is an unoccupied scene asset captured as exactly one continuous, clean camera view.';
   return [
     ...outputInstruction,
-    'This is an EMPTY SCENE asset, not a storyboard keyframe and not a collage. It must contain exactly one continuous camera view, no multi-panel composition, no split screen, no labels, no people or human-like subjects.',
+    outputCardinalityInstruction,
     photographicRealism,
     outputRole === 'layout'
       ? 'Show the entire spatial footprint and all scene boundaries in one near-vertical overhead survey; do not use an eye-level, frontal or mild high-angle commercial-camera composition.'
+      : outputRole === 'contract'
+        ? 'Across all requested perspectives, make the complete spatial layout, fixed structures, access points and usable action zone physically legible without idealizing the place into a stock-photo set.'
       : 'Use a wide establishing composition that clearly defines the whole spatial layout and the relative position of fixed structures and movable anchors.',
     subject ? `Advertised subject: ${subject}` : '',
     custom ? `User scene requirement: ${custom}` : '',
@@ -525,12 +653,12 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
     `Task-specific material identity contract:\n${materialIdentityContract}`,
     style ? `Visual style direction: ${style}` : '',
-    `Hard negative requirements: ${noHumanNegative}`,
-    antiAiNegative,
-    negative ? `Additional negative requirements: ${negative}` : '',
+    occupancyContract,
+    photographicEvidenceContract,
+    negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
     repairFeedback ? `Mandatory correction from the previous rejected attempt: ${repairFeedback}. Create a fresh role-correct image and do not reproduce the rejected composition.` : '',
     outputRole === 'layout'
-      ? 'Final look target: a photoreal near-vertical top-down spatial survey of the same finished location, with the complete footprint and perimeter visible and no labels, watermark or schematic annotation.'
+      ? 'Final look target: a clean photoreal near-vertical top-down spatial survey of the same finished location, with the complete footprint and perimeter visible and free of readable typography, identifying marks or technical annotation.'
       : 'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
 }
@@ -550,9 +678,41 @@ function buildLayoutAcquisitionPrompt({ ctx = {}, body = {} } = {}) {
     requested.material_light ? `Appearance identity to preserve from the master: ${requested.material_light}` : '',
     requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '',
     topology ? `Surface construction identity to preserve: ${topology}` : '',
-    requested.negative ? `Task prohibitions that remain applicable to visible content: ${requested.negative}` : '',
-    'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. No person, text, labels, watermark, logo, collage, split screen, CAD linework, dimension marks or schematic annotation.',
+    requested.negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
+    'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. Keep the frame clean, free of readable typography, identifying marks, technical annotations and multi-panel presentation.',
   ].filter(Boolean).join('\n\n').slice(0, 3600);
+}
+
+function legacyScenePromptFingerprintText(scenePrompt = '', layoutPrompt = '', negative = '') {
+  const currentCardinality = 'This is an unoccupied scene content contract for a spatial asset. The outer acquisition instruction controls whether the result is a single view or a multi-panel atlas. Every requested perspective must remain clean and physically coherent.';
+  const legacyCardinality = 'This is an EMPTY SCENE content contract for a spatial asset. The outer acquisition instruction controls whether the result is a single view or a multi-panel atlas. Every requested perspective must remain unoccupied, unlabeled and physically coherent.';
+  const currentOccupancy = 'Occupancy contract: capture the task-defined location before cast or action blocking, with every circulation path and interaction zone clear. Furnish the frame only with explicitly defined fixed structures, fixtures and spatial anchors.';
+  const legacyOccupancy = 'Hard negative requirements: Absolutely empty scene only. No people, no human figure, no actor, no model, no presenter, no customer, no staff. No back view, no side profile, no face, no head, no hair, no body, no arms, no hands, no legs, no silhouette, no reflection of a person. Do not use human scale figures or mannequins as spatial references; use furniture, product plinths, counters, empty walking space or neutral props instead.';
+  const currentEvidence = 'Photographic evidence contract: use plausible optical behaviour, grounded contact shadows, physically consistent reflections, natural local variation, realistic wear and coherent constructed geometry throughout the frame.';
+  const legacyEvidence = 'Strict anti-AI / anti-render negatives: No CGI render look, no Unreal/Octane/3D render look, no plastic texture, no waxy surface, no over-smoothed material, no fantasy environment. No generic luxury template, no repeated procedural texture, no melted details, no impossible reflections, no glowing seams, no excessive contrast, no heavy HDR, no fake bokeh. No decorative text, no poster layout, no floating objects, no warped geometry, no inconsistent physical material cues across one authored finish.';
+  const currentScope = 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.';
+  const currentLayoutOutput = 'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. Keep the frame clean, free of readable typography, identifying marks, technical annotations and multi-panel presentation.';
+  const legacyLayoutOutput = 'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. No person, text, labels, watermark, logo, collage, split screen, CAD linework, dimension marks or schematic annotation.';
+  const legacyNegative = cleanText(negative || '', 800);
+  const legacyLayoutNegative = cleanText(negative || '', 1000);
+  return {
+    scenePrompt: String(scenePrompt || '')
+      .replace(currentCardinality, legacyCardinality)
+      .replace(currentOccupancy, legacyOccupancy)
+      .replace(currentEvidence, legacyEvidence)
+      .replace(
+        currentScope,
+        legacyNegative ? `Additional negative requirements: ${legacyNegative}` : '',
+      ),
+    layoutPrompt: String(layoutPrompt || '')
+      .replace(
+        currentScope,
+        legacyLayoutNegative
+          ? `Task prohibitions that remain applicable to visible content: ${legacyLayoutNegative}`
+          : '',
+      )
+      .replace(currentLayoutOutput, legacyLayoutOutput),
+  };
 }
 
 async function localizeSceneViews(views = [], { taskId = '', sceneId = '', revision = 1 } = {}) {
@@ -627,12 +787,15 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     ? (options.hasLayoutReference === false ? ['master'] : ['master', 'layout'])
     : (options.hasLayoutReference === false ? [] : ['layout']);
   const referenceOrder = (Array.isArray(options.referenceOrder) ? options.referenceOrder : fallbackOrder)
-    .filter(key => key === 'layout' || key === 'master');
+    .filter(key => key === 'layout' || key === 'master' || key === 'atlas');
+  const hasAtlasReference = referenceOrder.includes('atlas');
   const hasLayoutReference = referenceOrder.includes('layout');
   const hasMasterReference = referenceOrder.includes('master');
   const referenceDescriptions = referenceOrder.map((key, index) => key === 'layout'
     ? `Reference image ${index + 1} is the master-derived near-vertical top-down spatial layout.`
-    : `Reference image ${index + 1} is the master establishing view.`);
+    : key === 'atlas'
+      ? `Reference image ${index + 1} is the canonical 2-by-2 perspective atlas of this one physical space.`
+      : `Reference image ${index + 1} is the master establishing view.`);
   const referenceAuthority = [
     ...referenceDescriptions,
     hasLayoutReference
@@ -644,6 +807,9 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     hasMasterReference
       ? 'The supplied master view is the canonical authority for photographic appearance, material identity, color, lighting direction and object design.'
       : '',
+    hasAtlasReference
+      ? 'The supplied atlas is the canonical authority for cross-perspective geometry, fixed anchors, openings, material identity and lighting direction across the whole physical space.'
+      : '',
     hasLayoutReference && hasMasterReference
       ? 'Resolve ambiguity with the master as the primary scene/appearance identity and the overview as secondary spatial-coordinate evidence; never redesign either source.'
       : '',
@@ -652,11 +818,13 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
     instruction,
     referenceAuthority,
     viewKey === 'layout'
-      ? 'This is a strict camera-relocation acquisition task. The master reference controls appearance and identity only: do not reproduce its crop, wall-facing sector, eye-level elevation, ceiling-heavy framing or foreground/background arrangement.'
+      ? hasMasterReference
+        ? 'This is a strict camera-relocation acquisition task. The master reference controls appearance and identity only: relocate away from its crop, wall-facing sector, eye-level elevation, ceiling-heavy framing and foreground/background arrangement.'
+        : 'This is a strict camera-relocation acquisition task. The atlas controls appearance, identity and spatial relations; derive one new overhead survey rather than reproducing its panel arrangement or any source camera crop.'
       : viewKey === 'reverse' || viewKey === 'interaction'
       ? 'This is a deliberate camera relocation task. Preserve scene identity, but do not reproduce the master image pixel composition, crop, camera sector or foreground/background arrangement.'
       : '',
-    'Output one continuous photorealistic image only, no collage, no split screen, no labels, no logo and no people.',
+    'Output one continuous, unoccupied photorealistic camera view with clean framing, free of readable typography, identifying marks and multi-panel presentation.',
     'Scene identity lock is strict: preserve spatial geometry, anchor relations, material family and lighting direction.',
     cleanText(options.repairFeedback || '', 1200)
       ? `Mandatory correction from the previous rejected attempt: ${cleanText(options.repairFeedback, 1200)}. Do not repeat the rejected composition.`
@@ -699,7 +867,7 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } =
     requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
     topology ? `Surface construction: ${topology}` : '',
     requested.style ? `Visual style: ${requested.style}` : '',
-    'The frame is an unoccupied architectural reference containing only the designed space and its intended fixtures. Use a single camera view without typography, logos, montage or split panels.',
+    'The frame is an unoccupied spatial reference containing only the designed location and its intended fixtures. Use one clean camera view free of readable typography, identifying marks and multi-panel presentation.',
   ].filter(Boolean).join('\n\n').slice(0, 2200);
 }
 
@@ -791,6 +959,10 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
+  const generationId = cleanText(
+    runOptions.generationId || body.generation_id || body.generationId || task.active_generation_id || '',
+    100,
+  );
   const baseCtx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const storedSceneConfig = storage.getOutput(taskId, 'scene_config') || {};
   const target = sceneBinding.resolveSceneGenerationTarget({
@@ -813,6 +985,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     } : {}),
   };
   assertCompleteUpgradeSceneSpec(body);
+  assertSceneRightsPreflight(ctx, body);
   const existing = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const sceneId = target.scene_id;
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
@@ -834,7 +1007,18 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     uploadedViewCount: Array.isArray(body.view_images) ? body.view_images.length : 0,
     videoAcquisitionEnabled: false,
   });
+  if (!repairMode
+    && runOptions.maintenanceLegacyAcquisition !== true
+    && viewAcquisition.selected !== 'uploaded_views'
+    && viewAcquisition.selected !== 'atlas_2x2') {
+    viewAcquisition.fallback_reason = 'new_scene_contract_v7_requires_atlas';
+    viewAcquisition.selected = 'atlas_2x2';
+  }
+  const atlasMode = !repairMode && viewAcquisition.selected === 'atlas_2x2';
   const progressViewKeys = repairMode ? repairViewKeys : requiredViewKeys;
+  const checkpointViewKeys = atlasMode
+    ? ['atlas', ...progressViewKeys]
+    : progressViewKeys;
   const progressMode = repairMode ? 'repair' : 'generate';
   const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract' });
   const layoutPrompt = buildLayoutAcquisitionPrompt({ ctx, body: promptBody });
@@ -842,8 +1026,17 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     referenceOrder: [],
     repairFeedback,
   });
-  const requestedRevision = Math.max(1, Number(previous?.scene_revision || 0) + 1);
-  const fingerprint = sceneCheckpoint.inputFingerprint({
+  const previousSceneRevision = Math.max(0, Number(previous?.scene_revision || 0) || 0);
+  const requestedRevision = Math.max(1, previousSceneRevision + 1);
+  const persistedCheckpoint = storage.getOutput(taskId, sceneCheckpoint.outputKind(sceneId));
+  const checkpointPreviousRevision = (
+    persistedCheckpoint
+    && ['running', 'partial', 'ready_for_qa'].includes(String(persistedCheckpoint.status || ''))
+    && Number(persistedCheckpoint.candidate_revision || 0) > 0
+  )
+    ? Math.max(0, Number(persistedCheckpoint.candidate_revision) - 1)
+    : null;
+  const fingerprintPayload = {
     generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
     scene_id: sceneId,
     requested,
@@ -856,15 +1049,38 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     resolution: body.resolution || '2K',
     image_model: 'gpt-image-2',
     generation_order: requiredViewKeys,
-    previous_revision: Number(previous?.scene_revision || 0) || 0,
-  });
+    view_strategy: viewAcquisition.selected,
+    previous_revision: previousSceneRevision,
+  };
+  const fingerprint = sceneCheckpoint.inputFingerprint(fingerprintPayload);
+  const legacyPromptFingerprintText = legacyScenePromptFingerprintText(
+    scenePrompt,
+    layoutPrompt,
+    requested.negative,
+  );
+  const compatibleRevisionBases = [
+    previousSceneRevision,
+    ...(checkpointPreviousRevision === null ? [] : [checkpointPreviousRevision]),
+  ];
+  const compatibleFingerprints = [...new Set(compatibleRevisionBases.flatMap(previousRevision => ([
+    sceneCheckpoint.inputFingerprint({
+      ...fingerprintPayload,
+      previous_revision: previousRevision,
+    }),
+    sceneCheckpoint.inputFingerprint({
+      ...fingerprintPayload,
+      previous_revision: previousRevision,
+      scene_prompt: legacyPromptFingerprintText.scenePrompt,
+      layout_prompt: legacyPromptFingerprintText.layoutPrompt,
+    }),
+  ])))].filter(value => value !== fingerprint);
   const initialBudget = sceneGenerationBudget(runOptions.generationBudget);
   const openedCheckpoint = sceneCheckpoint.open({
     taskId,
     sceneId,
     fingerprint,
     candidateRevision: requestedRevision,
-    viewKeys: progressViewKeys,
+    viewKeys: checkpointViewKeys,
     retryBudget: initialBudget,
     acknowledgeBillingUnknown: body.acknowledge_billing_unknown === true
       || body.acknowledgeBillingUnknown === true,
@@ -877,17 +1093,27 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       space_id: target.space_id,
       multi_scene: target.multi_scene,
       generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
-      reference_graph: {
+      reference_graph: atlasMode ? {
+        atlas: [],
+        master: ['atlas'],
+        reverse: ['atlas'],
+        interaction: ['atlas'],
+        detail: ['atlas'],
+        layout: ['atlas'],
+      } : {
         master: [],
         layout: ['master'],
         reverse: ['master', 'layout'],
         interaction: ['master', 'layout'],
         detail: ['master'],
       },
+      generation_id: generationId,
+      prompt_policy_version: 'domestic-positive-contract-v2',
     },
+    compatibleFingerprints,
   });
   const checkpoint = openedCheckpoint.checkpoint;
-  sceneCheckpoint.assertUniqueCandidateFilenames(checkpoint, progressViewKeys);
+  sceneCheckpoint.assertUniqueCandidateFilenames(checkpoint, checkpointViewKeys);
   const revision = checkpoint.candidate_revision;
   const generationBudget = sceneGenerationBudget(runOptions.generationBudget || {
     maxExtra: checkpoint.retry_budget?.max_extra,
@@ -904,6 +1130,77 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     viewKeys: progressViewKeys,
     initialViewStates: sceneCheckpoint.initialViewStates(checkpoint, progressViewKeys),
   });
+  let atlasBundle = null;
+  let atlasResult = atlasMode ? selectedView('atlas') : null;
+  if (atlasMode) {
+    if (!atlasResult) {
+      updateSceneGenerationProgress(taskId, {
+        mode: progressMode,
+        phase: 'generation',
+        viewKeys: progressViewKeys,
+        viewKey: 'master',
+        viewStatus: 'running',
+      });
+      atlasResult = await generateCheckpointedSceneView(taskId, 'atlas', {
+        taskId,
+        stage: 'new_story_ad.scene_asset',
+        prompt: sceneAtlas.buildSceneAtlasPrompt(scenePrompt, { repairFeedback }),
+        filename: sceneCheckpoint.candidateFilename(checkpoint, 'atlas'),
+        aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+        resolution: body.resolution || '2K',
+        imageModel: 'gpt-image-2',
+        referenceImages: materialReferences,
+        requireReferences: materialReferences.length > 0,
+        inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
+        auditSafePrompt: sceneAtlas.buildSceneAtlasPrompt(
+          buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
+          { repairFeedback },
+        ).slice(0, 2500),
+      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+    }
+    const reusablePerspectiveViews = sceneAtlas.ATLAS_VIEW_KEYS
+      .map(key => selectedView(key))
+      .filter(Boolean);
+    if (reusablePerspectiveViews.length !== sceneAtlas.ATLAS_VIEW_KEYS.length) {
+      try {
+        atlasBundle = await sceneAtlas.splitSceneAtlas({
+          source: atlasResult,
+          taskId,
+          sceneId,
+          revision,
+        });
+        atlasBundle.views.forEach(view => {
+          sceneCheckpoint.markSucceeded(checkpoint, view.key, view, generationBudget);
+          updateSceneGenerationProgress(taskId, {
+            mode: progressMode,
+            phase: 'generation',
+            viewKeys: progressViewKeys,
+            viewKey: view.key,
+            viewStatus: 'succeeded',
+          });
+        });
+      } catch (error) {
+        sceneCheckpoint.markPartial(checkpoint, error);
+        error.partial_scene_checkpoint = true;
+        error.completed_view_keys = ['atlas'];
+        error.failed_view_keys = [...sceneAtlas.ATLAS_VIEW_KEYS];
+        error.scene_id = sceneId;
+        throw error;
+      }
+    } else {
+      const first = reusablePerspectiveViews[0];
+      atlasBundle = {
+        parent: {
+          asset_id: first.parent_asset_id || '',
+          sha256: first.parent_sha256 || '',
+          url: atlasResult.url || atlasResult.image_url || '',
+          image_url: atlasResult.image_url || atlasResult.url || '',
+          provider_used: atlasResult.provider_used || '',
+        },
+        views: reusablePerspectiveViews,
+      };
+    }
+  }
   const master = shouldGenerate('master')
     ? await generateCheckpointedSceneView(taskId, 'master', {
       taskId,
@@ -921,6 +1218,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     : selectedView('master');
   cancellation.throwIfCancelled(taskId);
   const viewImages = [normalizeSceneView({
+    ...master,
     key: 'master',
     label: sceneViewLabel('master'),
     url: master.url || master.image_url,
@@ -940,14 +1238,16 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         taskId,
         stage: 'new_story_ad.scene_asset',
         prompt: buildDerivedViewPrompt(layoutPrompt, 'layout', {
-          referenceOrder: ['master'],
+          referenceOrder: atlasMode ? ['atlas'] : ['master'],
           repairFeedback: layoutCorrection,
         }),
         filename: sceneCheckpoint.candidateFilename(checkpoint, 'layout'),
         aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
         resolution: body.resolution || '2K',
         imageModel: 'gpt-image-2',
-        referenceImages: [master.url || master.image_url],
+        referenceImages: atlasMode
+          ? [atlasResult.url || atlasResult.image_url]
+          : [master.url || master.image_url],
         requireReferences: true,
         inputFidelity: 'low',
         auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
@@ -1127,7 +1427,21 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const repairPlan = buildSceneRepairPlan({
     scene_contract: sceneContract,
     view_images: viewImages,
-    view_acquisition: { layout_appearance_role: LAYOUT_APPEARANCE_ROLE },
+    view_strategy: viewAcquisition.selected,
+    space_asset_contract: atlasMode
+      ? sceneAtlas.buildSpaceAssetContract({
+        spaceId: target.space_id,
+        sceneId,
+        revision,
+        atlas: atlasBundle,
+        views: viewImages,
+        layout: layoutView,
+      })
+      : null,
+    view_acquisition: {
+      selected: viewAcquisition.selected,
+      layout_appearance_role: LAYOUT_APPEARANCE_ROLE,
+    },
   });
   const repairHistory = [
     ...(Array.isArray(previous?.repair_history) ? previous.repair_history : []),
@@ -1136,6 +1450,15 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       source_revision: previous.scene_revision || 1,
       revision,
       regenerated_view_keys: repairViewKeys,
+      result: sceneContract.full_space_lock === true ? 'verified' : (sceneContract.qa_unavailable === true ? 'unavailable' : 'rejected'),
+      created_at: new Date().toISOString(),
+    }] : []),
+    ...(runOptions.rebuildAtlas === true ? [{
+      plan_version: SCENE_REPAIR_PLAN_VERSION,
+      source_revision: Math.max(1, Number(runOptions.rebuildSourceRevision || previous?.scene_revision || 1) || 1),
+      revision,
+      regenerated_view_keys: [...SCENE_GENERATION_ORDER],
+      provider_image_call_count: 2,
       result: sceneContract.full_space_lock === true ? 'verified' : (sceneContract.qa_unavailable === true ? 'unavailable' : 'rejected'),
       created_at: new Date().toISOString(),
     }] : []),
@@ -1168,19 +1491,38 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     view_count: viewImages.length,
     view_strategy: viewAcquisition.selected,
     generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
+    space_asset_contract: atlasMode
+      ? sceneAtlas.buildSpaceAssetContract({
+        spaceId: target.space_id,
+        sceneId,
+        revision,
+        atlas: atlasBundle,
+        views: viewImages,
+        layout: layoutView,
+      })
+      : null,
     view_acquisition: {
       ...viewAcquisition,
       generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
       layout_policy: 'required_for_all_new_scenes',
       layout_appearance_role: LAYOUT_APPEARANCE_ROLE,
       layout_preflight: layoutAcquisition,
-      generation_order: SCENE_GENERATION_ORDER,
+      generation_order: atlasMode ? ['atlas', 'local_crops', 'layout'] : SCENE_GENERATION_ORDER,
+      provider_image_call_count: atlasMode ? 2 : SCENE_GENERATION_ORDER.length,
+      local_crop_count: atlasMode ? sceneAtlas.ATLAS_VIEW_KEYS.length : 0,
       last_generated_views: repairMode ? repairViewKeys : SCENE_GENERATION_ORDER,
       repair_mode: repairMode,
       checkpoint_schema_version: sceneCheckpoint.CHECKPOINT_SCHEMA_VERSION,
       resumed_from_checkpoint: openedCheckpoint.resumed === true,
       checkpoint_resume_count: Number(checkpoint.resume_count || 0) || 0,
-      reference_graph: {
+      reference_graph: atlasMode ? {
+        atlas: [],
+        master: ['atlas'],
+        reverse: ['atlas'],
+        interaction: ['atlas'],
+        detail: ['atlas'],
+        layout: ['atlas'],
+      } : {
         master: [],
         layout: ['master'],
         reverse: ['master', 'layout'],
@@ -1193,7 +1535,10 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     scene_contract: sceneContract,
     cross_view_qa: sceneContract.cross_view_qa,
     requirement_qa: sceneContract.requirement_qa,
+    photographic_realism_qa: sceneContract.photographic_realism_qa,
+    camera_design_qa: sceneContract.camera_design_qa,
     layout_contract: sceneContract.layout_contract,
+    spatial_coverage_qa: sceneContract.spatial_coverage_qa,
     verification: sceneContract.verification,
     repair_plan: repairPlan,
     repair_history: repairHistory,
@@ -1222,6 +1567,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       ...body,
       scene_id: sceneId,
     }, {
+      generationId,
       repairViewKeys: repairPlan.view_keys,
       repairFeedback: repairPlan.reasons.join('；'),
       autoRepairPass: autoRepairPass + 1,
@@ -1253,7 +1599,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   };
 }
 
-async function repairSceneAsset(taskId, sceneId, body = {}) {
+async function repairSceneAsset(taskId, sceneId, body = {}, runOptions = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
@@ -1291,6 +1637,22 @@ async function repairSceneAsset(taskId, sceneId, body = {}) {
     negativeText: asset.negative || '',
     surfaceTopology: asset.surface_topology || {},
   };
+  if (plan.action === 'rebuild_atlas') {
+    return generateSceneAsset(taskId, {
+      ...body,
+      scene_id: asset.scene_id,
+      space_id: asset.space_id || asset.scene_id,
+      scene_spec: sceneSpec,
+      name: asset.name,
+      lock_strength: asset.lock_strength,
+      view_strategy: 'atlas_2x2',
+    }, {
+      ...runOptions,
+      repairFeedback: plan.reasons.join('；'),
+      rebuildAtlas: true,
+      rebuildSourceRevision: asset.scene_revision || 1,
+    });
+  }
   return generateSceneAsset(taskId, {
     ...body,
     scene_id: asset.scene_id,
@@ -1298,6 +1660,7 @@ async function repairSceneAsset(taskId, sceneId, body = {}) {
     name: asset.name,
     lock_strength: asset.lock_strength,
   }, {
+    ...runOptions,
     repairViewKeys: plan.view_keys,
     repairFeedback: plan.reasons.join('；'),
   });
@@ -1377,7 +1740,10 @@ async function reverifySceneAsset(taskId, sceneId) {
     scene_contract: contract,
     cross_view_qa: contract.cross_view_qa,
     requirement_qa: contract.requirement_qa,
+    photographic_realism_qa: contract.photographic_realism_qa,
+    camera_design_qa: contract.camera_design_qa,
     layout_contract: contract.layout_contract,
+    spatial_coverage_qa: contract.spatial_coverage_qa,
     verification: contract.verification,
     repair_plan: buildSceneRepairPlan({ scene_contract: contract, view_images: asset.view_images || [] }),
   };
@@ -1396,13 +1762,16 @@ module.exports = {
   sceneViewContentHash,
   exactSceneViewDuplicate,
   assertCompleteUpgradeSceneSpec,
+  assertSceneRightsPreflight,
   sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
   buildLayoutAcquisitionPrompt,
+  legacyScenePromptFingerprintText,
   buildDerivedViewPrompt,
   buildSceneAuditSafePrompt,
   sceneVisionThumbnailUrl,
   needsLayoutView,
+  sceneRequest,
   buildSceneRepairPlan,
   sceneGenerationUpgradeRequired,
   normalizeSceneAssets,

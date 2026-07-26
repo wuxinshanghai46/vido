@@ -492,8 +492,25 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
   };
 }
 
+function crossShotBoundaryMode(previousShot = {}, currentShot = {}) {
+  const previousSceneId = cleanText(previousShot.scene_id || previousShot.sceneId || '', 120);
+  const currentSceneId = cleanText(currentShot.scene_id || currentShot.sceneId || '', 120);
+  const sameScene = !previousSceneId || !currentSceneId || previousSceneId === currentSceneId;
+  return {
+    same_scene: sameScene,
+    mode: sameScene ? 'same_scene_continuity' : 'intentional_scene_change',
+    transition_type: cleanText(currentShot.transition_type || currentShot.transition || 'hard_cut', 40).toLowerCase(),
+    transition_reason: cleanText(currentShot.transition_reason || '', 240),
+    match_anchor: cleanText(
+      currentShot.transition_match_anchor || currentShot.match_anchor || '',
+      180,
+    ),
+  };
+}
+
 async function reviewCrossShot({ taskId = '', previous = null, current = null, previousShot = {}, currentShot = {}, previousLineageFingerprint = '', currentLineageFingerprint = '', ctx = {}, gateway = modelGateway, repair = jsonRepair } = {}) {
   const lineageBinding = { previous_lineage_fingerprint: String(previousLineageFingerprint || ''), current_lineage_fingerprint: String(currentLineageFingerprint || '') };
+  const boundary = crossShotBoundaryMode(previousShot, currentShot);
   if (!hasReviewFrameEvidence(previous || {}) || !hasReviewFrameEvidence(current || {})) return {
     pass: false,
     status: 'rejected_missing_frame_evidence',
@@ -507,28 +524,57 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
     checked_at: new Date().toISOString(),
     used_model: 'none/local-evidence-gate',
   };
-  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, ...lineageBinding, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-cross-shot-video-qa' };
+  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, ...lineageBinding, ...boundary, boundary_mode: boundary.mode, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-cross-shot-video-qa' };
   const previousTail = previous.frames[previous.frames.length - 1];
   const currentHead = current.frames[0];
   const previousTemporal = temporalEvidenceOf(previousShot, {});
   const currentTemporal = temporalEvidenceOf(currentShot, {});
-  const requiredEvidenceDimensions = [...new Set([
+  let requiredEvidenceDimensions = [...new Set([
     ...requiredTemporalDimensions(previousTemporal, { hasScene: !!previousShot.scene_id }),
     ...requiredTemporalDimensions(currentTemporal, { hasScene: !!currentShot.scene_id }),
   ])];
+  if (!boundary.same_scene) {
+    requiredEvidenceDimensions = requiredEvidenceDimensions.filter(key => key !== 'spatial_topology');
+  }
+  const crossSceneSchema = '{"pass":boolean,"person_identity_score":0..1,"wardrobe_score":0..1,"prop_intent_score":0..1,"transition_readability_score":0..1,"direction_intent_score":0..1,"action_transition_score":0..1,"match_anchor_score":0..1|null,"evidence_checks":object,"problems":string[]}';
+  const sameSceneSchema = '{"pass":boolean,"person_position_score":0..1,"wardrobe_score":0..1,"prop_state_score":0..1,"scene_score":0..1,"screen_direction_score":0..1,"action_continuity_score":0..1,"evidence_checks":object,"problems":string[]}';
   const result = await gateway.generateVision({
     taskId,
     stage: 'new_story_ad.cross_shot_visual_qa',
     imageUrls: [previousTail, currentHead].map(frame => mediaAdapter.absolutePublicImageUrl(frame.image_url)),
-    systemPrompt: 'You are a strict adjacent-shot continuity inspector for a general-purpose commercial video platform. Return strict JSON only and judge only the current task.',
-    userPrompt: `Previous shot: ${JSON.stringify(previousShot)}\nCurrent shot: ${JSON.stringify(currentShot)}\nContracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, previous_temporal_evidence: previousTemporal, current_temporal_evidence: currentTemporal })}\nCompare the previous tail and current head. For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"visible comparison evidence","frame_indexes":[0,1]}. Do not infer evidence from text. Return {"pass":boolean,"person_position_score":0..1,"wardrobe_score":0..1,"prop_state_score":0..1,"scene_score":0..1,"screen_direction_score":0..1,"action_continuity_score":0..1,"evidence_checks":object,"problems":string[]}.`,
+    systemPrompt: `You are a strict adjacent-shot transition inspector for a general-purpose commercial video platform. Boundary mode is ${boundary.mode}. Return strict JSON only and judge only the current task.`,
+    userPrompt: `Boundary contract: ${JSON.stringify(boundary)}\nPrevious shot: ${JSON.stringify(previousShot)}\nCurrent shot: ${JSON.stringify(currentShot)}\nContracts: ${JSON.stringify({ person: ctx.person_contract || null, product: ctx.product_contract || null, previous_temporal_evidence: previousTemporal, current_temporal_evidence: currentTemporal })}\nCompare the previous tail and current head. ${boundary.same_scene
+      ? 'These shots stay in one scene. Enforce spatial, subject, prop, screen-direction and action continuity.'
+      : 'These shots intentionally change scenes. Do NOT require the background, layout, camera position or subject screen position to remain the same. Judge whether the intended change is readable, identities and required state are preserved, the authored transition reason is supported, and cut_on_action or match_cut has visible boundary evidence.'} For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"visible comparison evidence","frame_indexes":[0,1]}. Do not infer evidence from text. Return ${boundary.same_scene ? sameSceneSchema : crossSceneSchema}.`,
     maxTokens: 2200,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
   const problems = Array.isArray(parsed.problems) ? parsed.problems.map(value => cleanText(value, 300)).filter(Boolean) : [];
-  const scores = ['person_position_score', 'wardrobe_score', 'prop_state_score', 'scene_score', 'screen_direction_score', 'action_continuity_score'];
+  if (boundary.transition_type === 'match_cut' && !boundary.match_anchor) {
+    problems.push('匹配切换缺少可验证的匹配锚点');
+  }
+  if (!boundary.same_scene && !boundary.transition_reason) {
+    problems.push('跨场景切换缺少明确的叙事原因');
+  }
+  const scores = boundary.same_scene
+    ? ['person_position_score', 'wardrobe_score', 'prop_state_score', 'scene_score', 'screen_direction_score', 'action_continuity_score']
+    : ['person_identity_score', 'wardrobe_score', 'prop_intent_score', 'transition_readability_score', 'direction_intent_score', 'action_transition_score'];
+  if (!boundary.same_scene && boundary.transition_type === 'match_cut') scores.push('match_anchor_score');
   const normalized = Object.fromEntries(scores.map(key => [key, Math.max(0, Math.min(1, Number(parsed[key]) || 0))]));
-  const failed = failedDimensionDetails(normalized, CROSS_DIMENSIONS, 0.7);
+  const crossSceneDimensions = {
+    person_identity_score: ['person_identity', '人物身份保持'],
+    wardrobe_score: ['wardrobe', '服装与造型保持'],
+    prop_intent_score: ['prop_intent', '道具状态与预期变化'],
+    transition_readability_score: ['transition_readability', '跨场景切换可读性'],
+    direction_intent_score: ['direction_intent', '运动方向与切换意图'],
+    action_transition_score: ['action_transition', '动作切换承接'],
+    match_anchor_score: ['match_anchor', '匹配锚点'],
+  };
+  const failed = failedDimensionDetails(
+    normalized,
+    boundary.same_scene ? CROSS_DIMENSIONS : crossSceneDimensions,
+    0.7,
+  );
   const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions, {
     minimumEvidencePoints: 2,
     transitionEvidencePoints: 2,
@@ -543,6 +589,11 @@ async function reviewCrossShot({ taskId = '', previous = null, current = null, p
   return {
     qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION,
     ...lineageBinding,
+    boundary_mode: boundary.mode,
+    same_scene: boundary.same_scene,
+    transition_type: boundary.transition_type,
+    transition_reason: boundary.transition_reason,
+    transition_match_anchor: boundary.match_anchor,
     pass, status: pass ? 'verified' : 'rejected', ...normalized,
     problems: [
       ...problems,
@@ -598,6 +649,7 @@ module.exports = {
   deterministicLocalMotionQa,
   verifyDeterministicLocalMotionClip,
   reviewVideoClip,
+  crossShotBoundaryMode,
   reviewCrossShot,
   crossShotFailure,
 };

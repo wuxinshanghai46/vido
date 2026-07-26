@@ -2,7 +2,7 @@ const fs = require('fs'), crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepairService'), outputLanguage = require('./outputLanguageService');
-const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent } = require('./contextBuilder');
+const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent, taskTitle } = require('./contextBuilder');
 const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
@@ -24,7 +24,9 @@ const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
 const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, normalizeScenePlan, assertScenePlanContract, resolveSceneMode, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 const subjectReferences = require('./subjectReferenceService');
+const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
+const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
 const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService'), productKeyframeQa = require('./productConsistencyQaService');
@@ -40,6 +42,7 @@ const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
+const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
@@ -58,9 +61,6 @@ function withAssetContracts(ctx = {}) {
   }
   next.product_contract = next.product_contract || productIdentity.buildProductContract(next, { revision: next.revisions?.product || 1 });
   return next;
-}
-function taskTitle(ctx) {
-  return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
 }
 function keyframeImageUrl(frame = {}) {
   const value = frame && typeof frame === 'object' ? frame : {};
@@ -172,8 +172,6 @@ function persistProgressSnapshot(taskId, snapshot = {}) {
   if (!snapshot || typeof snapshot !== 'object') return;
   const allowedOutputs = {
     context: 'context',
-    scene_config: 'scene_config',
-    sceneConfig: 'scene_config',
     blueprint: 'blueprint',
     storyboard_table: 'storyboard_table',
     storyboardTable: 'storyboard_table',
@@ -199,9 +197,8 @@ function persistProgressSnapshot(taskId, snapshot = {}) {
     if (value === undefined || value === null) return;
     if (Array.isArray(value) && !value.length) return;
     if (value && typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length) return;
-    storage.saveOutput(taskId, outputKind, value);
-  });
-}
+    storage.saveOutput(taskId, outputKind, outputKind === 'scene_assets' ? taskProgressSave.mergeAutosaveSceneAssets(storage.getOutput(taskId, outputKind), value) : value);
+  }); }
 function assertTaskOwner(taskId, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -274,6 +271,7 @@ function storyboardStatus(bundle = {}, outputs = {}) {
 }
 function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
   const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
+  const projectedSceneAssets = sceneCheckpointProjection.projectSceneAssets(rawBundle.outputs || []);
   const videoShotStatuses = (rawBundle.outputs || [])
     .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
     .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
@@ -298,13 +296,20 @@ function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = f
       retryable: status.retryable === true,
       updated_at: status.updated_at || '',
     }); });
-  const visibleOutputs = (includeVideoMonitor
+  let visibleOutputs = (includeVideoMonitor
     ? (rawBundle.outputs || [])
     : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
     .filter(row => !/^(?:scene|subject)_asset_checkpoint:/.test(String(row.kind || '')))
     .map(row => String(row.kind || '') === 'scene_assets'
-      ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(row.payload || []) }
+      ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) }
       : row);
+  visibleOutputs = personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs);
+  if (projectedSceneAssets.length && !visibleOutputs.some(row => String(row.kind || '') === 'scene_assets')) {
+    visibleOutputs = [
+      ...visibleOutputs,
+      { kind: 'scene_assets', payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) },
+    ];
+  }
   const bundle = { ...rawBundle, outputs: visibleOutputs };
   const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload])); outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
   const currentStoryboardStatus = storyboardStatus(bundle, outputs);
@@ -486,7 +491,12 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const existingFinalVideo = storage.getOutput(taskId, 'final_video');
-  const explicitScenePlanInput = body.scene_plan || body.scenePlan || null;
+  const savingProgress = body.save_progress === true || body.saveProgress === true;
+  const requestedScope = cleanText(body.change_scope || body.changeScope || '', 40).toLowerCase();
+  const progressSnapshot = body.progress_snapshot || body.progressSnapshot || {};
+  const explicitScenePlanInput = body.scene_plan || body.scenePlan || (savingProgress && requestedScope === 'scene'
+    ? (progressSnapshot.scene_config || progressSnapshot.sceneConfig || null) : null);
+  if (savingProgress && requestedScope === 'scene' && !explicitScenePlanInput) { const error = new Error('场景变更缺少完整逐空间场景计划；已在持久化和失效清理前停止，原场景合同未改动'); error.code = 'SCENE_PLAN_REQUIRED_FOR_SCENE_SAVE'; error.status = 422; error.retryable = false; throw error; }
   const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
   let builtCtx = buildContext(
     { ...(task.request || {}), ...(body || {}), task_id: taskId },
@@ -500,7 +510,6 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     scene_mode: explicitScenePlan.scene_mode,
     scene_spec: explicitScenePlan.spaces[0]?.scene_spec || builtCtx.scene_spec,
   };
-  const savingProgress = body.save_progress === true || body.saveProgress === true;
   const mediaChangeScope = body.media_change_scope || body.mediaChangeScope || '';
   builtCtx = taskProgressSave.preserveUnconfirmedMediaSettings(previousCtx, builtCtx, { savingProgress, mediaChangeScope });
   const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
@@ -523,6 +532,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
       : null;
   }
   if (scope === 'product' || scope === 'source') ctx.product_contract = null;
+  if (savingProgress && Array.isArray(ctx.scene_assets)) ctx.scene_assets = taskProgressSave.mergeAutosaveSceneAssets(previousCtx.scene_assets, ctx.scene_assets);
   ctx = withAssetContracts(ctx);
   let invalidated = [];
   const patch = {
@@ -535,7 +545,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     Object.assign(patch, taskProgressSave.taskPatch(task, { progressStage, hasActiveGeneration, changeScope: scope }));
     patch.saved_progress = true;
     patch.saved_progress_at = new Date().toISOString();
-    persistProgressSnapshot(taskId, body.progress_snapshot || body.progressSnapshot || {});
+    persistProgressSnapshot(taskId, progressSnapshot);
   }
   invalidated = revisionService.invalidateOutputs(storage, taskId, scope);
   const mediaInvalidated = taskProgressSave.mediaInvalidatedOutputs(previousCtx, ctx, {
@@ -563,7 +573,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
   return { task: updated, context: ctx, change_scope: scope, invalidated_outputs: invalidated };
 }
-async function verifyPersonContract(taskId) {
+async function verifyPersonContract(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -573,27 +583,23 @@ async function verifyPersonContract(taskId) {
     error.status = 422;
     throw error;
   }
-  const contract = await personIdentity.verifyPersonAsset({
+  const verified = await subjectAssetBundle.reverifyPersonBundle({
     taskId,
-    asset: ctx.person_asset,
-    spec: ctx.person_spec || {},
-    revision: ctx.revisions?.person || ctx.person_asset.person_revision || 1,
-    force: true,
+    personAsset: ctx.person_asset,
+    castProfiles: Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [],
+    subjectTargets: options.subject_targets || options.subjectTargets || [],
+    personSpec: ctx.person_spec || {},
   });
   const next = {
     ...ctx,
-    person_contract: contract,
-    person_asset: {
-      ...ctx.person_asset,
-      person_revision: contract.person_revision,
-      person_contract: contract,
-      production_usable_actor: contract.status === 'verified',
-    },
+    person_contract: verified.person_contract,
+    person_asset: verified.person_asset,
+    cast_profiles: verified.cast_profiles,
   };
   storage.saveOutput(taskId, 'context', next);
-  storage.saveOutput(taskId, 'person_contract', contract);
-  storage.updateTask(taskId, { request: next });
-  return { person_contract: contract, person_asset: next.person_asset };
+  storage.saveOutput(taskId, 'person_contract', verified.person_contract);
+  storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
+  return verified;
 }
 
 async function verifyProductContract(taskId) {
@@ -800,6 +806,7 @@ async function generateSceneConfig(taskId, options = {}) {
     '不能自行继承旧任务、不能写固定行业模板。',
     '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、human_pet、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色；human_pet 必须分别维护人物和宠物数量及一致性。',
     '识别剧情实际发生的每个独立物理空间；家庭、办公室、门店、户外等不同地点必须拆成独立空间，不得合并成一套场景资产。',
+    visualRealismPolicy.sceneSpecRealismRuleZh(),
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
 
@@ -1201,12 +1208,12 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     (continuityLock.transition_type || continuityLock.transition_reason)
       ? `Transition: ${cleanText(continuityLock.transition_type || 'hard_cut', 40)}; ${cleanText(continuityLock.transition_reason, 180)}`
       : '',
+    continuityLock.transition_match_anchor ? `Transition match anchor that must be visibly prepared in this keyframe: ${cleanText(continuityLock.transition_match_anchor, 180)}` : '',
+    continuityLock.boundary_mode ? `Boundary mode: ${cleanText(continuityLock.boundary_mode, 60)}` : '',
     continuityLock.requires_previous_frame === true ? 'Requires previous frame: yes' : '',
   ].filter(Boolean).join('\n');
-  const personAsset = ctx.person_asset || {};
-  const personSpec = ctx.person_spec || {};
-  const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : [];
-  const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
+  const personAsset = ctx.person_asset || {}; const personSpec = ctx.person_spec || {};
+  const actorViews = Array.isArray(personAsset.view_images) ? personAsset.view_images : []; const userVisualOverride = shot.user_visual_override === true || shot._nsa_user_edited_fields?.visual === true;
   const previousFrame = options.previousFrame || null;
   const sceneAsset = options.sceneAsset || sceneAssetForShot(ctx, shot, index);
   const contractDesign = visualContract.shot_design;
@@ -3542,6 +3549,12 @@ async function assistBrief(body = {}, user = {}) {
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
   const isShotSettings = mode === 'shot_settings' || mode === 'shot';
+  const hasAssistSubjectTarget = !!(body.assist_subject_target || body.assistSubjectTarget);
+  const assistSubjectTarget = isPersonSpec ? assistSubjectProfiles.resolveAssistSubjectTarget(body, ctx) : null;
+  if (isPersonSpec && hasAssistSubjectTarget && !assistSubjectTarget) { const error = new Error('单人物辅助补齐目标无效；没有调用文本模型'); error.code = 'ASSIST_SUBJECT_TARGET_INVALID'; error.status = 400; throw error; }
+  const currentScenePlan = isSceneSpec ? normalizeScenePlan(body.scene_plan || body.scenePlan || body.scene_config || body.sceneConfig || {}) : { spaces: [] };
+  const assistSceneTargetId = isSceneSpec ? cleanText(body.target_space_id || body.targetSpaceId || '', 100) : '';
+  if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
   const systemPrompt = [
     '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
@@ -3549,10 +3562,12 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
-    'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
+    assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
+    `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
     'scene_spec 模式必须识别剧情实际发生的每个独立物理空间，并输出 scene_plan.spaces；两个地点不得合并进同一个 layoutText。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。',
+    visualRealismPolicy.sceneSpecRealismRuleZh(),
     '当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
@@ -3589,9 +3604,9 @@ async function assistBrief(body = {}, user = {}) {
     "displayName": "该人物正式姓名或关系称呼",
     "roleName": "该人物在剧情中的独立身份、年龄关系或职责",
     "appearanceText": "只描述该人物的年龄、脸型、体型、气质和可识别外貌，不得包含其他成员",
-    "wardrobeText": "只描述该人物自己的上衣、下装、鞋、配饰、颜色和材质",
-    "hairMakeupText": "只描述该人物自己的发型和妆造",
-    "negativeText": "只适用于该人物的禁止项"
+    "wardrobeText": "只描述该人物自己的固定上衣、固定下装或裙装、固定鞋、固定配饰、颜色和材质；必须适用于全部四视图，不得使用条件式、可选式或二选一造型",
+    "hairMakeupText": "只描述该人物自己的固定发型和妆造；明确帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴，全部四视图完全一致",
+    "negativeText": "只适用于该人物的禁止项，并明确禁止四视图之间增减、更换、变色或移动服装、鞋、帽子、眼镜、发饰和首饰"
   }],
   "pet_profiles": [{
     "id": "稳定且唯一的 pet_1/pet_2 等 ID",
@@ -3656,7 +3671,8 @@ async function assistBrief(body = {}, user = {}) {
 
 模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 
-${isPersonSpec ? '人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。' : ''}
+${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只补齐目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。只返回这一名人物的一条 cast_profiles 记录，保持已有非空字段，补齐其空白字段；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
+${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。当前完整场景计划：${JSON.stringify(currentScenePlan).slice(0, 18000)}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 
 输出 JSON：
@@ -3689,12 +3705,11 @@ ${outputSchema}`;
     };
   }
   if (isPersonSpec) {
-    return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec });
+    return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec, target: assistSubjectTarget });
   }
   if (isSceneSpec) {
     return assistScenePlan.buildResponse({
-      parsed, context: ctx, currentPlan: body.scene_plan || body.scenePlan || body.scene_config || body.sceneConfig || {},
-      mode, modelResult: result,
+      parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId, mode, modelResult: result,
     });
   }
   if (isShotSettings) {

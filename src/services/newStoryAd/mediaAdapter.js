@@ -136,7 +136,7 @@ function compactImagePrompt(prompt = '', maxLength = 6000) {
   const raw = String(prompt || '').replace(/\r/g, '').trim();
   if (raw.length <= limit) return raw;
   const blocks = raw.split(/\n{2,}/).map(value => value.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  const priorityPattern = /mandatory correction|user scene requirement|scene layout requirement|material and lighting|interaction and camera|surface construction|task-specific|view requirement|camera|composition|advertised subject|campaign brief|final look target|rights and originality rule/i;
+  const priorityPattern = /mandatory correction|user scene requirement|scene layout requirement|material and lighting|interaction and camera|surface construction|task-specific|view requirement|camera|composition|advertised subject|campaign brief|final look target|originality requirement/i;
   const ordered = [
     ...blocks.slice(0, 2),
     ...blocks.filter(block => priorityPattern.test(block)),
@@ -237,8 +237,11 @@ function classifyImageGenerationError(error = null) {
 function rightsAwareImagePrompt(prompt = '') {
   const source = String(prompt || '').trim();
   if (!source) return '';
-  const safety = 'Rights and originality rule: unless the task explicitly states that the relevant rights are cleared, do not reproduce any celebrity or public-figure likeness, copyrighted fictional character, protected artwork, trademark, brand logo or signature visual identity. If such material appears only as a creative reference, translate the intent into generic observable lighting, color, lens, material and composition attributes. Use original, task-specific visual solutions. Treat task-provided references only as requested continuity evidence and never infer additional third-party intellectual property.';
-  return source.includes('Rights and originality rule:') ? source : `${source}\n\n${safety}`.trim();
+  // Rights are enforced before image submission by the blueprint quality gate.
+  // State the positive production contract here without appending a catalogue of
+  // restricted terms that a domestic gateway can misread as requested content.
+  const safety = 'Originality requirement: create a task-specific visual solution from the supplied production contract and continuity evidence. Describe and preserve only observable lighting, colour, lens, material, spatial and composition attributes. Keep the result non-identifying and free of readable typography, signatures or identifying marks.';
+  return source.includes('Originality requirement:') ? source : `${source}\n\n${safety}`.trim();
 }
 
 function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '', forceAuditSafe = false) {
@@ -374,6 +377,7 @@ async function splitActorSheet({ source = {}, filenamePrefix = 'new_story_actor_
 async function splitReferenceSheet({
   source = {},
   filenamePrefix = 'new_story_reference_sheet',
+  filenameSuffix = '',
   viewKeys = ['view_1', 'view_2', 'view_3', 'view_4'],
   outputWidth = 1024,
   outputHeight = 576,
@@ -398,7 +402,8 @@ async function splitReferenceSheet({
   const views = [];
   for (let i = 0; i < rects.length; i += 1) {
     const key = viewKeys[i] || `view_${i + 1}`;
-    const safe = safeFilename(`${filenamePrefix}_${key}_${Date.now()}_${i + 1}`, '.png');
+    const stableSuffix = String(filenameSuffix || '').replace(/[^a-z0-9_-]/ig, '').slice(0, 32);
+    const safe = safeFilename(`${filenamePrefix}_${key}_${stableSuffix || Date.now()}_${i + 1}`, '.png');
     const out = path.join(ASSET_DIR, safe);
     await sharp(normalized)
       .extract(rects[i])
@@ -689,6 +694,8 @@ async function generateImage({
     error.providerRequestId = uncertain.provider_request_id || '';
     error.providerTaskId = uncertain.provider_task_id || '';
   }
+  error.generationId = String(generationId || '').slice(0, 100);
+  error.submissionId = String(clientRequestId || '').slice(0, 100);
   throw error;
 }
 

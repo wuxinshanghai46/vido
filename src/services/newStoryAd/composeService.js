@@ -3,6 +3,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const cancellation = require('./cancellationContext');
 const ffmpegPath = require('ffmpeg-static');
+const ffprobePath = require('ffprobe-static').path;
 const videoAdapter = require('./videoAdapter');
 const ttsAdapter = require('./ttsAdapter');
 const finalVideoQa = require('./finalVideoQaService');
@@ -53,6 +54,23 @@ function execFfmpeg(args, timeoutMs = 180000) {
       if (code === 0) return resolve();
       reject(new Error(stderr.split(/\r?\n/).filter(Boolean).slice(-6).join(' | ') || `ffmpeg exited ${code}`));
     });
+  });
+}
+
+function hasAudioStream(filePath = '') {
+  if (!filePath || !fs.existsSync(filePath) || !ffprobePath) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const child = spawn(ffprobePath, [
+      '-v', 'error',
+      '-select_streams', 'a:0',
+      '-show_entries', 'stream=index',
+      '-of', 'csv=p=0',
+      filePath,
+    ], { windowsHide: true });
+    let stdout = '';
+    child.stdout.on('data', chunk => { stdout += chunk.toString(); });
+    child.on('error', () => resolve(false));
+    child.on('close', code => resolve(code === 0 && !!stdout.trim()));
   });
 }
 
@@ -131,7 +149,10 @@ async function muxTimelineVoiceTracks(videoPath = '', placements = [], outputPat
   if (!valid.length && !ensureAudio) return videoPath;
   const args = ['-y', '-i', videoPath];
   valid.forEach(item => args.push('-i', item.audio_path));
-  const filters = [`anullsrc=r=44100:cl=stereo,atrim=0:${duration.toFixed(3)}[abase]`];
+  const sourceHasAudio = await hasAudioStream(videoPath);
+  const filters = [sourceHasAudio
+    ? `[0:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${duration.toFixed(3)},asetpts=PTS-STARTPTS[abase]`
+    : `anullsrc=r=44100:cl=stereo,atrim=0:${duration.toFixed(3)}[abase]`];
   const audioLabels = ['[abase]'];
   valid.forEach((item, index) => {
     const delay = Math.max(0, Math.round(Number(item.offset_sec || 0) * 1000));
@@ -227,19 +248,41 @@ function buildTransitionPlan(clips = [], transitions = [], durations = []) {
       && clip.scene_block_members.length > 1;
     const effect = sameContinuousSource
       ? 'continuous_source_cut'
-      : (authored === 'dissolve' ? 'dissolve' : (authored === 'fade' ? 'fade_black' : 'cut'));
+      : (authored === 'dissolve'
+          ? 'dissolve'
+          : (authored === 'fade'
+              ? 'fade_black'
+              : (authored === 'cut_on_action'
+                  ? 'cut_on_action'
+                  : (authored === 'match_cut' ? 'match_cut' : 'hard_cut'))));
     const available = index > 0 ? Math.min(Number(durations[index - 1] || 0), Number(durations[index] || 0)) : 0;
+    const requestedDuration = Math.max(0, Math.min(
+      2,
+      Number(transitions[index]?.transition_duration_sec ?? transitions[index]?.transitionDurationSec ?? 0) || 0,
+    ));
     const overlap = ['dissolve', 'fade_black'].includes(effect)
-      ? Math.max(0, Math.min(0.35, available / 4))
+      ? Math.max(0, Math.min(requestedDuration || 0.35, available / 3))
       : 0;
+    const audioBridge = transitions[index]?.audio_bridge || transitions[index]?.audioBridge || '';
+    const requestedAudioOverlap = Math.max(0, Math.min(
+      1.5,
+      Number(transitions[index]?.audio_bridge_duration_sec ?? transitions[index]?.audioBridgeDurationSec ?? 0) || 0,
+    ));
+    const audioOverlap = index > 0 && audioBridge
+      ? Math.max(0.05, Math.min(requestedAudioOverlap || 0.35, available / 3))
+      : overlap;
     return {
       shot_index: index + 1,
       first_shot_index: Number(clip?._first_shot_index || index + 1),
       type: authored,
       reason: transitions[index]?.transition_reason || transitions[index]?.transitionReason || '',
-      audio_bridge: transitions[index]?.audio_bridge || transitions[index]?.audioBridge || '',
+      audio_bridge: audioBridge,
+      audio_bridge_execution: audioBridge ? 'j_cut_crossfade' : (overlap > 0 ? 'transition_crossfade' : 'none'),
       execution: effect,
       overlap_sec: Number(overlap.toFixed(3)),
+      audio_overlap_sec: Number(audioOverlap.toFixed(3)),
+      match_anchor: transitions[index]?.transition_match_anchor || transitions[index]?.transitionMatchAnchor || '',
+      verification_required: ['cut_on_action', 'match_cut'].includes(effect),
       same_continuous_source: sameContinuousSource,
     };
   });
@@ -259,6 +302,7 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
   for (let index = 1; index < inputs.length; index += 1) {
     const row = plan[index] || {};
     const overlap = Number(row.overlap_sec || 0);
+    const audioOverlap = Number(row.audio_overlap_sec || 0);
     const nextVideo = `vj${index}`;
     const nextAudio = `aj${index}`;
     if (overlap > 0) {
@@ -285,21 +329,31 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
       filters.push(`[${outgoing}][${incoming}]blend=all_expr='${blendExpression}'[${blended}]`);
       filters.push(`[${previousVisible}][${blended}][${incomingVisible}]concat=n=3:v=1:a=0[${rawVideo}]`);
       filters.push(`[${rawVideo}]fps=30,settb=AVTB,setpts=PTS-STARTPTS[${nextVideo}]`);
-      filters.push(`[${audioLabel}][a${index}]acrossfade=d=${overlap.toFixed(3)}:c1=tri:c2=tri[${nextAudio}]`);
+      if (audioOverlap > 0) {
+        filters.push(`[${audioLabel}][a${index}]acrossfade=d=${audioOverlap.toFixed(3)}:c1=tri:c2=tri[${nextAudio}]`);
+      } else {
+        filters.push(`[${audioLabel}][a${index}]concat=n=2:v=0:a=1[${nextAudio}]`);
+      }
       timeline += Number(durations[index] || 0) - overlap;
     } else {
       const rawVideo = `vraw${index}`;
       filters.push(`[${videoLabel}][v${index}]concat=n=2:v=1:a=0[${rawVideo}]`);
       filters.push(`[${rawVideo}]fps=30,settb=AVTB,setpts=PTS-STARTPTS[${nextVideo}]`);
-      filters.push(`[${audioLabel}][a${index}]concat=n=2:v=0:a=1[${nextAudio}]`);
+      if (audioOverlap > 0) {
+        filters.push(`[${audioLabel}][a${index}]acrossfade=d=${audioOverlap.toFixed(3)}:c1=tri:c2=tri[${nextAudio}]`);
+      } else {
+        filters.push(`[${audioLabel}][a${index}]concat=n=2:v=0:a=1[${nextAudio}]`);
+      }
       timeline += Number(durations[index] || 0);
     }
     videoLabel = nextVideo;
     audioLabel = nextAudio;
   }
+  const finalAudio = 'afinal';
+  filters.push(`[${audioLabel}]apad,atrim=0:${Math.max(0.2, timeline).toFixed(3)},asetpts=PTS-STARTPTS[${finalAudio}]`);
   args.push(
     '-filter_complex', filters.join(';'),
-    '-map', `[${videoLabel}]`, '-map', `[${audioLabel}]`,
+    '-map', `[${videoLabel}]`, '-map', `[${finalAudio}]`,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22',
     '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
     '-movflags', '+faststart', outputPath,
@@ -339,7 +393,8 @@ async function concatVideos({
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : (Array.isArray(ttsAudio) ? ttsAudio : []);
   const transitionRows = visualUnits.map(unit => transitions[unit.first_index] || {});
   const anyVoiceTrack = visualUnits.some(unit => unit.member_indexes.some(index => !!localAudioPath(tracks[index] || {})));
-  const authoredAudioTransitions = transitionRows.some((row, index) => index > 0 && ['dissolve', 'fade'].includes(transitionType(row)));
+  const authoredAudioTransitions = transitionRows.some((row, index) => index > 0
+    && (['dissolve', 'fade'].includes(transitionType(row)) || String(row?.audio_bridge || row?.audioBridge || '').trim()));
   const inputs = [];
   const durations = [];
   let voiceTrackCount = 0;
@@ -365,7 +420,9 @@ async function concatVideos({
   const out = path.join(COMPOSE_DIR, filename);
   const transitionClips = visualUnits.map(unit => ({ ...unit.clips[0], _first_shot_index: unit.first_index + 1 }));
   const transitionPlan = buildTransitionPlan(transitionClips, transitionRows, durations);
-  const needsTransitionFilters = transitionPlan.some(row => Number(row.overlap_sec || 0) > 0);
+  const needsTransitionFilters = transitionPlan.some(row => (
+    Number(row.overlap_sec || 0) > 0 || Number(row.audio_overlap_sec || 0) > 0
+  ));
   if (inputs.length === 1) {
     fs.copyFileSync(inputs[0], out);
   } else if (needsTransitionFilters) {
@@ -409,7 +466,7 @@ async function concatVideos({
   const technicalQa = await finalVideoQa.inspectFinalVideo({
     filePath: finalPath,
     expectedDurationSec,
-    requireAudio: voiceTrackCount > 0 || !!bgmPath,
+    requireAudio: voiceTrackCount > 0 || !!bgmPath || authoredAudioTransitions,
     transitionPlan,
     inputDurations: durations,
   });
@@ -432,6 +489,8 @@ async function concatVideos({
     voiceover_applied: voiceTrackCount > 0,
     voiceover_track_count: voiceTrackCount,
     bgm_applied: !!bgmPath,
+    audio_bridge_applied: transitionPlan.some(row => row.audio_bridge_execution === 'j_cut_crossfade'),
+    audio_bridge_count: transitionPlan.filter(row => row.audio_bridge_execution === 'j_cut_crossfade').length,
     subtitle_applied: validSubtitles.length > 0,
     subtitle_style: subtitleStyle || 'popup',
     provider_used: providerUsed,

@@ -8,9 +8,10 @@
 
   /** 统一读取人物或宠物的四视图；单人、双人、多人和宠物共用同一数据合同。 */
   function subjectViews(asset = {}) {
-    const raw = Array.isArray(asset.view_images) && asset.view_images.length
-      ? asset.view_images
-      : (Array.isArray(asset.reference_images) ? asset.reference_images : []);
+    const raw = [
+      ...(Array.isArray(asset.view_images) ? asset.view_images : []),
+      ...(Array.isArray(asset.reference_images) ? asset.reference_images : []),
+    ];
     const seen = new Set();
     return raw.map((view, index) => {
       const item = view && typeof view === 'object' ? view : {};
@@ -32,19 +33,32 @@
     ];
   }
 
+  function subjectGalleryKey(kind = 'person', asset = {}, index = 0) {
+    const id = asset.actor_id || asset.actor_asset_id || asset.pet_id || asset.asset_library_id
+      || asset.material_id || asset.id || subjectViews(asset)[0]?.url
+      || `${asset.name || asset.cast_role || asset.type || 'subject'}_${index + 1}`;
+    return `${kind}:${clean(id, 260)}`;
+  }
+
   /** 渲染按需加载的统一主体图库；首图立即显示，四视图仅在展开时请求缩略图。 */
-  function subjectGalleryHtml(personAsset = null, petProfiles = [], { escapeHtml = value => String(value), assetThumbUrl = value => value } = {}) {
+  function subjectGalleryHtml(personAsset = null, petProfiles = [], {
+    escapeHtml = value => String(value),
+    assetThumbUrl = value => value,
+    openKeys = null,
+  } = {}) {
     const members = subjectMembers(personAsset, petProfiles);
     if (!members.length) return '';
     return `<div class="dh-nsa-subject-gallery">${members.map(({ kind, asset, name }, memberIndex) => {
       const views = subjectViews(asset);
       const mainUrl = asset.image_url || views[0]?.url || '';
       const title = `${name} · ${kind === 'pet' ? '宠物' : '人物'}参考`;
+      const galleryKey = subjectGalleryKey(kind, asset, memberIndex);
+      const isOpen = openKeys?.has?.(galleryKey) === true;
       const viewGrid = views.length > 1
-        ? `<details class="dh-nsa-subject-views" data-nsa-subject-gallery>
-            <summary data-nsa-subject-gallery-toggle>查看四视图 <em>${views.length} 张</em></summary>
+        ? `<details class="dh-nsa-subject-views" data-nsa-subject-gallery data-nsa-subject-gallery-key="${escapeHtml(galleryKey)}"${isOpen ? ' open' : ''}>
+            <summary data-nsa-subject-gallery-toggle aria-expanded="${isOpen ? 'true' : 'false'}"><span data-nsa-subject-gallery-label>${isOpen ? '收起四视图' : '查看四视图'}</span><em>${views.length} 张</em></summary>
             <div class="dh-lux-actor-views">${views.map((view, viewIndex) => `<button type="button" data-nsa-subject-preview-url="${escapeHtml(view.url)}" data-nsa-subject-preview-title="${escapeHtml(`${name} · ${view.label}`)}" title="${escapeHtml(view.label)}">
-              <img data-src="${escapeHtml(assetThumbUrl(view.url, 280))}" alt="${escapeHtml(`${name} ${view.label}`)}" loading="lazy" decoding="async">
+              <img ${isOpen ? 'src' : 'data-src'}="${escapeHtml(assetThumbUrl(view.url, 280))}" alt="${escapeHtml(`${name} ${view.label}`)}" loading="lazy" decoding="async">
               <span>${escapeHtml(view.label)}</span>
             </button>`).join('')}</div>
           </details>`
@@ -59,7 +73,6 @@
     }).join('')}</div>`;
   }
 
-  /** 用户展开某个成员时才设置缩略图 src，避免多人宠物任务首屏并发下载全部图片。 */
   function loadGalleryImages(container = null) {
     if (!container?.querySelectorAll) return 0;
     let loaded = 0;
@@ -72,13 +85,21 @@
     return loaded;
   }
 
-  /** 统一处理图库展开和大图预览事件，避免旧工作台继续复制模式分支。 */
-  function handleGalleryClick(event, host, openPreview) {
+  function handleGalleryClick(event, host, openPreview, openKeys = null) {
     const target = event?.target;
     const toggle = target?.closest?.('[data-nsa-subject-gallery-toggle]');
     if (toggle && host?.contains?.(toggle)) {
       const gallery = toggle.closest('[data-nsa-subject-gallery]');
-      requestAnimationFrame(() => loadGalleryImages(gallery));
+      const key = gallery?.dataset?.nsaSubjectGalleryKey || '';
+      const nextOpen = gallery?.open !== true;
+      if (key && openKeys?.add && openKeys?.delete) {
+        if (nextOpen) openKeys.add(key);
+        else openKeys.delete(key);
+      }
+      toggle.setAttribute?.('aria-expanded', nextOpen ? 'true' : 'false');
+      const label = toggle.querySelector?.('[data-nsa-subject-gallery-label]');
+      if (label) label.textContent = nextOpen ? '收起四视图' : '查看四视图';
+      if (nextOpen) requestAnimationFrame(() => loadGalleryImages(gallery));
       return true;
     }
     const preview = target?.closest?.('[data-nsa-subject-preview-url]');
@@ -141,19 +162,56 @@
     return { people, pets, total: people + pets };
   }
   function clean(value = '', max = 800) {
-    return String(value ?? '').trim().slice(0, max);
+    if (typeof value !== 'string' && typeof value !== 'number') return '';
+    const normalized = String(value).trim();
+    return normalized === '[object Object]' ? '' : normalized.slice(0, max);
+  }
+  function firstProfileText(values = [], max = 800) {
+    for (const value of values) {
+      const normalized = clean(value, max);
+      if (normalized) return normalized;
+    }
+    return '';
+  }
+  function humanProfileTexts(source = {}) {
+    const contract = source.person_contract && typeof source.person_contract === 'object'
+      ? source.person_contract
+      : {};
+    return {
+      appearanceText: firstProfileText([
+        source.appearanceText,
+        source.appearance?.userPrompt,
+        source.appearance?.description,
+        contract.identity?.face_description,
+        source.face_description,
+        source.description,
+      ], 800),
+      wardrobeText: firstProfileText([
+        source.wardrobeText,
+        source.wardrobe?.userPrompt,
+        source.wardrobe?.description,
+        source.outfit,
+        contract.wardrobe?.description,
+      ], 600),
+      hairMakeupText: firstProfileText([
+        source.hairMakeupText,
+        source.hairMakeup?.userPrompt,
+        source.hairMakeup?.description,
+        contract.appearance?.hair_style,
+        source.hair_style,
+      ], 400),
+      negativeText: firstProfileText([source.negativeText, source.negative], 400),
+    };
   }
   function normalizeHumanProfile(source = {}, index = 0) {
+    const resolved = humanProfileTexts(source);
     return {
       ...source,
       id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
       displayName: clean(source.displayName || source.name || '', 120),
       name: clean(source.displayName || source.name || '', 120),
       roleName: clean(source.roleName || source.role || '', 120),
-      appearanceText: clean(source.appearanceText || source.appearance?.userPrompt || source.appearance || '', 800),
-      wardrobeText: clean(source.wardrobeText || source.wardrobe?.userPrompt || source.outfit || '', 600),
-      hairMakeupText: clean(source.hairMakeupText || source.hairMakeup?.userPrompt || '', 400),
-      negativeText: clean(source.negativeText || source.negative || '', 400),
+      ...resolved,
     };
   }
   function normalizePetProfile(source = {}, index = 0) {
@@ -178,9 +236,9 @@
         ...source,
         displayName: source.displayName || source.name || (single ? spec.displayName : ''),
         roleName: source.roleName || source.role || (single ? spec.roleName : ''),
-        appearanceText: source.appearanceText || source.appearance?.userPrompt || (single ? spec.appearanceText : ''),
-        wardrobeText: source.wardrobeText || source.wardrobe?.userPrompt || source.outfit || (single ? spec.wardrobeText : ''),
-        hairMakeupText: source.hairMakeupText || source.hairMakeup?.userPrompt || (single ? spec.hairMakeupText : ''),
+        appearanceText: humanProfileTexts(source).appearanceText || (single ? spec.appearanceText : ''),
+        wardrobeText: humanProfileTexts(source).wardrobeText || (single ? spec.wardrobeText : ''),
+        hairMakeupText: humanProfileTexts(source).hairMakeupText || (single ? spec.hairMakeupText : ''),
         negativeText: source.negativeText || (single ? spec.negativeText : ''),
       }, index);
     });
@@ -236,10 +294,78 @@
     if (!['cast', 'pet'].includes(kind) || !Number.isInteger(index) || !field) return false;
     const list = kind === 'cast' ? state.castProfiles : state.petProfiles;
     if (!Array.isArray(list) || !list[index]) return false;
-    list[index] = { ...list[index], [field]: clean(target.value, 800) };
+    const previous = clean(list[index][field], 800);
+    const value = clean(target.value, 800);
+    const dirtyFields = new Set(Array.isArray(list[index]._generationDirtyFields) ? list[index]._generationDirtyFields : []);
+    if (previous !== value) dirtyFields.add(field);
+    list[index] = {
+      ...list[index],
+      [field]: value,
+      _generationDirty: dirtyFields.size > 0,
+      _generationDirtyFields: [...dirtyFields],
+    };
     if (kind === 'cast' && field === 'displayName') list[index].name = list[index].displayName;
     return true;
   }
+
+  function syncProfileFieldsFromDom(state = {}, scope = document) {
+    if (!scope?.querySelectorAll) return 0;
+    let updated = 0;
+    scope.querySelectorAll('[data-nsa-subject-field]').forEach(target => {
+      if (updateProfileFromField(state, target)) updated += 1;
+    });
+    return updated;
+  }
+
+  function selectionItems(state = {}) {
+    const humans = Array.isArray(state.castProfiles) ? state.castProfiles : [];
+    const pets = Array.isArray(state.petProfiles) ? state.petProfiles : [];
+    const personAsset = state.actorAsset || state.personAsset || {};
+    const castAssets = Array.isArray(personAsset.cast_assets) ? personAsset.cast_assets : [];
+    const reusable = (asset, kind) => !!(asset && (kind === 'human' ? asset.actor_id || asset.id : asset.pet_id || asset.id)
+      && subjectViews(asset).length >= 4);
+    const assetState = (raw, canReuse) => ({
+      selected: raw?._generationDirty === true || !canReuse,
+      reusable: canReuse, required: !canReuse, disabled: !canReuse,
+    });
+    const items = [
+      ...humans.map((raw, index) => {
+        const item = normalizeHumanProfile(raw, index);
+        const asset = castAssets.find(candidate => [candidate.actor_id, candidate.id, candidate.actor_asset_id].includes(item.id)) || castAssets[index];
+        const canReuse = reusable(asset, 'human');
+        return {
+          key: `human:${item.id || index + 1}`,
+          kind: 'human',
+          index,
+          id: item.id,
+          title: item.displayName || `人物 ${index + 1}`,
+          status: item.wardrobeText ? `服装：${item.wardrobeText}` : (item.roleName || '人物四视图'),
+          action: '重生四视图',
+          ...assetState(raw, canReuse),
+        };
+      }),
+      ...pets.map((raw, index) => {
+        const item = normalizePetProfile(raw, index);
+        const canReuse = reusable(raw, 'pet');
+        return {
+          key: `pet:${item.id || index + 1}`,
+          kind: 'pet',
+          index,
+          id: item.id,
+          title: item.name || item.type || `宠物 ${index + 1}`,
+          status: item.appearance ? `特征：${item.appearance}` : (item.type || '宠物四视图'),
+          action: '重生四视图',
+          ...assetState(raw, canReuse),
+        };
+      }),
+    ];
+    const anyDirty = items.some(item => item.selected);
+    return items.map(item => ({
+      ...item,
+      selected: anyDirty ? item.selected : false,
+    }));
+  }
+
   function subjectEditorHtml(state = {}, spec = {}, escapeHtml = value => String(value)) {
     const target = reconcileProfiles(state, spec);
     if (!target.total) return '<div class="dh-luxgen-empty"><b>当前无需主体档案</b><span>无人物模式不会提交人物或宠物生成。</span></div>';
@@ -254,6 +380,7 @@
       return `<details class="dh-nsa-subject-profile" open>
         <summary><b>人物 ${index + 1}</b><span>${escapeHtml(item.displayName || item.roleName || '资料待补齐')}</span></summary>
         <div class="dh-luxgen-person-spec">
+          <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}">AI 辅助补齐该人物</button><small>只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。</small></div>
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
           ${field('cast', index, 'roleName', '剧情身份 / 关系', item.roleName, { placeholder: '如：母亲、8岁女儿、品牌顾问' })}
           ${field('cast', index, 'appearanceText', '独立外貌 / 年龄 / 气质', item.appearanceText, { textarea: true, wide: true, max: 800 })}
@@ -288,13 +415,27 @@
     if (Array.isArray(response?.pet_profiles)) state.petProfiles = response.pet_profiles;
     return reconcileProfiles(state, spec);
   }
-  function confirmOptions({ people, pets, total }) {
+  function confirmOptions({ people, pets, total, state = {} }) {
+    const items = selectionItems(state);
+    const initialCount = items.filter(item => item.selected).length;
     return {
       title: '生成独立主体资产', summary: `${people}个人物 + ${pets}个宠物`,
-      description: '系统将为每个主体分别生成一套四视图身份资产并逐一验证，不会用同一张人物图代替多人或宠物。',
-      confirmLabel: `确认生成 ${total} 套`,
-      facts: [{ value: String(total), label: '图片模型提交', tone: 'warning' }, { value: String(total), label: '逐主体一致性验证', tone: 'neutral' }],
-      note: '取消后服务端会在当前调用边界停止；已完成的主体检查点会保留，使用相同任务与设定重试时不会重复生成。',
+      description: '请勾选本次需要重新生成的主体。未勾选的人物或宠物会原样保留，不会再次提交图片模型。',
+      confirmLabel: initialCount ? `确认生成所选 ${initialCount} 套` : '请先选择主体',
+      facts: [{ value: String(initialCount), label: '当前选中提交', tone: 'warning' }, { value: String(total - initialCount), label: '保留原有资产', tone: 'neutral' }],
+      items: items.map(item => ({ ...item, selectable: true, checked: item.selected })),
+      note: '弹窗会显示当前即将提交的服装或外观文本；请先核对“裙子”等修改已经完整显示，再确认生成。',
+      readSelection(modal) {
+        const selected = Array.from(modal.querySelectorAll('[data-nsa-confirm-item]:checked'))
+          .map(input => {
+            const item = items.find(candidate => candidate.key === input.value);
+            return item ? { kind: item.kind, index: item.index, id: item.id } : null;
+          })
+          .filter(Boolean);
+        return selected.length
+          ? { value: selected }
+          : { error: '请至少选择一个需要重新生成的人物或宠物' };
+      },
     };
   }
   function progressStages(total) {
@@ -322,9 +463,9 @@
     }).join('')}</div>`;
   }
   window.NewStoryAdSubjectAssetsUI = {
-    subjectViews, subjectMembers, subjectGalleryHtml, loadGalleryImages, handleGalleryClick,
-    castProfiles, petProfiles, assetCastMode, counts, normalizeHumanProfile, normalizePetProfile,
+    subjectViews, subjectMembers, subjectGalleryKey, subjectGalleryHtml, loadGalleryImages, handleGalleryClick,
+    castProfiles, petProfiles, assetCastMode, counts, humanProfileTexts, normalizeHumanProfile, normalizePetProfile,
     reconcileProfiles, profileErrors, updateProfileFromField, subjectEditorHtml, renderProfiles, adoptAssistedProfiles,
-    confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
+    syncProfileFieldsFromDom, selectionItems, confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
   };
 })();

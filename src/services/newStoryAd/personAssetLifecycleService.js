@@ -1,6 +1,7 @@
 const storage = require('./storageService');
 const revisionService = require('./revisionService');
 const personIdentity = require('./personIdentityContractService');
+const subjectProfileText = require('./subjectProfileTextService');
 
 function contractMatchesInput(contract = null, asset = null, spec = {}) {
   if (!contract || contract.status !== 'verified' || contract.cross_view_qa?.pass !== true || !asset) return false;
@@ -87,7 +88,7 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     subject_board_url: bundle.subject_board_url || '',
     production_usable_actor: personContract?.status === 'verified',
   } : null;
-  const castProfiles = castAssets.map((asset, index) => ({
+  const castProfiles = castAssets.map((asset, index) => subjectProfileText.canonicalProfile({
     ...(asset.subject_profile && typeof asset.subject_profile === 'object' ? asset.subject_profile : {}),
     id: asset.actor_id || asset.id || `cast_${index + 1}`,
     name: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
@@ -134,4 +135,29 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
   };
 }
 
-module.exports = { contractMatchesInput, carryContract, commitGeneratedPersonAsset, commitGeneratedSubjectAssets };
+function latestSubjectCheckpointRow(rows = []) {
+  return (Array.isArray(rows) ? rows : [])
+    .filter(row => String(row?.kind || '').startsWith('subject_asset_checkpoint:')
+      && row?.payload && typeof row.payload === 'object')
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.updated_at || left.payload?.updated_at || left.created_at || '') || 0;
+      const rightTime = Date.parse(right.updated_at || right.payload?.updated_at || right.created_at || '') || 0;
+      return rightTime - leftTime;
+    })[0] || null;
+}
+
+function projectLatestSubjectCheckpoint(visibleRows = [], sourceRows = []) {
+  const projected = Array.isArray(visibleRows) ? [...visibleRows] : [];
+  const latest = latestSubjectCheckpointRow(sourceRows);
+  if (latest) projected.push(latest);
+  return projected;
+}
+
+module.exports = {
+  contractMatchesInput,
+  carryContract,
+  commitGeneratedPersonAsset,
+  commitGeneratedSubjectAssets,
+  latestSubjectCheckpointRow,
+  projectLatestSubjectCheckpoint,
+};

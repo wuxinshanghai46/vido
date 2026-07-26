@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const shotDesign = require('./shotDesignService');
+const subjectProfileText = require('./subjectProfileTextService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -158,6 +159,7 @@ function normalizeSceneAssets(input) {
   return raw.map((item, idx) => {
     if (!item || typeof item !== 'object') return null;
     const viewImages = Array.isArray(item.view_images) ? item.view_images.map((view, viewIdx) => ({
+      ...view,
       key: cleanText(view?.key || view?.view || ['master', 'reverse', 'interaction', 'detail'][viewIdx] || `view_${viewIdx + 1}`, 40),
       label: cleanText(view?.label || view?.name || '', 80),
       url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
@@ -174,6 +176,7 @@ function normalizeSceneAssets(input) {
       lock_strength: cleanText(item.lock_strength || item.lockStrength || 'standard', 40),
       layout_summary: cleanText(item.layout_summary || item.layoutSummary || item.description || '', 1000),
       material_summary: cleanText(item.material_summary || item.materialSummary || '', 1000),
+      interaction_summary: cleanText(item.interaction_summary || item.interactionSummary || '', 800),
       style_summary: cleanText(item.style_summary || item.styleSummary || '', 800),
       negative: cleanText(item.negative || item.negative_prompt || '', 800),
       surface_topology: shotDesign.normalizeSurfaceTopology(item.surface_topology || item.surfaceTopology),
@@ -181,9 +184,21 @@ function normalizeSceneAssets(input) {
       image_url: imageUrl,
       view_images: viewImages,
       view_count: Number(item.view_count || viewImages.length || (imageUrl ? 1 : 0)) || 0,
+      view_strategy: cleanText(item.view_strategy || item.viewStrategy || '', 40),
+      view_acquisition: item.view_acquisition && typeof item.view_acquisition === 'object' ? item.view_acquisition : null,
+      space_asset_contract: item.space_asset_contract && typeof item.space_asset_contract === 'object' ? item.space_asset_contract : null,
+      generation_contract_version: Math.max(0, Number(item.generation_contract_version || item.view_acquisition?.generation_contract_version || 0) || 0),
       scene_revision: Math.max(1, Number(item.scene_revision || item.sceneRevision || 1) || 1),
       scene_contract: item.scene_contract && typeof item.scene_contract === 'object' ? item.scene_contract : null,
       cross_view_qa: item.cross_view_qa && typeof item.cross_view_qa === 'object' ? item.cross_view_qa : null,
+      requirement_qa: item.requirement_qa && typeof item.requirement_qa === 'object' ? item.requirement_qa : null,
+      photographic_realism_qa: item.photographic_realism_qa && typeof item.photographic_realism_qa === 'object' ? item.photographic_realism_qa : null,
+      camera_design_qa: item.camera_design_qa && typeof item.camera_design_qa === 'object' ? item.camera_design_qa : null,
+      spatial_coverage_qa: item.spatial_coverage_qa && typeof item.spatial_coverage_qa === 'object' ? item.spatial_coverage_qa : null,
+      layout_contract: item.layout_contract && typeof item.layout_contract === 'object' ? item.layout_contract : null,
+      verification: item.verification && typeof item.verification === 'object' ? item.verification : null,
+      repair_plan: item.repair_plan && typeof item.repair_plan === 'object' ? item.repair_plan : null,
+      repair_history: Array.isArray(item.repair_history) ? item.repair_history.slice(-8) : [],
       provider_used: cleanText(item.provider_used || '', 240),
     };
   }).filter(Boolean);
@@ -271,6 +286,7 @@ function normalizeCastProfiles(input) {
   const raw = Array.isArray(input) ? input : [];
   return raw.map((profile, idx) => {
     if (!profile || typeof profile !== 'object') return null;
+    const resolved = subjectProfileText.profileTexts(profile);
     return {
       id: cleanText(profile.id || `cast_${idx + 1}`, 80),
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
@@ -289,24 +305,24 @@ function normalizeCastProfiles(input) {
         image_url: cleanText(view?.image_url || view?.url || '', 1000),
       })).filter(view => view.url || view.image_url).slice(0, 4) : [],
       person_contract: profile.person_contract && typeof profile.person_contract === 'object' ? profile.person_contract : null,
-      appearanceText: cleanText(profile.appearanceText || profile.appearance?.userPrompt || profile.appearance || '', 800),
-      wardrobeText: cleanText(profile.wardrobeText || profile.wardrobe?.userPrompt || profile.outfit || '', 600),
-      hairMakeupText: cleanText(profile.hairMakeupText || profile.hairMakeup?.userPrompt || '', 400),
-      appearance: profile.appearance && typeof profile.appearance === 'object'
-        ? profile.appearance
-        : { userPrompt: cleanText(profile.appearanceText || profile.appearance || '', 800) },
-      wardrobe: profile.wardrobe && typeof profile.wardrobe === 'object'
-        ? profile.wardrobe
-        : { userPrompt: cleanText(profile.wardrobeText || profile.outfit || '', 600) },
-      hairMakeup: profile.hairMakeup && typeof profile.hairMakeup === 'object'
-        ? profile.hairMakeup
-        : { userPrompt: cleanText(profile.hairMakeupText || '', 400) },
-      outfit: cleanText(profile.outfit || profile.wardrobeText || '', 600),
-      negativeText: cleanText(profile.negativeText || '', 500),
+      ...resolved,
+      appearance: {
+        ...(profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {}),
+        userPrompt: resolved.appearanceText,
+      },
+      wardrobe: {
+        ...(profile.wardrobe && typeof profile.wardrobe === 'object' ? profile.wardrobe : {}),
+        userPrompt: resolved.wardrobeText,
+      },
+      hairMakeup: {
+        ...(profile.hairMakeup && typeof profile.hairMakeup === 'object' ? profile.hairMakeup : {}),
+        userPrompt: resolved.hairMakeupText,
+      },
+      outfit: resolved.wardrobeText,
       description: cleanText(profile.description || [
-        profile.appearanceText,
-        profile.wardrobeText ? `服装：${profile.wardrobeText}` : '',
-        profile.hairMakeupText ? `发型妆造：${profile.hairMakeupText}` : '',
+        resolved.appearanceText,
+        resolved.wardrobeText ? `服装：${resolved.wardrobeText}` : '',
+        resolved.hairMakeupText ? `发型妆造：${resolved.hairMakeupText}` : '',
       ].filter(Boolean).join('；'), 1000),
       identityLock: profile.identityLock && typeof profile.identityLock === 'object' ? profile.identityLock : {},
     };
@@ -538,6 +554,15 @@ function buildContext(body = {}, user = {}) {
   const noHuman = castMode === 'no_human';
   const animalOnly = castMode === 'animal';
   const petRequired = ['animal', 'human_pet'].includes(castMode);
+  const normalizedPersonSpec = { ...personSpec };
+  if (!petRequired) {
+    delete normalizedPersonSpec.expectedAnimals;
+    delete normalizedPersonSpec.expected_animals;
+    delete normalizedPersonSpec.petType;
+    delete normalizedPersonSpec.pet_type;
+    delete normalizedPersonSpec.petDescription;
+    delete normalizedPersonSpec.pet_description;
+  }
   const expectedPeople = noHuman || animalOnly
     ? 0
     : (expectedPeopleRaw > 0
@@ -599,7 +624,7 @@ function buildContext(body = {}, user = {}) {
     assets: contextAssets,
     forbidden,
     controlled_production: controlledProduction,
-    person_spec: noHuman ? { castMode: 'no_human' } : personSpec,
+    person_spec: noHuman ? { castMode: 'no_human' } : normalizedPersonSpec,
     person_asset: noHuman || animalOnly ? null : personAsset,
     person_contract: noHuman || animalOnly ? null : (body.person_contract && typeof body.person_contract === 'object'
       ? body.person_contract
@@ -679,6 +704,8 @@ function sceneAssetsPrompt(sceneAssets = []) {
     schema_version: Number(asset.scene_contract?.schema_version || asset.schema_version || 0) || 0,
     layout_contract: asset.scene_contract?.layout_contract || asset.layout_contract || null,
     spatial_coverage_qa: asset.scene_contract?.spatial_coverage_qa || asset.spatial_coverage_qa || null,
+    photographic_realism_qa: asset.scene_contract?.photographic_realism_qa || asset.photographic_realism_qa || null,
+    camera_design_qa: asset.scene_contract?.camera_design_qa || asset.camera_design_qa || null,
     anchors: (Array.isArray(asset.scene_contract?.anchors) ? asset.scene_contract.anchors : []).map(anchor => ({
       id: cleanText(anchor.id || '', 100),
       label: cleanText(anchor.label || '', 120),
@@ -762,6 +789,10 @@ function contextConflicts(ctx = {}) {
   return conflicts;
 }
 
+function taskTitle(ctx = {}) {
+  return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
+}
+
 function assertContextConsistent(ctx = {}) {
   const conflicts = contextConflicts(ctx);
   if (!conflicts.length) return ctx;
@@ -791,4 +822,5 @@ module.exports = {
   inferBriefTargetDuration,
   resolveTargetDuration,
   contextConflicts,
+  taskTitle,
 };

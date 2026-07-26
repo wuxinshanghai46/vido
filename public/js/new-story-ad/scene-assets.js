@@ -6,7 +6,7 @@
     detail: '材质细节',
     layout: '俯视布局',
   };
-  const SCENE_GENERATION_CONTRACT_VERSION = 6;
+  const SCENE_GENERATION_CONTRACT_VERSION = 7;
 
   const clean = (value = '', max = 1000) => String(value || '').trim().slice(0, max);
   const root = () => document.getElementById('dhNewStoryAdLegacyMount') || document;
@@ -18,6 +18,82 @@
       return '图像供应商未接受本轮生成请求，因此没有创建新版本，旧图已安全保留。请再次执行自动修复。';
     }
     return `本轮自动修复未创建新版本：${clean(text, 220)}`;
+  }
+
+  function sceneOperationFailure(state = {}, plannedSpaces = []) {
+    const persisted = state.generationProgress?.stage === 'scene_asset'
+      && state.generationProgress?.status === 'failed'
+      ? state.generationProgress
+      : null;
+    const local = state.sceneOperationFailure && typeof state.sceneOperationFailure === 'object'
+      ? state.sceneOperationFailure
+      : null;
+    const taskFailed = state.taskStatus === 'failed' && /scene_asset/i.test(String(state.taskStage || ''));
+    const source = persisted || local || (taskFailed ? {} : null);
+    if (!source) return null;
+    const sceneId = clean(source.scene_id || source.sceneId || '', 120);
+    const sceneIndex = sceneId
+      ? plannedSpaces.findIndex(space => clean(space.id || space.space_id || space.scene_id, 120) === sceneId)
+      : -1;
+    const sceneName = clean(
+      (sceneIndex >= 0 ? plannedSpaces[sceneIndex]?.name : '')
+      || source.scene_name
+      || source.sceneName
+      || (sceneIndex >= 0 ? `场景 ${sceneIndex + 1}` : '当前场景'),
+      120,
+    );
+    const viewStates = Array.isArray(source.view_states) ? source.view_states : [];
+    const failedViews = viewStates
+      .filter(view => view?.status === 'failed')
+      .map(view => clean(view.label || VIEW_LABELS[view.key] || view.key, 80))
+      .filter(Boolean);
+    const missingFields = (Array.isArray(source.failure_details) ? source.failure_details : [])
+      .filter(item => item?.status === 'missing' || /FIELD_MISSING/.test(String(item?.code || '')))
+      .map(item => clean(item.title || item.message || '', 180))
+      .filter(Boolean);
+    return {
+      sceneId,
+      sceneName,
+      message: clean(source.message || source.error || state.taskError || '场景图片生成未完成', 600),
+      errorCode: clean(source.error_code || source.errorCode || state.taskErrorCode || '', 120),
+      supportId: clean(source.support_id || source.supportId || '', 120),
+      failedViews: [...new Set(failedViews)],
+      missingFields: [...new Set(missingFields)],
+    };
+  }
+
+  function sceneProgressHtml(progress = {}, plannedSpaces = []) {
+    if (!progress?.active) return '';
+    const view = sceneProgressView(progress);
+    const sceneId = clean(progress.scene_id || progress.sceneId, 120);
+    const target = plannedSpaces.find(space => clean(space.id || space.space_id || space.scene_id, 120) === sceneId);
+    const title = target?.name ? `${target.name} · ${view.title}` : view.title;
+    return `<div class="dh-nsa-scene-operation is-running">
+      <div class="dh-lux-person-progress">
+        <div class="dh-lux-person-progress-head">
+          <b>${escapeHtml(title)}</b>
+          <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
+        </div>
+        <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
+        <small>${escapeHtml(view.message)}</small>
+      </div>
+    </div>`;
+  }
+
+  function sceneFailureHtml(failure = null) {
+    if (!failure) return '';
+    const details = [
+      failure.failedViews.length ? `失败视图：${failure.failedViews.join('、')}` : '',
+      failure.missingFields?.length ? `缺失字段：${failure.missingFields.join('、')}` : '',
+      failure.errorCode ? `错误代码：${failure.errorCode}` : '',
+      failure.supportId ? `支持编号：${failure.supportId}` : '',
+    ].filter(Boolean);
+    return `<div class="dh-nsa-scene-operation is-failed" role="alert">
+      <b>${escapeHtml(failure.sceneName)}生成失败</b>
+      <span>${escapeHtml(failure.message)}</span>
+      ${details.length ? `<em>${escapeHtml(details.join(' · '))}</em>` : ''}
+      <small>已成功的视图和其他场景均已保留；系统不会自动重复提交失败视图。</small>
+    </div>`;
   }
 
   function scorePercent(qa = {}, keys = []) {
@@ -42,11 +118,14 @@
   }
 
   function sceneLockAssessment(asset = {}) {
+    const partialCheckpoint = asset.partial_checkpoint === true;
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
-    const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
-    const crossViewQa = asset.cross_view_qa || contract.cross_view_qa || {};
-    const spatialQa = asset.spatial_coverage_qa || contract.spatial_coverage_qa || {};
-    const layoutContract = asset.layout_contract || contract.layout_contract || {};
+    const requirementQa = contract.requirement_qa || asset.requirement_qa || {};
+    const photographicRealismQa = contract.photographic_realism_qa || asset.photographic_realism_qa || {};
+    const cameraDesignQa = contract.camera_design_qa || asset.camera_design_qa || {};
+    const crossViewQa = contract.cross_view_qa || asset.cross_view_qa || {};
+    const spatialQa = contract.spatial_coverage_qa || asset.spatial_coverage_qa || {};
+    const layoutContract = contract.layout_contract || asset.layout_contract || {};
     const views = Array.isArray(asset.view_images) ? asset.view_images : [];
     const hasLayoutView = views.some(view => clean(view?.key || view?.view, 40) === 'layout');
     const schemaVersion = Number(contract.schema_version || asset.schema_version || 0) || 0;
@@ -58,13 +137,20 @@
     const hasSpatialQa = !!(asset.spatial_coverage_qa || contract.spatial_coverage_qa);
     const layoutAvailable = layoutContract.status === 'available' && hasLayoutView;
     const requirementPass = requirementQa.pass === true;
+    const photographicRealismPass = photographicRealismQa.pass === true;
+    const realismReviewRequired = photographicRealismQa.legacy === true
+      || (!asset.photographic_realism_qa && !contract.photographic_realism_qa);
+    const cameraDesignPass = cameraDesignQa.pass === true;
+    const cameraReviewRequired = cameraDesignQa.legacy === true
+      || (!asset.camera_design_qa && !contract.camera_design_qa);
     const crossViewPass = crossViewQa.pass === true;
     const spatialPass = spatialQa.pass === true;
-    const appearancePass = contract.status === 'verified' && requirementPass && crossViewPass;
+    const appearancePass = contract.status === 'verified' && requirementPass && photographicRealismPass && crossViewPass;
     const evidenceComplete = completeSceneViewEvidence(asset);
-    const complete = schemaVersion >= 3 && appearancePass && spatialPass && layoutAvailable && evidenceComplete;
-    const upgradeRequired = !complete && generationContractVersion < SCENE_GENERATION_CONTRACT_VERSION;
-    const legacy = !complete && (schemaVersion < 3
+    const complete = schemaVersion >= 6 && appearancePass && cameraDesignPass
+      && spatialPass && layoutAvailable && evidenceComplete;
+    const upgradeRequired = !partialCheckpoint && !complete && generationContractVersion < SCENE_GENERATION_CONTRACT_VERSION;
+    const legacy = !partialCheckpoint && !complete && (schemaVersion < 3
       || !hasSpatialQa
       || spatialQa.legacy === true
       || spatialQa.coverage_status === 'legacy_partial'
@@ -75,8 +161,22 @@
     const spatialScore = scorePercent(spatialQa, ['coverage_score', 'spatial_coverage_score'])
       ?? averagePercent(spatialQa, ['layout_topology_score', 'camera_diversity_score', 'reverse_coverage_score', 'interaction_zone_score'])
       ?? null;
+    const photographicRealismScore = averagePercent(photographicRealismQa, [
+      'photographic_realism_score',
+      'physical_material_score',
+      'natural_variation_score',
+      'optical_capture_score',
+    ]);
+    const cameraDesignScore = averagePercent(cameraDesignQa, [
+      'role_definition_score',
+      'requirement_mapping_score',
+      'direction_evidence_score',
+      'parameter_completeness_score',
+      'layout_mapping_score',
+    ]);
     return {
       complete,
+      partialCheckpoint,
       legacy,
       upgradeRequired,
       generationContractVersion,
@@ -86,13 +186,19 @@
       hasSpatialQa,
       evidenceComplete,
       requirementQa,
+      photographicRealismQa,
+      cameraDesignQa,
       crossViewQa,
       spatialQa,
       layoutContract,
       schemaVersion,
       requirementScore,
+      photographicRealismScore,
+      cameraDesignScore,
       crossViewScore,
       spatialScore,
+      realismReviewRequired,
+      cameraReviewRequired,
     };
   }
 
@@ -100,13 +206,19 @@
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const qa = asset.cross_view_qa || contract.cross_view_qa || {};
     const requirementQa = asset.requirement_qa || contract.requirement_qa || {};
+    const photographicRealismQa = asset.photographic_realism_qa || contract.photographic_realism_qa || {};
+    const cameraDesignQa = asset.camera_design_qa || contract.camera_design_qa || {};
     const assessment = sceneLockAssessment(asset);
     const spatialQa = assessment.spatialQa;
-    const details = asset.verification || contract.verification || {};
+    const details = Object.keys(contract).length
+      ? (contract.verification || {})
+      : (asset.verification || {});
     const reasons = [...new Set([
       ...(Array.isArray(details.reasons) ? details.reasons : []),
       ...(Array.isArray(qa.mismatch_reasons) ? qa.mismatch_reasons : []),
       ...(Array.isArray(requirementQa.mismatch_reasons) ? requirementQa.mismatch_reasons : []),
+      ...(Array.isArray(photographicRealismQa.mismatch_reasons) ? photographicRealismQa.mismatch_reasons : []),
+      ...(Array.isArray(cameraDesignQa.mismatch_reasons) ? cameraDesignQa.mismatch_reasons : []),
       ...(Array.isArray(spatialQa.mismatch_reasons) ? spatialQa.mismatch_reasons : []),
     ].map(value => clean(value, 240)).filter(Boolean))].slice(0, 6);
     const firstPresent = (...values) => values.find(value => value !== undefined && value !== null && value !== '');
@@ -123,11 +235,56 @@
       .map(([label, value]) => ({ label, value: Number(value) }))
       .filter(item => Number.isFinite(item.value))
       .map(item => ({ ...item, percent: Math.round(Math.max(0, Math.min(1, item.value)) * 100) }));
+    [
+      ['摄影真实性', photographicRealismQa.photographic_realism_score],
+      ['自然变化', photographicRealismQa.natural_variation_score],
+    ].forEach(([label, value]) => {
+      if (value === undefined || value === null || value === '' || !Number.isFinite(Number(value))) return;
+      scores.push({
+        label,
+        value: Number(value),
+        percent: Math.round(Math.max(0, Math.min(1, Number(value))) * 100),
+      });
+    });
+    if (assessment.partialCheckpoint) {
+      const completed = Array.isArray(asset.completed_view_keys) ? asset.completed_view_keys.length : (Array.isArray(asset.view_images) ? asset.view_images.length : 0);
+      const failedLabels = (Array.isArray(asset.failed_view_keys) ? asset.failed_view_keys : [])
+        .map(key => VIEW_LABELS[key] || key)
+        .filter(Boolean);
+      return {
+        tone: 'partial',
+        label: `部分场景已保留 ${completed}/5`,
+        message: details.message || `本轮已有 ${completed} 张场景图成功并保留${failedLabels.length ? `；${failedLabels.join('、')}尚未完成` : ''}。这些图片可查看，但未形成完整空间锁。`,
+        reasons,
+        scores: [],
+        assessment,
+      };
+    }
     if (assessment.complete) {
-      return { tone: 'verified', label: '完整空间已锁定', message: details.message || '需求、跨视图和空间覆盖三道验证均已通过，俯视布局已纳入空间合同', reasons: [], scores, assessment };
+      return { tone: 'verified', label: '完整空间已锁定', message: details.message || '需求、摄影真实性、机位设计、跨视图和空间覆盖五道验证均已通过，俯视布局已纳入空间合同', reasons: [], scores, assessment };
     }
     if (assessment.upgradeRequired) {
       return { tone: 'upgrade', label: '需要完整升级', message: '当前图片生成于旧版空间合同，重复验证或局部修复无法升级。请重新补齐空间设定并完整生成新版场景。', reasons: [], scores: [], assessment };
+    }
+    if (assessment.realismReviewRequired) {
+      return {
+        tone: 'unverified',
+        label: '待摄影真实性复核',
+        message: '当前图片已有 V7 空间母图，但生成于独立摄影真实性门禁启用之前。必须先复核真实材质、自然局部变化和相机光学证据，未通过前不会进入关键帧。',
+        reasons: ['缺少新版摄影真实性评分与可见证据'],
+        scores,
+        assessment,
+      };
+    }
+    if (assessment.cameraReviewRequired) {
+      return {
+        tone: 'unverified',
+        label: '待逐机位设计复核',
+        message: '当前图片已通过旧版综合空间 QA，但缺少每个机位的景别、镜头类型、高度、方向、俯视图位置、目标区域和需求映射证据。补齐并通过前不会进入关键帧。',
+        reasons: ['缺少可核对的逐机位参数、俯视定位与需求映射'],
+        scores,
+        assessment,
+      };
     }
     if (details.state === 'unavailable' || contract.qa_unavailable === true) {
       return { tone: 'unavailable', label: '场景待验证', message: details.message || '视觉审核服务暂时不可用，现有图片没有被判定为失败；再次验证不会重新生成图片。', reasons, assessment };
@@ -202,10 +359,86 @@
     return true;
   }
 
+  function cameraAcceptanceHtml(asset = {}, assessment = {}) {
+    const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
+    const cameras = Array.isArray(contract.cameras) ? contract.cameras : [];
+    const layoutView = (Array.isArray(asset.view_images) ? asset.view_images : [])
+      .find(view => clean(view?.key || view?.view, 40) === 'layout');
+    const layoutUrl = clean(layoutView?.url || layoutView?.image_url || contract.layout_contract?.reference_image_url || '', 1000);
+    const cameraQa = assessment.cameraDesignQa || contract.camera_design_qa || {};
+    const scoreText = assessment.cameraDesignScore === null || assessment.cameraDesignScore === undefined
+      ? '待复核'
+      : `${Math.round(Number(assessment.cameraDesignScore) || 0)}%`;
+    const requirementLabels = {
+      layout: '空间布局',
+      material_light: '材质/光线',
+      interaction: '互动位',
+      style: '视觉风格',
+      negative: '禁止项',
+      surface_topology: '表面结构',
+    };
+    const validPoint = value => Array.isArray(value) && value.length === 2
+      && value.every(number => Number.isFinite(Number(number)));
+    const mappedCameras = cameras.filter(camera => validPoint(camera.normalized_position) && validPoint(camera.look_at));
+    const colors = { master: '#38bdf8', reverse: '#a78bfa', interaction: '#34d399', detail: '#f59e0b' };
+    const mapHtml = layoutUrl ? `<div class="dh-nsa-camera-map">
+      <img src="${escapeHtml(thumbUrl(layoutUrl, 720))}" alt="机位俯视定位图" loading="lazy" decoding="async">
+      <svg viewBox="0 0 100 100" role="img" aria-label="机位位置和拍摄方向（视觉估算）">
+        <defs><marker id="dhNsaCameraArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"></path></marker></defs>
+        ${mappedCameras.map(camera => {
+          const x1 = Math.max(0, Math.min(100, Number(camera.normalized_position[0]) * 100));
+          const y1 = Math.max(0, Math.min(100, Number(camera.normalized_position[1]) * 100));
+          const x2 = Math.max(0, Math.min(100, Number(camera.look_at[0]) * 100));
+          const y2 = Math.max(0, Math.min(100, Number(camera.look_at[1]) * 100));
+          const color = colors[camera.view_id] || '#f8fafc';
+          return `<g style="color:${color}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-width="1.8" marker-end="url(#dhNsaCameraArrow)"></line><circle cx="${x1}" cy="${y1}" r="3.2" fill="currentColor"></circle><text x="${Math.min(96, x1 + 4)}" y="${Math.max(5, y1 - 3)}" fill="currentColor">${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</text></g>`;
+        }).join('')}
+      </svg>
+      <small>点位、方向和角度均为视觉 QA 根据俯视图与透视图作出的估算，不是相机 EXIF；用于核对需求覆盖和机位差异。</small>
+    </div>` : '<div class="dh-nsa-camera-map is-missing"><b>缺少俯视定位图</b><span>无法把各机位映射到空间布局。</span></div>';
+    const rows = cameras.length ? cameras.map(camera => {
+      const requirementRefs = (Array.isArray(camera.requirement_refs) ? camera.requirement_refs : [])
+        .map(value => requirementLabels[value] || value).filter(Boolean);
+      const angles = [
+        Number.isFinite(Number(camera.estimated_azimuth_degrees)) ? `方位 ${Math.round(Number(camera.estimated_azimuth_degrees))}°` : '',
+        Number.isFinite(Number(camera.estimated_pitch_degrees)) ? `俯仰 ${Math.round(Number(camera.estimated_pitch_degrees))}°` : '',
+        camera.view_id === 'reverse' && Number.isFinite(Number(camera.azimuth_delta_from_master_degrees))
+          ? `较主机位变化 ${Math.round(Number(camera.azimuth_delta_from_master_degrees))}°` : '',
+      ].filter(Boolean).join(' · ');
+      return `<div class="dh-nsa-camera-row ${camera.pass === true ? 'is-pass' : 'is-pending'}">
+        <div><b>${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</b><em>${camera.pass === true ? '证据完整' : '待补证据'}</em></div>
+        <span><small>用途</small>${escapeHtml(camera.role || '待补充')}</span>
+        <span><small>参数</small>${escapeHtml([camera.framing, camera.lens_class, camera.height_class].filter(Boolean).join(' · ') || '待补充')}</span>
+        <span><small>方向</small>${escapeHtml([camera.orientation, angles].filter(Boolean).join(' · ') || '待补充')}</span>
+        <span><small>目标区域</small>${escapeHtml(camera.target_description || '待补充')}</span>
+        <span><small>对应要求</small>${escapeHtml(requirementRefs.join('、') || '待映射')}</span>
+        <span class="dh-nsa-camera-evidence"><small>可见证据</small>${escapeHtml(camera.visible_evidence || '待补充')}</span>
+      </div>`;
+    }).join('') : '<div class="dh-nsa-camera-empty">当前合同没有逐机位参数，必须再次验证补齐后才能进入关键帧。</div>';
+    return `<details class="dh-nsa-camera-acceptance">
+      <summary><span><b>机位设计验收</b><small>逐机位参数、俯视定位、需求映射与可见证据</small></span><em class="${cameraQa.pass === true ? 'is-pass' : 'is-pending'}">${escapeHtml(scoreText)}</em></summary>
+      <div class="dh-nsa-camera-acceptance-body">${mapHtml}<div class="dh-nsa-camera-table">${rows}</div></div>
+    </details>`;
+  }
+
+  function selectedSceneAssetIndex(state = {}, assetInput = null) {
+    const assets = Array.isArray(assetInput) ? assetInput : (Array.isArray(state.sceneAssets) ? state.sceneAssets : []);
+    if (!assets.length) return -1;
+    const plannedSpaces = Array.isArray(state.sceneConfig?.spaces) ? state.sceneConfig.spaces : [];
+    if (plannedSpaces.length && Object.prototype.hasOwnProperty.call(state, 'scenePlanSelectedIndex')) {
+      const selectedSpace = plannedSpaces[selectedPlanIndex(state, state.sceneConfig)] || null;
+      const selectedSpaceId = clean(selectedSpace?.space_id || selectedSpace?.id || selectedSpace?.scene_id || '', 120);
+      if (selectedSpaceId) {
+        return assets.findIndex(asset => clean(asset.space_id || asset.scene_id || asset.id, 120) === selectedSpaceId);
+      }
+    }
+    return Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+  }
+
   function selectedSceneUpgradeRequired(state = {}) {
     const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
-    if (!assets.length) return false;
-    const index = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+    const index = selectedSceneAssetIndex(state, assets);
+    if (index < 0) return false;
     return sceneLockAssessment(assets[index] || {}).upgradeRequired === true;
   }
 
@@ -517,14 +750,28 @@
     };
   }
 
+  function selectedPlanIndex(state = {}, planInput = null) {
+    const plan = normalizePlan(planInput || state.sceneConfig || {});
+    if (!plan.spaces.length) return 0;
+    const selectedId = clean(state.scenePlanSelectedId, 120);
+    const selectedById = selectedId ? plan.spaces.findIndex(space => space.id === selectedId) : -1;
+    if (selectedById >= 0) return selectedById;
+    return Math.max(0, Math.min(
+      plan.spaces.length - 1,
+      Number(state.scenePlanSelectedIndex || 0) || 0,
+    ));
+  }
+
   /** 应用结构化场景计划并把当前空间同步到编辑表单，供用户逐空间检查。 */
   function applyPlan(state = {}, plan = {}) {
     const normalized = normalizePlan(plan);
     if (!normalized.spaces.length) return null;
     state.sceneConfig = normalized;
+    state.scenePlanSelectedIndex = selectedPlanIndex(state, normalized);
     const mode = root()?.querySelector?.('#dhNsaAdSceneMode');
     if (mode) mode.value = normalized.scene_mode;
-    const target = plannedGenerationTarget(state, { append: false }).targetSpace || normalized.spaces[0];
+    const target = normalized.spaces[state.scenePlanSelectedIndex] || normalized.spaces[0];
+    state.scenePlanSelectedId = target.id;
     applySpec(target.scene_spec || {}, { clearMissing: true });
     if (mode) mode.value = normalized.scene_mode;
     syncSpecSelectionState(root());
@@ -535,13 +782,77 @@
   function planPayload(state = {}) {
     const plan = normalizePlan(state.sceneConfig || {});
     if (!plan.spaces.length) return null;
-    const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
-    const selectedIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
-    const selectedId = clean(assets[selectedIndex]?.space_id || assets[selectedIndex]?.scene_id || assets[selectedIndex]?.id || '', 120);
-    const foundIndex = plan.spaces.findIndex(space => space.id === selectedId);
-    const targetIndex = foundIndex >= 0 ? foundIndex : 0;
+    const targetIndex = selectedPlanIndex(state, plan);
     plan.spaces[targetIndex] = { ...plan.spaces[targetIndex], scene_spec: specPayload() };
     return normalizePlan(plan);
+  }
+
+  function selectPlanSpace(state = {}, index = 0) {
+    const saved = planPayload(state) || normalizePlan(state.sceneConfig || {});
+    if (!saved.spaces.length) return null;
+    state.sceneConfig = saved;
+    state.scenePlanSelectedIndex = Math.max(0, Math.min(saved.spaces.length - 1, Number(index) || 0));
+    const selected = saved.spaces[state.scenePlanSelectedIndex];
+    state.scenePlanSelectedId = selected.id;
+    const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
+    const assetIndex = assets.findIndex(asset => clean(asset.space_id || asset.scene_id || asset.id, 120) === selected.id);
+    if (assetIndex >= 0) state.sceneSelectedIndex = assetIndex;
+    applySpec(selected.scene_spec || {}, { clearMissing: true });
+    const mode = root()?.querySelector?.('#dhNsaAdSceneMode');
+    if (mode) mode.value = saved.scene_mode;
+    syncSpecSelectionState(root());
+    return selected;
+  }
+
+  function selectPlanSpaceById(state = {}, spaceId = '') {
+    const plan = normalizePlan(state.sceneConfig || {});
+    const index = plan.spaces.findIndex(space => space.id === clean(spaceId, 120));
+    return index >= 0 ? selectPlanSpace(state, index) : null;
+  }
+
+  function draftSpaceId(existing = new Set()) {
+    const cryptoId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    let candidate = `space_${String(cryptoId).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+    let suffix = 1;
+    while (existing.has(candidate)) candidate = `${candidate}_${suffix++}`;
+    return candidate;
+  }
+
+  /** 仅增加一个可编辑的场景计划，不提交图片生成。 */
+  function addDraftSpace(state = {}) {
+    const plan = planPayload(state) || normalizePlan(state.sceneConfig || {});
+    const existing = new Set(plan.spaces.map(space => space.id));
+    const id = draftSpaceId(existing);
+    const nextIndex = plan.spaces.length;
+    plan.spaces.push({
+      id,
+      space_id: id,
+      scene_id: id,
+      name: `独立空间 ${nextIndex + 1}`,
+      description: '',
+      story_purpose: '',
+      scene_spec: {},
+      draft: true,
+    });
+    state.sceneConfig = normalizePlan(plan);
+    state.scenePlanSelectedIndex = nextIndex;
+    state.scenePlanSelectedId = id;
+    applySpec({}, { clearMissing: true });
+    const mode = root()?.querySelector?.('#dhNsaAdSceneMode');
+    if (mode) mode.value = state.sceneConfig.scene_mode;
+    syncSpecSelectionState(root());
+    return state.sceneConfig.spaces[nextIndex];
+  }
+
+  function addDraft({ state = {}, renderAll, toast, onChanged } = {}) {
+    const added = addDraftSpace(state);
+    if (!added) return false;
+    onChanged?.(added);
+    renderAll?.();
+    toast?.(`已新增“${added.name}”设定，尚未提交任何图片生成。`, 'success');
+    return true;
   }
 
   function normalizeView(view = {}, index = 0) {
@@ -580,10 +891,12 @@
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.sceneRevision || 1) || 1),
       generation_contract_version: Math.max(0, Number(asset.generation_contract_version || asset.view_acquisition?.generation_contract_version || 0) || 0),
       scene_contract: asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : null,
-      cross_view_qa: asset.cross_view_qa || asset.scene_contract?.cross_view_qa || null,
-      requirement_qa: asset.requirement_qa || asset.scene_contract?.requirement_qa || null,
-      layout_contract: asset.layout_contract || asset.scene_contract?.layout_contract || null,
-      spatial_coverage_qa: asset.spatial_coverage_qa || asset.scene_contract?.spatial_coverage_qa || null,
+      cross_view_qa: asset.scene_contract?.cross_view_qa || asset.cross_view_qa || null,
+      requirement_qa: asset.scene_contract?.requirement_qa || asset.requirement_qa || null,
+      photographic_realism_qa: asset.scene_contract?.photographic_realism_qa || asset.photographic_realism_qa || null,
+      camera_design_qa: asset.scene_contract?.camera_design_qa || asset.camera_design_qa || null,
+      layout_contract: asset.scene_contract?.layout_contract || asset.layout_contract || null,
+      spatial_coverage_qa: asset.scene_contract?.spatial_coverage_qa || asset.spatial_coverage_qa || null,
     };
   }
 
@@ -707,38 +1020,61 @@
     const modeControl = root()?.querySelector?.('#dhNsaAdSceneMode') || null;
     if (detectedMulti && modeControl?.value === 'auto') modeControl.value = 'multi';
     const progress = state.sceneGenerationProgress || null;
-    if (progress?.active) {
-      const view = sceneProgressView(progress);
-      host.innerHTML = `<div class="dh-nsa-scene-card">
-        <div class="dh-nsa-scene-thumb">生成中</div>
-        <div class="dh-nsa-scene-body">
-          <div class="dh-lux-person-progress">
-            <div class="dh-lux-person-progress-head">
-              <b>${escapeHtml(view.title)}</b>
-              <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
-            </div>
-            <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
-            <small>${escapeHtml(view.message)}</small>
+    const planIndex = selectedPlanIndex(state);
+    state.scenePlanSelectedIndex = planIndex;
+    const selectedSpace = plannedSpaces[planIndex] || null;
+    state.scenePlanSelectedId = selectedSpace?.id || '';
+    const progressSceneId = clean(progress?.scene_id || progress?.sceneId, 120);
+    const failure = sceneOperationFailure(state, plannedSpaces);
+    const selectedSpaceId = clean(selectedSpace?.id || selectedSpace?.space_id || selectedSpace?.scene_id, 120);
+    const selectedFailure = failure?.sceneId && failure.sceneId === selectedSpaceId ? failure : null;
+    const progressPanel = sceneProgressHtml(progress, plannedSpaces);
+    const failurePanel = progress?.active ? '' : sceneFailureHtml(selectedFailure);
+    const plannedAssetIndex = selectedSpace
+      ? assets.findIndex(item => clean(item.space_id || item.scene_id || item.id, 120) === clean(selectedSpace.id || selectedSpace.space_id || selectedSpace.scene_id, 120))
+      : -1;
+    const fallbackAssetIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
+    const selectedIndex = plannedAssetIndex >= 0 ? plannedAssetIndex : fallbackAssetIndex;
+    const displaySceneIndex = plannedSpaces.length ? planIndex : selectedIndex;
+    const displaySceneTotal = plannedSpaces.length || assets.length;
+    const planTabs = plannedSpaces.length
+      ? `<div class="dh-nsa-scene-tabs">${plannedSpaces.map((space, index) => {
+          const spaceId = clean(space.id || space.space_id || space.scene_id, 120);
+          const generated = assets.some(item => clean(item.space_id || item.scene_id || item.id, 120) === spaceId);
+          const generating = progress?.active && !!progressSceneId && progressSceneId === spaceId;
+          const failed = !progress?.active && !!failure?.sceneId && failure.sceneId === spaceId;
+          return `<div class="dh-nsa-scene-tab ${index === planIndex ? 'active' : ''} ${generating ? 'is-running' : ''} ${failed ? 'is-failed' : ''}">
+            <button type="button" data-nsa-scene-plan-select="${index}">
+              <b>场景 ${index + 1}</b><span>${escapeHtml(space.name || `独立空间 ${index + 1}`)} · ${generating ? '生成中' : (failed ? '生成失败' : (generated ? '已生成' : '待生成'))}</span>
+            </button>
+          </div>`;
+        }).join('')}</div>`
+      : '';
+    if (!assets.length || (selectedSpace && plannedAssetIndex < 0)) {
+      host.innerHTML = `<div class="dh-nsa-scene-list">
+        ${planTabs}
+        ${progressPanel}
+        ${failurePanel}
+        <div class="dh-nsa-scene-card is-empty">
+        <div class="dh-nsa-scene-thumb">空间</div>
+          <div class="dh-nsa-scene-body">
+            <b>${escapeHtml(selectedSpace?.name || '未生成场景参考')}</b>
+            <span>${selectedSpace ? `当前为场景 ${planIndex + 1}/${plannedSpaces.length}，空间设定已单独显示。填写或检查后，再按需点击“生成/重新生成当前场景”。` : (detectedMulti ? `剧情已识别 ${plannedSpaces.length || 2} 个独立空间，请分别生成并验证同等数量的场景资产后再生成分镜。` : '可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。')}</span>
           </div>
         </div>
       </div>`;
       return;
     }
-    if (!assets.length) {
-      host.innerHTML = `<div class="dh-nsa-scene-card is-empty">
-        <div class="dh-nsa-scene-thumb">空间</div>
-          <div class="dh-nsa-scene-body">
-            <b>未生成场景参考</b>
-            <span>${detectedMulti ? `剧情已识别 ${plannedSpaces.length || 2} 个独立空间，请分别生成并验证同等数量的场景资产后再生成分镜。` : '可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。'}</span>
-        </div>
-      </div>`;
-      return;
-    }
-    const selectedIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
     state.sceneSelectedIndex = selectedIndex;
     const asset = assets[selectedIndex];
     const views = asset.view_images || [];
     const mainUrl = asset.url || asset.image_url || views[0]?.url || views[0]?.image_url || '';
+    const canonicalSource = asset.space_asset_contract?.canonical_source || {};
+    const atlasUrl = canonicalSource.url || canonicalSource.image_url || '';
+    const atlasHash = clean(canonicalSource.sha256 || '', 80);
+    const isV7Atlas = Number(asset.generation_contract_version || 0) >= SCENE_GENERATION_CONTRACT_VERSION
+      && asset.view_strategy === 'atlas_2x2'
+      && !!atlasUrl;
     const sceneVerification = verificationView(asset);
     const assessment = sceneVerification.assessment || sceneLockAssessment(asset);
     const qaPassed = assessment.complete;
@@ -746,17 +1082,42 @@
     const repairViewKeys = Array.isArray(asset.repair_plan?.view_keys)
       ? asset.repair_plan.view_keys.filter(key => VIEW_LABELS[key])
       : [];
-    const canReverify = !qaPassed && !assessment.legacy && (
+    const currentReverifyContract = repairAction === 'reverify'
+      && assessment.generationContractVersion >= SCENE_GENERATION_CONTRACT_VERSION
+      && completeSceneViewEvidence(asset);
+    const effectiveLegacy = assessment.legacy && !currentReverifyContract;
+    const canReverify = !qaPassed && !assessment.partialCheckpoint && !effectiveLegacy && (
+      assessment.realismReviewRequired
+      || assessment.cameraReviewRequired
+      ||
       repairAction === 'reverify'
       || (!repairAction && ['unavailable', 'unverified', 'appearance'].includes(sceneVerification.tone))
     );
     const canRepair = !qaPassed
-      && !assessment.legacy
+      && !assessment.partialCheckpoint
+      && !effectiveLegacy
       && repairAction === 'regenerate_failed_views'
       && repairViewKeys.length > 0;
-    const canUpgrade = !qaPassed && assessment.upgradeRequired;
-    const repairFailure = state.taskStatus === 'failed' && /scene_asset/i.test(String(state.taskStage || ''))
-      ? sceneRepairFailureMessage(state.taskError)
+    const canRebuildAtlas = !qaPassed
+      && !assessment.partialCheckpoint
+      && !effectiveLegacy
+      && repairAction === 'rebuild_atlas';
+    const canUpgrade = !qaPassed && !assessment.partialCheckpoint
+      && assessment.upgradeRequired && !currentReverifyContract;
+    const verificationBadgeText = assessment.partialCheckpoint
+      ? '部分成功图片仅供查看，完整空间锁仍未完成；不会自动重复提交失败视图'
+      : (canUpgrade
+        ? '旧版图片不能继续复验或局部修复，需要一次完整升级'
+        : (effectiveLegacy
+          ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧'
+          : (sceneVerification.tone === 'unavailable'
+            ? '审核服务异常，图片尚未判定失败'
+            : '未完整锁定的场景不会进入关键帧')));
+    const legacyUpgradeHint = effectiveLegacy
+      ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>'
+      : '';
+    const repairFailure = selectedFailure
+      ? sceneRepairFailureMessage(selectedFailure.message)
       : '';
     const repairCount = repairViewKeys.length;
     const repairLabels = repairViewKeys.map(key => VIEW_LABELS[key]).join('、');
@@ -764,14 +1125,16 @@
       ? '待验证'
       : (Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '待验证');
     host.innerHTML = `<div class="dh-nsa-scene-list">
-      ${assets.length ? `<div class="dh-nsa-scene-tabs">
+      ${planTabs || (assets.length ? `<div class="dh-nsa-scene-tabs">
         ${assets.map((item, index) => `<div class="dh-nsa-scene-tab ${index === selectedIndex ? 'active' : ''}">
           <button type="button" data-nsa-scene-select="${index}">
             <b>场景 ${index + 1}</b><span>${escapeHtml(item.name || '任务场景')}</span>
           </button>
           <button type="button" class="dh-nsa-scene-delete" data-nsa-scene-delete="${index}" aria-label="删除场景 ${index + 1}">×</button>
         </div>`).join('')}
-      </div>` : ''}
+      </div>` : '')}
+      ${progressPanel}
+      ${failurePanel}
       <div class="dh-nsa-scene-card">
         <button type="button" class="dh-nsa-scene-thumb dh-nsa-scene-main-preview" data-nsa-scene-preview="${selectedIndex}:0">
           ${mainUrl ? `<img src="${escapeHtml(thumbUrl(mainUrl, 560))}" alt="${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}" loading="eager" decoding="async" fetchpriority="high">` : '空间'}
@@ -780,18 +1143,31 @@
           <div class="dh-nsa-scene-head">
             <div>
               <b>${escapeHtml(asset.name || `任务场景 ${selectedIndex + 1}`)}</b>
-              <span>${escapeHtml([`场景 ${selectedIndex + 1}/${assets.length}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`].filter(Boolean).join(' · '))}</span>
+              <span>${escapeHtml([`场景 ${displaySceneIndex + 1}/${displaySceneTotal}`, `版本 r${asset.scene_revision || 1}`, asset.lock_strength ? `锁定强度：${asset.lock_strength}` : '', STRATEGY_LABELS[asset.view_strategy] || '', `${views.length || 1} 张空间参考`].filter(Boolean).join(' · '))}</span>
             </div>
             <em class="is-${escapeHtml(sceneVerification.tone)}">${escapeHtml(sceneVerification.label)}</em>
+          </div>
+          <div class="dh-nsa-scene-provenance ${isV7Atlas ? 'is-v7' : 'is-legacy'}">
+            <b>${isV7Atlas ? '新版 V7 空间资产正在使用' : '非完整 V7 空间资产'}</b>
+            <span>${isV7Atlas
+              ? `1 张 2×2 母图 → 本地裁切 4 个透视视角 + 1 张俯视布局 · 图片模型调用 ${Number(asset.space_asset_contract?.provider_image_call_count || asset.view_acquisition?.provider_image_call_count || 2)} 次${atlasHash ? ` · 母图校验 ${atlasHash.slice(0, 12)}` : ''}`
+              : '当前资产缺少 V7 母图血缘或新版生成协议，未升级前不会作为完整空间锁进入关键帧。'}</span>
           </div>
           ${repairFailure ? `<div class="dh-nsa-scene-repair-error"><b>上次修复失败，当前仍显示版本 r${asset.scene_revision || 1}</b><span>${escapeHtml(repairFailure)}</span></div>` : ''}
           <div class="dh-nsa-scene-lock-metrics" aria-label="场景锁定验证指标">
             <div class="${assessment.requirementQa.pass === true ? 'is-pass' : 'is-pending'}"><small>需求符合度</small><b>${escapeHtml(metricValue(assessment.requirementScore))}</b><span>布局、材质、互动与禁止项</span></div>
+            <div class="${assessment.photographicRealismQa.pass === true ? 'is-pass' : 'is-pending'}"><small>摄影真实性</small><b>${escapeHtml(metricValue(assessment.photographicRealismScore))}</b><span>真实材质、自然变化与相机光学</span></div>
+            <div class="${assessment.cameraDesignQa.pass === true ? 'is-pass' : 'is-pending'}"><small>机位设计</small><b>${escapeHtml(metricValue(assessment.cameraDesignScore))}</b><span>逐机位参数、方向与需求映射</span></div>
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
             <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
           </div>
-          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${assessment.upgradeRequired ? '旧版图片不能继续复验或局部修复，需要一次完整升级' : (assessment.legacy ? '旧资产仅锁定外观，不能作为完整空间锁进入关键帧' : (sceneVerification.tone === 'unavailable' ? '审核服务异常，图片尚未判定失败' : '未完整锁定的场景不会进入关键帧'))}</span>${canUpgrade ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-upgrade="${escapeHtml(asset.scene_id || asset.id)}">重新补齐并重建当前场景（5 张）</button>` : ''}${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${canUpgrade ? '<span class="dh-nsa-verification-hint">系统会先用 AI 重新编译当前空间设定；补齐成功后才生成 5 张新版参考并自动验收，旧版图片文件保留。</span>' : (assessment.legacy ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>' : '')}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
+          ${cameraAcceptanceHtml(asset, assessment)}
+          ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${escapeHtml(verificationBadgeText)}</span>${canUpgrade ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-upgrade="${escapeHtml(asset.scene_id || asset.id)}">升级当前空间（2 次图片调用）</button>` : ''}${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${canRebuildAtlas ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">重建空间母图与布局（2 次图片调用）</button>` : ''}${canUpgrade ? '<span class="dh-nsa-verification-hint">系统会先补齐空间设定，再生成一张 2×2 母图、本地裁切 4 个视角并生成 1 张俯视布局；旧版图片保留。</span>' : legacyUpgradeHint}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}${canRebuildAtlas ? '<span class="dh-nsa-verification-hint">四个透视视角来自同一母图，不能单独重做某一格；本次会重建母图和俯视布局，避免视角之间身份漂移。</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
+            ${atlasUrl ? `<button type="button" class="dh-nsa-scene-view is-atlas" data-nsa-scene-preview="${selectedIndex}:atlas">
+              <img src="${escapeHtml(thumbUrl(atlasUrl, 360))}" alt="V7 2×2 空间母图" loading="lazy" decoding="async">
+              <b>V7 母图（2×2）</b>
+            </button>` : ''}
             ${views.slice(0, 5).map((view, index) => {
               const url = view.url || view.image_url || '';
               return `<button type="button" class="dh-nsa-scene-view ${view.key === 'layout' ? 'is-layout' : ''}" data-nsa-scene-preview="${selectedIndex}:${index}">
@@ -831,15 +1207,22 @@
     const assets = Array.isArray(state.sceneAssets) ? state.sceneAssets : [];
     const plannedSpaces = Array.isArray(state.sceneConfig?.spaces) ? state.sceneConfig.spaces : [];
     const multiScene = state.sceneConfig?.scene_mode === 'multi' || plannedSpaces.length > 1;
-    const currentIndex = Math.max(0, Math.min(assets.length - 1, Number(state.sceneSelectedIndex || 0) || 0));
-    const currentAsset = !append ? assets[currentIndex] : null;
+    const currentIndex = selectedSceneAssetIndex(state, assets);
+    const currentAsset = !append && currentIndex >= 0 ? assets[currentIndex] : null;
     const existingIds = new Set(assets.map(asset => clean(asset.space_id || asset.scene_id || asset.id, 120)));
-    const currentId = clean(currentAsset?.space_id || currentAsset?.scene_id || currentAsset?.id || '', 120);
-    const targetSpace = currentId
-      ? plannedSpaces.find(space => clean(space.space_id || space.id || space.scene_id, 120) === currentId)
-      : (append
-        ? plannedSpaces.find(space => !existingIds.has(clean(space.space_id || space.id || space.scene_id, 120)))
-        : plannedSpaces[0]);
+    const hasExplicitPlanSelection = Object.prototype.hasOwnProperty.call(state, 'scenePlanSelectedIndex');
+    const selectedSpace = hasExplicitPlanSelection
+      ? (plannedSpaces[selectedPlanIndex(state, state.sceneConfig)] || null)
+      : null;
+    const selectedSpaceId = clean(selectedSpace?.space_id || selectedSpace?.id || selectedSpace?.scene_id || '', 120);
+    const currentId = clean(currentAsset?.space_id || currentAsset?.scene_id || currentAsset?.id || selectedSpaceId, 120);
+    const targetSpace = append
+      ? plannedSpaces.find(space => !existingIds.has(clean(space.space_id || space.id || space.scene_id, 120)))
+      : (selectedSpaceId
+        ? selectedSpace
+        : (currentId
+          ? plannedSpaces.find(space => clean(space.space_id || space.id || space.scene_id, 120) === currentId)
+          : plannedSpaces[0]));
     const targetSpaceId = clean(targetSpace?.space_id || targetSpace?.id || targetSpace?.scene_id || currentId, 120);
     return { currentAsset, multiScene, targetSpace, targetSpaceId };
   }
@@ -853,7 +1236,14 @@
       || [],
     );
     state.sceneAssets = assets;
-    const spec = request.scene_spec || request.sceneSpec || outputs.context?.scene_spec || response.context?.scene_spec || null;
+    const plan = normalizePlan(outputs.scene_config || response.scene_config || state.sceneConfig || {});
+    const selected = plan.spaces[selectedPlanIndex(state, plan)] || null;
+    if (selected) {
+      state.sceneConfig = plan;
+      state.scenePlanSelectedIndex = plan.spaces.findIndex(space => space.id === selected.id);
+      state.scenePlanSelectedId = selected.id;
+    }
+    const spec = selected?.scene_spec || request.scene_spec || request.sceneSpec || outputs.context?.scene_spec || response.context?.scene_spec || null;
     applySpec(spec, { clearMissing: true });
     return assets;
   }
@@ -880,6 +1270,8 @@
       toast?.('检测到完整连续墙面要求，已自动改为“连续完整表面 + 隐藏可见拼缝”', 'info');
     }
     const totalViews = 5;
+    const generationTarget = plannedGenerationTarget(state, { append });
+    const targetSpaceId = generationTarget.targetSpaceId;
     const label = append ? '追加场景参考中...' : '生成场景参考中...';
     const startedAt = Date.now();
     const fallbackProgress = {
@@ -888,8 +1280,11 @@
       completed: 0,
       startedAt,
       percent: 8,
+      scene_id: targetSpaceId || '',
+      scene_name: generationTarget.targetSpace?.name || '',
       message: '任务正在提交，等待服务器返回每个视图的真实生成状态。',
     };
+    state.sceneOperationFailure = null;
     if (!append) {
       state.taskStatus = 'working';
       state.taskStage = 'scene_asset';
@@ -908,8 +1303,7 @@
     try {
       const taskId = await ensureTask();
       const body = typeof buildPayload === 'function' ? buildPayload() : {};
-      const currentIndex = Math.max(0, Math.min((state.sceneAssets || []).length - 1, Number(state.sceneSelectedIndex || 0) || 0));
-      const { currentAsset, multiScene, targetSpace, targetSpaceId } = plannedGenerationTarget(state, { append });
+      const { currentAsset, multiScene, targetSpace } = generationTarget;
       if (multiScene && !targetSpaceId) {
         const error = new Error(append
           ? '场景计划中的独立空间都已生成；如需修改，请先选择对应场景再重新生成。'
@@ -918,56 +1312,38 @@
         throw error;
       }
       const targetSceneSpec = targetSpace?.scene_spec || targetSpace?.sceneSpec || sceneSpec;
-      const submit = async acknowledgeBillingUnknown => {
-        const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
-          method: 'POST',
-          body: {
-            ...body,
-            scene_spec: targetSceneSpec,
-            include_layout_view: requiresLayoutView(targetSceneSpec),
-            scene_assets: payload(state),
-            space_id: targetSpaceId || undefined,
-            scene_id: targetSpaceId || undefined,
-            acknowledge_billing_unknown: acknowledgeBillingUnknown === true,
-            lock_strength: 'standard',
-            require_complete_scene_spec: fullUpgrade === true,
-          },
-        });
-        return submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
-          ? window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
-              api, normalizeBundle, renderAll, state,
-            })
-          : submitted;
-      };
-      let r;
-      try {
-        r = await submit(false);
-      } catch (error) {
-        if (error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN' || typeof confirmAction !== 'function') throw error;
-        const accepted = await confirmAction({
-          title: '检测到上次场景图片计费状态未知',
-          summary: targetSpace?.name || targetSpaceId || '当前场景',
-          description: '上一次图片请求可能已经提交给供应商，但尚不能确认是否计费或是否仍会返回结果。',
-          confirmLabel: '接受风险，仅补失败视图',
-          cancelLabel: '暂不提交',
-          tone: 'danger',
-          facts: [
-            { label: '已成功视图', value: '保留', tone: 'success' },
-            { label: '本次范围', value: '仅失败视图', tone: 'warning' },
-          ],
-          note: '继续可能产生一次重复计费；系统不会自动替你继续。',
-        });
-        if (!accepted) {
-          const cancelled = new Error('已取消重新提交，没有产生新的图片模型调用。');
-          cancelled.code = 'USER_CANCELLED';
-          throw cancelled;
-        }
-        r = await submit(true);
-      }
+      // 用户点击生成就是本次付费请求的明确授权。直接恢复未知计费检查点，
+      // 后端仍继续阻止后台自动重试和没有显式授权的非交互调用。
+      const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
+        method: 'POST',
+        body: {
+          ...body,
+          scene_spec: targetSceneSpec,
+          include_layout_view: requiresLayoutView(targetSceneSpec),
+          view_strategy: 'atlas_2x2',
+          scene_assets: payload(state),
+          space_id: targetSpaceId || undefined,
+          scene_id: targetSpaceId || undefined,
+          acknowledge_billing_unknown: true,
+          lock_strength: 'standard',
+          require_complete_scene_spec: fullUpgrade === true,
+        },
+      });
+      const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
+        ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
+            api, normalizeBundle, renderAll, state,
+          })
+        : submitted;
       if (typeof normalizeBundle === 'function') normalizeBundle(r);
       state.sceneAssets = normalizeAssets(r.scene_assets || r.outputs?.scene_assets || r.bundle?.outputs?.scene_assets || []);
-      state.sceneSelectedIndex = append ? Math.max(0, state.sceneAssets.length - 1) : currentIndex;
+      const generatedIndex = targetSpaceId
+        ? state.sceneAssets.findIndex(asset => clean(asset.space_id || asset.scene_id || asset.id, 120) === targetSpaceId)
+        : -1;
+      state.sceneSelectedIndex = generatedIndex >= 0
+        ? generatedIndex
+        : (append ? Math.max(0, state.sceneAssets.length - 1) : Math.max(0, selectedSceneAssetIndex(state, state.sceneAssets)));
       state.sceneGenerationProgress = null;
+      state.sceneOperationFailure = null;
       renderAll?.();
       const updatedAsset = state.sceneAssets[state.sceneSelectedIndex] || {};
       const verificationResult = verificationView(updatedAsset);
@@ -980,6 +1356,16 @@
       return true;
     } catch (err) {
       state.sceneGenerationProgress = null;
+      const failedTask = err?.data?.task || {};
+      const failedProgress = failedTask.generation_progress || state.generationProgress || {};
+      state.sceneOperationFailure = {
+        ...failedProgress,
+        scene_id: failedProgress.scene_id || targetSpaceId || '',
+        scene_name: generationTarget.targetSpace?.name || '',
+        message: failedProgress.message || failedTask.error || err.message || '场景参考生成失败',
+        error_code: failedProgress.error_code || failedTask.error_code || err.code || '',
+        support_id: failedProgress.support_id || failedTask.support_id || '',
+      };
       renderAll?.();
       toast?.(err.message || '场景参考生成失败', 'error');
       return false;
@@ -1000,7 +1386,14 @@
       renderAll?.();
       const updated = state.sceneAssets.find(asset => String(asset.scene_id || asset.id) === String(sceneId)) || response.scene_asset || {};
       const result = verificationView(updated);
-      toast?.(result.message || result.label, result.tone === 'verified' ? 'success' : (result.tone === 'unavailable' ? 'warning' : 'error'));
+      const pendingTones = new Set(['unverified', 'appearance', 'upgrade', 'partial']);
+      const toastType = result.tone === 'verified'
+        ? 'success'
+        : (result.tone === 'unavailable' || pendingTones.has(result.tone) ? 'warning' : 'error');
+      const toastMessage = pendingTones.has(result.tone)
+        ? `${result.label}，请查看场景卡内的验收说明`
+        : (result.message || result.label);
+      toast?.(toastMessage, toastType);
       return result.tone === 'verified';
     } catch (error) {
       toast?.(error.message || '场景重新验证失败', 'error');
@@ -1081,6 +1474,15 @@
       return result.tone === 'verified';
     } catch (error) {
       state.sceneGenerationProgress = null;
+      const failedTask = error?.data?.task || {};
+      const failedProgress = failedTask.generation_progress || state.generationProgress || {};
+      state.sceneOperationFailure = {
+        ...failedProgress,
+        scene_id: failedProgress.scene_id || sceneId,
+        message: failedProgress.message || failedTask.error || error.message || '场景自动修复失败',
+        error_code: failedProgress.error_code || failedTask.error_code || error.code || '',
+        support_id: failedProgress.support_id || failedTask.support_id || '',
+      };
       renderAll?.();
       toast?.(error.message || '场景自动修复失败', 'error');
       return false;
@@ -1095,6 +1497,7 @@
     normalizeAssets,
     sceneLockAssessment,
     completeSceneViewEvidence,
+    selectedSceneAssetIndex,
     selectedSceneUpgradeRequired,
     resumableUpgradeProgress,
     thumbUrl,
@@ -1108,6 +1511,10 @@
     normalizePlan,
     applyPlan,
     planPayload,
+    selectPlanSpace,
+    selectPlanSpaceById,
+    addDraftSpace,
+    addDraft,
     applySpecSuggestion,
     syncSpecSelectionState,
     render,
@@ -1122,6 +1529,7 @@
   const STRATEGY_LABELS = {
     single_view: '单视角',
     image_derived: '母场景图片派生',
+    atlas_2x2: '2×2 空间母资产',
     orbit_extract: '环绕视频抽帧',
     path_extract: '路径视频抽帧',
     uploaded_views: '用户多视图',

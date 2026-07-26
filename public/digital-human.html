@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260725-subject-scene-contract-v10">
-  <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-scene-contract-v10"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260725-subject-scene-contract-v10"></script>
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260726-scene-reverify-persist-v31">
+  <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260726-scene-reverify-persist-v31"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -424,7 +424,7 @@
                     </label>
                   </div>
                   <div class="dh-luxgen-mini-actions">
-                    <span>系统会优先补齐留空字段；“生成/重新生成当前场景”会替换当前选中场景，“追加新场景”才会新增一套独立空间资产，后续关键帧会按当前任务读取。</span>
+                    <span>系统会优先补齐留空字段；“生成/重新生成当前场景”只生成当前选中的空间，“新增场景设定”仅增加一份空白设定，不会调用图片模型。</span>
                   </div>
                   <div class="dh-nsa-scene-spec-grid">
                     <label>
@@ -481,7 +481,7 @@
                   <div class="dh-nsa-surface-conflict-hint">冲突保护：当空间描述或禁止项明确要求完整连续墙面时，系统会自动采用“连续完整表面 + 隐藏可见拼缝”，不会再让旧的模块化选项覆盖文字要求。</div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">追加新场景</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">新增场景设定</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
                   </div>
                 </div>

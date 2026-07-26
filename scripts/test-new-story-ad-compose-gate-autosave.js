@@ -154,6 +154,49 @@ assert.strictEqual(storyboardSaveState.review, null);
 assert.strictEqual(storyboardSaveState.ttsAudio, null);
 assert.deepStrictEqual(Array.from(storyboardSaveState.videoClips), []);
 assert.strictEqual(storyboardSaveState.finalVideo, null);
+let sceneHydrateCalls = 0;
+context.window.NewStoryAdSceneAssets = {
+  hydrate(state, { request = {}, outputs = {}, response = {} } = {}) {
+    sceneHydrateCalls += 1;
+    state.sceneAssets = outputs.scene_assets || response.scene_assets || request.scene_assets || [];
+  },
+};
+const projectedPartialScene = {
+  id: 'space_home',
+  space_id: 'space_home',
+  partial_checkpoint: true,
+  completed_view_keys: ['master'],
+  failed_view_keys: ['layout'],
+  view_images: [{ key: 'master', url: '/home-master.png' }],
+};
+const rawStoredScene = {
+  id: 'space_home',
+  space_id: 'space_home',
+  image_url: '/home-master.png',
+  view_images: [{ key: 'master', url: '/home-master.png' }],
+};
+const autosaveHydrationState = {
+  taskId: 'scene-autosave-projection-regression',
+  sceneAssets: [projectedPartialScene],
+  castProfiles: [],
+  petProfiles: [],
+  referenceAssets: [],
+};
+context.window.NewStoryAdStateSync.normalizeBundle({
+  task: { id: 'scene-autosave-projection-regression', status: 'working', stage: 'scene_config_done' },
+  context: { scene_assets: [rawStoredScene] },
+}, { state: autosaveHydrationState });
+assert.strictEqual(sceneHydrateCalls, 0,
+  'a progress-save response without explicit scene_assets output must not replace the current checkpoint projection with raw context');
+assert.strictEqual(autosaveHydrationState.sceneAssets[0].partial_checkpoint, true,
+  'the selected partial scene must remain resumable after silent autosave');
+context.window.NewStoryAdStateSync.normalizeBundle({
+  task: { id: 'scene-autosave-projection-regression', status: 'working', stage: 'scene_config_done' },
+  outputs: { scene_assets: [{ ...projectedPartialScene, completed_view_keys: ['master', 'layout'] }] },
+}, { state: autosaveHydrationState });
+assert.strictEqual(sceneHydrateCalls, 1,
+  'an explicit scene_assets output must still replace the current projection');
+assert.deepStrictEqual(Array.from(autosaveHydrationState.sceneAssets[0].completed_view_keys), ['master', 'layout']);
 const missingStoryboardState = {};
 context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboardState, { storyboard_meta: { status: 'ready' } });
 assert.strictEqual(missingStoryboardState.restoreErrorCode, 'STORYBOARD_OUTPUT_MISSING');
@@ -161,7 +204,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260725-subject-scene-contract-v10'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260726-scene-reverify-persist-v31'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -232,10 +275,24 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260725-subject-scene-contract-v10'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260726-scene-reverify-persist-v31'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
+const autosaveSceneAssets = progressSave.mergeAutosaveSceneAssets([
+  { id: 'space_park', scene_id: 'space_park', space_id: 'space_park', name: '公园', image_url: '/park-1.png', view_images: ['/park-1.png'] },
+  { id: 'space_home', scene_id: 'space_home', space_id: 'space_home', name: '住宅', image_url: '/home-1.png', view_images: ['/home-1.png'] },
+  { id: 'space_orphan', scene_id: 'space_orphan', space_id: 'space_orphan', name: '历史审计资产', image_url: '/old-1.png', audit_only: true, view_images: ['/old-1.png'] },
+], [
+  { id: 'space_park', scene_id: 'space_park', space_id: 'space_park', name: '公园（已编辑）', image_url: '/park-new.png', view_images: ['/park-new.png'] },
+  { id: 'space_home', scene_id: 'space_home', space_id: 'space_home', name: '住宅', image_url: '/home-1.png', view_images: ['/home-1.png'] },
+]);
+assert.deepStrictEqual(autosaveSceneAssets.map(asset => asset.space_id), ['space_park', 'space_home', 'space_orphan'],
+  'a projected scene autosave must preserve stored assets that are not visible in the current scene plan');
+assert.strictEqual(autosaveSceneAssets[0].name, '公园（已编辑）',
+  'the incoming visible scene must still replace the matching stable-id record');
+assert.strictEqual(autosaveSceneAssets[2].audit_only, true,
+  'historical or orphaned scene evidence must survive a normal progress autosave');
 const failedComposeTask = { status: 'failed', stage: 'compose_failed', error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1' };
 assert.deepStrictEqual(progressSave.taskPatch(failedComposeTask, { progressStage: 'video_ready', changeScope: 'none' }), {},
   'an unchanged autosave must not rewrite terminal failure status while retaining its error fields');
@@ -245,6 +302,40 @@ assert.strictEqual(editedFailurePatch.error_code, '');
 assert.strictEqual(editedFailurePatch.generation_progress, null);
 const storage = require('../src/services/newStoryAd/storageService');
 const storyAdService = require('../src/services/newStoryAd/storyAdService');
+storyAdService.createTask({
+  task_id: 'scene-assets-autosave-authority',
+  brief: 'scene asset autosave authority regression',
+  cast_mode: 'no_human',
+}, { id: 'owner-1' });
+storage.saveOutput('scene-assets-autosave-authority', 'scene_assets', autosaveSceneAssets);
+storage.saveOutput('scene-assets-autosave-authority', 'context', {
+  ...storage.getOutput('scene-assets-autosave-authority', 'context'),
+  scene_assets: autosaveSceneAssets,
+});
+storyAdService.updateTaskRequest('scene-assets-autosave-authority', {
+  brief: 'scene asset autosave authority regression',
+  cast_mode: 'no_human',
+  scene_assets: [
+    { id: 'space_park', scene_id: 'space_park', space_id: 'space_park', name: '公园（再次编辑）', image_url: '/park-final.png', view_images: ['/park-final.png'] },
+    { id: 'space_home', scene_id: 'space_home', space_id: 'space_home', name: '住宅', image_url: '/home-1.png', view_images: ['/home-1.png'] },
+  ],
+  change_scope: 'none',
+  save_progress: true,
+  progress_stage: 'scene_config_done',
+  progress_snapshot: {
+    scene_assets: [
+      { id: 'space_park', scene_id: 'space_park', space_id: 'space_park', name: '公园（再次编辑）', image_url: '/park-final.png', view_images: ['/park-final.png'] },
+      { id: 'space_home', scene_id: 'space_home', space_id: 'space_home', name: '住宅', image_url: '/home-1.png', view_images: ['/home-1.png'] },
+    ],
+  },
+}, { id: 'owner-1' });
+const persistedAutosaveSceneAssets = storage.getOutput('scene-assets-autosave-authority', 'scene_assets');
+assert.deepStrictEqual(persistedAutosaveSceneAssets.map(asset => asset.space_id), ['space_park', 'space_home', 'space_orphan'],
+  'the real progress snapshot path must preserve hidden historical assets');
+assert.strictEqual(persistedAutosaveSceneAssets[0].name, '公园（再次编辑）');
+assert.deepStrictEqual(storage.getOutput('scene-assets-autosave-authority', 'context').scene_assets.map(asset => asset.scene_id || asset.space_id),
+  ['space_park', 'space_home', 'space_orphan'],
+  'the task context mirror must preserve the same hidden historical assets');
 storyAdService.createTask({ task_id: 'failed-compose-autosave', brief: '保持封装失败真实状态' }, { id: 'owner-1' });
 storage.updateTask('failed-compose-autosave', { error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1', generation_progress: { stage: 'compose', status: 'failed' } });
 storage.updateTask('failed-compose-autosave', { status: 'failed', stage: 'compose_failed' });
@@ -318,6 +409,10 @@ assert(route.includes("router.get('/tasks/:id/video/preflight'"), 'server must e
 assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body)'), 'server must reject unconfirmed or stale video plans before queueing');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
+assert(service.includes("taskProgressSave.mergeAutosaveSceneAssets(storage.getOutput(taskId, outputKind), value)"),
+  'progress snapshot persistence must merge projected scene assets by stable id instead of overwriting the authoritative list');
+assert(service.includes('taskProgressSave.mergeAutosaveSceneAssets(previousCtx.scene_assets, ctx.scene_assets)'),
+  'autosave must also preserve hidden assets in the task context mirror');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));
 assert(ttsBlock.indexOf('assertVideoInputsReady') >= 0, 'TTS must enforce media QA preflight');
 assert(ttsBlock.indexOf('assertVideoInputsReady') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'QA preflight must run before paid TTS');

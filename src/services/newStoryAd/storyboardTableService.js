@@ -180,9 +180,20 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     subject_position: clampText(shot.subject_position || shot.subjectPosition || '', 80),
     object_states: shotDesign.structuredText(shot.object_states || shot.objectStates || '', 240),
     transition_type: clampText(shot.transition_type || shot.transitionType || shot.transition || '', 40),
+    transition_duration_sec: Math.max(0, Math.min(2, Number(
+      shot.transition_duration_sec ?? shot.transitionDurationSec ?? 0,
+    ) || 0)),
+    transition_match_anchor: clampText(
+      shot.transition_match_anchor || shot.transitionMatchAnchor || shot.match_anchor || '',
+      180,
+    ),
+    transition_source: clampText(shot.transition_source || shot.transitionSource || '', 40),
     requires_previous_frame: shot.requires_previous_frame === true || shot.requiresPreviousFrame === true
       || String(shot.requires_previous_frame || shot.requiresPreviousFrame || '').toLowerCase() === 'true',
     audio_bridge: clampText(shot.audio_bridge || shot.audioBridge || '', 160),
+    audio_bridge_duration_sec: Math.max(0, Math.min(1.5, Number(
+      shot.audio_bridge_duration_sec ?? shot.audioBridgeDurationSec ?? 0,
+    ) || 0)),
     ambient_sound: clampText(shot.ambient_sound || shot.ambientSound || '', 180),
     sfx: (Array.isArray(shot.sfx) ? shot.sfx : String(shot.sfx || '').split(/[,，；;]/)).map(value => clampText(value, 100)).filter(Boolean).slice(0, 12),
     music_cue: clampText(shot.music_cue || shot.musicCue || '', 180),
@@ -313,7 +324,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, requires_previous_frame, audio_bridge, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, transition_duration_sec, transition_match_anchor, requires_previous_frame, audio_bridge, audio_bridge_duration_sec, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -467,8 +478,11 @@ Return JSON array for current beats only. Fields:
   "subject_position": "subject placement derived from current action and continuity",
   "object_states": "product and prop positions/states that must not jump",
   "transition_type": "none/hard_cut/cut_on_action/match_cut/dissolve/fade",
+  "transition_duration_sec": 0.0,
+  "transition_match_anchor": "visible action, shape, position or composition anchor used by match_cut; empty otherwise",
   "requires_previous_frame": false,
   "audio_bridge": "ambient or sound bridge into this shot, empty when none",
+  "audio_bridge_duration_sec": 0.0,
   "ambient_sound": "environment sound from the current scene",
   "sfx": ["specific action or object sound"],
   "music_cue": "music change serving the current story beat",

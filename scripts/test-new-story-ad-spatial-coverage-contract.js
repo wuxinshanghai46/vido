@@ -27,6 +27,19 @@ function passingResult(overrides = {}) {
       negative_compliance_score: 0.98,
       mismatch_reasons: [],
     },
+    photographic_realism_qa: {
+      pass: true,
+      photographic_realism_score: 0.92,
+      physical_material_score: 0.91,
+      natural_variation_score: 0.9,
+      optical_capture_score: 0.9,
+      real_photo_evidence: [
+        'natural exposure roll-off and plausible lens perspective',
+        'localized wear, material variation and grounded contact shadows',
+      ],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+    },
     cross_view_qa: {
       pass: true,
       scene_consistency_score: 0.94,
@@ -42,6 +55,49 @@ function passingResult(overrides = {}) {
       interaction_zone_score: 0.9,
       reasons: [],
     },
+    camera_design_qa: {
+      pass: true,
+      role_definition_score: 0.94,
+      requirement_mapping_score: 0.92,
+      direction_evidence_score: 0.91,
+      parameter_completeness_score: 0.95,
+      layout_mapping_score: 0.9,
+      mismatch_reasons: [],
+    },
+    cameras: [
+      {
+        view_id: 'master', label: '主视角', role: '建立空间关系', framing: '广角全景',
+        lens_class: '24-28mm wide', height_class: 'eye_level', orientation: '由入口朝向互动区',
+        estimated_azimuth_degrees: 20, estimated_pitch_degrees: 2,
+        normalized_position: [0.12, 0.82], look_at: [0.55, 0.45], position_confidence: 0.9,
+        target_description: '完整空间、入口与互动区', allowed_zone_ids: ['zone_action'],
+        requirement_refs: ['layout', 'interaction'], visible_evidence: '入口位于前景，互动区与主要锚点同框', pass: true, mismatch_reasons: [],
+      },
+      {
+        view_id: 'reverse', label: '反向/侧向', role: '验证背向空间', framing: '广角全景',
+        lens_class: '28-35mm wide', height_class: 'eye_level', orientation: '从互动区反看入口',
+        estimated_azimuth_degrees: 130, estimated_pitch_degrees: 1, azimuth_delta_from_master_degrees: 110,
+        normalized_position: [0.82, 0.25], look_at: [0.42, 0.58], position_confidence: 0.86,
+        target_description: '主视角未展示的边界与入口', allowed_zone_ids: ['zone_action'],
+        requirement_refs: ['layout'], visible_evidence: '前后景关系与主视角互换并出现新边界', pass: true, mismatch_reasons: [],
+      },
+      {
+        view_id: 'interaction', label: '互动位', role: '验证人物动作区', framing: '中广景',
+        lens_class: '35mm normal-wide', height_class: 'chest_level', orientation: '沿通行动线朝向操作面',
+        estimated_azimuth_degrees: 75, estimated_pitch_degrees: 0,
+        normalized_position: [0.32, 0.68], look_at: [0.58, 0.48], position_confidence: 0.88,
+        target_description: '空白互动区、操作面与进出路线', allowed_zone_ids: ['zone_action'],
+        requirement_refs: ['interaction'], visible_evidence: '动作净空、可达表面与通行路线同时可见', pass: true, mismatch_reasons: [],
+      },
+      {
+        view_id: 'detail', label: '材质细节', role: '验证关键材质', framing: '近景特写',
+        lens_class: '50-85mm detail', height_class: 'surface_level', orientation: '朝向关键接触面',
+        estimated_azimuth_degrees: 70, estimated_pitch_degrees: -12,
+        normalized_position: [0.5, 0.55], look_at: [0.57, 0.5], position_confidence: 0.8,
+        target_description: '主材质、接缝与表面细节', allowed_zone_ids: ['zone_action'],
+        requirement_refs: ['material_light', 'surface_topology'], visible_evidence: '纹理尺度、粗糙度与接触阴影清晰', pass: true, mismatch_reasons: [],
+      },
+    ],
     anchors: [],
     zones: [],
     geometry_facts: [],
@@ -93,10 +149,14 @@ async function main() {
     sceneId: 'scene-complete',
     views: fullViews,
   });
-  assert.equal(complete.schema_version, 4);
+  assert.equal(complete.schema_version, 6);
   assert.equal(complete.status, 'verified');
+  assert.equal(complete.photographic_realism_qa.pass, true);
   assert.equal(complete.spatial_coverage_qa.pass, true);
   assert.equal(complete.spatial_coverage_qa.coverage_status, 'complete');
+  assert.equal(complete.camera_design_qa.pass, true);
+  assert.equal(complete.cameras.length, 4);
+  assert.deepEqual(complete.cameras[0].normalized_position, [0.12, 0.82]);
   assert.equal(complete.space_lock_status, 'complete');
   assert.equal(complete.full_space_lock, true);
   assert.equal(complete.compatibility_status, 'current');
@@ -105,6 +165,51 @@ async function main() {
     views: fullViews.map(view => view.key === 'layout' ? { ...view, url: 'https://test.invalid/layout-v2.png' } : view),
   });
   assert.notEqual(changedLayout.reference_fingerprint, complete.reference_fingerprint, '布局参考变化必须更新空间合同指纹');
+
+  const syntheticShowroom = sceneSpace.normalizeContract(passingResult({
+    photographic_realism_qa: {
+      pass: false,
+      photographic_realism_score: 0.38,
+      physical_material_score: 0.46,
+      natural_variation_score: 0.21,
+      optical_capture_score: 0.42,
+      real_photo_evidence: [],
+      synthetic_signals: [
+        'procedurally uniform grass and spotless repeated foliage',
+        'sterile showroom staging with plastic-looking surfaces',
+      ],
+      mismatch_reasons: ['画面更像 CGI/样板间，不像真实地点拍摄'],
+    },
+    view_issues: [{
+      code: 'PHOTOREALISM_INVALID',
+      view_keys: ['master', 'reverse', 'interaction', 'detail'],
+      reason: '画面更像 CGI/样板间，不像真实地点拍摄',
+      evidence: 'procedurally uniform surfaces and sterile repeated details',
+      confidence: 0.96,
+    }],
+  }), { sceneId: 'scene-synthetic-showroom', views: fullViews });
+  assert.equal(syntheticShowroom.requirement_qa.pass, true);
+  assert.equal(syntheticShowroom.cross_view_qa.pass, true);
+  assert.equal(syntheticShowroom.spatial_coverage_qa.pass, true);
+  assert.equal(syntheticShowroom.photographic_realism_qa.pass, false);
+  assert.equal(syntheticShowroom.status, 'rejected');
+  assert.equal(syntheticShowroom.full_space_lock, false, 'synthetic-looking imagery must never receive a complete scene lock');
+
+  const cameraEvidenceMissing = sceneSpace.normalizeContract(passingResult({
+    camera_design_qa: undefined,
+    cameras: [],
+  }), { sceneId: 'scene-camera-evidence-missing', views: fullViews });
+  assert.equal(cameraEvidenceMissing.camera_design_qa.legacy, true);
+  assert.equal(cameraEvidenceMissing.space_lock_status, 'camera_review_required');
+  assert.equal(cameraEvidenceMissing.full_space_lock, false, 'missing per-camera evidence must block a complete scene lock');
+
+  const reverseCameraUnmapped = sceneSpace.normalizeContract(passingResult({
+    cameras: passingResult().cameras.map(camera => camera.view_id === 'reverse'
+      ? { ...camera, requirement_refs: [], pass: true }
+      : camera),
+  }), { sceneId: 'scene-reverse-camera-unmapped', views: fullViews });
+  assert.equal(reverseCameraUnmapped.camera_design_qa.pass, false);
+  assert.equal(reverseCameraUnmapped.full_space_lock, false, 'a camera without requirement mapping must fail closed');
 
   const withoutLayout = sceneSpace.normalizeContract(passingResult(), {
     sceneId: 'scene-no-layout',
@@ -196,7 +301,7 @@ async function main() {
       mismatch_reasons: [],
     },
   }, { sceneId: 'scene-legacy', views: fullViews.slice(0, 4) });
-  assert.equal(legacy.schema_version, 4);
+  assert.equal(legacy.schema_version, 6);
   assert.equal(legacy.source_schema_version, 2);
   assert.equal(legacy.requirement_qa.legacy_assumed, true);
   assert.equal(legacy.compatibility_status, 'legacy_partial');
@@ -299,7 +404,72 @@ async function main() {
     });
     assert.equal(analyzed.status, 'verified');
     assert.equal(analyzed.vision_model, 'mock/spatial-v3');
-    assert.equal(successfulReviewCalls, 1, '三道空间验收必须合并在一次视觉审核请求中，不能串行调用三次');
+    assert.equal(successfulReviewCalls, 2, '场景五图 QA 与逐机位证据 QA 必须拆成两个结构化请求');
+
+    let missingRealismCalls = 0;
+    modelGateway.generateVision = async () => {
+      missingRealismCalls += 1;
+      const result = passingResult();
+      delete result.photographic_realism_qa;
+      return { text: JSON.stringify(result), used_model: 'mock/missing-realism-schema' };
+    };
+    await assert.rejects(
+      () => sceneSpace.analyzeSceneViews({
+        taskId: 'scene-realism-schema-invalid',
+        sceneId: 'scene-realism-schema-invalid',
+        views: fullViews,
+      }),
+      error => error?.code === 'VISION_QA_SCHEMA_INVALID'
+        && Array.isArray(error.missing_fields)
+        && error.missing_fields.includes('photographic_realism_qa.required_scores'),
+    );
+    assert.equal(missingRealismCalls, 2, 'missing photographic realism evidence must retry once and then fail closed');
+    let missingCameraEvidenceCalls = 0;
+    modelGateway.generateVision = async () => {
+      missingCameraEvidenceCalls += 1;
+      const result = passingResult();
+      delete result.camera_design_qa;
+      result.cameras = result.cameras.map(camera => ({
+        view_id: camera.view_id,
+        label: camera.label,
+      }));
+      return { text: JSON.stringify(result), used_model: 'mock/missing-camera-evidence' };
+    };
+    let cameraSchemaError = null;
+    await assert.rejects(
+      () => sceneSpace.analyzeSceneViews({
+        taskId: 'scene-camera-schema-invalid',
+        sceneId: 'scene-camera-schema-invalid',
+        views: fullViews,
+      }),
+      error => {
+        cameraSchemaError = error;
+        return error?.code === 'CAMERA_QA_SCHEMA_INVALID'
+          && Array.isArray(error.missing_fields)
+          && error.missing_fields.includes('camera_design_qa.required_scores');
+      },
+    );
+    assert.equal(missingCameraEvidenceCalls, 3, 'scene QA should finish once, then the independent camera QA must retry once and fail closed');
+    assert.equal(cameraSchemaError.partial_scene_qa.requirement_qa.pass, true, 'camera-only failure must retain the completed scene QA payload');
+    const cameraOnlyUnavailable = sceneSpace.buildUnverifiedContract({
+      sceneId: 'scene-camera-schema-invalid',
+      views: fullViews,
+      requested: { layout: '固定整间空间布局' },
+      layoutRequired: true,
+    }, cameraSchemaError);
+    assert.equal(cameraOnlyUnavailable.requirement_qa.pass, true, 'camera-only failure must not clear requirement QA');
+    assert.equal(cameraOnlyUnavailable.photographic_realism_qa.pass, true, 'camera-only failure must not clear realism QA');
+    assert.equal(cameraOnlyUnavailable.cross_view_qa.pass, true, 'camera-only failure must not clear cross-view QA');
+    assert.equal(cameraOnlyUnavailable.spatial_coverage_qa.pass, true, 'camera-only failure must not clear spatial coverage QA');
+    assert.equal(cameraOnlyUnavailable.camera_design_qa.pass, null, 'only the failed camera QA gate should remain pending');
+    assert.equal(cameraOnlyUnavailable.verification.state, 'unavailable');
+    modelGateway.generateVision = async () => {
+      successfulReviewCalls += 1;
+      return {
+        text: JSON.stringify(passingResult()),
+        used_model: 'mock/spatial-v3',
+      };
+    };
 
     const roleInvalid = await sceneSpace.analyzeSceneViews({
       taskId: 'spatial-layout-role-invalid',
@@ -354,7 +524,9 @@ async function main() {
     duplicate_reverse_status: duplicateReverse.space_lock_status,
     legacy_status: legacy.space_lock_status,
     independent_qa_gates: true,
-    strict_v4_schema_retry: true,
+    strict_v5_schema_retry: true,
+    photographic_realism_gate: true,
+    camera_design_gate: true,
   }, null, 2));
 }
 

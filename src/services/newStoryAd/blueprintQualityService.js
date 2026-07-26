@@ -140,8 +140,16 @@ function normalizeAuthorizedBrandPresentation(blueprint = {}) {
     BRAND_VISUAL_FIELDS.forEach(field => {
       const value = String(next[field] || '');
       if (!/(?:logo|标志|商标|品牌字样)/i.test(value)) return;
-      if (EXPLICIT_GENERATED_LOGO_PATTERN.test(value)) return;
       if (/(?:不要|禁止|不得|避免).{0,12}(?:logo|标志|商标|品牌字样)/i.test(value)) return;
+      if (EXPLICIT_GENERATED_LOGO_PATTERN.test(value)) {
+        next[field] = value
+          .split(/(?<=[。！？；;!?])/)
+          .map(clause => EXPLICIT_GENERATED_LOGO_PATTERN.test(clause)
+            ? '画面预留干净的品牌落版区域，成片阶段后期叠加的已授权品牌素材。'
+            : clause)
+          .join('');
+        return;
+      }
       next[field] = value.replace(BRAND_MARK_PATTERN, '后期叠加的已授权品牌素材');
     });
     return next;

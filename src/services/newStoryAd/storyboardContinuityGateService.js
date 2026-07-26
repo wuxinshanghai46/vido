@@ -69,6 +69,17 @@ function reviewContinuity({ shots = [], contracts = [] } = {}) {
     const previousScene = sceneIdentity(previous, contracts[index - 1] || {});
     const currentScene = sceneIdentity(current, contracts[index] || {});
     const sameAuthoredScene = previousScene.id && currentScene.id && previousScene.id === currentScene.id;
+    const transitionType = text(current.transition_type).toLowerCase();
+    if (previousScene.id && currentScene.id && !sameAuthoredScene && !text(current.transition_reason)) {
+      issues.push(`第 ${index}→${index + 1} 镜切换到不同场景，但缺少转场原因`);
+    }
+    if (transitionType === 'match_cut' && !text(current.transition_match_anchor || current.match_anchor)) {
+      issues.push(`第 ${index}→${index + 1} 镜使用匹配切换，但缺少可验证的匹配锚点`);
+    }
+    if (['dissolve', 'fade'].includes(transitionType)
+      && !(Number(current.transition_duration_sec) > 0)) {
+      issues.push(`第 ${index}→${index + 1} 镜使用${transitionType === 'dissolve' ? '叠化' : '淡出/淡入'}，但缺少有效转场时长`);
+    }
 
     if (sameAuthoredScene && previousScene.revision > 0 && currentScene.revision > 0
       && previousScene.revision !== currentScene.revision) {

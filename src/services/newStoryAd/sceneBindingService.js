@@ -54,14 +54,18 @@ function completeSpaceLock(asset = {}) {
   if (!asset || typeof asset !== 'object') return false;
   const contract = asset.scene_contract || {};
   const requirementQa = contract.requirement_qa || asset.requirement_qa || {};
+  const photographicRealismQa = contract.photographic_realism_qa || asset.photographic_realism_qa || {};
+  const cameraDesignQa = contract.camera_design_qa || asset.camera_design_qa || {};
   const crossViewQa = contract.cross_view_qa || asset.cross_view_qa || {};
   const spatialQa = contract.spatial_coverage_qa || asset.spatial_coverage_qa || {};
   const layoutContract = contract.layout_contract || asset.layout_contract || {};
   const schemaVersion = Number(contract.schema_version || asset.schema_version || 0) || 0;
   const layoutReference = layoutSceneReference(asset);
-  return schemaVersion >= 3
+  return schemaVersion >= 6
     && contract.status === 'verified'
     && requirementQa.pass === true
+    && photographicRealismQa.pass === true
+    && cameraDesignQa.pass === true
     && crossViewQa.pass === true
     && spatialQa.pass === true
     && layoutContract.status === 'available'
@@ -182,10 +186,25 @@ function sceneAssetDigest(sceneAssets = []) {
       material_summary: cleanText(asset.material_summary || '', 500),
       style_summary: cleanText(asset.style_summary || '', 300),
       scene_revision: Math.max(1, Number(asset.scene_revision || asset.scene_contract?.scene_revision || 1) || 1),
-      space_lock_status: completeSpaceLock(asset) ? 'complete' : (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only'),
+      space_lock_status: completeSpaceLock(asset)
+        ? 'complete'
+        : (contract.space_lock_status || (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only')),
       layout_reference: layoutReference ? { available: true, role: layoutReference.role, label: layoutReference.label } : { available: false, role: 'auxiliary_spatial_lock' },
       layout_contract: contract.layout_contract || asset.layout_contract || null,
       spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
+      camera_design_qa: contract.camera_design_qa || asset.camera_design_qa || null,
+      cameras: (Array.isArray(contract.cameras) ? contract.cameras : []).map(camera => ({
+        id: cleanText(camera.id || '', 100),
+        view_id: cleanText(camera.view_id || '', 40),
+        role: cleanText(camera.role || '', 160),
+        framing: cleanText(camera.framing || '', 120),
+        lens_class: cleanText(camera.lens_class || '', 80),
+        height_class: cleanText(camera.height_class || '', 80),
+        orientation: cleanText(camera.orientation || '', 160),
+        target_description: cleanText(camera.target_description || '', 220),
+        requirement_refs: Array.isArray(camera.requirement_refs) ? camera.requirement_refs : [],
+        pass: camera.pass === true,
+      })),
       anchors: (Array.isArray(asset.scene_contract?.anchors) ? asset.scene_contract.anchors : [])
         .map(anchor => ({ id: cleanText(anchor.id || '', 100), label: cleanText(anchor.label || '', 120) })).slice(0, 16),
       zones: (Array.isArray(asset.scene_contract?.zones) ? asset.scene_contract.zones : [])
@@ -233,8 +252,11 @@ function sceneVerificationState(asset = {}) {
   const qa = contract.cross_view_qa || asset.cross_view_qa || {};
   if (completeSpaceLock(asset)) return 'verified';
   if (legacySpaceLock(asset)) return 'legacy_partial';
+  if (contract.space_lock_status && contract.space_lock_status !== 'complete') {
+    return cleanText(contract.space_lock_status, 40);
+  }
   if (contract.status === 'rejected' || qa.pass === false && contract.qa_unavailable !== true) return 'rejected';
-  return cleanText(contract.status || 'unverified', 40) || 'unverified';
+  return contract.status === 'verified' ? 'partial' : (cleanText(contract.status || 'unverified', 40) || 'unverified');
 }
 
 function assertVerifiedSceneAssets(sceneAssets = []) {
@@ -323,6 +345,13 @@ function generationTargetError(message, code, details = {}) {
 function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {} } = {}) {
   const scenePlan = normalizeScenePlan(sceneConfig);
   const spaces = scenePlan.spaces;
+  if (!spaces.length) {
+    throw generationTargetError(
+      '当前任务没有持久化逐空间场景计划，已在图片模型调用前停止；请先恢复或保存 scene_config.spaces',
+      'SCENE_PLAN_REQUIRED_FOR_GENERATION',
+      { current_scene_count: 0 },
+    );
+  }
   const requestedSpaceId = cleanText(body.space_id || body.spaceId || '', 100);
   const requestedSceneId = cleanText(body.scene_id || body.sceneId || '', 100);
   if (requestedSpaceId && requestedSceneId && requestedSpaceId !== requestedSceneId) {
@@ -567,12 +596,16 @@ function sceneContractForShot(ctx = {}, shot = {}, index = 0) {
     layout_reference: layoutReference,
     layout_contract: contract.layout_contract || asset.layout_contract || null,
     spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,
-    space_lock_status: completeSpaceLock(asset) ? 'complete' : (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only'),
+    camera_design_qa: contract.camera_design_qa || asset.camera_design_qa || null,
+    space_lock_status: completeSpaceLock(asset)
+      ? 'complete'
+      : (contract.space_lock_status || (legacySpaceLock(asset) ? 'upgrade_required' : 'appearance_only')),
     spatial_contract: {
       schema_version: Number(contract.schema_version || 0) || 0,
       anchors: Array.isArray(contract.anchors) ? contract.anchors : [],
       zones: Array.isArray(contract.zones) ? contract.zones : [],
       cameras: Array.isArray(contract.cameras) ? contract.cameras : [],
+      camera_design_qa: contract.camera_design_qa || asset.camera_design_qa || null,
       surface_topology: contract.surface_topology || asset.surface_topology || null,
       layout_contract: contract.layout_contract || asset.layout_contract || null,
       spatial_coverage_qa: contract.spatial_coverage_qa || asset.spatial_coverage_qa || null,

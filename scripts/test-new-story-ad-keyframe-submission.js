@@ -41,8 +41,18 @@ function testBrowserAndRouteGuardContract() {
   const queueIndex = route.indexOf('return queueTaskStage(', routeStart);
   assert(routeStart >= 0 && guardIndex > routeStart && queueIndex > guardIndex,
   'billing preflight must run before a background keyframe job is queued');
-  assert(html.includes('bootstrap.js?v=20260725-subject-scene-contract-v10'));
+  assert(html.includes('bootstrap.js?v=20260726-scene-reverify-persist-v31'));
   assert(html.includes('digital-human.js?v=20260721-unified-dialog-v20'));
+  const sceneRouteStart = route.indexOf("router.post('/tasks/:id/scene-assets'");
+  const sceneRepairRouteStart = route.indexOf("router.post('/tasks/:id/scene-assets/:sceneId/repair'");
+  assert(sceneRouteStart >= 0
+    && route.indexOf('generation_id: job.generationId', sceneRouteStart) > sceneRouteStart
+    && route.indexOf('generationId: job.generationId', sceneRouteStart) > sceneRouteStart,
+  '场景生成队列必须把生成编号传入场景服务和模型追踪层');
+  assert(sceneRepairRouteStart >= 0
+    && route.indexOf('generation_id: job.generationId', sceneRepairRouteStart) > sceneRepairRouteStart
+    && route.indexOf('generationId: job.generationId', sceneRepairRouteStart) > sceneRepairRouteStart,
+  '场景定向修复队列也必须把生成编号传入模型追踪层');
 }
 
 async function testSubmissionLifecycle() {

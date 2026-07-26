@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260725-subject-scene-contract-v10';
+  const SCRIPT_VERSION = '20260726-scene-reverify-persist-v31';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -15,7 +15,9 @@
     '/js/new-story-ad/person-pet-spec.js',
     '/js/new-story-ad/actors.js',
     '/js/new-story-ad/subject-assets-ui.js',
+    '/js/new-story-ad/subject-profile-assist.js',
     '/js/new-story-ad/subject-checkpoint-polling.js',
+    '/js/new-story-ad/verification-language.js',
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/actor-library.js',

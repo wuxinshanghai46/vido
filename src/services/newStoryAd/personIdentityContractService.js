@@ -27,9 +27,10 @@ function personViews(asset = {}) {
 }
 
 function normalizeQa(input = {}) {
-  const reasons = Array.isArray(input.mismatch_reasons || input.conflicts)
-    ? (input.mismatch_reasons || input.conflicts).map(value => cleanText(value, 240)).filter(Boolean)
+  const rawReasons = Array.isArray(input.raw_mismatch_reasons || input.mismatch_reasons || input.conflicts)
+    ? (input.raw_mismatch_reasons || input.mismatch_reasons || input.conflicts).map(value => cleanText(value, 240)).filter(Boolean)
     : [];
+  const reasons = verification.localizeReasonsZh(rawReasons, '人物', input);
   const qa = {
     pass: input.pass === true,
     identity_score: score(input.identity_score),
@@ -37,6 +38,7 @@ function normalizeQa(input = {}) {
     wardrobe_score: score(input.wardrobe_score),
     body_score: score(input.body_score),
     mismatch_reasons: reasons,
+    raw_mismatch_reasons: rawReasons,
     checked_at: input.checked_at || new Date().toISOString(),
     used_model: cleanText(input.used_model || '', 160),
   };
@@ -145,6 +147,7 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
       systemPrompt: [
         'You are a strict cross-view identity inspector for a general-purpose commercial video platform.',
         'The images may depict any lawful person, age group, ethnicity, wardrobe, occupation or visual style requested by the current task. Never assume a fixed country, industry, name or character template.',
+        'All mismatch_reasons shown to users must be concise, natural Simplified Chinese. Keep JSON keys and numeric fields unchanged.',
         'Compare whether all views show the same intended person and the same locked wardrobe/body attributes. Return strict JSON only.',
       ].join('\n'),
       userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"mismatch_reasons":string[]}. Reject extra people, inconsistent identity/age/hair/skin/wardrobe/body, watermarks, collage borders or malformed anatomy.`,

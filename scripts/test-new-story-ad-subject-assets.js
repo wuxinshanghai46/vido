@@ -7,8 +7,10 @@ const sharp = require('sharp');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const personIdentity = require('../src/services/newStoryAd/personIdentityContractService');
+const personAssetLifecycle = require('../src/services/newStoryAd/personAssetLifecycleService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
 const sceneBindingService = require('../src/services/newStoryAd/sceneBindingService');
+const sceneCheckpointProjection = require('../src/services/newStoryAd/sceneCheckpointProjectionService');
 
 function castProfile(index, overrides = {}) {
   return {
@@ -33,6 +35,39 @@ function petProfile(index, overrides = {}) {
     ...overrides,
   };
 }
+
+assert.strictEqual(
+  typeof personAssetLifecycle.latestSubjectCheckpointRow,
+  'function',
+  '任务公开投影必须提供统一的最新主体检查点选择器，刷新后才能恢复真实运行状态',
+);
+const projectedSubjectCheckpoint = personAssetLifecycle.latestSubjectCheckpointRow([
+  {
+    kind: 'subject_asset_checkpoint:task_restore:old',
+    updated_at: '2026-07-25T10:00:00.000Z',
+    payload: { status: 'complete' },
+  },
+  {
+    kind: 'subject_asset_checkpoint:task_restore:new',
+    updated_at: '2026-07-25T10:02:00.000Z',
+    payload: { status: 'running' },
+  },
+  {
+    kind: 'scene_asset_checkpoint:task_restore:scene',
+    updated_at: '2026-07-25T10:03:00.000Z',
+    payload: { status: 'running' },
+  },
+]);
+assert.strictEqual(projectedSubjectCheckpoint.kind, 'subject_asset_checkpoint:task_restore:new');
+assert.strictEqual(projectedSubjectCheckpoint.payload.status, 'running');
+assert.deepStrictEqual(
+  personAssetLifecycle.projectLatestSubjectCheckpoint([{ kind: 'context' }], [
+    projectedSubjectCheckpoint,
+    { kind: 'subject_asset_checkpoint:older', updated_at: '2026-07-25T09:00:00.000Z', payload: { status: 'complete' } },
+  ]).map(row => row.kind),
+  ['context', 'subject_asset_checkpoint:task_restore:new'],
+  '公开任务投影只应恢复最新一条主体生成检查点',
+);
 
 function verifiedPerson(asset = {}) {
   return {
@@ -171,6 +206,157 @@ function harness({ cancelAt = 0 } = {}) {
     person_contract: bundle.person_contract,
   }), 'aggregate cast contract must satisfy the downstream verified-person gate');
 
+  const scoped = harness();
+  const reusablePetsWithReferenceImagesOnly = bundle.pet_profiles.map((profile) => {
+    const { view_images, ...rest } = profile;
+    return rest;
+  });
+  const scopedContext = {
+    person_asset: { cast_assets: bundle.cast_assets },
+    pet_profiles: reusablePetsWithReferenceImagesOnly,
+  };
+  scoped.deps.storage.getOutput = (taskId, kind) => kind === 'context'
+    ? scopedContext
+    : scoped.outputs.get(`${taskId}:${kind}`) || null;
+  const scopedBundle = await subjectAssets.generateSubjectBundle({
+    taskId: 'task_subject_scope',
+    generationId: 'generation_subject_scope',
+    body: {
+      brief: '一家三口与一只金毛在客厅互动，展示宠物食品。',
+      cast_mode: 'human_pet',
+      expected_people: 3,
+      expected_animals: 1,
+      person_spec: { castMode: 'human_pet', expectedPeople: 3, expectedAnimals: 1 },
+      cast_profiles: [
+        castProfile(1, { displayName: '妈妈林悦', roleName: '母亲', wardrobeText: '浅杏色上衣搭配白色亚麻长裙和白色帆布鞋' }),
+        castProfile(2, { displayName: '爸爸周屿', roleName: '父亲' }),
+        castProfile(3, { displayName: '孩子小满', roleName: '8岁女儿' }),
+      ],
+      pet_profiles: [petProfile(1, { name: '豆包', type: '金毛犬' })],
+      subject_targets: [{ kind: 'human', index: 0, id: 'cast_1' }],
+    },
+  }, scoped.deps);
+  assert.strictEqual(scoped.submissions(), 1, 'scoped subject regeneration must submit only the selected person');
+  assert.strictEqual(scopedBundle.generated_counts.people, 1);
+  assert.strictEqual(scopedBundle.generated_counts.pets, 0);
+  assert.notStrictEqual(scopedBundle.cast_assets[0].actor_id, bundle.cast_assets[0].actor_id, 'selected person must receive a new asset');
+  assert.strictEqual(scopedBundle.cast_assets[1].actor_id, bundle.cast_assets[1].actor_id, 'unselected person must preserve the previous asset');
+  assert.strictEqual(scopedBundle.cast_assets[2].actor_id, bundle.cast_assets[2].actor_id, 'every other unselected person must be preserved');
+  assert.strictEqual(scopedBundle.pet_profiles[0].pet_id, bundle.pet_profiles[0].pet_id, 'unselected pet must preserve the previous asset');
+  assert(scoped.prompts[0].includes('白色亚麻长裙'), 'the selected person prompt must contain the exact edited wardrobe');
+  assert(scoped.prompts[0].includes('Four-view continuity is a hard identity contract'), 'the paid image prompt must enforce one invariant visible state across all four views');
+  assert(scoped.prompts[0].includes('Never add, remove, swap, recolor, resize or reposition'), 'the paid image prompt must forbid accessory and wardrobe drift between cells');
+  assert(scoped.prompts[0].includes('Negative continuity rules:'), 'the paid image prompt must include the selected person-specific negative rules');
+  assert(!scoped.prompts[0].includes('爸爸周屿'), 'the selected person prompt must remain isolated from unselected cast members');
+
+  const invalidScope = harness();
+  await assert.rejects(() => subjectAssets.generateSubjectBundle({
+    taskId: 'task_invalid_subject_scope',
+    body: {
+      brief: '两位人物共同出镜',
+      cast_mode: 'dual',
+      expected_people: 2,
+      person_spec: { castMode: 'dual', expectedPeople: 2 },
+      cast_profiles: [castProfile(1), castProfile(2)],
+      subject_targets: [{ kind: 'human', index: 0, id: 'not-current' }],
+    },
+  }, invalidScope.deps), error => error.code === 'SUBJECT_TARGET_INVALID');
+  assert.strictEqual(invalidScope.submissions(), 0, 'invalid subject scope must fail before any supplier submission');
+
+  const projectedPartialScenes = sceneCheckpointProjection.projectSceneAssets([
+    {
+      kind: 'scene_config',
+      payload: { spaces: [{ id: 'park', name: '城市公园草坪' }] },
+    },
+    {
+      kind: 'scene_assets',
+      payload: [
+        { id: 'legacy-space', space_id: 'legacy-space', image_url: '/scene/legacy.png' },
+      ],
+    },
+    {
+      kind: 'scene_asset_checkpoint:park',
+      payload: {
+        status: 'partial',
+        scene_id: 'park',
+        metadata: { space_id: 'park', generation_contract_version: 6 },
+        views: {
+          master: { status: 'succeeded', url: '/scene/park-master.png' },
+          layout: { status: 'succeeded', image_url: '/scene/park-layout.png' },
+          reverse: { status: 'succeeded', url: '/scene/park-reverse.png' },
+          detail: { status: 'succeeded', url: '/scene/park-detail.png' },
+          interaction: {
+            status: 'failed',
+            error_code: 'PROVIDER_5XX_AMBIGUOUS',
+            billing_state: 'unknown',
+          },
+        },
+      },
+    },
+    {
+      kind: 'scene_asset_checkpoint:space_1',
+      payload: {
+        status: 'partial',
+        scene_id: 'space_1',
+        metadata: { space_id: 'space_1', generation_contract_version: 6 },
+        views: {
+          master: { status: 'succeeded', url: '/scene/incorrect-planless-master.png' },
+        },
+      },
+    },
+  ]);
+  assert.strictEqual(projectedPartialScenes.length, 1, 'only assets and checkpoints owned by the authoritative scene plan may be publicly projected');
+  assert.strictEqual(projectedPartialScenes[0].name, '城市公园草坪');
+  assert.strictEqual(projectedPartialScenes[0].view_images.length, 4, 'every successful partial scene view must remain visible');
+  assert.strictEqual(projectedPartialScenes[0].billing_review_required, true, 'ambiguous provider billing must remain explicit and must not auto-retry');
+
+  const multiSceneCheckpointProjection = sceneCheckpointProjection.projectSceneAssets([
+    {
+      kind: 'scene_config',
+      payload: { spaces: [{ id: 'park', name: '城市公园草坪' }, { id: 'home', name: '现代家庭空间' }] },
+    },
+    {
+      kind: 'context',
+      payload: {
+        scene_assets: [
+          { id: 'park', space_id: 'park', image_url: '/scene/park-published.png', view_images: [{ key: 'master', url: '/scene/park-published.png' }] },
+          { id: 'home', space_id: 'home', image_url: '/scene/home-previous.png', view_images: [{ key: 'master', url: '/scene/home-previous.png' }] },
+        ],
+      },
+    },
+    {
+      kind: 'scene_asset_checkpoint:home',
+      payload: {
+        status: 'partial',
+        scene_id: 'home',
+        metadata: { space_id: 'home', generation_contract_version: 7 },
+        views: {
+          master: { status: 'succeeded', url: '/scene/home-current.png' },
+          layout: { status: 'failed', error_code: 'PROVIDER_5XX_AMBIGUOUS', billing_state: 'unknown' },
+        },
+      },
+    },
+  ]);
+  assert.strictEqual(multiSceneCheckpointProjection.length, 2, 'context-only scene assets must survive when a partial checkpoint exists for one sibling scene');
+  assert.strictEqual(multiSceneCheckpointProjection.find(asset => asset.space_id === 'park').image_url, '/scene/park-published.png');
+  assert.strictEqual(multiSceneCheckpointProjection.find(asset => asset.space_id === 'home').image_url, '/scene/home-current.png');
+  assert.strictEqual(multiSceneCheckpointProjection.find(asset => asset.space_id === 'home').partial_checkpoint, true);
+
+  const legacyPlanlessProjection = sceneCheckpointProjection.projectSceneAssets([
+    {
+      kind: 'scene_asset_checkpoint:legacy-space',
+      payload: {
+        status: 'partial',
+        scene_id: 'legacy-space',
+        metadata: { space_id: 'legacy-space', generation_contract_version: 6 },
+        views: {
+          master: { status: 'succeeded', url: '/scene/legacy-master.png' },
+        },
+      },
+    },
+  ]);
+  assert.strictEqual(legacyPlanlessProjection.length, 1, 'legacy planless checkpoints remain available when no authoritative plan exists');
+
   const boardDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-subject-board-'));
   for (let index = 1; index <= 4; index += 1) {
     await sharp({
@@ -228,9 +414,11 @@ function harness({ cancelAt = 0 } = {}) {
     view_images: ['master', 'reverse', 'interaction', 'detail', 'layout']
       .map(key => ({ key, url: `/api/new-story-ad/assets/${id}-${key}.jpg` })),
     scene_contract: {
-      schema_version: 3,
+      schema_version: 6,
       status: 'verified',
       requirement_qa: { pass: true },
+      photographic_realism_qa: { pass: true },
+      camera_design_qa: { pass: true },
       cross_view_qa: { pass: true },
       spatial_coverage_qa: { pass: true },
       layout_contract: { status: 'available' },
@@ -325,7 +513,7 @@ function harness({ cancelAt = 0 } = {}) {
   );
   const failedCheckpoint = Array.from(failureStore.values())[0];
   assert.strictEqual(failedCheckpoint.status, 'partial');
-  assert.strictEqual(failedCheckpoint.humans.length, 1);
+  assert.strictEqual(failedCheckpoint.humans.filter(Boolean).length, 1);
   const failureResume = harness();
   failureResume.deps.storage.getOutput = (taskId, kind) => failureStore.get(`${taskId}:${kind}`) || null;
   failureResume.deps.storage.saveOutput = (taskId, kind, value) => failureStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
@@ -345,10 +533,20 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   const firstConcurrent = subjectAssets.generateSubjectBundle(concurrentRequest, concurrent.deps);
+  const differentConcurrentRequest = {
+    ...concurrentRequest,
+    body: {
+      ...concurrentRequest.body,
+      cast_profiles: [
+        { ...castProfile(1), wardrobe: 'different wardrobe to force a different checkpoint kind' },
+        castProfile(2),
+      ],
+    },
+  };
   await assert.rejects(
-    () => subjectAssets.generateSubjectBundle(concurrentRequest, concurrent.deps),
+    () => subjectAssets.generateSubjectBundle(differentConcurrentRequest, concurrent.deps),
     error => error.code === 'SUBJECT_ASSET_GENERATION_IN_PROGRESS',
-    'concurrent duplicate requests must be rejected before another paid submission',
+    'concurrent requests for the same task must be rejected even when their checkpoint kinds differ',
   );
   await firstConcurrent;
   assert.strictEqual(concurrent.submissions(), 2, 'only one concurrent batch may submit paid subject generations');
@@ -412,6 +610,7 @@ function harness({ cancelAt = 0 } = {}) {
   const root = path.resolve(__dirname, '..');
   const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const subjectUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
+  const subjectAssistUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-profile-assist.js'), 'utf8');
   const sceneBinding = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneBindingService.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(root, 'src/services/newStoryAd/videoAdapter.js'), 'utf8');
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
@@ -425,15 +624,73 @@ function harness({ cancelAt = 0 } = {}) {
   assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
   assert(adapter.includes('castCount > 1'), 'multi-person video must not upload only the first actor as the whole cast');
   assert(storySource.includes('subjectReferences.keyframeReferenceUrls'), 'keyframes must use the reference-capacity orchestrator');
+  assert(
+    storySource.includes('personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs)'),
+    'the task API must expose exactly the latest subject checkpoint so refresh recovery receives the running batch',
+  );
   assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling must load before the legacy UI');
 
   const subjectUiSandbox = { window: {} };
   vm.createContext(subjectUiSandbox);
   vm.runInContext(subjectUi, subjectUiSandbox, { filename: 'subject-assets-ui.js' });
+  vm.runInContext(subjectAssistUi, subjectUiSandbox, { filename: 'subject-profile-assist.js' });
   const assetCastMode = subjectUiSandbox.window.NewStoryAdSubjectAssetsUI.assetCastMode;
   assert.strictEqual(assetCastMode('dual', 2, 'human_pet'), 'human_pet', 'a two-person asset must not remove the task pet mode');
   assert.strictEqual(assetCastMode('human_pet', 2, 'dual'), 'human_pet', 'a persisted mixed-subject asset must restore the mixed mode');
   assert.strictEqual(assetCastMode('dual', 2, 'dual'), 'dual', 'human-only dual mode must remain backward compatible');
+  const selectionItems = subjectUiSandbox.window.NewStoryAdSubjectAssetsUI.selectionItems;
+  const reusableViews = ['front', 'side', 'back', 'action'].map(key => ({ key, url: `/views/${key}.jpg` }));
+  const referenceOnlyPetItems = selectionItems({
+    castProfiles: [],
+    actorAsset: { cast_assets: [] },
+    petProfiles: [{ ...petProfile(1), reference_images: reusableViews.map(view => view.url) }],
+  });
+  assert.deepStrictEqual(
+    JSON.parse(JSON.stringify(referenceOnlyPetItems.map(item => ({
+      selected: item.selected,
+      reusable: item.reusable,
+      required: item.required,
+      disabled: item.disabled,
+    })))),
+    [{ selected: false, reusable: true, required: false, disabled: false }],
+    'a verified pet with four reference_images must remain reusable after refresh and must not be force-selected',
+  );
+  const scopedUiItems = selectionItems({
+    castProfiles: [
+      { ...castProfile(1), image_url: '/people/one.jpg', _generationDirty: true },
+      { ...castProfile(2), image_url: '/people/two.jpg' },
+    ],
+    actorAsset: { cast_assets: [
+      { actor_id: 'cast_1', view_images: reusableViews },
+      { actor_id: 'cast_2', view_images: reusableViews },
+    ] },
+    petProfiles: [{ ...petProfile(1), image_url: '/pets/one.jpg', view_images: reusableViews }],
+  });
+  assert.strictEqual(
+    JSON.stringify(scopedUiItems.filter(item => item.selected).map(item => item.title)),
+    JSON.stringify(['人物1']),
+    'the confirmation dialog must preselect only the edited subject when existing assets are present',
+  );
+  const mergeAssistedHumanProfile = subjectUiSandbox.window.NewStoryAdSubjectProfileAssist.mergeHumanProfile;
+  const preservedPerson = { ...castProfile(1), actor_asset_id: 'asset_person_1', image_url: '/people/one.jpg', person_contract: { status: 'verified' } };
+  const isolatedAssistState = {
+    castProfiles: [preservedPerson, { id: 'cast_2', displayName: '', roleName: '' }],
+    petProfiles: [{ ...petProfile(1), image_url: '/pets/one.jpg' }],
+  };
+  const preservedSnapshot = JSON.stringify(isolatedAssistState.castProfiles[0]);
+  const petSnapshot = JSON.stringify(isolatedAssistState.petProfiles);
+  assert.strictEqual(mergeAssistedHumanProfile(isolatedAssistState, 1, {
+    assist_subject_target: { kind: 'human', index: 1, id: 'cast_2' },
+    cast_profiles: [castProfile(2, { displayName: '小杰', roleName: '儿子' })],
+  }), true);
+  assert.strictEqual(JSON.stringify(isolatedAssistState.castProfiles[0]), preservedSnapshot, 'single-person assist must preserve another generated person byte-for-byte');
+  assert.strictEqual(JSON.stringify(isolatedAssistState.petProfiles), petSnapshot, 'single-person assist must preserve pets byte-for-byte');
+  assert.strictEqual(isolatedAssistState.castProfiles[1].displayName, '小杰');
+  assert.strictEqual(isolatedAssistState.castProfiles[1]._generationDirty, true);
+  assert.strictEqual(isolatedAssistState.castProfiles[0]._generationDirty, undefined);
+  assert(subjectUi.includes('data-nsa-subject-assist-index'), 'each human profile must render its own assist action');
+  assert(ui.includes("scheduleAutoSave('single_person_assist')"), 'single-person assist must autosave only after the scoped merge succeeds');
+  assert(bootstrapSource.includes('/js/new-story-ad/subject-profile-assist.js'), 'the scoped assist module must load before the legacy UI');
 
   const documentMock = { querySelector: () => null };
   const stateSyncSandbox = {
@@ -544,8 +801,8 @@ function harness({ cancelAt = 0 } = {}) {
           name: '人物1',
           image_url: '/people/person-1.jpg',
           subject_profile: castProfile(1),
-        }],
-        pets: [],
+        }, null],
+        pets: [null],
         updated_at: new Date().toISOString(),
       },
     },

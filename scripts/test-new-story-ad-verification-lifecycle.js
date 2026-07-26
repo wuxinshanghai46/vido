@@ -1,6 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const outputDir = path.join(root, '.tmp', 'new-story-ad-verification-lifecycle-test');
@@ -19,6 +20,7 @@ const verification = require('../src/services/newStoryAd/visualVerificationServi
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
 const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
 
 function passingSceneResult(overrides = {}) {
   return {
@@ -41,6 +43,16 @@ function passingSceneResult(overrides = {}) {
       negative_compliance_score: 0.99,
       mismatch_reasons: [],
     },
+    photographic_realism_qa: {
+      pass: true,
+      photographic_realism_score: 0.94,
+      physical_material_score: 0.93,
+      natural_variation_score: 0.9,
+      optical_capture_score: 0.92,
+      real_photo_evidence: ['natural lens falloff', 'localized physical variation'],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+    },
     spatial_coverage_qa: {
       pass: true,
       layout_topology_score: 0.95,
@@ -49,6 +61,37 @@ function passingSceneResult(overrides = {}) {
       interaction_zone_score: 0.94,
       reasons: [],
     },
+    camera_design_qa: {
+      pass: true,
+      role_definition_score: 0.94,
+      requirement_mapping_score: 0.93,
+      direction_evidence_score: 0.91,
+      parameter_completeness_score: 0.96,
+      layout_mapping_score: 0.9,
+      mismatch_reasons: [],
+    },
+    cameras: ['master', 'reverse', 'interaction', 'detail'].map((key, index) => ({
+      view_id: key,
+      label: key,
+      role: `${key} role`,
+      framing: key === 'detail' ? 'close detail' : 'wide',
+      lens_class: key === 'detail' ? '50-85mm detail' : '24-35mm wide',
+      height_class: key === 'detail' ? 'surface_level' : 'eye_level',
+      orientation: `${key} direction`,
+      estimated_azimuth_degrees: [20, 130, 75, 70][index],
+      estimated_pitch_degrees: [2, 1, 0, -12][index],
+      azimuth_delta_from_master_degrees: key === 'reverse' ? 110 : null,
+      normalized_position: [[0.12, 0.82], [0.82, 0.25], [0.32, 0.68], [0.5, 0.55]][index],
+      look_at: [[0.55, 0.45], [0.42, 0.58], [0.58, 0.48], [0.57, 0.5]][index],
+      position_confidence: 0.9,
+      target_description: `${key} target`,
+      allowed_zone_ids: ['zone_action'],
+      requirement_refs: key === 'interaction' ? ['interaction']
+        : (key === 'detail' ? ['material_light'] : ['layout']),
+      visible_evidence: `${key} visible evidence`,
+      pass: true,
+      mismatch_reasons: [],
+    })),
     anchors: [],
     zones: [],
     geometry_facts: [],
@@ -72,6 +115,13 @@ async function main() {
     },
   }, { id: 'verification-lifecycle-user' });
   const taskId = created.task.id;
+  storage.saveOutput(taskId, 'scene_config', {
+    scene_mode: 'multi',
+    spaces: [
+      { id: 'scene-rejected', name: '拒绝后复验场景', scene_spec: created.context.scene_spec },
+      { id: 'scene-layout', name: '布局视图场景', scene_spec: created.context.scene_spec },
+    ],
+  });
   const spec = { age: '30-40', gender: 'female', appearanceText: '成年女性演员', wardrobeText: '深色长袖套装', hairMakeupText: '短发淡妆' };
   const personAsset = {
     id: 'person-asset-verified',
@@ -137,6 +187,169 @@ async function main() {
   });
   assert.equal(personQaAttempts, 2, '人物验证基础设施失败时应自动重试同一组图片');
   assert.equal(retriedPersonContract.status, 'verified');
+
+  const rejectedEnglishContract = await personIdentity.verifyPersonAsset({
+    taskId,
+    asset: personAsset,
+    spec,
+    gateway: {
+      generateVision: async () => ({ text: '{}', used_model: 'mock/person-english-reason' }),
+    },
+    repair: {
+      parseOrRepair: async () => ({
+        pass: false,
+        identity_score: 0.96,
+        age_score: 0.94,
+        wardrobe_score: 0.42,
+        body_score: 0.9,
+        mismatch_reasons: ['The shoes in the action view have a distinct block heel and do not match the other three views.'],
+      }),
+    },
+  });
+  assert.equal(rejectedEnglishContract.status, 'rejected');
+  assert.match(rejectedEnglishContract.cross_view_qa.mismatch_reasons[0], /鞋型|鞋跟|鞋子/);
+  assert.doesNotMatch(rejectedEnglishContract.cross_view_qa.mismatch_reasons[0], /[A-Za-z]/, '用户可见人物验证原因必须为中文');
+  assert.match(rejectedEnglishContract.cross_view_qa.raw_mismatch_reasons[0], /block heel/, '内部诊断必须保留模型原始原因');
+
+  const languageSandbox = { window: {} };
+  vm.runInNewContext(
+    fs.readFileSync(path.join(root, 'public/js/new-story-ad/verification-language.js'), 'utf8'),
+    languageSandbox,
+  );
+  const historicalReason = languageSandbox.window.NewStoryAdVerificationLanguage.reason(
+    'The shoes in the action view are inconsistent with the front, side and back views.',
+    '人物',
+  );
+  assert.match(historicalReason, /鞋型|鞋跟|鞋子/);
+  assert.doesNotMatch(historicalReason, /[A-Za-z]/, '历史英文验证记录也必须在显示边界转换为中文');
+
+  const castTask = storyAd.createTask({
+    brief: '两名人物分别持有独立四视图，重新验证时不得把人物组当成第一人',
+    product_subject: '通用多人验证',
+    cast_mode: 'dual',
+    expected_people: 2,
+  }, { id: 'verification-lifecycle-user' });
+  const castSpecs = [
+    { id: 'cast_1', displayName: '人物甲', roleName: '角色甲', appearanceText: '人物甲外貌', wardrobeText: '人物甲服装', hairMakeupText: '人物甲发型' },
+    { id: 'cast_2', displayName: '人物乙', roleName: '角色乙', appearanceText: '人物乙外貌', wardrobeText: '人物乙服装', hairMakeupText: '人物乙发型' },
+  ];
+  const castAssets = castSpecs.map((member, index) => {
+    const actorId = `actor_cast_${index + 1}`;
+    const asset = {
+      id: `asset_cast_${index + 1}`,
+      actor_id: actorId,
+      actor_asset_id: `asset_cast_${index + 1}`,
+      name: member.displayName,
+      subject_profile: member,
+      image_url: `https://test.invalid/${actorId}/front.png`,
+      view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, url: `https://test.invalid/${actorId}/${key}.png` })),
+    };
+    const contract = personIdentity.buildPersonContract(asset, member, { revision: 3 });
+    if (index === 0) {
+      contract.status = 'unverified';
+      contract.cross_view_qa = personIdentity.normalizeQa({ pass: false, mismatch_reasons: [] });
+      contract.verification = verification.unavailable(Object.assign(new Error('视觉审核暂时不可用'), { code: 'VISION_QA_UNAVAILABLE' }));
+    } else {
+      contract.status = 'verified';
+      contract.cross_view_qa = personIdentity.normalizeQa({
+        pass: true, identity_score: 0.98, age_score: 0.97, wardrobe_score: 0.96, body_score: 0.95, mismatch_reasons: [],
+      });
+      contract.verification = verification.verified('mock/already-verified');
+    }
+    return { ...asset, person_contract: contract, person_revision: 3, production_usable_actor: index === 1 };
+  });
+  const pendingAggregate = subjectAssets.aggregatePersonContract(castAssets, 3);
+  assert.equal(pendingAggregate.status, 'unverified', '成员审核服务不可用时，人物组不得被误写成图片一致性拒绝');
+  assert.equal(pendingAggregate.verification.state, 'unavailable', '人物组应保留可重试的审核异常语义');
+  const castContext = {
+    ...castTask.context,
+    cast_mode: 'dual',
+    expected_people: 2,
+    cast_profiles: castSpecs,
+    person_spec: { castMode: 'dual', expectedPeople: 2 },
+    revisions: { ...(castTask.context.revisions || {}), person: 3 },
+    person_asset: {
+      id: 'cast_bundle_verification',
+      actor_id: 'cast_bundle_verification',
+      cast_mode: 'dual',
+      expected_people: 2,
+      cast_assets: castAssets,
+      image_url: castAssets[0].image_url,
+      view_images: castAssets[0].view_images,
+      person_revision: 3,
+      person_contract: pendingAggregate,
+    },
+    person_contract: pendingAggregate,
+  };
+  storage.saveOutput(castTask.task.id, 'context', castContext);
+  storage.saveOutput(castTask.task.id, 'person_contract', pendingAggregate);
+  storage.updateTask(castTask.task.id, { request: castContext });
+  const originalPersonVerify = personIdentity.verifyPersonAsset;
+  const verifiedActorIds = [];
+  personIdentity.verifyPersonAsset = async ({ asset, spec: member, revision }) => {
+    verifiedActorIds.push(asset.actor_id);
+    const contract = personIdentity.buildPersonContract(asset, member, { revision });
+    contract.status = 'verified';
+    contract.cross_view_qa = personIdentity.normalizeQa({
+      pass: true, identity_score: 0.97, age_score: 0.96, wardrobe_score: 0.95, body_score: 0.94, mismatch_reasons: [],
+    });
+    contract.verification = verification.verified('mock/member-reverify');
+    return contract;
+  };
+  try {
+    const castReverified = await storyAd.verifyPersonContract(castTask.task.id);
+    assert.deepEqual(verifiedActorIds, ['actor_cast_1'], '默认只重验未通过或审核异常的成员，已验证成员不得重复产生视觉审核调用');
+    assert.equal(castReverified.person_asset.cast_assets[0].person_contract.status, 'verified');
+    assert.equal(castReverified.person_asset.cast_assets[1].person_contract.verification.used_model, 'mock/already-verified');
+    assert.equal(castReverified.person_contract.contract_type, 'cast_bundle');
+    assert.equal(castReverified.person_contract.status, 'verified');
+    assert.equal(castReverified.person_contract.cross_view_qa.verified_members, 2);
+    const persistedCast = storage.getOutput(castTask.task.id, 'context');
+    assert.equal(persistedCast.person_asset.cast_assets[0].person_contract.status, 'verified', '成员合同必须写回人物组资产');
+    assert.equal(persistedCast.cast_profiles[0].person_contract.status, 'verified', '逐人物档案必须同步最新合同');
+    assert.equal(storage.getOutput(castTask.task.id, 'person_contract').contract_type, 'cast_bundle', '持久化层不得再被单人合同覆盖');
+  } finally {
+    personIdentity.verifyPersonAsset = originalPersonVerify;
+  }
+
+  let releaseConcurrentVerification;
+  let concurrentCalls = 0;
+  const concurrentAsset = {
+    id: 'asset_concurrent',
+    actor_id: 'actor_concurrent',
+    image_url: 'https://test.invalid/concurrent/front.png',
+    view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, url: `https://test.invalid/concurrent/${key}.png` })),
+  };
+  concurrentAsset.person_contract = personIdentity.buildPersonContract(concurrentAsset, spec, { revision: 1 });
+  const firstConcurrentVerification = subjectAssets.reverifyPersonBundle({
+    taskId: 'task_concurrent_person_verify',
+    personAsset: concurrentAsset,
+    personSpec: spec,
+  }, {
+    personIdentity: {
+      verifyPersonAsset: async ({ asset, spec: currentSpec, revision }) => {
+        concurrentCalls += 1;
+        await new Promise(resolve => { releaseConcurrentVerification = resolve; });
+        const contract = personIdentity.buildPersonContract(asset, currentSpec, { revision });
+        contract.status = 'verified';
+        contract.cross_view_qa = personIdentity.normalizeQa({
+          pass: true, identity_score: 0.98, age_score: 0.97, wardrobe_score: 0.96, body_score: 0.95, mismatch_reasons: [],
+        });
+        return contract;
+      },
+    },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(() => subjectAssets.reverifyPersonBundle({
+    taskId: 'task_concurrent_person_verify',
+    personAsset: concurrentAsset,
+    personSpec: spec,
+  }, {
+    personIdentity: { verifyPersonAsset: async () => { concurrentCalls += 1; } },
+  }), error => error.code === 'PERSON_VERIFICATION_IN_PROGRESS');
+  releaseConcurrentVerification();
+  await firstConcurrentVerification;
+  assert.equal(concurrentCalls, 1, '并发重复点击必须在第二次视觉审核调用前被任务锁拦截');
 
   const requested = {
     layout: '完整连续背景墙',
@@ -222,9 +435,17 @@ async function main() {
       },
     },
   }, { id: 'verification-lifecycle-user' });
+  const conflictingSceneSpec = {
+    ...conflictingTask.context.scene_spec,
+    interactionText: conflictingTask.context.scene_spec.interactionText || '墙前保留完整商业展示与操作区域',
+  };
+  storage.saveOutput(conflictingTask.task.id, 'scene_config', {
+    scene_mode: 'single',
+    spaces: [{ id: 'scene-conflict-reconciled', name: '连续背景墙', scene_spec: conflictingSceneSpec }],
+  });
   const reconciledGenerated = await sceneAssets.generateSceneAsset(conflictingTask.task.id, {
     scene_id: 'scene-conflict-reconciled',
-    scene_spec: conflictingTask.context.scene_spec,
+    scene_spec: conflictingSceneSpec,
   });
   assert.equal(reconciledGenerated.scene_asset.surface_topology.mode, 'continuous', '连续墙面文字要求必须覆盖冲突的模块化旧值');
   assert.equal(reconciledGenerated.scene_asset.surface_topology.seam_policy, 'hidden');

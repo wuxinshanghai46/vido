@@ -12,7 +12,7 @@ function fullAsset() {
   return {
     scene_id: 'scene-v3',
     name: '完整空间场景',
-    generation_contract_version: 6,
+    generation_contract_version: 7,
     view_images: [
       { key: 'master', url: '/master.png' },
       { key: 'reverse', url: '/reverse.png' },
@@ -21,7 +21,7 @@ function fullAsset() {
       { key: 'layout', label: '俯视布局', url: '/layout.png' },
     ],
     scene_contract: {
-      schema_version: 3,
+      schema_version: 6,
       status: 'verified',
       requirement_qa: {
         pass: true,
@@ -30,6 +30,25 @@ function fullAsset() {
         interaction_match_score: 0.94,
         surface_topology_match_score: 0.97,
         negative_compliance_score: 0.98,
+      },
+      photographic_realism_qa: {
+        pass: true,
+        photographic_realism_score: 0.93,
+        physical_material_score: 0.92,
+        natural_variation_score: 0.9,
+        optical_capture_score: 0.91,
+        real_photo_evidence: ['natural lens falloff', 'localized material and use variation'],
+        synthetic_signals: [],
+        mismatch_reasons: [],
+      },
+      camera_design_qa: {
+        pass: true,
+        role_definition_score: 0.94,
+        requirement_mapping_score: 0.93,
+        direction_evidence_score: 0.91,
+        parameter_completeness_score: 0.96,
+        layout_mapping_score: 0.9,
+        mismatch_reasons: [],
       },
       cross_view_qa: {
         pass: true,
@@ -48,7 +67,33 @@ function fullAsset() {
       layout_contract: { status: 'available', required: true, reference_image_url: '/layout.png' },
       anchors: [{ id: 'wall', label: '主墙', required: true }],
       zones: [{ id: 'interaction_zone', label: '互动区' }],
-      cameras: [{ id: 'camera_master', view_id: 'master' }],
+      cameras: [
+        ['master', '主视角', '建立空间关系', '广角全景', '24-28mm wide', 'eye_level', '入口朝互动区', 20, 2, null, [0.12, 0.82], [0.55, 0.45], ['layout'], '入口、互动区与主要锚点同框'],
+        ['reverse', '反向/侧向', '验证背向空间', '广角全景', '28-35mm wide', 'eye_level', '互动区反看入口', 130, 1, 110, [0.82, 0.25], [0.42, 0.58], ['layout'], '前后景互换并出现主视角未见边界'],
+        ['interaction', '互动位', '验证人物动作区', '中广景', '35mm normal-wide', 'chest_level', '沿动线朝操作面', 75, 0, null, [0.32, 0.68], [0.58, 0.48], ['interaction'], '动作净空、操作面和进出路线同框'],
+        ['detail', '材质细节', '验证关键材质', '近景特写', '50-85mm detail', 'surface_level', '朝关键接触面', 70, -12, null, [0.5, 0.55], [0.57, 0.5], ['material_light', 'surface_topology'], '纹理尺度、粗糙度与接触阴影清晰'],
+      ].map(([view_id, label, role, framing, lens_class, height_class, orientation, azimuth, pitch, delta, position, look_at, requirement_refs, evidence]) => ({
+        id: `camera_${view_id}`,
+        view_id,
+        label,
+        role,
+        framing,
+        lens_class,
+        height_class,
+        orientation,
+        estimated_azimuth_degrees: azimuth,
+        estimated_pitch_degrees: pitch,
+        azimuth_delta_from_master_degrees: delta,
+        normalized_position: position,
+        look_at,
+        position_confidence: 0.9,
+        target_description: role,
+        allowed_zone_ids: ['interaction_zone'],
+        requirement_refs,
+        visible_evidence: evidence,
+        pass: true,
+        mismatch_reasons: [],
+      })),
     },
   };
 }
@@ -73,7 +118,7 @@ function loadButtonState() {
   return sandbox.window.NewStoryAdButtonState;
 }
 
-function main() {
+async function main() {
   const asset = fullAsset();
   assert.equal(sceneBinding.completeSpaceLock(asset), true, 'v3 + 三道 QA + 俯视布局才是完整空间锁');
   assert.deepEqual(sceneBinding.primarySceneViews(asset).map(view => view.key), ['master', 'reverse', 'interaction', 'detail']);
@@ -123,7 +168,7 @@ function main() {
   assert.equal(lock.view_images.length, 4);
   assert.equal(lock.layout_reference.url, '/layout.png');
   assert.equal(lock.layout_reference.role, 'auxiliary_spatial_lock');
-  assert.equal(lock.spatial_contract.schema_version, 3);
+  assert.equal(lock.spatial_contract.schema_version, 6);
   assert.equal(lock.spatial_contract.spatial_coverage_qa.pass, true);
   assert.equal(lock.space_lock_status, 'complete');
 
@@ -132,8 +177,8 @@ function main() {
   delete certifiedExisting.generation_contract_version;
   certifiedExisting.scene_contract = {
     ...certifiedExisting.scene_contract,
-    schema_version: 4,
-    source_schema_version: 4,
+    schema_version: 6,
+    source_schema_version: 6,
     compatibility_status: 'current',
     full_space_lock: true,
     space_lock_status: 'complete',
@@ -142,6 +187,32 @@ function main() {
   assert.equal(sceneBinding.completeSpaceLock(certifiedExisting), true, '完整五视图和三项 QA 可以证明空间锁，不应因缺少生成来源字段误判');
   assert.equal(sceneAssetService.sceneGenerationUpgradeRequired(certifiedExisting), false);
   assert.equal(sceneAssetService.buildSceneRepairPlan(certifiedExisting).action, 'none');
+
+  const cameraLegacy = fullAsset();
+  cameraLegacy.scene_id = 'camera-legacy-scene';
+  cameraLegacy.scene_contract = {
+    ...cameraLegacy.scene_contract,
+    schema_version: 5,
+    source_schema_version: 5,
+    full_space_lock: true,
+    space_lock_status: 'complete',
+  };
+  delete cameraLegacy.scene_contract.camera_design_qa;
+  cameraLegacy.scene_contract.cameras = cameraLegacy.scene_contract.cameras.map(camera => ({
+    id: camera.id,
+    view_id: camera.view_id,
+    label: camera.label,
+  }));
+  assert.equal(sceneBinding.completeSpaceLock(cameraLegacy), false, 'schema 5 without per-camera evidence must no longer enter keyframes');
+  const normalizedCameraLegacy = sceneAssetService.normalizeSceneAssets([cameraLegacy])[0];
+  assert.equal(normalizedCameraLegacy.scene_contract.space_lock_status, 'camera_review_required');
+  assert.equal(normalizedCameraLegacy.repair_plan.action, 'reverify', 'missing camera evidence must use zero-image re-verification');
+  assert.equal(sceneBinding.sceneVerificationState(normalizedCameraLegacy), 'camera_review_required');
+  assert.throws(
+    () => sceneBinding.assertVerifiedSceneAssets([normalizedCameraLegacy]),
+    error => error?.code === 'SCENE_VERIFICATION_REQUIRED'
+      && error.invalid_scenes[0].status === 'camera_review_required',
+  );
 
   const duplicateEvidence = fullAsset();
   duplicateEvidence.generation_contract_version = 0;
@@ -203,11 +274,49 @@ function main() {
   assert.equal(certifiedAssessment.complete, true);
   assert.equal(certifiedAssessment.upgradeRequired, false);
   assert.equal(certifiedAssessment.evidenceComplete, true);
+  const staleDirectResponse = {
+    ...certifiedExisting,
+    camera_design_qa: {
+      pass: false,
+      legacy: true,
+      role_definition_score: null,
+      requirement_mapping_score: null,
+      direction_evidence_score: null,
+      parameter_completeness_score: null,
+      layout_mapping_score: null,
+    },
+    verification: { state: 'camera_review_required', message: 'stale top-level state' },
+  };
+  const normalizedDirectResponse = frontend.normalizeAssets([staleDirectResponse])[0];
+  assert.equal(normalizedDirectResponse.camera_design_qa.pass, true, 'frontend must prefer the current scene contract over stale top-level QA');
+  assert.equal(frontend.sceneLockAssessment(normalizedDirectResponse).complete, true);
+  const verifyToasts = [];
+  const verifyState = { taskId: 'task-direct-response', sceneAssets: [staleDirectResponse] };
+  const verifyResult = await frontend.verify({
+    state: verifyState,
+    sceneId: staleDirectResponse.scene_id,
+    api: async () => ({ scene_assets: [staleDirectResponse] }),
+    normalizeBundle: () => {},
+    renderAll: () => {},
+    setButtonBusy: () => {},
+    toast: (message, type) => verifyToasts.push({ message, type }),
+    button: {},
+  });
+  assert.equal(verifyResult, true);
+  assert.deepEqual(verifyToasts, [{ message: '需求、摄影真实性、机位设计、跨视图和空间覆盖五道验证均已通过，俯视布局已纳入空间合同', type: 'success' }]);
   const certifiedHost = { innerHTML: '' };
   frontend.render({ host: certifiedHost, state: { taskId: 'task-certified', sceneAssets: [certifiedExisting] } });
   assert(certifiedHost.innerHTML.includes('完整空间已锁定'));
   assert(!certifiedHost.innerHTML.includes('需要完整升级'));
   assert(!certifiedHost.innerHTML.includes('data-nsa-scene-upgrade='));
+  assert(certifiedHost.innerHTML.includes('<details class="dh-nsa-camera-acceptance">'));
+  assert(!certifiedHost.innerHTML.includes('<details class="dh-nsa-camera-acceptance" open>'));
+  const cameraLegacyHost = { innerHTML: '' };
+  frontend.render({ host: cameraLegacyHost, state: { taskId: 'task-camera-legacy', sceneAssets: [cameraLegacy] } });
+  assert(cameraLegacyHost.innerHTML.includes('待逐机位设计复核'));
+  assert(cameraLegacyHost.innerHTML.includes('待补证据'));
+  assert(cameraLegacyHost.innerHTML.includes('待映射'));
+  assert(cameraLegacyHost.innerHTML.includes('再次验证（不重新生成）'));
   const selectedClasses = new Set();
   const topologySelect = {
     value: 'hidden',
@@ -298,6 +407,73 @@ function main() {
     },
   });
   assert.match(queuedRepairHost.innerHTML, /准备修复 2 张：反向\/侧向、互动位/);
+  const switchingDuringGenerationHost = { innerHTML: '' };
+  const parkAsset = { ...fullAsset(), id: 'space_park', scene_id: 'space_park', space_id: 'space_park', name: '城市公园草坪' };
+  const homeAsset = { ...fullAsset(), id: 'space_home', scene_id: 'space_home', space_id: 'space_home', name: '现代家庭空间' };
+  frontend.render({
+    host: switchingDuringGenerationHost,
+    state: {
+      taskId: 'task-scene-switch',
+      sceneConfig: {
+        scene_mode: 'multi',
+        spaces: [
+          { id: 'space_park', name: '城市公园草坪', scene_spec: { layoutText: '公园空间' } },
+          { id: 'space_home', name: '现代家庭空间', scene_spec: { layoutText: '家庭空间' } },
+        ],
+      },
+      scenePlanSelectedIndex: 0,
+      sceneAssets: [parkAsset, homeAsset],
+      sceneGenerationProgress: {
+        active: true,
+        stage: 'scene_asset',
+        status: 'running',
+        scene_id: 'space_home',
+        target_total: 5,
+        succeeded: 1,
+        view_states: [{ key: 'master', label: '主视角', status: 'succeeded' }],
+        started_at: new Date().toISOString(),
+      },
+    },
+  });
+  assert(switchingDuringGenerationHost.innerHTML.includes('data-nsa-scene-plan-select="0"'), '生成时仍必须保留场景切换标签');
+  assert(switchingDuringGenerationHost.innerHTML.includes('data-nsa-scene-plan-select="1"'), '生成时不得隐藏其他场景');
+  assert.match(switchingDuringGenerationHost.innerHTML, /dh-nsa-scene-tab active[^>]*>\s*<button type="button" data-nsa-scene-plan-select="0"/);
+  assert(switchingDuringGenerationHost.innerHTML.includes('/master.png'), '生成其他场景时应继续展示当前选中场景的历史资产');
+  assert(switchingDuringGenerationHost.innerHTML.includes('现代家庭空间') && switchingDuringGenerationHost.innerHTML.includes('生成中'), '进度必须绑定生成目标场景，而不是替换整个场景面板');
+  const sceneScopedFailure = {
+    stage: 'scene_asset',
+    status: 'failed',
+    scene_id: 'space_home',
+    scene_name: '现代家庭空间',
+    error_code: 'SCENE_RIGHTS_PREFLIGHT_FAILED',
+    support_id: 'support-home-only',
+    message: '家庭场景权利预检失败',
+  };
+  const scopedFailureState = selectedIndex => ({
+    taskId: 'task-scene-failure-scope',
+    taskStatus: 'failed',
+    taskStage: 'scene_asset_failed',
+    taskError: sceneScopedFailure.message,
+    taskErrorCode: sceneScopedFailure.error_code,
+    generationProgress: sceneScopedFailure,
+    sceneConfig: {
+      scene_mode: 'multi',
+      spaces: [
+        { id: 'space_park', name: '城市公园草坪', scene_spec: { layoutText: '公园空间' } },
+        { id: 'space_home', name: '现代家庭空间', scene_spec: { layoutText: '家庭空间' } },
+      ],
+    },
+    scenePlanSelectedIndex: selectedIndex,
+    sceneAssets: [parkAsset, homeAsset],
+  });
+  const parkFailureHost = { innerHTML: '' };
+  frontend.render({ host: parkFailureHost, state: scopedFailureState(0) });
+  assert(!parkFailureHost.innerHTML.includes('support-home-only'), '其他场景的失败支持编号不得显示在当前成功场景');
+  assert(!parkFailureHost.innerHTML.includes('SCENE_RIGHTS_PREFLIGHT_FAILED'), '其他场景的错误码必须在切换到该场景后才显示');
+  const homeFailureHost = { innerHTML: '' };
+  frontend.render({ host: homeFailureHost, state: scopedFailureState(1) });
+  assert(homeFailureHost.innerHTML.includes('support-home-only'), '切换到失败场景后必须显示该场景支持编号');
+  assert(homeFailureHost.innerHTML.includes('SCENE_RIGHTS_PREFLIGHT_FAILED'), '切换到失败场景后必须显示该场景错误码');
   const fullAssessment = frontend.sceneLockAssessment(frontend.normalizeAssets([asset])[0]);
   assert.equal(fullAssessment.complete, true);
   assert.equal(fullAssessment.layoutAvailable, true);
@@ -340,6 +516,11 @@ function main() {
   frontend.render({ host: fullHost, state: { taskId: 'task-v3', sceneAssets: [asset] } });
   assert(fullHost.innerHTML.includes('完整空间已锁定'));
   assert(fullHost.innerHTML.includes('需求符合度'));
+  assert(fullHost.innerHTML.includes('机位设计'));
+  assert(fullHost.innerHTML.includes('机位设计验收'));
+  assert(fullHost.innerHTML.includes('逐机位参数、俯视定位、需求映射与可见证据'));
+  assert(fullHost.innerHTML.includes('方位 20°'));
+  assert(fullHost.innerHTML.includes('空间布局'));
   assert(fullHost.innerHTML.includes('跨视图一致性'));
   assert(fullHost.innerHTML.includes('空间覆盖度'));
   assert(fullHost.innerHTML.includes('俯视布局'));
@@ -347,7 +528,7 @@ function main() {
   frontend.render({ host: legacyHost, state: { taskId: 'task-legacy', sceneAssets: [legacy] } });
   assert(legacyHost.innerHTML.includes('需要完整升级'));
   assert(legacyHost.innerHTML.includes('旧版图片不能继续复验或局部修复'));
-  assert(legacyHost.innerHTML.includes('重新补齐并重建当前场景（5 张）'));
+  assert(legacyHost.innerHTML.includes('升级当前空间（2 次图片调用）'));
   assert(legacyHost.innerHTML.includes('data-nsa-scene-upgrade='));
   assert(!legacyHost.innerHTML.includes('data-nsa-scene-verify='));
   assert(!legacyHost.innerHTML.includes('空间覆盖度 100%'));
@@ -368,6 +549,25 @@ function main() {
       surface_topology_match_score: null,
       negative_compliance_score: null,
     },
+    photographic_realism_qa: {
+      pass: null,
+      photographic_realism_score: null,
+      physical_material_score: null,
+      natural_variation_score: null,
+      optical_capture_score: null,
+      real_photo_evidence: [],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+    },
+    camera_design_qa: {
+      pass: null,
+      role_definition_score: null,
+      requirement_mapping_score: null,
+      direction_evidence_score: null,
+      parameter_completeness_score: null,
+      layout_mapping_score: null,
+      mismatch_reasons: [],
+    },
     cross_view_qa: {
       pass: false,
       scene_consistency_score: null,
@@ -385,12 +585,26 @@ function main() {
   };
   const unavailableHost = { innerHTML: '' };
   frontend.render({ host: unavailableHost, state: { taskId: 'task-unavailable', sceneAssets: [unavailable] } });
-  assert.equal((unavailableHost.innerHTML.match(/<b>待验证<\/b>/g) || []).length, 3, 'unknown QA metrics must render as pending, never zero');
+  assert.equal((unavailableHost.innerHTML.match(/<b>待验证<\/b>/g) || []).length, 5, 'unknown QA metrics must render as pending, never zero');
   assert.doesNotMatch(unavailableHost.innerHTML, />0%<\/b>/);
   assert.match(unavailableHost.innerHTML, /场景待验证/);
   assert.match(unavailableHost.innerHTML, /再次验证（不重新生成）/);
   assert.match(unavailableHost.innerHTML, /不会调用图片模型/);
   assert.doesNotMatch(unavailableHost.innerHTML, /data-nsa-scene-repair=/);
+  const staleLegacyUnavailable = JSON.parse(JSON.stringify(unavailable));
+  staleLegacyUnavailable.scene_contract.compatibility_status = 'legacy_partial';
+  staleLegacyUnavailable.scene_contract.spatial_coverage_qa.legacy = true;
+  const staleLegacyUnavailableHost = { innerHTML: '' };
+  frontend.render({
+    host: staleLegacyUnavailableHost,
+    state: { taskId: 'task-current-reverify', sceneAssets: [staleLegacyUnavailable] },
+  });
+  assert.match(
+    staleLegacyUnavailableHost.innerHTML,
+    /再次验证（不重新生成）/,
+    'a complete V7 asset with an authoritative reverify plan must keep the verification action visible even if stale browser QA fields say legacy',
+  );
+  assert.doesNotMatch(staleLegacyUnavailableHost.innerHTML, /旧资产仅锁定外观/);
 
   const rejected = fullAsset();
   rejected.scene_id = 'rejected-scene';
@@ -423,11 +637,58 @@ function main() {
       taskStatus: 'failed',
       taskStage: 'scene_asset_failed',
       taskError: 'gpt-image-2 AuditSubmitIllegal; nano-banana-pro prompt: size must be between 0 and 2500',
+      sceneConfig: {
+        scene_mode: 'single',
+        spaces: [{ id: 'rejected-scene', name: rejected.name }],
+      },
+      generationProgress: {
+        stage: 'scene_asset',
+        status: 'failed',
+        scene_id: 'rejected-scene',
+        error_code: 'PROVIDER_5XX_AMBIGUOUS',
+        message: 'gpt-image-2 AuditSubmitIllegal; nano-banana-pro prompt: size must be between 0 and 2500',
+      },
       sceneAssets: [rejected],
     },
   });
   assert(failedRepairHost.innerHTML.includes('上次修复失败，当前仍显示版本 r1'));
   assert(failedRepairHost.innerHTML.includes('没有创建新版本，旧图已安全保留'));
+  const durableFailureHost = { innerHTML: '' };
+  frontend.render({
+    host: durableFailureHost,
+    state: {
+      taskId: 'task-scene-failure',
+      taskStatus: 'failed',
+      taskStage: 'scene_asset_failed',
+      taskError: '图像供应商返回 500，俯视布局未生成 [支持编号: support-scene-1]',
+      taskErrorCode: 'PROVIDER_5XX_AMBIGUOUS',
+      sceneConfig: {
+        scene_mode: 'multi',
+        spaces: [
+          { id: 'space_park', name: '城市公园草坪' },
+          { id: 'space_home', name: '现代家庭空间' },
+        ],
+      },
+      scenePlanSelectedIndex: 1,
+      sceneAssets: [parkAsset, { ...homeAsset, partial_checkpoint: true, completed_view_keys: ['master'], failed_view_keys: ['layout'], view_images: [{ key: 'master', url: '/home-master.png' }] }],
+      generationProgress: {
+        stage: 'scene_asset',
+        status: 'failed',
+        scene_id: 'space_home',
+        error_code: 'PROVIDER_5XX_AMBIGUOUS',
+        support_id: 'support-scene-1',
+        message: '图像供应商返回 500，俯视布局未生成',
+        view_states: [
+          { key: 'master', label: '主视角', status: 'succeeded' },
+          { key: 'layout', label: '俯视布局', status: 'failed', error: 'provider 500' },
+        ],
+      },
+    },
+  });
+  assert(durableFailureHost.innerHTML.includes('现代家庭空间生成失败'), '失败结果必须作为场景面板持久内容展示');
+  assert(durableFailureHost.innerHTML.includes('俯视布局'), '持久失败信息必须指出失败视图');
+  assert(durableFailureHost.innerHTML.includes('PROVIDER_5XX_AMBIGUOUS'));
+  assert(durableFailureHost.innerHTML.includes('support-scene-1'), '支持编号不能只存在于瞬时弹窗');
 
   const legacyUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   assert(legacyUi.includes("target.closest('[data-nsa-scene-repair]')"));
@@ -456,21 +717,26 @@ function main() {
   const adminUi = fs.readFileSync(path.join(root, 'public/js/admin.js'), 'utf8');
   const adminRoute = fs.readFileSync(path.join(root, 'src/routes/admin.js'), 'utf8');
   assert(css.includes('.dh-nsa-scene-lock-metrics'));
+  assert(css.includes('repeat(auto-fit, minmax(150px, 1fr))'));
+  assert(css.includes('.dh-demo-person-source.dh-nsa-scene-source'));
+  assert(css.includes('.dh-nsa-camera-acceptance[open] > summary::after'));
+  assert(css.includes('.dh-toast.warning'));
   assert(css.includes('.dh-nsa-scene-view.is-layout'));
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260725-subject-scene-contract-v10'));
-  assert(html.includes('digital-human-wizard.css?v=20260725-subject-scene-contract-v10'));
-  assert(html.indexOf('bootstrap.js?v=20260725-subject-scene-contract-v10') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
+  assert(html.includes('bootstrap.js?v=20260726-scene-reverify-persist-v31'));
+  assert(html.includes('digital-human-wizard.css?v=20260726-scene-reverify-persist-v31'));
+  assert(html.indexOf('bootstrap.js?v=20260726-scene-reverify-persist-v31') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260725-subject-scene-contract-v10'));
-  assert(sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
-  assert(sceneUi.includes('acknowledge_billing_unknown: acknowledgeBillingUnknown === true'));
+  assert(bootstrap.includes('20260726-scene-reverify-persist-v31'));
+  assert(sceneUi.includes('acknowledge_billing_unknown: true'));
+  assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
+  assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));
   assert(legacyUi.includes('confirmAction: confirmNsaAction'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
@@ -514,4 +780,7 @@ function main() {
   }, null, 2));
 }
 
-main();
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

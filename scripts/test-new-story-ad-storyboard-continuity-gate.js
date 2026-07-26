@@ -1,5 +1,6 @@
 const assert = require('assert');
 const gate = require('../src/services/newStoryAd/storyboardContinuityGateService');
+const continuity = require('../src/services/newStoryAd/continuityService');
 
 const inherited = [
   {
@@ -60,5 +61,43 @@ const revisionMismatch = gate.reviewContinuity({
   ],
 });
 assert(revisionMismatch.issues.some(issue => /场景版本不一致/.test(issue)));
+
+const recommended = continuity.withContinuityContracts([
+  { scene_id: 'scene-a', action_end: '人物抬起手臂' },
+  { scene_id: 'scene-b', action_start: '手臂继续抬起' },
+]);
+assert.strictEqual(recommended[1].transition_type, 'dissolve', 'a cross-scene boundary without an authored override must receive a visible default recommendation');
+assert.strictEqual(recommended[1].transition_source, 'recommended');
+assert.strictEqual(recommended[1].boundary_mode, 'intentional_scene_change');
+assert(recommended[1].transition_duration_sec > 0);
+
+const authoredMatch = continuity.withContinuityContracts([
+  { scene_id: 'scene-a', action_end: '镜头停在圆形灯具' },
+  {
+    scene_id: 'scene-b',
+    transition_type: 'match_cut',
+    transition_match_anchor: '画面中心圆形轮廓',
+    transition_reason: '由灯具圆形切到产品圆形',
+  },
+]);
+assert.strictEqual(authoredMatch[1].transition_type, 'match_cut');
+assert.strictEqual(authoredMatch[1].transition_source, 'authored');
+assert.strictEqual(authoredMatch[1].transition_match_anchor, '画面中心圆形轮廓');
+
+const missingAnchor = gate.reviewContinuity({
+  shots: [
+    { scene_id: 'scene-a' },
+    { scene_id: 'scene-b', transition_type: 'match_cut', transition_reason: '视觉匹配' },
+  ],
+});
+assert(missingAnchor.issues.some(issue => /匹配锚点/.test(issue)));
+
+const missingCrossSceneReason = gate.reviewContinuity({
+  shots: [
+    { scene_id: 'scene-a' },
+    { scene_id: 'scene-b', transition_type: 'hard_cut' },
+  ],
+});
+assert(missingCrossSceneReason.issues.some(issue => /缺少转场原因/.test(issue)));
 
 console.log('new story ad storyboard continuity gate: ok');

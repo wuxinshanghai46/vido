@@ -87,6 +87,50 @@ const runFfmpeg = promisify(execFile);
       { shot_index: 1, transition_override: 'fade' },
     ], [{}, { transition_type: 'hard_cut' }], [5, 5]);
     assert.strictEqual(repairedPlan[1].execution, 'fade_black', 'a deterministic repair transition must override the stale authored hard cut');
+
+    const semanticPlan = composeService.buildTransitionPlan([
+      { shot_index: 0 },
+      { shot_index: 1 },
+      { shot_index: 2 },
+    ], [
+      { transition_type: 'none' },
+      {
+        transition_type: 'cut_on_action',
+        audio_bridge: '下一场景环境声提前进入',
+        audio_bridge_duration_sec: 0.3,
+      },
+      {
+        transition_type: 'match_cut',
+        transition_match_anchor: '画面中心圆形轮廓',
+      },
+    ], [2, 2, 2]);
+    assert.strictEqual(semanticPlan[1].execution, 'cut_on_action', 'cut-on-action must remain an executable semantic cut instead of collapsing to a generic cut');
+    assert.strictEqual(semanticPlan[1].audio_bridge_execution, 'j_cut_crossfade');
+    assert.strictEqual(semanticPlan[1].audio_overlap_sec, 0.3);
+    assert.strictEqual(semanticPlan[2].execution, 'match_cut', 'match cut must remain explicit in the final plan');
+    assert.strictEqual(semanticPlan[2].match_anchor, '画面中心圆形轮廓');
+    assert.strictEqual(semanticPlan[2].verification_required, true);
+
+    const audioBridgeResult = await composeService.concatVideos({
+      taskId: 'compose-audio-bridge-test',
+      clips: [
+        { shot_index: 0, file_path: first },
+        { shot_index: 1, file_path: second },
+      ],
+      transitions: [
+        { transition_type: 'none' },
+        {
+          transition_type: 'cut_on_action',
+          audio_bridge: '下一场景环境声提前进入',
+          audio_bridge_duration_sec: 0.3,
+        },
+      ],
+    });
+    assert.ok(fs.existsSync(audioBridgeResult.file_path));
+    assert.strictEqual(audioBridgeResult.transition_plan[1].execution, 'cut_on_action');
+    assert.strictEqual(audioBridgeResult.audio_bridge_applied, true);
+    assert.strictEqual(audioBridgeResult.audio_bridge_count, 1);
+    assert.strictEqual(audioBridgeResult.technical_qa.audio_present, true, 'an authored audio bridge must create and verify a real final audio stream');
     console.log('new story ad compose transitions: ok');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });

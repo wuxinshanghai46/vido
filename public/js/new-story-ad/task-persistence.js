@@ -200,14 +200,26 @@
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
     const id = await ensureTask(ctx);
     const progressStage = progressStageForState(state);
+    const scenePlan = state.pendingChangeScope === 'scene'
+      ? window.NewStoryAdSceneAssets?.planPayload?.(state)
+      : null;
+    if (state.pendingChangeScope === 'scene' && !scenePlan) {
+      const error = new Error('场景变更缺少完整逐空间计划，已停止自动保存，原场景合同不会被覆盖');
+      error.code = 'SCENE_PLAN_REQUIRED_FOR_SCENE_SAVE';
+      throw error;
+    }
     const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: {
         ...payload(),
         task_id: id,
+        scene_plan: scenePlan,
         save_progress: true,
         progress_stage: progressStage,
-        progress_snapshot: progressSnapshotForState(state, ctx),
+        progress_snapshot: {
+          ...progressSnapshotForState(state, ctx),
+          scene_config: scenePlan || state.sceneConfig || null,
+        },
       },
     });
     state.pendingChangeScope = 'none';

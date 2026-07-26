@@ -118,7 +118,9 @@
     const expectedPets = Math.max(0, Number(counts.pets) || 0);
     const humans = Array.isArray(checkpoint.humans) ? checkpoint.humans : [];
     const pets = Array.isArray(checkpoint.pets) ? checkpoint.pets : [];
-    const completed = humans.length + pets.length;
+    const completedHumans = humans.filter(subjectAssetReady);
+    const completedPets = pets.filter(subjectAssetReady);
+    const completed = completedHumans.length + completedPets.length;
     const total = Math.max(1, expectedPeople + expectedPets);
     const finalPersonAsset = request.person_asset || request.personAsset || request.person_context?.person_asset || null;
     const finalPetProfiles = Array.isArray(request.pet_profiles || request.petProfiles)
@@ -134,16 +136,16 @@
       || (checkpointComplete && finalPetProfiles.length >= expectedPets && finalPetProfiles.every(subjectAssetReady));
     const commitPending = checkpointComplete && checkpointFresh && (!peopleCommitted || !petsCommitted);
 
-    if (!peopleCommitted && humans.length) {
+    if (!peopleCommitted && completedHumans.length) {
       const provisionalAsset = {
         id: `subject_checkpoint_${state.taskId || 'task'}`,
-        name: humans.length > 1 ? `剧情广告人物组（${humans.length}人）` : (humans[0].name || '剧情广告人物'),
+        name: completedHumans.length > 1 ? `剧情广告人物组（${completedHumans.length}人）` : (completedHumans[0].name || '剧情广告人物'),
         source: 'new_story_ad_subject_checkpoint',
         cast_mode: counts.mode || '',
         expected_people: expectedPeople,
-        image_url: humans[0].image_url || '',
-        view_images: humans[0].view_images || [],
-        cast_assets: humans,
+        image_url: completedHumans[0].image_url || '',
+        view_images: completedHumans[0].view_images || [],
+        cast_assets: completedHumans,
         production_usable_actor: false,
         checkpoint_status: checkpoint.status,
       };
@@ -153,10 +155,10 @@
       state.personAsset = null;
       state.actorAsset = null;
     }
-    if (!peopleCommitted && humans.length) {
+    if (!peopleCommitted && completedHumans.length) {
       state.castProfiles = mergeSubjectProfiles(state.castProfiles, humans, 'subject_profile');
     }
-    if (!petsCommitted && pets.length) {
+    if (!petsCommitted && completedPets.length) {
       state.petProfiles = mergeSubjectProfiles(state.petProfiles, pets);
     }
 
@@ -235,6 +237,10 @@
   }
 
   function hydrateSceneAssets(state = {}, { request = {}, outputs = {}, response = {} } = {}) {
+    const hasExplicitSceneAssets = hasOwn(outputs, 'scene_assets') || hasOwn(response, 'scene_assets');
+    if (!hasExplicitSceneAssets && Array.isArray(state.sceneAssets) && state.sceneAssets.length) {
+      return;
+    }
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, { request, outputs, response });
       return;

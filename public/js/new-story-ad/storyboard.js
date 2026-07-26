@@ -114,6 +114,27 @@
     return `<option value="${esc(value)}" ${String(value) === String(selected) ? 'selected' : ''}>${esc(label)}</option>`;
   }
 
+  const TRANSITION_LABELS = {
+    none: '无转场（首镜）',
+    hard_cut: '直接切换',
+    cut_on_action: '动作切换',
+    match_cut: '匹配切换',
+    dissolve: '短叠化',
+    fade: '淡出 / 淡入',
+  };
+
+  function transitionRecommendation(shot = {}, index = 0) {
+    const stored = shot.transition_recommendation && typeof shot.transition_recommendation === 'object'
+      ? shot.transition_recommendation
+      : {};
+    if (index === 0) return { type: 'none', duration_sec: 0, reason: '首镜不需要前置转场' };
+    return {
+      type: clean(stored.type || shot.transition_type || 'hard_cut', 40),
+      duration_sec: Number(stored.duration_sec ?? shot.transition_duration_sec ?? 0) || 0,
+      reason: clean(stored.reason || shot.transition_reason || '按分镜连续性自动推荐', 240),
+    };
+  }
+
   function bindingHtml({ shot = {}, index = 0, sceneAssets = [], escapeHtml } = {}) {
     const esc = typeof escapeHtml === 'function' ? escapeHtml : (x => String(x || ''));
     const assets = Array.isArray(sceneAssets) ? sceneAssets : [];
@@ -128,10 +149,20 @@
     const selectedAsset = assets[selectedAssetIndex >= 0 ? selectedAssetIndex : 0] || {};
     const availableViews = sceneViews(selectedAsset);
     const currentView = viewValue(shot.scene_view, index, selectedAsset);
+    const recommendation = transitionRecommendation(shot, index);
+    const currentTransition = index === 0 ? 'none' : clean(shot.transition_type || recommendation.type || 'hard_cut', 40);
+    const duration = Math.max(0, Math.min(2, Number(
+      shot.transition_duration_sec ?? recommendation.duration_sec ?? 0,
+    ) || 0));
+    const audioBridge = clean(shot.audio_bridge || '', 180);
+    const audioDuration = Math.max(0, Math.min(1.5, Number(
+      shot.audio_bridge_duration_sec ?? (audioBridge ? 0.35 : 0),
+    ) || 0));
+    const transitionSource = clean(shot.transition_source || (shot._nsa_user_edited_fields?.transition_type ? 'authored' : 'recommended'), 40);
     return `<div class="dh-nsa-frame-scene" data-nsa-editor-section="scene">
       <div class="dh-nsa-frame-scene-title">
-        <b>场景绑定</b>
-        <span>${assets.length > 1 ? '多场景任务：可为本镜选择空间、视角和转场原因。' : '单场景任务：本镜锁定当前任务唯一空间。'}</span>
+        <b>场景与转场导演</b>
+        <span>${assets.length > 1 ? '多场景任务：空间切换与转场分别验收。' : '单场景任务：保持空间连续性，并按动作与构图选择切点。'}</span>
       </div>
       <label>
         <span>绑定场景</span>
@@ -151,9 +182,36 @@
         <input class="dh-input" value="${esc(shotZoneLabel(shot))}" placeholder="例如：入口区、展示区、互动位、细节区，按当前任务填写" data-nsa-shot-index="${index}" data-nsa-shot-field="scene_zone">
       </label>
       <label>
-        <span>转场原因</span>
-        <input class="dh-input" value="${esc(clean(shot.transition_reason || '', 240))}" placeholder="跨场景时说明为什么切换；单场景可留空" data-nsa-shot-index="${index}" data-nsa-shot-field="transition_reason">
+        <span>转场类型</span>
+        <select class="dh-input" data-nsa-shot-index="${index}" data-nsa-shot-field="transition_type" ${index === 0 ? 'disabled' : ''}>
+          ${Object.entries(TRANSITION_LABELS).map(([value, label]) => optionHtml(value, label, currentTransition, esc)).join('')}
+        </select>
       </label>
+      <label>
+        <span>转场时长（秒）</span>
+        <input class="dh-input" type="number" min="0" max="2" step="0.05" value="${esc(duration)}" data-nsa-shot-index="${index}" data-nsa-shot-field="transition_duration_sec" ${index === 0 ? 'disabled' : ''}>
+      </label>
+      <label class="is-wide">
+        <span>转场原因</span>
+        <input class="dh-input" value="${esc(clean(shot.transition_reason || recommendation.reason || '', 240))}" placeholder="说明这次切换承担的叙事作用" data-nsa-shot-index="${index}" data-nsa-shot-field="transition_reason" ${index === 0 ? 'disabled' : ''}>
+      </label>
+      <label class="is-wide">
+        <span>匹配锚点（匹配切换时必填）</span>
+        <input class="dh-input" value="${esc(clean(shot.transition_match_anchor || '', 180))}" placeholder="例如：人物抬手方向、圆形产品轮廓、画面中心门框" data-nsa-shot-index="${index}" data-nsa-shot-field="transition_match_anchor" ${index === 0 ? 'disabled' : ''}>
+      </label>
+      <label class="is-wide">
+        <span>跨镜声音桥</span>
+        <input class="dh-input" value="${esc(audioBridge)}" placeholder="仅写需要提前进入下一场景的环境声或音效；留空则不混入" data-nsa-shot-index="${index}" data-nsa-shot-field="audio_bridge" ${index === 0 ? 'disabled' : ''}>
+      </label>
+      <label>
+        <span>声音提前量（秒）</span>
+        <input class="dh-input" type="number" min="0" max="1.5" step="0.05" value="${esc(audioDuration)}" data-nsa-shot-index="${index}" data-nsa-shot-field="audio_bridge_duration_sec" ${index === 0 ? 'disabled' : ''}>
+      </label>
+      <div class="dh-nsa-transition-recommendation is-${esc(transitionSource)}">
+        <b>${transitionSource === 'recommended' ? '系统推荐' : '用户设定'}</b>
+        <span>${esc(`${TRANSITION_LABELS[recommendation.type] || recommendation.type} · ${recommendation.reason}`)}</span>
+        ${transitionSource === 'recommended' ? '<em>修改任一转场参数后，以你的设定为准</em>' : '<em>已覆盖自动推荐</em>'}
+      </div>
     </div>`;
   }
 
@@ -164,6 +222,7 @@
     sceneZoneLabel,
     shotZoneId,
     shotZoneLabel,
+    transitionRecommendation,
     bindingHtml,
   };
 })();

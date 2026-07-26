@@ -14,6 +14,8 @@ const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const newStoryAdRouter = require('../src/routes/newStoryAd');
 const visualPolicy = require('../src/services/newStoryAd/visualRealismPolicyService');
+const subjectBundles = require('../src/services/newStoryAd/subjectAssetBundleService');
+const blueprintQuality = require('../src/services/newStoryAd/blueprintQualityService');
 const complianceKb = require('../src/services/seeds/ai_visual_compliance');
 
 function testBriefFormatter() {
@@ -132,6 +134,25 @@ function testSceneAndKeyframeRealismPolicy() {
   assert.match(keyframePrompt, /Actor compliance lock/i);
 }
 
+function testIdentitySheetRealismPolicy() {
+  const prompt = subjectBundles.humanPrompt({
+    member_index: 1,
+    displayName: '林悦',
+    roleName: '年轻母亲',
+    appearanceText: '约30岁，真实自然面部比例',
+    wardrobeText: '米白色棉质短袖',
+    hairMakeupText: '低马尾与自然碎发',
+  }, 2);
+  assert.match(prompt, /unretouched real casting reference/i);
+  assert.match(prompt, /local skin-color variation/i);
+  assert.match(prompt, /restrained role-appropriate expression/i);
+  assert.match(prompt, /never default to an influencer grin/i);
+  assert.match(prompt, /subtle floor contact/i);
+  assert.match(prompt, /featureless render void/i);
+  assert.match(prompt, /No beauty filter/i);
+  assert.doesNotMatch(prompt, /Neutral seamless studio/i);
+}
+
 function testProviderReferencePriority() {
   const url = videoAdapter.personReferenceUrl({
     person_contract: {
@@ -159,14 +180,50 @@ function testComplianceKnowledgeBase() {
   assert.doesNotMatch(visualPolicy.image2CompliancePrompt(), /bypass moderation|evade review/i);
 }
 
+function testSceneRightsPreflightScope() {
+  const campaignBrief = '结尾画面中屏幕上浮现品牌Logo和广告语，品牌素材将在成片阶段处理。';
+  const sceneBody = {
+    scene_id: 'space_home',
+    space_id: 'space_home',
+    name: '现代家庭空间',
+    description: '客厅与厨房开放连接的现代住宅空场。',
+    scene_spec: {
+      layoutText: '客厅与厨房开放连接，预留连续移动路线。',
+      materialLightText: '真实家居材质与自然窗光。',
+      interactionText: '场景资产保持空场，预留后续表演位置。',
+      negativeText: '禁止人物、商品、文字和水印。',
+    },
+  };
+  assert.doesNotThrow(() => sceneAssets.assertSceneRightsPreflight({
+    brief: campaignBrief,
+    product_subject: '狗粮广告',
+  }, sceneBody), 'later brand end-card copy must not block an unoccupied scene provider prompt');
+  const unauthorizedCampaignBrief = '结尾画面要求现场生成并变形品牌Logo。';
+  assert.equal(blueprintQuality.assessBlueprintRights({
+    story_title: '完整广告',
+    logline: unauthorizedCampaignBrief,
+    beats: [{ visual: unauthorizedCampaignBrief }],
+  }).pass, false, 'full-story brand rights QA must remain active');
+  assert.throws(() => sceneAssets.assertSceneRightsPreflight({}, {
+    ...sceneBody,
+    description: '客厅主墙上浮现品牌Logo。',
+  }), error => (
+    error.code === 'SCENE_RIGHTS_PREFLIGHT_FAILED'
+    && error.scene_id === 'space_home'
+    && error.scene_name === '现代家庭空间'
+  ), 'a logo request inside the current scene prompt must still be rejected with scene ownership');
+}
+
 async function main() {
   testBriefFormatter();
   testFrontendDefensiveFormatter();
   await testAssistServiceFormatsDoubleEscapes();
   testPersonFullBodyAndRealismPolicy();
+  testIdentitySheetRealismPolicy();
   testSceneAndKeyframeRealismPolicy();
   testProviderReferencePriority();
   testComplianceKnowledgeBase();
+  testSceneRightsPreflightScope();
   console.log('剧情广告 Image 2 合规、人物/场景真实感与需求布局：全部测试通过');
 }
 

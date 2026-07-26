@@ -33,7 +33,7 @@ function safeJson(raw = '') {
   // decision prefix locally instead of paying for another vision call or
   // discarding the generated images. normalizeContract reconstructs cameras
   // from the five authoritative view URLs when optional details are absent.
-  const optionalStart = text.search(/,\s*"(?:anchors|zones|geometry_facts|materials|lighting|cameras)"\s*:/i);
+  const optionalStart = text.search(/,\s*"(?:anchors|zones|geometry_facts|materials|lighting)"\s*:/i);
   const objectStart = text.indexOf('{');
   if (objectStart >= 0 && optionalStart > objectStart) {
     const decisionPrefix = `${text.slice(objectStart, optionalStart).replace(/,\s*$/, '')}\n}`;
@@ -101,21 +101,66 @@ function normalizeCameras(input = [], views = []) {
   return VIEW_KEYS.map((key, index) => {
     const source = list.find(item => cleanText(item?.view_id || item?.key || '', 40) === key) || {};
     const view = (Array.isArray(views) ? views : []).find(item => cleanText(item?.key || item?.view || '', 40) === key) || views[index] || {};
-    return {
+    const normalizedPosition = normalizePoint(source.normalized_position || source.position_on_layout);
+    const lookAt = normalizePoint(source.look_at || source.target_on_layout);
+    const requirementRefs = stringList(source.requirement_refs || source.requirements || [], 8, 60)
+      .filter(value => ['layout', 'material_light', 'interaction', 'style', 'negative', 'surface_topology'].includes(value));
+    const allowedZoneIds = stringList(source.allowed_zone_ids || source.target_zone_ids || [], 24, 100);
+    const mismatchReasons = stringList(source.mismatch_reasons || source.reasons || [], 5, 240);
+    const camera = {
       id: cleanText(source.id || 'camera_' + key, 100),
       view_id: key,
       label: cleanText(source.label || view.label || key, 100),
       reference_image_url: cleanText(view.url || view.image_url || source.reference_image_url || '', 1000),
+      role: cleanText(source.role || source.purpose || '', 160),
       framing: cleanText(source.framing || '', 120),
       lens_class: cleanText(source.lens_class || source.lens || '', 80),
+      height_class: cleanText(source.height_class || source.camera_height || '', 80),
       orientation: cleanText(source.orientation || source.camera_direction || '', 160),
-      allowed_zone_ids: stringList(source.allowed_zone_ids || [], 24, 100),
+      estimated_azimuth_degrees: finiteNumberOrNull(source.estimated_azimuth_degrees ?? source.azimuth_degrees),
+      estimated_pitch_degrees: finiteNumberOrNull(source.estimated_pitch_degrees ?? source.pitch_degrees),
+      azimuth_delta_from_master_degrees: finiteNumberOrNull(source.azimuth_delta_from_master_degrees ?? source.azimuth_delta),
+      normalized_position: normalizedPosition,
+      look_at: lookAt,
+      position_confidence: score(source.position_confidence),
+      target_description: cleanText(source.target_description || source.target || '', 220),
+      allowed_zone_ids: allowedZoneIds,
+      requirement_refs: [...new Set(requirementRefs)],
+      visible_evidence: cleanText(source.visible_evidence || source.evidence || '', 300),
+      mismatch_reasons: mismatchReasons,
     };
+    const commonComplete = Boolean(
+      camera.role && camera.framing && camera.lens_class && camera.height_class
+      && camera.orientation && camera.target_description && camera.visible_evidence
+      && camera.requirement_refs.length && camera.normalized_position.length === 2
+      && camera.look_at.length === 2 && camera.position_confidence >= 0.6
+      && camera.estimated_azimuth_degrees !== null && camera.estimated_pitch_degrees !== null
+    );
+    const roleComplete = key === 'master'
+      ? camera.requirement_refs.includes('layout')
+      : (key === 'reverse'
+        ? Number(camera.azimuth_delta_from_master_degrees) >= 75
+        : (key === 'interaction'
+          ? camera.requirement_refs.includes('interaction') && camera.allowed_zone_ids.length > 0
+          : camera.requirement_refs.some(value => ['material_light', 'surface_topology'].includes(value))));
+    camera.pass = source.pass === true && commonComplete && roleComplete && mismatchReasons.length === 0;
+    return camera;
   });
 }
 
 function score(value) {
   return Math.max(0, Math.min(1, Number(value || 0)));
+}
+
+function finiteNumberOrNull(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+function normalizePoint(value) {
+  const point = Array.isArray(value) ? value.map(Number).slice(0, 2) : [];
+  return point.length === 2 && point.every(Number.isFinite)
+    ? point.map(number => Math.max(0, Math.min(1, number)))
+    : [];
 }
 
 function qaContainers(input = {}) {
@@ -200,6 +245,83 @@ function normalizeRequirementQa(input = {}) {
     && qa.surface_topology_match_score >= 0.8
     && qa.negative_compliance_score >= 0.9
     && reasons.length === 0;
+  return qa;
+}
+
+function normalizePhotographicRealismQa(input = null) {
+  if (!input || typeof input !== 'object') {
+    return {
+      pass: null,
+      photographic_realism_score: null,
+      physical_material_score: null,
+      natural_variation_score: null,
+      optical_capture_score: null,
+      real_photo_evidence: [],
+      synthetic_signals: [],
+      mismatch_reasons: ['历史场景缺少独立摄影真实性验收，需要重新复核'],
+      legacy: true,
+    };
+  }
+  const evidence = stringList(input.real_photo_evidence || input.photographic_evidence || [], 6, 240);
+  const syntheticSignals = stringList(input.synthetic_signals || input.cgi_signals || [], 6, 240);
+  const reasons = stringList(input.mismatch_reasons || input.reasons || [], 6, 300);
+  const qa = {
+    pass: false,
+    photographic_realism_score: score(firstScore(input, ['photographic_realism_score', 'real_photo_score', 'photorealism_score'])),
+    physical_material_score: score(firstScore(input, ['physical_material_score', 'material_physics_score'])),
+    natural_variation_score: score(firstScore(input, ['natural_variation_score', 'location_variation_score'])),
+    optical_capture_score: score(firstScore(input, ['optical_capture_score', 'camera_capture_score'])),
+    real_photo_evidence: evidence,
+    synthetic_signals: syntheticSignals,
+    mismatch_reasons: reasons,
+    legacy: false,
+  };
+  qa.pass = input.pass === true
+    && qa.photographic_realism_score >= 0.8
+    && qa.physical_material_score >= 0.75
+    && qa.natural_variation_score >= 0.7
+    && qa.optical_capture_score >= 0.72
+    && evidence.length >= 2
+    && syntheticSignals.length === 0
+    && reasons.length === 0;
+  return qa;
+}
+
+function normalizeCameraDesignQa(input = null, cameras = []) {
+  if (!input || typeof input !== 'object') {
+    return {
+      pass: null,
+      role_definition_score: null,
+      requirement_mapping_score: null,
+      direction_evidence_score: null,
+      parameter_completeness_score: null,
+      layout_mapping_score: null,
+      mismatch_reasons: ['历史场景缺少逐机位参数与需求映射验收，需要重新复核'],
+      legacy: true,
+    };
+  }
+  const reasons = stringList(input.mismatch_reasons || input.reasons || [], 8, 300);
+  const normalizedCameras = Array.isArray(cameras) ? cameras : [];
+  const missingKeys = VIEW_KEYS.filter(key => !normalizedCameras.some(camera => camera.view_id === key && camera.pass === true));
+  if (missingKeys.length) reasons.push(`机位证据不完整：${missingKeys.join('、')}`);
+  const qa = {
+    pass: false,
+    role_definition_score: score(firstScore(input, ['role_definition_score', 'camera_role_score'])),
+    requirement_mapping_score: score(firstScore(input, ['requirement_mapping_score', 'camera_requirement_score'])),
+    direction_evidence_score: score(firstScore(input, ['direction_evidence_score', 'camera_direction_score'])),
+    parameter_completeness_score: score(firstScore(input, ['parameter_completeness_score', 'camera_parameter_score'])),
+    layout_mapping_score: score(firstScore(input, ['layout_mapping_score', 'camera_layout_mapping_score'])),
+    mismatch_reasons: [...new Set(reasons)],
+    legacy: false,
+  };
+  qa.pass = input.pass === true
+    && qa.role_definition_score >= 0.8
+    && qa.requirement_mapping_score >= 0.8
+    && qa.direction_evidence_score >= 0.75
+    && qa.parameter_completeness_score >= 0.9
+    && qa.layout_mapping_score >= 0.75
+    && missingKeys.length === 0
+    && qa.mismatch_reasons.length === 0;
   return qa;
 }
 
@@ -310,7 +432,7 @@ function normalizeContract(input = {}, options = {}) {
   const hasExplicitRequirementQa = input.requirement_qa && typeof input.requirement_qa === 'object';
   const sourceRequirementQa = hasExplicitRequirementQa ? input.requirement_qa : input;
   const contract = {
-    schema_version: 4,
+    schema_version: 6,
     source_schema_version: Math.max(1, Number(input.schema_version || (input.view_issues ? 4 : (input.spatial_coverage_qa ? 3 : 2))) || 1),
     scene_id: cleanText(options.sceneId || input.scene_id, 120),
     scene_revision: Math.max(1, Number(options.revision || input.scene_revision || 1) || 1),
@@ -357,6 +479,7 @@ function normalizeContract(input = {}, options = {}) {
           legacy_assumed: true,
         }
         : normalizeRequirementQa(sourceRequirementQa)),
+    photographic_realism_qa: normalizePhotographicRealismQa(input.photographic_realism_qa),
     verified_at: new Date().toISOString(),
   };
   const qa = contract.cross_view_qa;
@@ -368,15 +491,30 @@ function normalizeContract(input = {}, options = {}) {
     layoutRequired: options.layoutRequired === true || input.layout_contract?.required === true,
   });
   contract.spatial_coverage_qa = normalizeSpatialCoverageQa(input, { views });
-  contract.compatibility_status = contract.spatial_coverage_qa.legacy ? 'legacy_partial' : 'current';
+  contract.camera_design_qa = normalizeCameraDesignQa(input.camera_design_qa, contract.cameras);
+  contract.compatibility_status = contract.spatial_coverage_qa.legacy
+    ? 'legacy_partial'
+    : (contract.photographic_realism_qa.legacy
+      ? 'legacy_realism_review'
+      : (contract.camera_design_qa.legacy ? 'legacy_camera_review' : 'current'));
   // `status` remains the appearance/requirement compatibility gate for older
   // callers. A production-usable complete space lock must additionally check
-  // `full_space_lock` / `spatial_coverage_qa.pass` (schema v4).
+  // `full_space_lock` now also requires the independent photographic realism
+  // evidence gate introduced in schema v5.
   const noActionableIssues = contract.view_issues.length === 0;
-  contract.status = unavailable ? 'unverified' : (qa.pass && contract.requirement_qa.pass && noActionableIssues ? 'verified' : 'rejected');
-  contract.full_space_lock = contract.schema_version >= 3
+  const realismPass = contract.photographic_realism_qa.pass === true;
+  const realismLegacy = contract.photographic_realism_qa.legacy === true;
+  const cameraPass = contract.camera_design_qa.pass === true;
+  const cameraLegacy = contract.camera_design_qa.legacy === true;
+  contract.status = unavailable
+    ? 'unverified'
+    : (qa.pass && contract.requirement_qa.pass && (realismPass || realismLegacy)
+      && (cameraPass || cameraLegacy) && noActionableIssues ? 'verified' : 'rejected');
+  contract.full_space_lock = contract.schema_version >= 6
     && contract.status === 'verified'
     && contract.requirement_qa.pass === true
+    && realismPass
+    && cameraPass
     && qa.pass === true
     && contract.spatial_coverage_qa.pass === true
     && contract.layout_contract.status === 'available'
@@ -385,11 +523,15 @@ function normalizeContract(input = {}, options = {}) {
     ? 'complete'
     : (contract.spatial_coverage_qa.legacy
       ? 'legacy_partial'
+      : (realismLegacy
+        ? 'realism_review_required'
+        : (cameraLegacy
+          ? 'camera_review_required'
       : (unavailable
         ? 'unavailable'
-        : (qa.pass && contract.requirement_qa.pass
+        : (qa.pass && contract.requirement_qa.pass && realismPass && cameraPass
           ? contract.spatial_coverage_qa.coverage_status
-          : 'rejected')));
+          : 'rejected')))));
   if (unavailable) {
     contract.qa_unavailable = true;
     contract.qa_error_code = cleanText(input.qa_error_code || input.verification?.code || 'VISION_QA_UNAVAILABLE', 80);
@@ -413,6 +555,27 @@ function normalizeContract(input = {}, options = {}) {
       surface_topology_match_score: null,
       negative_compliance_score: null,
       mismatch_reasons: [],
+    };
+    contract.photographic_realism_qa = {
+      pass: null,
+      photographic_realism_score: null,
+      physical_material_score: null,
+      natural_variation_score: null,
+      optical_capture_score: null,
+      real_photo_evidence: [],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+      legacy: false,
+    };
+    contract.camera_design_qa = {
+      pass: null,
+      role_definition_score: null,
+      requirement_mapping_score: null,
+      direction_evidence_score: null,
+      parameter_completeness_score: null,
+      layout_mapping_score: null,
+      mismatch_reasons: [],
+      legacy: false,
     };
     contract.spatial_coverage_qa = {
       pass: null,
@@ -439,26 +602,39 @@ function normalizeContract(input = {}, options = {}) {
     requested_surface_topology: contract.requested_surface_topology,
     requested_material_contract: contract.requested_material_contract,
     requested_interaction_contract: contract.requested_interaction_contract,
+    photographic_realism_qa: contract.photographic_realism_qa,
+    camera_design_qa: contract.camera_design_qa,
     view_issues: contract.view_issues,
-    cameras: contract.cameras.map(camera => ({ view_id: camera.view_id, reference_image_url: camera.reference_image_url })),
+    cameras: contract.cameras,
     layout_reference_image_url: contract.layout_contract.reference_image_url,
     spatial_coverage_schema: contract.schema_version,
   })).digest('hex');
   contract.verification = unavailable
     ? (input.verification || verification.unavailable({ code: contract.qa_error_code, message: contract.qa_error }))
-    : (qa.pass && contract.requirement_qa.pass && contract.spatial_coverage_qa.pass
+    : (qa.pass && contract.requirement_qa.pass && contract.photographic_realism_qa.pass
+      && contract.camera_design_qa.pass && contract.spatial_coverage_qa.pass
       ? verification.verified(input.vision_model || '')
       : verification.rejected(
-        [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons, ...qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
-        contract.requirement_qa.pass && qa.pass
+        [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons,
+          ...contract.photographic_realism_qa.mismatch_reasons, ...contract.camera_design_qa.mismatch_reasons,
+          ...qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+        contract.requirement_qa.pass && contract.photographic_realism_qa.pass && contract.camera_design_qa.pass && qa.pass
           ? '场景视角覆盖不足，尚未形成完整空间锁定'
-          : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
+          : (contract.requirement_qa.pass
+            ? '场景空间、摄影真实性、逐机位设计、结构或材质一致性未通过'
+            : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
       ));
   return contract;
 }
 
 function buildUnverifiedContract(options = {}, error = null) {
-  const contract = normalizeContract({ status: 'unverified' }, options);
+  const partialSceneQa = error?.partial_scene_qa && typeof error.partial_scene_qa === 'object'
+    ? error.partial_scene_qa
+    : null;
+  const contract = normalizeContract(
+    partialSceneQa ? { ...partialSceneQa, status: 'unverified' } : { status: 'unverified' },
+    options,
+  );
   contract.status = 'unverified';
   contract.qa_unavailable = true;
   contract.qa_error_code = cleanText(error?.code || 'VISION_QA_UNAVAILABLE', 80);
@@ -466,35 +642,60 @@ function buildUnverifiedContract(options = {}, error = null) {
   contract.verification = verification.unavailable(error || { code: contract.qa_error_code, message: contract.qa_error });
   contract.vision_model = '';
   contract.view_issues = [];
-  contract.cross_view_qa = {
+  if (!partialSceneQa) {
+    contract.cross_view_qa = {
+      pass: null,
+      scene_consistency_score: null,
+      geometry_consistency_score: null,
+      material_consistency_score: null,
+      mismatch_reasons: [],
+    };
+    contract.requirement_qa = {
+      pass: null,
+      layout_match_score: null,
+      material_light_match_score: null,
+      interaction_match_score: null,
+      surface_topology_match_score: null,
+      negative_compliance_score: null,
+      mismatch_reasons: [],
+    };
+    contract.photographic_realism_qa = {
+      pass: null,
+      photographic_realism_score: null,
+      physical_material_score: null,
+      natural_variation_score: null,
+      optical_capture_score: null,
+      real_photo_evidence: [],
+      synthetic_signals: [],
+      mismatch_reasons: [],
+      legacy: false,
+    };
+    contract.spatial_coverage_qa = {
+      pass: null,
+      layout_topology_score: null,
+      camera_diversity_score: null,
+      reverse_coverage_score: null,
+      interaction_zone_score: null,
+      coverage_status: 'unavailable',
+      assessment_source: 'unavailable',
+      legacy: false,
+      full_space_lock: false,
+      reasons: [],
+      mismatch_reasons: [],
+    };
+  }
+  contract.camera_design_qa = {
     pass: null,
-    scene_consistency_score: null,
-    geometry_consistency_score: null,
-    material_consistency_score: null,
+    role_definition_score: null,
+    requirement_mapping_score: null,
+    direction_evidence_score: null,
+    parameter_completeness_score: null,
+    layout_mapping_score: null,
     mismatch_reasons: [],
-  };
-  contract.requirement_qa = {
-    pass: null,
-    layout_match_score: null,
-    material_light_match_score: null,
-    interaction_match_score: null,
-    surface_topology_match_score: null,
-    negative_compliance_score: null,
-    mismatch_reasons: [],
-  };
-  contract.spatial_coverage_qa = {
-    pass: null,
-    layout_topology_score: null,
-    camera_diversity_score: null,
-    reverse_coverage_score: null,
-    interaction_zone_score: null,
-    coverage_status: 'unavailable',
-    assessment_source: 'unavailable',
     legacy: false,
-    full_space_lock: false,
-    reasons: [],
-    mismatch_reasons: [],
   };
+  contract.cameras = [];
+  contract.compatibility_status = 'current';
   contract.space_lock_status = 'unavailable';
   contract.full_space_lock = false;
   return contract;
@@ -509,7 +710,7 @@ async function analyzeSceneViews(options = {}) {
     systemPrompt: [
       'You are a strict scene continuity and spatial-geometry inspector for a general-purpose commercial video system.',
       'Analyze only the supplied images and current request. Never assume a fixed industry, location, person or object.',
-      'Evaluate three independent gates: requirement fidelity, cross-view visual consistency, and spatial/view coverage completeness.',
+      'Evaluate four independent scene gates: requirement fidelity, photographic realism, cross-view visual consistency, and spatial/view coverage completeness. Camera-design evidence is reviewed by a separate structured call.',
       'Return JSON only. Images are ordered master, reverse/side, interaction position, detail, with an optional fifth top-down/axonometric layout reference.',
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
@@ -518,29 +719,30 @@ async function analyzeSceneViews(options = {}) {
       + 'For all five views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
       + 'Use requested.material_reference_available as the evidence flag. When it is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory; evaluate only the observable colour, grain, reflectance, roughness, directionality, patina, translucency or micro-relief cues explicitly stated in material_light. '
       + 'For continuous hidden-seam surfaces, distinguish illumination from construction: a smooth reflection or lighting gradient is not a seam by itself. Count a seam only when there is a coherent geometric edge, gap, groove, recess or sustained boundary that visibly divides the primary plane; a full-height or full-width dividing line is valid failure evidence. '
-      + 'When the requested medium is real photography, cinematic realism or an on-location commercial shoot, fail requirement_qa if the images visibly read as architectural visualization, CGI, a dollhouse/floor-plan render, a sterile virtual showroom or a material catalogue render. '
+      + 'Independently evaluate photographic realism in every non-layout perspective. Look for physically plausible material response, naturally localized variation, task-appropriate maintenance/use evidence, real lens and exposure behavior, grounded contact shadows and non-procedural detail. Treat unnaturally perfect lawns, cloned foliage, spotless repeated surfaces, empty staged showroom perfection, plastic materials, synthetic HDR, impossible reflections and render-like lighting as synthetic signals. '
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
+      + 'photographic_realism_qa object containing pass, photographic_realism_score, physical_material_score, natural_variation_score, optical_capture_score, real_photo_evidence, synthetic_signals and mismatch_reasons. Every score is REQUIRED from 0 to 1. A passing gate requires at least two concrete visible real_photo_evidence observations and zero synthetic_signals. '
       + 'cross_view_qa object containing pass, scene_consistency_score, geometry_consistency_score, material_consistency_score and mismatch_reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
       + 'spatial_coverage_qa object containing pass, layout_topology_score, camera_diversity_score, reverse_coverage_score, interaction_zone_score and reasons. Every score is a REQUIRED EVALUATED number from 0 to 1. '
       + 'view_issues is a REQUIRED array. Every failed gate must add at least one object with code, exact view_keys, concise reason, visible evidence and confidence. Free-text reasons are display-only and must never be used to decide paid regeneration. '
       + 'Allowed codes: ROOT_SCENE_IDENTITY_INVALID, ROOT_GEOMETRY_INVALID, ROOT_MATERIAL_IDENTITY_INVALID, LAYOUT_ROLE_INVALID, LAYOUT_TOPOLOGY_INCOMPLETE, REVERSE_COVERAGE_LOW, INTERACTION_ZONE_MISSING, CAMERA_DIVERSITY_LOW, MATERIAL_DETAIL_WEAK, MATERIAL_APPEARANCE_MISMATCH, SURFACE_TOPOLOGY_INVALID, NEGATIVE_VIOLATION, PHOTOREALISM_INVALID, CROSS_VIEW_DRIFT. Allowed view keys: master, reverse, interaction, detail, layout. '
       + 'Use a ROOT code only when the canonical master scene itself is unusable and all derived views must change. Otherwise identify only the failing view. Without an attached material reference, a proprietary name is still a generation target but never sufficient evidence for ROOT_MATERIAL_IDENTITY_INVALID; judge only observable cues and use MATERIAL_DETAIL_WEAK on detail when evidence is insufficient. '
       + 'The interaction image depicts an empty scene: require empty clearance, a reachable target and an access route; never require a visible person. '
-      + 'Overall pass may be true only when requirement_qa.pass, cross_view_qa.pass and spatial_coverage_qa.pass are all true. Use concise Simplified Chinese for every mismatch reason. '
+      + 'Overall pass may be true only when requirement_qa.pass, photographic_realism_qa.pass, cross_view_qa.pass and spatial_coverage_qa.pass are all true. If photographic realism fails, add PHOTOREALISM_INVALID with exact affected view keys and visible evidence. Use concise Simplified Chinese for every mismatch reason. '
       + 'anchors object array with id, label, kind, description, relative_position, required and visible_in_views; '
       + 'zones object array with id, label, label_zh, purpose, tags, normalized_box and visible_in_views; '
       + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
-      + 'geometry_facts string array; materials string array; lighting object; cameras object array. '
+      + 'geometry_facts string array; materials string array; lighting object. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
       + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
       + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
       + 'For a complete spatial lock, spatial_coverage_qa must fail if the near-vertical top-down layout reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
       + 'A valid fifth layout view must use an 82-90 degree downward near-orthographic camera, fit the complete usable footprint and every scene boundary or task-defined edge inside one frame, make access points, fixed anchors, circulation and action-zone relations readable together, and remain the same location as the master. For enclosed spaces, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. Reject any visible horizon, dominant vertical wall face, mild high-angle commercial shot, frontal elevation, close crop, missing perimeter or master reframe. '
       + 'The detail image does not count as reverse-space or layout coverage. Do not infer unseen space from visual consistency alone. Do not fail cross_view_qa merely because camera perspective changes. '
-      + 'Keep the complete JSON under 3500 characters. Put requirement_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts, 5 materials and 5 cameras; keep each description under 80 characters.',
+      + 'Keep the complete JSON under 3600 characters. Put requirement_qa, photographic_realism_qa, cross_view_qa, spatial_coverage_qa and view_issues before optional details. Do not return camera_design_qa or cameras in this call. Use at most 3 concise reasons per gate, 6 view issues, 5 anchors, 3 zones, 8 geometry facts and 5 materials; keep each description under 80 characters.',
     imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
-    maxTokens: 3500,
+    maxTokens: 3800,
   };
   let result = await modelGateway.generateVision(request);
   let parsed = safeJson(result.text);
@@ -556,50 +758,185 @@ async function analyzeSceneViews(options = {}) {
     ['surface_topology_match_score', 'topology_match_score', 'surface_topology_match'],
     ['negative_compliance_score', 'forbidden_compliance_score', 'negative_compliance'],
   ];
+  const photographicRealismScoreFields = [
+    ['photographic_realism_score', 'real_photo_score', 'photorealism_score'],
+    ['physical_material_score', 'material_physics_score'],
+    ['natural_variation_score', 'location_variation_score'],
+    ['optical_capture_score', 'camera_capture_score'],
+  ];
   const spatialCoverageScoreFields = [
     ['layout_topology_score', 'layout_coverage_score', 'topology_coverage_score'],
     ['camera_diversity_score', 'view_diversity_score', 'camera_coverage_score'],
     ['reverse_coverage_score', 'reverse_view_score', 'reverse_spatial_score'],
     ['interaction_zone_score', 'interaction_coverage_score', 'interaction_spatial_score'],
   ];
-  const lacksIssueEvidence = candidate => {
+  const cameraDesignScoreFields = [
+    ['role_definition_score', 'camera_role_score'],
+    ['requirement_mapping_score', 'camera_requirement_score'],
+    ['direction_evidence_score', 'camera_direction_score'],
+    ['parameter_completeness_score', 'camera_parameter_score'],
+    ['layout_mapping_score', 'camera_layout_mapping_score'],
+  ];
+  const lacksCameraEvidence = candidate => {
+    const qa = candidate.camera_design_qa;
+    const cameras = Array.isArray(candidate.cameras) ? candidate.cameras : [];
+    if (!qa || typeof qa !== 'object' || !hasRequiredScores(qa, cameraDesignScoreFields)) return true;
+    return VIEW_KEYS.some(key => {
+      const camera = cameras.find(item => cleanText(item?.view_id || item?.key || '', 40) === key);
+      if (!camera || typeof camera.pass !== 'boolean') return true;
+      const position = normalizePoint(camera.normalized_position || camera.position_on_layout);
+      const lookAt = normalizePoint(camera.look_at || camera.target_on_layout);
+      const requirements = stringList(camera.requirement_refs || camera.requirements || [], 8, 60);
+      const commonMissing = !cleanText(camera.role || camera.purpose || '', 160)
+        || !cleanText(camera.framing || '', 120)
+        || !cleanText(camera.lens_class || camera.lens || '', 80)
+        || !cleanText(camera.height_class || camera.camera_height || '', 80)
+        || !cleanText(camera.orientation || camera.camera_direction || '', 160)
+        || !cleanText(camera.target_description || camera.target || '', 220)
+        || !cleanText(camera.visible_evidence || camera.evidence || '', 300)
+        || requirements.length === 0 || position.length !== 2 || lookAt.length !== 2
+        || !Number.isFinite(Number(camera.position_confidence))
+        || !Number.isFinite(Number(camera.estimated_azimuth_degrees ?? camera.azimuth_degrees))
+        || !Number.isFinite(Number(camera.estimated_pitch_degrees ?? camera.pitch_degrees));
+      if (commonMissing) return true;
+      if (key === 'reverse' && !Number.isFinite(Number(
+        camera.azimuth_delta_from_master_degrees ?? camera.azimuth_delta
+      ))) return true;
+      if (key === 'interaction' && !stringList(camera.allowed_zone_ids || camera.target_zone_ids || [], 24, 100).length) return true;
+      return false;
+    });
+  };
+  const lacksIssueEvidence = (candidate, { includeCamera = false } = {}) => {
     const requirementQa = candidate.requirement_qa || candidate;
+    const realismQa = candidate.photographic_realism_qa || {};
     const crossViewQa = candidate.cross_view_qa || candidate;
     const spatialQa = candidate.spatial_coverage_qa || candidate;
-    const failed = requirementQa.pass === false || crossViewQa.pass === false || spatialQa.pass === false
+    const cameraQa = candidate.camera_design_qa || {};
+    const failed = requirementQa.pass === false || realismQa.pass === false || crossViewQa.pass === false
+      || spatialQa.pass === false || (includeCamera && cameraQa.pass === false)
       || firstScore(requirementQa, ['layout_match_score']) < 0.75
       || firstScore(requirementQa, ['material_light_match_score']) < 0.75
       || firstScore(requirementQa, ['interaction_match_score']) < 0.7
       || firstScore(requirementQa, ['surface_topology_match_score']) < 0.8
       || firstScore(requirementQa, ['negative_compliance_score']) < 0.9
+      || firstScore(realismQa, ['photographic_realism_score']) < 0.8
+      || firstScore(realismQa, ['physical_material_score']) < 0.75
+      || firstScore(realismQa, ['natural_variation_score']) < 0.7
+      || firstScore(realismQa, ['optical_capture_score']) < 0.72
       || firstScore(crossViewQa, ['scene_consistency_score']) < 0.72
       || firstScore(crossViewQa, ['geometry_consistency_score']) < 0.68
       || firstScore(crossViewQa, ['material_consistency_score']) < 0.72
       || firstScore(spatialQa, ['layout_topology_score']) < 0.8
       || firstScore(spatialQa, ['camera_diversity_score']) < 0.75
       || firstScore(spatialQa, ['reverse_coverage_score']) < 0.75
-      || firstScore(spatialQa, ['interaction_zone_score']) < 0.7;
+      || firstScore(spatialQa, ['interaction_zone_score']) < 0.7
+      || (includeCamera && (
+        firstScore(cameraQa, ['role_definition_score']) < 0.8
+        || firstScore(cameraQa, ['requirement_mapping_score']) < 0.8
+        || firstScore(cameraQa, ['direction_evidence_score']) < 0.75
+        || firstScore(cameraQa, ['parameter_completeness_score']) < 0.9
+        || firstScore(cameraQa, ['layout_mapping_score']) < 0.75
+      ));
     return failed && normalizeViewIssues(candidate.view_issues || candidate.viewIssues || [], requested).length === 0;
+  };
+  const lacksRealismEvidence = candidate => {
+    const realismQa = candidate.photographic_realism_qa;
+    if (!realismQa || typeof realismQa !== 'object') return true;
+    const evidence = stringList(realismQa.real_photo_evidence || realismQa.photographic_evidence || [], 6, 240);
+    const signals = stringList(realismQa.synthetic_signals || realismQa.cgi_signals || [], 6, 240);
+    if (realismQa.pass === true) return evidence.length < 2 || signals.length > 0;
+    return normalizeViewIssues(candidate.view_issues || candidate.viewIssues || [], requested)
+      .every(issue => issue.code !== 'PHOTOREALISM_INVALID');
   };
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
+    || !hasRequiredScores(parsed.photographic_realism_qa || {}, photographicRealismScoreFields)
     || !hasRequiredScores(parsed, spatialCoverageScoreFields)
-    || lacksIssueEvidence(parsed)) {
+    || lacksIssueEvidence(parsed)
+    || lacksRealismEvidence(parsed)) {
     result = await modelGateway.generateVision({
       ...request,
-      userPrompt: request.userPrompt + '\nYour previous response omitted required scores or exact per-view issue evidence. Return the exact nested QA schema and view_issues. Every failed gate must identify an allowed code and exact view_keys; do not use free text as a substitute.',
+      userPrompt: request.userPrompt + '\nYour previous response omitted required scene-gate scores, realism evidence or exact per-view issue evidence. Return only the exact scene QA schema and view_issues; camera evidence belongs to a separate call.',
     });
     parsed = safeJson(result.text);
   }
   if (!hasRequiredScores(parsed, sceneScoreFields)
     || !hasRequiredScores(parsed, requirementScoreFields)
+    || !hasRequiredScores(parsed.photographic_realism_qa || {}, photographicRealismScoreFields)
     || !hasRequiredScores(parsed, spatialCoverageScoreFields)
-    || lacksIssueEvidence(parsed)) {
-    const error = new Error('场景视觉 QA 缺少必需评分或逐图错误证据');
+    || lacksIssueEvidence(parsed)
+    || lacksRealismEvidence(parsed)) {
+    const error = new Error('场景五图 QA 缺少必需评分、真实摄影证据或逐图错误证据');
     error.code = 'VISION_QA_SCHEMA_INVALID';
     error.retryable = true;
+    error.missing_fields = [
+      !hasRequiredScores(parsed, sceneScoreFields) ? 'cross_view_qa.required_scores' : '',
+      !hasRequiredScores(parsed, requirementScoreFields) ? 'requirement_qa.required_scores' : '',
+      !hasRequiredScores(parsed.photographic_realism_qa || {}, photographicRealismScoreFields) ? 'photographic_realism_qa.required_scores' : '',
+      !hasRequiredScores(parsed, spatialCoverageScoreFields) ? 'spatial_coverage_qa.required_scores' : '',
+      lacksRealismEvidence(parsed) ? 'photographic_realism_qa.visible_evidence' : '',
+      lacksIssueEvidence(parsed) ? 'view_issues.visible_evidence' : '',
+    ].filter(Boolean);
+    error.details = error.missing_fields.map(field => ({
+      code: 'SCENE_QA_FIELD_MISSING',
+      title: field,
+      message: `场景五图 QA 缺少 ${field}`,
+      status: 'missing',
+    }));
     throw error;
   }
+  const cameraRequest = {
+    taskId: options.taskId || '',
+    stage: 'new_story_ad.scene_camera_qa',
+    imageUrls: views.map(view => view.url || view.image_url).filter(Boolean),
+    systemPrompt: [
+      'You are a strict camera-design evidence inspector for a general-purpose commercial video system.',
+      'Review only the four perspective camera roles against the optional fifth layout image and the current requested scene constraints.',
+      'Return strict compact JSON only. Do not repeat scene realism, material or cross-view QA.',
+    ].join('\n'),
+    userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
+      + 'Return camera_design_qa with pass, role_definition_score, requirement_mapping_score, direction_evidence_score, parameter_completeness_score, layout_mapping_score and mismatch_reasons. '
+      + 'Return cameras as exactly four objects for master, reverse, interaction and detail. Each camera must contain view_id, label, role, framing, lens_class, height_class, orientation, estimated_azimuth_degrees, estimated_pitch_degrees, azimuth_delta_from_master_degrees for reverse, normalized_position [x,y], look_at [x,y], position_confidence, target_description, allowed_zone_ids, requirement_refs, visible_evidence, pass and mismatch_reasons. '
+      + 'normalized_position and look_at are evidence-based estimates on the layout image in 0..1 coordinates. A passing camera requires role, framing, lens, height, direction, layout position and target, confidence >=0.6, visible evidence and at least one requirement_refs value from layout, material_light, interaction, style, negative or surface_topology. '
+      + 'When material_reference_available is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory. A smooth reflection or lighting gradient is not a seam by itself; only a coherent geometric edge, gap, groove, recess or sustained boundary is seam evidence. '
+      + 'Master must map layout; reverse must differ by at least 75 degrees from master; interaction must map interaction and at least one zone; detail must map material_light or surface_topology. Do not infer missing evidence. Keep JSON under 2600 characters.',
+    maxTokens: 2800,
+  };
+  let cameraResult = await modelGateway.generateVision(cameraRequest);
+  let cameraParsed = safeJson(cameraResult.text);
+  if (!hasRequiredScores(cameraParsed.camera_design_qa || {}, cameraDesignScoreFields)
+    || lacksCameraEvidence(cameraParsed)) {
+    cameraResult = await modelGateway.generateVision({
+      ...cameraRequest,
+      userPrompt: cameraRequest.userPrompt + '\nYour previous response omitted required camera scores or per-camera structured evidence. Return the exact camera_design_qa plus four complete cameras, with no scene QA duplication.',
+    });
+    cameraParsed = safeJson(cameraResult.text);
+  }
+  if (!hasRequiredScores(cameraParsed.camera_design_qa || {}, cameraDesignScoreFields)
+    || lacksCameraEvidence(cameraParsed)) {
+    const error = new Error('逐机位 QA 缺少评分、机位参数、布局映射或可见证据');
+    error.code = 'CAMERA_QA_SCHEMA_INVALID';
+    error.retryable = true;
+    error.missing_fields = [
+      !hasRequiredScores(cameraParsed.camera_design_qa || {}, cameraDesignScoreFields)
+        ? 'camera_design_qa.required_scores'
+        : '',
+      lacksCameraEvidence(cameraParsed) ? 'cameras[master,reverse,interaction,detail].structured_evidence' : '',
+    ].filter(Boolean);
+    error.details = error.missing_fields.map(field => ({
+      code: 'CAMERA_QA_FIELD_MISSING',
+      title: field,
+      message: `逐机位 QA 缺少 ${field}`,
+      status: 'missing',
+    }));
+    error.partial_scene_qa = parsed;
+    throw error;
+  }
+  parsed = {
+    ...parsed,
+    camera_design_qa: cameraParsed.camera_design_qa,
+    cameras: cameraParsed.cameras,
+  };
   const contract = normalizeContract(parsed, {
     sceneId: options.sceneId,
     revision: options.revision,
@@ -654,11 +991,17 @@ async function analyzeSceneViews(options = {}) {
     contract.full_space_lock = false;
   }
   contract.vision_model = result.used_model || '';
+  contract.camera_vision_model = cameraResult.used_model || '';
+  contract.qa_execution = {
+    mode: 'split_scene_and_camera',
+    scene_stage: request.stage,
+    camera_stage: cameraRequest.stage,
+  };
   contract.verification = contract.full_space_lock === true
     ? verification.verified(result.used_model)
     : verification.rejected(
-      [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
-      contract.requirement_qa.pass && contract.cross_view_qa.pass
+      [...contract.view_issues.map(issue => issue.reason), ...contract.requirement_qa.mismatch_reasons, ...contract.photographic_realism_qa.mismatch_reasons, ...contract.cross_view_qa.mismatch_reasons, ...contract.spatial_coverage_qa.reasons],
+      contract.requirement_qa.pass && contract.photographic_realism_qa.pass && contract.cross_view_qa.pass
         ? '场景视角覆盖不足，尚未形成完整空间锁定'
         : (contract.requirement_qa.pass ? '场景空间、结构或材质一致性未通过' : '场景未满足当前任务的布局、材质、表面结构或禁止项要求'),
     );

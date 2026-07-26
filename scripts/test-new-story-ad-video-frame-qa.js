@@ -185,6 +185,74 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
   assert.strictEqual(invalidEvidence.pass, false);
   assert.strictEqual(invalidEvidence.error_code, 'VIDEO_QA_EVIDENCE_MISSING');
   assert.strictEqual(invalidEvidenceGatewayCalls, 0, 'invalid frame evidence must stop before any QA model call');
+  let crossScenePrompt = '';
+  const crossScene = await videoQa.reviewCrossShot({
+    taskId: 'video-qa-cross-scene-mode',
+    previous: qa,
+    current: qa,
+    previousShot: { scene_id: 'park', exit_frame_state: '人物举起圆形产品' },
+    currentShot: {
+      scene_id: 'home',
+      transition_type: 'match_cut',
+      transition_reason: '从户外使用切到家庭使用',
+      transition_match_anchor: '画面中心圆形产品轮廓',
+      entry_frame_state: '同一人物继续握住圆形产品',
+    },
+    ctx: {},
+    gateway: {
+      generateVision: async request => {
+        crossScenePrompt = request.userPrompt;
+        return {
+          text: JSON.stringify({
+            pass: true,
+            person_identity_score: 0.94,
+            wardrobe_score: 0.9,
+            prop_intent_score: 0.92,
+            transition_readability_score: 0.96,
+            direction_intent_score: 0.88,
+            action_transition_score: 0.91,
+            match_anchor_score: 0.95,
+            evidence_checks: {},
+            problems: [],
+          }),
+          used_model: 'mock/cross-scene-specialist',
+        };
+      },
+    },
+    repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
+  });
+  assert.strictEqual(crossScene.pass, true);
+  assert.strictEqual(crossScene.boundary_mode, 'intentional_scene_change');
+  assert.strictEqual(crossScene.transition_match_anchor, '画面中心圆形产品轮廓');
+  assert.match(crossScenePrompt, /Do NOT require the background, layout, camera position/);
+  assert(!crossScene.failure_dimensions.includes('scene_continuity'), 'intentional scene changes must not fail the same-scene background continuity dimension');
+
+  const missingMatchAnchor = await videoQa.reviewCrossShot({
+    taskId: 'video-qa-cross-scene-missing-anchor',
+    previous: qa,
+    current: qa,
+    previousShot: { scene_id: 'park' },
+    currentShot: { scene_id: 'home', transition_type: 'match_cut', transition_reason: '切换地点' },
+    gateway: {
+      generateVision: async () => ({
+        text: JSON.stringify({
+          pass: true,
+          person_identity_score: 0.9,
+          wardrobe_score: 0.9,
+          prop_intent_score: 0.9,
+          transition_readability_score: 0.9,
+          direction_intent_score: 0.9,
+          action_transition_score: 0.9,
+          match_anchor_score: 0.9,
+          evidence_checks: {},
+          problems: [],
+        }),
+      }),
+    },
+    repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
+  });
+  assert.strictEqual(missingMatchAnchor.pass, false, 'match-cut QA must fail closed when the authored anchor is absent');
+  assert(missingMatchAnchor.problems.some(problem => /匹配锚点/.test(problem)));
   process.env.NEW_STORY_AD_MOCK_LLM = '1';
   const cross = await videoQa.reviewCrossShot({ taskId: 'video-qa-test', previous: qa, current: qa, previousShot: {}, currentShot: {}, ctx: {} });
   assert.strictEqual(cross.pass, true);

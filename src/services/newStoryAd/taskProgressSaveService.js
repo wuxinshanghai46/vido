@@ -62,4 +62,35 @@ function preserveUnconfirmedMediaSettings(previous = {}, next = {}, { savingProg
   ), next);
 }
 
-module.exports = { hasTerminalFailure, taskPatch, mediaInvalidatedOutputs, preserveUnconfirmedMediaSettings };
+function sceneAssetStableId(asset = {}) {
+  return String(asset.space_id || asset.scene_id || asset.id || '').trim();
+}
+
+function mergeAutosaveSceneAssets(existing = [], incoming = []) {
+  if (!Array.isArray(incoming)) return incoming;
+  const merged = Array.isArray(existing) ? [...existing] : [];
+  const indexes = new Map();
+  merged.forEach((asset, index) => {
+    const id = sceneAssetStableId(asset);
+    if (id && !indexes.has(id)) indexes.set(id, index);
+  });
+  incoming.forEach((asset) => {
+    const id = sceneAssetStableId(asset);
+    if (id && indexes.has(id)) {
+      const index = indexes.get(id);
+      merged[index] = { ...(merged[index] || {}), ...(asset || {}) };
+      return;
+    }
+    if (id) indexes.set(id, merged.length);
+    merged.push(asset);
+  });
+  return merged;
+}
+
+module.exports = {
+  hasTerminalFailure,
+  taskPatch,
+  mediaInvalidatedOutputs,
+  preserveUnconfirmedMediaSettings,
+  mergeAutosaveSceneAssets,
+};

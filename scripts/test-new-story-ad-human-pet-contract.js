@@ -53,6 +53,29 @@ assert.strictEqual(animalOnly.person_asset, null);
 assert.strictEqual(personIdentity.personRequired(animalOnly), false);
 assert.strictEqual(personIdentity.shotForbidsPerson(animalOnly, {}), true);
 
+const ordinaryNonPet = contextBuilder.buildContext({
+  brief: '企业知识库软件帮助团队整理和检索项目资料',
+  cast_mode: 'single',
+  expected_people: 1,
+  expected_animals: 2,
+  pet_profiles: [{ id: 'stale-pet', type: '金毛犬', appearance: '浅金色长毛' }],
+  pet_contract: { expected_animals: 2, profiles: [{ id: 'stale-pet', type: '金毛犬' }] },
+  person_spec: {
+    castMode: 'single',
+    expectedPeople: 1,
+    expectedAnimals: 2,
+    petType: '金毛犬',
+    petDescription: '不应进入普通广告的陈旧宠物设定',
+  },
+}, { id: 'test-user' });
+assert.strictEqual(ordinaryNonPet.cast_mode, 'single');
+assert.strictEqual(ordinaryNonPet.expected_animals, 0, 'ordinary non-pet tasks must never inherit stale animal counts');
+assert.deepStrictEqual(ordinaryNonPet.pet_profiles, [], 'ordinary non-pet tasks must never persist stale pet profiles');
+assert.strictEqual(ordinaryNonPet.pet_contract, null, 'ordinary non-pet tasks must never persist a pet identity contract');
+assert.strictEqual(ordinaryNonPet.person_spec.expectedAnimals, undefined, 'non-pet person_spec must not retain a hidden animal count');
+assert.strictEqual(ordinaryNonPet.person_spec.petType, undefined, 'non-pet person_spec must not retain a hidden pet type');
+assert.strictEqual(ordinaryNonPet.person_spec.petDescription, undefined, 'non-pet person_spec must not retain a hidden pet description');
+
 const contextText = contextBuilder.contextPrompt(mixed);
 assert.match(contextText, /精确人数：3/);
 assert.match(contextText, /精确宠物\/动物数量：1/);
@@ -111,6 +134,7 @@ const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8
 const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const personPetUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/person-pet-spec.js'), 'utf8');
 const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
+const wizardCss = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
 const storyboardSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyboardTableService.js'), 'utf8');
 const qaSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/videoFrameQaService.js'), 'utf8');
 assert(html.includes('<option value="human_pet">人物 + 宠物（混合主体）</option>'));
@@ -118,6 +142,18 @@ assert(html.includes('data-nsa-person-spec="expectedAnimals"'));
 assert(html.includes('data-nsa-person-spec="petType"'));
 assert(html.includes('data-nsa-person-spec="petDescription"'));
 assert(ui.includes("pet_contract: petRequired ?"));
+assert(ui.includes("el.hidden = !petRequired"), 'pet controls must be conditionally hidden outside animal and human_pet modes');
+assert(
+  ui.includes("if (!['animal', 'human_pet'].includes(spec.castMode))")
+    && ui.includes('delete spec.expectedAnimals')
+    && ui.includes('delete spec.petType')
+    && ui.includes('delete spec.petDescription'),
+  'the frontend payload must remove hidden pet-only values from every non-pet mode',
+);
+assert(
+  /\.dh-luxgen-person-spec\s+\[data-nsa-pet-field\]\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/.test(wizardCss),
+  'the form grid must not override the hidden state of pet-only controls',
+);
 assert(personPetUi.includes("human_pet: '人物 + 宠物（混合主体）'"));
 assert(bootstrap.includes("'/js/new-story-ad/person-pet-spec.js'"));
 assert(bootstrap.indexOf("'/js/new-story-ad/person-pet-spec.js'") < bootstrap.indexOf("'/js/new-story-ad-legacy-ui.js'"));

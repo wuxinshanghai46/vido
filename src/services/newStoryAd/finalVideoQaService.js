@@ -49,7 +49,15 @@ function transitionBoundaries(plan = [], durations = []) {
   const boundaries = [];
   for (let index = 1; index < durations.length; index += 1) {
     const row = plan[index] || {};
-    boundaries.push({ second: cursor - Number(row.overlap_sec || 0), execution: row.execution || 'cut', index });
+    boundaries.push({
+      second: cursor - Number(row.overlap_sec || 0),
+      execution: row.execution || 'hard_cut',
+      audio_execution: row.audio_bridge_execution || 'none',
+      audio_overlap_sec: Number(row.audio_overlap_sec || 0),
+      match_anchor: row.match_anchor || '',
+      verification_required: row.verification_required === true,
+      index,
+    });
     cursor += Number(durations[index] || 0) - Number(row.overlap_sec || 0);
   }
   return boundaries;
@@ -78,6 +86,14 @@ async function inspectFinalVideo({ filePath = '', expectedDurationSec = 0, requi
   const audioDuration = Number(audioStream?.duration || metadata.format?.duration || 0);
   if (requireAudio && audioStream && Math.abs(audioDuration - duration) > tolerance) {
     problems.push(`Audio duration ${audioDuration.toFixed(3)}s does not cover the full visual duration ${duration.toFixed(3)}s.`);
+  }
+  const authoredAudioBridges = (transitionPlan || []).filter(row => row?.audio_bridge);
+  if (authoredAudioBridges.length && !audioStream) {
+    problems.push('Authored audio bridges exist but the final output has no audio stream.');
+  }
+  if (authoredAudioBridges.some(row => row.audio_bridge_execution !== 'j_cut_crossfade'
+    || !(Number(row.audio_overlap_sec) > 0))) {
+    problems.push('An authored audio bridge was not represented by an executable J-cut crossfade plan.');
   }
   const decode = videoStream
     ? await run(ffmpegPath, ['-v', 'info', '-i', filePath, '-an', '-vf', 'blackdetect=d=0.20:pix_th=0.10,freezedetect=n=-50dB:d=0.80', '-f', 'null', '-'], 360000)

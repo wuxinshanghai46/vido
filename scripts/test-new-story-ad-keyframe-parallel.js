@@ -31,9 +31,11 @@ function verifiedSceneAsset(sceneId = 'verified-scene') {
       { key: 'layout', url: `https://example.test/${sceneId}-layout.png` },
     ],
     scene_contract: {
-      schema_version: 3,
+      schema_version: 6,
       status: 'verified',
       requirement_qa: { pass: true },
+      photographic_realism_qa: { pass: true },
+      camera_design_qa: { pass: true },
       cross_view_qa: { pass: true },
       spatial_coverage_qa: { pass: true },
       layout_contract: { status: 'available' },

@@ -1,6 +1,7 @@
 const STRATEGIES = Object.freeze([
   'single_view',
   'image_derived',
+  'atlas_2x2',
   'orbit_extract',
   'path_extract',
   'uploaded_views',
@@ -12,6 +13,9 @@ function normalizeStrategy(value = 'auto') {
     single: 'single_view',
     image: 'image_derived',
     derived: 'image_derived',
+    atlas: 'atlas_2x2',
+    grid: 'atlas_2x2',
+    '2x2': 'atlas_2x2',
     orbit: 'orbit_extract',
     '360': 'orbit_extract',
     path: 'path_extract',
@@ -31,17 +35,16 @@ function resolveSceneViewStrategy(options = {}) {
 
   if (requested === 'auto') {
     if (uploadedViewCount >= Math.max(2, requiredViews.length || 2)) selected = 'uploaded_views';
-    else if (requiredViews.length <= 1) selected = 'single_view';
-    else selected = 'image_derived';
+    else selected = 'atlas_2x2';
   }
 
   if (!STRATEGIES.includes(selected)) {
     fallbackReason = 'unsupported_strategy';
-    selected = requiredViews.length <= 1 ? 'single_view' : 'image_derived';
+    selected = 'atlas_2x2';
   }
   if (['orbit_extract', 'path_extract'].includes(selected) && !videoAcquisitionEnabled) {
     fallbackReason = 'video_acquisition_not_enabled';
-    selected = requiredViews.length <= 1 ? 'single_view' : 'image_derived';
+    selected = 'atlas_2x2';
   }
 
   return {

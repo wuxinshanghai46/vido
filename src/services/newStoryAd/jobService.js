@@ -224,7 +224,7 @@ function cancelJob(taskId, { generationId = '', cancelledBy = '' } = {}) {
   return { cancelled: true, already_cancelled: false, job: publicJob(job) };
 }
 
-function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
+function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {} }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   const key = jobKey(taskId);
   const active = runningJobs.get(key);
@@ -255,6 +255,8 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
     error: '',
     retryable: false,
     supportId: id,
+    failureSceneId: String(failureContext.scene_id || failureContext.sceneId || '').trim().slice(0, 120),
+    failureSceneName: String(failureContext.scene_name || failureContext.sceneName || '').trim().slice(0, 120),
     deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
   };
   runningJobs.set(key, job);
@@ -339,17 +341,28 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
       job.error = withSupportId(failure.message, id).slice(0, 1000);
       job.retryable = failure.retryable;
       const failureDetails = sanitizedFailureDetails(error);
+      const failureSceneId = String(error?.scene_id || error?.sceneId || job.failureSceneId || '').trim().slice(0, 120);
+      const failureSceneName = String(error?.scene_name || error?.sceneName || job.failureSceneName || '').trim().slice(0, 120);
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') === id) {
-        const terminalProgress = terminalGenerationProgress(current, stage, id, {
+        const failureProgressPatch = {
           status: 'failed',
           error_code: failure.code,
           support_id: id,
+          ...(failureSceneId ? { scene_id: failureSceneId } : {}),
+          ...(failureSceneName ? { scene_name: failureSceneName } : {}),
           ...(failureDetails.length ? { failure_details: failureDetails } : {}),
           message: job.error,
           finished_at: job.finishedAt,
           updated_at: job.finishedAt,
-        });
+        };
+        const terminalProgress = terminalGenerationProgress(current, stage, id, failureProgressPatch)
+          || (stage === 'scene_asset' && failureSceneId ? {
+            schema_version: 1,
+            stage,
+            generation_id: id,
+            ...failureProgressPatch,
+          } : null);
         storage.saveStage(taskId, stage, {
           status: 'failed',
           started_at: job.startedAt,
@@ -361,6 +374,8 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0 }) {
             support_id: id,
             error_code: failure.code,
             retryable: failure.retryable,
+            ...(failureSceneId ? { scene_id: failureSceneId } : {}),
+            ...(failureSceneName ? { scene_name: failureSceneName } : {}),
             ...(failureDetails.length ? { failure_details: failureDetails } : {}),
           },
         }, { systemFinalization: true });

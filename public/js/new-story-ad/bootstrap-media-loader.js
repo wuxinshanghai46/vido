@@ -2,6 +2,7 @@
   const MEDIA_SCRIPT_PATHS = [
     '/js/new-story-ad/audio-preflight.js',
     '/js/new-story-ad/video-unit-availability.js',
+    '/js/new-story-ad/transition-review.js',
     '/js/new-story-ad/video-review.js',
     '/js/new-story-ad/video-preflight-ui.js',
   ];

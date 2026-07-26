@@ -2,6 +2,9 @@
   const unitAvailability = typeof module !== 'undefined' && module.exports
     ? require('./video-unit-availability')
     : window.NewStoryAdVideoUnitAvailability;
+  const transitionReview = typeof module !== 'undefined' && module.exports
+    ? require('./transition-review')
+    : window.NewStoryAdTransitionReview;
   const P0_DIMENSIONS = new Set([
     'person_identity',
     'product_identity',
@@ -78,24 +81,6 @@
       }
     }
     return { known: false, seconds: null };
-  }
-
-  function qaFrames(clip = {}) {
-    return (Array.isArray(clip.qa?.frames) ? clip.qa.frames : []).map(frame => ({
-      url: frame?.image_url || frame?.imageUrl || frame?.url || '',
-      seconds: number(frame?.second, 0),
-      point: number(frame?.point, 0),
-    })).filter(frame => frame.url);
-  }
-
-  function boundaryEvidence(previousClip = null, currentClip = null) {
-    const previousFrames = qaFrames(previousClip || {});
-    const currentFrames = qaFrames(currentClip || {});
-    return {
-      complete: previousFrames.length > 0 && currentFrames.length > 0,
-      tail: previousFrames.at(-1) || null,
-      head: currentFrames[0] || null,
-    };
   }
 
   function costUnitFor(unit = {}, costPlan = {}) {
@@ -252,18 +237,6 @@
     return `<div class="dh-nsa-review-media-placeholder" data-nsa-review-media="${escapeHtml(kind)}" data-src="${escapeHtml(url)}" data-label="${escapeHtml(label)}"><span>${escapeHtml(label || '展开后加载媒体证据')}</span></div>`;
   }
 
-  function boundaryHtml(member = 0, { clipAt, escapeHtml } = {}) {
-    if (member <= 1) return '<div class="dh-nsa-review-boundary is-first"><b>相邻交接证据</b><span>这是广告首个片段，没有上一片段尾帧。</span></div>';
-    const evidence = boundaryEvidence(clipAt?.(member - 2), clipAt?.(member - 1));
-    return `<div class="dh-nsa-review-boundary ${evidence.complete ? 'is-complete' : 'is-incomplete'}">
-      <div><b>相邻交接证据</b><span>${evidence.complete ? '上一片段尾帧 / 当前片段首帧，可核对位置、人物、场景和运动方向。' : '交接证据未完成：尾帧或首帧抽帧数据缺失。'}</span></div>
-      <div class="dh-nsa-review-boundary-grid">
-        <section><small>上一片段尾帧${evidence.tail ? ` · ${number(evidence.tail.seconds).toFixed(2)}s` : ''}</small>${mediaPlaceholder(evidence.tail?.url || '', 'image', '尾帧证据未完成', escapeHtml)}</section>
-        <section><small>当前片段首帧${evidence.head ? ` · ${number(evidence.head.seconds).toFixed(2)}s` : ''}</small>${mediaPlaceholder(evidence.head?.url || '', 'image', '首帧证据未完成', escapeHtml)}</section>
-      </div>
-    </div>`;
-  }
-
   function memberHtml(member = 0, { failureDetails = [], shots = [], clipAt, viewAt, escapeHtml = value => String(value || '') } = {}) {
     const clip = clipAt?.(member - 1) || {};
     const view = viewAt?.(member - 1) || {};
@@ -282,7 +255,7 @@
       <div class="dh-nsa-review-member-head"><div><b>镜头 ${member} · ${escapeHtml(shots?.[member - 1]?.title || '未命名片段')}</b><span>${escapeHtml(view.label || '状态未完成')}</span></div><em>${escapeHtml(view.shortLabel || '未知')}</em></div>
       ${mediaPlaceholder(clipUrl, 'video', clipUrl ? `播放镜头 ${member} 切分片段` : `镜头 ${member} 片段播放器未完成`, escapeHtml)}
       ${failureHtml}
-      ${boundaryHtml(member, { clipAt, escapeHtml })}
+      ${transitionReview?.boundaryHtml?.(member, { clipAt, shots, escapeHtml, mediaPlaceholder }) || ''}
     </article>`;
   }
 
@@ -330,8 +303,8 @@
     isP0Failure,
     isManualAcceptAllowed,
     failureTime,
-    qaFrames,
-    boundaryEvidence,
+    qaFrames: transitionReview?.qaFrames,
+    boundaryEvidence: transitionReview?.boundaryEvidence,
     selectionAvailability,
     selectionSummary,
     selectionHtml,
