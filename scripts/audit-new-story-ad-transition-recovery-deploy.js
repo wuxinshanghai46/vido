@@ -9,7 +9,7 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const targetTaskId = process.env.VIDO_REPAIR_TASK_ID || '';
-const cacheVersion = '20260728-story-setup-cta-v38';
+const cacheVersion = '20260728-button-state-v39';
 const runtimeFiles = [
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',

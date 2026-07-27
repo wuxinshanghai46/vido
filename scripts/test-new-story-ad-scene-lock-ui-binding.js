@@ -113,7 +113,14 @@ function loadFrontend() {
 
 function loadButtonState() {
   const source = fs.readFileSync(path.join(root, 'public/js/new-story-ad/button-state.js'), 'utf8');
-  const sandbox = { window: {}, document: { querySelector: () => null } };
+  const sandbox = {
+    window: {
+      NewStoryAdStorySetup: {
+        readiness: () => ({ ready: true, message: '人物与场景形象已确认' }),
+      },
+    },
+    document: { querySelector: () => null },
+  };
   vm.runInNewContext(source, sandbox, { filename: 'button-state.js' });
   return sandbox.window.NewStoryAdButtonState;
 }
@@ -349,7 +356,7 @@ async function main() {
     removeAttribute() {},
   };
   loadButtonState().updateLocks({
-    state: { taskId: 'restored-task', busy: false, shots: [] },
+    state: { taskId: 'restored-task', busy: false, shots: [], storySetupConfirmed: true },
     getPersonSpec: () => '',
     within: selector => {
       if (selector === '#dhNsaAdText') return { value: '' };
@@ -725,15 +732,15 @@ async function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260728-story-setup-cta-v38'));
-  assert(html.includes('digital-human-wizard.css?v=20260728-story-setup-cta-v38'));
-  assert(html.indexOf('bootstrap.js?v=20260728-story-setup-cta-v38') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
+  assert(html.includes('bootstrap.js?v=20260728-button-state-v39'));
+  assert(html.includes('digital-human-wizard.css?v=20260728-button-state-v39'));
+  assert(html.indexOf('bootstrap.js?v=20260728-button-state-v39') < html.indexOf('digital-human.js?v=20260721-unified-dialog-v20'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260728-story-setup-cta-v38'));
+  assert(bootstrap.includes('20260728-button-state-v39'));
   assert(sceneUi.includes('acknowledge_billing_unknown: true'));
   assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
   assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));

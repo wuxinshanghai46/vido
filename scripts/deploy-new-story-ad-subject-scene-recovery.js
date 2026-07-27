@@ -14,6 +14,7 @@ const files = [
   'public/js/new-story-ad-legacy-ui.js',
   'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
+  'public/js/new-story-ad/button-state.js',
   'public/js/new-story-ad/brand-overlay.js',
   'public/js/new-story-ad/story-setup.js',
   'public/js/new-story-ad/generation-flow.js',

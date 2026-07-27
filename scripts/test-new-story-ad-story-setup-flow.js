@@ -9,6 +9,7 @@ const html = read('public/digital-human.html');
 const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
 const storySetupUi = read('public/js/new-story-ad/story-setup.js');
+const buttonStateUi = read('public/js/new-story-ad/button-state.js');
 
 const sceneHostIndex = html.indexOf('id="dhNsaAdSceneConfigHost"');
 const nextIndex = html.indexOf('id="dhNsaAdContinueStorySetup"');
@@ -25,6 +26,8 @@ assert(assistIndex > panelIndex && assistIndex < scriptIndex, '剧情与表演 A
 assert(html.includes('剧情呈现方式') && !html.includes('模式只决定生产和 QA 策略'), '视频基础信息必须改为真实用途说明');
 assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open"), '下一步只能打开剧情设置，不能直接生成剧本');
 assert(legacy.includes("continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy)"), '下一步按钮可用时必须复用统一主操作指向效果');
+assert(buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy)"), '权威按钮状态模块必须设置统一主操作指向效果');
+assert(buttonStateUi.includes("!state.storySetupConfirmed || !storySetupReady.ready"), '权威按钮状态模块不能绕过剧情设置确认门禁');
 assert(legacy.includes("dhNsaAdStoryboard: () => runStage('blueprint', btn)"), '面板底部按钮仍负责生成剧本');
 assert(legacy.includes("target?.id === 'dhNsaAdProductionMode'") && legacy.includes("markSourceDirty('creative')"), '剧情呈现方式修改必须失效旧剧本');
 assert(bootstrap.includes("'/js/new-story-ad/story-setup.js'"), '剧情设置模块必须在旧 UI 前按需加载');
@@ -43,6 +46,7 @@ const sandbox = {
   clearTimeout,
 };
 vm.runInNewContext(storySetupUi, sandbox, { filename: 'story-setup.js' });
+vm.runInNewContext(buttonStateUi, sandbox, { filename: 'button-state.js' });
 const ui = sandbox.window.NewStoryAdStorySetup;
 const readyState = {
   context: { cast_mode: 'single', creative_direction: {} },
@@ -55,6 +59,43 @@ const spec = key => ({ castMode: 'single', expectedAnimals: '0' }[key] || '');
 assert.strictEqual(ui.readiness(readyState, spec).ready, true);
 assert.strictEqual(ui.readiness({ ...readyState, personAsset: null }, spec).ready, false);
 assert.strictEqual(ui.readiness({ ...readyState, context: { cast_mode: 'no_human' }, personAsset: null }, key => key === 'castMode' ? 'no_human' : '').ready, true);
+const fakeButton = () => {
+  const classes = new Set();
+  return {
+    disabled: false,
+    classList: {
+      toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name),
+      add: (...names) => names.forEach(name => classes.add(name)),
+      remove: (...names) => names.forEach(name => classes.delete(name)),
+      contains: name => classes.has(name),
+    },
+    setAttribute: () => {},
+    removeAttribute: () => {},
+  };
+};
+const continueButton = fakeButton();
+const scriptButton = fakeButton();
+const buttonControls = {
+  '#dhNsaAdText': { value: '为已确认商品制作一条真实剧情广告' },
+  '#dhNsaAdContinueStorySetup': continueButton,
+  '#dhNsaAdStoryboard': scriptButton,
+};
+sandbox.window.NewStoryAdButtonState.updateLocks({
+  state: { ...readyState, storySetupConfirmed: false, busy: false },
+  within: selector => buttonControls[selector] || null,
+  getPersonSpec: spec,
+});
+assert.strictEqual(continueButton.disabled, false);
+assert.strictEqual(continueButton.classList.contains('is-next'), true);
+assert.strictEqual(scriptButton.disabled, true);
+const busyReadyState = { ...readyState, storySetupConfirmed: true, busy: true };
+sandbox.window.NewStoryAdButtonState.updateLocks({
+  state: busyReadyState,
+  within: selector => buttonControls[selector] || null,
+  getPersonSpec: spec,
+});
+assert.strictEqual(continueButton.disabled, true);
+assert.strictEqual(continueButton.classList.contains('is-next'), false);
 let marked = '';
 let saved = '';
 assert.strictEqual(ui.open({

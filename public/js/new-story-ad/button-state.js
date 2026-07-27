@@ -58,7 +58,11 @@
     lock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
     const generateBtn = within('#dhNsaAdGenerate');
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
-    lock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
+    const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, getPersonSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
+    lock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
+    const continueStorySetupBtn = within('#dhNsaAdContinueStorySetup');
+    if (continueStorySetupBtn) continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy);
+    lock('#dhNsaAdStoryboard', !state.storySetupConfirmed || !storySetupReady.ready, !state.storySetupConfirmed ? '请先点击“下一步：编写剧情与表演”' : storySetupReady.message);
     const storyboardBtn = within('#dhNsaAdStoryboard');
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
