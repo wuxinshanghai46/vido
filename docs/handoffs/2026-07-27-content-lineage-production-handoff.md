@@ -2,7 +2,7 @@
 
 > 交接日期：2026-07-27（Asia/Shanghai）
 > 目标分支：`codex/story-ad-v3-upgrade`
-> 最新功能修复提交：`981ff62`
+> 最新功能修复提交：`02da89b`
 > 用途：回家拉取最新代码后，在本地验证“修改后只使用最新内容”和“一次生成剧本包”
 
 ## 一、当前结论
@@ -14,7 +14,7 @@
 - 本地功能修复基线：`981ff62`
 - Gitee `origin/codex/story-ad-v3-upgrade`：同一提交
 - 本地与 Gitee ahead/behind：`0 / 0`
-- 生产发布清单：94 个文件
+- 生产发布清单：98 个文件
 - 生产与本地 SHA-256 不一致文件：0
 - PM2 `vido`：`online`
 - 生产数据库：`ok`
@@ -24,7 +24,7 @@
 - 核对过程触发模型或媒体调用：0
 - 核对过程写入任务数据：0
 
-生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，94/94 个实际运行文件与本地完全一致。
+生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，98/98 个实际运行文件与本地完全一致。
 
 ## 二、本轮真正解决的问题
 
@@ -168,6 +168,32 @@
 - 最终成片由本地 FFmpeg 原样叠加；
 - 未确认授权或素材不可用时，合成前明确阻断。
 
+### 2.7 2026-07-27 流程顺序追加：锁定资产后再设置剧情
+
+场景配置页此前把“视频基础信息”“剧情与表演要求”和 Logo 放在资产生成结果之前，顶部又始终显示“生成剧本”，导致用户尚未完成并核对人物、主体和完整场景形象时就能填写下游剧情，甚至直接启动剧本生成。“生产模式”虽然进入提示词，却被误归类为来源变更，并未像页面文案所说控制 QA 策略。
+
+现在流程收敛为：
+
+```text
+广告需求
+→ 生成人物 / 主体 / 完整场景形象
+→ 所有必需资产通过并锁定
+→ 点击“下一步：设置剧情与表演”
+→ 选择“剧情呈现方式”
+→ AI 辅写或手写“剧情与表演要求”
+→ 可选配置已授权 Logo 后期落版
+→ 确认剧情设置并生成剧本
+```
+
+关键门禁：
+
+- 必需人物、宠物和每个场景未齐全或未锁定时，不能进入剧情设置；
+- 来源、人物、商品或场景变更后，原剧情设置确认自动失效，必须重新核对；
+- UI 发起 `blueprint`、`storyboard` 或 `script_package` 时，后端再次检查 `story_setup_confirmed`，不能绕过前端直接生成；
+- “剧情呈现方式”只控制剧本叙事与表演策略，不再宣称控制 QA；
+- “AI 辅写剧情与表演”使用独立结构化合同，只允许在已确认人物、商品和场景范围内补写剧情，不得新增人物、场景、道具或商品事实；
+- Logo 仍为可选后期素材，不交给图片或视频模型生成。
+
 ## 三、关键实现
 
 ### 后端
@@ -184,6 +210,10 @@
   - 在异步调用链携带内容版本、快照和输入指纹。
 - `src/services/newStoryAd/contextBuilder.js`
   - 创意表演要求结构化、提示合同、品牌后期落版合同和冲突检测。
+- `src/services/newStoryAd/storySetupService.js`
+  - UI 剧本阶段的资产后剧情设置确认门禁。
+- `src/services/newStoryAd/assistCreativeDirectionService.js`
+  - “剧情与表演要求”AI 辅写的结构化输出、冲突校验和可读文本投影。
 - `src/services/newStoryAd/modelGateway.js`
   - 结构修复继承主剧本模型路由，准确记录本阶段尝试数。
 - `src/services/newStoryAd/blueprintLifecycleService.js`
@@ -207,14 +237,16 @@
   - 删除服务器已失效的本地旧产物，忽略较旧响应。
 - `public/js/new-story-ad/generation-flow.js`
   - 点击后立即显示保存/预检进度，生成前强制保存并取得服务器确认。
+- `public/js/new-story-ad/story-setup.js`
+  - 资产就绪判断、下一步确认、源变更失效和剧情 AI 辅写。
 - `public/js/new-story-ad/brand-overlay.js`
   - 独立品牌 Logo 上传、授权、配置、恢复和交互模块。
 - `public/js/new-story-ad-legacy-ui.js`
   - 创意表演字段、编辑域、生成快照状态及品牌合成参数接线。
 - `public/digital-human.html`
-  - “剧情与表演要求”输入区。
+  - 资产结果后的“剧情呈现方式”“剧情与表演要求”和可选 Logo 顺序区域。
 - `public/js/new-story-ad/bootstrap.js`
-  - 前端缓存版本 `20260727-production-recovery-v35`。
+  - 前端缓存版本 `20260727-story-setup-flow-v36`。
 
 ## 四、已完成验证
 
@@ -236,6 +268,7 @@
 - 未授权 Logo 阻断、授权 Logo 实际视频叠加和技术 QA
 - 完整 `npm run story-ad:v3:test`
 - 场景权威专项回归：活动标签、重复/乱序保存、真实计划更新、历史投影隔离、缺配置门禁
+- 资产后剧情设置专项回归：页面顺序、人物/宠物/场景就绪、源变更失效、后端不可绕过门禁、AI 辅写冲突阻断
 
 完整回归使用模拟夹具，没有提交真实图片、视频或付费供应商任务。
 
@@ -372,7 +405,7 @@ node scripts/audit-new-story-ad-content-lineage-release.js
 
 - `status: PASS`
 - `ahead_behind: 0 0`
-- `release_files_checked: 94`
+- `release_files_checked: 98`
 - `release_hash_mismatches: []`
 - `active_generation_count: 0`
 - `pm2.status: online`
