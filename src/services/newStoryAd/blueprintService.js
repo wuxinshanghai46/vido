@@ -338,20 +338,32 @@ async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = 
   const expectedCount = explicitSegmentCount(ctx);
   const actualCount = Array.isArray(payload?.beats) ? payload.beats.length : 0;
   if (!expectedCount || actualCount === expectedCount) return payload;
-  const result = await modelGateway.generateText({
-    taskId,
-    stage: 'new_story_ad.blueprint_structure_repair',
-    systemPrompt: [
-      'You repair only the structure of a story-ad blueprint. Return strict JSON only.',
-      'The user-authored shot markers are authoritative. Produce exactly one beat for each marker, in the same order.',
-      'Do not merge, omit, reorder or invent user events. Preserve task facts, people, scenes, products and authored speech.',
-      'A shot without authored dialogue may use speech_mode silent or ambient_only and an empty spoken_line.',
-      'Keep all user-visible values in natural Simplified Chinese. Keep JSON keys and technical enums unchanged.',
-    ].join('\n'),
-    userPrompt: `Authoritative authored structure (${expectedCount} shots):\n${authoredStructureText(ctx).slice(0, 12000)}\n\nCurrent parsed blueprint (${actualCount} beats):\n${JSON.stringify(payload).slice(0, 22000)}\n\nReturn the complete blueprint with exactly ${expectedCount} beats.`,
-    maxTokens: 8000,
-    temperature: 0.2,
-  });
+  let result;
+  try {
+    result = await modelGateway.generateText({
+      taskId,
+      stage: 'new_story_ad.blueprint_structure_repair',
+      systemPrompt: [
+        'You repair only the structure of a story-ad blueprint. Return strict JSON only.',
+        'The user-authored shot markers are authoritative. Produce exactly one beat for each marker, in the same order.',
+        'Do not merge, omit, reorder or invent user events. Preserve task facts, people, scenes, products and authored speech.',
+        'A shot without authored dialogue may use speech_mode silent or ambient_only and an empty spoken_line.',
+        'Keep all user-visible values in natural Simplified Chinese. Keep JSON keys and technical enums unchanged.',
+      ].join('\n'),
+      userPrompt: `Authoritative authored structure (${expectedCount} shots):\n${authoredStructureText(ctx).slice(0, 12000)}\n\nCurrent parsed blueprint (${actualCount} beats):\n${JSON.stringify(payload).slice(0, 22000)}\n\nReturn the complete blueprint with exactly ${expectedCount} beats.`,
+      maxTokens: 8000,
+      temperature: 0.2,
+    });
+  } catch (error) {
+    error.details = {
+      ...(error.details || {}),
+      expected_beat_count: expectedCount,
+      actual_beat_count: actualCount,
+      reusable_draft_available: true,
+      failed_stage: 'blueprint_structure_repair',
+    };
+    throw error;
+  }
   const parsed = await jsonRepair.parseOrRepair({
     raw: result.text,
     expected: 'object',
@@ -369,7 +381,12 @@ async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = 
   return parsed;
 }
 
-async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
+async function generateBlueprint(ctx, {
+  taskId = '',
+  onProgress = null,
+  draftCheckpoint = null,
+  onDraftReady = null,
+} = {}) {
   const targetCount = desiredBeatCount(ctx);
   const profile = pacingProfile(ctx);
   const recommendedCount = profile.recommended;
@@ -467,24 +484,55 @@ Return JSON in this shape:
 ${ctx.shot_count ? `Beat count must equal the user-specified ${ctx.shot_count} shots.` : profile.explicitSegments ? `The user's explicit shot markers are authoritative. Beat count must equal ${profile.explicitSegments}; preserve every marked event in order and do not merge them.` : `Beat count is content-driven. Do not force the exact recommended number, but keep the result compact for the target duration; normal shots should have enough time to be understood, and only explicit fast-cut or dense step-by-step briefs should approach the upper bound ${beatLimit}.`}
 For multi-person stories, keep names, roles, relationships and speaker ownership stable across all beats.`;
 
-  reportBlueprintProgress(onProgress, 'draft_generation', 1, '上下文和原创过审规则已准备，正在生成剧本初稿。');
-  const result = await modelGateway.generateText({
-    taskId,
-    stage: 'new_story_ad.blueprint',
-    systemPrompt,
-    userPrompt,
-    maxTokens: 5200,
-  });
-  reportBlueprintProgress(onProgress, 'draft_ready', 2, '剧本初稿已返回，正在校验 JSON 结构。');
-  const parsed = await jsonRepair.parseOrRepair({
-    raw: result.text,
-    expected: 'object',
-    modelGateway,
-    taskId,
-    stage: 'new_story_ad.json_repair',
-  });
-  reportBlueprintProgress(onProgress, 'structure_validated', 3, '剧本结构已校验，正在检查中文表达和可拍性。');
-  const language = await ensureChineseOutput({ payload: parsed, kind: 'blueprint', taskId, context: ctx });
+  let result;
+  let language;
+  const reusableDraft = draftCheckpoint
+    && draftCheckpoint.reusable === true
+    && draftCheckpoint.payload
+    && typeof draftCheckpoint.payload === 'object'
+    && Array.isArray(draftCheckpoint.payload.beats);
+  if (reusableDraft) {
+    result = draftCheckpoint.model_meta || {};
+    language = {
+      payload: draftCheckpoint.payload,
+      repaired: draftCheckpoint.language_repaired === true,
+      model_meta: draftCheckpoint.language_model ? { used_model: draftCheckpoint.language_model } : {},
+    };
+    reportBlueprintProgress(onProgress, 'draft_ready', 3, '已复用同一内容版本的剧本初稿，正在继续结构修复与质量审核。');
+  } else {
+    reportBlueprintProgress(onProgress, 'draft_generation', 1, '上下文和原创过审规则已准备，正在生成剧本初稿。');
+    result = await modelGateway.generateText({
+      taskId,
+      stage: 'new_story_ad.blueprint',
+      systemPrompt,
+      userPrompt,
+      maxTokens: 5200,
+    });
+    reportBlueprintProgress(onProgress, 'draft_ready', 2, '剧本初稿已返回，正在校验 JSON 结构。');
+    const parsed = await jsonRepair.parseOrRepair({
+      raw: result.text,
+      expected: 'object',
+      modelGateway,
+      taskId,
+      stage: 'new_story_ad.json_repair',
+    });
+    reportBlueprintProgress(onProgress, 'structure_validated', 3, '剧本结构已校验，正在检查中文表达和可拍性。');
+    language = await ensureChineseOutput({ payload: parsed, kind: 'blueprint', taskId, context: ctx });
+    if (typeof onDraftReady === 'function') {
+      await onDraftReady({
+        payload: language.payload,
+        model_meta: {
+          used_model: result.used_model,
+          fallback_used: result.fallback_used,
+          failed_models: result.failed_models,
+        },
+        language_repaired: language.repaired,
+        language_model: language.model_meta?.used_model || '',
+        expected_beat_count: explicitSegmentCount(ctx),
+        actual_beat_count: Array.isArray(language.payload?.beats) ? language.payload.beats.length : 0,
+      });
+    }
+  }
   const structuredPayload = await repairExplicitBlueprintStructure(ctx, language.payload, { taskId });
   reportBlueprintProgress(onProgress, 'language_checked', 4, '中文表达已检查，正在执行质量与版权/IP 风险审核。');
   const causalCtx = { ...ctx, require_causal_contract: true };

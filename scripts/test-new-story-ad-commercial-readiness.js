@@ -85,13 +85,13 @@ async function main() {
   });
   storage.saveOutput(activeSave.id, 'blueprint', { title: '运行中的有效剧本' });
   storage.saveOutput(activeSave.id, 'storyboard_table', [{ index: 1, visual: '运行中的有效分镜' }]);
-  storyAdService.updateTaskRequest(activeSave.id, {
+  assert.throws(() => storyAdService.updateTaskRequest(activeSave.id, {
     brief: activeSave.brief,
     save_progress: true,
     change_scope: 'source',
     progress_stage: 'keyframes_ready',
     progress_snapshot: { storyboard_table: [{ index: 1, visual: '通用测试镜头' }] },
-  }, owner);
+  }, owner), error => error.code === 'GENERATION_ACTIVE_EDIT_BLOCKED');
   const activeAfterSave = storage.getTask(activeSave.id);
   assert.equal(activeAfterSave.status, 'running');
   assert.equal(activeAfterSave.stage, 'keyframes');

@@ -6,6 +6,7 @@ const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const videoAdapter = require('./videoAdapter');
 const ttsAdapter = require('./ttsAdapter');
+const mediaAdapter = require('./mediaAdapter');
 const finalVideoQa = require('./finalVideoQaService');
 
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'));
@@ -95,6 +96,67 @@ function localAudioPath(track = {}) {
   if (!clean.startsWith(prefix)) return '';
   const filePath = ttsAdapter.audioPathFromName(decodeURIComponent(clean.slice(prefix.length)));
   return filePath && fs.existsSync(filePath) ? filePath : '';
+}
+
+function normalizeBrandOverlay(overlay = {}) {
+  const source = overlay && typeof overlay === 'object' ? overlay : {};
+  const asset = source.asset && typeof source.asset === 'object' ? source.asset : null;
+  if (source.enabled !== true) return { enabled: false };
+  if (source.authorization_confirmed !== true) {
+    const error = new Error('品牌 Logo 后期叠加尚未确认素材授权，本次未合成。');
+    error.code = 'BRAND_ASSET_AUTHORIZATION_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const rawUrl = normalizeLocalUrl(asset?.file_url || asset?.image_url || asset?.url || '').split('?')[0];
+  const prefix = '/api/new-story-ad/assets/';
+  const filePath = rawUrl.startsWith(prefix)
+    ? mediaAdapter.assetPathFromName(decodeURIComponent(rawUrl.slice(prefix.length)))
+    : '';
+  if (!filePath || !fs.existsSync(filePath)) {
+    const error = new Error('已授权品牌 Logo 素材不存在或不是本项目上传文件，本次未合成。');
+    error.code = 'BRAND_ASSET_UNAVAILABLE';
+    error.status = 422;
+    throw error;
+  }
+  const allowedPositions = new Set(['top_left', 'top_right', 'center', 'bottom_left', 'bottom_center', 'bottom_right']);
+  const position = allowedPositions.has(String(source.position || '')) ? String(source.position) : 'bottom_center';
+  return {
+    enabled: true,
+    file_path: filePath,
+    asset_id: String(asset?.id || ''),
+    position,
+    width_percent: Math.max(8, Math.min(45, Number(source.width_percent ?? 22) || 22)),
+    margin_percent: Math.max(0, Math.min(20, Number(source.margin_percent ?? 5) || 5)),
+    end_duration_sec: Math.max(0.5, Math.min(15, Number(source.end_duration_sec ?? 3) || 3)),
+  };
+}
+
+async function applyBrandOverlay(videoPath = '', overlay = {}, outputPath = '') {
+  if (!overlay.enabled) return videoPath;
+  const duration = Math.max(0.2, await videoAdapter.probeDuration(videoPath));
+  const start = Math.max(0, duration - overlay.end_duration_sec);
+  const margin = overlay.margin_percent / 100;
+  const positions = {
+    top_left: [`W*${margin}`, `H*${margin}`],
+    top_right: [`W-w-W*${margin}`, `H*${margin}`],
+    center: ['(W-w)/2', '(H-h)/2'],
+    bottom_left: [`W*${margin}`, `H-h-H*${margin}`],
+    bottom_center: ['(W-w)/2', `H-h-H*${margin}`],
+    bottom_right: [`W-w-W*${margin}`, `H-h-H*${margin}`],
+  };
+  const [x, y] = positions[overlay.position] || positions.bottom_center;
+  const widthRatio = overlay.width_percent / 100;
+  const filter = `[1:v][0:v]scale2ref=w=main_w*${widthRatio}:h=ow/mdar[logo][base];`
+    + `[base][logo]overlay=x=${x}:y=${y}:enable='gte(t,${start.toFixed(3)})'[v]`;
+  await execFfmpeg([
+    '-y', '-i', videoPath, '-loop', '1', '-i', overlay.file_path,
+    '-filter_complex', filter,
+    '-map', '[v]', '-map', '0:a?',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+    '-c:a', 'copy', '-t', duration.toFixed(3), '-movflags', '+faststart', outputPath,
+  ], 300000);
+  return outputPath;
 }
 
 function buildVisualComposeUnits(clips = []) {
@@ -385,6 +447,7 @@ async function concatVideos({
   subtitleEnabled = false,
   subtitleStyle = 'popup',
   transitions = [],
+  brandOverlay = null,
 } = {}) {
   ensureDir(COMPOSE_DIR);
   const visualUnits = buildVisualComposeUnits(clips);
@@ -461,6 +524,15 @@ async function concatVideos({
       providerUsed += '+effects';
     }
   }
+  const normalizedBrandOverlay = normalizeBrandOverlay(brandOverlay || {});
+  if (normalizedBrandOverlay.enabled) {
+    const brandedFilename = `${safeBase(`brand_${taskId || 'task'}_${Date.now()}`)}.mp4`;
+    const brandedPath = path.join(COMPOSE_DIR, brandedFilename);
+    await applyBrandOverlay(finalPath, normalizedBrandOverlay, brandedPath);
+    finalPath = brandedPath;
+    finalUrl = publicComposeUrl(brandedFilename);
+    providerUsed += '+authorized-brand-overlay';
+  }
   const expectedDurationSec = durations.reduce((sum, value) => sum + Number(value || 0), 0)
     - transitionPlan.reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
   const technicalQa = await finalVideoQa.inspectFinalVideo({
@@ -493,6 +565,14 @@ async function concatVideos({
     audio_bridge_count: transitionPlan.filter(row => row.audio_bridge_execution === 'j_cut_crossfade').length,
     subtitle_applied: validSubtitles.length > 0,
     subtitle_style: subtitleStyle || 'popup',
+    brand_overlay_applied: normalizedBrandOverlay.enabled,
+    brand_overlay: normalizedBrandOverlay.enabled ? {
+      asset_id: normalizedBrandOverlay.asset_id,
+      position: normalizedBrandOverlay.position,
+      width_percent: normalizedBrandOverlay.width_percent,
+      margin_percent: normalizedBrandOverlay.margin_percent,
+      end_duration_sec: normalizedBrandOverlay.end_duration_sec,
+    } : null,
     provider_used: providerUsed,
     transition_plan: transitionPlan,
     visual_units: visualUnits.map(unit => ({
@@ -514,5 +594,7 @@ module.exports = {
   muxTimelineVoiceTracks,
   buildTransitionPlan,
   adjustSubtitlesForTransitionOverlaps,
+  normalizeBrandOverlay,
+  applyBrandOverlay,
   concatVideos,
 };

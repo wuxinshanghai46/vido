@@ -563,13 +563,26 @@ router.get('/model-health', (req, res) => {
 
 router.post('/upload', uploadSingle, (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: '请选择文件' });
+  const requestedRole = String(req.body?.role || 'asset').trim() || 'asset';
+  if (requestedRole === 'brand_logo') {
+    const isImage = ['image/png', 'image/jpeg', 'image/webp'].includes(String(req.file.mimetype || '').toLowerCase())
+      && /\.(png|jpe?g|webp)$/i.test(req.file.originalname || '');
+    if (!isImage || Number(req.file.size || 0) > 10 * 1024 * 1024) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+      return res.status(422).json({
+        success: false,
+        code: 'INVALID_BRAND_ASSET',
+        error: '品牌 Logo 仅支持 10MB 以内的 PNG、JPG 或 WebP 图片。',
+      });
+    }
+  }
   const filename = path.basename(req.file.filename);
   const url = mediaAdapter.publicAssetUrl(filename);
   const isAudio = req.file.mimetype?.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(req.file.originalname || '');
   const asset = {
     id: `new_story_asset_${uuidv4()}`,
     module: 'new_story_ad',
-    role: String(req.body?.role || 'asset').trim() || 'asset',
+    role: requestedRole,
     name: req.file.originalname || filename,
     original_name: req.file.originalname || filename,
     filename,

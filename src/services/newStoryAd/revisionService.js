@@ -71,6 +71,7 @@ function domainSlices(ctx = {}) {
       subtitle_style: ctx.subtitle_style,
       subtitle_config: ctx.subtitle_config,
       video_resolution: ctx.video_resolution,
+      brand_overlay: ctx.brand_overlay,
     },
   };
 }
@@ -155,11 +156,11 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
 function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
   const scopes = Array.isArray(scope) ? scope : (scope && scope !== 'none' ? [scope] : []);
   const graph = {
-    source: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    product: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    scene: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
-    person: ['blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    creative: ['blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    source: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    product: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    scene: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    person: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    creative: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     blueprint: ['storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     storyboard: ['keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     voice: ['tts_audio', 'final_video'],

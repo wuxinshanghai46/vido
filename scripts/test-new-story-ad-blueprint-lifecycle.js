@@ -17,6 +17,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const blueprintService = require('../src/services/newStoryAd/blueprintService');
 const blueprintProgress = require('../src/services/newStoryAd/blueprintProgressService');
+const blueprintLifecycle = require('../src/services/newStoryAd/blueprintLifecycleService');
 const storyService = require('../src/services/newStoryAd/storyAdService');
 const jobService = require('../src/services/newStoryAd/jobService');
 const cancellation = require('../src/services/newStoryAd/cancellationContext');
@@ -130,6 +131,57 @@ async function main() {
     assert.equal(task.generation_progress.total, 6);
     assert.equal(task.generation_progress.percent, 100);
     assert.equal(jobService.stageBudgetMs('blueprint'), 480000);
+
+    storage.createTask({
+      id: 'blueprint-checkpoint-retry',
+      brief: context.brief,
+      status: 'running',
+      stage: 'blueprint',
+      request: context,
+    });
+    storage.saveOutput('blueprint-checkpoint-retry', 'context', context);
+    storage.updateTask('blueprint-checkpoint-retry', {
+      active_generation_id: 'generation-checkpoint',
+      active_input_fingerprint: 'checkpoint-input-fingerprint',
+    });
+    let generatorCalls = 0;
+    const recoverableGenerator = async (_ctx, options) => {
+      generatorCalls += 1;
+      if (generatorCalls === 1) {
+        assert.equal(options.draftCheckpoint, null);
+        await options.onDraftReady({
+          payload: { ...premiumBlueprint, beats: premiumBlueprint.beats.slice(0, 2) },
+          model_meta: { used_model: 'test/main-blueprint' },
+          expected_beat_count: 3,
+          actual_beat_count: 2,
+        });
+        const error = new Error('结构修复模型暂时不可用');
+        error.code = 'MODEL_ATTEMPTS_EXHAUSTED';
+        error.details = { expected_beat_count: 3, actual_beat_count: 2, reusable_draft_available: true };
+        throw error;
+      }
+      assert.equal(options.draftCheckpoint.reusable, true);
+      assert.equal(options.draftCheckpoint.actual_beat_count, 2);
+      return premiumBlueprint;
+    };
+    await assert.rejects(() => blueprintLifecycle.generateBlueprintStage('blueprint-checkpoint-retry', {
+      generationId: 'generation-checkpoint',
+      inputFingerprint: 'checkpoint-input-fingerprint',
+    }, {
+      versionedBlueprint: value => ({ ...value, revision: 1 }),
+      generateBlueprintFn: recoverableGenerator,
+    }), error => error.code === 'MODEL_ATTEMPTS_EXHAUSTED');
+    assert.equal(storage.getOutput('blueprint-checkpoint-retry', 'blueprint_draft_checkpoint').reusable, true);
+    const checkpointRecovered = await blueprintLifecycle.generateBlueprintStage('blueprint-checkpoint-retry', {
+      generationId: 'generation-checkpoint',
+      inputFingerprint: 'checkpoint-input-fingerprint',
+    }, {
+      versionedBlueprint: value => ({ ...value, revision: 1 }),
+      generateBlueprintFn: recoverableGenerator,
+    });
+    assert.equal(checkpointRecovered.beats.length, 3);
+    assert.equal(generatorCalls, 2);
+    assert.equal(storage.getOutput('blueprint-checkpoint-retry', 'blueprint_draft_checkpoint'), null);
 
     storage.updateTask('blueprint-lifecycle-task', { active_stage: '', active_generation_id: '' });
     const before = storage.getTask('blueprint-lifecycle-task').generation_progress;

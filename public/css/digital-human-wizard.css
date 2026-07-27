@@ -4153,3 +4153,4 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
     grid-template-columns: 1fr;
   }
 }
+.dh-nsa-brand-overlay{display:grid;grid-template-columns:minmax(220px,320px) minmax(280px,1fr);gap:18px;align-items:start;margin:12px 0 22px}.dh-nsa-brand-overlay-controls{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:12px}.dh-nsa-brand-overlay-controls>label:first-of-type{grid-column:1/-1}.dh-nsa-brand-overlay-controls label{display:grid;gap:6px;color:var(--text-secondary,#a9b5c7);font-size:13px}.dh-nsa-brand-overlay-controls label:first-of-type{display:flex;align-items:center}@media(max-width:760px){.dh-nsa-brand-overlay,.dh-nsa-brand-overlay-controls{grid-template-columns:1fr}}

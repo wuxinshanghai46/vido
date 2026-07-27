@@ -26,6 +26,15 @@
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
       bgm_asset: state.bgmAsset || null,
+      brand_overlay: {
+        enabled: !!state.brandLogoAsset,
+        authorization_confirmed: state.brandLogoAuthorized === true,
+        asset: state.brandLogoAsset || null,
+        position: state.brandLogoPosition || 'bottom_center',
+        width_percent: Number(state.brandLogoWidth || 22),
+        margin_percent: 5,
+        end_duration_sec: Number(state.brandLogoDuration || 3),
+      },
       subtitle: state.subtitleEnabled !== false,
       subtitle_style: state.subtitleStyle || 'popup',
       subtitle_config: {
@@ -364,6 +373,8 @@
     } = ctx;
     if (!state || typeof api !== 'function' || typeof ensureTask !== 'function') throw new Error('阶段生成上下文未初始化');
     const busyLabel = STAGE_LABELS[stage] || '处理中...';
+    startStageProgress?.(stage, '正在保存最新内容并执行生成预检...');
+    setBusy?.(true, '正在保存最新内容并执行生成预检...');
     setButtonBusy?.(button, true, '正在确认最新内容...');
     try {
       const prepared = typeof flushForGeneration === 'function'

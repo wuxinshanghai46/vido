@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-scene-authority-v34">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-production-recovery-v35">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260727-scene-authority-v34"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260727-production-recovery-v35"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -520,6 +520,34 @@
                 <textarea class="dh-input" id="dhNsaAdCreativeDirection" rows="5" maxlength="3000" placeholder="例如：林晓从画面左侧进入，先疲惫地坐下；喝一口咖啡后表情逐渐放松并恢复专注，最后完成提案并说出品牌口号。禁止新增人物或切换场景。"></textarea>
                 <small>第一步负责“做什么广告”，这里负责“人物怎么演”。涉及新人物、新场景或新道具时，系统会要求先返回配置。</small>
               </label>
+              <div class="dh-demo-section-title">品牌 Logo 后期落版 <span class="dh-luxgen-badge">选填</span></div>
+              <div class="dh-demo-guide">
+                <b>Logo 不交给图片或视频模型生成</b>
+                <span>上传你有权使用的品牌素材后，系统只在最终合成阶段原样叠加；剧本中的“Logo 浮现”会作为落版位置预留。</span>
+              </div>
+              <div class="dh-nsa-brand-overlay">
+                <div class="dh-luxgen-product-asset" id="dhNsaAdBrandLogoAsset"><div class="dh-luxgen-product-empty">未上传品牌 Logo</div></div>
+                <div class="dh-nsa-brand-overlay-controls">
+                  <div>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoUpload" type="button">上传授权 Logo</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoClear" type="button" hidden>删除 Logo</button>
+                    <input type="file" id="dhNsaAdBrandLogoFile" accept="image/png,image/jpeg,image/webp" hidden>
+                  </div>
+                  <label><input type="checkbox" id="dhNsaAdBrandLogoAuthorized"> 我确认拥有该 Logo 的使用及发布授权</label>
+                  <label>落版位置
+                    <select class="dh-input" id="dhNsaAdBrandLogoPosition">
+                      <option value="bottom_center">底部居中</option>
+                      <option value="bottom_right">右下角</option>
+                      <option value="bottom_left">左下角</option>
+                      <option value="center">画面居中</option>
+                      <option value="top_right">右上角</option>
+                      <option value="top_left">左上角</option>
+                    </select>
+                  </label>
+                  <label>宽度（画面占比 %）<input class="dh-input" id="dhNsaAdBrandLogoWidth" type="number" min="8" max="45" value="22"></label>
+                  <label>结尾展示（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
+                </div>
+              </div>
               <div id="dhNsaAdSceneConfigHost" class="dh-luxgen-storyboard">
                 <div class="dh-luxgen-empty"><b>还没有基础信息</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>
               </div>

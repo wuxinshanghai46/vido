@@ -3305,6 +3305,7 @@ async function composeStage(taskId, options = {}) {
   const bgmAsset = hasBgmAssetOption
     ? (options.bgm_asset ?? options.bgmAsset ?? null)
     : (ctx.bgm_asset || ctx.bgmAsset || null);
+  const brandOverlay = options.brand_overlay || options.brandOverlay || ctx.brand_overlay || ctx.brandOverlay || { enabled: false };
   const composeVoiceName = Object.prototype.hasOwnProperty.call(options, 'voice_name')
     || Object.prototype.hasOwnProperty.call(options, 'voiceName')
     ? cleanText(options.voice_name ?? options.voiceName ?? '', 120)
@@ -3318,6 +3319,7 @@ async function composeStage(taskId, options = {}) {
     bgm_volume: options.bgm_volume ?? options.bgmVolume ?? ctx.bgm_volume ?? ctx.bgmVolume ?? 0.16,
     bgm_profile: cleanText(options.bgm_profile || options.bgmProfile || ctx.bgm_profile || ctx.bgmProfile || 'auto', 60),
     bgm_asset: bgmAsset,
+    brand_overlay: brandOverlay,
     subtitle: subtitleEnabled,
     subtitle_style: subtitleStyle,
     subtitle_config: subtitleConfig,
@@ -3334,6 +3336,7 @@ async function composeStage(taskId, options = {}) {
     subtitleEnabled,
     subtitleStyle,
     transitions: shots,
+    brandOverlay,
   });
   const finalVideoWithLineage = {
     ...final_video,

@@ -233,7 +233,11 @@ function uniqueModels(models) {
 }
 
 function candidatesForStage(stage) {
-  const inheritedStage = ['new_story_ad.blueprint_language_repair', 'new_story_ad.blueprint_polish'].includes(stage)
+  const inheritedStage = [
+    'new_story_ad.blueprint_language_repair',
+    'new_story_ad.blueprint_structure_repair',
+    'new_story_ad.blueprint_polish',
+  ].includes(stage)
     ? 'new_story_ad.blueprint'
     : (stage === 'new_story_ad.storyboard_language_repair' ? 'new_story_ad.storyboard_table' : stage);
   const configured = pipeline.pickAllEnabled(inheritedStage);
@@ -387,11 +391,16 @@ async function generateText({
     }
   }
   const retryable = failed.some(item => ['TIMEOUT_OR_NETWORK', 'RATE_LIMIT', 'PROVIDER_5XX', 'MODEL_JSON'].includes(item.code));
-  const err = new Error(`${stage} 模型失败预算已耗尽：实际尝试 ${failed.length}/${candidates.length}；${failed.map(x => `${x.provider_id}/${x.model_id}:${x.code}`).join('；')}`);
+  const err = new Error(
+    `${stage} 模型调用失败：实际尝试 ${failed.length}/${attemptCandidates.length} 个本阶段候选`
+    + `（全部可用候选 ${candidates.length} 个）；`
+    + failed.map(x => `${x.provider_id}/${x.model_id}:${x.code}`).join('；'),
+  );
   err.code = retryable ? 'MODEL_ATTEMPTS_EXHAUSTED' : (failed[0]?.code || 'MODEL_UNAVAILABLE');
   err.retryable = retryable;
   err.attempted_count = failed.length;
-  err.candidate_count = candidates.length;
+  err.candidate_count = attemptCandidates.length;
+  err.available_candidate_count = candidates.length;
   err.failed_models = failed;
   throw err;
 }

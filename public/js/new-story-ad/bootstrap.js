@@ -1,6 +1,6 @@
 (() => {
   // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260727-scene-authority-v34';
+  const SCRIPT_VERSION = '20260727-production-recovery-v35';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -20,6 +20,7 @@
     '/js/new-story-ad/verification-language.js',
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
+    '/js/new-story-ad/brand-overlay.js',
     '/js/new-story-ad/actor-library.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad-legacy-ui.js',

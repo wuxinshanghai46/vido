@@ -1047,6 +1047,7 @@
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
       bgm_asset: state.bgmAsset,
+      brand_overlay: window.NewStoryAdBrandOverlay.payload(state),
       assets,
       references: assets,
       person_spec: noHuman ? { castMode: 'no_human' } : person,
@@ -1175,6 +1176,7 @@
     state.sceneAssets = [];
     state.sceneGenerationProgress = null;
     state.productAsset = null;
+    window.NewStoryAdBrandOverlay.reset(state, revokePreview);
     state.referenceAssets.forEach(revokePreview);
     state.referenceAssets = [];
     state.bgmAsset = null;
@@ -1326,6 +1328,7 @@
       productClear.hidden = !hasProduct;
       productClear.disabled = !hasProduct || !!product?.uploading || !!state.busy;
     }
+    window.NewStoryAdBrandOverlay.render(state, { within, previewUrl, escapeHtml, setFieldValue });
     const assetHost = within('#dhNsaAdAssets');
     if (assetHost) {
       const assets = state.referenceAssets || [];
@@ -1700,7 +1703,6 @@
       uiExpanded: ctrl.uiExpanded === true || ctrl.enabled === true || ctrl.mode === 'controlled',
     });
   }
-
   function assetThumbUrl(url = '', width = 420) {
     const raw = withAuthQuery(url);
     if (!/^\/api\/new-story-ad\/assets\//i.test(raw)) return raw;
@@ -1771,6 +1773,7 @@
         previewUrl: asset.previewUrl || asset.image_url || asset.url || asset.file_url || '',
       }));
     if (request.bgm_asset) state.bgmAsset = request.bgm_asset;
+    window.NewStoryAdBrandOverlay.hydrate(state, request);
   }
 
   function hydrateTaskBundle(bundle = {}) {
@@ -3721,7 +3724,7 @@
     }, delay);
   }
 
-  async function persistAutoSaveChanges() {
+  async function persistAutoSaveChanges({ ensureFullDraft = false } = {}) {
     const id = await ensureTask();
     if (state.blueprintDirty && state.blueprint) {
       await saveBlueprintEdits(id);
@@ -3731,12 +3734,12 @@
       state.review = null;
       state.ttsAudio = null;
       state.videoClips = [];
-      state.finalVideo = null;
+      state.finalVideo = null; if (ensureFullDraft) await saveCurrentTaskProgress({ silent: true, render: false });
       return id;
     }
     if (state.storyboardDirty && Array.isArray(state.shots) && state.shots.length) {
       await saveStoryboardEdits(id);
-      state.storyboardDirty = false;
+      state.storyboardDirty = false; if (ensureFullDraft) await saveCurrentTaskProgress({ silent: true, render: false });
       return id;
     }
     return saveCurrentTaskProgress({ silent: true, render: false });
@@ -3793,10 +3796,7 @@
       await new Promise(resolve => setTimeout(resolve, 50));
     }
     const targetEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0);
-    await persistAutoSaveChanges();
-    // 剧本或分镜专用保存只提交对应产物；随后仍要提交完整输入草稿，
-    // 让服务器确认当前编辑序号后才能创建生成快照。
-    await saveCurrentTaskProgress({ silent: true, render: false });
+    await persistAutoSaveChanges({ ensureFullDraft: true });
     if (Number(state.acknowledgedClientEditSeq || 0) < targetEditSeq) {
       const error = new Error('服务器尚未确认全部最新修改，本次没有启动生成');
       error.code = 'UNSAVED_CLIENT_EDITS';
@@ -3945,6 +3945,7 @@
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
       bgm_asset: state.bgmAsset || null,
+      brand_overlay: window.NewStoryAdBrandOverlay.payload(state),
       subtitle: state.subtitleEnabled,
       subtitle_style: state.subtitleStyle || 'popup',
       subtitle_config: {
@@ -4184,9 +4185,8 @@
       return window.NewStoryAdUploads.upload({ api, file, role });
     }
     if (!file) throw new Error('请选择文件');
-    const fd = new FormData();
+    const fd = new FormData(); fd.append('role', role);
     fd.append('file', file);
-    fd.append('role', role);
     const r = await api('/api/new-story-ad/upload', { method: 'POST', body: fd });
     const asset = r.asset || r.data || {};
     const url = asset.image_url || asset.file_url || r.image_url || r.file_url || r.url || '';
@@ -5587,7 +5587,7 @@
     if (!host || host.dataset.bound === '1') return;
     host.dataset.bound = '1';
     host.addEventListener('click', async e => {
-      const target = e.target;
+      const target = e.target; if (window.NewStoryAdBrandOverlay.handleClick(target, { state, within, revokePreview, markMediaDirty, renderAssets, scheduleAutoSave, toast, openPreview, previewUrl })) { e.preventDefault(); e.stopPropagation(); return; }
       const storyboardPage = target.closest('[data-nsa-storyboard-page]');
       if (storyboardPage && host.contains(storyboardPage) && !storyboardPage.disabled) {
         e.preventDefault();
@@ -6310,6 +6310,7 @@
         renderStatus();
         return;
       }
+      if (window.NewStoryAdBrandOverlay.handleChange(target, { state, markMediaDirty, scheduleAutoSave }) || window.NewStoryAdBrandOverlay.handleFileChange(target, { state, revokePreview, markMediaDirty, renderAssets, toast, uploadAsset, scheduleAutoSave })) return;
       if (target?.id === 'dhNsaAdProductFile') {
         const file = target.files?.[0];
         target.value = '';

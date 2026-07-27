@@ -154,6 +154,30 @@ function normalizeAssets(input) {
   })).filter(x => x.url || x.description || x.name);
 }
 
+function normalizeBrandOverlay(input = {}) {
+  const source = input && typeof input === 'object' ? input : {};
+  const asset = source.asset && typeof source.asset === 'object' ? source.asset : null;
+  const allowedPositions = new Set(['top_left', 'top_right', 'center', 'bottom_left', 'bottom_center', 'bottom_right']);
+  const position = cleanText(source.position || 'bottom_center', 40);
+  return {
+    enabled: source.enabled === true && !!asset,
+    authorization_confirmed: source.authorization_confirmed === true || source.authorizationConfirmed === true,
+    asset: asset ? {
+      id: cleanText(asset.id || '', 100),
+      role: 'brand_logo',
+      name: cleanText(asset.name || asset.original_name || '品牌 Logo', 160),
+      url: cleanText(asset.url || asset.image_url || asset.file_url || '', 1000),
+      image_url: cleanText(asset.image_url || asset.url || asset.file_url || '', 1000),
+      file_url: cleanText(asset.file_url || asset.url || asset.image_url || '', 1000),
+      mimetype: cleanText(asset.mimetype || '', 100),
+    } : null,
+    position: allowedPositions.has(position) ? position : 'bottom_center',
+    width_percent: Math.max(8, Math.min(45, Number(source.width_percent ?? source.widthPercent ?? 22) || 22)),
+    margin_percent: Math.max(0, Math.min(20, Number(source.margin_percent ?? source.marginPercent ?? 5) || 5)),
+    end_duration_sec: Math.max(0.5, Math.min(15, Number(source.end_duration_sec ?? source.endDurationSec ?? 3) || 3)),
+  };
+}
+
 function normalizeSceneAssets(input) {
   const raw = Array.isArray(input) ? input : [];
   return raw.map((item, idx) => {
@@ -619,6 +643,7 @@ function buildContext(body = {}, user = {}) {
   const subtitleEnabled = body.subtitle !== false && rawSubtitleConfig.show !== false;
   const subtitleStyle = cleanText(body.subtitle_style || body.subtitleStyle || rawSubtitleConfig.style || 'popup', 60);
   const bgmAsset = body.bgm_asset || body.bgmAsset || null;
+  const brandOverlay = normalizeBrandOverlay(body.brand_overlay || body.brandOverlay);
   const contextAssets = noHuman || animalOnly
     ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
     : assets;
@@ -640,6 +665,7 @@ function buildContext(body = {}, user = {}) {
     bgm_volume: Math.max(0, Math.min(1, Number(body.bgm_volume ?? body.bgmVolume ?? 0.16) || 0)),
     bgm_profile: cleanText(body.bgm_profile || body.bgmProfile || 'auto', 60),
     bgm_asset: bgmAsset && typeof bgmAsset === 'object' ? bgmAsset : null,
+    brand_overlay: brandOverlay,
     subtitle: subtitleEnabled,
     subtitle_style: subtitleStyle,
     subtitle_config: {
@@ -794,6 +820,11 @@ function contextPrompt(ctx) {
           : (ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。'))),
     ctx.pet_contract ? `宠物一致性合同：${JSON.stringify(ctx.pet_contract)}。每镜必须明确 expected_animals 和实际出镜宠物，不得增删、换品种、换毛色或把同一只复制成多只。` : '',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
+    ctx.brand_overlay?.enabled && ctx.brand_overlay?.authorization_confirmed
+      ? `品牌 Logo：已配置为后期授权素材叠加（${ctx.brand_overlay.position}，结尾 ${ctx.brand_overlay.end_duration_sec} 秒）。剧本只预留品牌落版，不得要求图片或视频模型生成、变形或仿制 Logo。`
+      : (ctx.brand_overlay?.enabled
+        ? '品牌 Logo：素材已上传但尚未确认授权，最终合成将阻断；剧本只能预留后期落版，不得要求图片或视频模型生成。'
+        : '品牌 Logo：未配置授权后期素材；如需求提到 Logo，只能预留后期落版，不得要求图片或视频模型生成。'),
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
     ctx.creative_direction && (
       ctx.creative_direction.raw
@@ -904,6 +935,7 @@ module.exports = {
   normalizeSceneSpec,
   normalizeCreativeDirection,
   normalizeSceneAssets,
+  normalizeBrandOverlay,
   normalizeProductionMode,
   inferVisibleTextPolicy,
   inferBriefTargetDuration,

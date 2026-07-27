@@ -3,8 +3,8 @@
     if (!file) throw new Error('请选择文件');
     if (typeof api !== 'function') throw new Error('上传接口未初始化');
     const fd = new FormData();
-    fd.append('file', file);
     fd.append('role', role);
+    fd.append('file', file);
     const r = await api('/api/new-story-ad/upload', { method: 'POST', body: fd });
     const asset = r.asset || r.data || {};
     const url = asset.image_url || asset.file_url || r.image_url || r.file_url || r.url || '';
