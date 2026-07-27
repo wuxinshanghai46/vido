@@ -84,10 +84,12 @@
   function render({ state = {}, within = () => null, getPersonSpec = () => '' } = {}) {
     const panel = within('#dhNsaAdStorySetupPanel');
     const next = within('#dhNsaAdStorySetupNext');
+    const continueButton = within('#dhNsaAdContinueStorySetup');
     const status = within('#dhNsaAdStorySetupStatus');
     const result = readiness(state, getPersonSpec);
     if (panel) panel.hidden = state.storySetupExpanded !== true;
     if (next) next.hidden = state.storySetupExpanded === true;
+    if (continueButton) continueButton.hidden = state.storySetupExpanded === true;
     if (status) {
       status.textContent = result.message;
       status.classList.toggle('is-ready', result.ready);

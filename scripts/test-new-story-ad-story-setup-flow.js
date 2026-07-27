@@ -8,21 +8,26 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const html = read('public/digital-human.html');
 const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
+const storySetupUi = read('public/js/new-story-ad/story-setup.js');
 
 const sceneHostIndex = html.indexOf('id="dhNsaAdSceneConfigHost"');
 const nextIndex = html.indexOf('id="dhNsaAdContinueStorySetup"');
+const statusIndex = html.indexOf('id="dhNsaAdStorySetupNext"');
 const panelIndex = html.indexOf('id="dhNsaAdStorySetupPanel"');
 const modeIndex = html.indexOf('id="dhNsaAdProductionMode"');
 const assistIndex = html.indexOf('id="dhNsaAdCreativeAssist"');
 const scriptIndex = html.indexOf('id="dhNsaAdStoryboard"');
-assert(sceneHostIndex > 0 && sceneHostIndex < nextIndex, '场景结果必须先于剧情设置下一步');
-assert(nextIndex < panelIndex && panelIndex < modeIndex && modeIndex < scriptIndex, '剧情设置必须在下一步后显示，并从面板底部生成剧本');
+assert(nextIndex > 0 && nextIndex < sceneHostIndex, '剧情设置下一步主按钮必须位于场景配置顶部');
+assert.strictEqual((html.match(/id="dhNsaAdContinueStorySetup"/g) || []).length, 1, '顶部只能保留一个剧情设置下一步主按钮');
+assert(sceneHostIndex < statusIndex && statusIndex < panelIndex, '场景结果后只保留资产就绪状态，再进入剧情设置面板');
+assert(panelIndex < modeIndex && modeIndex < scriptIndex, '剧情设置必须在资产状态后显示，并从面板底部生成剧本');
 assert(assistIndex > panelIndex && assistIndex < scriptIndex, '剧情与表演 AI 辅写必须位于剧本生成前');
 assert(html.includes('剧情呈现方式') && !html.includes('模式只决定生产和 QA 策略'), '视频基础信息必须改为真实用途说明');
 assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open"), '下一步只能打开剧情设置，不能直接生成剧本');
 assert(legacy.includes("dhNsaAdStoryboard: () => runStage('blueprint', btn)"), '面板底部按钮仍负责生成剧本');
 assert(legacy.includes("target?.id === 'dhNsaAdProductionMode'") && legacy.includes("markSourceDirty('creative')"), '剧情呈现方式修改必须失效旧剧本');
 assert(bootstrap.includes("'/js/new-story-ad/story-setup.js'"), '剧情设置模块必须在旧 UI 前按需加载');
+assert(storySetupUi.includes("continueButton.hidden = state.storySetupExpanded === true"), '打开剧情设置后必须隐藏顶部下一步按钮');
 
 const sandbox = {
   window: {
@@ -36,7 +41,7 @@ const sandbox = {
   setTimeout,
   clearTimeout,
 };
-vm.runInNewContext(read('public/js/new-story-ad/story-setup.js'), sandbox, { filename: 'story-setup.js' });
+vm.runInNewContext(storySetupUi, sandbox, { filename: 'story-setup.js' });
 const ui = sandbox.window.NewStoryAdStorySetup;
 const readyState = {
   context: { cast_mode: 'single', creative_direction: {} },

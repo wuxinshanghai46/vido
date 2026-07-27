@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-story-setup-flow-v36">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-setup-top-v37">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260727-story-setup-flow-v36"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-setup-top-v37"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -251,6 +251,7 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdContinueStorySetup" type="button">下一步：编写剧情与表演</button>
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-action-progress" id="dhNsaAdActionProgress" hidden></div>
@@ -502,7 +503,6 @@
               </div>
               <div class="dh-nsa-story-setup-next" id="dhNsaAdStorySetupNext">
                 <div><b>人物与场景形象确认后再写剧情</b><span id="dhNsaAdStorySetupStatus">请先完成当前人物/主体和全部场景形象。</span></div>
-                <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdContinueStorySetup" type="button">下一步：编写剧情与表演</button>
               </div>
               <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel" hidden>
                 <div class="dh-nsa-story-setup-heading">
