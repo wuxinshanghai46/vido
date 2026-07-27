@@ -24,6 +24,7 @@ assert(panelIndex < modeIndex && modeIndex < scriptIndex, '剧情设置必须在
 assert(assistIndex > panelIndex && assistIndex < scriptIndex, '剧情与表演 AI 辅写必须位于剧本生成前');
 assert(html.includes('剧情呈现方式') && !html.includes('模式只决定生产和 QA 策略'), '视频基础信息必须改为真实用途说明');
 assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open"), '下一步只能打开剧情设置，不能直接生成剧本');
+assert(legacy.includes("continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy)"), '下一步按钮可用时必须复用统一主操作指向效果');
 assert(legacy.includes("dhNsaAdStoryboard: () => runStage('blueprint', btn)"), '面板底部按钮仍负责生成剧本');
 assert(legacy.includes("target?.id === 'dhNsaAdProductionMode'") && legacy.includes("markSourceDirty('creative')"), '剧情呈现方式修改必须失效旧剧本');
 assert(bootstrap.includes("'/js/new-story-ad/story-setup.js'"), '剧情设置模块必须在旧 UI 前按需加载');

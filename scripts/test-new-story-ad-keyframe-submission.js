@@ -41,7 +41,7 @@ function testBrowserAndRouteGuardContract() {
   const queueIndex = route.indexOf('return queueTaskStage(', routeStart);
   assert(routeStart >= 0 && guardIndex > routeStart && queueIndex > guardIndex,
   'billing preflight must run before a background keyframe job is queued');
-  assert(html.includes('bootstrap.js?v=20260728-story-setup-top-v37'));
+  assert(html.includes('bootstrap.js?v=20260728-story-setup-cta-v38'));
   assert(html.includes('digital-human.js?v=20260721-unified-dialog-v20'));
   const sceneRouteStart = route.indexOf("router.post('/tasks/:id/scene-assets'");
   const sceneRepairRouteStart = route.indexOf("router.post('/tasks/:id/scene-assets/:sceneId/repair'");

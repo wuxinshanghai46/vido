@@ -2073,6 +2073,8 @@
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
     const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, personSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
     setButtonLock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
+    const continueStorySetupBtn = within('#dhNsaAdContinueStorySetup');
+    if (continueStorySetupBtn) continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy);
     setButtonLock('#dhNsaAdStoryboard', !state.storySetupConfirmed || !storySetupReady.ready, !state.storySetupConfirmed ? '请先点击“下一步：编写剧情与表演”' : storySetupReady.message);
     const storyboardBtn = within('#dhNsaAdStoryboard');
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
