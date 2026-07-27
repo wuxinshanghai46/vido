@@ -7,6 +7,9 @@ const { polishBlueprint } = require('./blueprintQualityService');
 const { BLUEPRINT_PROGRESS_TOTAL } = require('./blueprintProgressService');
 
 const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
+const CAUSAL_STORY_CONTRACT_VERSION = 'causal-story-v1';
+const CAUSAL_ARC_TYPES = new Set(['conflict_resolution', 'transformation', 'demonstration', 'journey']);
+const CAUSAL_ROLES = new Set(['setup', 'trigger', 'development', 'evidence', 'transformation', 'resolution', 'brand_closure']);
 
 function inferDialogueFunction(beat = {}, index = 0, total = 1) {
   const explicit = clean(beat.dialogue_function || beat.dialogue_intent || '', 40).toLowerCase().replace(/[\s-]+/g, '_');
@@ -26,6 +29,52 @@ function inferDialogueFunction(beat = {}, index = 0, total = 1) {
   if (index === 0) return 'setup_goal';
   if (index === total - 1) return 'resolution';
   return 'development';
+}
+
+function inferCausalRole(beat = {}, dialogueFunction = '', index = 0, total = 1) {
+  const explicit = clean(beat.causal_role || '', 40).toLowerCase().replace(/[\s-]+/g, '_');
+  if (CAUSAL_ROLES.has(explicit)) return explicit;
+  if (['setup_goal', 'obstacle', 'question'].includes(dialogueFunction)) return 'setup';
+  if (dialogueFunction === 'discovery') return index <= 0 ? 'trigger' : 'development';
+  if (dialogueFunction === 'proof') return 'evidence';
+  if (dialogueFunction === 'value_shift') return 'transformation';
+  if (['decision', 'result', 'resolution'].includes(dialogueFunction)) return 'resolution';
+  if (dialogueFunction === 'brand_closure') return 'brand_closure';
+  if (index === 0) return 'setup';
+  if (index === total - 1) return 'resolution';
+  return 'development';
+}
+
+function cleanList(value, maxItems = 12, maxText = 180) {
+  return (Array.isArray(value) ? value : (value ? [value] : []))
+    .map(item => clean(item, maxText))
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function normalizedBeatRefs(value = {}, beatCount = 0) {
+  const source = value && typeof value === 'object' ? value : {};
+  return Object.fromEntries(['setup', 'trigger', 'progression', 'result'].map(key => [
+    key,
+    (Array.isArray(source[key]) ? source[key] : [])
+      .map(Number)
+      .filter(index => Number.isInteger(index) && index >= 1 && index <= beatCount),
+  ]));
+}
+
+function normalizeNarrativeContract(value, beatCount = 0) {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+  if (!source) return null;
+  const arcType = clean(source.arc_type || '', 40).toLowerCase();
+  return {
+    version: CAUSAL_STORY_CONTRACT_VERSION,
+    arc_type: CAUSAL_ARC_TYPES.has(arcType) ? arcType : 'journey',
+    setup: clean(source.setup || source.initial_state || source.premise || '', 260),
+    trigger: clean(source.trigger || source.intervention || source.catalyst || '', 260),
+    progression: clean(source.progression || source.evidence || source.change || '', 320),
+    result: clean(source.result || source.outcome || source.resolution || '', 260),
+    beat_refs: normalizedBeatRefs(source.beat_refs, beatCount),
+  };
 }
 
 function allocateBeatDurations(beats = [], targetDuration = 30) {
@@ -57,23 +106,46 @@ function desiredBeatCount(ctx = {}) {
   return 0;
 }
 
-function explicitSegmentCount(ctx = {}) {
+function authoredStructureText(ctx = {}) {
   const brief = [
     ctx.brief,
     ctx.original_brief,
     ctx.story_structure,
-  ].filter(Boolean).join(' ');
-  const structureText = (brief.match(/(?:剧情结构|脚本结构|分镜结构|内容结构|结构)\s*[:：]?([\s\S]{0,1800})/) || [])[1] || brief;
+  ].filter(Boolean).join('\n');
+  return (brief.match(/(?:剧情结构|脚本结构|分镜结构|内容结构|结构)\s*[:：]?([\s\S]{0,6000})/) || [])[1] || brief;
+}
+
+function sequentialMarkerCount(text = '', patterns = []) {
   const nums = [];
-  const re = /(?:^|[\s。；;，,])([1-9]|1[0-8])\s*[\.、．:：]/g;
-  let match;
-  while ((match = re.exec(structureText))) nums.push(Number(match[1]));
-  const unique = [...new Set(nums)].sort((a, b) => a - b);
-  if (unique.length < 3) return 0;
-  for (let i = 0; i < unique.length; i += 1) {
-    if (unique[i] !== i + 1) return 0;
-  }
-  return unique.length;
+  patterns.forEach(pattern => {
+    let match;
+    pattern.lastIndex = 0;
+    while ((match = pattern.exec(text))) nums.push(Number(match[1]));
+  });
+  const unique = [...new Set(nums.filter(value => value >= 1 && value <= 18))].sort((a, b) => a - b);
+  if (unique.length < 2) return 0;
+  return unique.every((value, index) => value === index + 1) ? unique.length : 0;
+}
+
+function explicitSegmentCount(ctx = {}) {
+  const text = authoredStructureText(ctx);
+  return sequentialMarkerCount(text, [
+    /(?:^|[\s。；;，,])(?:\[|【)?\s*(?:镜头|分镜|shot)\s*([1-9]|1[0-8])\s*(?:\]|】|[:：、.\s]|$)/gim,
+    /(?:^|[\s。；;，,])第\s*([1-9]|1[0-8])\s*(?:镜|个镜头|个分镜)(?:[:：、.\s]|$)/gim,
+    /(?:^|[\r\n。；;])\s*([1-9]|1[0-8])\s*[\.、．:：]/gm,
+  ]);
+}
+
+function authoredSpeechPlan(ctx = {}) {
+  const text = authoredStructureText(ctx);
+  const matches = text.match(/(?:^|[\s；;。])(?:旁白|画外音|配音|VO|台词|对白|解说)\s*[:：]\s*[^\r\n；;。]+/gim) || [];
+  const lineCount = Math.min(18, matches.length);
+  const segmentCount = explicitSegmentCount(ctx);
+  return {
+    policy: segmentCount >= 2 && lineCount > 0 && lineCount < segmentCount ? 'authored_sparse' : 'full_track',
+    authored_line_count: lineCount,
+    segment_count: segmentCount,
+  };
 }
 
 function pacingProfile(ctx = {}) {
@@ -169,6 +241,11 @@ function mergeBeatGroup(group = [], index = 0) {
     selling_point: mergeText(group.map(beat => beat.selling_point), 120),
     visual_proof: mergeText(group.map(beat => beat.visual_proof), 180),
     action: mergeText(group.map(beat => beat.action), 120),
+    causal_role: first.causal_role || last.causal_role || '',
+    state_before: cleanList(first.state_before),
+    state_after: cleanList(last.state_after),
+    intended_changes: cleanList(group.flatMap(beat => cleanList(beat.intended_changes)), 16, 180),
+    visible_evidence: cleanList(group.flatMap(beat => cleanList(beat.visible_evidence)), 16, 180),
     spoken_line: mergeText(group.map(beat => beat.spoken_line).slice(0, 2), 100) || first.spoken_line || last.spoken_line || '',
     why_next: last.why_next || first.why_next || '',
   };
@@ -194,27 +271,42 @@ function normalizeBlueprint(blueprint, ctx) {
   const beatLimit = profile.maxReasonable;
   const characterSeed = `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const noHuman = ctx.cast_mode === 'no_human';
-  const normalizedBeats = beats.map((beat, idx) => ({
-    beat_index: Number(beat.beat_index || beat.index || idx + 1),
-    role: clean(beat.role || beat.story_role || 'story', 50),
-    subject_type: beat.subject_type || 'auto',
-    scene: clean(beat.scene || beat.location || '', 120),
-    shot_type: clean(beat.shot_type || beat.camera || '', 80),
-    plot: clean(beat.plot || beat.event || beat.description || '', 180),
-    visual_layers: Array.isArray(beat.visual_layers) ? beat.visual_layers.map(layer => ({
-      type: clean(layer?.type || layer?.kind || '', 40),
-      content: clean(layer?.content || layer?.visual || layer?.description || '', 180),
-    })).filter(layer => layer.type || layer.content) : [],
-    story_visual: clean(beat.story_visual || beat.story_moment || '', 180),
-    promo_visual: clean(beat.promo_visual || beat.product_visual || '', 180),
-    emotional_turn: clean(beat.emotional_turn || beat.emotion || beat.character_reaction || '', 120),
-    selling_point: clean(beat.selling_point || beat.benefit || beat.value_point || '', 120),
-    visual_proof: clean(beat.visual_proof || beat.evidence || beat.promo_visual || '', 180),
-    action: clean(beat.action || beat.solution_step || '', 120),
-    spoken_line: cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || fallbackSpokenLine(beat, idx, ctx), 100),
-    dialogue_function: inferDialogueFunction(beat, idx, beats.length),
-    why_next: clean(beat.why_next || '', 120),
-  })).filter(x => x.plot || x.story_visual || x.promo_visual || x.visual_proof || x.spoken_line);
+  const speechPlan = authoredSpeechPlan(ctx);
+  const normalizedBeats = beats.map((beat, idx) => {
+    const dialogueFunction = inferDialogueFunction(beat, idx, beats.length);
+    const explicitSpeech = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 100);
+    const speechMode = clean(beat.speech_mode || '', 30).toLowerCase().replace(/[\s-]+/g, '_');
+    const silent = speechPlan.policy === 'authored_sparse'
+      && (['silent', 'ambient_only'].includes(speechMode) || !explicitSpeech);
+    return {
+      beat_index: Number(beat.beat_index || beat.index || idx + 1),
+      role: clean(beat.role || beat.story_role || 'story', 50),
+      causal_role: inferCausalRole(beat, dialogueFunction, idx, beats.length),
+      subject_type: beat.subject_type || 'auto',
+      scene: clean(beat.scene || beat.location || '', 120),
+      shot_type: clean(beat.shot_type || beat.camera || '', 80),
+      plot: clean(beat.plot || beat.event || beat.description || '', 180),
+      visual_layers: Array.isArray(beat.visual_layers) ? beat.visual_layers.map(layer => ({
+        type: clean(layer?.type || layer?.kind || '', 40),
+        content: clean(layer?.content || layer?.visual || layer?.description || '', 180),
+      })).filter(layer => layer.type || layer.content) : [],
+      story_visual: clean(beat.story_visual || beat.story_moment || '', 180),
+      promo_visual: clean(beat.promo_visual || beat.product_visual || '', 180),
+      emotional_turn: clean(beat.emotional_turn || beat.emotion || beat.character_reaction || '', 120),
+      selling_point: clean(beat.selling_point || beat.benefit || beat.value_point || '', 120),
+      visual_proof: clean(beat.visual_proof || beat.evidence || beat.promo_visual || '', 180),
+      action: clean(beat.action || beat.solution_step || '', 120),
+      state_before: cleanList(beat.state_before || beat.entry_state, 12, 180),
+      state_after: cleanList(beat.state_after || beat.exit_state, 12, 180),
+      intended_changes: cleanList(beat.intended_changes || beat.intended_change || beat.changes, 12, 180),
+      visible_evidence: cleanList(beat.visible_evidence || beat.evidence_requirements || beat.visual_evidence, 12, 180),
+      spoken_line: silent ? '' : (explicitSpeech || cleanSpeech(fallbackSpokenLine(beat, idx, ctx), 100)),
+      speech_mode: silent ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
+        : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover'),
+      dialogue_function: dialogueFunction,
+      why_next: clean(beat.why_next || '', 120),
+    };
+  }).filter(x => x.plot || x.story_visual || x.promo_visual || x.visual_proof || x.spoken_line);
   const limitedBeats = compactBeatsByPacing(normalizedBeats, beatLimit);
   const timedBeats = allocateBeatDurations(limitedBeats, profile.targetDuration);
   return {
@@ -224,10 +316,16 @@ function normalizeBlueprint(blueprint, ctx) {
     visual_requirements: Array.isArray(bp.visual_requirements) ? bp.visual_requirements.map(x => clean(x, 80)).filter(Boolean) : [],
     target_beat_count: Number(targetCount || timedBeats.length || recommendedCount || 0) || 0,
     target_duration: profile.targetDuration,
+    causal_contract_required: ctx.require_causal_contract === true
+      || bp.causal_contract_required === true
+      || !!bp.narrative_contract,
+    narrative_contract: normalizeNarrativeContract(bp.narrative_contract, timedBeats.length),
     dialogue_contract: {
       version: DIALOGUE_CONTRACT_VERSION,
       target_chars_per_second: { min: 2.4, max: 4.8 },
       required_arc: ['setup_or_obstacle', 'development_or_proof', 'decision_or_resolution'],
+      speech_policy: speechPlan.policy,
+      authored_line_count: speechPlan.authored_line_count,
     },
     segment_plan: Array.isArray(bp.segment_plan) ? bp.segment_plan : [],
     characters: noHuman ? [] : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed),
@@ -236,16 +334,55 @@ function normalizeBlueprint(blueprint, ctx) {
   };
 }
 
+async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = {}) {
+  const expectedCount = explicitSegmentCount(ctx);
+  const actualCount = Array.isArray(payload?.beats) ? payload.beats.length : 0;
+  if (!expectedCount || actualCount === expectedCount) return payload;
+  const result = await modelGateway.generateText({
+    taskId,
+    stage: 'new_story_ad.blueprint_structure_repair',
+    systemPrompt: [
+      'You repair only the structure of a story-ad blueprint. Return strict JSON only.',
+      'The user-authored shot markers are authoritative. Produce exactly one beat for each marker, in the same order.',
+      'Do not merge, omit, reorder or invent user events. Preserve task facts, people, scenes, products and authored speech.',
+      'A shot without authored dialogue may use speech_mode silent or ambient_only and an empty spoken_line.',
+      'Keep all user-visible values in natural Simplified Chinese. Keep JSON keys and technical enums unchanged.',
+    ].join('\n'),
+    userPrompt: `Authoritative authored structure (${expectedCount} shots):\n${authoredStructureText(ctx).slice(0, 12000)}\n\nCurrent parsed blueprint (${actualCount} beats):\n${JSON.stringify(payload).slice(0, 22000)}\n\nReturn the complete blueprint with exactly ${expectedCount} beats.`,
+    maxTokens: 8000,
+    temperature: 0.2,
+  });
+  const parsed = await jsonRepair.parseOrRepair({
+    raw: result.text,
+    expected: 'object',
+    modelGateway,
+    taskId,
+    stage: 'new_story_ad.json_repair',
+  });
+  if (!Array.isArray(parsed.beats) || parsed.beats.length !== expectedCount) {
+    const error = new Error(`用户明确提供了 ${expectedCount} 个镜头，但结构修复仅返回 ${Array.isArray(parsed.beats) ? parsed.beats.length : 0} 个；本次结果未保存`);
+    error.code = 'BLUEPRINT_EXPLICIT_STRUCTURE_INCOMPLETE';
+    error.retryable = true;
+    error.details = { expected_beat_count: expectedCount, actual_beat_count: Array.isArray(parsed.beats) ? parsed.beats.length : 0 };
+    throw error;
+  }
+  return parsed;
+}
+
 async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
   const targetCount = desiredBeatCount(ctx);
   const profile = pacingProfile(ctx);
   const recommendedCount = profile.recommended;
   const beatLimit = profile.maxReasonable;
+  const speechPlan = authoredSpeechPlan(ctx);
   const systemPrompt = [
     'You are the story blueprint writer for the New Story Ad module.',
     'Return strict JSON only. Do not write markdown or backend explanations.',
     'All user-visible text values must be natural Simplified Chinese, including titles, logline, character names/descriptions, scene descriptions, plot, visuals, actions, spoken lines, purposes and continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
-    'Write a causal short story with character motivation, a visible obstacle, a meaningful turn and a concrete result. Do not write a feature checklist or a sequence of unrelated selling-point demonstrations.',
+    'Write a causal short story with a clear initial state, trigger or intervention, visible progression and concrete result. Do not write a feature checklist or a sequence of unrelated selling-point demonstrations.',
+    'Choose the most suitable open-domain causal arc: conflict_resolution, transformation, demonstration or journey. Do not fabricate a crisis, rejection, illness, failure or other negative state merely to satisfy a dramatic template.',
+    'Return narrative_contract version causal-story-v1 with arc_type, setup, trigger, progression, result and beat_refs. The contract must describe only facts supported by this task.',
+    'Every beat must include causal_role using setup, trigger, development, evidence, transformation, resolution or brand_closure, plus state_before, state_after, intended_changes and visible_evidence arrays.',
     'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
     'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
     'The spoken track must carry the story, not merely react to visuals. Do not hide motivation, obstacle, evidence, value change or decision only in plot, visual, action or why_next.',
@@ -268,7 +405,9 @@ async function generateBlueprint(ctx, { taskId = '', onProgress = null } = {}) {
     'characters.name must be a task-local formal person name when a person appears. If the user did not provide a name, generate a fresh stable name for this task; never use role placeholders or descriptions such as "elegant woman", "customer", "presenter" as final names.',
     'If cast_mode is no_human, characters must be an empty array and beats must not introduce human body parts, backs, silhouettes, hands, presenters, models or crowds unless the user explicitly asked for them.',
     'If cast_mode is animal, treat the animal/pet as the subject required by the user brief and do not convert it into a human presenter.',
-    'Every beat must include spoken_line. If the picture is a silent product, space, UI or proof shot, write a short narrator line instead of leaving it blank.',
+    speechPlan.policy === 'authored_sparse'
+      ? `The user authored ${speechPlan.authored_line_count} spoken line(s) across ${speechPlan.segment_count} explicit shots. Preserve this sparse speech plan: do not invent speech for silent shots; use speech_mode silent or ambient_only and an empty spoken_line there.`
+      : 'Every beat must include spoken_line. If the picture is a silent product, space, UI or proof shot, write a short narrator line instead of leaving it blank.',
     'spoken_line is not a subtitle field. It must contain the final words for dialogue or narrator voice only, without any prefix such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
     'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
     'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
@@ -288,11 +427,21 @@ Return JSON in this shape:
   "beat_style": "content_driven_visual_beats",
   "visual_requirements": ["story", "product", "material", "proof"],
   "target_beat_count": ${targetCount || recommendedCount || 0},
+  "narrative_contract": {
+    "version": "causal-story-v1",
+    "arc_type": "conflict_resolution/transformation/demonstration/journey",
+    "setup": "initial state or goal",
+    "trigger": "event, action or product intervention that starts change",
+    "progression": "filmable process and visible evidence",
+    "result": "observable result and commercial resolution",
+    "beat_refs": {"setup":[1],"trigger":[2],"progression":[2,3],"result":[4]}
+  },
   "segment_plan": [{"segment_id":"seg_1","name":"section","space_anchor":"fixed space or carrier","fixed_subjects":"fixed subjects/relationships","continuity_rules":["rules"]}],
   "characters": [{"name":"fresh stable formal person name for this task when a human appears; empty array for no_human mode","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
   "beats": [{
     "beat_index": 1,
     "role": "story function label",
+    "causal_role": "setup/trigger/development/evidence/transformation/resolution/brand_closure",
     "subject_type": "human_scene/product_only/ui_screen/proof_scene/environment/brand_endcard/auto",
     "scene": "place or carrier",
     "shot_type": "medium / close_up / insert / product_detail / reaction / endcard",
@@ -304,13 +453,18 @@ Return JSON in this shape:
     "selling_point": "commercial point proved by this beat",
     "visual_proof": "visible proof",
     "action": "who does what",
+    "state_before": ["observable state before this beat"],
+    "state_after": ["observable state after this beat"],
+    "intended_changes": ["what is allowed to change"],
+    "visible_evidence": ["what the audience can directly see proving the change"],
     "dialogue_function": "setup_goal/obstacle/question/discovery/proof/value_shift/decision/resolution/brand_closure/development",
+    "speech_mode": "dialogue/voiceover/silent/ambient_only",
     "spoken_line": "natural line heard in final video, without label prefix",
     "why_next": "why the next beat follows"
   }]
 }
 
-${ctx.shot_count ? `Beat count must equal the user-specified ${ctx.shot_count} shots.` : `Beat count is content-driven. Do not force the exact recommended number, but keep the result compact for the target duration; normal shots should have enough time to be understood, and only explicit fast-cut or dense step-by-step briefs should approach the upper bound ${beatLimit}.`}
+${ctx.shot_count ? `Beat count must equal the user-specified ${ctx.shot_count} shots.` : profile.explicitSegments ? `The user's explicit shot markers are authoritative. Beat count must equal ${profile.explicitSegments}; preserve every marked event in order and do not merge them.` : `Beat count is content-driven. Do not force the exact recommended number, but keep the result compact for the target duration; normal shots should have enough time to be understood, and only explicit fast-cut or dense step-by-step briefs should approach the upper bound ${beatLimit}.`}
 For multi-person stories, keep names, roles, relationships and speaker ownership stable across all beats.`;
 
   reportBlueprintProgress(onProgress, 'draft_generation', 1, '上下文和原创过审规则已准备，正在生成剧本初稿。');
@@ -331,11 +485,13 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
   });
   reportBlueprintProgress(onProgress, 'structure_validated', 3, '剧本结构已校验，正在检查中文表达和可拍性。');
   const language = await ensureChineseOutput({ payload: parsed, kind: 'blueprint', taskId, context: ctx });
+  const structuredPayload = await repairExplicitBlueprintStructure(ctx, language.payload, { taskId });
   reportBlueprintProgress(onProgress, 'language_checked', 4, '中文表达已检查，正在执行质量与版权/IP 风险审核。');
-  const firstPass = normalizeBlueprint(language.payload, ctx);
+  const causalCtx = { ...ctx, require_causal_contract: true };
+  const firstPass = normalizeBlueprint(structuredPayload, causalCtx);
   const polish = await polishBlueprint(ctx, firstPass, { taskId, onProgress });
   reportBlueprintProgress(onProgress, 'quality_approved', 5, '剧情质量和版权/IP 风险审核已通过，正在保存最终剧本。');
-  const normalized = normalizeBlueprint(polish.blueprint, ctx);
+  const normalized = normalizeBlueprint(polish.blueprint, causalCtx);
   normalized.model_meta = {
     used_model: result.used_model,
     fallback_used: result.fallback_used,
@@ -358,6 +514,8 @@ module.exports = {
   normalizeBlueprint,
   desiredBeatCount,
   pacingProfile,
+  explicitSegmentCount,
+  authoredSpeechPlan,
   recommendedBeatCount,
   softBeatLimit,
 };

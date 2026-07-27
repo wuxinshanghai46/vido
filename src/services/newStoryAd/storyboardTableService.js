@@ -435,7 +435,7 @@ Return JSON array for current beats only. Fields:
   "pets": [{"id":"stable pet id from pet_contract","name":"pet name or empty","type":"species/breed","action":"this shot action"}],
   "shot_type": "open cinematography description chosen for this beat",
   "shot_scope": "optional open task-authored scope; compatibility field only",
-  "surface_topology": {"mode":"open task-authored topology","seam_policy":"open task-authored seam rule","finish_distribution":"open task-authored distribution","notes":"optional task-specific structure only"},
+  "surface_topology": {"mode":"open task-authored topology","seam_policy":"open task-authored seam rule","finish_distribution":"open task-authored distribution","primary_surface_count":"explicit count or null","secondary_surface_policy":"auto/forbidden/task_defined","notes":"optional task-specific structure only"},
   "motion_effect": {"type":"open task-authored effect or none","source_state":"visible start state","target_state":"authored end state","timeline":"within-shot timing","intensity":"task-authored value","preserve_scene_geometry":true,"reference_asset_id":"optional exact target asset id","notes":"optional task-specific effect only"},
   "visual_layers": [{"type":"open task-authored layer name","content":"specific visible content"}],
   "story_visual": "optional, only if this shot needs story/character/emotion",

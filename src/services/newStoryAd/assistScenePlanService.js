@@ -21,6 +21,8 @@ function outputSchema() {
           "mode": "auto/continuous/segmented/modular",
           "seam_policy": "auto/hidden/visible/task_defined",
           "finish_distribution": "auto/uniform/gradient/regional/sample_comparison",
+          "primary_surface_count": "明确要求的主展示/材质平面数量；没有明确数量时为 null",
+          "secondary_surface_policy": "auto/forbidden/task_defined",
           "notes": "当前地点明确要求的表面结构"
         },
         "materialContract": {

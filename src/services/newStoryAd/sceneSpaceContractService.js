@@ -223,6 +223,10 @@ function normalizeRequestedTopology(input = {}) {
     mode: cleanText(source.mode || 'auto', 40),
     seam_policy: cleanText(source.seam_policy || source.seamPolicy || 'auto', 40),
     finish_distribution: cleanText(source.finish_distribution || source.finishDistribution || 'auto', 60),
+    primary_surface_count: Number.isInteger(Number(source.primary_surface_count ?? source.primarySurfaceCount))
+      ? Math.max(1, Math.min(12, Number(source.primary_surface_count ?? source.primarySurfaceCount)))
+      : null,
+    secondary_surface_policy: cleanText(source.secondary_surface_policy || source.secondarySurfacePolicy || 'auto', 40),
     notes: cleanText(source.notes || '', 500),
   };
 }
@@ -718,7 +722,8 @@ async function analyzeSceneViews(options = {}) {
       + 'The optional fifth layout image is a master-derived near-vertical top-down spatial survey of the same finished location. Use it primarily for topology, coordinates, access points and anchor placement, but also reject it when it depicts an unrelated location, anchor system, material identity or lighting design. '
       + 'For all five views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
       + 'Use requested.material_reference_available as the evidence flag. When it is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory; evaluate only the observable colour, grain, reflectance, roughness, directionality, patina, translucency or micro-relief cues explicitly stated in material_light. '
-      + 'For continuous hidden-seam surfaces, distinguish illumination from construction: a smooth reflection or lighting gradient is not a seam by itself. Count a seam only when there is a coherent geometric edge, gap, groove, recess or sustained boundary that visibly divides the primary plane; a full-height or full-width dividing line is valid failure evidence. '
+       + 'For continuous hidden-seam surfaces, distinguish illumination from construction: a smooth reflection or lighting gradient is not a seam by itself. Count a seam only when there is a coherent geometric edge, gap, groove, recess or sustained boundary that visibly divides the primary plane; a full-height or full-width dividing line is valid failure evidence. '
+      + 'When requested.surface_topology.primary_surface_count is a number, count the prominent task-material display/background planes in every non-layout view. Ordinary recessive room boundaries do not count, but a repeated feature wall, projecting return, task-material side plane, niche/alcove, pilaster, column or freestanding task-material panel does count as an additional plane. If the visible count differs from the request, fail requirement_qa and add SURFACE_TOPOLOGY_INVALID with the exact affected views. '
       + 'Independently evaluate photographic realism in every non-layout perspective. Look for physically plausible material response, naturally localized variation, task-appropriate maintenance/use evidence, real lens and exposure behavior, grounded contact shadows and non-procedural detail. Treat unnaturally perfect lawns, cloned foliage, spotless repeated surfaces, empty staged showroom perfection, plastic materials, synthetic HDR, impossible reflections and render-like lighting as synthetic signals. '
       + 'Return one JSON object with: pass boolean; status string; observed_summary string; '
       + 'requirement_qa object containing pass, layout_match_score, material_light_match_score, interaction_match_score, surface_topology_match_score, negative_compliance_score and mismatch_reasons; '
@@ -735,7 +740,7 @@ async function analyzeSceneViews(options = {}) {
       + 'Every zone label_zh is required and must be a concise Simplified Chinese display name. Keep id stable and language-neutral; never derive or replace id during translation. '
       + 'geometry_facts string array; materials string array; lighting object. '
       + 'Never copy placeholder scores. Calculate every score from the supplied images. pass=true cannot have a zero score. '
-      + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, required layout/material/light is missing, or a forbidden element appears. '
+      + 'Fail requirement_qa when a requested continuous surface becomes segmented/modular, a hidden-seam requirement becomes visibly jointed, explicit surface cardinality is violated, a forbidden secondary surface is added, required layout/material/light is missing, or a forbidden element appears. '
       + 'Fail cross_view_qa when fixed architecture, anchor placement, dominant material family or lighting logic changes. '
       + 'For a complete spatial lock, spatial_coverage_qa must fail if the near-vertical top-down layout reference is missing or role-invalid, reverse/side is not meaningfully different from master, interaction does not establish the action zone, or camera diversity is insufficient. '
       + 'A valid fifth layout view must use an 82-90 degree downward near-orthographic camera, fit the complete usable footprint and every scene boundary or task-defined edge inside one frame, make access points, fixed anchors, circulation and action-zone relations readable together, and remain the same location as the master. For enclosed spaces, the ceiling must be removed and walls may appear only as low cutaway perimeter boundaries. Reject any visible horizon, dominant vertical wall face, mild high-angle commercial shot, frontal elevation, close crop, missing perimeter or master reframe. '

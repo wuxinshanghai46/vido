@@ -32,6 +32,45 @@ const premiumBlueprint = {
   ],
 };
 
+premiumBlueprint.causal_contract_required = true;
+premiumBlueprint.narrative_contract = {
+  version: 'causal-story-v1',
+  arc_type: 'conflict_resolution',
+  setup: '交付前连接中断，任务尚未完成。',
+  trigger: '负责人切换到当前任务主体并重新验证关键链路。',
+  progression: '连接状态恢复，核心步骤重新跑通。',
+  result: '结果在截止时间前完成并发送。',
+  beat_refs: {
+    setup: [1],
+    trigger: [2],
+    progression: [2],
+    result: [3],
+  },
+};
+[
+  {
+    causal_role: 'setup',
+    state_before: ['交付任务仍在进行'],
+    state_after: ['连接中断且时间紧迫'],
+    intended_changes: ['确认失败边界'],
+    visible_evidence: ['连接状态变红和截止倒计时'],
+  },
+  {
+    causal_role: 'evidence',
+    state_before: ['关键链路不可用'],
+    state_after: ['关键链路恢复可用'],
+    intended_changes: ['完成验证并恢复连接'],
+    visible_evidence: ['连接状态由红转绿'],
+  },
+  {
+    causal_role: 'resolution',
+    state_before: ['链路已经恢复'],
+    state_after: ['结果完成并成功发送'],
+    intended_changes: ['完成交付'],
+    visible_evidence: ['完整结果页和发送时间'],
+  },
+].forEach((causalFields, index) => Object.assign(premiumBlueprint.beats[index], causalFields));
+
 async function main() {
   const originalGenerateText = modelGateway.generateText;
   modelGateway.generateText = async () => ({
@@ -60,6 +99,8 @@ async function main() {
       onProgress: progress => milestones.push(progress),
     });
     assert.equal(generated.beats.length, 3);
+    assert.equal(generated.narrative_contract.version, 'causal-story-v1');
+    assert(generated.beats.every(beat => beat.causal_role && beat.visible_evidence.length));
     assert.deepEqual(milestones.map(item => item.completed), [1, 2, 3, 4, 5]);
     assert.equal(milestones.at(-1).phase, 'quality_approved');
     assert.equal(generated.model_meta.rights_pass, true);

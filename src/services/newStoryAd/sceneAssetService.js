@@ -611,6 +611,8 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       : 'Use plausible lens behaviour, slight optical imperfection, natural exposure roll-off, restrained sensor detail and coherent constructed geometry. Avoid sterile perfection and perfectly mirrored staging.',
     surfaceTopology?.mode === 'continuous' || surfaceTopology?.seam_policy === 'hidden'
       ? 'Use real-world material scale while preserving one optically uninterrupted primary plane: show subtle scratches, dust and uneven reflections as continuous micro-variation, but show no joint, gap, groove, recess or full-span tonal boundary on that surface.'
+      : surfaceTopology?.primary_surface_count === 1
+        ? 'Use real-world material scale on exactly one prominent task-material plane. Construction detail may exist within that plane only when task-supported, but must not create projecting returns, repeated bays, niches, columns, secondary display walls or duplicated material planes.'
       : 'Use real-world material scale: visible panel seams, joints, bevels, contact shadows, subtle scratches, fingerprints, dust, uneven reflections and construction details where appropriate.',
     'Lighting must be believable: real fixture placement, soft falloff, mixed practical/ambient light, grounded shadows, no impossible glow, no floating highlights, no overly dramatic bloom.',
     outputRole === 'layout'

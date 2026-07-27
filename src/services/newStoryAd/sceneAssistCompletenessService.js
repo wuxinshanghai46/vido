@@ -28,7 +28,7 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}) {
   const requestedTopology = output.surfaceTopology || output.surface_topology;
   const existingTopology = source.surfaceTopology || source.surface_topology;
   const topologyInput = requestedTopology && typeof requestedTopology === 'object' ? requestedTopology : existingTopology;
-  const surfaceTopology = shotDesign.resolveSurfaceTopology(topologyInput, [materialLightText, topologyInput?.notes]);
+  const surfaceTopology = shotDesign.resolveSurfaceTopology(topologyInput, [layoutText, materialLightText, negativeText, topologyInput?.notes]);
   const materialContract = shotDesign.normalizeMaterialContract(
     output.materialContract || output.material_contract || source.materialContract || source.material_contract,
     { sourceText: materialLightText, topology: surfaceTopology, referenceAvailable: false },

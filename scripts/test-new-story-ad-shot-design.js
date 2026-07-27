@@ -398,4 +398,34 @@ const continuousScenePrompt = sceneAssets.buildSceneSheetPrompt({
 assert.match(continuousScenePrompt, /one optically uninterrupted primary plane/i);
 assert.doesNotMatch(continuousScenePrompt, /visible panel seams, joints/i);
 
+const singleWallTopology = shotDesign.resolveSurfaceTopology(undefined, [
+  '空间采用开放式布局，只设置一面主背景墙，展示任务指定材料。',
+  '材质说明同时提到铂棕纹理、做旧钢板和拉丝质感，但没有指定第二面墙。',
+]);
+assert.equal(singleWallTopology.primary_surface_count, 1, '普通“一面墙”必须编译为明确的几何数量');
+assert.equal(singleWallTopology.secondary_surface_policy, 'forbidden');
+assert.equal(singleWallTopology.mode, 'auto', '一面墙是数量约束，不应被误判为无缝连续表面');
+assert.equal(singleWallTopology.seam_policy, 'auto');
+assert.equal(singleWallTopology.finish_distribution, 'uniform', '未映射到具体区域的多个饰面词不能授权额外墙面');
+const singleWallText = shotDesign.surfacePrompt(singleWallTopology, 'environment');
+assert.match(singleWallText, /EXACTLY ONE prominent task-material display\/background plane/i);
+assert.match(singleWallText, /second feature wall.*column.*freestanding panel/i);
+assert.match(singleWallText, /Secondary surface policy: FORBIDDEN/i);
+
+const singleWallScenePrompt = sceneAssets.buildSceneSheetPrompt({
+  ctx: {
+    brief: '通用空间材料展示',
+    scene_spec: {
+      layoutText: '开放式空间中只设置一面主展示墙，其他边界退居背景。',
+      materialLightText: '主墙呈现任务指定金属纹理；材料说明还包含做旧和拉丝观察词。',
+    },
+  },
+});
+assert.match(singleWallScenePrompt, /EXACTLY ONE prominent task-material display\/background plane/i);
+assert.match(singleWallScenePrompt, /exactly one prominent task-material plane/i);
+assert.doesNotMatch(singleWallScenePrompt, /visible panel seams, joints, bevels/i);
+
+const genericMultiWallTopology = shotDesign.resolveSurfaceTopology(undefined, '完整室内空间，按任务需要设置多面围护墙体。');
+assert.strictEqual(genericMultiWallTopology, undefined, '没有单墙意图的通用空间不得被全局强制成一面墙');
+
 console.log('new-story-ad shot design tests passed');

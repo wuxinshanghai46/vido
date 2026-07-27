@@ -16,10 +16,27 @@ async function generateBlueprintStage(taskId, options = {}, { versionedBlueprint
     message: '上下文和原创过审规则已准备，正在生成剧本初稿。',
   }, { generationId });
   const previous = storage.getOutput(taskId, 'blueprint') || {};
-  const blueprint = versionedBlueprint(await generateBlueprint(ctx, {
-    taskId,
-    onProgress: progress => blueprintProgress.update(taskId, progress, { generationId }),
-  }), previous);
+  let generated;
+  try {
+    generated = await generateBlueprint(ctx, {
+      taskId,
+      onProgress: progress => blueprintProgress.update(taskId, progress, { generationId }),
+    });
+  } catch (error) {
+    if (error?.quality_diagnostics || error?.rejected_blueprint || error?.details) {
+      storage.saveOutput(taskId, 'blueprint_rejection_diagnostic', {
+        reusable: false,
+        code: cleanText(error.code || 'BLUEPRINT_GENERATION_FAILED', 100),
+        message: cleanText(error.message || '', 1200),
+        quality_diagnostics: error.quality_diagnostics || null,
+        structure_diagnostics: error.details || null,
+        rejected_blueprint: error.rejected_blueprint || null,
+        created_at: new Date().toISOString(),
+      });
+    }
+    throw error;
+  }
+  const blueprint = versionedBlueprint(generated, previous);
   if (!Array.isArray(blueprint.beats) || !blueprint.beats.length) {
     const error = new Error('剧本模型没有返回可用镜头，本次结果未保存；请重新生成剧本');
     error.code = 'BLUEPRINT_OUTPUT_EMPTY';
@@ -27,6 +44,7 @@ async function generateBlueprintStage(taskId, options = {}, { versionedBlueprint
     throw error;
   }
   storage.saveOutput(taskId, 'blueprint', blueprint);
+  storage.deleteOutput(taskId, 'blueprint_rejection_diagnostic');
   storage.saveStage(taskId, 'blueprint', { status: 'done', output_summary: `${blueprint.beats.length} 个剧情 beat`, diagnostics: blueprint.model_meta || {} });
   const finalProgress = blueprintProgress.update(taskId, {
     phase: 'persisted', completed: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL, total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,

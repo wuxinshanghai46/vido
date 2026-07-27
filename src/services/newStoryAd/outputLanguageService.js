@@ -11,6 +11,8 @@ const VISIBLE_KEYS = new Set([
   'composition', 'subject_position', 'ambient_sound', 'sfx', 'music_cue', 'voiceover_timing',
   'content', 'space_anchor', 'fixed_subjects', 'continuity_rules',
   'business_boundary', 'advertised_subject', 'story_strategy', 'forbidden', 'usage',
+  'setup', 'trigger', 'progression', 'result', 'state_before', 'state_after',
+  'intended_changes', 'intended_change', 'visible_evidence', 'evidence_requirements',
 ]);
 
 function normalizeVisibleTextPolicy(context = {}) {

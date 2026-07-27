@@ -3626,7 +3626,7 @@ async function assistBrief(body = {}, user = {}) {
     "voiceover": "保留或按明确要求微调的台词/旁白",
     "purpose": "本镜叙事或广告目的",
     "shot_scope": "开放的任务语义键；没有明确需要时写 auto，不得套行业模板",
-    "surface_topology": {"mode":"开放任务语义键或 auto","seam_policy":"开放任务语义键或 auto","finish_distribution":"开放任务语义键或 auto","notes":"当前任务证据支持的专属补充"},
+    "surface_topology": {"mode":"开放任务语义键或 auto","seam_policy":"开放任务语义键或 auto","finish_distribution":"开放任务语义键或 auto","primary_surface_count":"明确数量或 null","secondary_surface_policy":"auto/forbidden/task_defined","notes":"当前任务证据支持的专属补充"},
     "motion_effect": {"type":"开放任务语义键或 none","source_state":"起始状态","target_state":"目标状态","timeline":"按本镜时长编写的时间轴","intensity":"low/medium/high","preserve_scene_geometry":true,"reference_asset_id":"已有素材 ID 或空","notes":"当前任务专属效果补充"},
     "scene_view": "从当前所选场景资产 available_views 中复制开放镜位 ID",
     "scene_zone": "使用当前任务已有空间区域，不编造新场景",

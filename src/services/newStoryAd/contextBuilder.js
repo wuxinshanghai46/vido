@@ -206,17 +206,19 @@ function normalizeSceneAssets(input) {
 
 function normalizeSceneSpec(input = {}) {
   const raw = input && typeof input === 'object' ? input : {};
+  const layoutText = cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600);
   const materialLightText = cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600);
+  const negativeText = cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500);
   const surfaceTopology = shotDesign.resolveSurfaceTopology(
     raw.surfaceTopology || raw.surface_topology,
-    [materialLightText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
+    [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
   );
   return {
     mode: cleanText(raw.mode || raw.sceneMode || 'auto', 40),
-    layoutText: cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600),
+    layoutText,
     materialLightText,
     interactionText: cleanText(raw.interactionText || raw.interaction_text || raw.interaction || raw.camera || '', 500),
-    negativeText: cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500),
+    negativeText,
     surfaceTopology,
     materialContract: shotDesign.normalizeMaterialContract(raw.materialContract || raw.material_contract, {
       sourceText: materialLightText,

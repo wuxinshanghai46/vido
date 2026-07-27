@@ -8,6 +8,11 @@ const CLICHE_PATTERNS = [
 ];
 const BLUEPRINT_RIGHTS_POLICY_VERSION = 'original-rights-v2';
 const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
+const CAUSAL_STORY_CONTRACT_VERSION = 'causal-story-v1';
+const CAUSAL_ARC_TYPES = new Set(['conflict_resolution', 'transformation', 'demonstration', 'journey']);
+const CAUSAL_ROLES = new Set(['setup', 'trigger', 'development', 'evidence', 'transformation', 'resolution', 'brand_closure']);
+const DIALOGUE_FUNCTIONS = new Set(['setup_goal', 'obstacle', 'question', 'discovery', 'proof', 'value_shift', 'decision', 'result', 'resolution', 'brand_closure', 'development']);
+const SPEECH_MODES = new Set(['dialogue', 'voiceover', 'silent', 'ambient_only']);
 const EXPLICIT_GENERATED_LOGO_PATTERN = /(?:logo|标志|商标|品牌字样).{0,18}(?:生成|形成|汇聚|变形|浮现|拼成|长出)|(?:生成|形成|汇聚|变形|浮现|拼成|长出).{0,18}(?:logo|标志|商标|品牌字样)/i;
 const BRAND_MARK_PATTERN = /(?:品牌\s*)?(?:logo|标志|商标|品牌字样)/gi;
 const BRAND_VISUAL_FIELDS = ['plot', 'visual', 'story_visual', 'promo_visual', 'action', 'visual_proof'];
@@ -57,6 +62,111 @@ function genericReactionLine(value = '') {
     || (/^(?:嗯|哦|啊|咦|原来|没想到)/.test(spoken) && spoken.length <= 7);
 }
 
+function stringList(value, limit = 12) {
+  return (Array.isArray(value) ? value : (value ? [value] : []))
+    .map(clean)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function normalizedCausalRole(beat = {}, index = 0, total = 1) {
+  const explicit = clean(beat.causal_role).toLowerCase().replace(/[\s-]+/g, '_');
+  if (CAUSAL_ROLES.has(explicit)) return explicit;
+  const fn = clean(beat.dialogue_function || beat.dialogue_intent).toLowerCase().replace(/[\s-]+/g, '_');
+  if (['setup_goal', 'obstacle', 'question'].includes(fn)) return 'setup';
+  if (['discovery', 'development'].includes(fn)) return index <= 0 ? 'trigger' : 'development';
+  if (fn === 'proof') return 'evidence';
+  if (fn === 'value_shift') return 'transformation';
+  if (['decision', 'result', 'resolution'].includes(fn)) return 'resolution';
+  if (fn === 'brand_closure') return 'brand_closure';
+  const role = clean(`${beat.role || ''} ${beat.purpose || ''}`);
+  if (/品牌|落版|收束|结尾/.test(role)) return 'brand_closure';
+  if (/结果|解决|决定|完成|满足|认证/.test(role)) return 'resolution';
+  if (/证明|证据|验证|对比/.test(role)) return 'evidence';
+  if (/转折|转变|变化|发现|觉察/.test(role)) return 'transformation';
+  if (/触发|开始|启动|介入/.test(role)) return 'trigger';
+  if (/冲突|问题|困难|受阻|目标|需求|建立/.test(role)) return 'setup';
+  if (index === 0) return 'setup';
+  if (index === total - 1) return 'resolution';
+  return 'development';
+}
+
+function orderedCausalStages(beats = []) {
+  const roles = beats.map((beat, index) => normalizedCausalRole(beat, index, beats.length));
+  const setupIndex = roles.findIndex(role => role === 'setup');
+  const developmentIndex = roles.findIndex((role, index) => index > setupIndex
+    && ['trigger', 'development', 'evidence', 'transformation'].includes(role));
+  const resolutionIndex = roles.findIndex((role, index) => index > developmentIndex
+    && ['resolution', 'brand_closure'].includes(role));
+  return {
+    roles,
+    setup_index: setupIndex,
+    development_index: developmentIndex,
+    resolution_index: resolutionIndex,
+    pass: setupIndex >= 0 && developmentIndex > setupIndex && resolutionIndex > developmentIndex,
+  };
+}
+
+function contractBeatRefs(contract = {}, key = '', beatCount = 0) {
+  const refs = contract.beat_refs?.[key];
+  return (Array.isArray(refs) ? refs : [])
+    .map(Number)
+    .filter(index => Number.isInteger(index) && index >= 1 && index <= beatCount);
+}
+
+function beatHasCausalEvidence(beat = {}) {
+  const before = stringList(beat.state_before || beat.entry_state);
+  const after = stringList(beat.state_after || beat.exit_state);
+  return !!(
+    (before.length && after.length)
+    || stringList(beat.intended_changes || beat.intended_change).length
+    || stringList(beat.visible_evidence || beat.evidence_requirements).length
+    || clean(beat.why_next)
+    || clean(beat.emotional_turn)
+    || clean(beat.visual_proof || beat.evidence)
+  );
+}
+
+/**
+ * 通用剧情因果检查只验证结构，不按行业、场景或中文展示标签写死。
+ * 新剧本使用 causal-story-v1 合同；历史剧本继续从稳定的技术职责推导。
+ */
+function assessCausalProgression(blueprint = {}) {
+  const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const ordered = orderedCausalStages(beats);
+  const contract = blueprint.narrative_contract && typeof blueprint.narrative_contract === 'object'
+    ? blueprint.narrative_contract
+    : null;
+  const issues = [];
+  const contractRequired = blueprint.causal_contract_required === true;
+
+  if (contractRequired && contract?.version !== CAUSAL_STORY_CONTRACT_VERSION) {
+    issues.push('缺少可验证的通用因果叙事合同');
+  }
+  if (contract?.version === CAUSAL_STORY_CONTRACT_VERSION) {
+    if (!CAUSAL_ARC_TYPES.has(clean(contract.arc_type).toLowerCase())) issues.push('叙事合同缺少有效的通用弧线类型');
+    for (const key of ['setup', 'trigger', 'progression', 'result']) {
+      if (!clean(contract[key])) issues.push(`叙事合同缺少${key}阶段`);
+      if (!contractBeatRefs(contract, key, beats.length).length) issues.push(`叙事合同的${key}阶段没有绑定镜头`);
+    }
+  }
+  if (!ordered.pass) issues.push('缺少按顺序可验证的起始、推进与结果');
+
+  const evidenceCount = beats.filter(beatHasCausalEvidence).length;
+  if (contractRequired && evidenceCount < Math.min(2, Math.max(1, beats.length - 1))) {
+    issues.push('剧情缺少跨镜头可观察的状态变化或结果证据');
+  }
+
+  return {
+    pass: issues.length === 0,
+    issues: Array.from(new Set(issues)),
+    contract_version: contract?.version || '',
+    arc_type: clean(contract?.arc_type).toLowerCase(),
+    ordered_stages: ordered,
+    evidence_beat_count: evidenceCount,
+  };
+}
+
 function assessDialogueNarrative(blueprint = {}) {
   const contract = blueprint.dialogue_contract || {};
   if (contract.version !== DIALOGUE_CONTRACT_VERSION) {
@@ -71,28 +181,42 @@ function assessDialogueNarrative(blueprint = {}) {
   const totalCharacters = counts.reduce((sum, count) => sum + count, 0);
   const minRate = Math.max(1.8, Number(contract.target_chars_per_second?.min || 2.4) || 2.4);
   const maxRate = Math.max(minRate, Number(contract.target_chars_per_second?.max || 4.8) || 4.8);
-  const minTotal = Math.max(beats.length * 6, Math.round(targetDuration * minRate));
+  const sparse = contract.speech_policy === 'authored_sparse';
+  const authoredLineCount = Math.max(0, Number(contract.authored_line_count || 0) || 0);
+  const voicedBeatCount = lines.filter(Boolean).length;
+  const minTotal = sparse ? 0 : Math.max(beats.length * 6, Math.round(targetDuration * minRate));
   const maxTotal = Math.ceil(targetDuration * maxRate);
   const issues = [];
-  if (totalCharacters < minTotal) issues.push(`台词总信息量不足：${targetDuration} 秒至少约 ${minTotal} 个有效字，当前 ${totalCharacters} 个`);
+  const warnings = [];
+  if (!sparse && totalCharacters < minTotal) issues.push(`台词总信息量不足：${targetDuration} 秒至少约 ${minTotal} 个有效字，当前 ${totalCharacters} 个`);
   if (totalCharacters > maxTotal) issues.push(`台词总量超过自然口播容量：${targetDuration} 秒最多约 ${maxTotal} 个有效字，当前 ${totalCharacters} 个`);
+  if (sparse && authoredLineCount && voicedBeatCount > authoredLineCount) {
+    issues.push(`用户只提供了 ${authoredLineCount} 处口播，当前生成了 ${voicedBeatCount} 处，不能擅自给静默镜头补台词`);
+  }
 
   beats.forEach((beat, index) => {
     const n = index + 1;
     const duration = Math.max(1, Number(beat.duration || beat.duration_sec || targetDuration / Math.max(1, beats.length)) || 1);
     const fn = clean(beat.dialogue_function || beat.dialogue_intent);
+    const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+    const silent = sparse && (['silent', 'ambient_only'].includes(speechMode) || !lines[index]);
     const minimum = fn === 'brand_closure' ? 4 : Math.max(6, Math.round(duration * 1.8));
+    const hardMinimum = Math.max(4, Math.ceil(minimum * 0.85));
     const maximum = Math.max(18, Math.ceil(duration * 5.2));
-    if (counts[index] < minimum) issues.push(`第 ${n} 镜台词信息量不足：${duration} 秒至少约 ${minimum} 个有效字，当前 ${counts[index]} 个`);
-    if (counts[index] > maximum) issues.push(`第 ${n} 镜台词超过镜头口播容量：${duration} 秒最多约 ${maximum} 个有效字，当前 ${counts[index]} 个`);
+    if (!sparse && !silent && counts[index] < hardMinimum) issues.push(`第 ${n} 镜台词信息量不足：${duration} 秒建议约 ${minimum} 个有效字，硬下限 ${hardMinimum} 个，当前 ${counts[index]} 个`);
+    else if (!silent && counts[index] < minimum) warnings.push(`第 ${n} 镜台词略低于建议密度：建议约 ${minimum} 个有效字，当前 ${counts[index]} 个`);
+    if (!silent && counts[index] > maximum) issues.push(`第 ${n} 镜台词超过镜头口播容量：${duration} 秒最多约 ${maximum} 个有效字，当前 ${counts[index]} 个`);
     if (!fn) issues.push(`第 ${n} 镜缺少 dialogue_function，无法验证台词在故事中的职责`);
-    if (genericReactionLine(lines[index])) issues.push(`第 ${n} 镜台词只有泛化反应，没有推进意图、证据或决定`);
+    if (!silent && genericReactionLine(lines[index])) issues.push(`第 ${n} 镜台词只有泛化反应，没有推进意图、证据或决定`);
   });
 
-  const stages = new Set(beats.map(beat => dialogueArcStage(beat.dialogue_function || beat.dialogue_intent)).filter(Boolean));
-  if (beats.length >= 3 && !stages.has('setup')) issues.push('台词弧线缺少目标、问题或阻力');
-  if (beats.length >= 3 && !stages.has('development')) issues.push('台词弧线缺少发现、证据或价值转变');
-  if (beats.length >= 3 && !stages.has('resolution')) issues.push('台词弧线缺少决定、结果或品牌收束');
+  const stages = new Set(beats
+    .filter((beat, index) => !sparse || !!lines[index])
+    .map(beat => dialogueArcStage(beat.dialogue_function || beat.dialogue_intent))
+    .filter(Boolean));
+  if (!sparse && beats.length >= 3 && !stages.has('setup')) issues.push('台词弧线缺少目标、问题或阻力');
+  if (!sparse && beats.length >= 3 && !stages.has('development')) issues.push('台词弧线缺少发现、证据或价值转变');
+  if (!sparse && beats.length >= 3 && !stages.has('resolution')) issues.push('台词弧线缺少决定、结果或品牌收束');
 
   const meaningful = lines.map(line => line.replace(/[^\u3400-\u9fffA-Za-z0-9]/g, ''));
   const repeatedOpeners = new Map();
@@ -109,6 +233,7 @@ function assessDialogueNarrative(blueprint = {}) {
   return {
     pass: issues.length === 0,
     issues: Array.from(new Set(issues)),
+    warnings: Array.from(new Set(warnings)),
     enforced: true,
     metrics: {
       target_duration: targetDuration,
@@ -116,6 +241,9 @@ function assessDialogueNarrative(blueprint = {}) {
       chars_per_second: Math.round((totalCharacters / targetDuration) * 100) / 100,
       min_total_characters: minTotal,
       max_total_characters: maxTotal,
+      speech_policy: sparse ? 'authored_sparse' : 'full_track',
+      voiced_beat_count: voicedBeatCount,
+      authored_line_count: authoredLineCount,
       arc_stages: [...stages],
     },
   };
@@ -172,6 +300,7 @@ function assessBlueprintRights(blueprint = {}) {
 
 function assessBlueprintQuality(blueprint = {}) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const sparse = blueprint.dialogue_contract?.speech_policy === 'authored_sparse';
   const issues = [];
   if (!clean(blueprint.logline)) issues.push('缺少清晰的故事主线');
   if (CLICHE_PATTERNS.some(pattern => pattern.test(`${clean(blueprint.story_title)} ${clean(blueprint.logline)}`))) issues.push('标题或故事主线存在广告套话');
@@ -184,7 +313,8 @@ function assessBlueprintQuality(blueprint = {}) {
     if (!visual) issues.push(`第 ${n} 镜缺少具体可拍画面`);
     if (!action) issues.push(`第 ${n} 镜缺少独立动作设计`);
     if (visual && action && similarity(visual, action) >= 0.72) issues.push(`第 ${n} 镜画面与动作重复`);
-    if (!spoken) issues.push(`第 ${n} 镜缺少可说出口的台词`);
+    const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+    if (!spoken && !(sparse && ['silent', 'ambient_only'].includes(speechMode))) issues.push(`第 ${n} 镜缺少可说出口的台词`);
     const spokenWithoutDirections = spoken.replace(/^[（(][^）)]*[）)]\s*/g, '').replace(/^[…。.，,、\s]+|[…。.，,、\s]+$/g, '');
     if (spoken && !spokenWithoutDirections) issues.push(`第 ${n} 镜台词只有表演提示，没有实际对白`);
     if (/^[（(].*[）)]/.test(spoken)) issues.push(`第 ${n} 镜台词混入表演提示`);
@@ -194,8 +324,8 @@ function assessBlueprintQuality(blueprint = {}) {
   });
   const spokenText = beats.map(beat => clean(beat.spoken_line || beat.voiceover || '')).join(' ');
   if (CLICHE_PATTERNS.some(pattern => pattern.test(spokenText))) issues.push('整体文案存在广告套话');
-  const roles = beats.map(beat => clean(beat.role || beat.purpose)).join(' ');
-  if (beats.length >= 4 && !/(冲突|受阻|失败|危机|压力|问题|转折|反转|结果|解决|收束)/.test(roles)) issues.push('缺少冲突、转折与结果的因果推进');
+  const causal = assessCausalProgression(blueprint);
+  issues.push(...causal.issues);
   const dialogue = assessDialogueNarrative(blueprint);
   issues.push(...dialogue.issues);
   const rights = assessBlueprintRights(blueprint);
@@ -204,6 +334,7 @@ function assessBlueprintQuality(blueprint = {}) {
     pass: issues.length === 0,
     issues: Array.from(new Set(issues)),
     score: Math.max(0, Math.round((1 - Math.min(0.8, issues.length * 0.08)) * 100) / 100),
+    causal,
     dialogue,
     rights,
   };
@@ -218,6 +349,51 @@ function preserveCharacterNames(original = {}, candidate = {}) {
     }));
   }
   return result;
+}
+
+function normalizedCandidateContract(value = {}, fallback = {}) {
+  const source = value && typeof value === 'object' ? value : {};
+  const previous = fallback && typeof fallback === 'object' ? fallback : {};
+  const arcType = clean(source.arc_type || previous.arc_type).toLowerCase();
+  const beatRefs = source.beat_refs && typeof source.beat_refs === 'object' ? source.beat_refs : previous.beat_refs;
+  return {
+    version: CAUSAL_STORY_CONTRACT_VERSION,
+    arc_type: CAUSAL_ARC_TYPES.has(arcType) ? arcType : (previous.arc_type || 'journey'),
+    setup: clean(source.setup || previous.setup),
+    trigger: clean(source.trigger || previous.trigger),
+    progression: clean(source.progression || previous.progression),
+    result: clean(source.result || previous.result),
+    beat_refs: Object.fromEntries(['setup', 'trigger', 'progression', 'result'].map(key => [
+      key,
+      (Array.isArray(beatRefs?.[key]) ? beatRefs[key] : []).map(Number).filter(Number.isInteger),
+    ])),
+  };
+}
+
+function mergePolishedBlueprint(original = {}, candidate = {}) {
+  const merged = mergeVisibleStrings(original, candidate);
+  if (candidate.narrative_contract && typeof candidate.narrative_contract === 'object') {
+    merged.narrative_contract = normalizedCandidateContract(candidate.narrative_contract, original.narrative_contract);
+  }
+  if (Array.isArray(merged.beats) && Array.isArray(candidate.beats)) {
+    merged.beats = merged.beats.map((beat, index) => {
+      const next = candidate.beats[index] || {};
+      const causalRole = clean(next.causal_role).toLowerCase().replace(/[\s-]+/g, '_');
+      const dialogueFunction = clean(next.dialogue_function || next.dialogue_intent).toLowerCase().replace(/[\s-]+/g, '_');
+      const speechMode = clean(next.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+      return {
+        ...beat,
+        ...(CAUSAL_ROLES.has(causalRole) ? { causal_role: causalRole } : {}),
+        ...(DIALOGUE_FUNCTIONS.has(dialogueFunction) ? { dialogue_function: dialogueFunction } : {}),
+        ...(SPEECH_MODES.has(speechMode) ? { speech_mode: speechMode } : {}),
+        state_before: stringList(next.state_before || beat.state_before),
+        state_after: stringList(next.state_after || beat.state_after),
+        intended_changes: stringList(next.intended_changes || next.intended_change || beat.intended_changes),
+        visible_evidence: stringList(next.visible_evidence || next.evidence_requirements || beat.visible_evidence),
+      };
+    });
+  }
+  return merged;
 }
 
 async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, attempt = 1, maxAttempts = 3, onProgress = null } = {}) {
@@ -237,12 +413,18 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
     stage: 'new_story_ad.blueprint_polish',
     systemPrompt: [
       '你是资深广告导演与中文剧情文案总监。只返回严格 JSON 对象。',
-      '把现有蓝图精修成一条真正可拍、有人物动机、有冲突、有转折、有结果的精品短剧情广告，而不是功能清单、产品说明书或卖点口播合集。',
+      '把现有蓝图精修成一条真正可拍、有明确因果推进和可见结果的精品短剧情广告，而不是功能清单、产品说明书或卖点口播合集。',
+      '根据当前任务选择 conflict_resolution、transformation、demonstration 或 journey 中最合适的通用叙事弧线；不得为了形式完整强行制造用户没有要求的危机、失败、拒绝、不适或负面状态。',
+      'narrative_contract 必须使用 causal-story-v1，并填写 setup、trigger、progression、result 及对应 beat_refs。每镜 causal_role 必须使用 setup、trigger、development、evidence、transformation、resolution、brand_closure 之一。',
+      '每镜用 state_before、state_after、intended_changes、visible_evidence 记录真实可拍的变化；这些内容只能来自当前用户需求、人物、宠物、产品和场景合同。',
       '所有行业通用：只依据当前任务内容创作，不套用固定行业、固定场景、固定人物或固定故事模板。',
       '每个卖点必须由人物选择、可见动作、界面/产品反馈或结果变化证明；不要让人物直接念卖点。',
       '台词必须像真人会说的话，简短、自然、有上下文；避免“宇宙般、行业领先、为您赋能、最大化预算、更快更智能、一站式”等广告套话。',
       '台词必须承担故事推进，不能把人物目标、阻力、发现、可见证据、价值变化和最终决定只写在 plot、visual、action 或 why_next 中。',
-      '保持每镜 dialogue_function 不变，并让 spoken_line 真正完成该职责；整条片子的台词必须形成“目标/阻力 → 发现/证据 → 决定/结果”的听觉叙事弧线。',
+      '允许在不改变镜头事实、数量和顺序的前提下，修正错误的 dialogue_function 与 speech_mode，使职责和实际台词一致。',
+      safeBlueprint.dialogue_contract?.speech_policy === 'authored_sparse'
+        ? `用户采用稀疏口播：最多保留 ${safeBlueprint.dialogue_contract?.authored_line_count || 0} 个有声镜头。不得给 silent 或 ambient_only 镜头新增台词；剧情因果可由可见动作、状态与证据完成。`
+        : '整条片子的台词必须形成“目标/阻力 → 发现/证据 → 决定/结果”的听觉叙事弧线。',
       '按 dialogue_contract 的口播密度修正台词。正常 4-6 秒镜头通常需要约 10-22 个有意义的中文字，品牌落版可以更短；简短不等于空泛。',
       '禁止用“原来……可以这样做”“就是它了”“太棒了”等泛化反应充当整句；每句至少补入具体意图、问题、材质/产品证据、后果或决定之一。',
       '相邻镜头不要重复“原来”“没想到”等相同开头，也不要依靠连续省略号制造虚假的情绪推进。',
@@ -256,7 +438,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '保持原故事事实、广告主体、人物身份与姓名、镜头数量和顺序，不得增加未经用户提供的功能、数据、品牌背书或价格承诺。',
       '结尾行动号召应自然承接剧情结果；品牌名称可以简洁说出，视觉品牌标识必须使用已授权素材后期叠加，不喊空洞口号。',
       '发现的问题必须逐条消除；不要因为原文已有某个表达就保留翻译腔、第三方 Logo、夸张隐喻或空洞口号，可以在不改变事实的前提下彻底重写这些句子。',
-      'role 和剧情推进必须清楚体现冲突、转折与结果的因果关系；可以使用更自然的具体名称，但不能把整条片子重新写成并列卖点。',
+      '用户可见的 role 可以使用自然名称，不需要包含“冲突、转折、结果”等固定词；平台通过 narrative_contract 和 causal_role 校验因果关系。',
       '所有用户可见内容使用自然简体中文；JSON 键、技术枚举、数字和 ID 不变。',
     ].join('\n'),
     userPrompt: `任务上下文：${JSON.stringify({ brief: ctx.brief || '', product_subject: ctx.product_subject || '', business_boundary: ctx.business_boundary || '', target_duration: ctx.target_duration || 30, forbidden: ctx.forbidden || [], characters: ctx.characters || [] }).slice(0, 9000)}\n\n当前蓝图：${JSON.stringify(safeBlueprint).slice(0, 22000)}\n\n这是第 ${attempt}/${maxAttempts} 轮精修。必须解决的问题：${before.issues.join('；') || '按精品标准进一步提升'}\n\n返回与当前蓝图相同结构和相同 beat 数量的完整 JSON。`,
@@ -270,7 +452,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
     error.retryable = false;
     throw error;
   }
-  const merged = preserveCharacterNames(safeBlueprint, mergeVisibleStrings(safeBlueprint, parsed));
+  const merged = preserveCharacterNames(safeBlueprint, mergePolishedBlueprint(safeBlueprint, parsed));
   const language = await ensureChineseOutput({ payload: merged, kind: 'blueprint', taskId, context: ctx });
   const safePayload = normalizeAuthorizedBrandPresentation(language.payload);
   const after = assessBlueprintQuality(safePayload);
@@ -283,6 +465,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
     error.code = 'BLUEPRINT_POLISH_QUALITY_FAILED';
     error.retryable = false;
     error.quality_diagnostics = { before, after };
+    error.rejected_blueprint = safePayload;
     throw error;
   }
   return {
@@ -296,6 +479,8 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
 
 module.exports = {
   BLUEPRINT_RIGHTS_POLICY_VERSION,
+  CAUSAL_STORY_CONTRACT_VERSION,
+  assessCausalProgression,
   assessBlueprintQuality,
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
