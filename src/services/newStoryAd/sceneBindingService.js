@@ -413,8 +413,13 @@ function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {
     }
   }
   const sceneId = cleanText(space?.id || requestedId || 'scene_1', 100);
-  const sceneSpec = space?.scene_spec
-    || normalizeSceneSpec(body.scene_spec || body.sceneSpec || context.scene_spec || context.sceneSpec || {});
+  const submittedRawSpec = body.scene_spec || body.sceneSpec;
+  const submittedSceneSpec = submittedRawSpec && typeof submittedRawSpec === 'object'
+    ? normalizeSceneSpec(submittedRawSpec)
+    : null;
+  const sceneSpec = submittedSceneSpec
+    || space?.scene_spec
+    || normalizeSceneSpec(context.scene_spec || context.sceneSpec || {});
   const missingFields = sceneSpecMissingFields(sceneSpec);
   if (spaces.length && missingFields.length) {
     throw generationTargetError(
@@ -423,12 +428,17 @@ function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {
       { space_id: sceneId, missing_fields: missingFields },
     );
   }
+  if (space && submittedSceneSpec) {
+    space = { ...space, scene_spec: submittedSceneSpec };
+    scenePlan.spaces = scenePlan.spaces.map(item => item.id === space.id ? space : item);
+  }
   return {
     scene_id: sceneId,
     space_id: sceneId,
     space,
     scene_spec: sceneSpec,
     scene_plan: scenePlan,
+    submitted_scene_spec_used: !!submittedSceneSpec,
     multi_scene: multiScene,
     isolated_scene_config: {
       ...scenePlan,

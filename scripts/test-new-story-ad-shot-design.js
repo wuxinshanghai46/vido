@@ -391,7 +391,12 @@ const continuousScenePrompt = sceneAssets.buildSceneSheetPrompt({
   ctx: {
     brief: 'generic task',
     scene_spec: {
-      surfaceTopology: { mode: 'continuous', seam_policy: 'hidden', finish_distribution: 'uniform' },
+      surfaceTopology: {
+        mode: 'continuous',
+        seam_policy: 'hidden',
+        finish_distribution: 'uniform',
+        user_overrides: ['mode', 'seam_policy', 'finish_distribution'],
+      },
     },
   },
 });
@@ -407,6 +412,24 @@ assert.equal(singleWallTopology.secondary_surface_policy, 'forbidden');
 assert.equal(singleWallTopology.mode, 'auto', '一面墙是数量约束，不应被误判为无缝连续表面');
 assert.equal(singleWallTopology.seam_policy, 'auto');
 assert.equal(singleWallTopology.finish_distribution, 'uniform', '未映射到具体区域的多个饰面词不能授权额外墙面');
+assert.equal(shotDesign.hasContinuousSurfaceIntent('空间中只有一面完整的艺术背景墙。'), false, '完整/一整面只表示数量与完整性，不能自动升级为无缝');
+assert.equal(shotDesign.hasContinuousSurfaceIntent('艺术背景墙必须连续无缝并隐藏所有拼缝。'), true);
+const editedLegacySingleWall = shotDesign.reconcileSceneSurfaceTopology({
+  mode: 'continuous',
+  seam_policy: 'hidden',
+  finish_distribution: 'uniform',
+}, '用户已改为一面完整的艺术背景墙，允许正常施工收口。');
+assert.equal(editedLegacySingleWall.mode, 'auto', '用户改写后必须清除没有文字证据和用户来源的旧 continuous');
+assert.equal(editedLegacySingleWall.seam_policy, 'auto', '用户改写后必须清除没有文字证据和用户来源的旧 hidden');
+assert.equal(editedLegacySingleWall.primary_surface_count, 1);
+assert.equal(editedLegacySingleWall.secondary_surface_policy, 'forbidden');
+const manuallyLockedContinuous = shotDesign.reconcileSceneSurfaceTopology({
+  mode: 'continuous',
+  seam_policy: 'hidden',
+  user_overrides: ['mode', 'seam_policy'],
+}, '用户只写一面墙。');
+assert.equal(manuallyLockedContinuous.mode, 'continuous', '用户亲自选择的连续模式必须保留');
+assert.equal(manuallyLockedContinuous.seam_policy, 'hidden');
 const singleWallText = shotDesign.surfacePrompt(singleWallTopology, 'environment');
 assert.match(singleWallText, /EXACTLY ONE prominent task-material display\/background plane/i);
 assert.match(singleWallText, /second feature wall.*column.*freestanding panel/i);

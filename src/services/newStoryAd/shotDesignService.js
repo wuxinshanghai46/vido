@@ -42,6 +42,11 @@ const EFFECT_INTENSITIES = ['low', 'medium', 'high'];
 
 function normalizeSurfaceTopology(input = null) {
   const raw = typeof input === 'string' ? { mode: input } : (input && typeof input === 'object' ? input : {});
+  const userOverrides = (Array.isArray(raw.user_overrides || raw.userOverrides)
+    ? (raw.user_overrides || raw.userOverrides)
+    : [])
+    .map(value => clean(value, 60).toLowerCase().replace(/[\s-]+/g, '_'))
+    .filter(value => ['mode', 'seam_policy', 'finish_distribution', 'primary_surface_count', 'secondary_surface_policy'].includes(value));
   const topology = {
     mode: openValue(raw.mode, 'auto'),
     seam_policy: openValue(raw.seam_policy || raw.seamPolicy, 'auto'),
@@ -50,6 +55,7 @@ function normalizeSurfaceTopology(input = null) {
       ? Math.max(1, Math.min(12, Number(raw.primary_surface_count ?? raw.primarySurfaceCount)))
       : null,
     secondary_surface_policy: openValue(raw.secondary_surface_policy || raw.secondarySurfacePolicy, 'auto'),
+    user_overrides: [...new Set(userOverrides)],
     notes: clean(raw.notes || raw.requirement || '', 500),
   };
   const meaningful = topology.mode !== 'auto'
@@ -57,6 +63,7 @@ function normalizeSurfaceTopology(input = null) {
     || topology.finish_distribution !== 'auto'
     || topology.primary_surface_count !== null
     || topology.secondary_surface_policy !== 'auto'
+    || topology.user_overrides.length > 0
     || topology.notes;
   return meaningful ? topology : undefined;
 }
@@ -65,15 +72,62 @@ function normalizeSurfaceTopology(input = null) {
 function hasContinuousSurfaceIntent(value = '') {
   const text = structuredText(value, 2400);
   if (!text) return false;
-  return /一整面|整面(?:连续|完整)|连续(?:、|，|和|且)?完整|完整(?:、|，|和|且)?连续|一面完整的?(?:背景)?墙|连续基面|无缝(?:墙|基面|表面)|single\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|one\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:panel|module|tile|grid|seam)/i.test(text)
-    || /(?:禁止|不得|不要|严禁|避免)[^。；;]{0,48}(?:模块化|模块|拼板|板块|网格墙|样品墙|展示墙|可见接缝|拼缝)/i.test(text);
+  const surface = '(?:墙|墙面|背景墙|展示墙|基面|表面|平面)';
+  const continuity = '(?:连续(?:完整)?|无缝|无接缝|隐藏(?:所有)?拼缝|拼缝不可见|无可见拼缝|零可见拼缝)';
+  return new RegExp(`${surface}[^。；;]{0,24}${continuity}|${continuity}[^。；;]{0,24}${surface}`, 'i').test(text)
+    || /(?:不要|禁止|不得)[^。；;]{0,120}可见(?:拼缝|接缝)|(?:拼缝|接缝)(?:必须|需要)?(?:隐藏|不可见)/i.test(text)
+    || /(?:single|one)\s+(?:continuous|uninterrupted|seamless)\s+(?:wall|surface|plane)|(?:continuous|uninterrupted|seamless)\s+(?:single|one)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:seam|joint)/i.test(text);
 }
 
 /** Detect explicit geometry cardinality without treating it as a seamless-finish request. */
 function hasSinglePrimarySurfaceIntent(value = '') {
   const text = structuredText(value, 3000);
   if (!text) return false;
-  return /(?:仅|只|唯一|单独)?\s*(?:设置|保留|展示|使用|采用|需要|要|为|是|由)?\s*(?:一|1)\s*(?:面|堵)\s*(?:主|主体|主要|核心)?\s*(?:展示|背景|材料|材质|形象)?\s*墙(?:面)?|(?:一|1)\s*面(?:的)?面板|单(?:一|独)?\s*(?:主|主体|主要)?\s*(?:展示|背景|材料|材质)?\s*(?:墙|墙面|平面)|(?:only|exactly|single|one)\s+(?:primary\s+|main\s+|display\s+|feature\s+|material\s+)*(?:wall|plane|surface)\b/i.test(text);
+  return /(?:仅|只|唯一|单独)?\s*(?:设置|保留|展示|使用|采用|需要|要|为|是|由|以)?\s*(?:一|1)\s*(?:整\s*)?(?:面|堵)\s*(?:完整的?)?\s*(?:主|主体|主要|核心)?\s*(?:(?:展示|背景|材料|材质|形象|艺术)\s*)*墙(?:面)?|(?:一|1)\s*(?:整\s*)?面(?:完整的?)?(?:的)?面板|单(?:一|独)?\s*(?:主|主体|主要)?\s*(?:展示|背景|材料|材质)?\s*(?:墙|墙面|平面)|(?:only|exactly|single|one)\s+(?:primary\s+|main\s+|display\s+|feature\s+|material\s+)*(?:wall|plane|surface)\b/i.test(text);
+}
+
+/**
+ * Scene editing is text-authoritative. Legacy/model-inferred continuous values
+ * are discarded when the current text no longer explicitly requests seamless
+ * continuity. Only fields recorded in user_overrides remain authoritative.
+ */
+function reconcileSceneSurfaceTopology(input = null, contextText = '') {
+  const topology = normalizeSurfaceTopology(input) || {
+    mode: 'auto',
+    seam_policy: 'auto',
+    finish_distribution: 'auto',
+    primary_surface_count: null,
+    secondary_surface_policy: 'auto',
+    user_overrides: [],
+    notes: '',
+  };
+  const overrides = new Set(topology.user_overrides || []);
+  const text = [contextText, topology.notes];
+  const explicitContinuity = hasContinuousSurfaceIntent(text);
+  const userLockedContinuity = (overrides.has('mode') && topology.mode === 'continuous')
+    || (overrides.has('seam_policy') && topology.seam_policy === 'hidden');
+  const singlePrimary = (overrides.has('primary_surface_count') && topology.primary_surface_count === 1)
+    || hasSinglePrimarySurfaceIntent(text);
+  const regionalMapped = hasExplicitFinishRegionMapping(text);
+  const sanitized = {
+    ...topology,
+    mode: !explicitContinuity && !userLockedContinuity && topology.mode === 'continuous' && !overrides.has('mode')
+      ? 'auto'
+      : topology.mode,
+    seam_policy: !explicitContinuity && !userLockedContinuity && topology.seam_policy === 'hidden' && !overrides.has('seam_policy')
+      ? 'auto'
+      : topology.seam_policy,
+    primary_surface_count: singlePrimary
+      ? 1
+      : (overrides.has('primary_surface_count') ? topology.primary_surface_count : null),
+    secondary_surface_policy: singlePrimary && !overrides.has('secondary_surface_policy')
+      ? 'forbidden'
+      : topology.secondary_surface_policy,
+    finish_distribution: singlePrimary && !regionalMapped && !overrides.has('finish_distribution')
+      ? 'uniform'
+      : topology.finish_distribution,
+  };
+  return resolveSurfaceTopology(sanitized, text);
 }
 
 /** A regional finish is valid only when the task maps it to a named place. */
@@ -96,22 +150,30 @@ function hasSegmentedSurfaceIntent(value = '') {
 function resolveSurfaceTopology(input = null, contextText = '') {
   const topology = normalizeSurfaceTopology(input);
   const notes = topology?.notes || '';
+  const overrides = new Set(topology?.user_overrides || []);
   const singlePrimary = topology?.primary_surface_count === 1 || hasSinglePrimarySurfaceIntent([contextText, notes]);
   const continuous = topology?.mode === 'continuous' || hasContinuousSurfaceIntent([contextText, notes]);
   const regionalMapped = hasExplicitFinishRegionMapping([contextText, notes]);
   const requestedDistribution = topology?.finish_distribution || 'auto';
-  const finishDistribution = requestedDistribution === 'gradient'
+  const finishDistribution = overrides.has('finish_distribution')
+    ? requestedDistribution
+    : requestedDistribution === 'gradient'
     ? 'gradient'
     : (requestedDistribution === 'regional' && regionalMapped
       ? 'regional'
       : ((continuous || singlePrimary) ? 'uniform' : requestedDistribution));
   if (!continuous && !singlePrimary) return topology;
   return {
-    mode: continuous ? 'continuous' : (topology?.mode || 'auto'),
-    seam_policy: continuous ? 'hidden' : (topology?.seam_policy || 'auto'),
+    mode: continuous && !overrides.has('mode') ? 'continuous' : (topology?.mode || 'auto'),
+    seam_policy: continuous && !overrides.has('seam_policy') ? 'hidden' : (topology?.seam_policy || 'auto'),
     finish_distribution: finishDistribution,
-    primary_surface_count: singlePrimary ? 1 : (topology?.primary_surface_count ?? null),
-    secondary_surface_policy: singlePrimary ? 'forbidden' : (topology?.secondary_surface_policy || 'auto'),
+    primary_surface_count: singlePrimary && !overrides.has('primary_surface_count')
+      ? 1
+      : (topology?.primary_surface_count ?? null),
+    secondary_surface_policy: singlePrimary && !overrides.has('secondary_surface_policy')
+      ? 'forbidden'
+      : (topology?.secondary_surface_policy || 'auto'),
+    user_overrides: [...overrides],
     notes,
   };
 }
@@ -415,6 +477,7 @@ module.exports = {
   hasSegmentedSurfaceIntent,
   hasExplicitFinishRegionMapping,
   resolveSurfaceTopology,
+  reconcileSceneSurfaceTopology,
   normalizeMaterialContract,
   normalizeMotionEffect,
   normalizeShotDesign,

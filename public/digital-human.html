@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260726-scene-reverify-persist-v31">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-scene-edit-authority-v32">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260726-scene-reverify-persist-v31"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260727-scene-edit-authority-v32"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -474,11 +474,23 @@
                       </select>
                     </label>
                     <label>
+                      <span>主材质平面数量</span>
+                      <input class="dh-input" type="number" min="1" max="12" step="1" data-nsa-scene-spec="surfaceTopology.primary_surface_count" placeholder="自动判断；如一面墙填 1">
+                    </label>
+                    <label>
+                      <span>额外材质平面</span>
+                      <select class="dh-input" data-nsa-scene-spec="surfaceTopology.secondary_surface_policy">
+                        <option value="auto">按当前任务判断</option>
+                        <option value="forbidden">禁止额外墙面/立柱承载主材质</option>
+                        <option value="task_defined">仅允许任务明确指定的平面</option>
+                      </select>
+                    </label>
+                    <label>
                       <span>结构补充说明</span>
                       <input class="dh-input" data-nsa-scene-spec="surfaceTopology.notes" maxlength="300" placeholder="可选；只描述当前任务，不会成为行业模板。">
                     </label>
                   </div>
-                  <div class="dh-nsa-surface-conflict-hint">冲突保护：当空间描述或禁止项明确要求完整连续墙面时，系统会自动采用“连续完整表面 + 隐藏可见拼缝”，不会再让旧的模块化选项覆盖文字要求。</div>
+                  <div class="dh-nsa-surface-conflict-hint">冲突保护：“一面墙”只锁定主墙数量为 1，不等于无缝；只有明确写出“连续、无缝、隐藏拼缝”，或手动选择连续表面时，系统才采用隐藏拼缝。当前编辑会覆盖旧场景合同。</div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">新增场景设定</button>

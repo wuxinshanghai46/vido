@@ -391,6 +391,42 @@ async function assertMultiSpacePromptsAndRecovery() {
   assert(parkTarget.scene_spec.layoutText.includes('PARK_ONLY_MARKER'));
   assert(homeTarget.scene_spec.layoutText.includes('HOME_ONLY_MARKER'));
 
+  const staleWallSpec = {
+    ...parkSpec,
+    layoutText: '旧配置：多块展示墙与侧墙共同承载不同材料。',
+    surfaceTopology: {
+      mode: 'continuous',
+      seam_policy: 'hidden',
+      finish_distribution: 'regional',
+    },
+  };
+  const editedWallSpec = {
+    ...parkSpec,
+    layoutText: '当前用户编辑：展厅只保留一面完整的艺术背景墙，其他侧墙不得承载展示材料。',
+    surfaceTopology: {
+      mode: 'continuous',
+      seam_policy: 'hidden',
+      finish_distribution: 'regional',
+    },
+  };
+  const staleWallPlan = sceneBinding.normalizeScenePlan({
+    mode: 'single',
+    spaces: [{ id: 'space_wall', name: 'Wall', scene_spec: staleWallSpec }],
+  });
+  const editedWallTarget = sceneBinding.resolveSceneGenerationTarget({
+    sceneConfig: staleWallPlan,
+    context: { ...baseContext, scene_mode: 'single', scene_plan: staleWallPlan },
+    body: { space_id: 'space_wall', scene_spec: editedWallSpec },
+  });
+  assert.strictEqual(editedWallTarget.submitted_scene_spec_used, true, 'current submitted scene spec must override persisted plan');
+  assert(editedWallTarget.scene_spec.layoutText.includes('当前用户编辑'), 'generation target must use the current edited text');
+  assert(!editedWallTarget.scene_spec.layoutText.includes('旧配置'), 'stale persisted scene text must not survive');
+  assert.strictEqual(editedWallTarget.scene_spec.surfaceTopology.mode, 'auto', 'one wall must not inherit inferred seamless mode');
+  assert.strictEqual(editedWallTarget.scene_spec.surfaceTopology.seam_policy, 'auto', 'one wall must not inherit inferred hidden seams');
+  assert.strictEqual(editedWallTarget.scene_spec.surfaceTopology.primary_surface_count, 1, 'one-wall edit must become a cardinality contract');
+  assert.strictEqual(editedWallTarget.scene_spec.surfaceTopology.secondary_surface_policy, 'forbidden', 'one-wall edit must forbid secondary display surfaces');
+  assert(editedWallTarget.scene_plan.spaces[0].scene_spec.layoutText.includes('当前用户编辑'), 'returned scene plan must persist the authoritative edit');
+
   const calls = [];
   const originalGenerateImage = mediaAdapter.generateImage;
   const originalAnalyze = sceneSpace.analyzeSceneViews;

@@ -9,7 +9,7 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const taskId = process.env.VIDO_SCENE_AUDIT_TASK_ID || 'd36055d2-890d-444f-9a6b-33d23bb2e2bc';
-const cacheVersion = '20260726-scene-reverify-persist-v31';
+const cacheVersion = '20260727-scene-edit-authority-v32';
 const files = [
   'public/digital-human.html',
   'public/css/digital-human-wizard.css',

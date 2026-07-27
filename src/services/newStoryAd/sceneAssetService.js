@@ -579,7 +579,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
   const repairFeedback = cleanText(body.repair_feedback || body.repairFeedback || '', 1200);
   const materialReferences = sceneMaterialReferenceImages(ctx, body);
-  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+  const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     sceneSpec.surfaceTopology || sceneSpec.surface_topology,
     [layout, materialLight, negative, sceneSpec.surfaceTopology?.notes, sceneSpec.surface_topology?.notes],
   );
@@ -892,7 +892,7 @@ function sceneRequest(ctx = {}, body = {}) {
   const materialLight = cleanText(spec.materialLightText || spec.material_light_text || spec.material || spec.light || body.material_summary || '', 1000);
   const interaction = cleanText(spec.interactionText || spec.interaction_text || spec.interaction || spec.camera || '', 800);
   const negative = cleanText(spec.negativeText || spec.negative_text || body.negative || ctx.controlled_production?.negative_control?.text || '', 1000);
-  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+  const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     spec.surfaceTopology || spec.surface_topology,
     [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
   );
@@ -972,6 +972,16 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     context: baseCtx,
     body,
   });
+  if (target.submitted_scene_spec_used) {
+    storage.saveOutput(taskId, 'scene_config', target.scene_plan);
+    const editedCtx = {
+      ...baseCtx,
+      scene_mode: target.scene_plan.scene_mode,
+      scene_spec: target.multi_scene ? baseCtx.scene_spec : target.scene_spec,
+    };
+    storage.saveOutput(taskId, 'context', editedCtx);
+    storage.updateTask(taskId, { request: editedCtx, updated_at: new Date().toISOString() });
+  }
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const sceneConfig = target.isolated_scene_config;
   body = {

@@ -209,7 +209,7 @@ function normalizeSceneSpec(input = {}) {
   const layoutText = cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600);
   const materialLightText = cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600);
   const negativeText = cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500);
-  const surfaceTopology = shotDesign.resolveSurfaceTopology(
+  const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     raw.surfaceTopology || raw.surface_topology,
     [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
   );

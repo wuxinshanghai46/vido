@@ -27,8 +27,15 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}) {
   const negativeText = complete(value(['negativeText', 'negative_text', 'negative']), existing(['negativeText', 'negative_text', 'negative']), fallback.negativeText, 24, 420);
   const requestedTopology = output.surfaceTopology || output.surface_topology;
   const existingTopology = source.surfaceTopology || source.surface_topology;
-  const topologyInput = requestedTopology && typeof requestedTopology === 'object' ? requestedTopology : existingTopology;
-  const surfaceTopology = shotDesign.resolveSurfaceTopology(topologyInput, [layoutText, materialLightText, negativeText, topologyInput?.notes]);
+  const topologyInput = requestedTopology && typeof requestedTopology === 'object'
+    ? {
+      ...requestedTopology,
+      user_overrides: Array.isArray(existingTopology?.user_overrides || existingTopology?.userOverrides)
+        ? (existingTopology.user_overrides || existingTopology.userOverrides)
+        : [],
+    }
+    : existingTopology;
+  const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(topologyInput, [layoutText, materialLightText, negativeText, topologyInput?.notes]);
   const materialContract = shotDesign.normalizeMaterialContract(
     output.materialContract || output.material_contract || source.materialContract || source.material_contract,
     { sourceText: materialLightText, topology: surfaceTopology, referenceAvailable: false },

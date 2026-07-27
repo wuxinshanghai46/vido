@@ -310,6 +310,11 @@
   function specPayload() {
     const scope = root();
     const value = key => clean(scope.querySelector(`[data-nsa-scene-spec="${key}"]`)?.value || '', key === 'negativeText' ? 500 : 600);
+    const topologyKeys = ['mode', 'seam_policy', 'finish_distribution', 'primary_surface_count', 'secondary_surface_policy'];
+    const userOverrides = topologyKeys.filter(key =>
+      scope.querySelector(`[data-nsa-scene-spec="surfaceTopology.${key}"]`)?.dataset?.nsaUserEdited === 'true'
+    );
+    const primarySurfaceCount = Number(value('surfaceTopology.primary_surface_count') || 0);
     return {
       mode: clean(scope.querySelector('#dhNsaAdSceneMode')?.value || 'auto', 40),
       layoutText: value('layoutText'),
@@ -320,6 +325,11 @@
         mode: value('surfaceTopology.mode') || 'auto',
         seam_policy: value('surfaceTopology.seam_policy') || 'auto',
         finish_distribution: value('surfaceTopology.finish_distribution') || 'auto',
+        primary_surface_count: Number.isInteger(primarySurfaceCount) && primarySurfaceCount > 0
+          ? Math.max(1, Math.min(12, primarySurfaceCount))
+          : null,
+        secondary_surface_policy: value('surfaceTopology.secondary_surface_policy') || 'auto',
+        user_overrides: userOverrides,
         notes: value('surfaceTopology.notes'),
       },
     };
@@ -328,25 +338,52 @@
   function hasContinuousSurfaceIntent(spec = {}) {
     const topology = spec.surfaceTopology || spec.surface_topology || {};
     const text = [spec.layoutText, spec.materialLightText, spec.negativeText, topology.notes].filter(Boolean).join(' ');
-    return /一整面|整面(?:连续|完整)|连续(?:、|，|和|且)?完整|完整(?:、|，|和|且)?连续|一面完整的?(?:背景)?墙|连续基面|无缝(?:墙|基面|表面)|single\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|one\s+(?:continuous|uninterrupted)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:panel|module|tile|grid|seam)/i.test(text)
-      || /(?:禁止|不得|不要|严禁|避免)[^。；;]{0,48}(?:模块化|模块|拼板|板块|网格墙|样品墙|展示墙|可见接缝|拼缝)/i.test(text);
+    const surface = '(?:墙|墙面|背景墙|展示墙|基面|表面|平面)';
+    const continuity = '(?:连续(?:完整)?|无缝|无接缝|隐藏(?:所有)?拼缝|拼缝不可见|无可见拼缝|零可见拼缝)';
+    return new RegExp(`${surface}[^。；;]{0,24}${continuity}|${continuity}[^。；;]{0,24}${surface}`, 'i').test(text)
+      || /(?:不要|禁止|不得)[^。；;]{0,120}可见(?:拼缝|接缝)|(?:拼缝|接缝)(?:必须|需要)?(?:隐藏|不可见)/i.test(text)
+      || /(?:single|one)\s+(?:continuous|uninterrupted|seamless)\s+(?:wall|surface|plane)|(?:continuous|uninterrupted|seamless)\s+(?:single|one)\s+(?:wall|surface|plane)|no\s+(?:visible\s+)?(?:seam|joint)/i.test(text);
+  }
+
+  function hasSinglePrimarySurfaceIntent(spec = {}) {
+    const topology = spec.surfaceTopology || spec.surface_topology || {};
+    const text = [spec.layoutText, spec.materialLightText, spec.negativeText, topology.notes].filter(Boolean).join(' ');
+    return /(?:仅|只|唯一|单独)?\s*(?:设置|保留|展示|使用|采用|需要|要|为|是|由|以)?\s*(?:一|1)\s*(?:整\s*)?(?:面|堵)\s*(?:完整的?)?\s*(?:主|主体|主要|核心)?\s*(?:(?:展示|背景|材料|材质|形象|艺术)\s*)*墙(?:面)?|(?:一|1)\s*(?:整\s*)?面(?:完整的?)?(?:的)?面板|单(?:一|独)?\s*(?:主|主体|主要)?\s*(?:展示|背景|材料|材质)?\s*(?:墙|墙面|平面)|(?:only|exactly|single|one)\s+(?:primary\s+|main\s+|display\s+|feature\s+|material\s+)*(?:wall|plane|surface)\b/i.test(text);
   }
 
   function reconcileSurfaceIntent(spec = {}, { syncControls = false } = {}) {
     const source = spec && typeof spec === 'object' ? spec : {};
     const current = source.surfaceTopology || source.surface_topology || {};
-    if (!hasContinuousSurfaceIntent(source)) return { spec: source, changed: false };
+    const overrides = new Set(Array.isArray(current.user_overrides) ? current.user_overrides : []);
+    const explicitContinuity = hasContinuousSurfaceIntent(source);
+    const userLockedContinuity = (overrides.has('mode') && current.mode === 'continuous')
+      || (overrides.has('seam_policy') && current.seam_policy === 'hidden');
+    const singlePrimary = (overrides.has('primary_surface_count') && Number(current.primary_surface_count) === 1)
+      || hasSinglePrimarySurfaceIntent(source);
     const topology = {
       ...current,
-      mode: 'continuous',
-      seam_policy: 'hidden',
-      finish_distribution: current.finish_distribution === 'sample_comparison'
-        ? 'regional'
+      mode: explicitContinuity || userLockedContinuity
+        ? 'continuous'
+        : (current.mode === 'continuous' && !overrides.has('mode') ? 'auto' : (current.mode || 'auto')),
+      seam_policy: explicitContinuity || userLockedContinuity
+        ? 'hidden'
+        : (current.seam_policy === 'hidden' && !overrides.has('seam_policy') ? 'auto' : (current.seam_policy || 'auto')),
+      finish_distribution: singlePrimary && !overrides.has('finish_distribution')
+        ? 'uniform'
         : (current.finish_distribution || 'auto'),
+      primary_surface_count: singlePrimary
+        ? 1
+        : (overrides.has('primary_surface_count') ? (Number(current.primary_surface_count) || null) : null),
+      secondary_surface_policy: singlePrimary && !overrides.has('secondary_surface_policy')
+        ? 'forbidden'
+        : (current.secondary_surface_policy || 'auto'),
+      user_overrides: [...overrides],
     };
     const changed = current.mode !== topology.mode
       || current.seam_policy !== topology.seam_policy
-      || current.finish_distribution !== topology.finish_distribution;
+      || current.finish_distribution !== topology.finish_distribution
+      || Number(current.primary_surface_count || 0) !== Number(topology.primary_surface_count || 0)
+      || current.secondary_surface_policy !== topology.secondary_surface_policy;
     const next = { ...source, surfaceTopology: topology };
     if (syncControls && changed) applySpec(next, { clearMissing: false });
     return { spec: next, changed };
@@ -474,7 +511,7 @@
       }
     });
     const topology = spec.surfaceTopology || spec.surface_topology || {};
-    ['mode', 'seam_policy', 'finish_distribution', 'notes'].forEach(key => {
+    ['mode', 'seam_policy', 'finish_distribution', 'primary_surface_count', 'secondary_surface_policy', 'notes'].forEach(key => {
       const el = scope.querySelector(`[data-nsa-scene-spec="surfaceTopology.${key}"]`);
       const value = topology[key] ?? topology[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())];
       const text = clean(value || '', 300);
@@ -678,8 +715,25 @@
     document.addEventListener('new-story-ad:restore-finished', () => syncSpecSelectionState(), true);
   }
 
+  function bindSceneSpecEditTracking() {
+    const scope = root();
+    if (!scope?.addEventListener || scope.dataset?.nsaSceneSpecEditTrackingBound === 'true') return;
+    if (scope.dataset) scope.dataset.nsaSceneSpecEditTrackingBound = 'true';
+    const mark = event => {
+      const control = event.target?.closest?.('[data-nsa-scene-spec^="surfaceTopology."]');
+      if (!control) return;
+      const key = clean(control.getAttribute('data-nsa-scene-spec') || '', 100).replace('surfaceTopology.', '');
+      if (['mode', 'seam_policy', 'finish_distribution', 'primary_surface_count', 'secondary_surface_policy'].includes(key)) {
+        control.dataset.nsaUserEdited = 'true';
+      }
+    };
+    scope.addEventListener('input', mark, true);
+    scope.addEventListener('change', mark, true);
+  }
+
   function syncSpecSelectionState(target = root()) {
     bindStoryAdSelectObserver();
+    bindSceneSpecEditTracking();
     const controls = storyAdSelects(target);
     controls.forEach(control => {
       const explicit = !['', 'auto', 'match_brief'].includes(clean(control.value || '', 60));
@@ -705,12 +759,16 @@
       }
     });
     const topology = source.surfaceTopology || source.surface_topology || {};
-    ['mode', 'seam_policy', 'finish_distribution', 'notes'].forEach(key => {
+    const userOverrides = new Set(Array.isArray(topology.user_overrides || topology.userOverrides)
+      ? (topology.user_overrides || topology.userOverrides)
+      : []);
+    ['mode', 'seam_policy', 'finish_distribution', 'primary_surface_count', 'secondary_surface_policy', 'notes'].forEach(key => {
       const el = scope.querySelector(`[data-nsa-scene-spec="surfaceTopology.${key}"]`);
       if (!el) return;
       const value = topology[key] ?? topology[key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())];
       if (value !== undefined && value !== null) el.value = String(value);
-      else if (clearMissing) el.value = key === 'notes' ? '' : 'auto';
+      else if (clearMissing) el.value = ['notes', 'primary_surface_count'].includes(key) ? '' : 'auto';
+      el.dataset.nsaUserEdited = userOverrides.has(key) ? 'true' : 'false';
     });
     const mode = scope.querySelector('#dhNsaAdSceneMode');
     if (mode) {
@@ -779,12 +837,47 @@
   }
 
   /** 保存前将当前表单写回对应 space，避免自动保存持久化旧的场景计划。 */
-  function planPayload(state = {}) {
+  function sceneSpecControlsAvailable() {
+    return !!root()?.querySelector?.('[data-nsa-scene-spec="layoutText"]');
+  }
+
+  function planPayload(state = {}, currentSpec = null) {
     const plan = normalizePlan(state.sceneConfig || {});
     if (!plan.spaces.length) return null;
     const targetIndex = selectedPlanIndex(state, plan);
-    plan.spaces[targetIndex] = { ...plan.spaces[targetIndex], scene_spec: specPayload() };
+    plan.spaces[targetIndex] = {
+      ...plan.spaces[targetIndex],
+      scene_spec: currentSpec && typeof currentSpec === 'object' ? currentSpec : specPayload(),
+    };
     return normalizePlan(plan);
+  }
+
+  function sceneSpecFingerprint(spec = {}) {
+    const reconciled = reconcileSurfaceIntent(spec).spec;
+    const topology = reconciled.surfaceTopology || reconciled.surface_topology || {};
+    return JSON.stringify({
+      layoutText: clean(reconciled.layoutText || '', 600),
+      materialLightText: clean(reconciled.materialLightText || '', 600),
+      interactionText: clean(reconciled.interactionText || '', 600),
+      negativeText: clean(reconciled.negativeText || '', 600),
+      surfaceTopology: {
+        mode: clean(topology.mode || 'auto', 60),
+        seam_policy: clean(topology.seam_policy || 'auto', 60),
+        finish_distribution: clean(topology.finish_distribution || 'auto', 60),
+        primary_surface_count: Number(topology.primary_surface_count || 0) || null,
+        secondary_surface_policy: clean(topology.secondary_surface_policy || 'auto', 60),
+        user_overrides: [...new Set(Array.isArray(topology.user_overrides) ? topology.user_overrides : [])].sort(),
+        notes: clean(topology.notes || '', 500),
+      },
+    });
+  }
+
+  function assertCurrentSceneSpecSubmitted(currentSpec = {}, submittedSpec = {}) {
+    if (sceneSpecFingerprint(currentSpec) === sceneSpecFingerprint(submittedSpec)) return true;
+    const error = new Error('当前编辑的场景设定与即将提交的场景合同不一致，已停止图片生成；请重新确认当前场景。');
+    error.code = 'SCENE_SPEC_STALE_SUBMISSION_BLOCKED';
+    error.retryable = false;
+    throw error;
   }
 
   function selectPlanSpace(state = {}, index = 0) {
@@ -1264,10 +1357,22 @@
     fullUpgrade = false,
   } = {}) {
     if (!state || typeof ensureTask !== 'function' || typeof api !== 'function') return false;
+    const hasCurrentForm = sceneSpecControlsAvailable();
     const reconciled = reconcileSurfaceIntent(specPayload(), { syncControls: true });
     const sceneSpec = reconciled.spec;
     if (reconciled.changed) {
-      toast?.('检测到完整连续墙面要求，已自动改为“连续完整表面 + 隐藏可见拼缝”', 'info');
+      toast?.(
+        hasContinuousSurfaceIntent(sceneSpec)
+          ? '检测到明确无缝要求，已采用“连续表面 + 隐藏拼缝”'
+          : (hasSinglePrimarySurfaceIntent(sceneSpec)
+            ? '已按当前文字锁定为 1 个主墙面；未明确要求无缝时不会继承旧的隐藏拼缝设置'
+            : '已按当前文字清除旧的自动推断表面设置'),
+        'info',
+      );
+    }
+    if (hasCurrentForm) {
+      const editedPlan = planPayload(state, sceneSpec);
+      if (editedPlan) state.sceneConfig = editedPlan;
     }
     const totalViews = 5;
     const generationTarget = plannedGenerationTarget(state, { append });
@@ -1311,7 +1416,10 @@
         error.code = 'SCENE_GENERATION_TARGET_REQUIRED';
         throw error;
       }
-      const targetSceneSpec = targetSpace?.scene_spec || targetSpace?.sceneSpec || sceneSpec;
+      const targetSceneSpec = hasCurrentForm
+        ? sceneSpec
+        : (targetSpace?.scene_spec || targetSpace?.sceneSpec || sceneSpec);
+      if (hasCurrentForm) assertCurrentSceneSpecSubmitted(sceneSpec, targetSceneSpec);
       // 用户点击生成就是本次付费请求的明确授权。直接恢复未知计费检查点，
       // 后端仍继续阻止后台自动重试和没有显式授权的非交互调用。
       const submitted = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
@@ -1452,7 +1560,7 @@
         method: 'POST',
         body: {
           ...body,
-          scene_spec: specPayload(),
+          scene_spec: reconcileSurfaceIntent(specPayload(), { syncControls: true }).spec,
         },
       });
       const response = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
@@ -1503,6 +1611,7 @@
     thumbUrl,
     specPayload,
     hasContinuousSurfaceIntent,
+    hasSinglePrimarySurfaceIntent,
     reconcileSurfaceIntent,
     requiresLayoutView,
     sceneProgressView,
@@ -1511,6 +1620,8 @@
     normalizePlan,
     applyPlan,
     planPayload,
+    sceneSpecFingerprint,
+    assertCurrentSceneSpecSubmitted,
     selectPlanSpace,
     selectPlanSpaceById,
     addDraftSpace,
