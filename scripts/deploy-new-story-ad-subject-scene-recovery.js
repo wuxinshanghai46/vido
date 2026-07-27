@@ -99,6 +99,7 @@ const files = [
   'scripts/audit-new-story-ad-content-lineage-release.js',
   'scripts/check-new-story-ad-scene-realism-v8-deploy.js',
   'scripts/repair-new-story-ad-scene-authority-lineage.js',
+  'scripts/repair-new-story-ad-script-package-state.js',
   'scripts/deploy-new-story-ad-subject-scene-recovery.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);

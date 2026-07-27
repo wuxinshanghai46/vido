@@ -11,10 +11,10 @@
 
 三方核对结果：
 
-- 本地功能提交：`f950e2920e4e8e6fb81a9b4edcb885647cf1e7b5`
+- 本地功能修复基线：`981ff62`
 - Gitee `origin/codex/story-ad-v3-upgrade`：同一提交
 - 本地与 Gitee ahead/behind：`0 / 0`
-- 生产发布清单：93 个文件
+- 生产发布清单：94 个文件
 - 生产与本地 SHA-256 不一致文件：0
 - PM2 `vido`：`online`
 - 生产数据库：`ok`
@@ -24,7 +24,7 @@
 - 核对过程触发模型或媒体调用：0
 - 核对过程写入任务数据：0
 
-生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，93/93 个实际运行文件与本地完全一致。
+生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，94/94 个实际运行文件与本地完全一致。
 
 ## 二、本轮真正解决的问题
 
@@ -239,12 +239,22 @@
 
 完整回归使用模拟夹具，没有提交真实图片、视频或付费供应商任务。
 
+目标历史任务 `d36055d2-890d-444f-9a6b-33d23bb2e2bc` 已执行零模型状态恢复：
+
+- 恢复前：`failed / script_package_failed / AUTH_CONFIG`；
+- 恢复后：`working / scene_config_done`；
+- 两个完整空间锁与场景 ID 均保持不变；
+- 模型调用数保持 `124 → 124`；
+- 活动生成任务保持 `0`；
+- 未写入剧本、图片、视频或媒体结果。
+
 生产备份：
 
 ```text
 /opt/vido/backups/new-story-ad-subject-scene-recovery-20260727134552
 /opt/vido/backups/new-story-ad-subject-scene-recovery-20260727135429
 /opt/vido/backups/scene-authority-lineage-repair-20260727134932.sqlite
+/opt/vido/backups/script-package-state-recovery-20260727151237.sqlite
 ```
 
 ## 五、回家后拉取步骤
@@ -362,7 +372,7 @@ node scripts/audit-new-story-ad-content-lineage-release.js
 
 - `status: PASS`
 - `ahead_behind: 0 0`
-- `release_files_checked: 93`
+- `release_files_checked: 94`
 - `release_hash_mismatches: []`
 - `active_generation_count: 0`
 - `pm2.status: online`
