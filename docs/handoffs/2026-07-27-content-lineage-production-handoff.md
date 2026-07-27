@@ -203,6 +203,7 @@
 
 ```text
 /opt/vido/backups/new-story-ad-subject-scene-recovery-20260727134552
+/opt/vido/backups/new-story-ad-subject-scene-recovery-20260727135429
 /opt/vido/backups/scene-authority-lineage-repair-20260727134932.sqlite
 ```
 
