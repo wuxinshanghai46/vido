@@ -27,7 +27,7 @@ const subjectReferences = require('./subjectReferenceService');
 const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
-const revisionService = require('./revisionService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
+const revisionService = require('./revisionService'), sceneAuthority = require('./sceneAuthorityService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService'), productKeyframeQa = require('./productConsistencyQaService');
 const videoFrameQa = require('./videoFrameQaService');
@@ -288,13 +288,13 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     throw error;
   }
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const currentScene = sceneAuthority.currentState({ storage, taskId, task, normalizeScenePlan });
   const existingFinalVideo = storage.getOutput(taskId, 'final_video');
   const savingProgress = body.save_progress === true || body.saveProgress === true;
   const requestedScope = cleanText(body.change_scope || body.changeScope || '', 40).toLowerCase();
   const progressSnapshot = body.progress_snapshot || body.progressSnapshot || {};
   const explicitScenePlanInput = body.scene_plan || body.scenePlan || (savingProgress && requestedScope === 'scene'
     ? (progressSnapshot.scene_config || progressSnapshot.sceneConfig || null) : null);
-  if (savingProgress && requestedScope === 'scene' && !explicitScenePlanInput) { const error = new Error('场景变更缺少完整逐空间场景计划；已在持久化和失效清理前停止，原场景合同未改动'); error.code = 'SCENE_PLAN_REQUIRED_FOR_SCENE_SAVE'; error.status = 422; error.retryable = false; throw error; }
   const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
   let builtCtx = buildContext(
     { ...(previousCtx || {}), ...(body || {}), task_id: taskId },
@@ -311,7 +311,9 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const mediaChangeScope = body.media_change_scope || body.mediaChangeScope || '';
   builtCtx = taskProgressSave.preserveUnconfirmedMediaSettings(previousCtx, builtCtx, { savingProgress, mediaChangeScope });
   const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
-  const changedDomains = revisionService.changeDomains(previousCtx, builtCtx, body.changed_domains || body.changedDomains || requestedScope);
+  const sceneChange = sceneAuthority.resolveChange({ previousCtx, builtCtx, explicitScenePlan, currentPlan: currentScene.plan, body, requestedScope });
+  const changedDomains = sceneChange.changed_domains;
+  sceneAuthority.assertCompletePlan({ savingProgress, requestedScope, explicitScenePlan, currentPlan: currentScene.plan, changedDomains });
   if (hasActiveGeneration && changedDomains.length) {
     const error = new Error('当前生成正在使用已锁定内容；请先取消或等待生成完成，再保存新的修改');
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
@@ -333,10 +335,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
       : null;
   }
   if (changedDomains.includes('product') || changedDomains.includes('source')) ctx.product_contract = null;
-  if (savingProgress) {
-    const authoritativeSceneAssets = storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets || [];
-    ctx.scene_assets = Array.isArray(authoritativeSceneAssets) ? authoritativeSceneAssets : [];
-  }
+  if (savingProgress || sceneChange.delta.changed) ctx.scene_assets = sceneAuthority.assetsForContext(currentScene.assets, sceneChange.delta);
   ctx = withAssetContracts(ctx);
   let invalidated = [];
   const patch = {
@@ -358,7 +357,9 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     patch.saved_progress_at = new Date().toISOString();
   }
   storage.updateTask(taskId, patch);
-  invalidated = revisionService.invalidateOutputs(storage, taskId, changedDomains);
+  if (changedDomains.length) storage.carryManifestRevision(taskId, patch.content_revision);
+  const sceneInvalidation = sceneAuthority.publishAndInvalidate({ storage, taskId, explicitScenePlan, delta: sceneChange.delta, changedDomains, sceneAssets: ctx.scene_assets || [], contentRevision: patch.content_revision });
+  invalidated = sceneInvalidation.invalidated;
   const mediaInvalidated = taskProgressSave.mediaInvalidatedOutputs(previousCtx, ctx, {
     savingProgress,
     mediaChangeScope,
@@ -376,7 +377,6 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   });
   mediaInvalidated.forEach(kind => storage.deleteOutput(taskId, kind));
   invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
-  if (changedDomains.length) storage.carryManifestRevision(taskId, patch.content_revision);
   const updated = storage.updateTask(taskId, patch);
   const snapshot = storage.saveSnapshot(taskId, {
     content_revision: patch.content_revision,
@@ -388,7 +388,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     snapshot_id: snapshot.id,
     input_fingerprint: snapshot.input_fingerprint,
   });
-  if (explicitScenePlan && (changedDomains.includes('scene') || !changedDomains.length)) {
+  if (!sceneInvalidation.preserved && explicitScenePlan && (changedDomains.includes('scene') || !changedDomains.length)) {
     storage.saveOutput(taskId, 'scene_config', explicitScenePlan);
   }
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });

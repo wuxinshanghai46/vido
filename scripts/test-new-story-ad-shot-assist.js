@@ -86,7 +86,7 @@ function testUiContractIsPresent() {
   assert.match(ui, /data-nsa-shot-jump/);
   assert.match(css, /\.dh-nsa-shot-ai-assist/);
   assert.match(css, /\.dh-nsa-editor-section-fields/);
-  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260727-content-lineage-v33/);
+  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260727-scene-authority-v34/);
 }
 
 testNormalizesGenericShotSettings();

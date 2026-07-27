@@ -39,6 +39,7 @@ const files = [
   'src/services/newStoryAd/personAssetLifecycleService.js',
   'src/services/newStoryAd/personIdentityContractService.js',
   'src/services/newStoryAd/revisionService.js',
+  'src/services/newStoryAd/sceneAuthorityService.js',
   'src/services/newStoryAd/sceneAssetService.js',
   'src/services/newStoryAd/sceneAtlasService.js',
   'src/services/newStoryAd/sceneBindingService.js',
@@ -66,6 +67,7 @@ const files = [
   'scripts/test-new-story-ad-compose-gate-autosave.js',
   'scripts/test-new-story-ad-compose-transitions.js',
   'scripts/test-new-story-ad-content-versioning.js',
+  'scripts/test-new-story-ad-scene-authority-lineage.js',
   'scripts/test-new-story-ad-keyframe-parallel.js',
   'scripts/test-new-story-ad-keyframe-submission.js',
   'scripts/test-new-story-ad-multi-space-cast-recovery.js',
@@ -84,6 +86,10 @@ const files = [
   'scripts/test-new-story-ad-subject-gallery-scene-plan.js',
   'scripts/test-new-story-ad-verification-lifecycle.js',
   'scripts/test-new-story-ad-video-frame-qa.js',
+  'scripts/audit-new-story-ad-transition-recovery-deploy.js',
+  'scripts/check-new-story-ad-scene-realism-v8-deploy.js',
+  'scripts/repair-new-story-ad-scene-authority-lineage.js',
+  'scripts/deploy-new-story-ad-subject-scene-recovery.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;

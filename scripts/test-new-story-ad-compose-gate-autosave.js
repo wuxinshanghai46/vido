@@ -204,7 +204,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260727-content-lineage-v33'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260727-scene-authority-v34'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -275,7 +275,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260727-content-lineage-v33'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260727-scene-authority-v34'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
@@ -412,8 +412,10 @@ assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, b
 const service = read('src/services/newStoryAd/storyAdService.js');
 assert(!service.includes('persistProgressSnapshot(taskId, progressSnapshot)'),
   'normal autosave must not persist browser-provided generated outputs');
-assert(service.includes("storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets"),
-  'autosave must preserve the server-authoritative scene asset set in the task context mirror');
+assert(service.includes('sceneAuthority.currentState({ storage, taskId, task, normalizeScenePlan })'),
+  'autosave must resolve scene assets through the current authoritative lineage');
+assert(!service.includes("storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets"),
+  'invalidated context scene assets must never be promoted back into the current lineage');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));
 assert(ttsBlock.indexOf('assertVideoInputsReady') >= 0, 'TTS must enforce media QA preflight');
 assert(ttsBlock.indexOf('assertVideoInputsReady') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'QA preflight must run before paid TTS');

@@ -13,6 +13,9 @@ function signature(value) {
 }
 
 function domainSlices(ctx = {}) {
+  const hasScenePlan = Object.prototype.hasOwnProperty.call(ctx, 'scene_plan')
+    && ctx.scene_plan
+    && typeof ctx.scene_plan === 'object';
   return {
     source: {
       brief: ctx.brief,
@@ -34,7 +37,8 @@ function domainSlices(ctx = {}) {
       product_control: ctx.controlled_production?.product_control,
     },
     scene: {
-      scene_spec: ctx.scene_spec,
+      scene_plan: hasScenePlan ? ctx.scene_plan : undefined,
+      scene_spec: hasScenePlan ? undefined : ctx.scene_spec,
       scene_mode: ctx.scene_mode,
       environment: ctx.controlled_production?.environment_control,
       style: ctx.controlled_production?.style_control,
@@ -69,6 +73,39 @@ function domainSlices(ctx = {}) {
       video_resolution: ctx.video_resolution,
     },
   };
+}
+
+function scenePlanSpaces(plan = {}) {
+  return (Array.isArray(plan?.spaces) ? plan.spaces : []).map((space, index) => {
+    const id = String(space?.id || space?.space_id || space?.scene_id || '').trim();
+    return {
+      id: id || `space_${index + 1}`,
+      scene_spec: space?.scene_spec || space?.sceneSpec || null,
+    };
+  });
+}
+
+function scenePlanDelta(previousPlan = {}, nextPlan = {}) {
+  const before = new Map(scenePlanSpaces(previousPlan).map(space => [space.id, signature(space.scene_spec)]));
+  const after = new Map(scenePlanSpaces(nextPlan).map(space => [space.id, signature(space.scene_spec)]));
+  const compatible_scene_ids = [...after.keys()].filter(id => before.get(id) === after.get(id));
+  const changed_scene_ids = [...new Set([
+    ...[...before.keys()].filter(id => !after.has(id) || before.get(id) !== after.get(id)),
+    ...[...after.keys()].filter(id => !before.has(id) || before.get(id) !== after.get(id)),
+  ])];
+  return {
+    changed: signature(previousPlan) !== signature(nextPlan),
+    compatible_scene_ids,
+    changed_scene_ids,
+  };
+}
+
+function compatibleSceneAssets(sceneAssets = [], delta = {}) {
+  const compatible = new Set(Array.isArray(delta.compatible_scene_ids) ? delta.compatible_scene_ids : []);
+  return (Array.isArray(sceneAssets) ? sceneAssets : []).filter((asset, index) => {
+    const id = String(asset?.scene_id || asset?.space_id || asset?.id || `space_${index + 1}`).trim();
+    return compatible.has(id);
+  });
 }
 
 function changeDomains(previous = {}, next = {}, explicit = '') {
@@ -115,7 +152,7 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
   return { ...next, revisions };
 }
 
-function invalidateOutputs(storage, taskId, scope = 'none') {
+function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
   const scopes = Array.isArray(scope) ? scope : (scope && scope !== 'none' ? [scope] : []);
   const graph = {
     source: ['scene_config', 'scene_assets', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
@@ -128,7 +165,9 @@ function invalidateOutputs(storage, taskId, scope = 'none') {
     voice: ['tts_audio', 'final_video'],
     compose: ['final_video'],
   };
-  const downstream = [...new Set(scopes.flatMap(domain => graph[domain] || []))];
+  const preserveKinds = new Set(Array.isArray(options.preserveKinds) ? options.preserveKinds : []);
+  const downstream = [...new Set(scopes.flatMap(domain => graph[domain] || []))]
+    .filter(kind => !preserveKinds.has(kind));
   downstream.forEach(kind => storage.deleteOutput(taskId, kind));
   return downstream;
 }
@@ -140,4 +179,6 @@ module.exports = {
   changeScope,
   applyRevisions,
   invalidateOutputs,
+  scenePlanDelta,
+  compatibleSceneAssets,
 };

@@ -1010,7 +1010,9 @@
     const expectedAnimals = petRequired ? subjectCounts.pets : 0;
     const petProfiles = window.NewStoryAdSubjectAssetsUI.petProfiles(state, person, petRequired);
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
-    const sceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
+    const selectedSceneSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
+    const scenePlan = window.NewStoryAdSceneAssets?.planPayload?.(state, selectedSceneSpec) || state.sceneConfig || null;
+    const sceneSpec = scenePlan?.spaces?.length > 1 ? (scenePlan.spaces[0]?.scene_spec || {}) : selectedSceneSpec;
     const castProfiles = noHuman || animalOnly ? [] : (state.castProfiles.length ? state.castProfiles : (castProfileFromPersonAsset() ? [castProfileFromPersonAsset()] : []));
     const assets = assetPayloadList({ includePerson: !noHuman && !animalOnly });
     const ctrl = controlledPayload();
@@ -1065,9 +1067,7 @@
       controlled_production: ctrl,
       forbidden: negative,
       source: 'new_story_ad_legacy_style_ui',
-      creative_direction: {
-        raw: String(within('#dhNsaAdCreativeDirection')?.value || state.context?.creative_direction?.raw || '').trim(),
-      },
+      creative_direction: { ...(state.context?.creative_direction || {}), raw: String(within('#dhNsaAdCreativeDirection')?.value || state.context?.creative_direction?.raw || '').trim() },
       change_scope: state.pendingChangeScope || 'none',
       changed_domains: Array.isArray(state.pendingChangeDomains) ? state.pendingChangeDomains : [],
       media_change_scope: state.pendingMediaChange || 'none',
@@ -5942,7 +5942,7 @@
       if (scenePlanSelect && host.contains(scenePlanSelect)) {
         e.preventDefault(); e.stopPropagation();
         window.NewStoryAdSceneAssets?.selectPlanSpace?.(state, Number(scenePlanSelect.dataset.nsaScenePlanSelect || 0) || 0);
-        markSourceDirty('scene'); renderAll(); scheduleAutoSave('scene_plan_select'); return;
+        renderAll(); return;
       }
       const sceneDelete = target.closest('[data-nsa-scene-delete]');
       if (sceneDelete && host.contains(sceneDelete)) {

@@ -59,7 +59,17 @@ function createTaskViewService(deps = {}) {
 
   function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
     const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
-    const projectedSceneAssets = sceneCheckpointProjection.projectSceneAssets(rawBundle.outputs || []);
+    const rawOutputs = rawBundle.outputs || [];
+    const invalidated = rawBundle.manifest?.invalidated || {};
+    const hasCurrentSceneConfig = rawOutputs.some(row => String(row?.kind || '') === 'scene_config')
+      && !Object.prototype.hasOwnProperty.call(invalidated, 'scene_config');
+    const sceneAssetsAreCurrent = !Object.prototype.hasOwnProperty.call(invalidated, 'scene_assets');
+    // Historical checkpoints remain available for audit/recovery, but they
+    // must never be promoted back into the current UI after the authoritative
+    // scene plan or scene assets were invalidated.
+    const projectedSceneAssets = hasCurrentSceneConfig && sceneAssetsAreCurrent
+      ? sceneCheckpointProjection.projectSceneAssets(rawOutputs)
+      : [];
     const videoShotStatuses = (rawBundle.outputs || [])
       .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
       .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
@@ -108,6 +118,7 @@ function createTaskViewService(deps = {}) {
       ? (rawBundle.outputs || [])
       : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
       .filter(row => !/^(?:scene|subject)_asset_checkpoint:/.test(String(row.kind || '')))
+      .filter(row => String(row.kind || '') !== 'scene_assets' || (hasCurrentSceneConfig && sceneAssetsAreCurrent))
       .map(row => String(row.kind || '') === 'scene_assets'
         ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) }
         : row);
