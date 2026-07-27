@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const sqlite = require('../../db/sqlite');
 const contentRecords = require('../../repositories/contentRecordRepository');
@@ -15,6 +16,10 @@ const COLLECTIONS = {
   outputs: 'new_story_ad_outputs',
   model_calls: 'new_story_ad_model_calls',
   reviews: 'new_story_ad_reviews',
+  snapshots: 'new_story_ad_snapshots',
+  artifacts: 'new_story_ad_artifacts',
+  manifests: 'new_story_ad_manifests',
+  generation_runs: 'new_story_ad_generation_runs',
 };
 
 let dbSeedChecked = false;
@@ -31,6 +36,10 @@ function defaultDb() {
     outputs: [],
     model_calls: [],
     reviews: [],
+    snapshots: [],
+    artifacts: [],
+    manifests: [],
+    generation_runs: [],
   };
 }
 
@@ -175,6 +184,10 @@ function createTask(task) {
     user_id: task.user_id || '',
     request: task.request || {},
     diagnostics: task.diagnostics || {},
+    content_revision: Math.max(1, Number(task.content_revision || 1) || 1),
+    latest_client_edit_seq: Math.max(0, Number(task.latest_client_edit_seq || 0) || 0),
+    current_snapshot_id: String(task.current_snapshot_id || ''),
+    lineage_enforced: task.lineage_enforced === true,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -235,10 +248,11 @@ function listTaskRows({ status = '', userId = '' } = {}) {
 function deleteTask(taskId) {
   const id = String(taskId || '');
   if (!id || !getTask(id)) return false;
-  for (const key of ['stages', 'outputs', 'model_calls', 'reviews']) {
+  for (const key of ['stages', 'outputs', 'model_calls', 'reviews', 'snapshots', 'artifacts', 'generation_runs']) {
     const related = listRows(key).filter(row => String(row.task_id || '') === id);
     related.forEach(row => removeRow(key, row.id));
   }
+  removeRow('manifests', id);
   removeRow('tasks', id);
   return true;
 }
@@ -261,18 +275,243 @@ function saveStage(taskId, stage, data = {}, options = {}) {
   }));
 }
 
-function saveOutput(taskId, kind, payload) {
+function staleGenerationError(taskId, expectedRevision, actualRevision) {
+  const error = new Error(`当前任务已更新为版本 ${actualRevision}，版本 ${expectedRevision} 的旧生成结果已作废，不会覆盖最新内容`);
+  error.code = 'STALE_GENERATION_REVISION';
+  error.status = 409;
+  error.retryable = false;
+  error.task_id = String(taskId || '');
+  error.expected_content_revision = Number(expectedRevision || 0);
+  error.actual_content_revision = Number(actualRevision || 0);
+  return error;
+}
+
+function canonicalFingerprint(value) {
+  const canonical = input => {
+    if (Array.isArray(input)) return input.map(canonical);
+    if (!input || typeof input !== 'object') return input ?? null;
+    return Object.fromEntries(Object.keys(input).sort()
+      .filter(key => input[key] !== undefined && !['created_at', 'updated_at', 'previewUrl', 'uploading', 'progress'].includes(key))
+      .map(key => [key, canonical(input[key])]));
+  };
+  return crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+}
+
+function manifestId(taskId) {
+  return String(taskId || '');
+}
+
+function getManifest(taskId) {
+  const row = getRow('manifests', manifestId(taskId));
+  return row || {
+    id: manifestId(taskId),
+    task_id: String(taskId || ''),
+    content_revision: Number(getTask(taskId)?.content_revision || 1) || 1,
+    artifacts: {},
+    invalidated: {},
+  };
+}
+
+function saveManifest(taskId, patch = {}) {
+  const previous = getManifest(taskId);
+  return writeRow('manifests', mergedRow('manifests', manifestId(taskId), {
+    task_id: String(taskId || ''),
+    content_revision: Number(patch.content_revision || previous.content_revision || getTask(taskId)?.content_revision || 1) || 1,
+    artifacts: patch.artifacts && typeof patch.artifacts === 'object' ? patch.artifacts : (previous.artifacts || {}),
+    invalidated: patch.invalidated && typeof patch.invalidated === 'object' ? patch.invalidated : (previous.invalidated || {}),
+  }));
+}
+
+function saveSnapshot(taskId, snapshot = {}) {
+  const task = getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const revision = Math.max(1, Number(snapshot.content_revision || task.content_revision || 1) || 1);
+  if (revision !== Math.max(1, Number(task.content_revision || 1) || 1)) {
+    throw staleGenerationError(taskId, revision, task.content_revision);
+  }
+  const payload = snapshot.payload && typeof snapshot.payload === 'object'
+    ? snapshot.payload
+    : (snapshot.context && typeof snapshot.context === 'object' ? snapshot.context : {});
+  const fingerprint = String(snapshot.input_fingerprint || canonicalFingerprint(payload));
+  const id = String(snapshot.id || `${taskId}:r${revision}:${fingerprint.slice(0, 16)}`);
+  const row = writeRow('snapshots', mergedRow('snapshots', id, {
+    task_id: String(taskId),
+    content_revision: revision,
+    input_fingerprint: fingerprint,
+    status: String(snapshot.status || 'sealed'),
+    payload,
+  }));
+  updateTask(taskId, { current_snapshot_id: id });
+  return row;
+}
+
+function getSnapshot(snapshotId) {
+  return getRow('snapshots', String(snapshotId || ''));
+}
+
+function saveArtifact(taskId, kind, payload, meta = {}) {
+  const task = getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const revision = Math.max(1, Number(meta.content_revision || task.content_revision || 1) || 1);
+  const snapshotId = String(meta.snapshot_id || task.current_snapshot_id || `manual:${taskId}:r${revision}`);
+  const id = String(meta.id || `${taskId}:${snapshotId}:${kind}`);
+  return writeRow('artifacts', mergedRow('artifacts', id, {
+    task_id: String(taskId),
+    kind: String(kind),
+    snapshot_id: snapshotId,
+    source_content_revision: revision,
+    input_fingerprint: String(meta.input_fingerprint || canonicalFingerprint(payload)),
+    upstream_artifact_ids: Array.isArray(meta.upstream_artifact_ids) ? meta.upstream_artifact_ids : [],
+    qa_status: String(meta.qa_status || 'published'),
+    payload,
+  }));
+}
+
+function getArtifact(artifactId) {
+  return getRow('artifacts', String(artifactId || ''));
+}
+
+function enableLineage(taskId) {
+  const task = getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  if (task.lineage_enforced === true) return task;
+  const revision = Math.max(1, Number(task.content_revision || 1) || 1);
+  const context = getRow('outputs', `${taskId}:context`)?.payload || task.request || {};
+  const snapshot = saveSnapshot(taskId, {
+    id: `${taskId}:legacy:r${revision}`,
+    content_revision: revision,
+    status: 'legacy_unverified',
+    payload: context,
+  });
+  const artifacts = {};
+  listOutputs(taskId).forEach(row => {
+    const artifact = saveArtifact(taskId, row.kind, row.payload, {
+      content_revision: revision,
+      snapshot_id: snapshot.id,
+      qa_status: 'legacy_unverified',
+    });
+    artifacts[row.kind] = artifact.id;
+  });
+  saveManifest(taskId, { content_revision: revision, artifacts, invalidated: {} });
+  return updateTask(taskId, {
+    lineage_enforced: true,
+    current_snapshot_id: snapshot.id,
+    content_revision: revision,
+  });
+}
+
+function publishArtifact(taskId, kind, artifact, options = {}) {
+  const task = getTask(taskId);
+  const revision = Math.max(1, Number(options.content_revision || artifact?.source_content_revision || task?.content_revision || 1) || 1);
+  const currentRevision = Math.max(1, Number(task?.content_revision || 1) || 1);
+  if (revision !== currentRevision) throw staleGenerationError(taskId, revision, currentRevision);
+  const manifest = getManifest(taskId);
+  const artifacts = { ...(manifest.artifacts || {}), [kind]: artifact.id };
+  const invalidated = { ...(manifest.invalidated || {}) };
+  delete invalidated[kind];
+  saveManifest(taskId, { content_revision: currentRevision, artifacts, invalidated });
+  return artifact;
+}
+
+function carryManifestRevision(taskId, contentRevision) {
+  const task = getTask(taskId);
+  const revision = Math.max(1, Number(contentRevision || task?.content_revision || 1) || 1);
+  const manifest = getManifest(taskId);
+  const carried = {};
+  Object.entries(manifest.artifacts || {}).forEach(([kind, artifactId]) => {
+    const previous = getArtifact(artifactId);
+    if (!previous) return;
+    const artifact = saveArtifact(taskId, kind, previous.payload, {
+      content_revision: revision,
+      snapshot_id: `carry:${taskId}:r${revision}`,
+      upstream_artifact_ids: [previous.id],
+      qa_status: previous.qa_status === 'legacy_unverified' ? 'legacy_unverified' : 'carried_forward',
+      input_fingerprint: previous.input_fingerprint,
+    });
+    carried[kind] = artifact.id;
+  });
+  saveManifest(taskId, {
+    content_revision: revision,
+    artifacts: carried,
+    invalidated: manifest.invalidated || {},
+  });
+  return carried;
+}
+
+function saveOutput(taskId, kind, payload, options = {}) {
   cancellation.throwIfCancelled(taskId);
+  const task = getTask(taskId);
+  const generation = cancellation.current();
+  const expectedRevision = Math.max(0, Number(
+    options.content_revision
+      || generation?.expectedContentRevision
+      || generation?.expected_content_revision
+      || 0,
+  ) || 0);
+  const currentRevision = Math.max(1, Number(task?.content_revision || 1) || 1);
+  if (expectedRevision && expectedRevision !== currentRevision) {
+    throw staleGenerationError(taskId, expectedRevision, currentRevision);
+  }
   const id = `${taskId}:${kind}`;
-  return writeRow('outputs', mergedRow('outputs', id, { task_id: taskId, kind, payload }));
+  const saved = writeRow('outputs', mergedRow('outputs', id, { task_id: taskId, kind, payload }));
+  if (task?.lineage_enforced === true) {
+    const snapshotId = String(
+      options.snapshot_id
+        || generation?.snapshotId
+        || generation?.snapshot_id
+        || task.current_snapshot_id
+        || `manual:${taskId}:r${currentRevision}`,
+    );
+    const artifact = saveArtifact(taskId, kind, payload, {
+      content_revision: expectedRevision || currentRevision,
+      snapshot_id: snapshotId,
+      input_fingerprint: options.input_fingerprint || generation?.inputFingerprint || generation?.input_fingerprint || '',
+      upstream_artifact_ids: options.upstream_artifact_ids || [],
+      qa_status: options.qa_status || 'published',
+    });
+    publishArtifact(taskId, kind, artifact, { content_revision: expectedRevision || currentRevision });
+  }
+  return saved;
 }
 
 function getOutput(taskId, kind) {
+  const task = getTask(taskId);
+  if (task?.lineage_enforced === true) {
+    const generation = cancellation.current();
+    if (kind === 'context' && generation?.snapshotId) {
+      const snapshot = getSnapshot(generation.snapshotId);
+      if (snapshot
+        && String(snapshot.task_id) === String(taskId)
+        && Number(snapshot.content_revision || 0) === Number(generation.expectedContentRevision || task.content_revision || 0)) {
+        return snapshot.payload ?? null;
+      }
+    }
+    const manifest = getManifest(taskId);
+    const artifactId = manifest.artifacts?.[kind];
+    const artifact = artifactId ? getArtifact(artifactId) : null;
+    const currentRevision = Math.max(1, Number(task.content_revision || 1) || 1);
+    if (artifact && Number(artifact.source_content_revision || 0) === currentRevision) return artifact.payload ?? null;
+    return null;
+  }
   return getRow('outputs', `${taskId}:${kind}`)?.payload ?? null;
 }
 
 function deleteOutput(taskId, kind) {
   removeRow('outputs', `${taskId}:${kind}`);
+  const task = getTask(taskId);
+  if (task?.lineage_enforced === true) {
+    const manifest = getManifest(taskId);
+    const artifacts = { ...(manifest.artifacts || {}) };
+    delete artifacts[kind];
+    const invalidated = {
+      ...(manifest.invalidated || {}),
+      [kind]: {
+        content_revision: Number(task.content_revision || 1) || 1,
+        invalidated_at: nowIso(),
+      },
+    };
+    saveManifest(taskId, { content_revision: Number(task.content_revision || 1) || 1, artifacts, invalidated });
+  }
 }
 
 function listOutputs(taskId) {
@@ -327,6 +566,7 @@ function getTaskBundle(taskId, { diagnostics = true } = {}) {
     outputs: listOutputs(taskId),
     model_calls: diagnostics ? listRows('model_calls', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId)) : [],
     reviews: diagnostics ? listRows('reviews', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId)) : [],
+    manifest: getTask(taskId)?.lineage_enforced === true ? getManifest(taskId) : null,
   };
 }
 
@@ -356,6 +596,16 @@ module.exports = {
   getOutput,
   deleteOutput,
   listOutputs,
+  canonicalFingerprint,
+  getManifest,
+  saveManifest,
+  saveSnapshot,
+  getSnapshot,
+  saveArtifact,
+  getArtifact,
+  enableLineage,
+  publishArtifact,
+  carryManifestRevision,
   saveReview,
   saveModelCall,
   getTaskBundle,

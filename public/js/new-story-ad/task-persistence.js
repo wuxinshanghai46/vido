@@ -60,6 +60,12 @@
     const created = await api('/api/new-story-ad/tasks', { method: 'POST', body });
     state.taskId = created.task?.id || created.task_id || created.taskId || '';
     state.context = created.context || null;
+    state.contentRevision = Math.max(1, Number(created.content_revision || created.task?.content_revision || 1) || 1);
+    state.acknowledgedClientEditSeq = Math.max(0, Number(created.acknowledged_client_edit_seq || created.task?.latest_client_edit_seq || state.clientEditSeq || 0) || 0);
+    if (state.acknowledgedClientEditSeq >= Number(state.clientEditSeq || 0)) {
+      state.pendingChangeScope = 'none';
+      state.pendingChangeDomains = [];
+    }
     if (typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
     if (typeof renderStatus === 'function') renderStatus();
     return state.taskId;
@@ -177,33 +183,18 @@
     return 'draft';
   }
 
-  function progressSnapshotForState(state = {}, ctx = {}) {
-    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
-    const normalizeBlueprint = typeof ctx.normalizeBlueprintForSave === 'function' ? ctx.normalizeBlueprintForSave : () => state.blueprint;
-    return {
-      context: state.context || null,
-      scene_config: state.sceneConfig || null,
-      blueprint: state.blueprint ? normalizeBlueprint() : null,
-      storyboard_table: Array.isArray(state.shots) ? state.shots : [],
-      keyframe_contracts: Array.isArray(state.contracts) ? state.contracts : [],
-      keyframes: Array.isArray(state.keyframes) ? state.keyframes : [],
-      scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
-      quality_review: state.review || null,
-      tts_audio: state.ttsAudio || null,
-      video_clips: Array.isArray(state.videoClips) ? state.videoClips : [],
-      final_video: state.finalVideo || null,
-    };
-  }
-
   async function saveCurrentTaskProgress(opts = {}, ctx = {}) {
     const { state, api, payload, normalizeBundle, renderAll, toast } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
     const id = await ensureTask(ctx);
     const progressStage = progressStageForState(state);
-    const scenePlan = state.pendingChangeScope === 'scene'
+    const savingEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0);
+    const savingDomains = Array.isArray(state.pendingChangeDomains) ? [...state.pendingChangeDomains] : [];
+    const savingScope = state.pendingChangeScope || 'none';
+    const scenePlan = savingDomains.includes('scene') || savingScope === 'scene'
       ? window.NewStoryAdSceneAssets?.planPayload?.(state)
       : null;
-    if (state.pendingChangeScope === 'scene' && !scenePlan) {
+    if ((savingDomains.includes('scene') || savingScope === 'scene') && !scenePlan) {
       const error = new Error('场景变更缺少完整逐空间计划，已停止自动保存，原场景合同不会被覆盖');
       error.code = 'SCENE_PLAN_REQUIRED_FOR_SCENE_SAVE';
       throw error;
@@ -214,17 +205,26 @@
         ...payload(),
         task_id: id,
         scene_plan: scenePlan,
+        base_content_revision: Math.max(1, Number(state.contentRevision || 1) || 1),
+        client_edit_seq: savingEditSeq,
+        change_scope: savingScope,
+        changed_domains: savingDomains,
         save_progress: true,
         progress_stage: progressStage,
-        progress_snapshot: {
-          ...progressSnapshotForState(state, ctx),
-          scene_config: scenePlan || state.sceneConfig || null,
-        },
       },
     });
-    state.pendingChangeScope = 'none';
-    state.pendingMediaChange = 'none';
     if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    state.contentRevision = Math.max(1, Number(response.content_revision || response.task?.content_revision || state.contentRevision || 1) || 1);
+    state.acknowledgedClientEditSeq = Math.max(
+      Number(state.acknowledgedClientEditSeq || 0),
+      Number(response.acknowledged_client_edit_seq || response.task?.latest_client_edit_seq || 0) || 0,
+    );
+    if (Number(state.clientEditSeq || 0) === savingEditSeq
+      && state.acknowledgedClientEditSeq >= savingEditSeq) {
+      state.pendingChangeScope = 'none';
+      state.pendingChangeDomains = [];
+      state.pendingMediaChange = 'none';
+    }
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       window.__dhRefreshNewStoryAdTasks().catch(() => {});
     }

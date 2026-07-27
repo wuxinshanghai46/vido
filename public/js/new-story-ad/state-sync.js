@@ -342,6 +342,13 @@
     if (!state) return;
     const bundle = response.bundle || response;
     const task = response.task || bundle.task || {};
+    const incomingRevision = Math.max(0, Number(
+      response.content_revision
+        || task.content_revision
+        || bundle.content_revision
+        || 0,
+    ) || 0);
+    if (incomingRevision && Number(state.contentRevision || 0) > incomingRevision) return;
     const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
     const outputs = normalizeTaskOutputs(bundle);
     state.context = normalizeBriefContext(outputs.context || response.context || state.context);
@@ -358,6 +365,23 @@
     syncMediaResult(state, { response, bundle, incomingTaskId });
     state.videoSceneBlocks = outputs.video_scene_blocks || response.video_scene_blocks || state.videoSceneBlocks || [];
     state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    const manifest = response.manifest || bundle.manifest || null;
+    const invalidated = manifest?.invalidated || {};
+    const clearInvalidated = (kind, stateKey, fallback) => {
+      if (!Object.prototype.hasOwnProperty.call(invalidated, kind)) return;
+      if (Object.prototype.hasOwnProperty.call(outputs, kind) || Object.prototype.hasOwnProperty.call(response, kind)) return;
+      state[stateKey] = fallback;
+    };
+    clearInvalidated('scene_config', 'sceneConfig', null);
+    clearInvalidated('blueprint', 'blueprint', null);
+    clearInvalidated('storyboard_table', 'shots', []);
+    clearInvalidated('keyframe_contracts', 'contracts', []);
+    clearInvalidated('keyframes', 'keyframes', []);
+    clearInvalidated('quality_review', 'review', null);
+    clearInvalidated('tts_audio', 'ttsAudio', null);
+    clearInvalidated('video_clips', 'videoClips', []);
+    clearInvalidated('video_scene_blocks', 'videoSceneBlocks', []);
+    clearInvalidated('final_video', 'finalVideo', null);
     detectMissingStoryboardOutput(state, outputs);
     if (task.id || task.status || task.stage || task.error || task.error_code) {
       state.taskStatus = task.status || '';
@@ -374,6 +398,18 @@
     hydrateAssets(state, state.context || {});
     hydrateSubjectCheckpoint(state, outputs, state.context || {});
     state.taskId = incomingTaskId || state.taskId;
+    if (incomingRevision) state.contentRevision = incomingRevision;
+    const acknowledgedSeq = Math.max(0, Number(
+      response.acknowledged_client_edit_seq
+        || task.latest_client_edit_seq
+        || bundle.acknowledged_client_edit_seq
+        || 0,
+    ) || 0);
+    if (acknowledgedSeq) {
+      state.acknowledgedClientEditSeq = Math.max(Number(state.acknowledgedClientEditSeq || 0), acknowledgedSeq);
+    }
+    state.generationSnapshotId = task.current_snapshot_id || response.snapshot_id || state.generationSnapshotId || '';
+    state.generationInputFingerprint = response.input_fingerprint || state.generationInputFingerprint || '';
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
@@ -465,6 +501,10 @@
     const incomingTaskId = task.id || request.task_id || request.taskId || '';
     syncMediaResult(state, { bundle, incomingTaskId });
     state.taskId = incomingTaskId || state.taskId;
+    state.contentRevision = Math.max(0, Number(task.content_revision || state.contentRevision || 0) || 0);
+    state.acknowledgedClientEditSeq = Math.max(0, Number(task.latest_client_edit_seq || state.acknowledgedClientEditSeq || 0) || 0);
+    state.clientEditSeq = Math.max(Number(state.clientEditSeq || 0), state.acknowledgedClientEditSeq);
+    state.generationSnapshotId = task.current_snapshot_id || state.generationSnapshotId || '';
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
@@ -497,6 +537,7 @@
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
     setFieldValue('#dhNsaAdText', restoredBrief, { within });
+    setFieldValue('#dhNsaAdCreativeDirection', request.creative_direction?.raw || request.creativeDirection?.raw || '', { within });
     setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30, { within });
     const durationControl = within('#dhNsaAdDuration');
     if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';

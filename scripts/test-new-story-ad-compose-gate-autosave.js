@@ -204,7 +204,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260727-scene-edit-authority-v32'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260727-content-lineage-v33'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -275,7 +275,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260727-scene-edit-authority-v32'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260727-content-lineage-v33'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');
@@ -331,11 +331,12 @@ storyAdService.updateTaskRequest('scene-assets-autosave-authority', {
 }, { id: 'owner-1' });
 const persistedAutosaveSceneAssets = storage.getOutput('scene-assets-autosave-authority', 'scene_assets');
 assert.deepStrictEqual(persistedAutosaveSceneAssets.map(asset => asset.space_id), ['space_park', 'space_home', 'space_orphan'],
-  'the real progress snapshot path must preserve hidden historical assets');
-assert.strictEqual(persistedAutosaveSceneAssets[0].name, '公园（再次编辑）');
+  'a normal progress save must preserve the complete server-authoritative scene asset set');
+assert.strictEqual(persistedAutosaveSceneAssets[0].name, '公园（已编辑）',
+  'a browser progress snapshot must not overwrite a server-authoritative generated scene asset');
 assert.deepStrictEqual(storage.getOutput('scene-assets-autosave-authority', 'context').scene_assets.map(asset => asset.scene_id || asset.space_id),
   ['space_park', 'space_home', 'space_orphan'],
-  'the task context mirror must preserve the same hidden historical assets');
+  'the task context mirror must use the same server-authoritative scene assets');
 storyAdService.createTask({ task_id: 'failed-compose-autosave', brief: '保持封装失败真实状态' }, { id: 'owner-1' });
 storage.updateTask('failed-compose-autosave', { error: 'ffmpeg failed', error_code: 'UNKNOWN', support_id: 'support-1', generation_progress: { stage: 'compose', status: 'failed' } });
 storage.updateTask('failed-compose-autosave', { status: 'failed', stage: 'compose_failed' });
@@ -409,10 +410,10 @@ assert(route.includes("router.get('/tasks/:id/video/preflight'"), 'server must e
 assert(route.includes('service.assertVideoPreflightConfirmation(req.params.id, body)'), 'server must reject unconfirmed or stale video plans before queueing');
 
 const service = read('src/services/newStoryAd/storyAdService.js');
-assert(service.includes("taskProgressSave.mergeAutosaveSceneAssets(storage.getOutput(taskId, outputKind), value)"),
-  'progress snapshot persistence must merge projected scene assets by stable id instead of overwriting the authoritative list');
-assert(service.includes('taskProgressSave.mergeAutosaveSceneAssets(previousCtx.scene_assets, ctx.scene_assets)'),
-  'autosave must also preserve hidden assets in the task context mirror');
+assert(!service.includes('persistProgressSnapshot(taskId, progressSnapshot)'),
+  'normal autosave must not persist browser-provided generated outputs');
+assert(service.includes("storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets"),
+  'autosave must preserve the server-authoritative scene asset set in the task context mirror');
 const ttsBlock = service.slice(service.indexOf('async function generateTtsStage'), service.indexOf('async function generateVideoStage'));
 assert(ttsBlock.indexOf('assertVideoInputsReady') >= 0, 'TTS must enforce media QA preflight');
 assert(ttsBlock.indexOf('assertVideoInputsReady') < ttsBlock.indexOf('ttsAdapter.generateVoiceover'), 'QA preflight must run before paid TTS');

@@ -576,7 +576,10 @@ async function main() {
     story_title: '通用测试剧本',
     beats: [{ title: '开场', visual: '用户指定主体出现', action: '完成演示', spoken_line: '开始演示' }],
   }, owner);
-  assert.equal(service.publicTaskBundle(freshnessId).storyboard_status.stale, true);
+  const invalidatedStoryboardBundle = service.publicTaskBundle(freshnessId);
+  assert.equal(invalidatedStoryboardBundle.storyboard_status.ready, false);
+  assert.equal(invalidatedStoryboardBundle.storyboard_status.reason, 'STORYBOARD_MISSING');
+  assert.equal(storage.getOutput(freshnessId, 'storyboard_table'), null);
   const sameBlueprint = service.updateBlueprint(freshnessId, firstBlueprint, owner);
   assert.equal(sameBlueprint.revision, firstBlueprint.revision);
   service.updateStoryboardTable(freshnessId, [{ index: 1, title: '新分镜', visual: '当前剧本对应画面', action: '完成演示', voiceover: '开始演示' }], owner);

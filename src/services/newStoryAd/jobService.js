@@ -4,12 +4,13 @@ const cancellation = require('./cancellationContext');
 const videoCore = require('../videoGenerationCore');
 
 const runningJobs = new Map();
-const EXECUTING_STAGES = new Set(['full', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose', 'media']);
+const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'keyframes', 'tts', 'video', 'compose', 'media']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
 const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
   blueprint: 480000,
+  script_package: 900000,
   storyboard: 480000,
   scene_asset: 600000,
   keyframes: 900000,
@@ -119,6 +120,9 @@ function publicJob(job = {}) {
     error: job.error || '',
     support_id: job.supportId || job.id || '',
     retryable: job.retryable === true,
+    snapshot_id: job.snapshotId || '',
+    content_revision: Number(job.expectedContentRevision || 0) || 0,
+    input_fingerprint: job.inputFingerprint || '',
   };
 }
 
@@ -224,7 +228,17 @@ function cancelJob(taskId, { generationId = '', cancelledBy = '' } = {}) {
   return { cancelled: true, already_cancelled: false, job: publicJob(job) };
 }
 
-function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {} }) {
+function queueStage({
+  taskId,
+  stage,
+  execute,
+  deadlineMs = 0,
+  failureContext = {},
+  expectedContentRevision = 0,
+  snapshotId = '',
+  inputFingerprint = '',
+  idempotencyKey = '',
+}) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   const key = jobKey(taskId);
   const active = runningJobs.get(key);
@@ -232,6 +246,36 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {
     return { accepted: false, duplicate: true, job: publicJob(active) };
   }
   const persisted = storage.getTask(taskId);
+  const currentRevision = Math.max(1, Number(persisted?.content_revision || 1) || 1);
+  const expectedRevision = Math.max(1, Number(expectedContentRevision || currentRevision) || currentRevision);
+  if (expectedRevision !== currentRevision) {
+    const error = new Error(`任务内容已经更新为版本 ${currentRevision}，版本 ${expectedRevision} 的生成请求已停止`);
+    error.code = 'STALE_GENERATION_REVISION';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  let resolvedSnapshotId = String(snapshotId || '');
+  let sealedSnapshot = resolvedSnapshotId ? storage.getSnapshot(resolvedSnapshotId) : null;
+  if (persisted?.lineage_enforced === true && !sealedSnapshot) {
+    const context = storage.getOutput(taskId, 'context') || persisted.request || {};
+    sealedSnapshot = storage.saveSnapshot(taskId, {
+      content_revision: currentRevision,
+      status: 'sealed',
+      payload: context,
+    });
+    resolvedSnapshotId = sealedSnapshot.id;
+  }
+  if (persisted?.lineage_enforced === true) {
+    if (!sealedSnapshot || String(sealedSnapshot.task_id) !== String(taskId)
+      || Number(sealedSnapshot.content_revision || 0) !== currentRevision) {
+      const error = new Error('当前生成没有绑定服务器确认的最新内容快照，已在模型调用前停止');
+      error.code = 'GENERATION_SNAPSHOT_REQUIRED';
+      error.status = 409;
+      error.retryable = false;
+      throw error;
+    }
+  }
   if (persisted?.active_generation_id && !active) {
     const reconciled = reconcileInterruptedJobs();
     const current = storage.getTask(taskId);
@@ -255,6 +299,10 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {
     error: '',
     retryable: false,
     supportId: id,
+    expectedContentRevision: expectedRevision,
+    snapshotId: String(resolvedSnapshotId || sealedSnapshot?.id || ''),
+    inputFingerprint: String(inputFingerprint || sealedSnapshot?.input_fingerprint || ''),
+    idempotencyKey: String(idempotencyKey || `${taskId}:${stage}:r${expectedRevision}`),
     failureSceneId: String(failureContext.scene_id || failureContext.sceneId || '').trim().slice(0, 120),
     failureSceneName: String(failureContext.scene_name || failureContext.sceneName || '').trim().slice(0, 120),
     deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
@@ -272,20 +320,46 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {
     error: '',
     error_code: '',
     support_id: '',
+    active_snapshot_id: job.snapshotId,
+    active_content_revision: expectedRevision,
+    active_input_fingerprint: job.inputFingerprint,
   });
   storage.saveStage(taskId, stage, {
     status: 'queued',
     started_at: queuedAt,
-    diagnostics: { generation_id: id },
+    diagnostics: {
+      generation_id: id,
+      snapshot_id: job.snapshotId,
+      content_revision: expectedRevision,
+      input_fingerprint: job.inputFingerprint,
+      idempotency_key: job.idempotencyKey,
+    },
   });
 
   setImmediate(() => {
-    const execution = cancellation.run({ generationId: id, taskId, stage, deadlineMs: job.deadlineMs }, async () => {
+    const execution = cancellation.run({
+      generationId: id,
+      taskId,
+      stage,
+      deadlineMs: job.deadlineMs,
+      snapshotId: job.snapshotId,
+      expectedContentRevision: expectedRevision,
+      inputFingerprint: job.inputFingerprint,
+    }, async () => {
     if (cancellation.isCancelled(id)) {
       setTimeout(() => {
         if (runningJobs.get(key)?.id === id) runningJobs.delete(key);
       }, 5 * 60 * 1000).unref?.();
       return;
+    }
+    try {
+    const beforeRun = storage.getTask(taskId);
+    if (Number(beforeRun?.content_revision || 1) !== expectedRevision
+      || (job.snapshotId && String(beforeRun?.current_snapshot_id || '') !== job.snapshotId)) {
+      const error = new Error('任务在排队期间已经更新，旧生成任务已作废');
+      error.code = 'STALE_GENERATION_REVISION';
+      error.status = 409;
+      throw error;
     }
     job.status = 'running';
     job.startedAt = new Date().toISOString();
@@ -303,9 +377,23 @@ function queueStage({ taskId, stage, execute, deadlineMs = 0, failureContext = {
       started_at: job.startedAt,
       diagnostics: { generation_id: id },
     });
-    try {
-      await execute({ generationId: id, taskId, stage });
+      await execute({
+        generationId: id,
+        taskId,
+        stage,
+        snapshotId: job.snapshotId,
+        expectedContentRevision: expectedRevision,
+        inputFingerprint: job.inputFingerprint,
+      });
       cancellation.throwIfCancelled(taskId);
+      const afterExecute = storage.getTask(taskId);
+      if (Number(afterExecute?.content_revision || 1) !== expectedRevision
+        || (job.snapshotId && String(afterExecute?.current_snapshot_id || '') !== job.snapshotId)) {
+        const error = new Error('生成完成时任务内容已经更新，旧结果不会发布');
+        error.code = 'STALE_GENERATION_REVISION';
+        error.status = 409;
+        throw error;
+      }
       job.status = 'succeeded';
       job.finishedAt = new Date().toISOString();
       const current = storage.getTask(taskId);

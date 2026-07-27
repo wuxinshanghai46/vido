@@ -75,6 +75,12 @@
     personGenerationProgress: null, subjectCheckpointTimer: null,
     sceneAssets: [],
     pendingChangeScope: 'none', pendingMediaChange: 'none',
+    pendingChangeDomains: [],
+    clientEditSeq: 0,
+    acknowledgedClientEditSeq: 0,
+    contentRevision: 0,
+    generationSnapshotId: '',
+    generationInputFingerprint: '',
     sceneGenerationProgress: null,
     productAsset: null,
     referenceAssets: [],
@@ -1059,7 +1065,14 @@
       controlled_production: ctrl,
       forbidden: negative,
       source: 'new_story_ad_legacy_style_ui',
-      change_scope: state.pendingChangeScope || 'none', media_change_scope: state.pendingMediaChange || 'none',
+      creative_direction: {
+        raw: String(within('#dhNsaAdCreativeDirection')?.value || state.context?.creative_direction?.raw || '').trim(),
+      },
+      change_scope: state.pendingChangeScope || 'none',
+      changed_domains: Array.isArray(state.pendingChangeDomains) ? state.pendingChangeDomains : [],
+      media_change_scope: state.pendingMediaChange || 'none',
+      base_content_revision: Math.max(0, Number(state.contentRevision || 0) || 0),
+      client_edit_seq: Math.max(0, Number(state.clientEditSeq || 0) || 0),
     };
   }
 
@@ -1091,8 +1104,19 @@
 
   function markSourceDirty(scope = 'source') {
     const priority = { none: 0, person: 1, scene: 2, product: 3, source: 4 };
+    const domain = {
+      source: 'source',
+      product: 'product',
+      scene: 'scene',
+      person: 'person',
+      creative: 'creative',
+    }[scope] || 'source';
+    state.clientEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0) + 1;
+    if (!Array.isArray(state.pendingChangeDomains)) state.pendingChangeDomains = [];
+    if (!state.pendingChangeDomains.includes(domain)) state.pendingChangeDomains.push(domain);
     const current = state.pendingChangeScope || 'none';
-    state.pendingChangeScope = priority[scope] >= priority[current] ? scope : current;
+    const compatibilityScope = Object.prototype.hasOwnProperty.call(priority, scope) ? scope : 'source';
+    state.pendingChangeScope = priority[compatibilityScope] >= priority[current] ? compatibilityScope : current;
     if (scope === 'source') {
       state.context = null;
       state.sceneConfig = null;
@@ -1131,6 +1155,13 @@
     state.taskId = '';
     rememberTaskId('');
     markSourceDirty();
+    state.pendingChangeScope = 'none';
+    state.pendingChangeDomains = [];
+    state.clientEditSeq = 0;
+    state.acknowledgedClientEditSeq = 0;
+    state.contentRevision = 0;
+    state.generationSnapshotId = '';
+    state.generationInputFingerprint = '';
     state.pendingMediaChange = 'none';
     revokePreview(state.actorAsset);
     revokePreview(state.personAsset);
@@ -1181,7 +1212,7 @@
     state.generationStartedAt = '';
     state.cancelRequested = false;
     state.busy = false;
-    ['#dhNsaAdText', '#dhNsaAdVoiceId'].forEach(sel => {
+    ['#dhNsaAdText', '#dhNsaAdCreativeDirection', '#dhNsaAdVoiceId'].forEach(sel => {
       const el = within(sel);
       if (el) el.value = '';
     });
@@ -1792,6 +1823,7 @@
     }
 
     setFieldValue('#dhNsaAdText', request.brief || request.content || task.brief || '');
+    setFieldValue('#dhNsaAdCreativeDirection', request.creative_direction?.raw || request.creativeDirection?.raw || '');
     setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30);
     const durationControl = within('#dhNsaAdDuration');
     if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';
@@ -3746,6 +3778,48 @@
     }
   }
 
+  async function flushForGeneration(targetStage = 'blueprint') {
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = null;
+    }
+    const waitStarted = Date.now();
+    while (autoSaveInFlight) {
+      if (Date.now() - waitStarted > 15000) {
+        const error = new Error('最新修改仍在保存中，请稍后再生成');
+        error.code = 'AUTOSAVE_FLUSH_TIMEOUT';
+        throw error;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const targetEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0);
+    await persistAutoSaveChanges();
+    // 剧本或分镜专用保存只提交对应产物；随后仍要提交完整输入草稿，
+    // 让服务器确认当前编辑序号后才能创建生成快照。
+    await saveCurrentTaskProgress({ silent: true, render: false });
+    if (Number(state.acknowledgedClientEditSeq || 0) < targetEditSeq) {
+      const error = new Error('服务器尚未确认全部最新修改，本次没有启动生成');
+      error.code = 'UNSAVED_CLIENT_EDITS';
+      throw error;
+    }
+    const prepared = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/prepare-generation`, {
+      method: 'POST',
+      body: {
+        expected_content_revision: Math.max(1, Number(state.contentRevision || 1) || 1),
+        client_edit_seq: targetEditSeq,
+        target_stage: targetStage,
+      },
+    });
+    state.contentRevision = Math.max(1, Number(prepared.content_revision || state.contentRevision || 1) || 1);
+    state.acknowledgedClientEditSeq = Math.max(
+      Number(state.acknowledgedClientEditSeq || 0),
+      Number(prepared.acknowledged_client_edit_seq || 0) || 0,
+    );
+    state.generationSnapshotId = prepared.snapshot_id || '';
+    state.generationInputFingerprint = prepared.input_fingerprint || '';
+    return { taskId: state.taskId, ...prepared };
+  }
+
   async function saveCurrentTaskProgressFromButton(button = null) {
     setButtonBusy(button, true, '保存中...');
     try {
@@ -3759,112 +3833,30 @@
   }
 
   async function saveSceneAssetsProgress(taskId = state.taskId) {
-    if (window.NewStoryAdTaskPersistence?.saveSceneAssetsProgress) {
-      return window.NewStoryAdTaskPersistence.saveSceneAssetsProgress(taskId, {
-        state,
-        api,
-        normalizeBundle,
-      });
+    if (!window.NewStoryAdTaskPersistence?.saveSceneAssetsProgress) {
+      throw new Error('任务保存模块尚未加载');
     }
-    if (!taskId) return null;
-    const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
-    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
-      method: 'PUT',
-      body: { scene_assets: sceneAssets },
-    });
-    normalizeBundle(r);
-    if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
-      await window.__dhRefreshNewStoryAdTasks();
-    }
-    return r;
+    return window.NewStoryAdTaskPersistence.saveSceneAssetsProgress(taskId, { state, api, normalizeBundle });
   }
 
   async function saveBlueprintEdits(taskId = state.taskId) {
-    if (window.NewStoryAdTaskPersistence?.saveBlueprintEdits) {
-      return window.NewStoryAdTaskPersistence.saveBlueprintEdits(taskId, {
-        state,
-        api,
-        normalizeBundle,
-        normalizeBlueprintForSave,
-      });
+    if (!window.NewStoryAdTaskPersistence?.saveBlueprintEdits) {
+      throw new Error('任务保存模块尚未加载');
     }
-    if (!state.blueprint || !taskId) return null;
-    const blueprint = normalizeBlueprintForSave();
-    state.blueprint = blueprint;
-    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
-      method: 'PUT',
-      body: { blueprint },
+    return window.NewStoryAdTaskPersistence.saveBlueprintEdits(taskId, {
+      state, api, normalizeBundle, normalizeBlueprintForSave,
     });
-    normalizeBundle(r);
-    state.blueprintDirty = false;
-    return r;
   }
 
   async function saveStoryboardEdits(taskId = state.taskId) {
-    if (window.NewStoryAdTaskPersistence?.saveStoryboardEdits) {
-      const response = await window.NewStoryAdTaskPersistence.saveStoryboardEdits(taskId, {
-        state,
-        api,
-        normalizeBundle,
-        normalizeSpeechText,
-      });
-      state.storyboardDirty = false;
-      return response;
+    if (!window.NewStoryAdTaskPersistence?.saveStoryboardEdits) {
+      throw new Error('任务保存模块尚未加载');
     }
-    if (!taskId || !Array.isArray(state.shots) || !state.shots.length) return null;
-    const shots = state.shots.map((shot, index) => {
-      const duration = shot.duration || shot.duration_sec || 3;
-      const visual = shot.visual || shot.visual_description || shot.content_prompt || '';
-      const action = shot.action || shot.visual_action || '';
-      const voiceover = normalizeSpeechText(shot.voiceover || shot.narration || shot.ad_copy || shot.subtitle || '');
-      const purpose = shot.purpose || shot.objective || shot.role || '';
-      const userEditedFields = shot._nsa_user_edited_fields || {};
-      const userVisualOverride = shot.user_visual_override === true || userEditedFields.visual === true;
-      const editedVisualLock = userVisualOverride
-        ? [purpose, visual].filter(Boolean).join('\n')
-        : purpose;
-      return {
-        ...shot,
-        _prompt_preview: undefined,
-        index: index + 1,
-        shot_index: index + 1,
-        duration,
-        duration_sec: duration,
-        visual,
-        visual_description: visual,
-        content_prompt: visual,
-        action,
-        visual_action: action,
-        voiceover,
-        narration: voiceover,
-        subtitle: voiceover,
-        purpose,
-        objective: purpose,
-        role: purpose || shot.role || '',
-        keyframe_notes: editedVisualLock || shot.keyframe_notes || '',
-        material_usage: editedVisualLock || shot.material_usage || '',
-        user_visual_override: userVisualOverride,
-        _nsa_user_edited_fields: userEditedFields,
-        scene_id: shot.scene_id || shot.scene_asset_id || '',
-        scene_asset_id: shot.scene_asset_id || shot.scene_id || '',
-        scene_name: shot.scene_name || '',
-        scene_view: shot.scene_view || '',
-        scene_zone: shot.scene_zone || '',
-        scene_zone_id: shot.scene_zone_id || shot.zone_ids?.[0] || '',
-        scene_zone_label_zh: shot.scene_zone_label_zh || shot.scene_zone || '',
-        zone_ids: Array.isArray(shot.zone_ids) ? shot.zone_ids : [],
-        anchor_ids: Array.isArray(shot.anchor_ids) ? shot.anchor_ids : [],
-        transition_from: shot.transition_from || '',
-        transition_reason: shot.transition_reason || '',
-      };
+    const response = await window.NewStoryAdTaskPersistence.saveStoryboardEdits(taskId, {
+      state, api, normalizeBundle, normalizeSpeechText,
     });
-    const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
-      method: 'PUT',
-      body: { shots },
-    });
-    normalizeBundle(r);
     state.storyboardDirty = false;
-    return r;
+    return response;
   }
 
   async function regenerateSingleKeyframe(index = 0, button = null) {
@@ -3931,6 +3923,7 @@
       showStep,
       saveBlueprintEdits,
       saveStoryboardEdits,
+      flushForGeneration,
       startStageProgress,
       setBusy,
       setButtonBusy,
@@ -5548,7 +5541,8 @@
       state.castProfiles = r.cast_profiles || state.context?.cast_profiles || state.castProfiles || [];
       state.petProfiles = r.pet_profiles || state.context?.pet_profiles || state.petProfiles || [];
       state.personGenerationProgress = null;
-      state.pendingChangeScope = 'none';
+      markSourceDirty('person');
+      scheduleAutoSave('generated_person_asset', { immediate: true });
       state.context = {
         ...(state.context || {}),
         person_spec: generationSpec,
@@ -6177,6 +6171,11 @@
       }
       if (target?.id === 'dhNsaAdText') {
         markSourceDirty('source');
+        renderStatus();
+        return;
+      }
+      if (target?.id === 'dhNsaAdCreativeDirection') {
+        markSourceDirty('creative');
         renderStatus();
         return;
       }

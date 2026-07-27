@@ -614,6 +614,7 @@ function harness({ cancelAt = 0 } = {}) {
   const sceneBinding = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneBindingService.js'), 'utf8');
   const adapter = fs.readFileSync(path.join(root, 'src/services/newStoryAd/videoAdapter.js'), 'utf8');
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
+  const taskViewSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/taskViewService.js'), 'utf8');
   const stateSyncSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/state-sync.js'), 'utf8');
   const checkpointPollingSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-checkpoint-polling.js'), 'utf8');
   const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
@@ -625,7 +626,7 @@ function harness({ cancelAt = 0 } = {}) {
   assert(adapter.includes('castCount > 1'), 'multi-person video must not upload only the first actor as the whole cast');
   assert(storySource.includes('subjectReferences.keyframeReferenceUrls'), 'keyframes must use the reference-capacity orchestrator');
   assert(
-    storySource.includes('personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs)'),
+    taskViewSource.includes('personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs)'),
     'the task API must expose exactly the latest subject checkpoint so refresh recovery receives the running batch',
   );
   assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling must load before the legacy UI');

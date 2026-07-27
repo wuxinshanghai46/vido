@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-scene-edit-authority-v32">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-content-lineage-v33">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260727-scene-edit-authority-v32"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260727-content-lineage-v33"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -511,6 +511,15 @@
                 </label>
                 <p>模式只决定生产和 QA 策略，不会写死行业、场景、人物或镜头内容。</p>
               </div>
+              <div class="dh-demo-section-title">剧情与表演要求 <span class="dh-luxgen-badge">选填</span></div>
+              <div class="dh-demo-guide">
+                <b>说明故事怎么演，不重复填写广告目标</b>
+                <span>可以写剧情走向、人物动作、表情、台词、节奏、转折、结尾，以及必须或禁止出现的内容。系统会先检查是否与已确认人物、场景和商品冲突，再生成剧本。</span>
+              </div>
+              <label class="dh-nsa-creative-direction-field">
+                <textarea class="dh-input" id="dhNsaAdCreativeDirection" rows="5" maxlength="3000" placeholder="例如：林晓从画面左侧进入，先疲惫地坐下；喝一口咖啡后表情逐渐放松并恢复专注，最后完成提案并说出品牌口号。禁止新增人物或切换场景。"></textarea>
+                <small>第一步负责“做什么广告”，这里负责“人物怎么演”。涉及新人物、新场景或新道具时，系统会要求先返回配置。</small>
+              </label>
               <div id="dhNsaAdSceneConfigHost" class="dh-luxgen-storyboard">
                 <div class="dh-luxgen-empty"><b>还没有基础信息</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>
               </div>

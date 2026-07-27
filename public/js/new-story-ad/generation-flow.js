@@ -2,6 +2,7 @@
   const STAGE_LABELS = {
     scene: '生成场景配置中...',
     blueprint: '生成剧本中...',
+    script_package: '生成剧本与分镜中...',
     storyboard: '生成分镜表中...',
     keyframes: '生成真实画面中...',
     tts: '生成配音中...',
@@ -100,6 +101,7 @@
     const active = String(task.active_stage || task.generation_stage || '');
     if (current === expectedStage || current.startsWith(`${expectedStage}_`) || active === expectedStage) return true;
     const downstream = {
+      script_package: ['blueprint', 'blueprint_done', 'storyboard', 'storyboard_done', 'keyframe_contract_ready'],
       scene_config: ['scene_config_done', 'blueprint', 'blueprint_done', 'storyboard', 'keyframe_contract_ready'],
       blueprint: ['blueprint_done', 'storyboard', 'keyframe_contract_ready'],
       storyboard: ['keyframe_contract_ready', 'keyframes', 'keyframes_ready', 'tts', 'video', 'compose', 'completed'],
@@ -284,19 +286,27 @@
   }
 
   async function startStage(taskId, stage, body, ctx = {}) {
-    const expectedStage = stage === 'scene' ? 'scene_config' : stage;
+    const expectedStage = stage === 'scene' ? 'scene_config' : String(stage || '').replace(/-/g, '_');
     const evidence = submissionEvidence(ctx);
+    const state = ctx.state || {};
+    const generationBody = {
+      ...(body || {}),
+      snapshot_id: state.generationSnapshotId || '',
+      expected_content_revision: Math.max(1, Number(state.contentRevision || 1) || 1),
+      input_fingerprint: state.generationInputFingerprint || '',
+      idempotency_key: `${taskId}:${expectedStage}:r${Math.max(1, Number(state.contentRevision || 1) || 1)}`,
+    };
     let response;
     try {
       response = await ctx.api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/${stage === 'scene' ? 'scene-config' : stage}`, {
         method: 'POST',
-        body: body || {},
+        body: generationBody,
       });
     } catch (error) {
       return recoverUncertainStageSubmission(taskId, expectedStage, ctx, error, evidence);
     }
     if (ctx.state && response.job) {
-      adoptActiveGeneration(ctx.state, response.job, expectedStage, body);
+      adoptActiveGeneration(ctx.state, response.job, expectedStage, generationBody);
       ctx.renderAll?.();
     }
     if (!response.job) return response;
@@ -347,17 +357,22 @@
       showStep,
       saveBlueprintEdits,
       saveStoryboardEdits,
+      flushForGeneration,
       startStageProgress,
       setBusy,
       setButtonBusy,
     } = ctx;
     if (!state || typeof api !== 'function' || typeof ensureTask !== 'function') throw new Error('阶段生成上下文未初始化');
     const busyLabel = STAGE_LABELS[stage] || '处理中...';
-    startStageProgress?.(stage, busyLabel);
-    setBusy?.(true, busyLabel);
-    setButtonBusy?.(button, true, busyLabel);
+    setButtonBusy?.(button, true, '正在确认最新内容...');
     try {
-      const id = await ensureTask();
+      const prepared = typeof flushForGeneration === 'function'
+        ? await flushForGeneration(stage === 'blueprint' ? 'script_package' : stage)
+        : { taskId: await ensureTask() };
+      const id = prepared?.taskId || prepared?.task_id || state.taskId || await ensureTask();
+      startStageProgress?.(stage, busyLabel);
+      setBusy?.(true, busyLabel);
+      setButtonBusy?.(button, true, busyLabel);
       let r = null;
       if (stage === 'scene') {
         r = await startStage(id, 'scene', {}, ctx);
@@ -365,16 +380,21 @@
         showStep?.(2);
       } else if (stage === 'blueprint') {
         if (!state.sceneConfig) normalizeBundle?.(await startStage(id, 'scene', {}, ctx));
-        r = await startStage(id, 'blueprint', {}, ctx);
+        r = await startStage(id, 'script-package', {}, ctx);
         normalizeBundle?.(r);
         if (!blueprintIsReady(r, state)) throw new Error('剧本任务已结束，但服务器没有保存可用剧本；已停留在当前步骤，请重新生成剧本');
+        if (!storyboardIsReady(r, state)) throw new Error('剧本已经生成，但配套分镜未通过检查；系统已停止下游生成，请查看错误详情');
         showStep?.(3);
       } else if (stage === 'storyboard') {
         if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, ctx));
         if (!blueprintIsReady({}, state)) throw new Error('服务器没有可用剧本，不能继续生成分镜；请先重新生成剧本');
         if (state.blueprint && typeof saveBlueprintEdits === 'function') await saveBlueprintEdits(id);
-        r = await startStage(id, 'storyboard', {}, ctx);
-        normalizeBundle?.(r);
+        if (!storyboardIsReady({}, state)) {
+          r = await startStage(id, 'storyboard', {}, ctx);
+          normalizeBundle?.(r);
+        } else {
+          r = { storyboard_status: state.storyboardStatus, outputs: { storyboard_table: state.shots } };
+        }
         if (!storyboardIsReady(r, state)) throw new Error('分镜任务已结束，但服务器尚未确认当前剧本对应的分镜结果，请重试');
         showStep?.(4);
       } else if (stage === 'keyframes') {

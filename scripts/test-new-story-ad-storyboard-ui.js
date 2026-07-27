@@ -53,8 +53,8 @@ assert(css.includes('.dh-nsa-duration { min-height: 36px;'), 'duration control m
 assert(css.includes('.dh-nsa-frame-status-note { grid-area: notice;'), 'long status explanations must render in a separate full-width notice');
 assert(css.includes('.dh-nsa-frame-preview { aspect-ratio: var(--dh-nsa-frame-ratio, 9 / 16); min-height: 0; max-height: none; }'), 'dynamic preview ratio must explicitly reset the legacy max-height cap');
 assert(css.includes('@media (max-width: 600px)'), 'mobile storyboard layout must be covered');
-assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260727-scene-edit-authority-v32'), '剧情广告入口必须使用统一弹窗缓存版本');
-assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260727-scene-edit-authority-v32'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
+assert(html.includes('/js/new-story-ad/bootstrap.js?v=20260727-content-lineage-v33'), '剧情广告入口必须使用统一弹窗缓存版本');
+assert(fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8').includes("const SCRIPT_VERSION = '20260727-content-lineage-v33'"), '懒加载的剧情广告子模块必须使用同一缓存版本');
 assert(ui.includes('data-nsa-admin-video-monitor'), 'super admin must have an in-context shot monitor entry');
 assert(ui.includes('/api/new-story-ad/admin/tasks/${encodeURIComponent(state.taskId)}/video-monitor'), 'shot monitor must read the protected admin endpoint');
 assert(ui.includes("currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes"), 'ordinary users and non-video stages must not show the admin shot monitor entry');

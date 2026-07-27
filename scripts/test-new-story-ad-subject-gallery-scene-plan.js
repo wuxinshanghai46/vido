@@ -252,10 +252,11 @@ async function testFrontendSaveUsesOneAuthoritativeScenePlan() {
     normalizeBundle() {},
   });
   assert.strictEqual(submittedBody.scene_plan.scene_mode, 'multi', '线上主保存模块必须提交唯一权威 scene_plan，不能只依赖通用进度快照');
+  assert.strictEqual(submittedBody.progress_snapshot, undefined, '浏览器不得再携带可能覆盖服务器新产物的通用进度快照');
   assert.deepStrictEqual(
-    JSON.parse(JSON.stringify(submittedBody.progress_snapshot.scene_config)),
-    JSON.parse(JSON.stringify(submittedBody.scene_plan)),
-    'scene_plan 与进度快照中的 scene_config 必须来自同一个规范化对象',
+    submittedBody.scene_plan.spaces.map(space => space.id),
+    ['space_park', 'space_home'],
+    '唯一权威 scene_plan 必须保留全部空间身份，不能只保存当前编辑项',
   );
 }
 

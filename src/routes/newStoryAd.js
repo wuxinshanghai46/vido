@@ -52,6 +52,9 @@ function asyncRoute(fn) {
         attempts: publicError.attempts || undefined,
         preflight: publicError.preflight || undefined,
         details: publicError.details || undefined,
+        content_revision: err.content_revision || err.actual_content_revision || undefined,
+        acknowledged_client_edit_seq: err.acknowledged_client_edit_seq || undefined,
+        active_generation_id: err.active_generation_id || undefined,
       });
     }
   };
@@ -100,7 +103,22 @@ function monitorHealth(row = {}, now = Date.now()) {
 }
 
 function queueTaskStage(req, res, stage, execute, options = {}) {
-  const task = taskForReq(req);
+  let task = taskForReq(req);
+  const body = req.body || {};
+  let snapshotId = String(body.snapshot_id || body.snapshotId || '');
+  let expectedContentRevision = Math.max(0, Number(body.expected_content_revision || body.expectedContentRevision || 0) || 0);
+  let inputFingerprint = String(body.input_fingerprint || body.inputFingerprint || '');
+  if (!snapshotId && task.lineage_enforced === true) {
+    const prepared = service.prepareGeneration(task.id, {
+      expected_content_revision: expectedContentRevision || task.content_revision,
+      client_edit_seq: task.latest_client_edit_seq || 0,
+      target_stage: stage,
+    }, userFromReq(req));
+    snapshotId = prepared.snapshot_id;
+    expectedContentRevision = prepared.content_revision;
+    inputFingerprint = prepared.input_fingerprint;
+    task = storage.getTask(task.id);
+  }
   const deadlineMs = typeof options.deadlineMs === 'function'
     ? options.deadlineMs(task)
     : options.deadlineMs;
@@ -112,6 +130,10 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     failureContext: typeof options.failureContext === 'function'
       ? options.failureContext(task)
       : (options.failureContext || {}),
+    expectedContentRevision: expectedContentRevision || task.content_revision || 1,
+    snapshotId,
+    inputFingerprint,
+    idempotencyKey: String(body.idempotency_key || body.idempotencyKey || `${task.id}:${stage}:r${expectedContentRevision || task.content_revision || 1}`),
   });
   return res.status(202).json({
     success: true,
@@ -643,18 +665,24 @@ router.put('/tasks/:id', asyncRoute(async (req, res) => {
   res.json({ success: true, ...updated });
 }));
 
+router.post('/tasks/:id/prepare-generation', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const prepared = service.prepareGeneration(req.params.id, req.body || {}, userFromReq(req));
+  res.json({ success: true, ...prepared });
+}));
+
 router.put('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
   const blueprint = service.updateBlueprint(req.params.id, body.blueprint || body || {}, userFromReq(req));
-  res.json({ success: true, task_id: req.params.id, blueprint });
+  res.json({ success: true, task_id: req.params.id, blueprint, task: service.taskSummary(storage.getTask(req.params.id)) });
 }));
 
 router.put('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
   const result = service.updateStoryboardTable(req.params.id, body.shots || body.storyboard_table || [], userFromReq(req));
-  res.json({ success: true, task_id: req.params.id, ...result });
+  res.json({ success: true, task_id: req.params.id, ...result, task: service.taskSummary(storage.getTask(req.params.id)) });
 }));
 
 router.post('/assist', asyncRoute(async (req, res) => {
@@ -916,9 +944,21 @@ router.post('/tasks/:id/product-verify', asyncRoute(async (req, res) => {
 }));
 
 router.put('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
-  taskForReq(req);
+  const task = taskForReq(req);
   const body = req.body || {};
-  const sceneAssets = sceneAssetService.saveSceneAssetsToTask(req.params.id, body.scene_assets || body.sceneAssets || []);
+  const submitted = body.scene_assets || body.sceneAssets || [];
+  const authoritative = storage.getOutput(req.params.id, 'scene_assets') || [];
+  if (task.lineage_enforced === true
+    && storage.canonicalFingerprint(submitted) !== storage.canonicalFingerprint(authoritative)) {
+    const error = new Error('场景生成产物由服务器版本管理，浏览器旧快照不能覆盖当前场景；请刷新任务后继续');
+    error.code = 'CLIENT_GENERATED_OUTPUT_REJECTED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  const sceneAssets = task.lineage_enforced === true
+    ? authoritative
+    : sceneAssetService.saveSceneAssetsToTask(req.params.id, submitted);
   res.json({
     success: true,
     task_id: req.params.id,
@@ -1010,6 +1050,16 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
   return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, job));
+}));
+
+router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
+  return queueTaskStage(
+    req,
+    res,
+    'script_package',
+    job => service.generateScriptPackageStage(req.params.id, job),
+    { deadlineMs: 15 * 60 * 1000 },
+  );
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {

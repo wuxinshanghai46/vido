@@ -387,6 +387,38 @@ function normalizeProductionMode(value = '') {
   return ['auto', 'narrative_live_action', 'product_story', 'service_app_story'].includes(normalized) ? normalized : 'auto';
 }
 
+function normalizeCreativeDirection(input = null) {
+  const source = typeof input === 'string' ? { raw: input } : (input && typeof input === 'object' ? input : {});
+  const list = (value, max = 20) => (Array.isArray(value) ? value : (value ? String(value).split(/[\n；;]/) : []))
+    .map(item => cleanText(item, 300))
+    .filter(Boolean)
+    .slice(0, max);
+  const actions = (Array.isArray(source.actions) ? source.actions : []).map((action, index) => ({
+    id: cleanText(action?.id || `action_${index + 1}`, 80),
+    actor_id: cleanText(action?.actor_id || action?.actorId || '', 120),
+    actor: cleanText(action?.actor || action?.character || '', 120),
+    action: cleanText(action?.action || action?.description || '', 500),
+    target_id: cleanText(action?.target_id || action?.targetId || '', 120),
+    target: cleanText(action?.target || action?.object || '', 160),
+    phase: cleanText(action?.phase || action?.stage || 'auto', 40),
+    expression: cleanText(action?.expression || '', 200),
+    dialogue: cleanText(action?.dialogue || action?.line || '', 500),
+    required: action?.required !== false,
+    constraints: list(action?.constraints, 8),
+  })).filter(action => action.action || action.dialogue || action.expression).slice(0, 30);
+  return {
+    raw: cleanText(source.raw || source.text || source.requirement || source.story || '', 3000),
+    plot_direction: cleanText(source.plot_direction || source.plotDirection || source.plot || '', 1000),
+    tone: cleanText(source.tone || source.emotion || '', 300),
+    pace: cleanText(source.pace || source.rhythm || '', 300),
+    ending: cleanText(source.ending || '', 600),
+    dialogue_notes: cleanText(source.dialogue_notes || source.dialogueNotes || '', 1000),
+    must_have: list(source.must_have || source.mustHave),
+    must_avoid: list(source.must_avoid || source.mustAvoid),
+    actions,
+  };
+}
+
 function inferVisibleTextPolicy(body = {}, brief = '') {
   const raw = body.visible_text_policy || body.visibleTextPolicy || {};
   const language = typeof raw === 'string'
@@ -537,6 +569,9 @@ function buildContext(body = {}, user = {}) {
     || inferExpectedPeopleCount(brief, characters)
     || 0;
   const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
+  const creativeDirection = normalizeCreativeDirection(
+    body.creative_direction || body.creativeDirection || body.story_direction || body.storyDirection,
+  );
   const personSpec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const petProfiles = normalizePetProfiles(
     body.pet_profiles || body.petProfiles || body.pet_contract?.profiles || body.petContract?.profiles,
@@ -626,6 +661,7 @@ function buildContext(body = {}, user = {}) {
     assets: contextAssets,
     forbidden,
     controlled_production: controlledProduction,
+    creative_direction: creativeDirection,
     person_spec: noHuman ? { castMode: 'no_human' } : normalizedPersonSpec,
     person_asset: noHuman || animalOnly ? null : personAsset,
     person_contract: noHuman || animalOnly ? null : (body.person_contract && typeof body.person_contract === 'object'
@@ -642,7 +678,10 @@ function buildContext(body = {}, user = {}) {
       scene: Math.max(1, Number(body.revisions.scene || 1) || 1),
       person: Math.max(1, Number(body.revisions.person || 1) || 1),
       product: Math.max(1, Number(body.revisions.product || 1) || 1),
-    } : { source: 1, scene: 1, person: 1, product: 1 },
+      creative: Math.max(1, Number(body.revisions.creative || 1) || 1),
+      voice: Math.max(1, Number(body.revisions.voice || 1) || 1),
+      compose: Math.max(1, Number(body.revisions.compose || 1) || 1),
+    } : { source: 1, scene: 1, person: 1, product: 1, creative: 1, voice: 1, compose: 1 },
     cast_profiles: noHuman || animalOnly ? [] : castProfiles,
     person_context: noHuman || animalOnly ? {
       source: noHuman ? 'no_human_mode' : 'animal_only_mode',
@@ -756,6 +795,17 @@ function contextPrompt(ctx) {
     ctx.pet_contract ? `宠物一致性合同：${JSON.stringify(ctx.pet_contract)}。每镜必须明确 expected_animals 和实际出镜宠物，不得增删、换品种、换毛色或把同一只复制成多只。` : '',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
+    ctx.creative_direction && (
+      ctx.creative_direction.raw
+      || ctx.creative_direction.plot_direction
+      || ctx.creative_direction.actions?.length
+      || ctx.creative_direction.must_have?.length
+      || ctx.creative_direction.must_avoid?.length
+    ) ? [
+      '用户剧情与表演合同：以下内容只控制故事如何表达，不得覆盖商品、品牌、人物、场景和合规事实。',
+      JSON.stringify(ctx.creative_direction),
+      'required=true 的动作、表情和台词是硬约束；动作必须绑定当前人物、场景或商品，禁止擅自新增未确认实体。',
+    ].join('\n') : '用户剧情与表演合同：未填写，由系统在已确认业务事实和资产范围内创作。',
     ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',
     controlledProductionPrompt(ctx.controlled_production),
     ctx.person_asset ? `Locked real actor/person asset: ${JSON.stringify(ctx.person_asset)}` : '',
@@ -788,6 +838,40 @@ function contextConflicts(ctx = {}) {
   if (briefDuration && storedDuration && briefDuration !== storedDuration && durationSource !== 'user_selected') {
     conflicts.push(`需求文本明确要求 ${briefDuration} 秒，但任务结构化时长为 ${storedDuration} 秒`);
   }
+  const creative = ctx.creative_direction || {};
+  const creativeText = [
+    creative.raw,
+    creative.plot_direction,
+    creative.ending,
+    creative.dialogue_notes,
+    ...(creative.must_have || []),
+    ...(creative.must_avoid || []),
+    ...(creative.actions || []).flatMap(action => [
+      action.actor,
+      action.action,
+      action.target,
+      action.expression,
+      action.dialogue,
+      ...(action.constraints || []),
+    ]),
+  ].filter(Boolean).join('；');
+  if (String(ctx.cast_mode || '') === 'no_human'
+    && /(?:人物|真人|演员|主角|主持人|模特|女孩|男孩|女人|男人|人手|手部|面对镜头说|开口说)/.test(creativeText)) {
+    conflicts.push('当前选择无人物模式，但剧情表演要求中包含人物动作、表情或台词');
+  }
+  const knownActors = new Set([
+    ...(ctx.characters || []).flatMap(character => [character.id, character.name]),
+    ...(ctx.cast_profiles || []).flatMap(profile => [profile.id, profile.name, profile.actor_asset_id]),
+    ctx.person_asset?.id,
+    ctx.person_asset?.actor_id,
+    ctx.person_asset?.name,
+  ].filter(Boolean).map(value => String(value).trim().toLowerCase()));
+  (creative.actions || []).forEach((action, index) => {
+    const actorRef = String(action.actor_id || action.actor || '').trim().toLowerCase();
+    if (actorRef && knownActors.size && !knownActors.has(actorRef)) {
+      conflicts.push(`第 ${index + 1} 条关键动作引用了未确认人物“${action.actor_id || action.actor}”`);
+    }
+  });
   return conflicts;
 }
 
@@ -818,6 +902,7 @@ module.exports = {
   normalizeCharacter,
   looksLikeDescriptorName,
   normalizeSceneSpec,
+  normalizeCreativeDirection,
   normalizeSceneAssets,
   normalizeProductionMode,
   inferVisibleTextPolicy,

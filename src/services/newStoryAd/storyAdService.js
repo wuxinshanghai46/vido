@@ -45,6 +45,8 @@ const sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
+const { createTaskViewService } = require('./taskViewService');
+const { createTextStageRecovery } = require('./textStageRecoveryService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -168,37 +170,6 @@ function structuredQaFeedback(sceneQa = {}, personQa = {}, productQa = {}) {
 function isBeforeOrAtKeyframes(stage = '') {
   return !['tts', 'tts_ready', 'video', 'video_ready', 'compose', 'final_video_ready'].includes(String(stage || ''));
 }
-function persistProgressSnapshot(taskId, snapshot = {}) {
-  if (!snapshot || typeof snapshot !== 'object') return;
-  const allowedOutputs = {
-    context: 'context',
-    blueprint: 'blueprint',
-    storyboard_table: 'storyboard_table',
-    storyboardTable: 'storyboard_table',
-    shots: 'storyboard_table',
-    keyframe_contracts: 'keyframe_contracts',
-    keyframeContracts: 'keyframe_contracts',
-    contracts: 'keyframe_contracts',
-    keyframes: 'keyframes',
-    scene_assets: 'scene_assets',
-    sceneAssets: 'scene_assets',
-    quality_review: 'quality_review',
-    review: 'quality_review',
-    tts_audio: 'tts_audio',
-    ttsAudio: 'tts_audio',
-    video_clips: 'video_clips',
-    videoClips: 'video_clips',
-    final_video: 'final_video',
-    finalVideo: 'final_video',
-  };
-  Object.entries(allowedOutputs).forEach(([inputKey, outputKind]) => {
-    if (!Object.prototype.hasOwnProperty.call(snapshot, inputKey)) return;
-    const value = snapshot[inputKey];
-    if (value === undefined || value === null) return;
-    if (Array.isArray(value) && !value.length) return;
-    if (value && typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length) return;
-    storage.saveOutput(taskId, outputKind, outputKind === 'scene_assets' ? taskProgressSave.mergeAutosaveSceneAssets(storage.getOutput(taskId, outputKind), value) : value);
-  }); }
 function assertTaskOwner(taskId, user = {}) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -242,234 +213,35 @@ function versionedBlueprint(blueprint = {}, previous = {}) {
     fingerprint,
   };
 }
-function storyboardStatus(bundle = {}, outputs = {}) {
-  const rows = Array.isArray(bundle.outputs) ? bundle.outputs : [];
-  const rowByKind = kind => rows.find(row => row?.kind === kind) || null;
-  const blueprintRow = rowByKind('blueprint');
-  const storyboardRow = rowByKind('storyboard_table');
-  const checkpoint = outputs.storyboard_checkpoint || null;
-  const meta = outputs.storyboard_meta || null;
-  const blueprint = outputs.blueprint || {};
-  const shots = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
-  const currentFingerprint = blueprint.fingerprint || (Object.keys(blueprint).length ? blueprintFingerprint(blueprint) : '');
-  const metaMatches = !!(meta?.blueprint_fingerprint && currentFingerprint && meta.blueprint_fingerprint === currentFingerprint);
-  const timestampFresh = !!(blueprintRow && storyboardRow
-    && Date.parse(storyboardRow.updated_at || 0) >= Date.parse(blueprintRow.updated_at || 0));
-  const ready = shots.length > 0 && (meta
-    ? meta.status === 'ready' && metaMatches
-    : timestampFresh);
-  return {
-    ready,
-    stale: shots.length > 0 && !ready,
-    reason: ready ? '' : (shots.length ? 'BLUEPRINT_NEWER_THAN_STORYBOARD' : 'STORYBOARD_MISSING'),
-    blueprint_revision: Number(blueprint.revision || 0),
-    storyboard_blueprint_revision: Number(meta?.blueprint_revision || 0),
-    checkpoint_available: !!(checkpoint && checkpoint.blueprint_fingerprint === currentFingerprint && Array.isArray(checkpoint.shots) && checkpoint.shots.length),
-    checkpoint_completed: Array.isArray(checkpoint?.shots) ? checkpoint.shots.length : 0,
-    checkpoint_total: Number(checkpoint?.expected_total || 0),
-  };
-}
-function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
-  const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
-  const projectedSceneAssets = sceneCheckpointProjection.projectSceneAssets(rawBundle.outputs || []);
-  const videoShotStatuses = (rawBundle.outputs || [])
-    .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
-    .sort((a, b) => Number(String(a.kind).slice('video_shot_status_'.length)) - Number(String(b.kind).slice('video_shot_status_'.length)))
-    .map(row => row.payload || {})
-    .filter(Boolean)
-    .map((status, index) => { const { currentAttempt, lastAttempt, exposeLastAttempt, untouched } = videoStatusProjection.resolveAttempts(videoAttemptLedger, { taskId, status, index }), artifact = status.artifact_compatibility || {}; return ({
-      index: Number(status.index || status.shot_index || index + 1),
-      title: cleanText(status.title || '', 120),
-      lifecycle: cleanText(status.lifecycle || 'pending', 40),
-      scene_block_id: cleanText(status.scene_block_id || '', 100),
-      scene_block_members: Array.isArray(status.scene_block_members) ? status.scene_block_members.map(Number).filter(Number.isInteger) : [],
-      qa_status: cleanText(status.qa_status || '', 40),
-      qa_problems: Array.isArray(status.qa_problems) ? status.qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
-      qa_failure_labels_zh: Array.isArray(status.qa_failure_labels_zh) ? status.qa_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
-      cross_shot_qa_status: cleanText(status.cross_shot_qa_status || '', 40), cross_shot_qa_problems: Array.isArray(status.cross_shot_qa_problems) ? status.cross_shot_qa_problems.map(value => cleanText(value, 220)).filter(Boolean).slice(0, 6) : [],
-      cross_shot_failure_labels_zh: Array.isArray(status.cross_shot_failure_labels_zh) ? status.cross_shot_failure_labels_zh.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 6) : [],
-      provider_submission_state: cleanText(currentAttempt?.provider_submission_state || status.provider_submission_state || '', 40), billing_state: cleanText(currentAttempt?.billing_state || status.billing_state || '', 40), executed_in_current_generation: !!(currentAttempt || lastAttempt) && cleanText((currentAttempt || lastAttempt)?.generation_id || '', 80) === cleanText(rawBundle.task?.generation_progress?.generation_id || rawBundle.task?.active_generation_id || '', 80),
-      previous_clip_restored: !untouched && status.previous_clip_restored === true, stopped_after_unit_failure: status.stopped_after_unit_failure === true, last_attempt_provider_submission_state: cleanText(exposeLastAttempt ? (lastAttempt?.provider_submission_state || status.last_attempt_provider_submission_state || '') : '', 40), last_attempt_billing_state: cleanText(exposeLastAttempt ? (lastAttempt?.billing_state || status.last_attempt_billing_state || '') : '', 40), last_attempt_error_code: cleanText(exposeLastAttempt ? (lastAttempt?.error_code || status.last_attempt_error_code || '') : '', 160), last_attempt_status: cleanText(exposeLastAttempt ? (lastAttempt?.status || status.last_attempt_status || '') : '', 40),
-      compatibility_status: cleanText(artifact.status || status.compatibility_status || '', 60), artifact_compatibility: artifact, compatibility_reason_codes: Array.isArray(artifact.reason_codes || status.compatibility_reason_codes) ? (artifact.reason_codes || status.compatibility_reason_codes).slice(0, 12) : [], regenerate_required: (artifact.status || status.compatibility_status) === 'regenerate_required', legacy_inferred: status.legacy_inferred === true,
-      error: cleanText(status.error || '', 300),
-      error_code: cleanText(status.error_code || '', 80),
-      retryable: status.retryable === true,
-      updated_at: status.updated_at || '',
-    }); });
-  let visibleOutputs = (includeVideoMonitor
-    ? (rawBundle.outputs || [])
-    : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
-    .filter(row => !/^(?:scene|subject)_asset_checkpoint:/.test(String(row.kind || '')))
-    .map(row => String(row.kind || '') === 'scene_assets'
-      ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) }
-      : row);
-  visibleOutputs = personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs);
-  if (projectedSceneAssets.length && !visibleOutputs.some(row => String(row.kind || '') === 'scene_assets')) {
-    visibleOutputs = [
-      ...visibleOutputs,
-      { kind: 'scene_assets', payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) },
-    ];
-  }
-  const bundle = { ...rawBundle, outputs: visibleOutputs };
-  const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload])); outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
-  const currentStoryboardStatus = storyboardStatus(bundle, outputs);
-  const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];
-  const contracts = Array.isArray(outputs.keyframe_contracts) ? outputs.keyframe_contracts : [];
-  const keyframes = Array.isArray(outputs.keyframes) ? outputs.keyframes : [];
-  const keyframeStatus = keyframeCompletion(keyframes, storyboard);
-  let task = bundle.task; const boundaryFailure = videoBoundaryPolicy.taskFailurePatch(outputs.video_clips || [], storyboard.length); if (task && !task.active_generation_id && boundaryFailure) task = { ...task, ...boundaryFailure };
-  if (task && !task.active_generation_id && keyframeStatus.failed > 0 && /keyframes_(ready|partial)|^keyframes$/.test(String(task.stage || ''))) {
-    task = {
-      ...task,
-      status: 'failed',
-      stage: 'keyframes_failed',
-      error: `本次真实画面生成失败 ${keyframeStatus.failed} 张，已保留上一次图片供查看，请处理模型配置后重试`,
-      error_code: 'KEYFRAME_GENERATION_FAILED',
-      retryable: true,
-    };
-  }
-  if (task && !task.active_generation_id && !String(task.stage || '').endsWith('_failed') && !String(task.stage || '').endsWith('_cancelled')) {
-    if (keyframeStatus.total && keyframeStatus.completed) {
-      const complete = keyframeStatus.fresh_pass >= keyframeStatus.total;
-      if (isBeforeOrAtKeyframes(task.stage)) {
-        task = {
-          ...task,
-          status: complete ? (task.saved_progress === true ? 'working' : 'done') : 'working',
-          stage: complete ? 'keyframes_ready' : 'keyframes_partial',
-          error: '',
-        };
-      }
-    } else if (currentStoryboardStatus.ready && storyboard.length && ['storyboard', 'storyboard_done', 'storyboard_running'].includes(String(task.stage || ''))) {
-      task = {
-        ...task,
-        status: task.saved_progress === true ? 'working' : 'done',
-        stage: contracts.length ? 'keyframe_contract_ready' : 'storyboard_done',
-        error: '',
-      };
-    }
-  }
-  if (task) {
-    const hasFinalOutput = !!(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
-    const generationProgress = terminalizedGenerationProgress(task, task.generation_progress, hasFinalOutput);
-    const failed = !hasFinalOutput && (task.error_code || generationProgress?.status === 'failed');
-    task = {
-      ...task,
-      ...(generationProgress ? { generation_progress: generationProgress } : {}),
-      ...(failed ? { status: 'failed' } : {}),
-    };
-  }
-  const context = outputs.context || bundle.task?.request || {};
-  return {
-    ...bundle,
-    task,
-    context,
-    outputs,
-    video_shot_statuses: videoShotStatuses, media_result: mediaResultProjection.projectMediaResult({ task, outputs, videoShotStatuses, storyboard }),
-    storyboard_status: currentStoryboardStatus,
-    keyframe_status: keyframeStatus,
-  };
-}
-/** 只读归一没有活动任务却残留 queued/running 的历史进度，不改写数据库。 */
-function terminalizedGenerationProgress(task = {}, rawProgress = null, hasFinalOutput = false) {
-  if (!rawProgress || typeof rawProgress !== 'object' || task.active_generation_id) return rawProgress;
-  if (!['queued', 'running'].includes(String(rawProgress.status || '').toLowerCase())) return rawProgress;
-  const now = task.generation_finished_at || task.updated_at || new Date().toISOString();
-  const total = Number(rawProgress.total || 0);
-  const completed = Number(rawProgress.completed || 0);
-  const failed = Number(rawProgress.failed || 0);
-  const taskFailed = !!(task.error_code || task.error) || String(task.status || '').toLowerCase() === 'failed';
-  const status = hasFinalOutput ? 'done'
-    : (taskFailed || (total > 0 && completed >= total && failed > 0) ? 'failed' : (total > 0 && completed >= total ? 'done' : 'stopped'));
-  return { ...rawProgress, status, finished_at: rawProgress.finished_at || now, updated_at: now };
-}
-/** 构建任务摘要；列表模式禁止读取完整分镜、关键帧和视频输出。 */
-function taskSummary(task = {}, { detailed = true } = {}) {
-  const outputMap = detailed && task.id
-    ? Object.fromEntries(storage.listOutputs(task.id).map(row => [row.kind, row.payload]))
-    : {};
-  const storyboard = outputMap.storyboard_table || [];
-  const keyframes = outputMap.keyframes || [];
-  const finalVideo = outputMap.final_video || (!detailed && task.id ? storage.getOutput(task.id, 'final_video') : null);
-  const context = outputMap.context || task.request || {};
-  const sceneAssets = outputMap.scene_assets || [];
-  const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
-  const firstScene = sceneAssets[0] || {};
-  const finalVideoUrl = finalVideo?.video_url || finalVideo?.videoUrl || task.final_video_url || '';
-  let videoShotStatuses = Object.entries(outputMap)
-    .filter(([kind]) => String(kind).startsWith('video_shot_status_'))
-    .sort(([a], [b]) => Number(a.slice('video_shot_status_'.length)) - Number(b.slice('video_shot_status_'.length)))
-    .map(([, payload]) => payload)
-    .filter(Boolean);
-  if (!videoShotStatuses.length && Array.isArray(outputMap.video_clips)) {
-    videoShotStatuses = outputMap.video_clips.map((clip, index) => {
-      if (!clip) return null;
-      const hasOutput = !!(clip.video_url || clip.videoUrl || clip.file_path);
-      const failed = !!clip.error_code || clip.qa?.pass === false || clip.cross_shot_qa?.pass === false;
-      return {
-        index: index + 1,
-        lifecycle: failed ? 'qa_failed' : (clip.qa?.pass === true ? 'qa_passed' : (hasOutput ? 'generated' : 'pending')),
-      };
-    }).filter(Boolean);
-  }
-  const hasFinalOutput = !!finalVideoUrl;
-  const rawGenerationProgress = task.generation_progress && typeof task.generation_progress === 'object'
-    ? task.generation_progress
-    : null;
-  const storedGenerationProgress = terminalizedGenerationProgress(task, rawGenerationProgress, hasFinalOutput);
-  const storedVideoProgress = storedGenerationProgress?.stage === 'video' ? storedGenerationProgress : null;
-  const videoProgress = storedVideoProgress || (videoShotStatuses.length ? {
-    stage: 'video',
-    total: Array.isArray(storyboard) ? storyboard.length : videoShotStatuses.length,
-    generated: videoShotStatuses.filter(item => ['generated', 'video_qa', 'qa_passed', 'qa_failed'].includes(item.lifecycle)).length,
-    qa_passed: videoShotStatuses.filter(item => item.lifecycle === 'qa_passed').length,
-    failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
-  } : null);
-  const storedStatus = String(task.status || '').toLowerCase();
-  const failureSummary = videoBoundaryPolicy.taskFailurePatch(outputMap.video_clips || [], storyboard.length) || keyframeFailure.taskSummaryPatch(task, keyframes);
-  const taskStatus = hasFinalOutput
-    ? 'done'
-    : ((failureSummary.error_code || storedGenerationProgress?.status === 'failed')
-      ? 'failed'
-      : (['done', 'completed', 'succeeded', 'ready'].includes(storedStatus) ? 'working' : task.status));
-  return {
-    id: task.id,
-    type: task.type,
-    status: taskStatus,
-    stage: task.stage,
-    title: task.title,
-    brief: cleanText(task.brief || '', 220),
-    user_id: task.user_id,
-    saved_progress: task.saved_progress === true,
-    active_stage: task.active_stage || '',
-    active_generation_id: task.active_generation_id || '',
-    error: cleanText(failureSummary.error, 300),
-    error_code: failureSummary.error_code,
-    support_id: failureSummary.support_id,
-    retryable: failureSummary.retryable,
-    actor_name: cleanText(context.person_asset?.name || context.person_spec?.displayName || context.person_spec?.roleName || '', 100),
-    generation_queued_at: task.generation_queued_at || '',
-    generation_started_at: task.generation_started_at || '',
-    generation_finished_at: task.generation_finished_at || '',
-    generation_progress: storedGenerationProgress || videoProgress,
-    shot_count: Number(task.shot_count || 0) || (Array.isArray(storyboard) ? storyboard.length : 0),
-    keyframe_count: Number(task.keyframe_count || 0) || (Array.isArray(keyframes) ? keyframes.filter(frame => frame?.image_url || frame?.imageUrl || frame?.url).length : 0),
-    thumbnail_url: firstFrame.image_url || firstFrame.imageUrl || firstFrame.url || firstScene.image_url || firstScene.url || task.thumbnail_url || '',
-    final_video_url: finalVideoUrl,
-    created_at: task.created_at,
-    updated_at: task.updated_at,
-  };
-}
+const taskViews = createTaskViewService({
+  storage,
+  cleanText,
+  sceneCheckpointProjection,
+  videoStatusProjection,
+  videoAttemptLedger,
+  sceneAssetLifecycle,
+  personAssetLifecycle,
+  videoClipStatusRecovery,
+  videoBoundaryPolicy,
+  mediaResultProjection,
+  keyframeFailure,
+  blueprintFingerprint,
+  keyframeCompletion,
+  isBeforeOrAtKeyframes,
+});
+function publicTaskBundle(taskId, options = {}) { return taskViews.publicTaskBundle(taskId, options); }
+function taskSummary(task = {}, options = {}) { return taskViews.taskSummary(task, options); }
 function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = {}) {
-  let tasks = storage.listTaskRows({ status, userId });
-  const total = tasks.length;
+  const rows = storage.listTaskRows({ status, userId });
   const pageSize = Math.max(1, Math.min(200, Number(limit) || 50));
   const currentPage = Math.max(1, Number(page) || 1);
-  tasks = tasks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   return {
-    total,
+    total: rows.length,
     page: currentPage,
     page_size: pageSize,
-    tasks: tasks.map(task => taskSummary(task, { detailed: false })),
+    tasks: rows
+      .slice((currentPage - 1) * pageSize, currentPage * pageSize)
+      .map(task => taskSummary(task, { detailed: false })),
   };
 }
 function createTask(body = {}, user = {}) {
@@ -481,14 +253,40 @@ function createTask(body = {}, user = {}) {
     brief: ctx.brief,
     user_id: ctx.user_id,
     request: ctx,
+    content_revision: 1,
+    latest_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0),
+    lineage_enforced: true,
   });
-  storage.saveOutput(id, 'context', ctx);
+  const snapshot = storage.saveSnapshot(id, {
+    content_revision: 1,
+    status: 'draft_saved',
+    payload: ctx,
+  });
+  storage.saveOutput(id, 'context', ctx, {
+    content_revision: 1,
+    snapshot_id: snapshot.id,
+    input_fingerprint: snapshot.input_fingerprint,
+  });
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
-  return { task, context: ctx };
+  return { task: storage.getTask(id), context: ctx, content_revision: 1, acknowledged_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0) };
 }
 function updateTaskRequest(taskId, body = {}, user = {}) {
-  const task = storage.getTask(taskId);
+  let task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
+  if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  const baseRevisionRaw = body.base_content_revision ?? body.baseContentRevision;
+  const baseRevision = baseRevisionRaw === undefined || baseRevisionRaw === null || baseRevisionRaw === ''
+    ? null
+    : Math.max(1, Number(baseRevisionRaw) || 1);
+  const currentRevision = Math.max(1, Number(task.content_revision || 1) || 1);
+  if (baseRevision !== null && baseRevision !== currentRevision) {
+    const error = new Error(`任务已在其他保存或窗口更新为版本 ${currentRevision}，当前版本 ${baseRevision} 不能覆盖最新内容`);
+    error.code = 'CONTENT_REVISION_CONFLICT';
+    error.status = 409;
+    error.retryable = false;
+    error.content_revision = currentRevision;
+    throw error;
+  }
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const existingFinalVideo = storage.getOutput(taskId, 'final_video');
   const savingProgress = body.save_progress === true || body.saveProgress === true;
@@ -499,7 +297,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   if (savingProgress && requestedScope === 'scene' && !explicitScenePlanInput) { const error = new Error('场景变更缺少完整逐空间场景计划；已在持久化和失效清理前停止，原场景合同未改动'); error.code = 'SCENE_PLAN_REQUIRED_FOR_SCENE_SAVE'; error.status = 422; error.retryable = false; throw error; }
   const ownerId = String(task.user_id || previousCtx.user_id || previousCtx.userId || user.id || user.userId || '').trim();
   let builtCtx = buildContext(
-    { ...(task.request || {}), ...(body || {}), task_id: taskId },
+    { ...(previousCtx || {}), ...(body || {}), task_id: taskId },
     { ...user, id: ownerId, userId: ownerId },
   );
   const explicitScenePlan = explicitScenePlanInput
@@ -513,41 +311,54 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   const mediaChangeScope = body.media_change_scope || body.mediaChangeScope || '';
   builtCtx = taskProgressSave.preserveUnconfirmedMediaSettings(previousCtx, builtCtx, { savingProgress, mediaChangeScope });
   const hasActiveGeneration = !!String(task.active_generation_id || '').trim();
-  // A progress save can race with a background stage (for example when the
-  // user closes an editor while keyframes are running). Never invalidate the
-  // stage's inputs/outputs in that case; upstream edits must be applied after
-  // the active generation is cancelled or finished.
-  const scope = savingProgress && hasActiveGeneration
-    ? 'none'
-    : revisionService.changeScope(previousCtx, builtCtx, body.change_scope || body.changeScope || '');
+  const changedDomains = revisionService.changeDomains(previousCtx, builtCtx, body.changed_domains || body.changedDomains || requestedScope);
+  if (hasActiveGeneration && changedDomains.length) {
+    const error = new Error('当前生成正在使用已锁定内容；请先取消或等待生成完成，再保存新的修改');
+    error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
+    error.status = 409;
+    error.retryable = false;
+    error.active_generation_id = task.active_generation_id;
+    throw error;
+  }
+  const scope = revisionService.changeScope(previousCtx, builtCtx, changedDomains);
   const keepVerifiedPerson = personAssetLifecycle.contractMatchesInput(
     previousCtx.person_contract || previousCtx.person_asset?.person_contract,
     builtCtx.person_asset,
     builtCtx.person_spec || {},
   );
-  let ctx = revisionService.applyRevisions(previousCtx, builtCtx, scope);
-  if (scope === 'person' || scope === 'source') {
+  let ctx = revisionService.applyRevisions(previousCtx, builtCtx, changedDomains);
+  if (changedDomains.includes('person') || changedDomains.includes('source')) {
     ctx.person_contract = keepVerifiedPerson
       ? personAssetLifecycle.carryContract(previousCtx.person_contract || previousCtx.person_asset?.person_contract, ctx.revisions?.person)
       : null;
   }
-  if (scope === 'product' || scope === 'source') ctx.product_contract = null;
-  if (savingProgress && Array.isArray(ctx.scene_assets)) ctx.scene_assets = taskProgressSave.mergeAutosaveSceneAssets(previousCtx.scene_assets, ctx.scene_assets);
+  if (changedDomains.includes('product') || changedDomains.includes('source')) ctx.product_contract = null;
+  if (savingProgress) {
+    const authoritativeSceneAssets = storage.getOutput(taskId, 'scene_assets') || previousCtx.scene_assets || [];
+    ctx.scene_assets = Array.isArray(authoritativeSceneAssets) ? authoritativeSceneAssets : [];
+  }
   ctx = withAssetContracts(ctx);
   let invalidated = [];
   const patch = {
     title: taskTitle(ctx),
     brief: ctx.brief,
     request: ctx,
+    content_revision: changedDomains.length ? currentRevision + 1 : currentRevision,
+    latest_client_edit_seq: Math.max(
+      Number(task.latest_client_edit_seq || 0) || 0,
+      Number(body.client_edit_seq || body.clientEditSeq || 0) || 0,
+    ),
+    lineage_enforced: true,
+    ...(changedDomains.length ? { current_snapshot_id: '' } : {}),
   };
   if (savingProgress) {
     const progressStage = cleanText(body.progress_stage || body.progressStage || task.stage || 'draft', 80) || 'draft';
     Object.assign(patch, taskProgressSave.taskPatch(task, { progressStage, hasActiveGeneration, changeScope: scope }));
     patch.saved_progress = true;
     patch.saved_progress_at = new Date().toISOString();
-    persistProgressSnapshot(taskId, progressSnapshot);
   }
-  invalidated = revisionService.invalidateOutputs(storage, taskId, scope);
+  storage.updateTask(taskId, patch);
+  invalidated = revisionService.invalidateOutputs(storage, taskId, changedDomains);
   const mediaInvalidated = taskProgressSave.mediaInvalidatedOutputs(previousCtx, ctx, {
     savingProgress,
     mediaChangeScope,
@@ -565,13 +376,131 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   });
   mediaInvalidated.forEach(kind => storage.deleteOutput(taskId, kind));
   invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
+  if (changedDomains.length) storage.carryManifestRevision(taskId, patch.content_revision);
   const updated = storage.updateTask(taskId, patch);
-  storage.saveOutput(taskId, 'context', ctx);
-  if (explicitScenePlan && ['scene', 'none'].includes(scope)) {
+  const snapshot = storage.saveSnapshot(taskId, {
+    content_revision: patch.content_revision,
+    status: 'draft_saved',
+    payload: ctx,
+  });
+  storage.saveOutput(taskId, 'context', ctx, {
+    content_revision: patch.content_revision,
+    snapshot_id: snapshot.id,
+    input_fingerprint: snapshot.input_fingerprint,
+  });
+  if (explicitScenePlan && (changedDomains.includes('scene') || !changedDomains.length)) {
     storage.saveOutput(taskId, 'scene_config', explicitScenePlan);
   }
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
-  return { task: updated, context: ctx, change_scope: scope, invalidated_outputs: invalidated };
+  return {
+    task: storage.getTask(taskId) || updated,
+    context: ctx,
+    content_revision: patch.content_revision,
+    acknowledged_client_edit_seq: patch.latest_client_edit_seq,
+    change_scope: scope,
+    changed_domains: changedDomains,
+    invalidated_outputs: invalidated,
+    manifest: storage.getManifest(taskId),
+  };
+}
+
+function prepareGeneration(taskId, body = {}, user = {}) {
+  let task = assertTaskOwner(taskId, user);
+  if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  if (task.active_generation_id) {
+    const error = new Error('当前已有生成任务正在执行，不能同时创建另一条生成链路');
+    error.code = 'GENERATION_ALREADY_ACTIVE';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  const currentRevision = Math.max(1, Number(task.content_revision || 1) || 1);
+  const expectedRevision = Math.max(1, Number(body.expected_content_revision || body.expectedContentRevision || currentRevision) || currentRevision);
+  if (expectedRevision !== currentRevision) {
+    const error = new Error(`当前服务器最新内容为版本 ${currentRevision}，页面提交的版本 ${expectedRevision} 已过期`);
+    error.code = 'CONTENT_REVISION_CONFLICT';
+    error.status = 409;
+    error.retryable = false;
+    error.content_revision = currentRevision;
+    throw error;
+  }
+  const expectedEditSeq = Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0);
+  const acknowledgedEditSeq = Math.max(0, Number(task.latest_client_edit_seq || 0) || 0);
+  if (expectedEditSeq && expectedEditSeq !== acknowledgedEditSeq) {
+    const error = new Error(`页面最新修改序号 ${expectedEditSeq} 尚未得到服务器确认，已停止生成`);
+    error.code = 'UNSAVED_CLIENT_EDITS';
+    error.status = 409;
+    error.retryable = false;
+    error.acknowledged_client_edit_seq = acknowledgedEditSeq;
+    throw error;
+  }
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  if (String(ctx.brief || '').trim().length < 8) {
+    const error = new Error('请先填写至少 8 个字的广告目标和核心需求');
+    error.code = 'BRIEF_REQUIRED';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  assertContextConsistent(ctx);
+  const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
+  if (['storyboard', 'script_package', 'keyframes', 'media'].includes(targetStage)) {
+    const storedScenePlan = storage.getOutput(taskId, 'scene_config');
+    if (!storedScenePlan && targetStage === 'script_package') {
+      const error = new Error('请先完成并保存场景配置，再生成剧本与分镜');
+      error.code = 'SCENE_CONFIG_REQUIRED';
+      error.status = 422;
+      error.retryable = false;
+      throw error;
+    }
+    const scenePlan = normalizeScenePlan(storedScenePlan || {});
+    const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+    assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
+  }
+  const snapshot = storage.saveSnapshot(taskId, {
+    content_revision: currentRevision,
+    status: 'sealed',
+    payload: ctx,
+  });
+  storage.updateTask(taskId, {
+    current_snapshot_id: snapshot.id,
+    preflight_revision: currentRevision,
+    preflight_snapshot_id: snapshot.id,
+    preflight_target_stage: targetStage,
+    preflight_at: new Date().toISOString(),
+  });
+  storage.saveStage(taskId, 'preflight', {
+    status: 'done',
+    input_summary: `内容版本 ${currentRevision}`,
+    output_summary: '最新版内容、人物、场景、商品和剧情表演约束预检通过',
+    diagnostics: {
+      snapshot_id: snapshot.id,
+      content_revision: currentRevision,
+      input_fingerprint: snapshot.input_fingerprint,
+      target_stage: targetStage,
+      client_edit_seq: acknowledgedEditSeq,
+    },
+  });
+  return {
+    task_id: taskId,
+    content_revision: currentRevision,
+    acknowledged_client_edit_seq: acknowledgedEditSeq,
+    snapshot_id: snapshot.id,
+    input_fingerprint: snapshot.input_fingerprint,
+    target_stage: targetStage,
+    preflight: {
+      ready: true,
+      model_calls_started: 0,
+      creative_direction_present: !!(
+        ctx.creative_direction?.raw
+        || ctx.creative_direction?.plot_direction
+        || ctx.creative_direction?.actions?.length
+      ),
+      person_count: Number(ctx.expected_people || 0) || 0,
+      scene_count: Array.isArray(ctx.scene_assets) ? ctx.scene_assets.length : 0,
+      product_locked: !!(ctx.product_contract || ctx.product_subject),
+    },
+  };
 }
 async function verifyPersonContract(taskId, options = {}) {
   const task = storage.getTask(taskId);
@@ -661,8 +590,15 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
 }
 
 function updateBlueprint(taskId, blueprint = {}, user = {}) {
-  const task = storage.getTask(taskId);
+  let task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
+  if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  if (task.active_generation_id) {
+    const error = new Error('当前生成正在执行，不能同时修改剧本；请先取消或等待完成');
+    error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
+    error.status = 409;
+    throw error;
+  }
   const previous = storage.getOutput(taskId, 'blueprint') || {};
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
@@ -671,20 +607,24 @@ function updateBlueprint(taskId, blueprint = {}, user = {}) {
     normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`),
     previous,
   );
-  const changed = !!previous.fingerprint && previous.fingerprint !== normalized.fingerprint;
-  storage.saveOutput(taskId, 'blueprint', normalized);
+  const changed = blueprintFingerprint(previous) !== blueprintFingerprint(normalized);
   if (changed) {
-    ['keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'].forEach(kind => storage.deleteOutput(taskId, kind));
-    const storyboardMeta = storage.getOutput(taskId, 'storyboard_meta');
-    if (storyboardMeta) {
-      storage.saveOutput(taskId, 'storyboard_meta', {
-        ...storyboardMeta,
-        status: 'stale',
-        stale_reason: 'BLUEPRINT_EDITED',
-        current_blueprint_revision: Number(normalized.revision || 0),
-        current_blueprint_fingerprint: normalized.fingerprint || '',
-      });
-    }
+    const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
+    storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
+    revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
+    storage.carryManifestRevision(taskId, nextRevision);
+    const snapshot = storage.saveSnapshot(taskId, {
+      content_revision: nextRevision,
+      status: 'manual_blueprint_edit',
+      payload: ctx,
+    });
+    storage.saveOutput(taskId, 'blueprint', normalized, {
+      content_revision: nextRevision,
+      snapshot_id: snapshot.id,
+      input_fingerprint: normalized.fingerprint,
+    });
+  } else {
+    storage.saveOutput(taskId, 'blueprint', normalized);
   }
   storage.saveStage(taskId, 'blueprint', {
     status: 'done',
@@ -754,8 +694,15 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
 }
 
 function updateStoryboardTable(taskId, shots = [], user = {}) {
-  const task = storage.getTask(taskId);
+  let task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
+  if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  if (task.active_generation_id) {
+    const error = new Error('当前生成正在执行，不能同时修改分镜；请先取消或等待完成');
+    error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
+    error.status = 409;
+    throw error;
+  }
   const current = storage.getOutput(taskId, 'storyboard_table') || [];
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
@@ -766,6 +713,19 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
   const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
+  const storyboardChanged = storage.canonicalFingerprint(current) !== storage.canonicalFingerprint(normalized);
+  if (storyboardChanged) {
+    const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
+    storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
+    ['quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video']
+      .forEach(kind => storage.deleteOutput(taskId, kind));
+    storage.carryManifestRevision(taskId, nextRevision);
+    storage.saveSnapshot(taskId, {
+      content_revision: nextRevision,
+      status: 'manual_storyboard_edit',
+      payload: ctx,
+    });
+  }
   storage.saveOutput(taskId, 'storyboard_table', normalized);
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'ready',
@@ -856,6 +816,39 @@ async function generateSceneConfig(taskId, options = {}) {
 
 async function generateBlueprintStage(taskId, options = {}) {
   return blueprintLifecycle.generateBlueprintStage(taskId, options, { versionedBlueprint });
+}
+
+const runTextStageWithRecovery = createTextStageRecovery(storage, cleanText);
+
+async function generateScriptPackageStage(taskId, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
+  const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
+  assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
+  const blueprint = await runTextStageWithRecovery(
+    taskId,
+    'blueprint',
+    attempt => generateBlueprintStage(taskId, { ...options, internal_attempt: attempt }),
+    { maxAttempts: 2 },
+  );
+  const storyboard = await runTextStageWithRecovery(
+    taskId,
+    'storyboard',
+    attempt => generateStoryboardStage(taskId, { ...options, internal_attempt: attempt }),
+    { maxAttempts: 2 },
+  );
+  storage.saveStage(taskId, 'script_package', {
+    status: 'done',
+    output_summary: `剧本 ${blueprint.beats?.length || 0} 镜、分镜 ${storyboard.shots?.length || storyboard.length || 0} 镜均已生成并通过检查`,
+    diagnostics: {
+      content_revision: Number(storage.getTask(taskId)?.content_revision || 1) || 1,
+      automatic_recovery_enabled: true,
+      max_internal_attempts_per_stage: 2,
+    },
+  });
+  return { blueprint, storyboard };
 }
 
 async function generateStoryboardStage(taskId, options = {}) {
@@ -3748,11 +3741,14 @@ module.exports = {
   assertTaskOwner,
   createTask,
   updateTaskRequest,
+  prepareGeneration,
   commitGeneratedPersonAsset: personAssetLifecycle.commitGeneratedPersonAsset,
   updateBlueprint,
   updateStoryboardTable,
   generateSceneConfig,
   generateBlueprintStage,
+  generateScriptPackageStage,
+  runTextStageWithRecovery,
   generateStoryboardStage,
   buildKeyframeContractStage,
   generateKeyframesStage,
