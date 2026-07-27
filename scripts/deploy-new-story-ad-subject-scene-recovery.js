@@ -13,6 +13,7 @@ const files = [
   'public/js/new-story-ad-legacy-ui.js',
   'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
+  'public/js/new-story-ad/generation-flow.js',
   'public/js/new-story-ad/scene-assets.js',
   'public/js/new-story-ad/state-sync.js',
   'public/js/new-story-ad/storyboard.js',
@@ -23,6 +24,7 @@ const files = [
   'public/js/new-story-ad/subject-assets-ui.js',
   'public/js/new-story-ad/task-persistence.js',
   'src/routes/newStoryAd.js',
+  'src/services/newStoryAd/cancellationContext.js',
   'src/services/newStoryAd/assistScenePlanService.js',
   'src/services/newStoryAd/assistSubjectProfileService.js',
   'src/services/newStoryAd/blueprintQualityService.js',
@@ -36,6 +38,7 @@ const files = [
   'src/services/newStoryAd/mediaAdapter.js',
   'src/services/newStoryAd/personAssetLifecycleService.js',
   'src/services/newStoryAd/personIdentityContractService.js',
+  'src/services/newStoryAd/revisionService.js',
   'src/services/newStoryAd/sceneAssetService.js',
   'src/services/newStoryAd/sceneAtlasService.js',
   'src/services/newStoryAd/sceneBindingService.js',
@@ -45,19 +48,24 @@ const files = [
   'src/services/newStoryAd/sceneViewStrategyService.js',
   'src/services/newStoryAd/storyboardContinuityGateService.js',
   'src/services/newStoryAd/storyboardTableService.js',
+  'src/services/newStoryAd/storageService.js',
   'src/services/newStoryAd/storyAdService.js',
   'src/services/newStoryAd/subjectAssetBundleService.js',
   'src/services/newStoryAd/subjectContinuityPolicyService.js',
   'src/services/newStoryAd/subjectProfileTextService.js',
   'src/services/newStoryAd/taskProgressSaveService.js',
+  'src/services/newStoryAd/taskViewService.js',
+  'src/services/newStoryAd/textStageRecoveryService.js',
   'src/services/newStoryAd/visualRealismPolicyService.js',
   'src/services/newStoryAd/visualVerificationService.js',
   'src/services/newStoryAd/videoFrameQaService.js',
   'scripts/test-new-story-ad-image2-realism.js',
+  'scripts/test-new-story-ad-autosave-revision.js',
   'scripts/test-new-story-ad-blueprint-quality.js',
   'scripts/test-new-story-ad-human-pet-contract.js',
   'scripts/test-new-story-ad-compose-gate-autosave.js',
   'scripts/test-new-story-ad-compose-transitions.js',
+  'scripts/test-new-story-ad-content-versioning.js',
   'scripts/test-new-story-ad-keyframe-parallel.js',
   'scripts/test-new-story-ad-keyframe-submission.js',
   'scripts/test-new-story-ad-multi-space-cast-recovery.js',
@@ -106,6 +114,35 @@ async function rollback() {
 client.on('ready', async () => {
   let sftp = null;
   try {
+    const preflightText = await exec([
+      `cd ${quote(remoteRoot)}`,
+      `node -e ${quote(`
+        const { execFileSync } = require('child_process');
+        const storage = require('./src/services/newStoryAd/storageService');
+        const active = storage.listTasks({ limit: 1000 })
+          .filter(task => task.active_generation_id)
+          .map(task => ({
+            id: task.id,
+            stage: task.active_stage || task.stage || '',
+            active_generation_id: task.active_generation_id,
+          }));
+        const run = args => {
+          try { return execFileSync('git', args, { encoding: 'utf8' }).trim(); }
+          catch { return ''; }
+        };
+        console.log(JSON.stringify({
+          active,
+          branch: run(['branch', '--show-current']),
+          head: run(['rev-parse', 'HEAD']),
+          status: run(['status', '--short']).split(/\\r?\\n/).filter(Boolean).slice(0, 100),
+        }));
+      `)}`,
+    ].join(' && '));
+    const preflight = JSON.parse(preflightText.split(/\r?\n/).filter(Boolean).pop());
+    console.log(`PREFLIGHT=${JSON.stringify(preflight)}`);
+    if (preflight.active.length) {
+      throw new Error(`生产存在活动生成任务，已停止部署：${preflight.active.map(item => item.id).join(', ')}`);
+    }
     const fileArgs = files.map(quote).join(' ');
     await exec([
       `mkdir -p ${quote(backupDir)}`,
@@ -125,6 +162,11 @@ client.on('ready', async () => {
     const checks = files.filter(file => file.endsWith('.js'))
       .map(file => `node --check ${quote(file)}`)
       .join(' && ');
+    const localHashes = Object.fromEntries(files.map(file => [
+      file,
+      require('crypto').createHash('sha256').update(require('fs').readFileSync(path.join(root, file))).digest('hex'),
+    ]));
+    const hashProbe = Buffer.from(JSON.stringify({ files, localHashes }), 'utf8').toString('base64');
     const output = await exec([
       `cd ${quote(remoteRoot)}`,
       checks,
@@ -138,6 +180,20 @@ client.on('ready', async () => {
       'pm2 reload vido --update-env >/dev/null',
       'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1',
     ].join(' && '));
+    const remoteHashText = await exec([
+      `cd ${quote(remoteRoot)}`,
+      `node -e ${quote(`
+        const crypto = require('crypto');
+        const fs = require('fs');
+        const spec = JSON.parse(Buffer.from('${hashProbe}', 'base64').toString('utf8'));
+        const mismatches = spec.files.filter(file => (
+          crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== spec.localHashes[file]
+        ));
+        console.log(JSON.stringify({ checked: spec.files.length, mismatches }));
+      `)}`,
+    ].join(' && '));
+    const hashAudit = JSON.parse(remoteHashText.split(/\r?\n/).filter(Boolean).pop());
+    if (hashAudit.mismatches.length) throw new Error(`生产文件哈希不一致：${hashAudit.mismatches.join(', ')}`);
     const outputLines = String(output || '').split(/\r?\n/).filter(Boolean);
     const summaryLines = outputLines.filter(line => (
       /PASS|passed|通过|DEPLOY_OK|没有提交视频模型|tests? passed/i.test(line)
@@ -145,6 +201,7 @@ client.on('ready', async () => {
     console.log([
       ...summaryLines,
       `REMOTE_OUTPUT_LINES=${outputLines.length}`,
+      `HASH_AUDIT=${JSON.stringify(hashAudit)}`,
       `BACKUP=${backupDir}`,
     ].join('\n'));
     sftp.end();
