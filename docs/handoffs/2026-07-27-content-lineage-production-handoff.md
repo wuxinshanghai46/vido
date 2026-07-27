@@ -14,7 +14,7 @@
 - 本地功能修复基线：`5d3c6f1`
 - Gitee `origin/codex/story-ad-v3-upgrade`：同一提交
 - 本地与 Gitee ahead/behind：`0 / 0`
-- 生产发布清单：99 个文件
+- 生产发布清单：100 个文件
 - 生产与本地 SHA-256 不一致文件：0
 - PM2 `vido`：`online`
 - 生产数据库：`ok`
@@ -24,7 +24,7 @@
 - 核对过程触发模型或媒体调用：0
 - 核对过程写入任务数据：0
 
-生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，99/99 个实际运行文件与本地完全一致。
+生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，100/100 个实际运行文件与本地完全一致。
 
 ## 二、本轮真正解决的问题
 
@@ -407,7 +407,7 @@ node scripts/audit-new-story-ad-content-lineage-release.js
 
 - `status: PASS`
 - `ahead_behind: 0 0`
-- `release_files_checked: 99`
+- `release_files_checked: 100`
 - `release_hash_mismatches: []`
 - `active_generation_count: 0`
 - `pm2.status: online`
