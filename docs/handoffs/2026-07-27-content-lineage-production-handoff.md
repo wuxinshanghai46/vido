@@ -2,7 +2,7 @@
 
 > 交接日期：2026-07-27（Asia/Shanghai）
 > 目标分支：`codex/story-ad-v3-upgrade`
-> 功能提交：`c8706dc`
+> 最新修复提交：`f950e29`
 > 用途：回家拉取最新代码后，在本地验证“修改后只使用最新内容”和“一次生成剧本包”
 
 ## 一、当前结论
@@ -11,10 +11,10 @@
 
 三方核对结果：
 
-- 本地功能提交：`c8706dcae958de65d41629b76085c009886725ed`
+- 本地功能提交：`f950e2920e4e8e6fb81a9b4edcb885647cf1e7b5`
 - Gitee `origin/codex/story-ad-v3-upgrade`：同一提交
 - 本地与 Gitee ahead/behind：`0 / 0`
-- 生产发布清单：77 个文件
+- 生产发布清单：84 个文件
 - 生产与本地 SHA-256 不一致文件：0
 - PM2 `vido`：`online`
 - 生产数据库：`ok`
@@ -24,7 +24,7 @@
 - 核对过程触发模型或媒体调用：0
 - 核对过程写入任务数据：0
 
-生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，77/77 个实际运行文件与本地完全一致。
+生产服务器仓库仍是历史 detached HEAD，且长期采用文件级发布，所以服务器的 Git 提交号和工作区状态不能作为运行代码是否一致的判断依据。本轮用发布清单逐文件 SHA-256 核对，84/84 个实际运行文件与本地完全一致。
 
 ## 二、本轮真正解决的问题
 
@@ -112,6 +112,33 @@
 - 分镜局部修改会保留仍兼容的关键帧合同，但修改镜头会标记为过期；
 - “一面墙”仍按主平面数量 1 处理，不会自动解释为“无缝连续墙面”。
 
+### 2.5 2026-07-27 晚间追加：场景已通过却提示未保存配置
+
+线上双场景卡片均显示完整空间锁，但点击生成剧本曾返回 `SCENE_CONFIG_REQUIRED`。根因不是图片或 QA 未通过，而是活动场景标签被序列化到兼容顶层 `scene_spec`，普通保存因此被后端误判为整个场景域发生变化，删除了当前版本的 `scene_config` 和 `scene_assets`；任务视图又从历史 context/checkpoint 补回两张卡片，形成“页面显示通过、当前合同缺失”的状态分叉。
+
+现在统一为：
+
+```text
+活动标签切换
+→ 只改变页面选择，不形成业务修改或自动保存
+
+完整 scene_plan
+→ 当前场景计划唯一权威
+→ 后端以已持久化 scene_config 比较真实变化
+→ 真实修改必须提交完整计划
+→ 稳定 ID 且规格未变的资产可保留
+→ 已失效 context/checkpoint 不得冒充当前资产
+```
+
+生产目标任务已用历史已发布 lineage 做零模型恢复：
+
+- 当前内容版本：2；
+- 状态：`working / scene_config_done`；
+- 当前场景：城市公园草坪、现代家庭空间；
+- 两个场景均为 V7、schema 6、5 个视图、完整空间锁；
+- 模型调用计数修复前后均为 116，增量 0；
+- 当前可以测试“生成剧本”，不要重复点击。
+
 ## 三、关键实现
 
 ### 后端
@@ -120,6 +147,8 @@
   - 内容快照、版本化产物、发布清单、失效墓碑。
 - `src/services/newStoryAd/revisionService.js`
   - 服务端真实差异检测和依赖失效。
+- `src/services/newStoryAd/sceneAuthorityService.js`
+  - 完整场景计划权威比较、稳定场景资产选择性保留和当前 lineage 发布。
 - `src/services/newStoryAd/jobService.js`
   - 入队、执行、完成发布三处版本校验。
 - `src/services/newStoryAd/cancellationContext.js`
@@ -148,7 +177,7 @@
 - `public/digital-human.html`
   - “剧情与表演要求”输入区。
 - `public/js/new-story-ad/bootstrap.js`
-  - 前端缓存版本 `20260727-content-lineage-v33`。
+  - 前端缓存版本 `20260727-scene-authority-v34`。
 
 ## 四、已完成验证
 
@@ -166,13 +195,15 @@
 - 视频付费预检、供应商能力和费用门禁
 - 音频、跨场景转场和最终合成
 - 完整 `npm run story-ad:v3:test`
+- 场景权威专项回归：活动标签、重复/乱序保存、真实计划更新、历史投影隔离、缺配置门禁
 
 完整回归使用模拟夹具，没有提交真实图片、视频或付费供应商任务。
 
 生产备份：
 
 ```text
-/opt/vido/backups/new-story-ad-subject-scene-recovery-20260727093451
+/opt/vido/backups/new-story-ad-subject-scene-recovery-20260727134552
+/opt/vido/backups/scene-authority-lineage-repair-20260727134932.sqlite
 ```
 
 ## 五、回家后拉取步骤
@@ -275,7 +306,7 @@ node scripts/audit-new-story-ad-content-lineage-release.js
 
 - `status: PASS`
 - `ahead_behind: 0 0`
-- `release_files_checked: 77`
+- `release_files_checked: 84`
 - `release_hash_mismatches: []`
 - `active_generation_count: 0`
 - `pm2.status: online`

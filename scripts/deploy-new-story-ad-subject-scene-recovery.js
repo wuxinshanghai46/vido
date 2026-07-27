@@ -8,6 +8,7 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD;
 const files = [
   'package.json',
+  'docs/handoffs/2026-07-27-content-lineage-production-handoff.md',
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
   'public/js/new-story-ad-legacy-ui.js',
