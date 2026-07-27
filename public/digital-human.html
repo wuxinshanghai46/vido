@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-production-recovery-v35">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260727-story-setup-flow-v36">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260727-production-recovery-v35"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260727-story-setup-flow-v36"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -251,7 +251,6 @@
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
-                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认基础信息，生成剧本</button>
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-action-progress" id="dhNsaAdActionProgress" hidden></div>
@@ -498,59 +497,75 @@
                   </div>
                 </div>
               </div>
-              <div class="dh-demo-section-title">视频基础信息</div>
-              <div class="dh-nsa-production-mode-row">
-                <label>
-                  <span>生产模式</span>
-                  <select class="dh-input" id="dhNsaAdProductionMode">
-                    <option value="auto">按广告需求判断</option>
-                    <option value="narrative_live_action">真人剧情广告</option>
-                    <option value="product_story">产品剧情 / 无人产品</option>
-                    <option value="service_app_story">服务 / SaaS / 应用剧情</option>
-                  </select>
-                </label>
-                <p>模式只决定生产和 QA 策略，不会写死行业、场景、人物或镜头内容。</p>
-              </div>
-              <div class="dh-demo-section-title">剧情与表演要求 <span class="dh-luxgen-badge">选填</span></div>
-              <div class="dh-demo-guide">
-                <b>说明故事怎么演，不重复填写广告目标</b>
-                <span>可以写剧情走向、人物动作、表情、台词、节奏、转折、结尾，以及必须或禁止出现的内容。系统会先检查是否与已确认人物、场景和商品冲突，再生成剧本。</span>
-              </div>
-              <label class="dh-nsa-creative-direction-field">
-                <textarea class="dh-input" id="dhNsaAdCreativeDirection" rows="5" maxlength="3000" placeholder="例如：林晓从画面左侧进入，先疲惫地坐下；喝一口咖啡后表情逐渐放松并恢复专注，最后完成提案并说出品牌口号。禁止新增人物或切换场景。"></textarea>
-                <small>第一步负责“做什么广告”，这里负责“人物怎么演”。涉及新人物、新场景或新道具时，系统会要求先返回配置。</small>
-              </label>
-              <div class="dh-demo-section-title">品牌 Logo 后期落版 <span class="dh-luxgen-badge">选填</span></div>
-              <div class="dh-demo-guide">
-                <b>Logo 不交给图片或视频模型生成</b>
-                <span>上传你有权使用的品牌素材后，系统只在最终合成阶段原样叠加；剧本中的“Logo 浮现”会作为落版位置预留。</span>
-              </div>
-              <div class="dh-nsa-brand-overlay">
-                <div class="dh-luxgen-product-asset" id="dhNsaAdBrandLogoAsset"><div class="dh-luxgen-product-empty">未上传品牌 Logo</div></div>
-                <div class="dh-nsa-brand-overlay-controls">
-                  <div>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoUpload" type="button">上传授权 Logo</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoClear" type="button" hidden>删除 Logo</button>
-                    <input type="file" id="dhNsaAdBrandLogoFile" accept="image/png,image/jpeg,image/webp" hidden>
-                  </div>
-                  <label><input type="checkbox" id="dhNsaAdBrandLogoAuthorized"> 我确认拥有该 Logo 的使用及发布授权</label>
-                  <label>落版位置
-                    <select class="dh-input" id="dhNsaAdBrandLogoPosition">
-                      <option value="bottom_center">底部居中</option>
-                      <option value="bottom_right">右下角</option>
-                      <option value="bottom_left">左下角</option>
-                      <option value="center">画面居中</option>
-                      <option value="top_right">右上角</option>
-                      <option value="top_left">左上角</option>
-                    </select>
-                  </label>
-                  <label>宽度（画面占比 %）<input class="dh-input" id="dhNsaAdBrandLogoWidth" type="number" min="8" max="45" value="22"></label>
-                  <label>结尾展示（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
-                </div>
-              </div>
               <div id="dhNsaAdSceneConfigHost" class="dh-luxgen-storyboard">
                 <div class="dh-luxgen-empty"><b>还没有基础信息</b><span>回到第 1 步输入广告需求，点击“生成场景配置”。</span></div>
               </div>
+              <div class="dh-nsa-story-setup-next" id="dhNsaAdStorySetupNext">
+                <div><b>人物与场景形象确认后再写剧情</b><span id="dhNsaAdStorySetupStatus">请先完成当前人物/主体和全部场景形象。</span></div>
+                <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdContinueStorySetup" type="button">下一步：编写剧情与表演</button>
+              </div>
+              <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel" hidden>
+                <div class="dh-nsa-story-setup-heading">
+                  <div><span>剧情生成设置</span><small>系统只使用上方已经确认的人物、主体和场景，不会在这里重新发明资产。</small></div>
+                  <span class="dh-luxgen-badge">生成剧本前最后一步</span>
+                </div>
+                <div class="dh-demo-section-title">剧情呈现方式</div>
+                <div class="dh-nsa-production-mode-row">
+                  <label>
+                    <span>故事如何呈现</span>
+                    <select class="dh-input" id="dhNsaAdProductionMode">
+                      <option value="auto">按已确认人物、主体和场景判断</option>
+                      <option value="narrative_live_action">真人剧情演绎</option>
+                      <option value="product_story">无人产品故事 / 产品演示</option>
+                      <option value="service_app_story">服务 / SaaS / 应用场景叙事</option>
+                    </select>
+                  </label>
+                  <p>该选择会直接进入剧本提示词，决定故事以人物表演、产品变化还是服务使用过程推进；不会替代上方已经确认的人物和场景。</p>
+                </div>
+                <div class="dh-nsa-section-title-actions">
+                  <div class="dh-demo-section-title">剧情与表演要求 <span class="dh-luxgen-badge">选填</span></div>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdCreativeAssist" type="button">AI 辅写剧情与表演</button>
+                </div>
+                <div class="dh-demo-guide">
+                  <b>说明故事怎么演，不重复填写广告目标</b>
+                  <span>可以写剧情走向、人物动作、表情、台词、节奏、转折、结尾，以及必须或禁止出现的内容。AI 辅写只会使用已确认的人物、主体和场景。</span>
+                </div>
+                <label class="dh-nsa-creative-direction-field">
+                  <textarea class="dh-input" id="dhNsaAdCreativeDirection" rows="5" maxlength="3000" placeholder="例如：林晓从画面左侧进入，先疲惫地坐下；喝一口咖啡后表情逐渐放松并恢复专注，最后完成提案并说出品牌口号。禁止新增人物或切换场景。"></textarea>
+                  <small>第一步负责“做什么广告”，这里负责“人物怎么演”。涉及新人物、新场景或新道具时，系统会阻止生成并要求先返回配置。</small>
+                </label>
+                <div class="dh-demo-section-title">品牌 Logo 后期落版 <span class="dh-luxgen-badge">选填</span></div>
+                <div class="dh-demo-guide">
+                  <b>Logo 不交给图片或视频模型生成</b>
+                  <span>上传你有权使用的品牌素材后，系统只在最终合成阶段原样叠加；不需要 Logo 可以直接跳过。</span>
+                </div>
+                <div class="dh-nsa-brand-overlay">
+                  <div class="dh-luxgen-product-asset" id="dhNsaAdBrandLogoAsset"><div class="dh-luxgen-product-empty">未上传品牌 Logo</div></div>
+                  <div class="dh-nsa-brand-overlay-controls">
+                    <div>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoUpload" type="button">上传授权 Logo</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoClear" type="button" hidden>删除 Logo</button>
+                      <input type="file" id="dhNsaAdBrandLogoFile" accept="image/png,image/jpeg,image/webp" hidden>
+                    </div>
+                    <label><input type="checkbox" id="dhNsaAdBrandLogoAuthorized"> 我确认拥有该 Logo 的使用及发布授权</label>
+                    <label>落版位置
+                      <select class="dh-input" id="dhNsaAdBrandLogoPosition">
+                        <option value="bottom_center">底部居中</option>
+                        <option value="bottom_right">右下角</option>
+                        <option value="bottom_left">左下角</option>
+                        <option value="center">画面居中</option>
+                        <option value="top_right">右上角</option>
+                        <option value="top_left">左上角</option>
+                      </select>
+                    </label>
+                    <label>宽度（画面占比 %）<input class="dh-input" id="dhNsaAdBrandLogoWidth" type="number" min="8" max="45" value="22"></label>
+                    <label>结尾展示（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
+                  </div>
+                </div>
+                <div class="dh-nsa-story-setup-actions">
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认剧情设置，生成剧本</button>
+                </div>
+              </section>
             </section>
           </section>
 

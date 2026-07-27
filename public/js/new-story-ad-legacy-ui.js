@@ -74,6 +74,7 @@
     subjectGalleryOpenKeys: new Set(),
     personGenerationProgress: null, subjectCheckpointTimer: null,
     sceneAssets: [],
+    storySetupExpanded: false, storySetupConfirmed: false,
     pendingChangeScope: 'none', pendingMediaChange: 'none',
     pendingChangeDomains: [],
     clientEditSeq: 0,
@@ -1033,6 +1034,7 @@
       pet_profiles: petProfiles,
       pet_contract: petRequired ? (state.context?.pet_contract || { status: 'declared', expected_animals: expectedAnimals, profiles: petProfiles }) : null,
       production_mode: within('#dhNsaAdProductionMode')?.value || 'auto',
+      ...window.NewStoryAdStorySetup.payload(state),
       voice_id: voiceId,
       voice_name: state.voiceName || '',
       include_voiceover: !!voiceId,
@@ -1068,7 +1070,7 @@
       controlled_production: ctrl,
       forbidden: negative,
       source: 'new_story_ad_legacy_style_ui',
-      creative_direction: { ...(state.context?.creative_direction || {}), raw: String(within('#dhNsaAdCreativeDirection')?.value || state.context?.creative_direction?.raw || '').trim() },
+      creative_direction: window.NewStoryAdStorySetup.creativeDirection(state, within),
       change_scope: state.pendingChangeScope || 'none',
       changed_domains: Array.isArray(state.pendingChangeDomains) ? state.pendingChangeDomains : [],
       media_change_scope: state.pendingMediaChange || 'none',
@@ -1118,6 +1120,7 @@
     const current = state.pendingChangeScope || 'none';
     const compatibilityScope = Object.prototype.hasOwnProperty.call(priority, scope) ? scope : 'source';
     state.pendingChangeScope = priority[compatibilityScope] >= priority[current] ? compatibilityScope : current;
+    window.NewStoryAdStorySetup?.invalidate(state, scope);
     if (scope === 'source') {
       state.context = null;
       state.sceneConfig = null;
@@ -1834,6 +1837,7 @@
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
     setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto');
+    window.NewStoryAdStorySetup?.hydrate(state, request);
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;
@@ -2067,7 +2071,9 @@
     setButtonLock('#dhNsaAdGenerate', !hasBrief, '请先填写至少 8 个字的广告需求');
     const generateBtn = within('#dhNsaAdGenerate');
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
-    setButtonLock('#dhNsaAdStoryboard', !hasBrief && !state.taskId, '请先填写至少 8 个字的广告需求');
+    const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, personSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
+    setButtonLock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
+    setButtonLock('#dhNsaAdStoryboard', !state.storySetupConfirmed || !storySetupReady.ready, !state.storySetupConfirmed ? '请先点击“下一步：编写剧情与表演”' : storySetupReady.message);
     const storyboardBtn = within('#dhNsaAdStoryboard');
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     setButtonLock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
@@ -3639,6 +3645,7 @@
     renderSceneAssets();
     renderAudio();
     renderScene();
+    window.NewStoryAdStorySetup?.render({ state, within, getPersonSpec: personSpec });
     renderBlueprint();
     renderStoryboard();
     renderMedia();
@@ -4105,35 +4112,10 @@
   }
 
   async function assist(mode, button) {
-    if (window.NewStoryAdGenerationFlow?.assist) {
-      try {
-        const result = await window.NewStoryAdGenerationFlow.assist(mode, generationFlowContext(button));
-        if (result) {
-          markSourceDirty('source');
-          scheduleAutoSave('brief_assist');
-        }
-        return result;
-      } catch (err) {
-        console.warn('[newStoryAd] assist fallback:', err.message || err);
-      }
-    }
-    const body = payload();
-    if (body.brief.length < 3) return toast('请先写一点广告方向', 'error');
-    const label = mode === 'clean' ? '整理需求中...' : 'AI 写作中...';
-    setBusy(true, label);
-    setButtonBusy(button, true, label);
-    try {
-      const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...body, mode } });
-      if (r.brief && within('#dhNsaAdText')) within('#dhNsaAdText').value = window.NewStoryAdGenerationFlow?.formatBriefText?.(r.brief) || r.brief;
-      markSourceDirty('source');
-      scheduleAutoSave('brief_assist');
-      toast('需求已整理', 'success');
-    } catch (err) {
-      toast(err.message || '需求整理失败', 'error');
-    } finally {
-      setButtonBusy(button, false);
-      setBusy(false);
-    }
+    if (!window.NewStoryAdGenerationFlow?.assist) return toast('AI 辅写模块未加载，请刷新页面后重试', 'error');
+    const result = await window.NewStoryAdGenerationFlow.assist(mode, generationFlowContext(button));
+    if (result) { markSourceDirty('source'); scheduleAutoSave('brief_assist'); }
+    return result;
   }
 
   function firstPendingControlAiLabel() {
@@ -6096,7 +6078,9 @@
       const id = btn.id || '';
       const handled = {
         dhNsaAdGenerate: () => runStage('scene', btn),
+        dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open({ state, getPersonSpec: personSpec, markSourceDirty, renderAll, scheduleAutoSave, toast }),
         dhNsaAdStoryboard: () => runStage('blueprint', btn),
+        dhNsaAdCreativeAssist: () => window.NewStoryAdStorySetup.assist({ state, button: btn, within, getPersonSpec: personSpec, buildPayload: payload, ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setButtonBusy, toast }),
         dhNsaAdPreviewFrames: () => runStage('storyboard', btn),
         dhNsaAdScriptRegenerateTop: () => runStage('blueprint', btn),
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),
@@ -6263,6 +6247,11 @@
         ctrl.product.lockStrength = target.value || 'standard';
         ctrl.uiExpanded = true;
         markSourceDirty('product');
+        renderStatus();
+        return;
+      }
+      if (target?.id === 'dhNsaAdProductionMode') {
+        markSourceDirty('creative');
         renderStatus();
         return;
       }

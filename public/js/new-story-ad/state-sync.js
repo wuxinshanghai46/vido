@@ -545,6 +545,7 @@
     state.outputSize = request.output_size || request.outputSize || state.outputSize || 'standard';
     state.videoResolution = request.video_resolution || request.videoResolution || state.videoResolution || '720p';
     setFieldValue('#dhNsaAdProductionMode', request.production_mode || request.productionMode || 'auto', { within });
+    window.NewStoryAdStorySetup?.hydrate(state, request);
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
     state.subtitleEnabled = request.subtitle !== false;

@@ -22,10 +22,11 @@ function domainSlices(ctx = {}) {
       target_duration: ctx.target_duration,
       shot_count: ctx.shot_count,
       output_ratio: ctx.output_ratio,
-      production_mode: ctx.production_mode,
       visible_text_policy: ctx.visible_text_policy,
     },
     creative: {
+      production_mode: ctx.production_mode,
+      story_setup_confirmed: ctx.story_setup_confirmed,
       creative_direction: ctx.creative_direction,
       story_structure: ctx.story_structure,
       original_brief: ctx.original_brief,

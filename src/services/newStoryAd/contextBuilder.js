@@ -411,6 +411,15 @@ function normalizeProductionMode(value = '') {
   return ['auto', 'narrative_live_action', 'product_story', 'service_app_story'].includes(normalized) ? normalized : 'auto';
 }
 
+function productionModeDescription(value = '') {
+  return {
+    auto: '按已确认人物、主体和场景判断故事呈现方式',
+    narrative_live_action: '真人剧情演绎，以已确认人物的动作、表情和对白推动故事',
+    product_story: '无人产品故事或产品演示，以主体状态、使用过程和可见证据推动故事',
+    service_app_story: '服务、SaaS 或应用场景叙事，以用户问题、使用过程和结果变化推动故事',
+  }[normalizeProductionMode(value)] || '按当前任务判断';
+}
+
 function normalizeCreativeDirection(input = null) {
   const source = typeof input === 'string' ? { raw: input } : (input && typeof input === 'object' ? input : {});
   const list = (value, max = 20) => (Array.isArray(value) ? value : (value ? String(value).split(/[\n；;]/) : []))
@@ -649,6 +658,7 @@ function buildContext(body = {}, user = {}) {
     : assets;
   return {
     request_id: requestId,
+    request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
     brief,
     product_subject: productSubject || inferSubjectFromBrief(brief),
     target_duration: targetDuration,
@@ -658,6 +668,7 @@ function buildContext(body = {}, user = {}) {
     video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
     visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
+    story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
     voice_id: voiceId,
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
     include_voiceover: includeVoiceover,
@@ -810,7 +821,8 @@ function contextPrompt(ctx) {
     `人物/主体模式：${ctx.cast_mode}`,
     ctx.expected_people ? `精确人数：${ctx.expected_people}（必须保持，不得用默认群体数量替代）` : '',
     ctx.expected_animals ? `精确宠物/动物数量：${ctx.expected_animals}（与人物数量独立计数，人物不得替代宠物，宠物不得替代人物）` : '',
-    `生产模式：${ctx.production_mode || 'auto'}（只控制当前任务的制作与 QA 策略，不是行业或场景模板）`,
+    `剧情呈现方式：${ctx.production_mode || 'auto'}（${productionModeDescription(ctx.production_mode)}）。该设置直接约束剧本叙事方式，但不得覆盖已确认人物、主体或场景。`,
+    `剧情生成设置：${ctx.story_setup_confirmed === true ? '已在人物与场景形象确认后完成' : '尚未确认'}`,
     ctx.cast_mode === 'no_human'
       ? '角色设定：本任务选择无人物模式，不得强行加入真人、手部、背影或人形主体，除非用户需求另有明确要求。'
       : (ctx.cast_mode === 'animal'

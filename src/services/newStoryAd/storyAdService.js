@@ -39,7 +39,7 @@ const videoAttemptLedger = require('./videoAttemptStore').createVideoAttemptStor
 const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecovery = require('./videoClipStatusRecoveryService');
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
-const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService');
+const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
@@ -403,7 +403,6 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     manifest: storage.getManifest(taskId),
   };
 }
-
 function prepareGeneration(taskId, body = {}, user = {}) {
   let task = assertTaskOwner(taskId, user);
   if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
@@ -444,6 +443,7 @@ function prepareGeneration(taskId, body = {}, user = {}) {
   }
   assertContextConsistent(ctx);
   const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
+  storySetup.assertConfirmed(ctx, targetStage);
   if (['storyboard', 'script_package', 'keyframes', 'media'].includes(targetStage)) {
     const storedScenePlan = storage.getOutput(taskId, 'scene_config');
     if (!storedScenePlan && targetStage === 'script_package') {
@@ -530,7 +530,6 @@ async function verifyPersonContract(taskId, options = {}) {
   storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
   return verified;
 }
-
 async function verifyProductContract(taskId) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
@@ -542,7 +541,6 @@ async function verifyProductContract(taskId) {
   storage.updateTask(taskId, { request: next });
   return { product_contract: contract };
 }
-
 function normalizeBlueprintDraft(blueprint = {}, seed = '') {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
   const cleanSpeech = value => cleanText(value, 700).replace(/^(?:字幕|屏幕字幕|字幕文案|旁白|台词|对白|解说|画外音|配音)\s*[:：]\s*/i, '').trim();
@@ -3536,12 +3534,12 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
     audio_bridge: textValue('audio_bridge', [], 240),
   };
 }
-
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
   const isStyleControl = mode === 'style_control' || mode === 'style';
   const isNegativeControl = mode === 'negative_control' || mode === 'negative';
+  const isCreativeDirection = mode === 'creative_direction' || mode === 'creative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
   const isShotSettings = mode === 'shot_settings' || mode === 'shot';
@@ -3557,6 +3555,7 @@ async function assistBrief(body = {}, user = {}) {
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
+    assistCreativeDirection.systemRule(),
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,
@@ -3571,7 +3570,9 @@ async function assistBrief(body = {}, user = {}) {
     'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
     'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
   ].join('\n');
-  const outputSchema = isStyleControl
+  const outputSchema = isCreativeDirection
+    ? assistCreativeDirection.outputSchema()
+    : isStyleControl
     ? `{
   "text": "只包含画面风格、光线、真实程度、镜头情绪和不能偏离的质感方向，80-180 字"
 }`
@@ -3664,13 +3665,10 @@ async function assistBrief(body = {}, user = {}) {
     scene_assets: body.shot_assist_context?.scene_assets || body.scene_assets || [],
   } : null;
   const userPrompt = `${contextPrompt(ctx)}
-
-模式：${isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
-
+模式：${isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 ${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只补齐目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。只返回这一名人物的一条 cast_profiles 记录，保持已有非空字段，补齐其空白字段；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
 ${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。当前完整场景计划：${JSON.stringify(currentScenePlan).slice(0, 18000)}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
-
 输出 JSON：
 ${outputSchema}`;
   const result = await modelGateway.generateText({
@@ -3687,6 +3685,7 @@ ${outputSchema}`;
     taskId: cleanText(body.task_id || body.taskId || '', 80),
     stage: 'new_story_ad.json_repair',
   });
+  if (isCreativeDirection) return assistCreativeDirection.buildResponse({ parsed, context: ctx, mode, modelResult: result });
   if (isStyleControl || isNegativeControl) {
     const text = cleanText(parsed.text || parsed.brief || parsed.content || '', 800);
     return {
