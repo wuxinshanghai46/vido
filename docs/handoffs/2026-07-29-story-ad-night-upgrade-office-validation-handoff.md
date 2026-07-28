@@ -19,7 +19,7 @@
 
 ## 二、三方代码一致性结论
 
-交接前重新执行只读审计，结果为：
+在提交本交接文档前，以今晚功能代码基线重新执行只读审计，结果为：
 
 ```text
 status: PASS
@@ -38,6 +38,8 @@ database: ok
 model or media calls during audit: 0
 task writes during audit: 0
 ```
+
+上表中的 `22a6a8f...` 是今晚全部运行代码的功能基线；随后仅新增了本交接文档，所以明天拉取后的分支 HEAD 会更新，但生产运行文件未改变。到公司后应以 `git rev-parse HEAD` 与 `git rev-parse origin/codex/story-ad-v3-upgrade` 的实际输出为准，并确认二者相等。
 
 生产服务器仍采用“历史 detached HEAD + 文件级原子发布”模式：
 
