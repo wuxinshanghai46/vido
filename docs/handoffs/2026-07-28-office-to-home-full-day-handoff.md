@@ -1,9 +1,9 @@
 # VIDO 剧情广告 2026-07-28 公司 → 回家完整交接
 
-> 交接日期：2026-07-28（Asia/Shanghai）  
-> 目标分支：`codex/story-ad-v3-upgrade`  
-> 功能基线：`14ed129956552d4d46f47b137fde2ea20972fc36`  
-> 用途：回家后拉取目标分支最新 HEAD，继续优化剧情广告流程  
+> 交接日期：2026-07-28（Asia/Shanghai）
+> 目标分支：`codex/story-ad-v3-upgrade`
+> 功能基线：`14ed129956552d4d46f47b137fde2ea20972fc36`
+> 用途：回家后拉取目标分支最新 HEAD，继续优化剧情广告流程
 > 安全说明：本文不包含服务器密码、数据库密码、API Key、Token、Cookie 或其他凭证
 
 ## 一、交接结论
