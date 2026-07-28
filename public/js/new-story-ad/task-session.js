@@ -12,6 +12,7 @@
 
   function reset(state = {}, { stopStageProgress, clearVideoAuthorization } = {}) {
     state.taskSessionEpoch = Number(state.taskSessionEpoch || 0) + 1;
+    state.inlineGenerationController?.abort?.(new DOMException('任务会话已切换', 'AbortError'));
     stopStageProgress?.();
     ['subjectCheckpointTimer', 'adminVideoMonitorTimer'].forEach(key => {
       if (state[key]) clearInterval(state[key]);
@@ -22,6 +23,7 @@
       petProfiles: [], subjectGalleryOpenKeys: new Set(),
       subjectGenerationCheckpoint: null, restoredTextAuthority: null,
       videoSelectedIndexes: [], videoSelectedUnitIds: [],
+      activeGenerationScope: '', inlineGenerationController: null,
     });
     clearVideoAuthorization?.();
   }

@@ -195,7 +195,8 @@ function createTask(task) {
   return writeRow('tasks', row);
 }
 
-function updateTask(id, patch) {
+function updateTask(id, patch, options = {}) {
+  if (options.systemFinalization !== true) cancellation.throwIfCancelled(id);
   if (!getTask(id)) return null;
   return writeRow('tasks', mergedRow('tasks', id, patch));
 }

@@ -86,7 +86,13 @@ function main() {
   assert(progressRender.includes('renderStatus()'));
   assert.strictEqual(progressRender.includes('renderStoryboard()'), false);
   assert.strictEqual(progressRender.includes('renderMedia()'), false);
-  assert(legacySource.includes('/progress${progressRevision'), '进度计时器不得继续下载完整任务');
+  const taskSessionSource = read('public/js/new-story-ad/task-session.js');
+  const progressTimerSource = taskSessionSource.slice(
+    taskSessionSource.indexOf('function startProgressTimer'),
+    taskSessionSource.indexOf('window.NewStoryAdTaskSession'),
+  );
+  assert(progressTimerSource.includes('/progress${suffix}'), '进度计时器不得继续下载完整任务');
+  assert.strictEqual(progressTimerSource.includes('?compact=1'), false, '进度计时器不得回退到完整任务快照');
 
   const routeSource = read('src/routes/newStoryAd.js');
   assert(routeSource.indexOf("router.get('/tasks/:id/progress'")

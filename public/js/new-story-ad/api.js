@@ -124,9 +124,14 @@
         ? `接口不存在或服务仍是旧版本，请重启服务后再试：${path}`
         : (isHtmlError ? `接口返回了 HTML 错误页：HTTP ${resp.status}` : '');
       const original = errorMessage(data?.error) || errorMessage(data?.message) || friendly || raw.slice(0, 180);
-      const err = new Error(chineseErrorMessage(original, resp.status));
+      const baseMessage = chineseErrorMessage(original, resp.status);
+      const guidance = window.NewStoryAdErrorGuidance?.format?.({ data: data || {}, message: baseMessage, path });
+      const err = new Error(guidance?.message || baseMessage);
       err.status = resp.status;
       err.data = data;
+      err.code = data?.code || data?.error_code || '';
+      err.retryable = data?.retryable === true;
+      err.guidance = guidance || null;
       throw err;
     }
     return data || {};

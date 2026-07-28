@@ -150,8 +150,30 @@
     return `<div class="dh-nsa-stage-failure"><b>真实分镜生成未完成</b><span>${escapeHtml(message)}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>${escapeHtml(counters)} 已成功的图片会保留；再次操作时只补齐未完成镜头，不会自动重复提交。</small></div>`;
   }
 
+  function genericFailureHtml(state = {}, escapeHtml = String) {
+    if (state.taskStatus !== 'failed') return '';
+    const guidance = window.NewStoryAdErrorGuidance?.format?.({
+      data: {
+        code: state.taskErrorCode,
+        task: {
+          stage: state.taskStage,
+          error: state.taskError,
+          error_code: state.taskErrorCode,
+          support_id: state.taskSupportId,
+          generation_progress: state.generationProgress || null,
+        },
+      },
+      message: state.taskError || '当前阶段执行失败',
+      stage: state.taskStage,
+    });
+    const where = guidance?.where || '当前阶段';
+    const reason = guidance?.reason || state.taskError || '当前阶段执行失败';
+    const action = guidance?.action || '请按错误提示修改后，从当前步骤重试。';
+    return `<div class="dh-nsa-stage-failure"><b>${escapeHtml(where)}未完成</b><span>${escapeHtml(reason)}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}${state.taskSupportId ? ` · 支持编号：${escapeHtml(state.taskSupportId)}` : ''}</em>` : ''}<small>处理方法：${escapeHtml(action)}</small></div>`;
+  }
+
   function stageFailureHtml(state = {}, escapeHtml = String) {
-    return blueprintFailureHtml(state, escapeHtml) || keyframeFailureHtml(state, escapeHtml);
+    return blueprintFailureHtml(state, escapeHtml) || keyframeFailureHtml(state, escapeHtml) || genericFailureHtml(state, escapeHtml);
   }
 
   function syncBlueprintFailureHost(state = {}, host, escapeHtml = String) {
@@ -174,6 +196,7 @@
     blueprintFailureMessage,
     blueprintFailureHtml,
     keyframeFailureHtml,
+    genericFailureHtml,
     stageFailureHtml,
     syncBlueprintFailureHost,
   };

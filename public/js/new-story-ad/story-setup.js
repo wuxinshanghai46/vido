@@ -137,7 +137,7 @@
 
   async function assist({
     state = {}, button, within = () => null, getPersonSpec = () => '', buildPayload,
-    ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setButtonBusy, toast,
+    ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setBusy, setButtonBusy, toast,
   } = {}) {
     const ready = readiness(state, getPersonSpec);
     if (!ready.ready) return toast?.(ready.message || '请先完成当前人物与场景形象', 'error');
@@ -145,15 +145,19 @@
     setButtonBusy?.(button, true, label);
     try {
       const taskId = await ensureTask();
-      const response = await api('/api/new-story-ad/assist', {
-        method: 'POST',
-        body: {
+      const response = await window.NewStoryAdGenerationFlow.requestInlineGeneration(
+        'assist_creative_direction',
+        { state, api, renderAll, setBusy },
+        {
+          label,
+          body: {
           ...buildPayload(),
           task_id: taskId,
           mode: 'creative_direction',
           creative_direction: creativeDirection(state, within),
         },
-      });
+        },
+      );
       const result = response.creative_direction || response.creativeDirection || {};
       const text = clean(result.raw || response.text || response.brief || '', 3000);
       if (!text) throw new Error('AI 没有返回可用的剧情与表演要求');

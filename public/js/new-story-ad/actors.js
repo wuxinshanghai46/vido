@@ -121,7 +121,7 @@
     return `${sec}秒`;
   }
 
-  function progressHtml(progress = {}, escapeHtml = value => String(value || '')) {
+  function progressHtml(progress = {}, escapeHtml = value => String(value || ''), options = {}) {
     if (!progress || !progress.active) return '';
     const startedAt = Number(progress.startedAt || 0) || Date.now();
     const elapsed = Math.max(0, Date.now() - startedAt);
@@ -131,7 +131,10 @@
     return `<div class="dh-lux-person-progress">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
-        <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(formatElapsedText(elapsed))}</em><i>${pct}%</i></span>
+        <div class="dh-nsa-progress-actions">
+          <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(formatElapsedText(elapsed))}</em><i>${pct}%</i></span>
+          ${options.canCancel === false ? '' : `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${options.cancelRequested ? 'disabled' : ''}>${options.cancelRequested ? '正在停止...' : '停止生成'}</button>`}
+        </div>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
       <small>${escapeHtml(progress.message || '已提交生成请求，正在生成第 1/4 张。')}</small>

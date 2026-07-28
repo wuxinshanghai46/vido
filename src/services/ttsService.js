@@ -40,8 +40,9 @@ function isTtsBillingError(error) {
  * @param {object} options - { gender: 'female'|'male', speed: 1.0, voiceId: null }
  * @returns {string|null} 生成的音频文件路径，失败返回 null
  */
-async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '' } = {}) {
+async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0, pitch = 1.0, voiceId = null, instruction = '', signal = null } = {}) {
   if (!text || !text.trim()) return null;
+  if (signal?.aborted) throw signal.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' });
 
   if (voiceId && String(voiceId).startsWith('hifly:')) {
     const result = await generateWithHiflyTTS(text, outputPath, { voiceId, speed, pitch });
@@ -54,7 +55,7 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
 
   // 自定义声音：如果选择了用户上传的声音，用声音克隆
   if (voiceId && (voiceId.startsWith('custom_') || voiceId.startsWith('custom:'))) {
-    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction });
+    const result = await _generateWithCustomVoice(text, outputPath, { voiceId, speed, pitch, instruction, signal });
     if (result) {
       console.log(`[TTS] 使用自定义声音 ${voiceId} 生成成功`);
       return _postProcessAudio(result);
@@ -88,12 +89,13 @@ async function generateSpeech(text, outputPath, { gender = 'female', speed = 1.0
   // 供应商链（2026-04-26 精简）：只用阿里 — CosyVoice → NLS
   // 不再回退到火山豆包/MiniMax/讯飞/百度/OpenAI/SAPI，这些会用默认女声替代用户期望的克隆/选定音色
   const chain = [
-    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId, instruction } },
-    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId } },
+    { id: 'aliyun-tts',  name: '阿里 CosyVoice', fn: generateWithAliyunTTS,   opts: { gender, speed, pitch, voiceId, instruction, signal } },
+    { id: 'aliyun-nls',  name: '阿里 NLS',       fn: generateWithAliyunNLS,   opts: { gender, speed, pitch, voiceId, signal } },
   ];
 
   const errors = [];
   for (const { id, name, fn, opts } of chain) {
+    if (signal?.aborted) throw signal.reason || Object.assign(new Error('TTS request aborted'), { code: 'ABORT_ERR' });
     const apiKey = _getTTSKey(id);
     if (!apiKey) { errors.push(`${name}: 未配置 API Key`); continue; }
     const startedAt = Date.now();
@@ -249,7 +251,7 @@ async function uploadVoiceToFishAudio(voiceFilePath, voiceName, apiKey) {
   });
 }
 
-async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0, instruction = '' }) {
+async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0, pitch = 1.0, instruction = '', signal = null }) {
   const db = require('../models/database');
   const voice = db.getVoice(voiceId);
   if (!voice?.file_path || !fs.existsSync(voice.file_path)) {
@@ -275,12 +277,12 @@ async function _generateWithCustomVoice(text, outputPath, { voiceId, speed = 1.0
     }
     let result;
     try {
-      result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction });
+      result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction, signal });
     } catch (err) {
       const msg = String(err?.message || '');
       if (instruction && /instruction|invalid|parameter|param|unsupported|not support|不支持|参数|字段/i.test(msg)) {
         console.warn(`[TTS] 自定义音色 CosyVoice instruction 失败，降级为无 instruction 合成: ${msg}`);
-        result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction: '' });
+        result = await aliyun.synthesize(text, voice.aliyun_voice_id, outputPath, { speed, pitch, instruction: '', signal });
       } else {
         throw err;
       }
@@ -656,7 +658,7 @@ const ALI_VOICES = {
 
 // —— 阿里 NLS（智能语音交互）基础 TTS · 不支持克隆，只能预设音色 ——
 // 使用 AppKey + AccessToken（api_key 存成 "{AppKey}:{AccessToken}" 格式）
-async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, voiceId }) {
+async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, voiceId, signal = null }) {
   const { synthesizeWithNLS, hasNLSCreds } = require('./aliyunVoiceService');
   if (!hasNLSCreds()) return null;
   // NLS TTS 的音色 ID 和 DashScope CosyVoice 不一样，单独映射
@@ -665,22 +667,22 @@ async function generateWithAliyunNLS(text, outputPath, { gender, speed, pitch, v
   const model = _getTTSModel('aliyun-nls');
   const finalVoice = (model?.id && !voiceId) ? model.id : voice;
   const pitchRate = Math.round(((Number(pitch) || 1) - 1) * 500);
-  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed, pitch: pitchRate });
+  return synthesizeWithNLS(text, outputPath, { voice: finalVoice, speed, pitch: pitchRate, signal });
 }
 
 // 阿里 TTS 现在统一走 aliyunVoiceService.synthesize（CosyVoice WebSocket）
 // CosyVoice 已经不支持 HTTP REST 了，旧的 cosyvoice-v1 HTTP 端点已停服
-async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey, instruction = '' }) {
+async function generateWithAliyunTTS(text, outputPath, { gender, speed, pitch, voiceId, apiKey, instruction = '', signal = null }) {
   const voice = voiceId || ALI_VOICES[gender] || 'longxiaochun';
   const aliyun = require('./aliyunVoiceService');
   // aliyunVoiceService.synthesize 自动从 voice id 推断 model（v3-flash for 预设/v3.5-plus for 真克隆）
   try {
-    return await aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction });
+    return await aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction, signal });
   } catch (err) {
     const msg = String(err?.message || '');
     if (instruction && /instruction|invalid|parameter|param|unsupported|not support|不支持|参数|字段/i.test(msg)) {
       console.warn(`[TTS] CosyVoice instruction 失败，降级为无 instruction 合成: ${msg}`);
-      return aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction: '' });
+      return aliyun.synthesize(text, voice, outputPath, { speed, pitch, instruction: '', signal });
     }
     throw err;
   }

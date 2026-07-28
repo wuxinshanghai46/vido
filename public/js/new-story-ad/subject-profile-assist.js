@@ -33,7 +33,7 @@
   }
 
   async function assistHumanProfile({
-    state = {}, index = 0, api, buildPayload, collectSpec, renderAll, setButtonBusy, toast, button, onChanged,
+    state = {}, index = 0, api, buildPayload, collectSpec, renderAll, setBusy, setButtonBusy, toast, button, onChanged,
   } = {}) {
     const ui = window.NewStoryAdSubjectAssetsUI;
     if (!ui || typeof api !== 'function' || !Array.isArray(state.castProfiles) || !state.castProfiles[index]) return false;
@@ -41,9 +41,12 @@
     const current = ui.normalizeHumanProfile(state.castProfiles[index], index);
     setButtonBusy?.(button, true, '补齐中...');
     try {
-      const response = await api('/api/new-story-ad/assist', {
-        method: 'POST',
-        body: {
+      const response = await window.NewStoryAdGenerationFlow.requestInlineGeneration(
+        'assist_person_profile',
+        { state, api, renderAll, setBusy },
+        {
+          label: `补齐${current.displayName || `人物 ${index + 1}`}资料中...`,
+          body: {
           ...(typeof buildPayload === 'function' ? buildPayload() : {}),
           mode: 'person_spec',
           person_spec: typeof collectSpec === 'function' ? collectSpec() : {},
@@ -51,7 +54,8 @@
           pet_profiles: state.petProfiles || [],
           assist_subject_target: { kind: 'human', index, id: current.id },
         },
-      });
+        },
+      );
       const changed = mergeHumanProfile(state, index, response);
       if (changed) onChanged?.();
       renderAll?.();

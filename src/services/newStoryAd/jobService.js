@@ -527,7 +527,7 @@ function queueStage({
         support_id: id,
         retryable: true,
         ...(terminalProgress ? { generation_progress: terminalProgress } : {}),
-      });
+      }, { systemFinalization: true });
     });
   });
 

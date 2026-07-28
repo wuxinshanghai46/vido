@@ -15,6 +15,7 @@ function cancelledError(meta = {}) {
     ? (deadlineMessages[meta.stage] || '本批次已达到安全执行时限，已保存完成结果；可以继续补齐未完成镜头')
     : '用户已取消当前生成');
   error.code = deadline ? 'STAGE_DEADLINE_EXCEEDED' : 'USER_CANCELLED';
+  error.status = deadline ? 504 : 409;
   error.retryable = true;
   error.cancelled = true;
   error.generation_id = meta.generationId || '';
@@ -44,13 +45,18 @@ function run(meta = {}, fn) {
     const abortPromise = new Promise((resolve, reject) => {
       rejectAbort = reject;
     });
+    const onAbort = () => {
+      rejectAbort(normalized.signal.reason instanceof Error
+        ? normalized.signal.reason
+        : cancelledError(normalized));
+    };
+    normalized.signal.addEventListener('abort', onAbort, { once: true });
     if (normalized.deadlineMs > 0) {
       timer = setTimeout(() => {
         normalized.cancelReason = 'deadline';
         cancelled.set(normalized.generationId, { ...normalized, controller: undefined, signal: undefined, cancelledAt: new Date().toISOString(), reason: 'deadline' });
         const error = cancelledError(normalized);
         controller.abort(error);
-        rejectAbort(error);
       }, normalized.deadlineMs);
       timer.unref?.();
     }
@@ -64,6 +70,7 @@ function run(meta = {}, fn) {
       return await Promise.race([workPromise, abortPromise]);
     } finally {
       if (timer) clearTimeout(timer);
+      normalized.signal.removeEventListener('abort', onAbort);
       if (normalized.generationId) active.delete(normalized.generationId);
     }
   });
@@ -73,6 +80,7 @@ function cancel(generationId, details = {}) {
   const id = String(generationId || '');
   if (!id) return false;
   cancelled.set(id, { ...details, cancelledAt: new Date().toISOString() });
+  setTimeout(() => cancelled.delete(id), 60 * 60 * 1000).unref?.();
   const meta = active.get(id);
   if (meta?.controller && !meta.signal?.aborted) {
     meta.cancelReason = details.reason || 'user';

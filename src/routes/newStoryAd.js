@@ -707,8 +707,23 @@ router.put('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
 }));
 
 router.post('/assist', asyncRoute(async (req, res) => {
-  const result = await service.assistBrief(req.body || {}, userFromReq(req));
-  res.json({ success: true, ...result });
+  const body = req.body || {};
+  const user = userFromReq(req);
+  const taskId = String(body.task_id || body.taskId || '').trim();
+  if (taskId) service.assertTaskOwner(taskId, user);
+  const generationId = String(body.generation_id || body.generationId || uuidv4());
+  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
+  const mode = String(body.mode || 'write').replace(/[^a-z0-9_-]/ig, '_').slice(0, 60) || 'write';
+  return cancellation.run({
+    generationId,
+    taskId,
+    stage: `assist_${mode}`,
+    ownerId,
+  }, async () => {
+    const result = await service.assistBrief(body, user);
+    cancellation.throwIfCancelled(taskId);
+    res.json({ success: true, generation_id: generationId, ...result });
+  });
 }));
 
 router.post('/person-sheet', asyncRoute(async (req, res) => {

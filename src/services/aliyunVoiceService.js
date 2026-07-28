@@ -500,6 +500,8 @@ function synthesizeWithNLS(text, outputPath, opts = {}) {
   });
 
   return new Promise((resolve, reject) => {
+    const signal = opts.signal;
+    if (signal?.aborted) return reject(signal.reason || Object.assign(new Error('NLS request aborted'), { code: 'ABORT_ERR' }));
     const req = https.request({
       hostname: NLS_HOST,
       path: '/stream/v1/tts',
@@ -527,6 +529,11 @@ function synthesizeWithNLS(text, outputPath, opts = {}) {
         }
       });
     });
+    const onAbort = () => req.destroy(signal.reason instanceof Error
+      ? signal.reason
+      : Object.assign(new Error('NLS request aborted'), { code: 'ABORT_ERR' }));
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    req.on('close', () => signal?.removeEventListener?.('abort', onAbort));
     req.on('error', reject);
     req.setTimeout(30000, () => { req.destroy(); reject(new Error('阿里 NLS TTS 超时')); });
     req.write(body);

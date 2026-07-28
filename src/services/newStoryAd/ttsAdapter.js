@@ -204,6 +204,7 @@ async function generateShotAudio({
     const actual = await ttsService.generateSpeech(text, outBase, {
       speed: clamp(speed, 0.5, 1.8, 1),
       voiceId,
+      signal: cancellation.signal(),
     });
     cancellation.throwIfCancelled(taskId);
     if (!actual || !fs.existsSync(actual)) throw new Error(`所选音色 ${voiceId} 未生成有效配音文件`);

@@ -37,6 +37,8 @@ async function main() {
   const taskId = created.task.id;
   let release;
   let writesAttempted = 0;
+  let outputWriteBlocked = false;
+  let taskWriteBlocked = false;
 
   const queued = jobs.queueStage({
     taskId,
@@ -44,7 +46,17 @@ async function main() {
     execute: async () => {
       await new Promise(resolve => { release = resolve; });
       writesAttempted += 1;
-      storage.saveOutput(taskId, 'blueprint', { should_not_exist: true });
+      try {
+        storage.saveOutput(taskId, 'blueprint', { should_not_exist: true });
+      } catch (error) {
+        outputWriteBlocked = error?.code === 'USER_CANCELLED';
+      }
+      try {
+        storage.updateTask(taskId, { error: 'late cancelled task metadata write' });
+      } catch (error) {
+        taskWriteBlocked = error?.code === 'USER_CANCELLED';
+      }
+      cancellation.throwIfCancelled(taskId);
     },
   });
   assert.equal(queued.accepted, true);
@@ -58,7 +70,10 @@ async function main() {
   release();
   await waitUntil(() => jobs.getJob(taskId)?.status === 'cancelled');
   assert.equal(writesAttempted, 1);
+  assert.equal(outputWriteBlocked, true);
+  assert.equal(taskWriteBlocked, true);
   assert.equal(storage.getOutput(taskId, 'blueprint'), null);
+  assert.notEqual(storage.getTask(taskId).error, 'late cancelled task metadata write');
 
   const secondCancel = jobs.cancelJob(taskId, { generationId: queued.job.id, cancelledBy: 'cancel-owner' });
   assert.equal(secondCancel.already_cancelled, true);
@@ -83,9 +98,17 @@ async function main() {
   });
   await waitUntil(() => typeof releaseAuxiliary === 'function');
   assert.equal(cancellation.cancelActive(auxiliaryId, { ownerId: 'other-user' }).forbidden, true);
+  const cancelStartedAt = Date.now();
   assert.equal(cancellation.cancelActive(auxiliaryId, { ownerId: 'cancel-owner' }).cancelled, true);
+  await assert.rejects(
+    Promise.race([
+      auxiliary,
+      new Promise((resolve, reject) => setTimeout(() => reject(new Error('manual cancellation did not settle immediately')), 150)),
+    ]),
+    error => error?.code === 'USER_CANCELLED',
+  );
+  assert(Date.now() - cancelStartedAt < 140, 'manual cancellation must not wait for an abort-ignoring provider');
   releaseAuxiliary();
-  await assert.rejects(auxiliary, error => error?.code === 'USER_CANCELLED');
 
   const deadlineStartedAt = Date.now();
   await assert.rejects(

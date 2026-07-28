@@ -62,7 +62,7 @@
     };
   }
 
-  function sceneProgressHtml(progress = {}, plannedSpaces = []) {
+  function sceneProgressHtml(progress = {}, plannedSpaces = [], options = {}) {
     if (!progress?.active) return '';
     const view = sceneProgressView(progress);
     const sceneId = clean(progress.scene_id || progress.sceneId, 120);
@@ -72,7 +72,10 @@
       <div class="dh-lux-person-progress">
         <div class="dh-lux-person-progress-head">
           <b>${escapeHtml(title)}</b>
-          <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
+          <div class="dh-nsa-progress-actions">
+            <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(view.elapsedText)}</em><i>${view.pct}%</i></span>
+            ${options.canCancel === false ? '' : `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${options.cancelRequested ? 'disabled' : ''}>${options.cancelRequested ? '正在停止...' : '停止生成'}</button>`}
+          </div>
         </div>
         <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${view.pct}%"></i></div>
         <small>${escapeHtml(view.message)}</small>
@@ -1161,7 +1164,10 @@
     const failure = sceneOperationFailure(state, plannedSpaces);
     const selectedSpaceId = clean(selectedSpace?.id || selectedSpace?.space_id || selectedSpace?.scene_id, 120);
     const selectedFailure = failure?.sceneId && failure.sceneId === selectedSpaceId ? failure : null;
-    const progressPanel = sceneProgressHtml(progress, plannedSpaces);
+    const progressPanel = sceneProgressHtml(progress, plannedSpaces, {
+      canCancel: !!state.taskId,
+      cancelRequested: state.cancelRequested === true,
+    });
     const failurePanel = progress?.active ? '' : sceneFailureHtml(selectedFailure);
     const plannedAssetIndex = selectedSpace
       ? assets.findIndex(item => clean(item.space_id || item.scene_id || item.id, 120) === clean(selectedSpace.id || selectedSpace.space_id || selectedSpace.scene_id, 120))
@@ -1477,6 +1483,10 @@
           require_complete_scene_spec: fullUpgrade === true,
         },
       });
+      if (submitted.job) {
+        window.NewStoryAdGenerationFlow?.adoptActiveGeneration?.(state, submitted.job, 'scene_asset', {});
+        renderAll?.();
+      }
       const r = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
         ? await window.NewStoryAdGenerationFlow.waitForStage(taskId, 'scene_asset', {
             api, normalizeBundle, renderAll, state,
@@ -1515,7 +1525,7 @@
         support_id: failedProgress.support_id || failedTask.support_id || '',
       };
       renderAll?.();
-      toast?.(err.message || '场景参考生成失败', 'error');
+      toast?.(err.message || '场景参考生成失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
       return false;
     } finally {
       clearInterval(timer);
@@ -1603,6 +1613,10 @@
           scene_spec: reconcileSurfaceIntent(specPayload(), { syncControls: true }).spec,
         },
       });
+      if (submitted.job) {
+        window.NewStoryAdGenerationFlow?.adoptActiveGeneration?.(state, submitted.job, 'scene_asset', {});
+        renderAll?.();
+      }
       const response = submitted.job && window.NewStoryAdGenerationFlow?.waitForStage
         ? await window.NewStoryAdGenerationFlow.waitForStage(state.taskId, 'scene_asset', {
             api, normalizeBundle, renderAll, state,
@@ -1632,7 +1646,7 @@
         support_id: failedProgress.support_id || failedTask.support_id || '',
       };
       renderAll?.();
-      toast?.(error.message || '场景自动修复失败', 'error');
+      toast?.(error.message || '场景自动修复失败', error.code === 'USER_CANCELLED' ? 'info' : 'error');
       return false;
     } finally {
       clearInterval(timer);

@@ -151,6 +151,8 @@
     if (!state || !job?.id) return;
     state.activeGenerationId = job.id || '';
     state.activeStage = job.stage || expectedStage;
+    state.activeGenerationScope = 'task';
+    state.inlineGenerationController = null;
     state.generationStartedAt = job.started_at || job.queued_at || new Date().toISOString();
     state.generationProgress = state.activeStage === 'keyframes'
       ? {
@@ -168,6 +170,100 @@
       if (Number.isFinite(startedAt)) state.stageProgress.startedAt = startedAt;
     }
     state.cancelRequested = false;
+  }
+
+  function newGenerationId(stage = 'inline') {
+    return window.crypto?.randomUUID?.()
+      || `${String(stage || 'inline').replace(/[^a-z0-9_-]/ig, '_')}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  /**
+   * 为所有同步 AI 辅写/人物生成建立与后台任务相同的可取消上下文。
+   * 完成前如任务、会话或编辑序号变化，迟到结果会被丢弃，调用方不能再写回旧内容。
+   */
+  async function runInlineGeneration(stage = 'assist', ctx = {}, work, options = {}) {
+    const { state, renderAll, setBusy } = ctx;
+    if (!state || typeof work !== 'function') throw new Error('可取消生成上下文未初始化');
+    if (state.activeGenerationId) {
+      const active = new Error('当前已有生成操作正在执行；请先等待完成或点击“停止生成”。');
+      active.code = 'GENERATION_ALREADY_ACTIVE';
+      throw active;
+    }
+    const generationId = newGenerationId(stage);
+    const controller = new AbortController();
+    const sessionEpoch = Number(state.taskSessionEpoch || 0);
+    const taskId = String(state.taskId || '');
+    const editSeq = Number(state.clientEditSeq || 0);
+    const label = options.label || 'AI 生成中...';
+    state.activeGenerationId = generationId;
+    state.activeStage = String(stage || 'assist');
+    state.activeGenerationScope = 'inline';
+    state.inlineGenerationController = controller;
+    state.cancelRequested = false;
+    state.generationStartedAt = new Date().toISOString();
+    if (options.showGlobalProgress !== false) setBusy?.(true, label);
+    renderAll?.();
+    try {
+      const result = await work({
+        generationId,
+        signal: controller.signal,
+        taskId: String(state.taskId || taskId || ''),
+      });
+      if (controller.signal.aborted || state.cancelRequested) {
+        const cancelled = new Error('已取消当前生成，迟到结果不会写入任务');
+        cancelled.code = 'USER_CANCELLED';
+        throw cancelled;
+      }
+      if (Number(state.taskSessionEpoch || 0) !== sessionEpoch
+        || (taskId && state.taskId && String(state.taskId) !== taskId)) {
+        const replaced = new Error('页面已切换到其他任务，本次旧任务结果已丢弃');
+        replaced.code = 'TASK_SESSION_REPLACED';
+        throw replaced;
+      }
+      if (Number(state.clientEditSeq || 0) !== editSeq) {
+        const stale = new Error('你在 AI 生成期间修改了内容，本次迟到结果已丢弃；请按最新内容重新点击 AI 辅写');
+        stale.code = 'STALE_INLINE_RESULT';
+        throw stale;
+      }
+      return result;
+    } catch (error) {
+      if (controller.signal.aborted || state.cancelRequested) {
+        const cancelled = new Error('已取消当前生成，迟到结果不会写入任务');
+        cancelled.code = 'USER_CANCELLED';
+        cancelled.retryable = true;
+        throw cancelled;
+      }
+      throw error;
+    } finally {
+      if (state.inlineGenerationController === controller) state.inlineGenerationController = null;
+      if (state.activeGenerationId === generationId) {
+        state.activeGenerationId = '';
+        state.activeStage = '';
+        state.activeGenerationScope = '';
+        state.cancelRequested = false;
+        if (options.showGlobalProgress !== false) setBusy?.(false);
+        renderAll?.();
+      }
+    }
+  }
+
+  async function requestInlineGeneration(stage, ctx = {}, request = {}) {
+    const body = typeof request.body === 'function' ? request.body() : (request.body || {});
+    return runInlineGeneration(stage, ctx, ({ generationId, signal, taskId }) => ctx.api(
+      request.path || '/api/new-story-ad/assist',
+      {
+        method: request.method || 'POST',
+        signal,
+        body: {
+          ...body,
+          task_id: body.task_id || body.taskId || taskId || undefined,
+          generation_id: generationId,
+        },
+      },
+    ), {
+      label: request.label,
+      showGlobalProgress: request.showGlobalProgress,
+    });
   }
 
   function submissionEvidence(ctx = {}) {
@@ -514,7 +610,7 @@
   async function cancelStage(ctx = {}) {
     const { state, api, renderAll, toast, setBusy } = ctx;
     if (!state || typeof api !== 'function' || state.cancelRequested) return false;
-    const auxiliary = state.activeStage === 'person_sheet';
+    const auxiliary = state.activeGenerationScope === 'inline';
     if ((!state.taskId && !auxiliary) || (auxiliary && !state.activeGenerationId)) return false;
     state.cancelRequested = true;
     renderAll?.();
@@ -525,17 +621,20 @@
         : `/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/cancel`;
       const response = await api(url, { method: 'POST', body });
       if (response?.conflict) throw new Error('当前生成已变更，请刷新后重试');
+      state.inlineGenerationController?.abort?.(new DOMException('用户已停止生成', 'AbortError'));
+      state.inlineGenerationController = null;
       state.activeGenerationId = '';
       state.activeStage = '';
+      state.activeGenerationScope = '';
       state.cancelRequested = false;
       setBusy?.(false);
       renderAll?.();
-      toast?.(response?.already_cancelled ? '当前生成已取消' : '已取消生成，已停止后续模型调用', 'info');
+      toast?.(response?.already_cancelled ? '当前生成已经停止' : '已停止当前生成，后续模型调用和迟到结果写入均已终止', 'info');
       return true;
     } catch (error) {
       state.cancelRequested = false;
       renderAll?.();
-      toast?.(error.message || '取消生成失败', 'error');
+      toast?.(error.message || '停止生成失败', 'error');
       return false;
     }
   }
@@ -553,7 +652,10 @@
     setBusy?.(true, label);
     setButtonBusy?.(button, true, label);
     try {
-      const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...body, mode } });
+      const r = await requestInlineGeneration(`assist_${mode}`, ctx, {
+        label,
+        body: { ...body, mode },
+      });
       const input = typeof getBriefInput === 'function' ? getBriefInput() : null;
       if (r.brief && input) input.value = formatBriefText(r.brief);
       toast?.('需求已整理', 'success');
@@ -575,6 +677,9 @@
     startStage,
     startKeyframesWithBillingGuard,
     waitForStage,
+    adoptActiveGeneration,
+    runInlineGeneration,
+    requestInlineGeneration,
     cancelStage,
     isNetworkError,
     stageWasAccepted,

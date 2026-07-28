@@ -132,6 +132,7 @@
     taskStage: '',
     taskError: '',
     taskErrorCode: '',
+    taskSupportId: '',
     autoSaveStatus: 'idle',
     autoSaveMessage: '自动保存已开启',
     autoSaveLastAt: '',
@@ -139,6 +140,8 @@
     stageProgressTimer: null,
     activeGenerationId: '',
     activeStage: '',
+    activeGenerationScope: '',
+    inlineGenerationController: null,
     generationProgress: null,
     generationStartedAt: '',
     videoPreflightFingerprint: '',
@@ -169,7 +172,6 @@
   let autoSaveVersion = 0;
   let autoSaveCommittedVersion = 0;
   const AUTO_SAVE_DELAY_MS = 900;
-
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const root = () => document.getElementById(ROOT_ID);
@@ -2370,14 +2372,15 @@
   function renderStageProgress(label = '') {
     const snap = stageProgressSnapshot(label);
     const percentAlreadyShown = /%/.test(String(snap.stat || ''));
-    const canCancel = !!state.taskId && (!!state.activeGenerationId || !!state.stageProgress?.active || !!state.sceneGenerationProgress?.active);
+    const canCancel = (state.activeGenerationScope === 'inline' && !!state.activeGenerationId)
+      || (!!state.taskId && (!!state.activeGenerationId || !!state.stageProgress?.active || !!state.sceneGenerationProgress?.active));
     return `<div class="dh-lux-person-progress${snap.indeterminate ? ' is-indeterminate' : ''}">
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(snap.title)}</b>
         <div class="dh-nsa-progress-actions">
           <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em>${percentAlreadyShown ? '' : `<i>${Math.round(Number(snap.percent) || 0)}%</i>`}</span>
           ${currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes(String(state.stageProgress?.stage || '')) ? '<button type="button" class="dh-nsa-admin-monitor-btn" data-nsa-admin-video-monitor>查看镜头进度</button>' : ''}
-          ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>` : ''}
+          ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在停止...' : '停止生成'}</button>` : ''}
         </div>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${snap.indeterminate ? 28 : snap.percent}%"></i></div>
@@ -2939,8 +2942,8 @@
     if (status) status.textContent = '正在结合当前脚本、场景绑定和前后镜连续性整理设置…';
     try {
       const id = await ensureTask();
-      const response = await api('/api/new-story-ad/assist', {
-        method: 'POST',
+      const response = await requestCancelableGeneration('assist_shot_settings', {
+        label: 'AI 分析当前镜头中...',
         body: {
           ...payload(),
           task_id: id,
@@ -2948,7 +2951,7 @@
           user_instruction: instruction,
           shot_assist_context: shotAssistPayload(index),
         },
-      });
+      }, button);
       const settings = response.shot_settings || response.shotSettings;
       if (!settings || typeof settings !== 'object') throw new Error('AI 没有返回可用的镜头设置');
       applyAssistedShotSettings(index, settings, modal);
@@ -3913,7 +3916,6 @@
       setButtonBusy(button, false);
     }
   }
-
   function generationFlowContext(button = null) {
     return {
       button,
@@ -3937,7 +3939,7 @@
       getBriefInput: () => within('#dhNsaAdText'),
     };
   }
-
+  const requestCancelableGeneration = (stage, request = {}, button = null) => window.NewStoryAdCancelableGeneration.request(stage, generationFlowContext(button), request);
   function mediaStagePayload() {
     const selectedIndexes = Array.isArray(state.videoSelectedIndexes)
       ? [...new Set(state.videoSelectedIndexes.map(Number).filter(index => Number.isInteger(index) && index >= 0))]
@@ -4121,7 +4123,6 @@
     const pending = state.controlAiPending || {};
     return pending.style || pending.negative || '';
   }
-
   async function aiWriteControl(field = '', button = null) {
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，AI 才能按内容帮你写控制项', 'error');
@@ -4136,7 +4137,10 @@
     setButtonBusy(button, true, label);
     renderAdvancedControls();
     try {
-      const r = await api('/api/new-story-ad/assist', { method: 'POST', body: { ...payload(), brief: topic, mode } });
+      const r = await requestCancelableGeneration(`assist_${mode}`, {
+        label,
+        body: { ...payload(), brief: topic, mode },
+      }, button);
       const text = normalizeText(r.brief || r.text || r.content || '', 300);
       if (!text) throw new Error('AI 没有返回可用内容');
       const ctrl = controlledProduction();
@@ -5178,7 +5182,12 @@
   }
 
   function personGenerationProgressHtml() {
-    if (window.NewStoryAdActors?.progressHtml) return window.NewStoryAdActors.progressHtml(state.personGenerationProgress, escapeHtml);
+    if (window.NewStoryAdActors?.progressHtml) {
+      return window.NewStoryAdActors.progressHtml(state.personGenerationProgress, escapeHtml, {
+        canCancel: !!state.activeGenerationId,
+        cancelRequested: state.cancelRequested === true,
+      });
+    }
     const progress = state.personGenerationProgress;
     if (!progress || !progress.active) return '';
     const startedAt = Number(progress.startedAt || 0) || Date.now();
@@ -5191,7 +5200,7 @@
         <b>${escapeHtml(progress.label || '正在生成演员包')}</b>
         <div class="dh-nsa-progress-actions">
           <span class="dh-lux-person-progress-stat"><em>耗时 ${escapeHtml(formatElapsedText(elapsed))}</em><i>${pct}%</i></span>
-          <button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在取消...' : '取消生成'}</button>
+          <button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在停止...' : '停止生成'}</button>
         </div>
       </div>
       <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:${pct}%"></i></div>
@@ -5253,19 +5262,20 @@
     try {
       let suggestion = null, assistedProfiles = null;
       try {
-        const r = await api('/api/new-story-ad/assist', {
-          method: 'POST',
+        const r = await requestCancelableGeneration('assist_person_spec', {
+          label: '按当前人物设定补齐中...',
           body: {
             ...payload(),
             brief,
             mode: 'person_spec',
             person_spec: collectPersonSpec(),
           },
-        });
+        }, button);
         suggestion = r.person_spec || r.personSpec || null;
         assistedProfiles = r;
       } catch (err) {
-        suggestion = fallbackPersonSpecFromBrief(brief);
+        toast(err.message || '人物设定 AI 补齐失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
+        return false;
       }
       const current = collectPersonSpec(), fallback = fallbackPersonSpecFromBrief(brief);
       const completedSuggestion = completePersonSpecSuggestion(suggestion, current, fallback);
@@ -5329,7 +5339,6 @@
   }
   async function fillSceneSpecFromBrief(button = null, options = {}) {
     const replaceExisting = options.replaceExisting === true;
-    const requireAi = options.requireAi === true;
     const quiet = options.quiet === true;
     const allowUpgradeAsset = options.allowUpgradeAsset === true;
     if (!allowUpgradeAsset && selectedSceneUpgradeRequired()) {
@@ -5348,8 +5357,8 @@
       let suggestion = null;
       let suggestionPlan = null;
       try {
-        const r = await api('/api/new-story-ad/assist', {
-          method: 'POST',
+        const r = await requestCancelableGeneration('assist_scene_spec', {
+          label,
           body: {
             ...payload(),
             brief,
@@ -5359,18 +5368,18 @@
             target_space_id: targetSpaceId,
             preserve_current_scene_fields: !replaceExisting,
           },
-        });
+        }, button);
         if (requestSpecFingerprint !== (window.NewStoryAdSceneAssets?.sceneSpecFingerprint?.(window.NewStoryAdSceneAssets?.specPayload?.() || {}) || JSON.stringify(window.NewStoryAdSceneAssets?.specPayload?.() || {}))) {
           toast('你在 AI 补齐期间又修改了场景；本次迟到结果已丢弃，不会覆盖最新内容。', 'warning'); return false;
         }
         suggestion = r.scene_spec || r.sceneSpec || null;
         suggestionPlan = r.scene_plan || r.scenePlan || r.scene_config || r.sceneConfig || null;
       } catch (err) {
-        if (requireAi) {
-          toast('AI 空间设定补齐失败，已停止操作，没有提交任何图片生成', 'error');
-          return false;
-        }
-        suggestion = null;
+        toast(
+          `${err.message || 'AI 空间设定补齐失败'}；已停止操作，没有提交任何图片生成`,
+          err.code === 'USER_CANCELLED' ? 'info' : 'error',
+        );
+        return false;
       }
       const fallbackSpec = fallbackSceneSpecFromBrief(brief);
       const nextSpec = completeSceneSpecSuggestion(suggestion, currentSpec, fallbackSpec);
@@ -5467,11 +5476,7 @@
     }
     const selectedTargets = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions({ ...subjectCounts, state }));
     if (!selectedTargets) return; const selectedCount = selectedTargets.length;
-    const generationId = window.crypto?.randomUUID?.() || `person_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     await ensureTask();
-    state.activeGenerationId = generationId;
-    state.activeStage = 'person_sheet';
-    state.cancelRequested = false;
     const specDescription = personDescription(generationSpec);
     const stages = window.NewStoryAdSubjectAssetsUI.progressStages(selectedCount);
     const updateProgress = () => {
@@ -5493,8 +5498,9 @@
     renderPerson();
     const timer = setInterval(updateProgress, 1400);
     try {
-      const r = await api('/api/new-story-ad/subject-assets', {
-        method: 'POST',
+      const r = await requestCancelableGeneration('subject_assets', {
+        path: '/api/new-story-ad/subject-assets',
+        label: '生成人物 / 宠物资产中...',
         body: {
           brief: payload().brief,
           content: payload().brief,
@@ -5509,9 +5515,8 @@
           pet_profiles: state.petProfiles,
           subject_targets: selectedTargets,
           task_id: state.taskId || '',
-          generation_id: generationId,
         },
-      });
+      }, button);
       state.actorAsset = r.person_asset || r.actor_asset || r.character || r.actor || r.asset || null;
       if (state.actorAsset && typeof state.actorAsset === 'object') {
         state.actorAsset.name = state.actorAsset.name || '拟真一致性演员';
@@ -5552,11 +5557,6 @@
       toast(err.message || '拟真演员生成失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
     } finally {
       clearInterval(timer);
-      if (state.activeGenerationId === generationId) {
-        state.activeGenerationId = '';
-        state.activeStage = '';
-        state.cancelRequested = false;
-      }
       state.personGenerationProgress = null;
       setButtonBusy(button, false);
       renderPerson();
@@ -5590,7 +5590,7 @@
         return;
       }
       const btn = target.closest('button, [role="button"], a');
-      const subjectAssist = target.closest('[data-nsa-subject-assist-index]'); if (subjectAssist && host.contains(subjectAssist)) { e.preventDefault(); e.stopPropagation(); await window.NewStoryAdSubjectProfileAssist?.assistHumanProfile?.({ state, index: Number(subjectAssist.dataset.nsaSubjectAssistIndex || 0) || 0, api, buildPayload: payload, collectSpec: collectPersonSpec, renderAll, setButtonBusy, toast, button: subjectAssist, onChanged: () => { markSourceDirty('person'); scheduleAutoSave('single_person_assist'); } }); return; }
+      const subjectAssist = target.closest('[data-nsa-subject-assist-index]'); if (subjectAssist && host.contains(subjectAssist)) { e.preventDefault(); e.stopPropagation(); await window.NewStoryAdSubjectProfileAssist?.assistHumanProfile?.({ state, index: Number(subjectAssist.dataset.nsaSubjectAssistIndex || 0) || 0, api, buildPayload: payload, collectSpec: collectPersonSpec, renderAll, setBusy, setButtonBusy, toast, button: subjectAssist, onChanged: () => { markSourceDirty('person'); scheduleAutoSave('single_person_assist'); } }); return; }
       const adminVideoMonitor = target.closest('[data-nsa-admin-video-monitor]');
       if (adminVideoMonitor && host.contains(adminVideoMonitor)) {
         e.preventDefault();
@@ -6085,7 +6085,7 @@
           const confirmed = window.NewStoryAdStorySetup.approve({ state, getPersonSpec: personSpec, markSourceDirty, renderAll, toast });
           return confirmed ? runStage('blueprint', btn) : false;
         },
-        dhNsaAdCreativeAssist: () => window.NewStoryAdStorySetup.assist({ state, button: btn, within, getPersonSpec: personSpec, buildPayload: payload, ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setButtonBusy, toast }),
+        dhNsaAdCreativeAssist: () => window.NewStoryAdStorySetup.assist({ state, button: btn, within, getPersonSpec: personSpec, buildPayload: payload, ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setBusy, setButtonBusy, toast }),
         dhNsaAdPreviewFrames: () => runStage('storyboard', btn),
         dhNsaAdScriptRegenerateTop: () => runStage('blueprint', btn),
         dhNsaAdRegenerateScriptFromStep4: () => runStage('blueprint', btn),

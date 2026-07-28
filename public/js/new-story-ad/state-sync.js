@@ -435,6 +435,7 @@
       state.taskStage = task.stage || '';
       state.taskError = task.error || '';
       state.taskErrorCode = task.error_code || '';
+      state.taskSupportId = task.support_id || '';
     }
     if (!preserveLocalEdits) {
       hydrateSceneAssets(state, { request: state.context || {}, outputs, response });
@@ -452,6 +453,7 @@
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
+      state.activeGenerationScope = state.activeGenerationId ? 'task' : '';
     }
     syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
@@ -551,6 +553,7 @@
     if (!shouldPreserveTrackedGeneration(state, task)) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
+      state.activeGenerationScope = state.activeGenerationId ? 'task' : '';
     }
     syncGenerationProgress(state, task);
     state.generationStartedAt = task.generation_started_at || task.generation_queued_at || task.generation_progress?.started_at || '';
@@ -576,6 +579,7 @@
     state.taskStage = task.stage || '';
     state.taskError = task.error || '';
     state.taskErrorCode = task.error_code || '';
+    state.taskSupportId = task.support_id || '';
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
     const storedCreativeDirection = String(
