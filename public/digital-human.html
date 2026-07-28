@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v41">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v42">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v41"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v42"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -515,6 +515,10 @@
                   <h3><span class="dh-luxgen-step-pill">3</span>剧情与表演</h3>
                   <p class="dh-demo-copy">选择故事呈现方式，可选 AI 辅写剧情与表演，按需配置授权 Logo，然后直接生成剧本。</p>
                 </div>
+                <div class="dh-demo-script-actions">
+                  <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">生成剧本</button>
+                </div>
               </div>
               <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel">
                 <div class="dh-demo-section-title">剧情呈现方式</div>
@@ -569,9 +573,6 @@
                     <label>宽度（画面占比 %）<input class="dh-input" id="dhNsaAdBrandLogoWidth" type="number" min="8" max="45" value="22"></label>
                     <label>结尾展示（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
                   </div>
-                </div>
-                <div class="dh-nsa-story-setup-actions">
-                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">生成剧本</button>
                 </div>
               </section>
             </section>
