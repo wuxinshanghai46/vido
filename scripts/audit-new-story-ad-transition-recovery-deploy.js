@@ -5,16 +5,23 @@ const { Client } = require('ssh2');
 
 const repoRoot = path.resolve(__dirname, '..');
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
+const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const targetTaskId = process.env.VIDO_REPAIR_TASK_ID || '';
-const cacheVersion = '20260728-button-state-v39';
+const cacheVersion = '20260728-story-step-v40';
 const runtimeFiles = [
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
+  'public/js/digital-human.js',
   'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
+  'public/js/new-story-ad/button-state.js',
+  'public/js/new-story-ad/generation-flow.js',
+  'public/js/new-story-ad/step-navigation.js',
+  'public/js/new-story-ad/story-setup.js',
+  'public/js/new-story-ad/task-store.js',
   'public/js/new-story-ad/scene-assets.js',
   'public/js/new-story-ad/storyboard.js',
   'public/js/new-story-ad/transition-review.js',
@@ -22,6 +29,8 @@ const runtimeFiles = [
   'public/js/new-story-ad-legacy-ui.js',
   'src/routes/newStoryAd.js',
   'src/services/newStoryAd/composeService.js',
+  'src/services/newStoryAd/assistCreativeDirectionService.js',
+  'src/services/newStoryAd/contextBuilder.js',
   'src/services/newStoryAd/continuityService.js',
   'src/services/newStoryAd/finalVideoQaService.js',
   'src/services/newStoryAd/jobService.js',
@@ -74,7 +83,7 @@ async function publicHealth() {
   const client = new Client();
   await new Promise((resolve, reject) => {
     client.on('ready', resolve).on('error', reject);
-    client.connect({ host, port: 22, username, password, readyTimeout: 25000 });
+    client.connect({ host, port, username, password, readyTimeout: 25000 });
   });
   try {
     const probe = Buffer.from(`

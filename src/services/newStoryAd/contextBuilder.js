@@ -905,6 +905,7 @@ function contextConflicts(ctx = {}) {
   const knownActors = new Set([
     ...(ctx.characters || []).flatMap(character => [character.id, character.name]),
     ...(ctx.cast_profiles || []).flatMap(profile => [profile.id, profile.name, profile.actor_asset_id]),
+    ...(ctx.pet_profiles || []).flatMap(profile => [profile.id, profile.name]),
     ctx.person_asset?.id,
     ctx.person_asset?.actor_id,
     ctx.person_asset?.name,
@@ -912,7 +913,7 @@ function contextConflicts(ctx = {}) {
   (creative.actions || []).forEach((action, index) => {
     const actorRef = String(action.actor_id || action.actor || '').trim().toLowerCase();
     if (actorRef && knownActors.size && !knownActors.has(actorRef)) {
-      conflicts.push(`第 ${index + 1} 条关键动作引用了未确认人物“${action.actor_id || action.actor}”`);
+      conflicts.push(`第 ${index + 1} 条关键动作引用了未确认人物或宠物“${action.actor_id || action.actor}”`);
     }
   });
   return conflicts;

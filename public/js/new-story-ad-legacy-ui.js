@@ -190,7 +190,7 @@
     if (window.NewStoryAdTaskStore?.routeStep) return window.NewStoryAdTaskStore.routeStep();
     try {
       const step = Number(new URLSearchParams(location.search || '').get('nsa_step') || 0);
-      if (Number.isFinite(step) && step >= 1 && step <= 5) return Math.round(step);
+      if (Number.isFinite(step) && step >= 1 && step <= 6) return Math.round(step);
     } catch {}
     return 1;
   }
@@ -228,7 +228,7 @@
       url.searchParams.set('tab', 'new-story-ad');
       if (id) url.searchParams.set('nsa_task_id', id);
       else url.searchParams.delete('nsa_task_id');
-      if (state.currentStep) url.searchParams.set('nsa_step', String(Math.max(1, Math.min(5, Number(state.currentStep) || 1))));
+      if (state.currentStep) url.searchParams.set('nsa_step', String(Math.max(1, Math.min(6, Number(state.currentStep) || 1))));
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
   }
@@ -244,7 +244,7 @@
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', 'new-story-ad');
-      url.searchParams.set('nsa_step', String(Math.max(1, Math.min(5, Number(step) || 1))));
+      url.searchParams.set('nsa_step', String(Math.max(1, Math.min(6, Number(step) || 1))));
       if (state.taskId) url.searchParams.set('nsa_task_id', state.taskId);
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
@@ -949,7 +949,7 @@
     const title = within('#dhNsaAdModeTitle');
     const sub = within('#dhNsaAdModeSub');
     if (title) title.textContent = '剧情广告';
-    if (sub) sub.textContent = '广告需求 → 场景配置 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
+    if (sub) sub.textContent = '广告需求 → 场景配置 → 剧情与表演 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
     const text = within('#dhNsaAdText');
     if (text) {
       text.placeholder = '例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后引导动作。';
@@ -2004,7 +2004,7 @@
       .then(bundle => {
         normalizeBundle(bundle);
         if (persistedStage === 'storyboard'
-          && window.NewStoryAdGenerationFlow.storyboardIsReady(bundle, state)) showStep(4);
+          && window.NewStoryAdGenerationFlow.storyboardIsReady(bundle, state)) showStep(5);
         renderAll();
       })
       .catch(error => {
@@ -2073,9 +2073,7 @@
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
     const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, personSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
     setButtonLock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
-    const continueStorySetupBtn = within('#dhNsaAdContinueStorySetup');
-    if (continueStorySetupBtn) continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy);
-    setButtonLock('#dhNsaAdStoryboard', !state.storySetupConfirmed || !storySetupReady.ready, !state.storySetupConfirmed ? '请先点击“下一步：编写剧情与表演”' : storySetupReady.message);
+    setButtonLock('#dhNsaAdStoryboard', !storySetupReady.ready, storySetupReady.message);
     const storyboardBtn = within('#dhNsaAdStoryboard');
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     setButtonLock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
@@ -2478,8 +2476,8 @@
     updateLocks();
   }
   function showStep(step, opts = {}) {
-    // 第 5 步按需加载审片、音频和费用模块，完成后只补绘对应区域。
-    if (Number(step) === 5 && !window.NewStoryAdBootstrap?.mediaReady?.()) window.NewStoryAdBootstrap?.loadMedia?.().then(() => state.currentStep === 5 && (renderAudio(), renderMedia())).catch(() => {});
+    // 第 6 步按需加载审片、音频和费用模块，完成后只补绘对应区域。
+    if (Number(step) === 6 && !window.NewStoryAdBootstrap?.mediaReady?.()) window.NewStoryAdBootstrap?.loadMedia?.().then(() => state.currentStep === 6 && (renderAudio(), renderMedia())).catch(() => {});
     if (window.NewStoryAdStepNavigation?.showStep) {
       return window.NewStoryAdStepNavigation.showStep(step, opts, {
         state,
@@ -2487,9 +2485,10 @@
         within,
         queryAll: $$,
         rememberRouteStep,
+        getPersonSpec: personSpec,
       });
     }
-    state.currentStep = Math.max(1, Math.min(5, Number(step) || 1));
+    state.currentStep = Math.max(1, Math.min(6, Number(step) || 1));
     $$('.dh-luxgen-stage', root()).forEach(panel => {
       panel.classList.toggle('active', Number(panel.dataset.panel || 0) === state.currentStep);
     });
@@ -2508,11 +2507,12 @@
     }
     if (step === 1) return !!state.taskId || !!(within('#dhNsaAdText')?.value || '').trim();
     if (step === 2) return !!state.sceneConfig;
-    if (step === 3) return !!state.blueprint;
-    if (step === 4) return state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
+    if (step === 3) return state.storySetupConfirmed === true;
+    if (step === 4) return !!state.blueprint;
+    if (step === 5) return state.storyboardStatus && typeof state.storyboardStatus.ready === 'boolean'
       ? state.storyboardStatus.ready
       : (Array.isArray(state.shots) && state.shots.length > 0);
-    if (step === 5) return !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl);
+    if (step === 6) return !!(state.finalVideo?.video_url || state.finalVideo?.videoUrl);
     return false;
   }
 
@@ -2522,9 +2522,10 @@
     }
     if (step <= 1) return true;
     if (step === 2) return !!state.sceneConfig || !!state.taskId;
-    if (step === 3) return !!state.blueprint;
-    if (step === 4) return Array.isArray(state.shots) && state.shots.length > 0 || !!state.blueprint;
-    if (step === 5) return stepReady(4);
+    if (step === 3) return window.NewStoryAdStorySetup?.readiness(state, personSpec)?.ready === true;
+    if (step === 4) return !!state.blueprint;
+    if (step === 5) return Array.isArray(state.shots) && state.shots.length > 0 || !!state.blueprint;
+    if (step === 6) return stepReady(5);
     return true;
   }
 
@@ -3138,7 +3139,7 @@
       costHint.hidden = false;
       const ready = Number(keyframes.fresh_pass || 0) === Number(keyframes.total || 0) && Number(keyframes.total || 0) > 0;
       costHint.innerHTML = `<div class="dh-nsa-video-status-summary"><b>真实分镜画面</b><span class="is-${ready ? 'pass' : 'review'}">已通过 ${Number(keyframes.fresh_pass || 0)}/${Number(keyframes.total || 0)}</span></div><p>${ready
-        ? '分镜画面已确认。点击“生成整条广告视频”并确认方案后，页面会立即进入第 5 步；连续场景生成、逐镜质检和最终封装都在那里显示。'
+        ? '分镜画面已确认。点击“生成整条广告视频”并确认方案后，页面会立即进入第 6 步；连续场景生成、逐镜质检和最终封装都在那里显示。'
         : '请先补齐并审核全部真实分镜画面，再提交整条广告视频。'}</p>`;
     }
     if (window.NewStoryAdStoryboard?.normalizeShots) {
@@ -3352,7 +3353,7 @@
   function ensureMediaHost() {
     let host = within('#dhNsaAdMediaResult');
     if (host) return host;
-    const panel = root()?.querySelector('.dh-luxgen-stage[data-panel="5"] .dh-demo-canvas') || root();
+    const panel = root()?.querySelector('.dh-luxgen-stage[data-panel="6"] .dh-demo-canvas') || root();
     host = document.createElement('div');
     host.id = 'dhNsaAdMediaResult';
     host.className = 'dh-task-create-panel';
@@ -4033,32 +4034,32 @@
         if (!state.sceneConfig) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/scene-config`, { method: 'POST', body: {} }));
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/blueprint`, { method: 'POST', body: {} });
         normalizeBundle(r);
-        showStep(3);
+        showStep(4);
       } else if (stage === 'storyboard') {
         if (!state.blueprint) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/blueprint`, { method: 'POST', body: {} }));
         if (state.blueprint) await saveBlueprintEdits(id);
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} });
         normalizeBundle(r);
-        showStep(4);
+        showStep(5);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle(await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/storyboard`, { method: 'POST', body: {} }));
         if (state.storyboardDirty === true && state.shots.length) await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/keyframes`, { method: 'POST', body: missingOnly ? { missing_images_only: true } : {} });
         normalizeBundle(r);
-        showStep(4);
+        showStep(5);
       } else if (stage === 'tts') {
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/tts`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
-        showStep(5);
+        showStep(6);
       } else if (stage === 'video') {
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/video`, { method: 'POST', body: visualVideoStagePayload(button) });
         normalizeBundle(r);
-        showStep(4);
+        showStep(5);
       } else if (stage === 'compose') {
         r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}/compose`, { method: 'POST', body: mediaStagePayload() });
         normalizeBundle(r);
-        showStep(5);
+        showStep(6);
       }
       renderAll();
       if (stage === 'keyframes') {
@@ -4097,7 +4098,7 @@
   async function runMediaChain(button) {
     const compose = composeReadiness();
     if (!compose.ready) {
-      showStep(4);
+      showStep(5);
       renderAll();
       toast(compose.message || '请先修复所有未通过审核的镜头，再合成广告', 'error');
       return false;
@@ -5611,7 +5612,7 @@
         e.stopPropagation();
         const n = Number(step.dataset.nsaStep || 1);
         if (!canOpenStep(n)) {
-          const message = n === 5 ? composeReadiness().message : '请先完成前置阶段';
+          const message = n === 6 ? composeReadiness().message : '请先完成前置阶段';
           return toast(message || '请先完成前置阶段', 'error');
         }
         showStep(n);
@@ -5621,7 +5622,7 @@
       if (returnKeyframes && host.contains(returnKeyframes)) {
         e.preventDefault();
         e.stopPropagation();
-        showStep(4);
+        showStep(5);
         return;
       }
       const ratioBtn = target.closest('[data-nsa-ratio]');
@@ -6080,8 +6081,11 @@
       const id = btn.id || '';
       const handled = {
         dhNsaAdGenerate: () => runStage('scene', btn),
-        dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open({ state, getPersonSpec: personSpec, markSourceDirty, renderAll, scheduleAutoSave, toast }),
-        dhNsaAdStoryboard: () => runStage('blueprint', btn),
+        dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open({ state, getPersonSpec: personSpec, renderAll, showStep, toast }),
+        dhNsaAdStoryboard: () => {
+          const confirmed = window.NewStoryAdStorySetup.approve({ state, getPersonSpec: personSpec, markSourceDirty, renderAll, toast });
+          return confirmed ? runStage('blueprint', btn) : false;
+        },
         dhNsaAdCreativeAssist: () => window.NewStoryAdStorySetup.assist({ state, button: btn, within, getPersonSpec: personSpec, buildPayload: payload, ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setButtonBusy, toast }),
         dhNsaAdPreviewFrames: () => runStage('storyboard', btn),
         dhNsaAdScriptRegenerateTop: () => runStage('blueprint', btn),

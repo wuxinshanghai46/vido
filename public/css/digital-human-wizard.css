@@ -674,6 +674,7 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 /* ——— 高定广告片 · 独立脚本生成器 ——— */
 .dh-luxgen-steps { display: grid; grid-template-columns: repeat(7, minmax(118px, 1fr)); gap: 8px; margin: 14px 0 16px; }
 .dh-luxgen-steps-five { grid-template-columns: repeat(5, minmax(150px, 1fr)); }
+.dh-luxgen-steps-six { grid-template-columns: repeat(6, minmax(130px, 1fr)); }
 .dh-luxgen-steps > div { min-height: 72px; padding: 12px; border: 1px solid var(--dh-border); border-radius: var(--dh-radius-sm); background: rgba(255,255,255,.025); display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 9px; align-items: start; }
 .dh-luxgen-steps b { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--dh-bg); color: var(--dh-text-soft); font-size: 12px; }
 .dh-luxgen-steps span { color: var(--dh-text); font-weight: 800; font-size: 13px; line-height: 1.2; }
@@ -752,6 +753,13 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
   color: #061012;
   background: linear-gradient(135deg, var(--dh-primary), #baff5d);
   box-shadow: 0 12px 28px rgba(33,255,243,.18);
+}
+#dhNsaAdContinueStorySetup:not(:disabled):hover,
+#dhNsaAdContinueStorySetup:not(:disabled):focus-visible {
+  border-color: rgba(33,255,243,.72);
+  color: #071112;
+  background: linear-gradient(135deg, #21fff3, #9dff5a);
+  box-shadow: 0 10px 26px rgba(33,255,243,.2);
 }
 .dh-luxgen-step-action.is-done:not(.is-next) { border-color: rgba(79,255,170,.36); color: #83ffba; background: rgba(79,255,170,.06); }
 .dh-luxgen-actions .dh-btn:disabled, .dh-luxgen-story-actions .dh-btn:disabled { opacity: .42; cursor: not-allowed; filter: grayscale(.35); transform: none; }
@@ -1080,8 +1088,8 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 .dh-luxgen-writer-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px 18px; border-top: 1px solid var(--dh-border); }
 .dh-icon-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--dh-border); background: var(--dh-bg); color: var(--dh-text-soft); cursor: pointer; font-size: 20px; line-height: 1; }
 .dh-icon-btn:hover { border-color: var(--dh-primary); color: var(--dh-primary); }
-@media (max-width: 1280px) { .dh-luxgen-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } .dh-luxgen-steps-five { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-@media (max-width: 980px) { .dh-luxgen-steps-five { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1280px) { .dh-luxgen-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } .dh-luxgen-steps-five { grid-template-columns: repeat(5, minmax(0, 1fr)); } .dh-luxgen-steps-six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 980px) { .dh-luxgen-steps-five, .dh-luxgen-steps-six { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1180px) { .dh-luxgen-layout { grid-template-columns: 1fr; } .dh-luxgen-side { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) {
   .dh-luxgen-steps, .dh-luxgen-product-grid { grid-template-columns: 1fr; }

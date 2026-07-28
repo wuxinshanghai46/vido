@@ -7,7 +7,7 @@
     '/js/new-story-ad/video-preflight-ui.js',
   ];
 
-  /** 创建第 5 步媒体模块加载器，把审片、音频和费用代码从首屏核心包中隔离。 */
+  /** 创建第 6 步媒体模块加载器，把审片、音频和费用代码从首屏核心包中隔离。 */
   function create({ loadCore, loadScript } = {}) {
     let loadPromise = null;
     const ready = () => MEDIA_SCRIPT_PATHS.every(path => Array.from(document.scripts)

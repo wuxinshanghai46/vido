@@ -10,6 +10,8 @@ const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
 const storySetupUi = read('public/js/new-story-ad/story-setup.js');
 const buttonStateUi = read('public/js/new-story-ad/button-state.js');
+const stepNavigationUi = read('public/js/new-story-ad/step-navigation.js');
+const wizardCss = read('public/css/digital-human-wizard.css');
 
 const sceneHostIndex = html.indexOf('id="dhNsaAdSceneConfigHost"');
 const nextIndex = html.indexOf('id="dhNsaAdContinueStorySetup"');
@@ -18,20 +20,27 @@ const panelIndex = html.indexOf('id="dhNsaAdStorySetupPanel"');
 const modeIndex = html.indexOf('id="dhNsaAdProductionMode"');
 const assistIndex = html.indexOf('id="dhNsaAdCreativeAssist"');
 const scriptIndex = html.indexOf('id="dhNsaAdStoryboard"');
+const storyStepIndex = html.indexOf('data-panel="3"');
+const scriptStepIndex = html.indexOf('data-panel="4"');
 assert(nextIndex > 0 && nextIndex < sceneHostIndex, '剧情设置下一步主按钮必须位于场景配置顶部');
 assert.strictEqual((html.match(/id="dhNsaAdContinueStorySetup"/g) || []).length, 1, '顶部只能保留一个剧情设置下一步主按钮');
-assert(sceneHostIndex < statusIndex && statusIndex < panelIndex, '场景结果后只保留资产就绪状态，再进入剧情设置面板');
-assert(panelIndex < modeIndex && modeIndex < scriptIndex, '剧情设置必须在资产状态后显示，并从面板底部生成剧本');
+assert(sceneHostIndex < statusIndex && statusIndex < storyStepIndex, '第 2 步只能保留资产就绪状态');
+assert(storyStepIndex < panelIndex && panelIndex < scriptStepIndex, '剧情设置必须成为独立第 3 步，剧本生成必须成为第 4 步');
+assert(html.includes('data-nsa-step="6"') && html.includes('dh-luxgen-steps-six'), '剧情广告流程必须是六个独立步骤');
 assert(assistIndex > panelIndex && assistIndex < scriptIndex, '剧情与表演 AI 辅写必须位于剧本生成前');
 assert(html.includes('剧情呈现方式') && !html.includes('模式只决定生产和 QA 策略'), '视频基础信息必须改为真实用途说明');
+assert(!html.includes('生成剧本前最后一步'), '剧情设置页不得显示多余的“最后一步”提示');
+assert(html.includes('id="dhNsaAdStoryboard" type="button">生成剧本</button>'), '第 3 步主操作应直接显示“生成剧本”');
 assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open"), '下一步只能打开剧情设置，不能直接生成剧本');
-assert(legacy.includes("continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy)"), '下一步按钮可用时必须复用统一主操作指向效果');
-assert(buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy)"), '权威按钮状态模块必须设置统一主操作指向效果');
-assert(buttonStateUi.includes("!state.storySetupConfirmed || !storySetupReady.ready"), '权威按钮状态模块不能绕过剧情设置确认门禁');
-assert(legacy.includes("dhNsaAdStoryboard: () => runStage('blueprint', btn)"), '面板底部按钮仍负责生成剧本');
+assert(!legacy.includes("continueStorySetupBtn.classList.toggle('is-next'"), '下一步按钮默认不得显示高亮指向效果');
+assert(!buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next'"), '权威按钮状态模块不得默认高亮下一步按钮');
+assert(wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):hover') && wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):focus-visible'), '下一步按钮只在指向或键盘聚焦时高亮');
+assert(buttonStateUi.includes("lock('#dhNsaAdStoryboard', !storySetupReady.ready"), '生成剧本按钮点击时再确认剧情设置');
+assert(legacy.includes('NewStoryAdStorySetup.approve') && legacy.includes("runStage('blueprint', btn)"), '第 3 步按钮必须先确认设置再生成剧本');
 assert(legacy.includes("target?.id === 'dhNsaAdProductionMode'") && legacy.includes("markSourceDirty('creative')"), '剧情呈现方式修改必须失效旧剧本');
 assert(bootstrap.includes("'/js/new-story-ad/story-setup.js'"), '剧情设置模块必须在旧 UI 前按需加载');
-assert(storySetupUi.includes("continueButton.hidden = state.storySetupExpanded === true"), '打开剧情设置后必须隐藏顶部下一步按钮');
+assert(storySetupUi.includes('showStep?.(3)') && !storySetupUi.includes('state.storySetupConfirmed = true;\n    markSourceDirty'), '进入第 3 步不得提前确认剧情设置');
+assert(stepNavigationUi.includes('Math.min(6') && stepNavigationUi.includes('if (step === 3) return state.storySetupConfirmed === true'), '六步导航必须单独跟踪剧情设置确认状态');
 
 const sandbox = {
   window: {
@@ -86,8 +95,8 @@ sandbox.window.NewStoryAdButtonState.updateLocks({
   getPersonSpec: spec,
 });
 assert.strictEqual(continueButton.disabled, false);
-assert.strictEqual(continueButton.classList.contains('is-next'), true);
-assert.strictEqual(scriptButton.disabled, true);
+assert.strictEqual(continueButton.classList.contains('is-next'), false);
+assert.strictEqual(scriptButton.disabled, false);
 const busyReadyState = { ...readyState, storySetupConfirmed: true, busy: true };
 sandbox.window.NewStoryAdButtonState.updateLocks({
   state: busyReadyState,
@@ -96,19 +105,26 @@ sandbox.window.NewStoryAdButtonState.updateLocks({
 });
 assert.strictEqual(continueButton.disabled, true);
 assert.strictEqual(continueButton.classList.contains('is-next'), false);
-let marked = '';
-let saved = '';
+let openedStep = 0;
 assert.strictEqual(ui.open({
+  state: readyState,
+  getPersonSpec: spec,
+  renderAll: () => {},
+  showStep: step => { openedStep = step; },
+  toast: () => {},
+}), true);
+assert.strictEqual(readyState.storySetupConfirmed, undefined);
+assert.strictEqual(openedStep, 3);
+let marked = '';
+assert.strictEqual(ui.approve({
   state: readyState,
   getPersonSpec: spec,
   markSourceDirty: scope => { marked = scope; },
   renderAll: () => {},
-  scheduleAutoSave: reason => { saved = reason; },
   toast: () => {},
 }), true);
 assert.strictEqual(readyState.storySetupConfirmed, true);
 assert.strictEqual(marked, 'creative');
-assert.strictEqual(saved, 'story_setup_confirmed');
 
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const revision = require('../src/services/newStoryAd/revisionService');
@@ -149,8 +165,36 @@ const assisted = creativeAssist.buildResponse({
   mode: 'creative_direction',
   modelResult: { used_model: 'fixture-model', fallback_used: false, failed_models: [] },
 });
-assert(assisted.text.includes('剧情走向：'));
+assert(assisted.text.includes('【剧情走向】'));
 assert.strictEqual(assisted.creative_direction.actions[0].actor_id, 'cast_1');
+assert(assisted.text.includes('\n\n【关键动作】\n1.'), '辅写内容必须使用真实换行和空行自动分段');
+assert(!assisted.text.includes('\\n'), '辅写内容不得显示字面量反斜杠换行');
+const petBase = contextBuilder.buildContext({
+  brief: '主人和已经确认的金毛犬共同完成一条狗粮广告',
+  cast_mode: 'human_pet',
+  cast_profiles: [{ id: 'cast_1', name: '主人' }],
+  pet_profiles: [{ id: 'pet_asset_confirmed_1', name: '小金' }],
+});
+assert.doesNotThrow(() => creativeAssist.buildResponse({
+  parsed: { creative_direction: {
+    plot_direction: '主人与小金在已确认场景内互动',
+    actions: [{ actor_id: 'pet_asset_confirmed_1', actor: '小金', action: '走向已确认的狗粮并闻一闻' }],
+    must_avoid: ['禁止新增人物、宠物或场景'],
+  } },
+  context: petBase,
+  mode: 'creative_direction',
+}), '已确认宠物资产 ID 必须作为合法表演主体');
+assert.throws(
+  () => creativeAssist.buildResponse({
+    parsed: { creative_direction: {
+      plot_direction: '新宠物进入画面',
+      actions: [{ actor_id: 'pet_asset_unknown', actor: '陌生宠物', action: '进入画面' }],
+    } },
+    context: petBase,
+    mode: 'creative_direction',
+  }),
+  error => error.code === 'ASSIST_CREATIVE_CONFLICT' && /未确认人物或宠物/.test(error.message),
+);
 assert.throws(
   () => creativeAssist.buildResponse({
     parsed: { creative_direction: { raw: '新增一位女主角面对镜头说台词，然后切换到全新办公室场景完成故事。' } },
@@ -168,6 +212,7 @@ assert.throws(
     assert.strictEqual(options.stage, 'new_story_ad.assist');
     assert(options.systemPrompt.includes('只辅写剧情走向和表演要求'));
     assert(options.userPrompt.includes('creative_direction 剧情与表演要求辅写'));
+    assert(options.userPrompt.includes(base.brief), 'AI 辅写必须携带第 1 步广告需求');
     return {
       text: JSON.stringify({
         creative_direction: {

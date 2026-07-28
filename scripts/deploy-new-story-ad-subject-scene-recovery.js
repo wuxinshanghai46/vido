@@ -4,6 +4,7 @@ const { Client } = require('ssh2');
 const root = path.resolve(__dirname, '..');
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
+const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD;
 const files = [
@@ -12,10 +13,13 @@ const files = [
   'docs/handoffs/2026-07-28-night-to-2026-07-29-office-handoff.md',
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
+  'public/js/digital-human.js',
   'public/js/new-story-ad-legacy-ui.js',
   'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
   'public/js/new-story-ad/button-state.js',
+  'public/js/new-story-ad/step-navigation.js',
+  'public/js/new-story-ad/task-store.js',
   'public/js/new-story-ad/brand-overlay.js',
   'public/js/new-story-ad/story-setup.js',
   'public/js/new-story-ad/generation-flow.js',
@@ -85,6 +89,7 @@ const files = [
   'scripts/test-new-story-ad-scene-authority-lineage.js',
   'scripts/test-new-story-ad-keyframe-parallel.js',
   'scripts/test-new-story-ad-keyframe-submission.js',
+  'scripts/test-new-story-ad-task-resume.js',
   'scripts/test-new-story-ad-multi-space-cast-recovery.js',
   'scripts/test-new-story-ad-person-assist-completeness.js',
   'scripts/test-new-story-ad-reliability.js',
@@ -101,6 +106,7 @@ const files = [
   'scripts/test-new-story-ad-subject-gallery-scene-plan.js',
   'scripts/test-new-story-ad-verification-lifecycle.js',
   'scripts/test-new-story-ad-video-frame-qa.js',
+  'scripts/test-new-story-ad-video-ux-semantics.js',
   'scripts/audit-new-story-ad-transition-recovery-deploy.js',
   'scripts/audit-new-story-ad-content-lineage-release.js',
   'scripts/check-new-story-ad-scene-realism-v8-deploy.js',
@@ -244,4 +250,4 @@ client.on('ready', async () => {
 }).on('error', error => {
   console.error(error.message || error);
   process.exitCode = 1;
-}).connect({ host, port: 22, username, password, readyTimeout: 25000 });
+}).connect({ host, port, username, password, readyTimeout: 25000 });

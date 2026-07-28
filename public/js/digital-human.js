@@ -6844,7 +6844,7 @@
     if (sub) {
       sub.textContent = material
         ? '选择演员、上传多张素材，AI 生成广告词后直接合成基础广告；不生成分镜图片。'
-        : '广告需求 → 场景配置 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
+        : '广告需求 → 场景配置 → 剧情与表演 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
     }
     const labels = material
       ? [
@@ -15799,7 +15799,7 @@
             bgmAsset: luxuryAdBgmAssetPayload(),
             shotCount: state.luxuryAd.segments.length || state.luxuryAd.keyframes.length || 4,
             composeNote: `${selectedVoice.name || voiceId} · ${subtitlePayload?.show === false ? '字幕关闭' : '自动字幕开启'} · ${luxuryAdHasBgm() ? 'BGM 已配置' : '无 BGM'} · 提交后在任务中心查看连续场景视频`,
-            workflow: '广告需求 → 场景配置 → 剧本生成 → 分镜生成 → 广告合成（配音 / 字幕 / 视频）',
+            workflow: '广告需求 → 场景配置 → 剧情与表演 → 剧本生成 → 分镜生成 → 广告合成（配音 / 字幕 / 视频）',
             submittedAt: new Date().toISOString(),
           },
         });

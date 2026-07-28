@@ -50,12 +50,15 @@ const keyframeReadyState = { shots, keyframes: shots.map(accepted), storyboardSt
 const validState = { ...keyframeReadyState, videoClips: shots.map((_, index) => approvedClip(index)) };
 assert.strictEqual(context.window.NewStoryAdStepNavigation.keyframeReadiness({ state: invalidState }).ready, false);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: invalidState }).ready, false);
-assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: invalidState }), false);
+assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: invalidState }), true);
+assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(6, { state: invalidState }), false);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.keyframeReadiness({ state: keyframeReadyState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: keyframeReadyState }).ready, false);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: keyframeReadyState }), true);
+assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(6, { state: keyframeReadyState }), true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.composeReadiness({ state: validState }).ready, true);
 assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(5, { state: validState }), true);
+assert.strictEqual(context.window.NewStoryAdStepNavigation.canOpenStep(6, { state: validState }), true);
 const boundaryBlocks = ['block-a', 'block-b', 'block-b', 'block-c', 'block-c', 'block-d'];
 const boundaryGapState = { ...keyframeReadyState, videoClips: validState.videoClips.map((clip, index) => ({ ...clip, scene_block_id: boundaryBlocks[index] })) };
 delete boundaryGapState.videoClips[3].cross_shot_qa;
@@ -127,9 +130,9 @@ assert.strictEqual(selectedButton.classList.contains('is-selected'), false);
 assert.strictEqual(selectedButton.attributes['aria-pressed'], 'false');
 
 const outputs = { storyboard_table: shots, keyframes: invalidState.keyframes, tts_audio: { tracks: [] } };
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 5);
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 5);
-assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 5);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_failed' }, outputs, { ready: true }), 6);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'tts_ready' }, { ...outputs, keyframes: validState.keyframes }, { ready: true }), 6);
+assert.strictEqual(context.window.NewStoryAdTaskStore.resumeStep({ stage: 'video_ready' }, { ...outputs, keyframes: validState.keyframes, video_clips: validState.videoClips }, { ready: true }), 6);
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots }), 'keyframe_contract_ready');
 assert.strictEqual(context.window.NewStoryAdTaskPersistence.progressStageForState({ currentStep: 5, shots, keyframes: validState.keyframes }), 'keyframes_ready');
 const authoritativeFrames = shots.map((_, index) => ({ ...accepted(), image_url: `/authoritative-${index}.png` }));
@@ -204,7 +207,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260728-button-state-v39'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260728-story-step-v40'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -275,7 +278,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260728-button-state-v39'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260728-story-step-v40'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');

@@ -7,7 +7,7 @@ const {
 function outputSchema() {
   return `{
   "creative_direction": {
-    "raw": "给普通用户直接编辑的完整剧情与表演要求，使用自然中文分段，不要 Markdown",
+    "raw": "给普通用户直接编辑的完整剧情与表演要求，使用真实换行和空行分段，不要 Markdown，不要字面量反斜杠换行",
     "plot_direction": "从开场、触发、变化到结果的故事走向",
     "tone": "人物或主体的情绪变化与整体基调",
     "pace": "节奏、停顿、转折和高潮安排",
@@ -38,33 +38,53 @@ function systemRule() {
     'creative_direction 必须严格使用上下文中已确认的人物、宠物、商品和 scene_assets；禁止新增人物、地点、房间、道具、功效、价格或资质。',
     '生产模式只决定故事以真人表演、无人产品变化或服务使用过程推进，不得覆盖已确认主体模式。',
     'Logo 只能作为后期授权素材落版预留，不得要求图片或视频模型生成、变形或仿制 Logo。',
+    'raw 必须按剧情走向、情绪与表演、关键动作、台词与旁白、节奏、结尾、必须出现、禁止出现自然分段，段落之间使用真实空行。',
   ].join(' ');
+}
+
+function paragraphText(value = '') {
+  return String(value || '')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*(?=(?:【?(?:剧情走向|情绪与表演|关键动作|台词与旁白|节奏|结尾|必须出现|禁止出现)】?[：:]))/g, '\n')
+    .split(/\n+/)
+    .map(row => row.trim())
+    .filter(Boolean)
+    .join('\n\n')
+    .trim()
+    .slice(0, 3000);
 }
 
 function formatRaw(direction = {}) {
   const rows = [
-    direction.plot_direction && `剧情走向：${direction.plot_direction}`,
-    direction.tone && `情绪与表演：${direction.tone}`,
-    direction.actions?.length && `关键动作：${direction.actions.map(action => [
+    direction.plot_direction && `【剧情走向】${direction.plot_direction}`,
+    direction.tone && `【情绪与表演】${direction.tone}`,
+    direction.actions?.length && `【关键动作】\n${direction.actions.map((action, index) => `${index + 1}. ${[
       action.actor ? `${action.actor}` : '',
       action.action,
       action.expression ? `表情：${action.expression}` : '',
       action.dialogue ? `台词：${action.dialogue}` : '',
-    ].filter(Boolean).join('，')).join('；')}`,
-    direction.dialogue_notes && `台词与旁白：${direction.dialogue_notes}`,
-    direction.pace && `节奏：${direction.pace}`,
-    direction.ending && `结尾：${direction.ending}`,
-    direction.must_have?.length && `必须出现：${direction.must_have.join('；')}`,
-    direction.must_avoid?.length && `禁止出现：${direction.must_avoid.join('；')}`,
+    ].filter(Boolean).join('，')}`).join('\n')}`,
+    direction.dialogue_notes && `【台词与旁白】${direction.dialogue_notes}`,
+    direction.pace && `【节奏】${direction.pace}`,
+    direction.ending && `【结尾】${direction.ending}`,
+    direction.must_have?.length && `【必须出现】${direction.must_have.join('；')}`,
+    direction.must_avoid?.length && `【禁止出现】${direction.must_avoid.join('；')}`,
   ].filter(Boolean);
-  return cleanText(rows.join('\n'), 3000);
+  return rows.join('\n\n').trim().slice(0, 3000);
 }
 
 function buildResponse({ parsed = {}, context = {}, mode = '', modelResult = {} } = {}) {
   const source = parsed.creative_direction || parsed.creativeDirection || parsed;
   let direction = normalizeCreativeDirection(source);
-  const raw = direction.raw || formatRaw(direction);
-  direction = normalizeCreativeDirection({ ...direction, raw });
+  const hasStructuredDirection = Boolean(
+    direction.plot_direction || direction.tone || direction.pace || direction.ending
+    || direction.dialogue_notes || direction.actions.length
+    || direction.must_have.length || direction.must_avoid.length
+  );
+  const raw = hasStructuredDirection ? formatRaw(direction) : paragraphText(source.raw || source.text || direction.raw);
+  direction = { ...normalizeCreativeDirection({ ...direction, raw: '' }), raw };
   if (direction.raw.length < 20) {
     const error = new Error('AI 返回的剧情与表演要求不完整，请补充广告需求后重试');
     error.code = 'ASSIST_CREATIVE_INCOMPLETE';
@@ -94,5 +114,7 @@ function buildResponse({ parsed = {}, context = {}, mode = '', modelResult = {} 
 module.exports = {
   outputSchema,
   systemRule,
+  formatRaw,
+  paragraphText,
   buildResponse,
 };

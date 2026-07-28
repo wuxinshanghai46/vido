@@ -50,7 +50,7 @@
       : { ready: hasShots, message: '请先生成并审核全部真实画面' };
     const compose = window.NewStoryAdStepNavigation?.composeReadiness
       ? window.NewStoryAdStepNavigation.composeReadiness({ state })
-      : { ready: false, message: '请先在第 4 步生成并审核全部分镜视频' };
+      : { ready: false, message: '请先在第 5 步生成并审核全部分镜视频' };
     const composeView = window.NewStoryAdStepNavigation?.composePresentation?.({ state, compose }) || { action_ready: compose.ready && !state.busy };
     const hasActorInput = !!getPersonSpec('appearanceText');
     const noHuman = getPersonSpec('castMode') === 'no_human';
@@ -60,9 +60,7 @@
     if (generateBtn) generateBtn.classList.toggle('is-next', hasBrief && !state.busy);
     const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, getPersonSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
     lock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
-    const continueStorySetupBtn = within('#dhNsaAdContinueStorySetup');
-    if (continueStorySetupBtn) continueStorySetupBtn.classList.toggle('is-next', storySetupReady.ready && !state.busy);
-    lock('#dhNsaAdStoryboard', !state.storySetupConfirmed || !storySetupReady.ready, !state.storySetupConfirmed ? '请先点击“下一步：编写剧情与表演”' : storySetupReady.message);
+    lock('#dhNsaAdStoryboard', !storySetupReady.ready, storySetupReady.message);
     const storyboardBtn = within('#dhNsaAdStoryboard');
     if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');

@@ -395,7 +395,7 @@
         normalizeBundle?.(r);
         if (!blueprintIsReady(r, state)) throw new Error('剧本任务已结束，但服务器没有保存可用剧本；已停留在当前步骤，请重新生成剧本');
         if (!storyboardIsReady(r, state)) throw new Error('剧本已经生成，但配套分镜未通过检查；系统已停止下游生成，请查看错误详情');
-        showStep?.(3);
+        showStep?.(4);
       } else if (stage === 'storyboard') {
         if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, ctx));
         if (!blueprintIsReady({}, state)) throw new Error('服务器没有可用剧本，不能继续生成分镜；请先重新生成剧本');
@@ -407,18 +407,18 @@
           r = { storyboard_status: state.storyboardStatus, outputs: { storyboard_table: state.shots } };
         }
         if (!storyboardIsReady(r, state)) throw new Error('分镜任务已结束，但服务器尚未确认当前剧本对应的分镜结果，请重试');
-        showStep?.(4);
+        showStep?.(5);
       } else if (stage === 'keyframes') {
         if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
         if (state.storyboardDirty === true && state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
         r = await startKeyframesWithBillingGuard(id, missingOnly ? { missing_images_only: true } : {}, ctx);
         normalizeBundle?.(r);
-        showStep?.(4);
+        showStep?.(5);
       } else if (stage === 'tts') {
         r = await startStage(id, 'tts', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
-        showStep?.(5);
+        showStep?.(6);
       } else if (stage === 'video') {
         const regenerateAll = button?.id === 'dhNsaAdRegenerateAllShotVideos';
         const singleIndex = button?.dataset?.nsaVideoRegenerate === undefined ? null : Number(button.dataset.nsaVideoRegenerate);
@@ -440,21 +440,21 @@
           max_auto_repairs: 0,
         }, ctx);
         normalizeBundle?.(r);
-        showStep?.(4);
+        showStep?.(5);
       } else if (stage === 'compose') {
         r = await startStage(id, 'compose', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
-        showStep?.(5);
+        showStep?.(6);
       } else if (stage === 'media') {
         if (!Array.isArray(state.videoSelectedIndexes) || !state.videoSelectedIndexes.length) {
           throw new Error('尚未选择并二次确认生成单元，本次没有提交。');
         }
-        // 用户已确认整条视频方案后立即进入“广告合成”，让真实生成、质检和封装进度都归属第 5 步。
-        showStep?.(5);
+        // 用户已确认整条视频方案后立即进入“广告合成”，让真实生成、质检和封装进度都归属第 6 步。
+        showStep?.(6);
         renderAll?.();
         r = await startStage(id, 'media', mediaStageBody(ctx), ctx);
         normalizeBundle?.(r);
-        showStep?.(5);
+        showStep?.(6);
       }
       renderAll?.();
       if (stage === 'keyframes') {

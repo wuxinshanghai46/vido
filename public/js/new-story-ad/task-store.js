@@ -8,7 +8,7 @@
   function routeStep() {
     try {
       const step = Number(new URLSearchParams(location.search || '').get('nsa_step') || 0);
-      if (Number.isFinite(step) && step >= 1 && step <= 5) return Math.round(step);
+      if (Number.isFinite(step) && step >= 1 && step <= 6) return Math.round(step);
     } catch {}
     return 1;
   }
@@ -42,7 +42,7 @@
     try {
       const url = new URL(location.href);
       url.searchParams.set('tab', 'new-story-ad');
-      url.searchParams.set('nsa_step', String(Math.max(1, Math.min(5, Number(step) || 1))));
+      url.searchParams.set('nsa_step', String(Math.max(1, Math.min(6, Number(step) || 1))));
       const id = clean(taskId === undefined ? routeTaskId() : taskId, 100);
       if (id) url.searchParams.set('nsa_task_id', id);
       else url.searchParams.delete('nsa_task_id');
@@ -92,18 +92,19 @@
         && !clip?.error && !clip?.error_code
         && clip?.qa?.pass === true;
     });
-    if (finalVideo.video_url || finalVideo.videoUrl) return 5;
-    if (/(?:compose|final|tts)/.test(stage)) return 5;
-    if (/video|media/.test(stage) || currentVideosReady || clips.length) return 5;
-    if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 3;
+    if (finalVideo.video_url || finalVideo.videoUrl) return 6;
+    if (/(?:compose|final|tts)/.test(stage)) return 6;
+    if (/video|media/.test(stage) || currentVideosReady || clips.length) return 6;
+    if (!keyframeCount && /storyboard_(?:failed|cancelled)/.test(stage)) return 4;
     const storyboardReady = storyboardStatus && typeof storyboardStatus.ready === 'boolean'
       ? storyboardStatus.ready
       : shotCount > 0;
-    if (keyframeCount || storyboardReady || outputs.keyframe_contracts || /keyframe/.test(stage)) return 4;
-    if (/storyboard/.test(stage) && !/(?:failed|cancelled)/.test(stage)) return 3;
-    if (outputs.blueprint) return 3;
-    if (/blueprint_(?:failed|cancelled)/.test(stage)) return 2;
-    if (/blueprint/.test(stage) && !/blueprint_(?:failed|cancelled)/.test(stage)) return 3;
+    if (keyframeCount || storyboardReady || outputs.keyframe_contracts || /keyframe/.test(stage)) return 5;
+    if (/storyboard/.test(stage) && !/(?:failed|cancelled)/.test(stage)) return 4;
+    if (outputs.blueprint) return 4;
+    if (/blueprint_(?:failed|cancelled)/.test(stage)) return 3;
+    if (/blueprint/.test(stage) && !/blueprint_(?:failed|cancelled)/.test(stage)) return 4;
+    if (task.story_setup_confirmed === true || outputs.request?.story_setup_confirmed === true) return 3;
     if (outputs.scene_config || outputs.scene_assets || /scene/.test(stage)) return 2;
     return 1;
   }
@@ -123,7 +124,7 @@
 
   function blueprintFailureHtml(state = {}, escapeHtml = String) {
     if (state.blueprint || state.taskStatus !== 'failed' || state.taskStage !== 'blueprint_failed') return '';
-    return `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(blueprintFailureMessage(state))}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在当前第 2 步重新生成剧本。</small></div>`;
+    return `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(blueprintFailureMessage(state))}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在第 3 步重新生成剧本。</small></div>`;
   }
 
   function syncBlueprintFailureHost(state = {}, host, escapeHtml = String) {

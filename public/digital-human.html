@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-button-state-v39">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v40">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260728-button-state-v39"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v40"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -190,12 +190,13 @@
             <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
           </div>
 
-          <div class="dh-luxgen-steps dh-luxgen-steps-five" aria-label="剧情广告 V2.0 完整流程" id="dhNsaAdSteps">
+          <div class="dh-luxgen-steps dh-luxgen-steps-six" aria-label="剧情广告 V3.0 完整流程" id="dhNsaAdSteps">
             <div class="active" data-nsa-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
             <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
-            <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧本生成</span><small>按时间段拆解</small></div>
-            <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>分镜生成</span><small>形象和镜头</small></div>
-            <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
+            <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧情与表演</span><small>呈现方式 / AI 辅写</small></div>
+            <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>剧本生成</span><small>按时间段拆解</small></div>
+            <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>分镜生成</span><small>形象和镜头</small></div>
+            <div class="locked" data-nsa-step="6" role="button" tabindex="0"><b>6</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
           </div>
           <div id="dhNsaAdCapabilityStrip" class="dh-lux-commercial-guard"></div>
           <div class="dh-luxgen-live-progress" id="dhNsaAdLiveProgress" hidden></div>
@@ -504,11 +505,18 @@
               <div class="dh-nsa-story-setup-next" id="dhNsaAdStorySetupNext">
                 <div><b>人物与场景形象确认后再写剧情</b><span id="dhNsaAdStorySetupStatus">请先完成当前人物/主体和全部场景形象。</span></div>
               </div>
-              <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel" hidden>
-                <div class="dh-nsa-story-setup-heading">
-                  <div><span>剧情生成设置</span><small>系统只使用上方已经确认的人物、主体和场景，不会在这里重新发明资产。</small></div>
-                  <span class="dh-luxgen-badge">生成剧本前最后一步</span>
+            </section>
+          </section>
+
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="3">
+            <section class="dh-demo-canvas">
+              <div class="dh-demo-headline">
+                <div>
+                  <h3><span class="dh-luxgen-step-pill">3</span>剧情与表演</h3>
+                  <p class="dh-demo-copy">选择故事呈现方式，可选 AI 辅写剧情与表演，按需配置授权 Logo，然后直接生成剧本。</p>
                 </div>
+              </div>
+              <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel">
                 <div class="dh-demo-section-title">剧情呈现方式</div>
                 <div class="dh-nsa-production-mode-row">
                   <label>
@@ -563,17 +571,17 @@
                   </div>
                 </div>
                 <div class="dh-nsa-story-setup-actions">
-                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">确认剧情设置，生成剧本</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">生成剧本</button>
                 </div>
               </section>
             </section>
           </section>
 
-          <section class="dh-demo-stage dh-luxgen-stage" data-panel="3">
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="4">
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3 id="dhNsaAdStep3Title"><span class="dh-luxgen-step-pill">3</span>剧本生成</h3>
+                  <h3 id="dhNsaAdStep3Title"><span class="dh-luxgen-step-pill">4</span>剧本生成</h3>
                   <p class="dh-demo-copy" id="dhNsaAdStep3Copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
                 </div>
                 <div class="dh-demo-script-actions">
@@ -589,11 +597,11 @@
             </section>
           </section>
 
-          <section class="dh-demo-stage dh-luxgen-stage" data-panel="4">
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="5">
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">4</span>分镜生成</h3>
+                  <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">5</span>分镜生成</h3>
                   <p class="dh-demo-copy" id="dhNsaAdStep4Copy">分镜把主体画面、可选人物和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、台词/旁白和 AI 指令。</p>
                 </div>
                 <div class="dh-demo-script-actions">
@@ -619,11 +627,11 @@
             </section>
           </section>
 
-          <section class="dh-demo-stage dh-luxgen-stage" data-panel="5">
+          <section class="dh-demo-stage dh-luxgen-stage" data-panel="6">
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">5</span>广告合成</h3>
+                  <h3><span class="dh-luxgen-step-pill">6</span>广告合成</h3>
                    <p class="dh-demo-copy">整条广告在这里完成：连续生成单元是提交与付费边界；展开后可审看母片、切分片段、失败时间与相邻交接证据，全部通过后再封装为一个成片。</p>
                 </div>
                 <div class="dh-demo-script-actions">
@@ -746,6 +754,7 @@
               <div class="dh-luxgen-progress dh-luxgen-hidden-control" id="dhNsaAdProgress">
                 <div class="active"><span></span>广告需求</div>
                 <div><span></span>场景配置</div>
+                <div><span></span>剧情与表演</div>
                 <div><span></span>剧本生成</div>
                 <div><span></span>分镜生成</div>
                 <div><span></span>广告合成</div>
@@ -2615,7 +2624,7 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260721-unified-dialog-v20"></script>
+  <script src="/js/digital-human.js?v=20260728-story-step-v21"></script>
 </body>
 </html>
 

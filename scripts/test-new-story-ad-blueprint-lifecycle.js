@@ -200,7 +200,7 @@ async function main() {
     const modelGatewaySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/modelGateway.js'), 'utf8');
     assert(modelGatewaySource.includes("'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)) break"));
     const stepNavigationSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/step-navigation.js'), 'utf8');
-    assert(stepNavigationSource.includes("if (step === 3) return !!state.blueprint;"));
+    assert(stepNavigationSource.includes("if (step === 4) return !!state.blueprint;"));
     const generationFlowSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
     const sandbox = { window: {}, setTimeout, clearTimeout, Promise, Date };
     vm.runInNewContext(generationFlowSource, sandbox, { filename: 'generation-flow.js' });

@@ -1,6 +1,6 @@
 (() => {
-  // V2.0 发布资源使用独立版本号，避免浏览器复用开发期间同名缓存。
-  const SCRIPT_VERSION = '20260728-button-state-v39';
+  // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
+  const SCRIPT_VERSION = '20260728-story-step-v40';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -49,7 +49,7 @@
     });
   }
 
-  /** 只预取首次渲染需要的核心脚本；审片和费用模块进入第 5 步时再加载。 */
+  /** 只预取首次渲染需要的核心脚本；审片和费用模块进入第 6 步时再加载。 */
   function preloadScripts() {
     CORE_SCRIPT_PATHS.forEach(path => {
       if (document.querySelector(`link[data-nsa-script-preload="${path}"]`)) return;
@@ -135,10 +135,10 @@
     if (storyAdIsActive()) loadStoryAd().catch(() => {});
     document.addEventListener('click', (event) => {
       if (event.target?.closest?.('.dh-nav-item[data-tab="new-story-ad"]')) loadStoryAd().catch(() => {});
-      if (event.target?.closest?.('[data-nsa-step="5"], #dhNsaAdGenerateVideos, #dhNsaAdCompose')) loadMediaModules().catch(() => {});
+      if (event.target?.closest?.('[data-nsa-step="6"], #dhNsaAdGenerateVideos, #dhNsaAdCompose')) loadMediaModules().catch(() => {});
     }, true);
     document.addEventListener('pointerover', event => {
-      if (event.target?.closest?.('[data-nsa-step="5"]')) loadMediaModules().catch(() => {});
+      if (event.target?.closest?.('[data-nsa-step="6"]')) loadMediaModules().catch(() => {});
     }, true);
     window.addEventListener('popstate', () => {
       if (storyAdIsActive()) loadStoryAd().catch(() => {});
@@ -149,7 +149,7 @@
     }).observe(pane, { attributes: true, attributeFilter: ['class'] });
   }
 
-  // 媒体加载器本身属于核心小模块，但四个大型媒体模块只在第 5 步请求。
+  // 媒体加载器本身属于核心小模块，但四个大型媒体模块只在第 6 步请求。
   const getMediaLoader = () => mediaLoader || (mediaLoader = window.NewStoryAdMediaLoader?.create({
     loadCore: loadStoryAd,
     loadScript,

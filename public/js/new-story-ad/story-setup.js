@@ -78,7 +78,6 @@
   function invalidate(state = {}, scope = '') {
     if (!['source', 'product', 'scene', 'person'].includes(scope)) return;
     state.storySetupConfirmed = false;
-    state.storySetupExpanded = false;
   }
 
   function render({ state = {}, within = () => null, getPersonSpec = () => '' } = {}) {
@@ -87,9 +86,9 @@
     const continueButton = within('#dhNsaAdContinueStorySetup');
     const status = within('#dhNsaAdStorySetupStatus');
     const result = readiness(state, getPersonSpec);
-    if (panel) panel.hidden = state.storySetupExpanded !== true;
-    if (next) next.hidden = state.storySetupExpanded === true;
-    if (continueButton) continueButton.hidden = state.storySetupExpanded === true;
+    if (panel) panel.hidden = false;
+    if (next) next.hidden = false;
+    if (continueButton) continueButton.hidden = false;
     if (status) {
       status.textContent = result.message;
       status.classList.toggle('is-ready', result.ready);
@@ -97,18 +96,28 @@
     return result;
   }
 
-  function open({ state = {}, getPersonSpec = () => '', markSourceDirty, renderAll, scheduleAutoSave, toast } = {}) {
+  function open({ state = {}, getPersonSpec = () => '', renderAll, showStep, toast } = {}) {
     const result = readiness(state, getPersonSpec);
     if (!result.ready) {
       toast?.(result.message, 'error');
       return false;
     }
     state.storySetupExpanded = true;
-    state.storySetupConfirmed = true;
-    markSourceDirty?.('creative');
     renderAll?.();
-    scheduleAutoSave?.('story_setup_confirmed', { immediate: true });
-    requestAnimationFrame(() => document.getElementById('dhNsaAdStorySetupPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    showStep?.(3);
+    return true;
+  }
+
+  function approve({ state = {}, getPersonSpec = () => '', markSourceDirty, renderAll, toast } = {}) {
+    const result = readiness(state, getPersonSpec);
+    if (!result.ready) {
+      toast?.(result.message, 'error');
+      return false;
+    }
+    markSourceDirty?.('creative');
+    state.storySetupExpanded = true;
+    state.storySetupConfirmed = true;
+    renderAll?.();
     return true;
   }
 
@@ -117,7 +126,7 @@
     ensureTask, api, markSourceDirty, renderAll, scheduleAutoSave, setButtonBusy, toast,
   } = {}) {
     const ready = readiness(state, getPersonSpec);
-    if (!state.storySetupExpanded || !ready.ready) return toast?.(ready.message || '请先进入剧情设置', 'error');
+    if (!ready.ready) return toast?.(ready.message || '请先完成当前人物与场景形象', 'error');
     const label = '正在按已确认人物和场景辅写...';
     setButtonBusy?.(button, true, label);
     try {
@@ -158,6 +167,7 @@
     invalidate,
     render,
     open,
+    approve,
     assist,
   };
 })();

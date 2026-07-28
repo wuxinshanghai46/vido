@@ -72,7 +72,7 @@ function testGenerationUnitProjection() {
   assert.strictEqual(providerFailure[0].qa_status, 'pending');
 }
 
-async function testMediaImmediatelyOwnsStepFive() {
+async function testMediaImmediatelyOwnsStepSix() {
   const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
   const sandbox = { window: {}, Date, Math, Number, String, setTimeout, clearTimeout };
   vm.runInNewContext(source, sandbox, { filename: 'generation-flow.js' });
@@ -98,8 +98,8 @@ async function testMediaImmediatelyOwnsStepFive() {
     toast: () => {},
   });
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert(events.indexOf('step-5') >= 0, 'POST 尚未返回时必须已经进入第 5 步');
-  assert(events.indexOf('step-5') < events.indexOf('post'));
+  assert(events.indexOf('step-6') >= 0, 'POST 尚未返回时必须已经进入第 6 步');
+  assert(events.indexOf('step-6') < events.indexOf('post'));
   resolvePost({ success: true, task: {} });
   assert.strictEqual(await run, true);
 
@@ -113,7 +113,7 @@ async function testMediaImmediatelyOwnsStepFive() {
   });
   assert.strictEqual(failed, false);
   assert.strictEqual(failureEvents.filter(item => item === 'post').length, 1, '失败不得自动二次提交');
-  assert(failureEvents.includes('step-5'), '提交失败也必须留在第 5 步显示真实错误');
+  assert(failureEvents.includes('step-6'), '提交失败也必须留在第 6 步显示真实错误');
 }
 
 function testCrossStageTerminalizationIsGenerationSafe() {
@@ -212,7 +212,7 @@ async function testScopedBlockerStillAllowsSafeSelectionFlow() {
 
 (async () => {
   testGenerationUnitProjection();
-  await testMediaImmediatelyOwnsStepFive();
+  await testMediaImmediatelyOwnsStepSix();
   testCrossStageTerminalizationIsGenerationSafe();
   testRecoveryEntryUsesScopedEconomyMode();
   testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits();
