@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v44">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v46">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v44"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v46"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -552,13 +552,12 @@
                   <span>上传你有权使用的品牌素材后，系统只在最终合成阶段原样叠加；不需要 Logo 可以直接跳过。</span>
                 </div>
                 <div class="dh-nsa-brand-overlay">
-                  <div class="dh-luxgen-product-asset" id="dhNsaAdBrandLogoAsset"><div class="dh-luxgen-product-empty">未上传品牌 Logo</div></div>
+                  <div class="dh-nsa-brand-logo-field">
+                    <div class="dh-nsa-brand-logo-label">Logo 图片 <span class="dh-luxgen-badge">选填</span></div>
+                    <div class="dh-luxgen-product-asset" id="dhNsaAdBrandLogoAsset"></div>
+                    <input type="file" id="dhNsaAdBrandLogoFile" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" hidden>
+                  </div>
                   <div class="dh-nsa-brand-overlay-controls">
-                    <div>
-                      <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoUpload" type="button">上传授权 Logo</button>
-                      <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdBrandLogoClear" type="button" hidden>删除 Logo</button>
-                      <input type="file" id="dhNsaAdBrandLogoFile" accept="image/png,image/jpeg,image/webp" hidden>
-                    </div>
                     <label><input type="checkbox" id="dhNsaAdBrandLogoAuthorized"> 我确认拥有该 Logo 的使用及发布授权</label>
                     <label>落版位置
                       <select class="dh-input" id="dhNsaAdBrandLogoPosition">

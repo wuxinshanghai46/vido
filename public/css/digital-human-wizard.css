@@ -747,7 +747,7 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 .dh-luxgen-actions { display: grid; gap: 10px; margin-top: 16px; }
 .dh-luxgen-helper-actions, .dh-luxgen-stage-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .dh-luxgen-stage-actions { padding: 10px; border: 1px solid rgba(33,255,243,.14); border-radius: 12px; background: rgba(255,255,255,.018); }
-.dh-luxgen-step-action { min-width: 164px; justify-content: center; border-color: rgba(143,178,255,.22); color: var(--dh-text-soft); background: rgba(255,255,255,.035); }
+.dh-luxgen-step-action { min-width: 164px; justify-content: center; border-color: rgba(143,178,255,.22); color: var(--dh-text-soft); background: rgba(255,255,255,.035); box-shadow: none; }
 .dh-luxgen-step-action.is-next:not(:disabled) {
   border-color: transparent;
   color: #061012;
@@ -755,7 +755,9 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
   box-shadow: 0 12px 28px rgba(33,255,243,.18);
 }
 #dhNsaAdContinueStorySetup:not(:disabled):hover,
-#dhNsaAdContinueStorySetup:not(:disabled):focus-visible {
+#dhNsaAdContinueStorySetup:not(:disabled):focus-visible,
+#dhNsaAdStoryboard:not(:disabled):hover,
+#dhNsaAdStoryboard:not(:disabled):focus-visible {
   border-color: rgba(33,255,243,.72);
   color: #071112;
   background: linear-gradient(135deg, #21fff3, #9dff5a);
@@ -4162,4 +4164,38 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
     grid-template-columns: 1fr;
   }
 }
-.dh-nsa-brand-overlay{display:grid;grid-template-columns:minmax(220px,320px) minmax(280px,1fr);gap:18px;align-items:start;margin:12px 0 22px}.dh-nsa-brand-overlay-controls{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:12px}.dh-nsa-brand-overlay-controls>label:first-of-type{grid-column:1/-1}.dh-nsa-brand-overlay-controls label{display:grid;gap:6px;color:var(--text-secondary,#a9b5c7);font-size:13px}.dh-nsa-brand-overlay-controls label:first-of-type{display:flex;align-items:center}@media(max-width:760px){.dh-nsa-brand-overlay,.dh-nsa-brand-overlay-controls{grid-template-columns:1fr}.dh-nsa-story-setup-next,.dh-nsa-story-setup-heading,.dh-nsa-section-title-actions{align-items:stretch;flex-direction:column}.dh-nsa-story-setup-next button,.dh-nsa-section-title-actions button{width:100%}}
+.dh-nsa-brand-overlay { display: grid; grid-template-columns: minmax(260px, 340px) minmax(280px, 1fr); gap: 20px; align-items: start; margin: 12px 0 22px; }
+.dh-nsa-brand-logo-field { min-width: 0; }
+.dh-nsa-brand-logo-label { margin-bottom: 8px; color: var(--dh-text-soft); font-size: 13px; font-weight: 800; }
+.dh-nsa-brand-logo-field .dh-luxgen-product-asset { margin-top: 0; }
+.dh-nsa-brand-logo-upload { width: 100%; min-height: 150px; padding: 22px 18px; border: 1px dashed rgba(143,178,255,.38); border-radius: var(--dh-radius-sm); background: rgba(8,14,24,.42); color: var(--dh-text-soft); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
+.dh-nsa-brand-logo-upload:hover { border-color: var(--dh-primary); background: rgba(33,255,243,.055); transform: translateY(-1px); }
+.dh-nsa-brand-logo-upload-icon { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(33,255,243,.10); color: var(--dh-primary); }
+.dh-nsa-brand-logo-upload-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dh-nsa-brand-logo-upload b { color: var(--dh-text); font-size: 14px; }
+.dh-nsa-brand-logo-upload small { color: var(--dh-text-muted); font-size: 12px; line-height: 1.5; text-align: center; }
+.dh-nsa-brand-logo-preview { position: relative; overflow: hidden; border: 1px solid rgba(143,178,255,.30); border-radius: var(--dh-radius-sm); background: rgba(8,14,24,.58); }
+.dh-nsa-brand-logo-preview.uploading { opacity: .72; border-color: var(--dh-primary); }
+.dh-nsa-brand-logo-image { width: 100%; height: 150px; padding: 0; border: 0; background: #070a10; display: block; cursor: zoom-in; }
+.dh-nsa-brand-logo-image img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.dh-nsa-brand-logo-actions { position: absolute; top: 10px; right: 10px; display: flex; gap: 7px; opacity: 0; transform: translateY(-3px); transition: opacity .18s ease, transform .18s ease; }
+.dh-nsa-brand-logo-preview:hover .dh-nsa-brand-logo-actions, .dh-nsa-brand-logo-preview:focus-within .dh-nsa-brand-logo-actions { opacity: 1; transform: translateY(0); }
+.dh-nsa-brand-logo-actions button { width: 32px; height: 32px; padding: 0; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(7,10,16,.84); color: #fff; display: grid; place-items: center; cursor: pointer; backdrop-filter: blur(8px); }
+.dh-nsa-brand-logo-actions button:hover { border-color: var(--dh-primary); color: var(--dh-primary); }
+.dh-nsa-brand-logo-actions button#dhNsaAdBrandLogoClear:hover { border-color: #ff5f73; color: #ff7b8b; }
+.dh-nsa-brand-logo-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.dh-nsa-brand-logo-actions svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.dh-nsa-brand-logo-meta { min-height: 42px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid rgba(143,178,255,.18); }
+.dh-nsa-brand-logo-meta span { min-width: 0; color: var(--dh-text-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh-nsa-brand-logo-meta button { flex: 0 0 auto; padding: 5px 8px; border: 0; background: transparent; color: var(--dh-primary); font-size: 12px; font-weight: 800; cursor: pointer; }
+.dh-nsa-brand-logo-meta button:disabled { opacity: .45; cursor: not-allowed; }
+.dh-nsa-brand-overlay-controls { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 12px; }
+.dh-nsa-brand-overlay-controls > label:first-of-type { grid-column: 1 / -1; }
+.dh-nsa-brand-overlay-controls label { display: grid; gap: 6px; color: var(--text-secondary, #a9b5c7); font-size: 13px; }
+.dh-nsa-brand-overlay-controls label:first-of-type { display: flex; align-items: center; }
+@media (hover: none) { .dh-nsa-brand-logo-actions { opacity: 1; transform: none; } }
+@media (max-width: 760px) {
+  .dh-nsa-brand-overlay, .dh-nsa-brand-overlay-controls { grid-template-columns: 1fr; }
+  .dh-nsa-story-setup-next, .dh-nsa-story-setup-heading, .dh-nsa-section-title-actions { align-items: stretch; flex-direction: column; }
+  .dh-nsa-story-setup-next button, .dh-nsa-section-title-actions button { width: 100%; }
+}

@@ -365,7 +365,7 @@ async function main() {
     },
   });
   assert.equal(storyboardButton.disabled, false);
-  assert(storyboardClasses.has('is-next'));
+  assert(!storyboardClasses.has('is-next'), '生成剧本按钮可用时仍应保持默认普通样式，只有指向时高亮');
   assert.equal(frontend.requiresLayoutView({ layoutText: '简单单墙场景' }), true, 'v3 新场景必须固定生成第五张空间布局');
   const progressHost = { innerHTML: '' };
   frontend.render({ host: progressHost, state: { sceneGenerationProgress: { active: true, startedAt: Date.now() } } });
@@ -732,15 +732,15 @@ async function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260728-story-step-v44'));
-  assert(html.includes('digital-human-wizard.css?v=20260728-story-step-v44'));
-  assert(html.indexOf('bootstrap.js?v=20260728-story-step-v44') < html.indexOf('digital-human.js?v=20260728-story-step-v21'));
+  assert(html.includes('bootstrap.js?v=20260728-story-step-v46'));
+  assert(html.includes('digital-human-wizard.css?v=20260728-story-step-v46'));
+  assert(html.indexOf('bootstrap.js?v=20260728-story-step-v46') < html.indexOf('digital-human.js?v=20260728-story-step-v21'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260728-story-step-v44'));
+  assert(bootstrap.includes('20260728-story-step-v46'));
   assert(sceneUi.includes('acknowledge_billing_unknown: true'));
   assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
   assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));
@@ -753,7 +753,8 @@ async function main() {
   assert(continueHandler.includes("newStoryAdContinue.textContent = '正在打开…'"));
   assert(!continueHandler.includes('loadNewStoryAdTaskDetail'));
   const buttonState = fs.readFileSync(path.join(root, 'public/js/new-story-ad/button-state.js'), 'utf8');
-  assert(buttonState.includes("storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy)"));
+  assert(!buttonState.includes("storyboardBtn.classList.toggle('is-next'"));
+  assert(css.includes('#dhNsaAdStoryboard:not(:disabled):hover'));
   assert(legacyUi.includes("NewStoryAdSceneAssets?.syncSpecSelectionState?.(target)"));
   assert(css.includes('.dh-nsa-scene-spec-grid select.dh-input.is-explicit-selection'));
   assert(css.includes('color-scheme: dark'));

@@ -77,6 +77,7 @@ const files = [
   'src/services/newStoryAd/videoFrameQaService.js',
   'scripts/test-new-story-ad-image2-realism.js',
   'scripts/test-new-story-ad-display-format-authority.js',
+  'scripts/test-new-story-ad-brand-logo-upload-ui.js',
   'scripts/test-new-story-ad-autosave-revision.js',
   'scripts/test-new-story-ad-blueprint-quality.js',
   'scripts/test-new-story-ad-blueprint-lifecycle.js',

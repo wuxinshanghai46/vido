@@ -39,6 +39,10 @@ assert(!legacy.includes("continueStorySetupBtn.classList.toggle('is-next'"), '�
 assert(!buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next'"), '权威按钮状态模块不得默认高亮下一步按钮');
 assert(wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):hover') && wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):focus-visible'), '下一步按钮只在指向或键盘聚焦时高亮');
 assert(buttonStateUi.includes("lock('#dhNsaAdStoryboard', !storySetupReady.ready"), '生成剧本按钮点击时再确认剧情设置');
+assert(!buttonStateUi.includes("storyboardBtn.classList.toggle('is-next'"), '生成剧本按钮默认不得直接进入高亮状态');
+assert(!legacy.includes("storyboardBtn.classList.toggle('is-next'"), '旧 UI 回退路径也不得默认高亮生成剧本按钮');
+assert(wizardCss.includes('#dhNsaAdStoryboard:not(:disabled):hover') && wizardCss.includes('#dhNsaAdStoryboard:not(:disabled):focus-visible'), '生成剧本按钮只在指向或键盘聚焦时高亮');
+assert(/\.dh-luxgen-step-action\s*\{[^}]*background:\s*rgba\(255,255,255,\.035\);[^}]*box-shadow:\s*none;/.test(wizardCss), '步骤主操作默认态必须同时清除通用主按钮阴影');
 assert(legacy.includes('NewStoryAdStorySetup.approve') && legacy.includes("runStage('blueprint', btn)"), '第 3 步按钮必须先确认设置再生成剧本');
 assert(legacy.includes("target?.id === 'dhNsaAdProductionMode'") && legacy.includes("markSourceDirty('creative')"), '剧情呈现方式修改必须失效旧剧本');
 assert(bootstrap.includes("'/js/new-story-ad/story-setup.js'"), '剧情设置模块必须在旧 UI 前按需加载');

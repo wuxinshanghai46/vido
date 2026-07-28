@@ -61,8 +61,6 @@
     const storySetupReady = window.NewStoryAdStorySetup?.readiness(state, getPersonSpec) || { ready: false, message: '请先完成当前人物与场景形象' };
     lock('#dhNsaAdContinueStorySetup', !storySetupReady.ready, storySetupReady.message);
     lock('#dhNsaAdStoryboard', !storySetupReady.ready, storySetupReady.message);
-    const storyboardBtn = within('#dhNsaAdStoryboard');
-    if (storyboardBtn) storyboardBtn.classList.toggle('is-next', !storyboardBtn.disabled && !state.busy);
     lock('#dhNsaAdPreviewFrames', !hasBlueprint, '请先生成剧本');
     lock('#dhNsaAdGenerateFinalFrames', !hasShots, '请先生成分镜');
     lock('#dhNsaAdGenerateShotVideos', !frames.ready, frames.message || '请先生成并审核全部真实画面');
