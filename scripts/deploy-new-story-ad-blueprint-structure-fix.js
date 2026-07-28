@@ -12,14 +12,17 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const files = [
+  'public/css/digital-human-wizard.css',
   'public/digital-human.html',
   'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/story-setup.js',
   'src/services/newStoryAd/blueprintService.js',
   'src/services/newStoryAd/textStageRecoveryService.js',
   'scripts/test-new-story-ad-blueprint-quality.js',
+  'scripts/test-new-story-ad-compose-gate-autosave.js',
   'scripts/test-new-story-ad-story-setup-flow.js',
   'scripts/test-new-story-ad-content-versioning.js',
+  'scripts/test-new-story-ad-scene-lock-ui-binding.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/blueprint-structure-fix-${stamp}`;
@@ -81,12 +84,14 @@ client.on('ready', async () => {
           crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== hash
         ).map(([file]) => file);
         if (mismatches.length) throw new Error('HASH_MISMATCH:' + mismatches.join(','));
-        console.log('HASH_AUDIT=' + Object.keys(expected).length + '/8');
+        console.log('HASH_AUDIT=' + Object.keys(expected).length + '/' + Object.keys(expected).length);
       `)}`,
       ...files.filter(file => file.endsWith('.js')).map(file => `node --check ${quote(file)}`),
       'node scripts/test-new-story-ad-blueprint-quality.js',
       'node scripts/test-new-story-ad-story-setup-flow.js',
       'node scripts/test-new-story-ad-content-versioning.js',
+      'node scripts/test-new-story-ad-scene-lock-ui-binding.js',
+      'node scripts/test-new-story-ad-compose-gate-autosave.js',
       'pm2 reload vido --update-env >/dev/null',
       'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo BLUEPRINT_STRUCTURE_DEPLOY_OK && exit 0; done; exit 1',
     ].join(' && '));

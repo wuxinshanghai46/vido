@@ -38,6 +38,8 @@ assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStoryS
 assert(!legacy.includes("continueStorySetupBtn.classList.toggle('is-next'"), '下一步按钮默认不得显示高亮指向效果');
 assert(!buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next'"), '权威按钮状态模块不得默认高亮下一步按钮');
 assert(wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):hover') && wizardCss.includes('#dhNsaAdContinueStorySetup:not(:disabled):focus-visible'), '下一步按钮只在指向或键盘聚焦时高亮');
+assert(wizardCss.includes('#dhNsaAdPreviewFrames:not(:disabled):hover') && wizardCss.includes('#dhNsaAdPreviewFrames:not(:disabled):focus-visible'), '确认剧本生成分镜按钮必须在指向或键盘聚焦时显示主操作反馈');
+assert(wizardCss.includes('#dhNsaAdScriptRegenerateTop:not(:disabled):hover') && wizardCss.includes('#dhNsaAdScriptRegenerateTop:not(:disabled):focus-visible'), '重新生成剧本按钮必须在指向或键盘聚焦时显示次级操作反馈');
 assert(buttonStateUi.includes("lock('#dhNsaAdStoryboard', !storySetupReady.ready"), '生成剧本按钮点击时再确认剧情设置');
 assert(!buttonStateUi.includes("storyboardBtn.classList.toggle('is-next'"), '生成剧本按钮默认不得直接进入高亮状态');
 assert(!legacy.includes("storyboardBtn.classList.toggle('is-next'"), '旧 UI 回退路径也不得默认高亮生成剧本按钮');

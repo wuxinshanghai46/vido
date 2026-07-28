@@ -757,11 +757,20 @@ html[data-theme="light-mist"] .dh-switch input[type="checkbox"]:checked { backgr
 #dhNsaAdContinueStorySetup:not(:disabled):hover,
 #dhNsaAdContinueStorySetup:not(:disabled):focus-visible,
 #dhNsaAdStoryboard:not(:disabled):hover,
-#dhNsaAdStoryboard:not(:disabled):focus-visible {
+#dhNsaAdStoryboard:not(:disabled):focus-visible,
+#dhNsaAdPreviewFrames:not(:disabled):hover,
+#dhNsaAdPreviewFrames:not(:disabled):focus-visible {
   border-color: rgba(33,255,243,.72);
   color: #071112;
   background: linear-gradient(135deg, #21fff3, #9dff5a);
   box-shadow: 0 10px 26px rgba(33,255,243,.2);
+}
+#dhNsaAdScriptRegenerateTop:not(:disabled):hover,
+#dhNsaAdScriptRegenerateTop:not(:disabled):focus-visible {
+  border-color: rgba(33,255,243,.68);
+  color: #eaffff;
+  background: rgba(33,255,243,.13);
+  box-shadow: 0 8px 20px rgba(33,255,243,.12);
 }
 .dh-luxgen-step-action.is-done:not(.is-next) { border-color: rgba(79,255,170,.36); color: #83ffba; background: rgba(79,255,170,.06); }
 .dh-luxgen-actions .dh-btn:disabled, .dh-luxgen-story-actions .dh-btn:disabled { opacity: .42; cursor: not-allowed; filter: grayscale(.35); transform: none; }
