@@ -4,6 +4,7 @@ const { contextPrompt, normalizeCharacters } = require('./contextBuilder');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
+const brandEnding = require('./brandEndingService');
 const { BLUEPRINT_PROGRESS_TOTAL } = require('./blueprintProgressService');
 
 const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
@@ -432,6 +433,9 @@ async function generateBlueprint(ctx, {
     'Originality and rights are hard production constraints for every industry: create original characters, scenes, plot actions and visual compositions. Never reproduce or closely imitate a film, series, animation, game, advertisement, poster, album cover or protected character.',
     'Never request the style, likeness, face, voice or recognizable identity of a named artist, director, photographer, celebrity, public figure, influencer or third-party character. Do not write face-swap, identity-bypass or review-bypass instructions.',
     'User-provided first-party brand names and product facts may appear naturally in dialogue, narration and editable subtitles. A visual logo, trademark or brand wordmark must be represented only as an authorized asset added in post-production; never ask an image model to generate, transform, infer or imitate it.',
+    brandEnding.enabled(ctx)
+      ? 'An authorized Logo asset is active. Keep the final beat inside the current confirmed story scene, reserve the configured clear safe area, and end on a stable frame. The exact asset is added only after video generation.'
+      : 'No authorized Logo asset is active. End the story naturally with no Logo safe area, no brand end card and no visual Logo request, even if legacy brief text mentions one.',
     'If the brief contains an inspiration reference, translate it into generic high-level traits such as pacing, lighting, framing, material mood or emotional tone without naming or copying the reference.',
   ].join('\n');
 
@@ -539,7 +543,7 @@ For multi-person stories, keep names, roles, relationships and speaker ownership
   const firstPass = normalizeBlueprint(structuredPayload, causalCtx);
   const polish = await polishBlueprint(ctx, firstPass, { taskId, onProgress });
   reportBlueprintProgress(onProgress, 'quality_approved', 5, '剧情质量和版权/IP 风险审核已通过，正在保存最终剧本。');
-  const normalized = normalizeBlueprint(polish.blueprint, causalCtx);
+  const normalized = brandEnding.applyToBlueprint(normalizeBlueprint(polish.blueprint, causalCtx), ctx);
   normalized.model_meta = {
     used_model: result.used_model,
     fallback_used: result.fallback_used,

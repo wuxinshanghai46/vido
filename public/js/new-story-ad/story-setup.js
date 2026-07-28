@@ -123,6 +123,10 @@
       toast?.(result.message, 'error');
       return false;
     }
+    if (state.brandLogoAsset && state.brandLogoAuthorized !== true) {
+      toast?.('已上传 Logo，但尚未确认使用及发布授权。请确认授权或删除 Logo 后再生成剧本。', 'error');
+      return false;
+    }
     markSourceDirty?.('creative');
     state.storySetupExpanded = true;
     state.storySetupConfirmed = true;

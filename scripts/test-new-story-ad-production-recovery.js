@@ -10,6 +10,7 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const { checkpointMatches } = require('../src/services/newStoryAd/blueprintLifecycleService');
 const { buildContext } = require('../src/services/newStoryAd/contextBuilder');
 const { normalizeBrandOverlay, applyBrandOverlay } = require('../src/services/newStoryAd/composeService');
+const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 
 async function main() {
   const generationFlowSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
@@ -92,6 +93,9 @@ async function main() {
       end_duration_sec: 1,
     }, output);
     assert.ok(fs.existsSync(output) && fs.statSync(output).size > 1000);
+    const inputDuration = await videoAdapter.probeDuration(input);
+    const outputDuration = await videoAdapter.probeDuration(output);
+    assert(outputDuration >= inputDuration + 0.85, `brand ending must append a frozen last-scene hold, input=${inputDuration}, output=${outputDuration}`);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

@@ -30,6 +30,7 @@ function domainSlices(ctx = {}) {
       creative_direction: ctx.creative_direction,
       story_structure: ctx.story_structure,
       original_brief: ctx.original_brief,
+      brand_overlay: ctx.brand_overlay,
     },
     product: {
       product_subject: ctx.product_subject,
@@ -72,7 +73,6 @@ function domainSlices(ctx = {}) {
       subtitle_style: ctx.subtitle_style,
       subtitle_config: ctx.subtitle_config,
       video_resolution: ctx.video_resolution,
-      brand_overlay: ctx.brand_overlay,
     },
   };
 }

@@ -26,9 +26,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v46">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-story-step-v47">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v46"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260728-story-step-v47"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -546,10 +546,10 @@
                   <textarea class="dh-input" id="dhNsaAdCreativeDirection" rows="5" maxlength="3000" placeholder="例如：林晓从画面左侧进入，先疲惫地坐下；喝一口咖啡后表情逐渐放松并恢复专注，最后完成提案并说出品牌口号。禁止新增人物或切换场景。"></textarea>
                   <small>第一步负责“做什么广告”，这里负责“人物怎么演”。涉及新人物、新场景或新道具时，系统会阻止生成并要求先返回配置。</small>
                 </label>
-                <div class="dh-demo-section-title">品牌 Logo 后期落版 <span class="dh-luxgen-badge">选填</span></div>
+                <div class="dh-demo-section-title">品牌结尾镜头 <span class="dh-luxgen-badge">选填</span></div>
                 <div class="dh-demo-guide">
-                  <b>Logo 不交给图片或视频模型生成</b>
-                  <span>上传你有权使用的品牌素材后，系统只在最终合成阶段原样叠加；不需要 Logo 可以直接跳过。</span>
+                  <b>只有上传并确认授权后才启用</b>
+                  <span>系统会让最后一个分镜继续使用当前场景并为 Logo 预留构图空间；视频完整播放后冻结最后一帧，再原样叠加 Logo。未上传时按普通剧情自然结尾，不改变剧本和分镜。</span>
                 </div>
                 <div class="dh-nsa-brand-overlay">
                   <div class="dh-nsa-brand-logo-field">
@@ -559,7 +559,7 @@
                   </div>
                   <div class="dh-nsa-brand-overlay-controls">
                     <label><input type="checkbox" id="dhNsaAdBrandLogoAuthorized"> 我确认拥有该 Logo 的使用及发布授权</label>
-                    <label>落版位置
+                    <label>最后场景中的位置
                       <select class="dh-input" id="dhNsaAdBrandLogoPosition">
                         <option value="bottom_center">底部居中</option>
                         <option value="bottom_right">右下角</option>
@@ -570,7 +570,7 @@
                       </select>
                     </label>
                     <label>宽度（画面占比 %）<input class="dh-input" id="dhNsaAdBrandLogoWidth" type="number" min="8" max="45" value="22"></label>
-                    <label>结尾展示（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
+                    <label>品牌结尾停留（秒）<input class="dh-input" id="dhNsaAdBrandLogoDuration" type="number" min="0.5" max="15" step="0.5" value="3"></label>
                   </div>
                 </div>
               </section>

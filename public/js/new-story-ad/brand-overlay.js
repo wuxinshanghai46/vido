@@ -85,10 +85,17 @@
           </button>`;
     }
     const authorized = within?.('#dhNsaAdBrandLogoAuthorized');
-    if (authorized) authorized.checked = state.brandLogoAuthorized === true;
+    if (authorized) {
+      authorized.checked = state.brandLogoAuthorized === true;
+      authorized.disabled = !brand || brand.uploading || state.busy;
+    }
     setFieldValue?.('#dhNsaAdBrandLogoPosition', state.brandLogoPosition || 'bottom_center');
     setFieldValue?.('#dhNsaAdBrandLogoWidth', state.brandLogoWidth || 22);
     setFieldValue?.('#dhNsaAdBrandLogoDuration', state.brandLogoDuration || 3);
+    ['#dhNsaAdBrandLogoPosition', '#dhNsaAdBrandLogoWidth', '#dhNsaAdBrandLogoDuration'].forEach(selector => {
+      const control = within?.(selector);
+      if (control) control.disabled = !brand || state.brandLogoAuthorized !== true || brand.uploading || state.busy;
+    });
   }
 
   async function upload(file, deps = {}) {
@@ -101,7 +108,7 @@
     }
     revokePreview(state.brandLogoAsset);
     state.brandLogoAsset = { name: file.name || '品牌 Logo', previewUrl: URL.createObjectURL(file), uploading: true };
-    markMediaDirty('compose');
+    markMediaDirty('creative');
     renderAssets();
     toast('品牌 Logo 正在上传...');
     try {
@@ -130,7 +137,7 @@
     if (!update) return false;
     update();
     state.finalVideo = null;
-    markMediaDirty('compose');
+    markMediaDirty('creative');
     scheduleAutoSave(target.id.replace('dhNsaAdBrandLogo', 'brand_logo_').toLowerCase());
     return true;
   }
@@ -148,7 +155,7 @@
     if (target?.closest?.('#dhNsaAdBrandLogoClear')) {
       reset(state, revokePreview);
       state.finalVideo = null;
-      markMediaDirty('compose');
+      markMediaDirty('creative');
       renderAssets();
       scheduleAutoSave('brand_logo_clear');
       toast('品牌 Logo 已删除', 'success');

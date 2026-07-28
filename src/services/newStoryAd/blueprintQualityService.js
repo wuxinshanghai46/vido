@@ -1,6 +1,7 @@
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { ensureChineseOutput, mergeVisibleStrings } = require('./outputLanguageService');
+const brandEnding = require('./brandEndingService');
 
 const CLICHE_PATTERNS = [
   /宇宙般|行业领先|最大化.{0,8}预算|为.{0,10}赋能|更快[、，,].{0,8}更智能|一站式解决|开启.{0,8}新篇章|尽享|极致体验|万千可能/,
@@ -397,7 +398,7 @@ function mergePolishedBlueprint(original = {}, candidate = {}) {
 }
 
 async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, attempt = 1, maxAttempts = 3, onProgress = null } = {}) {
-  const safeBlueprint = normalizeAuthorizedBrandPresentation(blueprint);
+  const safeBlueprint = brandEnding.applyToBlueprint(normalizeAuthorizedBrandPresentation(blueprint), ctx);
   const before = assessBlueprintQuality(safeBlueprint);
   if (!force && before.pass) return { blueprint: safeBlueprint, polished: false, before, after: before, model_meta: null };
   if (typeof onProgress === 'function') {
@@ -433,6 +434,9 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '所有人物、场景、剧情和视觉表达必须原创。不得复刻影视、动漫、游戏、广告、海报或专辑画面，不得模仿指定导演、艺术家、摄影师或在世创作者风格。',
       '不得使用明星、名人、公众人物或第三方角色的肖像、声音、换脸或同款形象；人物应为当前任务原创角色，后续真人演员只能来自平台已授权素材。',
       '用户明确提供的自有品牌名称和产品事实可以自然出现在台词、旁白和可编辑字幕中；视觉 Logo、商标或品牌字标只能标记为“后期叠加已授权品牌素材”，不得要求图片模型生成、变形或猜测。',
+      brandEnding.enabled(ctx)
+        ? '本任务已有上传且确认授权的 Logo。最后一镜必须保留当前故事场景并预留无遮挡安全区，授权原图将在视频完成后精确叠加。'
+        : '本任务没有有效授权 Logo。删除所有视觉 Logo、品牌落版和安全区要求，让剧情在当前场景中自然结束；不得把旧需求里的 Logo 文字改写成虚假的已授权素材。',
       '不得编写任何绕过版权、内容审核、人脸审核或供应商安全策略的指令。',
       '画面字段写镜头中看见的构图、主体和状态；动作字段只写人物或主体发生的动作与变化，二者不得复制。',
       '保持原故事事实、广告主体、人物身份与姓名、镜头数量和顺序，不得增加未经用户提供的功能、数据、品牌背书或价格承诺。',
@@ -454,7 +458,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
   }
   const merged = preserveCharacterNames(safeBlueprint, mergePolishedBlueprint(safeBlueprint, parsed));
   const language = await ensureChineseOutput({ payload: merged, kind: 'blueprint', taskId, context: ctx });
-  const safePayload = normalizeAuthorizedBrandPresentation(language.payload);
+  const safePayload = brandEnding.applyToBlueprint(normalizeAuthorizedBrandPresentation(language.payload), ctx);
   const after = assessBlueprintQuality(safePayload);
   if (!after.pass) {
     if (attempt < maxAttempts) {

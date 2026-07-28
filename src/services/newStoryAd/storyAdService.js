@@ -47,6 +47,7 @@ const stageProgress = require('./stageProgressService'), taskProgressSave = requ
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
 const { createTaskViewService } = require('./taskViewService');
 const { createTextStageRecovery } = require('./textStageRecoveryService');
+const brandEnding = require('./brandEndingService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -444,6 +445,7 @@ function prepareGeneration(taskId, body = {}, user = {}) {
   assertContextConsistent(ctx);
   const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
   storySetup.assertConfirmed(ctx, targetStage);
+  brandEnding.assertReady(ctx);
   if (['storyboard', 'script_package', 'keyframes', 'media'].includes(targetStage)) {
     const storedScenePlan = storage.getOutput(taskId, 'scene_config');
     if (!storedScenePlan && targetStage === 'script_package') {

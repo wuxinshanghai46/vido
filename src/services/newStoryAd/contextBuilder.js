@@ -844,11 +844,13 @@ function contextPrompt(ctx) {
           : (ctx.characters.length ? `角色设定：${JSON.stringify(ctx.characters)}` : '角色设定：未指定，生成时如需要人物，必须生成当前任务专属的稳定正式姓名，name 不得写成占位名或“气质美女/客户顾问/展示者”这类描述。'))),
     ctx.pet_contract ? `宠物一致性合同：${JSON.stringify(ctx.pet_contract)}。每镜必须明确 expected_animals 和实际出镜宠物，不得增删、换品种、换毛色或把同一只复制成多只。` : '',
     ctx.assets.length ? `素材：${JSON.stringify(ctx.assets)}` : '素材：无上传素材',
-    ctx.brand_overlay?.enabled && ctx.brand_overlay?.authorization_confirmed
-      ? `品牌 Logo：已配置为后期授权素材叠加（${ctx.brand_overlay.position}，结尾 ${ctx.brand_overlay.end_duration_sec} 秒）。剧本只预留品牌落版，不得要求图片或视频模型生成、变形或仿制 Logo。`
+    ctx.brand_overlay?.enabled && ctx.brand_overlay?.authorization_confirmed && (
+      ctx.brand_overlay?.asset?.file_url || ctx.brand_overlay?.asset?.image_url || ctx.brand_overlay?.asset?.url
+    )
+      ? `品牌 Logo：已上传并确认授权。最后一个剧情镜头必须继续使用当前已确认场景，在 ${ctx.brand_overlay.position} 预留无遮挡品牌安全区；视频完整播放后冻结该镜头最后一帧 ${ctx.brand_overlay.end_duration_sec} 秒，并由成片阶段原样叠加授权 Logo。图片和视频模型不得生成、变形或仿制 Logo。`
       : (ctx.brand_overlay?.enabled
-        ? '品牌 Logo：素材已上传但尚未确认授权，最终合成将阻断；剧本只能预留后期落版，不得要求图片或视频模型生成。'
-        : '品牌 Logo：未配置授权后期素材；如需求提到 Logo，只能预留后期落版，不得要求图片或视频模型生成。'),
+        ? '品牌 Logo：素材已上传但尚未确认授权。本轮不得启用品牌结尾、不得改变剧本或分镜构图，也不得要求图片或视频模型生成 Logo；请先确认授权或删除素材。'
+        : '品牌 Logo：未上传。本轮必须按普通剧情自然结尾，不预留 Logo 区域、不追加品牌落版，也不得要求图片或视频模型生成 Logo。'),
     ctx.forbidden.length ? `禁止项：${ctx.forbidden.join('、')}` : '禁止项：无',
     ctx.creative_direction && (
       ctx.creative_direction.raw

@@ -179,6 +179,21 @@ function shotEntities(shots = []) {
   }))).filter(row => clean(row.name));
 }
 
+function explicitShotReferenceEntities(shots = []) {
+  const stableMachineId = /^(?:entity|asset|person|pet|scene|product)_[0-9a-f]{8,}$/i;
+  return (Array.isArray(shots) ? shots : []).flatMap(shot => {
+    const outer = object(shot?.temporal_state || shot?.temporal_evidence || shot?.evidence_state);
+    const state = Object.keys(object(outer.shot_state)).length ? object(outer.shot_state) : outer;
+    return list(state.entity_refs, 32, 100)
+      .filter(ref => !stableMachineId.test(ref))
+      .map(ref => ({
+        name: ref,
+        role: 'shot_evidence_subject',
+        tags: ['explicit_shot_reference'],
+      }));
+  }).filter(row => clean(row.name));
+}
+
 function mergeById(primary = [], secondary = []) {
   const result = [];
   const seen = new Set();
@@ -222,7 +237,11 @@ function entityIdsForShot(shot = {}, entities = []) {
 function buildGraph({ ctx = {}, blueprint = {}, shots = [], existingGraph = null } = {}) {
   const authored = object(existingGraph || blueprint.temporal_evidence_graph || ctx.temporal_evidence_graph);
   const authoredEntities = (Array.isArray(authored.entities) ? authored.entities : []).map(normalizeEntity);
-  const derivedEntities = [...contextEntities(ctx, blueprint), ...shotEntities(shots)].map(normalizeEntity);
+  const derivedEntities = [
+    ...contextEntities(ctx, blueprint),
+    ...shotEntities(shots),
+    ...explicitShotReferenceEntities(shots),
+  ].map(normalizeEntity);
   const entities = mergeById(authoredEntities, derivedEntities);
 
   const relations = (Array.isArray(authored.relations) ? authored.relations : []).map(normalizeRelation).map(relation => ({

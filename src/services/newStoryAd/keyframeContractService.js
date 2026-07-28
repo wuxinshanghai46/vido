@@ -4,6 +4,7 @@ const productIdentity = require('./productIdentityContractService');
 const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const petIdentity = require('./petIdentityContractService');
+const brandEnding = require('./brandEndingService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -43,6 +44,7 @@ function contractFingerprint(contract = {}) {
     scene_lock: contract.scene_lock,
     continuity_lock: contract.continuity_lock,
     temporal_evidence_lock: contract.temporal_evidence_lock,
+    brand_ending_lock: contract.brand_ending_lock,
     cast_lock: {
       cast_mode: contract.cast_lock?.cast_mode,
       shot_characters: contract.cast_lock?.shot_characters,
@@ -86,6 +88,9 @@ function buildKeyframeContracts(ctx, shots) {
     const temporalEvidence = shot.temporal_evidence
       || temporalEvidenceGraph.graphForShot(ctx.temporal_evidence_graph || {}, idx + 1);
     const expectedAnimals = petIdentity.expectedAnimalsForShot(ctx, shot);
+    const brandEndingContract = shot.brand_ending?.enabled === true
+      ? shot.brand_ending
+      : (idx === shots.length - 1 ? brandEnding.contract(ctx) : { enabled: false });
     const contract = {
       shot_index: idx + 1,
       title: shot.title || `镜头 ${idx + 1}`,
@@ -134,6 +139,7 @@ function buildKeyframeContracts(ctx, shots) {
       // V2.0 合同只携带当前镜头所需的图切片，避免把整张任务图复制到每个合同，
       // 同时让关键帧、视频和质检共享完全相同的状态与证据边界。
       temporal_evidence_lock: temporalEvidence || null,
+      brand_ending_lock: brandEndingContract.enabled === true ? brandEndingContract : null,
       cast_lock: {
         cast_mode: ctx.cast_mode,
         characters: ctx.characters || [],
@@ -164,7 +170,9 @@ function buildKeyframeContracts(ctx, shots) {
         product_methods: Array.isArray(productControl.methods) ? productControl.methods : [],
         style_direction: styleControl.notes || '',
         negative_requirements: negativeControl.text || '',
-        text_rule: 'do not render readable UI labels, slogans, captions or brand text in image; leave clean post-production space if needed',
+        text_rule: brandEndingContract.enabled === true
+          ? `do not render any logo or brand text; preserve the current approved scene and leave the ${brandEndingContract.position_label} brand safe area clean for exact post-production overlay`
+          : 'do not render readable UI labels, slogans, captions, logo or brand text; no brand safe area is required',
         shot_design: compiledShotDesign,
         surface_topology_resolution: compiledShotDesign.surface_resolution,
       },

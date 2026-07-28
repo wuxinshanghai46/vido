@@ -135,7 +135,8 @@ function normalizeBrandOverlay(overlay = {}) {
 async function applyBrandOverlay(videoPath = '', overlay = {}, outputPath = '') {
   if (!overlay.enabled) return videoPath;
   const duration = Math.max(0.2, await videoAdapter.probeDuration(videoPath));
-  const start = Math.max(0, duration - overlay.end_duration_sec);
+  const holdDuration = Math.max(0.5, Math.min(15, Number(overlay.end_duration_sec || 3) || 3));
+  const finalDuration = duration + holdDuration;
   const margin = overlay.margin_percent / 100;
   const positions = {
     top_left: [`W*${margin}`, `H*${margin}`],
@@ -147,14 +148,15 @@ async function applyBrandOverlay(videoPath = '', overlay = {}, outputPath = '') 
   };
   const [x, y] = positions[overlay.position] || positions.bottom_center;
   const widthRatio = overlay.width_percent / 100;
-  const filter = `[1:v][0:v]scale2ref=w=main_w*${widthRatio}:h=ow/mdar[logo][base];`
-    + `[base][logo]overlay=x=${x}:y=${y}:enable='gte(t,${start.toFixed(3)})'[v]`;
+  const filter = `[0:v]tpad=stop_mode=clone:stop_duration=${holdDuration.toFixed(3)}[scenehold];`
+    + `[1:v][scenehold]scale2ref=w=main_w*${widthRatio}:h=ow/mdar[logo][base];`
+    + `[base][logo]overlay=x=${x}:y=${y}:enable='gte(t,${duration.toFixed(3)})'[v]`;
   await execFfmpeg([
     '-y', '-i', videoPath, '-loop', '1', '-i', overlay.file_path,
     '-filter_complex', filter,
     '-map', '[v]', '-map', '0:a?',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-    '-c:a', 'copy', '-t', duration.toFixed(3), '-movflags', '+faststart', outputPath,
+    '-c:a', 'copy', '-t', finalDuration.toFixed(3), '-movflags', '+faststart', outputPath,
   ], 300000);
   return outputPath;
 }
@@ -534,7 +536,8 @@ async function concatVideos({
     providerUsed += '+authorized-brand-overlay';
   }
   const expectedDurationSec = durations.reduce((sum, value) => sum + Number(value || 0), 0)
-    - transitionPlan.reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0);
+    - transitionPlan.reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0)
+    + (normalizedBrandOverlay.enabled ? normalizedBrandOverlay.end_duration_sec : 0);
   const technicalQa = await finalVideoQa.inspectFinalVideo({
     filePath: finalPath,
     expectedDurationSec,
@@ -572,6 +575,8 @@ async function concatVideos({
       width_percent: normalizedBrandOverlay.width_percent,
       margin_percent: normalizedBrandOverlay.margin_percent,
       end_duration_sec: normalizedBrandOverlay.end_duration_sec,
+      mode: 'last_scene_hold',
+      appended_duration_sec: normalizedBrandOverlay.end_duration_sec,
     } : null,
     provider_used: providerUsed,
     transition_plan: transitionPlan,

@@ -5,6 +5,7 @@ const { bindShotsToScenes, sceneBindingPrompt } = require('./sceneBindingService
 const { withContinuityContracts } = require('./continuityService');
 const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
+const brandEnding = require('./brandEndingService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -243,7 +244,10 @@ function normalizeShots(rows, ctx) {
   const sorted = (Array.isArray(rows) ? rows : [])
     .sort((a, b) => Number(a?.index || a?.shot_index || 0) - Number(b?.index || b?.shot_index || 0));
   const normalized = normalizeDurations(sorted, ctx).map((shot, idx) => ({ ...shot, index: idx + 1 }));
-  return withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || []));
+  return brandEnding.applyToShots(
+    withContinuityContracts(bindShotsToScenes(normalized, ctx.scene_assets || [])),
+    ctx,
+  );
 }
 
 function chunksOf(items, size) {
@@ -387,6 +391,9 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Some shots may need only product/material proof, some may need story/emotion, some may need comparison or brand result. Follow the actual user request.',
       'Use visual_layers as the source of truth; story_visual and promo_visual are optional compatibility fields only.',
       'Never invent an unmentioned product feature, character, prop, industry, or scene.',
+      brandEnding.enabled(ctx)
+        ? 'Only the final shot carries brand_ending. Keep it in the current approved scene, settle to a stable ending frame, and reserve the configured safe area; never render the Logo itself.'
+        : 'No authorized Logo is active. Do not reserve a Logo area, create a brand end card, or request any visual Logo in any shot.',
       'Character names must use the stable names from blueprint.characters. Do not use descriptors as name or speaker.',
       'Every shot must set expected_people and expected_animals independently. Use 0 when that subject is intentionally absent in the shot. In human_pet mode, never merge the two counts or replace a human with a pet.',
       'When expected_animals is greater than 0, pets must identify the stable pet id/name/type from the current pet contract and describe its shot action. Preserve species/breed, coat, size, markings and accessories; never add, remove, replace or duplicate a pet.',
@@ -571,6 +578,9 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } 
     'Preserve each original index. Do not add, remove, merge or reorder shots.',
     'Keep characters, advertised subject, and story order.',
     'Do not add new story events that the user did not provide.',
+    brandEnding.enabled(ctx)
+      ? 'Preserve the final shot brand safe area inside its current approved scene, but never render the Logo itself.'
+      : 'No authorized Logo is active. Remove visual Logo instructions and keep an ordinary natural story ending.',
     'Fix thin shots by strengthening the visual layers required by the user brief.',
     'For every repaired shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that shot purpose; never copy a fixed camera template.',
     'Write production-ready visual and action fields with task-relevant subject/product, environment, spatial relationship and proportions, plus material and lighting only where relevant.',
