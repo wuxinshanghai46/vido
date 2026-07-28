@@ -36,6 +36,7 @@ const files = [
   'public/js/new-story-ad/storyboard.js',
   'public/js/new-story-ad/person-pet-spec.js',
   'public/js/new-story-ad/person-age-authority.js',
+  'public/js/new-story-ad/actors.js',
   'public/js/new-story-ad/keyframes.js',
   'public/js/new-story-ad/transition-review.js',
   'public/js/new-story-ad/video-review.js',
