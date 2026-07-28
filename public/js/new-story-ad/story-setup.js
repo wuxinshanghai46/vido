@@ -55,9 +55,18 @@
   }
 
   function creativeDirection(state = {}, within = () => null) {
+    const inputValue = within('#dhNsaAdCreativeDirection')?.value;
+    const raw = window.NewStoryAdStateSync?.authoritativeTextValue
+      ? window.NewStoryAdStateSync.authoritativeTextValue(
+        state,
+        'creative_direction',
+        inputValue,
+        state.context?.creative_direction?.raw || '',
+      )
+      : (inputValue || state.context?.creative_direction?.raw || '');
     return {
       ...(state.context?.creative_direction || {}),
-      raw: clean(within('#dhNsaAdCreativeDirection')?.value || state.context?.creative_direction?.raw || ''),
+      raw: clean(raw),
     };
   }
 

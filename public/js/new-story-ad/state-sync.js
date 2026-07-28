@@ -67,14 +67,32 @@
     const creative = context.creative_direction || context.creativeDirection || null;
     return {
       ...context,
-      ...(rawBrief ? { brief: formatBriefText(rawBrief) } : {}),
+      ...(rawBrief ? { brief: String(rawBrief) } : {}),
       ...(creative && typeof creative === 'object' ? {
         creative_direction: {
           ...creative,
-          raw: formatBriefText(creative.raw || creative.text || ''),
+          raw: String(creative.raw || creative.text || ''),
         },
       } : {}),
     };
+  }
+
+  function rememberDisplayOnlyText(state = {}, key = '', storedValue = '', displayValue = '') {
+    if (!state || !key) return;
+    state.restoredTextAuthority = {
+      ...(state.restoredTextAuthority || {}),
+      [key]: {
+        stored: String(storedValue || ''),
+        display: String(displayValue || ''),
+      },
+    };
+  }
+
+  function authoritativeTextValue(state = {}, key = '', currentValue = '', fallbackValue = '') {
+    const current = String(currentValue ?? fallbackValue ?? '');
+    const restored = state?.restoredTextAuthority?.[key];
+    if (restored && current === restored.display) return restored.stored;
+    return current;
   }
 
   function normalizeTaskOutputs(bundle = {}) {
@@ -508,8 +526,8 @@
       ...(task.request || {}),
       ...(outputs.context || {}),
     };
-    const restoredBrief = formatBriefText(request.brief || request.content || task.brief || '');
-    if (restoredBrief) request.brief = restoredBrief;
+    const storedBrief = String(request.brief || request.content || task.brief || '');
+    const restoredBrief = formatBriefText(storedBrief);
     const incomingTaskId = task.id || request.task_id || request.taskId || '';
     syncMediaResult(state, { bundle, incomingTaskId });
     state.taskId = incomingTaskId || state.taskId;
@@ -527,7 +545,6 @@
     state.context = normalizeBriefContext({
       ...request,
       ...(outputs.context || {}),
-      ...(restoredBrief ? { brief: restoredBrief } : {}),
     }) || state.context;
     state.sceneConfig = outputs.scene_config || state.sceneConfig;
     state.blueprint = outputs.blueprint || state.blueprint;
@@ -548,18 +565,15 @@
     state.taskErrorCode = task.error_code || '';
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
-    const restoredCreativeDirection = formatBriefText(
+    const storedCreativeDirection = String(
       state.context?.creative_direction?.raw
       || request.creative_direction?.raw
       || request.creativeDirection?.raw
       || '',
     );
-    if (state.context?.creative_direction) {
-      state.context.creative_direction = {
-        ...state.context.creative_direction,
-        raw: restoredCreativeDirection,
-      };
-    }
+    const restoredCreativeDirection = formatBriefText(storedCreativeDirection);
+    rememberDisplayOnlyText(state, 'brief', storedBrief, restoredBrief);
+    rememberDisplayOnlyText(state, 'creative_direction', storedCreativeDirection, restoredCreativeDirection);
     setFieldValue('#dhNsaAdText', restoredBrief, { within });
     setFieldValue('#dhNsaAdCreativeDirection', restoredCreativeDirection, { within });
     setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30, { within });
@@ -613,5 +627,6 @@
     syncMediaResult,
     collectDurationContract,
     formatBriefText,
+    authoritativeTextValue,
   };
 })();

@@ -62,7 +62,12 @@ function testFrontendDefensiveFormatter() {
     root: () => ({ querySelector: () => null }),
   });
   assert.equal(fields.get('#dhNsaAdText').value, output, '恢复旧任务必须走同一个需求排版器');
-  assert.equal(state.context.brief, output, '恢复后的内存上下文不能继续保留字面量转义符');
+  assert.equal(state.context.brief, screenshotLikeBrief, '恢复后的权威上下文必须保留服务端原文，不能把显示排版当成用户编辑');
+  assert.equal(
+    sandbox.window.NewStoryAdStateSync.authoritativeTextValue(state, 'brief', output, ''),
+    screenshotLikeBrief,
+    '未编辑的显示排版在保存时必须还原为服务端权威原文',
+  );
 }
 
 async function testAssistServiceFormatsDoubleEscapes() {

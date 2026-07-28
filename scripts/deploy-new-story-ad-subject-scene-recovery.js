@@ -76,6 +76,7 @@ const files = [
   'src/services/newStoryAd/visualVerificationService.js',
   'src/services/newStoryAd/videoFrameQaService.js',
   'scripts/test-new-story-ad-image2-realism.js',
+  'scripts/test-new-story-ad-display-format-authority.js',
   'scripts/test-new-story-ad-autosave-revision.js',
   'scripts/test-new-story-ad-blueprint-quality.js',
   'scripts/test-new-story-ad-blueprint-lifecycle.js',
@@ -112,6 +113,7 @@ const files = [
   'scripts/check-new-story-ad-scene-realism-v8-deploy.js',
   'scripts/repair-new-story-ad-scene-authority-lineage.js',
   'scripts/repair-new-story-ad-script-package-state.js',
+  'scripts/repair-new-story-ad-display-format-regression.js',
   'scripts/deploy-new-story-ad-subject-scene-recovery.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);

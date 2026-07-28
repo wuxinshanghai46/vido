@@ -995,7 +995,9 @@
   }
 
   function payload() {
-    const brief = (within('#dhNsaAdText')?.value || '').trim();
+    const briefInput = within('#dhNsaAdText');
+    const brief = window.NewStoryAdStateSync
+      .authoritativeTextValue(state, 'brief', briefInput?.value, state.context?.brief || '').trim();
     const durationContract = window.NewStoryAdStateSync.collectDurationContract(within('#dhNsaAdDuration'));
     const ratio = within('#dhNsaAdRatio')?.value || state.outputRatio || '9:16';
     const size = within('#dhNsaAdSize')?.value || state.outputSize || 'standard';
