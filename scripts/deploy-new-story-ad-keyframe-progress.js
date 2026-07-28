@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
 const { Client } = require('ssh2');
 
@@ -7,19 +9,23 @@ const host = process.env.VIDO_DEPLOY_HOST;
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD;
 const files = [
-  'src/services/newStoryAd/storyAdService.js',
-  'src/services/newStoryAd/jobService.js',
-  'src/services/newStoryAd/modelGateway.js',
-  'src/services/newStoryAd/mediaAdapter.js',
-  'public/js/new-story-ad/state-sync.js',
-  'public/js/new-story-ad/generation-flow.js',
-  'public/js/new-story-ad/progress.js',
-  'public/js/new-story-ad-legacy-ui.js',
   'public/digital-human.html',
+  'public/js/new-story-ad-legacy-ui.js',
+  'public/js/new-story-ad/bootstrap.js',
+  'public/js/new-story-ad/progress.js',
+  'public/js/new-story-ad/state-sync.js',
+  'public/js/new-story-ad/task-store.js',
+  'scripts/audit-new-story-ad-transition-recovery-deploy.js',
+  'scripts/check-new-story-ad-scene-realism-v8-deploy.js',
+  'scripts/test-new-story-ad-compose-gate-autosave.js',
+  'scripts/test-new-story-ad-keyframe-submission.js',
   'scripts/test-new-story-ad-progress.js',
-  'scripts/test-new-story-ad-reliability.js',
-  'scripts/test-new-story-ad-cancellation.js',
-  'scripts/repair-new-story-ad-keyframe-status.js',
+  'scripts/test-new-story-ad-scene-lock-ui-binding.js',
+  'scripts/test-new-story-ad-shot-assist.js',
+  'scripts/test-new-story-ad-storyboard-ui.js',
+  'scripts/test-new-story-ad-task-resume.js',
+  'scripts/test-new-story-ad-v2-performance.js',
+  'src/services/newStoryAd/taskProgressProjectionService.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-keyframe-progress-${stamp}`;
@@ -49,9 +55,24 @@ client.on('ready', async () => {
     for (const file of files) {
       await new Promise((resolve, reject) => sftp.fastPut(path.join(root, file), `${remoteRoot}/${file}`, error => error ? reject(error) : resolve()));
     }
+    const hashes = Object.fromEntries(files.map(file => [
+      file,
+      crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'),
+    ]));
+    const hashSpec = Buffer.from(JSON.stringify(hashes), 'utf8').toString('base64');
     const checks = files.filter(file => file.endsWith('.js')).map(file => `node --check ${quote(file)}`).join(' && ');
-    const output = await exec(`set -e; cd ${quote(remoteRoot)}; ${checks}; node scripts/test-new-story-ad-progress.js; node scripts/test-new-story-ad-reliability.js; node scripts/test-new-story-ad-cancellation.js; node scripts/test-new-story-ad-scene-space.js; node scripts/test-new-story-ad-commercial-readiness.js; pm2 reload vido --update-env >/dev/null; for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1`);
-    console.log(output);
+    const hashAudit = `node -e ${quote(`
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const expected = JSON.parse(Buffer.from('${hashSpec}', 'base64').toString('utf8'));
+      const mismatches = Object.entries(expected).filter(([file, hash]) =>
+        crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== hash
+      ).map(([file]) => file);
+      if (mismatches.length) throw new Error('HASH_MISMATCH:' + mismatches.join(','));
+      console.log('HASH_AUDIT=' + Object.keys(expected).length + '/' + Object.keys(expected).length);
+    `)}`;
+    const output = await exec(`set -e; cd ${quote(remoteRoot)}; ${hashAudit}; ${checks}; node scripts/test-new-story-ad-progress.js; node scripts/test-new-story-ad-task-resume.js; node scripts/test-new-story-ad-v2-performance.js; npm run story-ad:v3:test; pm2 reload vido --update-env >/dev/null; for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1`);
+    console.log(`${output}\nBACKUP=${backupDir}`);
     sftp.end();
     client.end();
   } catch (error) {
@@ -64,4 +85,4 @@ client.on('ready', async () => {
 }).on('error', error => {
   console.error(error.message || error);
   process.exitCode = 1;
-}).connect({ host, port: 22, username, password, readyTimeout: 25000 });
+}).connect({ host, port: Number(process.env.VIDO_DEPLOY_PORT || 2222), username, password, readyTimeout: 25000 });
