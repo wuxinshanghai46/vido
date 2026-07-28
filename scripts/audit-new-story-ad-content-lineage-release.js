@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, '..');
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
+const port = Number(process.env.VIDO_DEPLOY_PORT || 2222);
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const branch = 'codex/story-ad-v3-upgrade';
 
@@ -93,7 +94,7 @@ async function publicHealth() {
   const client = new Client();
   await new Promise((resolve, reject) => {
     client.on('ready', resolve).on('error', reject);
-    client.connect({ host, port: 22, username, password, readyTimeout: 25000 });
+    client.connect({ host, port, username, password, readyTimeout: 25000 });
   });
   try {
     const output = await exec(client, [
