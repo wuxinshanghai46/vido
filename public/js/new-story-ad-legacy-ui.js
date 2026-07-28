@@ -1640,8 +1640,7 @@
       state.sceneAssets = outputs.scene_assets || response.scene_assets || state.context?.scene_assets || state.sceneAssets || [];
     }
     state.taskId = incomingTaskId || state.taskId;
-    const pendingKeyframeSubmission = state.stageProgress?.active === true
-      && state.stageProgress?.stage === 'keyframes'
+    const pendingStageSubmission = state.stageProgress?.active === true
       && state.stageProgress?.submissionPending === true;
     const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
     const incomingActiveId = String(task.active_generation_id || '');
@@ -1649,7 +1648,7 @@
     const staleGenerationResponse = trackedGenerationId && (incomingActiveId
       ? incomingActiveId !== trackedGenerationId
       : (!incomingGenerationId || incomingGenerationId !== trackedGenerationId));
-    if (!pendingKeyframeSubmission && !staleGenerationResponse) {
+    if (!pendingStageSubmission && !staleGenerationResponse) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
       if (!trackedGenerationId || !incomingGenerationId || trackedGenerationId === incomingGenerationId) {
@@ -1796,8 +1795,7 @@
     const outputs = normalizeTaskOutputs(bundle);
     const request = outputs.context || task.request || {};
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
-    const pendingKeyframeSubmission = state.stageProgress?.active === true
-      && state.stageProgress?.stage === 'keyframes'
+    const pendingStageSubmission = state.stageProgress?.active === true
       && state.stageProgress?.submissionPending === true;
     const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
     const incomingActiveId = String(task.active_generation_id || '');
@@ -1805,7 +1803,7 @@
     const staleGenerationResponse = trackedGenerationId && (incomingActiveId
       ? incomingActiveId !== trackedGenerationId
       : (!incomingGenerationId || incomingGenerationId !== trackedGenerationId));
-    if (!pendingKeyframeSubmission && !staleGenerationResponse) {
+    if (!pendingStageSubmission && !staleGenerationResponse) {
       state.activeGenerationId = task.active_generation_id || '';
       state.activeStage = task.active_stage || '';
       if (!trackedGenerationId || !incomingGenerationId || trackedGenerationId === incomingGenerationId) {
@@ -2401,19 +2399,23 @@
       total,
       generationId: resume ? state.activeGenerationId : '',
       previousGenerationId: resume ? '' : previousGenerationId,
-      submissionPending: stage === 'keyframes' && !resume,
+      submissionPending: !resume,
       startedAt: Number.isFinite(persistedStart) ? persistedStart : Date.now(),
     };
-    if (stage === 'keyframes' && !resume) {
+    if (!resume) {
+      const serverStage = stage === 'scene' ? 'scene_config' : stage;
       state.activeGenerationId = '';
-      state.activeStage = 'keyframes';
+      state.activeStage = serverStage;
       state.generationProgress = {
-        stage: 'keyframes',
+        stage: serverStage,
         status: 'submitting',
         target_total: total,
+        total: ['scene', 'blueprint'].includes(stage) ? (stage === 'scene' ? 3 : 6) : total,
+        completed: 0,
         processed: 0,
         succeeded: 0,
         failed: 0,
+        percent: 0,
         current_index: 1,
         generation_id: '',
       };
@@ -2463,7 +2465,7 @@
     state.busy = !!isBusy;
     const host = within('#dhNsaAdLiveProgress');
     if (host) {
-      const failure = isBusy ? '' : (window.NewStoryAdTaskStore?.blueprintFailureHtml(state, escapeHtml) || '');
+      const failure = isBusy ? '' : (window.NewStoryAdTaskStore?.stageFailureHtml(state, escapeHtml) || '');
       host.hidden = !isBusy && !failure;
       host.innerHTML = isBusy
         ? renderStageProgress(label)

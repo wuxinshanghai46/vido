@@ -44,6 +44,30 @@ function main() {
   assert.strictEqual(payload.includes('large-video.mp4'), false);
   assert.strictEqual(projection.task.generation_progress.processed, 61);
 
+  const parallelProjection = progressProjection.projectTaskProgress({
+    id: 'parallel-keyframes',
+    status: 'running',
+    stage: 'keyframes',
+    generation_progress: {
+      stage: 'keyframes',
+      generation_id: 'parallel-generation',
+      target_total: 120,
+      processed: 3,
+      active_indexes: [62, 3, 8, 3, -1, 0],
+      queued_indexes: Array.from({ length: 100 }, (_, index) => 100 - index),
+      configured_concurrency: 3,
+      effective_concurrency: 3,
+      peak_concurrency: 3,
+      wave_number: 2,
+    },
+  });
+  assert.deepStrictEqual(parallelProjection.task.generation_progress.active_indexes, [3, 8, 62],
+    'lightweight polling must retain the real concurrently active shot indexes');
+  assert.strictEqual(parallelProjection.task.generation_progress.queued_indexes.length, 60,
+    'polling index lists must remain bounded');
+  assert.strictEqual(parallelProjection.task.generation_progress.effective_concurrency, 3);
+  assert.strictEqual(parallelProjection.task.generation_progress.wave_number, 2);
+
   const unchanged = progressProjection.projectTaskProgress(oversizedTask, projection.revision);
   assert.strictEqual(unchanged.changed, false);
 

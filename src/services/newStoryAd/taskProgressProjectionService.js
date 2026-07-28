@@ -1,9 +1,18 @@
 const crypto = require('crypto');
 
-const PROJECTION_VERSION = 'story-ad-progress-projection-v2';
+const PROJECTION_VERSION = 'story-ad-progress-projection-v3';
 
 function text(value = '', max = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+function compactIndexList(value = [], max = 60) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value
+    .map(item => Math.round(Number(item) || 0))
+    .filter(item => item > 0))]
+    .sort((a, b) => a - b)
+    .slice(0, max);
 }
 
 function compactProgress(value = {}) {
@@ -12,10 +21,17 @@ function compactProgress(value = {}) {
     'stage', 'status', 'phase', 'message', 'generation_id', 'started_at', 'updated_at',
     'target_total', 'total', 'completed', 'processed', 'succeeded', 'failed',
     'current_index', 'percent', 'repair_attempt', 'max_repair_attempts',
+    'configured_concurrency', 'effective_concurrency', 'peak_concurrency',
+    'wave_number', 'parallelism_lost_reason',
   ];
-  return Object.fromEntries(allowed
+  const compact = Object.fromEntries(allowed
     .filter(key => source[key] !== undefined)
     .map(key => [key, typeof source[key] === 'string' ? text(source[key], key === 'message' ? 600 : 120) : source[key]]));
+  ['active_indexes', 'queued_indexes'].forEach(key => {
+    const indexes = compactIndexList(source[key]);
+    if (indexes.length) compact[key] = indexes;
+  });
+  return compact;
 }
 
 /**
@@ -54,6 +70,7 @@ function projectTaskProgress(task = {}, sinceRevision = '') {
 
 module.exports = {
   PROJECTION_VERSION,
+  compactIndexList,
   compactProgress,
   projectTaskProgress,
 };

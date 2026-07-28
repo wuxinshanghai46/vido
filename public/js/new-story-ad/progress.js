@@ -21,16 +21,28 @@
       };
     }
 
+    if (progress.submissionPending === true) {
+      const pendingLabels = {
+        scene: '正在提交场景配置生成',
+        blueprint: '正在提交剧本生成',
+        storyboard: '正在提交分镜表生成',
+        keyframes: '正在提交真实画面生成',
+        video: '正在提交视频生成',
+        media: '正在提交视频生成',
+        compose: '正在提交最终合成',
+      };
+      return {
+        title: pendingLabels[stage] || label || '正在提交生成任务',
+        stat: stage === 'keyframes' || stage === 'storyboard'
+          ? `已处理 0/${count} · 0%`
+          : '准备中 · 0%',
+        percent: 0,
+        indeterminate: false,
+        message: '正在创建本次生成任务；服务器确认新的生成编号后才会显示真实进度。',
+      };
+    }
+
     if (stage === 'keyframes') {
-      if (progress.submissionPending === true) {
-        return {
-          title: `正在启动第 1/${count} 张真实画面`,
-          stat: `已处理 0/${count} 张 · 0%`,
-          percent: 0,
-          indeterminate: false,
-          message: `正在创建本次生成任务；服务器接受后将从第 1 张开始并逐张更新。`,
-        };
-      }
       const progressGenerationId = String(progress.generationId || '');
       const serverGenerationId = String(serverProgress?.generation_id || '');
       const tracked = serverProgress?.stage === 'keyframes'
@@ -54,12 +66,12 @@
       const pct = Math.round((done / targetTotal) * 100);
       return {
         title: activeIndexes.length > 1
-          ? `并行生成真实画面：第 ${currentLabel} 张（共 ${targetTotal} 张）`
+          ? `并行生成真实画面：第 ${currentLabel} 镜（共 ${targetTotal} 镜）`
           : `生成真实画面中：第 ${current}/${targetTotal} 张`,
         stat: `已耗时 ${formatElapsedText(elapsed)} · 已处理 ${done}/${targetTotal} · ${pct}%`,
         percent: pct,
         indeterminate: done === 0,
-        message: `已处理 ${done}/${targetTotal} 张，成功 ${succeeded} 张${failed ? `，失败 ${failed} 张` : ''}；${activeIndexes.length > 1 ? `正在并行生成第 ${currentLabel} 张（并发 ${effectiveConcurrency}）` : `正在生成第 ${current} 张`}。`,
+        message: `已处理 ${done}/${targetTotal} 张，成功 ${succeeded} 张${failed ? `，失败 ${failed} 张` : ''}；${activeIndexes.length > 1 ? `正在并行生成第 ${currentLabel} 镜（并发 ${effectiveConcurrency}）` : `正在生成第 ${current} 镜`}。`,
       };
     }
 

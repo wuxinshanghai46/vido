@@ -127,9 +127,29 @@
     return `<div class="dh-nsa-stage-failure"><b>本次剧本没有生成成功</b><span>${escapeHtml(blueprintFailureMessage(state))}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>人物、场景和已通过的空间验证均已保留；请在第 3 步重新生成剧本。</small></div>`;
   }
 
+  function keyframeFailureHtml(state = {}, escapeHtml = String) {
+    if (state.taskStatus !== 'failed' || state.taskStage !== 'keyframes_failed') return '';
+    const progress = state.generationProgress && typeof state.generationProgress === 'object'
+      ? state.generationProgress
+      : {};
+    const total = Math.max(0, Number(progress.target_total || progress.total) || 0);
+    const processed = Math.max(0, Number(progress.processed) || 0);
+    const succeeded = Math.max(0, Number(progress.succeeded) || 0);
+    const failed = Math.max(0, Number(progress.failed) || 0);
+    const counters = total
+      ? `本批次已处理 ${processed}/${total} 张，可用 ${succeeded} 张${failed ? `，失败 ${failed} 张` : ''}。`
+      : '';
+    const message = state.taskError || '真实分镜生成未完成，服务器已停止本批次。';
+    return `<div class="dh-nsa-stage-failure"><b>真实分镜生成未完成</b><span>${escapeHtml(message)}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>${escapeHtml(counters)} 已成功的图片会保留；再次操作时只补齐未完成镜头，不会自动重复提交。</small></div>`;
+  }
+
+  function stageFailureHtml(state = {}, escapeHtml = String) {
+    return blueprintFailureHtml(state, escapeHtml) || keyframeFailureHtml(state, escapeHtml);
+  }
+
   function syncBlueprintFailureHost(state = {}, host, escapeHtml = String) {
     if (state.busy || !host) return;
-    const failure = blueprintFailureHtml(state, escapeHtml);
+    const failure = stageFailureHtml(state, escapeHtml);
     host.hidden = !failure;
     host.innerHTML = failure;
   }
@@ -146,6 +166,8 @@
     canContinue,
     blueprintFailureMessage,
     blueprintFailureHtml,
+    keyframeFailureHtml,
+    stageFailureHtml,
     syncBlueprintFailureHost,
   };
 })();

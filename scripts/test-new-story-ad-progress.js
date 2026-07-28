@@ -25,8 +25,8 @@ const parallel = sandbox.window.NewStoryAdProgress.snapshot({
     configured_concurrency: 2, effective_concurrency: 2, active_indexes: [3, 2, 2],
   },
 });
-assert.match(parallel.title, /并行生成真实画面：第 2、3 张（共 6 张）/);
-assert.match(parallel.message, /正在并行生成第 2、3 张（并发 2）/);
+assert.match(parallel.title, /并行生成真实画面：第 2、3 镜（共 6 镜）/);
+assert.match(parallel.message, /正在并行生成第 2、3 镜（并发 2）/);
 
 const freshBatch = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'keyframes', generationId: 'generation-fresh', startedAt: Date.now(), total: 6 },
@@ -48,10 +48,19 @@ const submittingBatch = sandbox.window.NewStoryAdProgress.snapshot({
   completed: 6,
   serverProgress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4, current_index: 6 },
 });
-assert.strictEqual(submittingBatch.title, '正在启动第 1/6 张真实画面');
-assert.strictEqual(submittingBatch.stat, '已处理 0/6 张 · 0%');
+assert.strictEqual(submittingBatch.title, '正在提交真实画面生成');
+assert.strictEqual(submittingBatch.stat, '已处理 0/6 · 0%');
 assert.strictEqual(submittingBatch.indeterminate, false);
 assert(!/6\/6|成功|失败|96%/.test(`${submittingBatch.title}${submittingBatch.stat}${submittingBatch.message}`), '提交窗口不得闪现上一批终态统计');
+
+const submittingStoryboard = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'storyboard', generationId: '', submissionPending: true, startedAt: Date.now(), total: 9 },
+  serverProgress: { stage: 'storyboard', generation_id: 'generation-old', target_total: 9, processed: 9, percent: 90, phase: 'reviewing' },
+});
+assert.match(submittingStoryboard.title, /正在提交分镜表生成/);
+assert.match(submittingStoryboard.stat, /0\/9.*0%/);
+assert(!/90%|整体质量审核/.test(`${submittingStoryboard.title}${submittingStoryboard.stat}${submittingStoryboard.message}`),
+  '新分镜提交被服务器确认前不得复用上一轮 90% 进度');
 
 const video = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'media', generationId: 'video-current', startedAt: Date.now() - 6 * 60 * 1000, total: 6 },
@@ -190,6 +199,28 @@ sync.normalizeBundle({
   outputs: {},
 }, { state: keyframeState });
 assert.strictEqual(keyframeState.generationProgress.processed, 1, '必须接收当前 generation_id 的真实进度');
+
+const storyboardSubmittingState = {
+  activeGenerationId: '',
+  activeStage: 'storyboard',
+  stageProgress: { active: true, stage: 'storyboard', generationId: '', submissionPending: true, startedAt: localStart, total: 9 },
+  generationProgress: { stage: 'storyboard', status: 'submitting', target_total: 9, processed: 0, percent: 0 },
+  shots: [], contracts: [], keyframes: [], videoClips: [],
+};
+sync.normalizeBundle({
+  task: {
+    active_generation_id: '',
+    active_stage: '',
+    generation_progress: {
+      stage: 'storyboard', generation_id: 'generation-old',
+      target_total: 9, processed: 9, percent: 90, phase: 'reviewing',
+    },
+  },
+  outputs: {},
+}, { state: storyboardSubmittingState });
+assert.strictEqual(storyboardSubmittingState.generationProgress.processed, 0,
+  '任意新阶段的提交窗口都必须隔离上一轮终态进度');
+assert.strictEqual(sync.isPendingStageSubmission(storyboardSubmittingState), true);
 
 const keyframesSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/keyframes.js'), 'utf8');
 vm.runInNewContext(keyframesSource, sandbox, { filename: 'keyframes.js' });

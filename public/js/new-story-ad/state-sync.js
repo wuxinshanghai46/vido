@@ -307,14 +307,15 @@
     return true;
   }
 
-  function isPendingKeyframeSubmission(state = {}) {
+  function isPendingStageSubmission(state = {}) {
     return state.stageProgress?.active === true
-      && state.stageProgress?.stage === 'keyframes'
       && state.stageProgress?.submissionPending === true;
   }
 
+  const isPendingKeyframeSubmission = isPendingStageSubmission;
+
   function shouldPreserveTrackedGeneration(state = {}, task = {}) {
-    if (isPendingKeyframeSubmission(state)) return true;
+    if (isPendingStageSubmission(state)) return true;
     const trackedGenerationId = String(state.stageProgress?.active ? state.stageProgress?.generationId || '' : '');
     if (!trackedGenerationId) return false;
     const incomingActiveId = String(task.active_generation_id || '');
@@ -325,10 +326,10 @@
   }
 
   function syncGenerationProgress(state = {}, task = {}) {
-    // Between the click and the POST acknowledgement, save/poll responses still
-    // contain the previous batch's terminal counters. Keep the optimistic 0/N
-    // snapshot until the new generation id is known.
-    if (isPendingKeyframeSubmission(state)) return;
+    // Between any stage click and the POST acknowledgement, save/poll responses
+    // can still contain the previous batch's terminal counters. Keep the
+    // optimistic 0/N snapshot until the new generation id is known.
+    if (isPendingStageSubmission(state)) return;
     const activeGenerationId = String(task.active_generation_id || '');
     const activeStage = String(task.active_stage || '');
     const incoming = task.generation_progress && typeof task.generation_progress === 'object'
@@ -621,6 +622,7 @@
     progressStageMatches,
     syncActiveGenerationClock,
     syncGenerationProgress,
+    isPendingStageSubmission,
     isPendingKeyframeSubmission,
     shouldPreserveTrackedGeneration,
     detectMissingStoryboardOutput,

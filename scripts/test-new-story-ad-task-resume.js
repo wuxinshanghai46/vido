@@ -51,6 +51,19 @@ const failureHost = { hidden: true, innerHTML: '' };
 store.syncBlueprintFailureHost({ taskStatus: 'failed', taskStage: 'blueprint_failed', taskErrorCode: 'STAGE_DEADLINE_EXCEEDED' }, failureHost, String);
 assert.equal(failureHost.hidden, false);
 assert.match(failureHost.innerHTML, /人物、场景和已通过的空间验证均已保留/);
+const keyframeFailureHost = { hidden: true, innerHTML: '' };
+store.syncBlueprintFailureHost({
+  taskStatus: 'failed',
+  taskStage: 'keyframes_failed',
+  taskErrorCode: 'KEYFRAME_BATCH_PARTIAL_FAILURE',
+  taskError: '供应商返回失败。支持编号：support-123',
+  generationProgress: { target_total: 9, processed: 9, succeeded: 0, failed: 9 },
+}, keyframeFailureHost, String);
+assert.equal(keyframeFailureHost.hidden, false);
+assert.match(keyframeFailureHost.innerHTML, /真实分镜生成未完成/);
+assert.match(keyframeFailureHost.innerHTML, /支持编号：support-123/);
+assert.match(keyframeFailureHost.innerHTML, /已处理 9\/9 张，可用 0 张，失败 9 张/);
+assert.match(keyframeFailureHost.innerHTML, /不会自动重复提交/);
 assert.equal(store.resumeStep({ stage: 'keyframes_failed', shot_count: 6 }, {}), 5);
 assert.equal(store.resumeStep({ stage: 'video_failed' }, {}), 6);
 assert.equal(store.resumeStep({ stage: 'video_ready' }, { video_clips: [{ video_url: '/shot.mp4', qa: { pass: true } }] }), 6);
