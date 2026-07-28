@@ -12,20 +12,27 @@
       try {
         const params = new URLSearchParams(location.search);
         const urlTab = params.get('tab');
-        tab = urlTab === 'luxury-ad' ? 'new-story-ad' : (tabs.includes(urlTab) ? urlTab : 'step1');
+        const legacyStoryAdRequested = urlTab === 'luxury-ad';
+        tab = legacyStoryAdRequested ? 'new-story-ad' : (tabs.includes(urlTab) ? urlTab : 'step1');
+        if (legacyStoryAdRequested) {
+          const cleanUrl = new URL(location.href);
+          cleanUrl.searchParams.set('tab', 'new-story-ad');
+          ['luxury_project', 'lux_step', 'lux_focus'].forEach(key => cleanUrl.searchParams.delete(key));
+          history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+        }
         const luxStep = Number(params.get('lux_step') || 0) || 0;
         const luxFocus = params.get('lux_focus') || '';
-        if ((tab === 'luxury-ad' || tab === 'material-film') && luxStep) {
+        if (tab === 'material-film' && luxStep) {
           document.documentElement.dataset.dhInitialLuxStep = String(Math.max(1, Math.min(5, luxStep)));
         }
-        if ((tab === 'luxury-ad' || tab === 'material-film') && luxFocus) {
+        if (tab === 'material-film' && luxFocus) {
           document.documentElement.dataset.dhInitialLuxFocus = luxFocus;
         }
       } catch {}
       document.documentElement.dataset.dhInitialTab = tab;
     })();
   </script>
-  <link rel="stylesheet" href="/css/digital-human.css?v=20260720-refresh-route-restore-v19">
+  <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
   <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-current-input-authority-v52">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
   <script src="/js/new-story-ad/bootstrap.js?v=20260728-current-input-authority-v52"></script>
@@ -43,7 +50,6 @@
     html[data-dh-initial-tab="product-dh"] .dh-tab-pane[data-pane="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-tab-pane[data-pane="space-guide"],
     html[data-dh-initial-tab="material-film"] .dh-tab-pane[data-pane="luxury-ad"],
-    html[data-dh-initial-tab="luxury-ad"] .dh-tab-pane[data-pane="luxury-ad"],
     html[data-dh-initial-tab="new-story-ad"] .dh-tab-pane[data-pane="new-story-ad"] { display: block !important; }
     html[data-nsa-story-loading="1"] #dhNewStoryAdLegacyMount {
       min-height: 58vh;
@@ -67,7 +73,6 @@
     html[data-dh-initial-tab="product-dh"] .dh-nav-item[data-tab="product-dh"],
     html[data-dh-initial-tab="space-guide"] .dh-nav-item[data-tab="space-guide"],
     html[data-dh-initial-tab="material-film"] .dh-nav-item[data-tab="material-film"],
-    html[data-dh-initial-tab="luxury-ad"] .dh-nav-item[data-tab="luxury-ad"],
     html[data-dh-initial-tab="new-story-ad"] .dh-nav-item[data-tab="new-story-ad"] {
       background: var(--dh-primary-bg) !important;
       color: var(--dh-primary) !important;
@@ -130,12 +135,8 @@
           <a class="dh-nav-item" data-tab="material-film">
             <span class="dh-nav-icon">📢</span>素材审片
           </a>
-          <!-- 旧剧情广告入口已下线：旧功能代码保留但不再从左侧导航暴露。 -->
-          <a class="dh-nav-item" data-tab="luxury-ad" hidden aria-hidden="true">
-            <span class="dh-nav-icon">🎞️</span>旧剧情广告
-          </a>
           <a class="dh-nav-item" data-tab="new-story-ad">
-            <span class="dh-nav-icon">🎬</span>剧情广告 V2.0
+            <span class="dh-nav-icon">🎬</span>剧情广告
           </a>
         </div>
         <div class="dh-nav-group">
@@ -2408,7 +2409,6 @@ B: ...
               <button class="active" data-task-type="digital_human">数字人</button>
               <button data-task-type="product_ad">商品口播视频</button>
               <button data-task-type="material_film">素材审片</button>
-              <button data-task-type="luxury_ad" hidden aria-hidden="true">旧剧情广告</button>
               <button data-task-type="new_story_ad">剧情广告</button>
             </div>
             <div class="dh-task-type-tabs dh-task-status-tabs" id="dhTaskStatusTabs">
@@ -2624,7 +2624,7 @@ B: ...
     <div class="dh-toast" id="dhToast" style="display:none"></div>
   </div>
 
-  <script src="/js/digital-human.js?v=20260728-story-step-v21"></script>
+  <script src="/js/digital-human.js?v=20260728-disable-legacy-entry-v53"></script>
 </body>
 </html>
 

@@ -745,6 +745,10 @@
   const DH_LAST_AVATAR_TAB_KEY = 'vido_dh_avatar_tab';
   const SPACE_WORKFLOW_TABS = new Set(['space-guide']);
 
+  function normalizeDigitalHumanTab(tab = '') {
+    return tab === 'luxury-ad' ? 'new-story-ad' : tab;
+  }
+
   function readDigitalHumanPageState() {
     try {
       const raw = localStorage.getItem(DH_PAGE_STATE_KEY);
@@ -831,6 +835,7 @@
   }
 
   function rememberActiveTab(tab, opts = {}) {
+    tab = normalizeDigitalHumanTab(tab);
     if (!DH_VALID_TABS.includes(tab)) return;
     try { localStorage.setItem(DH_LAST_TAB_KEY, tab); } catch {}
     try {
@@ -898,10 +903,10 @@
   function getInitialTab() {
     try {
       const urlTab = new URLSearchParams(location.search).get('tab');
-      if (urlTab === 'luxury-ad') return 'new-story-ad';
-      if (DH_VALID_TABS.includes(urlTab)) return urlTab;
+      const normalizedUrlTab = normalizeDigitalHumanTab(urlTab);
+      if (DH_VALID_TABS.includes(normalizedUrlTab)) return normalizedUrlTab;
     } catch {}
-    const hashTab = String(location.hash || '').replace(/^#/, '').trim();
+    const hashTab = normalizeDigitalHumanTab(String(location.hash || '').replace(/^#/, '').trim());
     if (DH_VALID_TABS.includes(hashTab)) return hashTab;
     return 'step1';
   }
@@ -967,6 +972,7 @@
   }
 
   function primeInitialDigitalHumanRoute(tab = getInitialTab(), luxStep = getInitialLuxuryStep(), luxFocus = getInitialLuxuryFocus()) {
+    tab = normalizeDigitalHumanTab(tab);
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     state.activeTab = tab;
     if (isLuxuryFlowTab(tab) && luxStep) state.luxuryAd.currentStep = luxStep;
@@ -990,7 +996,6 @@
         'product-dh': '🛍️ 商品数字人',
         'space-guide': '📢 素材审片',
         'material-film': '📢 素材审片',
-        'luxury-ad': '🎞️ 旧剧情广告',
         'new-story-ad': '🎬 剧情广告',
       }[tab] || '数字人';
       crumb.style.visibility = '';
@@ -1029,6 +1034,7 @@
   }
 
   function resetModuleDefaultView(tab) {
+    tab = normalizeDigitalHumanTab(tab);
     if (!DH_VALID_TABS.includes(tab)) return;
     if (tab === 'step2') {
       state._myAvTab = 'image';
@@ -1067,6 +1073,7 @@
 
   function switchTab(tab, opts = {}) {
     if (!tab) return;
+    tab = normalizeDigitalHumanTab(tab);
     if (!DH_VALID_TABS.includes(tab)) tab = 'step1';
     if (tab !== state.activeTab) stopAudibleMedia({ reset: true });
     const previousTab = state.activeTab;
@@ -1087,7 +1094,6 @@
       'product-dh': '🛍️ 商品数字人',
         'space-guide': '📢 素材审片',
         'material-film': '📢 素材审片',
-        'luxury-ad': '🎞️ 旧剧情广告',
         'new-story-ad': '🎬 剧情广告',
       }[tab] || '数字人';
 
@@ -2892,7 +2898,6 @@
         <div style="display:grid;gap:10px">
           <button class="dh-btn dh-btn-primary" data-scene="step3" type="button">③ 生成数字人</button>
           <button class="dh-btn dh-btn-ghost" data-scene="material-film" type="button">📢 素材审片</button>
-          <button class="dh-btn dh-btn-ghost" data-scene="luxury-ad" type="button" hidden aria-hidden="true">🎞️ 旧剧情广告</button>
           ${isProduct ? '<button class="dh-btn dh-btn-ghost" data-scene="product-dh" type="button">🛍️ 商品数字人</button>' : ''}
           <button class="dh-link-btn" data-scene="" type="button">取消</button>
         </div>
@@ -20573,8 +20578,8 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   async function init() {
     if (!state.token) { location.href = '/?login=1'; return; }
     const initialTab = getInitialTab();
-    const initialLuxuryProjectRouteId = getLuxuryAdProjectRouteId();
-    const initialLuxuryProjectStateId = (initialTab === 'luxury-ad' || initialTab === 'material-film') ? getSavedLuxuryAdProjectId() : '';
+    const initialLuxuryProjectRouteId = initialTab === 'material-film' ? getLuxuryAdProjectRouteId() : '';
+    const initialLuxuryProjectStateId = initialTab === 'material-film' ? getSavedLuxuryAdProjectId() : '';
     const initialLuxuryProjectId = initialLuxuryProjectRouteId || initialLuxuryProjectStateId;
     const initialLuxuryStep = getInitialLuxuryStep();
     const initialLuxuryFocus = getInitialLuxuryFocus();
@@ -20892,7 +20897,7 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (initialAvatarTab) state._myAvTab = initialAvatarTab;
     let luxuryProjectToRestore = initialLuxuryProjectId;
     if (!luxuryProjectToRestore
-      && (initialTab === 'luxury-ad' || initialTab === 'material-film')
+      && initialTab === 'material-film'
       && Number(initialLuxuryStep || 0) >= 3) {
       await refreshLuxuryAdProjectsForTaskCenter({ force: true, silent: true });
       const latestProject = (state.luxuryAdProjects || []).find(project => {

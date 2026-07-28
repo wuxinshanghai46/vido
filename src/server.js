@@ -755,8 +755,14 @@ function sendNoStoreHtml(res, filePath) {
   res.setHeader('Expires', '0');
   return res.sendFile(filePath);
 }
-app.get('/digital-human', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
-app.get('/digital-human.html', requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+function redirectLegacyStoryAdPage(req, res, next) {
+  const tab = String(req.query?.tab || '').trim().toLowerCase();
+  if (tab === 'luxury-ad' || tab === 'luxury_ad') return res.redirect(302, '/digital-human?tab=new-story-ad');
+  return next();
+}
+app.get('/digital-human', redirectLegacyStoryAdPage, requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+app.get('/digital-human.html', redirectLegacyStoryAdPage, requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+app.get(['/luxury-ad', '/luxury-ad.html'], (_req, res) => res.redirect(302, '/digital-human?tab=new-story-ad'));
 app.get('/new-story-ad', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
 app.get('/new-story-ad.html', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
 function sendNoStorePage(res, filePath) {

@@ -734,7 +734,7 @@ async function main() {
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
   assert(html.includes('bootstrap.js?v=20260728-current-input-authority-v52'));
   assert(html.includes('digital-human-wizard.css?v=20260728-current-input-authority-v52'));
-  assert(html.indexOf('bootstrap.js?v=20260728-current-input-authority-v52') < html.indexOf('digital-human.js?v=20260728-story-step-v21'));
+  assert(html.indexOf('bootstrap.js?v=20260728-current-input-authority-v52') < html.indexOf('digital-human.js?v=20260728-disable-legacy-entry-v53'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));

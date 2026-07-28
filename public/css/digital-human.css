@@ -48,6 +48,7 @@ html[data-theme^="light"], html[data-theme^="light"] body { color-scheme: light;
 .dh-nav { flex: 1; overflow-y: auto; }
 .dh-nav-group { margin-bottom: 20px; }
 .dh-nav-title { font-size: 11px; color: var(--dh-text-muted); padding: 4px 12px; letter-spacing: 1px; text-transform: uppercase; }
+.dh-app [hidden] { display: none !important; }
 .dh-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--dh-radius-sm); color: var(--dh-text-soft); cursor: pointer; margin: 2px 0; transition: all .15s; font-size: 14px; }
 .dh-nav-item:hover { background: var(--dh-bg-gray); color: var(--dh-text); }
 .dh-nav-item.active { background: var(--dh-primary-bg); color: var(--dh-primary); font-weight: 500; }
