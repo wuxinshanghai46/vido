@@ -6,6 +6,18 @@ function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+function cleanMultilineText(value = '', max = 3000) {
+  return String(value || '')
+    .replace(/\r\n?|\u2028|\u2029/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .split('\n')
+    .map(line => line.replace(/[ \t]+/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, max);
+}
+
 function inferGenderFromText(text = '') {
   const s = cleanText(text, 500).toLowerCase();
   if (/female|woman|girl|女士|女性|女主|美女|姑娘|女孩|太太|妈妈|姐姐/.test(s)) return 'female';
@@ -440,7 +452,7 @@ function normalizeCreativeDirection(input = null) {
     constraints: list(action?.constraints, 8),
   })).filter(action => action.action || action.dialogue || action.expression).slice(0, 30);
   return {
-    raw: cleanText(source.raw || source.text || source.requirement || source.story || '', 3000),
+    raw: cleanMultilineText(source.raw || source.text || source.requirement || source.story || '', 3000),
     plot_direction: cleanText(source.plot_direction || source.plotDirection || source.plot || '', 1000),
     tone: cleanText(source.tone || source.emotion || '', 300),
     pace: cleanText(source.pace || source.rhythm || '', 300),
@@ -584,7 +596,7 @@ function resolveTargetDuration(body = {}, brief = '') {
 }
 
 function buildContext(body = {}, user = {}) {
-  const brief = cleanText(body.brief || body.content || body.requirement || body.prompt, 3000);
+  const brief = cleanMultilineText(body.brief || body.content || body.requirement || body.prompt, 3000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
   const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
   const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);

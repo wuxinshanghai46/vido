@@ -39,6 +39,9 @@
       .replace(/__([^_\n]+)__/g, '$1')
       .replace(/^\s*[-*+]\s+/gm, '• ')
       .replace(/\u00a0/g, ' ')
+      .replace(/[ \t]+(?=【[^】\n]{1,30}】)/g, '\n')
+      .replace(/[ \t]+(?=•\s*)/g, '\n')
+      .replace(/[ \t]+(?=\d{1,2}[.、]\s+)/g, '\n')
       .replace(/[ \t]+\n/g, '\n')
       .replace(/\n[ \t]+/g, '\n')
       .replace(/[ \t]{2,}/g, ' ')
@@ -61,8 +64,17 @@
   function normalizeBriefContext(context = {}) {
     if (!context || typeof context !== 'object') return context;
     const rawBrief = context.brief || context.content || '';
-    if (!rawBrief) return context;
-    return { ...context, brief: formatBriefText(rawBrief) };
+    const creative = context.creative_direction || context.creativeDirection || null;
+    return {
+      ...context,
+      ...(rawBrief ? { brief: formatBriefText(rawBrief) } : {}),
+      ...(creative && typeof creative === 'object' ? {
+        creative_direction: {
+          ...creative,
+          raw: formatBriefText(creative.raw || creative.text || ''),
+        },
+      } : {}),
+    };
   }
 
   function normalizeTaskOutputs(bundle = {}) {
@@ -536,8 +548,20 @@
     state.taskErrorCode = task.error_code || '';
     hydrateSceneAssets(state, { request, outputs, response: bundle });
 
+    const restoredCreativeDirection = formatBriefText(
+      state.context?.creative_direction?.raw
+      || request.creative_direction?.raw
+      || request.creativeDirection?.raw
+      || '',
+    );
+    if (state.context?.creative_direction) {
+      state.context.creative_direction = {
+        ...state.context.creative_direction,
+        raw: restoredCreativeDirection,
+      };
+    }
     setFieldValue('#dhNsaAdText', restoredBrief, { within });
-    setFieldValue('#dhNsaAdCreativeDirection', request.creative_direction?.raw || request.creativeDirection?.raw || '', { within });
+    setFieldValue('#dhNsaAdCreativeDirection', restoredCreativeDirection, { within });
     setFieldValue('#dhNsaAdDuration', request.target_duration || request.targetDuration || request.duration_sec || request.durationSec || request.duration || 30, { within });
     const durationControl = within('#dhNsaAdDuration');
     if (durationControl) durationControl.dataset.durationSource = request.duration_source || request.durationSource || 'persisted_context';

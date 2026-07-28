@@ -11,6 +11,7 @@ const bootstrap = read('public/js/new-story-ad/bootstrap.js');
 const storySetupUi = read('public/js/new-story-ad/story-setup.js');
 const buttonStateUi = read('public/js/new-story-ad/button-state.js');
 const stepNavigationUi = read('public/js/new-story-ad/step-navigation.js');
+const stateSyncUi = read('public/js/new-story-ad/state-sync.js');
 const wizardCss = read('public/css/digital-human-wizard.css');
 
 const sceneHostIndex = html.indexOf('id="dhNsaAdSceneConfigHost"');
@@ -58,7 +59,13 @@ const sandbox = {
 };
 vm.runInNewContext(storySetupUi, sandbox, { filename: 'story-setup.js' });
 vm.runInNewContext(buttonStateUi, sandbox, { filename: 'button-state.js' });
+vm.runInNewContext(stateSyncUi, sandbox, { filename: 'state-sync.js' });
 const ui = sandbox.window.NewStoryAdStorySetup;
+const restoredStructuredText = sandbox.window.NewStoryAdStateSync.formatBriefText(
+  '【剧情走向】第一段 【情绪与表演】第二段 1. 动作一 2. 动作二 • 禁止新增人物',
+);
+assert(restoredStructuredText.includes('【剧情走向】第一段\n\n【情绪与表演】第二段'));
+assert(restoredStructuredText.includes('\n1. 动作一\n2. 动作二\n• 禁止新增人物'));
 const readyState = {
   context: { cast_mode: 'single', creative_direction: {} },
   sceneConfig: { spaces: [{ id: 'scene_a' }, { id: 'scene_b' }] },
@@ -132,9 +139,12 @@ const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const revision = require('../src/services/newStoryAd/revisionService');
 const storySetup = require('../src/services/newStoryAd/storySetupService');
 const creativeAssist = require('../src/services/newStoryAd/assistCreativeDirectionService');
+const multilineBrief = '【广告主题】咖啡广告\n\n【核心故事线】先疲惫工作\n1. 饮用咖啡\n2. 恢复专注';
+const multilineCreative = '【剧情走向】从疲惫到专注\n\n【关键动作】\n1. 拿起咖啡\n2. 完成提案';
 const base = contextBuilder.buildContext({
   source: 'new_story_ad_legacy_style_ui',
-  brief: '为已确认的咖啡产品制作一条真人剧情广告',
+  brief: multilineBrief,
+  creative_direction: { raw: multilineCreative },
   production_mode: 'narrative_live_action',
   story_setup_confirmed: true,
   cast_mode: 'single',
@@ -177,6 +187,8 @@ const petBase = contextBuilder.buildContext({
   cast_profiles: [{ id: 'cast_1', name: '主人' }],
   pet_profiles: [{ id: 'pet_asset_confirmed_1', name: '小金' }],
 });
+assert.strictEqual(base.brief, multilineBrief, '广告需求保存必须保留真实换行');
+assert.strictEqual(base.creative_direction.raw, multilineCreative, '剧情与表演要求保存必须保留真实换行');
 assert.doesNotThrow(() => creativeAssist.buildResponse({
   parsed: { creative_direction: {
     plot_direction: '主人与小金在已确认场景内互动',
