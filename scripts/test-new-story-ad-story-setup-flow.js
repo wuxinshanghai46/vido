@@ -31,6 +31,7 @@ assert(assistIndex > panelIndex && assistIndex < scriptIndex, '剧情与表演 A
 assert(html.includes('剧情呈现方式') && !html.includes('模式只决定生产和 QA 策略'), '视频基础信息必须改为真实用途说明');
 assert(!html.includes('生成剧本前最后一步'), '剧情设置页不得显示多余的“最后一步”提示');
 assert(html.includes('id="dhNsaAdStoryboard" type="button">生成剧本</button>'), '第 3 步主操作应直接显示“生成剧本”');
+assert(legacy.includes("['#dhNsaAdStoryboard', '生成剧本']"), '运行时不得把第 3 步主操作覆盖回旧文案');
 assert(legacy.includes("dhNsaAdContinueStorySetup: () => window.NewStoryAdStorySetup.open"), '下一步只能打开剧情设置，不能直接生成剧本');
 assert(!legacy.includes("continueStorySetupBtn.classList.toggle('is-next'"), '下一步按钮默认不得显示高亮指向效果');
 assert(!buttonStateUi.includes("continueStorySetupBtn.classList.toggle('is-next'"), '权威按钮状态模块不得默认高亮下一步按钮');

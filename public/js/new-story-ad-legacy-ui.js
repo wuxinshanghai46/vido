@@ -963,7 +963,7 @@
     }
     const stepButtons = [
       ['#dhNsaAdGenerate', '生成场景配置'],
-      ['#dhNsaAdStoryboard', '确认基础信息，生成剧本'],
+      ['#dhNsaAdStoryboard', '生成剧本'],
       ['#dhNsaAdPreviewFrames', '确认剧本，生成分镜'],
       ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
       ['#dhNsaAdGenerateShotVideos', '选择生成单元并生成整条广告视频'],
