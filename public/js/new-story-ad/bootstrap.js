@@ -1,6 +1,6 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260728-task-isolation-v51';
+  const SCRIPT_VERSION = '20260728-current-input-authority-v52';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -14,6 +14,7 @@
     '/js/new-story-ad/task-persistence.js',
     '/js/new-story-ad/storyboard.js',
     '/js/new-story-ad/person-pet-spec.js',
+    '/js/new-story-ad/person-age-authority.js',
     '/js/new-story-ad/actors.js',
     '/js/new-story-ad/subject-assets-ui.js',
     '/js/new-story-ad/subject-profile-assist.js',

@@ -25,5 +25,37 @@
     return reason(text, subject);
   }
 
-  window.NewStoryAdVerificationLanguage = { reason, message };
+  const FIELD_RULES = {
+    person: [
+      [/(?:年龄|age|older|younger)/i, '人物与表演 → 该人物年龄；独立外貌 / 年龄 / 气质'],
+      [/(?:鞋|服装|配饰|wardrobe|outfit|clothing|shoe|accessor)/i, '人物与表演 → 独立服装 / 鞋 / 配饰'],
+      [/(?:发型|发色|发际线|妆|hair|hairstyle|makeup)/i, '人物与表演 → 独立发型 / 妆造'],
+      [/(?:身份|面部|脸|体态|身体|比例|identity|face|facial|body|proportion)/i, '人物与表演 → 独立外貌 / 年龄 / 气质'],
+      [/(?:数量|多余人物|person count|people count|extra person)/i, '人物与表演 → 主体模式；精确人物数量'],
+      [/(?:文字|水印|标识|watermark|logo|text)/i, '人物与表演 → 该人物禁止项'],
+    ],
+    scene: [
+      [/(?:布局|空间|结构|区域|定位|覆盖|layout|space|spatial|geometry|zone|coverage)/i, '场景空间设定 → 空间布局 / 主体位置'],
+      [/(?:材质|纹理|表面|光线|色温|真实|material|texture|surface|finish|light|realism)/i, '场景空间设定 → 材质 / 色彩 / 光线'],
+      [/(?:互动|机位|视角|构图|路线|interaction|camera|view|composition|route)/i, '场景空间设定 → 互动区 / 可用机位'],
+      [/(?:拼缝|主墙|连续表面|topology|seam|primary surface)/i, '场景空间设定 → 高级设置 → 表面结构'],
+      [/(?:人物|文字|水印|无关|禁止|forbidden|person|watermark|logo|unexpected)/i, '场景空间设定 → 场景禁止项'],
+    ],
+  };
+
+  function guidance({ subject = '资产', reasons = [], scores = [], tone = '' } = {}) {
+    if (tone === 'unavailable') return ['无需修改上述提示字段；这是验证服务异常，请只执行“再次验证”，不要重新生成图片。'];
+    const group = /场景|空间/.test(subject) ? 'scene' : (/人物|演员/.test(subject) ? 'person' : '');
+    if (!group) return [];
+    const evidence = [
+      ...(Array.isArray(reasons) ? reasons : []),
+      ...(Array.isArray(scores) ? scores.filter(item => Number(item.percent) < 80).map(item => item.label) : []),
+    ].join('；');
+    const matched = (FIELD_RULES[group] || [])
+      .filter(([pattern]) => pattern.test(evidence))
+      .map(([, field]) => field);
+    return [...new Set(matched)].slice(0, 4);
+  }
+
+  window.NewStoryAdVerificationLanguage = { reason, message, guidance };
 })();

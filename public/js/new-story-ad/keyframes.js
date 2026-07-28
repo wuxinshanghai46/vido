@@ -39,6 +39,8 @@
     if (/STAGE_DEADLINE_EXCEEDED/i.test(String(code || '')) || /安全执行时限|后端总时限/i.test(raw)) return '本批次已达到安全执行时限，完成结果已保存；可以继续补齐未完成镜头。';
     if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(raw)) return '本镜头生成约束过长，系统需要压缩提示词后重新生成。';
     if (/PROVIDER_BILLING/i.test(String(code || '')) || /insufficient quota|account balance not enough|insufficient balance|balance not enough|"code"\s*:\s*(1005|1102)/i.test(raw)) return '供应商返回当前模型计费通道不可用；可能是调用 Key、子账号、模型授权或通道额度不一致，不代表平台账户总余额为零。';
+    if (/PROVIDER_CONTENT_AUDIT/i.test(String(code || ''))) return '供应商内容审核未通过。请修改：本镜头“完整画面说明”和“该镜头禁止项”；若提示涉及人物，再修改对应人物的外貌/服装字段；若涉及空间，再修改当前场景的布局/材质/禁止项。系统不会自动重复付费提交。';
+    if (/PROVIDER_5XX_AMBIGUOUS|KEYFRAME_BATCH_CIRCUIT_OPEN/i.test(String(code || ''))) return '供应商返回未分类系统错误或计费状态不确定；无需盲目修改提示字段，系统已停止尚未提交的镜头，避免重复费用。';
     if (/temporary|expired|asset.*not found|404/i.test(raw)) return '关键帧图片地址已失效，请重新生成本镜头。';
     const match = raw.match(/^(第\s*\d+\s*镜(?:(?:场景空间|视觉)一致性\s*)?QA\s*未通过)[：:]\s*(.*)$/i);
     if (match) {

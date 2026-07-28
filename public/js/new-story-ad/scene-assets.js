@@ -304,7 +304,13 @@
   function verificationDetailsHtml(view = {}, escapeHtml = value => value) {
     const lines = [view.message, ...(view.reasons || []).filter(reason => reason !== view.message)].filter(Boolean);
     if (!lines.length || view.tone === 'verified') return '';
-    return `<div class="dh-nsa-verification-details is-${escapeHtml(view.tone || 'unverified')}"><b>${escapeHtml(view.label)}</b>${(view.scores || []).length ? `<div class="dh-nsa-verification-scores">${view.scores.map(item => `<em>${escapeHtml(item.label)} ${item.percent}%</em>`).join('')}</div>` : ''}${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}</div>`;
+    const guidance = window.NewStoryAdVerificationLanguage?.guidance?.({
+      subject: '场景',
+      reasons: lines,
+      scores: view.scores || [],
+      tone: view.tone,
+    }) || [];
+    return `<div class="dh-nsa-verification-details is-${escapeHtml(view.tone || 'unverified')}"><b>${escapeHtml(view.label)}</b>${(view.scores || []).length ? `<div class="dh-nsa-verification-scores">${view.scores.map(item => `<em>${escapeHtml(item.label)} ${item.percent}%</em>`).join('')}</div>` : ''}${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}${guidance.length ? `<span><b>需要修改的位置：</b>${guidance.map(item => escapeHtml(item)).join('；')}</span>` : ''}</div>`;
   }
 
   function specPayload() {
@@ -848,6 +854,40 @@
     plan.spaces[targetIndex] = {
       ...plan.spaces[targetIndex],
       scene_spec: currentSpec && typeof currentSpec === 'object' ? currentSpec : specPayload(),
+    };
+    return normalizePlan(plan);
+  }
+
+  /**
+   * “AI 补齐”只能填补当前场景的空白字段。当前 DOM 的非空值是用户权威，
+   * 其它空间和稳定 ID 必须保持不变。
+   */
+  function preserveCurrentSpecInPlan(planInput = {}, targetSpaceId = '', currentSpec = {}) {
+    const plan = normalizePlan(planInput);
+    if (!plan.spaces.length) return plan;
+    const selectedId = clean(targetSpaceId, 120);
+    const targetIndex = selectedId
+      ? plan.spaces.findIndex(space => space.id === selectedId)
+      : 0;
+    if (targetIndex < 0) return plan;
+    const incoming = plan.spaces[targetIndex].scene_spec || {};
+    const protectedText = ['layoutText', 'materialLightText', 'interactionText', 'negativeText']
+      .reduce((result, key) => {
+        const value = clean(currentSpec?.[key], key === 'negativeText' ? 500 : 600);
+        if (value) result[key] = value;
+        return result;
+      }, {});
+    const currentTopology = currentSpec?.surfaceTopology || currentSpec?.surface_topology || {};
+    plan.spaces[targetIndex] = {
+      ...plan.spaces[targetIndex],
+      description: protectedText.layoutText || plan.spaces[targetIndex].description,
+      scene_spec: {
+        ...incoming,
+        ...protectedText,
+        surfaceTopology: Object.keys(currentTopology).length
+          ? { ...(incoming.surfaceTopology || incoming.surface_topology || {}), ...currentTopology }
+          : (incoming.surfaceTopology || incoming.surface_topology || {}),
+      },
     };
     return normalizePlan(plan);
   }
@@ -1620,6 +1660,8 @@
     normalizePlan,
     applyPlan,
     planPayload,
+    preserveCurrentSpecInPlan,
+    sceneSpecFingerprint,
     sceneSpecFingerprint,
     assertCurrentSceneSpecSubmitted,
     selectPlanSpace,

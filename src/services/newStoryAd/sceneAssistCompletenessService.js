@@ -2,7 +2,7 @@ const { cleanText } = require('./contextBuilder');
 const shotDesign = require('./shotDesignService');
 
 /** 补齐场景辅助结果；模型漏字段或返回残句时保留已有内容，仍缺失则使用跨行业安全兜底。 */
-function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}) {
+function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}, options = {}) {
   const output = spec && typeof spec === 'object' ? spec : {};
   const source = current && typeof current === 'object' ? current : {};
   const subject = cleanText(context.product_subject || context.brief || '当前广告主体', 100);
@@ -16,7 +16,9 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}) {
   const existing = (keys = [], max = 420) => cleanText(keys.map(key => source[key]).find(Boolean) || '', max);
   const usable = (text, minimum) => text.length >= minimum
     && !/(?:由|为|和|与|的|及|以及|包括|采用|融合|形成|一面|一个|一种|位于|呈现)$/u.test(text);
+  const preserveCurrentFields = options.preserveCurrentFields === true;
   const complete = (candidate, prior, safeFallback, minimum, max) => {
+    if (preserveCurrentFields && usable(prior, minimum)) return cleanText(prior, max);
     if (usable(candidate, minimum)) return cleanText(candidate, max);
     if (usable(prior, minimum)) return cleanText(prior, max);
     return cleanText(safeFallback, max);
@@ -27,14 +29,16 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}) {
   const negativeText = complete(value(['negativeText', 'negative_text', 'negative']), existing(['negativeText', 'negative_text', 'negative']), fallback.negativeText, 24, 420);
   const requestedTopology = output.surfaceTopology || output.surface_topology;
   const existingTopology = source.surfaceTopology || source.surface_topology;
-  const topologyInput = requestedTopology && typeof requestedTopology === 'object'
+  const topologyInput = preserveCurrentFields && existingTopology && typeof existingTopology === 'object'
+    ? existingTopology
+    : (requestedTopology && typeof requestedTopology === 'object'
     ? {
       ...requestedTopology,
       user_overrides: Array.isArray(existingTopology?.user_overrides || existingTopology?.userOverrides)
         ? (existingTopology.user_overrides || existingTopology.userOverrides)
         : [],
     }
-    : existingTopology;
+    : existingTopology);
   const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(topologyInput, [layoutText, materialLightText, negativeText, topologyInput?.notes]);
   const materialContract = shotDesign.normalizeMaterialContract(
     output.materialContract || output.material_contract || source.materialContract || source.material_contract,

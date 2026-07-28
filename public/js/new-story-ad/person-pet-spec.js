@@ -20,7 +20,7 @@
     const labels = {
       castMode: { auto: '按内容判断', no_human: '无人物 / 只拍主体', animal: '动物 / 宠物主体', human_pet: '人物 + 宠物（混合主体）', single: '单人', dual: '双人对话', group: '多人 / 群体' },
       gender: { auto: '按故事判断', male: '男性', female: '女性', mixed: '双人/多人混合', all_male: '双人/多人全男性', all_female: '双人/多人全女性' },
-      age: { match_brief: '按广告需求判断', young_adult_17_25: '年轻成人 / 17-25', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
+      age: { match_brief: '按广告需求判断', infant_0_1: '婴儿 / 0-1', toddler_1_3: '幼儿 / 1-3', child_4_7: '儿童 / 4-7', child_8_12: '少儿 / 8-12', teen_13_17: '青少年 / 13-17', young_adult_17_25: '年轻成人 / 17-25', young_adult: '青年 / 25-32', adult_30_40: '成熟青年 / 30-40', middle_40_55: '中年 / 40-55', senior_55_plus: '年长 / 55+' },
       origin: { east_asian_cn: '中国 / 东亚面孔', match_brief: '按广告需求判断', mixed_global: '多种族 / 国际化' },
     };
     return [

@@ -22,6 +22,31 @@ function isQaInfrastructureError(error) {
   return /视觉模型全部失败|视觉模型未返回有效\s*JSON|视觉\s*QA.*(?:JSON|结构|评分)|vision.*invalid\s*json|invalid\s*json.*vision|timed?\s*out|timeout|ECONNRESET|socket hang up|rate limit|(?:HTTP\s*)?5\d\d/i.test(message);
 }
 
+/**
+ * 供应商级或计费不确定错误必须停止本批次尚未提交的镜头，避免同类请求继续付费。
+ * 单镜内容 QA 未通过不触发批次熔断，只阻断依赖该镜头的连续性分支。
+ */
+function shouldStopBatch(error) {
+  const code = String(error?.code || '').toUpperCase();
+  if ([
+    'PROVIDER_CONTENT_AUDIT',
+    'PROVIDER_RIGHTS_AUDIT',
+    'PROVIDER_5XX_AMBIGUOUS',
+    'PROVIDER_BILLING',
+    'AUTH_CONFIG',
+    'MODEL_CONFIG',
+    'IMAGE_CIRCUIT_OPEN',
+    'NEW_STORY_AD_IMAGE2_UNAVAILABLE',
+  ].includes(code)) return true;
+  if (error?.billingState === 'unknown' || error?.billing_state === 'unknown') return true;
+  return Array.isArray(error?.attempts) && error.attempts.some(attempt => [
+    'PROVIDER_CONTENT_AUDIT',
+    'PROVIDER_RIGHTS_AUDIT',
+    'PROVIDER_5XX_AMBIGUOUS',
+    'PROVIDER_BILLING',
+  ].includes(String(attempt?.code || '').toUpperCase()) || attempt?.billing_state === 'unknown');
+}
+
 function describeBatchFailures({ targetIndexes = [], keyframes = [], shots = [], isComplete = () => false } = {}) {
   return targetIndexes
     .filter(index => !isComplete(keyframes[index]) || keyframes[index]?.qa?.pass !== true)
@@ -69,4 +94,4 @@ function taskSummaryPatch(task = {}, keyframes = []) {
   };
 }
 
-module.exports = { attempt, isQaInfrastructureError, describeBatchFailures, batchError, taskSummaryPatch };
+module.exports = { attempt, isQaInfrastructureError, shouldStopBatch, describeBatchFailures, batchError, taskSummaryPatch };

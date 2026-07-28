@@ -160,7 +160,6 @@
     storyboardPage: 1,
     storyboardPageSize: 20,
   };
-
   let nsaVoicePreviewAudio = null;
   let nsaVoicePreviewObjectUrl = '';
   let nsaVoiceLoadPromise = null;
@@ -286,17 +285,17 @@
     }
     return { status, tone: 'unverified', label: `${subject}待验证`, message: details.message || '首次使用或资产版本变化后需要验证一次', reasons: uniqueReasons, scores };
   }
-
   function verificationDetailsHtml(view = {}) {
     const lines = [view.message, ...(view.reasons || []).filter(reason => reason !== view.message)].filter(Boolean);
     if (!lines.length || view.tone === 'verified') return '';
+    const guidance = window.NewStoryAdVerificationLanguage?.guidance?.({ subject: String(view.label || '').replace(/(?:已验证|未通过|验证异常|待验证)$/u, '') || '人物', reasons: lines, scores: view.scores || [], tone: view.tone }) || [];
     return `<div class="dh-nsa-verification-details is-${escapeHtml(view.tone || 'unverified')}">
       <b>${escapeHtml(view.label || '验证说明')}</b>
       ${(view.scores || []).length ? `<div class="dh-nsa-verification-scores">${view.scores.map(item => `<em>${escapeHtml(item.label)} ${item.percent}%</em>`).join('')}</div>` : ''}
       ${lines.map(line => `<span>${escapeHtml(line)}</span>`).join('')}
+      ${guidance.length ? `<span><b>需要修改的位置：</b>${guidance.map(item => escapeHtml(item)).join('；')}</span>` : ''}
     </div>`;
   }
-
   function normalizeText(value = '', max = 1000) {
     return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
   }
@@ -626,7 +625,7 @@
     };
   }
 
-  function applyPersonAssetConstraints(asset = {}) {
+  function applyPersonAssetConstraints(asset = {}, options = {}) {
     if (!asset || typeof asset !== 'object') return;
     const spec = collectPersonSpec();
     const gender = personGenderValue(asset.detected_gender || asset.gender || asset.metadata?.detected_gender || asset.metadata?.gender || '');
@@ -638,10 +637,13 @@
     const memberCount = Array.isArray(asset.cast_assets) ? asset.cast_assets.length : 0;
     const count = Number(asset.expected_people || asset.person_count || asset.metadata?.expected_people || memberCount || 0);
     const castMode = window.NewStoryAdSubjectAssetsUI.assetCastMode(rawCastMode, count, spec.castMode);
-    const next = { ...spec, castMode, expectedPeople: count || '' };
-    if (gender) next.gender = gender;
-    if (age) next.age = age;
-    if (origin) next.origin = origin;
+    const preserveCurrent = options.preserveCurrent === true;
+    const next = { ...spec };
+    if (!preserveCurrent || !spec.castMode || spec.castMode === 'auto') next.castMode = castMode;
+    if (!preserveCurrent || !spec.expectedPeople) next.expectedPeople = count || '';
+    if (gender && (!preserveCurrent || !spec.gender || spec.gender === 'auto')) next.gender = gender;
+    if (age && (!preserveCurrent || !spec.age || spec.age === 'match_brief')) next.age = age;
+    if (origin && (!preserveCurrent || !spec.origin || spec.origin === 'match_brief')) next.origin = origin;
     Object.entries(next).forEach(([key, value]) => {
       if (value !== undefined && value !== null) writeAllFields(`[data-nsa-person-spec="${key}"]`, value);
     });
@@ -655,7 +657,11 @@
       expected_people: count || (castMode === 'dual' ? 2 : (castMode === 'single' ? 1 : 0)),
       reference_kind: actorReferenceKind(asset),
     };
-    syncCastProfilesFromPersonAsset(asset);
+    if (!preserveCurrent || !Array.isArray(state.castProfiles) || !state.castProfiles.length) {
+      syncCastProfilesFromPersonAsset(asset);
+    } else {
+      window.NewStoryAdSubjectAssetsUI?.applyPersonSpecAuthority?.(state, next, { scope: root() });
+    }
   }
 
   function castProfileFromPersonAsset(asset = state.personAsset || state.actorAsset) {
@@ -826,7 +832,6 @@
     }
     return spec;
   }
-
   function splitNegativeText(text = '') {
     return normalizeText(text, 500)
       .split(/[；;\n。]+/)
@@ -1006,7 +1011,10 @@
     const videoResolution = within('#dhNsaAdVideoResolution')?.value || state.videoResolution || '720p';
     const voiceId = state.voiceId || '';
     const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '剧情广告';
-    const person = collectPersonSpec();
+    let person = collectPersonSpec();
+    window.NewStoryAdSubjectAssetsUI?.syncProfileFieldsFromDom?.(state, root());
+    window.NewStoryAdSubjectAssetsUI?.applyPersonSpecAuthority?.(state, person, { scope: root() });
+    person = collectPersonSpec();
     const noHuman = person.castMode === 'no_human';
     const animalOnly = person.castMode === 'animal';
     const petRequired = ['animal', 'human_pet'].includes(person.castMode);
@@ -1082,12 +1090,10 @@
       client_edit_seq: Math.max(0, Number(state.clientEditSeq || 0) || 0),
     };
   }
-
   function personSpec(name) {
     const el = activeField(`[data-nsa-person-spec="${name}"]`);
     return el ? String(el.value || '').trim() : '';
   }
-
   function syncOptionControls() {
     const ratioSelect = within('#dhNsaAdRatio');
     const sizeSelect = within('#dhNsaAdSize');
@@ -3169,7 +3175,8 @@
       const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
       const reviewableCandidate = candidates.slice().reverse().find(candidate => candidate.status === 'qa_unavailable' || candidate.qa?.status === 'unavailable');
       const qaUnavailable = String(frame.current_generation_status || '') === 'qa_unavailable' || !!reviewableCandidate;
-      const dependencyBlocked = String(frame.error_code || '') === 'KEYFRAME_DEPENDENCY_BLOCKED' || String(frame.current_generation_status || '') === 'blocked';
+      const circuitBlocked = String(frame.error_code || frame.regeneration_error_code || '') === 'KEYFRAME_BATCH_CIRCUIT_OPEN';
+      const dependencyBlocked = circuitBlocked || String(frame.error_code || '') === 'KEYFRAME_DEPENDENCY_BLOCKED' || String(frame.current_generation_status || '') === 'blocked';
       const currentFailed = !qaUnavailable && !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked'].includes(String(frame.current_generation_status || '')));
       const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
@@ -3193,9 +3200,11 @@
               ? '镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'
               : '当前画面由旧版审核规则生成，需按最新规则重新验证。')
             : (manualAccepted ? '自动 QA 的原始结论已保留；该画面由用户人工确认符合创作意图并采用。' : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。')))));
-      const displayQaLabel = dependencyBlocked ? '依赖镜头未提交' : qaLabel;
+      const displayQaLabel = circuitBlocked ? '供应商批次已停止' : (dependencyBlocked ? '依赖镜头未提交' : qaLabel);
       const blockedByShot = Number(frame.blocked_by_shot || frame.blocked_by_index || frame.dependency?.blocked_by_shot || 0) || 0;
-      const displayQaDetail = dependencyBlocked ? `本镜头未调用图片供应商；请先修复${blockedByShot ? `第 ${blockedByShot} 镜` : '它依赖的根镜头'}。` : qaDetail;
+      const displayQaDetail = circuitBlocked
+        ? '前序镜头触发供应商审核、系统异常或计费不确定熔断；本镜头未提交、没有新增图片费用。请先按首个失败镜头的具体提示处理。'
+        : (dependencyBlocked ? `本镜头未调用图片供应商；请先修复${blockedByShot ? `第 ${blockedByShot} 镜` : '它依赖的根镜头'}。` : qaDetail);
       const headerSummary = [cameraSummary, sceneName].filter(Boolean).join(' · ');
       const showStatusNotice = qaUnavailable || currentFailed || qaOutdated;
       const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
@@ -5189,7 +5198,6 @@
       <small>${escapeHtml(progress.message || '已提交生成请求，正在生成第 1/4 张。')}</small>
     </div>`;
   }
-
   function personDescription(spec = collectPersonSpec()) {
     return window.NewStoryAdPersonPetSpec.description(spec);
   }
@@ -5271,7 +5279,6 @@
       setButtonBusy(button, false);
     }
   }
-
   function fallbackSceneSpecFromBrief(brief = '') {
     return {
       layoutText: `围绕当前广告需求建立一个可连续拍摄的真实商业空间：明确主体展示区、人物行动区、前景和背景层次，保证多个镜头能在同一空间内切换视角而不跳场。`,
@@ -5280,7 +5287,6 @@
       negativeText: `不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影；不要出现与当前广告需求无关的空间；不要文字水印、品牌乱入、卡通或三维渲染感；不要突然换场景、换材质、换光线方向。`,
     };
   }
-
   function completeSceneSpecSuggestion(suggestion = {}, current = {}, fallback = {}) {
     const proposed = suggestion && typeof suggestion === 'object' ? suggestion : {};
     const existing = current && typeof current === 'object' ? current : {};
@@ -5308,7 +5314,6 @@
         || safe.materialContract || safe.material_contract || {},
     };
   }
-
   function selectedSceneUpgradeRequired() {
     return window.NewStoryAdSceneAssets?.selectedSceneUpgradeRequired?.(state) === true;
   }
@@ -5322,7 +5327,6 @@
       else button.removeAttribute('aria-hidden');
     });
   }
-
   async function fillSceneSpecFromBrief(button = null, options = {}) {
     const replaceExisting = options.replaceExisting === true;
     const requireAi = options.requireAi === true;
@@ -5335,7 +5339,8 @@
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再补齐场景空间设定', 'error');
     const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
-    const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(state) || state.sceneConfig || {};
+    const requestSpecFingerprint = window.NewStoryAdSceneAssets?.sceneSpecFingerprint?.(currentSpec) || JSON.stringify(currentSpec);
+    const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(state, currentSpec) || state.sceneConfig || {};
     const targetSpaceId = state.scenePlanSelectedId || currentPlan.spaces?.[state.scenePlanSelectedIndex || 0]?.id || '';
     const label = '补齐场景中...';
     setButtonBusy(button, true, label);
@@ -5349,11 +5354,15 @@
             ...payload(),
             brief,
             mode: 'scene_spec',
-            scene_spec: window.NewStoryAdSceneAssets?.specPayload?.() || {},
+            scene_spec: currentSpec,
             scene_plan: currentPlan,
             target_space_id: targetSpaceId,
+            preserve_current_scene_fields: !replaceExisting,
           },
         });
+        if (requestSpecFingerprint !== (window.NewStoryAdSceneAssets?.sceneSpecFingerprint?.(window.NewStoryAdSceneAssets?.specPayload?.() || {}) || JSON.stringify(window.NewStoryAdSceneAssets?.specPayload?.() || {}))) {
+          toast('你在 AI 补齐期间又修改了场景；本次迟到结果已丢弃，不会覆盖最新内容。', 'warning'); return false;
+        }
         suggestion = r.scene_spec || r.sceneSpec || null;
         suggestionPlan = r.scene_plan || r.scenePlan || r.scene_config || r.sceneConfig || null;
       } catch (err) {
@@ -5361,13 +5370,14 @@
           toast('AI 空间设定补齐失败，已停止操作，没有提交任何图片生成', 'error');
           return false;
         }
-        suggestion = fallbackSceneSpecFromBrief(brief);
+        suggestion = null;
       }
       const fallbackSpec = fallbackSceneSpecFromBrief(brief);
       const nextSpec = completeSceneSpecSuggestion(suggestion, currentSpec, fallbackSpec);
       let changed = false;
       if (suggestionPlan && window.NewStoryAdSceneAssets?.applyPlan) {
-        changed = !!window.NewStoryAdSceneAssets.applyPlan(state, suggestionPlan);
+        const safePlan = !replaceExisting && window.NewStoryAdSceneAssets?.preserveCurrentSpecInPlan ? window.NewStoryAdSceneAssets.preserveCurrentSpecInPlan(suggestionPlan, targetSpaceId, currentSpec) : suggestionPlan;
+        changed = !!window.NewStoryAdSceneAssets.applyPlan(state, safePlan);
       } else if (replaceExisting && window.NewStoryAdSceneAssets?.applySpec) {
         window.NewStoryAdSceneAssets.applySpec(nextSpec, { clearMissing: false });
         changed = true;
@@ -5445,7 +5455,9 @@
       payload().brief,
     ].filter(Boolean).join('；');
     if (description.length < 8) return toast('请先填写广告需求或人物设定', 'error');
-    const generationSpec = collectPersonSpec();
+    let generationSpec = collectPersonSpec();
+    window.NewStoryAdSubjectAssetsUI?.applyPersonSpecAuthority?.(state, generationSpec, { scope: root(), markDirty: true });
+    generationSpec = collectPersonSpec();
     const subjectCounts = window.NewStoryAdSubjectAssetsUI.reconcileProfiles(state, generationSpec);
     const { people: peopleCount, pets: petCount, total: subjectCount } = subjectCounts;
     const profileErrors = window.NewStoryAdSubjectAssetsUI.profileErrors(state, generationSpec);
@@ -6320,6 +6332,12 @@
         return;
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
+        const personKey = target.dataset.nsaPersonSpec;
+        if (['age', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'].includes(personKey)) {
+          const latest = collectPersonSpec();
+          window.NewStoryAdSubjectAssetsUI?.applyPersonSpecAuthority?.(state, latest, { scope: root(), markDirty: true });
+          window.NewStoryAdPersonAgeAuthority?.invalidateAsset?.(state);
+        }
         markSourceDirty('person');
         if (['castMode', 'expectedPeople', 'expectedAnimals'].includes(target.dataset.nsaPersonSpec)) {
           renderAll();

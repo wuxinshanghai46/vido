@@ -1,4 +1,5 @@
 (() => {
+  const age = window.NewStoryAdPersonAgeAuthority;
   const VIEW_LABELS = {
     front: '正面',
     side: '侧面',
@@ -6,7 +7,6 @@
     action: '动作',
   };
 
-  /** 统一读取人物或宠物的四视图；单人、双人、多人和宠物共用同一数据合同。 */
   function subjectViews(asset = {}) {
     const raw = [
       ...(Array.isArray(asset.view_images) ? asset.view_images : []),
@@ -166,6 +166,9 @@
     const normalized = String(value).trim();
     return normalized === '[object Object]' ? '' : normalized.slice(0, max);
   }
+  function applyPersonSpecAuthority(state = {}, spec = {}, { scope = null, markDirty = false } = {}) {
+    return age?.apply?.(state, spec, { scope, markDirty, normalizeProfile: normalizeHumanProfile }) || spec;
+  }
   function firstProfileText(values = [], max = 800) {
     for (const value of values) {
       const normalized = clean(value, max);
@@ -211,6 +214,7 @@
       displayName: clean(source.displayName || source.name || '', 120),
       name: clean(source.displayName || source.name || '', 120),
       roleName: clean(source.roleName || source.role || '', 120),
+      age: clean(source.age || source.ageRange || source.appearance?.ageRange || 'match_brief', 40),
       ...resolved,
     };
   }
@@ -236,10 +240,11 @@
         ...source,
         displayName: source.displayName || source.name || (single ? spec.displayName : ''),
         roleName: source.roleName || source.role || (single ? spec.roleName : ''),
-        appearanceText: humanProfileTexts(source).appearanceText || (single ? spec.appearanceText : ''),
-        wardrobeText: humanProfileTexts(source).wardrobeText || (single ? spec.wardrobeText : ''),
-        hairMakeupText: humanProfileTexts(source).hairMakeupText || (single ? spec.hairMakeupText : ''),
-        negativeText: source.negativeText || (single ? spec.negativeText : ''),
+        age: source.age || source.ageRange || source.appearance?.ageRange || (single ? spec.age : 'match_brief'),
+        appearanceText: (single ? spec.appearanceText : '') || humanProfileTexts(source).appearanceText,
+        wardrobeText: (single ? spec.wardrobeText : '') || humanProfileTexts(source).wardrobeText,
+        hairMakeupText: (single ? spec.hairMakeupText : '') || humanProfileTexts(source).hairMakeupText,
+        negativeText: (single ? spec.negativeText : '') || source.negativeText,
       }, index);
     });
     state.petProfiles = Array.from({ length: target.pets }, (_, index) => {
@@ -251,6 +256,7 @@
         appearance: source.appearance || source.description || (single ? spec.petDescription : ''),
       }, index);
     });
+    applyPersonSpecAuthority(state, spec);
     return target;
   }
   function profileErrors(state = {}, spec = {}) {
@@ -298,6 +304,7 @@
     const value = clean(target.value, 800);
     const dirtyFields = new Set(Array.isArray(list[index]._generationDirtyFields) ? list[index]._generationDirtyFields : []);
     if (previous !== value) dirtyFields.add(field);
+    if (previous !== value && kind === 'cast') age?.invalidateAsset?.(state);
     list[index] = {
       ...list[index],
       [field]: value,
@@ -305,6 +312,9 @@
       _generationDirtyFields: [...dirtyFields],
     };
     if (kind === 'cast' && field === 'displayName') list[index].name = list[index].displayName;
+    if (kind === 'cast' && field === 'age') {
+      age?.updateProfile?.(list, index, value, target);
+    }
     return true;
   }
 
@@ -375,6 +385,7 @@
         ? `<textarea class="dh-input dh-luxgen-person-textarea" data-nsa-subject-kind="${kind}" data-nsa-subject-index="${index}" data-nsa-subject-field="${key}" maxlength="${options.max || 600}" placeholder="${escapeHtml(options.placeholder || '')}">${escapeHtml(value || '')}</textarea>`
         : `<input class="dh-input" data-nsa-subject-kind="${kind}" data-nsa-subject-index="${index}" data-nsa-subject-field="${key}" maxlength="${options.max || 120}" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(options.placeholder || '')}">`}
     </label>`;
+    const ageField = (index, value) => age?.selectHtml?.(index, value, escapeHtml) || '';
     const humans = (state.castProfiles || []).map((raw, index) => {
       const item = normalizeHumanProfile(raw, index);
       return `<details class="dh-nsa-subject-profile" open>
@@ -383,6 +394,7 @@
           <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}">AI 辅助补齐该人物</button><small>只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。</small></div>
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
           ${field('cast', index, 'roleName', '剧情身份 / 关系', item.roleName, { placeholder: '如：母亲、8岁女儿、品牌顾问' })}
+          ${ageField(index, item.age)}
           ${field('cast', index, 'appearanceText', '独立外貌 / 年龄 / 气质', item.appearanceText, { textarea: true, wide: true, max: 800 })}
           ${field('cast', index, 'wardrobeText', '独立服装 / 鞋 / 配饰', item.wardrobeText, { textarea: true, wide: true, max: 600 })}
           ${field('cast', index, 'hairMakeupText', '独立发型 / 妆造', item.hairMakeupText, { textarea: true, wide: true, max: 400 })}
@@ -466,6 +478,6 @@
     subjectViews, subjectMembers, subjectGalleryKey, subjectGalleryHtml, loadGalleryImages, handleGalleryClick,
     castProfiles, petProfiles, assetCastMode, counts, humanProfileTexts, normalizeHumanProfile, normalizePetProfile,
     reconcileProfiles, profileErrors, updateProfileFromField, subjectEditorHtml, renderProfiles, adoptAssistedProfiles,
-    syncProfileFieldsFromDom, selectionItems, confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
+    syncProfileFieldsFromDom, applyPersonSpecAuthority, selectionItems, confirmOptions, progressStages, initialProgress, verificationTarget, petGrid,
   };
 })();

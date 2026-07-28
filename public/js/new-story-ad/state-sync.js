@@ -394,8 +394,12 @@
     const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
     if (!acceptsTaskIdentity(state, incomingTaskId, ctx)) return false;
     const outputs = normalizeTaskOutputs(bundle);
-    state.context = normalizeBriefContext(outputs.context || response.context || state.context);
-    state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
+    const acknowledgedSeq = Math.max(0, Number(response.acknowledged_client_edit_seq || task.latest_client_edit_seq || bundle.acknowledged_client_edit_seq || 0) || 0);
+    const preserveLocalEdits = Number(state.clientEditSeq || 0) > Math.max(acknowledgedSeq, Number(state.acknowledgedClientEditSeq || 0));
+    if (!preserveLocalEdits) {
+      state.context = normalizeBriefContext(outputs.context || response.context || state.context);
+      state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
+    }
     state.blueprint = outputs.blueprint || response.blueprint || state.blueprint;
     state.storyboardStatus = response.storyboard_status || bundle.storyboard_status || state.storyboardStatus || null;
     state.shots = outputs.storyboard_table || response.shots || state.shots || [];
@@ -432,22 +436,14 @@
       state.taskError = task.error || '';
       state.taskErrorCode = task.error_code || '';
     }
-    hydrateSceneAssets(state, {
-      request: state.context || {},
-      outputs,
-      response,
-    });
-    hydratePersonSpec(state.context || {}, { state });
-    hydrateAssets(state, state.context || {});
+    if (!preserveLocalEdits) {
+      hydrateSceneAssets(state, { request: state.context || {}, outputs, response });
+      hydratePersonSpec(state.context || {}, { state });
+      hydrateAssets(state, state.context || {});
+    }
     hydrateSubjectCheckpoint(state, outputs, state.context || {});
     state.taskId = incomingTaskId || state.taskId;
     if (incomingRevision) state.contentRevision = incomingRevision;
-    const acknowledgedSeq = Math.max(0, Number(
-      response.acknowledged_client_edit_seq
-        || task.latest_client_edit_seq
-        || bundle.acknowledged_client_edit_seq
-        || 0,
-    ) || 0);
     if (acknowledgedSeq) {
       state.acknowledgedClientEditSeq = Math.max(Number(state.acknowledgedClientEditSeq || 0), acknowledgedSeq);
     }
@@ -520,7 +516,9 @@
         previewUrl: personAsset.previewUrl || personAsset.image_url || personAsset.url || '',
       };
       state.actorAsset = state.personAsset;
-      if (typeof applyPersonAssetConstraints === 'function') applyPersonAssetConstraints(state.personAsset);
+      if (typeof applyPersonAssetConstraints === 'function') {
+        applyPersonAssetConstraints(state.personAsset, { preserveCurrent: true });
+      }
     }
   }
 

@@ -455,6 +455,11 @@ function actorPayload(actorAsset, extra = {}) {
 
 function buildActorDescription({ brief = '', description = '', spec = {}, context = {} } = {}) {
   const ageLabels = {
+    infant_0_1: '0-1 year old infant',
+    toddler_1_3: '1-3 year old toddler',
+    child_4_7: '4-7 year old child',
+    child_8_12: '8-12 year old child',
+    teen_13_17: '13-17 year old teenager',
     match_brief: 'the age explicitly required by the campaign brief',
     young_adult_17_25: '18-25 years old adult',
     young_adult: '25-32 years old',
@@ -467,7 +472,7 @@ function buildActorDescription({ brief = '', description = '', spec = {}, contex
   const origin = String(spec.origin || '').trim();
   const castMode = String(spec.castMode || spec.cast_mode || '').trim();
   return [
-    'Strict live-action photorealistic commercial actor casting reference. It must look like a real adult human photographed by a real camera, not an AI beauty poster.',
+    'Strict live-action photorealistic commercial casting reference. The subject must look like a real human photographed by a real camera at the exact locked age, not an AI beauty poster.',
     visualRealismPolicy.personRealismPrompt(),
     visualRealismPolicy.image2CompliancePrompt(),
     'Use realistic hands, real fabric wrinkles, normal body proportions, believable commercial wardrobe and a clean studio casting background.',

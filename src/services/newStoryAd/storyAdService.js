@@ -1813,26 +1813,22 @@ async function generateKeyframesStage(taskId, options = {}) {
       generationProgress.effective_concurrency = 1;
       refreshParallelProgress(i);
       storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
-      return {
-        index: i,
-        failed: true,
-        throttled: true,
-        retry_required: true,
-        usable: hasUsablePreviousKeyframe(keyframes[i]),
-      };
+      return { index: i, failed: true, throttled: true, retry_required: true,
+        usable: hasUsablePreviousKeyframe(keyframes[i]) };
     }
     generationProgress.processed += 1;
     if (currentAttemptFailed) generationProgress.failed += 1;
     else generationProgress.succeeded += 1;
     const usable = hasUsablePreviousKeyframe(keyframes[i]);
+    const stopBatch = currentAttemptFailed && keyframeFailure.shouldStopBatch(currentError);
     if (usable) completedBatchIndexes.add(i);
     refreshParallelProgress(i);
     storage.updateTask(taskId, { generation_progress: { ...generationProgress } });
     return {
-      index: i,
-      failed: currentAttemptFailed,
-      throttled: currentAttemptFailed && keyframeParallel.isThrottleError(currentError),
-      usable,
+      index: i, failed: currentAttemptFailed,
+      throttled: currentAttemptFailed && keyframeParallel.isThrottleError(currentError), usable,
+      stop_remaining: stopBatch, stop_code: stopBatch ? String(currentError?.code || 'KEYFRAME_PROVIDER_BATCH_STOP') : '',
+      stop_message: stopBatch ? '供应商返回系统性、审核或计费不确定错误；已停止本批次尚未提交的镜头，避免重复付费。' : '',
       duration_ms: Date.now() - workerStartedMs,
     };
   }
@@ -1852,14 +1848,18 @@ async function generateKeyframesStage(taskId, options = {}) {
     const index = Number(result.index);
     if (!Number.isInteger(index) || index < 0 || index >= shots.length) continue;
     pendingProgressIndexes.delete(index);
+    const systemBlocked = result.system_blocked === true || result.reason === 'batch_circuit_open';
     const dependencyNumber = Number.isInteger(result.dependency) ? result.dependency + 1 : 0;
-    const message = dependencyNumber
+    const message = systemBlocked
+      ? (result.error || '供应商级错误已触发本批次熔断；本镜头尚未提交，因此没有新增图片调用。')
+      : dependencyNumber
       ? `依赖的第 ${dependencyNumber} 镜没有可用关键帧，已停止第 ${index + 1} 镜生成以避免连续性错误。`
       : `第 ${index + 1} 镜的连续性依赖无效，已停止生成。`;
+    const blockedCode = systemBlocked ? 'KEYFRAME_BATCH_CIRCUIT_OPEN' : 'KEYFRAME_DEPENDENCY_BLOCKED';
     const previousAcceptedFrame = hasUsablePreviousKeyframe(existing[index]) ? { ...existing[index] } : null;
-    attempts.push({ index, ok: false, code: 'KEYFRAME_DEPENDENCY_BLOCKED', error: message });
+    attempts.push({ index, ok: false, code: blockedCode, error: message });
     if (previousAcceptedFrame) {
-      retainedRegenerationFailures.push({ index, error: message, code: 'KEYFRAME_DEPENDENCY_BLOCKED' });
+      retainedRegenerationFailures.push({ index, error: message, code: blockedCode });
       keyframes[index] = {
         ...previousAcceptedFrame,
         shot_index: index,
@@ -1868,7 +1868,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         error: '',
         error_code: '',
         regeneration_error: message,
-        regeneration_error_code: 'KEYFRAME_DEPENDENCY_BLOCKED',
+        regeneration_error_code: blockedCode,
         regeneration_failed_at: new Date().toISOString(),
         current_generation_status: 'blocked',
         current_generation_id: generationProgress.generation_id,
@@ -1876,7 +1876,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         latest_attempt: keyframeFailure.attempt({
           generationId: generationProgress.generation_id,
           status: 'blocked',
-          error: Object.assign(new Error(message), { code: 'KEYFRAME_DEPENDENCY_BLOCKED' }),
+          error: Object.assign(new Error(message), { code: blockedCode }),
         }),
       };
     } else {
@@ -1886,14 +1886,14 @@ async function generateKeyframesStage(taskId, options = {}) {
         index: index + 1,
         title: shots[index]?.title || `Shot ${index + 1}`,
         error: message,
-        error_code: 'KEYFRAME_DEPENDENCY_BLOCKED',
+        error_code: blockedCode,
         contract: contracts[index] || null,
         current_generation_status: 'blocked',
         current_generation_id: generationProgress.generation_id,
         latest_attempt: keyframeFailure.attempt({
           generationId: generationProgress.generation_id,
           status: 'blocked',
-          error: Object.assign(new Error(message), { code: 'KEYFRAME_DEPENDENCY_BLOCKED' }),
+          error: Object.assign(new Error(message), { code: blockedCode }),
         }),
       };
     }
@@ -3388,12 +3388,12 @@ async function runFull(body = {}, user = {}) {
     };
   }
 }
-
 function modelHealth() {
   return storage.readHealth();
 }
-
 const PERSON_AGE_LABELS = {
+  infant_0_1: '0-1岁婴儿年龄感', toddler_1_3: '1-3岁幼儿年龄感', child_4_7: '4-7岁儿童年龄感',
+  child_8_12: '8-12岁少儿年龄感', teen_13_17: '13-17岁青少年年龄感',
   young_adult_17_25: '17-25岁年轻成人年龄感',
   young_adult: '25-32岁青年年龄感',
   adult_30_40: '30-40岁成熟青年年龄感',
@@ -3550,6 +3550,7 @@ async function assistBrief(body = {}, user = {}) {
   if (isPersonSpec && hasAssistSubjectTarget && !assistSubjectTarget) { const error = new Error('单人物辅助补齐目标无效；没有调用文本模型'); error.code = 'ASSIST_SUBJECT_TARGET_INVALID'; error.status = 400; throw error; }
   const currentScenePlan = isSceneSpec ? normalizeScenePlan(body.scene_plan || body.scenePlan || body.scene_config || body.sceneConfig || {}) : { spaces: [] };
   const assistSceneTargetId = isSceneSpec ? cleanText(body.target_space_id || body.targetSpaceId || '', 100) : '';
+  const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
   if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
   const systemPrompt = [
     '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
@@ -3669,7 +3670,7 @@ async function assistBrief(body = {}, user = {}) {
   const userPrompt = `${contextPrompt(ctx)}
 模式：${isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 ${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只补齐目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。只返回这一名人物的一条 cast_profiles 记录，保持已有非空字段，补齐其空白字段；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
-${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。当前完整场景计划：${JSON.stringify(currentScenePlan).slice(0, 18000)}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
+  ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 输出 JSON：
 ${outputSchema}`;
@@ -3705,9 +3706,8 @@ ${outputSchema}`;
     return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec, target: assistSubjectTarget });
   }
   if (isSceneSpec) {
-    return assistScenePlan.buildResponse({
-      parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId, mode, modelResult: result,
-    });
+    return assistScenePlan.buildResponse({ parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId,
+      mode, modelResult: result, preserveCurrentFields: preserveCurrentSceneFields });
   }
   if (isShotSettings) {
     const currentShot = shotAssistContext?.current_shot && typeof shotAssistContext.current_shot === 'object'

@@ -665,6 +665,13 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   ].filter(Boolean).join('\n\n');
 }
 
+function sceneDescriptionForSpec(sceneSpec = {}, fallback = '') {
+  return cleanText(
+    sceneSpec?.layoutText || sceneSpec?.layout_text || sceneSpec?.layout || fallback || '',
+    1200,
+  );
+}
+
 function buildLayoutAcquisitionPrompt({ ctx = {}, body = {} } = {}) {
   const requested = sceneRequest(ctx, body);
   const topology = requested.surface_topology
@@ -973,6 +980,16 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     body,
   });
   if (target.submitted_scene_spec_used) {
+    const targetIndex = Array.isArray(target.scene_plan?.spaces)
+      ? target.scene_plan.spaces.findIndex(space => String(space.id || space.space_id || space.scene_id) === String(target.scene_id))
+      : -1;
+    if (targetIndex >= 0) {
+      target.scene_plan.spaces[targetIndex] = {
+        ...target.scene_plan.spaces[targetIndex],
+        description: sceneDescriptionForSpec(target.scene_spec, target.scene_plan.spaces[targetIndex].description),
+        scene_spec: target.scene_spec,
+      };
+    }
     storage.saveOutput(taskId, 'scene_config', target.scene_plan);
     const editedCtx = {
       ...baseCtx,
@@ -984,6 +1001,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   }
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const sceneConfig = target.isolated_scene_config;
+  const authoritativeSceneDescription = sceneDescriptionForSpec(target.scene_spec);
   body = {
     ...body,
     scene_id: target.scene_id,
@@ -991,9 +1009,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     scene_spec: target.scene_spec,
     ...(target.space ? {
       name: target.space.name,
-      description: target.space.description,
-      scene_description: target.space.description,
-      prompt: target.space.description,
+      description: authoritativeSceneDescription,
+      scene_description: authoritativeSceneDescription,
+      prompt: authoritativeSceneDescription,
     } : {}),
   };
   assertCompleteUpgradeSceneSpec(body);
@@ -1777,6 +1795,7 @@ module.exports = {
   assertSceneRightsPreflight,
   sceneMaterialReferenceImages,
   buildSceneSheetPrompt,
+  sceneDescriptionForSpec,
   buildLayoutAcquisitionPrompt,
   legacyScenePromptFingerprintText,
   buildDerivedViewPrompt,

@@ -36,7 +36,7 @@ function outputSchema() {
 }
 
 /** 为模型输出补齐稳定空间 ID 和逐空间完整合同，同时保留已有结构化空间。 */
-function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, context = {}, targetSpaceId = '') {
+function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, context = {}, targetSpaceId = '', options = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const previous = normalizeScenePlan(currentPlan && typeof currentPlan === 'object' ? currentPlan : {});
   const scopedId = cleanText(targetSpaceId, 100);
@@ -65,6 +65,7 @@ function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, 
         incomingSpec,
         current.scene_spec || currentSpec,
         context,
+        options,
       ),
     };
     const spaces = previous.spaces.map((space, index) => index === targetIndex ? updated : space);
@@ -99,6 +100,7 @@ function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, 
       item.scene_spec || item.sceneSpec || {},
       baseSpec,
       context,
+      options,
     );
     return {
       id,
@@ -119,7 +121,7 @@ function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, 
 }
 
 /** 构造前后端兼容的场景辅助响应：结构化计划为真源，首空间 spec 仅供旧表单展示。 */
-function buildResponse({ parsed = {}, context = {}, currentPlan = {}, targetSpaceId = '', mode = 'scene_spec', modelResult = {} } = {}) {
+function buildResponse({ parsed = {}, context = {}, currentPlan = {}, targetSpaceId = '', mode = 'scene_spec', modelResult = {}, preserveCurrentFields = false } = {}) {
   const rawPlan = parsed.scene_plan || parsed.scenePlan || parsed.scene_config || parsed.sceneConfig || parsed;
   const plan = enforceAssistedScenePlan(
     rawPlan,
@@ -127,6 +129,7 @@ function buildResponse({ parsed = {}, context = {}, currentPlan = {}, targetSpac
     context.scene_spec || context.sceneSpec || {},
     context,
     targetSpaceId,
+    { preserveCurrentFields },
   );
   const active = plan.spaces.find(space => space.id === targetSpaceId) || plan.spaces[0];
   return {

@@ -48,6 +48,7 @@ async function runSchedule({
   const waves = [];
   const active = new Map();
   let fatalError = null;
+  let circuitStop = null;
 
   function removePending(indexesToRemove) {
     const removing = new Set(indexesToRemove);
@@ -92,6 +93,32 @@ async function runSchedule({
       });
     }
     return blockedAny;
+  }
+
+  function blockCircuitStopped() {
+    if (!circuitStop || !pending.length) return false;
+    const blocked = pending.splice(0).map(index => ({
+      index,
+      dependency: circuitStop.index,
+      reason: 'batch_circuit_open',
+      blocked: true,
+      system_blocked: true,
+      failed: true,
+      usable: false,
+      error_code: 'KEYFRAME_BATCH_CIRCUIT_OPEN',
+      error: circuitStop.message || '供应商级错误已触发本批次熔断，尚未提交的镜头未调用图片供应商。',
+      source_error_code: circuitStop.code || '',
+    }));
+    blocked.forEach(value => {
+      completed.add(value.index);
+      resultByIndex.set(value.index, value);
+      results.push(value);
+    });
+    waves.push({
+      kind: 'circuit_blocked', indexes: blocked.map(item => item.index), concurrency: 0,
+      wave_size: blocked.length, actual_concurrency: 0, results: blocked,
+    });
+    return blocked.length > 0;
   }
 
   async function startReadyWork() {
@@ -164,6 +191,13 @@ async function runSchedule({
       completed.add(index);
       resultByIndex.set(index, value);
       results.push(value);
+      if (value?.stop_remaining === true && !circuitStop) {
+        circuitStop = {
+          index,
+          code: value.stop_code || value.error_code || '',
+          message: value.stop_message || value.error || '',
+        };
+      }
     }
 
     if (value?.throttled === true || value?.force_sequential === true) effectiveConcurrency = 1;
@@ -179,6 +213,7 @@ async function runSchedule({
   }
 
   while (pending.length || active.size) {
+    blockCircuitStopped();
     blockFailedDependencies();
     if (!fatalError) await startReadyWork();
 

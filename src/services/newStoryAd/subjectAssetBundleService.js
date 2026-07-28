@@ -17,6 +17,36 @@ const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
 const activeBundleTasks = new Set();
 const activePersonVerificationTasks = new Set();
+const PERSON_AGE_LABELS = {
+  infant_0_1: '0-1 year old infant',
+  toddler_1_3: '1-3 year old toddler',
+  child_4_7: '4-7 year old child',
+  child_8_12: '8-12 year old child',
+  teen_13_17: '13-17 year old teenager',
+  young_adult_17_25: '17-25 year old young adult',
+  young_adult: '25-32 year old adult',
+  adult_30_40: '30-40 year old adult',
+  middle_40_55: '40-55 year old adult',
+  senior_55_plus: '55 year old or older adult',
+};
+const PERSON_AGE_LABELS_ZH = {
+  infant_0_1: '0-1岁婴儿年龄感', toddler_1_3: '1-3岁幼儿年龄感',
+  child_4_7: '4-7岁儿童年龄感', child_8_12: '8-12岁少儿年龄感',
+  teen_13_17: '13-17岁青少年年龄感', young_adult_17_25: '17-25岁年轻成人年龄感',
+  young_adult: '25-32岁青年年龄感', adult_30_40: '30-40岁成熟青年年龄感',
+  middle_40_55: '40-55岁中年年龄感', senior_55_plus: '55岁以上年长者年龄感',
+};
+
+function alignMemberAgeText(text = '', age = '') {
+  const label = PERSON_AGE_LABELS_ZH[String(age || '')];
+  if (!label) return cleanText(text, 800);
+  const cleaned = String(text || '')
+    .replace(/\d{1,2}\s*(?:-|—|–|至|到|~)\s*\d{1,2}\s*岁?/g, '')
+    .replace(/(?:年龄(?:约为|为|约)?|约|大约|看起来)?\s*\d{1,2}\s*(?:岁|周岁)(?:左右|上下)?/g, '')
+    .replace(/^[\s，、；:：的]+|[\s，、；]+$/g, '')
+    .replace(/[，、；]{2,}/g, '，');
+  return cleanText(`${label}，${cleaned || '外貌、体态、肤质和表情符合该年龄阶段'}`, 800);
+}
 
 function boundedCount(value, fallback, max) {
   const n = Number(value);
@@ -73,13 +103,19 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
   return supplied.slice(0, count).map((source, index) => {
     const role = cleanText(source.roleName || source.role || '', 120);
     const resolved = subjectProfileText.profileTexts(source);
+    const age = cleanText(
+      source.age || source.ageRange || source.appearance?.ageRange || (count === 1 ? spec.age : '') || 'match_brief',
+      40,
+    );
     return {
       ...source,
       id: cleanText(source.id || source.cast_id || source.castId || '', 80),
       member_index: index + 1,
       displayName: cleanText(source.displayName || source.name || '', 120),
       roleName: role,
+      age,
       ...resolved,
+      appearanceText: alignMemberAgeText(resolved.appearanceText, age),
     };
   });
 }
@@ -335,6 +371,9 @@ function humanPrompt(member, count) {
     visualRealism.identitySheetRealismPrompt(),
     count > 1 ? `This is cast member ${member.member_index} of ${count}. Create a clearly unique identity; never clone or resemble another cast member.` : '',
     `Name/role: ${member.displayName}; ${member.roleName}.`,
+    member.age && member.age !== 'match_brief'
+      ? `Age lock: ${PERSON_AGE_LABELS[member.age] || member.age}. This is a hard constraint; ignore any stale conflicting age phrase.`
+      : 'Age lock: use only the age explicitly supported by this member profile and campaign relationship.',
     member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
     member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
     member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
@@ -752,6 +791,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
+  alignMemberAgeText,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,
   aggregatePersonContract, aggregatePetContract, reverifyPersonBundle,
