@@ -49,7 +49,7 @@ const submittingBatch = sandbox.window.NewStoryAdProgress.snapshot({
   serverProgress: { stage: 'keyframes', generation_id: 'generation-old', target_total: 6, processed: 6, succeeded: 2, failed: 4, current_index: 6 },
 });
 assert.strictEqual(submittingBatch.title, '正在提交真实画面生成');
-assert.strictEqual(submittingBatch.stat, '已处理 0/6 · 0%');
+assert.match(submittingBatch.stat, /已耗时 .* · 已处理 0\/6 · 0%/);
 assert.strictEqual(submittingBatch.indeterminate, false);
 assert(!/6\/6|成功|失败|96%/.test(`${submittingBatch.title}${submittingBatch.stat}${submittingBatch.message}`), '提交窗口不得闪现上一批终态统计');
 
@@ -110,9 +110,29 @@ const blueprintProgress = sandbox.window.NewStoryAdProgress.snapshot({
   },
 });
 assert.match(blueprintProgress.title, /质量与版权\/IP 风险审核/);
-assert.match(blueprintProgress.stat, /4\/6 · 67%/);
+assert.match(blueprintProgress.stat, /4\/6 · 40%/);
 assert.equal(blueprintProgress.indeterminate, false);
 assert.match(blueprintProgress.message, /中文表达已检查/);
+
+const scriptPackageProgress = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'blueprint', generationId: 'package-current', startedAt: Date.now() - 30000 },
+  serverProgress: {
+    stage: 'script_package', substage: 'blueprint', generation_id: 'package-current',
+    phase: 'draft_ready', completed: 3, total: 6, percent: 50,
+  },
+});
+assert.match(scriptPackageProgress.stat, /3\/6 · 30%/);
+assert.equal(scriptPackageProgress.indeterminate, false);
+
+const packageStoryboardProgress = sandbox.window.NewStoryAdProgress.snapshot({
+  progress: { stage: 'blueprint', generationId: 'package-current', startedAt: Date.now() - 60000 },
+  serverProgress: {
+    stage: 'storyboard', generation_id: 'package-current', phase: 'running',
+    processed: 3, target_total: 6, percent: 40,
+  },
+});
+assert.match(packageStoryboardProgress.title, /剧本已完成，正在生成配套分镜：3\/6/);
+assert.match(packageStoryboardProgress.stat, /3\/6 · 80%/);
 
 const blueprintWaiting = sandbox.window.NewStoryAdProgress.snapshot({
   progress: { stage: 'blueprint', generationId: 'blueprint-new', startedAt: Date.now() },

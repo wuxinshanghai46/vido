@@ -68,10 +68,30 @@
 
   /** 执行底层 fetch，并将浏览器英文网络异常转换为中文。 */
   async function fetchWithChineseError(path, options = {}) {
+    const {
+      timeoutMs = 15000,
+      signal: externalSignal,
+      ...fetchOptions
+    } = options;
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortFromExternal = () => controller.abort(externalSignal?.reason);
+    if (externalSignal) {
+      if (externalSignal.aborted) abortFromExternal();
+      else externalSignal.addEventListener('abort', abortFromExternal, { once: true });
+    }
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, Math.max(1000, Number(timeoutMs) || 15000));
     try {
-      return await fetch(path, options);
+      return await fetch(path, { ...fetchOptions, signal: controller.signal });
     } catch (error) {
+      if (timedOut) throw new Error(`请求超过 ${Math.round(Number(timeoutMs) / 1000)} 秒未响应，已停止本次页面等待`);
       throw new Error(chineseErrorMessage(error?.message || error));
+    } finally {
+      clearTimeout(timeout);
+      externalSignal?.removeEventListener?.('abort', abortFromExternal);
     }
   }
 
@@ -82,12 +102,14 @@
     const token = opts.token || readToken();
     if (token) headers.Authorization = `Bearer ${token}`;
     const body = opts.body instanceof FormData ? opts.body : (opts.body ? JSON.stringify(opts.body) : undefined);
-    let resp = await fetchWithChineseError(path, { ...opts, credentials: opts.credentials || 'include', headers, body });
+    const timeoutMs = Number(opts.timeoutMs)
+      || (opts.body instanceof FormData ? 120000 : (String(opts.method || 'GET').toUpperCase() === 'GET' ? 15000 : 45000));
+    let resp = await fetchWithChineseError(path, { ...opts, timeoutMs, credentials: opts.credentials || 'include', headers, body });
     if (resp.status === 401 && await refreshAuth(opts.onToken)) {
       const retryHeaders = { ...headers };
       const retryToken = readToken();
       if (retryToken) retryHeaders.Authorization = `Bearer ${retryToken}`;
-      resp = await fetchWithChineseError(path, { ...opts, credentials: opts.credentials || 'include', headers: retryHeaders, body });
+      resp = await fetchWithChineseError(path, { ...opts, timeoutMs, credentials: opts.credentials || 'include', headers: retryHeaders, body });
     }
     if (resp.status === 401) {
       location.href = '/?login=1&target=' + encodeURIComponent('/digital-human?tab=new-story-ad');

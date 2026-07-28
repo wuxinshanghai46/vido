@@ -368,6 +368,17 @@
     state.restoreError = '服务器记录显示分镜曾经完成，但分镜主体数据已缺失；请从任务备份恢复，不能把 QA 状态当作分镜内容';
   }
 
+  function acceptsTaskIdentity(state = {}, incomingTaskId = '', ctx = {}) {
+    if (ctx.expectedSessionEpoch !== undefined
+      && Number(state.taskSessionEpoch || 0) !== Number(ctx.expectedSessionEpoch)) return false;
+    const incoming = String(incomingTaskId || '');
+    const expected = String(ctx.expectedTaskId || '');
+    const current = String(state.taskId || '');
+    if (expected && incoming && incoming !== expected) return false;
+    if (current && incoming && incoming !== current) return false;
+    return true;
+  }
+
   function normalizeBundle(response = {}, ctx = {}) {
     const { state, rememberTaskId } = ctx;
     if (!state) return;
@@ -381,6 +392,7 @@
     ) || 0);
     if (incomingRevision && Number(state.contentRevision || 0) > incomingRevision) return;
     const incomingTaskId = response.task_id || response.task?.id || bundle.task?.id || '';
+    if (!acceptsTaskIdentity(state, incomingTaskId, ctx)) return false;
     const outputs = normalizeTaskOutputs(bundle);
     state.context = normalizeBriefContext(outputs.context || response.context || state.context);
     state.sceneConfig = outputs.scene_config || response.scene_config || state.sceneConfig;
@@ -450,6 +462,7 @@
     syncActiveGenerationClock(state, task);
     if (!state.activeGenerationId) state.cancelRequested = false;
     if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
+    return true;
   }
 
   function hydrateAssets(state = {}, request = {}) {
@@ -530,6 +543,7 @@
     const storedBrief = String(request.brief || request.content || task.brief || '');
     const restoredBrief = formatBriefText(storedBrief);
     const incomingTaskId = task.id || request.task_id || request.taskId || '';
+    if (!acceptsTaskIdentity(state, incomingTaskId, ctx)) return false;
     syncMediaResult(state, { bundle, incomingTaskId });
     state.taskId = incomingTaskId || state.taskId;
     state.contentRevision = Math.max(0, Number(task.content_revision || state.contentRevision || 0) || 0);
@@ -609,6 +623,7 @@
     hydrateAssets(state, request);
     hydrateSubjectCheckpoint(state, outputs, request);
     if (state.taskId && typeof rememberTaskId === 'function') rememberTaskId(state.taskId);
+    return true;
   }
 
   window.NewStoryAdStateSync = {
@@ -627,6 +642,7 @@
     shouldPreserveTrackedGeneration,
     detectMissingStoryboardOutput,
     syncMediaResult,
+    acceptsTaskIdentity,
     collectDurationContract,
     formatBriefText,
     authoritativeTextValue,

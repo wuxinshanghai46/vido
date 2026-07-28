@@ -18,7 +18,7 @@ function compactIndexList(value = [], max = 60) {
 function compactProgress(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   const allowed = [
-    'stage', 'status', 'phase', 'message', 'generation_id', 'started_at', 'updated_at',
+    'stage', 'substage', 'status', 'phase', 'message', 'generation_id', 'started_at', 'updated_at',
     'target_total', 'total', 'completed', 'processed', 'succeeded', 'failed',
     'current_index', 'percent', 'repair_attempt', 'max_repair_attempts',
     'configured_concurrency', 'effective_concurrency', 'peak_concurrency',

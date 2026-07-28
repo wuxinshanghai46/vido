@@ -1,10 +1,11 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260728-story-step-v50';
+  const SCRIPT_VERSION = '20260728-task-isolation-v51';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
     '/js/new-story-ad/task-store.js',
+    '/js/new-story-ad/task-session.js',
     '/js/new-story-ad/progress.js',
     '/js/new-story-ad/scene-assets.js',
     '/js/new-story-ad/state-sync.js',

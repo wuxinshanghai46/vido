@@ -1,4 +1,14 @@
 ﻿(() => {
+  function assertTaskSession(state = {}, expectedTaskId = '', expectedSessionEpoch) {
+    if ((expectedSessionEpoch !== undefined
+        && Number(state.taskSessionEpoch || 0) !== Number(expectedSessionEpoch))
+      || (expectedTaskId && state.taskId && String(state.taskId) !== String(expectedTaskId))) {
+      const error = new Error('页面已切换到其他任务，旧任务保存响应已忽略');
+      error.code = 'TASK_SESSION_REPLACED';
+      throw error;
+    }
+  }
+
   function isNetworkError(error) {
     if (window.NewStoryAdGenerationFlow?.isNetworkError) return window.NewStoryAdGenerationFlow.isNetworkError(error);
     return error instanceof TypeError || /failed to fetch|network|connection (?:reset|aborted)|load failed/i.test(String(error?.message || error || ''));
@@ -55,9 +65,11 @@
     const { state, payload, api, rememberTaskId, renderStatus } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
     if (state.taskId) return state.taskId;
+    const expectedSessionEpoch = state.taskSessionEpoch;
     const body = payload();
     if (String(body.brief || '').length < 8) throw new Error('请先填写至少 8 个字的广告需求');
     const created = await api('/api/new-story-ad/tasks', { method: 'POST', body });
+    assertTaskSession(state, '', expectedSessionEpoch);
     state.taskId = created.task?.id || created.task_id || created.taskId || '';
     state.context = created.context || null;
     state.contentRevision = Math.max(1, Number(created.content_revision || created.task?.content_revision || 1) || 1);
@@ -76,6 +88,7 @@
     if (!state?.blueprint || !taskId) return null;
     if (typeof api !== 'function' || typeof normalizeBlueprintForSave !== 'function') throw new Error('剧本保存上下文未初始化');
     const blueprint = normalizeBlueprintForSave();
+    const expectedSessionEpoch = state.taskSessionEpoch;
     state.blueprint = blueprint;
     let response;
     try {
@@ -86,7 +99,8 @@
     } catch (error) {
       response = await recoverSavedOutput(taskId, 'blueprint', blueprint, ctx, error);
     }
-    if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    assertTaskSession(state, taskId, expectedSessionEpoch);
+    if (typeof normalizeBundle === 'function') normalizeBundle(response, { expectedTaskId: taskId, expectedSessionEpoch });
     state.blueprintDirty = false;
     return response;
   }
@@ -96,6 +110,7 @@
     if (!taskId || !Array.isArray(state?.shots) || !state.shots.length) return null;
     if (typeof api !== 'function') throw new Error('分镜保存上下文未初始化');
     const cleanSpeech = typeof normalizeSpeechText === 'function' ? normalizeSpeechText : value => String(value || '').trim();
+    const expectedSessionEpoch = state.taskSessionEpoch;
     const shots = state.shots.map((shot, index) => {
       const duration = shot.duration || shot.duration_sec || 3;
       const visual = shot.visual || shot.visual_description || shot.content_prompt || '';
@@ -151,7 +166,8 @@
     } catch (error) {
       response = await recoverSavedOutput(taskId, 'storyboard_table', shots, ctx, error);
     }
-    if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    assertTaskSession(state, taskId, expectedSessionEpoch);
+    if (typeof normalizeBundle === 'function') normalizeBundle(response, { expectedTaskId: taskId, expectedSessionEpoch });
     syncStoryboardArtifacts(state, response);
     return response;
   }
@@ -161,11 +177,13 @@
     if (!taskId) return null;
     if (typeof api !== 'function') throw new Error('场景资产保存上下文未初始化');
     const sceneAssets = window.NewStoryAdSceneAssets?.payload?.(state) || state.sceneAssets || [];
+    const expectedSessionEpoch = state.taskSessionEpoch;
     const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/scene-assets`, {
       method: 'PUT',
       body: { scene_assets: sceneAssets },
     });
-    if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    assertTaskSession(state, taskId, expectedSessionEpoch);
+    if (typeof normalizeBundle === 'function') normalizeBundle(response, { expectedTaskId: taskId, expectedSessionEpoch });
     if (typeof window.__dhRefreshNewStoryAdTasks === 'function') {
       await window.__dhRefreshNewStoryAdTasks();
     }
@@ -187,6 +205,7 @@
     const { state, api, payload, normalizeBundle, renderAll, toast } = ctx;
     if (!state || typeof api !== 'function' || typeof payload !== 'function') throw new Error('任务保存上下文未初始化');
     const id = await ensureTask(ctx);
+    const expectedSessionEpoch = state.taskSessionEpoch;
     const progressStage = progressStageForState(state);
     const savingEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0);
     const savingDomains = Array.isArray(state.pendingChangeDomains) ? [...state.pendingChangeDomains] : [];
@@ -213,7 +232,8 @@
         progress_stage: progressStage,
       },
     });
-    if (typeof normalizeBundle === 'function') normalizeBundle(response);
+    assertTaskSession(state, id, expectedSessionEpoch);
+    if (typeof normalizeBundle === 'function') normalizeBundle(response, { expectedTaskId: id, expectedSessionEpoch });
     state.contentRevision = Math.max(1, Number(response.content_revision || response.task?.content_revision || state.contentRevision || 1) || 1);
     state.acknowledgedClientEditSeq = Math.max(
       Number(state.acknowledgedClientEditSeq || 0),

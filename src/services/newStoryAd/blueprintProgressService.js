@@ -9,12 +9,13 @@ function update(taskId, progress = {}, { generationId = '' } = {}) {
   const activeId = String(task.active_generation_id || '');
   const expectedId = String(generationId || activeId || task.generation_progress?.generation_id || '');
   if (generationId && activeId !== String(generationId)) return null;
-  if (task.active_stage && task.active_stage !== 'blueprint') return null;
+  if (task.active_stage && !['blueprint', 'script_package'].includes(task.active_stage)) return null;
   const total = Math.max(1, Number(progress.total || BLUEPRINT_PROGRESS_TOTAL) || BLUEPRINT_PROGRESS_TOTAL);
   const completed = Math.max(0, Math.min(total, Number(progress.completed) || 0));
   const now = new Date().toISOString();
   const next = {
-    stage: 'blueprint',
+    stage: task.active_stage === 'script_package' ? 'script_package' : 'blueprint',
+    substage: 'blueprint',
     status: completed >= total ? 'completed' : 'running',
     generation_id: expectedId,
     phase: cleanText(progress.phase || 'preparing', 80),

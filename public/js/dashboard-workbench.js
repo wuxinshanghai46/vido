@@ -80,7 +80,7 @@
 
   function renderCreator() {
     const entries = [
-      ['new-story-ad', '🎭', '剧情广告', '故事化营销短片', '/digital-human?tab=new-story-ad'],
+      ['new-story-ad', '🎭', '剧情广告', '故事化营销短片', '/digital-human?tab=new-story-ad&nsa_intent=create'],
       ['avatar', '🧑‍💼', '数字人口播', '真人感讲解视频', '/digital-human'],
       ['create', '🎬', '视频动漫', '文字生成动画短片', '/?page=create'],
       ['comic', '📚', '漫画', '故事生成漫画', '/?page=comic'],

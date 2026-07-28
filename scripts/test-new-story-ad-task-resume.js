@@ -7,6 +7,8 @@ const vm = require('vm');
 const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-store.js'), 'utf8');
 const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
 const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+const taskSessionSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-session.js'), 'utf8');
+const dashboardSource = fs.readFileSync(path.join(__dirname, '../public/js/dashboard-workbench.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap.js'), 'utf8');
 const bootstrapSupportSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap-support.js'), 'utf8');
 const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
@@ -58,11 +60,22 @@ store.syncBlueprintFailureHost({
   taskErrorCode: 'KEYFRAME_BATCH_PARTIAL_FAILURE',
   taskError: '供应商返回失败。支持编号：support-123',
   generationProgress: { target_total: 9, processed: 9, succeeded: 0, failed: 9 },
+  keyframes: [
+    { error_code: 'PROVIDER_CONTENT_AUDIT', current_generation_status: 'failed' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+    { error_code: 'PROVIDER_5XX_AMBIGUOUS', current_generation_status: 'failed' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+    { error_code: 'PROVIDER_5XX_AMBIGUOUS', current_generation_status: 'failed' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+    { error_code: 'KEYFRAME_DEPENDENCY_BLOCKED', current_generation_status: 'blocked' },
+  ],
 }, keyframeFailureHost, String);
 assert.equal(keyframeFailureHost.hidden, false);
 assert.match(keyframeFailureHost.innerHTML, /真实分镜生成未完成/);
 assert.match(keyframeFailureHost.innerHTML, /支持编号：support-123/);
-assert.match(keyframeFailureHost.innerHTML, /已处理 9\/9 张，可用 0 张，失败 9 张/);
+assert.match(keyframeFailureHost.innerHTML, /3 个根镜头直接失败，6 个依赖镜头未调用图片供应商/);
 assert.match(keyframeFailureHost.innerHTML, /不会自动重复提交/);
 assert.equal(store.resumeStep({ stage: 'keyframes_failed', shot_count: 6 }, {}), 5);
 assert.equal(store.resumeStep({ stage: 'video_failed' }, {}), 6);
@@ -93,7 +106,9 @@ store.rememberRouteStep(1);
 assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_task_id'), 'old-task');
 assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_step'), '1');
 
-assert(legacyUiSource.includes("state.pendingRestoreTaskId = routeTaskId() || storedTaskId()"));
+assert(dashboardSource.includes('/digital-human?tab=new-story-ad&nsa_intent=create'));
+assert(legacyUiSource.includes("state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId())"));
+assert(taskSessionSource.includes("['nsa_intent', 'nsa_task_id', 'nsa_step']"));
 assert(legacyUiSource.includes("showStep(routeStep(), { remember: false })"));
 assert(legacyUiSource.includes("showStep(state.currentStep, { remember: !state.restoringTask })"));
 assert(legacyUiSource.includes("state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId()"));

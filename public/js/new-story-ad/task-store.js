@@ -136,9 +136,16 @@
     const processed = Math.max(0, Number(progress.processed) || 0);
     const succeeded = Math.max(0, Number(progress.succeeded) || 0);
     const failed = Math.max(0, Number(progress.failed) || 0);
-    const counters = total
+    const frames = Array.isArray(state.keyframes) ? state.keyframes : [];
+    const dependencyBlocked = frames.filter(frame => String(frame?.error_code || '') === 'KEYFRAME_DEPENDENCY_BLOCKED'
+      || String(frame?.current_generation_status || '') === 'blocked').length;
+    const directFailures = Math.max(0, failed - dependencyBlocked);
+    const rawCounters = total
       ? `本批次已处理 ${processed}/${total} 张，可用 ${succeeded} 张${failed ? `，失败 ${failed} 张` : ''}。`
       : '';
+    const counters = failed && dependencyBlocked
+      ? `${directFailures} 个根镜头直接失败，${dependencyBlocked} 个依赖镜头未调用图片供应商。请先处理直接失败的根镜头。`
+      : rawCounters;
     const message = state.taskError || '真实分镜生成未完成，服务器已停止本批次。';
     return `<div class="dh-nsa-stage-failure"><b>真实分镜生成未完成</b><span>${escapeHtml(message)}</span>${state.taskErrorCode ? `<em>错误代码：${escapeHtml(state.taskErrorCode)}</em>` : ''}<small>${escapeHtml(counters)} 已成功的图片会保留；再次操作时只补齐未完成镜头，不会自动重复提交。</small></div>`;
   }

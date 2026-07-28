@@ -49,6 +49,7 @@
   const state = {
     mounted: false,
     token: sessionStorage.getItem('vido_token') || localStorage.getItem('vido_token') || localStorage.getItem('token') || '',
+    taskSessionEpoch: 0,
     taskId: '',
     context: null,
     sceneConfig: null,
@@ -987,7 +988,8 @@
     state.mounted = true;
     setCopy();
     bind();
-    state.pendingRestoreTaskId = routeTaskId() || storedTaskId();
+    const createIntent = window.NewStoryAdTaskSession.consumeCreateIntent(state, rememberTaskId);
+    state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId());
     state.restoringTask = !!state.pendingRestoreTaskId && !state.taskId;
     showStep(routeStep(), { remember: false });
     renderAll();
@@ -1153,6 +1155,7 @@
   }
 
   function resetForNewSession() {
+    window.NewStoryAdTaskSession.reset(state, { stopStageProgress, clearVideoAuthorization });
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
     autoSaveInFlight = false;
@@ -1603,11 +1606,13 @@
     if (subtitleToggle && document.activeElement !== subtitleToggle) subtitleToggle.checked = !!state.subtitleEnabled;
   }
 
-  function normalizeBundle(response = {}) {
+  function normalizeBundle(response = {}, guard = {}) {
     if (window.NewStoryAdStateSync?.normalizeBundle) {
       return window.NewStoryAdStateSync.normalizeBundle(response, {
         state,
         rememberTaskId,
+        expectedTaskId: guard.expectedTaskId,
+        expectedSessionEpoch: guard.expectedSessionEpoch,
       });
     }
     const bundle = response.bundle || response;
@@ -1780,7 +1785,7 @@
     window.NewStoryAdBrandOverlay.hydrate(state, request);
   }
 
-  function hydrateTaskBundle(bundle = {}) {
+  function hydrateTaskBundle(bundle = {}, guard = {}) {
     if (window.NewStoryAdStateSync?.hydrateTaskBundle) {
       return window.NewStoryAdStateSync.hydrateTaskBundle(bundle, {
         state,
@@ -1789,6 +1794,8 @@
         rememberTaskId,
         hydrateControlledProduction,
         applyPersonAssetConstraints,
+        expectedTaskId: guard.expectedTaskId,
+        expectedSessionEpoch: guard.expectedSessionEpoch,
       });
     }
     const task = bundle.task || {};
@@ -1946,6 +1953,7 @@
   async function restoreCurrentTask() {
     const id = state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId();
     if (!id || state.taskId) return false;
+    const sessionEpoch = state.taskSessionEpoch;
     state.pendingRestoreTaskId = id;
     state.restoringTask = true;
     state.restoreError = '';
@@ -1957,10 +1965,11 @@
         : null;
       if (prefetched?.error) throw prefetched.error;
       const r = prefetched?.data || await api(`/api/new-story-ad/tasks/${encodeURIComponent(id)}?compact=1`);
+      if (state.taskSessionEpoch !== sessionEpoch || state.pendingRestoreTaskId !== id || state.taskId) return false;
       if (window.__newStoryAdEarlyTask?.id === id) window.__newStoryAdEarlyTask = null;
       const bundle = r.bundle || r;
       if (!bundle?.task) throw new Error('任务不存在');
-      hydrateTaskBundle(bundle);
+      if (hydrateTaskBundle(bundle, { expectedTaskId: id, expectedSessionEpoch: sessionEpoch }) === false) return false;
       const desiredStep = window.NewStoryAdTaskStore?.resumeStep
         ? window.NewStoryAdTaskStore.resumeStep(bundle.task || {}, bundle.outputs || {}, state.storyboardStatus)
         : routeStep();
@@ -1972,7 +1981,7 @@
         detail: { success: true, taskId: state.taskId || id },
       }));
       recoverPersonAssetFromLibrary(bundle).then(recovered => {
-        if (recovered) renderAll();
+        if (state.taskSessionEpoch === sessionEpoch && state.taskId === id && recovered) renderAll();
       }).catch(() => {});
       window.NewStoryAdSubjectCheckpointPolling?.resume({ state, api, hydrateTaskBundle, renderAll });
       resumeActiveGeneration();
@@ -1994,26 +2003,10 @@
     }
   }
   function resumeActiveGeneration() {
-    if (!state.activeGenerationId || !state.taskId || !window.NewStoryAdGenerationFlow?.waitForStage) return false;
-    const persistedStage = state.activeStage || 'generation';
-    const uiStage = persistedStage === 'scene_config' ? 'scene' : persistedStage;
-    const label = window.NewStoryAdGenerationFlow.STAGE_LABELS?.[uiStage] || '正在生成中...';
-    startStageProgress(uiStage, label, { resume: true });
-    setBusy(true, label);
-    window.NewStoryAdGenerationFlow.waitForStage(state.taskId, persistedStage, generationFlowContext())
-      .then(bundle => {
-        normalizeBundle(bundle);
-        if (persistedStage === 'storyboard'
-          && window.NewStoryAdGenerationFlow.storyboardIsReady(bundle, state)) showStep(5);
-        renderAll();
-      })
-      .catch(error => {
-        if (error.data) normalizeBundle(error.data);
-        renderAll();
-        toast(error.message || '生成任务已结束', error.code === 'USER_CANCELLED' ? 'info' : 'error');
-      })
-      .finally(() => setBusy(false));
-    return true;
+    return window.NewStoryAdTaskSession.resumeActiveGeneration({
+      state, flow: window.NewStoryAdGenerationFlow, context: generationFlowContext,
+      startStageProgress, setBusy, normalizeBundle, renderAll, showStep, toast,
+    });
   }
 
   function setButtonLock(selector, locked, title = '', options = {}) {
@@ -2422,21 +2415,9 @@
     }
     const serverTrackedStages = new Set(['scene', 'blueprint', 'storyboard', 'keyframes', 'video', 'media', 'compose']);
     const intervalMs = serverTrackedStages.has(stage) ? 2000 : 1000;
-    let progressRevision = '';
-    state.stageProgressTimer = setInterval(async () => {
-      const activeProgress = state.stageProgress;
-      if (!activeProgress?.active) return;
-      if (serverTrackedStages.has(stage) && state.taskId) {
-        try {
-          const r = await api(`/api/new-story-ad/tasks/${encodeURIComponent(state.taskId)}/progress${progressRevision ? `?since=${encodeURIComponent(progressRevision)}` : ''}`);
-          progressRevision = String(r.revision || progressRevision);
-          if (!state.stageProgress?.active || state.stageProgress !== activeProgress) return;
-          normalizeBundle(r);
-        } catch {}
-      }
-      if (!state.stageProgress?.active || state.stageProgress !== activeProgress) return;
-      setBusy(true, label);
-    }, intervalMs);
+    state.stageProgressTimer = window.NewStoryAdTaskSession.startProgressTimer({
+      state, stage, intervalMs, tracked: serverTrackedStages.has(stage), api, normalizeBundle, setBusy, label,
+    });
   }
   function startSingleKeyframeProgress(index = 0, label = '') {
     stopStageProgress();
@@ -3188,6 +3169,7 @@
       const candidates = Array.isArray(frame.candidates) ? frame.candidates : [];
       const reviewableCandidate = candidates.slice().reverse().find(candidate => candidate.status === 'qa_unavailable' || candidate.qa?.status === 'unavailable');
       const qaUnavailable = String(frame.current_generation_status || '') === 'qa_unavailable' || !!reviewableCandidate;
+      const dependencyBlocked = String(frame.error_code || '') === 'KEYFRAME_DEPENDENCY_BLOCKED' || String(frame.current_generation_status || '') === 'blocked';
       const currentFailed = !qaUnavailable && !!(frame.regeneration_error || frame.error || frame.error_code || ['rejected', 'failed', 'blocked'].includes(String(frame.current_generation_status || '')));
       const qaOutdated = !!preview && (Number(frame.qa_policy_version || 0) < 2 || frame.contract_outdated === true || String(frame.current_generation_status || '') === 'outdated') && !frame.regeneration_error;
       const qaPassed = !!preview && !currentFailed && !qaOutdated && frame.qa?.pass === true;
@@ -3211,6 +3193,9 @@
               ? '镜头设置已修改，当前画面仍为上一版本。重新生成后新设置才会生效。'
               : '当前画面由旧版审核规则生成，需按最新规则重新验证。')
             : (manualAccepted ? '自动 QA 的原始结论已保留；该画面由用户人工确认符合创作意图并采用。' : (qaPassed ? '当前版本视觉 QA 已通过。' : '等待当前版本完成视觉 QA。')))));
+      const displayQaLabel = dependencyBlocked ? '依赖镜头未提交' : qaLabel;
+      const blockedByShot = Number(frame.blocked_by_shot || frame.blocked_by_index || frame.dependency?.blocked_by_shot || 0) || 0;
+      const displayQaDetail = dependencyBlocked ? `本镜头未调用图片供应商；请先修复${blockedByShot ? `第 ${blockedByShot} 镜` : '它依赖的根镜头'}。` : qaDetail;
       const headerSummary = [cameraSummary, sceneName].filter(Boolean).join(' · ');
       const showStatusNotice = qaUnavailable || currentFailed || qaOutdated;
       const ratioMatch = String(state.outputRatio || '9:16').match(/^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/);
@@ -3240,10 +3225,10 @@
           </div>
           <div class="dh-nsa-frame-head-meta">
             <label class="dh-nsa-duration" title="镜头时长"><input type="number" min="1" max="15" step="1" value="${escapeHtml(duration || 3)}" aria-label="第 ${i + 1} 镜时长" data-nsa-shot-index="${i}" data-nsa-shot-field="duration"><em>秒</em></label>
-            <span class="dh-nsa-qa-badge is-${qaState}" title="${escapeHtml(qaDetail)}">分镜图：${escapeHtml(qaLabel)}</span>
+            <span class="dh-nsa-qa-badge is-${qaState}" title="${escapeHtml(displayQaDetail)}">分镜图：${escapeHtml(displayQaLabel)}</span>
           </div>
         </header>
-        ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(qaDetail)}</span>${reviewableCandidate ? `<button type="button" data-nsa-candidate-review="${i}:${escapeHtml(reviewableCandidate.id || '')}">重新验证此图</button>` : `<button type="button" data-nsa-shot-regenerate="${i}">重新生成</button>`}</div>` : ''}
+        ${showStatusNotice ? `<div class="dh-nsa-frame-status-note"><span>${escapeHtml(displayQaDetail)}</span>${dependencyBlocked ? '<em>等待根镜头恢复</em>' : (reviewableCandidate ? `<button type="button" data-nsa-candidate-review="${i}:${escapeHtml(reviewableCandidate.id || '')}">重新验证此图</button>` : `<button type="button" data-nsa-shot-regenerate="${i}">重新生成</button>`)}</div>` : ''}
         <div class="dh-nsa-frame-media">
           ${window.NewStoryAdKeyframes?.previewButtonHtml ? window.NewStoryAdKeyframes.previewButtonHtml({ frame, shot, index: i, previewUrl: preview, imageUrl: image ? withAuthQuery(image) : '', escapeHtml }) : `<button type="button" class="dh-nsa-frame-preview ${preview ? '' : 'pending'}" ${preview ? `data-nsa-frame-preview="${i}" title="\u70b9\u51fb\u67e5\u770b\u7b2c ${i + 1} \u955c\u5927\u56fe"` : 'disabled'}>
             ${preview ? `<img src="${escapeHtml(preview)}" alt="${escapeHtml(title)}" loading="lazy" decoding="async">` : `<span>${String(i + 1).padStart(2, '0')}</span>`}

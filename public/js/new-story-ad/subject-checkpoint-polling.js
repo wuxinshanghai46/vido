@@ -17,6 +17,7 @@
     if (!state.taskId || !state.personGenerationProgress?.active
       || !state.personGenerationProgress?.restoredFromCheckpoint) return false;
     const trackedTaskId = String(state.taskId);
+    const trackedSessionEpoch = Number(state.taskSessionEpoch || 0);
     let polling = false;
     state.subjectCheckpointTimer = setInterval(async () => {
       if (polling || String(state.taskId) !== trackedTaskId
@@ -28,7 +29,15 @@
       polling = true;
       try {
         const response = await api(`/api/new-story-ad/tasks/${encodeURIComponent(trackedTaskId)}?compact=1`);
-        hydrateTaskBundle(response.bundle || response);
+        if (Number(state.taskSessionEpoch || 0) !== Number(trackedSessionEpoch)
+          || String(state.taskId) !== trackedTaskId) {
+          stop(state);
+          return;
+        }
+        hydrateTaskBundle(response.bundle || response, {
+          expectedTaskId: trackedTaskId,
+          expectedSessionEpoch: trackedSessionEpoch,
+        });
         if (typeof renderAll === 'function') renderAll();
         if (!state.personGenerationProgress?.active) stop(state);
       } catch {

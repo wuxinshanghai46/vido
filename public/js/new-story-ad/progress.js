@@ -37,6 +37,9 @@
           ? `已处理 0/${count} · 0%`
           : '准备中 · 0%',
         percent: 0,
+        stat: stage === 'keyframes' || stage === 'storyboard'
+          ? `已耗时 ${formatElapsedText(elapsed)} · 已处理 0/${count} · 0%`
+          : `已耗时 ${formatElapsedText(elapsed)} · 等待服务器确认 · 0%`,
         indeterminate: false,
         message: '正在创建本次生成任务；服务器确认新的生成编号后才会显示真实进度。',
       };
@@ -145,7 +148,10 @@
       const progressGenerationId = String(progress.generationId || '');
       const serverGenerationId = String(serverProgress?.generation_id || '');
       const generationMatches = !progressGenerationId || !serverGenerationId || progressGenerationId === serverGenerationId;
-      const tracked = serverProgress?.stage === 'blueprint' && generationMatches ? serverProgress : null;
+      const serverStage = String(serverProgress?.stage || '');
+      const tracked = ['blueprint', 'script_package', 'storyboard'].includes(serverStage) && generationMatches
+        ? serverProgress
+        : null;
       if (!tracked) {
         return {
           title: label || '正在启动剧本生成',
@@ -155,9 +161,12 @@
           message: '等待服务器返回本次剧本的真实里程碑。',
         };
       }
-      const totalMilestones = Math.max(1, Number(tracked.total) || 6);
-      const completedMilestones = Math.max(0, Math.min(totalMilestones, Number(tracked.completed) || 0));
-      const pct = Math.max(0, Math.min(100, Number(tracked.percent) || Math.round((completedMilestones / totalMilestones) * 100)));
+      const storyboardPhase = serverStage === 'storyboard';
+      const totalMilestones = Math.max(1, Number(storyboardPhase ? tracked.target_total : tracked.total) || 6);
+      const completedMilestones = Math.max(0, Math.min(totalMilestones, Number(storyboardPhase ? tracked.processed : tracked.completed) || 0));
+      const pct = storyboardPhase
+        ? Math.max(60, Math.min(100, 60 + Math.round((completedMilestones / totalMilestones) * 40)))
+        : Math.max(0, Math.min(60, Math.round((completedMilestones / totalMilestones) * 60)));
       const phaseLabels = {
         context_ready: '准备剧本上下文与原创过审规则',
         draft_generation: '生成剧本初稿',
@@ -170,7 +179,9 @@
         persisted: '剧本生成完成',
       };
       return {
-        title: phaseLabels[tracked.phase] || label || '生成剧本中...',
+        title: storyboardPhase
+          ? `剧本已完成，正在生成配套分镜：${completedMilestones}/${totalMilestones}`
+          : (phaseLabels[tracked.phase] || label || '生成剧本中...'),
         stat: `已耗时 ${formatElapsedText(elapsed)} · ${completedMilestones}/${totalMilestones} · ${pct}%`,
         percent: pct,
         indeterminate: false,

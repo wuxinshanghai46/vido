@@ -37,7 +37,8 @@ vm.runInContext(source, sandbox);
     renderAll: () => {},
   });
   assert.strictEqual(response.task.stage, 'keyframe_contract_ready');
-  assert.strictEqual(gets, 2);
+  // 1 recovery probe + 1 lightweight progress poll + 1 final compact snapshot.
+  assert.strictEqual(gets, 3);
   assert(normalized.includes('storyboard'));
   assert.strictEqual(recoveryState.activeGenerationId, 'g-1');
   assert.strictEqual(recoveryState.stageProgress.submissionPending, false, '网络恢复发现已接收任务时必须结束提交准备态');
@@ -57,7 +58,7 @@ vm.runInContext(source, sandbox);
     state: keyframeState,
     renderAll: () => {},
   });
-  assert.strictEqual(keyframeGets, 1);
+  assert.strictEqual(keyframeGets, 2);
   assert.strictEqual(keyframeState.stageProgress.submissionPending, false);
   assert.strictEqual(keyframeState.stageProgress.generationId, 'generation-new');
   assert.strictEqual(keyframeState.generationProgress.processed, 0);

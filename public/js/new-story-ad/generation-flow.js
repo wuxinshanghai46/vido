@@ -254,9 +254,22 @@
     const started = Date.now();
     const timeoutMs = stageTimeoutMs(stage, ctx);
     let progressRevision = '';
+    const expectedTaskId = String(ctx.expectedTaskId || taskId || '');
+    const expectedSessionEpoch = ctx.expectedSessionEpoch ?? ctx.state?.taskSessionEpoch;
+    const assertCurrentSession = () => {
+      if ((expectedSessionEpoch !== undefined
+          && Number(ctx.state?.taskSessionEpoch || 0) !== Number(expectedSessionEpoch))
+        || (ctx.state?.taskId && String(ctx.state.taskId) !== expectedTaskId)) {
+        const error = new Error('页面已切换到其他任务，旧任务响应已忽略');
+        error.code = 'TASK_SESSION_REPLACED';
+        throw error;
+      }
+    };
     while (Date.now() - started < timeoutMs) {
+      assertCurrentSession();
       // 处理中只读取轻量进度，不再每 2.5 秒下载并重绘分镜、图片和视频。
       const progressBundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/progress${progressRevision ? `?since=${encodeURIComponent(progressRevision)}` : ''}`);
+      assertCurrentSession();
       progressRevision = String(progressBundle.revision || progressRevision);
       normalizeBundle?.(progressBundle);
       ctx.renderProgress?.();
@@ -282,6 +295,7 @@
         || (currentStage && currentStage !== stage && !currentStage.endsWith('_queued')))) {
         // 阶段结束后只获取一次完整快照，用于展示产物和执行最终就绪判断。
         const bundle = await api(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}?compact=1`);
+        assertCurrentSession();
         normalizeBundle?.(bundle);
         ctx.renderAll?.();
         return bundle;
@@ -373,6 +387,7 @@
     } = ctx;
     if (!state || typeof api !== 'function' || typeof ensureTask !== 'function') throw new Error('阶段生成上下文未初始化');
     const busyLabel = STAGE_LABELS[stage] || '处理中...';
+    const sessionEpoch = Number(state?.taskSessionEpoch || 0);
     startStageProgress?.(stage, '正在保存最新内容并执行生成预检...');
     setBusy?.(true, '正在保存最新内容并执行生成预检...');
     setButtonBusy?.(button, true, '正在确认最新内容...');
@@ -381,27 +396,35 @@
         ? await flushForGeneration(stage === 'blueprint' ? 'script_package' : stage)
         : { taskId: await ensureTask() };
       const id = prepared?.taskId || prepared?.task_id || state.taskId || await ensureTask();
+      const expectedTaskId = String(id || '');
+      const guardedCtx = { ...ctx, expectedTaskId, expectedSessionEpoch: sessionEpoch };
+      if (Number(state.taskSessionEpoch || 0) !== Number(sessionEpoch)
+        || (state.taskId && String(state.taskId) !== expectedTaskId)) {
+        const replaced = new Error('页面已切换到其他任务，已停止处理旧任务响应');
+        replaced.code = 'TASK_SESSION_REPLACED';
+        throw replaced;
+      }
       startStageProgress?.(stage, busyLabel);
       setBusy?.(true, busyLabel);
       setButtonBusy?.(button, true, busyLabel);
       let r = null;
       if (stage === 'scene') {
-        r = await startStage(id, 'scene', {}, ctx);
+        r = await startStage(id, 'scene', {}, guardedCtx);
         normalizeBundle?.(r);
         showStep?.(2);
       } else if (stage === 'blueprint') {
-        if (!state.sceneConfig) normalizeBundle?.(await startStage(id, 'scene', {}, ctx));
-        r = await startStage(id, 'script-package', {}, ctx);
+        if (!state.sceneConfig) normalizeBundle?.(await startStage(id, 'scene', {}, guardedCtx));
+        r = await startStage(id, 'script-package', {}, guardedCtx);
         normalizeBundle?.(r);
         if (!blueprintIsReady(r, state)) throw new Error('剧本任务已结束，但服务器没有保存可用剧本；已停留在当前步骤，请重新生成剧本');
         if (!storyboardIsReady(r, state)) throw new Error('剧本已经生成，但配套分镜未通过检查；系统已停止下游生成，请查看错误详情');
         showStep?.(4);
       } else if (stage === 'storyboard') {
-        if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, ctx));
+        if (!state.blueprint) normalizeBundle?.(await startStage(id, 'blueprint', {}, guardedCtx));
         if (!blueprintIsReady({}, state)) throw new Error('服务器没有可用剧本，不能继续生成分镜；请先重新生成剧本');
         if (state.blueprint && typeof saveBlueprintEdits === 'function') await saveBlueprintEdits(id);
         if (!storyboardIsReady({}, state)) {
-          r = await startStage(id, 'storyboard', {}, ctx);
+          r = await startStage(id, 'storyboard', {}, guardedCtx);
           normalizeBundle?.(r);
         } else {
           r = { storyboard_status: state.storyboardStatus, outputs: { storyboard_table: state.shots } };
@@ -409,14 +432,14 @@
         if (!storyboardIsReady(r, state)) throw new Error('分镜任务已结束，但服务器尚未确认当前剧本对应的分镜结果，请重试');
         showStep?.(5);
       } else if (stage === 'keyframes') {
-        if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, ctx));
+        if (!state.shots.length) normalizeBundle?.(await startStage(id, 'storyboard', {}, guardedCtx));
         if (state.storyboardDirty === true && state.shots.length && typeof saveStoryboardEdits === 'function') await saveStoryboardEdits(id);
         const missingOnly = button?.id === 'dhNsaAdFillMissingFramesTop';
-        r = await startKeyframesWithBillingGuard(id, missingOnly ? { missing_images_only: true } : {}, ctx);
+        r = await startKeyframesWithBillingGuard(id, missingOnly ? { missing_images_only: true } : {}, guardedCtx);
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'tts') {
-        r = await startStage(id, 'tts', mediaStageBody(ctx), ctx);
+        r = await startStage(id, 'tts', mediaStageBody(ctx), guardedCtx);
         normalizeBundle?.(r);
         showStep?.(6);
       } else if (stage === 'video') {
@@ -438,11 +461,11 @@
           ...(Number.isInteger(singleIndex) ? { only_indexes: [singleIndex], force_regenerate_indexes: [singleIndex] } : {}),
           auto_repair: false,
           max_auto_repairs: 0,
-        }, ctx);
+        }, guardedCtx);
         normalizeBundle?.(r);
         showStep?.(5);
       } else if (stage === 'compose') {
-        r = await startStage(id, 'compose', mediaStageBody(ctx), ctx);
+        r = await startStage(id, 'compose', mediaStageBody(ctx), guardedCtx);
         normalizeBundle?.(r);
         showStep?.(6);
       } else if (stage === 'media') {
@@ -452,7 +475,7 @@
         // 用户已确认整条视频方案后立即进入“广告合成”，让真实生成、质检和封装进度都归属第 6 步。
         showStep?.(6);
         renderAll?.();
-        r = await startStage(id, 'media', mediaStageBody(ctx), ctx);
+        r = await startStage(id, 'media', mediaStageBody(ctx), guardedCtx);
         normalizeBundle?.(r);
         showStep?.(6);
       }
@@ -467,20 +490,23 @@
       }
       return true;
     } catch (err) {
+      if (err.code === 'TASK_SESSION_REPLACED') return false;
       if (err.data) normalizeBundle?.(err.data);
       renderAll?.();
       toast?.(err.message || '阶段执行失败', err.code === 'USER_CANCELLED' ? 'info' : 'error');
       return false;
     } finally {
-      if (state) {
+      if (state && Number(state.taskSessionEpoch || 0) === Number(sessionEpoch)) {
         state.cancelRequested = false;
         if (!state.activeGenerationId) state.activeStage = '';
       }
       try {
-        setBusy?.(false);
+        if (Number(state?.taskSessionEpoch || 0) === Number(sessionEpoch)) setBusy?.(false);
       } finally {
-        setButtonBusy?.(button, false);
-        renderAll?.();
+        if (Number(state?.taskSessionEpoch || 0) === Number(sessionEpoch)) {
+          setButtonBusy?.(button, false);
+          renderAll?.();
+        }
       }
     }
   }

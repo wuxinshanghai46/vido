@@ -647,7 +647,10 @@ router.get('/tasks', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks', asyncRoute(async (req, res) => {
-  const created = service.createTask(req.body || {}, userFromReq(req));
+  const body = { ...(req.body || {}) };
+  delete body.task_id;
+  delete body.taskId;
+  const created = service.createTask(body, userFromReq(req));
   res.json({ success: true, ...created });
 }));
 
@@ -1265,7 +1268,10 @@ router.post('/tasks/:id/media', asyncRoute(async (req, res) => {
 }));
 
 router.post('/storyboard', asyncRoute(async (req, res) => {
-  const created = service.createTask(req.body || {}, userFromReq(req));
+  const body = { ...(req.body || {}) };
+  delete body.task_id;
+  delete body.taskId;
+  const created = service.createTask(body, userFromReq(req));
   req.params.id = created.task.id;
   return queueTaskStage(req, res, 'full', async () => {
     await service.generateSceneConfig(created.task.id);
