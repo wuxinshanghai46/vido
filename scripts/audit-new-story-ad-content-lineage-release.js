@@ -45,6 +45,20 @@ function exec(client, command) {
   }));
 }
 
+function markerJson(output = '', marker = '') {
+  const token = `${marker}=`;
+  const start = String(output).lastIndexOf(token);
+  if (start < 0) {
+    const tail = String(output).slice(-1200).replace(/[^\S\r\n]+/g, ' ');
+    const error = new Error(`生产审计没有返回 ${marker} 标记；远端输出末尾：${tail || '(empty)'}`);
+    error.code = 'PRODUCTION_AUDIT_MARKER_MISSING';
+    error.remote_output_tail = tail;
+    throw error;
+  }
+  const line = String(output).slice(start + token.length).split(/\r?\n/, 1)[0];
+  return JSON.parse(line);
+}
+
 async function publicHealth() {
   const response = await fetch('https://vido.smsend.cn/api/health', {
     signal: AbortSignal.timeout(15000),
@@ -82,13 +96,13 @@ async function publicHealth() {
         stage: task.active_stage || task.stage || '',
         active_generation_id: task.active_generation_id,
       }));
-    console.log('AUDIT=' + JSON.stringify({
+    process.stdout.write('\\nAUDIT=' + JSON.stringify({
       hashes,
       active,
       git_branch: run(['branch', '--show-current']),
       git_head: run(['rev-parse', 'HEAD']),
       git_status_count: run(['status', '--short']).split(/\\r?\\n/).filter(Boolean).length,
-    }));
+    }) + '\\n');
   `, 'utf8').toString('base64');
 
   const client = new Client();
@@ -97,16 +111,18 @@ async function publicHealth() {
     client.connect({ host, port, username, password, readyTimeout: 25000 });
   });
   try {
-    const output = await exec(client, [
+    const auditOutput = await exec(client, [
       `cd '${remoteRoot}'`,
       `node -e "eval(Buffer.from('${probe}','base64').toString('utf8'))"`,
-      "pm2 jlist | node -e \"let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const p=JSON.parse(d).find(x=>x.name==='vido');console.log('PM2='+JSON.stringify({status:p?.pm2_env?.status,restarts:p?.pm2_env?.restart_time,uptime_seconds:Math.floor((Date.now()-(p?.pm2_env?.pm_uptime||Date.now()))/1000)}))})\"",
-      "printf 'PRIVATE_HEALTH='; curl -fsS -w '|HTTP:%{http_code}\\n' http://127.0.0.1:4600/api/health",
     ].join(' && '));
-    const audit = JSON.parse(output.split(/\r?\n/).find(line => line.startsWith('AUDIT=')).slice(6));
-    const pm2 = JSON.parse(output.split(/\r?\n/).find(line => line.startsWith('PM2=')).slice(4));
+    const pm2Output = await exec(client,
+      "pm2 jlist | node -e \"let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const p=JSON.parse(d).find(x=>x.name==='vido');process.stdout.write('PM2='+JSON.stringify({status:p?.pm2_env?.status,restarts:p?.pm2_env?.restart_time,uptime_seconds:Math.floor((Date.now()-(p?.pm2_env?.pm_uptime||Date.now()))/1000)})+'\\\\n')})\"");
+    const healthOutput = await exec(client,
+      "printf 'PRIVATE_HEALTH='; curl -fsS -w '|HTTP:%{http_code}\\n' http://127.0.0.1:4600/api/health");
+    const audit = markerJson(auditOutput, 'AUDIT');
+    const pm2 = markerJson(pm2Output, 'PM2');
     const mismatches = files.filter(file => audit.hashes[file] !== localHashes[file]);
-    const privateHealthMatch = output.match(/PRIVATE_HEALTH=([\s\S]*?)\|HTTP:(\d+)/);
+    const privateHealthMatch = healthOutput.match(/PRIVATE_HEALTH=([\s\S]*?)\|HTTP:(\d+)/);
     const publicResult = await publicHealth();
     const result = {
       status: (
