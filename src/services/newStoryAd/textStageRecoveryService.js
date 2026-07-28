@@ -1,5 +1,6 @@
 function internallyRecoverable(error = null) {
   const code = String(error?.code || '');
+  if (['BLUEPRINT_POLISH_QUALITY_FAILED', 'BLUEPRINT_EXPLICIT_STRUCTURE_INCOMPLETE'].includes(code)) return false;
   if (error?.retryable === true && !/PROVIDER|AUTH|BILLING|RATE_LIMIT|TIMEOUT|NETWORK/.test(code)) return true;
   return [
     'MODEL_JSON',

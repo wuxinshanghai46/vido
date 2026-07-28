@@ -13,7 +13,10 @@ const {
   normalizeBlueprint,
   explicitSegmentCount,
   authoredSpeechPlan,
+  explicitAuthoredSegments,
+  alignBlueprintToAuthoredSegments,
 } = require('../src/services/newStoryAd/blueprintService');
+const { internallyRecoverable } = require('../src/services/newStoryAd/textStageRecoveryService');
 const { alignShotsToBeats, normalizeShots } = require('../src/services/newStoryAd/storyboardTableService');
 
 const weak = {
@@ -262,6 +265,53 @@ assert.equal(sparseBlueprint.dialogue_contract.speech_policy, 'authored_sparse')
 assert.equal(sparseBlueprint.beats.filter(beat => beat.spoken_line).length, 2, '稀疏旁白任务不得给静默镜头自动补台词');
 assert.equal(assessDialogueNarrative(sparseBlueprint).pass, true);
 assert.equal(assessBlueprintQuality(sparseBlueprint).issues.some(issue => /缺少可说出口的台词/.test(issue)), false);
+
+const productionNineShotContext = {
+  brief: `分镜脚本：
+• [镜头1] 远景 - 林悦、小杰和雪球在草坪上追逐飞盘。
+• [镜头2] 中景 - 林悦将飞盘抛向远处。
+• [镜头3] 特写/慢动作 - 雪球跳起接住飞盘。
+• [镜头4] 中景 - 雪球跑回家人身边。 • 旁白 (VO)：每一次尽情奔跑，都需要满满的能量支持。
+• [镜头5] 转场 - 一家人回到家中，林悦拿出狗粮包装袋。
+• [镜头6] 特写 - 狗粮颗粒落入食盆。
+• [镜头7] 近景 - 雪球跑来进食并摇动尾巴。
+• [镜头8] 中景 - 林悦和小杰看着雪球进食。 • 旁白 (VO)：美味与营养，是给它最好的奖赏。
+• [镜头9] 结尾画面 - 产品包装与满足的雪球在当前客厅场景中自然收束。`,
+  product_subject: '狗粮',
+  target_duration: 30,
+  cast_mode: 'human_pet',
+};
+assert.equal(explicitSegmentCount(productionNineShotContext), 9);
+assert.equal(explicitAuthoredSegments(productionNineShotContext).length, 9);
+assert.deepEqual(authoredSpeechPlan(productionNineShotContext), {
+  policy: 'authored_sparse',
+  authored_line_count: 2,
+  segment_count: 9,
+}, '带 (VO) 限定词的旁白必须被识别为稀疏口播');
+const sixBeatDraft = {
+  logline: '一家人与宠物从户外活动回家进食。',
+  beats: Array.from({ length: 6 }, (_, index) => ({
+    beat_index: index + 1,
+    plot: index < 5 ? `模型初稿第 ${index + 1} 镜` : '',
+    action: index < 5 ? `模型动作第 ${index + 1} 镜` : '',
+    spoken_line: `模型擅自补写的第 ${index + 1} 镜台词`,
+  })),
+};
+const alignedNineShot = alignBlueprintToAuthoredSegments(productionNineShotContext, sixBeatDraft);
+assert.equal(alignedNineShot.beats.length, 9, '六镜残稿必须按用户九镜结构确定性补齐，不能再次依赖模型数量');
+assert.match(alignedNineShot.beats[5].plot, /狗粮颗粒落入食盆/);
+assert.match(alignedNineShot.beats[8].plot, /当前客厅场景中自然收束/);
+assert.equal(alignedNineShot.beats.filter(beat => beat.spoken_line).length, 2, '确定性补齐不得给七个静默镜头发明台词');
+const normalizedNineShot = normalizeBlueprint(alignedNineShot, productionNineShotContext);
+assert.equal(normalizedNineShot.beats.length, 9);
+assert.equal(normalizedNineShot.beats.filter(beat => beat.spoken_line).length, 2);
+assert.equal(internallyRecoverable({ code: 'BLUEPRINT_POLISH_QUALITY_FAILED', retryable: false }), false);
+assert.equal(internallyRecoverable({ code: 'BLUEPRINT_EXPLICIT_STRUCTURE_INCOMPLETE', retryable: true }), false);
+const maximumExplicitContext = {
+  brief: `剧情结构：${Array.from({ length: 18 }, (_, index) => `[镜头${index + 1}] ${'动作细节'.repeat(90)} ${index + 1}`).join('\n')}`,
+};
+assert.equal(explicitAuthoredSegments(maximumExplicitContext).length, 18, '最大 18 镜且长文本时不得被 6000 字符截断');
+assert.equal(alignBlueprintToAuthoredSegments(maximumExplicitContext, { beats: [] }).beats.length, 18);
 
 const nearBoundaryDialogue = {
   target_duration: 16,

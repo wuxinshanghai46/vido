@@ -113,7 +113,53 @@ function authoredStructureText(ctx = {}) {
     ctx.original_brief,
     ctx.story_structure,
   ].filter(Boolean).join('\n');
-  return (brief.match(/(?:剧情结构|脚本结构|分镜结构|内容结构|结构)\s*[:：]?([\s\S]{0,6000})/) || [])[1] || brief;
+  return (brief.match(/(?:剧情结构|脚本结构|分镜结构|内容结构|结构)\s*[:：]?([\s\S]*)/) || [])[1] || brief;
+}
+
+function explicitAuthoredSegments(ctx = {}) {
+  const text = authoredStructureText(ctx);
+  const marker = /(?:\[|【)\s*(?:镜头|分镜|shot)\s*([1-9]|1[0-8])\s*(?:\]|】)|(?:^|[\s。；;，,•])第\s*([1-9]|1[0-8])\s*(?:镜|个镜头|个分镜)(?=[:：、.\s]|$)/gim;
+  const matches = [];
+  let found;
+  while ((found = marker.exec(text))) {
+    matches.push({
+      index: Number(found[1] || found[2]),
+      start: found.index,
+      end: marker.lastIndex,
+    });
+  }
+  const sequences = [];
+  let current = [];
+  matches.forEach(item => {
+    if (item.index === 1) {
+      if (current.length) sequences.push(current);
+      current = [item];
+      return;
+    }
+    if (current.length && item.index === current.length + 1) current.push(item);
+  });
+  if (current.length) sequences.push(current);
+  const sequence = sequences.sort((a, b) => b.length - a.length)[0] || [];
+  if (sequence.length < 2) return [];
+  return sequence.map((item, offset) => {
+    const next = sequence[offset + 1];
+    const raw = text.slice(item.end, next ? next.start : text.length)
+      .replace(/^[\s•:：、.\-—]+/, '')
+      .trim();
+    const speechMatch = raw.match(/(?:^|[\s•；;。])(?:旁白|画外音|配音|VO|台词|对白|解说)(?:\s*[\(（][^()（）]{0,20}[\)）])?\s*[:：]\s*([^•\r\n]+)/i);
+    const spokenLine = cleanSpeech(speechMatch?.[1] || '', 100);
+    const visualRaw = (speechMatch ? raw.replace(speechMatch[0], ' ') : raw)
+      .replace(/\s*•\s*$/, '')
+      .trim();
+    const descriptor = visualRaw.match(/^([^-—]{1,30})\s*[-—]\s*([\s\S]+)$/);
+    return {
+      index: item.index,
+      raw,
+      shot_type: clean(descriptor?.[1] || '', 80),
+      visual: clean(descriptor?.[2] || visualRaw, 600),
+      spoken_line: spokenLine,
+    };
+  });
 }
 
 function sequentialMarkerCount(text = '', patterns = []) {
@@ -129,6 +175,8 @@ function sequentialMarkerCount(text = '', patterns = []) {
 }
 
 function explicitSegmentCount(ctx = {}) {
+  const authoredSegments = explicitAuthoredSegments(ctx);
+  if (authoredSegments.length >= 2) return authoredSegments.length;
   const text = authoredStructureText(ctx);
   return sequentialMarkerCount(text, [
     /(?:^|[\s。；;，,])(?:\[|【)?\s*(?:镜头|分镜|shot)\s*([1-9]|1[0-8])\s*(?:\]|】|[:：、.\s]|$)/gim,
@@ -138,15 +186,50 @@ function explicitSegmentCount(ctx = {}) {
 }
 
 function authoredSpeechPlan(ctx = {}) {
+  const segments = explicitAuthoredSegments(ctx);
   const text = authoredStructureText(ctx);
-  const matches = text.match(/(?:^|[\s；;。])(?:旁白|画外音|配音|VO|台词|对白|解说)\s*[:：]\s*[^\r\n；;。]+/gim) || [];
-  const lineCount = Math.min(18, matches.length);
-  const segmentCount = explicitSegmentCount(ctx);
+  const matches = text.match(/(?:^|[\s；;。•])(?:旁白|画外音|配音|VO|台词|对白|解说)(?:\s*[\(（][^()（）]{0,20}[\)）])?\s*[:：]\s*[^\r\n；;。•]+/gim) || [];
+  const lineCount = Math.min(18, segments.length
+    ? segments.filter(segment => segment.spoken_line).length
+    : matches.length);
+  const segmentCount = segments.length || explicitSegmentCount(ctx);
   return {
     policy: segmentCount >= 2 && lineCount > 0 && lineCount < segmentCount ? 'authored_sparse' : 'full_track',
     authored_line_count: lineCount,
     segment_count: segmentCount,
   };
+}
+
+function alignBlueprintToAuthoredSegments(ctx = {}, payload = {}) {
+  const segments = explicitAuthoredSegments(ctx);
+  if (!segments.length) return payload;
+  const source = Array.isArray(payload?.beats) ? payload.beats : [];
+  const indexed = new Map(source.map((beat, index) => [
+    Number(beat?.beat_index || beat?.index || index + 1),
+    beat || {},
+  ]));
+  const beats = segments.map((segment, index) => {
+    const existing = indexed.get(segment.index) || source[index] || {};
+    const visual = segment.visual || clean(existing.plot || existing.story_visual || existing.action || '', 600);
+    const spoken = segment.spoken_line;
+    return {
+      ...existing,
+      beat_index: segment.index,
+      role: existing.role || (index === segments.length - 1 ? '剧情收束' : '剧情推进'),
+      causal_role: existing.causal_role || (index === 0 ? 'setup' : (index === segments.length - 1 ? 'resolution' : 'development')),
+      shot_type: segment.shot_type || existing.shot_type || '',
+      plot: visual,
+      story_visual: visual,
+      action: clean(existing.action || `主体按用户第 ${segment.index} 镜要求完成对应动作，镜头保留动作过程与可见结果。`, 180),
+      spoken_line: spoken,
+      speech_mode: spoken ? 'voiceover' : 'ambient_only',
+      visual_layers: [
+        ...(Array.isArray(existing.visual_layers) ? existing.visual_layers : []),
+        { type: 'story', content: visual },
+      ].filter(layer => clean(layer?.content || '', 600)),
+    };
+  });
+  return { ...(payload || {}), beats };
 }
 
 function pacingProfile(ctx = {}) {
@@ -338,7 +421,10 @@ function normalizeBlueprint(blueprint, ctx) {
 async function repairExplicitBlueprintStructure(ctx, payload, { taskId = '' } = {}) {
   const expectedCount = explicitSegmentCount(ctx);
   const actualCount = Array.isArray(payload?.beats) ? payload.beats.length : 0;
-  if (!expectedCount || actualCount === expectedCount) return payload;
+  if (!expectedCount) return payload;
+  const deterministic = alignBlueprintToAuthoredSegments(ctx, payload);
+  if (Array.isArray(deterministic.beats) && deterministic.beats.length === expectedCount) return deterministic;
+  if (actualCount === expectedCount) return payload;
   let result;
   try {
     result = await modelGateway.generateText({
@@ -568,6 +654,9 @@ module.exports = {
   pacingProfile,
   explicitSegmentCount,
   authoredSpeechPlan,
+  explicitAuthoredSegments,
+  alignBlueprintToAuthoredSegments,
+  repairExplicitBlueprintStructure,
   recommendedBeatCount,
   softBeatLimit,
 };

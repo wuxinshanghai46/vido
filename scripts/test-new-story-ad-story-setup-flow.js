@@ -138,6 +138,16 @@ assert.strictEqual(ui.approve({
 }), true);
 assert.strictEqual(readyState.storySetupConfirmed, true);
 assert.strictEqual(marked, 'creative');
+marked = '';
+assert.strictEqual(ui.approve({
+  state: readyState,
+  getPersonSpec: spec,
+  markSourceDirty: scope => { marked = scope; },
+  renderAll: () => {},
+  toast: () => {},
+}), true);
+assert.strictEqual(readyState.storySetupConfirmed, true);
+assert.strictEqual(marked, '', '重复确认且内容未变时不得再次标记 creative，避免错误递增版本并使已有剧本失效');
 
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const revision = require('../src/services/newStoryAd/revisionService');

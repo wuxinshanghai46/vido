@@ -140,17 +140,28 @@ async function main() {
   );
 
   let recoveryAttempts = 0;
+  await assert.rejects(
+    service.runTextStageWithRecovery(taskId, 'blueprint', async () => {
+      recoveryAttempts += 1;
+      const error = new Error('structured text quality gate failed');
+      error.code = 'BLUEPRINT_POLISH_QUALITY_FAILED';
+      throw error;
+    }),
+    error => error?.code === 'BLUEPRINT_POLISH_QUALITY_FAILED',
+  );
+  assert.equal(recoveryAttempts, 1, '精修阶段内部重试耗尽后不得再次重跑整个蓝图阶段，避免重复付费和结构退化');
+
   const recovered = await service.runTextStageWithRecovery(taskId, 'blueprint', async attempt => {
     recoveryAttempts += 1;
     if (attempt === 1) {
-      const error = new Error('structured text quality gate failed');
-      error.code = 'BLUEPRINT_POLISH_QUALITY_FAILED';
+      const error = new Error('repairable JSON structure');
+      error.code = 'BLUEPRINT_STRUCTURE_INVALID';
       throw error;
     }
     return { ok: true, attempt };
   });
   assert.deepEqual(recovered, { ok: true, attempt: 2 });
-  assert.equal(recoveryAttempts, 2, '可恢复文本质量问题必须由系统内部完成有界重试');
+  assert.equal(recoveryAttempts, 3, '尚未在阶段内部处理的结构错误仍应保留一次有界恢复');
 
   console.log('new story ad content versioning: ok');
 }
