@@ -5,6 +5,12 @@ const path = require('path');
 const vm = require('vm');
 
 const root = path.join(__dirname, '..');
+const BrowserDOMException = globalThis.DOMException || class DOMException extends Error {
+  constructor(message = '', name = 'Error') {
+    super(message);
+    this.name = name;
+  }
+};
 
 function browserModule(file, windowSeed = {}) {
   const sandbox = {
@@ -13,7 +19,7 @@ function browserModule(file, windowSeed = {}) {
       ...windowSeed,
     },
     AbortController,
-    DOMException,
+    DOMException: BrowserDOMException,
     setTimeout,
     clearTimeout,
   };
