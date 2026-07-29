@@ -16,6 +16,8 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
 
 [
   'dhNsaReferenceVideoFile',
+  'dhNsaReferenceVideoUrl',
+  'dhNsaReferenceVideoLinkRead',
   'dhNsaReferenceVideoRights',
   'dhNsaReferenceVideoProgress',
   'dhNsaReferenceVideoDraft',
@@ -41,6 +43,8 @@ assert.ok(referenceIndex > 0 && personIndex > referenceIndex && legacyIndex > pe
 assert.ok(html.includes('不提取人物身份或服装'));
 assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not require merge/replace buttons');
 assert.ok(referenceUi.includes('fillRequirementFromAnalysis'));
+assert.ok(referenceUi.includes("'/api/new-story-ad/reference-video-links'"));
+assert.ok(referenceUi.includes("importing: '读取链接中'"));
 assert.ok(referenceUi.includes("$('#dhNsaAdText')"));
 assert.ok(referenceUi.includes("input.dispatchEvent(new Event('input'"));
 assert.ok(referenceUi.includes('中文内容已填入广告需求文本框'));
@@ -51,6 +55,7 @@ assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not
 assert.ok(legacy.includes('reference_video_analysis'));
 assert.ok(legacy.includes('adoptPersonDossier'));
 assert.ok(routes.includes("router.post('/reference-video-analyses'"));
+assert.ok(routes.includes("router.post('/reference-video-links'"));
 assert.ok(routes.includes("router.post('/reference-video-upload-sessions'"));
 assert.ok(routes.includes("chunks/:index'"));
 assert.ok(routes.includes("router.post('/real-person-sources'"));
@@ -68,8 +73,8 @@ assert.ok(personService.includes('previous_frame_dependency'));
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 34,
-  reference_feature_controls: 5,
+  checks: 39,
+  reference_feature_controls: 7,
   person_feature_controls: 6,
   dossier_tabs: 5,
   isolation_boundary: 'pass',

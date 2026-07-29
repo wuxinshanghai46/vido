@@ -711,6 +711,14 @@ router.delete('/reference-video-upload-sessions/:sessionId', asyncRoute(async (r
   return res.json({ success: true, ...cancelled });
 }));
 
+router.post('/reference-video-links', asyncRoute(async (req, res) => {
+  const analysis = await referenceVideoAnalyses.createFromUrl({
+    body: req.body || {},
+    user: userFromReq(req),
+  });
+  return res.status(202).json({ success: true, analysis });
+}));
+
 router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async (req, res) => {
   if (!req.file) {
     return res.status(422).json({

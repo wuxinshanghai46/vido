@@ -207,7 +207,7 @@ context.window.NewStoryAdStateSync.detectMissingStoryboardOutput(missingStoryboa
 assert.strictEqual(missingStoryboardState.restoreErrorCode, '');
 
 const html = read('public/digital-human.html');
-assert(html.includes('bootstrap.js?v=20260729-reference-video-chinese-autofill-v57'), 'the page shell must bust cached compose UI assets after deployment');
+assert(html.includes('bootstrap.js?v=20260729-reference-video-link-input-v58'), 'the page shell must bust cached compose UI assets after deployment');
 assert(!/id="dhNsaAdSaveDraftStep[2345]"/.test(html), 'manual progress save buttons must be removed');
 assert(/data-nsa-autosave-status hidden/.test(html), 'routine autosave status must stay hidden');
 assert(html.includes('id="dhNsaAdComposeGate"'), 'persistent compose gate must exist');
@@ -278,7 +278,7 @@ assert(wizardCss.includes('.dh-nsa-confirm-panel'), 'video confirmation must use
 assert(wizardCss.includes('.dh-nsa-video-unit-list'), 'step 5 must visibly group real video generation units');
 assert(wizardCss.includes('#dhNsaAdConfirmGenerate.is-next:not(:disabled)'), 'ready-to-compose must have a dedicated high-contrast primary action');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
-assert(bootstrap.includes("const SCRIPT_VERSION = '20260729-reference-video-chinese-autofill-v57'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
+assert(bootstrap.includes("const SCRIPT_VERSION = '20260729-reference-video-link-input-v58'"), 'lazy-loaded story-ad modules must use the same cache-busting version');
 assert(bootstrap.indexOf('/video-boundaries.js') < bootstrap.indexOf('/task-store.js'), 'boundary policy must load before task restore and compose readiness');
 
 const progressSave = require('../src/services/newStoryAd/taskProgressSaveService');

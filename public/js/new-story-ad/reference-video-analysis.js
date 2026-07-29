@@ -18,7 +18,7 @@
 
   function setProgress(analysis = {}) {
     const wrap = $('#dhNsaReferenceVideoProgress');
-    const running = ['queued', 'running', 'cancelling'].includes(analysis.status);
+    const running = ['importing', 'queued', 'running', 'cancelling'].includes(analysis.status);
     if (wrap) wrap.hidden = !running && !analysis.progress;
     const progress = Math.max(0, Math.min(100, Number(analysis.progress || 0)));
     const bar = wrap?.querySelector('progress');
@@ -88,6 +88,7 @@
     const current = analysis?.status === 'uploading' ? analysis : (state.analysis || {});
     const status = $('#dhNsaReferenceVideoState');
     const labels = {
+      importing: '读取链接中',
       uploaded: '已上传',
       queued: '排队中',
       running: '分析中',
@@ -101,14 +102,25 @@
     const fileName = $('#dhNsaReferenceVideoFileName');
     if (fileName && current.source?.original_name) {
       const meta = current.source.metadata || {};
-      fileName.textContent = `${current.source.original_name} · ${Number(meta.duration_seconds || 0).toFixed(1)} 秒 · ${meta.width || 0}×${meta.height || 0}`;
+      fileName.textContent = meta.duration_seconds
+        ? `${current.source.original_name} · ${Number(meta.duration_seconds).toFixed(1)} 秒 · ${meta.width || 0}×${meta.height || 0}`
+        : (current.source.display_url || current.source.original_name);
     }
+    const busy = state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(current.status);
+    const pick = $('#dhNsaReferenceVideoPick');
+    if (pick) pick.disabled = !!busy;
+    const linkRead = $('#dhNsaReferenceVideoLinkRead');
+    if (linkRead) linkRead.disabled = !!busy;
+    const linkInput = $('#dhNsaReferenceVideoUrl');
+    if (linkInput) linkInput.disabled = !!busy;
     const start = $('#dhNsaReferenceVideoStart');
-    if (start) start.disabled = !current.id || !['uploaded', 'cancelled', 'failed'].includes(current.status);
+    if (start) start.disabled = !current.id
+      || !current.source?.metadata?.duration_seconds
+      || !['uploaded', 'cancelled', 'failed'].includes(current.status);
     const cancel = $('#dhNsaReferenceVideoCancel');
-    if (cancel) cancel.hidden = !state.uploadSession && !['queued', 'running', 'cancelling'].includes(current.status);
+    if (cancel) cancel.hidden = !state.uploadSession && !['importing', 'queued', 'running', 'cancelling'].includes(current.status);
     const remove = $('#dhNsaReferenceVideoDelete');
-    if (remove) remove.hidden = !current.id || ['queued', 'running', 'cancelling'].includes(current.status);
+    if (remove) remove.hidden = !current.id || ['importing', 'queued', 'running', 'cancelling'].includes(current.status);
     setProgress(current);
     renderDraft(current);
     if (current.error?.message) notify(current.error.message, 'error');
@@ -124,7 +136,7 @@
     try {
       const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}`);
       render(result.analysis);
-      if (['queued', 'running', 'cancelling'].includes(result.analysis?.status)) {
+      if (['importing', 'queued', 'running', 'cancelling'].includes(result.analysis?.status)) {
         state.pollTimer = setTimeout(poll, 1200);
       } else {
         stopPolling();
@@ -137,6 +149,10 @@
 
   async function upload(file) {
     if (!file) return;
+    if (state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(state.analysis?.status)) {
+      notify('当前参考视频任务仍在处理中，请先等待或取消', 'error');
+      return;
+    }
     if (!$('#dhNsaReferenceVideoRights')?.checked) {
       notify('请先确认拥有参考视频的分析与使用权', 'error');
       return;
@@ -162,6 +178,44 @@
       notify(error.message, 'error');
     } finally {
       if (pick) pick.disabled = false;
+    }
+  }
+
+  async function readLink() {
+    const input = $('#dhNsaReferenceVideoUrl');
+    const button = $('#dhNsaReferenceVideoLinkRead');
+    const videoUrl = String(input?.value || '').trim();
+    if (state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(state.analysis?.status)) {
+      notify('当前参考视频任务仍在处理中，请先等待或取消', 'error');
+      return;
+    }
+    if (!videoUrl) {
+      notify('请先粘贴公开视频链接', 'error');
+      input?.focus();
+      return;
+    }
+    if (!$('#dhNsaReferenceVideoRights')?.checked) {
+      notify('请先确认拥有参考视频的分析与使用权', 'error');
+      return;
+    }
+    if (button) button.disabled = true;
+    try {
+      const result = await api().request('/api/new-story-ad/reference-video-links', {
+        method: 'POST',
+        body: {
+          video_url: videoUrl,
+          rights_confirmed: true,
+        },
+        timeoutMs: 30000,
+      });
+      render(result.analysis);
+      stopPolling();
+      state.pollTimer = setTimeout(poll, 500);
+      notify('正在安全读取链接视频；读取完成后可开始智能分析', 'success');
+    } catch (error) {
+      notify(error.message, 'error');
+    } finally {
+      if (button) button.disabled = ['importing', 'queued', 'running', 'cancelling'].includes(state.analysis?.status);
     }
   }
 
@@ -248,6 +302,8 @@
       state.mappingFingerprint = '';
       state.autoFilledAnalysisId = '';
       render({});
+      const urlInput = $('#dhNsaReferenceVideoUrl');
+      if (urlInput) urlInput.value = '';
       const name = $('#dhNsaReferenceVideoFileName');
       if (name) name.textContent = 'MP4 / MOV / WebM，最长 180 秒，最大 200MB';
       notify('参考视频及分析草稿已删除', 'success');
@@ -290,6 +346,7 @@
     state.mounted = true;
     document.addEventListener('click', event => {
       if (event.target?.closest?.('#dhNsaReferenceVideoPick')) $('#dhNsaReferenceVideoFile')?.click();
+      if (event.target?.closest?.('#dhNsaReferenceVideoLinkRead')) readLink();
       if (event.target?.closest?.('#dhNsaReferenceVideoStart')) start();
       if (event.target?.closest?.('#dhNsaReferenceVideoCancel')) cancel();
       if (event.target?.closest?.('#dhNsaReferenceVideoDelete')) remove();
@@ -299,6 +356,12 @@
       const file = event.target.files?.[0];
       event.target.value = '';
       upload(file);
+    });
+    document.addEventListener('keydown', event => {
+      if (event.target?.id === 'dhNsaReferenceVideoUrl' && event.key === 'Enter') {
+        event.preventDefault();
+        readLink();
+      }
     });
     setInterval(mapCurrentSceneViews, 2500);
   }

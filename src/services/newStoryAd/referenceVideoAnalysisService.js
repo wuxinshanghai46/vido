@@ -11,6 +11,7 @@ const ffprobePath = require('ffprobe-static').path;
 const modelGateway = require('./modelGateway');
 const mediaAdapter = require('./mediaAdapter');
 const jsonRepair = require('./jsonRepairService');
+const referenceVideoLinks = require('./referenceVideoLinkService');
 const { getApiKey } = require('../settingsService');
 
 const execFileAsync = promisify(execFile);
@@ -18,6 +19,7 @@ const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-
 const MAX_DURATION_SECONDS = 180;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const activeRuns = new Map();
+const activeImports = new Map();
 
 function now() {
   return new Date().toISOString();
@@ -69,6 +71,7 @@ function publicRecord(record = {}) {
   if (copy.source) {
     delete copy.source.local_path;
     delete copy.source.private_directory;
+    delete copy.source.input_url;
   }
   return copy;
 }
@@ -196,6 +199,138 @@ async function create({ file, body = {}, user = {} } = {}) {
     updated_at: now(),
   };
   writeJsonAtomic(recordPath(userId, id), record);
+  return publicRecord(record);
+}
+
+async function runLinkImport(initialRecord, linkService, inspected) {
+  let record = initialRecord;
+  try {
+    record = checkpoint(record, '正在安全读取公开视频链接', 8, { status: 'importing', error: null });
+    const active = activeImports.get(record.id);
+    let lastImportProgress = 8;
+    const downloaded = await linkService.downloadVideo(
+      record.source.input_url,
+      analysisDir(record.user_id, record.id),
+      {
+        inspected,
+        signal: active?.controller.signal,
+        onProgress(received, total) {
+          const latest = readRecord(record.user_id, record.id) || record;
+          if (latest.cancelled) return;
+          const ratio = total > 0 ? Math.min(1, received / total) : 0;
+          const progress = total > 0 ? 10 + Math.round(ratio * 55) : 15;
+          if (progress <= lastImportProgress) return;
+          lastImportProgress = progress;
+          record = checkpoint(latest, '正在读取链接视频', progress);
+        },
+      },
+    );
+    throwIfCancelled(record);
+    record = checkpoint(record, '正在校验视频时长、大小与画面轨道', 72);
+    const metadata = await probeVideo(downloaded.file_path);
+    validateUpload({
+      originalname: downloaded.original_name,
+      filename: path.basename(downloaded.file_path),
+      size: downloaded.size_bytes,
+    }, metadata);
+    const sourcePath = path.resolve(downloaded.file_path);
+    const dir = path.resolve(analysisDir(record.user_id, record.id));
+    if (!sourcePath.startsWith(`${dir}${path.sep}`)) {
+      const error = new Error('链接视频保存路径不安全');
+      error.code = 'UNSAFE_REFERENCE_VIDEO_LINK_PATH';
+      error.status = 500;
+      throw error;
+    }
+    save(record, {
+      status: 'uploaded',
+      phase: '链接视频已读取，等待开始分析',
+      progress: 0,
+      cancelled: false,
+      source: {
+        ...record.source,
+        original_name: downloaded.original_name,
+        mimetype: downloaded.mimetype,
+        size_bytes: Number(downloaded.size_bytes || metadata.size_bytes || 0),
+        local_path: sourcePath,
+        private_directory: dir,
+        metadata,
+        read_method: downloaded.method,
+      },
+      imported_at: now(),
+    });
+  } catch (error) {
+    const latest = readRecord(record.user_id, record.id) || record;
+    if (error.cancelled || latest.cancelled || error.code === 'REFERENCE_VIDEO_IMPORT_CANCELLED') {
+      save(latest, {
+        status: 'cancelled',
+        phase: '链接读取已取消',
+        progress: 0,
+        error: null,
+        cancelled_at: now(),
+      });
+    } else {
+      save(latest, {
+        status: 'failed',
+        phase: '链接视频读取失败',
+        error: {
+          code: error.code || 'REFERENCE_VIDEO_LINK_IMPORT_FAILED',
+          message: String(error.message || error).slice(0, 500),
+        },
+        failed_at: now(),
+      });
+    }
+  } finally {
+    activeImports.delete(initialRecord.id);
+  }
+}
+
+async function createFromUrl({ body = {}, user = {}, linkService = referenceVideoLinks } = {}) {
+  if (String(body.rights_confirmed || body.rightsConfirmed || '') !== 'true') {
+    const error = new Error('请先确认拥有该视频的分析和使用权');
+    error.code = 'REFERENCE_VIDEO_RIGHTS_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const rawUrl = body.video_url || body.videoUrl || body.url || '';
+  const inspected = await linkService.inspectUrl(rawUrl);
+  const userId = ownerId(user);
+  const id = `ref_video_${uuidv4()}`;
+  const dir = analysisDir(userId, id);
+  fs.mkdirSync(dir, { recursive: true });
+  const record = {
+    id,
+    user_id: userId,
+    status: 'importing',
+    progress: 3,
+    phase: '正在检查视频链接',
+    cancelled: false,
+    rights_confirmed: true,
+    identity_extraction_allowed: false,
+    downstream_generation_triggered: false,
+    task_id: '',
+    source: {
+      input_type: 'url',
+      input_url: inspected.url,
+      display_url: inspected.display_url,
+      platform: inspected.platform,
+      original_name: inspected.hostname,
+      mimetype: '',
+      size_bytes: 0,
+      local_path: '',
+      private_directory: dir,
+      metadata: {},
+    },
+    checkpoints: [],
+    result: null,
+    error: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+  writeJsonAtomic(recordPath(userId, id), record);
+  const controller = new AbortController();
+  activeImports.set(id, { controller, promise: null });
+  const promise = runLinkImport(record, linkService, inspected);
+  activeImports.get(id).promise = promise;
   return publicRecord(record);
 }
 
@@ -802,6 +937,18 @@ async function runAnalysis(initialRecord) {
 function start(analysisId, user = {}) {
   let record = assertOwned(analysisId, user);
   if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
+  if (activeImports.has(analysisId) || record.status === 'importing') {
+    const error = new Error('视频链接仍在读取，请读取完成后再开始分析');
+    error.code = 'REFERENCE_VIDEO_IMPORT_ACTIVE';
+    error.status = 409;
+    throw error;
+  }
+  if (!record.source?.local_path || !fs.existsSync(record.source.local_path)) {
+    const error = new Error('参考视频尚未读取成功，请重新上传或粘贴链接');
+    error.code = 'REFERENCE_VIDEO_SOURCE_MISSING';
+    error.status = 409;
+    throw error;
+  }
   if (activeRuns.has(analysisId) || record.status === 'running') {
     return { record: publicRecord(record), accepted: false, duplicate: true };
   }
@@ -825,6 +972,8 @@ function get(analysisId, user = {}) {
 function cancel(analysisId, user = {}) {
   const record = assertOwned(analysisId, user);
   if (['completed', 'failed', 'cancelled'].includes(record.status)) return publicRecord(record);
+  const activeImport = activeImports.get(analysisId);
+  if (activeImport) activeImport.controller.abort();
   return publicRecord(save(record, {
     cancelled: true,
     status: 'cancelling',
@@ -834,7 +983,8 @@ function cancel(analysisId, user = {}) {
 
 function remove(analysisId, user = {}) {
   const record = assertOwned(analysisId, user);
-  if (activeRuns.has(analysisId) || ['running', 'queued', 'cancelling'].includes(record.status)) {
+  if (activeImports.has(analysisId) || activeRuns.has(analysisId)
+    || ['importing', 'running', 'queued', 'cancelling'].includes(record.status)) {
     const error = new Error('请先取消正在运行的参考视频分析');
     error.code = 'REFERENCE_VIDEO_ANALYSIS_ACTIVE';
     error.status = 409;
@@ -914,6 +1064,7 @@ module.exports = {
   MAX_FILE_BYTES,
   probeVideo,
   create,
+  createFromUrl,
   createUploadSession,
   saveUploadChunk,
   completeUploadSession,
@@ -925,6 +1076,7 @@ module.exports = {
   mapSceneViews,
   _private: {
     activeRuns,
+    activeImports,
     analysisDir,
     readRecord,
     mockAnalysis,

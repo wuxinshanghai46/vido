@@ -4247,6 +4247,30 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   margin-top: 12px;
 }
 
+.dh-nsa-reference-video-link {
+  display: grid;
+  grid-template-columns: auto minmax(240px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.dh-nsa-reference-video-link .dh-input {
+  width: 100%;
+  min-height: 38px;
+}
+
+.dh-nsa-reference-video-or,
+.dh-nsa-reference-video-link-hint {
+  color: var(--dh-text-muted);
+  font-size: 12px;
+}
+
+.dh-nsa-reference-video-link-hint {
+  display: block;
+  margin: 7px 0 0 28px;
+}
+
 .dh-nsa-consent-row {
   display: flex;
   align-items: flex-start;
@@ -4299,6 +4323,20 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   padding-left: 18px;
   color: var(--dh-text-soft);
   line-height: 1.55;
+}
+
+@media (max-width: 760px) {
+  .dh-nsa-reference-video-link {
+    grid-template-columns: 1fr;
+  }
+
+  .dh-nsa-reference-video-or {
+    display: none;
+  }
+
+  .dh-nsa-reference-video-link-hint {
+    margin-left: 0;
+  }
 }
 
 .dh-nsa-real-person-consents,

@@ -33,9 +33,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-video-chinese-autofill-v57">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-video-link-input-v58">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-video-chinese-autofill-v57"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-video-link-input-v58"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -229,6 +229,14 @@
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaReferenceVideoDelete" type="button" hidden>删除视频</button>
                   <span id="dhNsaReferenceVideoFileName">MP4 / MOV / WebM，最长 180 秒，最大 200MB</span>
                 </div>
+                <div class="dh-nsa-reference-video-link">
+                  <span class="dh-nsa-reference-video-or">或</span>
+                  <input class="dh-input" id="dhNsaReferenceVideoUrl" type="url" inputmode="url"
+                    placeholder="粘贴抖音、B站、小红书、快手、YouTube 作品页或公开视频直链"
+                    aria-label="公开视频链接">
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaReferenceVideoLinkRead" type="button">读取视频链接</button>
+                </div>
+                <small class="dh-nsa-reference-video-link-hint">仅支持无需登录即可访问的公开视频。平台先安全读取并校验视频，不会自动开始付费分析。</small>
                 <label class="dh-nsa-consent-row">
                   <input type="checkbox" id="dhNsaReferenceVideoRights">
                   <span>我确认拥有该视频的分析与使用权，并同意平台仅提取通用创意结构。</span>
