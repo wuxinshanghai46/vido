@@ -108,8 +108,36 @@ async function main() {
   assert.ok(completed.result.camera_intents.every(item => item.evidence_timestamps.length));
   assert.ok(completed.result.character_actions.every(item => item.start_pose && item.key_action && item.end_pose));
   assert.ok(completed.result.generated_brief.includes('运镜'));
+  assert.strictEqual(completed.result.output_language, 'zh-CN');
+  assert.ok(/[\u3400-\u9fff]{12}/.test(completed.result.generated_brief), 'generated brief must be readable Simplified Chinese');
   assert.strictEqual(completed.result.transcript.status, 'mocked');
   assert.ok(completed.result.transcript.segments.length >= 1);
+
+  const localizedFallback = service._private.normalizeResult({
+    summary: 'This advertisement presents an efficient workflow solution.',
+    generated_brief: 'The video demonstrates innovative digital tools for modern workplaces.',
+    plot_beats: [
+      { order: 1, range: [0, 3.77], purpose: 'establish the problem', rhythm: 'steady' },
+    ],
+    camera_intents: [
+      {
+        range: [0, 3.77],
+        movement: 'slow_push_in',
+        start_shot_size: 'wide',
+        end_shot_size: 'medium_close_up',
+        angle: 'eye_level',
+        lens_estimate_mm: 35,
+      },
+    ],
+    character_actions: [
+      { start_pose: 'standing', key_action: 'checks a smartphone', end_pose: 'holds center' },
+    ],
+  });
+  assert.strictEqual(localizedFallback.output_language, 'zh-CN');
+  assert.ok(localizedFallback.generated_brief.includes('【广告目标】'));
+  assert.ok(localizedFallback.generated_brief.includes('【运镜与节奏】'));
+  assert.ok(!localizedFallback.generated_brief.includes('This advertisement'));
+  assert.ok(!localizedFallback.generated_brief.includes('The video demonstrates'));
 
   const mapping = service.mapSceneViews(uploaded.id, user, [
     { view_key: 'master', image_url: '/master.png' },
@@ -125,7 +153,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 28,
+    checks: 36,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

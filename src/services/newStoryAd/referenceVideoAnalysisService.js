@@ -605,9 +605,105 @@ function mockAnalysis(record, frames) {
   };
 }
 
+function hasReadableChinese(value = '') {
+  const text = String(value || '').trim();
+  const chineseCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  const longEnglishWords = (text.match(/[A-Za-z]{4,}/g) || []).length;
+  return chineseCount >= 12 && longEnglishWords <= Math.max(3, Math.floor(chineseCount / 4));
+}
+
+function rangeLabel(range = []) {
+  const start = Number(range?.[0] || 0);
+  const end = Number(range?.[1] || 0);
+  return end > start ? `${start.toFixed(1)}—${end.toFixed(1)} 秒` : '对应画面时段';
+}
+
+function enumLabel(value, labels, fallback) {
+  const key = String(value || '').trim().toLowerCase();
+  return labels[key] || fallback;
+}
+
+function buildChineseBrief(result = {}) {
+  const beats = Array.isArray(result.plot_beats) ? result.plot_beats.slice(0, 6) : [];
+  const cameras = Array.isArray(result.camera_intents) ? result.camera_intents.slice(0, 6) : [];
+  const actions = Array.isArray(result.character_actions) ? result.character_actions.slice(0, 6) : [];
+  const shotLabels = {
+    wide: '全景',
+    long_shot: '远景',
+    medium: '中景',
+    medium_shot: '中景',
+    medium_close_up: '中近景',
+    close_up: '近景',
+    extreme_close_up: '特写',
+  };
+  const movementLabels = {
+    static: '固定机位',
+    locked: '固定机位',
+    slow_push_in: '缓慢推近',
+    push_in: '推近',
+    zoom_in: '变焦推近',
+    pull_out: '拉远',
+    slow_pull_out: '缓慢拉远',
+    locked_then_micro_pull_out: '先固定、再轻微拉远',
+    pan_left: '向左摇摄',
+    pan_right: '向右摇摄',
+    tracking: '跟随移动',
+    steady_tracking: '稳定跟随',
+    handheld: '轻微手持',
+  };
+  const angleLabels = {
+    eye_level: '平视',
+    slight_high: '轻微俯拍',
+    high_angle: '俯拍',
+    low_angle: '仰拍',
+    over_the_shoulder: '越肩视角',
+  };
+  const summary = hasReadableChinese(result.summary)
+    ? String(result.summary).trim()
+    : `参考视频共识别到 ${Math.max(1, beats.length)} 个剧情阶段、${cameras.length} 组机位运镜和 ${actions.length} 组人物动作。请结合当前产品与卖点进行原创改写，不复用原片人物身份或服装。`;
+  const beatText = beats.length
+    ? beats.map((item, index) => {
+      const purpose = hasReadableChinese(item.purpose)
+        ? String(item.purpose).trim()
+        : ['建立情境与问题', '展示行动与解决过程', '呈现结果与价值', '行动号召收束'][Math.min(index, 3)];
+      const rhythm = hasReadableChinese(item.rhythm) ? `，节奏为${String(item.rhythm).trim()}` : '';
+      return `${index + 1}. ${rangeLabel(item.range)}：${purpose}${rhythm}`;
+    }).join('；')
+    : '1. 开场建立情境与问题；2. 中段展示行动和解决过程；3. 结尾呈现结果并以行动号召收束';
+  const cameraText = cameras.length
+    ? cameras.map((item, index) => {
+      const startShot = enumLabel(item.start_shot_size, shotLabels, '起始镜头');
+      const endShot = enumLabel(item.end_shot_size, shotLabels, '结束镜头');
+      const movement = enumLabel(item.movement, movementLabels, '保持稳定运镜');
+      const angle = enumLabel(item.angle, angleLabels, '平视');
+      const lens = Number(item.lens_estimate_mm || 0);
+      return `${index + 1}. ${rangeLabel(item.range)}：${startShot}到${endShot}，${movement}，${angle}${lens ? `，约 ${lens}mm 镜头` : ''}`;
+    }).join('；')
+    : '先用主机位建立空间，中段使用互动机位跟随动作，结尾用细节机位突出结果并停稳';
+  const actionText = actions.length
+    ? actions.map((item, index) => {
+      const start = hasReadableChinese(item.start_pose) ? item.start_pose : '从自然、稳定的起始姿态开始';
+      const action = hasReadableChinese(item.key_action) ? item.key_action : '完成与产品或场景目标有关的关键动作';
+      const end = hasReadableChinese(item.end_pose) ? item.end_pose : '回到清晰的结果展示姿态';
+      return `${index + 1}. ${start}，随后${action}，最后${end}`;
+    }).join('；')
+    : '人物动作按“起始姿态—关键动作—结束姿态”编排，并保持手部接触、视线和表情连续';
+  return [
+    `【广告目标】${summary}`,
+    `【剧情结构】${beatText}`,
+    `【人物动作】${actionText}`,
+    '【场景与机位】先建立空间主机位，再按互动和细节需要选择场景机位；所有画面根据当前产品和品牌重新设计。',
+    `【运镜与节奏】${cameraText}`,
+    '【字幕与行动号召】字幕使用简短中文句式，突出产品结果，结尾保留明确的中文行动号召。',
+  ].join('\n').slice(0, 1800);
+}
+
 async function analyzeWithModels(record, frames, transcript = {}) {
   const prompt = [
     '分析这些按时间顺序截取的广告视频证据帧，只提取通用创意结构，禁止识别或复用人物身份、脸部特征、服装细节和私密属性。',
+    '所有面向用户阅读的自然语言内容必须使用简体中文，严禁输出英文句子。只有 movement、shot_size、angle 等供程序判断的枚举值可以使用英文代码。',
+    'summary、generated_brief、plot_beats.purpose/rhythm、character_actions 的角色/姿态/动作/接触/视线/表情、subtitle_cta 和 prompt_suggestions 必须全部是自然、具体的简体中文。',
+    'generated_brief 必须是可直接放入“广告需求”文本框供用户修改的中文成稿，使用【广告目标】【剧情结构】【人物动作】【场景与机位】【运镜与节奏】【字幕与行动号召】六段结构，控制在 1800 字以内。',
     '输出严格 JSON 对象，字段必须包含 summary, generated_brief, plot_beats, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
     'camera_intents 每项必须包含 range, movement, movement_subject, start_shot_size, end_shot_size, angle, lens_estimate_mm, direction, speed, stabilization, axis_rule, screen_direction, entry_exit, evidence_timestamps。',
     'character_actions 每项必须包含 role, start_pose, key_action, end_pose, dominant_hand, prop_contact, screen_direction, eyeline, expression_change, previous_frame_dependency。',
@@ -617,7 +713,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
   const vision = await modelGateway.generateVision({
     taskId: record.id,
     stage: 'new_story_ad.reference_video_vision',
-    systemPrompt: '你是广告分镜和摄影分析师。仅分析结构、动作、场景、镜头和节奏，不做人脸身份识别。',
+    systemPrompt: '你是中文广告分镜和摄影分析师。仅分析结构、动作、场景、镜头和节奏，不做人脸身份识别。除程序枚举代码外，所有给用户阅读的内容必须输出简体中文。',
     userPrompt: prompt,
     imageUrls: frames.map(item => item.image_url).slice(0, 8),
     maxTokens: 6000,
@@ -640,10 +736,13 @@ async function analyzeWithModels(record, frames, transcript = {}) {
 
 function normalizeResult(result = {}) {
   const safe = { ...result };
-  safe.generated_brief = String(safe.generated_brief || '').slice(0, 12000);
   safe.camera_intents = Array.isArray(safe.camera_intents) ? safe.camera_intents.slice(0, 24) : [];
   safe.character_actions = Array.isArray(safe.character_actions) ? safe.character_actions.slice(0, 24) : [];
   safe.plot_beats = Array.isArray(safe.plot_beats) ? safe.plot_beats.slice(0, 24) : [];
+  safe.generated_brief = hasReadableChinese(safe.generated_brief)
+    ? String(safe.generated_brief).trim().slice(0, 1800)
+    : buildChineseBrief(safe);
+  safe.output_language = 'zh-CN';
   safe.analysis_scope = 'creative_structure_only';
   safe.prohibited_reuse = ['person_identity', 'face', 'wardrobe', 'private_attributes'];
   return safe;
@@ -667,10 +766,10 @@ async function runAnalysis(initialRecord) {
       : await analyzeWithModels(record, frames, transcript);
     throwIfCancelled(record);
     const result = normalizeResult(raw);
-    record = checkpoint(record, '整理可回填的 AI 分析草稿', 90, { result });
+    record = checkpoint(record, '整理中文广告需求草稿', 90, { result });
     save(record, {
       status: 'completed',
-      phase: '分析完成，等待人工选择回填',
+      phase: '分析完成，中文内容已填入广告需求',
       progress: 100,
       completed_at: now(),
       downstream_generation_triggered: false,
@@ -824,5 +923,15 @@ module.exports = {
   cancel,
   remove,
   mapSceneViews,
-  _private: { activeRuns, analysisDir, readRecord, mockAnalysis, evidenceTimes, validateUpload },
+  _private: {
+    activeRuns,
+    analysisDir,
+    readRecord,
+    mockAnalysis,
+    evidenceTimes,
+    validateUpload,
+    normalizeResult,
+    buildChineseBrief,
+    hasReadableChinese,
+  },
 };

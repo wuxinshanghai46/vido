@@ -4272,35 +4272,28 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 
 .dh-nsa-analysis-draft {
   margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--dh-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--dh-accent) 32%, var(--dh-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dh-accent) 8%, var(--dh-bg));
+  color: var(--dh-text-soft);
+  font-size: 12px;
 }
 
-#dhNsaReferenceVideoDraftBody {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+.dh-nsa-analysis-draft b {
+  color: var(--dh-text);
 }
 
-#dhNsaReferenceVideoDraftBody > section,
-#dhNsaReferenceVideoDraftBody > details,
-#dhNsaReferenceVideoDraftBody > p,
 .dh-nsa-scene-mapping {
-  margin: 0;
+  margin-top: 10px;
   padding: 12px;
   border-radius: 10px;
   background: var(--dh-bg);
 }
 
-#dhNsaReferenceVideoDraftBody pre {
-  white-space: pre-wrap;
-  color: var(--dh-text);
-  font: inherit;
-  line-height: 1.65;
-}
-
-#dhNsaReferenceVideoDraftBody ul,
 .dh-nsa-scene-mapping ul {
   margin: 8px 0 0;
   padding-left: 18px;

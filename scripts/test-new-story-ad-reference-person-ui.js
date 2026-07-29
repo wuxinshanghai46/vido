@@ -19,6 +19,7 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
   'dhNsaReferenceVideoRights',
   'dhNsaReferenceVideoProgress',
   'dhNsaReferenceVideoDraft',
+  'dhNsaReferenceVideoDraftStatus',
   'dhNsaReferenceVideoSceneMapping',
   'dhNsaRealPersonIdentityFile',
   'dhNsaRealPersonRights',
@@ -38,7 +39,11 @@ const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
 assert.ok(referenceIndex > 0 && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
 
 assert.ok(html.includes('不提取人物身份或服装'));
-assert.ok(referenceUi.includes('data-nsa-reference-apply'));
+assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not require merge/replace buttons');
+assert.ok(referenceUi.includes('fillRequirementFromAnalysis'));
+assert.ok(referenceUi.includes("$('#dhNsaAdText')"));
+assert.ok(referenceUi.includes("input.dispatchEvent(new Event('input'"));
+assert.ok(referenceUi.includes('中文内容已填入广告需求文本框'));
 assert.ok(referenceUi.includes('map-scene-views'));
 assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
 assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not read real-person state');

@@ -5,6 +5,7 @@
     uploadSession: null,
     pollTimer: null,
     mappingFingerprint: '',
+    autoFilledAnalysisId: '',
   };
 
   const $ = selector => document.querySelector(selector);
@@ -44,32 +45,42 @@
     parent.appendChild(section);
   }
 
+  function fillRequirementFromAnalysis(analysis = {}) {
+    const result = analysis.result;
+    const text = String(result?.generated_brief || '').trim();
+    const input = $('#dhNsaAdText');
+    if (!analysis.id || analysis.status !== 'completed' || !text || !input) return false;
+    if (state.autoFilledAnalysisId === analysis.id) return false;
+    const maxLength = Number(input.maxLength || 1800);
+    const current = String(input.value || '').trim();
+    const prefix = '【参考视频分析补充】\n';
+    const next = current && !current.includes(text)
+      ? `${current}\n\n${prefix}${text}`
+      : text;
+    input.value = next.slice(0, maxLength);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    state.autoFilledAnalysisId = analysis.id;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    notify(
+      next.length > maxLength
+        ? '分析完成，中文内容已填入广告需求文本框；受长度限制，末尾内容已截断，请直接检查和修改'
+        : '分析完成，中文内容已填入广告需求文本框，请直接检查和修改',
+      'success',
+    );
+    return true;
+  }
+
   function renderDraft(analysis = {}) {
     const draft = $('#dhNsaReferenceVideoDraft');
-    const body = $('#dhNsaReferenceVideoDraftBody');
-    const result = analysis.result;
-    if (!draft || !body) return;
-    draft.hidden = !result;
-    body.replaceChildren();
-    if (!result) return;
-    const summary = document.createElement('p');
-    summary.textContent = result.summary || '分析已完成';
-    body.appendChild(summary);
-    appendList(body, '剧情结构', (result.plot_beats || []).map(item => `${item.purpose || '剧情节点'} · ${item.rhythm || '节奏待定'}`));
-    appendList(body, '机位与运镜意图', (result.camera_intents || []).map(item => (
-      `${item.start_shot_size || '镜头'} → ${item.end_shot_size || '镜头'}；${item.movement || '固定'}；${item.angle || '平视'}；约 ${item.lens_estimate_mm || '?'}mm；证据 ${item.evidence_timestamps?.join('s / ') || '—'}s`
-    )));
-    appendList(body, '人物动作（通用角色）', (result.character_actions || []).map(item => (
-      `${item.start_pose || ''} → ${item.key_action || ''} → ${item.end_pose || ''}；${item.prop_contact || '无道具接触'}；${item.expression_change || '表情连续'}`
-    )));
-    const brief = document.createElement('details');
-    brief.open = true;
-    const briefTitle = document.createElement('summary');
-    briefTitle.textContent = '可回填的广告需求草稿';
-    const pre = document.createElement('pre');
-    pre.textContent = result.generated_brief || '';
-    brief.append(briefTitle, pre);
-    body.appendChild(brief);
+    const status = $('#dhNsaReferenceVideoDraftStatus');
+    const completed = analysis.status === 'completed' && !!analysis.result;
+    if (draft) draft.hidden = !completed;
+    if (status && completed) {
+      status.textContent = '中文分析内容已自动填入上方“广告需求”文本框，可直接检查和修改。';
+    }
+    if (completed) fillRequirementFromAnalysis(analysis);
   }
 
   function render(analysis = state.analysis || {}) {
@@ -235,6 +246,7 @@
       stopPolling();
       state.analysis = null;
       state.mappingFingerprint = '';
+      state.autoFilledAnalysisId = '';
       render({});
       const name = $('#dhNsaReferenceVideoFileName');
       if (name) name.textContent = 'MP4 / MOV / WebM，最长 180 秒，最大 200MB';
@@ -242,18 +254,6 @@
     } catch (error) {
       notify(error.message, 'error');
     }
-  }
-
-  function applyDraft(mode = 'merge') {
-    const text = String(state.analysis?.result?.generated_brief || '').trim();
-    const input = $('#dhNsaAdText');
-    if (!text || !input) return;
-    const current = String(input.value || '').trim();
-    const next = mode === 'replace' ? text : [current, text].filter(Boolean).join('\n\n');
-    input.value = next.slice(0, Number(input.maxLength || 1800));
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    notify(mode === 'replace' ? '已用分析草稿替换广告需求' : '已将分析草稿合并到广告需求', 'success');
   }
 
   async function mapCurrentSceneViews() {
@@ -293,8 +293,6 @@
       if (event.target?.closest?.('#dhNsaReferenceVideoStart')) start();
       if (event.target?.closest?.('#dhNsaReferenceVideoCancel')) cancel();
       if (event.target?.closest?.('#dhNsaReferenceVideoDelete')) remove();
-      const apply = event.target?.closest?.('[data-nsa-reference-apply]');
-      if (apply) applyDraft(apply.dataset.nsaReferenceApply);
     });
     document.addEventListener('change', event => {
       if (event.target?.id !== 'dhNsaReferenceVideoFile') return;
