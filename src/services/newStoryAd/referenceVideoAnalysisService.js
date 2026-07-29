@@ -68,6 +68,7 @@ function readRecord(userId, analysisId) {
 
 function publicRecord(record = {}) {
   const copy = JSON.parse(JSON.stringify(record || {}));
+  if (['failed', 'cancelled'].includes(copy.status)) copy.progress = 0;
   if (copy.source) {
     delete copy.source.local_path;
     delete copy.source.private_directory;
@@ -272,6 +273,7 @@ async function runLinkImport(initialRecord, linkService, inspected) {
       save(latest, {
         status: 'failed',
         phase: '链接视频读取失败',
+        progress: 0,
         error: {
           code: error.code || 'REFERENCE_VIDEO_LINK_IMPORT_FAILED',
           message: String(error.message || error).slice(0, 500),

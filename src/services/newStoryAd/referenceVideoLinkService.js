@@ -13,6 +13,7 @@ const MAX_REDIRECTS = 5;
 const REQUEST_TIMEOUT_MS = 120000;
 
 const PLATFORM_HOSTS = [
+  { platform: 'liblib', hosts: ['liblib.tv'] },
   { platform: 'douyin', hosts: ['douyin.com', 'iesdouyin.com'] },
   { platform: 'bilibili', hosts: ['bilibili.com', 'b23.tv'] },
   { platform: 'xiaohongshu', hosts: ['xiaohongshu.com', 'xhslink.com'] },
@@ -148,6 +149,106 @@ async function inspectUrl(raw, options = {}) {
 
 function safeUnlink(filePath) {
   try { if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
+}
+
+async function fetchPublicJson(initialUrl, options = {}) {
+  let current = parseUrl(initialUrl);
+  const maxBytes = Number(options.maxBytes || 2 * 1024 * 1024);
+  for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
+    const addresses = await resolvePublicHost(current.hostname, options.resolver || dns.lookup);
+    const pinned = addresses[0];
+    const client = current.protocol === 'https:' ? https : http;
+    const response = await new Promise((resolve, reject) => {
+      const request = client.get(current, {
+        headers: {
+          'User-Agent': 'VIDO-ReferenceVideo/1.0',
+          Accept: 'application/json',
+        },
+        lookup: (_hostname, _lookupOptions, callback) => callback(null, pinned.address, pinned.family),
+      }, resolve);
+      request.setTimeout(options.timeoutMs || 30000, () => {
+        request.destroy(makeError('视频详情接口读取超时', 'REFERENCE_VIDEO_PAGE_RESOLVE_TIMEOUT', 504));
+      });
+      request.on('error', reject);
+      if (options.signal) {
+        const abort = () => request.destroy(makeError('视频链接读取已取消', 'REFERENCE_VIDEO_IMPORT_CANCELLED', 409));
+        if (options.signal.aborted) abort();
+        else options.signal.addEventListener('abort', abort, { once: true });
+      }
+    });
+    const status = Number(response.statusCode || 0);
+    if ([301, 302, 303, 307, 308].includes(status)) {
+      response.resume();
+      const location = response.headers.location;
+      if (!location) throw makeError('视频详情接口跳转地址无效', 'REFERENCE_VIDEO_PAGE_REDIRECT_INVALID', 422);
+      current = parseUrl(new URL(location, current).toString());
+      continue;
+    }
+    if (status < 200 || status >= 300) {
+      response.resume();
+      throw makeError(`视频详情接口读取失败（HTTP ${status || '未知'}）`, 'REFERENCE_VIDEO_PAGE_RESOLVE_FAILED', 422);
+    }
+    const chunks = [];
+    let received = 0;
+    await new Promise((resolve, reject) => {
+      response.on('data', chunk => {
+        received += chunk.length;
+        if (received > maxBytes) {
+          response.destroy(makeError('视频详情数据异常或过大', 'REFERENCE_VIDEO_PAGE_RESPONSE_TOO_LARGE', 413));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', resolve);
+      response.on('error', reject);
+    });
+    try {
+      return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    } catch {
+      throw makeError('视频详情接口没有返回有效数据', 'REFERENCE_VIDEO_PAGE_RESPONSE_INVALID', 422);
+    }
+  }
+  throw makeError('视频详情接口跳转次数过多', 'REFERENCE_VIDEO_PAGE_TOO_MANY_REDIRECTS', 422);
+}
+
+function liblibCaseItems(skill = {}) {
+  const direct = Array.isArray(skill.caseItems) ? skill.caseItems : [];
+  if (direct.length) return direct;
+  try {
+    const snapshot = typeof skill.snapshotData === 'string'
+      ? JSON.parse(skill.snapshotData)
+      : (skill.snapshotData || {});
+    if (Array.isArray(snapshot.caseItems)) return snapshot.caseItems;
+    if (Array.isArray(snapshot.productionCaseUrls)) {
+      return snapshot.productionCaseUrls.map(productionCaseUrl => ({ productionCaseUrl }));
+    }
+  } catch {}
+  return [];
+}
+
+async function resolveLiblibShareVideo(inspected, options = {}) {
+  const pageUrl = new URL(inspected.url);
+  if (!/^\/skill\/share\/?$/.test(pageUrl.pathname)) {
+    throw makeError('当前仅支持 Liblib Skill 分享页的视频样例', 'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED', 422);
+  }
+  const uuid = String(pageUrl.searchParams.get('uuid') || '').trim();
+  if (!/^[a-f0-9-]{16,64}$/i.test(uuid)) {
+    throw makeError('Liblib 分享链接缺少有效的 uuid', 'REFERENCE_VIDEO_LIBLIB_UUID_INVALID', 422);
+  }
+  const apiUrl = `https://api.liblib.tv/api/community/skill/template/detail?templateUuid=${encodeURIComponent(uuid)}`;
+  const payload = await (options.fetchJson || fetchPublicJson)(apiUrl, options);
+  const skill = payload?.data?.skill || payload?.skill || payload?.data || {};
+  const item = liblibCaseItems(skill)
+    .find(row => /^https?:\/\//i.test(String(row?.productionCaseUrl || row?.videoUrl || '')));
+  const mediaUrl = String(item?.productionCaseUrl || item?.videoUrl || '').trim();
+  if (!mediaUrl) {
+    throw makeError('该 Liblib 分享页没有可读取的视频样例', 'REFERENCE_VIDEO_LIBLIB_MEDIA_MISSING', 422);
+  }
+  const media = await (options.inspectUrl || inspectUrl)(mediaUrl, options);
+  return {
+    ...media,
+    title: String(skill.name || 'Liblib 视频样例').trim().slice(0, 80),
+  };
 }
 
 async function downloadDirect(initialUrl, directory, options = {}) {
@@ -305,9 +406,17 @@ async function downloadVideo(raw, directory, options = {}) {
   fs.mkdirSync(directory, { recursive: true });
   const inspected = options.inspected || await inspectUrl(raw, options);
   const isDirectMedia = /\.(mp4|mov|webm)$/i.test(new URL(inspected.url).pathname);
-  const downloaded = inspected.platform !== 'public_web' && !isDirectMedia
-    ? await downloadPlatformVideo(inspected, directory, options)
-    : await downloadDirect(inspected.url, directory, options);
+  let downloaded;
+  if (inspected.platform === 'liblib' && !isDirectMedia) {
+    const media = await resolveLiblibShareVideo(inspected, options);
+    downloaded = await downloadDirect(media.url, directory, options);
+    downloaded.original_name = `${media.title}${path.extname(downloaded.file_path).toLowerCase()}`;
+    downloaded.method = 'liblib-api+direct';
+  } else if (inspected.platform !== 'public_web' && !isDirectMedia) {
+    downloaded = await downloadPlatformVideo(inspected, directory, options);
+  } else {
+    downloaded = await downloadDirect(inspected.url, directory, options);
+  }
   return { ...downloaded, inspected };
 }
 
@@ -323,6 +432,9 @@ module.exports = {
     platformForHost,
     sanitizeDisplayUrl,
     resolvePublicHost,
+    fetchPublicJson,
+    liblibCaseItems,
+    resolveLiblibShareVideo,
     downloadDirect,
   },
 };

@@ -6,6 +6,8 @@
     pollTimer: null,
     mappingFingerprint: '',
     autoFilledAnalysisId: '',
+    modalOpen: false,
+    lastErrorKey: '',
   };
 
   const $ = selector => document.querySelector(selector);
@@ -18,8 +20,8 @@
 
   function setProgress(analysis = {}) {
     const wrap = $('#dhNsaReferenceVideoProgress');
-    const running = ['importing', 'queued', 'running', 'cancelling'].includes(analysis.status);
-    if (wrap) wrap.hidden = !running && !analysis.progress;
+    const running = ['uploading', 'importing', 'queued', 'running', 'cancelling'].includes(analysis.status);
+    if (wrap) wrap.hidden = !running;
     const progress = Math.max(0, Math.min(100, Number(analysis.progress || 0)));
     const bar = wrap?.querySelector('progress');
     if (bar) bar.value = progress;
@@ -27,6 +29,18 @@
     if (percent) percent.textContent = `${progress}%`;
     const phase = $('#dhNsaReferenceVideoPhase');
     if (phase) phase.textContent = analysis.phase || '等待分析';
+  }
+
+  function setModal(open) {
+    const modal = $('#dhNsaReferenceVideoModal');
+    state.modalOpen = !!open;
+    if (!modal) return;
+    modal.hidden = !state.modalOpen;
+    modal.setAttribute('aria-hidden', state.modalOpen ? 'false' : 'true');
+    document.body.classList.toggle('dh-nsa-reference-modal-open', state.modalOpen);
+    if (state.modalOpen) {
+      setTimeout(() => ($('#dhNsaReferenceVideoUrl') || $('#dhNsaReferenceVideoPick'))?.focus(), 0);
+    }
   }
 
   function appendList(parent, title, values = []) {
@@ -80,7 +94,7 @@
     if (status && completed) {
       status.textContent = '中文分析内容已自动填入上方“广告需求”文本框，可直接检查和修改。';
     }
-    if (completed) fillRequirementFromAnalysis(analysis);
+    if (completed && fillRequirementFromAnalysis(analysis)) setModal(false);
   }
 
   function render(analysis = state.analysis || {}) {
@@ -98,32 +112,62 @@
       failed: '分析失败',
       uploading: '上传中',
     };
-    if (status) status.textContent = labels[current.status] || '未上传';
-    const fileName = $('#dhNsaReferenceVideoFileName');
-    if (fileName && current.source?.original_name) {
+    if (status) status.textContent = labels[current.status] || '未添加';
+    const fileNames = [
+      $('#dhNsaReferenceVideoFileName'),
+      $('#dhNsaReferenceVideoDialogFileName'),
+    ].filter(Boolean);
+    if (fileNames.length && current.source?.original_name) {
       const meta = current.source.metadata || {};
-      fileName.textContent = meta.duration_seconds
+      const text = meta.duration_seconds
         ? `${current.source.original_name} · ${Number(meta.duration_seconds).toFixed(1)} 秒 · ${meta.width || 0}×${meta.height || 0}`
         : (current.source.display_url || current.source.original_name);
+      fileNames.forEach(target => { target.textContent = text; });
+    }
+    const assets = [
+      $('#dhNsaReferenceVideoAsset'),
+      $('#dhNsaReferenceVideoDialogAsset'),
+    ].filter(Boolean);
+    const hasAsset = !!state.uploadSession || !!current.id || !!current.source?.original_name;
+    assets.forEach(target => { target.hidden = !hasAsset; });
+    const assetStatuses = [
+      $('#dhNsaReferenceVideoAssetStatus'),
+      $('#dhNsaReferenceVideoDialogAssetStatus'),
+    ].filter(Boolean);
+    if (hasAsset) {
+      const text = current.error?.message || current.phase || labels[current.status] || '等待处理';
+      assetStatuses.forEach(target => { target.textContent = text; });
     }
     const busy = state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(current.status);
+    const occupied = !!state.uploadSession || !!current.id;
     const pick = $('#dhNsaReferenceVideoPick');
-    if (pick) pick.disabled = !!busy;
+    if (pick) pick.disabled = !!occupied;
     const linkRead = $('#dhNsaReferenceVideoLinkRead');
-    if (linkRead) linkRead.disabled = !!busy;
+    if (linkRead) linkRead.disabled = !!occupied;
     const linkInput = $('#dhNsaReferenceVideoUrl');
-    if (linkInput) linkInput.disabled = !!busy;
+    if (linkInput) linkInput.disabled = !!occupied;
+    const open = $('#dhNsaReferenceVideoOpen');
+    if (open) open.textContent = occupied ? '查看参考视频' : '添加参考视频';
     const start = $('#dhNsaReferenceVideoStart');
     if (start) start.disabled = !current.id
       || !current.source?.metadata?.duration_seconds
       || !['uploaded', 'cancelled', 'failed'].includes(current.status);
-    const cancel = $('#dhNsaReferenceVideoCancel');
-    if (cancel) cancel.hidden = !state.uploadSession && !['importing', 'queued', 'running', 'cancelling'].includes(current.status);
-    const remove = $('#dhNsaReferenceVideoDelete');
-    if (remove) remove.hidden = !current.id || ['importing', 'queued', 'running', 'cancelling'].includes(current.status);
+    const clears = [
+      $('#dhNsaReferenceVideoClear'),
+      $('#dhNsaReferenceVideoDialogClear'),
+    ].filter(Boolean);
+    clears.forEach(clear => {
+      clear.hidden = !hasAsset;
+      clear.title = busy ? '取消当前处理' : '删除参考视频';
+      clear.setAttribute('aria-label', busy ? '取消当前参考视频处理' : '删除参考视频');
+    });
     setProgress(current);
     renderDraft(current);
-    if (current.error?.message) notify(current.error.message, 'error');
+    const errorKey = current.error?.message ? `${current.id}:${current.error.code || ''}:${current.error.message}` : '';
+    if (errorKey && errorKey !== state.lastErrorKey) {
+      state.lastErrorKey = errorKey;
+      notify(current.error.message, 'error');
+    }
   }
 
   function stopPolling() {
@@ -177,7 +221,7 @@
     } catch (error) {
       notify(error.message, 'error');
     } finally {
-      if (pick) pick.disabled = false;
+      if (pick) pick.disabled = !!state.analysis?.id || !!state.uploadSession;
     }
   }
 
@@ -233,6 +277,12 @@
       },
     });
     state.uploadSession = created.session;
+    render({
+      status: 'uploading',
+      progress: 0,
+      phase: '正在准备断点续传',
+      source: { original_name: file.name, metadata: {} },
+    });
     const received = new Set(created.session.received_chunks || []);
     for (let index = 0; index < created.session.total_chunks; index += 1) {
       if (received.has(index)) continue;
@@ -280,6 +330,7 @@
       try {
         await api().request(`/api/new-story-ad/reference-video-upload-sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
       } catch {}
+      stopPolling();
       render({});
       notify('参考视频上传已取消', 'success');
       return;
@@ -288,6 +339,8 @@
     try {
       const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/cancel`, { method: 'POST' });
       render(result.analysis);
+      stopPolling();
+      state.pollTimer = setTimeout(poll, 300);
     } catch (error) {
       notify(error.message, 'error');
     }
@@ -301,15 +354,26 @@
       state.analysis = null;
       state.mappingFingerprint = '';
       state.autoFilledAnalysisId = '';
+      state.lastErrorKey = '';
       render({});
       const urlInput = $('#dhNsaReferenceVideoUrl');
       if (urlInput) urlInput.value = '';
-      const name = $('#dhNsaReferenceVideoFileName');
-      if (name) name.textContent = 'MP4 / MOV / WebM，最长 180 秒，最大 200MB';
+      [$('#dhNsaReferenceVideoFileName'), $('#dhNsaReferenceVideoDialogFileName')]
+        .filter(Boolean)
+        .forEach(name => { name.textContent = '参考视频'; });
       notify('参考视频及分析草稿已删除', 'success');
     } catch (error) {
       notify(error.message, 'error');
     }
+  }
+
+  async function clearCurrent() {
+    const status = state.analysis?.status;
+    if (state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(status)) {
+      await cancel();
+      return;
+    }
+    await remove();
   }
 
   async function mapCurrentSceneViews() {
@@ -345,11 +409,12 @@
     if (state.mounted) return;
     state.mounted = true;
     document.addEventListener('click', event => {
+      if (event.target?.closest?.('#dhNsaReferenceVideoOpen')) setModal(true);
+      if (event.target?.closest?.('#dhNsaReferenceVideoClose, [data-nsa-reference-video-close]')) setModal(false);
       if (event.target?.closest?.('#dhNsaReferenceVideoPick')) $('#dhNsaReferenceVideoFile')?.click();
       if (event.target?.closest?.('#dhNsaReferenceVideoLinkRead')) readLink();
       if (event.target?.closest?.('#dhNsaReferenceVideoStart')) start();
-      if (event.target?.closest?.('#dhNsaReferenceVideoCancel')) cancel();
-      if (event.target?.closest?.('#dhNsaReferenceVideoDelete')) remove();
+      if (event.target?.closest?.('#dhNsaReferenceVideoClear, #dhNsaReferenceVideoDialogClear')) clearCurrent();
     });
     document.addEventListener('change', event => {
       if (event.target?.id !== 'dhNsaReferenceVideoFile') return;
@@ -358,6 +423,11 @@
       upload(file);
     });
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && state.modalOpen) {
+        event.preventDefault();
+        setModal(false);
+        return;
+      }
       if (event.target?.id === 'dhNsaReferenceVideoUrl' && event.key === 'Enter') {
         event.preventDefault();
         readLink();

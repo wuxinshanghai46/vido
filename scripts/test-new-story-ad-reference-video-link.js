@@ -106,6 +106,49 @@ async function main() {
   });
   assert.strictEqual(inspected.platform, 'bilibili');
   assert.strictEqual(inspected.display_url, 'https://www.bilibili.com/video/BV1TEST');
+  assert.strictEqual(linkSecurity._private.platformForHost('www.liblib.tv'), 'liblib');
+
+  let liblibApiUrl = '';
+  const resolvedLiblib = await linkSecurity._private.resolveLiblibShareVideo({
+    url: 'https://www.liblib.tv/skill/share?uuid=fa22a3be235546c5b063f4abeecfba76',
+    platform: 'liblib',
+  }, {
+    fetchJson: async url => {
+      liblibApiUrl = url;
+      return {
+        code: 0,
+        data: {
+          skill: {
+            name: '复古胶片广告风导演',
+            caseItems: [{
+              productionCaseUrl: 'https://libtv-res.liblib.art/upload-images/example/video.mp4',
+            }],
+          },
+        },
+      };
+    },
+    inspectUrl: async url => ({
+      url,
+      display_url: url,
+      platform: 'public_web',
+      hostname: 'libtv-res.liblib.art',
+    }),
+  });
+  assert.ok(liblibApiUrl.includes('/api/community/skill/template/detail?templateUuid=fa22a3be235546c5b063f4abeecfba76'));
+  assert.strictEqual(resolvedLiblib.title, '复古胶片广告风导演');
+  assert.ok(resolvedLiblib.url.endsWith('/video.mp4'));
+  assert.deepStrictEqual(linkSecurity._private.liblibCaseItems({
+    snapshotData: JSON.stringify({
+      caseItems: [{ productionCaseUrl: 'https://cdn.example/video.mp4' }],
+    }),
+  }), [{ productionCaseUrl: 'https://cdn.example/video.mp4' }]);
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibShareVideo({
+      url: 'https://www.liblib.tv/skill/share?uuid=bad',
+      platform: 'liblib',
+    }),
+    error => error.code === 'REFERENCE_VIDEO_LIBLIB_UUID_INVALID',
+  );
 
   await assert.rejects(
     () => analysisService.createFromUrl({
@@ -158,16 +201,47 @@ async function main() {
     error => error.code === 'REFERENCE_VIDEO_SOURCE_MISSING',
   );
 
+  const failingService = {
+    async inspectUrl() {
+      return {
+        url: 'https://www.liblib.tv/skill/share?uuid=fa22a3be235546c5b063f4abeecfba76',
+        display_url: 'https://www.liblib.tv/skill/share',
+        platform: 'liblib',
+        hostname: 'www.liblib.tv',
+      };
+    },
+    async downloadVideo() {
+      const error = new Error('样例读取失败');
+      error.code = 'REFERENCE_VIDEO_TEST_FAILURE';
+      throw error;
+    },
+  };
+  const failing = await analysisService.createFromUrl({
+    body: {
+      video_url: 'https://www.liblib.tv/skill/share?uuid=fa22a3be235546c5b063f4abeecfba76',
+      rights_confirmed: 'true',
+    },
+    user,
+    linkService: failingService,
+  });
+  const failed = await waitFor(failing.id, user, ['failed']);
+  assert.strictEqual(failed.status, 'failed');
+  assert.strictEqual(failed.progress, 0, 'failed link imports must not remain on a partial percentage');
+  assert.strictEqual(analysisService._private.readRecord(user.id, failing.id).progress, 0);
+
   analysisService.remove(created.id, user);
   analysisService.remove(cancellable.id, user);
+  analysisService.remove(failing.id, user);
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 38,
+    checks: 50,
     public_url_input: 'pass',
+    liblib_share_api_resolution: 'pass',
     ssrf_private_ranges: 'blocked',
     query_secret_exposed: false,
     cancellation: 'pass',
+    failed_progress_terminal: true,
     chinese_autofill_source: 'pass',
     downstream_generation_triggered: false,
   }));

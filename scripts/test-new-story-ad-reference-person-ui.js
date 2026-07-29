@@ -18,6 +18,10 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
   'dhNsaReferenceVideoFile',
   'dhNsaReferenceVideoUrl',
   'dhNsaReferenceVideoLinkRead',
+  'dhNsaReferenceVideoOpen',
+  'dhNsaReferenceVideoModal',
+  'dhNsaReferenceVideoClear',
+  'dhNsaReferenceVideoDialogClear',
   'dhNsaReferenceVideoRights',
   'dhNsaReferenceVideoProgress',
   'dhNsaReferenceVideoDraft',
@@ -45,6 +49,12 @@ assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not 
 assert.ok(referenceUi.includes('fillRequirementFromAnalysis'));
 assert.ok(referenceUi.includes("'/api/new-story-ad/reference-video-links'"));
 assert.ok(referenceUi.includes("importing: '读取链接中'"));
+assert.ok(referenceUi.includes('setModal(false)'));
+assert.ok(referenceUi.includes('#dhNsaReferenceVideoClear, #dhNsaReferenceVideoDialogClear'));
+assert.ok(referenceUi.includes("['uploading', 'importing', 'queued', 'running', 'cancelling']"));
+assert.ok(html.includes('id="dhNsaReferenceVideoRights" checked'), 'reference-video rights should be enabled by default');
+assert.ok(!html.includes('id="dhNsaReferenceVideoCancel"'), 'large cancel button must be replaced by the compact X action');
+assert.ok(!html.includes('id="dhNsaReferenceVideoDelete"'), 'large delete button must be replaced by the compact X action');
 assert.ok(referenceUi.includes("$('#dhNsaAdText')"));
 assert.ok(referenceUi.includes("input.dispatchEvent(new Event('input'"));
 assert.ok(referenceUi.includes('中文内容已填入广告需求文本框'));
@@ -73,8 +83,8 @@ assert.ok(personService.includes('previous_frame_dependency'));
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 39,
-  reference_feature_controls: 7,
+  checks: 50,
+  reference_feature_controls: 11,
   person_feature_controls: 6,
   dossier_tabs: 5,
   isolation_boundary: 'pass',
