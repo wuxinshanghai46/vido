@@ -61,6 +61,50 @@ function testFrontendCompletenessGuardIsWired() {
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
   assert.match(source, /function completeSceneSpecSuggestion\(/);
   assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
+  assert.match(source, /label: '正在创建 \/ 补齐全部人物档案…',\s*timeoutMs: 120000,/);
+  assert.match(source, /percentAlreadyShown \|\| snap\.indeterminate \? ''/);
+  assert.match(source, /refreshProfileValidation\?\.\(/);
+}
+
+/** 回归：人物姓名写入状态后必须立即重算校验，不得继续显示旧的“缺少姓名”。 */
+function testSubjectProfileValidationRefreshesAfterEditingName() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
+  const sandbox = { window: { NewStoryAdPersonAgeAuthority: {} } };
+  vm.runInNewContext(source, sandbox);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-profile-authority.js'), 'utf8'), sandbox);
+  const ui = sandbox.window.NewStoryAdSubjectAssetsUI;
+  const authority = sandbox.window.NewStoryAdSubjectProfileAuthority;
+  const state = {
+    castProfiles: [{
+      id: 'cast_1',
+      displayName: '',
+      roleName: '售货员',
+      appearanceText: '中年女性，真实自然。',
+      wardrobeText: '棉麻上衣与深色长裤。',
+      hairMakeupText: '黑色短发与自然淡妆。',
+    }],
+    petProfiles: [],
+  };
+  const validation = { innerHTML: '' };
+  const summary = { textContent: '' };
+  const scope = {
+    querySelector(selector) {
+      if (selector === '[data-nsa-subject-validation]') return validation;
+      if (selector === '[data-nsa-subject-summary-index="0"]') return summary;
+      return null;
+    },
+  };
+  const target = {
+    dataset: { nsaSubjectKind: 'cast', nsaSubjectIndex: '0', nsaSubjectField: 'displayName' },
+    value: '林妈',
+  };
+  assert.equal(ui.updateProfileFromField(state, target), true);
+  assert.equal(authority.refreshProfileValidation(scope, state, { castMode: 'single', expectedPeople: 1 }), true);
+  assert.equal(state.castProfiles[0].displayName, '林妈');
+  assert.equal(state.castProfiles[0].name, '林妈');
+  assert.equal(summary.textContent, '林妈');
+  assert(!validation.innerHTML.includes('缺少：姓名'), '旧的姓名缺失警告必须立即消失');
+  assert(validation.innerHTML.includes('逐主体档案数量和必填信息完整'));
 }
 
 function testGeneratedActorAgeConstraintDoesNotDowngrade() {
@@ -143,6 +187,7 @@ async function testSinglePersonAssistHasPersistentFeedback() {
   });
   assert.equal(changed, true);
   assert.equal(capturedRequest.timeoutMs, 120000);
+  assert.equal(capturedRequest.showGlobalProgress, false, '单人物补齐只能显示人物卡内状态，不得复用全局百分比进度');
   assert.ok(renderedStatuses.includes('running'), '请求期间必须留下可见的进行中状态');
   assert.equal(state.subjectAssistStatus[1].status, 'success');
   assert.match(state.subjectAssistStatus[1].message, /已补齐 6 项/);
@@ -303,6 +348,7 @@ async function main() {
   testPartialModelResponseIsCompleted();
   testExistingUserDetailsArePreserved();
   testFrontendCompletenessGuardIsWired();
+  testSubjectProfileValidationRefreshesAfterEditingName();
   testGeneratedActorAgeConstraintDoesNotDowngrade();
   await testSinglePersonAssistHasPersistentFeedback();
   testSceneAssistFallbackIsComplete();

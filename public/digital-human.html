@@ -33,9 +33,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-person-modal-assist-camera-v60">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-person-authority-camera-v61">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260729-person-modal-assist-camera-v60"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260729-person-authority-camera-v61"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -369,6 +369,10 @@
                       <button type="button" data-nsa-cast-mode-quick="no_human">无人物 / 纯产品广告</button>
                       <small>选择“无人物”后，系统会自动忽略人物素材、演员和人数，只生成商品、空间或品牌画面。</small>
                     </div>
+                    <div class="dh-nsa-person-authority-note">
+                      <b>主体数量与群体约束</b>
+                      <span>这里只确定人数、组合、年龄地域和角色关系。姓名、外貌、服装、妆造与禁止项统一在下方“逐主体独立档案”填写，并以该档案作为生成唯一依据。</span>
+                    </div>
                     <div class="dh-luxgen-person-spec">
                       <label>
                         <span>人物数量</span>
@@ -440,26 +444,26 @@
                         </select>
                       </label>
                       <label>
-                        <span>人物身份 / 职业</span>
-                        <input class="dh-input" data-nsa-person-spec="roleName" maxlength="80" placeholder="如：店长、用户、品牌顾问；不确定可留空让 AI 从需求判断">
+                        <span>群体关系 / 角色构成</span>
+                        <input class="dh-input" data-nsa-person-spec="roleName" maxlength="80" placeholder="如：店长与顾客、母亲与女儿；单人时可填写人物职业">
                       </label>
-                      <label>
+                      <label hidden data-nsa-person-detail-legacy>
                         <span>人物姓名</span>
                         <input class="dh-input" data-nsa-person-spec="displayName" maxlength="40" placeholder="可手动指定；留空时由编剧生成正式人名">
                       </label>
-                      <label class="dh-luxgen-person-text-field">
+                      <label class="dh-luxgen-person-text-field" hidden data-nsa-person-detail-legacy>
                         <span>外貌 / 气质</span>
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="appearanceText" maxlength="260" placeholder="脸型、体型、年龄感、真实感、气质等"></textarea>
                       </label>
-                      <label class="dh-luxgen-person-text-field">
+                      <label class="dh-luxgen-person-text-field" hidden data-nsa-person-detail-legacy>
                         <span>穿着 / 服装</span>
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="wardrobeText" maxlength="320" placeholder="写清上衣、裤装/裙装、鞋、配饰、颜色、材质；生成演员包会尽量按这里的服装约束执行"></textarea>
                       </label>
-                      <label class="dh-luxgen-person-text-field">
+                      <label class="dh-luxgen-person-text-field" hidden data-nsa-person-detail-legacy>
                         <span>发型 / 妆造</span>
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="hairMakeupText" maxlength="220" placeholder="发型、妆容、眼镜、胡须等"></textarea>
                       </label>
-                      <label class="dh-luxgen-person-text-field">
+                      <label class="dh-luxgen-person-text-field" hidden data-nsa-person-detail-legacy>
                         <span>人物禁止项</span>
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="negativeText" maxlength="320" placeholder="如：不要西装、不要白衬衫、不要夸张表情"></textarea>
                       </label>
@@ -469,7 +473,7 @@
                   <div class="dh-demo-person-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdUploadPersonRef" type="button">上传真人参考</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdPickActorAsset" type="button">选择真人演员/演员库</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">辅助补齐</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">AI 创建 / 补齐全部档案</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-person-generate-btn" id="dhNsaAdGeneratePersonSheet" type="button" aria-pressed="false">生成人物 / 宠物资产</button>
                   </div>
                 </div>

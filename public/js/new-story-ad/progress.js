@@ -1,4 +1,11 @@
 (() => {
+  let inlineTimer = null;
+
+  function syncInlineTimer(active = false, render = null) {
+    if (inlineTimer) clearInterval(inlineTimer);
+    inlineTimer = active && typeof render === 'function' ? setInterval(render, 1000) : null;
+  }
+
   function formatElapsedText(ms = 0) {
     const sec = Math.max(0, Math.round(Number(ms) / 1000) || 0);
     if (sec >= 60) return `${Math.floor(sec / 60)}分${String(sec % 60).padStart(2, '0')}秒`;
@@ -244,5 +251,6 @@
   window.NewStoryAdProgress = {
     formatElapsedText,
     snapshot,
+    syncInlineTimer,
   };
 })();

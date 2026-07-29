@@ -527,6 +527,10 @@ async function main() {
   assert(fullHost.innerHTML.includes('机位设计验收'));
   assert(fullHost.innerHTML.includes('逐机位参数、俯视定位、需求映射与可见证据'));
   assert(fullHost.innerHTML.includes('aria-label="放大查看机位俯视定位图"'), '机位俯视图必须可点击放大');
+  assert(fullHost.innerHTML.includes('机位平面布置图'), '俯视底图必须明确标为平面布置图');
+  assert(fullHost.innerHTML.includes('俯视定位 · 非拍摄效果'), '俯视底图必须明确提示并非机位成片');
+  assert(fullHost.innerHTML.includes('class="dh-nsa-camera-point"'), '彩色机位点必须成为独立可点击控件');
+  assert(fullHost.innerHTML.includes('查看主视角拍摄效果'), '主机位彩色点必须直达主视角透视效果');
   assert(fullHost.innerHTML.includes('title="点击放大查看对应机位效果"'), '逐机位卡片必须提供对应视图弹窗入口');
   assert.match(fullHost.innerHTML, /class="dh-nsa-camera-row[^"]*"[^>]*data-nsa-scene-preview="/, '逐机位卡片必须复用场景图片预览弹窗');
   assert(fullHost.innerHTML.includes('方位 20°'));
@@ -718,6 +722,8 @@ async function main() {
 
   const sceneService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
   const sceneUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/scene-assets.js'), 'utf8');
+  assert(sceneUi.includes('const previewIndex = cameraViewIndex;'), '逐机位效果缺失时不得回退打开俯视布局');
+  assert(!sceneUi.includes('const previewIndex = cameraViewIndex >= 0 ? cameraViewIndex : layoutIndex;'));
   assert(!sceneService.includes('legacyNeedsLayoutHeuristic'));
   assert(!sceneService.includes('legacy_layout_trigger'));
 
@@ -735,15 +741,15 @@ async function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260729-person-modal-assist-camera-v60'));
-  assert(html.includes('digital-human-wizard.css?v=20260729-person-modal-assist-camera-v60'));
-  assert(html.indexOf('bootstrap.js?v=20260729-person-modal-assist-camera-v60') < html.indexOf('digital-human.js?v=20260728-disable-legacy-entry-v53'));
+  assert(html.includes('bootstrap.js?v=20260729-person-authority-camera-v61'));
+  assert(html.includes('digital-human-wizard.css?v=20260729-person-authority-camera-v61'));
+  assert(html.indexOf('bootstrap.js?v=20260729-person-authority-camera-v61') < html.indexOf('digital-human.js?v=20260728-disable-legacy-entry-v53'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260729-person-modal-assist-camera-v60'));
+  assert(bootstrap.includes('20260729-person-authority-camera-v61'));
   assert(sceneUi.includes('acknowledge_billing_unknown: true'));
   assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
   assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));

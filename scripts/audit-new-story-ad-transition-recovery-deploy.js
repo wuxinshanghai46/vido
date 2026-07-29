@@ -10,7 +10,7 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const targetTaskId = process.env.VIDO_REPAIR_TASK_ID || '';
-const cacheVersion = '20260729-person-modal-assist-camera-v60';
+const cacheVersion = '20260729-person-authority-camera-v61';
 const runtimeFiles = [
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
@@ -27,6 +27,10 @@ const runtimeFiles = [
   'public/js/new-story-ad/transition-review.js',
   'public/js/new-story-ad/video-review.js',
   'public/js/new-story-ad-legacy-ui.js',
+  'public/js/new-story-ad/progress.js',
+  'public/js/new-story-ad/subject-profile-assist.js',
+  'public/js/new-story-ad/subject-profile-authority.js',
+  'public/js/new-story-ad/subject-assets-ui.js',
   'src/routes/newStoryAd.js',
   'src/services/newStoryAd/composeService.js',
   'src/services/newStoryAd/assistCreativeDirectionService.js',

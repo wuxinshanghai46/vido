@@ -429,21 +429,33 @@
       && value.every(number => Number.isFinite(Number(number)));
     const mappedCameras = cameras.filter(camera => validPoint(camera.normalized_position) && validPoint(camera.look_at));
     const colors = { master: '#38bdf8', reverse: '#a78bfa', interaction: '#34d399', detail: '#f59e0b' };
-    const mapHtml = layoutUrl ? `<button type="button" class="dh-nsa-camera-map" data-nsa-scene-preview="${assetIndex}:${layoutIndex >= 0 ? layoutIndex : 0}" aria-label="放大查看机位俯视定位图" title="点击放大查看机位俯视定位图">
-      <img src="${escapeHtml(thumbUrl(layoutUrl, 720))}" alt="机位俯视定位图" loading="lazy" decoding="async">
-      <svg viewBox="0 0 100 100" role="img" aria-label="机位位置和拍摄方向（视觉估算）">
-        <defs><marker id="dhNsaCameraArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"></path></marker></defs>
+    const mapHtml = layoutUrl ? `<div class="dh-nsa-camera-map">
+      <div class="dh-nsa-camera-map-visual">
+        <img src="${escapeHtml(thumbUrl(layoutUrl, 720))}" alt="机位平面布置图（俯视定位，非拍摄效果）" loading="lazy" decoding="async">
+        <div class="dh-nsa-camera-map-head"><b>机位平面布置图</b><span>俯视定位 · 非拍摄效果</span></div>
+        <button type="button" class="dh-nsa-camera-map-open" data-nsa-scene-preview="${assetIndex}:${layoutIndex >= 0 ? layoutIndex : 0}" aria-label="放大查看机位俯视定位图" title="查看俯视布局原图">查看布局原图</button>
+        <svg viewBox="0 0 100 100" role="img" aria-label="机位位置和拍摄方向（视觉估算）">
+          <defs><marker id="dhNsaCameraArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"></path></marker></defs>
+          ${mappedCameras.map(camera => {
+            const x1 = Math.max(0, Math.min(100, Number(camera.normalized_position[0]) * 100));
+            const y1 = Math.max(0, Math.min(100, Number(camera.normalized_position[1]) * 100));
+            const x2 = Math.max(0, Math.min(100, Number(camera.look_at[0]) * 100));
+            const y2 = Math.max(0, Math.min(100, Number(camera.look_at[1]) * 100));
+            const color = colors[camera.view_id] || '#f8fafc';
+            return `<g style="color:${color}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-width="1.8" marker-end="url(#dhNsaCameraArrow)"></line><text x="${Math.min(96, x1 + 4)}" y="${Math.max(5, y1 - 3)}" fill="currentColor">${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</text></g>`;
+          }).join('')}
+        </svg>
         ${mappedCameras.map(camera => {
-          const x1 = Math.max(0, Math.min(100, Number(camera.normalized_position[0]) * 100));
-          const y1 = Math.max(0, Math.min(100, Number(camera.normalized_position[1]) * 100));
-          const x2 = Math.max(0, Math.min(100, Number(camera.look_at[0]) * 100));
-          const y2 = Math.max(0, Math.min(100, Number(camera.look_at[1]) * 100));
+          const x = Math.max(0, Math.min(100, Number(camera.normalized_position[0]) * 100));
+          const y = Math.max(0, Math.min(100, Number(camera.normalized_position[1]) * 100));
+          const viewIndex = views.findIndex(view => clean(view?.key || view?.view, 40) === clean(camera.view_id, 40));
+          const label = VIEW_LABELS[camera.view_id] || camera.label || camera.view_id;
           const color = colors[camera.view_id] || '#f8fafc';
-          return `<g style="color:${color}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="currentColor" stroke-width="1.8" marker-end="url(#dhNsaCameraArrow)"></line><circle cx="${x1}" cy="${y1}" r="3.2" fill="currentColor"></circle><text x="${Math.min(96, x1 + 4)}" y="${Math.max(5, y1 - 3)}" fill="currentColor">${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</text></g>`;
+          return `<button type="button" class="dh-nsa-camera-point" style="left:${x}%;top:${y}%;--camera-color:${color}" ${viewIndex >= 0 ? `data-nsa-scene-preview="${assetIndex}:${viewIndex}"` : 'disabled'} aria-label="${viewIndex >= 0 ? `查看${escapeHtml(label)}拍摄效果` : `${escapeHtml(label)}缺少拍摄效果图`}" title="${viewIndex >= 0 ? `点击查看${escapeHtml(label)}拍摄效果` : '该机位暂无效果图'}"></button>`;
         }).join('')}
-      </svg>
-      <small>点位、方向和角度均为视觉 QA 根据俯视图与透视图作出的估算，不是相机 EXIF；用于核对需求覆盖和机位差异。</small>
-    </button>` : '<div class="dh-nsa-camera-map is-missing"><b>缺少俯视定位图</b><span>无法把各机位映射到空间布局。</span></div>';
+      </div>
+      <small>点击彩色机位点查看对应透视效果；“查看布局原图”只显示俯视空间。点位、方向和角度是视觉 QA 估算，不是相机 EXIF。</small>
+    </div>` : '<div class="dh-nsa-camera-map is-missing"><b>缺少俯视定位图</b><span>无法把各机位映射到空间布局。</span></div>';
     const rows = cameras.length ? cameras.map(camera => {
       const requirementRefs = (Array.isArray(camera.requirement_refs) ? camera.requirement_refs : [])
         .map(value => requirementLabels[value] || value).filter(Boolean);
@@ -454,7 +466,7 @@
           ? `较主机位变化 ${Math.round(Number(camera.azimuth_delta_from_master_degrees))}°` : '',
       ].filter(Boolean).join(' · ');
       const cameraViewIndex = views.findIndex(view => clean(view?.key || view?.view, 40) === clean(camera.view_id, 40));
-      const previewIndex = cameraViewIndex >= 0 ? cameraViewIndex : layoutIndex;
+      const previewIndex = cameraViewIndex;
       return `<button type="button" class="dh-nsa-camera-row ${camera.pass === true ? 'is-pass' : 'is-pending'}" ${previewIndex >= 0 ? `data-nsa-scene-preview="${assetIndex}:${previewIndex}"` : 'disabled'} aria-label="放大查看${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}效果" title="${previewIndex >= 0 ? '点击放大查看对应机位效果' : '当前机位缺少可预览图片'}">
         <div><b>${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</b><em>${camera.pass === true ? '证据完整' : '待补证据'}</em></div>
         <span><small>用途</small>${escapeHtml(camera.role || '待补充')}</span>

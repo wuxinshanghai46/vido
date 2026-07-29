@@ -828,11 +828,9 @@
       spec[key] = String(el?.value || '').trim();
     });
     if (!['animal', 'human_pet'].includes(spec.castMode)) {
-      delete spec.expectedAnimals;
-      delete spec.petType;
-      delete spec.petDescription;
+      delete spec.expectedAnimals; delete spec.petType; delete spec.petDescription;
     }
-    return spec;
+    return window.NewStoryAdSubjectProfileAuthority?.canonicalPersonSpec?.(spec, state) || spec;
   }
   function splitNegativeText(text = '') {
     return normalizeText(text, 500)
@@ -841,7 +839,6 @@
       .filter(Boolean)
       .slice(0, 20);
   }
-
   function assetPayloadList(options = {}) {
     const list = [];
     const add = (asset, type) => {
@@ -2294,11 +2291,12 @@
     }
     state.stageProgress = null;
   }
-
   function stageProgressSnapshot(label = '') {
     if (window.NewStoryAdProgress?.snapshot) {
+      const inlineStartedAt = Date.parse(state.generationStartedAt || '');
+      const progressState = state.stageProgress || (state.activeGenerationScope === 'inline' ? { startedAt: Number.isFinite(inlineStartedAt) ? inlineStartedAt : Date.now() } : {});
       return window.NewStoryAdProgress.snapshot({
-        progress: state.stageProgress || {},
+        progress: progressState,
         label,
         total: stageItemCount(state.stageProgress?.stage || ''),
         completed: completedKeyframeCount(),
@@ -2369,7 +2367,6 @@
       message: progress.message || '\u6b63\u5728\u6267\u884c\u5f53\u524d\u9636\u6bb5\uff0c\u8bf7\u7a0d\u5019\u3002',
     };
   }
-
   function renderStageProgress(label = '') {
     const snap = stageProgressSnapshot(label);
     const percentAlreadyShown = /%/.test(String(snap.stat || ''));
@@ -2379,7 +2376,7 @@
       <div class="dh-lux-person-progress-head">
         <b>${escapeHtml(snap.title)}</b>
         <div class="dh-nsa-progress-actions">
-          <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em>${percentAlreadyShown ? '' : `<i>${Math.round(Number(snap.percent) || 0)}%</i>`}</span>
+          <span class="dh-lux-person-progress-stat"><em>${escapeHtml(snap.stat)}</em>${percentAlreadyShown || snap.indeterminate ? '' : `<i>${Math.round(Number(snap.percent) || 0)}%</i>`}</span>
           ${currentUserIsAdmin() && state.taskId && ['video', 'media', 'compose'].includes(String(state.stageProgress?.stage || '')) ? '<button type="button" class="dh-nsa-admin-monitor-btn" data-nsa-admin-video-monitor>查看镜头进度</button>' : ''}
           ${canCancel ? `<button type="button" class="dh-nsa-cancel-generation" data-nsa-cancel-generation ${state.cancelRequested ? 'disabled' : ''}>${state.cancelRequested ? '正在停止...' : '停止生成'}</button>` : ''}
         </div>
@@ -2450,7 +2447,6 @@
       setBusy(true, label);
     }, 1000);
   }
-
   function setBusy(isBusy, label = '处理中...') {
     if (!isBusy) stopStageProgress();
     state.busy = !!isBusy;
@@ -2462,6 +2458,10 @@
         ? renderStageProgress(label)
         : failure;
     }
+    window.NewStoryAdProgress?.syncInlineTimer?.(isBusy && state.activeGenerationScope === 'inline' && !state.stageProgress?.active, () => {
+      const liveHost = within('#dhNsaAdLiveProgress');
+      if (state.busy && state.activeGenerationId && liveHost) liveHost.innerHTML = renderStageProgress(label);
+    });
     ['#dhNsaAdGenerate', '#dhNsaAdStoryboard', '#dhNsaAdPreviewFrames', '#dhNsaAdGenerateFinalFrames', '#dhNsaAdConfirmGenerate'].forEach(sel => {
       const btn = within(sel);
       if (btn) btn.disabled = !!isBusy;
@@ -5211,7 +5211,6 @@
   function personDescription(spec = collectPersonSpec()) {
     return window.NewStoryAdPersonPetSpec.description(spec);
   }
-
   function applyPersonSpecSuggestion(suggestion = {}) {
     const normalized = suggestion && typeof suggestion === 'object' ? suggestion : {};
     const set = (key, value, { overwrite = false, defaults = [] } = {}) => {
@@ -5254,7 +5253,6 @@
   function fallbackPersonSpecFromBrief(brief = '') {
     return window.NewStoryAdPersonPetSpec.fallbackFromBrief(brief);
   }
-
   async function fillPersonSpecFromBrief(button = null) {
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再确认人物来源', 'error');
@@ -5264,7 +5262,8 @@
       let suggestion = null, assistedProfiles = null;
       try {
         const r = await requestCancelableGeneration('assist_person_spec', {
-          label: '按当前人物设定补齐中...',
+          label: '正在创建 / 补齐全部人物档案…',
+          timeoutMs: 120000,
           body: {
             ...payload(),
             brief,
@@ -6205,6 +6204,7 @@
       }
       if (target?.matches?.('[data-nsa-subject-field]')) {
         window.NewStoryAdSubjectAssetsUI.updateProfileFromField(state, target);
+        window.NewStoryAdSubjectProfileAuthority?.refreshProfileValidation?.(within('#dhNsaAdSubjectProfiles'), state, collectPersonSpec(), escapeHtml);
         markSourceDirty('person');
         renderStatus();
         return;

@@ -291,6 +291,7 @@
     if (new Set(allIds).size !== allIds.length) errors.push('人物和宠物的稳定 ID 不能重复');
     return errors;
   }
+
   function updateProfileFromField(state = {}, target = {}) {
     const kind = target.dataset?.nsaSubjectKind;
     const index = Number(target.dataset?.nsaSubjectIndex);
@@ -388,7 +389,7 @@
       const item = normalizeHumanProfile(raw, index);
       const assist = state.subjectAssistStatus?.[index];
       return `<details class="dh-nsa-subject-profile" open>
-        <summary><b>人物 ${index + 1}</b><span>${escapeHtml(item.displayName || item.roleName || '资料待补齐')}</span></summary>
+        <summary><b>人物 ${index + 1}</b><span data-nsa-subject-summary-index="${index}">${escapeHtml(item.displayName || item.roleName || '资料待补齐')}</span></summary>
         <div class="dh-luxgen-person-spec">
           <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}" ${assist?.status === 'running' ? 'disabled' : ''}>AI 辅助补齐该人物</button><small class="is-${escapeHtml(assist?.status || 'idle')}" aria-live="polite">${escapeHtml(assist?.message || '只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。')}</small></div>
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
@@ -413,9 +414,8 @@
         </div>
       </details>`;
     }).join('');
-    const errors = profileErrors(state, spec);
     return `<div class="dh-nsa-subject-profile-head"><b>逐主体独立档案</b><small>每个人物和宠物只使用自己的描述生成，不能共用外貌、服装或妆造。</small></div>
-      ${errors.length ? `<div class="dh-task-warning">${escapeHtml(errors.join('；'))}</div>` : '<div class="dh-task-ok">逐主体档案数量和必填信息完整</div>'}
+      <div data-nsa-subject-validation>${window.NewStoryAdSubjectProfileAuthority?.validationHtml?.(state, spec, escapeHtml) || ''}</div>
       ${humans}${pets}`;
   }
   function renderProfiles(host, state = {}, spec = {}, escape = value => String(value)) {

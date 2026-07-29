@@ -83,6 +83,7 @@
           pet_profiles: state.petProfiles || [],
           assist_subject_target: { kind: 'human', index, id: current.id },
         },
+            showGlobalProgress: false,
           timeoutMs: 120000,
         },
       );
