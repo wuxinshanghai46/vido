@@ -153,6 +153,16 @@ async function main() {
     ['a1', 'b1', 'c1', 'a2'],
     'vision fallback must cross provider boundaries before retrying the same provider',
   );
+  assert.deepStrictEqual(
+    modelGateway.preferReferenceVisionCandidates([
+      { provider_id: 'deyunai', model_id: 'gpt-4o' },
+      { provider_id: 'deyunai', model_id: 'gemini-2.5-pro' },
+      { provider_id: 'deyunai', model_id: 'gemini-2.5-flash' },
+      { provider_id: 'zhipu', model_id: 'glm-4.6v' },
+    ], 'new_story_ad.reference_video_vision').map(item => item.model_id),
+    ['gemini-2.5-flash', 'gemini-2.5-pro', 'gpt-4o', 'glm-4.6v'],
+    'reference analysis must prefer the faster compatible vision model within each provider',
+  );
 
   const previousMock = process.env.NEW_STORY_AD_MOCK_LLM;
   process.env.NEW_STORY_AD_MOCK_LLM = '0';

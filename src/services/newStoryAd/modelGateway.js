@@ -6,7 +6,7 @@ const cancellation = require('./cancellationContext');
 const publicReferences = require('./publicReferenceService');
 
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
-const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 4));
+const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 5));
 const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
 
 const FALLBACKS = [
@@ -270,7 +270,34 @@ function candidatesForVisionStage(stage) {
       const priorityDelta = Number(a.priority || 999) - Number(b.priority || 999);
       return priorityDelta || (getHealthScore(b) - getHealthScore(a));
     });
-  return diversifyVisionCandidates(ranked);
+  return diversifyVisionCandidates(preferReferenceVisionCandidates(ranked, stage));
+}
+
+function preferReferenceVisionCandidates(candidates = [], stage = '') {
+  if (!/reference_video_vision/i.test(String(stage || ''))) return candidates.slice();
+  const providerOrder = [];
+  const buckets = new Map();
+  candidates.forEach(model => {
+    const providerId = String(model?.provider_id || '').toLowerCase();
+    if (!buckets.has(providerId)) {
+      buckets.set(providerId, []);
+      providerOrder.push(providerId);
+    }
+    buckets.get(providerId).push(model);
+  });
+  const modelRank = (model) => {
+    const id = String(model?.model_id || '').toLowerCase();
+    if (/gemini-2\.5-flash/.test(id)) return 0;
+    if (/glm-4\.6v/.test(id)) return 1;
+    if (/gemini-2\.5-pro/.test(id)) return 2;
+    if (/glm-4\.5v/.test(id)) return 3;
+    if (/gpt-4o/.test(id)) return 4;
+    return 5;
+  };
+  return providerOrder.flatMap(providerId => buckets.get(providerId)
+    .map((model, index) => ({ model, index }))
+    .sort((a, b) => modelRank(a.model) - modelRank(b.model) || a.index - b.index)
+    .map(item => item.model));
 }
 
 function diversifyVisionCandidates(candidates = []) {
@@ -670,6 +697,7 @@ module.exports = {
   candidatesForStage,
   candidatesForVisionStage,
   diversifyVisionCandidates,
+  preferReferenceVisionCandidates,
   generateText,
   generateVision,
   visionAttemptTimeoutForBudget,

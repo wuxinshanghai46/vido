@@ -1032,7 +1032,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     imageUrls: frames.map(item => item.image_url).slice(0, 8),
     imageDataUrls: frames.map(frameVisionUrl).slice(0, 8),
     maxTokens: 6000,
-    maxCandidates: 4,
+    maxCandidates: 5,
+    timeoutMs: 180000,
+    stageBudgetMs: 300000,
     validateText: assertCandidateAnalysisText,
   });
   const result = await jsonRepair.parseOrRepair({
