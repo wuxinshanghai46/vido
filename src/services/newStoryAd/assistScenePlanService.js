@@ -17,6 +17,28 @@ function outputSchema() {
         "materialLightText": "仅属于这个地点的材质、色彩、光线方向、真实尺度、局部自然变化和真实摄影光学质感，80-180 字",
         "interactionText": "仅属于这个地点的人物/商品动作区、通行路线和可用机位，60-140 字",
         "negativeText": "这个地点不得出现的其它空间、结构、材质、人物、文字水印和无关元素；不得把现实痕迹和合理局部变化全部排除，分号分隔",
+        "storyStates": [{
+          "id": "稳定状态 ID",
+          "label": "剧情阶段名称",
+          "state_before": ["进入该阶段前可见的场景和物件状态"],
+          "visible_change": ["本阶段真正发生的动作或变化"],
+          "state_after": ["离开该阶段时必须保留的可见状态"],
+          "shot_refs": ["关联剧情节点或镜头"]
+        }],
+        "interactionAnchors": [{
+          "id": "稳定互动点 ID",
+          "label": "用户可理解的互动点名称",
+          "purpose": "人物、商品或道具在这里完成什么",
+          "contact_rules": ["手部、视线、商品和道具接触约束"]
+        }],
+        "routes": [{
+          "id": "稳定路线 ID",
+          "label": "路线名称",
+          "from": "起点",
+          "to": "终点",
+          "actor": "使用该路线的人物或主体",
+          "continuity": "跨镜头必须保持的方向和状态"
+        }],
         "surfaceTopology": {
           "mode": "auto/continuous/segmented/modular",
           "seam_policy": "auto/hidden/visible/task_defined",

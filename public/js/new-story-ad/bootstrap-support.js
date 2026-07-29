@@ -37,5 +37,39 @@
     }
   }
 
-  window.NewStoryAdBootstrapSupport = { isActive: storyAdIsActive, setLoadingState };
+  /** 预取首屏渲染需要的脚本，实际执行仍保持有序，避免破坏旧模块依赖。 */
+  function preloadScripts(paths = [], version = '') {
+    paths.forEach(path => {
+      if (document.querySelector(`link[data-nsa-script-preload="${path}"]`)) return;
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'script';
+      link.href = `${path}?v=${encodeURIComponent(version)}`;
+      link.dataset.nsaScriptPreload = path;
+      document.head.appendChild(link);
+    });
+  }
+
+  /** 并行读取路由任务的轻量摘要，减少工作台恢复阶段的串行等待。 */
+  function prefetchRouteTask() {
+    if (window.__newStoryAdEarlyTask || !window.NewStoryAdApi?.request) return;
+    let taskId = '';
+    try {
+      taskId = new URLSearchParams(location.search || '').get('nsa_task_id') || '';
+    } catch {}
+    if (!taskId) return;
+    window.__newStoryAdEarlyTask = {
+      id: taskId,
+      promise: window.NewStoryAdApi.request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}?compact=1`)
+        .then(data => ({ data, error: null }))
+        .catch(error => ({ data: null, error })),
+    };
+  }
+
+  window.NewStoryAdBootstrapSupport = {
+    isActive: storyAdIsActive,
+    setLoadingState,
+    preloadScripts,
+    prefetchRouteTask,
+  };
 })();

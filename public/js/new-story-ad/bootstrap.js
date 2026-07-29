@@ -1,9 +1,11 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260729-reference-ux-v63';
+  const SCRIPT_VERSION = '20260730-director-workspace-v1';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
+    '/js/new-story-ad/director-workspace.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
+    '/js/new-story-ad/bootstrap-asset-loader.js',
     '/js/new-story-ad/task-store.js',
     '/js/new-story-ad/task-session.js',
     '/js/new-story-ad/progress.js',
@@ -18,7 +20,6 @@
     '/js/new-story-ad/actors.js',
     '/js/new-story-ad/subject-assets-ui.js',
     '/js/new-story-ad/subject-profile-authority.js',
-    '/js/new-story-ad/subject-profile-assist.js',
     '/js/new-story-ad/subject-checkpoint-polling.js',
     '/js/new-story-ad/verification-language.js',
     '/js/new-story-ad/error-guidance.js',
@@ -27,15 +28,15 @@
     '/js/new-story-ad/story-setup.js',
     '/js/new-story-ad/person-reference-inheritance.js',
     '/js/new-story-ad/reference-video-analysis.js',
-    '/js/new-story-ad/real-person-dossier.js',
     '/js/new-story-ad/brand-overlay.js',
-    '/js/new-story-ad/actor-library.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad/cancelable-generation.js',
     '/js/new-story-ad-legacy-ui.js',
   ];
   let loadPromise = null;
   let mediaLoader = null;
+  let assetLoader = null;
+  const bootstrapSupport = window.NewStoryAdBootstrapSupport || {};
   const storyAdIsActive = window.NewStoryAdBootstrapSupport?.isActive || (() => false);
   const setLoadingState = window.NewStoryAdBootstrapSupport?.setLoadingState || (() => {});
 
@@ -58,34 +59,7 @@
   }
 
   /** 只预取首次渲染需要的核心脚本；审片和费用模块进入第 6 步时再加载。 */
-  function preloadScripts() {
-    CORE_SCRIPT_PATHS.forEach(path => {
-      if (document.querySelector(`link[data-nsa-script-preload="${path}"]`)) return;
-      const link = document.createElement('link');
-      link.rel = 'preload';
-      link.as = 'script';
-      link.href = `${path}?v=${encodeURIComponent(SCRIPT_VERSION)}`;
-      link.dataset.nsaScriptPreload = path;
-      document.head.appendChild(link);
-    });
-  }
-
   /** 在其余模块下载期间并行读取当前路由任务，减少恢复阶段的串行等待。 */
-  function prefetchRouteTask() {
-    if (window.__newStoryAdEarlyTask || !window.NewStoryAdApi?.request) return;
-    let taskId = '';
-    try {
-      taskId = new URLSearchParams(location.search || '').get('nsa_task_id') || '';
-    } catch {}
-    if (!taskId) return;
-    window.__newStoryAdEarlyTask = {
-      id: taskId,
-      promise: window.NewStoryAdApi.request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}?compact=1`)
-        .then(data => ({ data, error: null }))
-        .catch(error => ({ data: null, error })),
-    };
-  }
-
   /** 等剧情广告静态表单完整解析后再挂载，避免依赖整页脚本下载完成。 */
   function waitForStoryTemplate() {
     if (document.querySelector('[data-nsa-template-ready]')) return Promise.resolve();
@@ -111,13 +85,16 @@
         setLoadingState('ready');
       };
       document.addEventListener('new-story-ad:restore-finished', onRestoreFinished, { once: true });
-      preloadScripts();
+      bootstrapSupport.preloadScripts?.(CORE_SCRIPT_PATHS, SCRIPT_VERSION);
       for (const path of CORE_SCRIPT_PATHS) {
         await loadScript(path);
-        if (path.endsWith('/api.js')) prefetchRouteTask();
+        if (path.endsWith('/api.js')) bootstrapSupport.prefetchRouteTask?.();
       }
       await waitForStoryTemplate();
       document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
+      let requestedStep = 0;
+      try { requestedStep = Number(new URLSearchParams(location.search || '').get('nsa_step') || 0) || 0; } catch {}
+      if (requestedStep === 2) setTimeout(() => loadAssetModules().catch(() => {}), 0);
       const restoring = window.__newStoryAdLegacyUI?.state?.restoringTask === true;
       let routeTaskExpected = false;
       try {
@@ -138,14 +115,24 @@
     return loadPromise;
   }
 
+  /** 人物档案生产、演员库和单人物 AI 补齐只在第 2 步需要，不进入参考识别首屏。 */
   /** 监听路由、标签点击和可见状态，在真正需要时启动加载。 */
   function bindLazyEntry() {
     if (storyAdIsActive()) loadStoryAd().catch(() => {});
     document.addEventListener('click', (event) => {
       if (event.target?.closest?.('.dh-nav-item[data-tab="new-story-ad"]')) loadStoryAd().catch(() => {});
+      const assetStudioTarget = event.target?.closest?.('#dhNsaAdRealPersonOpen, #dhNsaAdActorLibrary, [data-nsa-subject-assist-index]');
+      if (assetStudioTarget && !assetModulesReady()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        loadAssetModules().then(() => assetStudioTarget.click()).catch(() => {});
+        return;
+      }
+      if (event.target?.closest?.('[data-nsa-step="2"]')) loadAssetModules().catch(() => {});
       if (event.target?.closest?.('[data-nsa-step="6"], #dhNsaAdGenerateVideos, #dhNsaAdCompose')) loadMediaModules().catch(() => {});
     }, true);
     document.addEventListener('pointerover', event => {
+      if (event.target?.closest?.('[data-nsa-step="2"], #dhNsaAdRealPersonOpen, #dhNsaAdActorLibrary')) loadAssetModules().catch(() => {});
       if (event.target?.closest?.('[data-nsa-step="6"]')) loadMediaModules().catch(() => {});
     }, true);
     window.addEventListener('popstate', () => {
@@ -167,9 +154,19 @@
     return getMediaLoader()?.load();
   };
   const mediaModulesReady = () => getMediaLoader()?.ready() === true;
+  const getAssetLoader = () => assetLoader || (assetLoader = window.NewStoryAdAssetLoader?.create({
+    loadCore: loadStoryAd,
+    loadScript,
+  }));
+  const loadAssetModules = async () => {
+    await loadStoryAd();
+    return getAssetLoader()?.load();
+  };
+  const assetModulesReady = () => getAssetLoader()?.ready() === true;
 
   window.NewStoryAdBootstrap = {
     load: loadStoryAd,
+    loadAssetStudio: loadAssetModules,
     loadMedia: loadMediaModules,
     mediaReady: mediaModulesReady,
     isActive: storyAdIsActive,

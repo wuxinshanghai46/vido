@@ -618,6 +618,7 @@ function harness({ cancelAt = 0 } = {}) {
   const stateSyncSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/state-sync.js'), 'utf8');
   const checkpointPollingSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-checkpoint-polling.js'), 'utf8');
   const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
+  const assetLoaderSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap-asset-loader.js'), 'utf8');
   assert(ui.includes("'/api/new-story-ad/subject-assets'"), 'multi-person/pet UI must use the subject bundle endpoint');
   assert(subjectUi.includes('state.petProfiles') && ui.includes('NewStoryAdSubjectAssetsUI.petProfiles'), 'generated pet references must be preserved in request payloads');
   assert(ui.includes('cast_profiles: state.castProfiles') && ui.includes('expected_animals: petCount'), 'subject generation payload must submit exact counts and independent profiles');
@@ -691,7 +692,10 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(isolatedAssistState.castProfiles[0]._generationDirty, undefined);
   assert(subjectUi.includes('data-nsa-subject-assist-index'), 'each human profile must render its own assist action');
   assert(ui.includes("scheduleAutoSave('single_person_assist')"), 'single-person assist must autosave only after the scoped merge succeeds');
-  assert(bootstrapSource.includes('/js/new-story-ad/subject-profile-assist.js'), 'the scoped assist module must load before the legacy UI');
+  assert(!bootstrapSource.includes('/js/new-story-ad/subject-profile-assist.js')
+    && bootstrapSource.includes('/js/new-story-ad/bootstrap-asset-loader.js')
+    && assetLoaderSource.includes('/js/new-story-ad/subject-profile-assist.js'),
+  'the scoped assist module must stay behind the step-2 lazy loader');
 
   const documentMock = { querySelector: () => null };
   const stateSyncSandbox = {

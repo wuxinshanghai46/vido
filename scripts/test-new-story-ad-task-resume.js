@@ -123,14 +123,14 @@ assert(immediateRender.index < restoreBlock.indexOf('recoverPersonAssetFromLibra
 assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
 assert(restoreBlock.includes('?compact=1'));
 assert(restoreBlock.includes("new-story-ad:restore-finished"));
-assert(bootstrapSource.includes('preloadScripts();'));
-assert(bootstrapSource.includes('prefetchRouteTask();'));
+assert(bootstrapSource.includes('bootstrapSupport.preloadScripts?.(CORE_SCRIPT_PATHS, SCRIPT_VERSION)'));
+assert(bootstrapSource.includes('bootstrapSupport.prefetchRouteTask?.()'));
 assert(bootstrapSource.includes('await waitForStoryTemplate();'));
 assert(bootstrapSource.includes('(document.body || document.head || document.documentElement).appendChild(script)'));
 assert(bootstrapSource.includes('(restoring || routeTaskExpected) && !restoreFinished'));
 assert(bootstrapSupportSource.includes("document.documentElement.dataset.nsaStoryLoading = '1'"));
 assert(bootstrapSupportSource.includes('delete document.documentElement.dataset.nsaStoryLoading'));
-assert(bootstrapSource.includes("link.rel = 'preload'"));
+assert(bootstrapSupportSource.includes("link.rel = 'preload'"));
 assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
 assert(routeSource.includes("String(req.query.compact || '') === '1'"));
 assert(serverSource.includes("const compression = require('compression')"));

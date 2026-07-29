@@ -44,7 +44,24 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}, options
     output.materialContract || output.material_contract || source.materialContract || source.material_contract,
     { sourceText: materialLightText, topology: surfaceTopology, referenceAvailable: false },
   );
-  return { layoutText, materialLightText, interactionText, negativeText, surfaceTopology, materialContract };
+  const structuredList = (candidate, prior, keys = [], limit = 20) => {
+    const requested = keys.map(key => candidate?.[key]).find(Array.isArray);
+    const existingRows = keys.map(key => prior?.[key]).find(Array.isArray);
+    if (preserveCurrentFields && existingRows?.length) return existingRows.slice(0, limit);
+    if (requested?.length) return requested.slice(0, limit);
+    return (existingRows || []).slice(0, limit);
+  };
+  return {
+    layoutText,
+    materialLightText,
+    interactionText,
+    negativeText,
+    storyStates: structuredList(output, source, ['storyStates', 'story_states', 'stateTimeline', 'state_timeline'], 20),
+    interactionAnchors: structuredList(output, source, ['interactionAnchors', 'interaction_anchors'], 16),
+    routes: structuredList(output, source, ['routes', 'movement_routes'], 12),
+    surfaceTopology,
+    materialContract,
+  };
 }
 
 module.exports = { enforceAssistedSceneSpec };

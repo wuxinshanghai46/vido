@@ -2,21 +2,25 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('ssh2');
+const { connectionOptions } = require('./lib/vidoSshAuth');
 
 const repoRoot = path.resolve(__dirname, '..');
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
-const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const targetTaskId = process.env.VIDO_REPAIR_TASK_ID || '';
-const cacheVersion = '20260729-reference-ux-v63';
+const cacheVersion = '20260730-director-workspace-v1';
 const runtimeFiles = [
+  'public/css/new-story-ad-director-workspace.css',
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
   'public/js/digital-human.js',
+  'public/js/new-story-ad/bootstrap-support.js',
   'public/js/new-story-ad/bootstrap.js',
+  'public/js/new-story-ad/bootstrap-asset-loader.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
+  'public/js/new-story-ad/director-workspace.js',
   'public/js/new-story-ad/button-state.js',
   'public/js/new-story-ad/generation-flow.js',
   'public/js/new-story-ad/step-navigation.js',
@@ -33,8 +37,10 @@ const runtimeFiles = [
   'public/js/new-story-ad/subject-assets-ui.js',
   'src/routes/newStoryAd.js',
   'src/services/newStoryAd/composeService.js',
+  'src/services/newStoryAd/assistScenePlanService.js',
   'src/services/newStoryAd/assistCreativeDirectionService.js',
   'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/directorWorkspaceService.js',
   'src/services/newStoryAd/continuityService.js',
   'src/services/newStoryAd/finalVideoQaService.js',
   'src/services/newStoryAd/jobService.js',
@@ -42,6 +48,7 @@ const runtimeFiles = [
   'src/services/newStoryAd/keyframeFailureService.js',
   'src/services/newStoryAd/mediaAdapter.js',
   'src/services/newStoryAd/sceneAssetService.js',
+  'src/services/newStoryAd/sceneAssistCompletenessService.js',
   'src/services/newStoryAd/sceneAtlasService.js',
   'src/services/newStoryAd/sceneCheckpointProjectionService.js',
   'src/services/newStoryAd/sceneGenerationCheckpointService.js',
@@ -51,8 +58,6 @@ const runtimeFiles = [
   'src/services/newStoryAd/storyboardTableService.js',
   'src/services/newStoryAd/videoFrameQaService.js',
 ];
-
-if (!password) throw new Error('VIDO_DEPLOY_PASSWORD is required');
 
 const expectedHashes = Object.fromEntries(runtimeFiles.map(file => [
   file,
@@ -87,7 +92,7 @@ async function publicHealth() {
   const client = new Client();
   await new Promise((resolve, reject) => {
     client.on('ready', resolve).on('error', reject);
-    client.connect({ host, port, username, password, readyTimeout: 25000 });
+    client.connect(connectionOptions({ host, port, username }));
   });
   try {
     const probe = Buffer.from(`

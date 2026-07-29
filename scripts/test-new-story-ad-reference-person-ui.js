@@ -8,6 +8,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 const html = read('public/digital-human.html');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
+const assetLoader = read('public/js/new-story-ad/bootstrap-asset-loader.js');
 const referenceUi = read('public/js/new-story-ad/reference-video-analysis.js');
 const personInheritance = read('public/js/new-story-ad/person-reference-inheritance.js');
 const personUi = read('public/js/new-story-ad/real-person-dossier.js');
@@ -57,9 +58,11 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
 
 const referenceIndex = bootstrap.indexOf('/js/new-story-ad/reference-video-analysis.js');
 const personInheritanceIndex = bootstrap.indexOf('/js/new-story-ad/person-reference-inheritance.js');
-const personIndex = bootstrap.indexOf('/js/new-story-ad/real-person-dossier.js');
 const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
-assert.ok(personInheritanceIndex > 0 && referenceIndex > personInheritanceIndex && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
+assert.ok(personInheritanceIndex > 0 && referenceIndex > personInheritanceIndex && legacyIndex > referenceIndex, 'reference-analysis modules must load before legacy UI');
+assert.ok(!bootstrap.includes('/js/new-story-ad/real-person-dossier.js') && bootstrap.includes('bootstrap-asset-loader.js')
+  && bootstrap.includes('loadAssetModules') && assetLoader.includes('/js/new-story-ad/real-person-dossier.js'),
+  'person production studio must be isolated behind the step-2 lazy loader');
 
 assert.ok(html.includes('不复制原片真人身份、肖像或服装'));
 assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not require merge/replace buttons');

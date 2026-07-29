@@ -1,18 +1,22 @@
 const path = require('path');
 const { Client } = require('ssh2');
+const { connectionOptions } = require('./lib/vidoSshAuth');
 
 const root = path.resolve(__dirname, '..');
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
-const port = Number(process.env.VIDO_DEPLOY_PORT || 2222);
+const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
-const password = process.env.VIDO_DEPLOY_PASSWORD;
 const files = [
+  'AGENTS.md',
   'package.json',
+  'docs/handoffs/HANDOFF_PROTOCOL.md',
   'docs/handoffs/2026-07-27-content-lineage-production-handoff.md',
   'docs/handoffs/2026-07-28-office-to-home-full-day-handoff.md',
   'docs/handoffs/2026-07-28-night-to-2026-07-29-office-handoff.md',
   'docs/handoffs/2026-07-29-story-ad-full-day-handoff.md',
+  'docs/handoffs/2026-07-30-story-ad-director-upgrade-handoff.md',
+  'public/css/new-story-ad-director-workspace.css',
   'public/css/digital-human.css',
   'public/css/digital-human-wizard.css',
   'public/digital-human.html',
@@ -20,7 +24,10 @@ const files = [
   'public/js/dashboard-workbench.js',
   'public/js/new-story-ad-legacy-ui.js',
   'public/js/new-story-ad/api.js',
+  'public/js/new-story-ad/bootstrap-support.js',
   'public/js/new-story-ad/bootstrap.js',
+  'public/js/new-story-ad/bootstrap-asset-loader.js',
+  'public/js/new-story-ad/director-workspace.js',
   'public/js/new-story-ad/error-guidance.js',
   'public/js/new-story-ad/progress.js',
   'public/js/new-story-ad/bootstrap-media-loader.js',
@@ -62,6 +69,7 @@ const files = [
   'src/services/newStoryAd/blueprintService.js',
   'src/services/newStoryAd/brandEndingService.js',
   'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/directorWorkspaceService.js',
   'src/services/newStoryAd/composeService.js',
   'src/services/newStoryAd/continuityService.js',
   'src/services/newStoryAd/finalVideoQaService.js',
@@ -95,6 +103,7 @@ const files = [
   'scripts/test-new-story-ad-current-input-authority.js',
   'scripts/test-new-story-ad-cancellation.js',
   'scripts/test-new-story-ad-user-readiness.js',
+  'scripts/test-new-story-ad-director-workspace.js',
   'scripts/test-legacy-story-ad-entry-disabled.js',
   'src/services/newStoryAd/subjectContinuityPolicyService.js',
   'src/services/newStoryAd/subjectProfileTextService.js',
@@ -154,6 +163,7 @@ const files = [
   'scripts/repair-new-story-ad-temporal-evidence-failure.js',
   'scripts/deploy-new-story-ad-subject-scene-recovery.js',
   'scripts/deploy-new-story-ad-keyframe-progress.js',
+  'scripts/lib/vidoSshAuth.js',
   'public/admin.html',
   'public/ai-manga-drama.html',
   'public/ai-novel-prototype.html',
@@ -208,7 +218,6 @@ const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;
 const client = new Client();
 
-if (!password) throw new Error('VIDO_DEPLOY_PASSWORD is required');
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const exec = command => new Promise((resolve, reject) => client.exec(command, (error, stream) => {
   if (error) return reject(error);
@@ -334,4 +343,4 @@ client.on('ready', async () => {
 }).on('error', error => {
   console.error(error.message || error);
   process.exitCode = 1;
-}).connect({ host, port, username, password, readyTimeout: 25000 });
+}).connect(connectionOptions({ host, port, username }));

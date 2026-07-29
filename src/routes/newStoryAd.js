@@ -23,6 +23,7 @@ const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService'
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const personDossiers = require('../services/newStoryAd/personDossierService');
+const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
@@ -1329,6 +1330,30 @@ router.get('/tasks/:id/progress', asyncRoute(async (req, res) => {
   const task = taskForReq(req);
   const projection = taskProgressProjection.projectTaskProgress(task, String(req.query.since || ''));
   res.json({ success: true, task_id: task.id, ...projection });
+}));
+
+router.get('/tasks/:id/director-workspace', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  const task = taskForReq(req);
+  const bundle = service.publicTaskBundle(task.id);
+  let personProduction = {};
+  try {
+    personProduction = personDossiers.getProduction(task.id, userFromReq(req));
+  } catch (error) {
+    if (!['PERSON_PRODUCTION_NOT_FOUND', 'TASK_NOT_FOUND'].includes(String(error?.code || ''))) throw error;
+  }
+  const workspace = directorWorkspace.createDirectorWorkspace({
+    task: bundle.task || task,
+    outputs: bundle.outputs || {},
+    personProduction,
+  }, {
+    sections: req.query.sections || 'overview',
+    shotOffset: req.query.shot_offset,
+    shotLimit: req.query.shot_limit,
+    candidateLimit: req.query.candidate_limit,
+  });
+  res.json({ success: true, task_id: task.id, ...workspace });
 }));
 
 router.get('/tasks/:id', asyncRoute(async (req, res) => {

@@ -948,22 +948,22 @@
     const title = within('#dhNsaAdModeTitle');
     const sub = within('#dhNsaAdModeSub');
     if (title) title.textContent = '剧情广告';
-    if (sub) sub.textContent = '广告需求 → 场景配置 → 剧情与表演 → 剧本生成 → 分镜审核 → 广告生成与合成。确认方案后立即在广告合成页查看真实进度。';
+    if (sub) sub.textContent = '参考与需求 → 人物与场景档案 → 剧情蓝图 → 导演故事板 → 关键帧与候选视频 → 成片审核。技术机位和血缘信息仅在高级区显示。';
     const text = within('#dhNsaAdText');
     if (text) {
       text.placeholder = '例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后引导动作。';
     }
     const gate = within('#dhNsaAdGateHint');
-    if (gate) gate.textContent = '先描述你想做什么广告；AI 会先生成场景配置，确认后再生成剧本和分镜。';
+    if (gate) gate.textContent = '先描述广告或读取参考视频；系统只展示识别出的人物、场景、剧情和内容描述，再建立人物与场景档案。';
     const cap = within('#dhNsaAdCapabilityStrip');
     if (cap) {
       cap.innerHTML = '';
       cap.hidden = true;
     }
     const stepButtons = [
-      ['#dhNsaAdGenerate', '生成场景配置'],
-      ['#dhNsaAdStoryboard', '生成剧本'],
-      ['#dhNsaAdPreviewFrames', '确认剧本，生成分镜'],
+      ['#dhNsaAdGenerate', '生成人物与场景档案'],
+      ['#dhNsaAdStoryboard', '生成剧情蓝图'],
+      ['#dhNsaAdPreviewFrames', '确认蓝图，生成导演故事板'],
       ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
       ['#dhNsaAdGenerateShotVideos', '选择生成单元并生成整条广告视频'],
       ['#dhNsaAdConfirmGenerate', '封装最终成片'],

@@ -35,7 +35,7 @@
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
   <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-ux-v63">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-ux-v63"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260730-director-workspace-v1"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -191,13 +191,13 @@
             <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
           </div>
 
-          <div class="dh-luxgen-steps dh-luxgen-steps-six" aria-label="剧情广告 V3.0 完整流程" id="dhNsaAdSteps">
-            <div class="active" data-nsa-step="1" role="button" tabindex="0"><b>1</b><span>广告需求</span><small>一句话输入</small></div>
-            <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>场景配置</span><small>人物 / 场景 / 主体</small></div>
-            <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧情与表演</span><small>呈现方式 / AI 辅写</small></div>
-            <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>剧本生成</span><small>按时间段拆解</small></div>
-            <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>分镜生成</span><small>形象和镜头</small></div>
-            <div class="locked" data-nsa-step="6" role="button" tabindex="0"><b>6</b><span>广告合成</span><small>配音 / 字幕 / 视频</small></div>
+          <div class="dh-luxgen-steps dh-luxgen-steps-six" aria-label="剧情广告导演工作流" id="dhNsaAdSteps">
+            <div class="active" data-nsa-step="1" role="button" tabindex="0"><b>1</b><span>参考与需求</span><small>识别人物 / 场景 / 剧情</small></div>
+            <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>人物与场景档案</span><small>形象 / 动作 / 空间状态</small></div>
+            <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧情蓝图</span><small>因果 / 表演 / 品牌收束</small></div>
+            <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>导演故事板</span><small>逐镜行动与状态变化</small></div>
+            <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>关键帧与候选视频</span><small>素材来源 / 候选选择</small></div>
+            <div class="locked" data-nsa-step="6" role="button" tabindex="0"><b>6</b><span>成片审核</span><small>声音 / 拼接 / 交付检查</small></div>
           </div>
           <div id="dhNsaAdCapabilityStrip" class="dh-lux-commercial-guard"></div>
           <div class="dh-luxgen-live-progress" id="dhNsaAdLiveProgress" hidden></div>
@@ -317,8 +317,8 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">2</span>基础信息 / 场景配置</h3>
-                  <p class="dh-demo-copy">系统根据广告需求先整理标题、主题、风格、时长和比例，再确认主体来源。</p>
+                  <h3><span class="dh-luxgen-step-pill">2</span>人物与场景档案</h3>
+                  <p class="dh-demo-copy">先确认人物身份、服装、表情和剧情动作，再确认场景空间、互动区域及剧情前后的状态变化。技术机位由系统内部处理。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
@@ -326,6 +326,7 @@
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-action-progress" id="dhNsaAdActionProgress" hidden></div>
+              <div id="dhNsaDirectorAssetsHost" class="dh-nsa-director-host" aria-live="polite"></div>
               <div class="dh-demo-grid two dh-luxgen-source-grid single">
                 <div class="dh-demo-person-source">
                   <div class="dh-luxgen-product-asset" id="dhNsaAdProductAsset"><div class="dh-luxgen-product-empty">未上传商品/主体图</div></div>
@@ -676,12 +677,12 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">3</span>剧情与表演</h3>
-                  <p class="dh-demo-copy">选择故事呈现方式，可选 AI 辅写剧情与表演，按需配置授权 Logo，然后直接生成剧本。</p>
+                  <h3><span class="dh-luxgen-step-pill">3</span>剧情蓝图</h3>
+                  <p class="dh-demo-copy">明确开场状态、触发事件、行动推进、结果证明和品牌收束；系统会把人物动作和场景变化写入同一条因果链。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
-                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">生成剧本</button>
+                  <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdStoryboard" type="button">生成剧情蓝图</button>
                 </div>
               </div>
               <section class="dh-nsa-story-setup-panel" id="dhNsaAdStorySetupPanel">
@@ -745,19 +746,23 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3 id="dhNsaAdStep3Title"><span class="dh-luxgen-step-pill">4</span>剧本生成</h3>
-                  <p class="dh-demo-copy" id="dhNsaAdStep3Copy">按剧本审核表生成：每一镜包含秒数、画面、动作、台词、目的和确认状态；剧本确认后再选择真人演员来源并进入分镜。</p>
+                  <h3 id="dhNsaAdStep3Title"><span class="dh-luxgen-step-pill">4</span>导演故事板</h3>
+                  <p class="dh-demo-copy" id="dhNsaAdStep3Copy">先看完整剧情因果，再逐镜确认人物动作、场景状态、产品证据和台词。镜头参数保留在高级编辑区，不要求普通用户填写。</p>
                 </div>
                 <div class="dh-demo-script-actions">
-                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdScriptRegenerateTop" type="button">重新生成剧本</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdScriptRegenerateTop" type="button">重新生成剧情蓝图</button>
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>
                   <button class="dh-btn dh-btn-primary dh-luxgen-step-action" id="dhNsaAdPreviewFrames" type="button">确认剧本，生成分镜</button>
                 </div>
               </div>
               <div class="dh-luxgen-live-progress dh-luxgen-script-progress dh-luxgen-top-progress" id="dhNsaAdScriptTopProgress" hidden></div>
-              <div id="dhNsaAdScriptHost" class="dh-demo-table-wrap">
-                <div class="dh-luxgen-empty"><b>还没有剧本</b><span>请先完成场景配置，再点击“确认配置，生成剧本”。</span></div>
-              </div>
+              <div id="dhNsaDirectorStoryHost" class="dh-nsa-director-host" aria-live="polite"></div>
+              <details class="dh-nsa-advanced-editor">
+                <summary>高级：逐镜头文字、转场与技术设置</summary>
+                <div id="dhNsaAdScriptHost" class="dh-demo-table-wrap">
+                  <div class="dh-luxgen-empty"><b>还没有剧情蓝图</b><span>请先完成人物与场景档案，再生成剧情蓝图和导演故事板。</span></div>
+                </div>
+              </details>
             </section>
           </section>
 
@@ -765,8 +770,8 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">5</span>分镜生成</h3>
-                  <p class="dh-demo-copy" id="dhNsaAdStep4Copy">分镜把主体画面、可选人物和镜头语言一起确认。每个分镜左侧是画面框，右侧是时间、内容、动作表情、镜头、台词/旁白和 AI 指令。</p>
+                  <h3 id="dhNsaAdStep4Title"><span class="dh-luxgen-step-pill">5</span>关键帧与候选视频</h3>
+                  <p class="dh-demo-copy" id="dhNsaAdStep4Copy">每个镜头都显示所使用的人物、场景、产品和关键帧来源；重要镜头可以比较候选结果，不合格时只重做当前生成单元。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdRegenerateScriptFromStep4" type="button">重新生成剧本</button>
@@ -784,10 +789,14 @@
               </div>
               <div class="dh-nsa-video-cost-hint" id="dhNsaAdVideoCostHint" hidden></div>
               <div id="dhNsaAdCommercialGuard" class="dh-lux-commercial-guard"></div>
-              <div class="dh-demo-section-title"><span id="dhNsaAdFrameSectionTitle">分镜结果</span> <span class="dh-luxgen-badge" id="dhNsaAdFrameState">可选上传</span></div>
-              <div id="dhNsaAdFrameHost" class="dh-demo-frame-list">
-                <div class="dh-luxgen-empty"><b>还没有分镜</b><span>确认剧本后点击“确认剧本，生成分镜”。</span></div>
-              </div>
+              <div id="dhNsaDirectorCandidatesHost" class="dh-nsa-director-host" aria-live="polite"></div>
+              <details class="dh-nsa-advanced-editor">
+                <summary>高级：关键帧生成、候选审核与镜头参数</summary>
+                <div class="dh-demo-section-title"><span id="dhNsaAdFrameSectionTitle">关键帧结果</span> <span class="dh-luxgen-badge" id="dhNsaAdFrameState">可选上传</span></div>
+                <div id="dhNsaAdFrameHost" class="dh-demo-frame-list">
+                  <div class="dh-luxgen-empty"><b>还没有关键帧</b><span>确认导演故事板后生成真实画面。</span></div>
+                </div>
+              </details>
             </section>
           </section>
 
@@ -795,8 +804,8 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">6</span>广告合成</h3>
-                   <p class="dh-demo-copy">整条广告在这里完成：连续生成单元是提交与付费边界；展开后可审看母片、切分片段、失败时间与相邻交接证据，全部通过后再封装为一个成片。</p>
+                  <h3><span class="dh-luxgen-step-pill">6</span>成片审核</h3>
+                   <p class="dh-demo-copy">逐镜候选确认后，在这里审核声音、字幕、转场、相邻交接和品牌收束；所有生成单元通过后再封装最终成片。</p>
                 </div>
                 <div class="dh-demo-script-actions">
                   <span class="dh-nsa-autosave-status is-idle" data-nsa-autosave-status hidden>自动保存已开启</span>

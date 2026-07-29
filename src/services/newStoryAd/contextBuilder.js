@@ -300,6 +300,38 @@ function normalizeSceneSpec(input = {}) {
   const layoutText = cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600);
   const materialLightText = cleanText(raw.materialLightText || raw.material_light_text || raw.material || raw.light || '', 600);
   const negativeText = cleanText(raw.negativeText || raw.negative_text || raw.negative || '', 500);
+  const textList = (value, maxItems = 12, maxText = 220) => (Array.isArray(value) ? value : [])
+    .map(item => cleanText(typeof item === 'object' ? (item.label || item.name || item.text || item.content || '') : item, maxText))
+    .filter(Boolean)
+    .slice(0, maxItems);
+  const storyStates = (Array.isArray(raw.storyStates || raw.story_states || raw.stateTimeline || raw.state_timeline)
+    ? (raw.storyStates || raw.story_states || raw.stateTimeline || raw.state_timeline)
+    : []).slice(0, 20).map((state, index) => ({
+    id: cleanText(state?.id || `state_${index + 1}`, 100),
+    label: cleanText(state?.label || state?.name || `状态 ${index + 1}`, 100),
+    state_before: textList(state?.state_before || state?.before, 8, 220),
+    visible_change: textList(state?.visible_change || state?.change || state?.trigger, 8, 220),
+    state_after: textList(state?.state_after || state?.after, 8, 220),
+    shot_refs: textList(state?.shot_refs || state?.shots, 20, 40),
+  }));
+  const interactionAnchors = (Array.isArray(raw.interactionAnchors || raw.interaction_anchors)
+    ? (raw.interactionAnchors || raw.interaction_anchors)
+    : []).slice(0, 16).map((anchor, index) => ({
+    id: cleanText(anchor?.id || `interaction_anchor_${index + 1}`, 100),
+    label: cleanText(anchor?.label || anchor?.name || `互动点 ${index + 1}`, 100),
+    purpose: cleanText(anchor?.purpose || anchor?.description, 220),
+    contact_rules: textList(anchor?.contact_rules || anchor?.rules, 8, 200),
+  }));
+  const routes = (Array.isArray(raw.routes || raw.movement_routes)
+    ? (raw.routes || raw.movement_routes)
+    : []).slice(0, 12).map((route, index) => ({
+    id: cleanText(route?.id || `route_${index + 1}`, 100),
+    label: cleanText(route?.label || route?.name || `路线 ${index + 1}`, 100),
+    from: cleanText(route?.from, 120),
+    to: cleanText(route?.to, 120),
+    actor: cleanText(route?.actor, 120),
+    continuity: cleanText(route?.continuity || route?.rule, 220),
+  }));
   const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     raw.surfaceTopology || raw.surface_topology,
     [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
@@ -310,6 +342,9 @@ function normalizeSceneSpec(input = {}) {
     materialLightText,
     interactionText: cleanText(raw.interactionText || raw.interaction_text || raw.interaction || raw.camera || '', 500),
     negativeText,
+    storyStates,
+    interactionAnchors,
+    routes,
     surfaceTopology,
     materialContract: shotDesign.normalizeMaterialContract(raw.materialContract || raw.material_contract, {
       sourceText: materialLightText,
