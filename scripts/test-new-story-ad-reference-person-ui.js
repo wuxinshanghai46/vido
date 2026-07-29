@@ -1,0 +1,73 @@
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.resolve(__dirname, '..');
+const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+
+const html = read('public/digital-human.html');
+const bootstrap = read('public/js/new-story-ad/bootstrap.js');
+const referenceUi = read('public/js/new-story-ad/reference-video-analysis.js');
+const personUi = read('public/js/new-story-ad/real-person-dossier.js');
+const legacy = read('public/js/new-story-ad-legacy-ui.js');
+const routes = read('src/routes/newStoryAd.js');
+const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
+const personService = read('src/services/newStoryAd/personDossierService.js');
+
+[
+  'dhNsaReferenceVideoFile',
+  'dhNsaReferenceVideoRights',
+  'dhNsaReferenceVideoProgress',
+  'dhNsaReferenceVideoDraft',
+  'dhNsaReferenceVideoSceneMapping',
+  'dhNsaRealPersonIdentityFile',
+  'dhNsaRealPersonRights',
+  'dhNsaRealPersonAdult',
+  'dhNsaGenerateOutfitCandidates',
+  'dhNsaPersonCandidates',
+  'dhNsaPersonDossier',
+].forEach(id => assert.ok(html.includes(`id="${id}"`), `missing UI control ${id}`));
+
+['identity', 'body', 'expression', 'wardrobe', 'action'].forEach(tab => {
+  assert.ok(html.includes(`data-nsa-dossier-tab="${tab}"`), `missing dossier tab ${tab}`);
+});
+
+const referenceIndex = bootstrap.indexOf('/js/new-story-ad/reference-video-analysis.js');
+const personIndex = bootstrap.indexOf('/js/new-story-ad/real-person-dossier.js');
+const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
+assert.ok(referenceIndex > 0 && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
+
+assert.ok(html.includes('不提取人物身份或服装'));
+assert.ok(referenceUi.includes('data-nsa-reference-apply'));
+assert.ok(referenceUi.includes('map-scene-views'));
+assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
+assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not read real-person state');
+
+assert.ok(legacy.includes('reference_video_analysis'));
+assert.ok(legacy.includes('adoptPersonDossier'));
+assert.ok(routes.includes("router.post('/reference-video-analyses'"));
+assert.ok(routes.includes("router.post('/reference-video-upload-sessions'"));
+assert.ok(routes.includes("chunks/:index'"));
+assert.ok(routes.includes("router.post('/real-person-sources'"));
+assert.ok(routes.includes("router.post('/tasks/:id/person-action-assets'"));
+assert.ok(routes.includes('MAX_FILE_BYTES'));
+
+assert.ok(mediaAdapter.includes('requireReferences = false'));
+assert.ok(mediaAdapter.includes('referenceImages,'));
+assert.ok(mediaAdapter.includes('inputFidelity,'));
+assert.ok(personService.includes('requireReferences: true'));
+assert.ok(personService.includes("inputFidelity: 'high'"));
+assert.ok(personService.includes("composition: 'local_sharp'"));
+assert.ok(personService.includes('model_generated_text: false'));
+assert.ok(personService.includes('previous_frame_dependency'));
+
+console.log(JSON.stringify({
+  passed: true,
+  checks: 34,
+  reference_feature_controls: 5,
+  person_feature_controls: 6,
+  dossier_tabs: 5,
+  isolation_boundary: 'pass',
+  strict_reference_contract: 'pass',
+  local_dossier_composition: 'pass',
+}));

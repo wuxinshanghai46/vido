@@ -48,9 +48,16 @@ function keyframeReferenceUrls(ctx = {}, options = {}) {
   const personFallback = options.includePerson && !continuityReference
     ? (personViews[1]?.url || personViews[1]?.image_url || personViews[0]?.url || personViews[0]?.image_url || '')
     : '';
+  const shotIndex = Number(options.shot?.shot_index ?? options.shot?.index ?? options.shot?.order - 1);
+  const actionReference = options.includePerson && Number.isFinite(shotIndex)
+    ? (personViews.find(view => cleanText(view?.key || view?.view || '', 60) === `action_shot_${shotIndex}`)?.url
+      || personViews.find(view => cleanText(view?.key || view?.view || '', 60) === `action_shot_${shotIndex}`)?.image_url
+      || '')
+    : '';
+  const motionReference = actionReference || continuityReference || personFallback;
   const refs = subjectBoard
-    ? [options.sceneReference, subjectBoard, productReference, continuityReference || personFallback]
-    : [options.sceneReference, personPrimary, ...petReferences, ...secondaryPersonReferences, productReference, continuityReference || personFallback];
+    ? [options.sceneReference, subjectBoard, productReference, motionReference]
+    : [options.sceneReference, personPrimary, ...petReferences, ...secondaryPersonReferences, productReference, motionReference];
   if (options.layoutReference && refs.filter(Boolean).length < 4) refs.push(options.layoutReference);
   return [...new Set(refs.filter(Boolean))].slice(0, 4);
 }

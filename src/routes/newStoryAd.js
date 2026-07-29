@@ -21,6 +21,8 @@ const taskProgressProjection = require('../services/newStoryAd/taskProgressProje
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
+const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
+const personDossiers = require('../services/newStoryAd/personDossierService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
@@ -170,6 +172,58 @@ const upload = multer({
   },
 });
 
+const referenceVideoUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const staging = path.join(referenceVideoAnalyses.ROOT_DIR, '_uploads');
+      fs.mkdirSync(staging, { recursive: true });
+      cb(null, staging);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      cb(null, `reference_video_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: referenceVideoAnalyses.MAX_FILE_BYTES },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    cb(null, ['.mp4', '.mov', '.webm'].includes(ext) && (mime.startsWith('video/') || mime === 'application/octet-stream'));
+  },
+});
+
+const referenceVideoChunkUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const staging = path.join(referenceVideoAnalyses.ROOT_DIR, '_chunk_staging');
+      fs.mkdirSync(staging, { recursive: true });
+      cb(null, staging);
+    },
+    filename: (req, file, cb) => cb(null, `chunk_${Date.now()}_${uuidv4().slice(0, 8)}.part`),
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 + 1024 },
+});
+
+const realPersonUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const staging = path.join(personDossiers.ROOT_DIR, '_uploads');
+      fs.mkdirSync(staging, { recursive: true });
+      cb(null, staging);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      cb(null, `real_person_${Date.now()}_${uuidv4().slice(0, 8)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    cb(null, ['.png', '.jpg', '.jpeg', '.webp'].includes(ext) && mime.startsWith('image/'));
+  },
+});
+
 /** 执行单文件上传，并把 Multer 技术错误转换为中文。 */
 function uploadSingle(req, res, next) {
   upload.single('file')(req, res, (err) => {
@@ -179,6 +233,61 @@ function uploadSingle(req, res, next) {
     }
     const publicError = videoCore.chineseError.ensureChineseError(err, { code: 'INVALID_ARGUMENT', status: 400, fallback: '文件上传失败，请检查文件格式后重试。' });
     return res.status(400).json({ success: false, code: publicError.code, error: publicError.message });
+  });
+}
+
+function uploadReferenceVideo(req, res, next) {
+  referenceVideoUpload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        code: 'REFERENCE_VIDEO_TOO_LARGE',
+        error: '参考视频不能超过 200MB',
+      });
+    }
+    const publicError = videoCore.chineseError.ensureChineseError(err, {
+      code: 'INVALID_ARGUMENT',
+      status: 400,
+      fallback: '参考视频上传失败，请检查格式后重试。',
+    });
+    return res.status(400).json({ success: false, code: publicError.code, error: publicError.message });
+  });
+}
+
+function uploadReferenceVideoChunk(req, res, next) {
+  referenceVideoChunkUpload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        code: 'REFERENCE_VIDEO_CHUNK_TOO_LARGE',
+        error: '单个参考视频分片不能超过 5MB',
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      code: 'REFERENCE_VIDEO_CHUNK_UPLOAD_FAILED',
+      error: '参考视频分片上传失败',
+    });
+  });
+}
+
+function uploadRealPersonSource(req, res, next) {
+  realPersonUpload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        code: 'REAL_PERSON_SOURCE_TOO_LARGE',
+        error: '单张真人来源图片不能超过 20MB',
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      code: 'REAL_PERSON_SOURCE_UPLOAD_FAILED',
+      error: '真人来源上传失败，请使用 PNG、JPG 或 WebP 图片',
+    });
   });
 }
 
@@ -565,6 +674,190 @@ router.get('/model-health', (req, res) => {
     model_health: service.modelHealth(),
   });
 });
+
+router.post('/reference-video-upload-sessions', asyncRoute(async (req, res) => {
+  const session = referenceVideoAnalyses.createUploadSession({
+    body: req.body || {},
+    user: userFromReq(req),
+  });
+  return res.status(201).json({ success: true, session });
+}));
+
+router.post('/reference-video-upload-sessions/:sessionId/chunks/:index', uploadReferenceVideoChunk, asyncRoute(async (req, res) => {
+  if (!req.file) {
+    return res.status(422).json({ success: false, code: 'REFERENCE_VIDEO_CHUNK_REQUIRED', error: '参考视频分片为空' });
+  }
+  try {
+    const session = referenceVideoAnalyses.saveUploadChunk(
+      req.params.sessionId,
+      req.params.index,
+      req.file,
+      userFromReq(req),
+    );
+    return res.json({ success: true, session });
+  } catch (error) {
+    try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {}
+    throw error;
+  }
+}));
+
+router.post('/reference-video-upload-sessions/:sessionId/complete', asyncRoute(async (req, res) => {
+  const completed = await referenceVideoAnalyses.completeUploadSession(req.params.sessionId, userFromReq(req));
+  return res.status(201).json({ success: true, ...completed });
+}));
+
+router.delete('/reference-video-upload-sessions/:sessionId', asyncRoute(async (req, res) => {
+  const cancelled = referenceVideoAnalyses.cancelUploadSession(req.params.sessionId, userFromReq(req));
+  return res.json({ success: true, ...cancelled });
+}));
+
+router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async (req, res) => {
+  if (!req.file) {
+    return res.status(422).json({
+      success: false,
+      code: 'REFERENCE_VIDEO_FORMAT_UNSUPPORTED',
+      error: '请选择 MP4、MOV 或 WebM 参考视频',
+    });
+  }
+  try {
+    const analysis = await referenceVideoAnalyses.create({
+      file: req.file,
+      body: req.body || {},
+      user: userFromReq(req),
+    });
+    return res.status(201).json({ success: true, analysis });
+  } catch (error) {
+    try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {}
+    throw error;
+  }
+}));
+
+router.post('/reference-video-analyses/:analysisId/start', asyncRoute(async (req, res) => {
+  const started = referenceVideoAnalyses.start(req.params.analysisId, userFromReq(req));
+  return res.status(202).json({ success: true, ...started, analysis: started.record });
+}));
+
+router.get('/reference-video-analyses/:analysisId', asyncRoute(async (req, res) => {
+  const analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
+  return res.json({ success: true, analysis });
+}));
+
+router.post('/reference-video-analyses/:analysisId/cancel', asyncRoute(async (req, res) => {
+  const analysis = referenceVideoAnalyses.cancel(req.params.analysisId, userFromReq(req));
+  return res.json({ success: true, analysis });
+}));
+
+router.post('/reference-video-analyses/:analysisId/map-scene-views', asyncRoute(async (req, res) => {
+  const mapping = referenceVideoAnalyses.mapSceneViews(
+    req.params.analysisId,
+    userFromReq(req),
+    req.body?.scene_assets || req.body?.sceneAssets || [],
+  );
+  return res.json({ success: true, mapping });
+}));
+
+router.delete('/reference-video-analyses/:analysisId', asyncRoute(async (req, res) => {
+  const deleted = referenceVideoAnalyses.remove(req.params.analysisId, userFromReq(req));
+  return res.json({ success: true, ...deleted });
+}));
+
+router.post('/real-person-sources', uploadRealPersonSource, asyncRoute(async (req, res) => {
+  if (!req.file) {
+    return res.status(422).json({
+      success: false,
+      code: 'REAL_PERSON_SOURCE_FORMAT_UNSUPPORTED',
+      error: '请选择 PNG、JPG 或 WebP 真人来源图片',
+    });
+  }
+  const source = await personDossiers.createSource({
+    file: req.file,
+    body: req.body || {},
+    user: userFromReq(req),
+  });
+  return res.status(201).json({ success: true, source });
+}));
+
+router.get('/real-person-sources/:sourceId/image', asyncRoute(async (req, res) => {
+  const filePath = personDossiers.sourceImagePath(req.params.sourceId, userFromReq(req));
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.sendFile(path.resolve(filePath));
+}));
+
+router.delete('/real-person-sources/:sourceId', asyncRoute(async (req, res) => {
+  const deleted = personDossiers.deleteSource(req.params.sourceId, userFromReq(req));
+  return res.json({ success: true, ...deleted });
+}));
+
+router.get('/tasks/:id/person-production', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const production = personDossiers.getProduction(req.params.id, userFromReq(req));
+  return res.json({ success: true, production });
+}));
+
+router.post('/tasks/:id/person-outfit-candidates', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const started = personDossiers.startCandidates({
+    taskId: req.params.id,
+    user: userFromReq(req),
+    sourceId: req.body?.source_id || req.body?.sourceId,
+    outfitSourceId: req.body?.outfit_source_id || req.body?.outfitSourceId || '',
+    mode: req.body?.mode || 'ai_outfit',
+    wardrobe: req.body?.wardrobe || '',
+  });
+  return res.status(202).json({ success: true, ...started });
+}));
+
+router.post('/tasks/:id/person-outfit-candidates/:candidateId/approve', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const production = personDossiers.approveCandidate({
+    taskId: req.params.id,
+    candidateId: req.params.candidateId,
+    user: userFromReq(req),
+  });
+  return res.json({ success: true, production });
+}));
+
+router.post('/tasks/:id/person-dossiers', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const started = personDossiers.startDossier({
+    taskId: req.params.id,
+    user: userFromReq(req),
+  });
+  return res.status(202).json({ success: true, ...started });
+}));
+
+router.post('/tasks/:id/person-dossiers/approve', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const production = personDossiers.approveDossier({
+    taskId: req.params.id,
+    user: userFromReq(req),
+  });
+  return res.json({ success: true, production });
+}));
+
+router.post('/tasks/:id/person-action-assets', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const storyboard = req.body?.storyboard
+    || req.body?.storyboard_table
+    || storage.getOutput(req.params.id, 'storyboard_table')
+    || [];
+  const started = personDossiers.startActionAssets({
+    taskId: req.params.id,
+    user: userFromReq(req),
+    storyboard,
+  });
+  return res.status(202).json({ success: true, ...started });
+}));
+
+router.post('/tasks/:id/person-production/:kind/cancel', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const production = personDossiers.cancelJob({
+    taskId: req.params.id,
+    kind: req.params.kind,
+    user: userFromReq(req),
+  });
+  return res.json({ success: true, production });
+}));
 
 router.post('/upload', uploadSingle, (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, error: '请选择文件' });

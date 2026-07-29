@@ -33,9 +33,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260728-full-pipeline-stop-v54">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-video-person-dossier-v56">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260728-full-pipeline-stop-v54"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-video-person-dossier-v56"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -95,7 +95,7 @@
   </style>
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
   <link rel="stylesheet" href="/css/vido-ui.css?v=20260718-native-select-v1" />
-  <script src="/js/media-delivery.js?v=20260714-platform-media-v2"></script>
+  <script src="/js/media-delivery.js?v=20260729-platform-media-v5"></script>
 </head>
 <body>
   <div class="dh-app" id="dhApp">
@@ -213,6 +213,42 @@
                 <span class="dh-luxgen-badge" id="dhNsaAdRequirementState">待填写</span>
               </div>
               <textarea class="dh-input dh-luxgen-requirement-textarea" id="dhNsaAdText" maxlength="1800" placeholder="例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后的引导动作，系统会按本次需求生成分镜。"></textarea>
+              <section class="dh-nsa-reference-video" id="dhNsaReferenceVideoPanel">
+                <div class="dh-nsa-feature-head">
+                  <div>
+                    <b>参考视频智能分析（可选）</b>
+                    <small>只反推剧情、通用动作、场景、机位与运镜，不提取人物身份或服装，也不会自动触发付费生成。</small>
+                  </div>
+                  <span class="dh-luxgen-badge" id="dhNsaReferenceVideoState">未上传</span>
+                </div>
+                <div class="dh-nsa-reference-video-upload">
+                  <input type="file" id="dhNsaReferenceVideoFile" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" hidden>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaReferenceVideoPick" type="button">上传参考视频</button>
+                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaReferenceVideoStart" type="button" disabled>开始智能分析</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaReferenceVideoCancel" type="button" hidden>取消分析</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaReferenceVideoDelete" type="button" hidden>删除视频</button>
+                  <span id="dhNsaReferenceVideoFileName">MP4 / MOV / WebM，最长 180 秒，最大 200MB</span>
+                </div>
+                <label class="dh-nsa-consent-row">
+                  <input type="checkbox" id="dhNsaReferenceVideoRights">
+                  <span>我确认拥有该视频的分析与使用权，并同意平台仅提取通用创意结构。</span>
+                </label>
+                <div class="dh-nsa-analysis-progress" id="dhNsaReferenceVideoProgress" hidden>
+                  <div><span id="dhNsaReferenceVideoPhase">等待分析</span><b id="dhNsaReferenceVideoPercent">0%</b></div>
+                  <progress max="100" value="0"></progress>
+                </div>
+                <div class="dh-nsa-analysis-draft" id="dhNsaReferenceVideoDraft" hidden>
+                  <div class="dh-nsa-feature-head">
+                    <div><b>AI 分析草稿</b><small>先审阅再回填；系统不会覆盖你已写的内容。</small></div>
+                    <div class="dh-nsa-inline-actions">
+                      <button class="dh-btn dh-btn-primary dh-btn-sm" type="button" data-nsa-reference-apply="merge">合并到广告需求</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" data-nsa-reference-apply="replace">替换广告需求</button>
+                    </div>
+                  </div>
+                  <div id="dhNsaReferenceVideoDraftBody"></div>
+                  <div id="dhNsaReferenceVideoSceneMapping" class="dh-nsa-scene-mapping" hidden></div>
+                </div>
+              </section>
           <div class="dh-demo-entry-tools dh-luxgen-top-tools">
             <div class="dh-lux-industry-panel">
               <button class="dh-lux-industry-summary" id="dhNsaIndustryOpen" type="button">
@@ -405,6 +441,68 @@
                   </div>
                 </div>
               </div>
+              <section class="dh-nsa-real-person-studio" id="dhNsaRealPersonStudio">
+                <div class="dh-nsa-feature-head">
+                  <div>
+                    <b>授权真人形象与人物档案（独立功能）</b>
+                    <small>真人身份来源只服务于本人物资产，不读取第一步参考视频；先确认换装锚点，再生成分层人物档案。</small>
+                  </div>
+                  <span class="dh-luxgen-badge" id="dhNsaRealPersonState">未建立来源</span>
+                </div>
+                <div class="dh-nsa-real-person-consents">
+                  <label class="dh-nsa-consent-row"><input type="checkbox" id="dhNsaRealPersonRights"><span>我已取得该真人形象用于 AI 生成人物资产的明确授权。</span></label>
+                  <label class="dh-nsa-consent-row"><input type="checkbox" id="dhNsaRealPersonAdult"><span>我确认授权主体已年满 18 周岁。</span></label>
+                </div>
+                <div class="dh-nsa-real-person-controls">
+                  <div>
+                    <b>1. 真人身份来源</b>
+                    <input type="file" id="dhNsaRealPersonIdentityFile" accept="image/png,image/jpeg,image/webp" hidden>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaRealPersonIdentityPick" type="button">上传真人正面照</button>
+                    <span id="dhNsaRealPersonIdentityName">短边至少 512px</span>
+                  </div>
+                  <fieldset>
+                    <legend>2. 穿搭模式</legend>
+                    <label><input type="radio" name="dhNsaOutfitMode" value="retain_original"> 保留原穿搭</label>
+                    <label><input type="radio" name="dhNsaOutfitMode" value="ai_outfit" checked> AI 换装</label>
+                    <label><input type="radio" name="dhNsaOutfitMode" value="outfit_reference"> 上传服装参考图</label>
+                  </fieldset>
+                  <label class="dh-nsa-real-person-wardrobe">
+                    <span>换装要求</span>
+                    <textarea class="dh-input" id="dhNsaRealPersonWardrobe" maxlength="1000" placeholder="只描述服装：上衣、下装、鞋、配饰、颜色与材质；不会改动真人身份。"></textarea>
+                  </label>
+                  <div id="dhNsaOutfitReferenceRow" hidden>
+                    <input type="file" id="dhNsaOutfitReferenceFile" accept="image/png,image/jpeg,image/webp" hidden>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaOutfitReferencePick" type="button">上传服装参考图</button>
+                    <span id="dhNsaOutfitReferenceName">服装参考只控制穿搭，不提供人物身份</span>
+                  </div>
+                  <div class="dh-nsa-inline-actions">
+                    <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaGenerateOutfitCandidates" type="button">生成 2 个正面换装候选</button>
+                    <small>本操作预计调用 2 次图片模型，确认人物锚点后再生成完整档案。</small>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaCancelPersonProduction" type="button" hidden>取消当前生成</button>
+                  </div>
+                </div>
+                <div class="dh-nsa-analysis-progress" id="dhNsaPersonProductionProgress" hidden>
+                  <div><span id="dhNsaPersonProductionPhase">等待生成</span><b id="dhNsaPersonProductionPercent">0%</b></div>
+                  <progress max="100" value="0"></progress>
+                </div>
+                <div class="dh-nsa-person-candidates" id="dhNsaPersonCandidates" hidden></div>
+                <div class="dh-nsa-inline-actions" id="dhNsaPersonDossierActions" hidden>
+                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaGeneratePersonDossier" type="button">生成完整人物档案</button>
+                  <small>完整档案包含 17 项原子资产，预计调用 17 次图片模型；按需执行。</small>
+                  <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaApprovePersonDossier" type="button" hidden>确认并用于后续分镜</button>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaGenerateActionAssets" type="button" hidden>按分镜生成动作三联图</button>
+                </div>
+                <div class="dh-nsa-person-dossier" id="dhNsaPersonDossier" hidden>
+                  <nav aria-label="人物档案分类">
+                    <button type="button" class="active" data-nsa-dossier-tab="identity">身份</button>
+                    <button type="button" data-nsa-dossier-tab="body">全身视图</button>
+                    <button type="button" data-nsa-dossier-tab="expression">表情</button>
+                    <button type="button" data-nsa-dossier-tab="wardrobe">服装细节</button>
+                    <button type="button" data-nsa-dossier-tab="action">动作</button>
+                  </nav>
+                  <div id="dhNsaPersonDossierGallery"></div>
+                </div>
+              </section>
               <div class="dh-demo-section-title">场景空间锁</div>
               <div class="dh-demo-person-source dh-nsa-scene-source">
                 <div class="dh-nsa-scene-current" id="dhNsaAdSceneAssetCurrent">

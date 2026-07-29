@@ -1,0 +1,828 @@
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { v4: uuidv4 } = require('uuid');
+const axios = require('axios');
+const FormData = require('form-data');
+const ffmpegPath = require('ffmpeg-static');
+const ffprobePath = require('ffprobe-static').path;
+const modelGateway = require('./modelGateway');
+const mediaAdapter = require('./mediaAdapter');
+const jsonRepair = require('./jsonRepairService');
+const { getApiKey } = require('../settingsService');
+
+const execFileAsync = promisify(execFile);
+const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
+const MAX_DURATION_SECONDS = 180;
+const MAX_FILE_BYTES = 200 * 1024 * 1024;
+const activeRuns = new Map();
+
+function now() {
+  return new Date().toISOString();
+}
+
+function ownerId(user = {}) {
+  return String(user.id || user.userId || user.username || 'anonymous').trim() || 'anonymous';
+}
+
+function safeSegment(value = '') {
+  return String(value || '').replace(/[^a-z0-9_-]/ig, '_').slice(0, 80) || 'anonymous';
+}
+
+function analysisDir(userId, analysisId) {
+  return path.join(ROOT_DIR, safeSegment(userId), safeSegment(analysisId));
+}
+
+function recordPath(userId, analysisId) {
+  return path.join(analysisDir(userId, analysisId), 'record.json');
+}
+
+function uploadSessionDir(userId, sessionId) {
+  return path.join(ROOT_DIR, '_chunk_uploads', safeSegment(userId), safeSegment(sessionId));
+}
+
+function uploadSessionPath(userId, sessionId) {
+  return path.join(uploadSessionDir(userId, sessionId), 'session.json');
+}
+
+function writeJsonAtomic(filePath, value) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
+function readRecord(userId, analysisId) {
+  const filePath = recordPath(userId, analysisId);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function publicRecord(record = {}) {
+  const copy = JSON.parse(JSON.stringify(record || {}));
+  if (copy.source) {
+    delete copy.source.local_path;
+    delete copy.source.private_directory;
+  }
+  return copy;
+}
+
+function assertOwned(analysisId, user = {}) {
+  const userId = ownerId(user);
+  const record = readRecord(userId, analysisId);
+  if (!record) {
+    const error = new Error('参考视频分析任务不存在或无权访问');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  return record;
+}
+
+async function probeVideo(filePath) {
+  if (!ffprobePath) {
+    const error = new Error('服务器缺少 ffprobe，无法读取参考视频');
+    error.code = 'FFPROBE_UNAVAILABLE';
+    error.status = 503;
+    throw error;
+  }
+  const { stdout } = await execFileAsync(ffprobePath, [
+    '-v', 'error',
+    '-show_entries', 'format=duration,size,format_name:stream=index,codec_type,codec_name,width,height,r_frame_rate',
+    '-of', 'json',
+    filePath,
+  ], { maxBuffer: 2 * 1024 * 1024, windowsHide: true });
+  const parsed = JSON.parse(stdout || '{}');
+  const video = (parsed.streams || []).find(item => item.codec_type === 'video') || {};
+  const audio = (parsed.streams || []).find(item => item.codec_type === 'audio') || {};
+  return {
+    duration_seconds: Number(Number(parsed.format?.duration || 0).toFixed(3)),
+    size_bytes: Number(parsed.format?.size || 0),
+    format: String(parsed.format?.format_name || ''),
+    video_codec: String(video.codec_name || ''),
+    width: Number(video.width || 0),
+    height: Number(video.height || 0),
+    fps: String(video.r_frame_rate || ''),
+    has_audio: !!audio.codec_name,
+    audio_codec: String(audio.codec_name || ''),
+  };
+}
+
+function validateUpload(file = {}, metadata = {}) {
+  const ext = path.extname(file.originalname || file.filename || '').toLowerCase();
+  if (!['.mp4', '.mov', '.webm'].includes(ext)) {
+    const error = new Error('参考视频仅支持 MP4、MOV 或 WebM');
+    error.code = 'REFERENCE_VIDEO_FORMAT_UNSUPPORTED';
+    error.status = 422;
+    throw error;
+  }
+  if (Number(file.size || metadata.size_bytes || 0) > MAX_FILE_BYTES) {
+    const error = new Error('参考视频不能超过 200MB');
+    error.code = 'REFERENCE_VIDEO_TOO_LARGE';
+    error.status = 413;
+    throw error;
+  }
+  if (!metadata.width || !metadata.height || metadata.duration_seconds <= 0) {
+    const error = new Error('文件中没有可读取的视频轨道');
+    error.code = 'REFERENCE_VIDEO_INVALID';
+    error.status = 422;
+    throw error;
+  }
+  if (metadata.duration_seconds > MAX_DURATION_SECONDS) {
+    const error = new Error('参考视频不能超过 180 秒');
+    error.code = 'REFERENCE_VIDEO_TOO_LONG';
+    error.status = 422;
+    throw error;
+  }
+}
+
+async function create({ file, body = {}, user = {} } = {}) {
+  if (!file?.path) {
+    const error = new Error('请选择参考视频');
+    error.code = 'REFERENCE_VIDEO_REQUIRED';
+    error.status = 400;
+    throw error;
+  }
+  if (String(body.rights_confirmed || body.rightsConfirmed || '') !== 'true') {
+    const error = new Error('请先确认拥有该视频的分析和使用权');
+    error.code = 'REFERENCE_VIDEO_RIGHTS_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const userId = ownerId(user);
+  const id = `ref_video_${uuidv4()}`;
+  let metadata;
+  try {
+    metadata = await probeVideo(file.path);
+    validateUpload(file, metadata);
+  } catch (error) {
+    try { fs.unlinkSync(file.path); } catch {}
+    throw error;
+  }
+  const dir = analysisDir(userId, id);
+  fs.mkdirSync(dir, { recursive: true });
+  const sourceExt = path.extname(file.originalname || file.filename || '').toLowerCase();
+  const sourcePath = path.join(dir, `source${sourceExt}`);
+  fs.renameSync(file.path, sourcePath);
+  const record = {
+    id,
+    user_id: userId,
+    status: 'uploaded',
+    progress: 0,
+    phase: '等待分析',
+    cancelled: false,
+    rights_confirmed: true,
+    identity_extraction_allowed: false,
+    downstream_generation_triggered: false,
+    task_id: '',
+    source: {
+      original_name: String(file.originalname || ''),
+      mimetype: String(file.mimetype || ''),
+      size_bytes: Number(file.size || metadata.size_bytes || 0),
+      local_path: sourcePath,
+      private_directory: dir,
+      metadata,
+    },
+    checkpoints: [],
+    result: null,
+    error: null,
+    created_at: now(),
+    updated_at: now(),
+  };
+  writeJsonAtomic(recordPath(userId, id), record);
+  return publicRecord(record);
+}
+
+function createUploadSession({ body = {}, user = {} } = {}) {
+  if (String(body.rights_confirmed || body.rightsConfirmed || '') !== 'true') {
+    const error = new Error('请先确认拥有该视频的分析和使用权');
+    error.code = 'REFERENCE_VIDEO_RIGHTS_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const fileName = path.basename(String(body.file_name || body.fileName || ''));
+  const ext = path.extname(fileName).toLowerCase();
+  const sizeBytes = Number(body.size_bytes || body.sizeBytes || 0);
+  const chunkSize = Math.max(1024 * 1024, Math.min(5 * 1024 * 1024, Number(body.chunk_size || body.chunkSize || 5 * 1024 * 1024)));
+  const totalChunks = Math.ceil(sizeBytes / chunkSize);
+  if (!['.mp4', '.mov', '.webm'].includes(ext)) {
+    const error = new Error('参考视频仅支持 MP4、MOV 或 WebM');
+    error.code = 'REFERENCE_VIDEO_FORMAT_UNSUPPORTED';
+    error.status = 422;
+    throw error;
+  }
+  if (!sizeBytes || sizeBytes > MAX_FILE_BYTES || totalChunks < 1 || totalChunks > 200) {
+    const error = new Error('参考视频大小无效或超过 200MB');
+    error.code = 'REFERENCE_VIDEO_TOO_LARGE';
+    error.status = 413;
+    throw error;
+  }
+  const userId = ownerId(user);
+  const fingerprint = crypto.createHash('sha256')
+    .update([userId, fileName, sizeBytes, body.last_modified || body.lastModified || ''].join(':'))
+    .digest('hex')
+    .slice(0, 32);
+  const id = `ref_upload_${fingerprint}`;
+  const existing = readJsonSafe(uploadSessionPath(userId, id));
+  if (existing) return publicUploadSession(existing);
+  const session = {
+    id,
+    user_id: userId,
+    status: 'uploading',
+    file_name: fileName,
+    mimetype: String(body.mimetype || 'application/octet-stream'),
+    size_bytes: sizeBytes,
+    chunk_size: chunkSize,
+    total_chunks: totalChunks,
+    received_chunks: [],
+    rights_confirmed: true,
+    analysis_id: '',
+    created_at: now(),
+    updated_at: now(),
+  };
+  writeJsonAtomic(uploadSessionPath(userId, id), session);
+  return publicUploadSession(session);
+}
+
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function assertUploadSession(sessionId, user = {}) {
+  const userId = ownerId(user);
+  const session = readJsonSafe(uploadSessionPath(userId, sessionId));
+  if (!session) {
+    const error = new Error('参考视频分片上传会话不存在或无权访问');
+    error.code = 'REFERENCE_VIDEO_UPLOAD_SESSION_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  return session;
+}
+
+function publicUploadSession(session = {}) {
+  return {
+    ...session,
+    received_chunks: [...(session.received_chunks || [])].sort((a, b) => a - b),
+  };
+}
+
+function saveUploadChunk(sessionId, index, file = {}, user = {}) {
+  let session = assertUploadSession(sessionId, user);
+  if (session.status === 'completed') return publicUploadSession(session);
+  const chunkIndex = Number(index);
+  if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= session.total_chunks) {
+    const error = new Error('参考视频分片序号无效');
+    error.code = 'REFERENCE_VIDEO_CHUNK_INDEX_INVALID';
+    error.status = 422;
+    throw error;
+  }
+  if (!file.path || Number(file.size || 0) > session.chunk_size + 1024) {
+    const error = new Error('参考视频分片为空或超过 5MB');
+    error.code = 'REFERENCE_VIDEO_CHUNK_INVALID';
+    error.status = 422;
+    throw error;
+  }
+  const dir = uploadSessionDir(session.user_id, session.id);
+  fs.mkdirSync(dir, { recursive: true });
+  const target = path.join(dir, `chunk-${String(chunkIndex).padStart(4, '0')}.part`);
+  if (fs.existsSync(target) && fs.statSync(target).size === Number(file.size || 0)) {
+    try { fs.unlinkSync(file.path); } catch {}
+  } else {
+    fs.renameSync(file.path, target);
+  }
+  session = {
+    ...session,
+    status: 'uploading',
+    received_chunks: [...new Set([...(session.received_chunks || []), chunkIndex])],
+    updated_at: now(),
+  };
+  writeJsonAtomic(uploadSessionPath(session.user_id, session.id), session);
+  return publicUploadSession(session);
+}
+
+async function appendFileToStream(sourcePath, output) {
+  await new Promise((resolve, reject) => {
+    const input = fs.createReadStream(sourcePath);
+    const cleanup = () => output.removeListener('error', onError);
+    const onError = (error) => { cleanup(); reject(error); };
+    input.on('error', onError);
+    output.once('error', onError);
+    input.on('end', () => { cleanup(); resolve(); });
+    input.pipe(output, { end: false });
+  });
+}
+
+async function completeUploadSession(sessionId, user = {}) {
+  let session = assertUploadSession(sessionId, user);
+  if (session.status === 'completed' && session.analysis_id) {
+    return { session: publicUploadSession(session), analysis: get(session.analysis_id, user) };
+  }
+  const missing = Array.from({ length: session.total_chunks }, (_, index) => index)
+    .filter(index => !(session.received_chunks || []).includes(index));
+  if (missing.length) {
+    const error = new Error(`参考视频仍缺少 ${missing.length} 个分片`);
+    error.code = 'REFERENCE_VIDEO_CHUNKS_INCOMPLETE';
+    error.status = 409;
+    error.details = { missing_chunks: missing };
+    throw error;
+  }
+  const dir = uploadSessionDir(session.user_id, session.id);
+  const mergedPath = path.join(dir, `merged${path.extname(session.file_name).toLowerCase()}`);
+  const output = fs.createWriteStream(mergedPath);
+  for (let index = 0; index < session.total_chunks; index += 1) {
+    await appendFileToStream(path.join(dir, `chunk-${String(index).padStart(4, '0')}.part`), output);
+  }
+  await new Promise((resolve, reject) => {
+    output.on('error', reject);
+    output.end(resolve);
+  });
+  const stat = fs.statSync(mergedPath);
+  if (stat.size !== session.size_bytes) {
+    const error = new Error('参考视频分片合并后的大小不一致');
+    error.code = 'REFERENCE_VIDEO_CHUNK_SIZE_MISMATCH';
+    error.status = 422;
+    throw error;
+  }
+  const analysis = await create({
+    file: {
+      path: mergedPath,
+      originalname: session.file_name,
+      mimetype: session.mimetype,
+      size: stat.size,
+    },
+    body: { rights_confirmed: 'true' },
+    user,
+  });
+  for (let index = 0; index < session.total_chunks; index += 1) {
+    try { fs.unlinkSync(path.join(dir, `chunk-${String(index).padStart(4, '0')}.part`)); } catch {}
+  }
+  session = {
+    ...session,
+    status: 'completed',
+    received_chunks: Array.from({ length: session.total_chunks }, (_, index) => index),
+    analysis_id: analysis.id,
+    completed_at: now(),
+    updated_at: now(),
+  };
+  writeJsonAtomic(uploadSessionPath(session.user_id, session.id), session);
+  return { session: publicUploadSession(session), analysis };
+}
+
+function cancelUploadSession(sessionId, user = {}) {
+  const session = assertUploadSession(sessionId, user);
+  const dir = uploadSessionDir(session.user_id, session.id);
+  const root = path.resolve(ROOT_DIR, '_chunk_uploads');
+  const resolved = path.resolve(dir);
+  if (!resolved.startsWith(`${root}${path.sep}`)) {
+    const error = new Error('参考视频分片目录不安全，已停止删除');
+    error.code = 'UNSAFE_REFERENCE_VIDEO_UPLOAD_PATH';
+    error.status = 500;
+    throw error;
+  }
+  fs.rmSync(resolved, { recursive: true, force: true });
+  return { id: sessionId, cancelled: true };
+}
+
+function save(record, patch = {}) {
+  const next = { ...record, ...patch, updated_at: now() };
+  writeJsonAtomic(recordPath(record.user_id, record.id), next);
+  return next;
+}
+
+function checkpoint(record, phase, progress, extra = {}) {
+  const row = {
+    ...record,
+    ...extra,
+    phase,
+    progress: Math.max(0, Math.min(100, Number(progress || 0))),
+    checkpoints: [...(record.checkpoints || []), { phase, progress, at: now() }].slice(-30),
+  };
+  return save(row);
+}
+
+function throwIfCancelled(record) {
+  const latest = readRecord(record.user_id, record.id) || record;
+  if (latest.cancelled) {
+    const error = new Error('参考视频分析已取消');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_CANCELLED';
+    error.cancelled = true;
+    throw error;
+  }
+}
+
+function evidenceTimes(duration) {
+  const count = Math.max(4, Math.min(8, Math.ceil(duration / 12)));
+  return Array.from({ length: count }, (_, index) => {
+    const ratio = count === 1 ? 0.5 : (index + 0.5) / count;
+    return Math.max(0, Math.min(duration - 0.05, duration * ratio));
+  });
+}
+
+async function extractEvidenceFrames(record) {
+  if (!ffmpegPath) {
+    const error = new Error('服务器缺少 ffmpeg，无法提取参考视频证据帧');
+    error.code = 'FFMPEG_UNAVAILABLE';
+    throw error;
+  }
+  const duration = record.source.metadata.duration_seconds;
+  const frames = [];
+  const times = evidenceTimes(duration);
+  fs.mkdirSync(mediaAdapter.ASSET_DIR, { recursive: true });
+  for (let index = 0; index < times.length; index += 1) {
+    throwIfCancelled(record);
+    const filename = `refev_${record.id.slice(-12)}_${String(index + 1).padStart(2, '0')}.jpg`;
+    const out = mediaAdapter.assetPathFromName(filename);
+    if (!fs.existsSync(out) || fs.statSync(out).size < 1024) {
+      await execFileAsync(ffmpegPath, [
+        '-hide_banner', '-loglevel', 'error', '-y',
+        '-ss', String(times[index]),
+        '-i', record.source.local_path,
+        '-frames:v', '1',
+        '-vf', 'scale=960:-2',
+        '-q:v', '3',
+        out,
+      ], { maxBuffer: 4 * 1024 * 1024, windowsHide: true });
+    }
+    frames.push({
+      index,
+      timestamp_seconds: Number(times[index].toFixed(2)),
+      filename,
+      image_url: mediaAdapter.publicAssetUrl(filename),
+    });
+  }
+  return frames;
+}
+
+async function transcribeAudio(record) {
+  if (record.transcript?.status === 'completed' || record.transcript?.status === 'mocked') return record.transcript;
+  if (!record.source.metadata.has_audio) return { status: 'no_audio', text: '', segments: [] };
+  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
+    return {
+      status: 'mocked',
+      text: '示例旁白：提出问题，展示解决过程，并给出行动号召。',
+      segments: [{
+        start: 0,
+        end: record.source.metadata.duration_seconds,
+        text: '示例旁白：提出问题，展示解决过程，并给出行动号召。',
+      }],
+    };
+  }
+  const apiKey = getApiKey('openai') || process.env.OPENAI_API_KEY;
+  if (!apiKey) return { status: 'provider_not_configured', text: '', segments: [] };
+  const audioPath = path.join(analysisDir(record.user_id, record.id), 'transcript-audio.mp3');
+  try {
+    await execFileAsync(ffmpegPath, [
+      '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', record.source.local_path,
+      '-vn', '-acodec', 'libmp3lame', '-ar', '16000', '-ac', '1', '-b:a', '64k',
+      audioPath,
+    ], { maxBuffer: 4 * 1024 * 1024, windowsHide: true, timeout: 90000 });
+    throwIfCancelled(record);
+    const form = new FormData();
+    form.append('file', fs.createReadStream(audioPath));
+    form.append('model', 'whisper-1');
+    form.append('response_format', 'verbose_json');
+    form.append('timestamp_granularities[]', 'segment');
+    const response = await axios.post('https://api.openai.com/v1/audio/transcriptions', form, {
+      headers: { ...form.getHeaders(), Authorization: `Bearer ${apiKey}` },
+      timeout: 120000,
+      maxContentLength: 60 * 1024 * 1024,
+      maxBodyLength: 60 * 1024 * 1024,
+    });
+    const segments = (response.data?.segments || []).map(item => ({
+      start: Number(item.start || 0),
+      end: Number(item.end || 0),
+      text: String(item.text || '').trim(),
+    })).filter(item => item.text);
+    return {
+      status: 'completed',
+      text: String(response.data?.text || segments.map(item => item.text).join(' ')).trim(),
+      segments,
+    };
+  } catch (error) {
+    if (error.cancelled) throw error;
+    return {
+      status: 'failed_non_blocking',
+      text: '',
+      segments: [],
+      error: { code: error.code || 'ASR_FAILED', message: String(error.message || error).slice(0, 240) },
+    };
+  } finally {
+    try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch {}
+  }
+}
+
+function mockAnalysis(record, frames) {
+  const duration = record.source.metadata.duration_seconds;
+  const midpoint = Number((duration / 2).toFixed(2));
+  return {
+    schema_version: 1,
+    analysis_scope: 'creative_structure_only',
+    prohibited_reuse: ['person_identity', 'face', 'wardrobe', 'private_attributes'],
+    summary: '参考片采用问题—转折—解决—行动号召结构，镜头由环境建立逐步推进到主体细节。',
+    generated_brief: [
+      '【广告目标】围绕产品核心痛点建立问题，并用清晰的使用结果完成说服。',
+      '【剧情结构】开场建立环境与冲突，中段展示行动和产品解决过程，结尾以结果特写与行动号召收束。',
+      '【人物与动作】使用通用角色，不复用参考视频人物身份；动作按起始姿态、关键动作、结束姿态编排。',
+      '【场景与机位】先建立空间主机位，再使用互动机位和细节机位；实际机位将在场景资产生成后映射。',
+      '【运镜与节奏】前段稳定建立，中段轻推或横移跟随，结尾减速停稳。',
+      '【字幕与 CTA】字幕短句化，结尾保留明确行动号召。',
+    ].join('\n'),
+    plot_beats: [
+      { order: 1, purpose: '建立问题', range: [0, midpoint], rhythm: '中速' },
+      { order: 2, purpose: '展示解决与结果', range: [midpoint, duration], rhythm: '先快后稳' },
+    ],
+    camera_intents: [
+      {
+        id: 'camera_intent_1',
+        range: [0, midpoint],
+        movement: 'slow_push_in',
+        movement_subject: 'camera',
+        start_shot_size: 'wide',
+        end_shot_size: 'medium',
+        angle: 'eye_level',
+        lens_estimate_mm: 35,
+        direction: 'forward',
+        speed: 'slow',
+        stabilization: 'gimbal',
+        axis_rule: 'keep_180_degree_axis',
+        screen_direction: 'left_to_right',
+        entry_exit: 'subject enters left, holds center',
+        evidence_timestamps: frames.slice(0, 3).map(item => item.timestamp_seconds),
+      },
+      {
+        id: 'camera_intent_2',
+        range: [midpoint, duration],
+        movement: 'locked_then_micro_pull_out',
+        movement_subject: 'camera',
+        start_shot_size: 'close_up',
+        end_shot_size: 'medium_close_up',
+        angle: 'slight_high',
+        lens_estimate_mm: 50,
+        direction: 'backward',
+        speed: 'very_slow',
+        stabilization: 'tripod',
+        axis_rule: 'same_axis',
+        screen_direction: 'center_hold',
+        entry_exit: 'no entry or exit',
+        evidence_timestamps: frames.slice(-3).map(item => item.timestamp_seconds),
+      },
+    ],
+    character_actions: [
+      {
+        id: 'generic_action_1',
+        role: '通用主角',
+        start_pose: '自然站立，视线看向互动目标',
+        key_action: '右手完成产品交互，身体轻微前倾',
+        end_pose: '回到稳定展示姿态并看向结果',
+        dominant_hand: 'right',
+        prop_contact: '手与产品发生明确接触',
+        screen_direction: 'left_to_right',
+        eyeline: '互动目标→产品→镜头外结果',
+        expression_change: '疑惑→专注→认可',
+        previous_frame_dependency: '延续上一镜头手部位置和产品朝向',
+      },
+    ],
+    transcript: record.transcript || { status: record.source.metadata.has_audio ? 'provider_not_configured' : 'no_audio', text: '', segments: [] },
+    subtitle_cta: { subtitle_style: '短句、结果导向', cta: '立即了解 / 立即体验' },
+    prompt_suggestions: {
+      plot: '以问题、行动、结果、CTA 四段结构生成原创广告内容。',
+      camera: '保持空间轴线，建立镜头后轻推，中段跟随动作，结尾停稳。',
+      action: '每个动作写清起始、关键、结束、手部接触、视线和表情变化。',
+    },
+    evidence_frames: frames,
+  };
+}
+
+async function analyzeWithModels(record, frames, transcript = {}) {
+  const prompt = [
+    '分析这些按时间顺序截取的广告视频证据帧，只提取通用创意结构，禁止识别或复用人物身份、脸部特征、服装细节和私密属性。',
+    '输出严格 JSON 对象，字段必须包含 summary, generated_brief, plot_beats, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
+    'camera_intents 每项必须包含 range, movement, movement_subject, start_shot_size, end_shot_size, angle, lens_estimate_mm, direction, speed, stabilization, axis_rule, screen_direction, entry_exit, evidence_timestamps。',
+    'character_actions 每项必须包含 role, start_pose, key_action, end_pose, dominant_hand, prop_contact, screen_direction, eyeline, expression_change, previous_frame_dependency。',
+    `视频时长 ${record.source.metadata.duration_seconds} 秒；证据时间点：${frames.map(item => item.timestamp_seconds).join(', ')}。`,
+    transcript.text ? `语音转写（只用于剧情、字幕和 CTA 分析）：${String(transcript.text).slice(0, 8000)}` : '没有可用语音转写，仅按画面分析。',
+  ].join('\n');
+  const vision = await modelGateway.generateVision({
+    taskId: record.id,
+    stage: 'new_story_ad.reference_video_vision',
+    systemPrompt: '你是广告分镜和摄影分析师。仅分析结构、动作、场景、镜头和节奏，不做人脸身份识别。',
+    userPrompt: prompt,
+    imageUrls: frames.map(item => item.image_url).slice(0, 8),
+    maxTokens: 6000,
+  });
+  const result = await jsonRepair.parseOrRepair({
+    raw: vision.text,
+    expected: 'object',
+    modelGateway,
+    taskId: record.id,
+  });
+  return {
+    schema_version: 1,
+    analysis_scope: 'creative_structure_only',
+    prohibited_reuse: ['person_identity', 'face', 'wardrobe', 'private_attributes'],
+    ...result,
+    evidence_frames: frames,
+    transcript,
+  };
+}
+
+function normalizeResult(result = {}) {
+  const safe = { ...result };
+  safe.generated_brief = String(safe.generated_brief || '').slice(0, 12000);
+  safe.camera_intents = Array.isArray(safe.camera_intents) ? safe.camera_intents.slice(0, 24) : [];
+  safe.character_actions = Array.isArray(safe.character_actions) ? safe.character_actions.slice(0, 24) : [];
+  safe.plot_beats = Array.isArray(safe.plot_beats) ? safe.plot_beats.slice(0, 24) : [];
+  safe.analysis_scope = 'creative_structure_only';
+  safe.prohibited_reuse = ['person_identity', 'face', 'wardrobe', 'private_attributes'];
+  return safe;
+}
+
+async function runAnalysis(initialRecord) {
+  let record = initialRecord;
+  try {
+    record = checkpoint(record, '读取视频元数据', 8, { status: 'running', error: null });
+    throwIfCancelled(record);
+    record = checkpoint(record, '并行提取低分辨率证据帧与语音', 18);
+    const [frames, transcript] = await Promise.all([
+      extractEvidenceFrames(record),
+      transcribeAudio(record),
+    ]);
+    record = checkpoint(record, '证据帧与语音已提取', 42, { evidence_frames: frames, transcript });
+    throwIfCancelled(record);
+    record = checkpoint(record, '并行分析剧情、动作、机位与运镜', 55);
+    const raw = process.env.NEW_STORY_AD_MOCK_LLM === '1'
+      ? mockAnalysis({ ...record, transcript }, frames)
+      : await analyzeWithModels(record, frames, transcript);
+    throwIfCancelled(record);
+    const result = normalizeResult(raw);
+    record = checkpoint(record, '整理可回填的 AI 分析草稿', 90, { result });
+    save(record, {
+      status: 'completed',
+      phase: '分析完成，等待人工选择回填',
+      progress: 100,
+      completed_at: now(),
+      downstream_generation_triggered: false,
+    });
+  } catch (error) {
+    const latest = readRecord(record.user_id, record.id) || record;
+    if (error.cancelled || latest.cancelled) {
+      save(latest, {
+        status: 'cancelled',
+        phase: '已取消',
+        error: null,
+        cancelled_at: now(),
+      });
+    } else {
+      save(latest, {
+        status: 'failed',
+        phase: '分析失败',
+        error: {
+          code: error.code || 'REFERENCE_VIDEO_ANALYSIS_FAILED',
+          message: String(error.message || error).slice(0, 500),
+        },
+        failed_at: now(),
+      });
+    }
+  } finally {
+    activeRuns.delete(initialRecord.id);
+  }
+}
+
+function start(analysisId, user = {}) {
+  let record = assertOwned(analysisId, user);
+  if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
+  if (activeRuns.has(analysisId) || record.status === 'running') {
+    return { record: publicRecord(record), accepted: false, duplicate: true };
+  }
+  record = save(record, {
+    status: 'queued',
+    phase: '已进入分析队列',
+    progress: Math.max(1, Number(record.progress || 0)),
+    cancelled: false,
+    error: null,
+    started_at: record.started_at || now(),
+  });
+  const promise = runAnalysis(record);
+  activeRuns.set(analysisId, promise);
+  return { record: publicRecord(record), accepted: true, duplicate: false };
+}
+
+function get(analysisId, user = {}) {
+  return publicRecord(assertOwned(analysisId, user));
+}
+
+function cancel(analysisId, user = {}) {
+  const record = assertOwned(analysisId, user);
+  if (['completed', 'failed', 'cancelled'].includes(record.status)) return publicRecord(record);
+  return publicRecord(save(record, {
+    cancelled: true,
+    status: 'cancelling',
+    phase: '正在取消',
+  }));
+}
+
+function remove(analysisId, user = {}) {
+  const record = assertOwned(analysisId, user);
+  if (activeRuns.has(analysisId) || ['running', 'queued', 'cancelling'].includes(record.status)) {
+    const error = new Error('请先取消正在运行的参考视频分析');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_ACTIVE';
+    error.status = 409;
+    throw error;
+  }
+  const dir = analysisDir(record.user_id, record.id);
+  const resolved = path.resolve(dir);
+  const root = path.resolve(ROOT_DIR);
+  if (!resolved.startsWith(`${root}${path.sep}`)) {
+    const error = new Error('参考视频目录不安全，已停止删除');
+    error.code = 'UNSAFE_REFERENCE_VIDEO_PATH';
+    error.status = 500;
+    throw error;
+  }
+  for (const frame of record.evidence_frames || record.result?.evidence_frames || []) {
+    const framePath = mediaAdapter.assetPathFromName(frame.filename);
+    try { if (framePath && fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
+  }
+  fs.rmSync(resolved, { recursive: true, force: true });
+  return { id: analysisId, deleted: true };
+}
+
+function mapSceneViews(analysisId, user = {}, sceneAssets = []) {
+  const record = assertOwned(analysisId, user);
+  if (record.status !== 'completed' || !record.result) {
+    const error = new Error('参考视频尚未分析完成');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_INCOMPLETE';
+    error.status = 409;
+    throw error;
+  }
+  const views = (Array.isArray(sceneAssets) ? sceneAssets : [])
+    .map(item => ({
+      key: String(item.view_key || item.viewKey || item.kind || item.type || ''),
+      image_url: item.image_url || item.url || '',
+      camera: item.camera || item.camera_contract || null,
+    }))
+    .filter(item => item.key);
+  const knownKeys = new Set(views.map(item => item.key));
+  const mappings = (record.result.camera_intents || []).map((intent, index) => {
+    const movement = String(intent.movement || '').toLowerCase();
+    const endSize = String(intent.end_shot_size || '').toLowerCase();
+    const desired = /detail|close/.test(endSize)
+      ? 'detail'
+      : /reverse|backward|pull/.test(movement)
+        ? 'reverse'
+        : /interaction|follow|pan|track/.test(movement)
+          ? 'interaction'
+          : 'master';
+    const selected = knownKeys.has(desired)
+      ? desired
+      : ['master', 'interaction', 'detail', 'reverse', 'layout'].find(key => knownKeys.has(key)) || '';
+    return {
+      camera_intent_id: intent.id || `camera_intent_${index + 1}`,
+      requested_view: desired,
+      mapped_view: selected,
+      feasible: !!selected,
+      execution: selected
+        ? `以 ${selected} 场景机位为起点执行 ${intent.movement || 'locked'}，保持 ${intent.axis_rule || '既定轴线'}`
+        : '当前场景资产没有可映射机位，请先生成场景主视图',
+      alternative_views: views.map(item => item.key).filter(key => key !== selected).slice(0, 3),
+    };
+  });
+  const next = save(record, {
+    scene_view_mapping: {
+      status: mappings.every(item => item.feasible) ? 'mapped' : 'partial',
+      mappings,
+      available_views: views,
+      mapped_at: now(),
+    },
+  });
+  return publicRecord(next).scene_view_mapping;
+}
+
+module.exports = {
+  ROOT_DIR,
+  MAX_DURATION_SECONDS,
+  MAX_FILE_BYTES,
+  probeVideo,
+  create,
+  createUploadSession,
+  saveUploadChunk,
+  completeUploadSession,
+  cancelUploadSession,
+  start,
+  get,
+  cancel,
+  remove,
+  mapSceneViews,
+  _private: { activeRuns, analysisDir, readRecord, mockAnalysis, evidenceTimes, validateUpload },
+};

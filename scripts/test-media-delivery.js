@@ -80,12 +80,12 @@ async function main() {
 
   const htmlFiles = execFileSync('git', ['ls-files', '--', 'public/*.html'], { cwd: root, encoding: 'utf8' })
     .split(/\r?\n/)
-    .map(name => path.basename(name.trim()))
+    .map(name => name.trim())
     .filter(Boolean);
   assert.ok(htmlFiles.length >= 20);
   htmlFiles.forEach(name => {
-    const html = fs.readFileSync(path.join(root, 'public', name), 'utf8');
-    assert.match(html, /\/js\/media-delivery\.js\?v=20260714-platform-media-v2/, `${name} must load platform media delivery`);
+    const html = fs.readFileSync(path.join(root, name), 'utf8');
+    assert.match(html, /\/js\/media-delivery\.js\?v=20260729-platform-media-v5/, `${name} must load platform media delivery`);
   });
   const browserSource = fs.readFileSync(path.join(root, 'public/js/media-delivery.js'), 'utf8');
   assert.match(browserSource, /MutationObserver/);
@@ -93,6 +93,15 @@ async function main() {
   assert.match(browserSource, /preload = 'none'/);
   assert.match(browserSource, /searchParams\.delete\('token'\)/);
   assert.match(browserSource, /stableCacheUrl/);
+  assert.match(browserSource, /function performanceSnapshot\(\)/);
+  assert.match(browserSource, /window\.__VIDO_PERFORMANCE__/);
+  assert.match(browserSource, /data-vido-performance/);
+  assert.match(browserSource, /largest-contentful-paint/);
+  assert.match(browserSource, /layout-shift/);
+  assert.match(browserSource, /durationThreshold: 40/);
+  assert.match(browserSource, /initial_video_bytes/);
+  assert.match(browserSource, /top_resources/);
+  assert.match(browserSource, /api_requests/);
 
   fs.rmSync(tempDir, { recursive: true, force: true });
   console.log('platform media delivery tests passed');

@@ -461,7 +461,10 @@ function testScenePlanFrontendAndCodeSize() {
 
   const legacyLines = legacySource.split(/\r?\n/).length;
   assert(legacyLines <= 6400, `旧剧情广告 UI 不得继续膨胀：当前 ${legacyLines} 行`);
-  const galleryBytes = fs.statSync(path.join(__dirname, '../public/js/new-story-ad/subject-assets-ui.js')).size;
+  const galleryBytes = Buffer.byteLength(
+    fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-assets-ui.js'), 'utf8').replace(/\r\n/g, '\n'),
+    'utf8',
+  );
   assert(galleryBytes < 28000, `统一主体模块体积异常：${galleryBytes} bytes`);
 }
 

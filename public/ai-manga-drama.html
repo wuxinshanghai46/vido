@@ -1247,7 +1247,7 @@ body[data-stage="4"] .app{grid-template-rows:48px 64px 1fr 64px}
 <script src="/js/auth.js?v=20260626-long-session"></script>
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
   <link rel="stylesheet" href="/css/vido-ui.css?v=20260626-theme-native-controls" />
-  <script src="/js/media-delivery.js?v=20260714-platform-media-v2"></script>
+  <script src="/js/media-delivery.js?v=20260729-platform-media-v5"></script>
 </head>
 <body>
 
@@ -3114,7 +3114,30 @@ goStage(0);
     const sections = $$('.home-section');
     if (sections[0]) {
       sections[0].querySelector('h3').innerHTML = `✓ ${esc(real.sideView)} <span class="ct">${items.length}</span>`;
-      sections[0].querySelector('.proj-grid').innerHTML = items.length ? items.map(mapper).join('') : emptyCard(emptyText);
+      const grid = sections[0].querySelector('.proj-grid');
+      if (!items.length) {
+        grid.innerHTML = emptyCard(emptyText);
+        return;
+      }
+      let visibleCount = 60;
+      const renderBatch = () => {
+        const visible = items.slice(0, visibleCount);
+        grid.innerHTML = visible.map(mapper).join('');
+        if (visible.length < items.length) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'proj-card';
+          more.dataset.realLoadMore = '1';
+          more.style.cssText = 'min-height:120px;border-style:dashed;color:var(--t-2);cursor:pointer';
+          more.textContent = `继续加载（已显示 ${visible.length}/${items.length}）`;
+          more.addEventListener('click', () => {
+            visibleCount += 60;
+            renderBatch();
+          }, { once: true });
+          grid.appendChild(more);
+        }
+      };
+      renderBatch();
     }
   }
   function renderHome() {
@@ -3451,23 +3474,14 @@ goStage(0);
         throw new Error(`${label} 读取失败: ${err.message || '请求失败'}`);
       }
     };
-    const [projects, comics, novels, works] = await Promise.all([
-      strict('漫剧项目', '/api/drama/projects'),
-      strict('漫画任务', '/api/comic/tasks'),
-      strict('小说数据', '/api/novel'),
-      strict('作品数据', '/api/works?type=all&limit=80'),
-    ]);
+    const projects = await strict('漫剧项目', '/api/drama/projects');
     real.projects = projects.data || [];
-    real.comics = comics.data || [];
-    real.novels = novels.novels || [];
-    real.works = works.works || [];
     if (route.q) {
       real.search = route.q;
       const search = $('.home-h input.search');
       if (search) search.value = route.q;
     }
     if (route.filter && ['全部', '进行中', '已完成'].includes(route.filter)) real.filter = route.filter;
-    await ensureDetails();
     const routeSide = ['角色库', '场景库', '道具库', '音色库', '剧本模板', '画风模板'].includes(route.side || '') ? route.side : '任务中心';
     setSideView(routeSide);
     syncPipelineState(real.currentProject);

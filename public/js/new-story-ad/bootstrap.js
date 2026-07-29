@@ -1,6 +1,6 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260728-full-pipeline-stop-v54';
+  const SCRIPT_VERSION = '20260729-reference-video-person-dossier-v56';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
@@ -24,6 +24,8 @@
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/story-setup.js',
+    '/js/new-story-ad/reference-video-analysis.js',
+    '/js/new-story-ad/real-person-dossier.js',
     '/js/new-story-ad/brand-overlay.js',
     '/js/new-story-ad/actor-library.js',
     '/js/new-story-ad/generation-flow.js',

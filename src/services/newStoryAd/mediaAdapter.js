@@ -699,13 +699,29 @@ async function generateImage({
   throw error;
 }
 
-async function generateActorReference({ prompt = '', filename = '', aspectRatio = '3:4', imageModel = 'auto' } = {}) {
+async function generateActorReference({
+  taskId = '',
+  prompt = '',
+  filename = '',
+  aspectRatio = '3:4',
+  imageModel = 'auto',
+  referenceImages = [],
+  requireReferences = false,
+  inputFidelity = 'high',
+  stage = 'new_story_ad.person_sheet',
+  clientRequestId = '',
+} = {}) {
   return generateImage({
-    stage: 'new_story_ad.person_sheet',
+    taskId,
+    stage,
     prompt,
     filename: filename || `new_story_actor_${Date.now()}`,
     aspectRatio,
     imageModel,
+    referenceImages,
+    requireReferences,
+    inputFidelity,
+    clientRequestId,
   });
 }
 

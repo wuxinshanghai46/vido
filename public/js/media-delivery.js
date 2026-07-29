@@ -5,6 +5,115 @@
   const PUBLIC_MEDIA_ROUTE = /^(?:\/api\/(?:assets\/file|portrait\/image|comic\/image|drama\/tasks\/[^/]+\/image|ai-cap\/file|story\/character-image|i2v\/images|new-story-ad\/assets)|\/public\/(?:jimeng-assets|workflow-assets|dh-assets)\/)/i;
   const processedVideos = new WeakSet();
   const warmed = new Set();
+  const performanceState = {
+    version: 1,
+    lcp_ms: 0,
+    cls: 0,
+    inp_ms: 0,
+    long_task_count: 0,
+    max_long_task_ms: 0
+  };
+
+  function performanceSnapshot() {
+    const timing = window.performance;
+    if (!timing?.getEntriesByType) return null;
+    const navigation = timing.getEntriesByType('navigation')[0];
+    const resources = timing.getEntriesByType('resource');
+    const totals = {
+      initial_js_bytes: 0,
+      initial_css_bytes: 0,
+      initial_api_bytes: 0,
+      initial_image_bytes: 0,
+      initial_video_bytes: 0,
+      request_count: resources.length
+    };
+    const resourceItems = resources.map(entry => {
+      const bytes = Number(entry.transferSize || entry.encodedBodySize || 0);
+      let pathname = '';
+      try {
+        pathname = new URL(entry.name, location.origin).pathname.toLowerCase();
+      } catch {
+        pathname = String(entry.name || '').toLowerCase();
+      }
+      if (pathname.startsWith('/api/')) totals.initial_api_bytes += bytes;
+      if (entry.initiatorType === 'script' || /\.m?js$/.test(pathname)) totals.initial_js_bytes += bytes;
+      if (entry.initiatorType === 'css' || /\.css$/.test(pathname)) totals.initial_css_bytes += bytes;
+      if (entry.initiatorType === 'img' || /\.(?:avif|gif|jpe?g|png|svg|webp)$/.test(pathname)) totals.initial_image_bytes += bytes;
+      if (entry.initiatorType === 'video' || /\.(?:m3u8|mov|mp4|webm)$/.test(pathname)) totals.initial_video_bytes += bytes;
+      return {
+        path: pathname,
+        type: entry.initiatorType || '',
+        bytes,
+        duration_ms: Math.round(entry.duration || 0)
+      };
+    });
+    return {
+      page: location.pathname,
+      navigation_type: navigation?.type || '',
+      ttfb_ms: Math.round(navigation?.responseStart || 0),
+      dom_interactive_ms: Math.round(navigation?.domInteractive || 0),
+      load_ms: Math.round(navigation?.loadEventEnd || 0),
+      ...performanceState,
+      ...totals,
+      top_resources: resourceItems
+        .filter(item => item.bytes > 0)
+        .sort((a, b) => b.bytes - a.bytes)
+        .slice(0, 12),
+      api_requests: resourceItems
+        .filter(item => item.path.startsWith('/api/'))
+        .sort((a, b) => b.bytes - a.bytes)
+        .slice(0, 12)
+    };
+  }
+
+  function publishPerformanceSnapshot() {
+    const snapshot = performanceSnapshot();
+    if (!snapshot) return;
+    const serialized = JSON.stringify(snapshot);
+    window.__VIDO_PERFORMANCE__ = serialized;
+    document.documentElement?.setAttribute('data-vido-performance', serialized);
+  }
+
+  function observePerformance() {
+    if (!window.performance?.getEntriesByType) return;
+    const register = (type, callback, options = {}) => {
+      if (!('PerformanceObserver' in window)) return;
+      try {
+        const observer = new PerformanceObserver(list => {
+          callback(list.getEntries());
+          publishPerformanceSnapshot();
+        });
+        observer.observe({ type, buffered: true, ...options });
+      } catch {
+        // Some browsers expose PerformanceObserver but not every entry type.
+      }
+    };
+    register('largest-contentful-paint', entries => {
+      const last = entries[entries.length - 1];
+      if (last) performanceState.lcp_ms = Math.round(last.startTime || last.renderTime || last.loadTime || 0);
+    });
+    register('layout-shift', entries => {
+      entries.forEach(entry => {
+        if (!entry.hadRecentInput) performanceState.cls = Number((performanceState.cls + (entry.value || 0)).toFixed(4));
+      });
+    });
+    register('event', entries => {
+      entries.forEach(entry => {
+        performanceState.inp_ms = Math.max(performanceState.inp_ms, Math.round(entry.duration || 0));
+      });
+    }, { durationThreshold: 40 });
+    register('longtask', entries => {
+      performanceState.long_task_count += entries.length;
+      entries.forEach(entry => {
+        performanceState.max_long_task_ms = Math.max(performanceState.max_long_task_ms, Math.round(entry.duration || 0));
+      });
+    });
+    publishPerformanceSnapshot();
+    addEventListener('load', () => {
+      publishPerformanceSnapshot();
+      setTimeout(publishPerformanceSnapshot, 2000);
+    }, { once: true });
+  }
 
   function localUrl(value = '') {
     const raw = String(value || '').trim();
@@ -147,5 +256,15 @@
     if (img?.dataset.mediaOriginal) warm(img.dataset.mediaOriginal, 1280);
   }, { passive: true });
 
-  window.VidoMediaDelivery = { stableCacheUrl, stableOriginalUrl, supportsPreview, previewUrl, processImage, processVideo, warm };
+  observePerformance();
+  window.VidoMediaDelivery = {
+    stableCacheUrl,
+    stableOriginalUrl,
+    supportsPreview,
+    previewUrl,
+    processImage,
+    processVideo,
+    warm,
+    performanceSnapshot
+  };
 })();

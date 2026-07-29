@@ -6,6 +6,7 @@ const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const { generateVideoClip } = require('../services/videoService');
+const { resolveStageSelection } = require('../services/pipelineSelectionService');
 const { isAdmin, ownedBy, scopeUserId } = require('../middleware/auth');
 
 // 统一归属校验 — /tasks/:id 子路由全部受保护
@@ -73,9 +74,11 @@ router.post('/generate', async (req, res) => {
   if (!image_url) {
     return res.status(400).json({ success: false, error: '请提供图片（上传或输入 URL）' });
   }
-  if (!video_provider || !video_model) {
-    return res.status(400).json({ success: false, error: '请选择视频模型' });
-  }
+  const selectedVideoModel = resolveStageSelection('imggen.i2v', {
+    providerId: video_provider,
+    modelId: video_model,
+  });
+  if (!selectedVideoModel) return res.status(503).json({ success: false, error: '模型调用管理中没有可用的图生视频模型' });
 
   const taskId = uuidv4();
 
@@ -98,8 +101,9 @@ router.post('/generate', async (req, res) => {
     image_url,
     resolved_image_url: resolvedImageUrl,
     prompt,
-    video_provider,
-    video_model,
+    video_provider: selectedVideoModel.provider_id,
+    video_model: selectedVideoModel.model_id,
+    model_source: selectedVideoModel.source,
     duration,
     aspect_ratio,
     status: 'processing',
@@ -118,8 +122,8 @@ router.post('/generate', async (req, res) => {
     duration,
     outputDir,
     filename: 'result',
-    video_provider,
-    video_model,
+    video_provider: selectedVideoModel.provider_id,
+    video_model: selectedVideoModel.model_id,
     image_url: resolvedImageUrl,
     aspectRatio: aspect_ratio
   }).then(result => {

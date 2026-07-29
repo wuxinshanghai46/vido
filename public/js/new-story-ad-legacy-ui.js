@@ -1071,6 +1071,7 @@
       scene_spec: sceneSpec,
       scene_assets: sceneAssets,
       scene_mode: within('#dhNsaAdSceneMode')?.value || 'auto',
+      reference_video_analysis: window.NewStoryAdReferenceVideoAnalysis?.taskPayload?.() || null,
       cast_profiles: castProfiles,
       person_context: {
         source: noHuman ? 'no_human_mode' : (animalOnly ? 'animal_only_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec')),
@@ -6385,8 +6386,7 @@
       });
     });
   }
-
-  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession };
+  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
   document.addEventListener('new-story-ad:mount', mount);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

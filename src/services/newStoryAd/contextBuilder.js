@@ -296,7 +296,7 @@ function normalizePersonAsset(input = null) {
       label: cleanText(view?.label || view?.name || '', 80),
       url: cleanText(view?.url || view?.image_url || view?.imageUrl || '', 1000),
       image_url: cleanText(view?.image_url || view?.url || view?.imageUrl || '', 1000),
-    })).filter(view => view.url || view.image_url).slice(0, 8) : [],
+    })).filter(view => view.url || view.image_url).slice(0, 24) : [],
     person_revision: Math.max(1, Number(input.person_revision || input.personRevision || input.person_contract?.person_revision || 1) || 1),
       person_contract: input.person_contract && typeof input.person_contract === 'object' ? input.person_contract : null,
       subject_board_url: cleanText(input.subject_board_url || input.subjectBoardUrl || '', 1000),
@@ -719,6 +719,21 @@ function buildContext(body = {}, user = {}) {
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
+    reference_video_analysis: body.reference_video_analysis && typeof body.reference_video_analysis === 'object' ? {
+      analysis_id: cleanText(body.reference_video_analysis.analysis_id || '', 100),
+      status: cleanText(body.reference_video_analysis.status || '', 30),
+      analysis_scope: 'creative_structure_only',
+      camera_intents: Array.isArray(body.reference_video_analysis.camera_intents)
+        ? body.reference_video_analysis.camera_intents.slice(0, 24)
+        : [],
+      character_actions: Array.isArray(body.reference_video_analysis.character_actions)
+        ? body.reference_video_analysis.character_actions.slice(0, 24)
+        : [],
+      scene_view_mapping: body.reference_video_analysis.scene_view_mapping && typeof body.reference_video_analysis.scene_view_mapping === 'object'
+        ? body.reference_video_analysis.scene_view_mapping
+        : null,
+      identity_extraction_allowed: false,
+    } : null,
     scene_mode: ['auto', 'single', 'multi'].includes(cleanText(body.scene_mode || body.sceneMode || 'auto', 20))
       ? cleanText(body.scene_mode || body.sceneMode || 'auto', 20)
       : 'auto',

@@ -9,6 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../models/database');
 const { generateDrama, CAMERA_MOTIONS, SHOT_SCALES, MOTION_PRESETS, DRAMA_DIR } = require('../services/dramaService');
 const mediaDelivery = require('../services/mediaDeliveryService');
+const { resolveStageSelection, serializeSelection } = require('../services/pipelineSelectionService');
 
 const progressListeners = new Map();
 function dramaScriptModelOpts(extra = {}) {
@@ -613,6 +614,7 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (re
 
   try {
     const { generateDramaImage } = require('../services/imageService');
+    const project = db.getDramaProject(req.params.pid);
     const prompt = scene.full_prompt_en || scene.visual_prompt || scene.description;
     // 角色一致性: 用本场景出现角色的三视图作为 reference image
     const refImages = (scene.char_ref_images || []).filter(Boolean);
@@ -622,11 +624,18 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/generate-video', async (re
       return base + u;
     });
     const aspectRatio = ep.result?.aspect_ratio || '9:16';
+    const imageSelection = resolveStageSelection('drama.scene_image', {
+      combined: req.body.image_model || project?.image_model || '',
+    });
+    if (!imageSelection) {
+      return res.status(503).json({ success: false, error: '模型调用管理中没有可用的网剧场景图片模型' });
+    }
     const imgResult = await generateDramaImage({
       prompt,
       filename: `drama_${ep.id}_s${idx}`,
       aspectRatio,
       referenceImages: absRefImages,
+      image_model: serializeSelection(imageSelection),
     });
     const taskDir = path.join(DRAMA_DIR, ep.id);
     fs.mkdirSync(taskDir, { recursive: true });
@@ -705,11 +714,10 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/make-video', async (req, r
     }
 
     // 从请求或项目中获取视频模型
-    const videoModel = req.body.video_model || ep.result?.video_model || '';
-    let videoProvider = '', videoModelId = '';
-    if (videoModel && videoModel.includes('::')) {
-      [videoProvider, videoModelId] = videoModel.split('::');
-    }
+    const selectedVideoModel = resolveStageSelection('drama.video_clip', {
+      combined: req.body.video_model || ep.result?.video_model || project?.video_model || '',
+    });
+    if (!selectedVideoModel) return res.status(503).json({ success: false, error: '模型调用管理中没有可用的网剧视频模型' });
 
     const taskDir = path.join(DRAMA_DIR, ep.id);
     fs.mkdirSync(taskDir, { recursive: true });
@@ -718,8 +726,8 @@ router.post('/projects/:pid/episodes/:eid/scenes/:idx/make-video', async (req, r
     const result = await generateVideoClip({
       prompt,
       image_url: imageUrl,
-      video_provider: videoProvider || undefined,
-      video_model: videoModelId || undefined,
+      video_provider: selectedVideoModel.provider_id,
+      video_model: selectedVideoModel.model_id,
       duration: scene.duration || 5,
       scene_index: idx,
       project_id: ep.id,
@@ -1005,11 +1013,16 @@ router.post('/projects/:pid/episodes/:eid/generate-all-videos', async (req, res)
   res.json({ success: true, data: { total: scenes.length, started: true } });
 
   const { generateVideoClip } = require('../services/videoService');
+  const project = db.getDramaProject(req.params.pid);
   const taskDir = path.join(DRAMA_DIR, ep.id);
   fs.mkdirSync(taskDir, { recursive: true });
-  const videoModel = req.body.video_model || ep.result?.video_model || '';
-  let videoProvider = '', videoModelId = '';
-  if (videoModel && videoModel.includes('::')) [videoProvider, videoModelId] = videoModel.split('::');
+  const selectedVideoModel = resolveStageSelection('drama.video_clip', {
+    combined: req.body.video_model || ep.result?.video_model || project?.video_model || '',
+  });
+  if (!selectedVideoModel) {
+    db.updateDramaEpisode(ep.id, { message: '模型调用管理中没有可用的网剧视频模型' });
+    return;
+  }
 
   let done = 0, failed = 0;
   for (let i = 0; i < scenes.length; i++) {
@@ -1027,8 +1040,8 @@ router.post('/projects/:pid/episodes/:eid/generate-all-videos', async (req, res)
       const result = await generateVideoClip({
         prompt,
         image_url: fs.existsSync(imgPath) ? imgPath : null,
-        video_provider: videoProvider || undefined,
-        video_model: videoModelId || undefined,
+        video_provider: selectedVideoModel.provider_id,
+        video_model: selectedVideoModel.model_id,
         duration: scene.duration || 5,
         scene_index: i,
         project_id: ep.id,
