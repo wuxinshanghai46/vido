@@ -9,7 +9,7 @@ const username = process.env.VIDO_DEPLOY_USER || 'root';
 const password = process.env.VIDO_DEPLOY_PASSWORD || '';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const taskId = process.env.VIDO_SCENE_AUDIT_TASK_ID || 'd36055d2-890d-444f-9a6b-33d23bb2e2bc';
-const cacheVersion = '20260729-reference-video-modal-liblib-v59';
+const cacheVersion = '20260729-person-modal-assist-camera-v60';
 const files = [
   'public/digital-human.html',
   'public/css/digital-human-wizard.css',

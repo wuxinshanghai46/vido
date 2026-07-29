@@ -254,6 +254,7 @@
       {
         method: request.method || 'POST',
         signal,
+        timeoutMs: Number(request.timeoutMs) || undefined,
         body: {
           ...body,
           task_id: body.task_id || body.taskId || taskId || undefined,

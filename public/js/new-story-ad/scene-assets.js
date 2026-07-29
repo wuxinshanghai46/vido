@@ -405,10 +405,12 @@
     return true;
   }
 
-  function cameraAcceptanceHtml(asset = {}, assessment = {}) {
+  function cameraAcceptanceHtml(asset = {}, assessment = {}, assetIndex = 0) {
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
     const cameras = Array.isArray(contract.cameras) ? contract.cameras : [];
-    const layoutView = (Array.isArray(asset.view_images) ? asset.view_images : [])
+    const views = Array.isArray(asset.view_images) ? asset.view_images : [];
+    const layoutIndex = views.findIndex(view => clean(view?.key || view?.view, 40) === 'layout');
+    const layoutView = views
       .find(view => clean(view?.key || view?.view, 40) === 'layout');
     const layoutUrl = clean(layoutView?.url || layoutView?.image_url || contract.layout_contract?.reference_image_url || '', 1000);
     const cameraQa = assessment.cameraDesignQa || contract.camera_design_qa || {};
@@ -427,7 +429,7 @@
       && value.every(number => Number.isFinite(Number(number)));
     const mappedCameras = cameras.filter(camera => validPoint(camera.normalized_position) && validPoint(camera.look_at));
     const colors = { master: '#38bdf8', reverse: '#a78bfa', interaction: '#34d399', detail: '#f59e0b' };
-    const mapHtml = layoutUrl ? `<div class="dh-nsa-camera-map">
+    const mapHtml = layoutUrl ? `<button type="button" class="dh-nsa-camera-map" data-nsa-scene-preview="${assetIndex}:${layoutIndex >= 0 ? layoutIndex : 0}" aria-label="放大查看机位俯视定位图" title="点击放大查看机位俯视定位图">
       <img src="${escapeHtml(thumbUrl(layoutUrl, 720))}" alt="机位俯视定位图" loading="lazy" decoding="async">
       <svg viewBox="0 0 100 100" role="img" aria-label="机位位置和拍摄方向（视觉估算）">
         <defs><marker id="dhNsaCameraArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="context-stroke"></path></marker></defs>
@@ -441,7 +443,7 @@
         }).join('')}
       </svg>
       <small>点位、方向和角度均为视觉 QA 根据俯视图与透视图作出的估算，不是相机 EXIF；用于核对需求覆盖和机位差异。</small>
-    </div>` : '<div class="dh-nsa-camera-map is-missing"><b>缺少俯视定位图</b><span>无法把各机位映射到空间布局。</span></div>';
+    </button>` : '<div class="dh-nsa-camera-map is-missing"><b>缺少俯视定位图</b><span>无法把各机位映射到空间布局。</span></div>';
     const rows = cameras.length ? cameras.map(camera => {
       const requirementRefs = (Array.isArray(camera.requirement_refs) ? camera.requirement_refs : [])
         .map(value => requirementLabels[value] || value).filter(Boolean);
@@ -451,7 +453,9 @@
         camera.view_id === 'reverse' && Number.isFinite(Number(camera.azimuth_delta_from_master_degrees))
           ? `较主机位变化 ${Math.round(Number(camera.azimuth_delta_from_master_degrees))}°` : '',
       ].filter(Boolean).join(' · ');
-      return `<div class="dh-nsa-camera-row ${camera.pass === true ? 'is-pass' : 'is-pending'}">
+      const cameraViewIndex = views.findIndex(view => clean(view?.key || view?.view, 40) === clean(camera.view_id, 40));
+      const previewIndex = cameraViewIndex >= 0 ? cameraViewIndex : layoutIndex;
+      return `<button type="button" class="dh-nsa-camera-row ${camera.pass === true ? 'is-pass' : 'is-pending'}" ${previewIndex >= 0 ? `data-nsa-scene-preview="${assetIndex}:${previewIndex}"` : 'disabled'} aria-label="放大查看${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}效果" title="${previewIndex >= 0 ? '点击放大查看对应机位效果' : '当前机位缺少可预览图片'}">
         <div><b>${escapeHtml(VIEW_LABELS[camera.view_id] || camera.label || camera.view_id)}</b><em>${camera.pass === true ? '证据完整' : '待补证据'}</em></div>
         <span><small>用途</small>${escapeHtml(camera.role || '待补充')}</span>
         <span><small>参数</small>${escapeHtml([camera.framing, camera.lens_class, camera.height_class].filter(Boolean).join(' · ') || '待补充')}</span>
@@ -459,7 +463,7 @@
         <span><small>目标区域</small>${escapeHtml(camera.target_description || '待补充')}</span>
         <span><small>对应要求</small>${escapeHtml(requirementRefs.join('、') || '待映射')}</span>
         <span class="dh-nsa-camera-evidence"><small>可见证据</small>${escapeHtml(camera.visible_evidence || '待补充')}</span>
-      </div>`;
+      </button>`;
     }).join('') : '<div class="dh-nsa-camera-empty">当前合同没有逐机位参数，必须再次验证补齐后才能进入关键帧。</div>';
     return `<details class="dh-nsa-camera-acceptance">
       <summary><span><b>机位设计验收</b><small>逐机位参数、俯视定位、需求映射与可见证据</small></span><em class="${cameraQa.pass === true ? 'is-pass' : 'is-pending'}">${escapeHtml(scoreText)}</em></summary>
@@ -1300,7 +1304,7 @@
             <div class="${assessment.crossViewQa.pass === true ? 'is-pass' : 'is-pending'}"><small>跨视图一致性</small><b>${escapeHtml(metricValue(assessment.crossViewScore))}</b><span>结构、材质与场景身份</span></div>
             <div class="${assessment.spatialQa.pass === true && assessment.layoutAvailable ? 'is-pass' : 'is-pending'}"><small>空间覆盖度</small><b>${escapeHtml(metricValue(assessment.spatialScore))}</b><span>${assessment.layoutAvailable ? '俯视拓扑与机位覆盖' : '缺少可用俯视布局'}</span></div>
           </div>
-          ${cameraAcceptanceHtml(asset, assessment)}
+          ${cameraAcceptanceHtml(asset, assessment, selectedIndex)}
           ${!qaPassed && state.taskId ? `<div class="dh-nsa-verification-row"><span class="dh-nsa-verification-badge is-${escapeHtml(sceneVerification.tone)}">${escapeHtml(verificationBadgeText)}</span>${canUpgrade ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-upgrade="${escapeHtml(asset.scene_id || asset.id)}">升级当前空间（2 次图片调用）</button>` : ''}${canReverify ? `<button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-scene-verify="${escapeHtml(asset.scene_id || asset.id)}">再次验证（不重新生成）</button>` : ''}${canRepair ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">自动修复：${escapeHtml(repairLabels)}（${repairCount} 张）</button>` : ''}${canRebuildAtlas ? `<button type="button" class="dh-btn dh-btn-primary dh-btn-sm" data-nsa-scene-repair="${escapeHtml(asset.scene_id || asset.id)}">重建空间母图与布局（2 次图片调用）</button>` : ''}${canUpgrade ? '<span class="dh-nsa-verification-hint">系统会先补齐空间设定，再生成一张 2×2 母图、本地裁切 4 个视角并生成 1 张俯视布局；旧版图片保留。</span>' : legacyUpgradeHint}${canReverify ? '<span class="dh-nsa-verification-hint">本操作只重试视觉审核，不会调用图片模型，也不会产生新的图片费用。</span>' : ''}${canRepair ? `<span class="dh-nsa-verification-hint">系统只重做：${escapeHtml(repairLabels)}，保留其余通过视图并自动复验。</span>` : ''}${canRebuildAtlas ? '<span class="dh-nsa-verification-hint">四个透视视角来自同一母图，不能单独重做某一格；本次会重建母图和俯视布局，避免视角之间身份漂移。</span>' : ''}</div>${verificationDetailsHtml(sceneVerification, escapeHtml)}` : ''}
           <div class="dh-nsa-scene-views">
             ${atlasUrl ? `<button type="button" class="dh-nsa-scene-view is-atlas" data-nsa-scene-preview="${selectedIndex}:atlas">

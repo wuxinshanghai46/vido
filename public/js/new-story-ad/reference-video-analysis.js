@@ -92,7 +92,7 @@
     const completed = analysis.status === 'completed' && !!analysis.result;
     if (draft) draft.hidden = !completed;
     if (status && completed) {
-      status.textContent = '中文分析内容已自动填入上方“广告需求”文本框，可直接检查和修改。';
+      status.textContent = '完整剧情、人物提示词、场景提示词、动作和机位运镜已填入“广告需求”，修改后会以你的版本进入剧情生成。';
     }
     if (completed && fillRequirementFromAnalysis(analysis)) setModal(false);
   }
@@ -446,8 +446,14 @@
         analysis_id: analysis.id,
         status: analysis.status,
         analysis_scope: 'creative_structure_only',
+        generated_brief: analysis.result?.generated_brief || '',
+        story_outline: analysis.result?.story_outline || {},
+        plot_beats: analysis.result?.plot_beats || [],
+        character_prompts: analysis.result?.character_prompts || [],
+        scene_prompts: analysis.result?.scene_prompts || [],
         camera_intents: analysis.result?.camera_intents || [],
         character_actions: analysis.result?.character_actions || [],
+        prompt_suggestions: analysis.result?.prompt_suggestions || {},
         scene_view_mapping: analysis.scene_view_mapping || null,
         identity_extraction_allowed: false,
       };

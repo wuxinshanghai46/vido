@@ -1365,6 +1365,10 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-subject-profile > .dh-luxgen-person-spec { margin: 0; padding: 13px; }
 .dh-nsa-subject-profile-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
 .dh-nsa-subject-profile-actions small { color: var(--dh-text-muted); line-height: 1.4; }
+.dh-nsa-subject-assist-status { min-height: 18px; }
+.dh-nsa-subject-assist-status.is-running { color: var(--dh-primary); }
+.dh-nsa-subject-assist-status.is-success { color: #86efac; }
+.dh-nsa-subject-assist-status.is-error { color: #fb7185; }
 .dh-nsa-cast-mode-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(56,189,248,.24); border-radius: 10px; background: rgba(56,189,248,.055); }
 .dh-nsa-cast-mode-quick > span { color: var(--dh-text); font-size: 12px; font-weight: 900; margin-right: 2px; }
 .dh-nsa-cast-mode-quick > button { min-height: 34px; padding: 0 13px; border: 1px solid var(--dh-border); border-radius: 999px; background: var(--dh-surface); color: var(--dh-text-soft); font: inherit; font-size: 12px; font-weight: 850; cursor: pointer; }
@@ -2504,13 +2508,20 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 }
 .dh-nsa-camera-map {
   position: relative;
+  width: 100%;
+  padding: 0;
   min-width: 0;
   align-self: start;
   overflow: hidden;
   border: 1px solid var(--dh-border);
   border-radius: 9px;
   background: #05070b;
+  color: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  transition: border-color .18s ease, transform .18s ease;
 }
+.dh-nsa-camera-map:hover { border-color: var(--dh-primary); transform: translateY(-1px); }
 .dh-nsa-camera-map img { width: 100%; aspect-ratio: 4 / 3; display: block; object-fit: cover; opacity: .68; }
 .dh-nsa-camera-map svg { position: absolute; inset: 0 0 26px; width: 100%; height: calc(100% - 26px); }
 .dh-nsa-camera-map svg text { font-size: 4px; font-weight: 900; paint-order: stroke; stroke: rgba(0,0,0,.9); stroke-width: 1px; }
@@ -2528,6 +2539,7 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-nsa-camera-table { min-width: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
 .dh-nsa-camera-row {
   min-width: 0;
+  width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 7px;
@@ -2535,7 +2547,14 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
   border: 1px solid var(--dh-border);
   border-radius: 10px;
   background: color-mix(in srgb, var(--dh-surface) 84%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  transition: border-color .18s ease, transform .18s ease, background-color .18s ease;
 }
+.dh-nsa-camera-row:hover { border-color: var(--dh-primary); background: color-mix(in srgb, var(--dh-primary) 7%, var(--dh-surface)); transform: translateY(-1px); }
+.dh-nsa-camera-row:disabled { cursor: default; opacity: .72; transform: none; }
 .dh-nsa-camera-row.is-pass { border-color: rgba(34,197,94,.28); }
 .dh-nsa-camera-row.is-pending { border-color: rgba(245,158,11,.32); }
 .dh-nsa-camera-row > div,
@@ -4333,6 +4352,10 @@ body.dh-nsa-reference-modal-open {
   overflow: hidden;
 }
 
+body.dh-nsa-workbench-modal-open {
+  overflow: hidden;
+}
+
 .dh-nsa-reference-video-modal[hidden] {
   display: none;
 }
@@ -4502,6 +4525,11 @@ body.dh-nsa-reference-modal-open {
   margin-top: 12px;
 }
 
+.dh-nsa-real-person-dialog {
+  width: min(940px, calc(100vw - 32px));
+  max-height: min(860px, calc(100vh - 48px));
+}
+
 .dh-nsa-real-person-controls > div,
 .dh-nsa-real-person-controls fieldset,
 .dh-nsa-real-person-wardrobe {
@@ -4523,6 +4551,36 @@ body.dh-nsa-reference-modal-open {
   padding: 0 5px;
   color: var(--dh-text-soft);
   font-size: 12px;
+}
+
+.dh-nsa-wardrobe-assist {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 0 !important;
+}
+
+.dh-nsa-wardrobe-assist small {
+  color: var(--dh-text-muted);
+  line-height: 1.5;
+}
+
+.dh-nsa-wardrobe-assist small.is-running { color: var(--dh-primary); }
+.dh-nsa-wardrobe-assist small.is-success { color: #86efac; }
+.dh-nsa-wardrobe-assist small.is-error { color: #fb7185; }
+
+@media (max-width: 760px) {
+  .dh-nsa-real-person-dialog {
+    width: 100%;
+    max-height: 90vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .dh-nsa-wardrobe-assist {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .dh-nsa-real-person-controls textarea {

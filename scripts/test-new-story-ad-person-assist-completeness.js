@@ -80,6 +80,76 @@ function testGeneratedActorAgeConstraintDoesNotDowngrade() {
   assert.match(legacySource, /personAgeValue\(structuredAge \|\| \(!spec\.age \? asset\.description \|\| '' : ''\)\) \|\| spec\.age/);
 }
 
+/** 回归：按钮重渲染后仍应显示进行中/成功状态，并使用足以覆盖服务端模型等待的超时。 */
+async function testSinglePersonAssistHasPersistentFeedback() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-profile-assist.js'), 'utf8');
+  let capturedRequest = null;
+  const renderedStatuses = [];
+  const sandbox = {
+    document: {},
+    window: {
+      NewStoryAdSubjectAssetsUI: {
+        syncProfileFieldsFromDom() {},
+        normalizeHumanProfile(profile = {}, index = 0) {
+          return {
+            id: profile.id || `cast_${index + 1}`,
+            displayName: profile.displayName || '',
+            roleName: profile.roleName || '',
+            appearanceText: profile.appearanceText || '',
+            wardrobeText: profile.wardrobeText || '',
+            hairMakeupText: profile.hairMakeupText || '',
+            negativeText: profile.negativeText || '',
+          };
+        },
+      },
+      NewStoryAdGenerationFlow: {
+        async requestInlineGeneration(stage, context, request) {
+          assert.equal(stage, 'assist_person_profile');
+          capturedRequest = request;
+          return {
+            cast_profiles: [{
+              id: 'cast_2',
+              displayName: '小杰',
+              roleName: '儿子',
+              appearanceText: '八岁东亚男孩，圆脸，真实自然。',
+              wardrobeText: '蓝白条纹短袖、卡其短裤和白色运动鞋。',
+              hairMakeupText: '自然黑色短发，不佩戴帽子和眼镜。',
+              negativeText: '禁止改变年龄、发型、服装、鞋和配饰。',
+            }],
+            assist_subject_target: { kind: 'human', index: 1, id: 'cast_2' },
+          };
+        },
+      },
+    },
+  };
+  vm.runInNewContext(source, sandbox);
+  const state = {
+    castProfiles: [
+      { id: 'cast_1', displayName: '林悦', roleName: '母亲', appearanceText: '完整外貌', wardrobeText: '完整服装', hairMakeupText: '完整发型', negativeText: '完整禁止项' },
+      { id: 'cast_2', displayName: '', roleName: '', appearanceText: '', wardrobeText: '', hairMakeupText: '', negativeText: '' },
+    ],
+    petProfiles: [{ id: 'pet_1', name: '雪球' }],
+  };
+  const changed = await sandbox.window.NewStoryAdSubjectProfileAssist.assistHumanProfile({
+    state,
+    index: 1,
+    api: async () => ({}),
+    buildPayload: () => ({ brief: '家庭剧情广告' }),
+    collectSpec: () => ({ castMode: 'human_pet' }),
+    renderAll: () => renderedStatuses.push(state.subjectAssistStatus?.[1]?.status || ''),
+    setBusy() {},
+    setButtonBusy() {},
+    toast() {},
+  });
+  assert.equal(changed, true);
+  assert.equal(capturedRequest.timeoutMs, 120000);
+  assert.ok(renderedStatuses.includes('running'), '请求期间必须留下可见的进行中状态');
+  assert.equal(state.subjectAssistStatus[1].status, 'success');
+  assert.match(state.subjectAssistStatus[1].message, /已补齐 6 项/);
+  assert.equal(state.castProfiles[0].displayName, '林悦', '不得改写其他人物');
+  assert.equal(state.petProfiles[0].name, '雪球', '不得改写宠物');
+}
+
 /** 验证真实 assist 服务在模型部分返回时也会输出完整人物设定。 */
 async function testAssistServiceCompletesPartialResponse() {
   const originalGenerateText = modelGateway.generateText;
@@ -234,6 +304,7 @@ async function main() {
   testExistingUserDetailsArePreserved();
   testFrontendCompletenessGuardIsWired();
   testGeneratedActorAgeConstraintDoesNotDowngrade();
+  await testSinglePersonAssistHasPersistentFeedback();
   testSceneAssistFallbackIsComplete();
   await testAssistServiceCompletesPartialResponse();
   await testSinglePersonAssistIsScoped();

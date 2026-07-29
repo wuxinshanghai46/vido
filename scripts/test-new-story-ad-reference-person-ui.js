@@ -9,6 +9,8 @@ const html = read('public/digital-human.html');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
 const referenceUi = read('public/js/new-story-ad/reference-video-analysis.js');
 const personUi = read('public/js/new-story-ad/real-person-dossier.js');
+const subjectAssist = read('public/js/new-story-ad/subject-profile-assist.js');
+const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const routes = read('src/routes/newStoryAd.js');
 const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
@@ -28,8 +30,13 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
   'dhNsaReferenceVideoDraftStatus',
   'dhNsaReferenceVideoSceneMapping',
   'dhNsaRealPersonIdentityFile',
+  'dhNsaRealPersonOpen',
+  'dhNsaRealPersonModal',
+  'dhNsaRealPersonClose',
   'dhNsaRealPersonRights',
   'dhNsaRealPersonAdult',
+  'dhNsaSuggestWardrobe',
+  'dhNsaWardrobeSuggestionStatus',
   'dhNsaGenerateOutfitCandidates',
   'dhNsaPersonCandidates',
   'dhNsaPersonDossier',
@@ -44,7 +51,7 @@ const personIndex = bootstrap.indexOf('/js/new-story-ad/real-person-dossier.js')
 const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
 assert.ok(referenceIndex > 0 && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
 
-assert.ok(html.includes('不提取人物身份或服装'));
+assert.ok(html.includes('不复制原片真人身份、肖像或服装'));
 assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not require merge/replace buttons');
 assert.ok(referenceUi.includes('fillRequirementFromAnalysis'));
 assert.ok(referenceUi.includes("'/api/new-story-ad/reference-video-links'"));
@@ -59,8 +66,23 @@ assert.ok(referenceUi.includes("$('#dhNsaAdText')"));
 assert.ok(referenceUi.includes("input.dispatchEvent(new Event('input'"));
 assert.ok(referenceUi.includes('中文内容已填入广告需求文本框'));
 assert.ok(referenceUi.includes('map-scene-views'));
+assert.ok(html.includes('id="dhNsaAdText" maxlength="5000"'), 'complete editable analysis brief must not be truncated to the former 1800-character limit');
+assert.ok(html.includes('完整剧情、原创人物提示词、场景提示词'));
+assert.ok(referenceUi.includes('story_outline: analysis.result?.story_outline'));
+assert.ok(referenceUi.includes('character_prompts: analysis.result?.character_prompts'));
+assert.ok(referenceUi.includes('scene_prompts: analysis.result?.scene_prompts'));
+assert.ok(referenceUi.includes('prompt_suggestions: analysis.result?.prompt_suggestions'));
 assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
 assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not read real-person state');
+assert.ok(personUi.includes('setModal(true)'), 'real-person studio must open in a modal');
+assert.ok(personUi.includes("event.key === 'Escape' && state.modalOpen"), 'real-person modal must close with Escape');
+assert.ok(personUi.includes('suggestWardrobe()'), 'real-person studio must provide AI wardrobe guidance');
+assert.ok(personUi.includes("mode() === 'ai_outfit'"), 'AI outfit mode must validate a concrete wardrobe brief');
+assert.ok(personUi.includes('请先填写换装要求，或点击“AI 推荐换装”'));
+assert.ok(personUi.includes('timeoutMs: 120000'), 'wardrobe text assist must not use the generic 45-second timeout');
+assert.ok(subjectAssist.includes('subjectAssistStatus'), 'single-person assist must persist visible inline feedback across rerenders');
+assert.ok(subjectAssist.includes('timeoutMs: 120000'), 'single-person assist must wait longer than the backend model timeout');
+assert.ok(generationFlow.includes('timeoutMs: Number(request.timeoutMs) || undefined'), 'inline generation must forward its stage-specific timeout');
 
 assert.ok(legacy.includes('reference_video_analysis'));
 assert.ok(legacy.includes('adoptPersonDossier'));
@@ -83,9 +105,9 @@ assert.ok(personService.includes('previous_frame_dependency'));
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 50,
+  checks: 71,
   reference_feature_controls: 11,
-  person_feature_controls: 6,
+  person_feature_controls: 11,
   dossier_tabs: 5,
   isolation_boundary: 'pass',
   strict_reference_contract: 'pass',

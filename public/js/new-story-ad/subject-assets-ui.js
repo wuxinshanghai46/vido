@@ -21,7 +21,6 @@
     }).filter(view => view.url && !seen.has(view.url) && seen.add(view.url));
   }
 
-  /** 汇总当前任务全部主体；每个成员保持自己的视图数组，不按模式复制展示分支。 */
   function subjectMembers(personAsset = null, petProfiles = []) {
     const cast = Array.isArray(personAsset?.cast_assets) && personAsset.cast_assets.length
       ? personAsset.cast_assets
@@ -40,7 +39,6 @@
     return `${kind}:${clean(id, 260)}`;
   }
 
-  /** 渲染按需加载的统一主体图库；首图立即显示，四视图仅在展开时请求缩略图。 */
   function subjectGalleryHtml(personAsset = null, petProfiles = [], {
     escapeHtml = value => String(value),
     assetThumbUrl = value => value,
@@ -388,10 +386,11 @@
     const ageField = (index, value) => age?.selectHtml?.(index, value, escapeHtml) || '';
     const humans = (state.castProfiles || []).map((raw, index) => {
       const item = normalizeHumanProfile(raw, index);
+      const assist = state.subjectAssistStatus?.[index];
       return `<details class="dh-nsa-subject-profile" open>
         <summary><b>人物 ${index + 1}</b><span>${escapeHtml(item.displayName || item.roleName || '资料待补齐')}</span></summary>
         <div class="dh-luxgen-person-spec">
-          <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}">AI 辅助补齐该人物</button><small>只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。</small></div>
+          <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}" ${assist?.status === 'running' ? 'disabled' : ''}>AI 辅助补齐该人物</button><small class="is-${escapeHtml(assist?.status || 'idle')}" aria-live="polite">${escapeHtml(assist?.message || '只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。')}</small></div>
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
           ${field('cast', index, 'roleName', '剧情身份 / 关系', item.roleName, { placeholder: '如：母亲、8岁女儿、品牌顾问' })}
           ${ageField(index, item.age)}

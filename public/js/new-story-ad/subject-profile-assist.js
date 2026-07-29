@@ -32,6 +32,26 @@
     return true;
   }
 
+  const FIELD_LABELS = {
+    displayName: '姓名',
+    roleName: '剧情身份',
+    appearanceText: '外貌气质',
+    wardrobeText: '服装',
+    hairMakeupText: '发型妆造',
+    negativeText: '禁止项',
+  };
+
+  function blankProfileFields(profile = {}) {
+    return Object.keys(FIELD_LABELS).filter(key => !clean(profile[key]));
+  }
+
+  function setAssistStatus(state = {}, index = 0, status = 'idle', message = '') {
+    state.subjectAssistStatus = {
+      ...(state.subjectAssistStatus && typeof state.subjectAssistStatus === 'object' ? state.subjectAssistStatus : {}),
+      [index]: { status, message, updatedAt: Date.now() },
+    };
+  }
+
   async function assistHumanProfile({
     state = {}, index = 0, api, buildPayload, collectSpec, renderAll, setBusy, setButtonBusy, toast, button, onChanged,
   } = {}) {
@@ -39,6 +59,15 @@
     if (!ui || typeof api !== 'function' || !Array.isArray(state.castProfiles) || !state.castProfiles[index]) return false;
     ui.syncProfileFieldsFromDom?.(state, document);
     const current = ui.normalizeHumanProfile(state.castProfiles[index], index);
+    const blanksBefore = blankProfileFields(current);
+    if (!blanksBefore.length) {
+      setAssistStatus(state, index, 'success', '该人物必填资料已完整，没有需要补齐的空白字段。');
+      renderAll?.();
+      toast?.('该人物资料已完整；如需改写，请直接修改对应字段。', 'info');
+      return false;
+    }
+    setAssistStatus(state, index, 'running', `正在根据当前剧情补齐：${blanksBefore.map(key => FIELD_LABELS[key]).join('、')}…`);
+    renderAll?.();
     setButtonBusy?.(button, true, '补齐中...');
     try {
       const response = await window.NewStoryAdGenerationFlow.requestInlineGeneration(
@@ -54,14 +83,34 @@
           pet_profiles: state.petProfiles || [],
           assist_subject_target: { kind: 'human', index, id: current.id },
         },
+          timeoutMs: 120000,
         },
       );
       const changed = mergeHumanProfile(state, index, response);
+      const next = ui.normalizeHumanProfile(state.castProfiles[index], index);
+      const filled = blanksBefore.filter(key => clean(next[key]));
+      setAssistStatus(
+        state,
+        index,
+        changed ? 'success' : 'idle',
+        changed
+          ? `已补齐 ${filled.length} 项：${filled.map(key => FIELD_LABELS[key]).join('、')}。`
+          : 'AI 已返回，但当前人物没有可安全写入的空白字段。',
+      );
       if (changed) onChanged?.();
       renderAll?.();
       toast?.(changed ? `已只补齐${current.displayName || `人物 ${index + 1}`}的空白资料，其他主体未改动` : '该人物没有可补齐的空白字段', changed ? 'success' : 'info');
       return changed;
     } catch (error) {
+      setAssistStatus(
+        state,
+        index,
+        'error',
+        error?.code === 'USER_CANCELLED'
+          ? '本次辅助补齐已取消，没有写入人物档案。'
+          : `补齐失败：${error.message || '模型服务未响应'}，可以点击重试。`,
+      );
+      renderAll?.();
       toast?.(error.message || '单人物辅助补齐失败', 'error');
       return false;
     } finally {
@@ -69,5 +118,10 @@
     }
   }
 
-  window.NewStoryAdSubjectProfileAssist = { mergeHumanProfile, assistHumanProfile };
+  window.NewStoryAdSubjectProfileAssist = {
+    mergeHumanProfile,
+    assistHumanProfile,
+    blankProfileFields,
+    setAssistStatus,
+  };
 })();

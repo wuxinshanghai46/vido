@@ -664,18 +664,27 @@ function mockAnalysis(record, frames) {
   const duration = record.source.metadata.duration_seconds;
   const midpoint = Number((duration / 2).toFixed(2));
   return {
-    schema_version: 1,
+    schema_version: 2,
     analysis_scope: 'creative_structure_only',
-    prohibited_reuse: ['person_identity', 'face', 'wardrobe', 'private_attributes'],
+    prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
     summary: '参考片采用问题—转折—解决—行动号召结构，镜头由环境建立逐步推进到主体细节。',
     generated_brief: [
       '【广告目标】围绕产品核心痛点建立问题，并用清晰的使用结果完成说服。',
-      '【剧情结构】开场建立环境与冲突，中段展示行动和产品解决过程，结尾以结果特写与行动号召收束。',
-      '【人物与动作】使用通用角色，不复用参考视频人物身份；动作按起始姿态、关键动作、结束姿态编排。',
+      '【完整剧情】开场建立环境与问题，主角发现阻碍；中段通过明确行动使用产品解决问题；转折处突出产品带来的变化；结尾展示结果并以行动号召收束。',
+      '【人物提示词】原创成年主角，身份与当前产品目标用户相符；外貌自然可信，服装根据当前品牌和场景重新设计；保持年龄、发型、服装、配饰和表演气质跨镜一致。',
+      '【场景提示词】根据当前产品重新建立真实空间，写清布局、材质、光线、互动区域、商品位置和禁止项，不复制原片品牌与私有场景。',
+      '【人物动作】动作按起始姿态、关键动作、结束姿态编排，并写清手部接触、视线和表情变化。',
       '【场景与机位】先建立空间主机位，再使用互动机位和细节机位；实际机位将在场景资产生成后映射。',
       '【运镜与节奏】前段稳定建立，中段轻推或横移跟随，结尾减速停稳。',
       '【字幕与 CTA】字幕短句化，结尾保留明确行动号召。',
     ].join('\n'),
+    story_outline: {
+      logline: '主角遇到与当前产品有关的问题，通过清晰行动完成解决，并以可见结果建立购买理由。',
+      opening: '建立人物、空间和问题。',
+      development: '人物尝试解决并自然引出产品。',
+      turning_point: '产品发挥作用，人物态度和场景状态发生变化。',
+      resolution: '结果特写、价值总结和行动号召。',
+    },
     plot_beats: [
       { order: 1, purpose: '建立问题', range: [0, midpoint], rhythm: '中速' },
       { order: 2, purpose: '展示解决与结果', range: [midpoint, duration], rhythm: '先快后稳' },
@@ -731,10 +740,33 @@ function mockAnalysis(record, frames) {
         previous_frame_dependency: '延续上一镜头手部位置和产品朝向',
       },
     ],
+    character_prompts: [{
+      id: 'character_prompt_1',
+      role: '原创成年主角',
+      narrative_function: '发现问题、执行产品交互并展示结果',
+      age_range: '按当前目标用户判断，默认成年',
+      appearance_direction: '自然可信的真实商业人物，避免网红脸和过度磨皮',
+      wardrobe_direction: '根据当前品牌、职业身份和场景重新设计上衣、下装或裙装、鞋、配饰、颜色与材质，不复制原片服装',
+      performance_style: '表演克制自然，情绪由疑惑转为专注再到认可',
+      continuity_rules: '年龄感、脸型方向、发型、服装、鞋和配饰跨镜保持一致',
+      negative_prompt: '不要复刻原片真人身份、脸部或服装；不要夸张表情、塑料皮肤、肢体畸形和无关电子产品',
+    }],
+    scene_prompts: [{
+      id: 'scene_prompt_1',
+      beat_refs: [1, 2],
+      location_type: '与当前产品使用情境相符的真实空间',
+      layout_prompt: '建立入口、主行动区、产品交互区和结果展示区，空间关系连续可拍',
+      material_light_prompt: '材质、色彩、纹理与光线符合当前品牌定位，使用可信的自然光和商业重点光',
+      interaction_prompt: '预留人物行动路线、产品接触位置和主机位、互动机位、细节机位',
+      camera_purpose: '主机位建立空间，互动机位跟随动作，细节机位突出产品结果',
+      negative_prompt: '不要复制原片品牌、文字、水印或私有场景；不要结构漂移、材质失真和无关人物',
+    }],
     transcript: record.transcript || { status: record.source.metadata.has_audio ? 'provider_not_configured' : 'no_audio', text: '', segments: [] },
     subtitle_cta: { subtitle_style: '短句、结果导向', cta: '立即了解 / 立即体验' },
     prompt_suggestions: {
       plot: '以问题、行动、结果、CTA 四段结构生成原创广告内容。',
+      character: '根据当前目标用户重新设计原创人物，写清身份、年龄感、外貌气质、原创服装、表演和跨镜一致性。',
+      scene: '按当前产品重新设计场景，写清布局、材质、光线、互动区、机位用途和禁止项。',
       camera: '保持空间轴线，建立镜头后轻推，中段跟随动作，结尾停稳。',
       action: '每个动作写清起始、关键、结束、手部接触、视线和表情变化。',
     },
@@ -764,6 +796,9 @@ function buildChineseBrief(result = {}) {
   const beats = Array.isArray(result.plot_beats) ? result.plot_beats.slice(0, 6) : [];
   const cameras = Array.isArray(result.camera_intents) ? result.camera_intents.slice(0, 6) : [];
   const actions = Array.isArray(result.character_actions) ? result.character_actions.slice(0, 6) : [];
+  const characters = Array.isArray(result.character_prompts) ? result.character_prompts.slice(0, 6) : [];
+  const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts.slice(0, 8) : [];
+  const outline = result.story_outline && typeof result.story_outline === 'object' ? result.story_outline : {};
   const shotLabels = {
     wide: '全景',
     long_shot: '远景',
@@ -825,23 +860,58 @@ function buildChineseBrief(result = {}) {
       return `${index + 1}. ${start}，随后${action}，最后${end}`;
     }).join('；')
     : '人物动作按“起始姿态—关键动作—结束姿态”编排，并保持手部接触、视线和表情连续';
+  const outlineText = [
+    hasReadableChinese(outline.logline) ? `故事梗概：${String(outline.logline).trim()}` : '',
+    hasReadableChinese(outline.opening) ? `开端：${String(outline.opening).trim()}` : '',
+    hasReadableChinese(outline.development) ? `发展：${String(outline.development).trim()}` : '',
+    hasReadableChinese(outline.turning_point) ? `转折：${String(outline.turning_point).trim()}` : '',
+    hasReadableChinese(outline.resolution) ? `结局：${String(outline.resolution).trim()}` : '',
+  ].filter(Boolean).join('；') || beatText;
+  const characterText = characters.length
+    ? characters.map((item, index) => [
+      `${index + 1}. ${hasReadableChinese(item.role) ? String(item.role).trim() : `原创角色 ${index + 1}`}`,
+      hasReadableChinese(item.narrative_function) ? `剧情职责：${String(item.narrative_function).trim()}` : '',
+      hasReadableChinese(item.age_range) ? `年龄：${String(item.age_range).trim()}` : '',
+      hasReadableChinese(item.appearance_direction) ? `外貌气质：${String(item.appearance_direction).trim()}` : '',
+      hasReadableChinese(item.wardrobe_direction) ? `原创服装：${String(item.wardrobe_direction).trim()}` : '',
+      hasReadableChinese(item.performance_style) ? `表演：${String(item.performance_style).trim()}` : '',
+      hasReadableChinese(item.continuity_rules) ? `一致性：${String(item.continuity_rules).trim()}` : '',
+      hasReadableChinese(item.negative_prompt) ? `禁止项：${String(item.negative_prompt).trim()}` : '',
+    ].filter(Boolean).join('；')).join('\n')
+    : `1. 原创成年主角；剧情职责：执行产品交互并展示结果；外貌气质：自然可信的真实商业人物；原创服装：根据当前品牌、身份和场景重新设计；表演与动作：${actionText}；一致性：年龄感、发型、服装、鞋和配饰跨镜保持一致；禁止复制原片真人身份、肖像或服装`;
+  const sceneText = scenes.length
+    ? scenes.map((item, index) => [
+      `${index + 1}. ${hasReadableChinese(item.location_type) ? String(item.location_type).trim() : `原创场景 ${index + 1}`}`,
+      hasReadableChinese(item.layout_prompt) ? `布局：${String(item.layout_prompt).trim()}` : '',
+      hasReadableChinese(item.material_light_prompt) ? `材质与光线：${String(item.material_light_prompt).trim()}` : '',
+      hasReadableChinese(item.interaction_prompt) ? `互动与站位：${String(item.interaction_prompt).trim()}` : '',
+      hasReadableChinese(item.camera_purpose) ? `机位用途：${String(item.camera_purpose).trim()}` : '',
+      hasReadableChinese(item.negative_prompt) ? `禁止项：${String(item.negative_prompt).trim()}` : '',
+    ].filter(Boolean).join('；')).join('\n')
+    : '1. 根据当前产品重新建立真实可拍空间；布局：入口、行动区、产品交互区和结果展示区关系清晰；材质与光线：符合当前品牌定位；互动与站位：预留人物路线和产品接触位置；禁止复制原片品牌、文字、水印和私有场景';
   return [
     `【广告目标】${summary}`,
-    `【剧情结构】${beatText}`,
+    `【完整剧情】${outlineText}\n剧情节拍：${beatText}`,
+    `【人物提示词】${characterText}`,
+    `【场景提示词】${sceneText}`,
     `【人物动作】${actionText}`,
     '【场景与机位】先建立空间主机位，再按互动和细节需要选择场景机位；所有画面根据当前产品和品牌重新设计。',
     `【运镜与节奏】${cameraText}`,
     '【字幕与行动号召】字幕使用简短中文句式，突出产品结果，结尾保留明确的中文行动号召。',
-  ].join('\n').slice(0, 1800);
+  ].join('\n').slice(0, 3800);
 }
 
 async function analyzeWithModels(record, frames, transcript = {}) {
   const prompt = [
-    '分析这些按时间顺序截取的广告视频证据帧，只提取通用创意结构，禁止识别或复用人物身份、脸部特征、服装细节和私密属性。',
+    '分析这些按时间顺序截取的广告视频证据帧，反推完整剧情、分场景提示词、原创人物提示词、人物动作、机位、运镜、字幕和行动号召。',
+    '禁止识别或复用人物身份、脸部特征、原片服装和私密属性；人物提示词只能提取角色功能、年龄感、气质、表演规律，再根据当前广告目的生成可编辑的原创外貌与服装方向。',
     '所有面向用户阅读的自然语言内容必须使用简体中文，严禁输出英文句子。只有 movement、shot_size、angle 等供程序判断的枚举值可以使用英文代码。',
-    'summary、generated_brief、plot_beats.purpose/rhythm、character_actions 的角色/姿态/动作/接触/视线/表情、subtitle_cta 和 prompt_suggestions 必须全部是自然、具体的简体中文。',
-    'generated_brief 必须是可直接放入“广告需求”文本框供用户修改的中文成稿，使用【广告目标】【剧情结构】【人物动作】【场景与机位】【运镜与节奏】【字幕与行动号召】六段结构，控制在 1800 字以内。',
-    '输出严格 JSON 对象，字段必须包含 summary, generated_brief, plot_beats, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
+    'summary、generated_brief、story_outline、plot_beats、character_prompts、scene_prompts、character_actions、subtitle_cta 和 prompt_suggestions 的用户可见文字必须全部是自然、具体的简体中文。',
+    'generated_brief 必须是可直接放入“广告需求”文本框供用户修改、并交给后续剧情与剧本生成的中文成稿，使用【广告目标】【完整剧情】【人物提示词】【场景提示词】【人物动作】【场景与机位】【运镜与节奏】【字幕与行动号召】八段结构，控制在 3800 字以内。',
+    'story_outline 必须包含 logline、opening、development、turning_point、resolution，形成从开端到结局的完整故事，而不是只有节拍标签。',
+    'character_prompts 每个角色必须包含 role、narrative_function、age_range、appearance_direction、wardrobe_direction、performance_style、continuity_rules、negative_prompt；服装必须是适配当前品牌与场景的原创方向，不能复刻原片。',
+    'scene_prompts 每个独立物理空间必须包含 location_type、beat_refs、layout_prompt、material_light_prompt、interaction_prompt、camera_purpose、negative_prompt。',
+    '输出严格 JSON 对象，字段必须包含 summary, generated_brief, story_outline, plot_beats, character_prompts, scene_prompts, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
     'camera_intents 每项必须包含 range, movement, movement_subject, start_shot_size, end_shot_size, angle, lens_estimate_mm, direction, speed, stabilization, axis_rule, screen_direction, entry_exit, evidence_timestamps。',
     'character_actions 每项必须包含 role, start_pose, key_action, end_pose, dominant_hand, prop_contact, screen_direction, eyeline, expression_change, previous_frame_dependency。',
     `视频时长 ${record.source.metadata.duration_seconds} 秒；证据时间点：${frames.map(item => item.timestamp_seconds).join(', ')}。`,
@@ -850,7 +920,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
   const vision = await modelGateway.generateVision({
     taskId: record.id,
     stage: 'new_story_ad.reference_video_vision',
-    systemPrompt: '你是中文广告分镜和摄影分析师。仅分析结构、动作、场景、镜头和节奏，不做人脸身份识别。除程序枚举代码外，所有给用户阅读的内容必须输出简体中文。',
+    systemPrompt: '你是中文广告编剧、人物设定、场景美术和摄影分析师。输出完整可编辑的原创剧情、人物提示词、场景提示词、动作、镜头和节奏，但不得做人脸身份识别或复制原片真人肖像与服装。除程序枚举代码外，所有给用户阅读的内容必须输出简体中文。',
     userPrompt: prompt,
     imageUrls: frames.map(item => item.image_url).slice(0, 8),
     maxTokens: 6000,
@@ -862,9 +932,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     taskId: record.id,
   });
   return {
-    schema_version: 1,
+    schema_version: 2,
     analysis_scope: 'creative_structure_only',
-    prohibited_reuse: ['person_identity', 'face', 'wardrobe', 'private_attributes'],
+    prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
     ...result,
     evidence_frames: frames,
     transcript,
@@ -876,12 +946,17 @@ function normalizeResult(result = {}) {
   safe.camera_intents = Array.isArray(safe.camera_intents) ? safe.camera_intents.slice(0, 24) : [];
   safe.character_actions = Array.isArray(safe.character_actions) ? safe.character_actions.slice(0, 24) : [];
   safe.plot_beats = Array.isArray(safe.plot_beats) ? safe.plot_beats.slice(0, 24) : [];
-  safe.generated_brief = hasReadableChinese(safe.generated_brief)
-    ? String(safe.generated_brief).trim().slice(0, 1800)
+  safe.character_prompts = Array.isArray(safe.character_prompts) ? safe.character_prompts.slice(0, 12) : [];
+  safe.scene_prompts = Array.isArray(safe.scene_prompts) ? safe.scene_prompts.slice(0, 12) : [];
+  safe.story_outline = safe.story_outline && typeof safe.story_outline === 'object' ? safe.story_outline : {};
+  const generated = String(safe.generated_brief || '').trim();
+  const requiredSections = ['【完整剧情】', '【人物提示词】', '【场景提示词】'];
+  safe.generated_brief = hasReadableChinese(generated) && requiredSections.every(section => generated.includes(section))
+    ? generated.slice(0, 3800)
     : buildChineseBrief(safe);
   safe.output_language = 'zh-CN';
   safe.analysis_scope = 'creative_structure_only';
-  safe.prohibited_reuse = ['person_identity', 'face', 'wardrobe', 'private_attributes'];
+  safe.prohibited_reuse = ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'];
   return safe;
 }
 

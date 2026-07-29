@@ -10,6 +10,7 @@ process.env.NEW_STORY_AD_MOCK_LLM = '1';
 
 const ffmpegPath = require('ffmpeg-static');
 const service = require('../src/services/newStoryAd/referenceVideoAnalysisService');
+const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 
 async function waitFor(id, user, statuses, timeoutMs = 20000) {
   const started = Date.now();
@@ -107,6 +108,14 @@ async function main() {
   assert.ok(completed.result.camera_intents.length >= 2);
   assert.ok(completed.result.camera_intents.every(item => item.evidence_timestamps.length));
   assert.ok(completed.result.character_actions.every(item => item.start_pose && item.key_action && item.end_pose));
+  assert.ok(completed.result.story_outline.logline);
+  assert.ok(completed.result.character_prompts.length >= 1);
+  assert.ok(completed.result.character_prompts.every(item => item.role && item.wardrobe_direction && item.continuity_rules));
+  assert.ok(completed.result.scene_prompts.length >= 1);
+  assert.ok(completed.result.scene_prompts.every(item => item.layout_prompt && item.material_light_prompt && item.camera_purpose));
+  assert.ok(completed.result.generated_brief.includes('【完整剧情】'));
+  assert.ok(completed.result.generated_brief.includes('【人物提示词】'));
+  assert.ok(completed.result.generated_brief.includes('【场景提示词】'));
   assert.ok(completed.result.generated_brief.includes('运镜'));
   assert.strictEqual(completed.result.output_language, 'zh-CN');
   assert.ok(/[\u3400-\u9fff]{12}/.test(completed.result.generated_brief), 'generated brief must be readable Simplified Chinese');
@@ -135,9 +144,38 @@ async function main() {
   });
   assert.strictEqual(localizedFallback.output_language, 'zh-CN');
   assert.ok(localizedFallback.generated_brief.includes('【广告目标】'));
+  assert.ok(localizedFallback.generated_brief.includes('【完整剧情】'));
+  assert.ok(localizedFallback.generated_brief.includes('【人物提示词】'));
+  assert.ok(localizedFallback.generated_brief.includes('【场景提示词】'));
   assert.ok(localizedFallback.generated_brief.includes('【运镜与节奏】'));
   assert.ok(!localizedFallback.generated_brief.includes('This advertisement'));
   assert.ok(!localizedFallback.generated_brief.includes('The video demonstrates'));
+
+  const context = contextBuilder.buildContext({
+    brief: '用户已把参考剧情修改为适合自己的办公协作产品，主角改为创业团队负责人。',
+    product_subject: '办公协作产品',
+    reference_video_analysis: {
+      analysis_id: completed.id,
+      status: 'completed',
+      generated_brief: completed.result.generated_brief,
+      story_outline: completed.result.story_outline,
+      plot_beats: completed.result.plot_beats,
+      character_prompts: completed.result.character_prompts,
+      scene_prompts: completed.result.scene_prompts,
+      camera_intents: completed.result.camera_intents,
+      character_actions: completed.result.character_actions,
+      prompt_suggestions: completed.result.prompt_suggestions,
+    },
+  }, { id: user.id });
+  assert.equal(context.reference_video_analysis.character_prompts.length, completed.result.character_prompts.length);
+  assert.equal(context.reference_video_analysis.scene_prompts.length, completed.result.scene_prompts.length);
+  const downstreamPrompt = contextBuilder.contextPrompt(context);
+  assert.ok(downstreamPrompt.includes('参考视频原创改写合同'));
+  assert.ok(downstreamPrompt.includes('完整剧情、人物提示词、场景提示词、动作和机位运镜'));
+  assert.ok(downstreamPrompt.includes('用户当前“广告需求”文本是可编辑权威版本'));
+  assert.ok(downstreamPrompt.includes('创业团队负责人'), '用户修改后的广告需求必须进入后续剧情生成提示词');
+  assert.ok(downstreamPrompt.includes('wardrobe_direction'), '原创人物服装方向必须进入后续剧情生成提示词');
+  assert.ok(downstreamPrompt.includes('layout_prompt'), '分场景布局提示词必须进入后续剧情生成提示词');
 
   const mapping = service.mapSceneViews(uploaded.id, user, [
     { view_key: 'master', image_url: '/master.png' },
@@ -153,7 +191,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 36,
+    checks: 54,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

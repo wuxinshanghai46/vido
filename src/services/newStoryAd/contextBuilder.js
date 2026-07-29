@@ -596,7 +596,7 @@ function resolveTargetDuration(body = {}, brief = '') {
 }
 
 function buildContext(body = {}, user = {}) {
-  const brief = cleanMultilineText(body.brief || body.content || body.requirement || body.prompt, 3000);
+  const brief = cleanMultilineText(body.brief || body.content || body.requirement || body.prompt, 5000);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
   const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
   const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);
@@ -723,12 +723,28 @@ function buildContext(body = {}, user = {}) {
       analysis_id: cleanText(body.reference_video_analysis.analysis_id || '', 100),
       status: cleanText(body.reference_video_analysis.status || '', 30),
       analysis_scope: 'creative_structure_only',
+      generated_brief: cleanMultilineText(body.reference_video_analysis.generated_brief || '', 4000),
+      story_outline: body.reference_video_analysis.story_outline && typeof body.reference_video_analysis.story_outline === 'object'
+        ? body.reference_video_analysis.story_outline
+        : {},
+      plot_beats: Array.isArray(body.reference_video_analysis.plot_beats)
+        ? body.reference_video_analysis.plot_beats.slice(0, 24)
+        : [],
+      character_prompts: Array.isArray(body.reference_video_analysis.character_prompts)
+        ? body.reference_video_analysis.character_prompts.slice(0, 12)
+        : [],
+      scene_prompts: Array.isArray(body.reference_video_analysis.scene_prompts)
+        ? body.reference_video_analysis.scene_prompts.slice(0, 12)
+        : [],
       camera_intents: Array.isArray(body.reference_video_analysis.camera_intents)
         ? body.reference_video_analysis.camera_intents.slice(0, 24)
         : [],
       character_actions: Array.isArray(body.reference_video_analysis.character_actions)
         ? body.reference_video_analysis.character_actions.slice(0, 24)
         : [],
+      prompt_suggestions: body.reference_video_analysis.prompt_suggestions && typeof body.reference_video_analysis.prompt_suggestions === 'object'
+        ? body.reference_video_analysis.prompt_suggestions
+        : {},
       scene_view_mapping: body.reference_video_analysis.scene_view_mapping && typeof body.reference_video_analysis.scene_view_mapping === 'object'
         ? body.reference_video_analysis.scene_view_mapping
         : null,
@@ -838,6 +854,28 @@ function sceneAssetsPrompt(sceneAssets = []) {
   ].join('\n');
 }
 
+function referenceVideoAnalysisPrompt(reference = null) {
+  if (!reference || reference.status !== 'completed') return '参考视频分析：未提供。';
+  const digest = {
+    analysis_id: reference.analysis_id,
+    story_outline: reference.story_outline || {},
+    plot_beats: reference.plot_beats || [],
+    character_prompts: reference.character_prompts || [],
+    scene_prompts: reference.scene_prompts || [],
+    character_actions: reference.character_actions || [],
+    camera_intents: reference.camera_intents || [],
+    prompt_suggestions: reference.prompt_suggestions || {},
+    scene_view_mapping: reference.scene_view_mapping || null,
+  };
+  return [
+    '参考视频原创改写合同：已完成分析，以下完整剧情、人物提示词、场景提示词、动作和机位运镜必须作为剧情与剧本生成的显式参考。',
+    `结构化分析：${JSON.stringify(digest)}`,
+    '用户当前“广告需求”文本是可编辑权威版本；若用户已经修改了分析成稿，必须以当前广告需求、人物档案、场景配置和已确认资产为准，结构化分析只补充未冲突的细节。',
+    '人物提示词只能用于重新设计当前任务的原创角色，禁止复制参考视频人物身份、肖像、原片服装或私密属性；场景提示词也必须替换为当前产品、品牌和业务事实。',
+    '后续输出必须让完整剧情、逐角色设定、逐场景设定、人物动作和机位运镜能够在剧本/分镜字段中被核对，不得只写一句“参考原片风格”。',
+  ].join('\n');
+}
+
 function contextPrompt(ctx) {
   return [
     `广告需求：${ctx.brief}`,
@@ -887,6 +925,7 @@ function contextPrompt(ctx) {
     ctx.cast_profiles?.length ? `演员档案锁：${JSON.stringify(ctx.cast_profiles)}` : '',
     ctx.person_context?.person_notes?.length ? `人物上下文：${ctx.person_context.person_notes.join('；')}` : '',
     ctx.person_spec && Object.keys(ctx.person_spec).length ? `人物约束：${JSON.stringify(ctx.person_spec)}` : '',
+    referenceVideoAnalysisPrompt(ctx.reference_video_analysis),
     sceneAssetsPrompt(ctx.scene_assets),
     `视频分辨率：${ctx.video_resolution || '720p'}`,
   ].join('\n');
@@ -966,6 +1005,7 @@ module.exports = {
   assertContextConsistent,
   buildContext,
   contextPrompt,
+  referenceVideoAnalysisPrompt,
   controlledProductionPrompt,
   cleanText,
   normalizeCharacters,

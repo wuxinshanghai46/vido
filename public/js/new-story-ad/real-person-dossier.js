@@ -8,6 +8,8 @@
     activeTab: 'identity',
     loadedTaskId: '',
     adoptedFingerprint: '',
+    modalOpen: false,
+    lastErrorFingerprint: '',
   };
 
   const $ = selector => document.querySelector(selector);
@@ -17,6 +19,22 @@
   function notify(message, tone = 'info') {
     if (typeof window.showToast === 'function') window.showToast(message, tone);
     else if (tone === 'error') console.error(message);
+  }
+
+  function setModal(open = false) {
+    state.modalOpen = open === true;
+    const modal = $('#dhNsaRealPersonModal');
+    if (modal) {
+      modal.hidden = !state.modalOpen;
+      modal.setAttribute('aria-hidden', state.modalOpen ? 'false' : 'true');
+    }
+    document.body.classList.toggle('dh-nsa-workbench-modal-open', state.modalOpen);
+    if (state.modalOpen) {
+      queueMicrotask(() => $('#dhNsaRealPersonClose')?.focus?.());
+      loadProduction({ quiet: true });
+    } else {
+      $('#dhNsaRealPersonOpen')?.focus?.();
+    }
   }
 
   async function confirmModelCalls({ title, summary, description, calls, confirmLabel }) {
@@ -65,7 +83,13 @@
       cancel.hidden = !active;
       cancel.dataset.kind = active?.kind || '';
     }
-    if (last?.job?.error?.message) notify(last.job.error.message, 'error');
+    if (last?.job?.error?.message) {
+      const fingerprint = `${last.kind}:${last.job.status}:${last.job.error.code || ''}:${last.job.error.message}`;
+      if (state.lastErrorFingerprint !== fingerprint) {
+        state.lastErrorFingerprint = fingerprint;
+        notify(last.job.error.message, 'error');
+      }
+    }
   }
 
   function imageCard(asset, title, action = null) {
@@ -163,6 +187,10 @@
                 ? '真人来源已建立'
                 : '未建立来源';
     }
+    const open = $('#dhNsaRealPersonOpen');
+    if (open) open.textContent = state.identitySource || production?.dossier || production?.candidates?.length
+      ? '查看 / 继续配置'
+      : '配置真人形象';
     setProgress(production);
     renderCandidates(production);
     renderDossier(production);
@@ -237,6 +265,98 @@
     return document.querySelector('input[name="dhNsaOutfitMode"]:checked')?.value || 'ai_outfit';
   }
 
+  function setWardrobeAssistStatus(message = '', status = 'idle') {
+    const target = $('#dhNsaWardrobeSuggestionStatus');
+    if (!target) return;
+    target.textContent = message;
+    target.className = status && status !== 'idle' ? `is-${status}` : '';
+  }
+
+  async function suggestWardrobe() {
+    const id = taskId();
+    if (!id) {
+      setWardrobeAssistStatus('请先完成第一步并生成场景配置，再让 AI 根据当前剧情推荐服装。', 'error');
+      notify('请先完成第一步并生成场景配置任务', 'error');
+      return false;
+    }
+    const legacy = window.__newStoryAdLegacyUI;
+    const flow = window.NewStoryAdGenerationFlow;
+    if (!legacy?.state || typeof legacy.payload !== 'function' || !flow?.requestInlineGeneration) {
+      setWardrobeAssistStatus('人物辅助模块尚未就绪，请刷新页面后重试。', 'error');
+      return false;
+    }
+    const button = $('#dhNsaSuggestWardrobe');
+    const old = button?.textContent || 'AI 推荐换装';
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'AI 推荐中…';
+      button.classList.add('is-generating');
+    }
+    setWardrobeAssistStatus('正在结合当前人物身份、剧情、场景和商品定位补齐服装要求…', 'running');
+    try {
+      const body = legacy.payload();
+      const profiles = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
+      const current = profiles[0] || {
+        id: 'cast_1',
+        displayName: body.person_spec?.displayName || '',
+        roleName: body.person_spec?.roleName || '',
+        appearanceText: body.person_spec?.appearanceText || '',
+      };
+      const response = await flow.requestInlineGeneration(
+        'assist_real_person_wardrobe',
+        {
+          state: legacy.state,
+          api: (path, options) => api().request(path, options),
+        },
+        {
+          label: '正在推荐真人换装方案…',
+          showGlobalProgress: false,
+          timeoutMs: 120000,
+          body: {
+            ...body,
+            mode: 'person_spec',
+            cast_profiles: [current],
+            pet_profiles: [],
+            assist_subject_target: { kind: 'human', index: 0, id: current.id || 'cast_1' },
+          },
+        },
+      );
+      const suggestion = response.cast_profiles?.[0]?.wardrobeText
+        || response.cast_profiles?.[0]?.wardrobe_text
+        || response.person_spec?.wardrobeText
+        || response.person_spec?.wardrobe_text
+        || '';
+      if (!String(suggestion).trim()) throw new Error('AI 没有返回可用的服装建议，请重试');
+      const wardrobe = String(suggestion).trim().slice(0, 1000);
+      const input = $('#dhNsaRealPersonWardrobe');
+      if (input) {
+        input.value = wardrobe;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.focus();
+      }
+      if (Array.isArray(legacy.state.castProfiles) && legacy.state.castProfiles[0]) {
+        legacy.state.castProfiles[0].wardrobeText = wardrobe;
+        legacy.state.castProfiles[0]._generationDirty = true;
+        legacy.state.castProfiles[0]._generationDirtyFields = [
+          ...new Set([...(legacy.state.castProfiles[0]._generationDirtyFields || []), 'wardrobeText']),
+        ];
+      }
+      setWardrobeAssistStatus('AI 已填写具体换装方案，请检查或修改后再生成候选。', 'success');
+      notify('AI 已根据当前剧情补齐换装要求，请确认后再生成图片', 'success');
+      return true;
+    } catch (error) {
+      setWardrobeAssistStatus(`推荐失败：${error.message || '模型服务未响应'}，可以点击重试。`, 'error');
+      notify(error.message || 'AI 推荐换装失败', 'error');
+      return false;
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = old;
+        button.classList.remove('is-generating');
+      }
+    }
+  }
+
   async function generateCandidates() {
     const id = taskId();
     if (!id) {
@@ -249,6 +369,11 @@
     }
     if (mode() === 'outfit_reference' && !state.outfitSource?.id) {
       notify('服装参考图模式需要先上传服装参考图', 'error');
+      return;
+    }
+    if (mode() === 'ai_outfit' && !String($('#dhNsaRealPersonWardrobe')?.value || '').trim()) {
+      setWardrobeAssistStatus('请先写明需要换成什么衣着，或点击“AI 推荐换装”自动补齐。', 'error');
+      notify('请先填写换装要求，或点击“AI 推荐换装”', 'error');
       return;
     }
     if (!await confirmModelCalls({
@@ -391,8 +516,11 @@
     if (state.mounted) return;
     state.mounted = true;
     document.addEventListener('click', event => {
+      if (event.target?.closest?.('#dhNsaRealPersonOpen')) setModal(true);
+      if (event.target?.closest?.('#dhNsaRealPersonClose, [data-nsa-real-person-close]')) setModal(false);
       if (event.target?.closest?.('#dhNsaRealPersonIdentityPick')) $('#dhNsaRealPersonIdentityFile')?.click();
       if (event.target?.closest?.('#dhNsaOutfitReferencePick')) $('#dhNsaOutfitReferenceFile')?.click();
+      if (event.target?.closest?.('#dhNsaSuggestWardrobe')) suggestWardrobe();
       if (event.target?.closest?.('#dhNsaGenerateOutfitCandidates')) generateCandidates();
       if (event.target?.closest?.('#dhNsaGeneratePersonDossier')) startDossier();
       if (event.target?.closest?.('#dhNsaApprovePersonDossier')) approveDossier();
@@ -406,6 +534,9 @@
         state.activeTab = tab.dataset.nsaDossierTab;
         renderDossier(state.production || {});
       }
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && state.modalOpen) setModal(false);
     });
     document.addEventListener('change', event => {
       if (event.target?.id === 'dhNsaRealPersonIdentityFile') {
@@ -433,6 +564,8 @@
   window.NewStoryAdRealPersonDossier = {
     bind,
     loadProduction,
+    setModal,
+    suggestWardrobe,
     current: () => state.production,
   };
   document.addEventListener('new-story-ad:mount', bind);
