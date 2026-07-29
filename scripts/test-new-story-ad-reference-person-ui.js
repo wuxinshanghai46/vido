@@ -9,11 +9,13 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const html = read('public/digital-human.html');
 const bootstrap = read('public/js/new-story-ad/bootstrap.js');
 const referenceUi = read('public/js/new-story-ad/reference-video-analysis.js');
+const personInheritance = read('public/js/new-story-ad/person-reference-inheritance.js');
 const personUi = read('public/js/new-story-ad/real-person-dossier.js');
 const subjectAssist = read('public/js/new-story-ad/subject-profile-assist.js');
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const stateSync = read('public/js/new-story-ad/state-sync.js');
+const contextBuilder = read('src/services/newStoryAd/contextBuilder.js');
 const routes = read('src/routes/newStoryAd.js');
 const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
 const personService = read('src/services/newStoryAd/personDossierService.js');
@@ -31,6 +33,11 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
   'dhNsaReferenceVideoDraft',
   'dhNsaReferenceVideoDraftStatus',
   'dhNsaReferenceVideoSceneMapping',
+  'dhNsaPersonInference',
+  'dhNsaPersonInferenceTitle',
+  'dhNsaPersonInferenceDescription',
+  'dhNsaPersonConstraintToggle',
+  'dhNsaPersonConstraintEditor',
   'dhNsaRealPersonIdentityFile',
   'dhNsaRealPersonOpen',
   'dhNsaRealPersonModal',
@@ -49,9 +56,10 @@ const personService = read('src/services/newStoryAd/personDossierService.js');
 });
 
 const referenceIndex = bootstrap.indexOf('/js/new-story-ad/reference-video-analysis.js');
+const personInheritanceIndex = bootstrap.indexOf('/js/new-story-ad/person-reference-inheritance.js');
 const personIndex = bootstrap.indexOf('/js/new-story-ad/real-person-dossier.js');
 const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
-assert.ok(referenceIndex > 0 && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
+assert.ok(personInheritanceIndex > 0 && referenceIndex > personInheritanceIndex && personIndex > referenceIndex && legacyIndex > personIndex, 'feature modules must load before legacy UI');
 
 assert.ok(html.includes('不复制原片真人身份、肖像或服装'));
 assert.ok(!html.includes('data-nsa-reference-apply'), 'analysis result must not require merge/replace buttons');
@@ -66,10 +74,15 @@ assert.ok(!html.includes('id="dhNsaReferenceVideoCancel"'), 'large cancel button
 assert.ok(!html.includes('id="dhNsaReferenceVideoDelete"'), 'large delete button must be replaced by the compact X action');
 assert.ok(referenceUi.includes("$('#dhNsaAdText')"));
 assert.ok(referenceUi.includes("input.dispatchEvent(new Event('input'"));
-assert.ok(referenceUi.includes('中文内容已填入广告需求文本框'));
+assert.ok(referenceUi.includes('人物、场景、剧情和内容描述已填入广告需求'));
 assert.ok(referenceUi.includes('map-scene-views'));
 assert.ok(html.includes('id="dhNsaAdText" maxlength="5000"'), 'complete editable analysis brief must not be truncated to the former 1800-character limit');
-assert.ok(html.includes('完整剧情、原创人物提示词、场景提示词'));
+assert.ok(html.includes('只向你展示人物、场景、剧情和内容描述'));
+assert.ok(!html.includes('反推完整剧情、原创人物提示词、场景提示词、动作、机位与运镜'));
+assert.ok(html.includes('id="dhNsaPersonConstraintEditor" hidden'));
+assert.ok(html.includes('data-nsa-people-count-field hidden'));
+assert.ok(html.includes('<span>人物构成</span>'));
+assert.ok(!html.includes('<span>精确人数</span>'));
 assert.ok(referenceUi.includes('story_outline: analysis.result?.story_outline'));
 assert.ok(referenceUi.includes('character_prompts: analysis.result?.character_prompts'));
 assert.ok(referenceUi.includes('scene_prompts: analysis.result?.scene_prompts'));
@@ -80,9 +93,18 @@ assert.ok(referenceUi.includes('function hydrate(saved = null)'));
 assert.ok(referenceUi.includes('function reset(options = {})'));
 assert.ok(referenceUi.includes('wasExplicitlyRemoved'));
 assert.ok(stateSync.includes('NewStoryAdReferenceVideoAnalysis?.hydrate?.(request.reference_video_analysis || null)'));
+assert.ok(stateSync.includes('request.person_context?.spec_source'));
+assert.ok(contextBuilder.includes('spec_source: personSpecSource'));
 assert.ok(legacy.includes('state.context?.reference_video_analysis'));
 assert.ok(referenceUi.includes('function adoptReferenceAnalysis'));
 assert.ok(referenceUi.includes('function referenceScenePlan'));
+assert.ok(referenceUi.includes('function userVisibleReferenceText'));
+assert.ok(referenceUi.includes('function referencePersonProjection'));
+assert.ok(!referenceUi.includes("target.hidden = false;\n      target.replaceChildren();"), 'internal camera mapping must not be exposed in the requirement UI');
+assert.ok(legacy.includes('applyReferencePersonProjection'));
+assert.ok(personInheritance.includes('personConstraintEditorOpen'));
+assert.ok(personInheritance.includes('manualOverride'));
+assert.ok(personInheritance.includes('reference_video_person_projection'));
 assert.ok(legacy.includes('markSourceDirty, scheduleAutoSave'));
 assert.ok(legacy.includes('NewStoryAdReferenceVideoAnalysis?.reset?.({ explicit: true })'));
 assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
@@ -137,9 +159,43 @@ const browser = {
   },
 };
 browser.window.window = browser.window;
+vm.runInNewContext(personInheritance, browser, { filename: 'person-reference-inheritance.js' });
 vm.runInNewContext(referenceUi, browser, { filename: 'reference-video-analysis.js' });
 const referenceModule = browser.window.NewStoryAdReferenceVideoAnalysis;
+const inheritanceModule = browser.window.NewStoryAdPersonReferenceInheritance;
 assert.ok(referenceModule);
+assert.ok(inheritanceModule);
+const inheritedState = { castProfiles: [], personSpecSource: null };
+const inheritedFields = { castMode: 'auto', expectedPeople: '', gender: 'auto', age: 'match_brief', origin: 'match_brief', roleName: '' };
+let inheritedSaves = 0;
+assert.strictEqual(inheritanceModule.applyReference({
+  state: inheritedState,
+  projection: {
+    personSpec: { castMode: 'single', expectedPeople: '1', roleName: '产品展示者' },
+    castProfiles: [{ id: 'reference_cast_1', roleName: '产品展示者' }],
+  },
+  analysisId: 'ref_people_1',
+  getPersonSpec: key => inheritedFields[key] || '',
+  writeAllFields: (selector, value) => {
+    const key = selector.match(/="([^"]+)"/)?.[1];
+    if (key) inheritedFields[key] = String(value);
+  },
+  renderAll: () => {},
+  markSourceDirty: () => {},
+  scheduleAutoSave: () => { inheritedSaves += 1; },
+}), true);
+assert.strictEqual(inheritedFields.castMode, 'single');
+assert.strictEqual(inheritedFields.expectedPeople, '1');
+assert.strictEqual(inheritedState.personSpecSource.kind, 'reference_video');
+assert.strictEqual(inheritedSaves, 1);
+inheritanceModule.markManual(inheritedState);
+assert.strictEqual(inheritanceModule.applyReference({
+  state: inheritedState,
+  projection: { personSpec: { castMode: 'dual', expectedPeople: '2' }, castProfiles: [] },
+  getPersonSpec: key => inheritedFields[key] || '',
+  writeAllFields: () => { throw new Error('manual override must not be overwritten'); },
+}), false);
+assert.strictEqual(inheritedFields.castMode, 'single');
 assert.strictEqual(referenceModule.taskPayload(), null);
 referenceModule.hydrate({
   analysis_id: 'ref_restore_1',
@@ -154,12 +210,66 @@ referenceModule.hydrate({
   analysis_quality: { valid: true },
   story_outline: { logline: '恢复后的完整故事' },
   plot_beats: [{ order: 1, purpose: '建立墙板空间' }],
+  character_prompts: [{
+    role: '成年女性产品展示者',
+    narrative_function: '触摸并展示墙板',
+    age_range: '30-40岁',
+    appearance_direction: '自然可信的商业展示者',
+    wardrobe_direction: '原创绿色长裙',
+    performance_style: '动作克制自然',
+  }],
   scene_prompts: [{ location_type: '高端客厅金属墙板展示空间' }],
   camera_intents: [{ movement: 'slow_push_in' }],
 });
 assert.strictEqual(referenceModule.current().id, 'ref_restore_1');
 assert.strictEqual(referenceModule.taskPayload().source_facts.product_or_service, '304不锈钢金属装饰墙板');
 assert.strictEqual(referenceModule.taskPayload().analysis_quality.valid, true);
+const visibleText = referenceModule.userVisibleReferenceText({
+  summary: '镜头展示墙板，主机位保持固定',
+  source_facts: {
+    product_or_service: '304不锈钢金属装饰墙板',
+    environment: '高端客厅',
+    human_presence: true,
+    human_actions: ['人物触摸墙板，主机位保持固定'],
+  },
+  story_outline: {
+    logline: '人物展示金属墙板',
+    opening: '开场镜头展示高端客厅',
+    development: '镜头推进到金属纹理',
+    resolution: '人物完成产品展示',
+  },
+  plot_beats: [{ purpose: '建立产品与空间关系' }],
+  character_prompts: [{
+    role: '成年女性产品展示者',
+    age_range: '30-40岁',
+    appearance_direction: '自然可信',
+    wardrobe_direction: '原创绿色长裙',
+    performance_style: '触摸墙板',
+  }],
+  scene_prompts: [{
+    location_type: '高端客厅',
+    layout_prompt: '墙板居中，沙发位于前景',
+    material_light_prompt: '金属墙板与暖色灯光',
+    interaction_prompt: '人物触摸墙板，主机位保持墙面尺度',
+  }],
+  camera_intents: [{ movement: 'slow_push_in' }],
+});
+['【人物】', '【场景】', '【剧情】', '【内容描述】'].forEach(section => assert.ok(visibleText.includes(section)));
+assert.ok(!/(?:机位|运镜|景别|焦段)/.test(visibleText), 'user-visible reference text must hide internal camera instructions');
+const personProjection = referenceModule.referencePersonProjection({
+  source_facts: { human_presence: true },
+  character_prompts: [{
+    role: '成年女性产品展示者',
+    age_range: '30-40岁',
+    appearance_direction: '自然可信',
+    wardrobe_direction: '原创绿色长裙',
+    negative_prompt: '不复制原片真人身份',
+  }],
+});
+assert.strictEqual(personProjection.personSpec.castMode, 'single');
+assert.strictEqual(personProjection.personSpec.expectedPeople, '1');
+assert.strictEqual(personProjection.personSpec.origin, 'match_brief');
+assert.strictEqual(personProjection.castProfiles[0].roleName, '成年女性产品展示者');
 const creativeInput = {
   value: '',
   maxLength: 4000,
@@ -169,6 +279,7 @@ browser.document.querySelector = selector => selector === '#dhNsaAdCreativeDirec
 let projectedPlan = null;
 let dirtyCount = 0;
 let autosaveCount = 0;
+let projectedPeople = null;
 browser.window.NewStoryAdSceneAssets = {
   specPayload: () => ({}),
   planPayload: () => null,
@@ -183,11 +294,17 @@ browser.window.__newStoryAdLegacyUI = {
   markSourceDirty: () => { dirtyCount += 1; },
   renderAll: () => {},
   scheduleAutoSave: () => { autosaveCount += 1; },
+  applyReferencePersonProjection: projection => {
+    projectedPeople = projection;
+    return true;
+  },
 };
 assert.strictEqual(referenceModule.adoptReferenceAnalysis(referenceModule.current()), true);
 assert.ok(creativeInput.value.includes('恢复后的完整故事'));
 assert.strictEqual(projectedPlan.advertised_subject, '304不锈钢金属装饰墙板');
 assert.strictEqual(projectedPlan.spaces[0].name, '高端客厅金属墙板展示空间');
+assert.strictEqual(projectedPeople.personSpec.castMode, 'single');
+assert.strictEqual(projectedPeople.castProfiles[0].roleName, '成年女性产品展示者');
 assert.strictEqual(dirtyCount, 1);
 assert.strictEqual(autosaveCount, 1);
 assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale' }).analysis_id, 'ref_restore_1');

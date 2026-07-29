@@ -44,41 +44,123 @@
     }
   }
 
-  function appendList(parent, title, values = []) {
-    if (!values.length) return;
-    const section = document.createElement('section');
-    const heading = document.createElement('b');
-    heading.textContent = title;
-    section.appendChild(heading);
-    const list = document.createElement('ul');
-    values.forEach(value => {
-      const item = document.createElement('li');
-      item.textContent = value;
-      list.appendChild(item);
-    });
-    section.appendChild(list);
-    parent.appendChild(section);
+  function readable(value = '') {
+    return String(value || '').trim().replace(/\s+/g, ' ');
+  }
+
+  function withoutCameraInstructions(value = '') {
+    return readable(value)
+      .replace(/(?:开场|随后|结尾)?镜头/gu, match => match.replace('镜头', '画面'))
+      .split(/[；;，,\n]+/)
+      .map(item => item.trim())
+      .filter(item => item && !/(?:机位|运镜|景别|焦段|推拉摇移|轴线|镜头运动)/u.test(item))
+      .join('；');
+  }
+
+  function userVisibleReferenceText(result = {}) {
+    const outline = result.story_outline || {};
+    const beats = Array.isArray(result.plot_beats) ? result.plot_beats : [];
+    const characters = Array.isArray(result.character_prompts) ? result.character_prompts : [];
+    const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts : [];
+    const facts = result.source_facts || {};
+    const characterText = characters.length
+      ? characters.map((item, index) => [
+        `${index + 1}. ${readable(item.role) || `人物 ${index + 1}`}`,
+        readable(item.narrative_function) ? `剧情作用：${withoutCameraInstructions(item.narrative_function)}` : '',
+        readable(item.age_range) ? `表观年龄：${readable(item.age_range)}` : '',
+        readable(item.appearance_direction) ? `外观气质：${withoutCameraInstructions(item.appearance_direction)}` : '',
+        readable(item.wardrobe_direction) ? `服装方向：${withoutCameraInstructions(item.wardrobe_direction)}` : '',
+        readable(item.performance_style) ? `表演动作：${withoutCameraInstructions(item.performance_style)}` : '',
+      ].filter(Boolean).join('；')).join('\n')
+      : (facts.human_presence === false ? '不需要人物出镜，只展示产品或空间。' : '人物数量和角色按剧情内容判断。');
+    const sceneText = scenes.length
+      ? scenes.map((item, index) => [
+        `${index + 1}. ${readable(item.location_type) || `场景 ${index + 1}`}`,
+        readable(item.layout_prompt) ? `空间布局：${withoutCameraInstructions(item.layout_prompt)}` : '',
+        readable(item.material_light_prompt) ? `材质与光线：${withoutCameraInstructions(item.material_light_prompt)}` : '',
+        readable(item.interaction_prompt) ? `人物/产品互动：${withoutCameraInstructions(item.interaction_prompt)}` : '',
+      ].filter(Boolean).join('；')).join('\n')
+      : withoutCameraInstructions(facts.environment || facts.layout || '场景按参考内容和当前产品重新设计。');
+    const plotParts = [
+      outline.logline ? `故事概述：${withoutCameraInstructions(outline.logline)}` : '',
+      outline.opening ? `开场：${withoutCameraInstructions(outline.opening)}` : '',
+      outline.development ? `发展：${withoutCameraInstructions(outline.development)}` : '',
+      outline.turning_point ? `转折：${withoutCameraInstructions(outline.turning_point)}` : '',
+      outline.resolution ? `结尾：${withoutCameraInstructions(outline.resolution)}` : '',
+      beats.length ? `剧情节拍：${beats.map((item, index) => `${index + 1}. ${withoutCameraInstructions(item.purpose || item.description || '')}`).filter(item => !/\.\s*$/.test(item)).join('；')}` : '',
+    ].filter(Boolean);
+    const description = [
+      withoutCameraInstructions(result.summary),
+      readable(facts.product_or_service) ? `主要展示：${readable(facts.product_or_service)}` : '',
+      readable(facts.environment) ? `内容环境：${withoutCameraInstructions(facts.environment)}` : '',
+      Array.isArray(facts.human_actions) && facts.human_actions.length
+        ? `关键行为：${facts.human_actions.map(withoutCameraInstructions).filter(Boolean).join('；')}`
+        : '',
+    ].filter(Boolean).join('；');
+    return [
+      `【人物】\n${characterText}`,
+      `【场景】\n${sceneText}`,
+      `【剧情】\n${plotParts.join('\n') || '按参考内容中的事件顺序形成完整开场、发展和结尾。'}`,
+      `【内容描述】\n${description || '保持参考内容的产品、人物行为与场景逻辑，并重新设计为当前广告。'}`,
+    ].join('\n\n');
   }
 
   function creativeDirectionText(result = {}) {
-    const outline = result.story_outline || {};
-    const beats = Array.isArray(result.plot_beats) ? result.plot_beats : [];
-    const actions = Array.isArray(result.character_actions) ? result.character_actions : [];
-    const cameras = Array.isArray(result.camera_intents) ? result.camera_intents : [];
-    return [
-      outline.logline ? `【核心故事线】${outline.logline}` : '',
-      [outline.opening, outline.development, outline.turning_point, outline.resolution].filter(Boolean).length
-        ? `【剧情展开】${[
-          outline.opening ? `开端：${outline.opening}` : '',
-          outline.development ? `发展：${outline.development}` : '',
-          outline.turning_point ? `转折：${outline.turning_point}` : '',
-          outline.resolution ? `结局：${outline.resolution}` : '',
-        ].filter(Boolean).join('；')}`
-        : '',
-      beats.length ? `【剧情节拍】${beats.map((item, index) => `${index + 1}. ${item.purpose || item.description || ''}`).join('；')}` : '',
-      actions.length ? `【人物动作】${actions.map((item, index) => `${index + 1}. ${item.start_pose || ''} → ${item.key_action || ''} → ${item.end_pose || ''}`).join('；')}` : '',
-      cameras.length ? `【机位与运镜】${cameras.map((item, index) => `${index + 1}. ${item.movement || '固定'}，${item.start_shot_size || ''}到${item.end_shot_size || ''}`).join('；')}` : '',
-    ].filter(Boolean).join('\n');
+    return userVisibleReferenceText(result);
+  }
+
+  function ageCode(value = '') {
+    const text = readable(value);
+    if (/0\s*[-~至]\s*1|婴儿/u.test(text)) return 'infant_0_1';
+    if (/1\s*[-~至]\s*3|幼儿/u.test(text)) return 'toddler_1_3';
+    if (/4\s*[-~至]\s*7/u.test(text)) return 'child_4_7';
+    if (/8\s*[-~至]\s*12/u.test(text)) return 'child_8_12';
+    if (/13\s*[-~至]\s*17|青少年/u.test(text)) return 'teen_13_17';
+    if (/17\s*[-~至]\s*25/u.test(text)) return 'young_adult_17_25';
+    if (/25\s*[-~至]\s*32|青年/u.test(text)) return 'young_adult';
+    if (/30\s*[-~至]\s*40|成熟青年/u.test(text)) return 'adult_30_40';
+    if (/40\s*[-~至]\s*55|中年/u.test(text)) return 'middle_40_55';
+    if (/55\+|55\s*岁以上|年长|老年/u.test(text)) return 'senior_55_plus';
+    return 'match_brief';
+  }
+
+  function referencePersonProjection(result = {}) {
+    const facts = result.source_facts || {};
+    const characters = Array.isArray(result.character_prompts) ? result.character_prompts : [];
+    if (facts.human_presence === false) {
+      return {
+        personSpec: { castMode: 'no_human', expectedPeople: '', gender: 'auto', age: 'match_brief', origin: 'match_brief', roleName: '无人物 / 纯产品广告' },
+        castProfiles: [],
+      };
+    }
+    const count = Math.max(1, Math.min(12, characters.length || 1));
+    const castMode = count >= 3 ? 'group' : (count === 2 ? 'dual' : 'single');
+    const profiles = characters.slice(0, count).map((item, index) => ({
+      id: `reference_cast_${index + 1}`,
+      displayName: readable(item.role) || `人物 ${index + 1}`,
+      roleName: readable(item.role) || readable(item.narrative_function) || `人物 ${index + 1}`,
+      age: ageCode(item.age_range),
+      appearanceText: withoutCameraInstructions(item.appearance_direction),
+      wardrobeText: withoutCameraInstructions(item.wardrobe_direction),
+      hairMakeupText: '发型和妆造符合当前角色、场景与表观年龄，保持自然真实并在后续画面中一致。',
+      negativeText: withoutCameraInstructions(item.negative_prompt),
+    }));
+    const first = profiles[0] || {};
+    return {
+      personSpec: {
+        castMode,
+        expectedPeople: String(count),
+        gender: 'auto',
+        age: count === 1 ? first.age : 'match_brief',
+        origin: 'match_brief',
+        roleName: profiles.map(item => item.roleName).filter(Boolean).join(' / '),
+        appearanceText: count === 1 ? first.appearanceText : '',
+        wardrobeText: count === 1 ? first.wardrobeText : '',
+        hairMakeupText: count === 1 ? first.hairMakeupText : '',
+        negativeText: count === 1 ? first.negativeText : '',
+      },
+      castProfiles: profiles,
+    };
   }
 
   function referenceScenePlan(result = {}) {
@@ -146,6 +228,9 @@
       creativeInput.dispatchEvent(new Event('change', { bubbles: true }));
       changed = true;
     }
+    if (legacy.applyReferencePersonProjection?.(referencePersonProjection(result), analysis.id)) {
+      changed = true;
+    }
     const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
     const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(legacy.state, currentSpec) || legacy.state.sceneConfig || {};
     const plan = referenceScenePlan(result);
@@ -161,7 +246,7 @@
 
   function fillRequirementFromAnalysis(analysis = {}) {
     const result = analysis.result;
-    const text = String(result?.generated_brief || '').trim();
+    const text = userVisibleReferenceText(result || {});
     const input = $('#dhNsaAdText');
     if (!analysis.id || analysis.status !== 'completed' || !text || !input) return false;
     if (state.autoFilledAnalysisId === analysis.id) return false;
@@ -179,8 +264,8 @@
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     notify(
       next.length > maxLength
-        ? '分析完成，中文内容已填入广告需求文本框；受长度限制，末尾内容已截断，请直接检查和修改'
-        : '分析完成，中文内容已填入广告需求文本框，请直接检查和修改',
+        ? '分析完成，人物、场景、剧情和内容描述已填入广告需求；受长度限制，末尾内容已截断'
+        : '分析完成，人物、场景、剧情和内容描述已填入广告需求，你只需要确认或修改这些内容',
       'success',
     );
     adoptReferenceAnalysis(analysis);
@@ -241,7 +326,7 @@
     const completed = analysis.status === 'completed' && !!analysis.result;
     if (draft) draft.hidden = !completed;
     if (status && completed) {
-      status.textContent = '完整剧情、人物提示词、场景提示词、动作和机位运镜已填入“广告需求”，修改后会以你的版本进入剧情生成。';
+      status.textContent = '人物、场景、剧情和内容描述已填入“广告需求”；拍摄参数由系统内部处理，不需要在这里填写。';
     }
     if (completed && fillRequirementFromAnalysis(analysis)) setModal(false);
   }
@@ -534,16 +619,6 @@
         body: { scene_assets: sceneAssets },
       });
       state.analysis.scene_view_mapping = result.mapping;
-      const target = $('#dhNsaReferenceVideoSceneMapping');
-      if (!target) return;
-      target.hidden = false;
-      target.replaceChildren();
-      const title = document.createElement('b');
-      title.textContent = '运镜意图 → 当前场景机位映射';
-      target.appendChild(title);
-      appendList(target, '', (result.mapping?.mappings || []).map(item => (
-        `${item.camera_intent_id}：${item.mapped_view || '未映射'} · ${item.execution}`
-      )));
     } catch (error) {
       state.mappingFingerprint = '';
       console.warn('[new-story-ad] scene view mapping failed', error);
@@ -618,6 +693,8 @@
     adoptReferenceAnalysis,
     referenceScenePlan,
     creativeDirectionText,
+    userVisibleReferenceText,
+    referencePersonProjection,
     mapCurrentSceneViews,
   };
   document.addEventListener('new-story-ad:mount', bind);

@@ -328,6 +328,13 @@ async function main() {
   const context = contextBuilder.buildContext({
     brief: '用户已把参考剧情修改为适合自己的办公协作产品，主角改为创业团队负责人。',
     product_subject: '办公协作产品',
+    person_context: {
+      spec_source: {
+        kind: 'reference_video',
+        analysisId: completed.id,
+        manualOverride: false,
+      },
+    },
     reference_video_analysis: {
       analysis_id: completed.id,
       status: 'completed',
@@ -346,6 +353,9 @@ async function main() {
   }, { id: user.id });
   assert.equal(context.reference_video_analysis.character_prompts.length, completed.result.character_prompts.length);
   assert.equal(context.reference_video_analysis.scene_prompts.length, completed.result.scene_prompts.length);
+  assert.equal(context.person_context.spec_source.kind, 'reference_video');
+  assert.equal(context.person_context.spec_source.analysisId, completed.id);
+  assert.equal(context.person_context.spec_source.manualOverride, false);
   const downstreamPrompt = contextBuilder.contextPrompt(context);
   assert.ok(downstreamPrompt.includes('参考视频内容与原创改写合同'));
   assert.ok(downstreamPrompt.includes('source_facts'));

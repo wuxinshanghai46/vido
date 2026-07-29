@@ -688,6 +688,14 @@ function buildContext(body = {}, user = {}) {
   const sceneSpec = normalizeSceneSpec(body.scene_spec || body.sceneSpec);
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
+  const rawPersonSpecSource = personContext.spec_source && typeof personContext.spec_source === 'object'
+    ? personContext.spec_source
+    : {};
+  const personSpecSource = {
+    kind: cleanText(rawPersonSpecSource.kind || '', 40),
+    analysisId: cleanText(rawPersonSpecSource.analysisId || rawPersonSpecSource.analysis_id || '', 120),
+    manualOverride: rawPersonSpecSource.manualOverride === true || rawPersonSpecSource.manual_override === true,
+  };
   const noHuman = castMode === 'no_human';
   const animalOnly = castMode === 'animal';
   const petRequired = ['animal', 'human_pet'].includes(castMode);
@@ -790,11 +798,13 @@ function buildContext(body = {}, user = {}) {
     cast_profiles: noHuman || animalOnly ? [] : castProfiles,
     person_context: noHuman || animalOnly ? {
       source: noHuman ? 'no_human_mode' : 'animal_only_mode',
+      spec_source: personSpecSource,
       real_person_locked: false,
       production_usable_actor: false,
       person_notes: [],
     } : {
       source: cleanText(personContext.source || (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec'), 120),
+      spec_source: personSpecSource,
       real_person_locked: personContext.real_person_locked === true || personAsset?.real_person_reference === true,
       production_usable_actor: personContext.production_usable_actor === true || personAsset?.production_usable_actor === true,
       person_notes: Array.isArray(personContext.person_notes) ? personContext.person_notes.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 12) : [],

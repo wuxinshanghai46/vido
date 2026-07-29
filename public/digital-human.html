@@ -33,9 +33,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-video-content-v62">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-ux-v63">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-video-content-v62"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260729-reference-ux-v63"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -217,7 +217,7 @@
                 <div class="dh-nsa-feature-head">
                   <div>
                     <b>参考视频智能分析（可选）</b>
-                    <small>反推完整剧情、原创人物提示词、场景提示词、动作、机位与运镜；不复制原片真人身份、肖像或服装，也不会自动触发付费生成。</small>
+                    <small>读取后只向你展示人物、场景、剧情和内容描述；拍摄参数由系统在后续步骤内部处理，不需要在这里填写。不复制原片真人身份、肖像或服装。</small>
                   </div>
                   <div class="dh-nsa-reference-video-head-actions">
                     <span class="dh-luxgen-badge" id="dhNsaReferenceVideoState">未添加</span>
@@ -239,7 +239,7 @@
                     <div class="dh-nsa-reference-video-dialog-head">
                       <div>
                         <b id="dhNsaReferenceVideoDialogTitle">添加参考视频</b>
-                        <small>上传本地视频或粘贴公开视频链接，读取完成后再手动分析；结果会写入可编辑广告需求并进入后续剧情生成。</small>
+                        <small>上传本地视频或粘贴公开视频链接；分析完成后，人物、场景、剧情和内容描述会写入可编辑广告需求。</small>
                       </div>
                       <button class="dh-nsa-reference-video-x" id="dhNsaReferenceVideoClose" type="button" aria-label="关闭弹窗">×</button>
                     </div>
@@ -276,9 +276,9 @@
                     </div>
                     <div class="dh-nsa-analysis-draft" id="dhNsaReferenceVideoDraft" hidden>
                       <b>分析完成</b>
-                      <span id="dhNsaReferenceVideoDraftStatus">中文分析内容已自动填入上方“广告需求”文本框，可直接检查和修改。</span>
+                      <span id="dhNsaReferenceVideoDraftStatus">人物、场景、剧情和内容描述已填入上方“广告需求”，你只需要确认或修改这些内容。</span>
                     </div>
-                    <div id="dhNsaReferenceVideoSceneMapping" class="dh-nsa-scene-mapping" hidden></div>
+                    <div id="dhNsaReferenceVideoSceneMapping" class="dh-nsa-scene-mapping" hidden aria-hidden="true"></div>
                   </div>
                 </div>
               </section>
@@ -363,31 +363,39 @@
                     <div class="dh-luxgen-mini-actions">
                       <span>系统会优先补齐留空字段；真人入口仍是“上传真人参考”和“选择真人演员/演员库”。“穿着/服装”会进入演员包生成约束，用来控制衣服、颜色、鞋和配饰。</span>
                     </div>
-                    <div class="dh-nsa-cast-mode-quick" aria-label="人物出镜模式">
-                      <span>是否需要人物出镜</span>
-                      <button type="button" data-nsa-cast-mode-quick="auto">按内容判断</button>
-                      <button type="button" data-nsa-cast-mode-quick="no_human">无人物 / 纯产品广告</button>
-                      <small>选择“无人物”后，系统会自动忽略人物素材、演员和人数，只生成商品、空间或品牌画面。</small>
+                    <div class="dh-nsa-person-inference" id="dhNsaPersonInference">
+                      <div>
+                        <b id="dhNsaPersonInferenceTitle">人物将按当前内容自动判断</b>
+                        <span id="dhNsaPersonInferenceDescription">参考视频或广告需求识别完成后，这里会显示人物数量、角色和表演描述。</span>
+                      </div>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaPersonConstraintToggle" type="button" aria-expanded="false" aria-controls="dhNsaPersonConstraintEditor">修改人物设定</button>
                     </div>
-                    <div class="dh-nsa-person-authority-note">
-                      <b>主体数量与群体约束</b>
-                      <span>这里只确定人数、组合、年龄地域和角色关系。姓名、外貌、服装、妆造与禁止项统一在下方“逐主体独立档案”填写，并以该档案作为生成唯一依据。</span>
-                    </div>
-                    <div class="dh-luxgen-person-spec">
+                    <div class="dh-nsa-person-constraint-editor" id="dhNsaPersonConstraintEditor" hidden>
+                      <div class="dh-nsa-cast-mode-quick" aria-label="人物出镜模式">
+                        <span>是否需要人物出镜</span>
+                        <button type="button" data-nsa-cast-mode-quick="auto">按内容判断</button>
+                        <button type="button" data-nsa-cast-mode-quick="no_human">无人物 / 纯产品广告</button>
+                        <small>选择“无人物”后，系统会自动忽略人物素材、演员和人数，只生成商品、空间或品牌画面。</small>
+                      </div>
+                      <div class="dh-nsa-person-authority-note">
+                        <b>人物约束用于确认或修正</b>
+                        <span>系统会先继承参考视频或广告需求的判断；只有你主动修改时，才以这里的选择覆盖自动结果。</span>
+                      </div>
+                      <div class="dh-luxgen-person-spec">
                       <label>
-                        <span>人物数量</span>
+                        <span>人物构成</span>
                         <select class="dh-input" data-nsa-person-spec="castMode">
                           <option value="auto">按内容判断</option>
                           <option value="no_human">无人物 / 只拍主体</option>
                           <option value="animal">动物 / 宠物主体</option>
                           <option value="human_pet">人物 + 宠物（混合主体）</option>
-                          <option value="single">单人</option>
-                          <option value="dual">双人对话</option>
+                          <option value="single">1 人 / 单人</option>
+                          <option value="dual">2 人 / 双人互动</option>
                           <option value="group">多人 / 群体</option>
                         </select>
                       </label>
                       <label>
-                        <span>人物性别</span>
+                        <span>目标人物性别（选填）</span>
                         <select class="dh-input" data-nsa-person-spec="gender">
                           <option value="auto">按故事判断</option>
                           <option value="male">男性</option>
@@ -397,9 +405,9 @@
                           <option value="all_female">双人/多人全女性</option>
                         </select>
                       </label>
-                      <label>
-                        <span>精确人数</span>
-                        <input class="dh-input" type="number" min="1" max="12" step="1" data-nsa-person-spec="expectedPeople" placeholder="单/双人可自动，多人请填 3-12">
+                      <label data-nsa-people-count-field hidden>
+                        <span>多人数量</span>
+                        <input class="dh-input" type="number" min="1" max="12" step="1" data-nsa-person-spec="expectedPeople" placeholder="多人模式填写 3-12；单人和双人自动确定">
                       </label>
                       <label data-nsa-pet-field hidden>
                         <span>精确宠物数量</span>
@@ -414,7 +422,7 @@
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="petDescription" maxlength="500" placeholder="毛色、体型、年龄感、项圈、独特斑纹等；用于跨镜头保持同一只宠物"></textarea>
                       </label>
                       <label>
-                        <span>人物年龄</span>
+                        <span>表观年龄段</span>
                         <select class="dh-input" data-nsa-person-spec="age">
                           <option value="match_brief">按广告需求判断</option>
                           <option value="infant_0_1">婴儿 / 0-1</option>
@@ -430,9 +438,9 @@
                         </select>
                       </label>
                       <label>
-                        <span>地域 / 种族</span>
+                        <span>人物地域特征（仅手动指定）</span>
                         <select class="dh-input" data-nsa-person-spec="origin">
-                          <option value="match_brief">按广告需求判断</option>
+                          <option value="match_brief">不指定</option>
                           <option value="east_asian_cn">中国 / 东亚面孔</option>
                           <option value="southeast_asian">东南亚</option>
                           <option value="white_european">欧美白人</option>
@@ -467,6 +475,7 @@
                         <span>人物禁止项</span>
                         <textarea class="dh-input dh-luxgen-person-textarea" data-nsa-person-spec="negativeText" maxlength="320" placeholder="如：不要西装、不要白衬衫、不要夸张表情"></textarea>
                       </label>
+                      </div>
                     </div>
                     <div id="dhNsaAdSubjectProfiles" class="dh-nsa-subject-profiles" aria-live="polite"></div>
                   </div>

@@ -30,6 +30,7 @@ const files = [
   'public/js/new-story-ad/task-session.js',
   'public/js/new-story-ad/brand-overlay.js',
   'public/js/new-story-ad/story-setup.js',
+  'public/js/new-story-ad/person-reference-inheritance.js',
   'public/js/new-story-ad/generation-flow.js',
   'public/js/new-story-ad/cancelable-generation.js',
   'public/js/new-story-ad/scene-assets.js',

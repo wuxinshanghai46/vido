@@ -176,18 +176,15 @@
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const root = () => document.getElementById(ROOT_ID);
   const within = sel => $(sel, root() || document);
-
   function activeField(selector) {
     const fields = $$(selector, root() || document);
     return fields.find(el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects?.().length)) || fields[0] || null;
   }
-
   function writeAllFields(selector, value) {
     const fields = $$(selector, root() || document);
     fields.forEach(el => { el.value = value; });
     return fields.length;
   }
-
   function routeStep() {
     if (window.NewStoryAdTaskStore?.routeStep) return window.NewStoryAdTaskStore.routeStep();
     try {
@@ -196,7 +193,6 @@
     } catch {}
     return 1;
   }
-
   function routeTaskId() {
     if (window.NewStoryAdTaskStore?.routeTaskId) return window.NewStoryAdTaskStore.routeTaskId();
     try {
@@ -205,7 +201,6 @@
       return '';
     }
   }
-
   function storedTaskId() {
     if (window.NewStoryAdTaskStore?.storedTaskId) return window.NewStoryAdTaskStore.storedTaskId();
     try {
@@ -214,7 +209,6 @@
       return '';
     }
   }
-
   function rememberTaskId(taskId = state.taskId) {
     if (window.NewStoryAdTaskStore?.rememberTaskId) {
       window.NewStoryAdTaskStore.rememberTaskId(taskId || '', state.currentStep);
@@ -1072,6 +1066,7 @@
       cast_profiles: castProfiles,
       person_context: {
         source: noHuman ? 'no_human_mode' : (animalOnly ? 'animal_only_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec')),
+        spec_source: state.personSpecSource && typeof state.personSpecSource === 'object' ? { ...state.personSpecSource } : null,
         person_spec: noHuman ? { castMode: 'no_human' } : person,
         person_asset: personAsset,
         cast_profiles: castProfiles,
@@ -1185,6 +1180,7 @@
     state.actorAsset = null;
     state.personAsset = null;
     state.personSpecLock = null;
+    window.NewStoryAdPersonReferenceInheritance?.reset?.(state);
     state.castProfiles = [];
     state.personGenerationProgress = null;
     state.sceneAssets = [];
@@ -3564,6 +3560,7 @@
     const castMode = personSpec('castMode');
     const animalOnly = castMode === 'animal';
     const petRequired = ['animal', 'human_pet'].includes(castMode);
+    window.NewStoryAdPersonReferenceInheritance?.sync?.({ state, root, within, all: $$, getPersonSpec: personSpec, writeAllFields });
     const humanOnlyFields = new Set([
       'gender', 'expectedPeople', 'age', 'origin', 'roleName', 'displayName',
       'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
@@ -5242,14 +5239,12 @@
     changed += set('petDescription', normalized.petDescription || normalized.pet_description || '', { overwrite: true });
     return changed;
   }
-
   /**
    * 将模型的部分人物建议与当前表单、任务兜底逐字段合并，避免任一必需内容留空。
    */
   function completePersonSpecSuggestion(suggestion = {}, current = {}, fallback = {}) {
     return window.NewStoryAdPersonPetSpec.complete(suggestion, current, fallback);
   }
-
   function fallbackPersonSpecFromBrief(brief = '') {
     return window.NewStoryAdPersonPetSpec.fallbackFromBrief(brief);
   }
@@ -5580,6 +5575,8 @@
         within('#dhNsaAdFrameHost')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
       }
+      const personConstraintToggle = target.closest('#dhNsaPersonConstraintToggle');
+      if (personConstraintToggle && host.contains(personConstraintToggle)) { e.preventDefault(); e.stopPropagation(); window.NewStoryAdPersonReferenceInheritance?.toggle?.(state, syncPersonSpecControls); return; }
       const castModeQuick = target.closest('[data-nsa-cast-mode-quick]');
       if (castModeQuick && host.contains(castModeQuick)) {
         e.preventDefault();
@@ -6205,11 +6202,13 @@
       if (target?.matches?.('[data-nsa-subject-field]')) {
         window.NewStoryAdSubjectAssetsUI.updateProfileFromField(state, target);
         window.NewStoryAdSubjectProfileAuthority?.refreshProfileValidation?.(within('#dhNsaAdSubjectProfiles'), state, collectPersonSpec(), escapeHtml);
+        window.NewStoryAdPersonReferenceInheritance?.markManual?.(state);
         markSourceDirty('person');
         renderStatus();
         return;
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
+        window.NewStoryAdPersonReferenceInheritance?.markManual?.(state);
         markSourceDirty('person');
         renderStatus();
         return;
@@ -6333,6 +6332,7 @@
         return;
       }
       if (target?.matches?.('[data-nsa-person-spec]')) {
+        window.NewStoryAdPersonReferenceInheritance?.markManual?.(state);
         const personKey = target.dataset.nsaPersonSpec;
         if (['age', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'].includes(personKey)) {
           const latest = collectPersonSpec();
@@ -6386,7 +6386,7 @@
       });
     });
   }
-  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
+  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, applyReferencePersonProjection: (projection, analysisId) => window.NewStoryAdPersonReferenceInheritance?.applyReference?.({ state, projection, analysisId, getPersonSpec: personSpec, writeAllFields, markSourceDirty, renderAll, scheduleAutoSave }) || false, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
   document.addEventListener('new-story-ad:mount', mount);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

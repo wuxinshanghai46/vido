@@ -495,6 +495,17 @@
     const { state, root, applyPersonAssetConstraints } = ctx;
     if (!state) return;
     const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
+    const specSource = request.person_context?.spec_source;
+    state.personSpecSource = specSource && typeof specSource === 'object'
+      ? {
+        kind: String(specSource.kind || ''),
+        analysisId: String(specSource.analysisId || specSource.analysis_id || ''),
+        manualOverride: specSource.manualOverride === true || specSource.manual_override === true,
+      }
+      : (request.reference_video_analysis?.analysis_id
+        ? { kind: 'reference_video', analysisId: String(request.reference_video_analysis.analysis_id), manualOverride: false }
+        : null);
+    state.personConstraintEditorOpen = false;
     Object.entries(spec || {}).forEach(([key, value]) => {
       const scope = typeof root === 'function' ? root() : document;
       const selector = `[data-nsa-person-spec="${key}"]`;
