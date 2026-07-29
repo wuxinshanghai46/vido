@@ -279,6 +279,10 @@ client.on('ready', async () => {
       `tar -czf ${quote(`${backupDir}/files.tar.gz`)} -T ${quote(`${backupDir}/existed.txt`)}`,
       `cp -a /data/vido/db/vido.sqlite ${quote(`${backupDir}/vido.sqlite.before-deploy`)}`,
     ].join(' && '));
+    const remoteDirs = Array.from(new Set(files
+      .map(file => path.posix.dirname(file))
+      .filter(dir => dir && dir !== '.')));
+    await exec(`cd ${quote(remoteRoot)} && mkdir -p ${remoteDirs.map(quote).join(' ')}`);
     sftp = await new Promise((resolve, reject) => client.sftp((error, value) => error ? reject(error) : resolve(value)));
     for (const file of files) {
       await new Promise((resolve, reject) => sftp.fastPut(
