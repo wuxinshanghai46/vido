@@ -559,10 +559,15 @@ function throwIfCancelled(record) {
 }
 
 function evidenceTimes(duration) {
-  const count = Math.max(4, Math.min(8, Math.ceil(duration / 12)));
+  const safeDuration = Math.max(0.1, Number(duration) || 0.1);
+  const count = Math.max(6, Math.min(10, Math.ceil(safeDuration / 10) + 5));
+  const start = Math.min(0.3, Math.max(0.05, safeDuration * 0.02));
+  const end = Math.max(start, safeDuration - 0.05);
   return Array.from({ length: count }, (_, index) => {
-    const ratio = count === 1 ? 0.5 : (index + 0.5) / count;
-    return Math.max(0, Math.min(duration - 0.05, duration * ratio));
+    if (index === 0) return start;
+    if (index === count - 1) return end;
+    const ratio = index / (count - 1);
+    return Math.max(0, Math.min(end, start + ((end - start) * ratio)));
   });
 }
 
@@ -664,9 +669,22 @@ function mockAnalysis(record, frames) {
   const duration = record.source.metadata.duration_seconds;
   const midpoint = Number((duration / 2).toFixed(2));
   return {
-    schema_version: 2,
-    analysis_scope: 'creative_structure_only',
+    schema_version: 3,
+    analysis_scope: 'reference_content_and_creative_structure',
     prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
+    source_facts: {
+      product_or_service: '当前参考视频中的可见广告主体',
+      visible_text: [],
+      environment: '参考视频中实际可见的主要空间',
+      materials: ['按证据帧识别的真实材质'],
+      colors: ['按证据帧识别的主色'],
+      layout: '按证据帧记录主体、人物与背景的空间关系',
+      lighting: '按证据帧记录主光方向与明暗关系',
+      human_presence: true,
+      human_actions: ['人物接近广告主体并完成明确互动'],
+      chronological_story: ['建立广告主体', '人物互动展示', '结果与行动号召'],
+      evidence_timestamps: frames.map(item => item.timestamp_seconds),
+    },
     summary: '参考片采用问题—转折—解决—行动号召结构，镜头由环境建立逐步推进到主体细节。',
     generated_brief: [
       '【广告目标】围绕产品核心痛点建立问题，并用清晰的使用结果完成说服。',
@@ -781,6 +799,74 @@ function hasReadableChinese(value = '') {
   return chineseCount >= 12 && longEnglishWords <= Math.max(3, Math.floor(chineseCount / 4));
 }
 
+function hasChineseDetail(value = '', minimum = 4) {
+  return (String(value || '').match(/[\u3400-\u9fff]/g) || []).length >= minimum;
+}
+
+function refusalLike(value = '') {
+  const text = String(value || '').trim();
+  return /(?:i(?:'| a)?m sorry|i can(?:not|'t)|unable to (?:assist|comply|help)|cannot assist|抱歉|无法(?:协助|完成|提供)|不能(?:协助|完成|提供))/i.test(text);
+}
+
+function assertCandidateAnalysisText(text = '') {
+  const raw = String(text || '').trim();
+  const requiredKeys = ['story_outline', 'plot_beats', 'scene_prompts', 'camera_intents', 'source_facts'];
+  if (!raw || refusalLike(raw) || requiredKeys.filter(key => raw.includes(key)).length < 4) {
+    const error = new Error('视觉模型未返回可用的参考视频内容识别合同，已切换下一候选模型');
+    error.code = 'PROVIDER_RESPONSE_INVALID';
+    error.retryable = true;
+    throw error;
+  }
+  return true;
+}
+
+function validateAnalysisResult(result = {}) {
+  const source = result && typeof result === 'object' ? result : {};
+  const serialized = JSON.stringify(source);
+  const facts = source.source_facts && typeof source.source_facts === 'object' ? source.source_facts : {};
+  const outline = source.story_outline && typeof source.story_outline === 'object' ? source.story_outline : {};
+  const beats = Array.isArray(source.plot_beats) ? source.plot_beats : [];
+  const scenes = Array.isArray(source.scene_prompts) ? source.scene_prompts : [];
+  const cameras = Array.isArray(source.camera_intents) ? source.camera_intents : [];
+  const actions = Array.isArray(source.character_actions) ? source.character_actions : [];
+  const factMaterials = Array.isArray(facts.materials) ? facts.materials.filter(Boolean) : [];
+  const outlineParts = ['logline', 'opening', 'development', 'turning_point', 'resolution']
+    .filter(key => hasChineseDetail(outline[key], 4));
+  const failures = [];
+  if (refusalLike(serialized)) failures.push('provider_refusal');
+  if (!hasChineseDetail(facts.product_or_service, 2)) failures.push('source_product_missing');
+  if (!hasChineseDetail(facts.environment, 2)) failures.push('source_environment_missing');
+  if (!factMaterials.some(item => hasChineseDetail(item, 2))) failures.push('source_material_missing');
+  if (outlineParts.length < 4) failures.push('story_outline_incomplete');
+  if (beats.length < 2 || !beats.every(item => hasChineseDetail(item?.purpose, 2))) failures.push('plot_beats_incomplete');
+  if (!scenes.length || !scenes.every(item => (
+    hasChineseDetail(item?.location_type, 2)
+    && hasChineseDetail(item?.layout_prompt, 4)
+    && hasChineseDetail(item?.material_light_prompt, 4)
+  ))) failures.push('scene_prompts_incomplete');
+  if (!cameras.length) failures.push('camera_intents_missing');
+  if (facts.human_presence === true && !actions.length) failures.push('character_actions_missing');
+  if (failures.length) {
+    const error = new Error(`参考视频识别结果不完整：${failures.join(', ')}`);
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID';
+    error.status = 422;
+    error.retryable = true;
+    error.failures = failures;
+    throw error;
+  }
+  return {
+    valid: true,
+    failures: [],
+    source_fact_count: [
+      facts.product_or_service,
+      facts.environment,
+      facts.layout,
+      facts.lighting,
+      ...factMaterials,
+    ].filter(Boolean).length,
+  };
+}
+
 function rangeLabel(range = []) {
   const start = Number(range?.[0] || 0);
   const end = Number(range?.[1] || 0);
@@ -799,6 +885,7 @@ function buildChineseBrief(result = {}) {
   const characters = Array.isArray(result.character_prompts) ? result.character_prompts.slice(0, 6) : [];
   const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts.slice(0, 8) : [];
   const outline = result.story_outline && typeof result.story_outline === 'object' ? result.story_outline : {};
+  const facts = result.source_facts && typeof result.source_facts === 'object' ? result.source_facts : {};
   const shotLabels = {
     wide: '全景',
     long_shot: '远景',
@@ -832,7 +919,16 @@ function buildChineseBrief(result = {}) {
   };
   const summary = hasReadableChinese(result.summary)
     ? String(result.summary).trim()
-    : `参考视频共识别到 ${Math.max(1, beats.length)} 个剧情阶段、${cameras.length} 组机位运镜和 ${actions.length} 组人物动作。请结合当前产品与卖点进行原创改写，不复用原片人物身份或服装。`;
+    : `参考视频展示${String(facts.product_or_service || '可见广告主体').trim()}，发生在${String(facts.environment || '画面中的实际空间').trim()}，共识别到 ${Math.max(1, beats.length)} 个剧情阶段、${cameras.length} 组机位运镜和 ${actions.length} 组人物动作。`;
+  const sourceFactsText = [
+    hasChineseDetail(facts.product_or_service, 2) ? `广告主体：${String(facts.product_or_service).trim()}` : '',
+    hasChineseDetail(facts.environment, 2) ? `实际空间：${String(facts.environment).trim()}` : '',
+    Array.isArray(facts.materials) && facts.materials.length ? `材质：${facts.materials.join('、')}` : '',
+    Array.isArray(facts.colors) && facts.colors.length ? `颜色：${facts.colors.join('、')}` : '',
+    hasChineseDetail(facts.layout, 4) ? `布局：${String(facts.layout).trim()}` : '',
+    hasChineseDetail(facts.lighting, 4) ? `光线：${String(facts.lighting).trim()}` : '',
+    Array.isArray(facts.visible_text) && facts.visible_text.length ? `可见文字：${facts.visible_text.join('；')}` : '',
+  ].filter(Boolean).join('；');
   const beatText = beats.length
     ? beats.map((item, index) => {
       const purpose = hasReadableChinese(item.purpose)
@@ -888,8 +984,9 @@ function buildChineseBrief(result = {}) {
       hasReadableChinese(item.camera_purpose) ? `机位用途：${String(item.camera_purpose).trim()}` : '',
       hasReadableChinese(item.negative_prompt) ? `禁止项：${String(item.negative_prompt).trim()}` : '',
     ].filter(Boolean).join('；')).join('\n')
-    : '1. 根据当前产品重新建立真实可拍空间；布局：入口、行动区、产品交互区和结果展示区关系清晰；材质与光线：符合当前品牌定位；互动与站位：预留人物路线和产品接触位置；禁止复制原片品牌、文字、水印和私有场景';
+    : `1. ${String(facts.environment || '参考视频中的实际空间').trim()}；布局：${String(facts.layout || '按证据帧保留主体、人物与背景的空间关系').trim()}；材质与光线：${[...(facts.materials || []), facts.lighting].filter(Boolean).join('、')}；禁止凭空替换行业、空间或核心材质`;
   return [
+    `【参考内容事实】${sourceFactsText}`,
     `【广告目标】${summary}`,
     `【完整剧情】${outlineText}\n剧情节拍：${beatText}`,
     `【人物提示词】${characterText}`,
@@ -901,17 +998,27 @@ function buildChineseBrief(result = {}) {
   ].join('\n').slice(0, 3800);
 }
 
+function frameVisionUrl(frame = {}) {
+  const localPath = mediaAdapter.assetPathFromName(frame.filename || '');
+  if (!localPath || !fs.existsSync(localPath)) return String(frame.image_url || '');
+  const bytes = fs.readFileSync(localPath);
+  if (!bytes.length) return String(frame.image_url || '');
+  return `data:image/jpeg;base64,${bytes.toString('base64')}`;
+}
+
 async function analyzeWithModels(record, frames, transcript = {}) {
   const prompt = [
-    '分析这些按时间顺序截取的广告视频证据帧，反推完整剧情、分场景提示词、原创人物提示词、人物动作、机位、运镜、字幕和行动号召。',
+    '分析这些按时间顺序截取的广告视频证据帧。第一步必须客观识别参考视频实际展示的产品或服务、可见文字、真实空间、材质、颜色、布局、光线、人物动作与时间顺序；第二步再反推完整剧情、分场景提示词、人物提示词、机位、运镜、字幕和行动号召。',
+    '当前没有另一个“待替换产品”。禁止把参考视频改写成通用行业模板，禁止凭空替换为办公室、书房、卧室、商场或其它无证据空间。品牌标识和水印可以识别为事实，但后续生成是否复用由用户授权决定；不能因为避免复制品牌就删除产品类别、物理空间、核心材质或剧情事实。',
     '禁止识别或复用人物身份、脸部特征、原片服装和私密属性；人物提示词只能提取角色功能、年龄感、气质、表演规律，再根据当前广告目的生成可编辑的原创外貌与服装方向。',
     '所有面向用户阅读的自然语言内容必须使用简体中文，严禁输出英文句子。只有 movement、shot_size、angle 等供程序判断的枚举值可以使用英文代码。',
     'summary、generated_brief、story_outline、plot_beats、character_prompts、scene_prompts、character_actions、subtitle_cta 和 prompt_suggestions 的用户可见文字必须全部是自然、具体的简体中文。',
-    'generated_brief 必须是可直接放入“广告需求”文本框供用户修改、并交给后续剧情与剧本生成的中文成稿，使用【广告目标】【完整剧情】【人物提示词】【场景提示词】【人物动作】【场景与机位】【运镜与节奏】【字幕与行动号召】八段结构，控制在 3800 字以内。',
+    'source_facts 必须包含 product_or_service、visible_text、environment、materials、colors、layout、lighting、human_presence、human_actions、chronological_story、evidence_timestamps；每项事实必须能由证据帧或语音支持，不确定时明确写“不确定”，不得用通用占位句。',
+    'generated_brief 必须是可直接放入“广告需求”文本框供用户修改、并交给后续剧情与剧本生成的中文成稿，使用【参考内容事实】【广告目标】【完整剧情】【人物提示词】【场景提示词】【人物动作】【场景与机位】【运镜与节奏】【字幕与行动号召】九段结构，控制在 3800 字以内。',
     'story_outline 必须包含 logline、opening、development、turning_point、resolution，形成从开端到结局的完整故事，而不是只有节拍标签。',
     'character_prompts 每个角色必须包含 role、narrative_function、age_range、appearance_direction、wardrobe_direction、performance_style、continuity_rules、negative_prompt；服装必须是适配当前品牌与场景的原创方向，不能复刻原片。',
-    'scene_prompts 每个独立物理空间必须包含 location_type、beat_refs、layout_prompt、material_light_prompt、interaction_prompt、camera_purpose、negative_prompt。',
-    '输出严格 JSON 对象，字段必须包含 summary, generated_brief, story_outline, plot_beats, character_prompts, scene_prompts, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
+    'scene_prompts 每个独立物理空间必须包含 location_type、beat_refs、layout_prompt、material_light_prompt、interaction_prompt、camera_purpose、negative_prompt；必须描述证据帧中的实际空间和核心材质，不得另造场景。',
+    '输出严格 JSON 对象，字段必须包含 source_facts, summary, generated_brief, story_outline, plot_beats, character_prompts, scene_prompts, camera_intents, character_actions, subtitle_cta, prompt_suggestions。',
     'camera_intents 每项必须包含 range, movement, movement_subject, start_shot_size, end_shot_size, angle, lens_estimate_mm, direction, speed, stabilization, axis_rule, screen_direction, entry_exit, evidence_timestamps。',
     'character_actions 每项必须包含 role, start_pose, key_action, end_pose, dominant_hand, prop_contact, screen_direction, eyeline, expression_change, previous_frame_dependency。',
     `视频时长 ${record.source.metadata.duration_seconds} 秒；证据时间点：${frames.map(item => item.timestamp_seconds).join(', ')}。`,
@@ -923,7 +1030,10 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     systemPrompt: '你是中文广告编剧、人物设定、场景美术和摄影分析师。输出完整可编辑的原创剧情、人物提示词、场景提示词、动作、镜头和节奏，但不得做人脸身份识别或复制原片真人肖像与服装。除程序枚举代码外，所有给用户阅读的内容必须输出简体中文。',
     userPrompt: prompt,
     imageUrls: frames.map(item => item.image_url).slice(0, 8),
+    imageDataUrls: frames.map(frameVisionUrl).slice(0, 8),
     maxTokens: 6000,
+    maxCandidates: 4,
+    validateText: assertCandidateAnalysisText,
   });
   const result = await jsonRepair.parseOrRepair({
     raw: vision.text,
@@ -932,8 +1042,8 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     taskId: record.id,
   });
   return {
-    schema_version: 2,
-    analysis_scope: 'creative_structure_only',
+    schema_version: 3,
+    analysis_scope: 'reference_content_and_creative_structure',
     prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
     ...result,
     evidence_frames: frames,
@@ -949,14 +1059,34 @@ function normalizeResult(result = {}) {
   safe.character_prompts = Array.isArray(safe.character_prompts) ? safe.character_prompts.slice(0, 12) : [];
   safe.scene_prompts = Array.isArray(safe.scene_prompts) ? safe.scene_prompts.slice(0, 12) : [];
   safe.story_outline = safe.story_outline && typeof safe.story_outline === 'object' ? safe.story_outline : {};
+  safe.source_facts = safe.source_facts && typeof safe.source_facts === 'object' ? safe.source_facts : {};
+  const assessment = validateAnalysisResult(safe);
   const generated = String(safe.generated_brief || '').trim();
-  const requiredSections = ['【完整剧情】', '【人物提示词】', '【场景提示词】'];
+  const requiredSections = ['【参考内容事实】', '【完整剧情】', '【人物提示词】', '【场景提示词】'];
   safe.generated_brief = hasReadableChinese(generated) && requiredSections.every(section => generated.includes(section))
     ? generated.slice(0, 3800)
     : buildChineseBrief(safe);
   safe.output_language = 'zh-CN';
-  safe.analysis_scope = 'creative_structure_only';
+  safe.schema_version = 3;
+  safe.analysis_scope = 'reference_content_and_creative_structure';
   safe.prohibited_reuse = ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'];
+  const transcriptStatus = String(safe.transcript?.status || '').trim();
+  safe.warnings = [];
+  if (['failed_non_blocking', 'provider_not_configured'].includes(transcriptStatus)) {
+    safe.warnings.push('语音转写不可用，本次剧情、字幕和行动号召仅依据画面证据识别');
+  }
+  safe.analysis_quality = {
+    valid: true,
+    source_fact_count: assessment.source_fact_count,
+    story_outline_parts: 5,
+    plot_beat_count: safe.plot_beats.length,
+    scene_prompt_count: safe.scene_prompts.length,
+    camera_intent_count: safe.camera_intents.length,
+    character_action_count: safe.character_actions.length,
+    transcript_status: transcriptStatus || 'unknown',
+    visual_evidence_complete: true,
+    audio_evidence_complete: ['completed', 'mocked', 'no_audio'].includes(transcriptStatus),
+  };
   return safe;
 }
 
@@ -981,7 +1111,9 @@ async function runAnalysis(initialRecord) {
     record = checkpoint(record, '整理中文广告需求草稿', 90, { result });
     save(record, {
       status: 'completed',
-      phase: '分析完成，中文内容已填入广告需求',
+      phase: result.warnings?.length
+        ? `分析完成；${result.warnings[0]}`
+        : '分析完成，中文内容已填入广告需求',
       progress: 100,
       completed_at: now(),
       downstream_generation_triggered: false,
@@ -1160,7 +1292,12 @@ module.exports = {
     evidenceTimes,
     validateUpload,
     normalizeResult,
+    validateAnalysisResult,
+    assertCandidateAnalysisText,
     buildChineseBrief,
     hasReadableChinese,
+    hasChineseDetail,
+    refusalLike,
+    frameVisionUrl,
   },
 };

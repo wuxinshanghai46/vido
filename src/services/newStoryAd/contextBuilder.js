@@ -18,6 +18,61 @@ function cleanMultilineText(value = '', max = 3000) {
     .slice(0, max);
 }
 
+function normalizeReferenceVideoAnalysis(input = null) {
+  if (!input || typeof input !== 'object') return null;
+  const status = cleanText(input.status || '', 30);
+  const quality = input.analysis_quality && typeof input.analysis_quality === 'object'
+    ? input.analysis_quality
+    : {};
+  const sourceFacts = input.source_facts && typeof input.source_facts === 'object'
+    ? input.source_facts
+    : {};
+  const storyOutline = input.story_outline && typeof input.story_outline === 'object'
+    ? input.story_outline
+    : {};
+  const plotBeats = Array.isArray(input.plot_beats) ? input.plot_beats.slice(0, 24) : [];
+  const scenePrompts = Array.isArray(input.scene_prompts) ? input.scene_prompts.slice(0, 12) : [];
+  const cameraIntents = Array.isArray(input.camera_intents) ? input.camera_intents.slice(0, 24) : [];
+  if (status === 'completed' && (
+    quality.valid !== true
+    || !cleanText(sourceFacts.product_or_service || '', 200)
+    || !cleanText(sourceFacts.environment || '', 300)
+    || !plotBeats.length
+    || !scenePrompts.length
+    || !cameraIntents.length
+    || !Object.keys(storyOutline).length
+  )) {
+    const error = new Error('参考视频识别结果缺少产品、场景、剧情或机位证据，请删除旧分析并重新识别；已停止后续场景和剧情生成');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_INCOMPLETE';
+    error.status = 409;
+    error.retryable = true;
+    throw error;
+  }
+  return {
+    analysis_id: cleanText(input.analysis_id || '', 100),
+    status,
+    analysis_scope: cleanText(input.analysis_scope || 'reference_content_and_creative_structure', 80),
+    generated_brief: cleanMultilineText(input.generated_brief || '', 4000),
+    source_facts: sourceFacts,
+    analysis_quality: quality,
+    story_outline: storyOutline,
+    plot_beats: plotBeats,
+    character_prompts: Array.isArray(input.character_prompts) ? input.character_prompts.slice(0, 12) : [],
+    scene_prompts: scenePrompts,
+    camera_intents: cameraIntents,
+    character_actions: Array.isArray(input.character_actions) ? input.character_actions.slice(0, 24) : [],
+    prompt_suggestions: input.prompt_suggestions && typeof input.prompt_suggestions === 'object'
+      ? input.prompt_suggestions
+      : {},
+    scene_view_mapping: input.scene_view_mapping && typeof input.scene_view_mapping === 'object'
+      ? input.scene_view_mapping
+      : null,
+    transcript_status: cleanText(input.transcript_status || input.transcript?.status || '', 60),
+    warnings: Array.isArray(input.warnings) ? input.warnings.slice(0, 12).map(item => cleanText(item, 300)).filter(Boolean) : [],
+    identity_extraction_allowed: false,
+  };
+}
+
 function inferGenderFromText(text = '') {
   const s = cleanText(text, 500).toLowerCase();
   if (/female|woman|girl|女士|女性|女主|美女|姑娘|女孩|太太|妈妈|姐姐/.test(s)) return 'female';
@@ -719,37 +774,7 @@ function buildContext(body = {}, user = {}) {
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
-    reference_video_analysis: body.reference_video_analysis && typeof body.reference_video_analysis === 'object' ? {
-      analysis_id: cleanText(body.reference_video_analysis.analysis_id || '', 100),
-      status: cleanText(body.reference_video_analysis.status || '', 30),
-      analysis_scope: 'creative_structure_only',
-      generated_brief: cleanMultilineText(body.reference_video_analysis.generated_brief || '', 4000),
-      story_outline: body.reference_video_analysis.story_outline && typeof body.reference_video_analysis.story_outline === 'object'
-        ? body.reference_video_analysis.story_outline
-        : {},
-      plot_beats: Array.isArray(body.reference_video_analysis.plot_beats)
-        ? body.reference_video_analysis.plot_beats.slice(0, 24)
-        : [],
-      character_prompts: Array.isArray(body.reference_video_analysis.character_prompts)
-        ? body.reference_video_analysis.character_prompts.slice(0, 12)
-        : [],
-      scene_prompts: Array.isArray(body.reference_video_analysis.scene_prompts)
-        ? body.reference_video_analysis.scene_prompts.slice(0, 12)
-        : [],
-      camera_intents: Array.isArray(body.reference_video_analysis.camera_intents)
-        ? body.reference_video_analysis.camera_intents.slice(0, 24)
-        : [],
-      character_actions: Array.isArray(body.reference_video_analysis.character_actions)
-        ? body.reference_video_analysis.character_actions.slice(0, 24)
-        : [],
-      prompt_suggestions: body.reference_video_analysis.prompt_suggestions && typeof body.reference_video_analysis.prompt_suggestions === 'object'
-        ? body.reference_video_analysis.prompt_suggestions
-        : {},
-      scene_view_mapping: body.reference_video_analysis.scene_view_mapping && typeof body.reference_video_analysis.scene_view_mapping === 'object'
-        ? body.reference_video_analysis.scene_view_mapping
-        : null,
-      identity_extraction_allowed: false,
-    } : null,
+    reference_video_analysis: normalizeReferenceVideoAnalysis(body.reference_video_analysis),
     scene_mode: ['auto', 'single', 'multi'].includes(cleanText(body.scene_mode || body.sceneMode || 'auto', 20))
       ? cleanText(body.scene_mode || body.sceneMode || 'auto', 20)
       : 'auto',
@@ -858,6 +883,9 @@ function referenceVideoAnalysisPrompt(reference = null) {
   if (!reference || reference.status !== 'completed') return '参考视频分析：未提供。';
   const digest = {
     analysis_id: reference.analysis_id,
+    generated_brief: reference.generated_brief || '',
+    source_facts: reference.source_facts || {},
+    analysis_quality: reference.analysis_quality || {},
     story_outline: reference.story_outline || {},
     plot_beats: reference.plot_beats || [],
     character_prompts: reference.character_prompts || [],
@@ -868,10 +896,11 @@ function referenceVideoAnalysisPrompt(reference = null) {
     scene_view_mapping: reference.scene_view_mapping || null,
   };
   return [
-    '参考视频原创改写合同：已完成分析，以下完整剧情、人物提示词、场景提示词、动作和机位运镜必须作为剧情与剧本生成的显式参考。',
+    '参考视频内容与原创改写合同：已完成有效分析，以下可见产品、真实空间、核心材质、完整剧情、人物提示词、动作和机位运镜必须作为场景、剧情与剧本生成的显式参考。',
     `结构化分析：${JSON.stringify(digest)}`,
     '用户当前“广告需求”文本是可编辑权威版本；若用户已经修改了分析成稿，必须以当前广告需求、人物档案、场景配置和已确认资产为准，结构化分析只补充未冲突的细节。',
-    '人物提示词只能用于重新设计当前任务的原创角色，禁止复制参考视频人物身份、肖像、原片服装或私密属性；场景提示词也必须替换为当前产品、品牌和业务事实。',
+    '人物提示词只能用于重新设计当前任务的原创角色，禁止复制参考视频人物身份、肖像、原片服装或私密属性。',
+    '除非用户明确修改，场景与剧情必须保留 source_facts 中的产品类别、物理空间、材质、布局、人物动作和时间顺序；只能移除未授权品牌标识、水印或身份信息，禁止借“原创改写”把参考内容替换成无证据行业或房间。',
     '后续输出必须让完整剧情、逐角色设定、逐场景设定、人物动作和机位运镜能够在剧本/分镜字段中被核对，不得只写一句“参考原片风格”。',
   ].join('\n');
 }
@@ -1006,6 +1035,7 @@ module.exports = {
   buildContext,
   contextPrompt,
   referenceVideoAnalysisPrompt,
+  normalizeReferenceVideoAnalysis,
   controlledProductionPrompt,
   cleanText,
   normalizeCharacters,

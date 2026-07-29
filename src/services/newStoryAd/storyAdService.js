@@ -3562,7 +3562,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,
-    '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。',
+    '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。当存在 analysis_quality.valid=true 的参考视频合同且用户未改写广告需求时，scene_spec 必须逐字保留 source_facts.environment，并在布局或材质字段逐字保留 source_facts.product_or_service 或至少一项 source_facts.materials；不得改成书房、办公室或其它无证据空间。缺少这些证据时宁可返回失败，也不能猜场景。',
     'scene_spec 模式必须识别剧情实际发生的每个独立物理空间，并输出 scene_plan.spaces；两个地点不得合并进同一个 layoutText。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。surfaceTopology.user_overrides 只能由前端记录用户亲自修改的高级选项，模型不得新增、猜测或改写该数组。',
     visualRealismPolicy.sceneSpecRealismRuleZh(),

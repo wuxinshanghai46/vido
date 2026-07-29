@@ -6,6 +6,7 @@ const cancellation = require('./cancellationContext');
 const publicReferences = require('./publicReferenceService');
 
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
+const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 4));
 const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
 
 const FALLBACKS = [
@@ -99,8 +100,12 @@ function settingsVisionCandidates() {
   const rankModel = (model) => {
     const id = String(model?.id || '').toLowerCase();
     if (id === 'gpt-4o') return 0;
+    if (/glm-4\.6v/.test(id)) return 0;
     if (/gemini-2\.5-pro/.test(id)) return 1;
+    if (/glm-4\.5v/.test(id)) return 1;
+    if (id === 'glm-4v') return 2;
     if (/gemini-2\.5-flash/.test(id)) return 2;
+    if (/glm-4v-flash/.test(id)) return 3;
     if (['vision', 'vlm', 'multimodal'].includes(String(model?.use || model?.type || '').toLowerCase())) return 3;
     if (/gemini/.test(id)) return 4;
     if (/gpt-4o-mini/.test(id)) return 5;
@@ -257,7 +262,7 @@ function candidatesForStage(stage) {
 
 function candidatesForVisionStage(stage) {
   const configured = pipeline.pickAllEnabled(stage);
-  return uniqueModels([...configured, ...settingsVisionCandidates()])
+  const ranked = uniqueModels([...configured, ...settingsVisionCandidates()])
     .map((model, index) => ({ ...model, fallback_rank: index + 1 }))
     .filter(model => isConfiguredAndUsable(model, 'vision').ok)
     .filter(model => !healthState(model).circuit_open)
@@ -265,6 +270,23 @@ function candidatesForVisionStage(stage) {
       const priorityDelta = Number(a.priority || 999) - Number(b.priority || 999);
       return priorityDelta || (getHealthScore(b) - getHealthScore(a));
     });
+  return diversifyVisionCandidates(ranked);
+}
+
+function diversifyVisionCandidates(candidates = []) {
+  const seen = new Set();
+  const firstByProvider = [];
+  const remaining = [];
+  candidates.forEach(model => {
+    const providerId = String(model?.provider_id || '').toLowerCase();
+    if (providerId && !seen.has(providerId)) {
+      seen.add(providerId);
+      firstByProvider.push(model);
+    } else {
+      remaining.push(model);
+    }
+  });
+  return firstByProvider.concat(remaining);
 }
 
 function classifyError(error) {
@@ -273,7 +295,7 @@ function classifyError(error) {
   if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(explicitCode)) {
     return { code: explicitCode, retryable: false };
   }
-  if (explicitCode === 'PROVIDER_RESPONSE_INVALID') return { code: explicitCode, retryable: true };
+  if (['PROVIDER_RESPONSE_INVALID', 'PROVIDER_EMPTY_RESPONSE'].includes(explicitCode)) return { code: explicitCode, retryable: true };
   if (['RATE_LIMIT', 'PROVIDER_5XX', 'TIMEOUT_OR_NETWORK'].includes(explicitCode)) return { code: explicitCode, retryable: true };
   if (['PROVIDER_BILLING', 'AUTH_CONFIG', 'MODEL_CONFIG'].includes(explicitCode)) return { code: explicitCode, retryable: false };
   if (/InputImageSensitiveContentDetected\.PrivacyInformation|input image may contain real person|PrivacyInformation/i.test(msg)) return { code: 'INPUT_PERSON_PRIVACY', retryable: false };
@@ -412,15 +434,21 @@ async function generateVision({
   systemPrompt = '',
   userPrompt = '',
   imageUrls = [],
+  imageDataUrls = [],
   maxTokens = 4000,
   timeoutMs = 120000,
-  maxCandidates = Math.min(2, TEXT_MAX_CANDIDATES),
+  maxCandidates = VISION_MAX_CANDIDATES,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
+  validateText = null,
   _candidateModels = null,
   _generateText = null,
 } = {}) {
   const referenceDiagnostics = publicReferences.normalizeVisionReferences(imageUrls, { max: 8 });
   const urls = referenceDiagnostics.urls;
+  const embeddedUrls = (Array.isArray(imageDataUrls) ? imageDataUrls : [])
+    .map(value => String(value || '').trim())
+    .filter(value => /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value))
+    .slice(0, 8);
   if (!urls.length) {
     const error = new Error(`${stage} 缺少可供视觉模型读取的公网参考图`);
     error.code = 'VISION_REFERENCE_UNAVAILABLE';
@@ -474,19 +502,9 @@ async function generateVision({
     error.retryable = true;
     throw error;
   }
-  const messages = [
-    { role: 'system', content: systemPrompt },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: userPrompt },
-        ...urls.map(url => ({ type: 'image_url', image_url: { url } })),
-      ],
-    },
-  ];
   const failed = [];
   const stageStarted = Date.now();
-  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || 1)));
+  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(VISION_MAX_CANDIDATES, Number(maxCandidates) || 1)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
     const attemptTimeoutMs = visionAttemptTimeoutForBudget({
@@ -499,6 +517,19 @@ async function generateVision({
     const model = attemptCandidates[i];
     const start = Date.now();
     try {
+      const candidateImageUrls = /deyunai|漫路/i.test(String(model.provider_id || ''))
+        ? urls
+        : (embeddedUrls.length ? embeddedUrls : urls);
+      const messages = [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: userPrompt },
+            ...candidateImageUrls.map(url => ({ type: 'image_url', image_url: { url } })),
+          ],
+        },
+      ];
       const result = await (typeof _generateText === 'function' ? _generateText : providerAdapters.generateText)({
         model: { ...model, _stageId: stage },
         stage,
@@ -511,6 +542,19 @@ async function generateVision({
         signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
+      if (typeof validateText === 'function') {
+        const validation = await validateText(result.text, {
+          model,
+          result,
+          candidate_index: i,
+        });
+        if (validation === false) {
+          const invalid = new Error(`${stage} 视觉模型返回的内容未通过业务语义校验`);
+          invalid.code = 'PROVIDER_RESPONSE_INVALID';
+          invalid.retryable = true;
+          throw invalid;
+        }
+      }
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
       storage.saveModelCall({
@@ -546,7 +590,7 @@ async function generateVision({
   }
   const error = new Error(`${stage} 视觉模型全部失败：${failed.map(item => `${item.provider_id}/${item.model_id}:${item.code}`).join('；')}`);
   error.code = 'VISION_QA_UNAVAILABLE';
-  error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX/.test(item.code));
+  error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX|PROVIDER_RESPONSE_INVALID|PROVIDER_EMPTY_RESPONSE/.test(item.code));
   error.failed_models = failed;
   throw error;
 }
@@ -625,6 +669,7 @@ function mockResponse(stage, userPrompt = '') {
 module.exports = {
   candidatesForStage,
   candidatesForVisionStage,
+  diversifyVisionCandidates,
   generateText,
   generateVision,
   visionAttemptTimeoutForBudget,

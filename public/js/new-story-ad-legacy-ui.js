@@ -1009,7 +1009,7 @@
     const size = within('#dhNsaAdSize')?.value || state.outputSize || 'standard';
     const videoResolution = within('#dhNsaAdVideoResolution')?.value || state.videoResolution || '720p';
     const voiceId = state.voiceId || '';
-    const subject = state.sceneConfig?.advertised_subject || brief.slice(0, 36) || '剧情广告';
+    const subject = state.sceneConfig?.advertised_subject || window.NewStoryAdReferenceVideoAnalysis?.taskPayloadOrSaved?.(state.context?.reference_video_analysis)?.source_facts?.product_or_service || brief.slice(0, 36) || '剧情广告';
     let person = collectPersonSpec();
     window.NewStoryAdSubjectAssetsUI?.syncProfileFieldsFromDom?.(state, root());
     window.NewStoryAdSubjectAssetsUI?.applyPersonSpecAuthority?.(state, person, { scope: root() });
@@ -1068,7 +1068,7 @@
       scene_spec: sceneSpec,
       scene_assets: sceneAssets,
       scene_mode: within('#dhNsaAdSceneMode')?.value || 'auto',
-      reference_video_analysis: window.NewStoryAdReferenceVideoAnalysis?.taskPayload?.() || null,
+      reference_video_analysis: window.NewStoryAdReferenceVideoAnalysis?.taskPayloadOrSaved?.(state.context?.reference_video_analysis) || null,
       cast_profiles: castProfiles,
       person_context: {
         source: noHuman ? 'no_human_mode' : (animalOnly ? 'animal_only_mode' : (personAsset ? 'selected_real_actor_or_person_asset' : 'person_spec')),
@@ -1161,7 +1161,7 @@
   }
 
   function resetForNewSession() {
-    window.NewStoryAdTaskSession.reset(state, { stopStageProgress, clearVideoAuthorization });
+    window.NewStoryAdTaskSession.reset(state, { stopStageProgress, clearVideoAuthorization }); window.NewStoryAdReferenceVideoAnalysis?.reset?.({ explicit: true });
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
     autoSaveInFlight = false;
@@ -1806,7 +1806,7 @@
     }
     const task = bundle.task || {};
     const outputs = normalizeTaskOutputs(bundle);
-    const request = outputs.context || task.request || {};
+    const request = outputs.context || task.request || {}; window.NewStoryAdReferenceVideoAnalysis?.hydrate?.(request.reference_video_analysis || null);
     state.taskId = task.id || request.task_id || request.taskId || state.taskId;
     const pendingStageSubmission = state.stageProgress?.active === true
       && state.stageProgress?.submissionPending === true;
@@ -6386,7 +6386,7 @@
       });
     });
   }
-  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
+  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
   document.addEventListener('new-story-ad:mount', mount);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

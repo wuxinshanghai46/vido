@@ -540,6 +540,7 @@
       ...(task.request || {}),
       ...(outputs.context || {}),
     };
+    window.NewStoryAdReferenceVideoAnalysis?.hydrate?.(request.reference_video_analysis || null);
     const storedBrief = String(request.brief || request.content || task.brief || '');
     const restoredBrief = formatBriefText(storedBrief);
     const incomingTaskId = task.id || request.task_id || request.taskId || '';

@@ -8,6 +8,7 @@
     autoFilledAnalysisId: '',
     modalOpen: false,
     lastErrorKey: '',
+    explicitlyRemoved: false,
   };
 
   const $ = selector => document.querySelector(selector);
@@ -59,6 +60,105 @@
     parent.appendChild(section);
   }
 
+  function creativeDirectionText(result = {}) {
+    const outline = result.story_outline || {};
+    const beats = Array.isArray(result.plot_beats) ? result.plot_beats : [];
+    const actions = Array.isArray(result.character_actions) ? result.character_actions : [];
+    const cameras = Array.isArray(result.camera_intents) ? result.camera_intents : [];
+    return [
+      outline.logline ? `【核心故事线】${outline.logline}` : '',
+      [outline.opening, outline.development, outline.turning_point, outline.resolution].filter(Boolean).length
+        ? `【剧情展开】${[
+          outline.opening ? `开端：${outline.opening}` : '',
+          outline.development ? `发展：${outline.development}` : '',
+          outline.turning_point ? `转折：${outline.turning_point}` : '',
+          outline.resolution ? `结局：${outline.resolution}` : '',
+        ].filter(Boolean).join('；')}`
+        : '',
+      beats.length ? `【剧情节拍】${beats.map((item, index) => `${index + 1}. ${item.purpose || item.description || ''}`).join('；')}` : '',
+      actions.length ? `【人物动作】${actions.map((item, index) => `${index + 1}. ${item.start_pose || ''} → ${item.key_action || ''} → ${item.end_pose || ''}`).join('；')}` : '',
+      cameras.length ? `【机位与运镜】${cameras.map((item, index) => `${index + 1}. ${item.movement || '固定'}，${item.start_shot_size || ''}到${item.end_shot_size || ''}`).join('；')}` : '',
+    ].filter(Boolean).join('\n');
+  }
+
+  function referenceScenePlan(result = {}) {
+    const facts = result.source_facts || {};
+    const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts : [];
+    if (!scenes.length) return null;
+    const spaces = scenes.slice(0, 12).map((scene, index) => ({
+      id: `reference_space_${index + 1}`,
+      space_id: `reference_space_${index + 1}`,
+      scene_id: `reference_space_${index + 1}`,
+      name: scene.location_type || `参考视频空间 ${index + 1}`,
+      description: scene.layout_prompt || facts.layout || '',
+      story_purpose: Array.isArray(scene.beat_refs) && scene.beat_refs.length
+        ? `承载参考剧情节拍 ${scene.beat_refs.join('、')}`
+        : '承载参考视频识别出的剧情与展示动作',
+      scene_spec: {
+        mode: scenes.length > 1 ? 'multi' : 'single',
+        layoutText: scene.layout_prompt || facts.layout || '',
+        materialLightText: scene.material_light_prompt
+          || [...(Array.isArray(facts.materials) ? facts.materials : []), facts.lighting].filter(Boolean).join('；'),
+        interactionText: scene.interaction_prompt
+          || (Array.isArray(facts.human_actions) ? facts.human_actions.join('；') : ''),
+        negativeText: scene.negative_prompt || '禁止凭空替换参考视频中的产品类别、物理空间和核心材质；禁止无关文字、水印和旧任务内容',
+        materialContract: {
+          dominant_finish: (Array.isArray(facts.materials) ? facts.materials : []).join('、'),
+          observable_cues: [
+            ...(Array.isArray(facts.materials) ? facts.materials : []),
+            ...(Array.isArray(facts.colors) ? facts.colors : []),
+          ].filter(Boolean),
+          source_authority: 'reference_video_evidence',
+        },
+      },
+    }));
+    return {
+      scene_mode: spaces.length > 1 ? 'multi' : 'single',
+      advertised_subject: facts.product_or_service || '',
+      spaces,
+    };
+  }
+
+  function scenePlanHasContent(plan = {}, spec = {}) {
+    const values = [
+      spec.layoutText,
+      spec.materialLightText,
+      spec.interactionText,
+      spec.negativeText,
+      ...(Array.isArray(plan.spaces) ? plan.spaces.flatMap(space => {
+        const item = space.scene_spec || space.sceneSpec || {};
+        return [item.layoutText, item.materialLightText, item.interactionText, item.negativeText];
+      }) : []),
+    ];
+    return values.some(value => String(value || '').trim());
+  }
+
+  function adoptReferenceAnalysis(analysis = {}) {
+    const result = analysis.result || analysis;
+    const legacy = window.__newStoryAdLegacyUI;
+    if (result.analysis_quality?.valid !== true || !legacy?.state) return false;
+    let changed = false;
+    const creativeInput = $('#dhNsaAdCreativeDirection');
+    const creativeText = creativeDirectionText(result);
+    if (creativeInput && !String(creativeInput.value || '').trim() && creativeText) {
+      creativeInput.value = creativeText.slice(0, Number(creativeInput.maxLength || 4000));
+      creativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      creativeInput.dispatchEvent(new Event('change', { bubbles: true }));
+      changed = true;
+    }
+    const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
+    const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(legacy.state, currentSpec) || legacy.state.sceneConfig || {};
+    const plan = referenceScenePlan(result);
+    if (plan && !scenePlanHasContent(currentPlan, currentSpec)
+      && window.NewStoryAdSceneAssets?.applyPlan?.(legacy.state, plan)) {
+      legacy.markSourceDirty?.('scene');
+      legacy.renderAll?.();
+      legacy.scheduleAutoSave?.('reference_video_projection');
+      changed = true;
+    }
+    return changed;
+  }
+
   function fillRequirementFromAnalysis(analysis = {}) {
     const result = analysis.result;
     const text = String(result?.generated_brief || '').trim();
@@ -83,7 +183,56 @@
         : '分析完成，中文内容已填入广告需求文本框，请直接检查和修改',
       'success',
     );
+    adoptReferenceAnalysis(analysis);
     return true;
+  }
+
+  function reset(options = {}) {
+    stopPolling();
+    state.analysis = null;
+    state.uploadSession = null;
+    state.mappingFingerprint = '';
+    state.autoFilledAnalysisId = '';
+    state.lastErrorKey = '';
+    state.explicitlyRemoved = options.explicit === true;
+    state.modalOpen = false;
+    render({});
+    setModal(false);
+  }
+
+  function hydrate(saved = null) {
+    if (!saved || typeof saved !== 'object' || !saved.analysis_id) {
+      reset();
+      return null;
+    }
+    const id = String(saved.analysis_id || '').trim();
+    state.analysis = {
+      id,
+      status: saved.status || 'completed',
+      result: {
+        schema_version: Number(saved.schema_version || 3) || 3,
+        analysis_scope: saved.analysis_scope || 'reference_content_and_creative_structure',
+        generated_brief: saved.generated_brief || '',
+        source_facts: saved.source_facts || {},
+        analysis_quality: saved.analysis_quality || {},
+        story_outline: saved.story_outline || {},
+        plot_beats: saved.plot_beats || [],
+        character_prompts: saved.character_prompts || [],
+        scene_prompts: saved.scene_prompts || [],
+        camera_intents: saved.camera_intents || [],
+        character_actions: saved.character_actions || [],
+        prompt_suggestions: saved.prompt_suggestions || {},
+        transcript: { status: saved.transcript_status || '' },
+        warnings: saved.warnings || [],
+      },
+      scene_view_mapping: saved.scene_view_mapping || null,
+    };
+    state.mappingFingerprint = '';
+    state.autoFilledAnalysisId = id;
+    state.lastErrorKey = '';
+    state.explicitlyRemoved = false;
+    render(state.analysis);
+    return state.analysis;
   }
 
   function renderDraft(analysis = {}) {
@@ -99,6 +248,7 @@
 
   function render(analysis = state.analysis || {}) {
     state.analysis = analysis?.id ? analysis : state.analysis;
+    if (analysis?.id) state.explicitlyRemoved = false;
     const current = analysis?.status === 'uploading' ? analysis : (state.analysis || {});
     const status = $('#dhNsaReferenceVideoState');
     const labels = {
@@ -350,12 +500,7 @@
     if (!state.analysis?.id) return;
     try {
       await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}`, { method: 'DELETE' });
-      stopPolling();
-      state.analysis = null;
-      state.mappingFingerprint = '';
-      state.autoFilledAnalysisId = '';
-      state.lastErrorKey = '';
-      render({});
+      reset({ explicit: true });
       const urlInput = $('#dhNsaReferenceVideoUrl');
       if (urlInput) urlInput.value = '';
       [$('#dhNsaReferenceVideoFileName'), $('#dhNsaReferenceVideoDialogFileName')]
@@ -445,8 +590,11 @@
       return {
         analysis_id: analysis.id,
         status: analysis.status,
-        analysis_scope: 'creative_structure_only',
+        schema_version: Number(analysis.result?.schema_version || 3) || 3,
+        analysis_scope: analysis.result?.analysis_scope || 'reference_content_and_creative_structure',
         generated_brief: analysis.result?.generated_brief || '',
+        source_facts: analysis.result?.source_facts || {},
+        analysis_quality: analysis.result?.analysis_quality || {},
         story_outline: analysis.result?.story_outline || {},
         plot_beats: analysis.result?.plot_beats || [],
         character_prompts: analysis.result?.character_prompts || [],
@@ -455,9 +603,21 @@
         character_actions: analysis.result?.character_actions || [],
         prompt_suggestions: analysis.result?.prompt_suggestions || {},
         scene_view_mapping: analysis.scene_view_mapping || null,
+        transcript_status: analysis.result?.transcript?.status || '',
+        warnings: analysis.result?.warnings || [],
         identity_extraction_allowed: false,
       };
     },
+    taskPayloadOrSaved: saved => state.explicitlyRemoved
+      ? null
+      : (window.NewStoryAdReferenceVideoAnalysis.taskPayload()
+        || (saved && typeof saved === 'object' ? saved : null)),
+    hydrate,
+    reset,
+    wasExplicitlyRemoved: () => state.explicitlyRemoved,
+    adoptReferenceAnalysis,
+    referenceScenePlan,
+    creativeDirectionText,
     mapCurrentSceneViews,
   };
   document.addEventListener('new-story-ad:mount', bind);

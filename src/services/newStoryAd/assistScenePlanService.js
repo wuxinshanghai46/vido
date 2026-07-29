@@ -35,6 +35,60 @@ function outputSchema() {
 }`;
 }
 
+function scenePlanHasUserContent(plan = {}, spec = {}) {
+  const normalized = normalizeScenePlan(plan && typeof plan === 'object' ? plan : {});
+  const values = [
+    spec.layoutText,
+    spec.materialLightText,
+    spec.interactionText,
+    spec.negativeText,
+    ...normalized.spaces.flatMap(space => {
+      const item = space.scene_spec || {};
+      return [item.layoutText, item.materialLightText, item.interactionText, item.negativeText];
+    }),
+  ];
+  return values.some(value => cleanText(value || '', 2000));
+}
+
+function referenceBriefWasEdited(context = {}) {
+  const reference = context.reference_video_analysis;
+  if (!reference?.generated_brief) return false;
+  const normalize = value => cleanText(value || '', 5000).replace(/\s+/g, '');
+  return normalize(context.brief) !== normalize(reference.generated_brief);
+}
+
+function assertReferenceSceneAlignment(plan = {}, context = {}, currentPlan = {}) {
+  const reference = context.reference_video_analysis;
+  if (!reference || reference.status !== 'completed') return plan;
+  if (reference.analysis_quality?.valid !== true) {
+    const error = new Error('参考视频识别合同不完整，已停止 AI 场景补齐，避免继续猜测无证据场景');
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_INCOMPLETE';
+    error.status = 409;
+    throw error;
+  }
+  if (referenceBriefWasEdited(context)
+    || scenePlanHasUserContent(currentPlan, context.scene_spec || {})) return plan;
+  const facts = reference.source_facts || {};
+  const product = cleanText(facts.product_or_service || '', 300);
+  const environment = cleanText(facts.environment || '', 500);
+  const materials = (Array.isArray(facts.materials) ? facts.materials : [])
+    .map(item => cleanText(item, 200))
+    .filter(Boolean);
+  const text = cleanText(JSON.stringify(plan), 30000);
+  const productOrMaterialMatched = (product && text.includes(product))
+    || materials.some(item => text.includes(item));
+  const environmentMatched = environment && text.includes(environment);
+  if (!productOrMaterialMatched || !environmentMatched) {
+    const error = new Error('AI 场景补齐结果与参考视频中的产品、材质或实际空间不一致，已拒绝保存；请重新分析参考视频或手动修改场景');
+    error.code = 'ASSIST_SCENE_REFERENCE_MISMATCH';
+    error.status = 422;
+    error.retryable = true;
+    error.reference_evidence = { product, environment, materials };
+    throw error;
+  }
+  return plan;
+}
+
 /** 为模型输出补齐稳定空间 ID 和逐空间完整合同，同时保留已有结构化空间。 */
 function enforceAssistedScenePlan(raw = {}, currentPlan = {}, currentSpec = {}, context = {}, targetSpaceId = '', options = {}) {
   const source = raw && typeof raw === 'object' ? raw : {};
@@ -131,6 +185,7 @@ function buildResponse({ parsed = {}, context = {}, currentPlan = {}, targetSpac
     targetSpaceId,
     { preserveCurrentFields },
   );
+  assertReferenceSceneAlignment(plan, context, currentPlan);
   const active = plan.spaces.find(space => space.id === targetSpaceId) || plan.spaces[0];
   return {
     scene_plan: plan,
@@ -145,4 +200,11 @@ function buildResponse({ parsed = {}, context = {}, currentPlan = {}, targetSpac
   };
 }
 
-module.exports = { outputSchema, enforceAssistedScenePlan, buildResponse };
+module.exports = {
+  outputSchema,
+  enforceAssistedScenePlan,
+  assertReferenceSceneAlignment,
+  referenceBriefWasEdited,
+  scenePlanHasUserContent,
+  buildResponse,
+};

@@ -70,6 +70,7 @@ const files = [
   'src/services/newStoryAd/keyframeParallelScheduler.js',
   'src/services/newStoryAd/mediaAdapter.js',
   'src/services/newStoryAd/modelGateway.js',
+  'src/services/newStoryAd/providerAdapterRegistry.js',
   'src/services/newStoryAd/personAssetLifecycleService.js',
   'src/services/newStoryAd/personIdentityContractService.js',
   'src/services/newStoryAd/revisionService.js',

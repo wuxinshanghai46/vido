@@ -1,6 +1,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
@@ -12,6 +13,7 @@ const personUi = read('public/js/new-story-ad/real-person-dossier.js');
 const subjectAssist = read('public/js/new-story-ad/subject-profile-assist.js');
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
 const legacy = read('public/js/new-story-ad-legacy-ui.js');
+const stateSync = read('public/js/new-story-ad/state-sync.js');
 const routes = read('src/routes/newStoryAd.js');
 const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
 const personService = read('src/services/newStoryAd/personDossierService.js');
@@ -72,6 +74,17 @@ assert.ok(referenceUi.includes('story_outline: analysis.result?.story_outline'))
 assert.ok(referenceUi.includes('character_prompts: analysis.result?.character_prompts'));
 assert.ok(referenceUi.includes('scene_prompts: analysis.result?.scene_prompts'));
 assert.ok(referenceUi.includes('prompt_suggestions: analysis.result?.prompt_suggestions'));
+assert.ok(referenceUi.includes('source_facts: analysis.result?.source_facts'));
+assert.ok(referenceUi.includes('analysis_quality: analysis.result?.analysis_quality'));
+assert.ok(referenceUi.includes('function hydrate(saved = null)'));
+assert.ok(referenceUi.includes('function reset(options = {})'));
+assert.ok(referenceUi.includes('wasExplicitlyRemoved'));
+assert.ok(stateSync.includes('NewStoryAdReferenceVideoAnalysis?.hydrate?.(request.reference_video_analysis || null)'));
+assert.ok(legacy.includes('state.context?.reference_video_analysis'));
+assert.ok(referenceUi.includes('function adoptReferenceAnalysis'));
+assert.ok(referenceUi.includes('function referenceScenePlan'));
+assert.ok(legacy.includes('markSourceDirty, scheduleAutoSave'));
+assert.ok(legacy.includes('NewStoryAdReferenceVideoAnalysis?.reset?.({ explicit: true })'));
 assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
 assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not read real-person state');
 assert.ok(personUi.includes('setModal(true)'), 'real-person studio must open in a modal');
@@ -103,9 +116,89 @@ assert.ok(personService.includes("composition: 'local_sharp'"));
 assert.ok(personService.includes('model_generated_text: false'));
 assert.ok(personService.includes('previous_frame_dependency'));
 
+const browser = {
+  window: {},
+  document: {
+    readyState: 'loading',
+    querySelector: () => null,
+    addEventListener: () => {},
+    body: { classList: { toggle: () => {} } },
+  },
+  console,
+  setTimeout,
+  clearTimeout,
+  setInterval: () => 0,
+  clearInterval: () => {},
+  Event: class Event {
+    constructor(type, options = {}) {
+      this.type = type;
+      this.bubbles = options.bubbles === true;
+    }
+  },
+};
+browser.window.window = browser.window;
+vm.runInNewContext(referenceUi, browser, { filename: 'reference-video-analysis.js' });
+const referenceModule = browser.window.NewStoryAdReferenceVideoAnalysis;
+assert.ok(referenceModule);
+assert.strictEqual(referenceModule.taskPayload(), null);
+referenceModule.hydrate({
+  analysis_id: 'ref_restore_1',
+  status: 'completed',
+  analysis_scope: 'reference_content_and_creative_structure',
+  generated_brief: '恢复后的参考视频广告需求',
+  source_facts: {
+    product_or_service: '304不锈钢金属装饰墙板',
+    environment: '高端客厅金属墙板展示空间',
+    materials: ['304不锈钢金属墙板'],
+  },
+  analysis_quality: { valid: true },
+  story_outline: { logline: '恢复后的完整故事' },
+  plot_beats: [{ order: 1, purpose: '建立墙板空间' }],
+  scene_prompts: [{ location_type: '高端客厅金属墙板展示空间' }],
+  camera_intents: [{ movement: 'slow_push_in' }],
+});
+assert.strictEqual(referenceModule.current().id, 'ref_restore_1');
+assert.strictEqual(referenceModule.taskPayload().source_facts.product_or_service, '304不锈钢金属装饰墙板');
+assert.strictEqual(referenceModule.taskPayload().analysis_quality.valid, true);
+const creativeInput = {
+  value: '',
+  maxLength: 4000,
+  dispatchEvent: () => {},
+};
+browser.document.querySelector = selector => selector === '#dhNsaAdCreativeDirection' ? creativeInput : null;
+let projectedPlan = null;
+let dirtyCount = 0;
+let autosaveCount = 0;
+browser.window.NewStoryAdSceneAssets = {
+  specPayload: () => ({}),
+  planPayload: () => null,
+  applyPlan: (state, plan) => {
+    state.sceneConfig = plan;
+    projectedPlan = plan;
+    return { plan };
+  },
+};
+browser.window.__newStoryAdLegacyUI = {
+  state: { sceneConfig: null },
+  markSourceDirty: () => { dirtyCount += 1; },
+  renderAll: () => {},
+  scheduleAutoSave: () => { autosaveCount += 1; },
+};
+assert.strictEqual(referenceModule.adoptReferenceAnalysis(referenceModule.current()), true);
+assert.ok(creativeInput.value.includes('恢复后的完整故事'));
+assert.strictEqual(projectedPlan.advertised_subject, '304不锈钢金属装饰墙板');
+assert.strictEqual(projectedPlan.spaces[0].name, '高端客厅金属墙板展示空间');
+assert.strictEqual(dirtyCount, 1);
+assert.strictEqual(autosaveCount, 1);
+assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale' }).analysis_id, 'ref_restore_1');
+referenceModule.reset({ explicit: true });
+assert.strictEqual(referenceModule.taskPayload(), null, 'new task/reset must not reuse the previous task analysis');
+assert.strictEqual(referenceModule.wasExplicitlyRemoved(), true);
+assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale' }), null);
+
 console.log(JSON.stringify({
   passed: true,
-  checks: 71,
+  checks: 92,
   reference_feature_controls: 11,
   person_feature_controls: 11,
   dossier_tabs: 5,

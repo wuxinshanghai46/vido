@@ -242,7 +242,10 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   }
   if (!completion?.choices?.length || !text) {
     const raw = (typeof completion === 'string' ? completion : JSON.stringify(completion || {})).slice(0, 300);
-    throw new Error(`模型 ${config.providerId}/${config.modelId} 没有返回可用内容。`);
+    const error = new Error(`模型 ${config.providerId}/${config.modelId} 没有返回可用内容。finish_reason=${completion?.choices?.[0]?.finish_reason || 'unknown'}；响应摘要=${raw}`);
+    error.code = 'PROVIDER_EMPTY_RESPONSE';
+    error.retryable = true;
+    throw error;
   }
   return { text, usage: completion.usage || {} };
 }
