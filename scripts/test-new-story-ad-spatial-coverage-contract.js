@@ -1,6 +1,11 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 process.env.DB_ENABLED = '0';
+const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-spatial-coverage-test-'));
+process.env.OUTPUT_DIR = tempRoot;
 
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneSpace = require('../src/services/newStoryAd/sceneSpaceContractService');
@@ -530,7 +535,12 @@ async function main() {
   }, null, 2));
 }
 
-main().catch(error => {
-  console.error(error.stack || error);
-  process.exitCode = 1;
-});
+main()
+  .catch(error => {
+    console.error(error.stack || error);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    const resolved = path.resolve(tempRoot);
+    if (resolved.startsWith(path.resolve(os.tmpdir()))) fs.rmSync(resolved, { recursive: true, force: true });
+  });

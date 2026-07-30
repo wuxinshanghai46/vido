@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const pipeline = require('../pipelineModelService');
 const { loadSettings } = require('../settingsService');
 const storage = require('./storageService');
@@ -38,14 +39,18 @@ function modelKey(model) {
   let channel = String(model?.billing_channel || model?.channel || '').toLowerCase();
   let endpoint = String(model?.endpoint || '').toLowerCase();
   let wallet = String(model?.wallet || model?.account_group || '').toLowerCase();
+  let credential = '';
   try {
     const provider = (loadSettings().providers || []).find(item => providerMatches(item, providerId));
     const providerModel = (provider?.models || []).find(item => String(item.id || '').toLowerCase() === modelId) || {};
     channel = channel || String(providerModel.billing_channel || providerModel.channel || '').toLowerCase();
     endpoint = endpoint || String(providerModel.endpoint || provider?.api_url || '').toLowerCase();
     wallet = wallet || String(providerModel.wallet || providerModel.account_group || provider?.account_group || '').toLowerCase();
+    if (provider?.api_key) {
+      credential = crypto.createHash('sha256').update(String(provider.api_key)).digest('hex').slice(0, 12);
+    }
   } catch {}
-  return `${providerId}/${modelId}|channel=${channel || 'default'}|endpoint=${endpoint || 'default'}|wallet=${wallet || 'default'}`;
+  return `${providerId}/${modelId}|channel=${channel || 'default'}|endpoint=${endpoint || 'default'}|wallet=${wallet || 'default'}|credential=${credential || 'none'}`;
 }
 
 function storyUseMatches(model) {
@@ -174,7 +179,8 @@ function healthState(model) {
   const cooldownUntil = row.cooldown_until ? new Date(row.cooldown_until).getTime() : 0;
   return {
     ...row,
-    circuit_open: Number.isFinite(cooldownUntil) && cooldownUntil > Date.now(),
+    circuit_open: row.blocked_until_config_change === true
+      || (Number.isFinite(cooldownUntil) && cooldownUntil > Date.now()),
     cooldown_remaining_ms: Number.isFinite(cooldownUntil) ? Math.max(0, cooldownUntil - Date.now()) : 0,
   };
 }
@@ -197,6 +203,7 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     row.success_count = Number(row.success_count || 0) + 1;
     row.consecutive_failure_count = 0;
     row.cooldown_until = '';
+    row.blocked_until_config_change = false;
     row.last_error_code = '';
     row.last_success_at = new Date().toISOString();
   } else if (requestRejected) {
@@ -211,7 +218,8 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     row.last_failed_at = new Date().toISOString();
     const code = row.last_error_code;
     if (/AUTH_CONFIG|MODEL_CONFIG/.test(code)) {
-      row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      row.cooldown_until = '';
+      row.blocked_until_config_change = true;
     } else if (code === 'PROVIDER_BILLING') {
       row.cooldown_until = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     } else if (/TIMEOUT|RATE_LIMIT|NETWORK/.test(code)) {
@@ -261,8 +269,11 @@ function candidatesForStage(stage) {
 }
 
 function candidatesForVisionStage(stage) {
-  const configured = pipeline.pickAllEnabled(stage);
-  const ranked = uniqueModels([...configured, ...settingsVisionCandidates()])
+  const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
+    ? pipeline.pickAllEnabledWithDefault(stage)
+    : pipeline.pickAllEnabled(stage);
+  const pool = configured.length ? configured : settingsVisionCandidates();
+  const ranked = uniqueModels(pool)
     .map((model, index) => ({ ...model, fallback_rank: index + 1 }))
     .filter(model => isConfiguredAndUsable(model, 'vision').ok)
     .filter(model => !healthState(model).circuit_open)
@@ -271,6 +282,34 @@ function candidatesForVisionStage(stage) {
       return priorityDelta || (getHealthScore(b) - getHealthScore(a));
     });
   return diversifyVisionCandidates(preferReferenceVisionCandidates(ranked, stage));
+}
+
+function visionAvailability(stage) {
+  const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
+    ? pipeline.pickAllEnabledWithDefault(stage)
+    : pipeline.pickAllEnabled(stage);
+  const source = configured.length ? 'stage_route' : 'settings_fallback';
+  const pool = uniqueModels(configured.length ? configured : settingsVisionCandidates());
+  const models = pool.map((model) => {
+    const configuredState = isConfiguredAndUsable(model, 'vision');
+    const health = configuredState.ok ? healthState(model) : {};
+    const circuitOpen = configuredState.ok && health.circuit_open === true;
+    return {
+      provider_id: model.provider_id,
+      model_id: model.model_id,
+      available: configuredState.ok && !circuitOpen,
+      reason: !configuredState.ok
+        ? configuredState.reason
+        : (circuitOpen ? (health.last_error_code || 'circuit_open') : 'available'),
+      retry_after_ms: circuitOpen ? Number(health.cooldown_remaining_ms || 0) : 0,
+    };
+  });
+  return {
+    stage,
+    source,
+    available_count: models.filter(item => item.available).length,
+    models,
+  };
 }
 
 function preferReferenceVisionCandidates(candidates = [], stage = '') {
@@ -330,10 +369,10 @@ function classifyError(error) {
   if (/AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(msg)) return { code: 'PROVIDER_CONTENT_AUDIT', retryable: false };
   if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/InvalidParameter|BadRequest|parameter .* not valid|cannot be mixed/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
-  if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
+  if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up|connection error|fetch failed/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };
   if (/429|rate limit|quota/i.test(msg)) return { code: 'RATE_LIMIT', retryable: true };
-  if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };
+  if (/token not valid|invalid.*token|api key|unauthorized|401|403|令牌.*(?:过期|无效|不正确)|验证不正确/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };
   if (/configuration not found|model.*not found|model_not_found|不是可用|没有可用配置|not available|disabled/i.test(msg)) return { code: 'MODEL_CONFIG', retryable: false };
   if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(msg)) return { code: 'MODEL_JSON', retryable: true };
   if (/\bHTTP\s*5\d\d\b|\bstatus(?:\s*code)?\s*[:=]?\s*5\d\d\b|Internal Server Error|Service Unavailable/i.test(msg)) return { code: 'PROVIDER_5XX', retryable: true };
@@ -527,6 +566,16 @@ async function generateVision({
     const error = new Error(`${stage} 没有未熔断的可用视觉模型，已立即停止本阶段`);
     error.code = 'VISION_CIRCUIT_OPEN';
     error.retryable = true;
+    const availability = visionAvailability(stage);
+    error.failed_models = availability.models
+      .filter(item => !item.available)
+      .map(item => ({
+        provider_id: item.provider_id,
+        model_id: item.model_id,
+        code: String(item.reason || 'unavailable').toUpperCase(),
+        retry_after_ms: item.retry_after_ms,
+      }));
+    error.retry_after_ms = Math.max(0, ...error.failed_models.map(item => Number(item.retry_after_ms || 0)));
     throw error;
   }
   const failed = [];
@@ -696,6 +745,7 @@ function mockResponse(stage, userPrompt = '') {
 module.exports = {
   candidatesForStage,
   candidatesForVisionStage,
+  visionAvailability,
   diversifyVisionCandidates,
   preferReferenceVisionCandidates,
   generateText,

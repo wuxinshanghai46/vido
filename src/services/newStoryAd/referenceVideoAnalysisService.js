@@ -77,6 +77,34 @@ function publicRecord(record = {}) {
   return copy;
 }
 
+function publicVisionFailure(error = {}) {
+  const failedModels = (Array.isArray(error.failed_models) ? error.failed_models : [])
+    .map(item => ({
+      provider_id: String(item?.provider_id || ''),
+      model_id: String(item?.model_id || ''),
+      code: String(item?.code || 'UNKNOWN'),
+      retry_after_ms: Math.max(0, Number(item?.retry_after_ms || 0)),
+    }))
+    .filter(item => item.provider_id && item.model_id);
+  const code = String(error.code || 'REFERENCE_VIDEO_ANALYSIS_FAILED');
+  const summary = failedModels.length
+    ? failedModels.map(item => `${item.provider_id}/${item.model_id}:${item.code}`).join('；')
+    : '';
+  let message = String(error.message || error).slice(0, 500);
+  if (code === 'VISION_CIRCUIT_OPEN') {
+    message = '视觉模型当前不可用，系统已停止重复调用以避免浪费。请等待限流恢复或联系管理员修复模型配置。';
+  } else if (code === 'VISION_QA_UNAVAILABLE') {
+    message = `视觉分析模型均未成功${summary ? `（${summary}）` : ''}，未生成或覆盖后续人物、场景和剧情数据。`;
+  }
+  return {
+    code,
+    message,
+    retryable: error.retryable === true,
+    retry_after_ms: Math.max(0, Number(error.retry_after_ms || 0)),
+    failed_models: failedModels,
+  };
+}
+
 function assertOwned(analysisId, user = {}) {
   const userId = ownerId(user);
   const record = readRecord(userId, analysisId);
@@ -1133,10 +1161,7 @@ async function runAnalysis(initialRecord) {
       save(latest, {
         status: 'failed',
         phase: '分析失败',
-        error: {
-          code: error.code || 'REFERENCE_VIDEO_ANALYSIS_FAILED',
-          message: String(error.message || error).slice(0, 500),
-        },
+        error: publicVisionFailure(error),
         failed_at: now(),
       });
     }
@@ -1162,6 +1187,25 @@ function start(analysisId, user = {}) {
   }
   if (activeRuns.has(analysisId) || record.status === 'running') {
     return { record: publicRecord(record), accepted: false, duplicate: true };
+  }
+  if (process.env.NEW_STORY_AD_MOCK_LLM !== '1') {
+    const availability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
+    if (!availability.available_count) {
+      const error = new Error('视觉模型当前不可用，未启动新的分析，也没有覆盖上一次失败记录。');
+      error.code = 'VISION_CIRCUIT_OPEN';
+      error.status = 503;
+      error.retryable = true;
+      error.failed_models = availability.models
+        .filter(item => !item.available)
+        .map(item => ({
+          provider_id: item.provider_id,
+          model_id: item.model_id,
+          code: String(item.reason || 'unavailable').toUpperCase(),
+          retry_after_ms: item.retry_after_ms,
+        }));
+      error.retry_after_ms = Math.max(0, ...error.failed_models.map(item => Number(item.retry_after_ms || 0)));
+      throw error;
+    }
   }
   record = save(record, {
     status: 'queued',
@@ -1301,5 +1345,6 @@ module.exports = {
     hasChineseDetail,
     refusalLike,
     frameVisionUrl,
+    publicVisionFailure,
   },
 };

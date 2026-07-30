@@ -17,6 +17,7 @@ const PROVIDER_PRESETS = {
   zhipu:       { name: '智谱 AI',      api_url: 'https://open.bigmodel.cn/api/paas/v4',        defaultModels: [
     { id: 'glm-4-plus', name: 'GLM-4-Plus（旗舰对话）', type: 'chat', use: 'story' },
     { id: 'glm-4-flash', name: 'GLM-4-Flash（免费·快速）', type: 'chat', use: 'story' },
+    { id: 'glm-4.6v-flash', name: 'GLM-4.6V-Flash（免费·视频/图像理解）', type: 'vlm', use: 'vision' },
     { id: 'cogview-4', name: 'CogView-4（高质量文生图）', type: 'image', use: 'image' },
     { id: 'cogview-3-flash', name: 'CogView-3-Flash（快速文生图）', type: 'image', use: 'image' },
     { id: 'cogvideox-2', name: 'CogVideoX-2（高质量视频·6秒）', type: 'video', use: 'video' },

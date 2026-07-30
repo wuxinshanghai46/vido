@@ -202,6 +202,8 @@ const files = [
   'scripts/test-new-story-ad-reference-person-ui.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
   'scripts/test-new-story-ad-reference-video-link.js',
+  'scripts/run-with-pm2-env.js',
+  'scripts/check-new-story-ad-reference-video-runtime.js',
   'scripts/test-pipeline-capability-audit.js',
   'scripts/test-pipeline-stage-selection.js',
   'scripts/test-platform-loading-optimization.js',
@@ -303,6 +305,7 @@ client.on('ready', async () => {
       `cd ${quote(remoteRoot)}`,
       checks,
       'npm run platform:upgrade:test',
+      'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-reference-video-runtime.js',
       'pm2 reload vido --update-env >/dev/null',
       'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1',
     ].join(' && '));

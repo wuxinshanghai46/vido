@@ -13,6 +13,7 @@ const service = require('../src/services/newStoryAd/referenceVideoAnalysisServic
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
+const settingsService = require('../src/services/settingsService');
 
 async function waitFor(id, user, statuses, timeoutMs = 20000) {
   const started = Date.now();
@@ -25,6 +26,89 @@ async function waitFor(id, user, statuses, timeoutMs = 20000) {
 }
 
 async function main() {
+  settingsService.saveSettings({
+    providers: [
+      {
+        id: 'zhipu',
+        preset: 'zhipu',
+        name: 'Zhipu',
+        api_url: 'https://open.bigmodel.cn/api/paas/v4',
+        api_key: 'test-zhipu-key',
+        enabled: true,
+        models: [],
+      },
+      {
+        id: 'webang-maas',
+        preset: 'webang-maas',
+        name: 'Webang MaaS',
+        api_url: 'https://example.invalid/v1',
+        api_key: 'test-webang-key',
+        enabled: true,
+        models: [
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
+        ],
+      },
+      {
+        id: 'openai',
+        preset: 'openai',
+        name: 'OpenAI',
+        api_url: 'https://api.openai.com/v1',
+        api_key: 'test-openai-key',
+        enabled: true,
+        models: [
+          { id: 'gpt-4o', name: 'GPT-4o', type: 'chat', use: 'story', enabled: true },
+        ],
+      },
+    ],
+    mcps: [],
+    skills: [],
+  });
+  const routedVisionModels = modelGateway
+    .candidatesForVisionStage('new_story_ad.reference_video_vision')
+    .map(item => `${item.provider_id}/${item.model_id}`);
+  assert.deepStrictEqual(routedVisionModels, [
+    'zhipu/glm-4.6v-flash',
+    'webang-maas/gemini-2.5-flash',
+  ], 'reference video analysis must use only its explicit VLM route');
+  const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
+  assert.strictEqual(routedAvailability.source, 'stage_route');
+  assert.strictEqual(routedAvailability.available_count, 2);
+  assert.ok(!routedAvailability.models.some(item => item.provider_id === 'openai'));
+  assert.strictEqual(modelGateway.classifyError(new Error('401 该令牌已过期')).code, 'AUTH_CONFIG');
+  assert.strictEqual(modelGateway.classifyError(new Error('Connection error.')).code, 'TIMEOUT_OR_NETWORK');
+
+  const authBlockedModel = { provider_id: 'zhipu', model_id: 'glm-4.6v-flash' };
+  const permanentAuthError = new Error('401 令牌已过期或验证不正确');
+  modelGateway.recordHealth(authBlockedModel, { ok: false, error: permanentAuthError });
+  assert.strictEqual(modelGateway.healthState(authBlockedModel).circuit_open, true);
+  assert.strictEqual(modelGateway.healthState(authBlockedModel).blocked_until_config_change, true);
+  const rotatedSettings = settingsService.loadSettings();
+  const rotatedZhipu = rotatedSettings.providers.find(item => item.id === 'zhipu');
+  rotatedZhipu.api_key = 'rotated-test-zhipu-key';
+  settingsService.saveSettings(rotatedSettings);
+  assert.strictEqual(
+    modelGateway.healthState(authBlockedModel).circuit_open,
+    false,
+    'a credential change must create a fresh health identity and unblock validation',
+  );
+  rotatedZhipu.api_key = 'test-zhipu-key';
+  settingsService.saveSettings(rotatedSettings);
+  fs.rmSync(path.join(tempRoot, 'new_story_ad_model_health.json'), { force: true });
+
+  const publicFailure = service._private.publicVisionFailure({
+    code: 'VISION_QA_UNAVAILABLE',
+    failed_models: [
+      { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', code: 'AUTH_CONFIG', message: 'private provider detail' },
+    ],
+  });
+  assert.deepStrictEqual(publicFailure.failed_models, [{
+    provider_id: 'zhipu',
+    model_id: 'glm-4.6v-flash',
+    code: 'AUTH_CONFIG',
+    retry_after_ms: 0,
+  }]);
+  assert.ok(!JSON.stringify(publicFailure).includes('private provider detail'));
+
   const user = { id: 'reference-video-test-user' };
   const input = path.join(tempRoot, 'input.mp4');
   execFileSync(ffmpegPath, [
@@ -94,6 +178,38 @@ async function main() {
     { originalname: 'wrong.avi', size: 1024 },
     { width: 720, height: 1280, duration_seconds: 10 },
   ), /MP4、MOV 或 WebM/);
+
+  const guardedInput = path.join(tempRoot, 'guarded-input.mp4');
+  fs.copyFileSync(input, guardedInput);
+  const guarded = await service.create({
+    file: {
+      path: guardedInput,
+      originalname: 'guarded-reference.mp4',
+      mimetype: 'video/mp4',
+      size: fs.statSync(guardedInput).size,
+    },
+    body: { rights_confirmed: 'true' },
+    user,
+  });
+  const authError = new Error('test auth failure');
+  authError.code = 'AUTH_CONFIG';
+  modelGateway.recordHealth({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash' }, { ok: false, error: authError });
+  modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
+  const mockBeforeGuard = process.env.NEW_STORY_AD_MOCK_LLM;
+  process.env.NEW_STORY_AD_MOCK_LLM = '0';
+  assert.throws(
+    () => service.start(guarded.id, user),
+    error => error.code === 'VISION_CIRCUIT_OPEN' && error.status === 503,
+    'an unavailable runtime route must fail before queueing or issuing a model call',
+  );
+  process.env.NEW_STORY_AD_MOCK_LLM = mockBeforeGuard;
+  const guardedAfter = service.get(guarded.id, user);
+  assert.strictEqual(guardedAfter.status, 'uploaded');
+  assert.strictEqual(guardedAfter.error, null);
+  service.remove(guarded.id, user);
+  fs.rmSync(modelGateway.visionAvailability('new_story_ad.reference_video_vision').models.length
+    ? path.join(tempRoot, 'new_story_ad_model_health.json')
+    : path.join(tempRoot, 'unused-health.json'), { force: true });
 
   const started = service.start(uploaded.id, user);
   assert.strictEqual(started.accepted, true);
@@ -381,7 +497,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 76,
+    checks: 95,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,
