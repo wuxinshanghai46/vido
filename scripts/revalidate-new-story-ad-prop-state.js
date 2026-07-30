@@ -26,7 +26,8 @@ function fileSha256(filePath) {
 
 async function main() {
   const recordHumanApproval = process.argv.includes('--record-human-approval');
-  if (!recordHumanApproval && !process.argv.includes('--confirm-paid')) {
+  const verifyCompletedRun = process.argv.includes('--verify-completed-run');
+  if (!recordHumanApproval && !verifyCompletedRun && !process.argv.includes('--confirm-paid')) {
     throw new Error('Refusing real supplier call without --confirm-paid');
   }
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1' || process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -47,7 +48,8 @@ async function main() {
   const auditDir = path.join(root, 'outputs', 'audits', 'prop-state-revalidation', runId);
   const auditPath = path.join(auditDir, 'audit.json');
   fs.mkdirSync(auditDir, { recursive: true });
-  let audit = fs.existsSync(auditPath)
+  const auditExists = fs.existsSync(auditPath);
+  let audit = auditExists
     ? JSON.parse(fs.readFileSync(auditPath, 'utf8'))
     : {
       schema_version: 1,
@@ -66,9 +68,46 @@ async function main() {
     fs.writeFileSync(temp, JSON.stringify(audit, null, 2), 'utf8');
     fs.renameSync(temp, auditPath);
   };
-  persistAudit();
+  if (!verifyCompletedRun) persistAudit();
   const submissionsBeforeRun = audit.provider_submissions.length;
   assert.ok(submissionsBeforeRun <= 1, 'recorded submissions exceed the authorized cap');
+  if (verifyCompletedRun) {
+    assert.equal(auditExists, true, 'completed revalidation audit is missing');
+    assert.equal(audit.status, 'completed');
+    assert.equal(submissionsBeforeRun, 1);
+    assert.equal(audit.provider_submissions[0]?.status, 'success');
+    assert.ok(Object.values(audit.human_visual_approval?.checks || {}).every(Boolean));
+    const storage = require('../src/services/newStoryAd/storageService');
+    const asset = (storage.getOutput(taskId, 'prop_assets') || [])
+      .find(item => String(item.id || item.prop_id) === propId);
+    assert.ok(asset, 'approved prop asset is missing');
+    assert.equal(asset.status, 'approved');
+    assert.equal(asset.state_revision, stateRevision);
+    assert.equal(asset.view_images?.length, 4);
+    assert.equal(asset.state_views?.length, 2);
+    assert.equal(asset.state_revalidation?.status, 'approved');
+    const checkpointOutput = storage.getOutput(taskId, `prop_asset_checkpoint:${propId}`) || {};
+    const checkpoint = Object.values(checkpointOutput.units || {})
+      .find(item => item.unit === `states_v${stateRevision}`);
+    assert.ok(checkpoint, 'state revision checkpoint is missing');
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(checkpoint.billing_state, 'confirmed');
+    assert.equal(checkpoint.provider_submission_state, 'completed');
+    console.log(JSON.stringify({
+      passed: true,
+      run_id: runId,
+      status: audit.status,
+      provider_image_submissions: submissionsBeforeRun,
+      successful_image_submissions: 1,
+      new_provider_calls_executed: 0,
+      identity_view_count: asset.view_images.length,
+      state_view_count: asset.state_views.length,
+      state_revision: asset.state_revision,
+      checkpoint_status: checkpoint.status,
+      human_visual_approval: audit.human_visual_approval.checks,
+    }));
+    return;
+  }
   if (recordHumanApproval) {
     assert.equal(submissionsBeforeRun, 1, 'human approval requires exactly one recorded provider submission');
     assert.equal(audit.provider_submissions[0]?.status, 'success', 'human approval requires a successful provider result');
