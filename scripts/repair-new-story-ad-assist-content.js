@@ -20,11 +20,23 @@ function fingerprint(value) {
 function repairReferenceAnalysis(reference = {}) {
   if (!reference || typeof reference !== 'object') return reference;
   const prompts = Array.isArray(reference.scene_prompts) ? reference.scene_prompts : [];
-  const parsed = prompts.map(prompt => referenceAnalysis._private.visualEvidenceFacts(prompt?.layout_prompt || ''));
   const first = (key, fallback = '') => parsed.map(item => item[key]).find(Boolean) || fallback;
   const existing = reference.source_facts && typeof reference.source_facts === 'object'
     ? reference.source_facts
     : {};
+  const repairableSourceFacts = {
+    product_or_service: existing.product_or_service,
+    environment: existing.environment,
+    materials: existing.materials,
+    colors: existing.colors,
+    layout: existing.layout,
+    lighting: existing.lighting,
+    human_actions: existing.human_actions,
+  };
+  const requiresRepair = prompts.some(prompt => RAW_EVIDENCE.test(String(prompt?.layout_prompt || '')))
+    || RAW_EVIDENCE.test(JSON.stringify(repairableSourceFacts));
+  if (!requiresRepair) return reference;
+  const parsed = prompts.map(prompt => referenceAnalysis._private.visualEvidenceFacts(prompt?.layout_prompt || ''));
   const parsedMaterials = [...new Set(parsed.map(item => item.materials).filter(Boolean))];
   const parsedColors = [...new Set(parsed.map(item => item.colors).filter(Boolean))];
   const parsedActions = [...new Set(parsed.map(item => item.action).filter(Boolean))];

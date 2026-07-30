@@ -448,6 +448,7 @@ function testLegacyFrameEvidenceIsNotKeptAsSceneDescription() {
 
 function testAssistContentRepairIsDeterministic() {
   const raw = '以下是逐帧分析及总结： - 产品或服务：全景幕墙窗 - 真实环境：现代住宅客厅 - 材质：透明玻璃与木饰面 - 颜色：米白与原木色 - 布局：大窗位于左侧，沙发位于右侧 - 光线：自然侧光，明亮柔和';
+  const rawSecond = '以下是逐帧分析及总结： - 产品或服务：薄纱窗帘 - 真实环境：室内窗边 - 材质：半透明织物 - 颜色：米白色 - 布局：窗帘位于画面中央 - 光线：自然逆光';
   const bundle = {
     task: {
       id: 'repair-fixture',
@@ -459,7 +460,10 @@ function testAssistContentRepairIsDeterministic() {
         scene_spec: { layoutText: raw, materialLightText: raw },
         reference_video_analysis: {
           source_facts: { product_or_service: raw, environment: raw, materials: [raw], colors: [raw], layout: raw, lighting: raw },
-          scene_prompts: [{ layout_prompt: raw, material_light_prompt: raw }],
+          scene_prompts: [
+            { layout_prompt: raw, material_light_prompt: raw },
+            { layout_prompt: rawSecond, material_light_prompt: rawSecond },
+          ],
         },
       },
     },
@@ -472,6 +476,8 @@ function testAssistContentRepairIsDeterministic() {
   assert.ok(!once.task.request.scene_spec.layoutText.includes('逐帧分析'));
   assert.ok(!once.outputs[0].payload.scene_spec.materialLightText.includes('逐帧分析'));
   assert.equal(once.task.request.reference_video_analysis.source_facts.product_or_service, '全景幕墙窗');
+  assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /室内窗边/);
+  assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /薄纱窗帘/);
 }
 
 /** 按顺序运行人物辅助补齐专项回归。 */
