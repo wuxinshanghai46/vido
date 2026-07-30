@@ -335,6 +335,8 @@ client.on('ready', async () => {
     const checks = files.filter(file => file.endsWith('.js'))
       .map(file => `node --check ${quote(file)}`)
       .join(' && ');
+    const isolatedDossierOutput = `${backupDir}/dossier-test-outputs`;
+    const isolatedDossierDb = `${backupDir}/dossier-test.sqlite`;
     const localHashes = Object.fromEntries(files.map(file => [
       file,
       require('crypto').createHash('sha256').update(require('fs').readFileSync(path.join(root, file))).digest('hex'),
@@ -344,7 +346,8 @@ client.on('ready', async () => {
       `cd ${quote(remoteRoot)}`,
       checks,
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-active-tasks.js',
-      'npm run story-ad:dossier:test',
+      `mkdir -p ${quote(isolatedDossierOutput)}`,
+      `env OUTPUT_DIR=${quote(isolatedDossierOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 DB_PATH=${quote(isolatedDossierDb)} npm run story-ad:dossier:test`,
       `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}${realMatrixResumeRunId ? ` --resume-run-id=${quote(realMatrixResumeRunId)}` : ''}`,
       'npm run platform:upgrade:test',
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-reference-video-runtime.js',
