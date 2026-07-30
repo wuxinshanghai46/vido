@@ -264,6 +264,36 @@ async function main() {
   assert.ok(privateVisionFrame.startsWith('data:image/jpeg;base64,'), 'vision provider must receive embedded evidence instead of a localhost URL');
   assert.ok(!privateVisionFrame.includes('localhost'));
 
+  const legacyAuthTranscript = {
+    status: 'failed_non_blocking',
+    text: '',
+    segments: [],
+    error: {
+      code: 'ERR_BAD_REQUEST',
+      message: 'Request failed with status code 401',
+    },
+  };
+  assert.strictEqual(service._private.isReusableTranscriptFailure(legacyAuthTranscript), true);
+  assert.strictEqual(service._private.isReusableTranscriptFailure({
+    status: 'failed_non_blocking',
+    error: { code: 'RATE_LIMIT', message: 'HTTP 429 rate limit', retryable: true },
+  }), false);
+  assert.strictEqual(
+    await service._private.transcribeAudio({
+      transcript: legacyAuthTranscript,
+      source: { metadata: { has_audio: true } },
+    }),
+    legacyAuthTranscript,
+    'a legacy 401 transcript failure must not issue another provider request during visual recovery',
+  );
+  assert.strictEqual(
+    service._private.isReusableTranscriptFailure({
+      status: 'failed_non_blocking',
+      error: { code: 'AUTH_CONFIG', message: 'invalid credential', retryable: false },
+    }),
+    true,
+  );
+
   assert.throws(
     () => service._private.normalizeResult({ data: "I'm sorry, I can't assist with that." }),
     error => error.code === 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID'
@@ -714,7 +744,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 113,
+    checks: 117,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

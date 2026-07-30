@@ -20,6 +20,13 @@ const MAX_DURATION_SECONDS = 180;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const REFERENCE_VISION_MAX_CANDIDATES = 3;
 const REFERENCE_VISION_STAGE_BUDGET_MS = 240000;
+const NON_RETRYABLE_TRANSCRIPT_CODES = new Set([
+  'AUTH_CONFIG',
+  'MODEL_CONFIG',
+  'PROVIDER_BILLING',
+  'INVALID_PROVIDER_INPUT',
+  'INPUT_SENSITIVE_CONTENT',
+]);
 const activeRuns = new Map();
 const activeImports = new Map();
 
@@ -637,8 +644,22 @@ async function extractEvidenceFrames(record) {
   return frames;
 }
 
+function isReusableTranscriptFailure(transcript = {}) {
+  if (transcript.status !== 'failed_non_blocking') return false;
+  const stored = transcript.error || {};
+  if (stored.retryable === false && NON_RETRYABLE_TRANSCRIPT_CODES.has(String(stored.code || ''))) {
+    return true;
+  }
+  const classified = modelGateway.classifyError({
+    code: stored.code,
+    message: stored.message,
+  });
+  return NON_RETRYABLE_TRANSCRIPT_CODES.has(classified.code);
+}
+
 async function transcribeAudio(record) {
   if (record.transcript?.status === 'completed' || record.transcript?.status === 'mocked') return record.transcript;
+  if (isReusableTranscriptFailure(record.transcript)) return record.transcript;
   if (!record.source.metadata.has_audio) return { status: 'no_audio', text: '', segments: [] };
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return {
@@ -685,11 +706,16 @@ async function transcribeAudio(record) {
     };
   } catch (error) {
     if (error.cancelled) throw error;
+    const classified = modelGateway.classifyError(error);
     return {
       status: 'failed_non_blocking',
       text: '',
       segments: [],
-      error: { code: error.code || 'ASR_FAILED', message: String(error.message || error).slice(0, 240) },
+      error: {
+        code: classified.code || error.code || 'ASR_FAILED',
+        message: String(error.message || error).slice(0, 240),
+        retryable: classified.retryable === true,
+      },
     };
   } finally {
     try { if (fs.existsSync(audioPath)) fs.unlinkSync(audioPath); } catch {}
@@ -1568,6 +1594,8 @@ module.exports = {
     refusalLike,
     frameVisionUrl,
     analyzeWithModels,
+    transcribeAudio,
+    isReusableTranscriptFailure,
     publicVisionFailure,
   },
 };
