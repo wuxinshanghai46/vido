@@ -10,26 +10,22 @@ const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const files = [
-  'public/css/digital-human-wizard.css',
-  'public/css/new-story-ad-director-workspace.css',
   'public/digital-human.html',
   'public/js/new-story-ad-legacy-ui.js',
-  'public/js/new-story-ad/assist-progress.js',
-  'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad/director-workspace.js',
-  'public/js/new-story-ad/generation-flow.js',
-  'public/js/new-story-ad/person-pet-spec.js',
-  'public/js/new-story-ad/scene-assets.js',
+  'public/js/new-story-ad/state-sync.js',
   'public/js/new-story-ad/subject-assets-ui.js',
-  'public/js/new-story-ad/subject-profile-assist.js',
-  'src/services/newStoryAd/assistSubjectProfileService.js',
-  'src/services/newStoryAd/referenceVideoAnalysisService.js',
-  'src/services/newStoryAd/sceneAssistCompletenessService.js',
-  'src/services/newStoryAd/storyAdService.js',
-  'src/services/newStoryAd/subjectProfileTextService.js',
+  'scripts/audit-new-story-ad-visible-content.js',
   'scripts/repair-new-story-ad-assist-content.js',
+  'scripts/test-new-story-ad-director-workspace.js',
   'scripts/test-new-story-ad-person-assist-completeness.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
+  'scripts/test-new-story-ad-user-readiness.js',
+  'src/services/newStoryAd/assetPlanService.js',
+  'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/referenceEvidenceTextService.js',
+  'src/services/newStoryAd/referenceVideoAnalysisService.js',
+  'src/services/newStoryAd/sceneAssistCompletenessService.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-assist-isolation-${stamp}`;
@@ -137,7 +133,8 @@ client.on('ready', async () => {
       `mkdir -p ${quote(isolatedOutput)}`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-person-assist-completeness.js`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-reference-video-analysis.js`,
-      `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-subject-gallery-scene-plan.js`,
+      `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-director-workspace.js`,
+      `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-user-readiness.js`,
       'pm2 reload vido --update-env >/dev/null',
       'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && curl -fsS https://vido.smsend.cn/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1',
     ].join(' && '));
