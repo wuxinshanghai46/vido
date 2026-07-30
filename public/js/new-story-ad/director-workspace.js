@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '20260730-director-workspace-v1';
+  const VERSION = '20260730-director-workspace-v2';
   const cache = new Map();
   const inFlight = new Map();
   let observer = null;
@@ -49,6 +49,19 @@
         <img src="${escapeHtml(item.image_url)}" alt="${escapeHtml(item.label || label)}" loading="lazy" decoding="async">
         <figcaption>${escapeHtml(item.label || label)}</figcaption>
       </figure>`).join('')}</div>`;
+  }
+
+  function verificationLabel(value = '') {
+    const labels = {
+      not_generated: '尚未生成图片',
+      pending: '待生成',
+      unverified: '待验证',
+      verified: '已验证',
+      passed: '已通过',
+      failed: '未通过',
+      rejected: '未通过',
+    };
+    return labels[String(value || '')] || value || '待生成';
   }
 
   async function readWorkspace(sections, options = {}) {
@@ -103,6 +116,7 @@
     return `
       <section class="dh-nsa-director-block">
         <div class="dh-nsa-director-title"><div><small>角色档案</small><h3>人物与剧情动作</h3></div><span>${characters.length} 人 · ${(people.action_pack || []).length} 组动作</span></div>
+        <p class="dh-nsa-director-purpose">这里不是另一套人物输入。它把上方每个人物自己的档案整理成剧本可用的角色职责，并在生成故事板后记录动作前后状态，防止换人、换装或动作断裂。</p>
         <div class="dh-nsa-director-grid">${cards || empty('当前广告不需要人物，或人物档案尚未生成。')}</div>
         ${imageStrip(people.identity_views, '人物一致性参考')}
         ${actions ? `<div class="dh-nsa-director-actions">${actions}</div>` : '<p class="dh-nsa-director-note">生成故事板后，系统会只为剧情真正使用的动作建立“开始—关键动作—结束”动作包。</p>'}
@@ -124,9 +138,10 @@
     return `
       <section class="dh-nsa-director-block">
         <div class="dh-nsa-director-title"><div><small>场景档案</small><h3>空间、互动与状态变化</h3></div><span>${scenes.length} 个场景</span></div>
+        <p class="dh-nsa-director-purpose">这里是场景设定的下游整理结果：剧本和分镜用它锁定同一空间的布局、材质、互动位置及前后变化。参考视频的逐帧原始证据不应直接占用这些描述字段。</p>
         <div class="dh-nsa-director-scene-list">${scenes.map(scene => `
           <article class="dh-nsa-director-scene">
-            <header><div><small>${escapeHtml(scene.story_purpose || '剧情承载空间')}</small><h4>${escapeHtml(scene.name)}</h4></div><span>${escapeHtml(scene.verification_status || '待生成')}</span></header>
+            <header><div><small>${escapeHtml(scene.story_purpose || '剧情承载空间')}</small><h4>${escapeHtml(scene.name)}</h4></div><span>${escapeHtml(verificationLabel(scene.verification_status))}</span></header>
             <p>${escapeHtml(scene.description || '待补充空间描述')}</p>
             ${scene.material_light ? `<p><b>材质与光线：</b>${escapeHtml(scene.material_light)}</p>` : ''}
             ${scene.interaction ? `<p><b>人物/产品如何使用：</b>${escapeHtml(scene.interaction)}</p>` : ''}

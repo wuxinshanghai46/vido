@@ -28,13 +28,24 @@ function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
       || {};
     source = [{ ...candidate, id: target.id }];
   }
-  return source.slice(0, 12).map((profile, index) => ({
-    ...subjectProfileText.canonicalProfile(profile || {}),
+  return source.slice(0, 12).map((profile, index) => {
+    const profileAge = cleanText(
+      profile?.age
+      || profile?.ageRange
+      || context.person_spec?.age
+      || context.personSpec?.age
+      || '',
+      40,
+    );
+    return {
+    ...subjectProfileText.canonicalProfile(profile || {}, { age: profileAge }),
     id: cleanText(profile?.id || `cast_${index + 1}`, 80),
     displayName: cleanText(profile?.displayName || profile?.name || '', 120),
     name: cleanText(profile?.displayName || profile?.name || '', 120),
     roleName: cleanText(profile?.roleName || profile?.role || '', 120),
-  }));
+    age: profileAge || 'match_brief',
+  };
+  });
 }
 
 function normalizePetProfiles(parsed = {}, context = {}) {

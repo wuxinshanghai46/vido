@@ -9,6 +9,8 @@ process.env.DB_ENABLED = '0';
 
 const service = require('../src/services/newStoryAd/storyAdService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const subjectProfileText = require('../src/services/newStoryAd/subjectProfileTextService');
+const assistContentRepair = require('./repair-new-story-ad-assist-content');
 
 /** 验证模型只返回外貌时，后端仍会补齐全部人物一致性字段。 */
 function testPartialModelResponseIsCompleted() {
@@ -53,15 +55,42 @@ function testExistingUserDetailsArePreserved() {
   assert.equal(result.negativeText, current.negativeText);
 }
 
+/** 回归：同一年龄描述反复经过补齐必须保持幂等，不能每次再叠一遍年龄感。 */
+function testRepeatedAgeDescriptionIsCollapsedIdempotently() {
+  const corrupted = '30-40岁成熟青年年龄感，成熟青年年龄感，成熟青年年龄感，原创、可信、自然外观';
+  const once = service.enforceAssistedPersonSpec(
+    { age: 'adult_30_40', appearanceText: corrupted },
+    { age: 'adult_30_40' },
+    {},
+  ).appearanceText;
+  const twice = service.enforceAssistedPersonSpec(
+    { age: 'adult_30_40', appearanceText: once },
+    { age: 'adult_30_40' },
+    {},
+  ).appearanceText;
+  assert.equal(once, twice, '年龄前缀清洗必须幂等');
+  assert.equal((once.match(/成熟青年年龄感/g) || []).length, 1);
+  assert.match(once, /原创、可信、自然外观/);
+  assert.equal(
+    subjectProfileText.alignAgeDescription(corrupted, 'adult_30_40'),
+    once,
+  );
+}
+
 /** 验证前端使用逐字段合并，而不是把部分响应直接当成完整结果。 */
 function testFrontendCompletenessGuardIsWired() {
   const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+  const progressSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/assist-progress.js'), 'utf8');
   assert.match(source, /function completePersonSpecSuggestion\(/);
   assert.match(source, /const completedSuggestion = completePersonSpecSuggestion\(suggestion, current, fallback\)/);
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
   assert.match(source, /function completeSceneSpecSuggestion\(/);
   assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
   assert.match(source, /label: '正在创建 \/ 补齐全部人物档案…',\s*timeoutMs: 120000,/);
+  assert.match(source, /channel: 'person_assist'/);
+  assert.match(source, /channel: 'scene_assist'/);
+  assert.match(source, /showGlobalProgress: false/);
+  assert.match(progressSource, /补齐内容已写入下方本人物字段/);
   assert.match(source, /percentAlreadyShown \|\| snap\.indeterminate \? ''/);
   assert.match(source, /refreshProfileValidation\?\.\(/);
 }
@@ -188,11 +217,62 @@ async function testSinglePersonAssistHasPersistentFeedback() {
   assert.equal(changed, true);
   assert.equal(capturedRequest.timeoutMs, 120000);
   assert.equal(capturedRequest.showGlobalProgress, false, '单人物补齐只能显示人物卡内状态，不得复用全局百分比进度');
+  assert.equal(capturedRequest.exclusive, false);
+  assert.equal(capturedRequest.channel, 'person_assist');
+  assert.equal(capturedRequest.editDomain, 'person');
   assert.ok(renderedStatuses.includes('running'), '请求期间必须留下可见的进行中状态');
   assert.equal(state.subjectAssistStatus[1].status, 'success');
   assert.match(state.subjectAssistStatus[1].message, /已补齐 6 项/);
   assert.equal(state.castProfiles[0].displayName, '林悦', '不得改写其他人物');
   assert.equal(state.petProfiles[0].name, '雪球', '不得改写宠物');
+}
+
+/** 回归：人物和场景文本补齐使用独立通道；同一通道仍禁止重复提交。 */
+async function testIndependentAssistChannels() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
+  const sandbox = {
+    window: { crypto: { randomUUID: (() => { let i = 0; return () => `generation-${++i}`; })() } },
+    AbortController,
+    DOMException,
+    console,
+    setTimeout,
+    clearTimeout,
+  };
+  vm.runInNewContext(source, sandbox);
+  const flow = sandbox.window.NewStoryAdGenerationFlow;
+  const state = {
+    activeGenerationId: '',
+    taskSessionEpoch: 1,
+    taskId: 'task-assist-channels',
+    clientEditSeq: 3,
+    domainEditSeq: { person: 1, scene: 2 },
+  };
+  let resolvePerson;
+  let resolveScene;
+  const person = flow.runInlineGeneration('assist_person_spec', { state }, () => new Promise(resolve => { resolvePerson = resolve; }), {
+    exclusive: false, channel: 'person_assist', editDomain: 'person',
+  });
+  const scene = flow.runInlineGeneration('assist_scene_spec', { state }, () => new Promise(resolve => { resolveScene = resolve; }), {
+    exclusive: false, channel: 'scene_assist', editDomain: 'scene',
+  });
+  assert.equal(Object.keys(state.inlineGenerationChannels).length, 2);
+  assert.equal(state.activeGenerationId, '', '文本辅助不得占用图片/任务生成的全局锁');
+  await assert.rejects(
+    () => flow.runInlineGeneration('assist_person_profile', { state }, async () => ({}), {
+      exclusive: false, channel: 'person_assist', editDomain: 'person',
+    }),
+    error => error.code === 'ASSIST_CHANNEL_ALREADY_ACTIVE',
+  );
+  resolvePerson({ kind: 'person' });
+  assert.deepStrictEqual(await person, { kind: 'person' });
+  assert.ok(state.inlineGenerationChannels.scene_assist, '人物完成不得清除场景通道');
+  await assert.rejects(
+    () => flow.runInlineGeneration('subject_assets', { state }, async () => ({})),
+    error => error.code === 'GENERATION_ALREADY_ACTIVE',
+  );
+  resolveScene({ kind: 'scene' });
+  assert.deepStrictEqual(await scene, { kind: 'scene' });
+  assert.equal(Object.keys(state.inlineGenerationChannels).length, 0);
 }
 
 /** 验证真实 assist 服务在模型部分返回时也会输出完整人物设定。 */
@@ -343,15 +423,64 @@ function testSceneAssistFallbackIsComplete() {
   assert.match(result.negativeText, /不要出现真人/);
 }
 
+function testLegacyFrameEvidenceIsNotKeptAsSceneDescription() {
+  const raw = '以下是逐帧分析及总结： 1. **时间点 0.3 秒** - 产品或服务：大玻璃全景幕墙窗 - 真实环境：现代住宅客厅，窗外为城市天际线 - 材质：玻璃、木饰面和米色织物 - 颜色：米白与原木色 - 布局：窗在左侧，沙发位于右侧 - 光线：自然侧光，明亮柔和';
+  const result = service.enforceAssistedSceneSpec({}, {
+    layoutText: raw,
+    materialLightText: raw,
+    interactionText: '人物在窗边观察室外景观。',
+    negativeText: '不要无关人物、文字和水印。',
+  }, {}, { preserveCurrentFields: true });
+  assert.ok(!result.layoutText.includes('逐帧分析'));
+  assert.ok(!result.layoutText.includes('时间点'));
+  assert.match(result.layoutText, /现代住宅客厅/);
+  assert.match(result.layoutText, /窗在左侧/);
+  assert.ok(!result.materialLightText.includes('逐帧分析'));
+  assert.match(result.materialLightText, /玻璃、木饰面/);
+  assert.match(result.materialLightText, /自然侧光/);
+}
+
+function testAssistContentRepairIsDeterministic() {
+  const raw = '以下是逐帧分析及总结： - 产品或服务：全景幕墙窗 - 真实环境：现代住宅客厅 - 材质：透明玻璃与木饰面 - 颜色：米白与原木色 - 布局：大窗位于左侧，沙发位于右侧 - 光线：自然侧光，明亮柔和';
+  const bundle = {
+    task: {
+      id: 'repair-fixture',
+      request: {
+        person_spec: {
+          age: 'adult_30_40',
+          appearanceText: '30-40岁成熟青年年龄感，成熟青年年龄感，成熟青年年龄感，真实自然',
+        },
+        scene_spec: { layoutText: raw, materialLightText: raw },
+        reference_video_analysis: {
+          source_facts: { product_or_service: raw, environment: raw, materials: [raw], colors: [raw], layout: raw, lighting: raw },
+          scene_prompts: [{ layout_prompt: raw, material_light_prompt: raw }],
+        },
+      },
+    },
+    outputs: [{ kind: 'context', payload: { scene_spec: { layoutText: raw, materialLightText: raw } } }],
+  };
+  const once = assistContentRepair.repairTaskBundle(bundle);
+  const twice = assistContentRepair.repairTaskBundle(once);
+  assert.deepStrictEqual(twice, once, '任务修复重复执行不得继续改变数据');
+  assert.equal((once.task.request.person_spec.appearanceText.match(/成熟青年年龄感/g) || []).length, 1);
+  assert.ok(!once.task.request.scene_spec.layoutText.includes('逐帧分析'));
+  assert.ok(!once.outputs[0].payload.scene_spec.materialLightText.includes('逐帧分析'));
+  assert.equal(once.task.request.reference_video_analysis.source_facts.product_or_service, '全景幕墙窗');
+}
+
 /** 按顺序运行人物辅助补齐专项回归。 */
 async function main() {
   testPartialModelResponseIsCompleted();
   testExistingUserDetailsArePreserved();
+  testRepeatedAgeDescriptionIsCollapsedIdempotently();
   testFrontendCompletenessGuardIsWired();
   testSubjectProfileValidationRefreshesAfterEditingName();
   testGeneratedActorAgeConstraintDoesNotDowngrade();
   await testSinglePersonAssistHasPersistentFeedback();
+  await testIndependentAssistChannels();
   testSceneAssistFallbackIsComplete();
+  testLegacyFrameEvidenceIsNotKeptAsSceneDescription();
+  testAssistContentRepairIsDeterministic();
   await testAssistServiceCompletesPartialResponse();
   await testSinglePersonAssistIsScoped();
   await testSceneAssistPreservesCompleteExistingSpec();

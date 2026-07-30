@@ -10,7 +10,7 @@ const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const targetTaskId = process.env.VIDO_REPAIR_TASK_ID || '';
-const cacheVersion = '20260730-dossier-performance-v3';
+const cacheVersion = '20260730-assist-isolation-v4';
 const runtimeFiles = [
   'public/css/new-story-ad-director-workspace.css',
   'public/css/digital-human-wizard.css',

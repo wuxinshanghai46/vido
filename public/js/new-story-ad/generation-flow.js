@@ -184,9 +184,19 @@
   async function runInlineGeneration(stage = 'assist', ctx = {}, work, options = {}) {
     const { state, renderAll, setBusy } = ctx;
     if (!state || typeof work !== 'function') throw new Error('可取消生成上下文未初始化');
-    if (state.activeGenerationId) {
+    const exclusive = options.exclusive !== false;
+    const channel = String(options.channel || stage || 'assist');
+    const editDomain = String(options.editDomain || '');
+    const channels = state.inlineGenerationChannels && typeof state.inlineGenerationChannels === 'object'
+      ? state.inlineGenerationChannels
+      : (state.inlineGenerationChannels = {});
+    if (state.activeGenerationId || (exclusive && Object.keys(channels).length) || (!exclusive && channels[channel])) {
       const active = new Error('当前已有生成操作正在执行；请先等待完成或点击“停止生成”。');
       active.code = 'GENERATION_ALREADY_ACTIVE';
+      if (!exclusive && channels[channel]) {
+        active.message = '当前这项 AI 补齐正在执行，请等待当前结果返回。人物补齐与场景补齐可分别同时进行。';
+        active.code = 'ASSIST_CHANNEL_ALREADY_ACTIVE';
+      }
       throw active;
     }
     const generationId = newGenerationId(stage);
@@ -194,14 +204,28 @@
     const sessionEpoch = Number(state.taskSessionEpoch || 0);
     const taskId = String(state.taskId || '');
     const editSeq = Number(state.clientEditSeq || 0);
+    const domainEditSeq = editDomain
+      ? Number(state.domainEditSeq?.[editDomain] || 0)
+      : editSeq;
     const label = options.label || 'AI 生成中...';
-    state.activeGenerationId = generationId;
-    state.activeStage = String(stage || 'assist');
-    state.activeGenerationScope = 'inline';
-    state.inlineGenerationController = controller;
-    state.cancelRequested = false;
-    state.generationStartedAt = new Date().toISOString();
-    if (options.showGlobalProgress !== false) setBusy?.(true, label);
+    const channelEntry = {
+      generationId,
+      controller,
+      stage: String(stage || 'assist'),
+      startedAt: new Date().toISOString(),
+      editDomain,
+    };
+    if (exclusive) {
+      state.activeGenerationId = generationId;
+      state.activeStage = String(stage || 'assist');
+      state.activeGenerationScope = 'inline';
+      state.inlineGenerationController = controller;
+      state.cancelRequested = false;
+      state.generationStartedAt = channelEntry.startedAt;
+      if (options.showGlobalProgress !== false) setBusy?.(true, label);
+    } else {
+      channels[channel] = channelEntry;
+    }
     renderAll?.();
     try {
       const result = await work({
@@ -209,7 +233,7 @@
         signal: controller.signal,
         taskId: String(state.taskId || taskId || ''),
       });
-      if (controller.signal.aborted || state.cancelRequested) {
+      if (controller.signal.aborted || (exclusive && state.cancelRequested)) {
         const cancelled = new Error('已取消当前生成，迟到结果不会写入任务');
         cancelled.code = 'USER_CANCELLED';
         throw cancelled;
@@ -220,14 +244,17 @@
         replaced.code = 'TASK_SESSION_REPLACED';
         throw replaced;
       }
-      if (Number(state.clientEditSeq || 0) !== editSeq) {
+      const currentEditSeq = editDomain
+        ? Number(state.domainEditSeq?.[editDomain] || 0)
+        : Number(state.clientEditSeq || 0);
+      if (currentEditSeq !== domainEditSeq) {
         const stale = new Error('你在 AI 生成期间修改了内容，本次迟到结果已丢弃；请按最新内容重新点击 AI 辅写');
         stale.code = 'STALE_INLINE_RESULT';
         throw stale;
       }
       return result;
     } catch (error) {
-      if (controller.signal.aborted || state.cancelRequested) {
+      if (controller.signal.aborted || (exclusive && state.cancelRequested)) {
         const cancelled = new Error('已取消当前生成，迟到结果不会写入任务');
         cancelled.code = 'USER_CANCELLED';
         cancelled.retryable = true;
@@ -235,8 +262,13 @@
       }
       throw error;
     } finally {
-      if (state.inlineGenerationController === controller) state.inlineGenerationController = null;
-      if (state.activeGenerationId === generationId) {
+      if (!exclusive) {
+        if (channels[channel]?.controller === controller) delete channels[channel];
+        renderAll?.();
+      } else {
+        if (state.inlineGenerationController === controller) state.inlineGenerationController = null;
+      }
+      if (exclusive && state.activeGenerationId === generationId) {
         state.activeGenerationId = '';
         state.activeStage = '';
         state.activeGenerationScope = '';
@@ -264,6 +296,9 @@
     ), {
       label: request.label,
       showGlobalProgress: request.showGlobalProgress,
+      exclusive: request.exclusive,
+      channel: request.channel,
+      editDomain: request.editDomain,
     });
   }
 

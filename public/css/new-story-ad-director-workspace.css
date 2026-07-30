@@ -161,6 +161,17 @@
   line-height: 1.6;
 }
 
+.dh-nsa-director-purpose {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border-left: 3px solid rgba(45,212,191,.72);
+  border-radius: 7px;
+  background: rgba(45,212,191,.055);
+  color: var(--dh-text-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
 .dh-nsa-director-scene {
   border: 1px solid var(--dh-border, #26313b);
   border-radius: 13px;

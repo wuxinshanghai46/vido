@@ -82,9 +82,12 @@
           cast_profiles: state.castProfiles,
           pet_profiles: state.petProfiles || [],
           assist_subject_target: { kind: 'human', index, id: current.id },
-        },
+           },
             showGlobalProgress: false,
-          timeoutMs: 120000,
+            exclusive: false,
+            channel: 'person_assist',
+            editDomain: 'person',
+           timeoutMs: 120000,
         },
       );
       const changed = mergeHumanProfile(state, index, response);

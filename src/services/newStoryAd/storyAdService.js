@@ -26,6 +26,7 @@ const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSc
 const subjectReferences = require('./subjectReferenceService');
 const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
+const subjectProfileText = require('./subjectProfileTextService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
 const revisionService = require('./revisionService'), sceneAuthority = require('./sceneAuthorityService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
@@ -3347,25 +3348,10 @@ async function runFull(body = {}, user = {}) {
 function modelHealth() {
   return storage.readHealth();
 }
-const PERSON_AGE_LABELS = {
-  infant_0_1: '0-1岁婴儿年龄感', toddler_1_3: '1-3岁幼儿年龄感', child_4_7: '4-7岁儿童年龄感',
-  child_8_12: '8-12岁少儿年龄感', teen_13_17: '13-17岁青少年年龄感',
-  young_adult_17_25: '17-25岁年轻成人年龄感',
-  young_adult: '25-32岁青年年龄感',
-  adult_30_40: '30-40岁成熟青年年龄感',
-  middle_40_55: '40-55岁中年年龄感',
-  senior_55_plus: '55岁以上年长者年龄感',
-};
+const PERSON_AGE_LABELS = subjectProfileText.AGE_LABELS;
 
 function alignPersonAgeDescription(text = '', age = '') {
-  const label = PERSON_AGE_LABELS[String(age || '')];
-  if (!label) return cleanText(text, 360);
-  const cleaned = String(text || '')
-    .replace(/\d{2}\s*(?:-|—|–|至|到|~)\s*\d{2}\s*岁?/g, '')
-    .replace(/(?:年龄(?:约为|为|约)?|约|大约|看起来)?\s*\d{2}\s*(?:岁|周岁)(?:左右|上下)?/g, '')
-    .replace(/^[\s，、；:：的]+|[\s，、；]+$/g, '')
-    .replace(/[，、；]{2,}/g, '，');
-  return cleanText(`${label}，${cleaned || '外貌、体态、肤质和表情应符合该年龄阶段的真实商业人物特征'}`, 360);
+  return subjectProfileText.alignAgeDescription(text, age, 360);
 }
 
 /**

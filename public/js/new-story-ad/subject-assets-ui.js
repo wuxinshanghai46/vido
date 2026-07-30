@@ -394,7 +394,7 @@
       return `<details class="dh-nsa-subject-profile" open>
         <summary><b>人物 ${index + 1}</b><span data-nsa-subject-summary-index="${index}">${escapeHtml(item.displayName || item.roleName || '资料待补齐')}</span></summary>
         <div class="dh-luxgen-person-spec">
-          <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}" ${assist?.status === 'running' ? 'disabled' : ''}>AI 辅助补齐该人物</button><small class="is-${escapeHtml(assist?.status || 'idle')}" aria-live="polite">${escapeHtml(assist?.message || '只填当前人物的空白字段，不改动其他人物、宠物或已有四视图。')}</small></div>
+          <div class="dh-nsa-subject-profile-actions"><button type="button" class="dh-btn dh-btn-ghost dh-btn-sm" data-nsa-subject-assist-index="${index}" ${assist?.status === 'running' ? 'disabled' : ''}>AI 辅助补齐该人物</button><small class="dh-nsa-subject-assist-status is-${escapeHtml(assist?.status || 'idle')}" aria-live="polite">${escapeHtml(assist?.message || '只补当前人物空白字段，不改已有内容。')}</small></div>
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
           ${field('cast', index, 'roleName', '剧情身份 / 关系', item.roleName, { placeholder: '如：母亲、8岁女儿、品牌顾问' })}
           ${ageField(index, item.age)}

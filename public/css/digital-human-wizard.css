@@ -1388,7 +1388,7 @@ html[data-theme^="light"] .dh-lux-industry-ai-btn { background: #ecfeff; border-
 .dh-nsa-subject-profile-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; }
 .dh-nsa-subject-profile-actions small { color: var(--dh-text-muted); line-height: 1.4; }
 .dh-nsa-subject-assist-status { min-height: 18px; }
-.dh-nsa-subject-assist-status.is-running { color: var(--dh-primary); }
+.dh-nsa-subject-assist-status.is-running { color: var(--dh-primary); animation: dhNsaAssistPulse 1.1s ease-in-out infinite; }
 .dh-nsa-subject-assist-status.is-success { color: #86efac; }
 .dh-nsa-subject-assist-status.is-error { color: #fb7185; }
 .dh-nsa-cast-mode-quick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; padding: 10px 12px; border: 1px solid rgba(56,189,248,.24); border-radius: 10px; background: rgba(56,189,248,.055); }
@@ -4559,6 +4559,49 @@ body.dh-nsa-workbench-modal-open {
 .dh-nsa-analysis-progress progress {
   width: 100%;
   accent-color: #2dd4bf;
+  height: 7px;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255,255,255,.1);
+}
+.dh-nsa-analysis-progress progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: rgba(255,255,255,.1);
+}
+.dh-nsa-analysis-progress progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2dd4bf, #67e8f9, #c8ff66, #2dd4bf);
+  background-size: 240% 100%;
+  animation: dhNsaAnalysisFlow 1.15s linear infinite;
+}
+.dh-nsa-analysis-progress progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2dd4bf, #67e8f9, #c8ff66);
+}
+.dh-nsa-analysis-progress:not([hidden]) > div > span::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #2dd4bf;
+  box-shadow: 0 0 10px rgba(45,212,191,.75);
+  animation: dhNsaAssistPulse 1.1s ease-in-out infinite;
+}
+
+@keyframes dhNsaAnalysisFlow { to { background-position: -240% 0; } }
+@keyframes dhNsaAssistPulse { 50% { opacity: .42; transform: scale(.82); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dh-nsa-analysis-progress progress::-webkit-progress-value,
+  .dh-nsa-analysis-progress:not([hidden]) > div > span::before,
+  .dh-nsa-subject-assist-status.is-running,
+  .dh-lux-person-progress-track i::after,
+  .dh-lux-person-progress.is-indeterminate .dh-lux-person-progress-track i {
+    animation: none !important;
+  }
 }
 
 .dh-nsa-analysis-draft {

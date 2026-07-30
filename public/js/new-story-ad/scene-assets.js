@@ -83,6 +83,21 @@
     </div>`;
   }
 
+  function sceneAssistProgressHtml(progress = {}) {
+    if (!progress?.active) return '';
+    const startedAt = Number(progress.startedAt || 0) || Date.now();
+    return `<div class="dh-nsa-scene-operation is-running">
+      <div class="dh-lux-person-progress is-indeterminate" role="status" aria-live="polite">
+        <div class="dh-lux-person-progress-head">
+          <b>${escapeHtml(progress.label || 'AI 正在补齐当前场景')}</b>
+          <span class="dh-lux-person-progress-stat"><em>已耗时 ${escapeHtml(formatElapsedText(Date.now() - startedAt))}</em></span>
+        </div>
+        <div class="dh-lux-person-progress-track" aria-hidden="true"><i style="width:28%"></i></div>
+        <small>${escapeHtml(progress.message || '正在整理场景文本；这一步不会提交图片生成。')}</small>
+      </div>
+    </div>`;
+  }
+
   function sceneFailureHtml(failure = null) {
     if (!failure) return '';
     const details = [
@@ -1180,7 +1195,8 @@
     const failure = sceneOperationFailure(state, plannedSpaces);
     const selectedSpaceId = clean(selectedSpace?.id || selectedSpace?.space_id || selectedSpace?.scene_id, 120);
     const selectedFailure = failure?.sceneId && failure.sceneId === selectedSpaceId ? failure : null;
-    const progressPanel = sceneProgressHtml(progress, plannedSpaces, {
+    const progressPanel = sceneAssistProgressHtml(state.sceneAssistProgress)
+      || sceneProgressHtml(progress, plannedSpaces, {
       canCancel: !!state.taskId,
       cancelRequested: state.cancelRequested === true,
     });

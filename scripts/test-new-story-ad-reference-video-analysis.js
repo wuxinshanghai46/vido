@@ -31,6 +31,24 @@ async function waitFor(id, user, statuses, timeoutMs = 20000) {
 }
 
 async function main() {
+  const structuredVision = [
+    {
+      timestamps: [0.3, 4.2],
+      text: '以下是逐帧分析及总结：1. **时间点 0.3 秒** - 产品或服务：大玻璃全景幕墙窗 - 可见文字：新标门窗 - 真实环境：城市现代住宅客厅，窗外可见城市天际线 - 材质：透明玻璃、木饰面与米色沙发 - 颜色：米白、原木色与绿色 - 布局：人物站在窗边，沙发位于右侧 - 光线：自然侧光，室内明亮柔和 - 人物动作：女性侧身面向窗外。',
+    },
+  ];
+  const compiledVision = service._private.compileAnalysisFromEvidence({
+    source: { metadata: { duration_seconds: 8 } },
+  }, structuredVision, {});
+  assert.equal(compiledVision.source_facts.product_or_service, '大玻璃全景幕墙窗');
+  assert.equal(compiledVision.source_facts.environment, '城市现代住宅客厅，窗外可见城市天际线');
+  assert.equal(compiledVision.source_facts.materials[0], '透明玻璃、木饰面与米色沙发');
+  assert.equal(compiledVision.source_facts.lighting, '自然侧光，室内明亮柔和');
+  assert.ok(!compiledVision.scene_prompts[0].layout_prompt.includes('逐帧分析'));
+  assert.ok(!compiledVision.scene_prompts[0].layout_prompt.includes('时间点'));
+  assert.match(compiledVision.scene_prompts[0].layout_prompt, /城市现代住宅客厅/);
+  assert.match(compiledVision.scene_prompts[0].material_light_prompt, /透明玻璃/);
+
   settingsService.saveSettings({
     providers: [
       {

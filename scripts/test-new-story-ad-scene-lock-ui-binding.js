@@ -741,15 +741,15 @@ async function main() {
   assert(css.includes('.dh-nsa-scene-repair-error'));
   assert(css.includes('.dh-nsa-scene-actions .dh-btn[hidden]'));
   assert(css.includes('[aria-busy="true"] #dhNewStoryAdLegacyMount'));
-  assert(html.includes('bootstrap.js?v=20260730-dossier-performance-v3'));
+  assert(html.includes('bootstrap.js?v=20260730-assist-isolation-v4'));
   assert(html.includes('digital-human-wizard.css?v=20260730-dossier-performance-v64'));
-  assert(html.indexOf('bootstrap.js?v=20260730-dossier-performance-v3') < html.indexOf('digital-human.js?v=20260728-disable-legacy-entry-v53'));
+  assert(html.indexOf('bootstrap.js?v=20260730-assist-isolation-v4') < html.indexOf('digital-human.js?v=20260728-disable-legacy-entry-v53'));
   assert(html.includes('data-nsa-lazy-loader="true"'));
   assert(html.includes('data-nsa-template-ready'));
   assert(html.includes('data-nsa-story-loading="1"'));
   const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const generationFlow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
-  assert(bootstrap.includes('20260730-dossier-performance-v3'));
+  assert(bootstrap.includes('20260730-assist-isolation-v4'));
   assert(sceneUi.includes('acknowledge_billing_unknown: true'));
   assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
   assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));

@@ -1,6 +1,6 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260730-dossier-performance-v3';
+  const SCRIPT_VERSION = '20260730-assist-isolation-v4';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/director-workspace.js',
@@ -9,7 +9,7 @@
     '/js/new-story-ad/asset-ui-contract.js',
     '/js/new-story-ad/task-store.js',
     '/js/new-story-ad/task-session.js',
-    '/js/new-story-ad/progress.js',
+    '/js/new-story-ad/progress.js', '/js/new-story-ad/assist-progress.js',
     '/js/new-story-ad/state-sync.js',
     '/js/new-story-ad/button-state.js',
     '/js/new-story-ad/step-navigation.js',

@@ -79,6 +79,7 @@
     pendingChangeScope: 'none', pendingMediaChange: 'none',
     pendingChangeDomains: [],
     clientEditSeq: 0,
+    domainEditSeq: {}, inlineGenerationChannels: {}, personAssistProgress: null, sceneAssistProgress: null,
     acknowledgedClientEditSeq: 0,
     contentRevision: 0,
     generationSnapshotId: '',
@@ -228,7 +229,6 @@
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
   }
-
   function rememberRouteStep(step = state.currentStep) {
     if (window.NewStoryAdTaskStore?.rememberRouteStep) {
       const pendingId = state.restoringTask
@@ -245,13 +245,11 @@
       history.replaceState(null, '', url.pathname + url.search + url.hash);
     } catch {}
   }
-
   function escapeHtml(value = '') {
     return String(value ?? '').replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[ch]));
   }
-
   function verificationView(contract = null, qaKey = '', subject = '资产') {
     const qa = contract?.[qaKey] && typeof contract[qaKey] === 'object' ? contract[qaKey] : {};
     const status = String(contract?.status || 'unverified');
@@ -304,12 +302,10 @@
     none: '无转场', hard_cut: '直接切换', cut_on_action: '动作切换', match_cut: '匹配切换',
     dissolve: '叠化', fade: '淡入淡出',
   };
-
   function technicalLabel(value = '') {
     const key = normalizeText(value, 80);
     return TECHNICAL_LABELS[key] || key.replace(/_/g, ' ');
   }
-
   const PROMPT_LABEL_TEXT = {
     story: '剧情画面',
     character: '人物',
@@ -343,13 +339,11 @@
     packshot: '产品定格',
     wide: '全景',
   };
-
   function editorFriendlyPromptText(value = '') {
     const raw = String(value || '').trim();
     if (!raw) return '';
     const entries = raw.split(/\s*[;；\n]+\s*/).map(item => item.trim()).filter(Boolean);
     const output = [];
-
     entries.forEach((entry, entryIndex) => {
       const pair = entry.match(/^([a-z][a-z0-9_-]*)\s*[：:]\s*(.*)$/i);
       if (pair) {
@@ -364,20 +358,16 @@
           return;
         }
       }
-
       const token = entry.toLowerCase();
       if (SHOT_TYPE_TEXT[token]) {
         output.push(`镜头类型：${SHOT_TYPE_TEXT[token]}`);
         return;
       }
-
       // 已经是用户可读中文或未知业务专有内容时原样保留，避免写死行业词汇。
       output.push(entryIndex === 0 && /^[a-z_ -]+$/i.test(entry) ? `镜头说明：${entry}` : entry);
     });
-
     return output.join('\n') || raw;
   }
-
   function outputPixels(ratio = '9:16', size = 'standard') {
     const table = {
       '9:16': { standard: '720×1280', hd: '900×1600', fullhd: '1080×1920' },
@@ -388,19 +378,16 @@
     };
     return table[ratio]?.[size] || table['9:16'].standard;
   }
-
   function previewUrl(asset = {}) {
     if (!asset || typeof asset !== 'object') return '';
     return asset.previewUrl || asset.image_url || asset.imageUrl || asset.file_url || asset.url || '';
   }
-
   function revokePreview(asset = {}) {
     const url = asset?.previewUrl || '';
     if (url && url.startsWith('blob:')) {
       try { URL.revokeObjectURL(url); } catch {}
     }
   }
-
   function withAuthQuery(url = '') {
     const raw = String(url || '').trim();
     if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return raw;
@@ -415,7 +402,6 @@
       return `${raw}${join}token=${encodeURIComponent(state.token)}`;
     }
   }
-
   function currentUserIsAdmin() {
     if (!state.token) return false;
     try {
@@ -426,13 +412,11 @@
       return false;
     }
   }
-
   function compactUrl(value = '') {
     const raw = String(value || '').trim();
     if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return '';
     return raw;
   }
-
   function actorUrls(asset = {}) {
     if (window.NewStoryAdActors?.collectUrls) return window.NewStoryAdActors.collectUrls(asset);
     const urls = [];
@@ -459,14 +443,12 @@
     walk(asset);
     return urls;
   }
-
   const ACTOR_VIEW_LABELS = {
     front: '正面',
     side: '侧面',
     back: '背面',
     action: '动作',
   };
-
   function actorViewKey(value = '', index = 0) {
     if (window.NewStoryAdActors?.viewKey) return window.NewStoryAdActors.viewKey(value, index);
     const raw = String(value || '').toLowerCase();
@@ -1120,6 +1102,8 @@
       creative: 'creative',
     }[scope] || 'source';
     state.clientEditSeq = Math.max(0, Number(state.clientEditSeq || 0) || 0) + 1;
+    state.domainEditSeq = state.domainEditSeq && typeof state.domainEditSeq === 'object' ? state.domainEditSeq : {};
+    state.domainEditSeq[domain] = Math.max(0, Number(state.domainEditSeq[domain] || 0) || 0) + 1;
     if (!Array.isArray(state.pendingChangeDomains)) state.pendingChangeDomains = [];
     if (!state.pendingChangeDomains.includes(domain)) state.pendingChangeDomains.push(domain);
     const current = state.pendingChangeScope || 'none';
@@ -1183,8 +1167,10 @@
     window.NewStoryAdPersonReferenceInheritance?.reset?.(state);
     state.castProfiles = [];
     state.personGenerationProgress = null;
+    state.personAssistProgress = null;
     state.sceneAssets = [];
     state.sceneGenerationProgress = null;
+    state.sceneAssistProgress = null; state.domainEditSeq = {}; state.inlineGenerationChannels = {};
     state.productAsset = null;
     window.NewStoryAdBrandOverlay.reset(state, revokePreview);
     state.referenceAssets.forEach(revokePreview);
@@ -1498,6 +1484,11 @@
       host.innerHTML = `<div class="dh-luxgen-character-sheet"><span class="dh-luxgen-person-badge">宠物主体</span><div class="dh-luxgen-person-copy"><b>${escapeHtml(`${petCount} 只 · ${petType}`)}</b><small>人物素材不会进入生成；每只宠物使用独立四视图身份资产与一致性合同。</small></div>${petAssetsHtml()}</div>`;
       return;
     }
+    const assistHtml = window.NewStoryAdAssistProgress?.personRunningHtml?.(state, { escapeHtml, formatElapsedText }) || '';
+    if (assistHtml) {
+      host.innerHTML = assistHtml;
+      return;
+    }
     if (state.personGenerationProgress?.active) {
       host.innerHTML = `<div class="dh-luxgen-character-sheet">
         <div class="dh-luxgen-person-thumb">生成中</div>
@@ -1509,7 +1500,7 @@
     }
     const asset = state.personAsset || state.actorAsset || null;
     if (!asset) {
-      host.innerHTML = '<span class="dh-luxgen-person-badge">未选择</span><div class="dh-luxgen-person-copy"><b>可不选人物</b><small>可先用 AI 补齐人物设定；真人演员请选择演员库或上传真人参考。</small></div>';
+      host.innerHTML = window.NewStoryAdAssistProgress?.emptyPersonHtml?.(state, escapeHtml) || '';
       return;
     }
     const viewEntries = actorViewEntries(asset);
@@ -5252,6 +5243,9 @@
     const brief = (within('#dhNsaAdText')?.value || '').trim();
     if (!brief) return toast('请先填写广告需求，再确认人物来源', 'error');
     const label = '补齐中...';
+    const stopAssist = window.NewStoryAdAssistProgress.start(state, 'personAssistProgress', {
+      label: 'AI 正在补齐人物档案', message: '正在按人物逐项整理姓名、身份、年龄、外貌、服装和妆造；结果会显示在各自人物卡片。',
+    }, renderPerson);
     setButtonBusy(button, true, label);
     try {
       let suggestion = null, assistedProfiles = null;
@@ -5259,6 +5253,7 @@
         const r = await requestCancelableGeneration('assist_person_spec', {
           label: '正在创建 / 补齐全部人物档案…',
           timeoutMs: 120000,
+          exclusive: false, channel: 'person_assist', editDomain: 'person', showGlobalProgress: false,
           body: {
             ...payload(),
             brief,
@@ -5281,6 +5276,7 @@
       scheduleAutoSave('person_spec_assist');
       toast(changed ? '已按当前年龄、性别和人物选择重新校准人物设定' : '当前人物设定已经与所选条件一致', changed ? 'success' : 'info');
     } finally {
+      stopAssist();
       setButtonBusy(button, false);
     }
   }
@@ -5297,7 +5293,7 @@
     const existing = current && typeof current === 'object' ? current : {};
     const safe = fallback && typeof fallback === 'object' ? fallback : {};
     const usable = (text, minimum) => text.length >= minimum
-      && !/(?:由|为|和|与|的|及|以及|包括|采用|融合|形成|一面|一个|一种|位于|呈现)$/u.test(text);
+      && !/(?:由|为|的|及|以及|包括|采用|融合|形成|一面|一个|一种|位于|呈现)$/u.test(text);
     const choose = (key, minimum) => {
       const candidate = String(proposed[key] || '').trim();
       const prior = String(existing[key] || '').trim();
@@ -5347,6 +5343,9 @@
     const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(state, currentSpec) || state.sceneConfig || {};
     const targetSpaceId = state.scenePlanSelectedId || currentPlan.spaces?.[state.scenePlanSelectedIndex || 0]?.id || '';
     const label = '补齐场景中...';
+    const stopAssist = window.NewStoryAdAssistProgress.start(state, 'sceneAssistProgress', {
+      label: 'AI 正在补齐当前场景', message: '正在整理空间布局、材质光线和互动区域；人物档案可同时独立补齐。',
+    }, renderSceneAssets);
     setButtonBusy(button, true, label);
     try {
       let suggestion = null;
@@ -5354,6 +5353,7 @@
       try {
         const r = await requestCancelableGeneration('assist_scene_spec', {
           label,
+          exclusive: false, channel: 'scene_assist', editDomain: 'scene', showGlobalProgress: false,
           body: {
             ...payload(),
             brief,
@@ -5394,6 +5394,7 @@
       if (!quiet) toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
       return true;
     } finally {
+      stopAssist();
       setButtonBusy(button, false);
     }
   }

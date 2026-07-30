@@ -16,6 +16,53 @@
     return labels[raw] || value || '-';
   }
 
+  const AGE_LABELS = {
+    infant_0_1: '0-1岁婴儿年龄感',
+    toddler_1_3: '1-3岁幼儿年龄感',
+    child_4_7: '4-7岁儿童年龄感',
+    child_8_12: '8-12岁少儿年龄感',
+    teen_13_17: '13-17岁青少年年龄感',
+    young_adult_17_25: '17-25岁年轻成人年龄感',
+    young_adult: '25-32岁青年年龄感',
+    adult_30_40: '30-40岁成熟青年年龄感',
+    middle_40_55: '40-55岁中年年龄感',
+    senior_55_plus: '55岁以上年长者年龄感',
+  };
+  const AGE_DESCRIPTOR_PATTERN = /(?:(?:0\s*[-—–至到~]\s*1)\s*岁?婴儿|(?:1\s*[-—–至到~]\s*3)\s*岁?幼儿|(?:4\s*[-—–至到~]\s*7)\s*岁?儿童|(?:8\s*[-—–至到~]\s*12)\s*岁?少儿|(?:13\s*[-—–至到~]\s*17)\s*岁?青少年|(?:17\s*[-—–至到~]\s*25)\s*岁?年轻成人|(?:25\s*[-—–至到~]\s*32)\s*岁?青年|(?:30\s*[-—–至到~]\s*40)\s*岁?成熟青年|(?:40\s*[-—–至到~]\s*55)\s*岁?中年|55\s*岁以上\s*年长者|婴儿|幼儿|儿童|少儿|青少年|年轻成人|成熟青年|中年|年长者)年龄感/gu;
+
+  function dedupeClauses(value = '', max = 800) {
+    const seen = new Set();
+    return String(value || '').trim().split(/([，；。])/u).reduce((rows, part, index, all) => {
+      if (!part || /^[，；。]$/u.test(part)) return rows;
+      const key = part.replace(/[\s、,，;；。]+/gu, '').toLowerCase();
+      if (!key || seen.has(key)) return rows;
+      seen.add(key);
+      rows.push(`${part.trim()}${/^[，；。]$/u.test(all[index + 1] || '') ? all[index + 1] : '，'}`);
+      return rows;
+    }, []).join('').replace(/[，；。]+$/u, '').slice(0, max);
+  }
+
+  function alignAgeDescription(value = '', age = '', max = 800) {
+    const label = AGE_LABELS[String(age || '')] || '';
+    const cleaned = dedupeClauses(String(value || '')
+      .replace(AGE_DESCRIPTOR_PATTERN, '')
+      .replace(/(?:年龄(?:约为|为|约)?|约|大约|看起来)?\s*\d{1,2}\s*(?:岁|周岁)(?:左右|上下)?/gu, '')
+      .replace(/^[\s，、；:：的]+|[\s，、；]+$/gu, '')
+      .replace(/[，、；]{2,}/gu, '，'), max);
+    if (!label) return cleaned;
+    return `${label}，${cleaned || '外貌、体态、肤质和表情符合该年龄阶段的真实商业人物特征'}`.slice(0, max);
+  }
+
+  function sanitizeProfileTexts(profile = {}, age = '') {
+    return {
+      ...profile,
+      appearanceText: alignAgeDescription(profile.appearanceText, age, 800),
+      wardrobeText: dedupeClauses(profile.wardrobeText, 600),
+      hairMakeupText: dedupeClauses(profile.hairMakeupText, 400),
+      negativeText: dedupeClauses(profile.negativeText, 500),
+    };
+  }
+
   function description(spec = {}) {
     const labels = {
       castMode: { auto: '按内容判断', no_human: '无人物 / 只拍主体', animal: '动物 / 宠物主体', human_pet: '人物 + 宠物（混合主体）', single: '单人', dual: '双人对话', group: '多人 / 群体' },
@@ -51,12 +98,17 @@
       'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
       'expectedPeople', 'expectedAnimals', 'petType', 'petDescription',
     ];
-    return keys.reduce((result, key) => {
+    const result = keys.reduce((result, key) => {
       result[key] = String(source[key] ?? '').trim()
         || String(existing[key] ?? '').trim()
         || String(defaults[key] ?? '').trim();
       return result;
     }, {});
+    result.appearanceText = alignAgeDescription(result.appearanceText, result.age, 800);
+    result.wardrobeText = dedupeClauses(result.wardrobeText, 600);
+    result.hairMakeupText = dedupeClauses(result.hairMakeupText, 400);
+    result.negativeText = dedupeClauses(result.negativeText, 500);
+    return result;
   }
 
   function fallbackFromBrief(brief = '') {
@@ -83,5 +135,14 @@
     };
   }
 
-  window.NewStoryAdPersonPetSpec = { formatCastMode, description, complete, fallbackFromBrief };
+  window.NewStoryAdPersonPetSpec = {
+    AGE_LABELS,
+    formatCastMode,
+    description,
+    complete,
+    fallbackFromBrief,
+    dedupeClauses,
+    alignAgeDescription,
+    sanitizeProfileTexts,
+  };
 })();

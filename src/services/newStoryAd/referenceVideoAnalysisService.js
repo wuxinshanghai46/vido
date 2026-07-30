@@ -1098,6 +1098,42 @@ function cleanEvidenceText(value = '', max = 1200) {
     .slice(0, max);
 }
 
+const VISUAL_EVIDENCE_LABELS = [
+  '产品或服务', '产品', '可见文字', '真实环境', '环境', '空间', '场景',
+  '材质', '颜色', '色调', '布局', '构图', '光线', '照明', '灯光',
+  '人物动作', '人物', '动作',
+];
+
+function visualEvidenceField(value = '', labels = [], fallback = '') {
+  const source = String(value || '')
+    .replace(/```(?:json)?/gi, ' ')
+    .replace(/\*\*/g, '')
+    .replace(/\r/g, '\n');
+  for (const label of labels) {
+    const match = new RegExp(`(?:^|[\\n\\s-])${label}\\s*[:：]\\s*`, 'u').exec(source);
+    if (!match) continue;
+    const tail = source.slice(match.index + match[0].length);
+    const next = new RegExp(`(?:\\s+-\\s+|\\n+)\\s*(?:${VISUAL_EVIDENCE_LABELS.join('|')})\\s*[:：]`, 'u').exec(tail);
+    const candidate = cleanEvidenceText(next ? tail.slice(0, next.index) : tail, 500)
+      .replace(/^(?:以下是)?逐帧分析(?:及总结)?[:：]?/u, '')
+      .trim();
+    if (candidate) return candidate;
+  }
+  return cleanEvidenceText(fallback, 500);
+}
+
+function visualEvidenceFacts(value = '') {
+  return {
+    product: visualEvidenceField(value, ['产品或服务', '产品']),
+    environment: visualEvidenceField(value, ['真实环境', '环境', '空间', '场景']),
+    materials: visualEvidenceField(value, ['材质']),
+    colors: visualEvidenceField(value, ['颜色', '色调']),
+    layout: visualEvidenceField(value, ['布局', '构图']),
+    lighting: visualEvidenceField(value, ['光线', '照明', '灯光']),
+    action: visualEvidenceField(value, ['人物动作', '动作', '人物']),
+  };
+}
+
 function evidenceExcerpt(text = '', keywords = [], fallback = '') {
   const source = cleanEvidenceText(text, 12000);
   const segments = source.split(/[。；;]\s*/).map(item => item.trim()).filter(Boolean);
@@ -1107,12 +1143,14 @@ function evidenceExcerpt(text = '', keywords = [], fallback = '') {
 
 function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcript = {}) {
   const combined = visualEvidence.map(item => cleanEvidenceText(item.text, 8000)).join('。');
-  const product = evidenceExcerpt(combined, ['产品', '汽车', '轿车', '车辆', '品牌', '服务'], '参考视频中展示的主要产品');
-  const environment = evidenceExcerpt(combined, ['场景', '环境', '空间', '道路', '室内', '室外'], '参考视频中实际出现的物理场景');
-  const material = evidenceExcerpt(combined, ['材质', '金属', '玻璃', '皮革', '木', '织物', '漆面'], '画面中可见的产品与环境材质');
-  const colors = evidenceExcerpt(combined, ['颜色', '色调', '黑色', '白色', '蓝色', '红色', '金色', '银色'], '参考画面的主要色调');
-  const layout = evidenceExcerpt(combined, ['布局', '构图', '前景', '中景', '背景', '中央', '左侧', '右侧'], environment);
-  const lighting = evidenceExcerpt(combined, ['光线', '灯光', '照明', '高光', '阴影', '逆光', '自然光'], '参考画面的实际光线与明暗关系');
+  const batchFacts = visualEvidence.map(item => visualEvidenceFacts(item.text));
+  const firstFact = (key, fallback) => batchFacts.map(item => item[key]).find(Boolean) || fallback;
+  const product = firstFact('product', evidenceExcerpt(combined, ['产品', '汽车', '轿车', '车辆', '品牌', '服务'], '参考视频中展示的主要产品'));
+  const environment = firstFact('environment', evidenceExcerpt(combined, ['场景', '环境', '空间', '道路', '室内', '室外'], '参考视频中实际出现的物理场景'));
+  const material = firstFact('materials', evidenceExcerpt(combined, ['材质', '金属', '玻璃', '皮革', '木', '织物', '漆面'], '画面中可见的产品与环境材质'));
+  const colors = firstFact('colors', evidenceExcerpt(combined, ['颜色', '色调', '黑色', '白色', '蓝色', '红色', '金色', '银色'], '参考画面的主要色调'));
+  const layout = firstFact('layout', evidenceExcerpt(combined, ['布局', '构图', '前景', '中景', '背景', '中央', '左侧', '右侧'], environment));
+  const lighting = firstFact('lighting', evidenceExcerpt(combined, ['光线', '灯光', '照明', '高光', '阴影', '逆光', '自然光'], '参考画面的实际光线与明暗关系'));
   const humanPresence = /人物|人影|展示者|驾驶员|乘员|女性|男性|手部|双手|触摸|行走/.test(combined)
     && !/没有人物|无人出现|未出现人物/.test(combined);
   const chronology = visualEvidence.map((item, index) => {
@@ -1126,17 +1164,27 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
   const lastBeat = chronology[chronology.length - 1] || `${duration} 秒：完成产品信息收束`;
   const visibleText = combined.match(/(?:文字|字幕|标识|品牌)[^。；]{0,80}/g) || [];
   const summary = `参考视频围绕${product}展开，通过${environment}中的连续画面展示产品、材质、光线和使用情境，并按时间顺序形成完整广告叙事。`;
-  const scenePrompts = visualEvidence.map((item, index) => ({
-    location_type: index === 0 ? environment : `${environment}的后续画面区域`,
+  const scenePrompts = visualEvidence.map((item, index) => {
+    const facts = batchFacts[index] || {};
+    const batchEnvironment = facts.environment || environment;
+    const batchLayout = facts.layout || layout;
+    const batchProduct = facts.product || product;
+    const batchMaterials = facts.materials || material;
+    const batchColors = facts.colors || colors;
+    const batchLighting = facts.lighting || lighting;
+    return {
+    location_type: batchEnvironment || (index === 0 ? environment : `${environment}的后续画面区域`),
     beat_refs: [index + 1],
-    layout_prompt: cleanEvidenceText(item.text, 520),
-    material_light_prompt: `${material}；${lighting}`,
+    layout_prompt: [batchEnvironment, batchLayout, batchProduct ? `广告主体：${batchProduct}` : '']
+      .filter(Boolean).join('；').slice(0, 520),
+    material_light_prompt: [batchMaterials, batchColors, batchLighting].filter(Boolean).join('；').slice(0, 420),
     interaction_prompt: humanPresence
-      ? '保留证据中人物与产品的功能性互动，但使用原创人物外观与服装。'
+      ? (facts.action || '保留证据中人物与产品的功能性互动，但使用原创人物外观与服装。')
       : '保持产品与真实空间关系，不添加证据外人物或道具。',
     camera_purpose: index === 0 ? '建立产品与真实环境关系' : '补充产品细节、动作与广告收束信息',
     negative_prompt: '禁止替换产品类别、另造空间、复制真人身份或原片服装。',
-  }));
+  };
+  });
   const cameraIntents = visualEvidence.map((item, index) => ({
     range: [
       Number(item.timestamps?.[0] || 0),
@@ -1597,5 +1645,8 @@ module.exports = {
     transcribeAudio,
     isReusableTranscriptFailure,
     publicVisionFailure,
+    visualEvidenceField,
+    visualEvidenceFacts,
+    compileAnalysisFromEvidence,
   },
 };
