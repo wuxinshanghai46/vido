@@ -2,7 +2,7 @@ const FRAME_MARKER = /(?:以下是)?逐帧(?:分析(?:及总结)?|说明)|(?:时
 
 const LABELS = [
   '产品或服务', '广告主体', '产品', '可见文字', '真实环境', '环境', '空间', '场景',
-  '材质', '颜色', '色彩', '色调', '布局', '构图', '光线', '照明', '灯光',
+  '材质', '颜色', '色彩', '色调', '空间布局', '布局', '构图', '光线', '照明', '灯光',
   '人物动作', '人物', '动作', '景别', '机位', '运镜变化', '运镜',
 ];
 
@@ -53,7 +53,7 @@ function facts(value = '') {
     environment: field(value, ['真实环境', '环境', '空间', '场景']),
     materials: field(value, ['材质']),
     colors: field(value, ['颜色', '色彩', '色调']),
-    layout: field(value, ['布局', '构图']),
+    layout: field(value, ['空间布局', '布局', '构图']),
     lighting: field(value, ['光线', '照明', '灯光']),
     action: field(value, ['人物动作', '动作', '人物']),
   };
@@ -178,7 +178,7 @@ function sanitizeAnalysis(input = {}) {
     (Array.isArray(existing.colors) ? existing.colors : [existing.colors])
       .map(item => existingFact(item, 'colors', ['颜色', '色彩', '色调'])),
   );
-  const layout = first('layout', existing.layout, ['布局', '构图']);
+  const layout = first('layout', existing.layout, ['空间布局', '布局', '构图']);
   const lighting = first('lighting', existing.lighting, ['光线', '照明', '灯光']);
   const promptActions = unique(parsedPrompts.map(item => item.action));
   const humanActions = promptActions.length ? promptActions : unique(

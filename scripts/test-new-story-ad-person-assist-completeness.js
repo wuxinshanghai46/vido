@@ -449,6 +449,7 @@ function testLegacyFrameEvidenceIsNotKeptAsSceneDescription() {
 function testAssistContentRepairIsDeterministic() {
   const raw = '以下是逐帧分析及总结： - 产品或服务：全景幕墙窗 - 真实环境：现代住宅客厅 - 材质：透明玻璃与木饰面 - 颜色：米白与原木色 - 布局：大窗位于左侧，沙发位于右侧 - 光线：自然侧光，明亮柔和';
   const rawSecond = '以下是逐帧分析及总结： - 产品或服务：薄纱窗帘 - 真实环境：室内窗边 - 材质：半透明织物 - 颜色：米白色 - 布局：窗帘位于画面中央 - 光线：自然逆光';
+  const nestedBusinessBoundary = '环境：城市中的现代建筑，建筑有多层阳台、绿色植被屋顶，背景为城市天际线和山脉；空间布局：以下是逐帧分析及总结： 1. 时间点 0.3 秒；广告主体：现代多层住宅；配备大玻璃全景幕墙窗。';
   const bundle = {
     task: {
       id: 'repair-fixture',
@@ -467,7 +468,11 @@ function testAssistContentRepairIsDeterministic() {
         },
       },
     },
-    outputs: [{ kind: 'context', payload: { scene_spec: { layoutText: raw, materialLightText: raw } } }],
+    outputs: [
+      { kind: 'context', payload: { scene_spec: { layoutText: raw, materialLightText: raw } } },
+      { kind: 'scene_config', payload: { business_boundary: nestedBusinessBoundary } },
+      { kind: 'asset_plan', payload: { scene_plan: { business_boundary: nestedBusinessBoundary } } },
+    ],
   };
   const once = assistContentRepair.repairTaskBundle(bundle);
   const twice = assistContentRepair.repairTaskBundle(once);
@@ -475,6 +480,9 @@ function testAssistContentRepairIsDeterministic() {
   assert.equal((once.task.request.person_spec.appearanceText.match(/成熟青年年龄感/g) || []).length, 1);
   assert.ok(!once.task.request.scene_spec.layoutText.includes('逐帧分析'));
   assert.ok(!once.outputs[0].payload.scene_spec.materialLightText.includes('逐帧分析'));
+  assert.doesNotMatch(once.outputs[1].payload.business_boundary, /逐帧分析|时间点\s*0\.3\s*秒/);
+  assert.match(once.outputs[1].payload.business_boundary, /城市中的现代建筑/);
+  assert.doesNotMatch(once.outputs[2].payload.scene_plan.business_boundary, /逐帧分析|时间点\s*0\.3\s*秒/);
   assert.equal(once.task.request.reference_video_analysis.source_facts.product_or_service, '全景幕墙窗');
   assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /室内窗边/);
   assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /薄纱窗帘/);

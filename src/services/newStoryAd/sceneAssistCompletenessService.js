@@ -3,7 +3,7 @@ const shotDesign = require('./shotDesignService');
 
 const EVIDENCE_LABELS = [
   '产品或服务', '产品', '可见文字', '真实环境', '环境', '空间', '场景',
-  '材质', '颜色', '色调', '布局', '构图', '光线', '照明', '灯光',
+  '材质', '颜色', '色调', '空间布局', '布局', '构图', '光线', '照明', '灯光',
   '人物动作', '人物', '动作',
 ];
 
@@ -13,7 +13,7 @@ function evidenceField(value = '', labels = []) {
     const match = new RegExp(`(?:^|[\\n\\s-])${label}\\s*[:：]\\s*`, 'u').exec(source);
     if (!match) continue;
     const tail = source.slice(match.index + match[0].length);
-    const next = new RegExp(`(?:\\s+-\\s+|\\n+)\\s*(?:${EVIDENCE_LABELS.join('|')})\\s*[:：]`, 'u').exec(tail);
+    const next = new RegExp(`(?:\\s+-\\s+|\\n+|[；;。])\\s*(?:${EVIDENCE_LABELS.join('|')})\\s*[:：]`, 'u').exec(tail);
     const result = cleanText(next ? tail.slice(0, next.index) : tail, 500);
     if (result) return result;
   }
@@ -33,7 +33,7 @@ function conciseSceneText(value = '', kind = 'layout') {
       ? [['动作', evidenceField(value, ['人物动作', '动作', '人物'])]]
       : [
           ['环境', evidenceField(value, ['真实环境', '环境', '空间', '场景'])],
-          ['布局', evidenceField(value, ['布局', '构图'])],
+          ['布局', evidenceField(value, ['空间布局', '布局', '构图'])],
           ['广告主体', evidenceField(value, ['产品或服务', '产品'])],
         ];
   const concise = fields.filter(([, content]) => content).map(([label, content]) => `${label}：${content}`).join('；');
