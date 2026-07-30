@@ -18,6 +18,8 @@ const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
 const MAX_DURATION_SECONDS = 180;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
+const REFERENCE_VISION_MAX_CANDIDATES = 3;
+const REFERENCE_VISION_STAGE_BUDGET_MS = 240000;
 const activeRuns = new Map();
 const activeImports = new Map();
 
@@ -1247,9 +1249,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       imageUrls: batch.map(item => item.image_url),
       imageDataUrls: batch.map(frameVisionUrl),
       maxTokens: 1800,
-      maxCandidates: 1,
+      maxCandidates: REFERENCE_VISION_MAX_CANDIDATES,
       timeoutMs: 120000,
-      stageBudgetMs: 150000,
+      stageBudgetMs: REFERENCE_VISION_STAGE_BUDGET_MS,
       validateText: (text) => {
         const raw = String(text || '').trim();
         if (raw.length < 80 || refusalLike(raw)) {

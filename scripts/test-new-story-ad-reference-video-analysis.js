@@ -336,7 +336,6 @@ async function main() {
     },
     validateText: service._private.assertCandidateAnalysisText,
   });
-  process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
   assert.strictEqual(fallbackVision.fallback_used, true, 'semantic refusal must fall through to the next vision candidate');
   assert.strictEqual(fallbackVision.used_model, 'openai/valid-model');
   assert.ok(
@@ -349,6 +348,41 @@ async function main() {
     fallbackVision.failed_models.map(item => item.code),
     ['PROVIDER_EMPTY_RESPONSE', 'PROVIDER_RESPONSE_INVALID'],
   );
+  const rateLimitAttempts = [];
+  const rateLimitFallback = await modelGateway.generateVision({
+    taskId: 'reference-video-rate-limit-fallback',
+    stage: 'new_story_ad.reference_video_vision',
+    systemPrompt: 'test',
+    userPrompt: 'test',
+    imageUrls: ['https://example.com/reference-frame.jpg'],
+    imageDataUrls: ['data:image/jpeg;base64,YWJj'],
+    maxCandidates: 2,
+    _candidateModels: [
+      { provider_id: 'rate-limited-provider', model_id: 'primary-vision' },
+      { provider_id: 'backup-provider', model_id: 'backup-vision' },
+    ],
+    _generateText: async ({ model }) => {
+      rateLimitAttempts.push(`${model.provider_id}/${model.model_id}`);
+      if (model.model_id === 'primary-vision') {
+        const error = new Error('HTTP 429 rate limit');
+        error.code = 'RATE_LIMIT';
+        throw error;
+      }
+      return {
+        text: '备用视觉模型已返回完整广告证据：画面依次展示门窗产品、客厅空间、金属边框与玻璃材质、自然光线、人物开关门动作、品牌文字、产品特写、景别变化和结尾行动号召；每个时间点都说明了真实可见内容及其在完整广告剧情中的推进作用，没有编造画面外信息。',
+        adapter: 'test',
+      };
+    },
+    validateText: text => String(text || '').length >= 80,
+  });
+  process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
+  assert.deepStrictEqual(rateLimitAttempts, [
+    'rate-limited-provider/primary-vision',
+    'backup-provider/backup-vision',
+  ]);
+  assert.strictEqual(rateLimitFallback.fallback_used, true);
+  assert.strictEqual(rateLimitFallback.used_model, 'backup-provider/backup-vision');
+  assert.deepStrictEqual(rateLimitFallback.failed_models.map(item => item.code), ['RATE_LIMIT']);
 
   const originalGenerateVision = modelGateway.generateVision;
   const originalGenerateText = modelGateway.generateText;
@@ -420,6 +454,92 @@ async function main() {
     assert.strictEqual(staged.visual_evidence_batches.length, 2);
     assert.ok(staged.story_outline.logline.includes('测试产品'));
     assert.strictEqual(service._private.normalizeResult(staged).analysis_quality.valid, true);
+
+    const recoveryInput = path.join(tempRoot, 'rate-limit-recovery-input.mp4');
+    fs.copyFileSync(input, recoveryInput);
+    const recoveryAnalysis = await service.create({
+      file: {
+        path: recoveryInput,
+        originalname: 'rate-limit-recovery.mp4',
+        mimetype: 'video/mp4',
+        size: fs.statSync(recoveryInput).size,
+      },
+      body: { rights_confirmed: 'true' },
+      user,
+    });
+    const recoveryRecordPath = path.join(
+      tempRoot,
+      'new-story-ad',
+      'reference-video-analyses',
+      user.id,
+      recoveryAnalysis.id,
+      'record.json',
+    );
+    let recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
+    const recoveryFrames = Array.from({ length: 8 }, (_, index) => ({
+      timestamp_seconds: index,
+      image_url: `https://example.com/recovery-frame-${index}.jpg`,
+      filename: `missing-recovery-frame-${index}.jpg`,
+    }));
+    let recoveryRound = 1;
+    const recoveryCalls = [];
+    const recoveryCandidateLimits = [];
+    modelGateway.generateVision = async (options) => {
+      const batchIndex = Number(String(options.userPrompt || '').match(/第\s+(\d+)\/2\s+组/)?.[1] || 0);
+      recoveryCalls.push({ round: recoveryRound, batch_index: batchIndex });
+      recoveryCandidateLimits.push(options.maxCandidates);
+      if (recoveryRound === 1 && batchIndex === 2) {
+        const error = new Error('primary provider rate limited before fallback was available');
+        error.code = 'VISION_QA_UNAVAILABLE';
+        error.retryable = true;
+        error.failed_models = [{
+          provider_id: 'zhipu',
+          model_id: 'glm-4.6v-flash',
+          code: 'RATE_LIMIT',
+        }];
+        throw error;
+      }
+      return {
+        text: `第${batchIndex}组证据完整展示测试门窗产品、客厅空间、金属与玻璃材质、自然光线、人物开关门动作、产品特写和广告剧情推进作用。`,
+        used_model: recoveryRound === 1 ? 'zhipu/glm-4.6v-flash' : 'backup-provider/backup-vision',
+      };
+    };
+    await assert.rejects(
+      service._private.analyzeWithModels(recoveryRecord, recoveryFrames, { status: 'no_audio', text: '' }),
+      error => error.code === 'VISION_QA_UNAVAILABLE',
+    );
+    recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
+    assert.deepStrictEqual(
+      recoveryCalls.map(item => item.batch_index).sort(),
+      [1, 2],
+      'the first attempt must run both bounded evidence batches',
+    );
+    assert.ok(
+      recoveryCandidateLimits.every(limit => limit === 3),
+      'each reference-video batch must allow cross-provider fallback candidates',
+    );
+    assert.deepStrictEqual(
+      recoveryRecord._visual_evidence_cache.completed_batch_indexes,
+      [0],
+      'the successful batch must be persisted when its sibling is rate limited',
+    );
+
+    recoveryRound = 2;
+    const recovered = await service._private.analyzeWithModels(
+      recoveryRecord,
+      recoveryFrames,
+      { status: 'no_audio', text: '' },
+    );
+    const secondRoundCalls = recoveryCalls.filter(item => item.round === 2);
+    assert.deepStrictEqual(
+      secondRoundCalls.map(item => item.batch_index),
+      [2],
+      'retry must execute only the missing evidence batch',
+    );
+    assert.strictEqual(recovered.visual_evidence_batches.length, 2);
+    recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
+    assert.deepStrictEqual(recoveryRecord._visual_evidence_cache.completed_batch_indexes, [0, 1]);
+    service.remove(recoveryAnalysis.id, user);
   } finally {
     modelGateway.generateVision = originalGenerateVision;
     modelGateway.generateText = originalGenerateText;
@@ -594,7 +714,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 102,
+    checks: 113,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,
