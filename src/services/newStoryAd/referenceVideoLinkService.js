@@ -135,6 +135,18 @@ async function resolvePublicHost(hostname, resolver = dns.lookup) {
   return addresses;
 }
 
+function pinnedLookup(pinned = {}) {
+  return (_hostname, lookupOptions, callback) => {
+    const address = String(pinned.address || '');
+    const family = Number(pinned.family || net.isIP(address));
+    if (lookupOptions?.all === true) {
+      callback(null, [{ address, family }]);
+      return;
+    }
+    callback(null, address, family);
+  };
+}
+
 async function inspectUrl(raw, options = {}) {
   const parsed = parseUrl(raw);
   const addresses = await resolvePublicHost(parsed.hostname, options.resolver || dns.lookup);
@@ -164,7 +176,7 @@ async function fetchPublicJson(initialUrl, options = {}) {
           'User-Agent': 'VIDO-ReferenceVideo/1.0',
           Accept: 'application/json',
         },
-        lookup: (_hostname, _lookupOptions, callback) => callback(null, pinned.address, pinned.family),
+        lookup: pinnedLookup(pinned),
       }, resolve);
       request.setTimeout(options.timeoutMs || 30000, () => {
         request.destroy(makeError('视频详情接口读取超时', 'REFERENCE_VIDEO_PAGE_RESOLVE_TIMEOUT', 504));
@@ -229,7 +241,7 @@ function liblibCaseItems(skill = {}) {
 async function resolveLiblibShareVideo(inspected, options = {}) {
   const pageUrl = new URL(inspected.url);
   if (!/^\/skill\/share\/?$/.test(pageUrl.pathname)) {
-    throw makeError('当前仅支持 Liblib Skill 分享页的视频样例', 'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED', 422);
+    throw makeError('LibTV Skill 分享链接格式不正确', 'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED', 422);
   }
   const uuid = String(pageUrl.searchParams.get('uuid') || '').trim();
   if (!/^[a-f0-9-]{16,64}$/i.test(uuid)) {
@@ -251,6 +263,48 @@ async function resolveLiblibShareVideo(inspected, options = {}) {
   };
 }
 
+async function resolveLiblibProjectVideo(inspected, options = {}) {
+  const pageUrl = new URL(inspected.url);
+  const match = pageUrl.pathname.match(/^\/detail\/([^/]+)\/?$/);
+  if (!match) {
+    throw makeError('LibTV 项目详情链接格式不正确', 'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED', 422);
+  }
+  const uuid = String(match[1] || '').trim();
+  if (!/^[a-f0-9-]{16,64}$/i.test(uuid)) {
+    throw makeError('LibTV 项目详情链接缺少有效的项目 ID', 'REFERENCE_VIDEO_LIBLIB_PROJECT_UUID_INVALID', 422);
+  }
+  const apiUrl = `https://api.liblib.tv/api/community/project/template/detail?projectTemplateUuid=${encodeURIComponent(uuid)}`;
+  const payload = await (options.fetchJson || fetchPublicJson)(apiUrl, options);
+  const detail = payload?.data?.detail || payload?.detail || null;
+  if (!detail || (payload?.code != null && Number(payload.code) !== 0)) {
+    throw makeError('该 LibTV 项目不存在或没有公开访问权限', 'REFERENCE_VIDEO_LIBLIB_PROJECT_NOT_FOUND', 422);
+  }
+  const mediaUrl = String(detail.finalOutput || '').trim();
+  if (!/^https?:\/\//i.test(mediaUrl)) {
+    throw makeError('该 LibTV 项目没有公开成片，请改用本地上传', 'REFERENCE_VIDEO_LIBLIB_PROJECT_MEDIA_MISSING', 422);
+  }
+  const media = await (options.inspectUrl || inspectUrl)(mediaUrl, options);
+  return {
+    ...media,
+    title: String(detail.name || 'LibTV 项目成片').trim().slice(0, 80),
+  };
+}
+
+async function resolveLiblibVideo(inspected, options = {}) {
+  const pageUrl = new URL(inspected.url);
+  if (/^\/skill\/share\/?$/.test(pageUrl.pathname)) {
+    return resolveLiblibShareVideo(inspected, options);
+  }
+  if (/^\/detail\/[^/]+\/?$/.test(pageUrl.pathname)) {
+    return resolveLiblibProjectVideo(inspected, options);
+  }
+  throw makeError(
+    '该 LibTV 链接类型暂不支持，请使用项目详情页、Skill 分享页或视频直链',
+    'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED',
+    422,
+  );
+}
+
 async function downloadDirect(initialUrl, directory, options = {}) {
   let current = parseUrl(initialUrl);
   for (let redirect = 0; redirect <= MAX_REDIRECTS; redirect += 1) {
@@ -265,7 +319,7 @@ async function downloadDirect(initialUrl, directory, options = {}) {
           'User-Agent': 'VIDO-ReferenceVideo/1.0',
           Accept: 'video/*,application/octet-stream;q=0.8',
         },
-        lookup: (_hostname, _lookupOptions, callback) => callback(null, pinned.address, pinned.family),
+        lookup: pinnedLookup(pinned),
       }, resolve);
       request.setTimeout(options.timeoutMs || REQUEST_TIMEOUT_MS, () => {
         request.destroy(makeError('读取视频链接超时，请检查链接后重试', 'REFERENCE_VIDEO_URL_TIMEOUT', 504));
@@ -408,7 +462,7 @@ async function downloadVideo(raw, directory, options = {}) {
   const isDirectMedia = /\.(mp4|mov|webm)$/i.test(new URL(inspected.url).pathname);
   let downloaded;
   if (inspected.platform === 'liblib' && !isDirectMedia) {
-    const media = await resolveLiblibShareVideo(inspected, options);
+    const media = await resolveLiblibVideo(inspected, options);
     downloaded = await downloadDirect(media.url, directory, options);
     downloaded.original_name = `${media.title}${path.extname(downloaded.file_path).toLowerCase()}`;
     downloaded.method = 'liblib-api+direct';
@@ -432,9 +486,12 @@ module.exports = {
     platformForHost,
     sanitizeDisplayUrl,
     resolvePublicHost,
+    pinnedLookup,
     fetchPublicJson,
     liblibCaseItems,
     resolveLiblibShareVideo,
+    resolveLiblibProjectVideo,
+    resolveLiblibVideo,
     downloadDirect,
   },
 };

@@ -85,6 +85,37 @@ async function main() {
   ].forEach(ip => assert.strictEqual(linkSecurity._private.isBlockedIp(ip), true, `${ip} must be blocked`));
   ['8.8.8.8', '1.1.1.1', '2606:4700:4700::1111']
     .forEach(ip => assert.strictEqual(linkSecurity._private.isBlockedIp(ip), false, `${ip} must be public`));
+  await new Promise((resolve, reject) => {
+    linkSecurity._private.pinnedLookup({ address: '8.8.8.8', family: 4 })(
+      'public.example',
+      { all: true },
+      (error, addresses) => {
+        try {
+          if (error) throw error;
+          assert.deepStrictEqual(addresses, [{ address: '8.8.8.8', family: 4 }]);
+          resolve();
+        } catch (assertionError) {
+          reject(assertionError);
+        }
+      },
+    );
+  });
+  await new Promise((resolve, reject) => {
+    linkSecurity._private.pinnedLookup({ address: '8.8.8.8', family: 4 })(
+      'public.example',
+      {},
+      (error, address, family) => {
+        try {
+          if (error) throw error;
+          assert.strictEqual(address, '8.8.8.8');
+          assert.strictEqual(family, 4);
+          resolve();
+        } catch (assertionError) {
+          reject(assertionError);
+        }
+      },
+    );
+  });
   assert.throws(() => linkSecurity._private.parseUrl('file:///etc/passwd'), /http/);
   assert.throws(() => linkSecurity._private.parseUrl('https://example.com:8443/video.mp4'), /80\/443/);
   await assert.rejects(
@@ -148,6 +179,84 @@ async function main() {
       platform: 'liblib',
     }),
     error => error.code === 'REFERENCE_VIDEO_LIBLIB_UUID_INVALID',
+  );
+
+  let liblibProjectApiUrl = '';
+  const resolvedLiblibProject = await linkSecurity._private.resolveLiblibVideo({
+    url: 'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+    platform: 'liblib',
+  }, {
+    fetchJson: async url => {
+      liblibProjectApiUrl = url;
+      return {
+        code: 0,
+        data: {
+          detail: {
+            templateUuid: 'cf025f2c342c47b69a1d19f6ee2009e5',
+            name: '门窗产品TVC广告片',
+            finalOutput: 'https://libtv-res.liblib.art/upload-images/example/project.mp4',
+          },
+        },
+      };
+    },
+    inspectUrl: async url => ({
+      url,
+      display_url: url,
+      platform: 'public_web',
+      hostname: 'libtv-res.liblib.art',
+    }),
+  });
+  assert.ok(liblibProjectApiUrl.includes('/api/community/project/template/detail?projectTemplateUuid=cf025f2c342c47b69a1d19f6ee2009e5'));
+  assert.strictEqual(resolvedLiblibProject.title, '门窗产品TVC广告片');
+  assert.ok(resolvedLiblibProject.url.endsWith('/project.mp4'));
+
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibVideo({
+      url: 'https://www.liblib.tv/detail/bad',
+      platform: 'liblib',
+    }),
+    error => error.code === 'REFERENCE_VIDEO_LIBLIB_PROJECT_UUID_INVALID',
+  );
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibProjectVideo({
+      url: 'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+      platform: 'liblib',
+    }, {
+      fetchJson: async () => ({ code: 0, data: {} }),
+    }),
+    error => error.code === 'REFERENCE_VIDEO_LIBLIB_PROJECT_NOT_FOUND',
+  );
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibProjectVideo({
+      url: 'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+      platform: 'liblib',
+    }, {
+      fetchJson: async () => ({
+        code: 0,
+        data: { detail: { name: '尚未发布成片', finalOutput: '' } },
+      }),
+    }),
+    error => error.code === 'REFERENCE_VIDEO_LIBLIB_PROJECT_MEDIA_MISSING',
+  );
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibProjectVideo({
+      url: 'https://www.liblib.tv/detail/cf025f2c342c47b69a1d19f6ee2009e5',
+      platform: 'liblib',
+    }, {
+      fetchJson: async () => ({
+        code: 0,
+        data: { detail: { name: '危险地址', finalOutput: 'https://public.example/private.mp4' } },
+      }),
+      resolver: async () => [{ address: '192.168.1.20', family: 4 }],
+    }),
+    error => error.code === 'REFERENCE_VIDEO_URL_PRIVATE_HOST_FORBIDDEN',
+  );
+  await assert.rejects(
+    () => linkSecurity._private.resolveLiblibVideo({
+      url: 'https://www.liblib.tv/unknown/cf025f2c342c47b69a1d19f6ee2009e5',
+      platform: 'liblib',
+    }),
+    error => error.code === 'REFERENCE_VIDEO_LIBLIB_PAGE_UNSUPPORTED',
   );
 
   await assert.rejects(
@@ -235,9 +344,10 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 50,
+    checks: 61,
     public_url_input: 'pass',
     liblib_share_api_resolution: 'pass',
+    liblib_project_api_resolution: 'pass',
     ssrf_private_ranges: 'blocked',
     query_secret_exposed: false,
     cancellation: 'pass',
