@@ -930,20 +930,20 @@
     const title = within('#dhNsaAdModeTitle');
     const sub = within('#dhNsaAdModeSub');
     if (title) title.textContent = '剧情广告';
-    if (sub) sub.textContent = '参考与需求 → 人物与场景档案 → 剧情蓝图 → 导演故事板 → 关键帧与候选视频 → 成片审核。技术机位和血缘信息仅在高级区显示。';
+    if (sub) sub.textContent = '参考与需求 → 人物与场景设置 → 剧情蓝图 → 导演故事板 → 关键帧与候选视频 → 成片审核。技术机位和血缘信息仅在高级区显示。';
     const text = within('#dhNsaAdText');
     if (text) {
       text.placeholder = '例如：我想做一条品牌剧情广告。写清产品、目标用户、核心卖点、期望场景和最后引导动作。';
     }
     const gate = within('#dhNsaAdGateHint');
-    if (gate) gate.textContent = '先描述广告或读取参考视频；系统只展示识别出的人物、场景、剧情和内容描述，再建立人物与场景档案。';
+    if (gate) gate.textContent = '先描述广告或读取参考视频；识别结果会直接填入人物和场景设置，你可以继续修改。';
     const cap = within('#dhNsaAdCapabilityStrip');
     if (cap) {
       cap.innerHTML = '';
       cap.hidden = true;
     }
     const stepButtons = [
-      ['#dhNsaAdGenerate', '生成人物与场景档案'],
+      ['#dhNsaAdGenerate', '生成人物与场景设置'],
       ['#dhNsaAdStoryboard', '生成剧情蓝图'],
       ['#dhNsaAdPreviewFrames', '确认蓝图，生成导演故事板'],
       ['#dhNsaAdGenerateFinalFrames', '按脚本生成真实画面'],
@@ -5244,14 +5244,14 @@
     if (!brief) return toast('请先填写广告需求，再确认人物来源', 'error');
     const label = '补齐中...';
     const stopAssist = window.NewStoryAdAssistProgress.start(state, 'personAssistProgress', {
-      label: 'AI 正在补齐人物档案', message: '正在按人物逐项整理姓名、身份、年龄、外貌、服装和妆造；结果会显示在各自人物卡片。',
+      label: 'AI 正在补齐人物设置', message: '正在按人物逐项整理姓名、身份、年龄、外貌、服装和妆造；结果会直接显示在各自人物卡片。',
     }, renderPerson);
     setButtonBusy(button, true, label);
     try {
       let suggestion = null, assistedProfiles = null;
       try {
         const r = await requestCancelableGeneration('assist_person_spec', {
-          label: '正在创建 / 补齐全部人物档案…',
+          label: '正在补齐全部人物设置…',
           timeoutMs: 120000,
           exclusive: false, channel: 'person_assist', editDomain: 'person', showGlobalProgress: false,
           body: {
@@ -5344,7 +5344,7 @@
     const targetSpaceId = state.scenePlanSelectedId || currentPlan.spaces?.[state.scenePlanSelectedIndex || 0]?.id || '';
     const label = '补齐场景中...';
     const stopAssist = window.NewStoryAdAssistProgress.start(state, 'sceneAssistProgress', {
-      label: 'AI 正在补齐当前场景', message: '正在整理空间布局、材质光线和互动区域；人物档案可同时独立补齐。',
+      label: 'AI 正在补齐当前场景', message: '正在整理空间布局、材质光线和互动区域；人物设置可以同时补齐。',
     }, renderSceneAssets);
     setButtonBusy(button, true, label);
     try {
@@ -5352,7 +5352,7 @@
       let suggestionPlan = null;
       try {
         const r = await requestCancelableGeneration('assist_scene_spec', {
-          label,
+          label, timeoutMs: 150000,
           exclusive: false, channel: 'scene_assist', editDomain: 'scene', showGlobalProgress: false,
           body: {
             ...payload(),
@@ -5468,7 +5468,7 @@
     const profileErrors = window.NewStoryAdSubjectAssetsUI.profileErrors(state, generationSpec);
     if (profileErrors.length) {
       window.NewStoryAdSubjectAssetsUI.renderProfiles(within('#dhNsaAdSubjectProfiles'), state, generationSpec, escapeHtml);
-      return toast(`请先补齐逐主体档案：${profileErrors.join('；')}`, 'error');
+      return toast(`请先补齐每个人物设置：${profileErrors.join('；')}`, 'error');
     }
     const selectedTargets = await confirmNsaAction(window.NewStoryAdSubjectAssetsUI.confirmOptions({ ...subjectCounts, state }));
     if (!selectedTargets) return; const selectedCount = selectedTargets.length;

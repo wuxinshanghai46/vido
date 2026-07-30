@@ -22,7 +22,7 @@ function evidenceField(value = '', labels = []) {
 
 function conciseSceneText(value = '', kind = 'layout') {
   const source = cleanText(value, 1200);
-  if (!/(?:逐帧分析|时间点\s*\d+(?:\.\d+)?\s*秒)/u.test(source)) return source;
+  if (!/(?:逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒|\d+(?:\.\d+)?\s*秒)/u.test(source)) return source;
   const fields = kind === 'material'
     ? [
         ['材质', evidenceField(value, ['材质'])],
@@ -37,7 +37,7 @@ function conciseSceneText(value = '', kind = 'layout') {
           ['广告主体', evidenceField(value, ['产品或服务', '产品'])],
         ];
   const concise = fields.filter(([, content]) => content).map(([label, content]) => `${label}：${content}`).join('；');
-  return cleanText(concise || source.replace(/^以下是逐帧分析(?:及总结)?[:：]?\s*/u, ''), 500);
+  return cleanText(concise || source.replace(/^(?:以下是)?逐帧(?:分析(?:及总结)?|说明)[:：]?\s*/u, ''), 500);
 }
 
 /** 补齐场景辅助结果；模型漏字段或返回残句时保留已有内容，仍缺失则使用跨行业安全兜底。 */

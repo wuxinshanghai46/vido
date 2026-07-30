@@ -159,6 +159,11 @@ function verifyWiring() {
   assert.match(cancelable, /flow\.requestInlineGeneration\(stage, ctx, options\)/);
   assert.match(legacy, /requestCancelableGeneration\('assist_person_spec'/);
   assert.match(legacy, /requestCancelableGeneration\('assist_scene_spec'/);
+  assert.match(
+    legacy,
+    /requestCancelableGeneration\('assist_scene_spec',\s*\{[\s\S]*?timeoutMs:\s*150000/,
+    'scene assist must not inherit the generic 45 second POST timeout',
+  );
   assert.match(legacy, /requestCancelableGeneration\('subject_assets'/);
   assert.match(actors, /data-nsa-cancel-generation/);
   assert.match(scenes, /data-nsa-cancel-generation/);

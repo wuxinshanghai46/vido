@@ -86,7 +86,7 @@ function testFrontendCompletenessGuardIsWired() {
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
   assert.match(source, /function completeSceneSpecSuggestion\(/);
   assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
-  assert.match(source, /label: '正在创建 \/ 补齐全部人物档案…',\s*timeoutMs: 120000,/);
+  assert.match(source, /label: '正在补齐全部人物设置…',\s*timeoutMs: 120000,/);
   assert.match(source, /channel: 'person_assist'/);
   assert.match(source, /channel: 'scene_assist'/);
   assert.match(source, /showGlobalProgress: false/);

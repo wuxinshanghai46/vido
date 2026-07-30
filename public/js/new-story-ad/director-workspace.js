@@ -90,18 +90,6 @@
   }
 
   function renderPeople(people = {}) {
-    const characters = Array.isArray(people.characters) ? people.characters : [];
-    const cards = characters.map(character => `
-      <article class="dh-nsa-director-card person">
-        ${character.image_url ? `<img class="dh-nsa-director-cover" src="${escapeHtml(character.image_url)}" alt="${escapeHtml(character.name)}" loading="lazy" decoding="async">` : ''}
-        <div>
-          <small>${escapeHtml(character.role || '剧情人物')}</small>
-          <h4>${escapeHtml(character.name)}</h4>
-          ${character.profile ? `<p>${escapeHtml(character.profile)}</p>` : ''}
-          ${character.wardrobe ? `<p><b>造型：</b>${escapeHtml(character.wardrobe)}</p>` : ''}
-          ${character.story_function ? `<p><b>剧情职责：</b>${escapeHtml(character.story_function)}</p>` : ''}
-        </div>
-      </article>`).join('');
     const actions = (people.action_pack || []).map(action => `
       <article class="dh-nsa-director-action">
         ${action.image_url ? `<img src="${escapeHtml(action.image_url)}" alt="第 ${Number(action.shot_index) || 1} 镜动作" loading="lazy" decoding="async">` : ''}
@@ -113,13 +101,12 @@
           ${action.expression_change ? `<span>表情变化：${escapeHtml(action.expression_change)}</span>` : ''}
         </div>
       </article>`).join('');
+    if (!actions) return '';
     return `
       <section class="dh-nsa-director-block">
-        <div class="dh-nsa-director-title"><div><small>角色档案</small><h3>人物与剧情动作</h3></div><span>${characters.length} 人 · ${(people.action_pack || []).length} 组动作</span></div>
-        <p class="dh-nsa-director-purpose">这里不是另一套人物输入。它把上方每个人物自己的档案整理成剧本可用的角色职责，并在生成故事板后记录动作前后状态，防止换人、换装或动作断裂。</p>
-        <div class="dh-nsa-director-grid">${cards || empty('当前广告不需要人物，或人物档案尚未生成。')}</div>
-        ${imageStrip(people.identity_views, '人物一致性参考')}
-        ${actions ? `<div class="dh-nsa-director-actions">${actions}</div>` : '<p class="dh-nsa-director-note">生成故事板后，系统会只为剧情真正使用的动作建立“开始—关键动作—结束”动作包。</p>'}
+        <div class="dh-nsa-director-title"><div><small>剧情生成后的执行记录</small><h3>人物动作前后状态</h3></div><span>${(people.action_pack || []).length} 组动作</span></div>
+        <p class="dh-nsa-director-purpose">人物的姓名、外貌、服装和妆造只在下方人物设置中编辑；这里仅显示剧情生成后新增的动作连续性记录。</p>
+        <div class="dh-nsa-director-actions">${actions}</div>
       </section>`;
   }
 
@@ -135,21 +122,17 @@
   }
 
   function renderScenes(scenes = []) {
+    const withStates = scenes.filter(scene => Array.isArray(scene.state_timeline) && scene.state_timeline.length);
+    if (!withStates.length) return '';
     return `
       <section class="dh-nsa-director-block">
-        <div class="dh-nsa-director-title"><div><small>场景档案</small><h3>空间、互动与状态变化</h3></div><span>${scenes.length} 个场景</span></div>
-        <p class="dh-nsa-director-purpose">这里是场景设定的下游整理结果：剧本和分镜用它锁定同一空间的布局、材质、互动位置及前后变化。参考视频的逐帧原始证据不应直接占用这些描述字段。</p>
-        <div class="dh-nsa-director-scene-list">${scenes.map(scene => `
+        <div class="dh-nsa-director-title"><div><small>剧情生成后的执行记录</small><h3>场景中的状态变化</h3></div><span>${withStates.length} 个场景</span></div>
+        <p class="dh-nsa-director-purpose">空间布局、材质、光线和互动位置只在下方场景设置中编辑；这里仅显示剧情生成后物件、人物和光线如何前后变化。</p>
+        <div class="dh-nsa-director-scene-list">${withStates.map(scene => `
           <article class="dh-nsa-director-scene">
             <header><div><small>${escapeHtml(scene.story_purpose || '剧情承载空间')}</small><h4>${escapeHtml(scene.name)}</h4></div><span>${escapeHtml(verificationLabel(scene.verification_status))}</span></header>
-            <p>${escapeHtml(scene.description || '待补充空间描述')}</p>
-            ${scene.material_light ? `<p><b>材质与光线：</b>${escapeHtml(scene.material_light)}</p>` : ''}
-            ${scene.interaction ? `<p><b>人物/产品如何使用：</b>${escapeHtml(scene.interaction)}</p>` : ''}
-            ${tags((scene.zones || []).map(zone => zone.label || zone.purpose), 'zones')}
-            ${imageStrip(scene.views, `${scene.name}参考视图`)}
-            <div class="dh-nsa-director-state-head">剧情中的场景变化</div>
             ${renderSceneStates(scene.state_timeline || [])}
-          </article>`).join('') || empty('尚未形成场景档案。')}</div>
+          </article>`).join('')}</div>
       </section>`;
   }
 
@@ -290,7 +273,7 @@
     if (!id || !window.NewStoryAdApi?.request) return;
     ensureStyle();
     if (step === 2) {
-      setLoading('dhNsaDirectorAssetsHost', '正在读取人物与场景档案…');
+      setLoading('dhNsaDirectorAssetsHost', '正在读取剧情执行记录…');
       try { renderAssets(await readWorkspace('people,scenes', options)); } catch (error) { setError('dhNsaDirectorAssetsHost', error); }
     }
     if (step === 4) {

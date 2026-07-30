@@ -49,6 +49,47 @@ async function main() {
   assert.match(compiledVision.scene_prompts[0].layout_prompt, /城市现代住宅客厅/);
   assert.match(compiledVision.scene_prompts[0].material_light_prompt, /透明玻璃/);
 
+  const productionLikeVision = [
+    {
+      timestamps: [0.3, 27.16],
+      text: '以下是逐帧分析及总结： 1. **时间点 0.3 秒** - 产品或服务：现代多层住宅，配备大玻璃全景幕墙窗。 - 可见文字：“新标门窗 | 大玻璃全景幕墙窗”。 - 真实环境：城市中的现代建筑，建筑有多层阳台、绿色植被屋顶，背景为城市天际线和山脉。 - 材质：玻璃幕墙、木质外立面、混凝土结构。 - 颜色：棕色木质、灰色混凝土、透明玻璃。 - 布局：建筑居中，城市天际线在背景。 - 光线：自然日光。 - 人物：无。',
+    },
+    {
+      timestamps: [36.11, 62.97],
+      text: '### 逐帧说明 1. **36.11秒** - 产品或服务：窗帘（薄纱窗帘、深色系系带窗帘）。 - 可见文字：“50%开启面积，让风随意流动”。 - 真实环境：室内窗边，窗外可见山峦、绿植与建筑。 - 材质：薄纱窗帘（半透明，浅色系），深色系窗帘（厚实，深灰/棕色）。 - 颜色：窗帘为米白/浅色，深色系为深色调。 - 布局：窗帘部分开启，露出窗外自然景观。 - 光线：自然光，柔和。 - 人物：无。',
+    },
+  ];
+  const productionLikeCompiled = service._private.compileAnalysisFromEvidence({
+    source: { metadata: { duration_seconds: 80.9 } },
+  }, productionLikeVision, {});
+  const productionLikeNormalized = service._private.normalizeResult({
+    status: 'completed',
+    ...productionLikeCompiled,
+  });
+  assert.equal(productionLikeNormalized.source_facts.product_or_service, '现代多层住宅，配备大玻璃全景幕墙窗。');
+  assert.equal(productionLikeNormalized.source_facts.environment, '城市中的现代建筑，建筑有多层阳台、绿色植被屋顶，背景为城市天际线和山脉。');
+  assert.match(productionLikeNormalized.scene_prompts[1].layout_prompt, /室内窗边/);
+  assert.match(productionLikeNormalized.scene_prompts[1].material_light_prompt, /薄纱窗帘/);
+  assert.doesNotMatch(JSON.stringify(productionLikeNormalized), /逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒/);
+  const normalizedProductionContext = contextBuilder.buildContext({
+    brief: productionLikeNormalized.generated_brief,
+    product_subject: productionLikeNormalized.source_facts.product_or_service,
+    reference_video_analysis: {
+      analysis_id: 'production_like',
+      status: 'completed',
+      ...productionLikeNormalized,
+    },
+    person_spec: {
+      age: 'adult_30_40',
+      appearanceText: '30-40岁成熟青年年龄感，成熟青年年龄感，成熟青年年龄感，原创、可信的自然外观',
+    },
+  });
+  assert.equal(
+    normalizedProductionContext.person_spec.appearanceText,
+    '30-40岁成熟青年年龄感，原创、可信的自然外观',
+  );
+  assert.doesNotMatch(JSON.stringify(normalizedProductionContext.reference_video_analysis), /逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒/);
+
   settingsService.saveSettings({
     providers: [
       {

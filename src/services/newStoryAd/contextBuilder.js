@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const shotDesign = require('./shotDesignService');
 const subjectProfileText = require('./subjectProfileTextService');
+const referenceEvidenceText = require('./referenceEvidenceTextService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -20,6 +21,7 @@ function cleanMultilineText(value = '', max = 3000) {
 
 function normalizeReferenceVideoAnalysis(input = null) {
   if (!input || typeof input !== 'object') return null;
+  input = referenceEvidenceText.sanitizeAnalysis(input);
   const status = cleanText(input.status || '', 30);
   const quality = input.analysis_quality && typeof input.analysis_quality === 'object'
     ? input.analysis_quality
@@ -834,6 +836,31 @@ function buildContext(body = {}, user = {}) {
   const animalOnly = castMode === 'animal';
   const petRequired = ['animal', 'human_pet'].includes(castMode);
   const normalizedPersonSpec = { ...personSpec };
+  if (normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance || normalizedPersonSpec.description) {
+    normalizedPersonSpec.appearanceText = subjectProfileText.alignAgeDescription(
+      normalizedPersonSpec.appearanceText || normalizedPersonSpec.appearance || normalizedPersonSpec.description,
+      normalizedPersonSpec.age,
+      800,
+    );
+  }
+  if (normalizedPersonSpec.wardrobeText || normalizedPersonSpec.wardrobe || normalizedPersonSpec.outfit) {
+    normalizedPersonSpec.wardrobeText = subjectProfileText.dedupeClauses(
+      normalizedPersonSpec.wardrobeText || normalizedPersonSpec.wardrobe || normalizedPersonSpec.outfit,
+      600,
+    );
+  }
+  if (normalizedPersonSpec.hairMakeupText || normalizedPersonSpec.hair_makeup || normalizedPersonSpec.hair) {
+    normalizedPersonSpec.hairMakeupText = subjectProfileText.dedupeClauses(
+      normalizedPersonSpec.hairMakeupText || normalizedPersonSpec.hair_makeup || normalizedPersonSpec.hair,
+      400,
+    );
+  }
+  if (normalizedPersonSpec.negativeText || normalizedPersonSpec.negative) {
+    normalizedPersonSpec.negativeText = subjectProfileText.dedupeClauses(
+      normalizedPersonSpec.negativeText || normalizedPersonSpec.negative,
+      500,
+    );
+  }
   if (!petRequired) {
     delete normalizedPersonSpec.expectedAnimals;
     delete normalizedPersonSpec.expected_animals;

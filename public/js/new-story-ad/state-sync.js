@@ -494,7 +494,15 @@
   function hydratePersonSpec(request = {}, ctx = {}) {
     const { state, root, applyPersonAssetConstraints } = ctx;
     if (!state) return;
-    const spec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
+    const rawSpec = request.person_spec || request.personSpec || request.person_context?.person_spec || {};
+    const spec = {
+      ...rawSpec,
+      appearanceText: window.NewStoryAdPersonPetSpec?.alignAgeDescription?.(
+        rawSpec.appearanceText || rawSpec.appearance || rawSpec.description || '',
+        rawSpec.age || '',
+        800,
+      ) || rawSpec.appearanceText || '',
+    };
     const specSource = request.person_context?.spec_source;
     state.personSpecSource = specSource && typeof specSource === 'object'
       ? {
@@ -507,7 +515,7 @@
         : null);
     state.personConstraintEditorOpen = false;
     Object.entries(spec || {}).forEach(([key, value]) => {
-      const scope = typeof root === 'function' ? root() : document;
+      const scope = typeof root === 'function' ? root() : (typeof document !== 'undefined' ? document : null);
       const selector = `[data-nsa-person-spec="${key}"]`;
       const fields = typeof scope?.querySelectorAll === 'function'
         ? Array.from(scope.querySelectorAll(selector))
@@ -517,7 +525,9 @@
       }
     });
     state.castProfiles = Array.isArray(request.cast_profiles || request.castProfiles)
-      ? (request.cast_profiles || request.castProfiles)
+      ? (request.cast_profiles || request.castProfiles).map(profile => (
+        window.NewStoryAdPersonPetSpec?.sanitizeProfileTexts?.(profile, profile?.age || profile?.ageRange || spec.age || '') || profile
+      ))
       : [];
     state.petProfiles = Array.isArray(request.pet_profiles || request.petProfiles)
       ? (request.pet_profiles || request.petProfiles)

@@ -274,8 +274,8 @@
     if (spec.castMode === 'animal' && target.pets < 1) errors.push('纯宠物模式必须填写精确宠物数量');
     if (spec.castMode === 'human_pet' && (target.people < 1 || target.pets < 1)) errors.push('人物 + 宠物模式必须分别填写精确人数和宠物数量');
     if (!['no_human', 'animal'].includes(spec.castMode) && target.people < 1) errors.push('请填写 1-12 的精确人物数量');
-    if ((state.castProfiles || []).length !== target.people) errors.push(`需要 ${target.people} 份独立人物档案`);
-    if ((state.petProfiles || []).length !== target.pets) errors.push(`需要 ${target.pets} 份独立宠物档案`);
+    if ((state.castProfiles || []).length !== target.people) errors.push(`需要分别设置 ${target.people} 个人物`);
+    if ((state.petProfiles || []).length !== target.pets) errors.push(`需要分别设置 ${target.pets} 只宠物`);
     (state.castProfiles || []).forEach((raw, index) => {
       const item = normalizeHumanProfile(raw, index);
       const missing = [
@@ -380,7 +380,7 @@
 
   function subjectEditorHtml(state = {}, spec = {}, escapeHtml = value => String(value)) {
     const target = reconcileProfiles(state, spec);
-    if (!target.total) return '<div class="dh-luxgen-empty"><b>当前无需主体档案</b><span>无人物模式不会提交人物或宠物生成。</span></div>';
+    if (!target.total) return '<div class="dh-luxgen-empty"><b>当前无需人物设置</b><span>无人物模式不会提交人物或宠物生成。</span></div>';
     const field = (kind, index, key, label, value, options = {}) => `<label class="${options.wide ? 'dh-luxgen-person-text-field' : ''}">
       <span>${escapeHtml(label)}</span>
       ${options.textarea
@@ -398,9 +398,9 @@
           ${field('cast', index, 'displayName', '姓名 / 称呼', item.displayName, { placeholder: '如：妈妈林悦、孩子小满' })}
           ${field('cast', index, 'roleName', '剧情身份 / 关系', item.roleName, { placeholder: '如：母亲、8岁女儿、品牌顾问' })}
           ${ageField(index, item.age)}
-          ${field('cast', index, 'appearanceText', '独立外貌 / 年龄 / 气质', item.appearanceText, { textarea: true, wide: true, max: 800 })}
-          ${field('cast', index, 'wardrobeText', '独立服装 / 鞋 / 配饰', item.wardrobeText, { textarea: true, wide: true, max: 600 })}
-          ${field('cast', index, 'hairMakeupText', '独立发型 / 妆造', item.hairMakeupText, { textarea: true, wide: true, max: 400 })}
+          ${field('cast', index, 'appearanceText', '外貌 / 年龄 / 气质', item.appearanceText, { textarea: true, wide: true, max: 800 })}
+          ${field('cast', index, 'wardrobeText', '服装 / 鞋 / 配饰', item.wardrobeText, { textarea: true, wide: true, max: 600 })}
+          ${field('cast', index, 'hairMakeupText', '发型 / 妆造', item.hairMakeupText, { textarea: true, wide: true, max: 400 })}
           ${field('cast', index, 'negativeText', '该人物禁止项（选填）', item.negativeText, { textarea: true, wide: true, max: 400 })}
         </div>
       </details>`;
@@ -417,7 +417,7 @@
         </div>
       </details>`;
     }).join('');
-    return `<div class="dh-nsa-subject-profile-head"><b>逐主体独立档案</b><small>每个人物和宠物只使用自己的描述生成，不能共用外貌、服装或妆造。</small></div>
+    return `<div class="dh-nsa-subject-profile-head"><b>分别设置每个人物</b><small>多人时分别填写，避免串脸、串衣；单人时这里就是人物设置。</small></div>
       <div data-nsa-subject-validation>${window.NewStoryAdSubjectProfileAuthority?.validationHtml?.(state, spec, escapeHtml) || ''}</div>
       ${humans}${pets}`;
   }

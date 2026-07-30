@@ -9,7 +9,7 @@ require('dotenv').config();
 const storage = require('../src/services/newStoryAd/storageService');
 const subjectText = require('../src/services/newStoryAd/subjectProfileTextService');
 const sceneText = require('../src/services/newStoryAd/sceneAssistCompletenessService');
-const referenceAnalysis = require('../src/services/newStoryAd/referenceVideoAnalysisService');
+const referenceEvidenceText = require('../src/services/newStoryAd/referenceEvidenceTextService');
 
 const RAW_EVIDENCE = /(?:逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒)/u;
 
@@ -19,58 +19,7 @@ function fingerprint(value) {
 
 function repairReferenceAnalysis(reference = {}) {
   if (!reference || typeof reference !== 'object') return reference;
-  const prompts = Array.isArray(reference.scene_prompts) ? reference.scene_prompts : [];
-  const first = (key, fallback = '') => parsed.map(item => item[key]).find(Boolean) || fallback;
-  const existing = reference.source_facts && typeof reference.source_facts === 'object'
-    ? reference.source_facts
-    : {};
-  const repairableSourceFacts = {
-    product_or_service: existing.product_or_service,
-    environment: existing.environment,
-    materials: existing.materials,
-    colors: existing.colors,
-    layout: existing.layout,
-    lighting: existing.lighting,
-    human_actions: existing.human_actions,
-  };
-  const requiresRepair = prompts.some(prompt => RAW_EVIDENCE.test(String(prompt?.layout_prompt || '')))
-    || RAW_EVIDENCE.test(JSON.stringify(repairableSourceFacts));
-  if (!requiresRepair) return reference;
-  const parsed = prompts.map(prompt => referenceAnalysis._private.visualEvidenceFacts(prompt?.layout_prompt || ''));
-  const parsedMaterials = [...new Set(parsed.map(item => item.materials).filter(Boolean))];
-  const parsedColors = [...new Set(parsed.map(item => item.colors).filter(Boolean))];
-  const parsedActions = [...new Set(parsed.map(item => item.action).filter(Boolean))];
-  const nextFacts = {
-    ...existing,
-    product_or_service: first('product', existing.product_or_service),
-    environment: first('environment', existing.environment),
-    materials: parsedMaterials.length ? parsedMaterials : (Array.isArray(existing.materials) ? existing.materials : []),
-    colors: parsedColors.length ? parsedColors : (Array.isArray(existing.colors) ? existing.colors : []),
-    layout: first('layout', existing.layout),
-    lighting: first('lighting', existing.lighting),
-    human_actions: parsedActions.length ? parsedActions : (Array.isArray(existing.human_actions) ? existing.human_actions : []),
-  };
-  const nextPrompts = prompts.map((prompt, index) => {
-    const facts = parsed[index] || {};
-    const layout = [
-      facts.environment || nextFacts.environment,
-      facts.layout || nextFacts.layout,
-      facts.product || nextFacts.product_or_service ? `广告主体：${facts.product || nextFacts.product_or_service}` : '',
-    ].filter(Boolean).join('；');
-    const material = [
-      facts.materials || nextFacts.materials[0],
-      facts.colors || nextFacts.colors[0],
-      facts.lighting || nextFacts.lighting,
-    ].filter(Boolean).join('；');
-    return {
-      ...prompt,
-      location_type: facts.environment || prompt.location_type,
-      layout_prompt: layout || prompt.layout_prompt,
-      material_light_prompt: material || prompt.material_light_prompt,
-      interaction_prompt: facts.action || prompt.interaction_prompt,
-    };
-  });
-  return { ...reference, source_facts: nextFacts, scene_prompts: nextPrompts };
+  return referenceEvidenceText.sanitizeAnalysis(reference);
 }
 
 function repairTree(value, options = {}, key = '') {
@@ -78,12 +27,16 @@ function repairTree(value, options = {}, key = '') {
   if (!value || typeof value !== 'object') {
     if (typeof value !== 'string') return value;
     const age = options.age || '';
-    if (key === 'appearanceText') return subjectText.alignAgeDescription(value, age, 800);
+    if (/^appearance_?text$/i.test(key)) return subjectText.alignAgeDescription(value, age, 800);
     if (!RAW_EVIDENCE.test(value)) return value;
+    const evidenceFacts = options.referenceFacts || {};
+    if (/advertised_subject|product(?:_or_service|_subject)?|^name$/i.test(key)) {
+      return referenceEvidenceText.kindValue(value, 'product', evidenceFacts.product_or_service);
+    }
     if (/material|light|source_text|dominant_finish/i.test(key)) return sceneText.conciseSceneText(value, 'material');
-    if (/interaction/i.test(key)) return sceneText.conciseSceneText(value, 'interaction');
-    if (/layout|description/i.test(key)) return sceneText.conciseSceneText(value, 'layout');
-    return value;
+    if (/interaction|action|contact/i.test(key)) return sceneText.conciseSceneText(value, 'interaction');
+    if (/layout|description|environment|business_boundary/i.test(key)) return sceneText.conciseSceneText(value, 'layout');
+    return referenceEvidenceText.kindValue(value, 'summary');
   }
   const localAge = value.age || value.ageRange || options.age || '';
   return Object.fromEntries(Object.entries(value).map(([childKey, child]) => [
@@ -94,20 +47,46 @@ function repairTree(value, options = {}, key = '') {
   ]));
 }
 
+function autoReferenceProductDraft(value = {}) {
+  return value
+    && typeof value === 'object'
+    && value.type === 'advertised_product'
+    && value.source === 'reference_evidence_candidate'
+    && (!value.status || value.status === 'planned_not_generated')
+    && !value.image_url
+    && !value.cover_image_url
+    && !(Array.isArray(value.view_images) && value.view_images.length);
+}
+
+function removeAutoReferenceProductDrafts(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter(item => !autoReferenceProductDraft(item))
+      .map(removeAutoReferenceProductDrafts);
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, child]) => [
+    key,
+    removeAutoReferenceProductDrafts(child),
+  ]));
+}
+
 function repairTaskBundle(bundle = {}) {
   const task = bundle.task || {};
   const request = task.request || {};
   const age = request.person_spec?.age || '';
-  return {
+  const reference = repairReferenceAnalysis(request.reference_video_analysis || {});
+  const referenceFacts = reference.source_facts || {};
+  return removeAutoReferenceProductDrafts({
     task: {
       ...task,
-      request: repairTree(request, { age }),
+      request: repairTree({ ...request, reference_video_analysis: reference }, { age, referenceFacts }),
     },
     outputs: (bundle.outputs || []).map(row => ({
       ...row,
-      payload: repairTree(row.payload, { age }),
+      payload: repairTree(row.payload, { age, referenceFacts }),
     })),
-  };
+  });
 }
 
 function changedOutputs(before = [], after = []) {
@@ -178,6 +157,7 @@ module.exports = {
   RAW_EVIDENCE,
   repairReferenceAnalysis,
   repairTree,
+  removeAutoReferenceProductDrafts,
   repairTaskBundle,
   summarize,
 };

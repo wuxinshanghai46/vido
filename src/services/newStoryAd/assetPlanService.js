@@ -94,14 +94,9 @@ function projectReferencePlan(ctx = {}) {
   const product = cleanText(reference.source_facts?.product_or_service || ctx.product_subject || '', 200);
   return {
     cast_profiles: castProfiles,
-    prop_plan: product ? [{
-      id: 'reference_product',
-      name: product,
-      type: 'advertised_product',
-      source: 'reference_evidence_candidate',
-      confirmation_required: true,
-      identity_extraction_allowed: false,
-    }] : [],
+    // 参考视频识别出的广告主体已经进入 product_subject / advertised_subject。
+    // 它不是剧情中需要单独持有、移动或改变状态的道具，不能重复投影成“独立道具”。
+    prop_plan: [],
     scene_plan: {
       business_boundary: cleanText(ctx.brief, 500),
       advertised_subject: ctx.product_subject || product,
@@ -166,6 +161,7 @@ function propDrafts(plan = {}, existing = []) {
     .map(item => [String(item.id || item.prop_id || ''), item]));
   return (plan.prop_plan || [])
     .map((item, index) => propIdentity.normalizeProp(item, index))
+    .filter(item => !(item.type === 'advertised_product' && item.source === 'reference_evidence_candidate'))
     .filter(item => item.type !== 'fixed_scene_object')
     .map((item) => {
       const previous = saved.get(String(item.id));

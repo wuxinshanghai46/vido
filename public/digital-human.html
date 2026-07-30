@@ -193,7 +193,7 @@
 
           <div class="dh-luxgen-steps dh-luxgen-steps-six" aria-label="剧情广告导演工作流" id="dhNsaAdSteps">
             <div class="active" data-nsa-step="1" role="button" tabindex="0"><b>1</b><span>参考与需求</span><small>识别人物 / 场景 / 剧情</small></div>
-            <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>人物与场景档案</span><small>形象 / 动作 / 空间状态</small></div>
+            <div class="locked" data-nsa-step="2" role="button" tabindex="0"><b>2</b><span>人物与场景设置</span><small>人物 / 空间 / 道具</small></div>
             <div class="locked" data-nsa-step="3" role="button" tabindex="0"><b>3</b><span>剧情蓝图</span><small>因果 / 表演 / 品牌收束</small></div>
             <div class="locked" data-nsa-step="4" role="button" tabindex="0"><b>4</b><span>导演故事板</span><small>逐镜行动与状态变化</small></div>
             <div class="locked" data-nsa-step="5" role="button" tabindex="0"><b>5</b><span>关键帧与候选视频</span><small>素材来源 / 候选选择</small></div>
@@ -317,7 +317,7 @@
             <section class="dh-demo-canvas">
               <div class="dh-demo-headline">
                 <div>
-                  <h3><span class="dh-luxgen-step-pill">2</span>人物与场景档案</h3>
+                  <h3><span class="dh-luxgen-step-pill">2</span>人物与场景设置</h3>
                   <p class="dh-demo-copy">先确认人物身份、服装、表情和剧情动作，再确认场景空间、互动区域及剧情前后的状态变化。技术机位由系统内部处理。</p>
                 </div>
                 <div class="dh-demo-script-actions">
@@ -483,7 +483,7 @@
                   <div class="dh-demo-person-actions">
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdUploadPersonRef" type="button">上传真人参考</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAdPickActorAsset" type="button">选择真人演员/演员库</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">AI 创建 / 补齐全部档案</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-ai-person-btn" id="dhNsaAdAiPersonSpec" type="button" aria-pressed="false">AI 补齐人物设置</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn dh-luxgen-person-generate-btn" id="dhNsaAdGeneratePersonSheet" type="button" aria-pressed="false">生成人物 / 宠物资产</button>
                   </div>
                 </div>
@@ -569,10 +569,10 @@
                   </div>
                 </div>
               </section>
-              <div class="dh-demo-section-title">独立道具档案</div>
+              <div class="dh-demo-section-title">剧情中需要单独使用的道具</div>
               <section class="dh-demo-person-source dh-nsa-prop-source" id="dhNsaPropStudio">
                 <div class="dh-nsa-prop-head">
-                  <div><b>商品、配饰与剧情道具</b><small>固定场景物件进入场景锚点；其它道具独立保存外观、状态、归属、接触和逐镜时间线。</small></div>
+                  <div><b>手持物、配饰与可移动道具</b><small>这里不重复显示广告商品或场景本身；只有人物会拿起、移动、佩戴或改变状态的物件才需要添加。</small></div>
                   <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAddProp" type="button">新增道具</button>
                 </div>
                 <div id="dhNsaPropEditor" class="dh-nsa-prop-editor" hidden>
@@ -779,7 +779,7 @@
               <details class="dh-nsa-advanced-editor">
                 <summary>高级：逐镜头文字、转场与技术设置</summary>
                 <div id="dhNsaAdScriptHost" class="dh-demo-table-wrap">
-                  <div class="dh-luxgen-empty"><b>还没有剧情蓝图</b><span>请先完成人物与场景档案，再生成剧情蓝图和导演故事板。</span></div>
+                  <div class="dh-luxgen-empty"><b>还没有剧情蓝图</b><span>请先完成人物与场景设置，再生成剧情蓝图和导演故事板。</span></div>
                 </div>
               </details>
             </section>

@@ -13,6 +13,7 @@ const mediaAdapter = require('./mediaAdapter');
 const referenceVideoLinks = require('./referenceVideoLinkService');
 const { getApiKey } = require('../settingsService');
 const generationConcurrency = require('./generationConcurrencyService');
+const evidenceText = require('./referenceEvidenceTextService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -1123,15 +1124,7 @@ function visualEvidenceField(value = '', labels = [], fallback = '') {
 }
 
 function visualEvidenceFacts(value = '') {
-  return {
-    product: visualEvidenceField(value, ['产品或服务', '产品']),
-    environment: visualEvidenceField(value, ['真实环境', '环境', '空间', '场景']),
-    materials: visualEvidenceField(value, ['材质']),
-    colors: visualEvidenceField(value, ['颜色', '色调']),
-    layout: visualEvidenceField(value, ['布局', '构图']),
-    lighting: visualEvidenceField(value, ['光线', '照明', '灯光']),
-    action: visualEvidenceField(value, ['人物动作', '动作', '人物']),
-  };
+  return evidenceText.facts(value);
 }
 
 function evidenceExcerpt(text = '', keywords = [], fallback = '') {
@@ -1157,7 +1150,7 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
     const range = item.timestamps?.length
       ? `${Math.min(...item.timestamps)}—${Math.max(...item.timestamps)} 秒`
       : `第 ${index + 1} 组`;
-    return `${range}：${cleanEvidenceText(item.text, 320)}`;
+    return `${range}：${evidenceText.summary(batchFacts[index], index ? '推进产品细节与使用情境' : '建立产品与空间关系')}`;
   });
   const duration = Number(record.source?.metadata?.duration_seconds || 0);
   const firstBeat = chronology[0] || `0 秒：建立${product}`;
@@ -1175,9 +1168,17 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
     return {
     location_type: batchEnvironment || (index === 0 ? environment : `${environment}的后续画面区域`),
     beat_refs: [index + 1],
-    layout_prompt: [batchEnvironment, batchLayout, batchProduct ? `广告主体：${batchProduct}` : '']
+    layout_prompt: [
+      batchEnvironment ? `环境：${batchEnvironment}` : '',
+      batchLayout ? `布局：${batchLayout}` : '',
+      batchProduct ? `广告主体：${batchProduct}` : '',
+    ]
       .filter(Boolean).join('；').slice(0, 520),
-    material_light_prompt: [batchMaterials, batchColors, batchLighting].filter(Boolean).join('；').slice(0, 420),
+    material_light_prompt: [
+      batchMaterials ? `材质：${batchMaterials}` : '',
+      batchColors ? `色彩：${batchColors}` : '',
+      batchLighting ? `光线：${batchLighting}` : '',
+    ].filter(Boolean).join('；').slice(0, 420),
     interaction_prompt: humanPresence
       ? (facts.action || '保留证据中人物与产品的功能性互动，但使用原创人物外观与服装。')
       : '保持产品与真实空间关系，不添加证据外人物或道具。',
@@ -1217,7 +1218,7 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
   const characterActions = humanPresence ? visualEvidence.map((item, index) => ({
     role: '产品体验与展示角色',
     start_pose: index === 0 ? '进入或面向产品的准备姿态' : '承接上一组画面的结束姿态',
-    key_action: evidenceExcerpt(item.text, ['动作', '触摸', '驾驶', '行走', '转身', '注视'], '围绕产品完成证据中可见的展示动作'),
+    key_action: batchFacts[index]?.action || '围绕产品完成证据中可见的展示动作',
     end_pose: '动作完成后保持视线或身体朝向产品',
     dominant_hand: '按证据画面保持一致，无法确认时不指定',
     prop_contact: product.slice(0, 160),
@@ -1256,7 +1257,7 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
         Number(item.timestamps?.[item.timestamps.length - 1] || duration),
       ],
       purpose: index === 0 ? `建立${product}与${environment}的真实关系` : '推进产品细节、使用情境与结尾信息',
-      evidence_summary: cleanEvidenceText(item.text, 420),
+      evidence_summary: evidenceText.summary(batchFacts[index], '保留本组画面中的产品、空间、材质与动作证据'),
     })),
     character_prompts: characterPrompts,
     scene_prompts: scenePrompts,
@@ -1378,7 +1379,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
 }
 
 function normalizeResult(result = {}) {
-  const safe = { ...result };
+  const safe = evidenceText.sanitizeAnalysis(result);
   safe.camera_intents = Array.isArray(safe.camera_intents) ? safe.camera_intents.slice(0, 24) : [];
   safe.character_actions = Array.isArray(safe.character_actions) ? safe.character_actions.slice(0, 24) : [];
   safe.plot_beats = Array.isArray(safe.plot_beats) ? safe.plot_beats.slice(0, 24) : [];

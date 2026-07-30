@@ -260,7 +260,7 @@ function main() {
     bootstrapSource.includes('real-person-dossier.js'),
     false,
   );
-  assert.match(htmlSource, /人物与场景档案/);
+  assert.match(htmlSource, /人物与场景设置/);
   assert.match(htmlSource, /导演故事板/);
   assert.match(htmlSource, /关键帧与候选视频/);
   assert.match(htmlSource, /技术机位/);
