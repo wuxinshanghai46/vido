@@ -230,10 +230,16 @@ async function testSinglePersonAssistHasPersistentFeedback() {
 /** 回归：人物和场景文本补齐使用独立通道；同一通道仍禁止重复提交。 */
 async function testIndependentAssistChannels() {
   const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/generation-flow.js'), 'utf8');
+  const RuntimeDOMException = globalThis.DOMException || class DOMException extends Error {
+    constructor(message = '', name = 'Error') {
+      super(message);
+      this.name = name;
+    }
+  };
   const sandbox = {
     window: { crypto: { randomUUID: (() => { let i = 0; return () => `generation-${++i}`; })() } },
     AbortController,
-    DOMException,
+    DOMException: RuntimeDOMException,
     console,
     setTimeout,
     clearTimeout,
