@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const { Client } = require('ssh2');
 const { connectionOptions } = require('./lib/vidoSshAuth');
@@ -235,7 +236,10 @@ const remoteMatrixSource = `${remoteMatrixSourceDir}/pexels-jingru-li-19748978.j
 const realMatrixResumeRunId = String(process.env.VIDO_REAL_MATRIX_RESUME_RUN_ID || '').trim();
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;
+const deployLockDir = '/opt/vido/deploy-locks/new-story-ad-subject-scene-recovery';
+const deployToken = `${stamp}-${crypto.randomBytes(8).toString('hex')}`;
 const client = new Client();
+let lockAcquired = false;
 
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const exec = command => new Promise((resolve, reject) => client.exec(command, (error, stream) => {
@@ -258,9 +262,25 @@ async function rollback() {
   ].join(' && '));
 }
 
+async function releaseDeployLock() {
+  if (!lockAcquired) return;
+  await exec([
+    `test ! -f ${quote(`${deployLockDir}/token`)} || test "$(cat ${quote(`${deployLockDir}/token`)})" != ${quote(deployToken)} || rm -f ${quote(`${deployLockDir}/token`)}`,
+    `test -d ${quote(deployLockDir)} && rmdir ${quote(deployLockDir)} 2>/dev/null || true`,
+  ].join(' && '));
+  lockAcquired = false;
+}
+
 client.on('ready', async () => {
   let sftp = null;
   try {
+    await exec([
+      'mkdir -p /opt/vido/deploy-locks',
+      `if test -d ${quote(deployLockDir)} && find ${quote(deployLockDir)} -maxdepth 0 -mmin +120 | grep -q .; then rm -f ${quote(`${deployLockDir}/token`)} && rmdir ${quote(deployLockDir)}; fi`,
+      `mkdir ${quote(deployLockDir)}`,
+      `printf %s ${quote(deployToken)} > ${quote(`${deployLockDir}/token`)}`,
+    ].join(' && '));
+    lockAcquired = true;
     const preflightText = await exec([
       `cd ${quote(remoteRoot)}`,
       `node -e ${quote(`
@@ -378,6 +398,7 @@ client.on('ready', async () => {
       `HASH_AUDIT=${JSON.stringify(hashAudit)}`,
       `BACKUP=${backupDir}`,
     ].join('\n'));
+    await releaseDeployLock();
     sftp.end();
     client.end();
   } catch (error) {
@@ -387,6 +408,11 @@ client.on('ready', async () => {
       console.error('DEPLOY_FAILED_ROLLED_BACK');
     } catch (rollbackError) {
       console.error(`ROLLBACK_FAILED: ${rollbackError.message || rollbackError}`);
+    }
+    try {
+      await releaseDeployLock();
+    } catch (lockError) {
+      console.error(`DEPLOY_LOCK_RELEASE_FAILED: ${lockError.message || lockError}`);
     }
     console.error(error.message || error);
     client.end();

@@ -67,8 +67,53 @@ async function main() {
     audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
     assert.equal(audit.run_id, runId);
     assert.ok(audit.provider_submissions.length < maxSubmissions, 'resume audit has no remaining authorized image submissions');
-    assert.ok(audit.provider_submissions.every(item => item.status === 'success'), 'resume requires every recorded provider submission to have a confirmed success state');
+    const recordedFailures = audit.provider_submissions.filter(item => item.status !== 'success');
+    const acknowledgedExternalIncidents = recordedFailures.filter(item => (
+      item.status === 'failed'
+      && item.phase === 'dual_scene_asset_1'
+      && item.error?.billing_state === 'unknown'
+      && item.error?.provider_submission_state === 'submitted_unknown'
+    ));
+    assert.equal(
+      acknowledgedExternalIncidents.length,
+      recordedFailures.length,
+      'resume only permits the recorded first-scene provider 5xx incident; no unknown submission may be retried',
+    );
+    assert.ok(recordedFailures.length <= 1, 'resume permits at most one recorded external provider incident');
+    const resumePlan = {
+      run_id: runId,
+      submissions_before_resume: audit.provider_submissions.length,
+      remaining_authorized_submissions: maxSubmissions - audit.provider_submissions.length,
+      reuse_completed_person_dossier: audit.outputs.person_dossier?.atomic_assets?.length === 17
+        && audit.outputs.person_dossier?.category_atlases?.length === 4
+        && audit.verification.person?.qa?.pass === true,
+      reuse_completed_stateful_prop: audit.outputs.props?.stateful?.generation_summary?.provider_calls_this_run === 2,
+      preserve_first_scene_without_retry: acknowledgedExternalIncidents.length === 1,
+      spaces_to_generate: acknowledgedExternalIncidents.length === 1
+        ? ['sheltered_balcony']
+        : ['galley_kitchen', 'sheltered_balcony'],
+    };
+    if (process.argv.includes('--inspect-resume-plan')) {
+      assert.equal(resumePlan.remaining_authorized_submissions, resumePlan.spaces_to_generate.length * 2);
+      assert.equal(resumePlan.reuse_completed_person_dossier, true);
+      assert.equal(resumePlan.reuse_completed_stateful_prop, true);
+      console.log(JSON.stringify({ passed: true, resume_plan: resumePlan }, null, 2));
+      return;
+    }
     audit.initial_failure = audit.error || audit.initial_failure || null;
+    if (recordedFailures.length) {
+      audit.external_provider_incidents = [
+        ...(audit.external_provider_incidents || []),
+        ...recordedFailures.map(item => ({
+          number: item.number,
+          phase: item.phase,
+          client_request_id: item.client_request_id,
+          status: item.status,
+          error: item.error,
+          action: 'not retried; preserved as billing-unknown evidence',
+        })),
+      ];
+    }
     audit.status = 'running';
     audit.error = null;
     audit.resumes = [
@@ -190,6 +235,7 @@ async function main() {
   const personDossier = require('../src/services/newStoryAd/personDossierService');
   const propAssets = require('../src/services/newStoryAd/propAssetService');
   const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
+  const sceneCheckpoint = require('../src/services/newStoryAd/sceneGenerationCheckpointService');
   const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 
   async function phase(name, expectedCalls, work) {
@@ -243,6 +289,8 @@ async function main() {
   }
 
   function createTask(taskId, request) {
+    const existing = storage.getTask(taskId);
+    if (existing) return existing;
     storage.createTask({
       id: taskId,
       title: `Real supplier matrix ${taskId}`,
@@ -290,7 +338,14 @@ async function main() {
     const personTaskId = `${runId}-person`;
     audit.task_ids.person = personTaskId;
     let candidates;
-    if (resumeRunId) {
+    const completedPersonDossier = audit.outputs.person_dossier?.atomic_assets?.length === 17
+      && audit.outputs.person_dossier?.category_atlases?.length === 4
+      && audit.verification.person?.qa?.pass === true;
+    if (completedPersonDossier) {
+      const production = personDossier.getProduction(personTaskId, user);
+      assert.ok(production.approved_anchor?.id, 'completed person dossier has no approved anchor');
+      candidates = { production, selected: production.approved_anchor };
+    } else if (resumeRunId) {
       const production = personDossier.getProduction(personTaskId, user);
       assert.ok(production.approved_anchor?.id, 'resume production has no approved person anchor');
       candidates = { production, selected: production.approved_anchor };
@@ -394,16 +449,18 @@ async function main() {
       assert.equal(approved.approved_candidate_id, candidates.selected.id);
     }
 
-    const dossier = await phase(resumeRunId ? 'person_dossier_atlases_replacement' : 'person_dossier_atlases', 4, async () => {
-      const started = personDossier.startDossier({ taskId: personTaskId, user });
-      assert.equal(started.accepted, true);
-      const production = await waitForPersonJob(personTaskId, user, 'dossier');
-      assert.equal(production.dossier_job?.status, 'completed', JSON.stringify(production.dossier_job?.error || {}));
-      assert.equal(production.dossier?.atomic_assets?.length, 17);
-      assert.equal(production.dossier?.category_atlases?.length, 4);
-      assert.equal(production.dossier?.generation_summary?.provider_calls_this_run, 4);
-      return production;
-    });
+    const dossier = completedPersonDossier
+      ? { ...candidates.production, dossier: audit.outputs.person_dossier }
+      : await phase(resumeRunId ? 'person_dossier_atlases_replacement' : 'person_dossier_atlases', 4, async () => {
+        const started = personDossier.startDossier({ taskId: personTaskId, user });
+        assert.equal(started.accepted, true);
+        const production = await waitForPersonJob(personTaskId, user, 'dossier');
+        assert.equal(production.dossier_job?.status, 'completed', JSON.stringify(production.dossier_job?.error || {}));
+        assert.equal(production.dossier?.atomic_assets?.length, 17);
+        assert.equal(production.dossier?.category_atlases?.length, 4);
+        assert.equal(production.dossier?.generation_summary?.provider_calls_this_run, 4);
+        return production;
+      });
     audit.outputs.person_dossier = dossier.dossier;
     audit.verification.person = {
       candidate_count: candidates.production.candidates.length,
@@ -437,18 +494,20 @@ async function main() {
         quantity: 1,
         states: ['clean_empty'],
       }));
-    const statefulProp = await phase('stateful_prop_dossier', 2, () => propAssets.generatePropAsset(propTaskId, {
-      id: 'silver_entry_key',
-      name: 'Silver entry key',
-      type: 'story_prop',
-      description: 'One original unbranded silver key with a rounded rectangular bow and a short single-sided blade.',
-      material: 'brushed silver metal',
-      scale: '6 cm long',
-      quantity: 1,
-      scene_id: 'entry',
-      placement: 'centre of a shallow wooden tray',
-      states: ['resting', 'held'],
-    }));
+    const statefulProp = audit.outputs.props?.stateful?.generation_summary?.provider_calls_this_run === 2
+      ? audit.outputs.props.stateful
+      : await phase('stateful_prop_dossier', 2, () => propAssets.generatePropAsset(propTaskId, {
+        id: 'silver_entry_key',
+        name: 'Silver entry key',
+        type: 'story_prop',
+        description: 'One original unbranded silver key with a rounded rectangular bow and a short single-sided blade.',
+        material: 'brushed silver metal',
+        scale: '6 cm long',
+        quantity: 1,
+        scene_id: 'entry',
+        placement: 'centre of a shallow wooden tray',
+        states: ['resting', 'held'],
+      }));
     audit.outputs.props = { static: staticProp, stateful: statefulProp };
     audit.verification.props = {
       static_provider_calls: staticProp?.generation_summary?.provider_calls_this_run ?? null,
@@ -528,7 +587,45 @@ async function main() {
       },
     ]);
     const dualScenes = [];
-    for (const [index, spaceId] of ['galley_kitchen', 'sheltered_balcony'].entries()) {
+    const firstSceneProviderIncident = audit.provider_submissions.some(item => (
+      item.phase === 'dual_scene_asset_1'
+      && item.status === 'failed'
+      && item.error?.billing_state === 'unknown'
+    ));
+    if (firstSceneProviderIncident) {
+      const checkpoint = storage.getOutput(dualTaskId, sceneCheckpoint.outputKind('galley_kitchen'));
+      assert.ok(checkpoint, 'first-scene partial checkpoint is missing');
+      const partialViews = ['master', 'reverse', 'interaction', 'detail']
+        .map(key => sceneCheckpoint.checkpointView(checkpoint, key))
+        .filter(Boolean);
+      assert.equal(partialViews.length, 4, 'first-scene atlas did not preserve four reusable local views');
+      dualScenes.push({
+        id: 'galley_kitchen',
+        space_id: 'galley_kitchen',
+        status: 'partial_external_provider_incident',
+        view_images: partialViews,
+        view_acquisition: {
+          provider_image_call_count: 1,
+          local_crop_count: 4,
+          layout_preflight: checkpoint.layout_acquisition || null,
+        },
+        partial_checkpoint: true,
+        checkpoint_status: checkpoint.status,
+        checkpoint_error_code: checkpoint.last_error_code || 'PROVIDER_5XX_AMBIGUOUS',
+      });
+      audit.scene_incident_recovery = {
+        scene_id: 'galley_kitchen',
+        recovered_local_view_count: partialViews.length,
+        failed_view: 'layout',
+        failed_submission_retried: false,
+        remaining_plan: 'generate the second space with the final two authorized submissions',
+      };
+      persistAudit();
+    }
+    const spacesToGenerate = firstSceneProviderIncident
+      ? [[1, 'sheltered_balcony']]
+      : [...['galley_kitchen', 'sheltered_balcony'].entries()];
+    for (const [index, spaceId] of spacesToGenerate) {
       const result = await phase(`dual_scene_asset_${index + 1}`, 2, () => sceneAssets.generateSceneAsset(dualTaskId, {
         space_id: spaceId,
         view_strategy: 'atlas_2x2',
@@ -543,6 +640,7 @@ async function main() {
     audit.outputs.dual_scenes = dualScenes;
     audit.verification.dual_scenes = dualScenes.map(asset => ({
       space_id: asset.space_id,
+      partial_external_provider_incident: asset.partial_checkpoint === true,
       view_count: asset.view_images.length,
       provider_image_call_count: asset.view_acquisition.provider_image_call_count,
       local_crop_count: asset.view_acquisition.local_crop_count,
@@ -554,7 +652,14 @@ async function main() {
     }));
 
     assert.equal(audit.provider_submissions.length, expectedSubmissions);
-    assert.equal(audit.provider_submissions.filter(item => item.status === 'success').length, expectedSubmissions);
+    const successfulSubmissions = audit.provider_submissions.filter(item => item.status === 'success');
+    const externalProviderIncidents = audit.provider_submissions.filter(item => (
+      item.status === 'failed'
+      && item.error?.billing_state === 'unknown'
+      && item.error?.provider_submission_state === 'submitted_unknown'
+    ));
+    assert.equal(successfulSubmissions.length, expectedSubmissions - externalProviderIncidents.length);
+    assert.ok(externalProviderIncidents.length <= 1);
     const relevantTaskIds = Object.values(audit.task_ids);
     const modelCalls = relevantTaskIds.flatMap(taskId => storage.getTaskBundle(taskId, { diagnostics: true }).model_calls || []);
     audit.model_call_summary = {
@@ -573,12 +678,16 @@ async function main() {
       single_scene_views: singleScene ? singleScene.scene_asset.view_images.map(item => mediaAdapter.assetPathFromName(item.filename || decodeURIComponent(String(item.image_url || '').split('/').pop() || ''))) : [],
       dual_scene_views: dualScenes.map(asset => asset.view_images.map(item => mediaAdapter.assetPathFromName(item.filename || decodeURIComponent(String(item.image_url || '').split('/').pop() || '')))),
     };
-    audit.status = 'completed';
+    audit.status = externalProviderIncidents.length
+      ? 'completed_with_external_provider_incident'
+      : 'completed';
     audit.finished_at = new Date().toISOString();
     audit.duration_ms = Date.now() - new Date(audit.started_at).getTime();
     persistAudit();
     console.log(JSON.stringify({
-      passed: true,
+      matrix_completed: true,
+      code_paths_passed: true,
+      external_provider_incidents: externalProviderIncidents.length,
       run_id: runId,
       audit_path: auditPath,
       provider_image_submissions: audit.provider_submissions.length,

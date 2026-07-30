@@ -87,14 +87,14 @@ async function composePersonDossier({
     if (buffer) composites.push({ input: buffer, left: 620 + index * 280, top: 585 });
   }
   const detailSpecs = [
-    { asset: identity[0], focus: { x: 0.12, y: 0.12, width: 0.76, height: 0.32 } },
-    { asset: identity[2] || identity[1], focus: { x: 0.03, y: 0.04, width: 0.78, height: 0.62 } },
-    { asset: body[0], focus: { x: 0.2, y: 0.14, width: 0.6, height: 0.28 } },
-    { asset: body[2] || body[0], focus: { x: 0.08, y: 0.28, width: 0.54, height: 0.34 } },
-    { asset: body[0], focus: { x: 0.12, y: 0.72, width: 0.76, height: 0.27 } },
-    { asset: actions[2] || actions[0], focus: { x: 0.24, y: 0.34, width: 0.58, height: 0.36 } },
-    { asset: body[3] || body[0], focus: { x: 0.18, y: 0.28, width: 0.64, height: 0.38 } },
-    { asset: actions[1] || actions[0], focus: { x: 0.12, y: 0.1, width: 0.76, height: 0.72 } },
+    { asset: identity[0], focus: { x: 0.17, y: 0.1, width: 0.66, height: 0.28 } },
+    { asset: identity[2] || identity[1], focus: { x: 0.08, y: 0.06, width: 0.7, height: 0.52 } },
+    { asset: body[0], focus: { x: 0.26, y: 0.15, width: 0.48, height: 0.27 } },
+    { asset: body[2] || body[0], focus: { x: 0.42, y: 0.28, width: 0.36, height: 0.36 } },
+    { asset: body[0], focus: { x: 0.24, y: 0.68, width: 0.52, height: 0.3 } },
+    { asset: actions[2] || actions[0], focus: { x: 0.3, y: 0.25, width: 0.4, height: 0.32 } },
+    { asset: body[3] || body[0], focus: { x: 0.24, y: 0.16, width: 0.52, height: 0.36 } },
+    { asset: body[1] || body[0], focus: { x: 0.28, y: 0.32, width: 0.44, height: 0.32 } },
   ];
   let detailCropCount = 0;
   for (let index = 0; index < detailSpecs.length; index += 1) {
@@ -108,7 +108,7 @@ async function composePersonDossier({
     `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       <rect width="100%" height="100%" fill="#f5f1e9"/>
       <text x="36" y="58" font-family="Arial" font-size="34" font-weight="700" fill="#2d2924">${safeTitle}</text>
-      <text x="36" y="92" font-family="Arial" font-size="18" fill="#6f675d">CHARACTER BIBLE · R${revision} · locally composed from approved production images</text>
+      <text x="36" y="92" font-family="Arial" font-size="16" fill="#6f675d">CHARACTER BIBLE / R${revision} / LOCAL COMPOSITE</text>
       <line x1="620" y1="72" x2="2360" y2="72" stroke="#aaa196" stroke-width="2"/>
       <text x="620" y="94" font-family="Arial" font-size="18" font-weight="700" fill="#504940">TURNAROUND</text>
       <text x="1680" y="94" font-family="Arial" font-size="18" font-weight="700" fill="#504940">BASE ACTIONS</text>
