@@ -12,7 +12,7 @@ const sceneCheckpoint = require('./sceneGenerationCheckpointService');
 const sceneBinding = require('./sceneBindingService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAtlas = require('./sceneAtlasService');
-const blueprintQuality = require('./blueprintQualityService');
+const blueprintQuality = require('./blueprintQualityService'), sceneStructuredContract = require('./sceneStructuredContractService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -25,7 +25,6 @@ const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
 const SCENE_IMAGE_RETRY_DELAY_MS = Math.max(0, Math.min(5000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS || 1200) || 0));
 const SCENE_IMAGE_CIRCUIT_COOLDOWN_MS = Math.max(5000, Math.min(300000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_CIRCUIT_COOLDOWN_MS || 60000) || 60000));
 const imageCircuit = { consecutiveTransientFailures: 0, openUntil: 0 };
-
 function isTransientImageError(error) {
   if (error?.billingState === 'unknown' || error?.billing_state === 'unknown') return false;
   if (['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(String(error?.code || ''))) return false;
@@ -574,7 +573,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const custom = cleanText(body.description || body.scene_description || body.prompt || '', 1200);
   const layout = cleanText(sceneSpec.layoutText || sceneSpec.layout_text || sceneSpec.layout || '', 800);
   const materialLight = cleanText(sceneSpec.materialLightText || sceneSpec.material_light_text || sceneSpec.material || sceneSpec.light || '', 800);
-  const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600);
+  const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600), structuredScene = sceneStructuredContract.compile(sceneSpec, ctx, body);
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 420);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
   const repairFeedback = cleanText(body.repair_feedback || body.repairFeedback || '', 1200);
@@ -651,7 +650,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     custom ? `User scene requirement: ${custom}` : '',
     layout ? `Scene layout requirement: ${layout}` : '',
     materialLight ? `Scene material and lighting requirement: ${materialLight}` : '',
-    interaction ? `Scene interaction and camera position requirement: ${interaction}` : '',
+    interaction ? `Scene interaction and camera position requirement: ${interaction}` : '', structuredScene.has_evidence ? `Structured scene evidence contract:\n${JSON.stringify(structuredScene)}` : '',
     surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
     `Task-specific material identity contract:\n${materialIdentityContract}`,
     style ? `Visual style direction: ${style}` : '',
@@ -685,7 +684,7 @@ function buildLayoutAcquisitionPrompt({ ctx = {}, body = {} } = {}) {
     'Material identity and surface topology are independent constraints: preserve both without turning materials into sample bands, panels or unrelated region boundaries.',
     requested.layout ? `Spatial topology to reveal: ${requested.layout}` : '',
     requested.material_light ? `Appearance identity to preserve from the master: ${requested.material_light}` : '',
-    requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '',
+    requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '', requested.structured_scene_contract?.has_evidence ? `Map every declared interaction anchor, movement route, story state and prop placement into the same footprint: ${JSON.stringify(requested.structured_scene_contract)}` : '',
     topology ? `Surface construction identity to preserve: ${topology}` : '',
     requested.negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
     'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. Keep the frame clean, free of readable typography, identifying marks, technical annotations and multi-panel presentation.',
@@ -903,7 +902,7 @@ function sceneRequest(ctx = {}, body = {}) {
     spec.surfaceTopology || spec.surface_topology,
     [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
   );
-  const materialReferenceAvailable = sceneMaterialReferenceImages(ctx, body).length > 0;
+  const materialReferenceAvailable = sceneMaterialReferenceImages(ctx, body).length > 0, structuredScene = sceneStructuredContract.compile(spec, ctx, body);
   return {
     layout,
     material_light: materialLight,
@@ -916,9 +915,9 @@ function sceneRequest(ctx = {}, body = {}) {
     }),
     interaction_contract: {
       scene_empty: true,
-      required_evidence: ['empty_clearance', 'reachable_target', 'access_route'],
+      required_evidence: ['empty_clearance', 'reachable_target', 'access_route'], interaction_anchors: structuredScene.interaction_anchors, movement_routes: structuredScene.routes, story_states: structuredScene.story_states, prop_placements: structuredScene.prop_placements,
     },
-    material_reference_available: materialReferenceAvailable,
+    structured_scene_contract: structuredScene, material_reference_available: materialReferenceAvailable,
     style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
     negative,
   };
@@ -930,7 +929,7 @@ function resolvedSceneSpec(spec = {}, requested = {}) {
   return {
     ...rest,
     surfaceTopology: requested.surface_topology,
-    materialContract: requested.material_contract,
+    materialContract: requested.material_contract, storyStates: requested.structured_scene_contract?.story_states || [], interactionAnchors: requested.structured_scene_contract?.interaction_anchors || [], routes: requested.structured_scene_contract?.routes || [], propPlacements: requested.structured_scene_contract?.prop_placements || [],
   };
 }
 
@@ -1503,7 +1502,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     lock_strength: body.lock_strength || body.lockStrength || 'standard',
     layout_summary: body.layout_summary || body.layoutSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).layoutText || sceneConfig.business_boundary || ctx.brief || '',
     material_summary: body.material_summary || body.materialSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).materialLightText || '',
-    interaction_summary: body.interaction_summary || body.interactionSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).interactionText || '',
+    interaction_summary: body.interaction_summary || body.interactionSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).interactionText || '', structured_scene_contract: requested.structured_scene_contract,
     style_summary: ctx.controlled_production?.style_control?.notes || '',
     negative: [
       '空场景资产，不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影。',
@@ -1745,9 +1744,9 @@ async function reverifySceneAsset(taskId, sceneId) {
       }),
       interaction_contract: {
         scene_empty: true,
-        required_evidence: ['empty_clearance', 'reachable_target', 'access_route'],
+        required_evidence: ['empty_clearance', 'reachable_target', 'access_route'], interaction_anchors: asset.structured_scene_contract?.interaction_anchors || [], movement_routes: asset.structured_scene_contract?.routes || [], story_states: asset.structured_scene_contract?.story_states || [], prop_placements: asset.structured_scene_contract?.prop_placements || [],
       },
-      material_reference_available: asset.material_reference_available === true,
+      structured_scene_contract: asset.structured_scene_contract || {}, material_reference_available: asset.material_reference_available === true,
     },
     layoutRequired: asset.layout_contract?.required === true || views.some(view => view.key === 'layout'),
   };
@@ -1794,7 +1793,7 @@ module.exports = {
   assertCompleteUpgradeSceneSpec,
   assertSceneRightsPreflight,
   sceneMaterialReferenceImages,
-  buildSceneSheetPrompt,
+  buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile,
   sceneDescriptionForSpec,
   buildLayoutAcquisitionPrompt,
   legacyScenePromptFingerprintText,

@@ -59,6 +59,7 @@ function enforceAssistedSceneSpec(spec = {}, current = {}, context = {}, options
     storyStates: structuredList(output, source, ['storyStates', 'story_states', 'stateTimeline', 'state_timeline'], 20),
     interactionAnchors: structuredList(output, source, ['interactionAnchors', 'interaction_anchors'], 16),
     routes: structuredList(output, source, ['routes', 'movement_routes'], 12),
+    propPlacements: structuredList(output, source, ['propPlacements', 'prop_placements'], 20),
     surfaceTopology,
     materialContract,
   };

@@ -20,6 +20,7 @@ const contextBuilder = read('src/services/newStoryAd/contextBuilder.js');
 const routes = read('src/routes/newStoryAd.js');
 const mediaAdapter = read('src/services/newStoryAd/mediaAdapter.js');
 const personService = read('src/services/newStoryAd/personDossierService.js');
+const dossierComposite = read('src/services/newStoryAd/dossierCompositeService.js');
 
 [
   'dhNsaReferenceVideoFile',
@@ -137,8 +138,8 @@ assert.ok(mediaAdapter.includes('referenceImages,'));
 assert.ok(mediaAdapter.includes('inputFidelity,'));
 assert.ok(personService.includes('requireReferences: true'));
 assert.ok(personService.includes("inputFidelity: 'high'"));
-assert.ok(personService.includes("composition: 'local_sharp'"));
-assert.ok(personService.includes('model_generated_text: false'));
+assert.ok(dossierComposite.includes("composition: 'local_sharp'"), '人物组合大图必须由拆分后的本地 Sharp 服务生成');
+assert.ok(dossierComposite.includes('model_generated_text: false'), '组合大图不得再次调用模型生成文字');
 assert.ok(personService.includes('previous_frame_dependency'));
 
 const browser = {

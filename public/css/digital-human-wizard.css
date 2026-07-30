@@ -2875,6 +2875,41 @@ html[data-theme^="light"] .dh-nsa-picker-label { color: #64748b; }
 .dh-nsa-subject-views summary em { color: var(--dh-text-muted); font-style: normal; font-weight: 600; }
 .dh-nsa-subject-views summary em { margin-left: auto; }
 .dh-nsa-subject-views[open] .dh-lux-actor-views { margin-top: 7px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dh-nsa-subject-dossier-open { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; border: 1px solid rgba(33,255,243,.2); border-radius: 7px; color: var(--dh-primary); background: rgba(33,255,243,.07); cursor: pointer; font-size: 12px; font-weight: 800; }
+.dh-nsa-subject-dossier-open em { color: var(--dh-text-muted); font-style: normal; font-weight: 600; }
+.dh-nsa-dossier-modal { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 24px; background: rgba(0,0,0,.78); backdrop-filter: blur(8px); }
+.dh-nsa-dossier-dialog { width: min(1120px, 96vw); max-height: 92vh; overflow: hidden; border: 1px solid rgba(33,255,243,.24); border-radius: 16px; background: #101318; box-shadow: 0 24px 90px rgba(0,0,0,.65); }
+.dh-nsa-dossier-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.dh-nsa-dossier-dialog > header div { display: grid; gap: 4px; }
+.dh-nsa-dossier-dialog > header b { font-size: 17px; color: #f7fbff; }
+.dh-nsa-dossier-dialog > header small { color: var(--dh-text-muted); }
+.dh-nsa-dossier-dialog > header button { width: 34px; height: 34px; border: 0; border-radius: 50%; color: #dce8ef; background: rgba(255,255,255,.08); cursor: pointer; font-size: 22px; }
+.dh-nsa-dossier-scroll { max-height: calc(92vh - 68px); overflow: auto; padding: 18px; }
+.dh-nsa-dossier-scroll section + section { margin-top: 22px; }
+.dh-nsa-dossier-scroll h4 { margin: 0 0 10px; color: #e9f8fa; font-size: 14px; }
+.dh-nsa-dossier-cover { display: block; width: 100%; max-height: 520px; object-fit: contain; border-radius: 10px; background: #f2f4f7; }
+.dh-nsa-dossier-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.dh-nsa-dossier-grid a { display: grid; gap: 6px; padding: 7px; border: 1px solid rgba(255,255,255,.1); border-radius: 9px; color: #dfe9ee; background: rgba(255,255,255,.035); text-decoration: none; }
+.dh-nsa-dossier-grid img { width: 100%; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 6px; background: #eef1f4; }
+.dh-nsa-dossier-grid span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.dh-nsa-prop-source { display: grid; gap: 12px; padding: 14px; }
+.dh-nsa-prop-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.dh-nsa-prop-head > div { display: grid; gap: 4px; }
+.dh-nsa-prop-head small { color: var(--dh-text-muted); }
+.dh-nsa-prop-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dh-nsa-prop-fields label { display: grid; gap: 6px; }
+.dh-nsa-prop-fields label span { color: var(--dh-text-muted); font-size: 12px; }
+.dh-nsa-prop-fields textarea { min-height: 78px; resize: vertical; }
+.dh-nsa-prop-actions { display: flex; gap: 8px; margin-top: 10px; }
+.dh-nsa-prop-assets { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.dh-nsa-prop-card { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: center; padding: 9px; border: 1px solid rgba(255,255,255,.1); border-radius: 10px; background: rgba(0,0,0,.18); }
+.dh-nsa-prop-card > button { padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: #eef1f4; cursor: pointer; }
+.dh-nsa-prop-card img { display: block; width: 92px; height: 92px; object-fit: contain; }
+.dh-nsa-prop-card > div { min-width: 0; display: grid; gap: 4px; }
+.dh-nsa-prop-card b,.dh-nsa-prop-card span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dh-nsa-prop-card small,.dh-nsa-prop-card span { color: var(--dh-text-muted); font-size: 11px; }
+.dh-nsa-prop-card .dh-nsa-prop-generate { justify-self: start; padding: 5px 9px; border: 1px solid rgba(68,230,205,.35); border-radius: 7px; color: #dffdf8; background: rgba(31,174,153,.16); cursor: pointer; font-size: 11px; }
+@media (max-width: 720px) { .dh-nsa-prop-fields { grid-template-columns: 1fr; } }
 .dh-lux-actor-view-status { margin-top: 8px; padding: 9px 10px; border: 1px solid rgba(33,255,243,.28); border-radius: 8px; background: rgba(33,255,243,.08); color: var(--dh-text-muted); font-size: 12px; line-height: 1.45; display: grid; gap: 6px; }
 .dh-lux-actor-view-status-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--dh-primary); font-weight: 900; }
 .dh-lux-actor-view-status-head b { color: var(--dh-text); }

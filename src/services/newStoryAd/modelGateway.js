@@ -5,6 +5,7 @@ const storage = require('./storageService');
 const providerAdapters = require('./providerAdapterRegistry');
 const cancellation = require('./cancellationContext');
 const publicReferences = require('./publicReferenceService');
+const localVisionReferences = require('./localVisionReferenceService');
 
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
 const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 5));
@@ -18,6 +19,7 @@ const FALLBACKS = [
 ];
 
 const STAGE_FALLBACKS = {
+  'new_story_ad.asset_plan': FALLBACKS,
   'new_story_ad.scene_config': FALLBACKS,
   'new_story_ad.blueprint': FALLBACKS,
   'new_story_ad.storyboard_table': FALLBACKS,
@@ -247,13 +249,15 @@ function uniqueModels(models) {
 }
 
 function candidatesForStage(stage) {
-  const inheritedStage = [
+  const inheritedStage = stage === 'new_story_ad.asset_plan'
+    ? 'new_story_ad.scene_config'
+    : ([
     'new_story_ad.blueprint_language_repair',
     'new_story_ad.blueprint_structure_repair',
     'new_story_ad.blueprint_polish',
   ].includes(stage)
     ? 'new_story_ad.blueprint'
-    : (stage === 'new_story_ad.storyboard_language_repair' ? 'new_story_ad.storyboard_table' : stage);
+    : (stage === 'new_story_ad.storyboard_language_repair' ? 'new_story_ad.storyboard_table' : stage));
   const configured = pipeline.pickAllEnabled(inheritedStage);
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
   const configuredOrSettings = configured.length ? configured : settingsStoryCandidates();
@@ -533,10 +537,16 @@ async function generateVision({
 } = {}) {
   const referenceDiagnostics = publicReferences.normalizeVisionReferences(imageUrls, { max: 8 });
   const urls = referenceDiagnostics.urls;
-  const embeddedUrls = (Array.isArray(imageDataUrls) ? imageDataUrls : [])
+  const suppliedEmbeddedUrls = (Array.isArray(imageDataUrls) ? imageDataUrls : [])
     .map(value => String(value || '').trim())
     .filter(value => /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(value))
     .slice(0, 8);
+  const localEmbeddedUrls = suppliedEmbeddedUrls.length >= urls.length
+    ? []
+    : await localVisionReferences.dataUrlsFor(imageUrls, { max: 8 });
+  const embeddedUrls = (suppliedEmbeddedUrls.length >= urls.length
+    ? suppliedEmbeddedUrls
+    : localEmbeddedUrls).slice(0, 8);
   if (!urls.length) {
     const error = new Error(`${stage} 缺少可供视觉模型读取的公网参考图`);
     error.code = 'VISION_REFERENCE_UNAVAILABLE';
@@ -615,9 +625,7 @@ async function generateVision({
     const model = attemptCandidates[i];
     const start = Date.now();
     try {
-      const candidateImageUrls = /deyunai|漫路/i.test(String(model.provider_id || ''))
-        ? urls
-        : (embeddedUrls.length ? embeddedUrls : urls);
+      const candidateImageUrls = embeddedUrls.length >= urls.length ? embeddedUrls : urls;
       const messages = [
         { role: 'system', content: systemPrompt },
         {

@@ -22,6 +22,8 @@
     "platform:capability:test": "node scripts/test-pipeline-stage-selection.js && node scripts/test-pipeline-capability-audit.js",
     "platform:upgrade:test": "npm run platform:loading:test && npm run platform:capability:test && npm run video-canvas:test && npm run story-ad:v2:test",
     "story-ad:v3:boundaries": "node scripts/check-new-story-ad-v3-boundaries.js",
+    "story-ad:dossier:boundaries": "node scripts/check-new-story-ad-dossier-boundaries.js",
+    "story-ad:dossier:test": "node scripts/test-new-story-ad-dossier-checkpoints.js && node scripts/test-new-story-ad-asset-plan.js && node scripts/test-new-story-ad-prop-assets.js && node scripts/test-new-story-ad-person-dossier.js && node scripts/test-new-story-ad-local-vision-reference.js && node scripts/test-new-story-ad-subject-assets.js && node scripts/test-new-story-ad-reference-video-analysis.js && node scripts/test-new-story-ad-scene-atlas-v7.js && node scripts/check-new-story-ad-dossier-boundaries.js",
     "story-ad:v3:production-recovery": "node scripts/test-new-story-ad-production-recovery.js",
     "story-ad:v3:story-setup": "node scripts/test-new-story-ad-story-setup-flow.js",
     "story-ad:v3:current-input": "node scripts/test-new-story-ad-current-input-authority.js",

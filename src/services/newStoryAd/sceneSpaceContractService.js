@@ -449,6 +449,18 @@ function normalizeContract(input = {}, options = {}) {
     requested_surface_topology: normalizeRequestedTopology(requested.surface_topology || input.requested_surface_topology || {}),
     requested_material_contract: requested.material_contract || input.requested_material_contract || {},
     requested_interaction_contract: requested.interaction_contract || input.requested_interaction_contract || {},
+    requested_story_states: Array.isArray(requested.structured_scene_contract?.story_states)
+      ? requested.structured_scene_contract.story_states
+      : [],
+    requested_interaction_anchors: Array.isArray(requested.structured_scene_contract?.interaction_anchors)
+      ? requested.structured_scene_contract.interaction_anchors
+      : [],
+    requested_routes: Array.isArray(requested.structured_scene_contract?.routes)
+      ? requested.structured_scene_contract.routes
+      : [],
+    requested_prop_placements: Array.isArray(requested.structured_scene_contract?.prop_placements)
+      ? requested.structured_scene_contract.prop_placements
+      : [],
     observed_summary: cleanText(input.observed_summary || input.summary || '', 1200),
     anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
     zones: normalizeZones(input.zones || input.spatial_zones || []),
@@ -719,6 +731,7 @@ async function analyzeSceneViews(options = {}) {
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
       + 'First verify that the generated scene obeys the requested layout, material/light, visual style or photographic medium, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
+      + 'When structured_scene_contract is present, verify every declared interaction anchor, movement route, story-state spatial change and prop placement is visibly possible and mapped to the same layout; missing or contradictory structured evidence must fail requirement_qa. '
       + 'The optional fifth layout image is a master-derived near-vertical top-down spatial survey of the same finished location. Use it primarily for topology, coordinates, access points and anchor placement, but also reject it when it depicts an unrelated location, anchor system, material identity or lighting design. '
       + 'For all five views, material identity and surface topology are independent: visual continuity or hidden seams must never justify replacing the requested material with a nearby generic finish. '
       + 'Use requested.material_reference_available as the evidence flag. When it is not true, do not fail solely because a proprietary, trade or unfamiliar finish name cannot be visually proven from memory; evaluate only the observable colour, grain, reflectance, roughness, directionality, patina, translucency or micro-relief cues explicitly stated in material_light. '

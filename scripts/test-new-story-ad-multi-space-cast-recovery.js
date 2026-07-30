@@ -285,6 +285,11 @@ async function assertSubjectSupplierPreflightAndConcurrency() {
       url: `/mock-${key}.png`,
       image_url: `/mock-${key}.png`,
     })),
+    splitReferenceSheet: async ({ viewKeys = [] }) => viewKeys.map(key => ({
+      key,
+      url: `/mock-${key}.png`,
+      image_url: `/mock-${key}.png`,
+    })),
     publicAssetUrl: filename => `/mock/${filename}`,
   };
   const concurrentStorage = {
@@ -313,7 +318,7 @@ async function assertSubjectSupplierPreflightAndConcurrency() {
   );
   releaseFirst();
   await first;
-  assert.strictEqual(supplierCalls, 1, 'same subject batch must have only one active supplier call');
+  assert.strictEqual(supplierCalls, 4, 'same subject batch may run only one four-atlas person dossier');
 
   let cancellationChecks = 0;
   let cancellationSupplierCalls = 0;
@@ -349,7 +354,7 @@ async function assertSubjectSupplierPreflightAndConcurrency() {
     ),
     error => error?.code === 'USER_CANCELLED',
   );
-  assert.strictEqual(cancellationSupplierCalls, 1, 'cancellation after the first member must block later member calls');
+  assert.strictEqual(cancellationSupplierCalls, 4, 'cancellation after the first four-atlas member must block later member calls');
 }
 
 async function assertMultiSpacePromptsAndRecovery() {

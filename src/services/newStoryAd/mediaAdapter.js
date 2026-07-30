@@ -38,9 +38,17 @@ function adapterFamily(provider = {}) {
   return String(provider.adapter_config?.family || provider.adapter || provider.preset || provider.id || 'openai-compatible').toLowerCase();
 }
 
+function imageConfigStage(stage = '') {
+  const stageId = String(stage || '').trim();
+  if (/^new_story_ad\.person_dossier(?:_|$)/.test(stageId)) return 'new_story_ad.person_sheet';
+  if (/^new_story_ad\.prop_dossier(?:_|$)/.test(stageId)) return 'new_story_ad.scene_asset';
+  return stageId;
+}
+
 function stageCandidates(stage) {
-  const configured = pipeline.pickAllEnabled(stage);
-  const defaults = (pipeline.getStageDefaults(stage) || []).filter(x => x.enabled !== false);
+  const configStage = imageConfigStage(stage);
+  const configured = pipeline.pickAllEnabled(configStage);
+  const defaults = (pipeline.getStageDefaults(configStage) || []).filter(x => x.enabled !== false);
   return configured.length ? configured : defaults;
 }
 
@@ -379,6 +387,8 @@ async function splitReferenceSheet({
   filenamePrefix = 'new_story_reference_sheet',
   filenameSuffix = '',
   viewKeys = ['view_1', 'view_2', 'view_3', 'view_4'],
+  columns = 2,
+  rows = 2,
   outputWidth = 1024,
   outputHeight = 576,
   fit = 'cover',
@@ -390,14 +400,20 @@ async function splitReferenceSheet({
   const fullW = Number(meta.width || 0);
   const fullH = Number(meta.height || 0);
   if (fullW < 400 || fullH < 400) throw new Error(`演员设定图尺寸过小：${fullW}x${fullH}。`);
-  const cellW = Math.floor(fullW / 2);
-  const cellH = Math.floor(fullH / 2);
-  const rects = [
-    { left: 0, top: 0, width: cellW, height: cellH },
-    { left: cellW, top: 0, width: fullW - cellW, height: cellH },
-    { left: 0, top: cellH, width: cellW, height: fullH - cellH },
-    { left: cellW, top: cellH, width: fullW - cellW, height: fullH - cellH },
-  ];
+  const gridColumns = Math.max(1, Math.min(6, Number(columns) || 2));
+  const gridRows = Math.max(1, Math.min(6, Number(rows) || 2));
+  if (viewKeys.length > gridColumns * gridRows) {
+    throw new Error(`图集网格 ${gridColumns}x${gridRows} 无法容纳 ${viewKeys.length} 个原子视图。`);
+  }
+  const rects = viewKeys.map((_, index) => {
+    const column = index % gridColumns;
+    const row = Math.floor(index / gridColumns);
+    const left = Math.floor((fullW * column) / gridColumns);
+    const top = Math.floor((fullH * row) / gridRows);
+    const right = Math.floor((fullW * (column + 1)) / gridColumns);
+    const bottom = Math.floor((fullH * (row + 1)) / gridRows);
+    return { left, top, width: right - left, height: bottom - top };
+  });
   ensureDir(ASSET_DIR);
   const views = [];
   for (let i = 0; i < rects.length; i += 1) {
@@ -710,6 +726,9 @@ async function generateActorReference({
   inputFidelity = 'high',
   stage = 'new_story_ad.person_sheet',
   clientRequestId = '',
+  onSubmitting = null,
+  onSubmitted = null,
+  onProgress = null,
 } = {}) {
   return generateImage({
     taskId,
@@ -722,6 +741,9 @@ async function generateActorReference({
     requireReferences,
     inputFidelity,
     clientRequestId,
+    onSubmitting,
+    onSubmitted,
+    onProgress,
   });
 }
 
@@ -744,6 +766,7 @@ module.exports = {
   providerErrorDiagnostics,
   rightsAwareImagePrompt,
   promptForImageCandidate,
+  imageConfigStage,
   requiredImageModelForStage,
   applyImageModelPolicy,
   invokeWithAuditSafeRetry,

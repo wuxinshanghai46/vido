@@ -1,15 +1,15 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260730-director-workspace-v1';
+  const SCRIPT_VERSION = '20260730-dossier-performance-v3';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/director-workspace.js',
     '/js/new-story-ad/bootstrap-media-loader.js',
     '/js/new-story-ad/bootstrap-asset-loader.js',
+    '/js/new-story-ad/asset-ui-contract.js',
     '/js/new-story-ad/task-store.js',
     '/js/new-story-ad/task-session.js',
     '/js/new-story-ad/progress.js',
-    '/js/new-story-ad/scene-assets.js',
     '/js/new-story-ad/state-sync.js',
     '/js/new-story-ad/button-state.js',
     '/js/new-story-ad/step-navigation.js',
@@ -18,7 +18,6 @@
     '/js/new-story-ad/person-pet-spec.js',
     '/js/new-story-ad/person-age-authority.js',
     '/js/new-story-ad/actors.js',
-    '/js/new-story-ad/subject-assets-ui.js',
     '/js/new-story-ad/subject-profile-authority.js',
     '/js/new-story-ad/subject-checkpoint-polling.js',
     '/js/new-story-ad/verification-language.js',
@@ -32,9 +31,7 @@
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad/cancelable-generation.js',
     '/js/new-story-ad-legacy-ui.js',
-  ];
-  let loadPromise = null;
-  let mediaLoader = null;
+  ]; let loadPromise = null, mediaLoader = null;
   let assetLoader = null;
   const bootstrapSupport = window.NewStoryAdBootstrapSupport || {};
   const storyAdIsActive = window.NewStoryAdBootstrapSupport?.isActive || (() => false);
@@ -128,7 +125,13 @@
         loadAssetModules().then(() => assetStudioTarget.click()).catch(() => {});
         return;
       }
-      if (event.target?.closest?.('[data-nsa-step="2"]')) loadAssetModules().catch(() => {});
+      const assetStepTarget = event.target?.closest?.('[data-nsa-step="2"]');
+      if (assetStepTarget && !assetModulesReady()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        loadAssetModules().then(() => assetStepTarget.click()).catch(() => {});
+        return;
+      }
       if (event.target?.closest?.('[data-nsa-step="6"], #dhNsaAdGenerateVideos, #dhNsaAdCompose')) loadMediaModules().catch(() => {});
     }, true);
     document.addEventListener('pointerover', event => {

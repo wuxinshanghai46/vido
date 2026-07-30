@@ -22,7 +22,8 @@ const personIdentity = require('../services/newStoryAd/personIdentityContractSer
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
-const personDossiers = require('../services/newStoryAd/personDossierService');
+const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes');
+const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
 const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
@@ -633,7 +634,7 @@ function buildActorSheetPrompt(basePrompt = '') {
 
 router.get('/health', (req, res) => {
   const stages = [
-    'new_story_ad.scene_config',
+    'new_story_ad.asset_plan', 'new_story_ad.scene_config',
     'new_story_ad.blueprint',
     'new_story_ad.storyboard_table',
     'new_story_ad.storyboard_rewrite',
@@ -1202,13 +1203,10 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
       cast_member_index: asset.cast_member_index,
       cast_role: asset.cast_role,
     }));
-    const normalizedBundle = { ...bundle, cast_assets: persistedCast.map((row, index) => ({
-      ...row,
-      person_contract: bundle.cast_assets[index]?.person_contract || row.person_contract || row.metadata?.person_contract || null,
-      subject_profile: bundle.cast_assets[index]?.subject_profile || row.subject_profile || row.metadata?.subject_profile || null,
-      cast_member_index: index + 1,
-      cast_role: bundle.cast_assets[index]?.cast_role || row.cast_role || `角色${index + 1}`,
-    })) };
+    const normalizedBundle = {
+      ...bundle,
+      cast_assets: subjectAssetPersistence.restoreGeneratedDossierFields(persistedCast, bundle.cast_assets),
+    };
     const committed = taskId
       ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {})
       : {
@@ -1267,7 +1265,7 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
       scene_name: body.name || body.scene_name || body.sceneName || '',
     },
   });
-}));
+})); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService });
 
 router.post('/tasks/:id/person-verify', asyncRoute(async (req, res) => {
   taskForReq(req);
@@ -1627,7 +1625,6 @@ router.post('/storyboard', asyncRoute(async (req, res) => {
 }));
 
 module.exports = router;
-
 // Exported for focused regression tests without changing the router contract.
 module.exports.buildActorDescription = buildActorDescription;
 module.exports.buildActorViewPrompt = buildActorViewPrompt;

@@ -339,7 +339,10 @@ async function main() {
   process.env.NEW_STORY_AD_MOCK_LLM = previousMock;
   assert.strictEqual(fallbackVision.fallback_used, true, 'semantic refusal must fall through to the next vision candidate');
   assert.strictEqual(fallbackVision.used_model, 'openai/valid-model');
-  assert.strictEqual(providerVisionInputs.deyunai, 'https://example.com/reference-frame.jpg');
+  assert.ok(
+    providerVisionInputs.deyunai.startsWith('data:image/jpeg;base64,'),
+    'deyunai must also receive embedded evidence when a complete local-safe data URL set is available',
+  );
   assert.ok(providerVisionInputs.zhipu.startsWith('data:image/jpeg;base64,'));
   assert.ok(providerVisionInputs.openai.startsWith('data:image/jpeg;base64,'));
   assert.deepStrictEqual(
@@ -351,6 +354,8 @@ async function main() {
   const originalGenerateText = modelGateway.generateText;
   const originalVisionCandidates = modelGateway.candidatesForVisionStage;
   const visualBatchSizes = [];
+  let activeVisualBatches = 0;
+  let peakVisualBatches = 0;
   let synthesisCalls = 0;
   const stagedContract = {
     source_facts: {
@@ -388,9 +393,13 @@ async function main() {
       { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
     ];
     modelGateway.generateVision = async (options) => {
+      activeVisualBatches += 1;
+      peakVisualBatches = Math.max(peakVisualBatches, activeVisualBatches);
       visualBatchSizes.push(options.imageUrls.length);
       const text = `本组证据时间点为 ${options.imageUrls.join('、')}。画面持续展示测试产品、测试空间、测试材质和测试光线，镜头按时间顺序推进，未识别人物身份。`;
       await options.validateText(text);
+      await new Promise(resolve => setTimeout(resolve, 20));
+      activeVisualBatches -= 1;
       return { text, used_model: 'deyunai/gemini-2.5-flash' };
     };
     modelGateway.generateText = async (options) => {
@@ -406,6 +415,7 @@ async function main() {
       filename: `missing-frame-${index}.jpg`,
     })), { status: 'no_audio', text: '' });
     assert.deepStrictEqual(visualBatchSizes, [4, 4], 'eight evidence frames must be read in two bounded batches');
+    assert.strictEqual(peakVisualBatches, 2, 'the two fixed evidence batches must execute concurrently with limit two');
     assert.strictEqual(synthesisCalls, 0, 'validated visual evidence must compile without a second paid model pass');
     assert.strictEqual(staged.visual_evidence_batches.length, 2);
     assert.ok(staged.story_outline.logline.includes('测试产品'));

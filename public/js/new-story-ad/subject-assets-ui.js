@@ -6,7 +6,7 @@
     back: '背面',
     action: '动作',
   };
-
+  const dossierUi=()=>window.NewStoryAdPersonDossierUI;
   function subjectViews(asset = {}) {
     const raw = [
       ...(Array.isArray(asset.view_images) ? asset.view_images : []),
@@ -20,7 +20,6 @@
       return { key, label: clean(item.label || VIEW_LABELS[key] || `视图 ${index + 1}`, 80), url };
     }).filter(view => view.url && !seen.has(view.url) && seen.add(view.url));
   }
-
   function subjectMembers(personAsset = null, petProfiles = []) {
     const cast = Array.isArray(personAsset?.cast_assets) && personAsset.cast_assets.length
       ? personAsset.cast_assets
@@ -31,14 +30,12 @@
       ...pets.map((asset, index) => ({ kind: 'pet', asset, name: asset.name || asset.type || `宠物${index + 1}` })),
     ];
   }
-
   function subjectGalleryKey(kind = 'person', asset = {}, index = 0) {
     const id = asset.actor_id || asset.actor_asset_id || asset.pet_id || asset.asset_library_id
       || asset.material_id || asset.id || subjectViews(asset)[0]?.url
       || `${asset.name || asset.cast_role || asset.type || 'subject'}_${index + 1}`;
     return `${kind}:${clean(id, 260)}`;
   }
-
   function subjectGalleryHtml(personAsset = null, petProfiles = [], {
     escapeHtml = value => String(value),
     assetThumbUrl = value => value,
@@ -48,19 +45,23 @@
     if (!members.length) return '';
     return `<div class="dh-nsa-subject-gallery">${members.map(({ kind, asset, name }, memberIndex) => {
       const views = subjectViews(asset);
-      const mainUrl = asset.image_url || views[0]?.url || '';
+      const dossier=dossierUi()?.items?.(asset)||[];
+      const mainUrl = asset.cover_image_url || asset.dossier_sheet?.image_url || asset.image_url || views[0]?.url || '';
       const title = `${name} · ${kind === 'pet' ? '宠物' : '人物'}参考`;
       const galleryKey = subjectGalleryKey(kind, asset, memberIndex);
       const isOpen = openKeys?.has?.(galleryKey) === true;
-      const viewGrid = views.length > 1
-        ? `<details class="dh-nsa-subject-views" data-nsa-subject-gallery data-nsa-subject-gallery-key="${escapeHtml(galleryKey)}"${isOpen ? ' open' : ''}>
+      dossierUi()?.register?.(galleryKey,{asset,name,assetThumbUrl});
+      const viewGrid = dossier.length
+        ? `<button type="button" class="dh-nsa-subject-dossier-open" data-nsa-subject-dossier-key="${escapeHtml(galleryKey)}">查看完整人物档案<em>${dossier.length}项</em></button>`
+        : views.length > 1
+          ? `<details class="dh-nsa-subject-views" data-nsa-subject-gallery data-nsa-subject-gallery-key="${escapeHtml(galleryKey)}"${isOpen ? ' open' : ''}>
             <summary data-nsa-subject-gallery-toggle aria-expanded="${isOpen ? 'true' : 'false'}"><span data-nsa-subject-gallery-label>${isOpen ? '收起四视图' : '查看四视图'}</span><em>${views.length} 张</em></summary>
             <div class="dh-lux-actor-views">${views.map((view, viewIndex) => `<button type="button" data-nsa-subject-preview-url="${escapeHtml(view.url)}" data-nsa-subject-preview-title="${escapeHtml(`${name} · ${view.label}`)}" title="${escapeHtml(view.label)}">
               <img ${isOpen ? 'src' : 'data-src'}="${escapeHtml(assetThumbUrl(view.url, 280))}" alt="${escapeHtml(`${name} ${view.label}`)}" loading="lazy" decoding="async">
               <span>${escapeHtml(view.label)}</span>
             </button>`).join('')}</div>
           </details>`
-        : '';
+          : '';
       return `<article class="dh-nsa-subject-member" data-nsa-subject-kind="${kind}" data-nsa-subject-index="${memberIndex}">
         ${mainUrl ? `<button type="button" class="dh-nsa-subject-main" data-nsa-subject-preview-url="${escapeHtml(mainUrl)}" data-nsa-subject-preview-title="${escapeHtml(title)}">
           <img src="${escapeHtml(assetThumbUrl(mainUrl, 360))}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">
@@ -85,6 +86,11 @@
 
   function handleGalleryClick(event, host, openPreview, openKeys = null) {
     const target = event?.target;
+    const dossierButton=target?.closest?.('[data-nsa-subject-dossier-key]');
+    if(dossierButton&&host?.contains?.(dossierButton)){
+      event.preventDefault();event.stopPropagation();
+      dossierUi()?.openByKey?.(dossierButton.dataset.nsaSubjectDossierKey||''); return true;
+    }
     const toggle = target?.closest?.('[data-nsa-subject-gallery-toggle]');
     if (toggle && host?.contains?.(toggle)) {
       const gallery = toggle.closest('[data-nsa-subject-gallery]');
@@ -291,7 +297,6 @@
     if (new Set(allIds).size !== allIds.length) errors.push('人物和宠物的稳定 ID 不能重复');
     return errors;
   }
-
   function updateProfileFromField(state = {}, target = {}) {
     const kind = target.dataset?.nsaSubjectKind;
     const index = Number(target.dataset?.nsaSubjectIndex);
@@ -316,7 +321,6 @@
     }
     return true;
   }
-
   function syncProfileFieldsFromDom(state = {}, scope = document) {
     if (!scope?.querySelectorAll) return 0;
     let updated = 0;
@@ -325,7 +329,6 @@
     });
     return updated;
   }
-
   function selectionItems(state = {}) {
     const humans = Array.isArray(state.castProfiles) ? state.castProfiles : [];
     const pets = Array.isArray(state.petProfiles) ? state.petProfiles : [];
@@ -449,17 +452,8 @@
       },
     };
   }
-  function progressStages(total) {
-    return [
-      { at: 0, percent: 10, message: `已提交 ${total} 份主体身份资产，服务端正在逐个生成四视图。` },
-      { at: 8000, percent: 36, message: '正在生成并拆分人物 / 宠物四视图；取消后不会继续提交新的模型调用。' },
-      { at: 18000, percent: 66, message: '正在逐个执行身份、外观与跨视图一致性验证。' },
-      { at: 32000, percent: 84, message: '正在汇总已验证资产，并写入当前任务一致性合同。' },
-    ];
-  }
-  function initialProgress(total) {
-    return { active: true, startedAt: Date.now(), label: '主体身份资产', percent: 10, message: `已提交 ${total} 份主体身份资产，服务端正在逐个生成四视图。` };
-  }
+  function progressStages(total) { return dossierUi().progressStages(total); }
+  function initialProgress(total) { return dossierUi().initialProgress(total); }
   function verificationTarget({ people, pets, personContract, petContract }) {
     const peopleReady = people === 0 || personContract?.status === 'verified';
     const petsReady = pets === 0 || petContract?.status === 'verified';

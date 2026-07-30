@@ -5,13 +5,18 @@ const { v4: uuidv4 } = require('uuid');
 const mediaAdapter = require('./mediaAdapter');
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
+const personDossierCompiler = require('./personDossierCompiler');
+const generationConcurrency = require('./generationConcurrencyService');
+const dossierComposites = require('./dossierCompositeService');
 
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'person-production');
 const activeJobs = new Map();
-const BODY_VIEWS = ['front', 'three_quarter', 'side', 'back'];
-const IDENTITY_VIEWS = ['face_front', 'face_three_quarter', 'face_profile', 'hair_back'];
-const EXPRESSIONS = ['neutral', 'natural_smile', 'focused', 'doubtful', 'surprised', 'relaxed_approved'];
-const BASE_ACTIONS = ['neutral_stand', 'natural_walk', 'present_product'];
+const {
+  BODY_VIEWS,
+  IDENTITY_VIEWS,
+  EXPRESSIONS,
+  BASE_ACTIONS,
+} = personDossierCompiler;
 
 function now() {
   return new Date().toISOString();
@@ -453,115 +458,6 @@ function approveCandidate({ taskId, candidateId, user = {} } = {}) {
   });
 }
 
-function viewPrompt(kind, value) {
-  const instructions = {
-    body: `Full-body ${value.replace('_', ' ')} view, neutral standing pose, complete shoes visible.`,
-    identity: `${value.replace(/_/g, ' ')} portrait crop, preserve facial geometry and hair identity.`,
-    expression: `Head-and-shoulders ${value.replace(/_/g, ' ')} expression, preserve identity and outfit.`,
-    action: `${value.replace(/_/g, ' ')} action reference, full body, clear hands and prop contact.`,
-  };
-  return [
-    'Use the approved authorized person anchor as the immutable identity and outfit reference.',
-    instructions[kind],
-    'Photorealistic commercial reference asset, plain neutral background, no text, no collage.',
-    'Do not change identity, apparent adult age, body proportions, hairstyle identity, garments, shoes or accessories.',
-  ].join('\n');
-}
-
-async function generateAtomic(taskId, anchorUrl, kind, value, revision) {
-  const image = await mediaAdapter.generateActorReference({
-    taskId,
-    stage: 'new_story_ad.person_sheet',
-    prompt: viewPrompt(kind, value),
-    filename: `person_${taskId}_${kind}_${value}_r${revision}`,
-    aspectRatio: kind === 'identity' || kind === 'expression' ? '1:1' : '3:4',
-    referenceImages: [anchorUrl],
-    requireReferences: true,
-    inputFidelity: 'high',
-    clientRequestId: `${taskId}:${kind}:${value}:r${revision}`,
-  });
-  return {
-    id: `${kind}_${value}_${uuidv4().slice(0, 8)}`,
-    kind,
-    key: value,
-    image_url: image.image_url || image.url,
-    filename: image.filename || '',
-    provider_used: image.provider_used || '',
-    strict_reference_required: true,
-    input_fidelity: 'high',
-  };
-}
-
-async function composeDossier(taskId, atomicAssets = [], revision = 1) {
-  const width = 1800;
-  const height = 1400;
-  const padding = 30;
-  const tileWidth = 280;
-  const tileHeight = 360;
-  const composites = [];
-  for (let index = 0; index < atomicAssets.length; index += 1) {
-    const asset = atomicAssets[index];
-    const local = mediaAdapter.assetPathFromName(asset.filename || path.basename(String(asset.image_url || '')));
-    if (!local || !fs.existsSync(local)) continue;
-    const col = index % 6;
-    const row = Math.floor(index / 6);
-    const buffer = await sharp(local)
-      .resize(tileWidth, tileHeight - 42, { fit: 'contain', background: '#f8fafc' })
-      .extend({ bottom: 42, background: '#f8fafc' })
-      .png()
-      .toBuffer();
-    composites.push({ input: buffer, left: padding + col * (tileWidth + 12), top: 90 + row * (tileHeight + 12) });
-  }
-  const labelSvg = Buffer.from(
-    `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#f8fafc"/>
-      <text x="30" y="54" font-family="Arial" font-size="32" font-weight="700" fill="#0f172a">Character Production Dossier · ${String(taskId).replace(/[<>&]/g, '')} · R${revision}</text>
-      <text x="30" y="82" font-family="Arial" font-size="18" fill="#475569">Atomic identity, body, expression and action references composed locally</text>
-    </svg>`,
-  );
-  const filename = `person_dossier_${safeSegment(taskId)}_r${revision}.png`;
-  const out = mediaAdapter.assetPathFromName(filename);
-  await sharp(labelSvg).composite(composites).png().toFile(out);
-  return {
-    filename,
-    image_url: mediaAdapter.publicAssetUrl(filename),
-    composition: 'local_sharp',
-    model_generated_text: false,
-  };
-}
-
-async function composeIdentityOutfitBoard(taskId, anchor = {}, atomicAssets = [], revision = 1) {
-  const selected = [
-    anchor,
-    atomicAssets.find(item => item.kind === 'identity' && item.key === 'face_front'),
-    atomicAssets.find(item => item.kind === 'body' && item.key === 'front'),
-    atomicAssets.find(item => item.kind === 'body' && item.key === 'side'),
-  ].filter(Boolean);
-  const tiles = [];
-  for (let index = 0; index < selected.length; index += 1) {
-    const asset = selected[index];
-    const local = mediaAdapter.assetPathFromName(asset.filename || path.basename(String(asset.image_url || '')));
-    if (!local || !fs.existsSync(local)) continue;
-    tiles.push({
-      input: await sharp(local).resize(500, 700, { fit: 'contain', background: '#f8fafc' }).png().toBuffer(),
-      left: (index % 2) * 512,
-      top: Math.floor(index / 2) * 712,
-    });
-  }
-  const filename = `person_reference_board_${safeSegment(taskId)}_r${revision}.png`;
-  const out = mediaAdapter.assetPathFromName(filename);
-  await sharp({
-    create: { width: 1024, height: 1424, channels: 3, background: '#f8fafc' },
-  }).composite(tiles).png().toFile(out);
-  return {
-    filename,
-    image_url: mediaAdapter.publicAssetUrl(filename),
-    composition: 'local_sharp_reference_compiler',
-    includes: ['approved_outfit_anchor', 'face_front', 'body_front', 'body_side'],
-    provider_reference_slot_cost: 1,
-  };
-}
-
 async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [] } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return {
@@ -580,8 +476,7 @@ async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [] } = {
   }
   const batches = [];
   for (let index = 0; index < atomicAssets.length; index += 6) batches.push(atomicAssets.slice(index, index + 6));
-  const rows = [];
-  for (const batch of batches) {
+  const rows = await generationConcurrency.map('new_story_ad.person_dossier_qa', batches, 2, async batch => {
     const result = await modelGateway.generateVision({
       taskId,
       stage: 'new_story_ad.scene_consistency_qa',
@@ -594,8 +489,8 @@ async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [] } = {
       imageUrls: [sourceUrl, anchorUrl, ...batch.map(item => item.image_url)].slice(0, 8),
       maxTokens: 2200,
     });
-    rows.push(await jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId }));
-  }
+    return jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId });
+  });
   const scoreKeys = [
     'source_identity_score',
     'cross_view_identity_score',
@@ -635,23 +530,40 @@ async function runDossier(initial) {
     }
     sourceBridge = makeBridge(source, 'dossier_identity_bridge');
     const revision = Math.max(1, Number(production.versions.person || 1));
-    const specs = [
-      ...BODY_VIEWS.map(value => ['body', value]),
-      ...IDENTITY_VIEWS.map(value => ['identity', value]),
-      ...EXPRESSIONS.map(value => ['expression', value]),
-      ...BASE_ACTIONS.map(value => ['action', value]),
-    ];
-    const atomicAssets = [];
-    for (let index = 0; index < specs.length; index += 1) {
-      throwIfCancelled(production.user_id, production.task_id, 'dossier');
-      const [kind, value] = specs[index];
-      production = updateJob(readProduction(production.user_id, production.task_id), 'dossier', {
-        status: 'running',
-        phase: `生成人物原子资产 ${index + 1}/${specs.length}`,
-        progress: 5 + Math.round((index / specs.length) * 80),
-      });
-      atomicAssets.push(await generateAtomic(production.task_id, anchorUrl, kind, value, revision));
-    }
+    const compiled = await personDossierCompiler.compilePersonDossier({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
+      revision,
+      anchorUrl,
+      personPrompt: [
+        production.wardrobe || '',
+        production.approved_anchor?.prompt || '',
+        'Authorized real-person identity. Preserve the approved outfit anchor exactly.',
+      ].filter(Boolean).join('\n'),
+      requireReferences: true,
+      loadCheckpoint: async key => (
+        readProduction(production.user_id, production.task_id).dossier_checkpoints?.[key] || null
+      ),
+      saveCheckpoint: async (key, checkpoint) => {
+        const latest = readProduction(production.user_id, production.task_id);
+        saveProduction({
+          ...latest,
+          dossier_checkpoints: {
+            ...(latest.dossier_checkpoints || {}),
+            [key]: checkpoint,
+          },
+        });
+      },
+      onProgress: async ({ completed, total, kind, reused }) => {
+        throwIfCancelled(production.user_id, production.task_id, 'dossier');
+        production = updateJob(readProduction(production.user_id, production.task_id), 'dossier', {
+          status: 'running',
+          phase: `${reused ? '复用' : '生成'}人物${kind}图集 ${completed}/${total}`,
+          progress: 5 + Math.round((completed / total) * 75),
+        });
+      },
+    });
+    const atomicAssets = compiled.atomic_assets;
     production = updateJob(readProduction(production.user_id, production.task_id), 'dossier', {
       status: 'running',
       phase: '批量校验来源身份、跨视图、服装与动作一致性',
@@ -668,13 +580,19 @@ async function runDossier(initial) {
       phase: '本地合成人物设定档案',
       progress: 94,
     });
-    const sheet = await composeDossier(production.task_id, atomicAssets, revision);
-    const referenceBoard = await composeIdentityOutfitBoard(
-      production.task_id,
-      production.approved_anchor,
+    const sheet = await dossierComposites.composePersonDossier({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
       atomicAssets,
       revision,
-    );
+    });
+    const referenceBoard = await dossierComposites.composePersonReferenceBoard({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
+      anchor: production.approved_anchor,
+      atomicAssets,
+      revision,
+    });
     production = readProduction(production.user_id, production.task_id);
     production = saveProduction({
       ...production,
@@ -683,6 +601,9 @@ async function runDossier(initial) {
         revision,
         status: 'pending_approval',
         anchor_candidate_id: production.approved_candidate_id,
+        schema_version: compiled.schema_version,
+        category_atlases: compiled.category_atlases,
+        generation_summary: compiled.generation_summary,
         atomic_assets: atomicAssets,
         body_views: atomicAssets.filter(item => item.kind === 'body'),
         identity_views: atomicAssets.filter(item => item.kind === 'identity'),
@@ -957,5 +878,16 @@ module.exports = {
   cancelJob,
   getProduction,
   deriveActionContracts,
-  _private: { activeJobs, readProduction, composeDossier, sourceDir, outfitPrompt, viewPrompt, actionTriptychPrompt },
+  _private: {
+    activeJobs,
+    readProduction,
+    composeDossier: (taskId, atomicAssets, revision) => dossierComposites.composePersonDossier({
+      taskId,
+      atomicAssets,
+      revision,
+    }),
+    sourceDir,
+    outfitPrompt,
+    actionTriptychPrompt,
+  },
 };

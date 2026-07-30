@@ -111,7 +111,7 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
   return contract;
 }
 
-async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair, qaAttempts = 2 } = {}) {
+async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision = 1, force = false, gateway = modelGateway, repair = jsonRepair, qaAttempts = 1 } = {}) {
   const contract = buildPersonContract(asset, spec, { revision });
   const views = personViews(asset);
   if (!force && contract.status === 'verified' && contract.cross_view_qa.pass) return contract;
@@ -144,6 +144,7 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
       taskId,
       stage: 'new_story_ad.person_consistency_qa',
       imageUrls: normalizedReferences.urls,
+      maxCandidates: 3,
       systemPrompt: [
         'You are a strict cross-view identity inspector for a general-purpose commercial video platform.',
         'The images may depict any lawful person, age group, ethnicity, wardrobe, occupation or visual style requested by the current task. Never assume a fixed country, industry, name or character template.',

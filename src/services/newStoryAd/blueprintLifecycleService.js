@@ -10,6 +10,35 @@ function checkpointMatches(checkpoint, task, inputFingerprint) {
   return !!expectedFingerprint && checkpoint.input_fingerprint === expectedFingerprint;
 }
 
+function blueprintInputFingerprint(task = {}, ctx = {}) {
+  return storage.canonicalFingerprint({
+    version: 1,
+    content_revision: Math.max(1, Number(task.content_revision || 1) || 1),
+    asset_plan_fingerprint: ctx.asset_plan_fingerprint || '',
+    brief: ctx.brief,
+    product_subject: ctx.product_subject,
+    reference_video_analysis: ctx.reference_video_analysis,
+    cast_profiles: ctx.cast_profiles,
+    pet_profiles: ctx.pet_profiles,
+    prop_assets: (ctx.prop_assets || []).map(item => ({
+      id: item.prop_id || item.id,
+      revision: item.revision || 1,
+      states: item.states || item.state_assets || [],
+    })),
+    scene_plan: ctx.scene_plan,
+    scene_assets: (ctx.scene_assets || []).map(item => ({
+      id: item.scene_id || item.id,
+      revision: item.revision || 1,
+      verification: item.verification?.status || item.status || '',
+    })),
+    target_duration: ctx.target_duration,
+    shot_count: ctx.shot_count,
+    output_ratio: ctx.output_ratio,
+    creative_direction: ctx.creative_direction,
+    performance: ctx.performance,
+  });
+}
+
 async function generateBlueprintStage(taskId, options = {}, {
   versionedBlueprint,
   generateBlueprintFn = generateBlueprint,
@@ -19,14 +48,34 @@ async function generateBlueprintStage(taskId, options = {}, {
   if (typeof versionedBlueprint !== 'function') throw new Error('剧本版本服务未初始化');
   const generationId = cleanText(options.generationId || options.generation_id || task.active_generation_id || '', 100);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const assetPlan = storage.getOutput(taskId, 'asset_plan') || {};
+  const inputFingerprint = cleanText(
+    options.inputFingerprint || options.input_fingerprint
+      || blueprintInputFingerprint(task, { ...ctx, asset_plan_fingerprint: assetPlan.fingerprint || '' }),
+    200,
+  );
+  const previous = storage.getOutput(taskId, 'blueprint') || {};
+  const previousMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
+  if (previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length) {
+    storage.saveStage(taskId, 'blueprint', {
+      status: 'done',
+      output_summary: `${previous.beats.length} 个剧情 beat（输入未变化，已复用）`,
+      diagnostics: { input_fingerprint: inputFingerprint, cache_hit: true },
+    });
+    blueprintProgress.update(taskId, {
+      phase: 'fingerprint_reused',
+      completed: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+      total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+      message: '输入指纹一致，已复用完整剧情蓝图。',
+    }, { generationId });
+    return previous;
+  }
   storage.updateTask(taskId, { status: 'running', stage: 'blueprint' });
   storage.saveStage(taskId, 'blueprint', { status: 'running', input_summary: ctx.brief });
   blueprintProgress.update(taskId, {
     phase: 'context_ready', completed: 1, total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
     message: '上下文和原创过审规则已准备，正在生成剧本初稿。',
   }, { generationId });
-  const previous = storage.getOutput(taskId, 'blueprint') || {};
-  const inputFingerprint = cleanText(options.inputFingerprint || options.input_fingerprint || task.active_input_fingerprint || '', 200);
   const storedCheckpoint = storage.getOutput(taskId, 'blueprint_draft_checkpoint');
   const draftCheckpoint = checkpointMatches(storedCheckpoint, task, inputFingerprint) ? storedCheckpoint : null;
   if (storedCheckpoint && !draftCheckpoint) storage.deleteOutput(taskId, 'blueprint_draft_checkpoint');
@@ -71,6 +120,12 @@ async function generateBlueprintStage(taskId, options = {}, {
     throw error;
   }
   storage.saveOutput(taskId, 'blueprint', blueprint);
+  storage.saveOutput(taskId, 'blueprint_meta', {
+    input_fingerprint: inputFingerprint,
+    content_revision: Number(task.content_revision || 1),
+    cache_hit: false,
+    completed_at: new Date().toISOString(),
+  });
   storage.deleteOutput(taskId, 'blueprint_draft_checkpoint');
   storage.deleteOutput(taskId, 'blueprint_rejection_diagnostic');
   storage.saveStage(taskId, 'blueprint', { status: 'done', output_summary: `${blueprint.beats.length} 个剧情 beat`, diagnostics: blueprint.model_meta || {} });
@@ -85,4 +140,4 @@ async function generateBlueprintStage(taskId, options = {}, {
   return blueprint;
 }
 
-module.exports = { generateBlueprintStage, checkpointMatches };
+module.exports = { generateBlueprintStage, checkpointMatches, blueprintInputFingerprint };

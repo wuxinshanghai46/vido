@@ -25,6 +25,16 @@ function object(value) {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+function profileText(values = [], max = 360) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return clean(value, max);
+    const row = object(value);
+    const nested = row.userPrompt || row.description || row.text || row.value || '';
+    if (typeof nested === 'string' && nested.trim()) return clean(nested, max);
+  }
+  return '';
+}
+
 function outputMap(outputs = {}) {
   if (Array.isArray(outputs)) {
     return Object.fromEntries(outputs.map(row => [String(row?.kind || ''), row?.payload]).filter(([kind]) => kind));
@@ -88,8 +98,8 @@ function peopleProjection(ctx = {}, blueprint = {}, personProduction = {}) {
         id: clean(character?.id || castAsset.id || `character_${index + 1}`, 100),
         name,
         role: clean(character?.role || character?.roleName || castAsset.cast_role || '', 120),
-        profile: clean(character?.description || character?.appearance || character?.appearanceText || '', 360),
-        wardrobe: clean(character?.clothing || character?.wardrobe || character?.wardrobeText || '', 320),
+        profile: profileText([character?.description, character?.appearanceText, character?.appearance], 360),
+        wardrobe: profileText([character?.clothing, character?.wardrobeText, character?.wardrobe], 320),
         personality: clean(character?.personality || character?.temperament || '', 220),
         story_function: clean(character?.story_function || character?.storyFunction || character?.role || '', 220),
         image_url: imageFrom(castAsset) || (index === 0 ? imageFrom(personAsset) : ''),

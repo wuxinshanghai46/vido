@@ -12,6 +12,7 @@ const modelGateway = require('./modelGateway');
 const mediaAdapter = require('./mediaAdapter');
 const referenceVideoLinks = require('./referenceVideoLinkService');
 const { getApiKey } = require('../settingsService');
+const generationConcurrency = require('./generationConcurrencyService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -1204,13 +1205,33 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     batches.push(selectedFrames.slice(index, index + 4));
   }
   const cacheKey = visualEvidenceCacheKey(record, selectedFrames);
-  const cachedEvidence = record._visual_evidence_cache?.key === cacheKey
+  const cachedSlots = record._visual_evidence_cache?.key === cacheKey
     && Array.isArray(record._visual_evidence_cache?.batches)
     && record._visual_evidence_cache.batches.length === batches.length
-    ? record._visual_evidence_cache.batches
-    : [];
-  const visualEvidence = cachedEvidence.map(item => ({ ...item }));
-  for (let index = visualEvidence.length; index < batches.length; index += 1) {
+    ? record._visual_evidence_cache.batches.map(item => item && typeof item === 'object' ? { ...item } : null)
+    : Array.from({ length: batches.length }, () => null);
+  const missingIndexes = cachedSlots.map((item, index) => item ? -1 : index).filter(index => index >= 0);
+  const persistBatch = (index, value) => {
+    const latest = readRecord(record.user_id, record.id) || record;
+    const previous = latest._visual_evidence_cache?.key === cacheKey
+      && Array.isArray(latest._visual_evidence_cache?.batches)
+      ? latest._visual_evidence_cache.batches
+      : Array.from({ length: batches.length }, () => null);
+    const slots = Array.from({ length: batches.length }, (_, slot) => previous[slot] || null);
+    slots[index] = value;
+    save(latest, {
+      _visual_evidence_cache: {
+        key: cacheKey,
+        batches: slots,
+        completed_batch_indexes: slots.map((item, slot) => item ? slot : -1).filter(slot => slot >= 0),
+        updated_at: now(),
+      },
+    });
+  };
+  const settled = await Promise.allSettled(missingIndexes.map(index => generationConcurrency.schedule(
+    'new_story_ad.reference_video_vision',
+    2,
+    async () => {
     const batch = batches[index];
     const timestamps = batch.map(item => Number(item.timestamp_seconds || 0));
     const vision = await modelGateway.generateVision({
@@ -1240,19 +1261,27 @@ async function analyzeWithModels(record, frames, transcript = {}) {
         return true;
       },
     });
-    visualEvidence.push({
+      const row = {
       batch_index: index + 1,
       timestamps,
       text: String(vision.text || '').slice(0, 10000),
       used_model: vision.used_model,
-    });
-    save(record, {
-      _visual_evidence_cache: {
-        key: cacheKey,
-        batches: visualEvidence,
-        updated_at: now(),
-      },
-    });
+      };
+      persistBatch(index, row);
+      return row;
+    },
+  )));
+  const failed = settled.find(item => item.status === 'rejected');
+  if (failed) throw failed.reason;
+  const latest = readRecord(record.user_id, record.id) || record;
+  const visualEvidence = latest._visual_evidence_cache?.key === cacheKey
+    ? latest._visual_evidence_cache.batches
+    : cachedSlots;
+  if (!Array.isArray(visualEvidence) || visualEvidence.length !== batches.length || visualEvidence.some(item => !item)) {
+    const error = new Error('参考视频视觉证据批次不完整，已保留成功批次并停止整理');
+    error.code = 'REFERENCE_VIDEO_BATCH_INCOMPLETE';
+    error.retryable = true;
+    throw error;
   }
 
   const result = compileAnalysisFromEvidence(record, visualEvidence, transcript);

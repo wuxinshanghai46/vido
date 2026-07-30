@@ -212,6 +212,17 @@ function main() {
   assert.ok(workspace.payload_bytes < 160000, `director page payload too large: ${workspace.payload_bytes}`);
   assert.strictEqual(JSON.stringify(workspace).includes('must-not-leak-to-director-view'), false);
   assert.strictEqual(JSON.stringify(workspace).includes('"cameras"'), false);
+  const structuredProfile = directorWorkspace._private.peopleProjection({
+    cast_profiles: [{
+      displayName: 'Structured Profile',
+      roleName: 'Lead',
+      appearance: { userPrompt: 'Natural appearance' },
+      wardrobe: { userPrompt: 'Navy wardrobe' },
+    }],
+  }, {}, {});
+  assert.strictEqual(structuredProfile.characters[0].profile, 'Natural appearance');
+  assert.strictEqual(structuredProfile.characters[0].wardrobe, 'Navy wardrobe');
+  assert.strictEqual(JSON.stringify(structuredProfile).includes('[object Object]'), false);
 
   const normalizedScene = normalizeSceneSpec({
     layoutText: '固定餐桌和窗边关系',

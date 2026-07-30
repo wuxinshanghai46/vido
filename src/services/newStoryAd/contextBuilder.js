@@ -295,6 +295,39 @@ function normalizeSceneAssets(input) {
   }).filter(Boolean);
 }
 
+function normalizePropAssets(input) {
+  const raw = Array.isArray(input) ? input : [];
+  return raw.map((item, index) => {
+    if (!item || typeof item !== 'object') return null;
+    const views = Array.isArray(item.view_images) ? item.view_images.map(view => ({
+      ...view,
+      key: cleanText(view?.key || '', 100),
+      url: cleanText(view?.url || view?.image_url || '', 1000),
+      image_url: cleanText(view?.image_url || view?.url || '', 1000),
+    })).filter(view => view.url || view.image_url) : [];
+    return {
+      ...item,
+      id: cleanText(item.id || item.prop_id || `prop_${index + 1}`, 120),
+      prop_id: cleanText(item.prop_id || item.id || `prop_${index + 1}`, 120),
+      name: cleanText(item.name || `道具${index + 1}`, 160),
+      type: cleanText(item.type || item.classification || 'story_prop', 80),
+      description: cleanText(item.description || item.contract?.identity?.description || '', 800),
+      material: cleanText(item.material || item.contract?.identity?.material || '', 300),
+      scale: cleanText(item.scale || item.contract?.identity?.scale || '', 200),
+      owner_id: cleanText(item.owner_id || item.contract?.ownership?.owner_id || '', 120),
+      scene_id: cleanText(item.scene_id || item.contract?.ownership?.scene_id || '', 120),
+      placement: cleanText(item.placement || item.contract?.interaction?.placement || '', 400),
+      hand_contact: cleanText(item.hand_contact || item.contract?.interaction?.hand_contact || '', 400),
+      image_url: cleanText(item.image_url || views[0]?.image_url || '', 1000),
+      cover_image_url: cleanText(item.cover_image_url || '', 1000),
+      view_images: views,
+      state_views: Array.isArray(item.state_views) ? item.state_views : [],
+      shot_timeline: Array.isArray(item.shot_timeline) ? item.shot_timeline : [],
+      contract: item.contract && typeof item.contract === 'object' ? item.contract : null,
+    };
+  }).filter(Boolean);
+}
+
 function normalizeSceneSpec(input = {}) {
   const raw = input && typeof input === 'object' ? input : {};
   const layoutText = cleanText(raw.layoutText || raw.layout_text || raw.layout || '', 600);
@@ -354,6 +387,69 @@ function normalizeSceneSpec(input = {}) {
   };
 }
 
+function normalizePersonDossierItem(item = {}, index = 0) {
+  return {
+    id: cleanText(item?.id || `dossier_item_${index + 1}`, 120),
+    kind: cleanText(item?.kind || item?.type || 'reference', 40),
+    key: cleanText(item?.key || item?.view || `item_${index + 1}`, 80),
+    label: cleanText(item?.label || item?.name || item?.key || '', 100),
+    image_url: cleanText(item?.image_url || item?.url || '', 1000),
+    url: cleanText(item?.url || item?.image_url || '', 1000),
+    filename: cleanText(item?.filename || '', 220),
+    provider_used: cleanText(item?.provider_used || '', 160),
+  };
+}
+
+function normalizePersonDossierRows(input = []) {
+  return (Array.isArray(input) ? input : [])
+    .map(normalizePersonDossierItem)
+    .filter(item => item.image_url || item.url)
+    .slice(0, 24);
+}
+
+function normalizePersonDossierFields(input = {}) {
+  const sheet = input.dossier_sheet && typeof input.dossier_sheet === 'object'
+    ? {
+        filename: cleanText(input.dossier_sheet.filename || '', 220),
+        image_url: cleanText(input.dossier_sheet.image_url || input.dossier_sheet.url || '', 1000),
+        composition: cleanText(input.dossier_sheet.composition || '', 80),
+        model_generated_text: input.dossier_sheet.model_generated_text === true,
+        atomic_count: Math.max(0, Number(input.dossier_sheet.atomic_count || 0) || 0),
+      }
+    : null;
+  return {
+    cover_image_url: cleanText(input.cover_image_url || sheet?.image_url || '', 1000),
+    dossier_sheet: sheet,
+    dossier_schema_version: Math.max(0, Number(input.dossier_schema_version || 0) || 0),
+    category_atlases: (Array.isArray(input.category_atlases) ? input.category_atlases : []).map((atlas, index) => ({
+      kind: cleanText(atlas?.kind || atlas?.key || `atlas_${index + 1}`, 40),
+      image_url: cleanText(atlas?.image_url || atlas?.url || '', 1000),
+      filename: cleanText(atlas?.filename || '', 220),
+      provider_used: cleanText(atlas?.provider_used || '', 160),
+      grid: atlas?.grid && typeof atlas.grid === 'object'
+        ? {
+            columns: Math.max(1, Number(atlas.grid.columns || 1) || 1),
+            rows: Math.max(1, Number(atlas.grid.rows || 1) || 1),
+          }
+        : null,
+    })).filter(atlas => atlas.image_url).slice(0, 8),
+    atomic_assets: normalizePersonDossierRows(input.atomic_assets),
+    body_views: normalizePersonDossierRows(input.body_views),
+    identity_views: normalizePersonDossierRows(input.identity_views),
+    expressions: normalizePersonDossierRows(input.expressions),
+    base_actions: normalizePersonDossierRows(input.base_actions),
+    generation_summary: input.generation_summary && typeof input.generation_summary === 'object'
+      ? {
+          planned_provider_calls: Math.max(0, Number(input.generation_summary.planned_provider_calls || 0) || 0),
+          provider_calls_this_run: Math.max(0, Number(input.generation_summary.provider_calls_this_run || 0) || 0),
+          checkpoint_hits: Math.max(0, Number(input.generation_summary.checkpoint_hits || 0) || 0),
+          category_count: Math.max(0, Number(input.generation_summary.category_count || 0) || 0),
+          atomic_count: Math.max(0, Number(input.generation_summary.atomic_count || 0) || 0),
+        }
+      : null,
+  };
+}
+
 function normalizePersonAsset(input = null) {
   if (!input || typeof input !== 'object') return null;
   const imageUrl = cleanText(input.image_url || input.imageUrl || input.url || input.previewUrl || '', 1000);
@@ -380,6 +476,7 @@ function normalizePersonAsset(input = null) {
     cast_mode: cleanText(input.cast_mode || input.castMode || '', 40),
     expected_people: cleanText(input.expected_people || input.person_count || '', 20),
     image_url: imageUrl,
+    ...normalizePersonDossierFields(input),
     extra_image_urls: Array.isArray(input.extra_image_urls) ? input.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 8) : [],
     view_images: Array.isArray(input.view_images) ? input.view_images.map(view => ({
       key: cleanText(view?.key || view?.view || view?.type || '', 40),
@@ -398,6 +495,7 @@ function normalizePersonAsset(input = null) {
       actor_asset_id: cleanText(member?.actor_asset_id || member?.id || '', 120),
       actor_id: cleanText(member?.actor_id || '', 120),
       image_url: cleanText(member?.image_url || member?.url || '', 1000),
+      ...normalizePersonDossierFields(member),
       extra_image_urls: Array.isArray(member?.extra_image_urls) ? member.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 6) : [],
       view_images: Array.isArray(member?.view_images) ? member.view_images.map(view => ({
         key: cleanText(view?.key || view?.view || '', 40),
@@ -720,6 +818,7 @@ function buildContext(body = {}, user = {}) {
   ) || inferExpectedAnimalCount(brief) || 0;
   const personAsset = normalizePersonAsset(body.person_asset || body.personAsset);
   const sceneAssets = normalizeSceneAssets(body.scene_assets || body.sceneAssets);
+  const propAssets = normalizePropAssets(body.prop_assets || body.propAssets);
   const sceneSpec = normalizeSceneSpec(body.scene_spec || body.sceneSpec);
   const castProfiles = normalizeCastProfiles(body.cast_profiles || body.castProfiles);
   const personContext = body.person_context && typeof body.person_context === 'object' ? body.person_context : {};
@@ -817,6 +916,7 @@ function buildContext(body = {}, user = {}) {
     product_contract: body.product_contract && typeof body.product_contract === 'object' ? body.product_contract : null,
     scene_spec: sceneSpec,
     scene_assets: sceneAssets,
+    prop_assets: propAssets,
     reference_video_analysis: normalizeReferenceVideoAnalysis(body.reference_video_analysis),
     scene_mode: ['auto', 'single', 'multi'].includes(cleanText(body.scene_mode || body.sceneMode || 'auto', 20))
       ? cleanText(body.scene_mode || body.sceneMode || 'auto', 20)
@@ -924,6 +1024,29 @@ function sceneAssetsPrompt(sceneAssets = []) {
   ].join('\n');
 }
 
+function propAssetsPrompt(propAssets = []) {
+  const list = Array.isArray(propAssets) ? propAssets : [];
+  if (!list.length) return '独立道具档案：未提供。不得凭行业模板自动发明无关道具。';
+  const digest = list.map(prop => ({
+    prop_id: prop.prop_id || prop.id,
+    name: prop.name,
+    type: prop.type,
+    material: prop.material,
+    scale: prop.scale,
+    owner_id: prop.owner_id,
+    scene_id: prop.scene_id,
+    placement: prop.placement,
+    hand_contact: prop.hand_contact,
+    states: prop.contract?.states || prop.states || [],
+    shot_timeline: prop.shot_timeline || [],
+  }));
+  return [
+    '独立道具档案：后续剧情、分镜和关键帧只能使用以下已确认道具。',
+    JSON.stringify(digest),
+    '每镜必须保持道具身份、数量、材质、尺度、归属、接触方式、位置和状态时间线一致。',
+  ].join('\n');
+}
+
 function referenceVideoAnalysisPrompt(reference = null) {
   if (!reference || reference.status !== 'completed') return '参考视频分析：未提供。';
   const digest = {
@@ -1000,6 +1123,7 @@ function contextPrompt(ctx) {
     ctx.person_context?.person_notes?.length ? `人物上下文：${ctx.person_context.person_notes.join('；')}` : '',
     ctx.person_spec && Object.keys(ctx.person_spec).length ? `人物约束：${JSON.stringify(ctx.person_spec)}` : '',
     referenceVideoAnalysisPrompt(ctx.reference_video_analysis),
+    propAssetsPrompt(ctx.prop_assets),
     sceneAssetsPrompt(ctx.scene_assets),
     `视频分辨率：${ctx.video_resolution || '720p'}`,
   ].join('\n');
@@ -1092,6 +1216,7 @@ module.exports = {
   normalizeSceneSpec,
   normalizeCreativeDirection,
   normalizeSceneAssets,
+  normalizePropAssets,
   normalizeBrandOverlay,
   normalizeProductionMode,
   inferVisibleTextPolicy,

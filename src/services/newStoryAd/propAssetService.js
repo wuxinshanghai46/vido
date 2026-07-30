@@ -1,0 +1,218 @@
+const { v4: uuidv4 } = require('uuid');
+const mediaAdapterDefault = require('./mediaAdapter');
+const storageDefault = require('./storageService');
+const checkpointsDefault = require('./assetGenerationCheckpointService');
+const propIdentity = require('./propIdentityContractService');
+const propTimeline = require('./propTimelineService');
+
+const STATIC_VIEW_KEYS = ['hero', 'three_quarter', 'side', 'material_detail'];
+
+function atlasPrompt(prop = {}) {
+  return [
+    'Create one photorealistic commercial prop identity contact sheet.',
+    'LAYOUT IS MANDATORY: exact 2 columns x 2 rows, four equal cells.',
+    `Cell order: ${STATIC_VIEW_KEYS.join(', ')}.`,
+    `Prop: ${prop.name}. Type: ${prop.type}.`,
+    prop.description ? `Appearance: ${prop.description}.` : '',
+    prop.material ? `Material lock: ${prop.material}.` : '',
+    prop.scale ? `Scale lock: ${prop.scale}.` : '',
+    `Quantity lock: ${prop.quantity}.`,
+    'Same exact object identity, geometry, color, material and wear state in every cell.',
+    'Neutral studio background, no person, hand, scene, text, logo, label or watermark unless an uploaded advertised product reference already contains lawful packaging.',
+  ].filter(Boolean).join('\n');
+}
+
+function statePrompt(prop = {}) {
+  return [
+    'Create one state-variation contact sheet of the exact same prop identity.',
+    `States left-to-right, top-to-bottom: ${prop.states.join(', ')}.`,
+    `Use exactly ${prop.states.length} cells in a ${Math.min(2, prop.states.length)} column grid.`,
+    `Prop: ${prop.name}. Preserve geometry, material, scale and brand-safe appearance.`,
+    'Only the declared state may change. Neutral background. No person, hand, text, caption or watermark.',
+  ].join('\n');
+}
+
+function checkpointRepository(storage, taskId, propId) {
+  const kind = `prop_asset_checkpoint:${propId}`;
+  return {
+    load: async key => storage.getOutput(taskId, kind)?.units?.[key] || null,
+    save: async (key, value) => {
+      const current = storage.getOutput(taskId, kind) || { schema_version: 1, prop_id: propId, units: {} };
+      storage.saveOutput(taskId, kind, {
+        ...current,
+        units: { ...(current.units || {}), [key]: value },
+        updated_at: new Date().toISOString(),
+      });
+    },
+  };
+}
+
+async function generateAtlasUnit({
+  taskId,
+  prop,
+  unit,
+  keys,
+  columns,
+  rows,
+  prompt,
+  referenceImages,
+  mediaAdapter,
+  checkpoints,
+  repository,
+}) {
+  const identity = {
+    taskId,
+    assetType: 'prop_dossier',
+    assetId: prop.id,
+    unit,
+    revision: prop.revision,
+    input: { prop, keys },
+  };
+  return checkpoints.runCheckpointedUnit({
+    identity,
+    load: repository.load,
+    save: repository.save,
+    execute: async controls => {
+      const atlas = await mediaAdapter.generateImage({
+        taskId,
+        stage: 'new_story_ad.prop_dossier_atlas',
+        prompt,
+        filename: `prop_${prop.id}_${unit}_r${prop.revision}`,
+        aspectRatio: columns === rows ? '1:1' : '2:1',
+        referenceImages,
+        requireReferences: referenceImages.length > 0,
+        inputFidelity: 'high',
+        clientRequestId: checkpoints.checkpointKey(identity),
+        onSubmitting: controls.onSubmitting,
+        onSubmitted: controls.onSubmitted,
+      });
+      const views = await mediaAdapter.splitReferenceSheet({
+        source: atlas,
+        filenamePrefix: `prop_${prop.id}_${unit}`,
+        filenameSuffix: `r${prop.revision}`,
+        viewKeys: keys,
+        columns,
+        rows,
+        outputWidth: 900,
+        outputHeight: 900,
+        fit: 'contain',
+        background: { r: 245, g: 245, b: 245, alpha: 1 },
+      });
+      return {
+        atlas: {
+          image_url: atlas.image_url || atlas.url,
+          filename: atlas.filename || '',
+          provider_used: atlas.provider_used || '',
+          grid: { columns, rows },
+        },
+        views,
+      };
+    },
+  });
+}
+
+function upsertById(values = [], item = {}) {
+  const list = Array.isArray(values) ? [...values] : [];
+  const index = list.findIndex(value => String(value.id || value.prop_id) === String(item.id || item.prop_id));
+  if (index >= 0) list[index] = item;
+  else list.push(item);
+  return list;
+}
+
+async function generatePropAsset(taskId, input = {}, deps = {}) {
+  const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
+  const storage = deps.storage || storageDefault;
+  const checkpoints = deps.checkpoints || checkpointsDefault;
+  const prop = propIdentity.normalizeProp(input.prop || input, 0);
+  if (!prop.name || !prop.description) {
+    const error = new Error('生成道具档案前必须填写道具名称和外观描述');
+    error.code = 'PROP_PROFILE_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  if (prop.type === 'fixed_scene_object') {
+    const error = new Error('固定场景物件应进入场景锚点，不重复生成独立道具档案');
+    error.code = 'FIXED_SCENE_OBJECT_USES_SCENE_CONTRACT';
+    error.status = 422;
+    throw error;
+  }
+  const repository = checkpointRepository(storage, taskId, prop.id);
+  const references = prop.reference_image_url ? [prop.reference_image_url] : [];
+  const base = await generateAtlasUnit({
+    taskId,
+    prop,
+    unit: 'identity',
+    keys: STATIC_VIEW_KEYS,
+    columns: 2,
+    rows: 2,
+    prompt: atlasPrompt(prop),
+    referenceImages: references,
+    mediaAdapter,
+    checkpoints,
+    repository,
+  });
+  const stateKeys = prop.states.length > 1 ? prop.states.slice(0, 4) : [];
+  const state = stateKeys.length ? await generateAtlasUnit({
+    taskId,
+    prop,
+    unit: 'states',
+    keys: stateKeys,
+    columns: Math.min(2, stateKeys.length),
+    rows: Math.ceil(stateKeys.length / Math.min(2, stateKeys.length)),
+    prompt: statePrompt({ ...prop, states: stateKeys }),
+    referenceImages: [base.result.views[0]?.image_url || base.result.views[0]?.url].filter(Boolean),
+    mediaAdapter,
+    checkpoints,
+    repository,
+  }) : null;
+  const storyboard = storage.getOutput(taskId, 'storyboard_table') || [];
+  const asset = {
+    ...prop,
+    prop_id: prop.id,
+    asset_id: `prop_asset_${uuidv4()}`,
+    schema_version: 1,
+    contract: propIdentity.buildContract(prop),
+    image_url: base.result.views[0]?.image_url || base.result.views[0]?.url || '',
+    cover_image_url: base.result.atlas.image_url,
+    view_images: base.result.views,
+    state_views: state?.result?.views || [],
+    category_atlases: [base.result.atlas, state?.result?.atlas].filter(Boolean),
+    shot_timeline: propTimeline.buildTimeline(prop, storyboard),
+    generation_summary: {
+      planned_provider_calls: stateKeys.length ? 2 : 1,
+      provider_calls_this_run: Number(!base.reused) + Number(Boolean(state && !state.reused)),
+      checkpoint_hits: Number(base.reused) + Number(Boolean(state?.reused)),
+    },
+    status: 'generated_pending_human_approval',
+    updated_at: new Date().toISOString(),
+  };
+  const assets = upsertById(storage.getOutput(taskId, 'prop_assets') || [], asset);
+  storage.saveOutput(taskId, 'prop_assets', assets);
+  const context = storage.getOutput(taskId, 'context');
+  if (context) storage.saveOutput(taskId, 'context', { ...context, prop_assets: assets });
+  return asset;
+}
+
+function listPropAssets(taskId, deps = {}) {
+  return (deps.storage || storageDefault).getOutput(taskId, 'prop_assets') || [];
+}
+
+function refreshPropTimelines(taskId, deps = {}) {
+  const storage = deps.storage || storageDefault;
+  const assets = storage.getOutput(taskId, 'prop_assets') || [];
+  const shots = storage.getOutput(taskId, 'storyboard_table') || [];
+  const next = propTimeline.attachTimelines(assets, shots);
+  storage.saveOutput(taskId, 'prop_assets', next);
+  const context = storage.getOutput(taskId, 'context');
+  if (context) storage.saveOutput(taskId, 'context', { ...context, prop_assets: next });
+  return next;
+}
+
+module.exports = {
+  STATIC_VIEW_KEYS,
+  atlasPrompt,
+  statePrompt,
+  generatePropAsset,
+  listPropAssets,
+  refreshPropTimelines,
+};

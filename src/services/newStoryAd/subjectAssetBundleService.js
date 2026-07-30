@@ -12,6 +12,8 @@ const subjectProfileText = require('./subjectProfileTextService');
 const visualRealism = require('./visualRealismPolicyService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
 const visualVerification = require('./visualVerificationService');
+const personDossierCompiler = require('./personDossierCompiler');
+const dossierComposites = require('./dossierCompositeService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -82,20 +84,99 @@ function resolveCounts(spec = {}, body = {}) {
   };
 }
 
+function personGenerationProfile(source = {}) {
+  const resolved = subjectProfileText.profileTexts(source);
+  return {
+    id: cleanText(source.id || source.cast_id || source.castId || '', 80),
+    displayName: cleanText(source.displayName || source.name || '', 120),
+    roleName: cleanText(source.roleName || source.role || '', 120),
+    age: cleanText(source.age || source.ageRange || source.appearance?.ageRange || 'match_brief', 40),
+    appearanceText: cleanText(resolved.appearanceText || '', 800),
+    wardrobeText: cleanText(resolved.wardrobeText || '', 600),
+    hairMakeupText: cleanText(resolved.hairMakeupText || '', 500),
+    negativeText: cleanText(resolved.negativeText || '', 600),
+  };
+}
+
+function petGenerationProfile(source = {}) {
+  return {
+    id: cleanText(source.id || source.pet_id || source.petId || '', 80),
+    name: cleanText(source.name || '', 120),
+    type: cleanText(source.type || source.species || '', 120),
+    breed: cleanText(source.breed || '', 160),
+    appearance: cleanText(source.appearance || source.description || '', 600),
+  };
+}
+
+function personGenerationSpec(spec = {}) {
+  return {
+    castMode: cleanText(spec.castMode || spec.cast_mode || 'auto', 40),
+    gender: cleanText(spec.gender || 'auto', 40),
+    expectedPeople: cleanText(spec.expectedPeople || spec.expected_people || '', 20),
+    expectedAnimals: cleanText(spec.expectedAnimals || spec.expected_animals || '', 20),
+    age: cleanText(spec.age || 'match_brief', 40),
+    origin: cleanText(spec.origin || 'match_brief', 120),
+    roleName: cleanText(spec.roleName || '', 120),
+    displayName: cleanText(spec.displayName || '', 120),
+    appearanceText: cleanText(spec.appearanceText || '', 800),
+    wardrobeText: cleanText(spec.wardrobeText || '', 600),
+    hairMakeupText: cleanText(spec.hairMakeupText || '', 500),
+    negativeText: cleanText(spec.negativeText || '', 600),
+  };
+}
+
 function checkpointKind(taskId, brief, spec, counts, body = {}) {
   const hash = crypto.createHash('sha256').update(JSON.stringify({
+    fingerprint_version: 2,
     brief,
-    spec,
+    spec: personGenerationSpec(spec),
     counts,
     description: cleanText(body.description || '', 2000),
-    cast_profiles: Array.isArray(body.cast_profiles) ? body.cast_profiles : [],
-    pet_profiles: Array.isArray(body.pet_profiles) ? body.pet_profiles : [],
+    cast_profiles: (Array.isArray(body.cast_profiles) ? body.cast_profiles : []).map(personGenerationProfile),
+    pet_profiles: (Array.isArray(body.pet_profiles) ? body.pet_profiles : []).map(petGenerationProfile),
     subject_targets: Array.isArray(body.subject_targets)
-      ? body.subject_targets
-      : (Array.isArray(body.subjectTargets) ? body.subjectTargets : []),
+      ? body.subject_targets.map(item => ({
+          kind: cleanText(item?.kind || '', 20),
+          index: Math.max(0, Number(item?.index || 0) || 0),
+          id: cleanText(item?.id || '', 80),
+        }))
+      : (Array.isArray(body.subjectTargets) ? body.subjectTargets.map(item => ({
+          kind: cleanText(item?.kind || '', 20),
+          index: Math.max(0, Number(item?.index || 0) || 0),
+          id: cleanText(item?.id || '', 80),
+        })) : []),
     image_model: cleanText(body.image_model || body.imageModel || 'auto', 120),
   })).digest('hex').slice(0, 20);
   return `subject_asset_checkpoint:${cleanText(taskId || 'detached', 80)}:${hash}`;
+}
+
+function compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) {
+  if (!taskId || typeof storage?.listOutputs !== 'function') return null;
+  const targetKeys = targets.selected.map(item => item.key).sort();
+  const rows = storage.listOutputs(taskId)
+    .filter(row => String(row?.kind || '').startsWith('subject_asset_checkpoint:'))
+    .filter(row => row?.payload?.status === 'complete')
+    .sort((left, right) => Date.parse(right.updated_at || right.payload?.updated_at || '') - Date.parse(left.updated_at || left.payload?.updated_at || ''));
+  return rows.map(row => row.payload).find(payload => {
+    if (Number(payload?.counts?.people || 0) !== counts.people || Number(payload?.counts?.pets || 0) !== counts.pets) return false;
+    if (cleanText(payload?.counts?.mode || '', 40) !== cleanText(counts.mode || '', 40)) return false;
+    const previousTargets = (Array.isArray(payload.targets) ? payload.targets : []).map(item => cleanText(item?.key || subjectKey(item?.kind, item?.id, Number(item?.index || 0) + 1), 140)).sort();
+    if (JSON.stringify(previousTargets) !== JSON.stringify(targetKeys)) return false;
+    const previousHumans = Array.isArray(payload.humans) ? payload.humans : [];
+    const previousPets = Array.isArray(payload.pets) ? payload.pets : [];
+    if (previousHumans.length !== humans.length || previousPets.length !== pets.length) return false;
+    const humansMatch = humans.every((profile, index) => {
+      const asset = previousHumans[index];
+      return reusableHumanAsset(asset)
+        && JSON.stringify(personGenerationProfile(asset.subject_profile || {})) === JSON.stringify(personGenerationProfile(profile));
+    });
+    const petsMatch = pets.every((profile, index) => {
+      const asset = previousPets[index];
+      return reusablePetAsset(asset)
+        && JSON.stringify(petGenerationProfile(asset)) === JSON.stringify(petGenerationProfile(profile));
+    });
+    return humansMatch && petsMatch;
+  }) || null;
 }
 
 function humanMemberSpecs(spec = {}, body = {}, count = 1) {
@@ -364,8 +445,8 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
 
 function humanPrompt(member, count) {
   return [
-    'Generate one production-ready photorealistic actor casting identity sheet as an exact 2x2 grid.',
-    'The same single person appears in all four cells: front full-body, side full-body, back full-body, and natural action full-body.',
+    'Create one production-ready photorealistic actor identity for a complete 17-item dossier.',
+    'This identity will be rendered into separate body, face, expression and action contact sheets.',
     subjectContinuityPolicy.generationRuleEn(),
     'Use a real neutral casting studio with even soft light, subtle floor contact and natural tonal falloff; no text, watermark, other person or collage border inside cells.',
     visualRealism.identitySheetRealismPrompt(),
@@ -653,7 +734,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   let checkpoint = null;
   let save = () => {};
   try {
-  const previous = taskId ? (storage.getOutput(taskId, kind) || {}) : {};
+  const previous = taskId
+    ? (storage.getOutput(taskId, kind) || compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) || {})
+    : {};
   const previousHumans = Array.isArray(previous.humans) ? previous.humans : [];
   const previousPets = Array.isArray(previous.pets) ? previous.pets : [];
   checkpoint = {
@@ -673,6 +756,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       return reusablePetAsset(previousPets[index]) ? previousPets[index] : null;
     }),
     subject_board_url: cleanText(previous.subject_board_url || '', 1000),
+    person_dossier_checkpoints: previous.person_dossier_checkpoints && typeof previous.person_dossier_checkpoints === 'object'
+      ? previous.person_dossier_checkpoints
+      : {},
     updated_at: new Date().toISOString(),
   };
   save = () => {
@@ -684,21 +770,55 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     if (reusableHumanAsset(checkpoint.humans[index])) continue;
     cancellation.throwIfCancelled();
     const member = humans[index];
-    const actorId = `new_story_actor_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`;
-    const sheet = await mediaAdapter.generateActorReference({
-      filename: `actor_${actorId}_sheet`,
-      prompt: humanPrompt(member, humans.length),
-      aspectRatio: '3:4',
-      imageModel: body.image_model || body.imageModel || 'auto',
+    const actorId = `new_story_actor_${crypto.createHash('sha256').update(`${kind}:${member.id}:${index}`).digest('hex').slice(0, 16)}`;
+    const compiled = await personDossierCompiler.compilePersonDossier({
+      taskId: taskId || options.generationId,
+      assetId: actorId,
+      revision: 1,
+      personPrompt: humanPrompt(member, humans.length),
+      requireReferences: false,
+      loadCheckpoint: async key => checkpoint.person_dossier_checkpoints[key] || null,
+      saveCheckpoint: async (key, value) => {
+        checkpoint.person_dossier_checkpoints[key] = value;
+        save();
+      },
+    }, {
+      mediaAdapter,
     });
-    const views = await mediaAdapter.splitActorSheet({ source: sheet, filenamePrefix: `actor_${actorId}`, viewKeys: HUMAN_VIEW_KEYS });
+    const bodyFront = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'front');
+    const bodySide = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'side');
+    const bodyBack = compiled.atomic_assets.find(item => item.kind === 'body' && item.key === 'back');
+    const baseAction = compiled.atomic_assets.find(item => item.kind === 'action' && item.key === 'neutral_stand');
+    const views = [
+      { ...bodyFront, key: 'front', url: bodyFront?.image_url },
+      { ...bodySide, key: 'side', url: bodySide?.image_url },
+      { ...bodyBack, key: 'back', url: bodyBack?.image_url },
+      { ...baseAction, key: 'action', url: baseAction?.image_url },
+    ].filter(view => view.url);
+    const dossierSheet = await dossierComposites.composePersonDossier({
+      taskId: taskId || options.generationId,
+      assetId: actorId,
+      atomicAssets: compiled.atomic_assets,
+      revision: 1,
+      title: 'AI Character Production Dossier',
+    }, { mediaAdapter });
     cancellation.throwIfCancelled();
     const asset = {
       id: `actor_asset_${actorId}`, actor_asset_id: `actor_asset_${actorId}`, actor_id: actorId,
       name: member.displayName, cast_role: member.roleName, cast_member_index: index + 1,
-      source: 'new_story_ad_actor_sheet', reference_kind: 'synthetic_realistic_actor', is_ai_generated: true,
+      source: 'new_story_ad_person_dossier', reference_kind: 'synthetic_realistic_actor', is_ai_generated: true,
       image_url: views[0]?.url || '', extra_image_urls: views.slice(1).map(view => view.url).filter(Boolean),
       view_images: views, view_count: views.length, description: humanPrompt(member, humans.length),
+      cover_image_url: dossierSheet.image_url,
+      dossier_sheet: dossierSheet,
+      dossier_schema_version: compiled.schema_version,
+      category_atlases: compiled.category_atlases,
+      atomic_assets: compiled.atomic_assets,
+      body_views: compiled.body_views,
+      identity_views: compiled.identity_views,
+      expressions: compiled.expressions,
+      base_actions: compiled.base_actions,
+      generation_summary: compiled.generation_summary,
       subject_profile: member,
     };
     asset.person_contract = await personIdentity.verifyPersonAsset({ taskId: taskId || options.generationId, asset, spec: member, revision: 1 });

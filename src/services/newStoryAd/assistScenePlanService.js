@@ -39,6 +39,14 @@ function outputSchema() {
           "actor": "使用该路线的人物或主体",
           "continuity": "跨镜头必须保持的方向和状态"
         }],
+        "propPlacements": [{
+          "prop_id": "已确认道具稳定 ID",
+          "name": "道具名称",
+          "quantity": 1,
+          "placement": "在本空间中的初始位置与朝向",
+          "owner_id": "所属人物 ID；没有则为空",
+          "state": "进入空间时的初始状态"
+        }],
         "surfaceTopology": {
           "mode": "auto/continuous/segmented/modular",
           "seam_policy": "auto/hidden/visible/task_defined",

@@ -11,6 +11,7 @@ const personAssetLifecycle = require('../src/services/newStoryAd/personAssetLife
 const storyService = require('../src/services/newStoryAd/storyAdService');
 const sceneBindingService = require('../src/services/newStoryAd/sceneBindingService');
 const sceneCheckpointProjection = require('../src/services/newStoryAd/sceneCheckpointProjectionService');
+const subjectAssetPersistence = require('../src/routes/newStoryAd/subjectAssetPersistence');
 
 function castProfile(index, overrides = {}) {
   return {
@@ -106,8 +107,15 @@ function harness({ cancelAt = 0 } = {}) {
     async generateActorReference({ filename, prompt }) {
       submissions += 1;
       prompts.push(prompt);
-      assert(prompt.includes('2x2 grid'));
       return { image_url: `/sheet/${filename}.png`, provider_used: 'mock-image' };
+    },
+    async splitReferenceSheet({ filenamePrefix, viewKeys }) {
+      return viewKeys.map(key => ({
+        key,
+        url: `/views/${filenamePrefix}_${key}.png`,
+        image_url: `/views/${filenamePrefix}_${key}.png`,
+        provider_used: 'mock-image',
+      }));
     },
     async splitActorSheet({ filenamePrefix, viewKeys }) {
       return viewKeys.map(key => ({ key, url: `/views/${filenamePrefix}_${key}.png`, provider_used: 'mock-image' }));
@@ -116,6 +124,17 @@ function harness({ cancelAt = 0 } = {}) {
   const storage = {
     getOutput(taskId, kind) { return outputs.get(`${taskId}:${kind}`) || null; },
     saveOutput(taskId, kind, value) { outputs.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value))); },
+    listOutputs(taskId) {
+      const prefix = `${taskId}:`;
+      return Array.from(outputs.entries())
+        .filter(([key]) => key.startsWith(prefix))
+        .map(([key, payload]) => ({
+          task_id: taskId,
+          kind: key.slice(prefix.length),
+          payload,
+          updated_at: payload?.updated_at || '',
+        }));
+    },
   };
   const cancellation = {
     throwIfCancelled() {
@@ -164,17 +183,27 @@ function harness({ cancelAt = 0 } = {}) {
       pet_profiles: [petProfile(1, { name: '豆包', type: '金毛犬' })],
     },
   }, batch.deps);
-  assert.strictEqual(batch.submissions(), 4, 'three people plus one pet must submit four independent identity sheets');
+  assert.strictEqual(batch.submissions(), 13, 'three complete 4-atlas people plus one pet sheet must submit thirteen calls');
   assert.strictEqual(bundle.cast_assets.length, 3);
+  assert(bundle.cast_assets.every(asset => asset.atomic_assets.length === 17));
+  assert(bundle.cast_assets.every(asset => asset.category_atlases.length === 4));
+  assert(bundle.cast_assets.every(asset => asset.generation_summary.planned_provider_calls === 4));
   assert.strictEqual(bundle.pet_profiles.length, 1);
   assert.strictEqual(new Set(bundle.cast_assets.map(asset => asset.actor_id)).size, 3, 'cast members must have distinct stable IDs');
+  const persistedDossier = subjectAssetPersistence.restoreGeneratedDossierFields(
+    [{ id: 'library_actor', image_url: '/library/cover.jpg', metadata: {} }],
+    [bundle.cast_assets[0]],
+  )[0];
+  assert.strictEqual(persistedDossier.atomic_assets.length, 17, 'actor-library persistence must not truncate the unified dossier');
+  assert.strictEqual(persistedDossier.category_atlases.length, 4);
+  assert.ok(persistedDossier.cover_image_url);
   assert.strictEqual(bundle.person_contract.status, 'verified');
   assert.strictEqual(bundle.person_contract.cross_view_qa.member_count_pass, true);
   assert.strictEqual(bundle.pet_contract.status, 'verified');
   assert.strictEqual(bundle.pet_profiles[0].reference_images.length, 4);
   assert(batch.prompts[0].includes('妈妈林悦') && !batch.prompts[0].includes('爸爸周屿'), 'each human prompt must contain only the selected member');
-  assert(batch.prompts[1].includes('爸爸周屿') && !batch.prompts[1].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
-  assert(batch.prompts[3].includes('豆包') && !batch.prompts[3].includes('妈妈林悦'), 'pet prompt must not contain any human member');
+  assert(batch.prompts[4].includes('爸爸周屿') && !batch.prompts[4].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
+  assert(batch.prompts[12].includes('豆包') && !batch.prompts[12].includes('妈妈林悦'), 'pet prompt must not contain any human member');
   const normalizedContext = contextBuilder.buildContext({
     brief: '一家三口与一只金毛在客厅互动',
     cast_mode: 'human_pet',
@@ -190,6 +219,17 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(normalizedContext.cast_profiles[0].appearanceText, castProfile(1).appearanceText, 'context normalization must preserve per-member appearance');
   assert.strictEqual(normalizedContext.cast_profiles[1].wardrobe.userPrompt, castProfile(2).wardrobeText, 'context normalization must preserve per-member wardrobe');
   assert.strictEqual(normalizedContext.cast_profiles[2].hairMakeup.userPrompt, castProfile(3).hairMakeupText, 'context normalization must preserve per-member hair and makeup');
+  const normalizedDossierContext = contextBuilder.buildContext({
+    brief: '人物档案持久化测试',
+    person_asset: {
+      id: 'bundle_dossier_test',
+      image_url: bundle.cast_assets[0].image_url,
+      cast_assets: [bundle.cast_assets[0]],
+    },
+  });
+  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].atomic_assets.length, 17, 'context normalization must preserve all 17 dossier items');
+  assert.strictEqual(normalizedDossierContext.person_asset.cast_assets[0].category_atlases.length, 4, 'context normalization must preserve four category atlases');
+  assert.ok(normalizedDossierContext.person_asset.cast_assets[0].cover_image_url, 'context normalization must preserve the dossier cover');
   assert.notStrictEqual(
     subjectAssets.checkpointKind('task', 'brief', {}, { people: 1, pets: 1 }, {
       pet_profiles: [{ appearance: 'white coat' }],
@@ -199,6 +239,89 @@ function harness({ cancelAt = 0 } = {}) {
     }),
     'changing a member profile must not reuse an incompatible checkpoint',
   );
+  const stableCastProfile = castProfile(1);
+  const enrichedCastProfile = {
+    ...stableCastProfile,
+    appearance: {
+      ageRange: 'match_brief',
+      userPrompt: stableCastProfile.appearanceText,
+    },
+    wardrobe: {
+      userPrompt: stableCastProfile.wardrobeText,
+    },
+    view_images: [
+      { key: 'front', url: '/generated/front.jpg' },
+      { key: 'side', url: '/generated/side.jpg' },
+    ],
+    atomic_assets: [{ kind: 'body', key: 'front', url: '/generated/front.jpg' }],
+    category_atlases: [{ kind: 'body', image_url: '/generated/body-atlas.jpg' }],
+    person_contract: { status: 'verified', person_revision: 1 },
+    actor_asset_id: 'generated_actor_asset',
+  };
+  const stableCheckpointKind = subjectAssets.checkpointKind(
+    'task_stable_fingerprint',
+    'brief',
+    { castMode: 'single', expectedPeople: 1 },
+    { mode: 'single', people: 1, pets: 0 },
+    { cast_profiles: [stableCastProfile] },
+  );
+  assert.strictEqual(
+    subjectAssets.checkpointKind(
+      'task_stable_fingerprint',
+      'brief',
+      { castMode: 'single', expectedPeople: 1 },
+      { mode: 'single', people: 1, pets: 0 },
+      { cast_profiles: [enrichedCastProfile] },
+    ),
+    stableCheckpointKind,
+    'generated view, contract and persistence metadata must not change the paid-generation checkpoint',
+  );
+  assert.notStrictEqual(
+    subjectAssets.checkpointKind(
+      'task_stable_fingerprint',
+      'brief',
+      { castMode: 'single', expectedPeople: 1 },
+      { mode: 'single', people: 1, pets: 0 },
+      { cast_profiles: [{ ...stableCastProfile, wardrobeText: 'materially different wardrobe' }] },
+    ),
+    stableCheckpointKind,
+    'a generation-relevant wardrobe change must create a new checkpoint',
+  );
+
+  const legacyCompatibility = harness();
+  const legacyCompatibilityRequest = {
+    taskId: 'task_legacy_checkpoint_compatibility',
+    body: {
+      brief: 'One spokesperson presents the product',
+      cast_mode: 'single',
+      expected_people: 1,
+      person_spec: { castMode: 'single', expectedPeople: 1 },
+      cast_profiles: [stableCastProfile],
+    },
+  };
+  const legacyInitial = await subjectAssets.generateSubjectBundle(legacyCompatibilityRequest, legacyCompatibility.deps);
+  assert.strictEqual(legacyCompatibility.submissions(), 4);
+  const storedCheckpoint = legacyCompatibility.outputs.get(
+    `${legacyCompatibilityRequest.taskId}:${legacyInitial.checkpoint_kind}`,
+  );
+  legacyCompatibility.outputs.delete(`${legacyCompatibilityRequest.taskId}:${legacyInitial.checkpoint_kind}`);
+  legacyCompatibility.outputs.set(
+    `${legacyCompatibilityRequest.taskId}:subject_asset_checkpoint:${legacyCompatibilityRequest.taskId}:legacy-fingerprint`,
+    storedCheckpoint,
+  );
+  const legacyReused = await subjectAssets.generateSubjectBundle({
+    ...legacyCompatibilityRequest,
+    body: {
+      ...legacyCompatibilityRequest.body,
+      cast_profiles: [enrichedCastProfile],
+    },
+  }, legacyCompatibility.deps);
+  assert.strictEqual(
+    legacyCompatibility.submissions(),
+    4,
+    'a complete semantically compatible legacy checkpoint must migrate without another paid image submission',
+  );
+  assert.strictEqual(legacyReused.cast_assets[0].atomic_assets.length, 17);
   assert.doesNotThrow(() => personIdentity.assertVerifiedPerson({
     cast_mode: 'human_pet',
     expected_people: 3,
@@ -236,7 +359,7 @@ function harness({ cancelAt = 0 } = {}) {
       subject_targets: [{ kind: 'human', index: 0, id: 'cast_1' }],
     },
   }, scoped.deps);
-  assert.strictEqual(scoped.submissions(), 1, 'scoped subject regeneration must submit only the selected person');
+  assert.strictEqual(scoped.submissions(), 4, 'scoped subject regeneration must submit only the selected complete person dossier');
   assert.strictEqual(scopedBundle.generated_counts.people, 1);
   assert.strictEqual(scopedBundle.generated_counts.pets, 0);
   assert.notStrictEqual(scopedBundle.cast_assets[0].actor_id, bundle.cast_assets[0].actor_id, 'selected person must receive a new asset');
@@ -468,7 +591,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
-  assert.strictEqual(first.submissions(), 1, 'cancellation must stop before the second paid image submission');
+  assert.strictEqual(first.submissions(), 4, 'cancellation must stop before the second person dossier starts');
   const cancelledCheckpoint = Array.from(resumeStore.values())[0];
   assert.strictEqual(cancelledCheckpoint.status, 'partial', 'a cancelled batch with completed assets must not remain stuck in running state');
   assert.strictEqual(cancelledCheckpoint.error_code, 'USER_CANCELLED');
@@ -476,7 +599,7 @@ function harness({ cancelAt = 0 } = {}) {
   second.deps.storage.getOutput = (taskId, kind) => resumeStore.get(`${taskId}:${kind}`) || null;
   second.deps.storage.saveOutput = (taskId, kind, value) => resumeStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
   const resumed = await subjectAssets.generateSubjectBundle(request, second.deps);
-  assert.strictEqual(second.submissions(), 1, 'resume must reuse the completed first member and generate only the missing member');
+  assert.strictEqual(second.submissions(), 4, 'resume must reuse the completed first dossier and generate only the missing person');
   assert.strictEqual(resumed.cast_assets.length, 2);
 
   const failureStore = new Map();
@@ -518,7 +641,7 @@ function harness({ cancelAt = 0 } = {}) {
   failureResume.deps.storage.getOutput = (taskId, kind) => failureStore.get(`${taskId}:${kind}`) || null;
   failureResume.deps.storage.saveOutput = (taskId, kind, value) => failureStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
   const recoveredFailure = await subjectAssets.generateSubjectBundle(failureRequest, failureResume.deps);
-  assert.strictEqual(failureResume.submissions(), 1, 'retry after a partial failure must not regenerate the completed paid member');
+  assert.strictEqual(failureResume.submissions(), 0, 'retry after QA failure must reuse all completed category atlases for both people');
   assert.strictEqual(recoveredFailure.cast_assets.length, 2);
 
   const concurrent = harness();
@@ -549,7 +672,7 @@ function harness({ cancelAt = 0 } = {}) {
     'concurrent requests for the same task must be rejected even when their checkpoint kinds differ',
   );
   await firstConcurrent;
-  assert.strictEqual(concurrent.submissions(), 2, 'only one concurrent batch may submit paid subject generations');
+  assert.strictEqual(concurrent.submissions(), 8, 'only one concurrent batch may submit two complete four-atlas dossiers');
 
   const missingProfiles = harness();
   await assert.rejects(
@@ -582,7 +705,7 @@ function harness({ cancelAt = 0 } = {}) {
   }, single.deps);
   assert.strictEqual(singleBundle.cast_assets.length, 1);
   assert.strictEqual(singleBundle.pet_profiles.length, 0);
-  assert.strictEqual(single.submissions(), 1, 'single person must use one independent profile and one submission');
+  assert.strictEqual(single.submissions(), 4, 'single person must use one independent profile and four category-atlas submissions');
 
   const petOnly = harness();
   const petOnlyBundle = await subjectAssets.generateSubjectBundle({
@@ -620,6 +743,10 @@ function harness({ cancelAt = 0 } = {}) {
   const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const assetLoaderSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap-asset-loader.js'), 'utf8');
   assert(ui.includes("'/api/new-story-ad/subject-assets'"), 'multi-person/pet UI must use the subject bundle endpoint');
+  assert(
+    ui.includes('timeoutMs: 45 * 60 * 1000'),
+    'long-running multi-atlas subject generation must not fall back to the generic 45-second POST timeout',
+  );
   assert(subjectUi.includes('state.petProfiles') && ui.includes('NewStoryAdSubjectAssetsUI.petProfiles'), 'generated pet references must be preserved in request payloads');
   assert(ui.includes('cast_profiles: state.castProfiles') && ui.includes('expected_animals: petCount'), 'subject generation payload must submit exact counts and independent profiles');
   assert(sceneBinding.includes('MULTI_SCENE_ASSETS_REQUIRED'), 'multi-scene storyboard must be blocked until independent scene assets exist');

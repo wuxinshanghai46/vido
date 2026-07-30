@@ -48,6 +48,8 @@ const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalE
 const { createTaskViewService } = require('./taskViewService');
 const { createTextStageRecovery } = require('./textStageRecoveryService');
 const brandEnding = require('./brandEndingService');
+const propAssets = require('./propAssetService'), propTimeline = require('./propTimelineService');
+const assetPlan = require('./assetPlanService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -727,6 +729,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
     });
   }
   storage.saveOutput(taskId, 'storyboard_table', normalized);
+  if ((storage.getOutput(taskId, 'prop_assets') || []).length) propAssets.refreshPropTimelines(taskId);
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'ready',
     source: 'user_edit',
@@ -753,65 +756,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}) {
 }
 
 async function generateSceneConfig(taskId, options = {}) {
-  const task = storage.getTask(taskId);
-  if (!task) throw new Error('任务不存在');
-  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const generationId = cleanText(options.generation_id || options.generationId || '', 80);
-  storage.updateTask(taskId, { status: 'running', stage: 'scene_config' });
-  stageProgress.update(taskId, { stage: 'scene_config', phase: 'context_ready', completed: 0, total: 3, generationId, message: '已确认当前项目输入，准备生成场景配置' });
-  storage.saveStage(taskId, 'scene_config', { status: 'running', input_summary: ctx.brief });
-  const systemPrompt = [
-    '你是剧情广告场景配置 agent。只输出 JSON 对象。',
-    '你的职责是把用户需求整理成业务边界、主体、人物模式、素材使用、禁止项和建议镜头策略。',
-    '不能自行继承旧任务、不能写固定行业模板。',
-    '人物模式必须按用户需求判断：允许 single、dual、multi、no_human、animal、human_pet、auto。无人广告不得强行加入真人；动物/宠物主体不得改成人类角色；human_pet 必须分别维护人物和宠物数量及一致性。',
-    '识别剧情实际发生的每个独立物理空间；家庭、办公室、门店、户外等不同地点必须拆成独立空间，不得合并成一套场景资产。',
-    visualRealismPolicy.sceneSpecRealismRuleZh(),
-  ].join('\n');
-  const userPrompt = `${contextPrompt(ctx)}
-
-输出 JSON：
-{
-  "business_boundary": "本任务只允许使用的业务/行业/主体边界",
-  "advertised_subject": "广告主体",
-  "cast_mode": "single/dual/multi/no_human/animal/human_pet/auto",
-  "scene_mode": "single/multi",
-  "spaces": [{
-    "id":"稳定空间ID，后续 scene_id 必须与它相同",
-    "name":"中文空间名",
-    "description":"只描述这个物理空间的布局与识别特征，不得混入其它地点",
-    "story_purpose":"该空间承载的剧情作用",
-    "scene_spec":{
-      "layoutText":"仅属于这个空间的完整布局、出入口、固定结构、前后景和可复用身份",
-      "materialLightText":"仅属于这个空间的材质、色彩、光线方向和真实拍摄质感",
-      "interactionText":"仅属于这个空间的人物/商品动作区、通行路线和可用机位",
-      "negativeText":"这个空间不得出现的地点、布局、材质、人物、文字水印及其它空间元素"
-    }
-  }],
-  "asset_strategy": [{"asset_id":"素材ID","usage":"如何使用"}],
-  "story_strategy": ["剧情策略"],
-  "forbidden": ["禁止项"],
-  "suggested_shot_count": 5
-}`;
-  const result = await modelGateway.generateText({
-    taskId,
-    stage: 'new_story_ad.scene_config',
-    systemPrompt,
-    userPrompt,
-    maxTokens: 3000,
-  });
-  stageProgress.update(taskId, { stage: 'scene_config', phase: 'draft_ready', completed: 1, total: 3, generationId, message: '场景配置初稿已返回，正在校验结构' });
-  const sceneConfigDraft = await jsonRepair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway, taskId, stage: 'new_story_ad.json_repair' });
-  const language = await outputLanguage.ensureChineseOutput({ payload: sceneConfigDraft, kind: 'scene_config', taskId, context: ctx });
-  const sceneConfig = normalizeScenePlan(language.payload);
-  assertScenePlanContract(sceneConfig);
-  stageProgress.update(taskId, { stage: 'scene_config', phase: 'structure_validated', completed: 2, total: 3, generationId, message: '场景配置结构已通过，正在保存' });
-  sceneConfig.model_meta = { used_model: result.used_model, fallback_used: result.fallback_used, failed_models: result.failed_models, language_repaired: language.repaired, language_assessment: language.assessment };
-  storage.saveOutput(taskId, 'scene_config', sceneConfig);
-  storage.saveStage(taskId, 'scene_config', { status: 'done', output_summary: '场景配置已生成', diagnostics: sceneConfig.model_meta });
-  storage.updateTask(taskId, { status: 'running', stage: 'scene_config_done' });
-  stageProgress.update(taskId, { stage: 'scene_config', status: 'done', phase: 'persisted', completed: 3, total: 3, generationId, message: '场景配置已保存' });
-  return sceneConfig;
+  return assetPlan.generate(taskId, options);
 }
 
 async function generateBlueprintStage(taskId, options = {}) {
@@ -867,6 +812,15 @@ async function generateStoryboardStage(taskId, options = {}) {
   const sourceFingerprint = blueprint.fingerprint;
   const sourceRevision = Number(blueprint.revision || 1);
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
+  const existingMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
+  const existingShots = storage.getOutput(taskId, 'storyboard_table') || [];
+  const existingContracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
+  if (existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint
+    && existingShots.length && existingContracts.length === existingShots.length) {
+    storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
+    stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
+    return { shots: existingShots, review: storage.getOutput(taskId, 'quality_review') || {}, keyframe_contracts: existingContracts, model_meta: { cache_hit: true } };
+  }
   const startedAt = new Date().toISOString();
   const savedCheckpoint = storage.getOutput(taskId, 'storyboard_checkpoint') || null;
   const resumeShots = savedCheckpoint?.blueprint_fingerprint === sourceFingerprint && Array.isArray(savedCheckpoint.shots)
@@ -973,6 +927,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph };
   const contracts = buildKeyframeContracts(contractCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);
+  if ((storage.getOutput(taskId, 'prop_assets') || []).length) propAssets.refreshPropTimelines(taskId);
   storage.saveOutput(taskId, 'storyboard_meta', {
     status: 'ready',
     source: 'generated',
@@ -1316,6 +1271,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     shotNeedsPerson && actorReferenceText ? 'A hand-only or partial-person frame is allowed only when this storyboard explicitly requires that visible body part and it remains bound to the locked actor. A no-person shot forbids hands and sleeves too.' : '',
     shotNeedsPerson && Array.isArray(ctx.cast_profiles) && ctx.cast_profiles.length ? `Locked cast profiles: ${cleanText(JSON.stringify(ctx.cast_profiles), 1200)}` : '',
     subjectBoardReferenceText,
+    propTimeline.keyframePrompt(ctx.prop_assets || [], shot),
     shotNeedsPerson && ctx.person_context?.real_person_locked ? 'Use the uploaded/authorized real-person reference as the identity and appearance lock. Preserve face identity, age impression, body proportions, wardrobe family and natural real-camera skin texture.' : '',
     petIdentity.keyframePrompt(ctx, shot),
     Array.isArray(ctx.forbidden) && ctx.forbidden.length ? `Forbidden: ${cleanText(ctx.forbidden.join('; '), 400)}` : '',

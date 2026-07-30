@@ -33,9 +33,9 @@
     })();
   </script>
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
-  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260729-reference-ux-v63">
+  <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260730-dossier-performance-v64">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260730-director-workspace-v1"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260730-dossier-performance-v3"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -552,7 +552,7 @@
                     <div class="dh-nsa-person-candidates" id="dhNsaPersonCandidates" hidden></div>
                     <div class="dh-nsa-inline-actions" id="dhNsaPersonDossierActions" hidden>
                       <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaGeneratePersonDossier" type="button">生成完整人物档案</button>
-                      <small>完整档案包含 17 项原子资产，预计调用 17 次图片模型；按需执行。</small>
+                      <small>完整档案包含 17 项原子资产，由 4 类图集生成并本地拆分；失败只补缺失类别。</small>
                       <button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaApprovePersonDossier" type="button" hidden>确认并用于后续分镜</button>
                       <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaGenerateActionAssets" type="button" hidden>按分镜生成动作三联图</button>
                     </div>
@@ -568,6 +568,25 @@
                     </div>
                   </div>
                 </div>
+              </section>
+              <div class="dh-demo-section-title">独立道具档案</div>
+              <section class="dh-demo-person-source dh-nsa-prop-source" id="dhNsaPropStudio">
+                <div class="dh-nsa-prop-head">
+                  <div><b>商品、配饰与剧情道具</b><small>固定场景物件进入场景锚点；其它道具独立保存外观、状态、归属、接触和逐镜时间线。</small></div>
+                  <button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaAddProp" type="button">新增道具</button>
+                </div>
+                <div id="dhNsaPropEditor" class="dh-nsa-prop-editor" hidden>
+                  <div class="dh-nsa-prop-fields">
+                    <label><span>名称</span><input class="dh-input" data-nsa-prop-field="name" maxlength="120" placeholder="如：银色车钥匙"></label>
+                    <label><span>分类</span><select class="dh-input" data-nsa-prop-field="type"><option value="story_prop">剧情道具</option><option value="advertised_product">广告商品</option><option value="wearable_accessory">穿戴配饰</option><option value="fixed_scene_object">场景固定物件</option></select></label>
+                    <label><span>外观</span><textarea class="dh-input" data-nsa-prop-field="description" maxlength="800" placeholder="写清形状、颜色和稳定识别特征"></textarea></label>
+                    <label><span>材质 / 尺度</span><input class="dh-input" data-nsa-prop-field="material" maxlength="240" placeholder="如：拉丝金属；掌心大小"></label>
+                    <label><span>状态（逗号分隔）</span><input class="dh-input" data-nsa-prop-field="states" maxlength="300" placeholder="如：关闭, 打开, 使用后"></label>
+                    <label><span>归属 / 位置 / 接触</span><textarea class="dh-input" data-nsa-prop-field="interaction" maxlength="600" placeholder="所属人物、场景初始位置、由哪只手如何接触"></textarea></label>
+                  </div>
+                  <div class="dh-nsa-prop-actions"><button class="dh-btn dh-btn-primary dh-btn-sm" id="dhNsaGenerateProp" type="button">生成道具档案</button><button class="dh-btn dh-btn-ghost dh-btn-sm" id="dhNsaCancelProp" type="button">取消</button></div>
+                </div>
+                <div id="dhNsaPropAssets" class="dh-nsa-prop-assets"><div class="dh-luxgen-empty"><b>还没有独立道具</b><span>剧情需要持有、移动或改变状态的物件，应先在这里建立档案。</span></div></div>
               </section>
               <div class="dh-demo-section-title">场景空间锁</div>
               <div class="dh-demo-person-source dh-nsa-scene-source">

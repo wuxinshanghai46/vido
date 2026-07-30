@@ -101,6 +101,9 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.expressions.length, 6);
   assert.strictEqual(dossierDone.dossier.base_actions.length, 3);
   assert.strictEqual(dossierDone.dossier.atomic_assets.length, 17);
+  assert.strictEqual(dossierDone.dossier.category_atlases.length, 4);
+  assert.strictEqual(dossierDone.dossier.generation_summary.planned_provider_calls, 4);
+  assert.strictEqual(dossierDone.dossier.generation_summary.provider_calls_this_run, 4);
   assert.strictEqual(dossierDone.dossier.sheet.composition, 'local_sharp');
   assert.strictEqual(dossierDone.dossier.sheet.model_generated_text, false);
   assert.strictEqual(dossierDone.dossier.reference_board.composition, 'local_sharp_reference_compiler');
@@ -159,7 +162,7 @@ async function main() {
   assert.ok(compiledRefs.includes(actionDone.action_assets[0].image_url));
   assert.ok(compiledRefs.includes(dossierDone.dossier.reference_board.image_url));
 
-  assert.ok(calls.length >= 20);
+  assert.strictEqual(calls.length, 7, '2 outfit candidates + 4 dossier atlases + 1 lazy action triptych');
   assert.ok(calls.every(call => call.requireReferences === true), 'all derived person generations must require references');
   assert.ok(calls.every(call => call.inputFidelity === 'high'), 'all derived person generations must use high fidelity');
   assert.ok(calls.every(call => Array.isArray(call.referenceImages) && call.referenceImages.length >= 1));
@@ -174,7 +177,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 46,
+    checks: 50,
     strict_reference_calls: calls.length,
     outfit_candidates: candidatesDone.candidates.length,
     atomic_assets: dossierDone.dossier.atomic_assets.length,

@@ -74,7 +74,7 @@
     petProfiles: [],
     subjectGalleryOpenKeys: new Set(),
     personGenerationProgress: null, subjectCheckpointTimer: null,
-    sceneAssets: [],
+    sceneAssets: [], propAssets: [],
     storySetupExpanded: false, storySetupConfirmed: false,
     pendingChangeScope: 'none', pendingMediaChange: 'none',
     pendingChangeDomains: [],
@@ -1060,7 +1060,7 @@
       person_spec: noHuman ? { castMode: 'no_human' } : person,
       person_asset: personAsset, subject_board_url: state.context?.subject_board_url || personAsset?.subject_board_url || '',
       scene_spec: sceneSpec,
-      scene_assets: sceneAssets,
+      scene_assets: sceneAssets, prop_assets: state.propAssets || [],
       scene_mode: within('#dhNsaAdSceneMode')?.value || 'auto',
       reference_video_analysis: window.NewStoryAdReferenceVideoAnalysis?.taskPayloadOrSaved?.(state.context?.reference_video_analysis) || null,
       cast_profiles: castProfiles,
@@ -1636,7 +1636,7 @@
     state.videoShotStatuses = response.video_shot_statuses || bundle.video_shot_statuses || state.videoShotStatuses || [];
     if (Object.prototype.hasOwnProperty.call(response, 'media_result')) state.mediaResult = response.media_result || null;
     else if (Object.prototype.hasOwnProperty.call(bundle, 'media_result')) state.mediaResult = bundle.media_result || null;
-    state.finalVideo = outputs.final_video || response.final_video || state.finalVideo;
+    state.finalVideo = outputs.final_video || response.final_video || state.finalVideo; state.propAssets = outputs.prop_assets || response.prop_assets || state.context?.prop_assets || state.propAssets || [];
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, {
         request: state.context || {},
@@ -1830,7 +1830,7 @@
     state.review = outputs.quality_review || state.review;
     state.ttsAudio = outputs.tts_audio || state.ttsAudio;
     state.videoClips = outputs.video_clips || state.videoClips || [];
-    state.finalVideo = outputs.final_video || state.finalVideo;
+    state.finalVideo = outputs.final_video || state.finalVideo; state.propAssets = outputs.prop_assets || request.prop_assets || request.propAssets || state.propAssets || [];
     if (window.NewStoryAdSceneAssets?.hydrate) {
       window.NewStoryAdSceneAssets.hydrate(state, { request, outputs, response: bundle });
     } else {
@@ -5494,7 +5494,7 @@
     const timer = setInterval(updateProgress, 1400);
     try {
       const r = await requestCancelableGeneration('subject_assets', {
-        path: '/api/new-story-ad/subject-assets',
+        path: '/api/new-story-ad/subject-assets', timeoutMs: 45 * 60 * 1000,
         label: '生成人物 / 宠物资产中...',
         body: {
           brief: payload().brief,
@@ -6387,7 +6387,7 @@
     });
   }
   window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, applyReferencePersonProjection: (projection, analysisId) => window.NewStoryAdPersonReferenceInheritance?.applyReference?.({ state, projection, analysisId, getPersonSpec: personSpec, writeAllFields, markSourceDirty, renderAll, scheduleAutoSave }) || false, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
-  document.addEventListener('new-story-ad:mount', mount);
+  document.addEventListener('new-story-ad:mount', mount); document.addEventListener('new-story-ad:asset-studio-ready', () => renderAll());
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       if (document.querySelector('.dh-tab-pane[data-pane="new-story-ad"].active')) mount();
@@ -6396,4 +6396,3 @@
     mount();
   }
 })();
-

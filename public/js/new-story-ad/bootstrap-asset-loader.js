@@ -1,6 +1,10 @@
 (() => {
   const ASSET_STUDIO_SCRIPT_PATHS = [
+    '/js/new-story-ad/subject-assets-ui.js',
+    '/js/new-story-ad/person-dossier-ui.js',
+    '/js/new-story-ad/scene-assets.js',
     '/js/new-story-ad/subject-profile-assist.js',
+    '/js/new-story-ad/prop-assets.js',
     '/js/new-story-ad/real-person-dossier.js',
     '/js/new-story-ad/actor-library.js',
   ];

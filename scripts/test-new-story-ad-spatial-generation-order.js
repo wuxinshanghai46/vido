@@ -764,6 +764,10 @@ async function main() {
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.person_sheet'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), 'gpt-image-2');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_sheet');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_sheet');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.scene_asset');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.scene_asset'), 'new_story_ad.scene_asset');
     assert.equal(mediaAdapter.requiredImageModelForStage('unrelated.image'), '');
     const policyCandidates = mediaAdapter.applyImageModelPolicy('new_story_ad.keyframe', [
       { provider_id: 'deyunai', model_id: 'nano-banana-pro' },

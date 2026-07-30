@@ -70,8 +70,9 @@ const PIPELINE_SCHEMA = {
     { id: 'luxury_ad.post',         name: '5 广告合成 / 字幕后期',   type: 'video', desc: '镜头拼接、字幕、调色、片尾包装等后期处理' },
   ],
   '新剧情广告': [
-    { id: 'new_story_ad.reference_video_vision', name: '0 参考视频内容识别', type: 'vlm', desc: '读取参考视频证据帧，生成可编辑的人物、场景、剧情与镜头分析草稿' },
-    { id: 'new_story_ad.scene_config', name: '1 场景配置', type: 'story', desc: '把任务需求整理成独立上下文、主体、人物、素材和禁止项，不继承旧任务' },
+  { id: 'new_story_ad.reference_video_vision', name: '0 参考视频内容识别', type: 'vlm', desc: '读取参考视频证据帧，生成可编辑的人物、场景、剧情与镜头分析草稿' },
+  { id: 'new_story_ad.asset_plan', name: '1 统一资产计划', type: 'story', desc: '一次规划人物、道具、场景和故事种子；默认继承场景配置文本路由' },
+  { id: 'new_story_ad.scene_config', name: '1 场景配置', type: 'story', desc: '把任务需求整理成独立上下文、主体、人物、素材和禁止项，不继承旧任务' },
     { id: 'new_story_ad.blueprint', name: '2 剧情蓝图', type: 'story', desc: '生成角色、剧情 beat、可见证据和商业叙事结构' },
     { id: 'new_story_ad.storyboard_table', name: '3 分镜表', type: 'story', desc: '把剧情蓝图拆成逐镜可执行分镜表，包含画面、动作、对白、旁白和时长' },
     { id: 'new_story_ad.storyboard_rewrite', name: '3.1 分镜表重写', type: 'story', desc: '根据商用 QA 的可改写问题重写分镜表，不改变任务边界' },
@@ -125,6 +126,11 @@ const NEW_STORY_AD_REFERENCE_VISION_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
   { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 2, enabled: true },
   { provider_id: 'webang-maas', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+];
+const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
+  { provider_id: 'zhipu', model_id: 'glm-4.6v-flash', priority: 1, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 2, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
 ];
 const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
@@ -361,6 +367,12 @@ const STAGE_DEFAULTS = {
   ],
   // 新剧情广告
   'new_story_ad.reference_video_vision': NEW_STORY_AD_REFERENCE_VISION_DEFAULTS,
+  'new_story_ad.person_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.person_dossier_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.product_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.scene_vision': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.scene_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.asset_plan': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.scene_config': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.blueprint': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.storyboard_table': NEW_STORY_AD_TEXT_DEFAULTS,
