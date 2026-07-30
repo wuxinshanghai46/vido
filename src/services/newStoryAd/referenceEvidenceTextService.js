@@ -111,9 +111,14 @@ function kindValue(value = '', kind = 'summary', fallback = '') {
   return summary(row, fallback);
 }
 
+function chronologyPrefix(value = '') {
+  const source = String(value || '');
+  return clean(source.match(/^\s*((?:\d+(?:\.\d+)?\s*[—–~-]\s*)?\d+(?:\.\d+)?\s*秒)/u)?.[1] || '', 80);
+}
+
 function chronologyItem(value = '', fallback = '') {
   const source = String(value || '');
-  const prefix = clean(source.match(/^\s*((?:\d+(?:\.\d+)?\s*[—–~-]\s*)?\d+(?:\.\d+)?\s*秒)/u)?.[1] || '', 80);
+  const prefix = chronologyPrefix(source);
   const concise = kindValue(source, 'summary', fallback);
   return clean([prefix, concise].filter(Boolean).join('：'), 900);
 }
@@ -195,8 +200,16 @@ function sanitizeAnalysis(input = {}) {
     lighting,
     human_actions: humanActions,
   };
-  sourceFacts.chronological_story = (Array.isArray(existing.chronological_story) ? existing.chronological_story : [])
-    .map((item, index) => chronologyItem(item, summary(parsedPrompts[index] || {}, index ? '推进产品细节与使用情境' : '建立产品与空间关系')))
+  const priorChronology = Array.isArray(existing.chronological_story) ? existing.chronological_story : [];
+  sourceFacts.chronological_story = (parsedPrompts.length
+    ? parsedPrompts.map((row, index) => clean([
+        chronologyPrefix(priorChronology[index] || ''),
+        summary(row, index ? '推进产品细节与使用情境' : '建立产品与空间关系'),
+      ].filter(Boolean).join('：'), 900))
+    : priorChronology.map((item, index) => chronologyItem(
+        item,
+        index ? '推进产品细节与使用情境' : '建立产品与空间关系',
+      )))
     .filter(Boolean);
 
   const scenePrompts = prompts.map((item, index) => {
@@ -219,6 +232,10 @@ function sanitizeAnalysis(input = {}) {
   });
   const chronology = sourceFacts.chronological_story;
   const storyOutline = { ...(source.story_outline || {}) };
+  const remapChronology = value => {
+    const index = priorChronology.findIndex(item => clean(item, 1200) === clean(value, 1200));
+    return index >= 0 ? (chronology[index] || clean(value, 700)) : clean(value, 700);
+  };
   if (FRAME_MARKER.test(JSON.stringify(storyOutline))) {
     storyOutline.logline = `通过${environment || '真实空间'}中的连续展示，让观众理解${product || '广告主体'}的核心价值与使用结果。`;
     storyOutline.opening = chronology[0] || `建立${product || '广告主体'}与${environment || '真实空间'}的关系。`;
@@ -227,6 +244,10 @@ function sanitizeAnalysis(input = {}) {
       ? '画面从整体关系推进到产品细节和结果证明。'
       : `人物与${product || '广告主体'}发生功能性互动，产品价值从外观展示转为可感知体验。`;
     storyOutline.resolution = chronology[chronology.length - 1] || '完成产品信息收束与行动引导。';
+  } else if (priorChronology.length && chronology.length) {
+    storyOutline.opening = remapChronology(storyOutline.opening || '');
+    storyOutline.development = remapChronology(storyOutline.development || '');
+    storyOutline.resolution = remapChronology(storyOutline.resolution || '');
   }
   const plotBeats = (Array.isArray(source.plot_beats) ? source.plot_beats : []).map((item, index) => ({
     ...item,
@@ -274,6 +295,7 @@ module.exports = {
   facts,
   summary,
   kindValue,
+  chronologyPrefix,
   chronologyItem,
   buildBrief,
   sanitizeAnalysis,

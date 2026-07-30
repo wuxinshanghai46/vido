@@ -460,7 +460,23 @@ function testAssistContentRepairIsDeterministic() {
         },
         scene_spec: { layoutText: raw, materialLightText: raw },
         reference_video_analysis: {
-          source_facts: { product_or_service: raw, environment: raw, materials: [raw], colors: [raw], layout: raw, lighting: raw },
+          source_facts: {
+            product_or_service: raw,
+            environment: raw,
+            materials: [raw],
+            colors: [raw],
+            layout: raw,
+            lighting: raw,
+            chronological_story: [
+              `0.3—27.16 秒：${raw}`,
+              `36.11—62.97 秒：${rawSecond}`,
+            ],
+          },
+          story_outline: {
+            opening: `0.3—27.16 秒：${raw}`,
+            development: `0.3—27.16 秒：${raw}`,
+            resolution: `36.11—62.97 秒：${rawSecond}`,
+          },
           scene_prompts: [
             { layout_prompt: raw, material_light_prompt: raw },
             { layout_prompt: rawSecond, material_light_prompt: rawSecond },
@@ -484,6 +500,18 @@ function testAssistContentRepairIsDeterministic() {
   assert.match(once.outputs[1].payload.business_boundary, /城市中的现代建筑/);
   assert.doesNotMatch(once.outputs[2].payload.scene_plan.business_boundary, /逐帧分析|时间点\s*0\.3\s*秒/);
   assert.equal(once.task.request.reference_video_analysis.source_facts.product_or_service, '全景幕墙窗');
+  assert.doesNotMatch(
+    JSON.stringify(once.task.request.reference_video_analysis.source_facts.chronological_story),
+    /逐帧分析|时间点/,
+  );
+  assert.equal(
+    once.task.request.reference_video_analysis.story_outline.opening,
+    once.task.request.reference_video_analysis.source_facts.chronological_story[0],
+  );
+  assert.equal(
+    once.task.request.reference_video_analysis.story_outline.resolution,
+    once.task.request.reference_video_analysis.source_facts.chronological_story[1],
+  );
   assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /室内窗边/);
   assert.match(once.task.request.reference_video_analysis.scene_prompts[1].layout_prompt, /薄纱窗帘/);
 }
