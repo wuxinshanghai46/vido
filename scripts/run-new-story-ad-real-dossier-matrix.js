@@ -66,6 +66,33 @@ async function main() {
     assert.ok(fs.existsSync(auditPath), `resume audit not found: ${auditPath}`);
     audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
     assert.equal(audit.run_id, runId);
+    if (process.argv.includes('--verify-completed-run')) {
+      const successes = audit.provider_submissions.filter(item => item.status === 'success');
+      const incidents = audit.provider_submissions.filter(item => (
+        item.status === 'failed'
+        && item.error?.billing_state === 'unknown'
+        && item.error?.provider_submission_state === 'submitted_unknown'
+      ));
+      assert.equal(audit.provider_submissions.length, expectedSubmissions);
+      assert.equal(successes.length, expectedSubmissions - 1);
+      assert.equal(incidents.length, 1);
+      assert.equal(audit.status, 'completed_with_external_provider_incident');
+      assert.equal(audit.verification.person?.qa?.pass, true);
+      assert.equal(audit.verification.person?.atomic_asset_count, 17);
+      assert.equal(audit.verification.props?.state_view_count, 2);
+      assert.equal(audit.verification.dual_scenes?.length, 2);
+      assert.equal(audit.verification.dual_scenes?.[1]?.view_count, 5);
+      assert.equal(audit.verification.dual_scenes?.[1]?.layout_preflight?.pass, true);
+      console.log(JSON.stringify({
+        passed: true,
+        verified_completed_run: runId,
+        provider_image_submissions: audit.provider_submissions.length,
+        successful_image_submissions: successes.length,
+        external_provider_incidents: incidents.length,
+        no_provider_calls_executed: true,
+      }));
+      return;
+    }
     assert.ok(audit.provider_submissions.length < maxSubmissions, 'resume audit has no remaining authorized image submissions');
     const recordedFailures = audit.provider_submissions.filter(item => item.status !== 'success');
     const acknowledgedExternalIncidents = recordedFailures.filter(item => (

@@ -9,6 +9,7 @@ const sceneAssets = require('../src/services/newStoryAd/sceneAssetService');
 function harness() {
   const outputs = new Map();
   let calls = 0;
+  const prompts = [];
   const storage = {
     getOutput(taskId, kind) {
       return outputs.get(`${taskId}:${kind}`) || null;
@@ -21,6 +22,7 @@ function harness() {
   const mediaAdapter = {
     async generateImage(options) {
       calls += 1;
+      prompts.push(options.prompt);
       await options.onSubmitting?.();
       await options.onSubmitted?.({ providerRequestId: `request-${calls}`, taskId: `provider-${calls}` });
       return {
@@ -39,7 +41,7 @@ function harness() {
       }));
     },
   };
-  return { storage, mediaAdapter, calls: () => calls };
+  return { storage, mediaAdapter, calls: () => calls, prompts };
 }
 
 (async () => {
@@ -74,6 +76,9 @@ function harness() {
   assert.strictEqual(stateful.shot_timeline.length, 2);
   assert.strictEqual(stateful.shot_timeline[1].state, '拿起');
   assert.strictEqual(stateful.generation_summary.planned_provider_calls, 2);
+  assert(run.prompts[1].includes('physically plausible neutral hand contact'));
+  assert(run.prompts[1].includes('resting placement'));
+  assert(!run.prompts[1].includes('No person, hand'));
 
   const resumed = await propAssets.generatePropAsset(taskId, {
     ...stateful,

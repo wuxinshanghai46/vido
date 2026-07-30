@@ -234,6 +234,7 @@ const realMatrixSource = path.join(root, 'outputs', 'audits', 'real-dossier-matr
 const remoteMatrixSourceDir = '/opt/vido/audits/real-dossier-matrix-inputs';
 const remoteMatrixSource = `${remoteMatrixSourceDir}/pexels-jingru-li-19748978.jpg`;
 const realMatrixResumeRunId = String(process.env.VIDO_REAL_MATRIX_RESUME_RUN_ID || '').trim();
+const realMatrixVerifyRunId = String(process.env.VIDO_REAL_MATRIX_VERIFY_RUN_ID || '').trim();
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;
 const deployLockDir = '/opt/vido/deploy-locks/new-story-ad-subject-scene-recovery';
@@ -357,6 +358,9 @@ client.on('ready', async () => {
       .join(' && ');
     const isolatedDossierOutput = `${backupDir}/dossier-test-outputs`;
     const isolatedDossierDb = `${backupDir}/dossier-test.sqlite`;
+    const realMatrixCommand = realMatrixVerifyRunId
+      ? `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)} --resume-run-id=${quote(realMatrixVerifyRunId)} --verify-completed-run`
+      : `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}${realMatrixResumeRunId ? ` --resume-run-id=${quote(realMatrixResumeRunId)}` : ''}`;
     const localHashes = Object.fromEntries(files.map(file => [
       file,
       require('crypto').createHash('sha256').update(require('fs').readFileSync(path.join(root, file))).digest('hex'),
@@ -368,7 +372,7 @@ client.on('ready', async () => {
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-active-tasks.js',
       `mkdir -p ${quote(isolatedDossierOutput)}`,
       `env OUTPUT_DIR=${quote(isolatedDossierOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 DB_PATH=${quote(isolatedDossierDb)} npm run story-ad:dossier:test`,
-      `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}${realMatrixResumeRunId ? ` --resume-run-id=${quote(realMatrixResumeRunId)}` : ''}`,
+      realMatrixCommand,
       'npm run platform:upgrade:test',
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-reference-video-runtime.js',
       'pm2 reload vido --update-env >/dev/null',

@@ -23,13 +23,27 @@ function atlasPrompt(prop = {}) {
 }
 
 function statePrompt(prop = {}) {
+  const stateContexts = prop.states.map(state => {
+    const normalized = String(state || '').toLowerCase();
+    if (/(held|hold|grip|hand|拿|握|持)/.test(normalized)) {
+      return `${state}: show a close, physically plausible neutral hand contact that clearly demonstrates the declared held state.`;
+    }
+    if (/(rest|placed|tray|table|放|置|托盘|桌)/.test(normalized)) {
+      return `${state}: show the object resting naturally at ${prop.placement || 'its declared support surface'}.`;
+    }
+    return `${state}: make the declared physical state visually unmistakable while preserving object identity.`;
+  });
   return [
     'Create one state-variation contact sheet of the exact same prop identity.',
     `States left-to-right, top-to-bottom: ${prop.states.join(', ')}.`,
     `Use exactly ${prop.states.length} cells in a ${Math.min(2, prop.states.length)} column grid.`,
     `Prop: ${prop.name}. Preserve geometry, material, scale and brand-safe appearance.`,
-    'Only the declared state may change. Neutral background. No person, hand, text, caption or watermark.',
-  ].join('\n');
+    ...stateContexts,
+    prop.hand_contact ? `Declared hand contact: ${prop.hand_contact}.` : '',
+    prop.placement ? `Declared resting placement: ${prop.placement}.` : '',
+    'Only the declared interaction state may change. Keep any hand or support surface minimal and physically realistic; never show a full person or unrelated scene.',
+    'No text, caption, logo, label or watermark.',
+  ].filter(Boolean).join('\n');
 }
 
 function checkpointRepository(storage, taskId, propId) {
