@@ -1,11 +1,11 @@
 # VIDO 2026-07-30 全日升级与回家续接交接
 
-> 日期：2026-07-30  
-> 目标分支：`codex/story-ad-v3-upgrade`  
-> 目标远端：`origin`（Gitee）  
-> 交接前基线：`9ea8b837e58dfc96854fcca4a851a976953a80aa`  
-> 功能运行基线：`7569282844d98261772d73c4fb22d13978e1e163`  
-> 当前结论：今日代码、真实供应商验证、生产部署和测试门禁均已闭环，可以在家中拉取后新建任务测试。  
+> 日期：2026-07-30
+> 目标分支：`codex/story-ad-v3-upgrade`
+> 目标远端：`origin`（Gitee）
+> 交接前基线：`9ea8b837e58dfc96854fcca4a851a976953a80aa`
+> 功能运行基线：`7569282844d98261772d73c4fb22d13978e1e163`
+> 当前结论：今日代码、真实供应商验证、生产部署和测试门禁均已闭环，可以在家中拉取后新建任务测试。
 > 安全要求：本文不包含密码、API Key、Token 或 SSH 私钥。
 
 ## 1. 回家后直接执行
@@ -479,4 +479,3 @@ ef27e79 test: persist prop state visual approval evidence
 - `docs/plans/2026-07-30-story-ad-unified-dossier-performance-plan.md`
 - `docs/handoffs/HANDOFF_PROTOCOL.md`
 - `AGENTS.md`
-
