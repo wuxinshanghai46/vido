@@ -520,6 +520,8 @@ function normalizeCastProfiles(input) {
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
       displayName: cleanText(profile.displayName || profile.name || '', 120),
       roleName: cleanText(profile.roleName || profile.role || '', 120),
+      field_authority: subjectProfileText.profileFieldAuthority(profile),
+      user_edited_fields: subjectProfileText.userEditedFields(profile),
       sourceType: cleanText(profile.sourceType || profile.reference_kind || '', 80),
       assetId: cleanText(profile.assetId || profile.actor_asset_id || profile.id || '', 120),
       actor_asset_id: cleanText(profile.actor_asset_id || '', 120),

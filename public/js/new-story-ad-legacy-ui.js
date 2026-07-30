@@ -6201,7 +6201,7 @@
         return;
       }
       if (target?.matches?.('[data-nsa-subject-field]')) {
-        window.NewStoryAdSubjectAssetsUI.updateProfileFromField(state, target);
+        window.NewStoryAdSubjectAssetsUI.updateProfileFromField(state, target); window.NewStoryAdSubjectProfileAssist?.recordManualEdit?.(state, target);
         window.NewStoryAdSubjectProfileAuthority?.refreshProfileValidation?.(within('#dhNsaAdSubjectProfiles'), state, collectPersonSpec(), escapeHtml);
         window.NewStoryAdPersonReferenceInheritance?.markManual?.(state);
         markSourceDirty('person');

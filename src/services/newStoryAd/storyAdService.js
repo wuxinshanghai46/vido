@@ -3490,6 +3490,15 @@ async function assistBrief(body = {}, user = {}) {
   const hasAssistSubjectTarget = !!(body.assist_subject_target || body.assistSubjectTarget);
   const assistSubjectTarget = isPersonSpec ? assistSubjectProfiles.resolveAssistSubjectTarget(body, ctx) : null;
   if (isPersonSpec && hasAssistSubjectTarget && !assistSubjectTarget) { const error = new Error('单人物辅助补齐目标无效；没有调用文本模型'); error.code = 'ASSIST_SUBJECT_TARGET_INVALID'; error.status = 400; throw error; }
+  const assistReplaceableFields = assistSubjectTarget
+    ? assistSubjectProfiles.resolveReplaceableFields(body, assistSubjectTarget)
+    : [];
+  if (assistSubjectTarget && !assistReplaceableFields.length) {
+    const error = new Error('该人物没有可由 AI 完善的字段；没有调用文本模型');
+    error.code = 'ASSIST_PERSON_PROFILE_NOTHING_TO_COMPLETE';
+    error.status = 409;
+    throw error;
+  }
   const currentScenePlan = isSceneSpec ? normalizeScenePlan(body.scene_plan || body.scenePlan || body.scene_config || body.sceneConfig || {}) : { spaces: [] };
   const assistSceneTargetId = isSceneSpec ? cleanText(body.target_space_id || body.targetSpaceId || '', 100) : '';
   const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
@@ -3611,7 +3620,7 @@ async function assistBrief(body = {}, user = {}) {
   } : null;
   const userPrompt = `${contextPrompt(ctx)}
 模式：${isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
-${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只补齐目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。只返回这一名人物的一条 cast_profiles 记录，保持已有非空字段，补齐其空白字段；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
+${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；这些字段属于空白、参考创作方向或系统默认描述，必须改写为可直接生成人物资产的具体设定。其余字段均为用户或业务事实权威，必须原样保留；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
   ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 输出 JSON：
@@ -3622,6 +3631,18 @@ ${outputSchema}`;
     systemPrompt,
     userPrompt,
     maxTokens: 3000,
+    validateText: assistSubjectTarget ? raw => {
+      try {
+        const draft = jsonRepair.parseJson(raw, 'object');
+        return assistSubjectProfiles.modelDraftQuality(
+          draft,
+          assistSubjectTarget,
+          assistReplaceableFields,
+        ).valid;
+      } catch {
+        return false;
+      }
+    } : null,
   });
   const parsed = await jsonRepair.parseOrRepair({
     raw: result.text,
@@ -3645,7 +3666,15 @@ ${outputSchema}`;
     };
   }
   if (isPersonSpec) {
-    return assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result, enforcePersonSpec: enforceAssistedPersonSpec, target: assistSubjectTarget });
+    return assistSubjectProfiles.buildResponse({
+      parsed,
+      context: ctx,
+      mode,
+      modelResult: result,
+      enforcePersonSpec: enforceAssistedPersonSpec,
+      target: assistSubjectTarget,
+      replaceableFields: assistReplaceableFields,
+    });
   }
   if (isSceneSpec) {
     return assistScenePlan.buildResponse({ parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId,

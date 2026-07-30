@@ -811,6 +811,11 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(mergeAssistedHumanProfile(isolatedAssistState, 1, {
     assist_subject_target: { kind: 'human', index: 1, id: 'cast_2' },
     cast_profiles: [castProfile(2, { displayName: '小杰', roleName: '儿子' })],
+  }), false, 'an assist response without an explicit replaceable-field contract must not overwrite the profile');
+  assert.strictEqual(mergeAssistedHumanProfile(isolatedAssistState, 1, {
+    assist_subject_target: { kind: 'human', index: 1, id: 'cast_2' },
+    assist_replaceable_fields: ['displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'],
+    cast_profiles: [castProfile(2, { displayName: '小杰', roleName: '儿子' })],
   }), true);
   assert.strictEqual(JSON.stringify(isolatedAssistState.castProfiles[0]), preservedSnapshot, 'single-person assist must preserve another generated person byte-for-byte');
   assert.strictEqual(JSON.stringify(isolatedAssistState.petProfiles), petSnapshot, 'single-person assist must preserve pets byte-for-byte');

@@ -491,6 +491,28 @@
     if (request.bgm_asset) state.bgmAsset = request.bgm_asset;
   }
 
+  function migrateReferenceProfileAuthority(profiles = [], spec = {}, source = null) {
+    if (source?.kind !== 'reference_video' || source.manualOverride === true) return profiles;
+    const inherited = {
+      appearanceText: spec.appearanceText,
+      wardrobeText: spec.wardrobeText || spec.wardrobe || spec.outfit,
+      hairMakeupText: spec.hairMakeupText || spec.hair_makeup || spec.hair,
+      negativeText: spec.negativeText || spec.negative,
+    };
+    const normalized = value => String(value || '').replace(/\s+/g, ' ').trim();
+    return profiles.map(profile => {
+      const authority = { ...(profile.field_authority || profile.fieldAuthority || {}) };
+      Object.entries(inherited).forEach(([field, value]) => {
+        if (!authority[field] && normalized(value) && normalized(profile[field]) === normalized(value)) {
+          authority[field] = field === 'negativeText'
+            ? 'reference_safety'
+            : (field === 'hairMakeupText' ? 'system_default' : 'reference_direction');
+        }
+      });
+      return { ...profile, field_authority: authority };
+    });
+  }
+
   function hydratePersonSpec(request = {}, ctx = {}) {
     const { state, root, applyPersonAssetConstraints } = ctx;
     if (!state) return;
@@ -529,6 +551,7 @@
         window.NewStoryAdPersonPetSpec?.sanitizeProfileTexts?.(profile, profile?.age || profile?.ageRange || spec.age || '') || profile
       ))
       : [];
+    state.castProfiles = migrateReferenceProfileAuthority(state.castProfiles, spec, state.personSpecSource);
     state.petProfiles = Array.isArray(request.pet_profiles || request.petProfiles)
       ? (request.pet_profiles || request.petProfiles)
       : [];
@@ -656,6 +679,7 @@
     hydrateTaskBundle,
     hydrateAssets,
     hydratePersonSpec,
+    migrateReferenceProfileAuthority,
     latestSubjectCheckpoint,
     hydrateSubjectCheckpoint,
     progressStageMatches,

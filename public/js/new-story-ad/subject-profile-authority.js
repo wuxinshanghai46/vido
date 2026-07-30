@@ -15,9 +15,15 @@
 
   function validationHtml(state = {}, spec = {}, escapeHtml = value => String(value)) {
     const errors = ui()?.profileErrors?.(state, spec) || [];
+    const pending = (state.castProfiles || []).some(profile => (
+      window.NewStoryAdSubjectProfileAssist?.fieldsNeedingAssist?.(state, profile) || []
+    ).some(field => ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'].includes(field)));
+    if (!errors.length && pending) {
+      return '<div class="dh-task-warning">人物仍是参考方向，请点击“AI完善该人物详细设定”</div>';
+    }
     return errors.length
       ? `<div class="dh-task-warning">${escapeHtml(errors.join('；'))}</div>`
-      : '<div class="dh-task-ok">逐主体档案数量和必填信息完整</div>';
+      : '<div class="dh-task-ok">人物数量和必填信息完整</div>';
   }
 
   function refreshProfileValidation(scope, state = {}, spec = {}, escapeHtml = value => String(value)) {

@@ -17,6 +17,45 @@ function resolveAssistSubjectTarget(body = {}, context = {}) {
   return { kind: 'human', index, id: currentId, profile: current };
 }
 
+function resolveReplaceableFields(body = {}, target = null) {
+  if (!target?.profile) return [];
+  const allowed = subjectProfileText.replaceableAssistFields(target.profile, {
+    referenceOwned: contextIsReferenceOwned(body),
+  });
+  const requested = subjectProfileText.stringList(
+    body.assist_replaceable_fields || body.assistReplaceableFields,
+    subjectProfileText.ASSIST_PROFILE_FIELDS,
+  );
+  if (requested.length) {
+    const allowedSet = new Set(allowed);
+    return requested.filter(field => allowedSet.has(field));
+  }
+  return allowed;
+}
+
+function contextIsReferenceOwned(body = {}) {
+  const source = body.person_context?.spec_source || body.personContext?.specSource || {};
+  return ['reference_video', 'reference_analysis'].includes(cleanText(source.kind || '', 40))
+    && source.manualOverride !== true
+    && source.manual_override !== true;
+}
+
+function modelDraftQuality(parsed = {}, target = null, replaceableFields = []) {
+  if (!target?.kind) return { valid: true, issues: [], details: {} };
+  const profiles = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
+    ? (parsed.cast_profiles || parsed.castProfiles)
+    : [];
+  const candidate = profiles.find(profile => cleanText(profile?.id || '', 80) === target.id) || profiles[0] || {};
+  const detailed = replaceableFields.filter(field => subjectProfileText.ASSIST_DETAIL_FIELDS.includes(field));
+  const quality = subjectProfileText.assistedProfileQuality(candidate, detailed);
+  const missing = replaceableFields.filter(field => !cleanText(candidate[field] || '', 1200));
+  return {
+    valid: missing.length === 0 && quality.valid,
+    issues: [...new Set([...missing, ...quality.issues])],
+    details: quality.details,
+  };
+}
+
 function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
   let source = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
     ? (parsed.cast_profiles || parsed.castProfiles)
@@ -69,6 +108,7 @@ function buildResponse({
   modelResult = {},
   enforcePersonSpec,
   target = null,
+  replaceableFields = [],
 } = {}) {
   if (typeof enforcePersonSpec !== 'function') {
     throw new TypeError('enforcePersonSpec is required');
@@ -79,6 +119,15 @@ function buildResponse({
     context.person_spec,
     context,
   );
+  const castProfiles = normalizeCastProfiles(parsed, context, target);
+  const quality = modelDraftQuality({ cast_profiles: castProfiles }, target, replaceableFields);
+  if (target?.kind && !quality.valid) {
+    const error = new Error(`人物详细设定未达到可生成标准：${quality.issues.join('、')}`);
+    error.code = 'ASSIST_PERSON_PROFILE_INCOMPLETE';
+    error.status = 502;
+    error.details = quality.details;
+    throw error;
+  }
   return {
     person_spec: {
       castMode: cleanText(spec.castMode || spec.cast_mode || 'auto', 40),
@@ -94,9 +143,10 @@ function buildResponse({
       negativeText: cleanText(spec.negativeText || spec.negative || '', 420),
       ...petIdentity.assistedResponseFields(spec),
     },
-    cast_profiles: normalizeCastProfiles(parsed, context, target),
+    cast_profiles: castProfiles,
     pet_profiles: target?.kind === 'human' ? [] : normalizePetProfiles(parsed, context),
     assist_subject_target: target ? { kind: target.kind, index: target.index, id: target.id } : null,
+    assist_replaceable_fields: replaceableFields,
     mode,
     model_meta: {
       used_model: modelResult.used_model,
@@ -110,5 +160,7 @@ module.exports = {
   normalizeCastProfiles,
   normalizePetProfiles,
   resolveAssistSubjectTarget,
+  resolveReplaceableFields,
+  modelDraftQuality,
   buildResponse,
 };

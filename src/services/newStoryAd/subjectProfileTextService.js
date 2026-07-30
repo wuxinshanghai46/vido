@@ -27,6 +27,112 @@ const AGE_LABELS = {
 };
 
 const AGE_DESCRIPTOR_PATTERN = /(?:(?:0\s*[-—–至到~]\s*1)\s*岁?婴儿|(?:1\s*[-—–至到~]\s*3)\s*岁?幼儿|(?:4\s*[-—–至到~]\s*7)\s*岁?儿童|(?:8\s*[-—–至到~]\s*12)\s*岁?少儿|(?:13\s*[-—–至到~]\s*17)\s*岁?青少年|(?:17\s*[-—–至到~]\s*25)\s*岁?年轻成人|(?:25\s*[-—–至到~]\s*32)\s*岁?青年|(?:30\s*[-—–至到~]\s*40)\s*岁?成熟青年|(?:40\s*[-—–至到~]\s*55)\s*岁?中年|55\s*岁以上\s*年长者|婴儿|幼儿|儿童|少儿|青少年|年轻成人|成熟青年|中年|年长者)年龄感/gu;
+const ASSIST_PROFILE_FIELDS = [
+  'displayName', 'roleName', 'appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText',
+];
+const ASSIST_DETAIL_FIELDS = ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'];
+const REPLACEABLE_AUTHORITIES = new Set(['reference_direction', 'reference_safety', 'system_default']);
+
+function stringList(value, allowed = null, limit = 24) {
+  const items = Array.isArray(value) ? value : [];
+  const allow = allowed ? new Set(allowed) : null;
+  return [...new Set(items.map(item => text(item, 80)).filter(item => item && (!allow || allow.has(item))))].slice(0, limit);
+}
+
+function profileFieldAuthority(profile = {}) {
+  const source = profile.field_authority || profile.fieldAuthority;
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  return Object.fromEntries(Object.entries(source)
+    .filter(([key]) => ASSIST_PROFILE_FIELDS.includes(key))
+    .map(([key, value]) => [key, text(value, 40)]));
+}
+
+function userEditedFields(profile = {}) {
+  return stringList(
+    profile.user_edited_fields || profile.userEditedFields || profile._userEditedFields,
+    ASSIST_PROFILE_FIELDS,
+  );
+}
+
+function replaceableAssistFields(profile = {}, options = {}) {
+  const authority = profileFieldAuthority(profile);
+  const edited = new Set(userEditedFields(profile));
+  const referenceOwned = options.referenceOwned === true;
+  return ASSIST_PROFILE_FIELDS.filter(key => {
+    if (edited.has(key) || authority[key] === 'user') return false;
+    if (!text(profile[key], 1000)) return true;
+    if (REPLACEABLE_AUTHORITIES.has(authority[key])) return true;
+    return referenceOwned && ASSIST_DETAIL_FIELDS.includes(key) && !authority[key];
+  });
+}
+
+function categoryCount(value = '', patterns = []) {
+  return patterns.reduce((count, pattern) => count + (pattern.test(value) ? 1 : 0), 0);
+}
+
+function assistedFieldQuality(field = '', value = '') {
+  const normalized = text(value, 1200);
+  const rules = {
+    appearanceText: {
+      min: 55,
+      patterns: [
+        /脸型|五官|眉|眼|鼻|唇|面部/u,
+        /身形|体型|身高|肩|体态|比例/u,
+        /肤色|肤质|皮肤/u,
+        /气质|神态|表情|目光/u,
+      ],
+      required: 3,
+    },
+    wardrobeText: {
+      min: 60,
+      patterns: [
+        /上衣|衬衫|外套|夹克|针织|T恤|西装/u,
+        /下装|长裤|短裤|半裙|连衣裙|裙装/u,
+        /鞋|靴|运动鞋|皮鞋|高跟/u,
+        /颜色|色调|米色|白色|黑色|蓝色|灰色|棕色|绿色|红色/u,
+        /材质|棉|麻|羊毛|丝|皮革|牛仔|针织/u,
+        /配饰|眼镜|首饰|耳饰|项链|手表|无配饰/u,
+      ],
+      required: 5,
+    },
+    hairMakeupText: {
+      min: 42,
+      patterns: [
+        /发型|短发|长发|卷发|直发|马尾|盘发|分缝|发色/u,
+        /妆|肤质|眉|唇色|胡须|素颜/u,
+        /眼镜|耳饰|发饰|帽|首饰|不佩戴/u,
+      ],
+      required: 3,
+    },
+    negativeText: {
+      min: 45,
+      patterns: [
+        /年龄|性别|脸型|五官|身份/u,
+        /发型|发色|妆容|眼镜|胡须/u,
+        /服装|上衣|下装|鞋|配饰|颜色/u,
+        /网红脸|塑料皮肤|磨皮|畸形|多余人物/u,
+      ],
+      required: 3,
+    },
+  };
+  const rule = rules[field];
+  if (!rule) return { valid: !!normalized, length: normalized.length, category_count: normalized ? 1 : 0 };
+  const count = categoryCount(normalized, rule.patterns);
+  return {
+    valid: normalized.length >= rule.min && count >= rule.required,
+    length: normalized.length,
+    category_count: count,
+    minimum_length: rule.min,
+    minimum_categories: rule.required,
+  };
+}
+
+function assistedProfileQuality(profile = {}, fields = ASSIST_DETAIL_FIELDS) {
+  const checked = stringList(fields, ASSIST_DETAIL_FIELDS);
+  const details = Object.fromEntries(checked.map(field => [field, assistedFieldQuality(field, profile[field])]));
+  const issues = Object.entries(details).filter(([, result]) => !result.valid).map(([field]) => field);
+  return { valid: issues.length === 0, issues, details };
+}
 
 function dedupeClauses(value = '', max = 800) {
   const normalized = text(value, Math.max(max * 2, 1200));
@@ -118,8 +224,16 @@ function canonicalProfile(profile = {}, options = {}) {
 
 module.exports = {
   AGE_LABELS,
+  ASSIST_PROFILE_FIELDS,
+  ASSIST_DETAIL_FIELDS,
   text,
   firstText,
+  stringList,
+  profileFieldAuthority,
+  userEditedFields,
+  replaceableAssistFields,
+  assistedFieldQuality,
+  assistedProfileQuality,
   dedupeClauses,
   alignAgeDescription,
   profileTexts,

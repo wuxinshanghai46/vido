@@ -11,21 +11,29 @@ const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const files = [
   'public/digital-human.html',
+  'public/js/new-story-ad/bootstrap.js',
   'public/js/new-story-ad-legacy-ui.js',
   'public/js/new-story-ad/director-workspace.js',
+  'public/js/new-story-ad/reference-video-analysis.js',
   'public/js/new-story-ad/state-sync.js',
   'public/js/new-story-ad/subject-assets-ui.js',
+  'public/js/new-story-ad/subject-profile-assist.js',
+  'public/js/new-story-ad/subject-profile-authority.js',
   'scripts/audit-new-story-ad-visible-content.js',
   'scripts/repair-new-story-ad-assist-content.js',
   'scripts/test-new-story-ad-director-workspace.js',
   'scripts/test-new-story-ad-person-assist-completeness.js',
+  'scripts/test-new-story-ad-reference-person-ui.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
   'scripts/test-new-story-ad-user-readiness.js',
   'src/services/newStoryAd/assetPlanService.js',
+  'src/services/newStoryAd/assistSubjectProfileService.js',
   'src/services/newStoryAd/contextBuilder.js',
   'src/services/newStoryAd/referenceEvidenceTextService.js',
   'src/services/newStoryAd/referenceVideoAnalysisService.js',
   'src/services/newStoryAd/sceneAssistCompletenessService.js',
+  'src/services/newStoryAd/storyAdService.js',
+  'src/services/newStoryAd/subjectProfileTextService.js',
 ];
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-assist-isolation-${stamp}`;
@@ -132,6 +140,7 @@ client.on('ready', async () => {
       syntaxChecks,
       `mkdir -p ${quote(isolatedOutput)}`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-person-assist-completeness.js`,
+      `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-reference-person-ui.js`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-reference-video-analysis.js`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-director-workspace.js`,
       `env OUTPUT_DIR=${quote(isolatedOutput)} DB_ENABLED=0 DB_READ_PRIMARY=0 node scripts/test-new-story-ad-user-readiness.js`,

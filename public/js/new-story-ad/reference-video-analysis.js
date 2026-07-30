@@ -144,6 +144,16 @@
       wardrobeText: withoutCameraInstructions(item.wardrobe_direction),
       hairMakeupText: '发型和妆造符合当前角色、场景与表观年龄，保持自然真实并在后续画面中一致。',
       negativeText: withoutCameraInstructions(item.negative_prompt),
+      field_authority: {
+        displayName: 'reference_fact',
+        roleName: 'reference_fact',
+        age: 'reference_fact',
+        appearanceText: 'reference_direction',
+        wardrobeText: 'reference_direction',
+        hairMakeupText: 'system_default',
+        negativeText: 'reference_safety',
+      },
+      user_edited_fields: [],
     }));
     const first = profiles[0] || {};
     return {

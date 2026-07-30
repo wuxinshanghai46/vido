@@ -10,6 +10,7 @@ process.env.DB_ENABLED = '0';
 const service = require('../src/services/newStoryAd/storyAdService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const subjectProfileText = require('../src/services/newStoryAd/subjectProfileTextService');
+const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const assistContentRepair = require('./repair-new-story-ad-assist-content');
 
 /** 验证模型只返回外貌时，后端仍会补齐全部人物一致性字段。 */
@@ -133,7 +134,7 @@ function testSubjectProfileValidationRefreshesAfterEditingName() {
   assert.equal(state.castProfiles[0].name, '林妈');
   assert.equal(summary.textContent, '林妈');
   assert(!validation.innerHTML.includes('缺少：姓名'), '旧的姓名缺失警告必须立即消失');
-  assert(validation.innerHTML.includes('逐主体档案数量和必填信息完整'));
+  assert(validation.innerHTML.includes('人物数量和必填信息完整'));
 }
 
 function testGeneratedActorAgeConstraintDoesNotDowngrade() {
@@ -222,9 +223,185 @@ async function testSinglePersonAssistHasPersistentFeedback() {
   assert.equal(capturedRequest.editDomain, 'person');
   assert.ok(renderedStatuses.includes('running'), '请求期间必须留下可见的进行中状态');
   assert.equal(state.subjectAssistStatus[1].status, 'success');
-  assert.match(state.subjectAssistStatus[1].message, /已补齐 6 项/);
+  assert.match(state.subjectAssistStatus[1].message, /已完善 6 项/);
   assert.equal(state.castProfiles[0].displayName, '林悦', '不得改写其他人物');
   assert.equal(state.petProfiles[0].name, '雪球', '不得改写宠物');
+}
+
+/** 回归：参考视频投影的非空创作方向不是最终档案，AI 必须细化它们并保留用户字段。 */
+async function testReferenceDirectionsAreEnrichedWithoutOverwritingUserFields() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-profile-assist.js'), 'utf8');
+  let capturedRequest = null;
+  const sandbox = {
+    document: {},
+    window: {
+      NewStoryAdSubjectAssetsUI: {
+        syncProfileFieldsFromDom() {},
+        normalizeHumanProfile(profile = {}, index = 0) {
+          return {
+            ...profile,
+            id: profile.id || `cast_${index + 1}`,
+            displayName: profile.displayName || '',
+            roleName: profile.roleName || '',
+            appearanceText: profile.appearanceText || '',
+            wardrobeText: profile.wardrobeText || '',
+            hairMakeupText: profile.hairMakeupText || '',
+            negativeText: profile.negativeText || '',
+          };
+        },
+      },
+      NewStoryAdGenerationFlow: {
+        async requestInlineGeneration(stage, context, request) {
+          capturedRequest = request;
+          return {
+            cast_profiles: [{
+              id: 'reference_cast_1',
+              displayName: '林悦',
+              roleName: '产品体验与展示角色',
+              appearanceText: '30-40岁东亚女性，鹅蛋脸与清晰下颌线，眉眼舒展、鼻唇比例自然；中等身高与匀称体型，肩背挺直；暖调自然肤色保留细微纹理，目光专注，神态成熟可信。',
+              wardrobeText: 'AI 不应覆盖这条用户服装。',
+              hairMakeupText: '深棕色齐肩直发，三七分缝并自然收于耳后；轻薄自然底妆、柔和眉形与低饱和豆沙唇色；固定佩戴银色细框眼镜，不佩戴帽子和夸张耳饰。',
+              negativeText: '禁止改变年龄、性别、脸型和五官比例；禁止更换发型、发色、眼镜或妆容；禁止改变服装、鞋和配饰；不要网红脸、塑料皮肤、夸张表情或多余人物。',
+            }],
+            assist_subject_target: { kind: 'human', index: 0, id: 'reference_cast_1' },
+            assist_replaceable_fields: ['appearanceText', 'hairMakeupText', 'negativeText'],
+          };
+        },
+      },
+    },
+  };
+  vm.runInNewContext(source, sandbox);
+  const userWardrobe = '用户指定：米白色亚麻西装外套、深灰直筒长裤、黑色低跟鞋和银色腕表。';
+  const state = {
+    personSpecSource: { kind: 'reference_video', manualOverride: false },
+    castProfiles: [{
+      id: 'reference_cast_1',
+      displayName: '林悦',
+      roleName: '产品体验与展示角色',
+      appearanceText: '原创、可信、符合当前产品定位的自然外观，不复制原片真人',
+      wardrobeText: userWardrobe,
+      hairMakeupText: '发型和妆造符合当前角色、场景与表观年龄，保持自然真实',
+      negativeText: '禁止人脸身份复刻、原片服装复制和私密属性推断',
+      field_authority: {
+        appearanceText: 'reference_direction',
+        wardrobeText: 'user',
+        hairMakeupText: 'system_default',
+        negativeText: 'reference_safety',
+      },
+      user_edited_fields: ['wardrobeText'],
+    }],
+    petProfiles: [],
+  };
+  const changed = await sandbox.window.NewStoryAdSubjectProfileAssist.assistHumanProfile({
+    state,
+    index: 0,
+    api: async () => ({}),
+    buildPayload: () => ({ brief: '门窗品牌剧情广告' }),
+    collectSpec: () => ({ castMode: 'single' }),
+    renderAll() {},
+    setBusy() {},
+    setButtonBusy() {},
+    toast() {},
+  });
+  assert.equal(changed, true);
+  assert.deepStrictEqual(
+    Array.from(capturedRequest.body.assist_replaceable_fields),
+    ['appearanceText', 'hairMakeupText', 'negativeText'],
+  );
+  assert.match(state.castProfiles[0].appearanceText, /鹅蛋脸/);
+  assert.equal(state.castProfiles[0].wardrobeText, userWardrobe, '用户手动服装不得被 AI 覆盖');
+  assert.equal(state.castProfiles[0].field_authority.appearanceText, 'ai_generated');
+  assert.equal(state.castProfiles[0].field_authority.wardrobeText, 'user');
+  sandbox.window.NewStoryAdSubjectProfileAssist.recordManualEdit(state, {
+    dataset: { nsaSubjectKind: 'cast', nsaSubjectIndex: '0', nsaSubjectField: 'roleName' },
+  });
+  assert.equal(state.castProfiles[0].field_authority.roleName, 'user');
+  assert.ok(state.castProfiles[0].user_edited_fields.includes('roleName'));
+}
+
+/** 回归：生产中的参考方向模板不得通过详细人物设定质量门槛。 */
+function testDetailedProfileQualityRejectsReferenceDirections() {
+  const generic = {
+    appearanceText: '30-40岁成熟青年年龄感，原创、可信、符合当前产品定位的自然外观，不复制原片真人',
+    wardrobeText: '根据当前品牌与真实场景重新设计的原创服装，不复刻原片',
+    hairMakeupText: '自然真实的发型与妆容，严格匹配人物外貌、年龄和职业气质',
+    negativeText: '禁止人脸身份复刻、原片服装复制和私密属性推断',
+  };
+  const rejected = subjectProfileText.assistedProfileQuality(generic);
+  assert.equal(rejected.valid, false);
+  assert.deepStrictEqual(rejected.issues.sort(), subjectProfileText.ASSIST_DETAIL_FIELDS.slice().sort());
+
+  const detailed = {
+    appearanceText: '30-40岁东亚女性，鹅蛋脸与清晰下颌线，眉眼舒展、鼻唇比例自然；中等身高与匀称体型，肩背挺直；暖调自然肤色保留细微纹理，目光专注，神态成熟可信。',
+    wardrobeText: '固定穿米白色亚麻西装外套与浅灰真丝内搭，下装为深灰色高腰直筒长裤，搭配黑色低跟皮鞋；佩戴银色细框眼镜和小尺寸腕表，不增加其它配饰，全部镜头保持相同材质与色彩。',
+    hairMakeupText: '深棕色齐肩直发，三七分缝并自然收于耳后；轻薄自然底妆、柔和眉形与低饱和豆沙唇色；固定佩戴银色细框眼镜，不佩戴帽子和夸张耳饰。',
+    negativeText: '禁止改变年龄、性别、脸型和五官比例；禁止更换发型、发色、眼镜或妆容；禁止改变服装、鞋和配饰；不要网红脸、塑料皮肤、夸张表情或多余人物。',
+  };
+  assert.equal(subjectProfileText.assistedProfileQuality(detailed).valid, true);
+}
+
+/** 回归：字段来源与用户手动编辑标记必须跨越请求标准化，供后端保护用户内容。 */
+function testFieldAuthoritySurvivesContextNormalization() {
+  const context = contextBuilder.buildContext({
+    brief: '都市家居产品体验剧情广告',
+    cast_profiles: [{
+      id: 'reference_cast_1',
+      displayName: '林悦',
+      roleName: '产品体验与展示角色',
+      appearanceText: '参考视频提供的创作方向',
+      wardrobeText: '用户明确指定的米白色棉麻套装',
+      hairMakeupText: '系统默认发型方向',
+      negativeText: '参考安全约束',
+      field_authority: {
+        displayName: 'reference_fact',
+        roleName: 'reference_fact',
+        appearanceText: 'reference_direction',
+        wardrobeText: 'user',
+        hairMakeupText: 'system_default',
+        negativeText: 'reference_safety',
+      },
+      user_edited_fields: ['wardrobeText'],
+    }],
+  }, { id: 'test-user' });
+  assert.deepStrictEqual(context.cast_profiles[0].field_authority, {
+    displayName: 'reference_fact',
+    roleName: 'reference_fact',
+    appearanceText: 'reference_direction',
+    wardrobeText: 'user',
+    hairMakeupText: 'system_default',
+    negativeText: 'reference_safety',
+  });
+  assert.deepStrictEqual(context.cast_profiles[0].user_edited_fields, ['wardrobeText']);
+}
+
+/** 回归：历史参考任务按实际继承值迁移来源，不把后来生成或手改的详细字段误标为可覆盖。 */
+function testLegacyReferenceAuthorityMigrationUsesLineage() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
+  const sandbox = { window: {} };
+  vm.runInNewContext(source, sandbox);
+  const migrate = sandbox.window.NewStoryAdStateSync.migrateReferenceProfileAuthority;
+  const genericAppearance = '30-40岁成熟青年年龄感，原创、可信、符合当前产品定位的自然外观，不复制原片真人';
+  const genericWardrobe = '根据当前品牌与真实场景重新设计的原创服装，不复刻原片';
+  const detailedWardrobe = '用户指定的米白色棉麻西装、深灰长裤和黑色低跟鞋';
+  const migrated = migrate([{
+    appearanceText: genericAppearance,
+    wardrobeText: detailedWardrobe,
+  }], {
+    appearanceText: genericAppearance,
+    wardrobeText: genericWardrobe,
+  }, {
+    kind: 'reference_video',
+    manualOverride: false,
+  });
+  assert.equal(migrated[0].field_authority.appearanceText, 'reference_direction');
+  assert.equal(migrated[0].field_authority.wardrobeText, undefined, '与继承值不同的详细服装必须保留');
+  const manual = migrate([{ appearanceText: genericAppearance }], {
+    appearanceText: genericAppearance,
+  }, {
+    kind: 'manual',
+    manualOverride: true,
+  });
+  assert.equal(manual[0].field_authority, undefined, '手动权威任务不得迁移为参考方向');
 }
 
 /** 回归：人物和场景文本补齐使用独立通道；同一通道仍禁止重复提交。 */
@@ -336,10 +513,10 @@ async function testSinglePersonAssistIsScoped() {
           id: 'cast_2',
           displayName: '小杰',
           roleName: '儿子',
-          appearanceText: '东亚男孩，约八岁，圆脸，健康活泼。',
-          wardrobeText: '固定穿蓝白条纹短袖、卡其短裤和白色运动鞋，不佩戴首饰。',
-          hairMakeupText: '固定自然黑色短发，四视图均不佩戴帽子、眼镜或发饰。',
-          negativeText: '禁止改变发型、服装、鞋和配饰。',
+          appearanceText: '八岁东亚男孩，圆脸和柔和下颌线，明亮黑色眼睛与自然眉形；身高中等、体型健康匀称，站姿活泼；自然暖调肤色保留儿童肤质，目光好奇，笑容真实不过度。',
+          wardrobeText: '固定穿蓝白条纹棉质短袖上衣，下装为卡其色直筒短裤，搭配白色低帮运动鞋；不佩戴首饰、帽子或手表，服装颜色、材质和版型在全部镜头中保持一致。',
+          hairMakeupText: '固定自然黑色短发，侧分并保留轻微蓬松纹理；儿童自然肤质，不使用明显妆容；全部镜头均不佩戴帽子、眼镜、发带或其它发饰。',
+          negativeText: '禁止改变年龄、性别、圆脸和眼睛比例；禁止更换短发、发色或增加眼镜；禁止改变条纹上衣、卡其短裤、白鞋和配饰；不要塑料皮肤、夸张表情或多余人物。',
         }],
         pet_profiles: [],
       }),
@@ -369,12 +546,61 @@ async function testSinglePersonAssistIsScoped() {
     assert.deepStrictEqual(response.assist_subject_target, { kind: 'human', index: 1, id: 'cast_2' });
     assert.match(capturedRequest.systemPrompt, /只能输出目标人物的一条 cast_profiles 记录/);
     assert.match(capturedRequest.userPrompt, /不得返回或改写其他人物和宠物/);
+    assert.match(capturedRequest.userPrompt, /允许生成或重写的字段只有/);
+    assert.equal(typeof capturedRequest.validateText, 'function');
+    assert.equal(capturedRequest.validateText(JSON.stringify({
+      cast_profiles: [{
+        id: 'cast_2',
+        displayName: '小杰',
+        roleName: '儿子',
+        appearanceText: '原创可信的自然外观，不复制原片真人',
+        wardrobeText: '根据品牌重新设计原创服装',
+        hairMakeupText: '自然真实的发型与妆容',
+        negativeText: '禁止复制原片人物',
+      }],
+    })), false, '泛泛的参考方向必须被模型响应质量门拒绝');
+    assert.equal(capturedRequest.validateText(capturedRequest ? JSON.stringify({
+      cast_profiles: [{
+        id: 'cast_2',
+        displayName: '小杰',
+        roleName: '儿子',
+        appearanceText: '八岁东亚男孩，圆脸和柔和下颌线，明亮黑色眼睛与自然眉形；身高中等、体型健康匀称，站姿活泼；自然暖调肤色保留儿童肤质，目光好奇，笑容真实不过度。',
+        wardrobeText: '蓝白横条纹棉质圆领短袖上衣，搭配卡其色直筒棉质短裤；白色低帮运动鞋配浅灰短袜；不戴项链、手表和帽子，固定使用轻便黑色儿童眼镜。',
+        hairMakeupText: '自然黑色短发，侧分发缝，耳侧与后颈修剪整齐；儿童素颜肤质，不使用成人彩妆；固定佩戴黑色儿童眼镜，不佩戴帽子、耳饰和发带。',
+        negativeText: '禁止改变年龄、性别、圆脸五官与儿童体型；禁止改变黑色短发、眼镜与素颜状态；禁止替换蓝白上衣、卡其短裤、白鞋的款式和颜色；禁止塑料皮肤、网红脸、成人化妆容与多余人物。',
+      }],
+    }) : ''), true, '可直接生成人物资产的详细描述必须通过质量门');
 
     await assert.rejects(
       () => service.assistBrief({ ...body, assist_subject_target: { kind: 'human', index: 8, id: 'missing' } }, { id: 'test-user' }),
       error => error.code === 'ASSIST_SUBJECT_TARGET_INVALID',
     );
     assert.strictEqual(calls, 1, 'invalid scoped target must fail before the text model call');
+
+    const protectedBody = {
+      ...body,
+      person_context: { spec_source: { kind: 'reference_video', manualOverride: false } },
+      cast_profiles: [{
+        ...body.cast_profiles[1],
+        displayName: '小杰',
+        roleName: '儿子',
+        wardrobeText: '用户指定：深蓝色棉质圆领上衣、卡其色短裤和白色运动鞋。',
+        field_authority: {
+          displayName: 'reference_fact',
+          roleName: 'reference_fact',
+          wardrobeText: 'user',
+        },
+        user_edited_fields: ['wardrobeText'],
+      }],
+      assist_subject_target: { kind: 'human', index: 0, id: 'cast_2' },
+      assist_replaceable_fields: ['appearanceText', 'wardrobeText', 'hairMakeupText', 'negativeText'],
+    };
+    await service.assistBrief(protectedBody, { id: 'test-user' });
+    assert.deepStrictEqual(
+      capturedRequest.userPrompt.match(/允许生成或重写的字段只有：([^；]+)/)?.[1].split('、'),
+      ['appearanceText', 'hairMakeupText', 'negativeText'],
+      '后端必须过滤客户端伪造的可覆盖字段，保护用户手动服装',
+    );
   } finally {
     modelGateway.generateText = originalGenerateText;
   }
@@ -525,6 +751,10 @@ async function main() {
   testSubjectProfileValidationRefreshesAfterEditingName();
   testGeneratedActorAgeConstraintDoesNotDowngrade();
   await testSinglePersonAssistHasPersistentFeedback();
+  await testReferenceDirectionsAreEnrichedWithoutOverwritingUserFields();
+  testDetailedProfileQualityRejectsReferenceDirections();
+  testFieldAuthoritySurvivesContextNormalization();
+  testLegacyReferenceAuthorityMigrationUsesLineage();
   await testIndependentAssistChannels();
   testSceneAssistFallbackIsComplete();
   testLegacyFrameEvidenceIsNotKeptAsSceneDescription();

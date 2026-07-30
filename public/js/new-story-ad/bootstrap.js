@@ -1,6 +1,6 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260730-assist-isolation-v4';
+  const SCRIPT_VERSION = '20260731-person-detail-v1';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/director-workspace.js',
