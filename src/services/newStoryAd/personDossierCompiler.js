@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const mediaAdapterDefault = require('./mediaAdapter');
 const checkpointServiceDefault = require('./assetGenerationCheckpointService');
@@ -51,6 +52,23 @@ const CATEGORY_SPECS = [
     instruction: 'Three full-body actions: neutral standing, natural walking, presenting a generic product-sized object with clear hands.',
   },
 ];
+
+function compactAssetToken(...values) {
+  return crypto.createHash('sha256')
+    .update(values.map(value => String(value || '')).join('\n'))
+    .digest('hex')
+    .slice(0, 16);
+}
+
+function personAtlasFilename({ taskId = '', assetId = '', kind = 'asset', revision = 1 } = {}) {
+  const safeKind = String(kind || 'asset').replace(/[^a-z0-9_-]/ig, '_').slice(0, 24) || 'asset';
+  return `person_${safeKind}_atlas_r${Math.max(1, Number(revision) || 1)}_${compactAssetToken(taskId, assetId, safeKind)}`;
+}
+
+function personViewPrefix({ taskId = '', assetId = '', kind = 'asset', revision = 1 } = {}) {
+  const safeKind = String(kind || 'asset').replace(/[^a-z0-9_-]/ig, '_').slice(0, 24) || 'asset';
+  return `person_${safeKind}_r${Math.max(1, Number(revision) || 1)}_${compactAssetToken(taskId, assetId, safeKind)}`;
+}
 
 function categoryPrompt(spec, personPrompt = '') {
   return [
@@ -117,11 +135,11 @@ async function generateCategory({
     save: saveCheckpoint,
     onEvent,
     execute: async controls => {
-      const atlas = await mediaAdapter.generateActorReference({
+      const atlas = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: 'new_story_ad.person_dossier_atlas',
         prompt: categoryPrompt(spec, personPrompt),
-        filename: `person_${taskId}_${assetId}_${spec.kind}_atlas_r${revision}`,
+        filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,
         referenceImages: anchorUrl ? [anchorUrl] : [],
         requireReferences,
@@ -130,11 +148,12 @@ async function generateCategory({
         onSubmitting: controls.onSubmitting,
         onSubmitted: controls.onSubmitted,
       });
+      if (!controls.providerResult) await controls.onProviderResult(atlas);
       const splitSheet = mediaAdapter.splitReferenceSheet || mediaAdapter.splitActorSheet;
       if (typeof splitSheet !== 'function') throw new Error('人物档案图集缺少本地拆分适配器');
       const views = await splitSheet({
         source: atlas,
-        filenamePrefix: `person_${taskId}_${assetId}_${spec.kind}`,
+        filenamePrefix: personViewPrefix({ taskId, assetId, kind: spec.kind, revision }),
         filenameSuffix: `r${revision}`,
         viewKeys: spec.keys,
         columns: spec.columns,
@@ -245,6 +264,9 @@ module.exports = {
   EXPRESSIONS,
   BASE_ACTIONS,
   CATEGORY_SPECS,
+  compactAssetToken,
+  personAtlasFilename,
+  personViewPrefix,
   categoryPrompt,
   compilePersonDossier,
 };

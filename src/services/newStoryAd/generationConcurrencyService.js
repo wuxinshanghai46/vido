@@ -41,9 +41,26 @@ function schedule(name, limit, run) {
 }
 
 async function map(name, values = [], limit = 2, mapper) {
-  return Promise.all((Array.isArray(values) ? values : []).map((value, index) => (
-    schedule(name, limit, () => mapper(value, index))
-  )));
+  let stopQueuedError = null;
+  const scheduled = (Array.isArray(values) ? values : []).map((value, index) => (
+    schedule(name, limit, async () => {
+      if (stopQueuedError) throw stopQueuedError;
+      try {
+        return await mapper(value, index);
+      } catch (error) {
+        if (error?.billingState === 'unknown'
+          || error?.billing_state === 'unknown'
+          || error?.code === 'GENERATION_BILLING_STATE_UNKNOWN') {
+          stopQueuedError = error;
+        }
+        throw error;
+      }
+    })
+  ));
+  const settled = await Promise.allSettled(scheduled);
+  const rejected = settled.find(result => result.status === 'rejected');
+  if (rejected) throw rejected.reason;
+  return settled.map(result => result.value);
 }
 
 function snapshot(name = '') {

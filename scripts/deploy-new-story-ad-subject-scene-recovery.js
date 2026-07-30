@@ -232,6 +232,7 @@ const files = [...new Set([
 const realMatrixSource = path.join(root, 'outputs', 'audits', 'real-dossier-matrix', 'pexels-jingru-li-19748978.jpg');
 const remoteMatrixSourceDir = '/opt/vido/audits/real-dossier-matrix-inputs';
 const remoteMatrixSource = `${remoteMatrixSourceDir}/pexels-jingru-li-19748978.jpg`;
+const realMatrixResumeRunId = String(process.env.VIDO_REAL_MATRIX_RESUME_RUN_ID || '').trim();
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;
 const client = new Client();
@@ -344,7 +345,7 @@ client.on('ready', async () => {
       checks,
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-active-tasks.js',
       'npm run story-ad:dossier:test',
-      `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}`,
+      `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}${realMatrixResumeRunId ? ` --resume-run-id=${quote(realMatrixResumeRunId)}` : ''}`,
       'npm run platform:upgrade:test',
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-reference-video-runtime.js',
       'pm2 reload vido --update-env >/dev/null',

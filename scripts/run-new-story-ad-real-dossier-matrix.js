@@ -55,32 +55,53 @@ async function main() {
     process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'http://127.0.0.1:3007';
   }
 
-  const runId = `real-dossier-matrix-${isoStamp()}`;
+  const resumeRunId = argumentValue('resume-run-id');
+  const runId = resumeRunId || `real-dossier-matrix-${isoStamp()}`;
   const auditDir = path.join(root, 'outputs', 'audits', 'real-dossier-matrix', runId);
   const auditPath = path.join(auditDir, 'audit.json');
   fs.mkdirSync(auditDir, { recursive: true });
 
-  const audit = {
-    schema_version: 1,
-    run_id: runId,
-    status: 'running',
-    authorized_image_submission_cap: maxSubmissions,
-    expected_image_submissions: expectedSubmissions,
-    started_at: new Date().toISOString(),
-    source: {
-      local_file: sourcePath,
-      sha256: fileSha256(sourcePath),
-      page_url: 'https://www.pexels.com/photo/portrait-of-brunette-woman-in-a-studio-19748978/',
-      license_url: 'https://www.pexels.com/license/',
-      usage: 'internal authorized-real-person workflow verification; no endorsement implied',
-    },
-    provider_submissions: [],
-    local_preflight_failures: [],
-    phases: [],
-    task_ids: {},
-    outputs: {},
-    verification: {},
-  };
+  let audit;
+  if (resumeRunId) {
+    assert.ok(fs.existsSync(auditPath), `resume audit not found: ${auditPath}`);
+    audit = JSON.parse(fs.readFileSync(auditPath, 'utf8'));
+    assert.equal(audit.run_id, runId);
+    assert.ok(audit.provider_submissions.length < maxSubmissions, 'resume audit has no remaining authorized image submissions');
+    assert.ok(audit.provider_submissions.every(item => item.status === 'success'), 'resume requires every recorded provider submission to have a confirmed success state');
+    audit.initial_failure = audit.error || audit.initial_failure || null;
+    audit.status = 'running';
+    audit.error = null;
+    audit.resumes = [
+      ...(audit.resumes || []),
+      {
+        resumed_at: new Date().toISOString(),
+        confirmed_submissions_before_resume: audit.provider_submissions.length,
+        remaining_authorized_submissions: maxSubmissions - audit.provider_submissions.length,
+      },
+    ];
+  } else {
+    audit = {
+      schema_version: 1,
+      run_id: runId,
+      status: 'running',
+      authorized_image_submission_cap: maxSubmissions,
+      expected_image_submissions: expectedSubmissions,
+      started_at: new Date().toISOString(),
+      source: {
+        local_file: sourcePath,
+        sha256: fileSha256(sourcePath),
+        page_url: 'https://www.pexels.com/photo/portrait-of-brunette-woman-in-a-studio-19748978/',
+        license_url: 'https://www.pexels.com/license/',
+        usage: 'internal authorized-real-person workflow verification; no endorsement implied',
+      },
+      provider_submissions: [],
+      local_preflight_failures: [],
+      phases: [],
+      task_ids: {},
+      outputs: {},
+      verification: {},
+    };
+  }
   const persistAudit = () => {
     const temp = `${auditPath}.${process.pid}.tmp`;
     fs.writeFileSync(temp, JSON.stringify(audit, null, 2), 'utf8');
@@ -268,51 +289,112 @@ async function main() {
     const user = { id: `real-matrix-user-${runId}` };
     const personTaskId = `${runId}-person`;
     audit.task_ids.person = personTaskId;
-    const uploadCopy = path.join(auditDir, 'authorized-source-upload.jpg');
-    fs.copyFileSync(sourcePath, uploadCopy);
-    const source = await personDossier.createSource({
-      file: {
-        path: uploadCopy,
-        originalname: 'authorized-source.jpg',
-        mimetype: 'image/jpeg',
-        size: fs.statSync(uploadCopy).size,
-      },
-      body: {
-        kind: 'identity',
-        rights_confirmed: 'true',
-        adult_confirmed: 'true',
-      },
-      user,
-    });
-    audit.outputs.person_source = source;
-    persistAudit();
-
-    const candidates = await phase('person_outfit_candidates', 2, async () => {
-      const started = personDossier.startCandidates({
-        taskId: personTaskId,
+    let candidates;
+    if (resumeRunId) {
+      const production = personDossier.getProduction(personTaskId, user);
+      assert.ok(production.approved_anchor?.id, 'resume production has no approved person anchor');
+      candidates = { production, selected: production.approved_anchor };
+      const productionFile = path.join(
+        personDossier.ROOT_DIR,
+        String(user.id).replace(/[^a-z0-9_-]/ig, '_').slice(0, 90),
+        'tasks',
+        `${String(personTaskId).replace(/[^a-z0-9_-]/ig, '_').slice(0, 90)}.json`,
+      );
+      const recordedSubmissions = new Map(audit.provider_submissions.map(item => [item.client_request_id, item]));
+      const repaired = JSON.parse(fs.readFileSync(productionFile, 'utf8'));
+      const reconciled = [];
+      for (const [key, checkpoint] of Object.entries(repaired.dossier_checkpoints || {})) {
+        const submission = recordedSubmissions.get(key);
+        const submitted = Boolean(submission);
+        if (submitted && submission.status !== 'success') {
+          throw new Error(`cannot reconcile non-success provider submission: ${key}`);
+        }
+        reconciled.push({
+          unit: checkpoint.unit,
+          checkpoint_key: key,
+          provider_submission_recorded: submitted,
+          previous_status: checkpoint.status,
+          reason: 'maximum-length filename collision invalidated the local atlas and crops',
+        });
+        repaired.dossier_checkpoints[key] = {
+          ...checkpoint,
+          status: 'failed',
+          provider_submission_state: submitted ? 'completed' : 'not_submitted',
+          billing_state: submitted ? 'confirmed' : 'not_submitted',
+          provider_result: null,
+          result: null,
+          error: {
+            code: 'LOCAL_FILENAME_COLLISION_RECONCILED',
+            message: 'Paid result could not be reused because concurrent maximum-length filenames collided; replacement remains inside the original 15-submission cap.',
+          },
+          updated_at: new Date().toISOString(),
+        };
+      }
+      repaired.dossier_job = {
+        ...(repaired.dossier_job || {}),
+        status: 'failed',
+        phase: 'Reconciled local filename collision; ready to replace invalid categories',
+        error: {
+          code: 'LOCAL_FILENAME_COLLISION_RECONCILED',
+          message: 'Invalid local files were isolated after confirmed provider settlement.',
+        },
+        updated_at: new Date().toISOString(),
+      };
+      const tempProduction = `${productionFile}.${process.pid}.resume.tmp`;
+      fs.writeFileSync(tempProduction, JSON.stringify(repaired, null, 2), 'utf8');
+      fs.renameSync(tempProduction, productionFile);
+      audit.resume_reconciliation = {
+        invalidated_units: reconciled,
+        replacement_strategy: 'regenerate four invalid person categories; stateful prop covers base prop identity; dual-space scene run covers per-space generation and multi-space isolation',
+        dedicated_static_prop_omitted: true,
+        dedicated_single_scene_omitted: true,
+      };
+      persistAudit();
+    } else {
+      const uploadCopy = path.join(auditDir, 'authorized-source-upload.jpg');
+      fs.copyFileSync(sourcePath, uploadCopy);
+      const source = await personDossier.createSource({
+        file: {
+          path: uploadCopy,
+          originalname: 'authorized-source.jpg',
+          mimetype: 'image/jpeg',
+          size: fs.statSync(uploadCopy).size,
+        },
+        body: {
+          kind: 'identity',
+          rights_confirmed: 'true',
+          adult_confirmed: 'true',
+        },
         user,
-        sourceId: source.id,
-        mode: 'ai_outfit',
-        wardrobe: 'original unbranded charcoal tailored blazer, ivory crew-neck top, straight black trousers and plain black low-heel shoes; no logos, no jewelry',
       });
-      assert.equal(started.accepted, true);
-      const production = await waitForPersonJob(personTaskId, user, 'candidate');
-      assert.equal(production.candidate_job?.status, 'completed', JSON.stringify(production.candidate_job?.error || {}));
-      assert.equal(production.candidates?.length, 2);
-      const selectable = production.candidates.filter(item => item.selectable === true);
-      assert.ok(selectable.length > 0, 'neither real-person outfit candidate passed identity QA');
-      return { production, selected: selectable.sort((a, b) => Number(b.qa?.source_identity_score || 0) - Number(a.qa?.source_identity_score || 0))[0] };
-    });
-    audit.outputs.person_candidates = candidates.production.candidates;
+      audit.outputs.person_source = source;
+      persistAudit();
+      candidates = await phase('person_outfit_candidates', 2, async () => {
+        const started = personDossier.startCandidates({
+          taskId: personTaskId,
+          user,
+          sourceId: source.id,
+          mode: 'ai_outfit',
+          wardrobe: 'original unbranded charcoal tailored blazer, ivory crew-neck top, straight black trousers and plain black low-heel shoes; no logos, no jewelry',
+        });
+        assert.equal(started.accepted, true);
+        const production = await waitForPersonJob(personTaskId, user, 'candidate');
+        assert.equal(production.candidate_job?.status, 'completed', JSON.stringify(production.candidate_job?.error || {}));
+        assert.equal(production.candidates?.length, 2);
+        const selectable = production.candidates.filter(item => item.selectable === true);
+        assert.ok(selectable.length > 0, 'neither real-person outfit candidate passed identity QA');
+        return { production, selected: selectable.sort((a, b) => Number(b.qa?.source_identity_score || 0) - Number(a.qa?.source_identity_score || 0))[0] };
+      });
+      audit.outputs.person_candidates = candidates.production.candidates;
+      const approved = personDossier.approveCandidate({
+        taskId: personTaskId,
+        candidateId: candidates.selected.id,
+        user,
+      });
+      assert.equal(approved.approved_candidate_id, candidates.selected.id);
+    }
 
-    const approved = personDossier.approveCandidate({
-      taskId: personTaskId,
-      candidateId: candidates.selected.id,
-      user,
-    });
-    assert.equal(approved.approved_candidate_id, candidates.selected.id);
-
-    const dossier = await phase('person_dossier_atlases', 4, async () => {
+    const dossier = await phase(resumeRunId ? 'person_dossier_atlases_replacement' : 'person_dossier_atlases', 4, async () => {
       const started = personDossier.startDossier({ taskId: personTaskId, user });
       assert.equal(started.accepted, true);
       const production = await waitForPersonJob(personTaskId, user, 'dossier');
@@ -345,16 +427,16 @@ async function main() {
       { shot_index: 0, scene_id: 'entry', visual: 'The key rests in the shallow tray.', prop_states: { key: 'resting' } },
       { shot_index: 1, scene_id: 'entry', action: 'The actor lifts the key.', prop_contact: 'right thumb and forefinger hold the key bow', prop_states: { key: 'held' } },
     ]);
-    const staticProp = await phase('static_prop_dossier', 1, () => propAssets.generatePropAsset(propTaskId, {
-      id: 'clear_water_tumbler',
-      name: 'Clear water tumbler',
-      type: 'story_prop',
-      description: 'Unbranded cylindrical clear glass tumbler with a heavy rounded base and no decoration.',
-      material: 'clear soda-lime glass with realistic refraction',
-      scale: '10 cm tall, 7 cm diameter',
-      quantity: 1,
-      states: ['clean_empty'],
-    }));
+    const staticProp = resumeRunId ? null : await phase('static_prop_dossier', 1, () => propAssets.generatePropAsset(propTaskId, {
+        id: 'clear_water_tumbler',
+        name: 'Clear water tumbler',
+        type: 'story_prop',
+        description: 'Unbranded cylindrical clear glass tumbler with a heavy rounded base and no decoration.',
+        material: 'clear soda-lime glass with realistic refraction',
+        scale: '10 cm tall, 7 cm diameter',
+        quantity: 1,
+        states: ['clean_empty'],
+      }));
     const statefulProp = await phase('stateful_prop_dossier', 2, () => propAssets.generatePropAsset(propTaskId, {
       id: 'silver_entry_key',
       name: 'Silver entry key',
@@ -369,49 +451,53 @@ async function main() {
     }));
     audit.outputs.props = { static: staticProp, stateful: statefulProp };
     audit.verification.props = {
-      static_provider_calls: staticProp.generation_summary.provider_calls_this_run,
+      static_provider_calls: staticProp?.generation_summary?.provider_calls_this_run ?? null,
+      static_identity_covered_by_stateful_base: resumeRunId,
       stateful_provider_calls: statefulProp.generation_summary.provider_calls_this_run,
-      static_view_count: staticProp.view_images.length,
+      static_view_count: staticProp?.view_images?.length ?? null,
       stateful_view_count: statefulProp.view_images.length,
       state_view_count: statefulProp.state_views.length,
     };
     persistAudit();
 
-    const singleTaskId = `${runId}-single-scene`;
-    audit.task_ids.single_scene = singleTaskId;
-    const singleSpec = sceneSpec(
-      'A complete compact apartment entry hall with four readable boundaries, a west entrance door, an east opening to the living room, a fixed oak console on the north wall, and a clear central route.',
-      'Warm white plaster walls, matte oak joinery and pale limestone floor receive coherent soft daylight from the east opening plus a practical ceiling fixture, with realistic joints, scale and localized wear.',
-      'Reserve a visible empty standing zone beside the console and preserve an unobstructed route from the west entrance to the east opening so a person can lift a small key from the tray.',
-    );
-    seedSceneTask(singleTaskId, [{
-      id: 'entry_hall',
-      space_id: 'entry_hall',
-      name: 'Apartment entry hall',
-      description: singleSpec.layoutText,
-      scene_spec: singleSpec,
-    }]);
-    const singleScene = await phase('single_scene_asset', 2, () => sceneAssets.generateSceneAsset(singleTaskId, {
-      space_id: 'entry_hall',
-      view_strategy: 'atlas_2x2',
-      require_complete_scene_spec: true,
-      generation_id: `${runId}-single`,
-    }, {
-      generationId: `${runId}-single`,
-      generationBudget: { maxExtra: 0 },
-    }));
-    audit.outputs.single_scene = singleScene.scene_asset;
-    audit.verification.single_scene = {
-      view_count: singleScene.scene_asset.view_images.length,
-      provider_image_call_count: singleScene.scene_asset.view_acquisition.provider_image_call_count,
-      local_crop_count: singleScene.scene_asset.view_acquisition.local_crop_count,
-      full_space_lock: singleScene.scene_asset.scene_contract?.full_space_lock === true,
-      qa_unavailable: singleScene.scene_asset.scene_contract?.qa_unavailable === true,
-      cross_view_qa: singleScene.scene_asset.cross_view_qa,
-      photographic_realism_qa: singleScene.scene_asset.photographic_realism_qa,
-      layout_preflight: singleScene.scene_asset.view_acquisition.layout_preflight,
-    };
-    persistAudit();
+    let singleScene = null;
+    if (!resumeRunId) {
+      const singleTaskId = `${runId}-single-scene`;
+      audit.task_ids.single_scene = singleTaskId;
+      const singleSpec = sceneSpec(
+        'A complete compact apartment entry hall with four readable boundaries, a west entrance door, an east opening to the living room, a fixed oak console on the north wall, and a clear central route.',
+        'Warm white plaster walls, matte oak joinery and pale limestone floor receive coherent soft daylight from the east opening plus a practical ceiling fixture, with realistic joints, scale and localized wear.',
+        'Reserve a visible empty standing zone beside the console and preserve an unobstructed route from the west entrance to the east opening so a person can lift a small key from the tray.',
+      );
+      seedSceneTask(singleTaskId, [{
+        id: 'entry_hall',
+        space_id: 'entry_hall',
+        name: 'Apartment entry hall',
+        description: singleSpec.layoutText,
+        scene_spec: singleSpec,
+      }]);
+      singleScene = await phase('single_scene_asset', 2, () => sceneAssets.generateSceneAsset(singleTaskId, {
+        space_id: 'entry_hall',
+        view_strategy: 'atlas_2x2',
+        require_complete_scene_spec: true,
+        generation_id: `${runId}-single`,
+      }, {
+        generationId: `${runId}-single`,
+        generationBudget: { maxExtra: 0 },
+      }));
+      audit.outputs.single_scene = singleScene.scene_asset;
+      audit.verification.single_scene = {
+        view_count: singleScene.scene_asset.view_images.length,
+        provider_image_call_count: singleScene.scene_asset.view_acquisition.provider_image_call_count,
+        local_crop_count: singleScene.scene_asset.view_acquisition.local_crop_count,
+        full_space_lock: singleScene.scene_asset.scene_contract?.full_space_lock === true,
+        qa_unavailable: singleScene.scene_asset.scene_contract?.qa_unavailable === true,
+        cross_view_qa: singleScene.scene_asset.cross_view_qa,
+        photographic_realism_qa: singleScene.scene_asset.photographic_realism_qa,
+        layout_preflight: singleScene.scene_asset.view_acquisition.layout_preflight,
+      };
+      persistAudit();
+    }
 
     const dualTaskId = `${runId}-dual-scene`;
     audit.task_ids.dual_scene = dualTaskId;
@@ -482,9 +568,9 @@ async function main() {
       reference_board: mediaAdapter.assetPathFromName(dossier.dossier.reference_board.filename),
       composite_sheet: mediaAdapter.assetPathFromName(dossier.dossier.sheet.filename),
       category_atlases: dossier.dossier.category_atlases.map(item => mediaAdapter.assetPathFromName(item.filename)),
-      static_prop_atlases: staticProp.category_atlases.map(item => mediaAdapter.assetPathFromName(item.filename)),
+      static_prop_atlases: staticProp ? staticProp.category_atlases.map(item => mediaAdapter.assetPathFromName(item.filename)) : [],
       stateful_prop_atlases: statefulProp.category_atlases.map(item => mediaAdapter.assetPathFromName(item.filename)),
-      single_scene_views: singleScene.scene_asset.view_images.map(item => mediaAdapter.assetPathFromName(item.filename || decodeURIComponent(String(item.image_url || '').split('/').pop() || ''))),
+      single_scene_views: singleScene ? singleScene.scene_asset.view_images.map(item => mediaAdapter.assetPathFromName(item.filename || decodeURIComponent(String(item.image_url || '').split('/').pop() || ''))) : [],
       dual_scene_views: dualScenes.map(asset => asset.view_images.map(item => mediaAdapter.assetPathFromName(item.filename || decodeURIComponent(String(item.image_url || '').split('/').pop() || '')))),
     };
     audit.status = 'completed';
@@ -498,8 +584,8 @@ async function main() {
       provider_image_submissions: audit.provider_submissions.length,
       successful_image_submissions: audit.provider_submissions.filter(item => item.status === 'success').length,
       person_atomic_assets: dossier.dossier.atomic_assets.length,
-      prop_provider_calls: staticProp.generation_summary.provider_calls_this_run + statefulProp.generation_summary.provider_calls_this_run,
-      single_scene_provider_calls: singleScene.scene_asset.view_acquisition.provider_image_call_count,
+      prop_provider_calls: (staticProp?.generation_summary?.provider_calls_this_run || 0) + statefulProp.generation_summary.provider_calls_this_run,
+      single_scene_provider_calls: singleScene?.scene_asset?.view_acquisition?.provider_image_call_count || 0,
       dual_scene_provider_calls: dualScenes.reduce((sum, asset) => sum + asset.view_acquisition.provider_image_call_count, 0),
       billing_unknown: audit.model_call_summary.billing_unknown,
     }));
@@ -515,7 +601,9 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(JSON.stringify({ passed: false, error: safeError(error) }, null, 2));
-  process.exitCode = 1;
-});
+main()
+  .then(() => process.exit(0))
+  .catch(error => {
+    console.error(JSON.stringify({ passed: false, error: safeError(error) }, null, 2));
+    process.exit(1);
+  });

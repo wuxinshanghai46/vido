@@ -318,7 +318,7 @@ async function runCandidates(initial, source, outfitSource) {
         taskId: production.task_id,
         stage: 'new_story_ad.person_sheet',
         prompt: outfitPrompt(production.mode, production.wardrobe, index),
-        filename: `person_outfit_${production.task_id}_${index + 1}`,
+        filename: `person_outfit_${index + 1}_${personDossierCompiler.compactAssetToken(production.task_id, 'outfit', index + 1)}`,
         aspectRatio: '3:4',
         referenceImages: bridges.map(item => item.url),
         requireReferences: true,
@@ -583,6 +583,7 @@ async function runDossier(initial) {
     const sheet = await dossierComposites.composePersonDossier({
       taskId: production.task_id,
       assetId: production.approved_candidate_id || 'authorized_person',
+      anchor: production.approved_anchor,
       atomicAssets,
       revision,
     });
@@ -753,7 +754,7 @@ async function runActionAssets(initial, contracts) {
         taskId: production.task_id,
         stage: 'new_story_ad.person_sheet',
         prompt: actionTriptychPrompt(contract),
-        filename: `person_${production.task_id}_action_shot_${contract.shot_index}_r${revision}`,
+        filename: `person_action_${contract.shot_index}_r${revision}_${personDossierCompiler.compactAssetToken(production.task_id, production.approved_candidate_id, contract.shot_index)}`,
         aspectRatio: '16:9',
         referenceImages: [production.approved_anchor.image_url],
         requireReferences: true,

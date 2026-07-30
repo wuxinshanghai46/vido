@@ -44,7 +44,7 @@ async function makeUpload(name, color) {
 
 async function main() {
   const user = { id: 'person-dossier-test-user' };
-  const taskId = 'person-dossier-test-task';
+  const taskId = `person-dossier-test-task-${'long-id-segment-'.repeat(7)}`;
   const identity = await service.createSource({
     file: await makeUpload('identity.png', '#ddaa88'),
     body: { kind: 'identity', rights_confirmed: 'true', adult_confirmed: 'true' },
@@ -106,6 +106,9 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.generation_summary.provider_calls_this_run, 4);
   assert.strictEqual(dossierDone.dossier.sheet.composition, 'local_sharp');
   assert.strictEqual(dossierDone.dossier.sheet.model_generated_text, false);
+  assert.strictEqual(dossierDone.dossier.sheet.layout, 'editorial_character_bible_v2');
+  assert.ok(dossierDone.dossier.sheet.detail_crop_count >= 6);
+  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_source, 'finished_atomic_assets');
   assert.strictEqual(dossierDone.dossier.reference_board.composition, 'local_sharp_reference_compiler');
   assert.strictEqual(dossierDone.dossier.reference_board.provider_reference_slot_cost, 1);
   assert.ok(fs.existsSync(mediaAdapter.assetPathFromName(dossierDone.dossier.reference_board.filename)));
@@ -115,6 +118,17 @@ async function main() {
   assert.ok(dossierDone.dossier.qa.wardrobe_consistency_score >= 0.86);
   assert.ok(dossierDone.dossier.qa.action_physics_score >= 0.8);
   assert.ok(fs.existsSync(mediaAdapter.assetPathFromName(dossierDone.dossier.sheet.filename)));
+  const dossierCalls = calls.filter(call => call.stage === 'new_story_ad.person_dossier_atlas');
+  assert.strictEqual(
+    new Set(dossierCalls.map(call => mediaAdapter.safeFilename(call.filename))).size,
+    4,
+    'maximum-length task and asset ids must retain four unique concurrent atlas filenames',
+  );
+  assert.strictEqual(
+    new Set(dossierDone.dossier.atomic_assets.map(item => item.filename)).size,
+    17,
+    'maximum-length task and asset ids must retain 17 unique locally split filenames',
+  );
 
   const dossierApproved = service.approveDossier({ taskId, user });
   assert.strictEqual(dossierApproved.dossier.status, 'approved');

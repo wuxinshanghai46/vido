@@ -73,7 +73,7 @@ async function generateAtlasUnit({
     load: repository.load,
     save: repository.save,
     execute: async controls => {
-      const atlas = await mediaAdapter.generateImage({
+      const atlas = controls.providerResult || await mediaAdapter.generateImage({
         taskId,
         stage: 'new_story_ad.prop_dossier_atlas',
         prompt,
@@ -86,6 +86,7 @@ async function generateAtlasUnit({
         onSubmitting: controls.onSubmitting,
         onSubmitted: controls.onSubmitted,
       });
+      if (!controls.providerResult) await controls.onProviderResult(atlas);
       const views = await mediaAdapter.splitReferenceSheet({
         source: atlas,
         filenamePrefix: `prop_${prop.id}_${unit}`,

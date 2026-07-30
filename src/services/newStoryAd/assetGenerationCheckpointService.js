@@ -45,6 +45,7 @@ function normalizeCheckpoint(value = {}, identity = {}) {
     provider_task_id: String(value.provider_task_id || ''),
     attempts: Math.max(0, Number(value.attempts || 0)),
     cache_hits: Math.max(0, Number(value.cache_hits || 0)),
+    provider_result: value.provider_result || null,
     result: value.result || null,
     error: value.error || null,
     started_at: value.started_at || '',
@@ -103,6 +104,7 @@ async function runCheckpointedUnit({
   if (onEvent) onEvent({ type: 'checkpoint_miss', key, checkpoint });
   const controls = {
     key,
+    providerResult: checkpoint.provider_result || null,
     onSubmitting: async () => {
       checkpoint = {
         ...checkpoint,
@@ -124,6 +126,19 @@ async function runCheckpointedUnit({
       };
       await save(key, checkpoint);
     },
+    onProviderResult: async result => {
+      checkpoint = {
+        ...checkpoint,
+        status: 'provider_completed',
+        provider_submission_state: 'completed',
+        billing_state: 'confirmed',
+        provider_result: result || null,
+        completed_at: now(),
+        updated_at: now(),
+      };
+      controls.providerResult = checkpoint.provider_result;
+      await save(key, checkpoint);
+    },
   };
   try {
     const result = await execute(controls);
@@ -141,16 +156,25 @@ async function runCheckpointedUnit({
     if (onEvent) onEvent({ type: 'checkpoint_completed', key, checkpoint });
     return { result, checkpoint, reused: false };
   } catch (error) {
-    const billingUnknown = error?.billingState === 'unknown'
+    const providerCompleted = Boolean(checkpoint.provider_result)
+      && checkpoint.provider_submission_state === 'completed'
+      && checkpoint.billing_state === 'confirmed';
+    const billingUnknown = !providerCompleted && (error?.billingState === 'unknown'
       || error?.billing_state === 'unknown'
-      || SUBMISSION_STATES.has(checkpoint.provider_submission_state);
+      || SUBMISSION_STATES.has(checkpoint.provider_submission_state));
     checkpoint = {
       ...checkpoint,
       status: billingUnknown ? 'submitted_unknown' : 'failed',
-      provider_submission_state: billingUnknown
-        ? 'submitted_unknown'
-        : String(error?.providerSubmissionState || error?.provider_submission_state || 'not_submitted'),
-      billing_state: billingUnknown ? 'unknown' : String(error?.billingState || error?.billing_state || 'not_billed'),
+      provider_submission_state: providerCompleted
+        ? 'completed'
+        : billingUnknown
+          ? 'submitted_unknown'
+          : String(error?.providerSubmissionState || error?.provider_submission_state || 'not_submitted'),
+      billing_state: providerCompleted
+        ? 'confirmed'
+        : billingUnknown
+          ? 'unknown'
+          : String(error?.billingState || error?.billing_state || 'not_billed'),
       provider_request_id: String(error?.providerRequestId || error?.provider_request_id || checkpoint.provider_request_id || ''),
       provider_task_id: String(error?.providerTaskId || error?.provider_task_id || checkpoint.provider_task_id || ''),
       error: {
