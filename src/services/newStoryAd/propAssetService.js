@@ -208,6 +208,79 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
   return asset;
 }
 
+async function regeneratePropStates(taskId, input = {}, deps = {}) {
+  const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
+  const storage = deps.storage || storageDefault;
+  const checkpoints = deps.checkpoints || checkpointsDefault;
+  const propId = String(input.prop_id || input.propId || input.id || '').trim();
+  const assets = storage.getOutput(taskId, 'prop_assets') || [];
+  const existing = assets.find(item => String(item.id || item.prop_id) === propId);
+  if (!existing) {
+    const error = new Error(`未找到可复用身份图的道具档案: ${propId}`);
+    error.code = 'PROP_ASSET_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+  const prop = propIdentity.normalizeProp(existing, 0);
+  const stateKeys = prop.states.length > 1 ? prop.states.slice(0, 4) : [];
+  if (!stateKeys.length) {
+    const error = new Error('道具没有可重新生成的多状态定义');
+    error.code = 'PROP_STATES_REQUIRED';
+    error.status = 422;
+    throw error;
+  }
+  const identityReference = existing.view_images?.[0]?.image_url || existing.view_images?.[0]?.url || '';
+  if (!identityReference) {
+    const error = new Error('仅重生状态图前必须存在可复用的道具身份图');
+    error.code = 'PROP_IDENTITY_REFERENCE_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
+  const stateRevision = Math.max(2, Number(input.state_revision || input.stateRevision || 2) || 2);
+  const unit = `states_v${stateRevision}`;
+  const repository = checkpointRepository(storage, taskId, prop.id);
+  const state = await generateAtlasUnit({
+    taskId,
+    prop,
+    unit,
+    keys: stateKeys,
+    columns: Math.min(2, stateKeys.length),
+    rows: Math.ceil(stateKeys.length / Math.min(2, stateKeys.length)),
+    prompt: statePrompt({ ...prop, states: stateKeys }),
+    referenceImages: [identityReference],
+    mediaAdapter,
+    checkpoints,
+    repository,
+  });
+  const identityAtlas = (existing.category_atlases || []).find(atlas => (
+    Number(atlas?.grid?.columns) === 2 && Number(atlas?.grid?.rows) === 2
+  )) || existing.category_atlases?.[0] || null;
+  const asset = {
+    ...existing,
+    state_views: state.result.views,
+    category_atlases: [identityAtlas, {
+      ...state.result.atlas,
+      unit: 'states',
+      state_revision: stateRevision,
+    }].filter(Boolean),
+    state_revision: stateRevision,
+    state_revalidation: {
+      status: 'generated_pending_human_approval',
+      provider_calls_this_run: Number(!state.reused),
+      checkpoint_hits: Number(state.reused),
+      checkpoint_key: state.checkpoint.key,
+      generated_at: new Date().toISOString(),
+    },
+    status: 'generated_pending_human_approval',
+    updated_at: new Date().toISOString(),
+  };
+  const nextAssets = upsertById(assets, asset);
+  storage.saveOutput(taskId, 'prop_assets', nextAssets);
+  const context = storage.getOutput(taskId, 'context');
+  if (context) storage.saveOutput(taskId, 'context', { ...context, prop_assets: nextAssets });
+  return asset;
+}
+
 function listPropAssets(taskId, deps = {}) {
   return (deps.storage || storageDefault).getOutput(taskId, 'prop_assets') || [];
 }
@@ -228,6 +301,7 @@ module.exports = {
   atlasPrompt,
   statePrompt,
   generatePropAsset,
+  regeneratePropStates,
   listPropAssets,
   refreshPropTimelines,
 };

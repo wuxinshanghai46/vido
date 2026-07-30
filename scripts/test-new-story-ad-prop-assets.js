@@ -88,13 +88,36 @@ function harness() {
   assert.strictEqual(resumed.generation_summary.provider_calls_this_run, 0);
   assert.strictEqual(resumed.generation_summary.checkpoint_hits, 2);
 
+  const identityUrlsBeforeStateRevalidation = resumed.view_images.map(item => item.image_url);
+  const revalidated = await propAssets.regeneratePropStates(taskId, {
+    prop_id: 'key',
+    state_revision: 2,
+  }, run);
+  assert.strictEqual(run.calls(), 3, 'state-only revalidation must use exactly one provider call');
+  assert.deepStrictEqual(
+    revalidated.view_images.map(item => item.image_url),
+    identityUrlsBeforeStateRevalidation,
+    'state-only revalidation must preserve identity views',
+  );
+  assert.strictEqual(revalidated.state_views.length, 2);
+  assert.strictEqual(revalidated.state_revision, 2);
+  assert.strictEqual(revalidated.state_revalidation.provider_calls_this_run, 1);
+
+  const revalidatedAgain = await propAssets.regeneratePropStates(taskId, {
+    prop_id: 'key',
+    state_revision: 2,
+  }, run);
+  assert.strictEqual(run.calls(), 3, 'repeating the same state revision must reuse its checkpoint');
+  assert.strictEqual(revalidatedAgain.state_revalidation.provider_calls_this_run, 0);
+  assert.strictEqual(revalidatedAgain.state_revalidation.checkpoint_hits, 1);
+
   const staticProp = await propAssets.generatePropAsset(taskId, {
     id: 'cup',
     name: '透明玻璃杯',
     description: '直筒透明玻璃杯',
     material: '透明玻璃',
   }, run);
-  assert.strictEqual(run.calls(), 3);
+  assert.strictEqual(run.calls(), 4);
   assert.strictEqual(staticProp.generation_summary.planned_provider_calls, 1);
 
   assert.strictEqual(propIdentity.inferType({ name: '腕表配饰' }), 'wearable_accessory');
@@ -150,6 +173,8 @@ function harness() {
   console.log(JSON.stringify({
     passed: true,
     stateful_prop_calls: 2,
+    state_revalidation_calls: 1,
+    state_revalidation_duplicate_calls: 0,
     static_prop_calls: 1,
     resume_duplicate_calls: 0,
     scene_structured_contract: true,
