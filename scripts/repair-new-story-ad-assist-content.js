@@ -94,13 +94,48 @@ function changedOutputs(before = [], after = []) {
   return after.filter(row => fingerprint(row.payload) !== fingerprint(prior.get(row.kind)?.payload));
 }
 
+function changedPaths(before, after, prefix = '', output = []) {
+  if (fingerprint(before) === fingerprint(after) || output.length >= 80) return output;
+  if (
+    before === null
+    || after === null
+    || typeof before !== 'object'
+    || typeof after !== 'object'
+    || Array.isArray(before) !== Array.isArray(after)
+  ) {
+    output.push(prefix || '<root>');
+    return output;
+  }
+  const keys = new Set([
+    ...Object.keys(before || {}),
+    ...Object.keys(after || {}),
+  ]);
+  for (const key of keys) {
+    changedPaths(
+      before?.[key],
+      after?.[key],
+      prefix ? `${prefix}.${key}` : String(key),
+      output,
+    );
+    if (output.length >= 80) break;
+  }
+  return output;
+}
+
 function summarize(before = {}, after = {}) {
   const beforeRequest = before.task?.request || {};
   const afterRequest = after.task?.request || {};
+  const priorOutputs = new Map((before.outputs || []).map(row => [row.kind, row.payload]));
+  const outputChanges = changedOutputs(before.outputs || [], after.outputs || []);
   return {
     task_id: before.task?.id || '',
     request_changed: fingerprint(beforeRequest) !== fingerprint(afterRequest),
-    outputs_changed: changedOutputs(before.outputs || [], after.outputs || []).map(row => row.kind),
+    request_changed_paths: changedPaths(beforeRequest, afterRequest),
+    outputs_changed: outputChanges.map(row => row.kind),
+    outputs_changed_paths: Object.fromEntries(outputChanges.map(row => [
+      row.kind,
+      changedPaths(priorOutputs.get(row.kind), row.payload),
+    ])),
     before: {
       appearance: String(beforeRequest.person_spec?.appearanceText || '').slice(0, 180),
       scene_layout: String(beforeRequest.scene_spec?.layoutText || '').slice(0, 180),
@@ -159,5 +194,6 @@ module.exports = {
   repairTree,
   removeAutoReferenceProductDrafts,
   repairTaskBundle,
+  changedPaths,
   summarize,
 };
