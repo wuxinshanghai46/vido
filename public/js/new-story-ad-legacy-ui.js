@@ -171,7 +171,7 @@
   let autoSaveTimer = null;
   let autoSaveInFlight = false;
   let autoSaveVersion = 0;
-  let autoSaveCommittedVersion = 0;
+  let autoSaveCommittedVersion = 0, autoSaveLastError = null;
   const AUTO_SAVE_DELAY_MS = 900;
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -1144,8 +1144,8 @@
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = null;
     autoSaveInFlight = false;
-    autoSaveVersion = 0;
-    autoSaveCommittedVersion = 0;
+    autoSaveVersion = 0; autoSaveCommittedVersion = 0;
+    autoSaveLastError = null;
     state.taskId = '';
     rememberTaskId('');
     markSourceDirty();
@@ -3710,18 +3710,16 @@
     }[status] || '自动保存已开启');
     renderAutoSaveStatus();
   }
-
   function scheduleAutoSave(reason = 'content_change', options = {}) {
     autoSaveVersion += 1;
+    autoSaveLastError = null;
     setAutoSaveStatus('pending', '有更改，等待自动保存…');
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     const delay = options.immediate === true ? 0 : AUTO_SAVE_DELAY_MS;
-    autoSaveTimer = setTimeout(() => {
-      autoSaveTimer = null;
-      flushAutoSave(reason).catch(() => {});
-    }, delay);
+    autoSaveTimer = setTimeout(() => { autoSaveTimer = null; flushAutoSave(reason).catch(() => {}); }, delay);
+    return autoSaveVersion;
   }
-
+  const waitForAutoSave = (targetVersion = autoSaveVersion, timeoutMs = 20000) => window.NewStoryAdAutoSaveConfirmation.wait({ targetVersion, timeoutMs, getCommittedVersion: () => autoSaveCommittedVersion, getLastError: () => autoSaveLastError, cancelPendingTimer: () => { if (autoSaveTimer) clearTimeout(autoSaveTimer); autoSaveTimer = null; }, isSaving: () => autoSaveInFlight, flush: () => flushAutoSave('await_confirmed_change') });
   async function persistAutoSaveChanges({ ensureFullDraft = false } = {}) {
     const id = await ensureTask();
     if (state.blueprintDirty && state.blueprint) {
@@ -3763,13 +3761,14 @@
     setAutoSaveStatus('saving', '正在自动保存…');
     try {
       await persistAutoSaveChanges();
-      autoSaveCommittedVersion = savingVersion;
+      autoSaveCommittedVersion = savingVersion; autoSaveLastError = null;
       state.autoSaveLastAt = new Date().toISOString();
       const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       setAutoSaveStatus('saved', `已自动保存 · ${time}`);
       renderStatus();
       return true;
     } catch (error) {
+      autoSaveLastError = error instanceof Error ? error : new Error(String(error || '自动保存失败'));
       setAutoSaveStatus('error', `自动保存失败：${error.message || '请检查网络后重试'}`);
       toast(`自动保存失败：${error.message || error}`, 'error');
       return false;
@@ -5390,8 +5389,8 @@
       }
       markSourceDirty('scene');
       renderAll();
-      scheduleAutoSave('scene_spec_assist');
-      if (!quiet) toast(changed ? '已根据当前需求补齐场景空间设定，可继续手动微调' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
+      const saveVersion = scheduleAutoSave('scene_spec_assist', { immediate: true }); await waitForAutoSave(saveVersion);
+      if (!quiet) toast(changed ? '场景文字设定已补齐并保存到服务器；尚未生成场景图片' : '当前场景设定已有内容；如需重新生成，请先清空对应字段', changed ? 'success' : 'info');
       return true;
     } finally {
       stopAssist();
@@ -5588,7 +5587,7 @@
         return;
       }
       const btn = target.closest('button, [role="button"], a');
-      const subjectAssist = target.closest('[data-nsa-subject-assist-index]'); if (subjectAssist && host.contains(subjectAssist)) { e.preventDefault(); e.stopPropagation(); await window.NewStoryAdSubjectProfileAssist?.assistHumanProfile?.({ state, index: Number(subjectAssist.dataset.nsaSubjectAssistIndex || 0) || 0, api, buildPayload: payload, collectSpec: collectPersonSpec, renderAll, setBusy, setButtonBusy, toast, button: subjectAssist, onChanged: () => { markSourceDirty('person'); scheduleAutoSave('single_person_assist'); } }); return; }
+      const subjectAssist = target.closest('[data-nsa-subject-assist-index]'); if (subjectAssist && host.contains(subjectAssist)) { e.preventDefault(); e.stopPropagation(); await window.NewStoryAdSubjectProfileAssist?.assistHumanProfile?.({ state, index: Number(subjectAssist.dataset.nsaSubjectAssistIndex || 0) || 0, api, buildPayload: payload, collectSpec: collectPersonSpec, renderAll, setBusy, setButtonBusy, toast, button: subjectAssist, onChanged: async () => { markSourceDirty('person'); const version = scheduleAutoSave('single_person_assist', { immediate: true }); await waitForAutoSave(version); } }); return; }
       const adminVideoMonitor = target.closest('[data-nsa-admin-video-monitor]');
       if (adminVideoMonitor && host.contains(adminVideoMonitor)) {
         e.preventDefault();
@@ -6387,7 +6386,7 @@
       });
     });
   }
-  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, applyReferencePersonProjection: (projection, analysisId) => window.NewStoryAdPersonReferenceInheritance?.applyReference?.({ state, projection, analysisId, getPersonSpec: personSpec, writeAllFields, markSourceDirty, renderAll, scheduleAutoSave }) || false, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
+  window.__newStoryAdLegacyUI = { mount, state, showStep, renderAll, resetForNewSession, payload, markSourceDirty, scheduleAutoSave, waitForAutoSave, applyReferencePersonProjection: (projection, analysisId) => window.NewStoryAdPersonReferenceInheritance?.applyReference?.({ state, projection, analysisId, getPersonSpec: personSpec, writeAllFields, markSourceDirty, renderAll, scheduleAutoSave }) || false, confirmAction: confirmNsaAction, adoptPersonDossier: asset => { if (!asset?.image_url && !asset?.view_images?.length) return false; state.personAsset = { ...asset }; state.actorAsset = { ...asset }; markSourceDirty('person'); renderAll(); scheduleAutoSave('person_dossier_approved'); return true; } };
   document.addEventListener('new-story-ad:mount', mount); document.addEventListener('new-story-ad:asset-studio-ready', () => renderAll());
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {

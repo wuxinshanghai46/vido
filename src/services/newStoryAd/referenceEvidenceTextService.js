@@ -13,7 +13,7 @@ function clean(value = '', max = 1200) {
     .replace(/\\[nrt]/gu, ' ')
     .replace(/[\r\n\t]+/gu, ' ')
     .replace(/\s+/gu, ' ')
-    .replace(/^[\s#*•\-—:：;,，；。]+|[\s#*•\-—:：;,，；]+$/gu, '')
+    .replace(/^[\s#*•\-—:：;,，；。]+|[\s#*•\-—:：;,，；。]+$/gu, '')
     .trim()
     .slice(0, max);
 }
@@ -50,6 +50,7 @@ function field(value = '', labels = [], fallback = '') {
 function facts(value = '') {
   return {
     product: field(value, ['产品或服务', '广告主体', '产品']),
+    visibleText: field(value, ['可见文字']),
     environment: field(value, ['真实环境', '环境', '空间', '场景']),
     materials: field(value, ['材质']),
     colors: field(value, ['颜色', '色彩', '色调']),
@@ -57,6 +58,53 @@ function facts(value = '') {
     lighting: field(value, ['光线', '照明', '灯光']),
     action: field(value, ['人物动作', '动作', '人物']),
   };
+}
+
+const ENVIRONMENT_TERMS = /(?:住宅|建筑|客厅|卧室|室内|室外|环境|空间|场景|城市|街道|道路|展厅|办公室|厨房|庭院|阳台|山脉|天际线)/u;
+const PRODUCT_TERMS = /(?:门|窗|幕墙|墙板|汽车|车辆|手机|电脑|家电|家具|服装|鞋|食品|饮料|药品|服务|软件|设备|机器|工具|材料|品牌|型号)/u;
+
+function environmentProductConflated(value = '') {
+  const text = clean(value, 500);
+  if (!text) return false;
+  return ENVIRONMENT_TERMS.test(text)
+    && /(?:配备|带有|安装|拥有|采用|背景|位于|建筑有|环境为)/u.test(text);
+}
+
+function visibleTextCandidates(values = []) {
+  return unique((Array.isArray(values) ? values : [values]).flatMap(value => clean(value, 500)
+    .replace(/[“”"'【】]/gu, '')
+    .split(/[|｜、；;，,\n]+/u)
+    .map(item => item.replace(/^(?:可见文字|字幕|品牌|型号)\s*[:：]\s*/u, '').trim())
+    .filter(item => item.length >= 2 && item.length <= 80)));
+}
+
+function productCandidateScore(value = '', { position = 0, visibleText = false } = {}) {
+  const text = clean(value, 500);
+  if (!text) return Number.NEGATIVE_INFINITY;
+  let score = Math.min(5, Math.max(0, Number(position) || 0));
+  if (PRODUCT_TERMS.test(text)) score += 6;
+  if (!visibleText) score += 9;
+  if (visibleText) score += 8;
+  if (/^[\p{Script=Han}A-Za-z0-9]{2,8}(?:门窗|科技|集团|品牌)$/u.test(text)) score -= 6;
+  if (/(?:品牌|型号|系列|产品|广告主体)/u.test(text)) score += 2;
+  if (ENVIRONMENT_TERMS.test(text)) score -= 4;
+  if (environmentProductConflated(text)) score -= 12;
+  if (text.length > 100) score -= 3;
+  return score;
+}
+
+function chooseProductCandidate(candidates = [], visibleTexts = []) {
+  const rows = (Array.isArray(candidates) ? candidates : [candidates])
+    .map((candidate, index) => typeof candidate === 'object'
+      ? { value: candidate.value, position: candidate.position ?? index, visibleText: candidate.visibleText === true }
+      : { value: candidate, position: index, visibleText: false });
+  visibleTextCandidates(visibleTexts).forEach((value, index, all) => {
+    rows.push({ value, position: rows.length + index + all.length, visibleText: true });
+  });
+  return rows
+    .map(row => ({ ...row, value: clean(row.value, 500), score: productCandidateScore(row.value, row) }))
+    .filter(row => row.value)
+    .sort((left, right) => right.score - left.score || right.position - left.position)[0]?.value || '';
 }
 
 function unique(values = [], maxItems = 16) {
@@ -171,7 +219,10 @@ function sanitizeAnalysis(input = {}) {
   };
   const first = (key, fallback = '', aliases = []) => parsedPrompts.map(item => item[key]).find(Boolean)
     || existingFact(fallback, key, aliases);
-  const product = first('product', existing.product_or_service, ['产品或服务', '广告主体', '产品']);
+  const product = chooseProductCandidate([
+    { value: existingFact(existing.product_or_service, 'product', ['产品或服务', '广告主体', '产品']), position: parsedPrompts.length + 1 },
+    ...parsedPrompts.map((item, index) => ({ value: item.product, position: index })),
+  ], existing.visible_text);
   const environment = first('environment', existing.environment, ['真实环境', '环境', '空间', '场景']);
   const promptMaterials = unique(parsedPrompts.map(item => item.materials));
   const materials = promptMaterials.length ? promptMaterials : unique(
@@ -201,7 +252,12 @@ function sanitizeAnalysis(input = {}) {
     human_actions: humanActions,
   };
   const priorChronology = Array.isArray(existing.chronological_story) ? existing.chronological_story : [];
-  sourceFacts.chronological_story = (parsedPrompts.length
+  sourceFacts.chronological_story = (priorChronology.length > parsedPrompts.length
+    ? priorChronology.map((item, index) => chronologyItem(
+        item,
+        index ? '推进产品细节与使用情境' : '建立产品与空间关系',
+      ))
+    : parsedPrompts.length
     ? parsedPrompts.map((row, index) => clean([
         chronologyPrefix(priorChronology[index] || ''),
         summary(row, index ? '推进产品细节与使用情境' : '建立产品与空间关系'),
@@ -239,7 +295,8 @@ function sanitizeAnalysis(input = {}) {
   if (FRAME_MARKER.test(JSON.stringify(storyOutline))) {
     storyOutline.logline = `通过${environment || '真实空间'}中的连续展示，让观众理解${product || '广告主体'}的核心价值与使用结果。`;
     storyOutline.opening = chronology[0] || `建立${product || '广告主体'}与${environment || '真实空间'}的关系。`;
-    storyOutline.development = chronology.slice(0, Math.max(1, chronology.length - 1)).join('；') || '推进产品细节与使用情境。';
+    storyOutline.development = `发展阶段：${(chronology.length > 2 ? chronology.slice(1, -1) : chronology.slice(1)).join('；')
+      || '推进产品细节与使用情境。'}`;
     storyOutline.turning_point = sourceFacts.human_presence === false
       ? '画面从整体关系推进到产品细节和结果证明。'
       : `人物与${product || '广告主体'}发生功能性互动，产品价值从外观展示转为可感知体验。`;
@@ -293,6 +350,10 @@ module.exports = {
   clean,
   field,
   facts,
+  environmentProductConflated,
+  visibleTextCandidates,
+  productCandidateScore,
+  chooseProductCandidate,
   summary,
   kindValue,
   chronologyPrefix,

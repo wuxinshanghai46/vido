@@ -18,6 +18,14 @@ const service = require('../src/services/newStoryAd/referenceVideoAnalysisServic
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
+assert.equal(assistScenePlan.scenePlanHasUserContent({
+  source: 'reference_video_analysis',
+  spaces: [{
+    scene_spec: {
+      layoutText: '参考视频自动投影的空间',
+    },
+  }],
+}), false, '参考视频自动投影不应被误判为用户手填，从而跳过后续证据一致性校验');
 const settingsService = require('../src/services/settingsService');
 
 async function waitFor(id, user, statuses, timeoutMs = 20000) {
@@ -66,8 +74,8 @@ async function main() {
     status: 'completed',
     ...productionLikeCompiled,
   });
-  assert.equal(productionLikeNormalized.source_facts.product_or_service, '现代多层住宅，配备大玻璃全景幕墙窗。');
-  assert.equal(productionLikeNormalized.source_facts.environment, '城市中的现代建筑，建筑有多层阳台、绿色植被屋顶，背景为城市天际线和山脉。');
+  assert.equal(productionLikeNormalized.source_facts.product_or_service, '大玻璃全景幕墙窗');
+  assert.equal(productionLikeNormalized.source_facts.environment, '城市中的现代建筑，建筑有多层阳台、绿色植被屋顶，背景为城市天际线和山脉');
   assert.match(productionLikeNormalized.scene_prompts[1].layout_prompt, /室内窗边/);
   assert.match(productionLikeNormalized.scene_prompts[1].material_light_prompt, /薄纱窗帘/);
   assert.doesNotMatch(JSON.stringify(productionLikeNormalized), /逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒/);
@@ -89,6 +97,26 @@ async function main() {
     '30-40岁成熟青年年龄感，原创、可信的自然外观',
   );
   assert.doesNotMatch(JSON.stringify(normalizedProductionContext.reference_video_analysis), /逐帧分析|逐帧说明|时间点\s*\d+(?:\.\d+)?\s*秒/);
+  assert.throws(
+    () => service._private.validateAnalysisResult({
+      ...productionLikeCompiled,
+      source_facts: {
+        ...productionLikeCompiled.source_facts,
+        product_or_service: '现代多层住宅，配备大玻璃全景幕墙窗',
+      },
+    }),
+    error => error.code === 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID'
+      && error.failures.includes('source_product_environment_conflated'),
+    'an environment carrying a product must never pass as the advertised subject',
+  );
+  const sampledFrames = service._private.selectEvidenceFrames(
+    Array.from({ length: 10 }, (_, index) => ({ index })),
+    8,
+  );
+  assert.strictEqual(sampledFrames.length, 8);
+  assert.strictEqual(sampledFrames[0].index, 0);
+  assert.strictEqual(sampledFrames[sampledFrames.length - 1].index, 9, 'the final brand/product card must always be sampled');
+  assert.ok(sampledFrames.some(item => item.index === 8), 'the penultimate model/product frame must survive bounded sampling');
 
   settingsService.saveSettings({
     providers: [
@@ -311,7 +339,8 @@ async function main() {
   assert.ok(completed.result.generated_brief.includes('【完整剧情】'));
   assert.ok(completed.result.generated_brief.includes('【人物提示词】'));
   assert.ok(completed.result.generated_brief.includes('【场景提示词】'));
-  assert.ok(completed.result.generated_brief.includes('运镜'));
+  assert.ok(completed.result.generated_brief.includes('【核心卖点】'));
+  assert.doesNotMatch(completed.result.generated_brief, /【运镜与节奏】|【场景与机位】/);
   assert.strictEqual(completed.result.output_language, 'zh-CN');
   assert.ok(/[\u3400-\u9fff]{12}/.test(completed.result.generated_brief), 'generated brief must be readable Simplified Chinese');
   assert.strictEqual(completed.result.transcript.status, 'mocked');
@@ -519,7 +548,7 @@ async function main() {
       activeVisualBatches += 1;
       peakVisualBatches = Math.max(peakVisualBatches, activeVisualBatches);
       visualBatchSizes.push(options.imageUrls.length);
-      const text = `本组证据时间点为 ${options.imageUrls.join('、')}。画面持续展示测试产品、测试空间、测试材质和测试光线，镜头按时间顺序推进，未识别人物身份。`;
+      const text = `本组证据时间点为 ${options.imageUrls.join('、')}。产品或服务：测试产品；真实环境：测试场景；材质：测试材质；布局：测试布局；光线：测试光线；人物：无。镜头按时间顺序推进。`;
       await options.validateText(text);
       await new Promise(resolve => setTimeout(resolve, 20));
       activeVisualBatches -= 1;
@@ -543,6 +572,26 @@ async function main() {
     assert.strictEqual(staged.visual_evidence_batches.length, 2);
     assert.ok(staged.story_outline.logline.includes('测试产品'));
     assert.strictEqual(service._private.normalizeResult(staged).analysis_quality.valid, true);
+
+    const mockFlagBeforeSynthesis = process.env.NEW_STORY_AD_MOCK_LLM;
+    process.env.NEW_STORY_AD_MOCK_LLM = '0';
+    modelGateway.generateText = async (options) => {
+      synthesisCalls += 1;
+      assert.strictEqual(options.stage, 'new_story_ad.reference_video_synthesis');
+      const text = JSON.stringify(stagedContract);
+      await options.validateText(text);
+      return { text, used_model: 'test/reference-synthesis' };
+    };
+    const synthesized = await service._private.synthesizeAnalysisFromEvidence({
+      id: 'reference-synthesis-test',
+      source: { metadata: { duration_seconds: 8 } },
+    }, [{
+      timestamps: [0, 8],
+      text: '产品或服务：测试产品；可见文字：测试产品；真实环境：测试场景；材质：测试材质；布局：测试布局；光线：测试光线；人物：无。',
+    }], { status: 'no_audio', text: '' });
+    process.env.NEW_STORY_AD_MOCK_LLM = mockFlagBeforeSynthesis;
+    assert.strictEqual(synthesized.source_facts.product_or_service, '测试产品');
+    assert.strictEqual(synthesisCalls, 1, 'real reference analysis must run one semantic synthesis pass after visual evidence extraction');
 
     const recoveryInput = path.join(tempRoot, 'rate-limit-recovery-input.mp4');
     fs.copyFileSync(input, recoveryInput);

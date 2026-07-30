@@ -66,6 +66,7 @@ function outputSchema() {
 }
 
 function scenePlanHasUserContent(plan = {}, spec = {}) {
+  if (plan?.source === 'reference_video_analysis') return false;
   const normalized = normalizeScenePlan(plan && typeof plan === 'object' ? plan : {});
   const values = [
     spec.layoutText,

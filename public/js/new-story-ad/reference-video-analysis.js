@@ -6,6 +6,7 @@
     pollTimer: null,
     mappingFingerprint: '',
     autoFilledAnalysisId: '',
+    autoFilledRequirementText: '',
     modalOpen: false,
     lastErrorKey: '',
     explicitlyRemoved: false,
@@ -106,7 +107,14 @@
   }
 
   function creativeDirectionText(result = {}) {
-    return userVisibleReferenceText(result);
+    const outline = result.story_outline || {};
+    return [
+      readable(outline.logline),
+      readable(outline.opening) ? `开场：${withoutCameraInstructions(outline.opening)}` : '',
+      readable(outline.development) ? `发展：${withoutCameraInstructions(outline.development)}` : '',
+      readable(outline.turning_point) ? `转折：${withoutCameraInstructions(outline.turning_point)}` : '',
+      readable(outline.resolution) ? `结尾：${withoutCameraInstructions(outline.resolution)}` : '',
+    ].filter(Boolean).join('\n').slice(0, 1600);
   }
 
   function ageCode(value = '') {
@@ -142,7 +150,8 @@
       age: ageCode(item.age_range),
       appearanceText: withoutCameraInstructions(item.appearance_direction),
       wardrobeText: withoutCameraInstructions(item.wardrobe_direction),
-      hairMakeupText: '发型和妆造符合当前角色、场景与表观年龄，保持自然真实并在后续画面中一致。',
+      hairMakeupText: withoutCameraInstructions(item.hair_makeup_direction || item.hairMakeupDirection)
+        || '发型和妆造符合当前角色、场景与表观年龄，保持自然真实并在后续画面中一致。',
       negativeText: withoutCameraInstructions(item.negative_prompt),
       field_authority: {
         displayName: 'reference_fact',
@@ -150,7 +159,7 @@
         age: 'reference_fact',
         appearanceText: 'reference_direction',
         wardrobeText: 'reference_direction',
-        hairMakeupText: 'system_default',
+        hairMakeupText: item.hair_makeup_direction || item.hairMakeupDirection ? 'reference_direction' : 'system_default',
         negativeText: 'reference_safety',
       },
       user_edited_fields: [],
@@ -173,7 +182,7 @@
     };
   }
 
-  function referenceScenePlan(result = {}) {
+  function referenceScenePlan(result = {}, analysisId = '') {
     const facts = result.source_facts || {};
     const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts : [];
     if (!scenes.length) return null;
@@ -205,6 +214,8 @@
       },
     }));
     return {
+      source: 'reference_video_analysis',
+      source_analysis_id: String(analysisId || '').trim(),
       scene_mode: spaces.length > 1 ? 'multi' : 'single',
       advertised_subject: facts.product_or_service || '',
       spaces,
@@ -243,7 +254,7 @@
     }
     const currentSpec = window.NewStoryAdSceneAssets?.specPayload?.() || {};
     const currentPlan = window.NewStoryAdSceneAssets?.planPayload?.(legacy.state, currentSpec) || legacy.state.sceneConfig || {};
-    const plan = referenceScenePlan(result);
+    const plan = referenceScenePlan(result, analysis.id);
     if (plan && !scenePlanHasContent(currentPlan, currentSpec)
       && window.NewStoryAdSceneAssets?.applyPlan?.(legacy.state, plan)) {
       legacy.markSourceDirty?.('scene');
@@ -256,26 +267,32 @@
 
   function fillRequirementFromAnalysis(analysis = {}) {
     const result = analysis.result;
-    const text = userVisibleReferenceText(result || {});
+    const text = String(result?.generated_brief || '').trim();
     const input = $('#dhNsaAdText');
     if (!analysis.id || analysis.status !== 'completed' || !text || !input) return false;
     if (state.autoFilledAnalysisId === analysis.id) return false;
     const maxLength = Number(input.maxLength || 1800);
     const current = String(input.value || '').trim();
-    const prefix = '【参考视频分析补充】\n';
-    const next = current && !current.includes(text)
-      ? `${current}\n\n${prefix}${text}`
-      : text;
+    const priorWasAutomatic = current && current === state.autoFilledRequirementText;
+    const legacyAutomatic = /【参考视频分析补充】|【人物】[\s\S]*【场景】[\s\S]*【剧情】/u.test(current);
+    if (current && !priorWasAutomatic && !legacyAutomatic) {
+      state.autoFilledAnalysisId = analysis.id;
+      adoptReferenceAnalysis(analysis);
+      notify('参考视频的人物、场景和剧情已写入各自档案；你手动填写的广告需求已保留，没有被覆盖。', 'success');
+      return true;
+    }
+    const next = text.slice(0, maxLength);
     input.value = next.slice(0, maxLength);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
     state.autoFilledAnalysisId = analysis.id;
+    state.autoFilledRequirementText = next;
     input.focus({ preventScroll: true });
     input.scrollIntoView({ behavior: 'smooth', block: 'center' });
     notify(
-      next.length > maxLength
-        ? '分析完成，人物、场景、剧情和内容描述已填入广告需求；受长度限制，末尾内容已截断'
-        : '分析完成，人物、场景、剧情和内容描述已填入广告需求，你只需要确认或修改这些内容',
+      text.length > maxLength
+        ? '参考视频已分析：广告需求写入精简剧情摘要，人物和场景细节写入各自档案；摘要受长度限制已截断'
+        : '参考视频已分析：广告需求写入精简剧情摘要，人物和场景细节已分别写入各自档案',
       'success',
     );
     adoptReferenceAnalysis(analysis);
@@ -288,6 +305,7 @@
     state.uploadSession = null;
     state.mappingFingerprint = '';
     state.autoFilledAnalysisId = '';
+    state.autoFilledRequirementText = '';
     state.lastErrorKey = '';
     state.explicitlyRemoved = options.explicit === true;
     state.modalOpen = false;
@@ -324,6 +342,7 @@
     };
     state.mappingFingerprint = '';
     state.autoFilledAnalysisId = id;
+    state.autoFilledRequirementText = String(saved.generated_brief || '').trim();
     state.lastErrorKey = '';
     state.explicitlyRemoved = false;
     render(state.analysis);

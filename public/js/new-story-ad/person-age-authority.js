@@ -64,7 +64,7 @@
     state.castProfiles = state.castProfiles.map((raw, index) => {
       const profile = normalizeProfile(raw, index);
       const effectiveAge = single ? (age || profile.age) : (profile.age || 'match_brief');
-      const nextAppearance = alignText(single && spec.appearanceText ? spec.appearanceText : profile.appearanceText, effectiveAge);
+      const nextAppearance = alignText(profile.appearanceText || (single ? spec.appearanceText : ''), effectiveAge);
       const dirtyFields = new Set(Array.isArray(profile._generationDirtyFields) ? profile._generationDirtyFields : []);
       if (markDirty && nextAppearance !== profile.appearanceText) dirtyFields.add('appearanceText');
       if (effectiveAge !== profile.age || nextAppearance !== profile.appearanceText) changed = true;

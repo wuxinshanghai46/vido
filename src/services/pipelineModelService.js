@@ -71,6 +71,7 @@ const PIPELINE_SCHEMA = {
   ],
   '新剧情广告': [
   { id: 'new_story_ad.reference_video_vision', name: '0 参考视频内容识别', type: 'vlm', desc: '读取参考视频证据帧，生成可编辑的人物、场景、剧情与镜头分析草稿' },
+  { id: 'new_story_ad.reference_video_synthesis', name: '0.1 参考证据语义总编', type: 'story', desc: '综合全部证据帧，区分广告产品与环境，并按独立物理空间整理人物、场景和剧情' },
   { id: 'new_story_ad.asset_plan', name: '1 统一资产计划', type: 'story', desc: '一次规划人物、道具、场景和故事种子；默认继承场景配置文本路由' },
   { id: 'new_story_ad.scene_config', name: '1 场景配置', type: 'story', desc: '把任务需求整理成独立上下文、主体、人物、素材和禁止项，不继承旧任务' },
     { id: 'new_story_ad.blueprint', name: '2 剧情蓝图', type: 'story', desc: '生成角色、剧情 beat、可见证据和商业叙事结构' },
@@ -367,6 +368,7 @@ const STAGE_DEFAULTS = {
   ],
   // 新剧情广告
   'new_story_ad.reference_video_vision': NEW_STORY_AD_REFERENCE_VISION_DEFAULTS,
+  'new_story_ad.reference_video_synthesis': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.person_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.person_dossier_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.product_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,

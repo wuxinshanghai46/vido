@@ -1,6 +1,6 @@
 (() => {
   // V3.0 发布资源使用独立版本号，避免浏览器复用旧的五步流程脚本。
-  const SCRIPT_VERSION = '20260731-person-detail-v1';
+  const SCRIPT_VERSION = '20260731-reference-grounding-v2';
   const CORE_SCRIPT_PATHS = [
     '/js/new-story-ad/api.js', '/js/new-story-ad/video-boundaries.js',
     '/js/new-story-ad/director-workspace.js',
@@ -13,7 +13,7 @@
     '/js/new-story-ad/state-sync.js',
     '/js/new-story-ad/button-state.js',
     '/js/new-story-ad/step-navigation.js',
-    '/js/new-story-ad/task-persistence.js',
+    '/js/new-story-ad/task-persistence.js', '/js/new-story-ad/auto-save-confirmation.js',
     '/js/new-story-ad/storyboard.js',
     '/js/new-story-ad/person-pet-spec.js',
     '/js/new-story-ad/person-age-authority.js',

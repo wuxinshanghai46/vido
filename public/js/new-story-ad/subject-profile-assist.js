@@ -132,17 +132,17 @@
       const changed = mergeHumanProfile(state, index, response, targetFields);
       const next = ui.normalizeHumanProfile(state.castProfiles[index], index);
       const filled = targetFields.filter(key => clean(next[key]));
+      if (changed && typeof onChanged === 'function') await onChanged();
       setAssistStatus(
         state,
         index,
         changed ? 'success' : 'idle',
         changed
-          ? `已完善 ${filled.length} 项：${filled.map(key => FIELD_LABELS[key]).join('、')}。`
+          ? `已完善并保存 ${filled.length} 项：${filled.map(key => FIELD_LABELS[key]).join('、')}。`
           : 'AI 已返回，但没有形成达到详细度标准的可写入人物设定。',
       );
-      if (changed) onChanged?.();
       renderAll?.();
-      toast?.(changed ? `已完善${current.displayName || `人物 ${index + 1}`}的详细设定，手动修改字段和其他主体未改动` : '该人物没有可安全完善的字段', changed ? 'success' : 'info');
+      toast?.(changed ? `已完善${current.displayName || `人物 ${index + 1}`}的详细设定并保存到服务器，手动修改字段和其他主体未改动` : '该人物没有可安全完善的字段', changed ? 'success' : 'info');
       return changed;
     } catch (error) {
       setAssistStatus(

@@ -1230,7 +1230,7 @@
         <div class="dh-nsa-scene-thumb">空间</div>
           <div class="dh-nsa-scene-body">
             <b>${escapeHtml(selectedSpace?.name || '未生成场景参考')}</b>
-            <span>${selectedSpace ? `当前为场景 ${planIndex + 1}/${plannedSpaces.length}，空间设定已单独显示。填写或检查后，再按需点击“生成/重新生成当前场景”。` : (detectedMulti ? `剧情已识别 ${plannedSpaces.length || 2} 个独立空间，请分别生成并验证同等数量的场景资产后再生成分镜。` : '可在生成剧本前先锁定当前任务的空间布局、材质和光线；复杂场景会自动增加俯视布局参考。')}</span>
+            <span>${selectedSpace ? `当前为场景 ${planIndex + 1}/${plannedSpaces.length}。下方只是文字设定，场景图片尚未生成；确认后再按需点击“生成当前场景图片（调用图片模型）”。` : (detectedMulti ? `剧情已识别 ${plannedSpaces.length || 2} 个独立空间；目前只有文字设定，需分别生成并验证同等数量的场景图片后再生成分镜。` : '这里当前只有文字设定；需要锁定空间时再明确点击生成场景图片。')}</span>
           </div>
         </div>
       </div>`;
@@ -1285,7 +1285,7 @@
             ? '审核服务异常，图片尚未判定失败'
             : '未完整锁定的场景不会进入关键帧')));
     const legacyUpgradeHint = effectiveLegacy
-      ? '<span class="dh-nsa-verification-hint">请点击下方“生成/重新生成当前场景”升级，系统会补齐俯视布局与空间覆盖验证。</span>'
+      ? '<span class="dh-nsa-verification-hint">请点击下方“生成当前场景图片（调用图片模型）”升级，系统会补齐俯视布局与空间覆盖验证。</span>'
       : '';
     const repairFailure = selectedFailure
       ? sceneRepairFailureMessage(selectedFailure.message)

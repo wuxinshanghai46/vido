@@ -28,6 +28,7 @@ const STAGE_FALLBACKS = {
   'new_story_ad.scene_vision': FALLBACKS,
   'new_story_ad.scene_consistency_qa': FALLBACKS,
   'new_story_ad.reference_video_vision': FALLBACKS,
+  'new_story_ad.reference_video_synthesis': FALLBACKS,
   'new_story_ad.json_repair': FALLBACKS,
   'new_story_ad.blueprint_language_repair': FALLBACKS,
   'new_story_ad.blueprint_polish': FALLBACKS,

@@ -82,6 +82,7 @@ function testRepeatedAgeDescriptionIsCollapsedIdempotently() {
 function testFrontendCompletenessGuardIsWired() {
   const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const progressSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/assist-progress.js'), 'utf8');
+  const confirmationSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/auto-save-confirmation.js'), 'utf8');
   assert.match(source, /function completePersonSpecSuggestion\(/);
   assert.match(source, /const completedSuggestion = completePersonSpecSuggestion\(suggestion, current, fallback\)/);
   assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
@@ -94,6 +95,41 @@ function testFrontendCompletenessGuardIsWired() {
   assert.match(progressSource, /补齐内容已写入下方本人物字段/);
   assert.match(source, /percentAlreadyShown \|\| snap\.indeterminate \? ''/);
   assert.match(source, /refreshProfileValidation\?\.\(/);
+  assert.match(source, /const waitForAutoSave = /);
+  assert.match(confirmationSource, /async function wait\(/);
+  assert.match(source, /await waitForAutoSave\(saveVersion\)/);
+}
+
+/** 回归：单人档案已经被 AI 细化后，旧的全局通用字段不得在重渲染时覆盖它。 */
+function testDetailedProfileSurvivesReconcile() {
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
+  const sandbox = { window: { NewStoryAdPersonAgeAuthority: { apply() {} } } };
+  vm.runInNewContext(source, sandbox);
+  const ui = sandbox.window.NewStoryAdSubjectAssetsUI;
+  const state = {
+    castProfiles: [{
+      id: 'cast_1',
+      displayName: '林悦',
+      roleName: '门窗产品体验者',
+      age: 'adult_30_40',
+      appearanceText: '35岁东亚女性，鹅蛋脸，暖米色肤色，眉眼舒展，身形修长，气质从容可信。',
+      wardrobeText: '雾蓝色针织上衣、暖白色阔腿裤、米色低跟鞋和小号银色耳钉。',
+      hairMakeupText: '深棕色低发髻，轻薄自然底妆，裸粉色唇妆。',
+      negativeText: '禁止金发、香槟色长裙和参考片真人身份复制。',
+    }],
+  };
+  ui.reconcileProfiles(state, {
+    castMode: 'single',
+    expectedPeople: '1',
+    appearanceText: '30-40岁成熟青年年龄感，原创、可信、符合当前产品定位的自然外观',
+    wardrobeText: '根据当前品牌与真实场景重新设计的原创服装，不复刻原片',
+    hairMakeupText: '自然真实的发型和妆造',
+    negativeText: '禁止复制真人身份',
+  });
+  assert.match(state.castProfiles[0].appearanceText, /鹅蛋脸/);
+  assert.match(state.castProfiles[0].wardrobeText, /雾蓝色针织上衣/);
+  assert.match(state.castProfiles[0].hairMakeupText, /深棕色低发髻/);
+  assert.doesNotMatch(state.castProfiles[0].appearanceText, /符合当前产品定位/);
 }
 
 /** 回归：人物姓名写入状态后必须立即重算校验，不得继续显示旧的“缺少姓名”。 */
@@ -204,6 +240,7 @@ async function testSinglePersonAssistHasPersistentFeedback() {
     ],
     petProfiles: [{ id: 'pet_1', name: '雪球' }],
   };
+  let saveConfirmed = false;
   const changed = await sandbox.window.NewStoryAdSubjectProfileAssist.assistHumanProfile({
     state,
     index: 1,
@@ -214,6 +251,10 @@ async function testSinglePersonAssistHasPersistentFeedback() {
     setBusy() {},
     setButtonBusy() {},
     toast() {},
+    onChanged: async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      saveConfirmed = true;
+    },
   });
   assert.equal(changed, true);
   assert.equal(capturedRequest.timeoutMs, 120000);
@@ -223,7 +264,8 @@ async function testSinglePersonAssistHasPersistentFeedback() {
   assert.equal(capturedRequest.editDomain, 'person');
   assert.ok(renderedStatuses.includes('running'), '请求期间必须留下可见的进行中状态');
   assert.equal(state.subjectAssistStatus[1].status, 'success');
-  assert.match(state.subjectAssistStatus[1].message, /已完善 6 项/);
+  assert.match(state.subjectAssistStatus[1].message, /已完善并保存 6 项/);
+  assert.strictEqual(saveConfirmed, true, 'success feedback must wait for server save confirmation');
   assert.equal(state.castProfiles[0].displayName, '林悦', '不得改写其他人物');
   assert.equal(state.petProfiles[0].name, '雪球', '不得改写宠物');
 }
@@ -292,6 +334,7 @@ async function testReferenceDirectionsAreEnrichedWithoutOverwritingUserFields() 
     }],
     petProfiles: [],
   };
+  let saveConfirmed = false;
   const changed = await sandbox.window.NewStoryAdSubjectProfileAssist.assistHumanProfile({
     state,
     index: 0,
@@ -302,6 +345,10 @@ async function testReferenceDirectionsAreEnrichedWithoutOverwritingUserFields() 
     setBusy() {},
     setButtonBusy() {},
     toast() {},
+    onChanged: async () => {
+      await new Promise(resolve => setTimeout(resolve, 5));
+      saveConfirmed = true;
+    },
   });
   assert.equal(changed, true);
   assert.deepStrictEqual(
@@ -748,6 +795,7 @@ async function main() {
   testExistingUserDetailsArePreserved();
   testRepeatedAgeDescriptionIsCollapsedIdempotently();
   testFrontendCompletenessGuardIsWired();
+  testDetailedProfileSurvivesReconcile();
   testSubjectProfileValidationRefreshesAfterEditingName();
   testGeneratedActorAgeConstraintDoesNotDowngrade();
   await testSinglePersonAssistHasPersistentFeedback();

@@ -240,15 +240,16 @@
     state.castProfiles = Array.from({ length: target.people }, (_, index) => {
       const source = existingHumans[index] || {};
       const single = target.people === 1;
+      const profileText = humanProfileTexts(source);
       return normalizeHumanProfile({
         ...source,
         displayName: source.displayName || source.name || (single ? spec.displayName : ''),
         roleName: source.roleName || source.role || (single ? spec.roleName : ''),
         age: source.age || source.ageRange || source.appearance?.ageRange || (single ? spec.age : 'match_brief'),
-        appearanceText: (single ? spec.appearanceText : '') || humanProfileTexts(source).appearanceText,
-        wardrobeText: (single ? spec.wardrobeText : '') || humanProfileTexts(source).wardrobeText,
-        hairMakeupText: (single ? spec.hairMakeupText : '') || humanProfileTexts(source).hairMakeupText,
-        negativeText: (single ? spec.negativeText : '') || source.negativeText,
+        appearanceText: profileText.appearanceText || (single ? spec.appearanceText : ''),
+        wardrobeText: profileText.wardrobeText || (single ? spec.wardrobeText : ''),
+        hairMakeupText: profileText.hairMakeupText || (single ? spec.hairMakeupText : ''),
+        negativeText: source.negativeText || (single ? spec.negativeText : ''),
       }, index);
     });
     state.petProfiles = Array.from({ length: target.pets }, (_, index) => {

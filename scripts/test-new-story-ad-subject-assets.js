@@ -823,7 +823,9 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(isolatedAssistState.castProfiles[1]._generationDirty, true);
   assert.strictEqual(isolatedAssistState.castProfiles[0]._generationDirty, undefined);
   assert(subjectUi.includes('data-nsa-subject-assist-index'), 'each human profile must render its own assist action');
-  assert(ui.includes("scheduleAutoSave('single_person_assist')"), 'single-person assist must autosave only after the scoped merge succeeds');
+  assert(/scheduleAutoSave\('single_person_assist',\s*\{\s*immediate:\s*true\s*\}\)/.test(ui)
+    && /await waitForAutoSave\(version\)/.test(ui),
+  'single-person assist must autosave after the scoped merge and wait for server confirmation');
   assert(!bootstrapSource.includes('/js/new-story-ad/subject-profile-assist.js')
     && bootstrapSource.includes('/js/new-story-ad/bootstrap-asset-loader.js')
     && assetLoaderSource.includes('/js/new-story-ad/subject-profile-assist.js'),

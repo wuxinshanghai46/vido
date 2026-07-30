@@ -35,7 +35,7 @@
   <link rel="stylesheet" href="/css/digital-human.css?v=20260728-disable-legacy-entry-v53">
   <link rel="stylesheet" href="/css/digital-human-wizard.css?v=20260730-dossier-performance-v64">
   <script src="/js/new-story-ad/bootstrap-support.js?v=20260725-subject-gallery-state-v23"></script>
-  <script src="/js/new-story-ad/bootstrap.js?v=20260731-person-detail-v1"></script>
+  <script src="/js/new-story-ad/bootstrap.js?v=20260731-reference-grounding-v2"></script>
   <style>
     html[data-dh-initial-tab]:not([data-dh-initial-tab="step1"]) #dhCrumb { visibility: hidden; }
     html[data-dh-initial-tab] .dh-tab-pane.active { display: none !important; }
@@ -591,7 +591,7 @@
               <div class="dh-demo-section-title">场景空间锁</div>
               <div class="dh-demo-person-source dh-nsa-scene-source">
                 <div class="dh-nsa-scene-current" id="dhNsaAdSceneAssetCurrent">
-                  <div class="dh-luxgen-empty"><b>未生成场景参考</b><span>可跳过；需要锁定空间时点击生成，复杂场景会自动增加俯视布局参考。</span></div>
+                  <div class="dh-luxgen-empty"><b>场景图片尚未生成</b><span>下方文字设定不等于场景图片；只有点击“生成当前场景图片”才会调用图片模型并建立空间锁。</span></div>
                 </div>
                 <div class="dh-luxgen-person-main dh-nsa-scene-main">
                   <div class="dh-luxgen-person-head">
@@ -609,7 +609,7 @@
                     </label>
                   </div>
                   <div class="dh-luxgen-mini-actions">
-                    <span>系统会优先补齐留空字段；“生成/重新生成当前场景”只生成当前选中的空间，“新增场景设定”仅增加一份空白设定，不会调用图片模型。</span>
+                    <span>“AI 补齐空间文字”只整理文本，不生成图片；“生成当前场景图片”会调用图片模型，只处理当前选中的空间；“新增场景设定”仅增加空白文本。</span>
                   </div>
                   <div class="dh-nsa-scene-spec-grid">
                     <label>
@@ -677,9 +677,9 @@
                   </div>
                   <div class="dh-nsa-surface-conflict-hint">冲突保护：“一面墙”只锁定主墙数量为 1，不等于无缝；只有明确写出“连续、无缝、隐藏拼缝”，或手动选择连续表面时，系统才采用隐藏拼缝。当前编辑会覆盖旧场景合同。</div>
                   <div class="dh-demo-person-actions dh-nsa-scene-actions">
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补充空间设定</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAiSceneSpec" type="button" aria-pressed="false">AI 补齐空间文字（不生成图片）</button>
                     <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdAddSceneSheet" type="button" aria-pressed="false">新增场景设定</button>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成/重新生成当前场景</button>
+                    <button class="dh-btn dh-btn-ghost dh-btn-sm dh-luxgen-action-btn" id="dhNsaAdGenerateSceneSheet" type="button" aria-pressed="false">生成当前场景图片（调用图片模型）</button>
                   </div>
                 </div>
               </div>
