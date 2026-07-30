@@ -30,7 +30,7 @@ function main() {
     throw new Error('运行时核对没有继承生产 PM2 的 SQLite 主读配置');
   }
   if (!available.length) throw new Error('生产运行时没有可用的参考视频视觉模型');
-  if (configured[0] !== 'zhipu/glm-4.6v-flash') {
+  if (configured[0] !== 'deyunai/gemini-2.5-flash') {
     throw new Error(`参考视频视觉首选模型不正确: ${configured[0] || 'empty'}`);
   }
   if (availability.models.some(item => item.provider_id === 'openai')) {

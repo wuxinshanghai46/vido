@@ -6,6 +6,11 @@ const { execFileSync } = require('child_process');
 
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-reference-video-test-'));
 process.env.OUTPUT_DIR = tempRoot;
+process.env.DB_ENABLED = '0';
+process.env.DB_READ_PRIMARY = '0';
+process.env.DB_DUAL_WRITE = '0';
+process.env.DB_JSON_FALLBACK = '1';
+process.env.DB_PATH = path.join(tempRoot, 'vido-reference-video-test.sqlite');
 process.env.NEW_STORY_AD_MOCK_LLM = '1';
 
 const ffmpegPath = require('ffmpeg-static');
@@ -28,6 +33,17 @@ async function waitFor(id, user, statuses, timeoutMs = 20000) {
 async function main() {
   settingsService.saveSettings({
     providers: [
+      {
+        id: 'deyunai',
+        preset: 'deyunai',
+        name: 'DeyunAI',
+        api_url: 'https://api.deyunai.com/v1',
+        api_key: 'test-deyunai-key',
+        enabled: true,
+        models: [
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
+        ],
+      },
       {
         id: 'zhipu',
         preset: 'zhipu',
@@ -67,12 +83,13 @@ async function main() {
     .candidatesForVisionStage('new_story_ad.reference_video_vision')
     .map(item => `${item.provider_id}/${item.model_id}`);
   assert.deepStrictEqual(routedVisionModels, [
+    'deyunai/gemini-2.5-flash',
     'zhipu/glm-4.6v-flash',
     'webang-maas/gemini-2.5-flash',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
   assert.strictEqual(routedAvailability.source, 'stage_route');
-  assert.strictEqual(routedAvailability.available_count, 2);
+  assert.strictEqual(routedAvailability.available_count, 3);
   assert.ok(!routedAvailability.models.some(item => item.provider_id === 'openai'));
   assert.strictEqual(modelGateway.classifyError(new Error('401 该令牌已过期')).code, 'AUTH_CONFIG');
   assert.strictEqual(modelGateway.classifyError(new Error('Connection error.')).code, 'TIMEOUT_OR_NETWORK');
@@ -193,6 +210,7 @@ async function main() {
   });
   const authError = new Error('test auth failure');
   authError.code = 'AUTH_CONFIG';
+  modelGateway.recordHealth({ provider_id: 'deyunai', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'zhipu', model_id: 'glm-4.6v-flash' }, { ok: false, error: authError });
   modelGateway.recordHealth({ provider_id: 'webang-maas', model_id: 'gemini-2.5-flash' }, { ok: false, error: authError });
   const mockBeforeGuard = process.env.NEW_STORY_AD_MOCK_LLM;
@@ -328,6 +346,75 @@ async function main() {
     fallbackVision.failed_models.map(item => item.code),
     ['PROVIDER_EMPTY_RESPONSE', 'PROVIDER_RESPONSE_INVALID'],
   );
+
+  const originalGenerateVision = modelGateway.generateVision;
+  const originalGenerateText = modelGateway.generateText;
+  const originalVisionCandidates = modelGateway.candidatesForVisionStage;
+  const visualBatchSizes = [];
+  let synthesisCalls = 0;
+  const stagedContract = {
+    source_facts: {
+      product_or_service: '测试产品',
+      visible_text: [],
+      environment: '测试场景',
+      materials: ['测试材质'],
+      colors: ['测试颜色'],
+      layout: '测试布局',
+      lighting: '测试光线',
+      human_presence: false,
+      human_actions: [],
+      chronological_story: ['开场', '展示', '结尾'],
+      evidence_timestamps: [0, 1, 2, 3, 4, 5, 6, 7],
+    },
+    summary: '测试广告摘要',
+    generated_brief: '【参考内容事实】测试产品',
+    story_outline: {
+      logline: '测试故事',
+      opening: '测试开场',
+      development: '测试发展',
+      turning_point: '测试转折',
+      resolution: '测试结尾',
+    },
+    plot_beats: [{ purpose: '测试开场' }, { purpose: '测试结尾' }],
+    character_prompts: [],
+    scene_prompts: [{ location_type: '测试场景', layout_prompt: '测试布局', material_light_prompt: '测试材质与光线' }],
+    camera_intents: [{ range: [0, 1], movement: 'static' }],
+    character_actions: [],
+    subtitle_cta: '测试行动号召',
+    prompt_suggestions: ['测试提示词'],
+  };
+  try {
+    modelGateway.candidatesForVisionStage = () => [
+      { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
+    ];
+    modelGateway.generateVision = async (options) => {
+      visualBatchSizes.push(options.imageUrls.length);
+      const text = `本组证据时间点为 ${options.imageUrls.join('、')}。画面持续展示测试产品、测试空间、测试材质和测试光线，镜头按时间顺序推进，未识别人物身份。`;
+      await options.validateText(text);
+      return { text, used_model: 'deyunai/gemini-2.5-flash' };
+    };
+    modelGateway.generateText = async (options) => {
+      synthesisCalls += 1;
+      throw new Error(`unexpected synthesis model call: ${options.stage}`);
+    };
+    const staged = await service._private.analyzeWithModels({
+      id: 'batch-analysis-test',
+      source: { metadata: { duration_seconds: 8 } },
+    }, Array.from({ length: 8 }, (_, index) => ({
+      timestamp_seconds: index,
+      image_url: `https://example.com/frame-${index}.jpg`,
+      filename: `missing-frame-${index}.jpg`,
+    })), { status: 'no_audio', text: '' });
+    assert.deepStrictEqual(visualBatchSizes, [4, 4], 'eight evidence frames must be read in two bounded batches');
+    assert.strictEqual(synthesisCalls, 0, 'validated visual evidence must compile without a second paid model pass');
+    assert.strictEqual(staged.visual_evidence_batches.length, 2);
+    assert.ok(staged.story_outline.logline.includes('测试产品'));
+    assert.strictEqual(service._private.normalizeResult(staged).analysis_quality.valid, true);
+  } finally {
+    modelGateway.generateVision = originalGenerateVision;
+    modelGateway.generateText = originalGenerateText;
+    modelGateway.candidatesForVisionStage = originalVisionCandidates;
+  }
 
   const metalWallAnalysis = service._private.normalizeResult({
     schema_version: 3,
@@ -497,7 +584,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 95,
+    checks: 102,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

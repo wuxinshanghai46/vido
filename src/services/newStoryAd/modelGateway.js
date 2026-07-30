@@ -390,6 +390,8 @@ async function generateText({
   skipKb = true,
   maxCandidates = TEXT_MAX_CANDIDATES,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
+  validateText = null,
+  _candidateModels = null,
 } = {}) {
   if (!stage) throw new Error('剧情广告模型调用缺少阶段标识。');
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
@@ -402,7 +404,7 @@ async function generateText({
       latency_ms: 1,
     };
   }
-  const candidates = candidatesForStage(stage);
+  const candidates = Array.isArray(_candidateModels) ? _candidateModels : candidatesForStage(stage);
   if (!candidates.length) {
     const error = new Error(`${stage} 没有未熔断的可用文本模型，已立即停止本阶段`);
     error.code = 'MODEL_CIRCUIT_OPEN';
@@ -431,6 +433,19 @@ async function generateText({
       });
       cancellation.throwIfCancelled(taskId);
       const text = result.text;
+      if (typeof validateText === 'function') {
+        const validation = await validateText(text, {
+          model,
+          result,
+          candidate_index: i,
+        });
+        if (validation === false) {
+          const invalid = new Error(`${stage} 文本模型返回的内容未通过业务语义校验`);
+          invalid.code = 'PROVIDER_RESPONSE_INVALID';
+          invalid.retryable = true;
+          throw invalid;
+        }
+      }
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
       storage.saveModelCall({
@@ -479,7 +494,14 @@ async function generateText({
       if (!classified.retryable && i >= attemptCandidates.length - 1) break;
     }
   }
-  const retryable = failed.some(item => ['TIMEOUT_OR_NETWORK', 'RATE_LIMIT', 'PROVIDER_5XX', 'MODEL_JSON'].includes(item.code));
+  const retryable = failed.some(item => [
+    'TIMEOUT_OR_NETWORK',
+    'RATE_LIMIT',
+    'PROVIDER_5XX',
+    'MODEL_JSON',
+    'PROVIDER_RESPONSE_INVALID',
+    'PROVIDER_EMPTY_RESPONSE',
+  ].includes(item.code));
   const err = new Error(
     `${stage} 模型调用失败：实际尝试 ${failed.length}/${attemptCandidates.length} 个本阶段候选`
     + `（全部可用候选 ${candidates.length} 个）；`
