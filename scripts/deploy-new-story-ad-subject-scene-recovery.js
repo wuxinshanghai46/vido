@@ -1,4 +1,6 @@
+const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { Client } = require('ssh2');
 const { connectionOptions } = require('./lib/vidoSshAuth');
 
@@ -7,7 +9,7 @@ const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const port = Number(process.env.VIDO_DEPLOY_PORT || 22);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
-const files = [
+const baseFiles = [
   'AGENTS.md',
   'package.json',
   'docs/handoffs/HANDOFF_PROTOCOL.md',
@@ -216,6 +218,20 @@ const files = [
   'src/services/pipelineCapabilityAuditService.js',
   'src/services/pipelineSelectionService.js',
 ];
+const releaseBase = process.env.VIDO_RELEASE_BASE || 'a2bdb45dec299e26f477996d65244184e47bd9f1';
+const committedReleaseFiles = execFileSync(
+  'git',
+  ['diff', '--name-only', `${releaseBase}..HEAD`],
+  { cwd: root, encoding: 'utf8' },
+).split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+const files = [...new Set([
+  ...baseFiles,
+  ...committedReleaseFiles,
+  'scripts/run-new-story-ad-real-dossier-matrix.js',
+])].filter(file => fs.existsSync(path.join(root, file)));
+const realMatrixSource = path.join(root, 'outputs', 'audits', 'real-dossier-matrix', 'pexels-jingru-li-19748978.jpg');
+const remoteMatrixSourceDir = '/opt/vido/audits/real-dossier-matrix-inputs';
+const remoteMatrixSource = `${remoteMatrixSourceDir}/pexels-jingru-li-19748978.jpg`;
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const backupDir = `/opt/vido/backups/new-story-ad-subject-scene-recovery-${stamp}`;
 const client = new Client();
@@ -248,6 +264,15 @@ client.on('ready', async () => {
       `cd ${quote(remoteRoot)}`,
       `node -e ${quote(`
         const { execFileSync } = require('child_process');
+        const processes = JSON.parse(execFileSync('pm2', ['jlist'], { encoding: 'utf8' }) || '[]');
+        const processInfo = processes.find(item => item && item.name === 'vido');
+        if (!processInfo) throw new Error('PM2 vido process not found');
+        const scalarEnv = source => Object.fromEntries(Object.entries(source || {})
+          .filter(([key, value]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+            && ['string', 'number', 'boolean'].includes(typeof value))
+          .map(([key, value]) => [key, String(value)]));
+        Object.assign(process.env, scalarEnv(processInfo.pm2_env && processInfo.pm2_env.env));
+        Object.assign(process.env, scalarEnv(processInfo.pm2_env));
         const storage = require('./src/services/newStoryAd/storageService');
         const active = storage.listTasks({ limit: 1000 })
           .filter(task => task.active_generation_id)
@@ -262,6 +287,8 @@ client.on('ready', async () => {
         };
         console.log(JSON.stringify({
           active,
+          db_enabled: process.env.DB_ENABLED === '1' || process.env.DB_ENABLED === 'true',
+          db_read_primary: process.env.DB_READ_PRIMARY === '1' || process.env.DB_READ_PRIMARY === 'true',
           branch: run(['branch', '--show-current']),
           head: run(['rev-parse', 'HEAD']),
           status: run(['status', '--short']).split(/\\r?\\n/).filter(Boolean).slice(0, 100),
@@ -272,6 +299,12 @@ client.on('ready', async () => {
     console.log(`PREFLIGHT=${JSON.stringify(preflight)}`);
     if (preflight.active.length) {
       throw new Error(`生产存在活动生成任务，已停止部署：${preflight.active.map(item => item.id).join(', ')}`);
+    }
+    if (!preflight.db_enabled || !preflight.db_read_primary) {
+      throw new Error('生产预检没有继承 SQLite 主读配置，已停止部署');
+    }
+    if (!fs.existsSync(realMatrixSource)) {
+      throw new Error(`真实矩阵授权素材不存在：${realMatrixSource}`);
     }
     const fileArgs = files.map(quote).join(' ');
     await exec([
@@ -284,7 +317,7 @@ client.on('ready', async () => {
     const remoteDirs = Array.from(new Set(files
       .map(file => path.posix.dirname(file))
       .filter(dir => dir && dir !== '.')));
-    await exec(`cd ${quote(remoteRoot)} && mkdir -p ${remoteDirs.map(quote).join(' ')}`);
+    await exec(`cd ${quote(remoteRoot)} && mkdir -p ${remoteDirs.map(quote).join(' ')} ${quote(remoteMatrixSourceDir)}`);
     sftp = await new Promise((resolve, reject) => client.sftp((error, value) => error ? reject(error) : resolve(value)));
     for (const file of files) {
       await new Promise((resolve, reject) => sftp.fastPut(
@@ -293,6 +326,11 @@ client.on('ready', async () => {
         error => error ? reject(error) : resolve(),
       ));
     }
+    await new Promise((resolve, reject) => sftp.fastPut(
+      realMatrixSource,
+      remoteMatrixSource,
+      error => error ? reject(error) : resolve(),
+    ));
     const checks = files.filter(file => file.endsWith('.js'))
       .map(file => `node --check ${quote(file)}`)
       .join(' && ');
@@ -304,10 +342,13 @@ client.on('ready', async () => {
     const output = await exec([
       `cd ${quote(remoteRoot)}`,
       checks,
+      'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-active-tasks.js',
+      'npm run story-ad:dossier:test',
+      `node scripts/run-with-pm2-env.js vido node scripts/run-new-story-ad-real-dossier-matrix.js --confirm-paid --max-image-submissions=15 --public-base-url=https://vido.smsend.cn --source=${quote(remoteMatrixSource)}`,
       'npm run platform:upgrade:test',
       'node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-reference-video-runtime.js',
       'pm2 reload vido --update-env >/dev/null',
-      'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1',
+      'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && curl -fsS https://vido.smsend.cn/api/health >/dev/null && echo DEPLOY_OK && exit 0; done; exit 1',
     ].join(' && '));
     const remoteHashText = await exec([
       `cd ${quote(remoteRoot)}`,
@@ -325,7 +366,7 @@ client.on('ready', async () => {
     if (hashAudit.mismatches.length) throw new Error(`生产文件哈希不一致：${hashAudit.mismatches.join(', ')}`);
     const outputLines = String(output || '').split(/\r?\n/).filter(Boolean);
     const summaryLines = outputLines.filter(line => (
-      /PASS|passed|通过|DEPLOY_OK|没有提交视频模型|tests? passed/i.test(line)
+      /PASS|passed|通过|DEPLOY_OK|provider_image_submissions|billing_unknown|没有提交视频模型|tests? passed/i.test(line)
     )).slice(-40);
     console.log([
       ...summaryLines,
