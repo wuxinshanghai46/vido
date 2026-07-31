@@ -132,7 +132,10 @@ client.on('ready', async () => {
     }
 
     const stagingChecks = files.filter(file => file.endsWith('.js'))
-      .map(file => `node --check ${quote(`${stagingDir}/${file}`)}`).join(' && ');
+      .map(file => file.startsWith('public/story-ad/')
+        ? `node --input-type=module --check < ${quote(`${stagingDir}/${file}`)}`
+        : `node --check ${quote(`${stagingDir}/${file}`)}`)
+      .join(' && ');
     await exec(stagingChecks);
 
     const publishCommands = files.map(file => {
