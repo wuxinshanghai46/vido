@@ -76,10 +76,18 @@ function main() {
   assert(!page.includes('/js/new-story-ad/'), '独立入口不得同步加载旧剧情广告脚本');
   assert(page.includes('type="module"'), '独立入口必须使用模块化脚本');
   assert(page.includes('/js/vido-theme.js'), '独立入口必须加载平台共享主题脚本');
+  assert(page.includes('/js/media-delivery.js?v=20260729-platform-media-v5'), '独立入口必须加载平台媒体交付脚本');
   const styles = read(path.join(ROOT, 'public/story-ad/styles.css'));
   assert(styles.includes(':root[data-theme="light-mist"]'), '亮色样式必须识别平台 light-mist 主题');
   const dialog = read(path.join(ROOT, 'public/story-ad/components/dialog.js'));
   assert(dialog.includes('role="dialog"'), '确认与输入提示必须使用可访问的平台弹窗');
+  const assetCenter = read(path.join(ROOT, 'public/story-ad/views/assetCenterView.js'));
+  assert(assetCenter.includes('subjectGenerationPayload'), '资产中心必须从 Project Bundle 构造完整主体生成请求');
+  assert(assetCenter.includes('subject_targets'), '资产详情必须支持逐人物或逐动物生成');
+  assert(assetCenter.includes('dossier_sheet'), '人物详情必须优先显示完整人物档案图');
+  const workspaceStyles = read(path.join(ROOT, 'public/story-ad/workspace.css'));
+  assert(/\.asset-card[\s\S]{0,900}object-fit:\s*contain/.test(workspaceStyles), '人物资产卡必须完整显示纵向全身图');
+  assert(/\.drawer-media-grid[\s\S]{0,500}object-fit:\s*contain/.test(workspaceStyles), '详情四视图不得使用 cover 裁掉人物');
 
   const initialBytes = INITIAL_FILES.reduce((sum, file) => sum + fs.statSync(path.join(ROOT, file)).size, 0);
   const allJsBytes = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js')).reduce((sum, file) => sum + fs.statSync(file).size, 0);

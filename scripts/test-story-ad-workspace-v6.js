@@ -3,6 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-story-ad-workspace-v6-'));
 process.env.OUTPUT_DIR = tempDir;
@@ -30,12 +31,49 @@ function seedProject() {
   const context = storage.getOutput(taskId, 'context');
   storage.saveOutput(taskId, 'context', {
     ...context,
+    expected_people: 1,
+    expected_animals: 1,
+    cast_profiles: [{
+      id: 'cast-current',
+      displayName: '主要人物',
+      roleName: '产品体验角色',
+      appearanceText: '东亚成年女性，鹅蛋脸，身形匀称，气质自然可信。',
+      wardrobeText: '固定穿雾蓝色针织上衣和象牙白长裤。',
+      hairMakeupText: '固定深棕色低发髻和自然淡妆。',
+      negativeText: '禁止年龄、服装和发型漂移。',
+    }],
     person_asset: {
       id: 'person-current',
+      actor_id: 'cast-current',
       name: '主要人物',
       image_url: '/api/new-story-ad/assets/person-current.png',
+      cover_image_url: '/api/new-story-ad/assets/person-current-dossier.png',
+      dossier_sheet: {
+        image_url: '/api/new-story-ad/assets/person-current-dossier.png',
+        width: 1536,
+        height: 1024,
+      },
+      view_images: [
+        { key: 'front', url: '/api/new-story-ad/assets/person-current.png' },
+        { key: 'side', url: '/api/new-story-ad/assets/person-current-side.png' },
+        { key: 'back', url: '/api/new-story-ad/assets/person-current-back.png' },
+        { key: 'action', url: '/api/new-story-ad/assets/person-current-action.png' },
+      ],
       status: 'verified',
     },
+    pet_profiles: [{
+      id: 'pet-current',
+      name: '雪球',
+      type: '犬',
+      breed: '萨摩耶',
+      appearance: '成年白色萨摩耶，佩戴天蓝色项圈。',
+      reference_images: [
+        '/api/new-story-ad/assets/pet-current-front.png',
+        '/api/new-story-ad/assets/pet-current-side.png',
+        '/api/new-story-ad/assets/pet-current-back.png',
+        '/api/new-story-ad/assets/pet-current-action.png',
+      ],
+    }],
     product_asset: {
       id: 'product-current',
       name: '测试商品',
@@ -87,8 +125,46 @@ async function main() {
   assert.equal(bundle.brief.text, '制作一支突出耐用性和便捷操作的剧情广告。');
   assert.equal(bundle.storyboard.shots.length, 2);
   assert(bundle.assets.people.some(item => item.id === 'person-current'));
+  assert.equal(bundle.assets.people[0].profile.id, 'cast-current', 'V6 必须把持久化人物档案投影到生成请求');
+  assert.equal(bundle.assets.people[0].dossier_sheet.image_url, '/api/new-story-ad/assets/person-current-dossier.png');
+  assert.equal(bundle.assets.people[0].view_images.length, 4);
+  assert.equal(bundle.assets.animals[0].image_url, '/api/new-story-ad/assets/pet-current-front.png', '旧宠物 reference_images 必须恢复为可见封面');
+  assert.equal(bundle.assets.animals[0].view_images.length, 4, '旧宠物四视图必须完整投影');
   assert(bundle.assets.products.some(item => item.id === 'product-current'));
   assert(bundle.payload_bytes > 0 && bundle.payload_bytes < 200000, 'Project Bundle 首包必须保持轻量');
+
+  const assetCenter = await import(pathToFileURL(path.join(__dirname, '../public/story-ad/views/assetCenterView.js')).href);
+  const allSubjects = assetCenter.subjectGenerationPayload(bundle, null, 'workspace-all-subjects');
+  assert.equal(allSubjects.cast_profiles.length, 1);
+  assert.equal(allSubjects.pet_profiles.length, 1);
+  assert.equal(allSubjects.request_key, 'workspace-all-subjects');
+  const onePerson = assetCenter.subjectGenerationPayload(bundle, bundle.assets.people[0], 'workspace-one-person');
+  assert.deepEqual(onePerson.subject_targets, [{ kind: 'human', id: 'cast-current', index: 0 }]);
+  assert.equal(onePerson.regenerate_selected, true);
+  assert.notEqual(bundle.assets.people[0].asset_id, bundle.assets.people[0].subject_id, '卡片资产 ID 与生成主体 ID 必须分离');
+  const missingCompanion = {
+    ...bundle,
+    assets: {
+      ...bundle.assets,
+      people: [
+        bundle.assets.people[0],
+        {
+          id: 'draft-card-2', asset_id: 'draft-card-2', subject_id: 'cast-draft-2', kind: 'person',
+          profile: {
+            id: 'cast-draft-2', displayName: '第二人物', roleName: '配角', age: 'adult_30_40',
+            appearanceText: '成年男性，身形挺拔，气质专业。', wardrobeText: '深灰色西装与黑色皮鞋。',
+            hairMakeupText: '短发整洁，自然妆面。', negativeText: '禁止服装漂移。',
+          },
+          view_images: [], status: 'draft',
+        },
+      ],
+    },
+  };
+  const selectedWithMissing = assetCenter.subjectGenerationPayload(missingCompanion, missingCompanion.assets.people[0], 'workspace-missing-companion');
+  assert.deepEqual(selectedWithMissing.subject_targets, [
+    { kind: 'human', id: 'cast-current', index: 0 },
+    { kind: 'human', id: 'cast-draft-2', index: 1 },
+  ], '逐人物生成必须自动包含其他缺少可复用四视图的主体');
 
   const graph = graphProjection.projectGraph(bundle);
   assert.equal(graph.read_only, true);

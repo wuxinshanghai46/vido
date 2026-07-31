@@ -328,7 +328,11 @@ browser.document.querySelector = selector => {
 referenceModule.beginNewSource();
 assert.strictEqual(staleRequirement.value, '', 'selecting a new reference must remove the prior analysis-generated brief');
 assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale_completed' }), null);
-assert.ok(referenceUi.includes("clearAutomaticRequirement();\n      window.__newStoryAdLegacyUI?.markSourceDirty?.('source');"));
+assert.match(
+  referenceUi,
+  /clearAutomaticRequirement\(\);\r?\n\s+window\.__newStoryAdLegacyUI\?\.markSourceDirty\?\.\('source'\);/,
+  'removing a reference must clear auto-filled requirements and mark the source dirty on every line-ending style',
+);
 referenceModule.hydrate({
   analysis_id: 'ref_failed_current',
   status: 'failed',

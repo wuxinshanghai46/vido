@@ -29,6 +29,44 @@ function mediaUrl(value = {}) {
   );
 }
 
+/** 将持久化人物档案压缩成生成服务可直接复用的标准结构。 */
+function personProfile(source = {}, index = 0) {
+  return {
+    id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
+    displayName: clean(source.displayName || source.display_name || source.name, 120),
+    roleName: clean(source.roleName || source.role_name || source.role, 120),
+    age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
+    appearanceText: clean(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description, 800),
+    wardrobeText: clean(source.wardrobeText || source.wardrobe?.userPrompt || source.wardrobe?.description || source.outfit, 600),
+    hairMakeupText: clean(source.hairMakeupText || source.hairMakeup?.userPrompt || source.hairMakeup?.description || source.hair_style, 500),
+    negativeText: clean(source.negativeText || source.negative, 600),
+  };
+}
+
+/** 将宠物档案压缩成生成服务可直接复用的标准结构。 */
+function petProfile(source = {}, index = 0) {
+  return {
+    id: clean(source.id || source.pet_id || source.petId || `pet_${index + 1}`, 80),
+    name: clean(source.name || source.displayName, 120),
+    type: clean(source.type || source.species, 120),
+    breed: clean(source.breed, 160),
+    appearance: clean(source.appearance || source.description, 600),
+  };
+}
+
+function projectedViews(source = {}, fallback = []) {
+  const raw = list(source.view_images).length ? list(source.view_images) : list(fallback);
+  const labels = { front: '正面', side: '侧面', back: '背面', action: '动作' };
+  return raw.slice(0, 16).map((view, index) => {
+    const key = clean(view?.key || view?.id || view?.label || ['front', 'side', 'back', 'action'][index] || `view_${index + 1}`, 80);
+    return {
+      key,
+      label: clean(view?.label || view?.name || labels[key] || `视图 ${index + 1}`, 100),
+      image_url: mediaUrl(view),
+    };
+  }).filter(view => view.image_url);
+}
+
 /** 生成稳定可读的任务编号，不修改现有任务主键。 */
 function displayId(task = {}) {
   const date = new Date(task.created_at || task.updated_at || Date.now());
@@ -111,40 +149,68 @@ function peopleAssets(context = {}) {
   const master = context.person_asset && typeof context.person_asset === 'object' ? context.person_asset : null;
   const castAssets = list(master?.cast_assets);
   const profiles = list(context.cast_profiles);
-  const source = castAssets.length ? castAssets : (profiles.length ? profiles : (master ? [master] : []));
-  return source.slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
-    id: clean(item.id || item.actor_asset_id || item.actor_id || item.person_id || `person-${index + 1}`, 120),
-    kind: 'person',
-    name: clean(item.name || item.displayName || item.display_name || item.roleName || item.role_name || `人物 ${index + 1}`, 120),
-    role: clean(item.role || item.roleName || item.role_name, 120),
-    image_url: mediaUrl(item),
-    view_images: list(item.view_images).slice(0, 16).map(view => ({
-      key: clean(view.key || view.id || view.label, 80),
-      label: clean(view.label || view.name || view.key, 100),
-      image_url: mediaUrl(view),
-    })),
-    status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
-    revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
-    source: clean(item.source || master?.source, 100),
-  }));
+  const generated = castAssets.length ? castAssets : (master ? [master] : []);
+  const used = new Set();
+  const rows = profiles.length ? profiles.map((profile, index) => {
+    const profileId = clean(profile.id || profile.cast_id || profile.castId, 80);
+    const exactIndex = generated.findIndex((item, candidateIndex) => !used.has(candidateIndex)
+      && [item.actor_id, item.subject_profile?.id, item.id].map(value => clean(value, 120)).includes(profileId));
+    const assetIndex = exactIndex >= 0 ? exactIndex : (generated[index] ? index : -1);
+    if (assetIndex >= 0) used.add(assetIndex);
+    return { profile, asset: assetIndex >= 0 ? generated[assetIndex] : {}, index };
+  }) : generated.map((asset, index) => ({ profile: asset.subject_profile || {}, asset, index }));
+  generated.forEach((asset, index) => {
+    if (!used.has(index) && profiles.length) rows.push({ profile: asset.subject_profile || {}, asset, index: rows.length });
+  });
+  return rows.slice(0, MAX_MEDIA_ITEMS).map(({ profile, asset: item, index }) => {
+    const canonical = personProfile({ ...profile, ...(item.subject_profile || {}) }, index);
+    const views = projectedViews(item);
+    const dossierUrl = mediaUrl(item.dossier_sheet || {});
+    const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
+    const assetId = clean(item.id || item.actor_asset_id || item.person_id || canonical.id || `person-${index + 1}`, 120);
+    return {
+      id: assetId,
+      asset_id: assetId,
+      subject_id: clean(item.actor_id || item.subject_profile?.id || canonical.id, 80),
+      kind: 'person',
+      name: clean(item.name || canonical.displayName || canonical.roleName || `人物 ${index + 1}`, 120),
+      role: clean(item.role || item.cast_role || canonical.roleName, 120),
+      image_url: coverUrl,
+      cover_image_url: coverUrl,
+      dossier_sheet: dossierUrl ? {
+        image_url: dossierUrl,
+        width: Math.max(0, Number(item.dossier_sheet?.width || 0) || 0),
+        height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
+      } : null,
+      view_images: views,
+      profile: canonical,
+      status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
+      revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
+      source: clean(item.source || master?.source, 100),
+    };
+  });
 }
 
 /** 将宠物或动物档案整理为独立资产。 */
 function animalAssets(context = {}) {
-  return list(context.pet_profiles).slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
-    id: clean(item.id || item.pet_id || `animal-${index + 1}`, 120),
-    kind: 'animal',
-    name: clean(item.name || item.displayName || item.species || item.breed || `动物 ${index + 1}`, 120),
-    role: clean(item.role || item.species || item.breed, 120),
-    image_url: mediaUrl(item),
-    view_images: list(item.view_images).slice(0, 16).map(view => ({
-      key: clean(view.key || view.id || view.label, 80),
-      label: clean(view.label || view.name || view.key, 100),
-      image_url: mediaUrl(view),
-    })),
-    status: clean(item.status || context.pet_contract?.status || 'draft', 50),
-    revision: Number(item.revision || context.pet_contract?.revision || 0) || 0,
-  }));
+  return list(context.pet_profiles).slice(0, MAX_MEDIA_ITEMS).map((item, index) => {
+    const profile = petProfile(item, index);
+    const views = projectedViews(item, item.reference_images);
+    const assetId = clean(item.asset_id || item.id || item.pet_id || `animal-${index + 1}`, 120);
+    return {
+      id: assetId,
+      asset_id: assetId,
+      subject_id: profile.id,
+      kind: 'animal',
+      name: clean(item.name || item.displayName || item.species || item.breed || `动物 ${index + 1}`, 120),
+      role: clean(item.role || item.species || item.breed, 120),
+      image_url: mediaUrl(item) || views[0]?.image_url || '',
+      view_images: views,
+      profile,
+      status: clean(item.status || context.pet_contract?.status || 'draft', 50),
+      revision: Number(item.revision || context.pet_contract?.revision || 0) || 0,
+    };
+  });
 }
 
 /** 将商品与品牌主体整理为独立资产。 */

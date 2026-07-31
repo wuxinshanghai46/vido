@@ -94,6 +94,32 @@ h1, h2, h3, p { margin: 0; }
 }
 .top-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
+.platform-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  min-height: 64px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  backdrop-filter: blur(14px);
+}
+.platform-brand { display: flex; align-items: center; gap: 10px; padding: 0 14px 0 0; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; }
+.platform-brand span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg, #5865f2, #7d52e8); color: #fff; font-weight: 900; }
+.platform-brand b { font-size: 17px; letter-spacing: .02em; }
+.platform-nav { display: flex; align-items: center; gap: 3px; }
+.platform-nav button { min-height: 38px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
+.platform-nav button:hover, .platform-nav button.active { color: var(--text); background: color-mix(in srgb, #675cf2 18%, var(--surface)); }
+.module-context, .project-context { min-width: 0; display: flex; align-items: center; gap: 9px; color: var(--muted); }
+.module-context b, .project-context span { color: var(--text); white-space: nowrap; }
+.module-context span, .project-context b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.project-context { max-width: 420px; }
+.project-context i { color: var(--muted); font-style: normal; }
+
 body.story-dialog-open { overflow: hidden; }
 .platform-dialog-backdrop {
   position: fixed;
@@ -157,7 +183,7 @@ body.story-dialog-open { overflow: hidden; }
   background: var(--surface-2);
 }
 
-.center-shell { width: min(1480px, calc(100% - 48px)); margin: 0 auto; padding: 30px 0 70px; }
+.center-shell { width: min(1480px, calc(100% - 48px)); margin: 0 auto; padding: 26px 0 70px; }
 .center-header { min-height: 72px; display: flex; align-items: center; margin-bottom: 24px; }
 .brand-lockup { display: flex; align-items: center; gap: 14px; }
 .brand-lockup b { display: block; font-size: 26px; }

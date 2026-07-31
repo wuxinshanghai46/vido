@@ -25,6 +25,23 @@ const VIEW_MODULES = {
 let activeViewCleanup = null;
 let centerFilter = '';
 
+/** 平台统一顶栏：任务中心和项目工作区只传上下文，不再各自维护一套头部。 */
+function platformTopbar({ project = null, saving = false, isNew = false } = {}) {
+  return `<header class="platform-topbar ${project ? 'project-topbar' : ''}">
+    <button class="platform-brand" type="button" data-workbench aria-label="返回 VIDO 工作台"><span>V</span><b>VIDO</b></button>
+    <nav class="platform-nav" aria-label="平台主导航">
+      <button type="button" data-workbench>工作台</button><button type="button">编辑器</button><button class="active" type="button" data-center>任务</button><button type="button">素材</button><button type="button">模板</button><button type="button">设置</button>
+    </nav>
+    ${project ? `<div class="project-context"><span>剧情广告</span><i>/</i><b>${escapeHtml(project.title || (isNew ? '新建项目' : '正在读取项目'))}</b></div>` : '<div class="module-context"><b>剧情广告任务中心</b><span>真实项目、生成任务与交付版本</span></div>'}
+    <div class="top-actions">
+      ${project ? `<span class="save-state">${saving ? '保存中…' : (isNew ? '尚未创建任务' : '已连接真实任务')}</span><button class="btn" type="button" data-center>返回任务中心</button>` : ''}
+      <button class="btn" type="button" data-workbench>返回工作台 ↗</button>
+      <button class="icon-btn" type="button" data-theme-toggle aria-label="切换主题">☼</button>
+      <span class="avatar" aria-label="当前账号">U</span>
+    </div>
+  </header>`;
+}
+
 /** 读取当前独立模块路由。 */
 function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
@@ -88,15 +105,8 @@ function renderCenter() {
     return tone === 'info' || tone === 'neutral';
   });
   app.innerHTML = `
+    ${platformTopbar()}
     <main class="center-shell">
-      <header class="center-header">
-        <div class="brand-lockup"><span class="brand-mark">剧</span><span><b>剧情广告任务中心</b><small>管理真实项目、生成任务与交付版本</small></span></div>
-        <div class="top-actions">
-          <button class="btn" type="button" data-workbench>← 返回工作台</button>
-          <button class="icon-btn" type="button" data-theme-toggle aria-label="切换主题">☼</button>
-          <span class="avatar" aria-label="当前账号">U</span>
-        </div>
-      </header>
       <div class="center-layout">
         <aside class="center-filter">
           <button class="filter ${centerFilter === '' ? 'active' : ''}" type="button" data-status-filter="">全部项目 <b>${Number(stats.total) || 0}</b></button>
@@ -164,18 +174,7 @@ function renderProjectShell(route) {
   const counts = bundle?.navigation?.counts || {};
   app.innerHTML = `
     <div class="project-shell">
-      <header class="project-topbar">
-        <button class="wordmark" type="button" data-center>VIDO</button>
-        <span class="crumb">剧情广告</span><span class="crumb-separator">/</span>
-        <span class="project-title">${escapeHtml(project.title || (route.isNew ? '新建项目' : '正在读取项目'))}</span>
-        <div class="top-actions">
-          <span class="save-state">${store.state.saving ? '保存中…' : (route.isNew ? '尚未创建任务' : '已连接真实任务')}</span>
-          <button class="btn" type="button" data-center>返回任务中心</button>
-          <button class="btn" type="button" data-workbench>← 返回工作台</button>
-          <button class="icon-btn" type="button" data-theme-toggle aria-label="切换主题">☼</button>
-          <span class="avatar">U</span>
-        </div>
-      </header>
+      ${platformTopbar({ project, saving: store.state.saving, isNew: route.isNew })}
       <aside class="workspace-sidebar">
         <div class="side-label">剧情广告制作</div>
         <nav>${projectNavigation(bundle, route.view)}</nav>
