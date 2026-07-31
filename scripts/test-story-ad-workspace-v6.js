@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const vm = require('vm');
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-story-ad-workspace-v6-'));
 process.env.OUTPUT_DIR = tempDir;
@@ -133,12 +133,19 @@ async function main() {
   assert(bundle.assets.products.some(item => item.id === 'product-current'));
   assert(bundle.payload_bytes > 0 && bundle.payload_bytes < 200000, 'Project Bundle 首包必须保持轻量');
 
-  const assetCenter = await import(pathToFileURL(path.join(__dirname, '../public/story-ad/views/assetCenterView.js')).href);
-  const allSubjects = assetCenter.subjectGenerationPayload(bundle, null, 'workspace-all-subjects');
+  const assetCenterSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8')
+    .replace(/^import\s+.*?;\s*$/gm, '')
+    .replace(/\bexport\s+/g, '');
+  const assetCenterSandbox = {};
+  vm.runInNewContext(`${assetCenterSource}\nglobalThis.__subjectGenerationPayload = subjectGenerationPayload;`, assetCenterSandbox, {
+    filename: 'assetCenterView.browser-contract.js',
+  });
+  const subjectGenerationPayload = assetCenterSandbox.__subjectGenerationPayload;
+  const allSubjects = subjectGenerationPayload(bundle, null, 'workspace-all-subjects');
   assert.equal(allSubjects.cast_profiles.length, 1);
   assert.equal(allSubjects.pet_profiles.length, 1);
   assert.equal(allSubjects.request_key, 'workspace-all-subjects');
-  const onePerson = assetCenter.subjectGenerationPayload(bundle, bundle.assets.people[0], 'workspace-one-person');
+  const onePerson = subjectGenerationPayload(bundle, bundle.assets.people[0], 'workspace-one-person');
   assert.deepEqual(onePerson.subject_targets, [{ kind: 'human', id: 'cast-current', index: 0 }]);
   assert.equal(onePerson.regenerate_selected, true);
   assert.notEqual(bundle.assets.people[0].asset_id, bundle.assets.people[0].subject_id, '卡片资产 ID 与生成主体 ID 必须分离');
@@ -160,7 +167,7 @@ async function main() {
       ],
     },
   };
-  const selectedWithMissing = assetCenter.subjectGenerationPayload(missingCompanion, missingCompanion.assets.people[0], 'workspace-missing-companion');
+  const selectedWithMissing = subjectGenerationPayload(missingCompanion, missingCompanion.assets.people[0], 'workspace-missing-companion');
   assert.deepEqual(selectedWithMissing.subject_targets, [
     { kind: 'human', id: 'cast-current', index: 0 },
     { kind: 'human', id: 'cast-draft-2', index: 1 },
