@@ -316,6 +316,32 @@ assert.strictEqual(projectedPeople.castProfiles[0].roleName, '成年女性产品
 assert.strictEqual(dirtyCount, 1);
 assert.strictEqual(autosaveCount, 1);
 assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale' }).analysis_id, 'ref_restore_1');
+const staleRequirement = {
+  value: '【参考内容事实】广告主体：上一个白色跑车模型\n【完整剧情】旧剧情\n【人物提示词】无\n【场景提示词】红色沙发客厅',
+  dispatchEvent: () => {},
+};
+browser.document.querySelector = selector => {
+  if (selector === '#dhNsaAdText') return staleRequirement;
+  if (selector === '#dhNsaAdCreativeDirection') return creativeInput;
+  return null;
+};
+referenceModule.beginNewSource();
+assert.strictEqual(staleRequirement.value, '', 'selecting a new reference must remove the prior analysis-generated brief');
+assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale_completed' }), null);
+assert.ok(referenceUi.includes("clearAutomaticRequirement();\n      window.__newStoryAdLegacyUI?.markSourceDirty?.('source');"));
+referenceModule.hydrate({
+  analysis_id: 'ref_failed_current',
+  status: 'failed',
+  source: { original_name: '保时捷718.mp4', size_bytes: 82809251 },
+  error: { code: 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID', retryable: true },
+});
+assert.strictEqual(
+  referenceModule.taskPayloadOrSaved({ analysis_id: 'stale_completed', status: 'completed' }).analysis_id,
+  'ref_failed_current',
+  'a failed current reference must never fall back to a completed analysis from the previous source',
+);
+assert.strictEqual(referenceModule.taskPayloadOrSaved({ analysis_id: 'stale_completed' }).status, 'failed');
+assert.match(referenceModule.generationBlockMessage(), /分析未完成/);
 referenceModule.reset({ explicit: true });
 assert.strictEqual(referenceModule.taskPayload(), null, 'new task/reset must not reuse the previous task analysis');
 assert.strictEqual(referenceModule.wasExplicitlyRemoved(), true);

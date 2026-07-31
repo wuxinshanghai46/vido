@@ -57,6 +57,15 @@ function referenceIsValid(reference = null) {
   );
 }
 
+function assertReferenceReady(reference = null) {
+  if (!reference?.analysis_id || reference.status === 'completed') return;
+  const error = new Error('当前参考视频尚未分析完成，请重新分析或删除参考视频后再继续。');
+  error.code = 'REFERENCE_VIDEO_ANALYSIS_NOT_READY';
+  error.status = 409;
+  error.retryable = true;
+  throw error;
+}
+
 function projectReferencePlan(ctx = {}) {
   const reference = ctx.reference_video_analysis;
   const castProfiles = (reference.character_prompts || []).map((item, index) => ({
@@ -289,6 +298,7 @@ async function generate(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  assertReferenceReady(ctx.reference_video_analysis);
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   const currentFingerprint = fingerprint(task, ctx);
   const previous = storage.getOutput(taskId, 'asset_plan');
@@ -420,6 +430,7 @@ async function generate(taskId, options = {}) {
 module.exports = {
   fingerprint,
   referenceIsValid,
+  assertReferenceReady,
   projectReferencePlan,
   normalizePlan,
   complete,

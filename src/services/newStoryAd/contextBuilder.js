@@ -35,6 +35,9 @@ function normalizeReferenceVideoAnalysis(input = null) {
   const plotBeats = Array.isArray(input.plot_beats) ? input.plot_beats.slice(0, 24) : [];
   const scenePrompts = Array.isArray(input.scene_prompts) ? input.scene_prompts.slice(0, 12) : [];
   const cameraIntents = Array.isArray(input.camera_intents) ? input.camera_intents.slice(0, 24) : [];
+  const rawSource = input.source && typeof input.source === 'object' ? input.source : {};
+  const rawMetadata = rawSource.metadata && typeof rawSource.metadata === 'object' ? rawSource.metadata : {};
+  const rawError = input.error && typeof input.error === 'object' ? input.error : {};
   if (status === 'completed' && (
     quality.valid !== true
     || !cleanText(sourceFacts.product_or_service || '', 200)
@@ -53,6 +56,22 @@ function normalizeReferenceVideoAnalysis(input = null) {
   return {
     analysis_id: cleanText(input.analysis_id || '', 100),
     status,
+    source: {
+      original_name: cleanText(rawSource.original_name || '', 240),
+      size_bytes: Math.max(0, Number(rawSource.size_bytes || 0) || 0),
+      metadata: {
+        duration_seconds: Math.max(0, Number(rawMetadata.duration_seconds || 0) || 0),
+        width: Math.max(0, Number(rawMetadata.width || 0) || 0),
+        height: Math.max(0, Number(rawMetadata.height || 0) || 0),
+        video_codec: cleanText(rawMetadata.video_codec || '', 40),
+      },
+    },
+    error: cleanText(rawError.code || '', 100)
+      ? {
+          code: cleanText(rawError.code || '', 100),
+          retryable: rawError.retryable === true,
+        }
+      : null,
     analysis_scope: cleanText(input.analysis_scope || 'reference_content_and_creative_structure', 80),
     generated_brief: cleanMultilineText(input.generated_brief || '', 4000),
     source_facts: sourceFacts,

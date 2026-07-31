@@ -43,6 +43,8 @@ const context = {
 };
 vm.runInNewContext(source, context, { filename: 'task-store.js' });
 const store = context.window.NewStoryAdTaskStore;
+vm.runInNewContext(taskSessionSource, context, { filename: 'task-session.js' });
+const taskSession = context.window.NewStoryAdTaskSession;
 
 assert.equal(store.resumeStep({ stage: 'created' }, {}), 1);
 assert.equal(store.resumeStep({ stage: 'scene_config_done' }, {}), 2);
@@ -109,6 +111,22 @@ assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_
 assert(dashboardSource.includes('/digital-human?tab=new-story-ad&nsa_intent=create'));
 assert(legacyUiSource.includes("state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId())"));
 assert(taskSessionSource.includes("['nsa_intent', 'nsa_task_id', 'nsa_step']"));
+location.href = 'https://example.test/digital-human?tab=new-story-ad&nsa_intent=create&nsa_task_id=old-task&nsa_step=4';
+location.search = '?tab=new-story-ad&nsa_intent=create&nsa_task_id=old-task&nsa_step=4';
+let resetCount = 0;
+const createState = { taskSessionEpoch: 7, staleBrief: '上一个参考视频内容' };
+assert.equal(taskSession.consumeCreateIntent(createState, id => {
+  if (!id) values.delete('vido_new_story_ad_current_task_id');
+}, () => {
+  resetCount += 1;
+  createState.taskSessionEpoch += 1;
+  createState.staleBrief = '';
+}), true);
+assert.equal(resetCount, 1, 'create intent must invoke the full session reset exactly once');
+assert.equal(createState.taskSessionEpoch, 8);
+assert.equal(createState.staleBrief, '', 'new session must clear stale form content before task restore');
+assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.has('nsa_task_id'), false);
+assert(legacyUiSource.includes('consumeCreateIntent(state, rememberTaskId, resetForNewSession)'));
 assert(legacyUiSource.includes("showStep(routeStep(), { remember: false })"));
 assert(legacyUiSource.includes("showStep(state.currentStep, { remember: !state.restoringTask })"));
 assert(legacyUiSource.includes("state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId()"));

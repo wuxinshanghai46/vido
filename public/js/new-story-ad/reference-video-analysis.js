@@ -10,6 +10,7 @@
     modalOpen: false,
     lastErrorKey: '',
     explicitlyRemoved: false,
+    persistedFingerprint: '',
   };
 
   const $ = selector => document.querySelector(selector);
@@ -18,6 +19,75 @@
   function notify(message, tone = 'info') {
     if (typeof window.showToast === 'function') window.showToast(message, tone);
     else if (tone === 'error') console.error(message);
+  }
+
+  function friendlyError(error = {}) {
+    if (error?.code === 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID') {
+      return '未能从当前视频确认完整的广告主体，请重新分析或更换参考视频。';
+    }
+    return String(error?.message || '').trim();
+  }
+
+  function automaticRequirement(value = '') {
+    const text = String(value || '').trim();
+    return /【参考视频分析补充】|【参考内容事实】[\s\S]*【完整剧情】[\s\S]*【场景提示词】|【人物】[\s\S]*【场景】[\s\S]*【剧情】/u.test(text);
+  }
+
+  function clearAutomaticRequirement() {
+    const input = $('#dhNsaAdText');
+    if (!input) return false;
+    const current = String(input.value || '').trim();
+    if (!current || (current !== state.autoFilledRequirementText && !automaticRequirement(current))) return false;
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  }
+
+  function persistCurrent(reason = 'reference_video_state') {
+    const analysis = state.analysis;
+    const fingerprint = analysis?.id
+      ? `${analysis.id}:${analysis.status || ''}:${analysis.error?.code || ''}`
+      : `removed:${state.explicitlyRemoved}`;
+    if (fingerprint === state.persistedFingerprint) return;
+    state.persistedFingerprint = fingerprint;
+    const legacy = window.__newStoryAdLegacyUI;
+    if (!legacy?.state?.taskId) return;
+    legacy.scheduleAutoSave?.(reason, { immediate: true });
+  }
+
+  function beginNewSource() {
+    stopPolling();
+    clearAutomaticRequirement();
+    state.analysis = null;
+    state.uploadSession = null;
+    state.mappingFingerprint = '';
+    state.autoFilledAnalysisId = '';
+    state.autoFilledRequirementText = '';
+    state.lastErrorKey = '';
+    state.explicitlyRemoved = true;
+    state.persistedFingerprint = '';
+    const legacy = window.__newStoryAdLegacyUI;
+    legacy?.markSourceDirty?.('source');
+    render({});
+    persistCurrent('reference_video_replaced');
+  }
+
+  function generationBlockMessage() {
+    const analysis = state.analysis;
+    if (!analysis?.id || analysis.status === 'completed') return '';
+    if (['importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(analysis.status)) {
+      return '参考视频仍在处理中，请等待分析完成，或删除参考视频后继续。';
+    }
+    return '当前参考视频分析未完成，请重新分析或删除参考视频后继续。';
+  }
+
+  function assertGenerationReady() {
+    const message = generationBlockMessage();
+    if (!message) return;
+    const error = new Error(message);
+    error.code = 'REFERENCE_VIDEO_ANALYSIS_NOT_READY';
+    throw error;
   }
 
   function setProgress(analysis = {}) {
@@ -308,6 +378,7 @@
     state.autoFilledRequirementText = '';
     state.lastErrorKey = '';
     state.explicitlyRemoved = options.explicit === true;
+    state.persistedFingerprint = '';
     state.modalOpen = false;
     render({});
     setModal(false);
@@ -322,6 +393,8 @@
     state.analysis = {
       id,
       status: saved.status || 'completed',
+      source: saved.source || null,
+      error: saved.error || null,
       result: {
         schema_version: Number(saved.schema_version || 3) || 3,
         analysis_scope: saved.analysis_scope || 'reference_content_and_creative_structure',
@@ -345,6 +418,7 @@
     state.autoFilledRequirementText = String(saved.generated_brief || '').trim();
     state.lastErrorKey = '';
     state.explicitlyRemoved = false;
+    state.persistedFingerprint = `${id}:${state.analysis.status || ''}:${state.analysis.error?.code || ''}`;
     render(state.analysis);
     return state.analysis;
   }
@@ -399,7 +473,7 @@
       $('#dhNsaReferenceVideoDialogAssetStatus'),
     ].filter(Boolean);
     if (hasAsset) {
-      const text = current.error?.message || current.phase || labels[current.status] || '等待处理';
+      const text = friendlyError(current.error) || current.phase || labels[current.status] || '等待处理';
       assetStatuses.forEach(target => { target.textContent = text; });
     }
     const busy = state.uploadSession || ['importing', 'queued', 'running', 'cancelling'].includes(current.status);
@@ -427,10 +501,11 @@
     });
     setProgress(current);
     renderDraft(current);
-    const errorKey = current.error?.message ? `${current.id}:${current.error.code || ''}:${current.error.message}` : '';
+    const visibleError = friendlyError(current.error);
+    const errorKey = visibleError ? `${current.id}:${current.error?.code || ''}:${visibleError}` : '';
     if (errorKey && errorKey !== state.lastErrorKey) {
       state.lastErrorKey = errorKey;
-      notify(current.error.message, 'error');
+      notify(visibleError, 'error');
     }
   }
 
@@ -448,6 +523,7 @@
         state.pollTimer = setTimeout(poll, 1200);
       } else {
         stopPolling();
+        persistCurrent('reference_video_terminal');
       }
     } catch (error) {
       stopPolling();
@@ -465,6 +541,7 @@
       notify('请先确认拥有参考视频的分析与使用权', 'error');
       return;
     }
+    beginNewSource();
     const form = new FormData();
     form.append('file', file);
     form.append('rights_confirmed', 'true');
@@ -481,6 +558,7 @@
         timeoutMs: 180000,
       });
       render(result.analysis);
+      persistCurrent('reference_video_uploaded');
       notify('参考视频已上传，确认后可开始分析', 'success');
     } catch (error) {
       notify(error.message, 'error');
@@ -506,6 +584,7 @@
       notify('请先确认拥有参考视频的分析与使用权', 'error');
       return;
     }
+    beginNewSource();
     if (button) button.disabled = true;
     try {
       const result = await api().request('/api/new-story-ad/reference-video-links', {
@@ -517,6 +596,7 @@
         timeoutMs: 30000,
       });
       render(result.analysis);
+      persistCurrent('reference_video_importing');
       stopPolling();
       state.pollTimer = setTimeout(poll, 500);
       notify('正在安全读取链接视频；读取完成后可开始智能分析', 'success');
@@ -572,6 +652,7 @@
     );
     state.uploadSession = null;
     render(completed.analysis);
+    persistCurrent('reference_video_uploaded');
     notify('参考视频已分片上传并完成校验，确认后可开始分析', 'success');
   }
 
@@ -580,6 +661,7 @@
     try {
       const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/start`, { method: 'POST' });
       render(result.analysis);
+      persistCurrent('reference_video_started');
       stopPolling();
       state.pollTimer = setTimeout(poll, 500);
     } catch (error) {
@@ -603,6 +685,7 @@
     try {
       const result = await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}/cancel`, { method: 'POST' });
       render(result.analysis);
+      persistCurrent('reference_video_cancelled');
       stopPolling();
       state.pollTimer = setTimeout(poll, 300);
     } catch (error) {
@@ -614,7 +697,10 @@
     if (!state.analysis?.id) return;
     try {
       await api().request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(state.analysis.id)}`, { method: 'DELETE' });
+      clearAutomaticRequirement();
+      window.__newStoryAdLegacyUI?.markSourceDirty?.('source');
       reset({ explicit: true });
+      persistCurrent('reference_video_removed');
       const urlInput = $('#dhNsaReferenceVideoUrl');
       if (urlInput) urlInput.value = '';
       [$('#dhNsaReferenceVideoFileName'), $('#dhNsaReferenceVideoDialogFileName')]
@@ -688,12 +774,14 @@
   window.NewStoryAdReferenceVideoAnalysis = {
     bind,
     current: () => state.analysis,
-    taskPayload: () => {
+    taskRecord: () => {
       const analysis = state.analysis;
-      if (!analysis?.id || analysis.status !== 'completed') return null;
+      if (!analysis?.id) return null;
       return {
         analysis_id: analysis.id,
         status: analysis.status,
+        source: analysis.source || null,
+        error: analysis.error || null,
         schema_version: Number(analysis.result?.schema_version || 3) || 3,
         analysis_scope: analysis.result?.analysis_scope || 'reference_content_and_creative_structure',
         generated_brief: analysis.result?.generated_brief || '',
@@ -712,9 +800,13 @@
         identity_extraction_allowed: false,
       };
     },
+    taskPayload: () => {
+      const record = window.NewStoryAdReferenceVideoAnalysis.taskRecord();
+      return record?.status === 'completed' ? record : null;
+    },
     taskPayloadOrSaved: saved => state.explicitlyRemoved
       ? null
-      : (window.NewStoryAdReferenceVideoAnalysis.taskPayload()
+      : (window.NewStoryAdReferenceVideoAnalysis.taskRecord()
         || (saved && typeof saved === 'object' ? saved : null)),
     hydrate,
     reset,
@@ -725,6 +817,9 @@
     userVisibleReferenceText,
     referencePersonProjection,
     mapCurrentSceneViews,
+    beginNewSource,
+    generationBlockMessage,
+    assertGenerationReady,
   };
   document.addEventListener('new-story-ad:mount', bind);
   if (document.readyState !== 'loading') bind();

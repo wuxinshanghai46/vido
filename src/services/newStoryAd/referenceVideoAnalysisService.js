@@ -1276,6 +1276,60 @@ function compileAnalysisFromEvidence(record = {}, visualEvidence = [], transcrip
   };
 }
 
+function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
+  const evidence = deterministic && typeof deterministic === 'object' ? deterministic : {};
+  const model = modelResult && typeof modelResult === 'object' ? modelResult : {};
+  const evidenceFacts = evidence.source_facts && typeof evidence.source_facts === 'object'
+    ? evidence.source_facts
+    : {};
+  const modelFacts = model.source_facts && typeof model.source_facts === 'object'
+    ? model.source_facts
+    : {};
+  const preferModelArray = (key) => Array.isArray(model[key]) && model[key].length
+    ? model[key]
+    : (Array.isArray(evidence[key]) ? evidence[key] : []);
+  const merged = {
+    ...evidence,
+    ...model,
+    source_facts: {
+      ...evidenceFacts,
+      ...modelFacts,
+      product_or_service: hasChineseDetail(evidenceFacts.product_or_service, 2)
+        && !evidenceText.environmentProductConflated(evidenceFacts.product_or_service)
+        ? evidenceFacts.product_or_service
+        : modelFacts.product_or_service,
+      visible_text: evidenceText.visibleTextCandidates([
+        ...(Array.isArray(evidenceFacts.visible_text) ? evidenceFacts.visible_text : []),
+        ...(Array.isArray(modelFacts.visible_text) ? modelFacts.visible_text : []),
+      ]),
+      chronological_story: Array.isArray(modelFacts.chronological_story) && modelFacts.chronological_story.length
+        ? modelFacts.chronological_story
+        : (evidenceFacts.chronological_story || []),
+      evidence_timestamps: [...new Set([
+        ...(Array.isArray(evidenceFacts.evidence_timestamps) ? evidenceFacts.evidence_timestamps : []),
+        ...(Array.isArray(modelFacts.evidence_timestamps) ? modelFacts.evidence_timestamps : []),
+      ].map(Number).filter(Number.isFinite))].sort((left, right) => left - right),
+    },
+    story_outline: {
+      ...(evidence.story_outline || {}),
+      ...(model.story_outline || {}),
+    },
+    plot_beats: preferModelArray('plot_beats'),
+    character_prompts: preferModelArray('character_prompts'),
+    scene_prompts: preferModelArray('scene_prompts'),
+    camera_intents: preferModelArray('camera_intents'),
+    character_actions: preferModelArray('character_actions'),
+    prompt_suggestions: preferModelArray('prompt_suggestions'),
+  };
+  const sanitized = evidenceText.sanitizeAnalysis(merged);
+  try {
+    validateAnalysisResult(sanitized);
+    return sanitized;
+  } catch {
+    return evidenceText.sanitizeAnalysis(evidence);
+  }
+}
+
 async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], transcript = {}) {
   const deterministic = compileAnalysisFromEvidence(record, visualEvidence, transcript);
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return deterministic;
@@ -1374,8 +1428,9 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     taskId: record.id,
     stage: 'new_story_ad.json_repair',
   });
-  validateAnalysisResult(parsed);
-  return parsed;
+  const merged = mergeAnalysisWithEvidence(deterministic, parsed);
+  validateAnalysisResult(merged);
+  return merged;
 }
 
 async function analyzeWithModels(record, frames, transcript = {}) {
@@ -1754,6 +1809,7 @@ module.exports = {
     visualEvidenceField,
     visualEvidenceFacts,
     compileAnalysisFromEvidence,
+    mergeAnalysisWithEvidence,
     synthesizeAnalysisFromEvidence,
   },
 };

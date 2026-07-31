@@ -968,7 +968,7 @@
     state.mounted = true;
     setCopy();
     bind();
-    const createIntent = window.NewStoryAdTaskSession.consumeCreateIntent(state, rememberTaskId);
+    const createIntent = window.NewStoryAdTaskSession.consumeCreateIntent(state, rememberTaskId, resetForNewSession);
     state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId());
     state.restoringTask = !!state.pendingRestoreTaskId && !state.taskId;
     showStep(routeStep(), { remember: false });
@@ -3778,7 +3778,7 @@
     }
   }
 
-  async function flushForGeneration(targetStage = 'blueprint') {
+  async function flushForGeneration(targetStage = 'blueprint') { window.NewStoryAdReferenceVideoAnalysis?.assertGenerationReady?.();
     if (autoSaveTimer) {
       clearTimeout(autoSaveTimer);
       autoSaveTimer = null;

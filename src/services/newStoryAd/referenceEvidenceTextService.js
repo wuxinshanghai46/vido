@@ -61,7 +61,7 @@ function facts(value = '') {
 }
 
 const ENVIRONMENT_TERMS = /(?:住宅|建筑|客厅|卧室|室内|室外|环境|空间|场景|城市|街道|道路|展厅|办公室|厨房|庭院|阳台|山脉|天际线)/u;
-const PRODUCT_TERMS = /(?:门|窗|幕墙|墙板|汽车|车辆|手机|电脑|家电|家具|服装|鞋|食品|饮料|药品|服务|软件|设备|机器|工具|材料|品牌|型号)/u;
+const PRODUCT_TERMS = /(?:门|窗|幕墙|墙板|汽车|车辆|跑车|轿车|车型|手机|电脑|家电|家具|服装|鞋|食品|饮料|药品|服务|软件|设备|机器|工具|材料|品牌|型号)/u;
 
 function environmentProductConflated(value = '') {
   const text = clean(value, 500);

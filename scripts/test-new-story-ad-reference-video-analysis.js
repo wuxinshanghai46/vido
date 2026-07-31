@@ -18,6 +18,15 @@ const service = require('../src/services/newStoryAd/referenceVideoAnalysisServic
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
+const assetPlanService = require('../src/services/newStoryAd/assetPlanService');
+assert.throws(
+  () => assetPlanService.assertReferenceReady({
+    analysis_id: 'ref_failed_current',
+    status: 'failed',
+  }),
+  error => error.code === 'REFERENCE_VIDEO_ANALYSIS_NOT_READY' && error.status === 409,
+  'server generation must reject a failed current reference before any model call',
+);
 assert.equal(assistScenePlan.scenePlanHasUserContent({
   source: 'reference_video_analysis',
   spaces: [{
@@ -56,6 +65,30 @@ async function main() {
   assert.ok(!compiledVision.scene_prompts[0].layout_prompt.includes('时间点'));
   assert.match(compiledVision.scene_prompts[0].layout_prompt, /城市现代住宅客厅/);
   assert.match(compiledVision.scene_prompts[0].material_light_prompt, /透明玻璃/);
+
+  const porscheEvidence = [
+    {
+      timestamps: [0, 9],
+      text: '产品或服务：不确定；真实环境：昏暗车库；材质：金属车身；颜色：银色；布局：车辆局部特写；光线：低调光；人物：无。',
+    },
+    {
+      timestamps: [24.84, 29.74, 39.56, 44.46],
+      text: '产品或服务：银色跑车，外观特征符合保时捷 Porsche 918 Spyder；可见文字：Porsche 918 Spyder；真实环境：湿润山路；材质：银色金属漆面、玻璃；颜色：银色、深绿色；布局：跑车沿山路行驶；光线：阴天自然光；人物：无。',
+    },
+  ];
+  const porscheCompiled = service._private.compileAnalysisFromEvidence({
+    source: { metadata: { duration_seconds: 44.513 } },
+  }, porscheEvidence, {});
+  const modelWithoutProduct = {
+    ...porscheCompiled,
+    source_facts: {
+      ...porscheCompiled.source_facts,
+      product_or_service: '',
+    },
+  };
+  const mergedPorsche = service._private.mergeAnalysisWithEvidence(porscheCompiled, modelWithoutProduct);
+  assert.match(mergedPorsche.source_facts.product_or_service, /保时捷|Porsche|918 Spyder/);
+  assert.doesNotThrow(() => service._private.validateAnalysisResult(mergedPorsche));
 
   const productionLikeVision = [
     {

@@ -1,12 +1,13 @@
 (() => {
-  function consumeCreateIntent(state = {}, rememberTaskId) {
+  function consumeCreateIntent(state = {}, rememberTaskId, resetForNewSession) {
     const url = new URL(location.href);
     const create = url.searchParams.get('nsa_intent') === 'create';
     if (!create) return false;
-    state.taskSessionEpoch = Number(state.taskSessionEpoch || 0) + 1;
     rememberTaskId?.('');
     ['nsa_intent', 'nsa_task_id', 'nsa_step'].forEach(key => url.searchParams.delete(key));
     history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    if (typeof resetForNewSession === 'function') resetForNewSession();
+    else state.taskSessionEpoch = Number(state.taskSessionEpoch || 0) + 1;
     return true;
   }
 
