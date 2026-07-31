@@ -582,6 +582,14 @@ async function main() {
   assert.equal(storage.getOutput(freshnessId, 'storyboard_table'), null);
   const sameBlueprint = service.updateBlueprint(freshnessId, firstBlueprint, owner);
   assert.equal(sameBlueprint.revision, firstBlueprint.revision);
+  assert.throws(
+    () => service.updateBlueprint(freshnessId, { ...firstBlueprint, story_title: '过期页面修改' }, owner, { expected_content_revision: 1 }),
+    error => error?.code === 'CONTENT_REVISION_CONFLICT' && error?.status === 409,
+  );
+  assert.throws(
+    () => service.updateStoryboardTable(freshnessId, [{ index: 1, title: '过期分镜', visual: '不应写入' }], owner, { expected_content_revision: 1 }),
+    error => error?.code === 'CONTENT_REVISION_CONFLICT' && error?.status === 409,
+  );
   service.updateStoryboardTable(freshnessId, [{ index: 1, title: '新分镜', visual: '当前剧本对应画面', action: '完成演示', voiceover: '开始演示' }], owner);
   const freshBundle = service.publicTaskBundle(freshnessId);
   assert.equal(freshBundle.storyboard_status.ready, true);

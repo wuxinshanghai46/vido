@@ -936,6 +936,9 @@ router.get('/compose/:filename', (req, res) => {
   const filePath = composeService.composePathFromName(req.params.filename);
   if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ success: false, error: 'Final video not found' });
   res.setHeader('Cache-Control', 'public, max-age=86400');
+  if (String(req.query.download || '') === '1') {
+    res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath).replace(/["\\]/g, '_')}"`);
+  }
   res.sendFile(filePath);
 });
 
@@ -998,14 +1001,14 @@ router.post('/tasks/:id/prepare-generation', asyncRoute(async (req, res) => {
 router.put('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
-  const blueprint = service.updateBlueprint(req.params.id, body.blueprint || body || {}, userFromReq(req));
+  const blueprint = service.updateBlueprint(req.params.id, body.blueprint || body || {}, userFromReq(req), body);
   res.json({ success: true, task_id: req.params.id, blueprint, task: service.taskSummary(storage.getTask(req.params.id)) });
 }));
 
 router.put('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
   taskForReq(req);
   const body = req.body || {};
-  const result = service.updateStoryboardTable(req.params.id, body.shots || body.storyboard_table || [], userFromReq(req));
+  const result = service.updateStoryboardTable(req.params.id, body.shots || body.storyboard_table || [], userFromReq(req), body);
   res.json({ success: true, task_id: req.params.id, ...result, task: service.taskSummary(storage.getTask(req.params.id)) });
 }));
 

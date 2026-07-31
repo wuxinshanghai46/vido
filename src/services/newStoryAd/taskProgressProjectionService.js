@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const PROJECTION_VERSION = 'story-ad-progress-projection-v3';
+const PROJECTION_VERSION = 'story-ad-progress-projection-v4';
 
 function text(value = '', max = 500) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -23,6 +23,8 @@ function compactProgress(value = {}) {
     'current_index', 'percent', 'repair_attempt', 'max_repair_attempts',
     'configured_concurrency', 'effective_concurrency', 'peak_concurrency',
     'wave_number', 'parallelism_lost_reason',
+    'queued', 'active', 'generated', 'qa_passed', 'qa_failed',
+    'units_total', 'units_generated', 'units_failed', 'scene_block_count',
   ];
   const compact = Object.fromEntries(allowed
     .filter(key => source[key] !== undefined)

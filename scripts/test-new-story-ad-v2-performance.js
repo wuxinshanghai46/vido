@@ -33,6 +33,15 @@ function main() {
       failed: 1,
       current_index: 62,
       percent: 51,
+      queued: 58,
+      active: 2,
+      generated: 60,
+      qa_passed: 57,
+      qa_failed: 3,
+      units_total: 44,
+      units_generated: 31,
+      units_failed: 1,
+      scene_block_count: 12,
       message: '正在处理第 62 个生成单元',
     },
   };
@@ -43,6 +52,12 @@ function main() {
   assert.strictEqual(payload.includes('data:image'), false);
   assert.strictEqual(payload.includes('large-video.mp4'), false);
   assert.strictEqual(projection.task.generation_progress.processed, 61);
+  assert.deepStrictEqual(
+    Object.fromEntries(['queued', 'active', 'generated', 'qa_passed', 'qa_failed', 'units_total', 'units_generated', 'units_failed', 'scene_block_count']
+      .map(key => [key, projection.task.generation_progress[key]])),
+    { queued: 58, active: 2, generated: 60, qa_passed: 57, qa_failed: 3, units_total: 44, units_generated: 31, units_failed: 1, scene_block_count: 12 },
+    'video and scene-block generation counters must survive the lightweight progress projection',
+  );
 
   const parallelProjection = progressProjection.projectTaskProgress({
     id: 'parallel-keyframes',

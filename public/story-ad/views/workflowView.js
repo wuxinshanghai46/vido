@@ -1,5 +1,6 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, toast } from '../components/ui.js';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js';
 
 const STAGE_WIDTH = 2900;
 const STAGE_HEIGHT = 1500;
@@ -36,7 +37,7 @@ function graphNode(node) {
   const x = Number(node.position?.x || 0);
   const y = Number(node.position?.y || 0);
   const isTextNode = TEXT_NODE_TYPES.has(node.type);
-  return `<button class="graph-node ${isTextNode && node.media_url ? 'has-text-media' : ''}" type="button" data-node-id="${escapeHtml(node.id)}" style="left:${x}px;top:${y}px">
+  return `<button class="graph-node ${isTextNode && node.media_url ? 'has-text-media' : ''}" type="button" data-node-id="${escapeHtml(node.id)}" aria-pressed="false" style="left:${x}px;top:${y}px">
     <span class="node-dot is-${escapeHtml(node.status || 'ready')}"></span>
     ${isTextNode && !node.media_url ? textNodePreview(node) : mediaPreview(node, { label: node.title || '节点', width: 360, symbol: NODE_MEDIA_LABELS[node.type] || '内容待生成' })}
     <b title="${escapeHtml(node.title || node.label || '未命名节点')}">${escapeHtml(node.title || node.label || '未命名节点')}</b>
@@ -412,7 +413,10 @@ export async function mount(host, context) {
     if (Date.now() < suppressNodeClickUntil) return;
     const node = nodeById.get(button.dataset.nodeId);
     if (!node) return;
-    host.querySelectorAll('[data-node-id]').forEach(item => item.classList.toggle('active', item === button));
+    host.querySelectorAll('[data-node-id]').forEach(item => {
+      item.classList.toggle('active', item === button);
+      item.setAttribute('aria-pressed', String(item === button));
+    });
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = false;
     const isTextNode = TEXT_NODE_TYPES.has(node.type);
@@ -420,9 +424,43 @@ export async function mount(host, context) {
       ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
       ${structuredNodeDetail(node)}
       <div class="meta-list">${detailRows(remainingDetail(node.detail, node.type))}</div>
-      ${node.target_route ? '<button class="btn primary panel-route" type="button" data-node-route>打开对应编辑页</button>' : ''}`;
-    panel.querySelector('[data-panel-close]').addEventListener('click', () => { panel.hidden = true; });
+      ${['story', 'shot'].includes(node.type) ? `<button class="btn primary panel-route" type="button" data-edit-node-inline>在此编辑${node.type === 'story' ? '剧情' : '分镜'}</button><div data-node-editor-host hidden>${inlineNodeEditor(node, context.bundle)}</div>` : (node.target_route ? '<button class="btn primary panel-route" type="button" data-node-route>打开对应编辑页</button>' : '')}`;
+    const closePanel = () => {
+      panel.hidden = true;
+      host.querySelectorAll('[data-node-id]').forEach(item => {
+        item.classList.remove('active');
+        item.setAttribute('aria-pressed', 'false');
+      });
+    };
+    panel.querySelector('[data-panel-close]').addEventListener('click', closePanel);
     panel.querySelector('[data-node-route]')?.addEventListener('click', () => context.navigate(node.target_route));
+    panel.querySelector('[data-edit-node-inline]')?.addEventListener('click', event => {
+      const editorHost = panel.querySelector('[data-node-editor-host]');
+      if (!editorHost) return;
+      editorHost.hidden = false;
+      event.currentTarget.hidden = true;
+      editorHost.querySelector('input, textarea')?.focus();
+    });
+    panel.querySelector('[data-cancel-node-inline]')?.addEventListener('click', () => {
+      const editorHost = panel.querySelector('[data-node-editor-host]');
+      if (editorHost) editorHost.hidden = true;
+      const editButton = panel.querySelector('[data-edit-node-inline]');
+      if (editButton) editButton.hidden = false;
+    });
+    panel.querySelector('[data-node-inline-editor]')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = form.querySelector('[data-save-node-inline]');
+      try {
+        setButtonBusy(submit, true, '保存中…');
+        const saved = await saveInlineNode(form, context.bundle, context.store);
+        toast(saved.kind === 'story' ? '剧情已在画布中保存，下游分镜将按新版本重建。' : `分镜 ${saved.shotIndex} 已在画布中保存。`, 'success');
+        await context.refreshShell();
+      } catch (error) {
+        setButtonBusy(submit, false);
+        toast(error.message, 'danger');
+      }
+    });
   };
 
   nodeElements.forEach((button, nodeId) => {
@@ -479,7 +517,13 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-fit]').forEach(button => button.addEventListener('click', () => { fit(); scheduleSave(); }));
   host.querySelector('[data-zoom-in]').addEventListener('click', () => { setZoom(zoom * 1.18); scheduleSave(); });
   host.querySelector('[data-zoom-out]').addEventListener('click', () => { setZoom(zoom / 1.18); scheduleSave(); });
-  host.querySelector('[data-close-panel]').addEventListener('click', () => { host.querySelector('[data-node-panel]').hidden = true; });
+  host.querySelector('[data-close-panel]').addEventListener('click', () => {
+    host.querySelector('[data-node-panel]').hidden = true;
+    host.querySelectorAll('[data-node-id]').forEach(item => {
+      item.classList.remove('active');
+      item.setAttribute('aria-pressed', 'false');
+    });
+  });
   host.querySelector('[data-reset-layout]').addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;

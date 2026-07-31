@@ -133,7 +133,7 @@ export async function mount(host, context) {
         <div class="card-head"><div><h2>${shots.length} 个镜头</h2><p>点击切换，画布不使用假数据。</p></div></div>
         <div class="shot-rail-list">${shots.map((shot, index) => {
           const number = shotNumber(shot, index);
-          return `<button class="shot-rail-item ${index === selectedIndex ? 'active' : ''}" type="button" data-select-shot="${number}">
+          return `<button class="shot-rail-item ${index === selectedIndex ? 'active' : ''}" type="button" data-select-shot="${number}" aria-pressed="${index === selectedIndex ? 'true' : 'false'}">
             <b>SH${String(number).padStart(2, '0')} · ${escapeHtml(shot.title || `镜头 ${number}`)}</b>
             <span>${escapeHtml(friendlyValue(bundle, shot, 'scene_id', shot.scene_id || shot.scene_asset_id))} · ${Number(shot.duration || shot.duration_sec || 0) || '—'} 秒</span>
             <small>${escapeHtml(`${friendlyValue(bundle, shot, 'shot_size', shot.shot_size)} · ${friendlyValue(bundle, shot, 'camera_movement', shot.camera_movement)}`)}</small>

@@ -2,21 +2,50 @@ import { request } from '../api.js';
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
 import { confirmDialog } from '../components/dialog.js';
 
-/** 输出文字分镜表格行。 */
-function shotRow(shot = {}, index = 0) {
-  const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
-  const bindings = [
-    shot.scene_id || shot.scene_asset_id,
-    shot.camera_id,
-    ...(Array.isArray(shot.character_ids) ? shot.character_ids : []),
+/** 把存储层 ID 投影成用户能识别的资产名称，原 ID 只保留在 title 中供排障。 */
+export function friendlyBindings(bundle = {}, shot = {}) {
+  const assets = bundle.assets || {};
+  const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
+  const subjects = [
+    ...(Array.isArray(assets.people) ? assets.people : []),
+    ...(Array.isArray(assets.animals) ? assets.animals : []),
+    ...(Array.isArray(assets.products) ? assets.products : []),
+    ...(Array.isArray(assets.props) ? assets.props : []),
+  ];
+  const sceneId = shot.scene_id || shot.scene_asset_id || '';
+  const scene = scenes.find(item => [item.id, item.asset_id].filter(Boolean).includes(sceneId));
+  const cameraId = shot.camera_id || '';
+  const camera = (scene?.cameras || []).find(item => [item.id, item.camera_id].filter(Boolean).includes(cameraId));
+  const characterIds = Array.isArray(shot.character_ids) ? shot.character_ids : [];
+  return [
+    sceneId ? { id: sceneId, label: `场景：${scene?.name || shot.scene_name || '已绑定场景'}` } : null,
+    cameraId ? { id: cameraId, label: `机位：${camera?.label || camera?.role || '已绑定机位'}` } : null,
+    ...characterIds.map(id => {
+      const subject = subjects.find(item => [item.id, item.asset_id, item.subject_id].filter(Boolean).includes(id));
+      return { id, label: `人物：${subject?.name || subject?.role || '已绑定人物'}` };
+    }),
   ].filter(Boolean);
+}
+
+/** 输出文字分镜表格行和当前行编辑器。 */
+function shotRow(shot = {}, index = 0, bundle = {}) {
+  const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
+  const bindings = friendlyBindings(bundle, shot);
   return `<div class="shot-row" data-storyboard-shot="${shotIndex}">
     <b>SH${String(shotIndex).padStart(2, '0')}</b>
     <div class="media-placeholder"><span>线稿待确认</span></div>
     <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small></span>
     <span>${escapeHtml(shot.voiceover || shot.narration || '—')}</span>
-    <span class="binding-chips">${bindings.length ? bindings.map(value => `<span class="chip ok">${escapeHtml(value)}</span>`).join('') : '<span class="chip">未绑定</span>'}</span>
-    <button class="btn small" type="button" data-edit-shot="${shotIndex}">编辑</button>
+    <span class="binding-chips">${bindings.length ? bindings.map(item => `<span class="chip ok" title="${escapeHtml(item.id)}">${escapeHtml(item.label)}</span>`).join('') : '<span class="chip">未绑定</span>'}</span>
+    <button class="btn small" type="button" data-edit-shot="${shotIndex}" aria-expanded="false">编辑分镜</button>
+    <form class="shot-inline-editor" data-shot-inline-editor="${shotIndex}" hidden>
+      <label class="field"><span>分镜名称</span><input class="input" name="title" value="${escapeHtml(shot.title || `镜头 ${shotIndex}`)}"></label>
+      <label class="field"><span>时长（秒）</span><input class="input" name="duration" type="number" min="1" max="15" step="1" value="${Number(shot.duration || shot.duration_sec || 3) || 3}"></label>
+      <label class="field full"><span>画面内容</span><textarea class="textarea" name="visual" rows="3">${escapeHtml(shot.visual || shot.visual_description || '')}</textarea></label>
+      <label class="field full"><span>人物 / 商品动作</span><textarea class="textarea" name="action" rows="2">${escapeHtml(shot.action || shot.visual_action || '')}</textarea></label>
+      <label class="field full"><span>旁白 / 台词</span><textarea class="textarea" name="voiceover" rows="2">${escapeHtml(shot.voiceover || shot.narration || '')}</textarea></label>
+      <div class="shot-inline-actions"><button class="btn" type="button" data-cancel-inline-shot>取消</button><button class="btn primary" type="submit" data-save-inline-shot>保存本镜</button></div>
+    </form>
   </div>`;
 }
 
@@ -56,13 +85,13 @@ export async function mount(host, context) {
     </section>
     <div class="guide">线稿可逐镜生成、上传或跳过；确认后构图约束会写入现有分镜并使关键帧合同按版本重建。</div>
     <div class="tabs">
-      <button class="tab active" type="button" data-board-tab="shots">文字分镜 ${shots.length}</button>
-      <button class="tab" type="button" data-board-tab="sketches">线稿确认 ${sketches.filter(item => item.status === 'confirmed').length}/${shots.length}</button>
+      <button class="tab active" type="button" role="tab" aria-selected="true" data-board-tab="shots">文字分镜 ${shots.length}</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-board-tab="sketches">线稿确认 ${sketches.filter(item => item.status === 'confirmed').length}/${shots.length}</button>
     </div>
     <section data-board-panel="shots">
       ${shots.length ? `<div class="card shot-table">
         <div class="shot-row header"><span>镜头</span><span>线稿</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
-        ${shots.map(shotRow).join('')}
+        ${shots.map((shot, index) => shotRow(shot, index, bundle)).join('')}
       </div>` : `<div class="card">${emptyState({
         title: '还没有文字分镜',
         body: '先确认剧情蓝图，再生成与剧情情节点一一对应的镜头。',
@@ -77,6 +106,7 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-board-tab]').forEach(button => {
     button.addEventListener('click', () => {
       host.querySelectorAll('[data-board-tab]').forEach(item => item.classList.toggle('active', item === button));
+      host.querySelectorAll('[data-board-tab]').forEach(item => item.setAttribute('aria-selected', String(item === button)));
       host.querySelectorAll('[data-board-panel]').forEach(panel => { panel.hidden = panel.dataset.boardPanel !== button.dataset.boardTab; });
     });
   });
@@ -96,7 +126,57 @@ export async function mount(host, context) {
   host.querySelector('[data-generate-storyboard]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
   host.querySelector('[data-empty-action="generate-storyboard"]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
   host.querySelector('[data-open-shot-design]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot`));
-  host.querySelectorAll('[data-edit-shot]').forEach(button => button.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot&shot=${encodeURIComponent(button.dataset.editShot)}`)));
+  const closeInlineEditor = row => {
+    const editor = row?.querySelector('[data-shot-inline-editor]');
+    const button = row?.querySelector('[data-edit-shot]');
+    if (editor) editor.hidden = true;
+    if (button) button.setAttribute('aria-expanded', 'false');
+  };
+  host.querySelectorAll('[data-edit-shot]').forEach(button => button.addEventListener('click', () => {
+    const row = button.closest('[data-storyboard-shot]');
+    const editor = row?.querySelector('[data-shot-inline-editor]');
+    if (!editor) return;
+    const opening = editor.hidden;
+    host.querySelectorAll('[data-storyboard-shot]').forEach(closeInlineEditor);
+    editor.hidden = !opening;
+    button.setAttribute('aria-expanded', String(opening));
+    if (opening) editor.querySelector('input, textarea')?.focus();
+  }));
+  host.querySelectorAll('[data-cancel-inline-shot]').forEach(button => button.addEventListener('click', () => closeInlineEditor(button.closest('[data-storyboard-shot]'))));
+  host.querySelectorAll('[data-shot-inline-editor]').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const shotIndex = Number(form.dataset.shotInlineEditor);
+    const sourceIndex = shots.findIndex((shot, index) => Number(shot.shot_index || shot.index || index + 1) === shotIndex);
+    if (sourceIndex < 0) return;
+    const data = new FormData(form);
+    const current = shots[sourceIndex];
+    const visual = String(data.get('visual') || '').trim();
+    const action = String(data.get('action') || '').trim();
+    const voiceover = String(data.get('voiceover') || '').trim();
+    const next = shots.map((shot, index) => index === sourceIndex ? {
+      ...shot,
+      title: String(data.get('title') || '').trim() || current.title || `镜头 ${shotIndex}`,
+      duration: Math.max(1, Math.min(15, Number(data.get('duration')) || 3)),
+      duration_sec: Math.max(1, Math.min(15, Number(data.get('duration')) || 3)),
+      visual,
+      visual_description: visual,
+      action,
+      visual_action: action,
+      voiceover,
+      narration: voiceover,
+      _nsa_user_edited_fields: { ...(shot._nsa_user_edited_fields || {}), title: true, duration: true, visual: true, action: true, voiceover: true },
+    } : shot);
+    const button = form.querySelector('[data-save-inline-shot]');
+    try {
+      setButtonBusy(button, true, '保存中…');
+      await store.saveStoryboard(next);
+      toast(`分镜 ${shotIndex} 已保存，旧关键帧和视频会按新版本失效。`, 'success');
+      await context.refreshShell();
+    } catch (error) {
+      setButtonBusy(button, false);
+      toast(error.message, 'danger');
+    }
+  }));
 
   /** 保存某一镜线稿，并保留其它镜头状态。 */
   async function saveSketch(card, patch) {

@@ -267,6 +267,8 @@ function projectGraph(bundle = {}) {
       media: sketch || '',
       target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=shot&shot=${shotIndex}`,
       detail: {
+        shot_index: shotIndex,
+        shot_id: shotStableId,
         visual: detailText(shot.visual || shot.visual_description || shot.story_visual, 1000),
         action: detailText(shot.action || shot.visual_action || shot.action_start, 500),
         narration: detailText(shot.narration || shot.voiceover || shot.blueprint_spoken_line || shot.subtitle, 400),

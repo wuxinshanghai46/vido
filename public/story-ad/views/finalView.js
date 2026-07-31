@@ -17,10 +17,10 @@ function finalVideoUrl(item = {}) {
   return item.video_url || item.videoUrl || item.url || '';
 }
 
-function finalVideoPlayer(item = {}) {
+function finalVideoPlayer(item = {}, poster = '') {
   const url = finalVideoUrl(item);
   if (!url) return '<div class="media-placeholder final-video-empty"><span>成片文件尚未就绪</span></div>';
-  return `<video class="final-video" src="${escapeHtml(url)}" controls preload="metadata" playsinline aria-label="最终成片">您的浏览器暂不支持视频播放。</video>`;
+  return `<video class="final-video" src="${escapeHtml(url)}" poster="${escapeHtml(poster)}" controls preload="none" playsinline aria-label="最终成片">您的浏览器暂不支持视频播放。</video>`;
 }
 
 function preflightDialog(preflight = {}) {
@@ -58,6 +58,8 @@ export async function mount(host, context) {
     status: '已生成',
   } : null);
   const finalUrl = finalVideoUrl(finalVideo || {});
+  const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || keyframes.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || keyframes.find(item => item.image_url || item.imageUrl)?.image_url || keyframes.find(item => item.imageUrl)?.imageUrl || '';
+  const downloadUrl = finalUrl ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}download=1` : '';
   host.innerHTML = `
     <section class="view-head">
       <div><h1>生成与成片</h1><p>在同一页查看关键帧、视频片段、审核状态和最终成片。</p></div>
@@ -68,8 +70,8 @@ export async function mount(host, context) {
     </section>
     <div class="guide">关键帧和视频都使用当前项目的版本化分镜与资产；视频提交前必须再次核对镜头和费用。</div>
     ${finalVideo ? `<section class="card final-player">
-      <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(finalUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}">下载原始成片</a>` : ''}</div>
-      <div class="final-media">${finalVideoPlayer(finalVideo)}</div>
+      <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
+      <div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div>
     </section>` : ''}
     <details class="card generation-section generation-details">
       <summary class="card-head"><div><h2>关键帧</h2><p>${keyframes.length}/${shots.length || 0} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
@@ -101,8 +103,7 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   };
-  const keyframeButton = host.querySelector('[data-generate-keyframes]') || host.querySelector('[data-empty-action="generate-keyframes"]');
-  keyframeButton?.addEventListener('click', event => run(event.currentTarget, 'keyframes', '正在提交…', '关键帧任务已提交。'));
+  host.querySelectorAll('[data-generate-keyframes], [data-empty-action="generate-keyframes"]').forEach(button => button.addEventListener('click', event => run(event.currentTarget, 'keyframes', '正在提交…', '关键帧任务已提交。')));
   host.querySelector('[data-empty-action="back-storyboard"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
   host.querySelector('[data-generate-tts]')?.addEventListener('click', event => run(event.currentTarget, 'tts', '正在提交…', '配音任务已提交。'));
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在提交…', '成片合成任务已提交。'));

@@ -11,6 +11,8 @@ export function createProjectStore() {
     error: '',
     progressTimer: null,
     progressTaskId: '',
+    progressRevision: '',
+    generationCompletionSeq: 0,
     referenceTimer: null,
     referenceAnalysisId: '',
   };
@@ -50,6 +52,7 @@ export function createProjectStore() {
   async function loadBundle(taskId, sections = 'all') {
     set({ loading: true, error: '' });
     try {
+      if (state.bundle?.project?.id && state.bundle.project.id !== taskId) state.progressRevision = '';
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`);
       set({ bundle: data.bundle, loading: false });
       syncProgressPolling();
@@ -124,7 +127,7 @@ export function createProjectStore() {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
       method: 'PUT',
-      body: { blueprint },
+      body: { blueprint, expected_content_revision: state.bundle?.revisions?.content || 1 },
     });
     await refreshSections('summary,story,shots');
     return data;
@@ -135,7 +138,7 @@ export function createProjectStore() {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
       method: 'PUT',
-      body: { shots },
+      body: { shots, expected_content_revision: state.bundle?.revisions?.content || 1 },
     });
     await refreshSections('summary,story,shots,media');
     return data;
@@ -272,7 +275,7 @@ export function createProjectStore() {
   function clearProject() {
     stopProgressPolling();
     stopReferencePolling();
-    set({ bundle: null, saving: false, error: '' });
+    set({ bundle: null, saving: false, error: '', progressRevision: '' });
   }
 
   /** 读取付费视频预检结果。 */
@@ -313,22 +316,51 @@ export function createProjectStore() {
     const poll = async () => {
       if (state.progressTaskId !== taskId) return;
       try {
-        const since = state.bundle?.revisions?.content || '';
+        const since = state.progressRevision || '';
         const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/progress?since=${encodeURIComponent(since)}`);
-        const project = { ...(state.bundle?.project || {}) };
-        project.active_generation_id = data.task?.active_generation_id || data.active_generation_id || '';
-        project.stage = data.task?.stage || data.stage || project.stage;
-        const bundle = { ...(state.bundle || {}), project };
-        set({ bundle });
-        if (!project.active_generation_id && !['queued', 'running'].includes(String(data.status || ''))) {
+        state.progressRevision = String(data.revision || state.progressRevision || '');
+        const progressTask = data.task || {};
+        const project = {
+          ...(state.bundle?.project || {}),
+          status: progressTask.status || state.bundle?.project?.status || '',
+          stage: progressTask.stage || state.bundle?.project?.stage || '',
+          active_stage: progressTask.active_stage || '',
+          active_generation_id: progressTask.active_generation_id || '',
+          generation_progress: progressTask.generation_progress || null,
+          error: progressTask.error || '',
+          error_code: progressTask.error_code || '',
+          retryable: progressTask.retryable === true,
+        };
+        const generation = {
+          ...(state.bundle?.generation || {}),
+          progress: progressTask.generation_progress || null,
+        };
+        const bundle = { ...(state.bundle || {}), project, generation };
+        set({ bundle, progressRevision: state.progressRevision });
+        if (!project.active_generation_id && !['queued', 'running', 'processing'].includes(String(project.status || '').toLowerCase())) {
           stopProgressPolling();
           await refreshSections('summary,assets,story,shots,media');
+          set({ generationCompletionSeq: state.generationCompletionSeq + 1 });
           return;
         }
       } catch {}
       state.progressTimer = setTimeout(poll, 2500);
     };
     state.progressTimer = setTimeout(poll, 900);
+  }
+
+  /** 停止当前后台生成；使用 generation id 防止误停已经切换的新任务。 */
+  async function cancelGeneration(generationId = '') {
+    const taskId = state.bundle?.project?.id;
+    if (!taskId) throw new Error('当前没有可停止的项目。');
+    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: 'POST',
+      body: { generation_id: generationId || state.bundle?.project?.active_generation_id || '' },
+    });
+    stopProgressPolling();
+    await refreshSections('summary,assets,story,shots,media');
+    set({ generationCompletionSeq: state.generationCompletionSeq + 1 });
+    return data;
   }
 
   return {
@@ -349,7 +381,9 @@ export function createProjectStore() {
     addReferenceLink,
     videoPreflight,
     startVideo,
+    cancelGeneration,
     clearProject,
+    syncProgressPolling,
     stopProgressPolling,
     stopReferencePolling,
   };

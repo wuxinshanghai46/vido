@@ -53,7 +53,9 @@
   touch-action: none;
   box-shadow: 0 8px 22px rgb(0 0 0 / 10%);
 }
-.graph-node:hover, .graph-node.active { border-color: var(--mint); }
+.graph-node:hover { border-color: color-mix(in srgb, var(--mint) 72%, var(--line)); background: color-mix(in srgb, var(--mint-2) 42%, var(--surface)); }
+.graph-node.active, .graph-node[aria-pressed="true"] { border-color: var(--mint); box-shadow: 0 0 0 3px color-mix(in srgb, var(--mint) 22%, transparent), 0 12px 28px rgb(0 0 0 / 18%); }
+.graph-node:focus-visible, .canvas-controls button:focus-visible { outline: 3px solid color-mix(in srgb, var(--mint) 52%, transparent); outline-offset: 2px; }
 .graph-node.is-dragging { z-index: 3; cursor: grabbing; border-color: var(--mint); box-shadow: 0 14px 34px rgb(0 0 0 / 22%); }
 .graph-node .media, .graph-node .media-placeholder, .node-text-preview { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; pointer-events: none; }
 .node-text-preview {
@@ -109,6 +111,7 @@
   background: var(--surface);
 }
 .canvas-controls button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: var(--surface-3); color: var(--text); cursor: pointer; }
+.canvas-controls button:hover { background: var(--mint-2); color: var(--mint); }
 .canvas-zoom { min-width: 54px; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
 .mini-map {
   position: absolute;
@@ -155,6 +158,12 @@
 .node-readable-list article p { margin: 5px 0 0; color: var(--muted); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .node-panel .meta-list:empty { display: none; }
 .node-panel .panel-route { width: 100%; margin-top: 16px; }
+.node-inline-editor { display: grid; gap: 12px; margin-top: 14px; padding: 14px; border: 1px solid color-mix(in srgb, var(--mint) 38%, var(--line)); border-radius: 12px; background: var(--surface-2); }
+.node-inline-editor .textarea { min-height: 82px; }
+.node-inline-beats { display: grid; gap: 10px; }
+.node-inline-beats fieldset { display: grid; gap: 9px; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.node-inline-beats legend { padding-inline: 5px; color: var(--mint); font-size: 12px; font-weight: 800; }
+.node-inline-actions { position: sticky; bottom: -18px; display: flex; justify-content: flex-end; gap: 8px; padding: 12px 0 2px; background: linear-gradient(transparent, var(--surface-2) 22%); }
 
 @media (max-width: 1250px) {
   .workflow-view { margin-left: -22px; margin-right: -22px; }

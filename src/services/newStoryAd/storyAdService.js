@@ -597,10 +597,22 @@ function normalizeBlueprintDraft(blueprint = {}, seed = '') {
   };
 }
 
-function updateBlueprint(taskId, blueprint = {}, user = {}) {
+function assertManualEditRevision(task, options = {}) {
+  const raw = options.expected_content_revision ?? options.expectedContentRevision;
+  if (raw === undefined || raw === null || raw === '') return;
+  const expected = Math.max(1, Number(raw) || 1);
+  const actual = Math.max(1, Number(task.content_revision || 1) || 1);
+  if (expected === actual) return;
+  const error = new Error(`任务已在其他页面更新为版本 ${actual}，当前编辑版本 ${expected} 不能覆盖最新内容。`);
+  Object.assign(error, { code: 'CONTENT_REVISION_CONFLICT', status: 409, retryable: false, content_revision: actual });
+  throw error;
+}
+
+function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
   let task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  assertManualEditRevision(task, options);
   if (task.active_generation_id) {
     const error = new Error('当前生成正在执行，不能同时修改剧本；请先取消或等待完成');
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
@@ -701,10 +713,11 @@ function normalizeStoryboardShot(shot = {}, index = 0, previousShot = {}) {
   };
 }
 
-function updateStoryboardTable(taskId, shots = [], user = {}) {
+function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   let task = storage.getTask(taskId);
   if (!task) throw new Error('没有找到对应项目。');
   if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
+  assertManualEditRevision(task, options);
   if (task.active_generation_id) {
     const error = new Error('当前生成正在执行，不能同时修改分镜；请先取消或等待完成');
     error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';

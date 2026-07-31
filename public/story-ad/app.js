@@ -1,5 +1,5 @@
 import { createProjectStore } from './store/projectStore.js';
-import { escapeHtml, formatDate, statusView, toast } from './components/ui.js';
+import { escapeHtml, formatDate, generationProgressPanel, setButtonBusy, statusView, toast } from './components/ui.js';
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,16 +14,17 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260731-interaction-r5'),
-  assets: () => import('./views/assetCenterView.js?v=20260731-interaction-r5'),
-  plot: () => import('./views/plotRoomView.js?v=20260731-interaction-r5'),
-  storyboard: () => import('./views/storyboardView.js?v=20260731-interaction-r5'),
-  shot: () => import('./views/shotDesignerView.js?v=20260731-interaction-r5'),
-  final: () => import('./views/finalView.js?v=20260731-interaction-r5'),
-  workflow: () => import('./views/workflowView.js?v=20260731-interaction-r5'),
+  brief: () => import('./views/briefView.js?v=20260801-interaction-r6'),
+  assets: () => import('./views/assetCenterView.js?v=20260801-interaction-r6'),
+  plot: () => import('./views/plotRoomView.js?v=20260801-interaction-r6'),
+  storyboard: () => import('./views/storyboardView.js?v=20260801-interaction-r6'),
+  shot: () => import('./views/shotDesignerView.js?v=20260801-interaction-r6'),
+  final: () => import('./views/finalView.js?v=20260801-interaction-r6'),
+  workflow: () => import('./views/workflowView.js?v=20260801-interaction-r6'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
+let observedGenerationCompletionSeq = 0;
 
 /** 平台统一顶栏：任务中心和项目工作区只传上下文，不再各自维护一套头部。 */
 function platformTopbar({ project = null, saving = false, isNew = false } = {}) {
@@ -158,7 +159,7 @@ function projectNavigation(bundle, active) {
   return VIEW_ORDER.map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
-    return `<button class="workspace-nav ${view === active ? 'active' : ''} ${view === 'workflow' ? 'workflow' : ''}" type="button" data-view="${view}">
+    return `<button class="workspace-nav ${view === active ? 'active' : ''} ${view === 'workflow' ? 'workflow' : ''}" type="button" data-view="${view}" ${view === active ? 'aria-current="page"' : ''}>
       <span class="nav-number">${number}</span><span>${escapeHtml(label)}</span>${Number.isFinite(Number(count)) ? `<small>${Number(count) || 0}</small>` : ''}
     </button>`;
   }).join('');
@@ -181,10 +182,21 @@ function renderProjectShell(route) {
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">
+        <div id="projectProgressHost" class="project-progress-host">${generationProgressPanel(bundle || {})}</div>
         <div id="viewHost" class="view-host"><div class="view-loading">正在加载工作区…</div></div>
       </main>
     </div>`;
   applyTheme(localStorage.getItem('vido-theme') || 'purple');
+}
+
+function syncControlSemantics(scope = document) {
+  scope.querySelectorAll('.tab').forEach(item => {
+    item.setAttribute('role', 'tab');
+    item.setAttribute('aria-selected', String(item.classList.contains('active')));
+  });
+  scope.querySelectorAll('.choice, .filter, .shot-rail-item').forEach(item => {
+    item.setAttribute('aria-pressed', String(item.classList.contains('active')));
+  });
 }
 
 /** 按当前路由异步加载一个工作区。 */
@@ -207,6 +219,7 @@ async function mountView(route) {
       },
     });
     if (typeof result === 'function') activeViewCleanup = result;
+    syncControlSemantics(host);
   } catch (error) {
     host.innerHTML = `<div class="view-error"><b>工作区没有加载完成</b><span>${escapeHtml(error.message)}</span><button class="btn" type="button" data-retry-view>重试</button></div>`;
   }
@@ -233,6 +246,7 @@ async function renderRoute() {
   }
   renderProjectShell(route);
   await mountView(route);
+  store.syncProgressPolling();
 }
 
 /** 展示路由级错误。 */
@@ -277,6 +291,17 @@ document.addEventListener('click', event => {
     store.loadProjects().then(renderCenter).catch(error => toast(error.message, 'danger'));
     return;
   }
+  if (target.matches('[data-cancel-generation]')) {
+    const generationId = target.dataset.generationId || '';
+    setButtonBusy(target, true, '正在停止…');
+    store.cancelGeneration(generationId)
+      .then(() => toast('已提交停止请求，当前已完成内容会保留。', 'success'))
+      .catch(error => {
+        setButtonBusy(target, false);
+        toast(error.message, 'danger');
+      });
+    return;
+  }
   if (target.matches('[data-status-filter]')) {
     centerFilter = target.dataset.statusFilter || '';
     renderCenter();
@@ -289,6 +314,14 @@ window.addEventListener('popstate', () => renderRoute().catch(showFatal));
 window.addEventListener('beforeunload', () => {
   store.stopProgressPolling();
   store.stopReferencePolling();
+});
+store.subscribe(state => {
+  const host = document.querySelector('#projectProgressHost');
+  if (host) host.innerHTML = generationProgressPanel(state.bundle || {});
+  if (state.generationCompletionSeq > observedGenerationCompletionSeq && currentRoute().page === 'project') {
+    window.setTimeout(() => mountView(currentRoute()).catch(showFatal), 0);
+  }
+  observedGenerationCompletionSeq = state.generationCompletionSeq;
 });
 applyTheme(localStorage.getItem('vido-theme') || 'purple');
 window.setTimeout(() => applyTheme(localStorage.getItem('vido-theme') || 'purple'), 250);

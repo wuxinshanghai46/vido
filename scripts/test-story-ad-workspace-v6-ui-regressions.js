@@ -103,6 +103,10 @@ const storyboard = read('public/story-ad/views/storyboardView.js');
 assert.match(storyboard, /sketch-action-bar/);
 assert.match(storyboard, /class="sketch-actions"/);
 assert.doesNotMatch(storyboard, /sketch-media-actions/);
+assert.match(storyboard, /shot-inline-editor/, '文字分镜必须在当前分镜台直接编辑');
+assert.match(storyboard, /data-save-inline-shot/, '逐镜编辑必须有当前行保存入口');
+assert.doesNotMatch(storyboard, /data-edit-shot[^\n]+context\.navigate/, '逐镜编辑不得再跳转到镜头设计页');
+assert.match(storyboard, /friendlyBindings/, '绑定资产必须显示用户可理解的名称而非裸 ID');
 const sketchActions = storyboard.slice(storyboard.indexOf('class="sketch-actions"'), storyboard.indexOf('</div>', storyboard.indexOf('class="sketch-actions"')));
 const sketchOrder = ['data-generate-sketch', 'data-upload-sketch', 'data-skip-sketch', 'data-confirm-sketch'].map(token => sketchActions.indexOf(token));
 assert(sketchOrder.every(index => index >= 0), '线稿四个操作必须属于同一个 DOM 操作组');
@@ -119,10 +123,13 @@ assert.doesNotMatch(shot, /\['scene_id', '场景 ID'\]/);
 const finalView = read('public/story-ad/views/finalView.js');
 assert.match(finalView, /class="final-video"[^>]*controls/);
 assert.match(finalView, /下载原始成片/);
+assert.match(finalView, /preload="none"/, '最终成片首屏不得默认拉取视频流');
+assert.match(finalView, /poster=/, '最终成片应优先展示轻量封面');
 assert.match(finalView, /<details class="card generation-section generation-details">/);
 assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
 
 const workspaceCss = read('public/story-ad/workspace.css');
+const platformCss = read('public/story-ad/styles.css');
 assert.match(workspaceCss, /\.final-video\s*\{[^}]*width:\s*auto;[^}]*max-width:\s*100%;[^}]*height:\s*auto;/s);
 assert.match(workspaceCss, /\.sketch-actions\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
 assert.match(workspaceCss, /\.scene-camera-media \.media[^}]*object-fit:\s*contain/s);
@@ -132,6 +139,11 @@ const workflowModule = loadBrowserModule(
   ['graphNode', 'structuredNodeDetail'],
   { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); } },
 );
+Object.assign(workflowModule, loadBrowserModule(
+  'public/story-ad/views/workflowInlineEditor.js',
+  ['inlineNodeEditor'],
+  { escapeHtml },
+));
 const fullBrief = '完整需求正文'.repeat(80);
 const briefNode = { id: 'brief:1', type: 'brief', title: '广告目标', subtitle: '短摘要', detail: { full_text: fullBrief }, position: { x: 0, y: 0 } };
 const briefCard = workflowModule.graphNode(briefNode);
@@ -144,6 +156,12 @@ const storyDetail = workflowModule.structuredNodeDetail({
 });
 assert.match(storyDetail, /剧情情节点/);
 assert.match(storyDetail, /人物进入场景/);
+const storyEditor = workflowModule.inlineNodeEditor({ type: 'story' }, {
+  story: { blueprint: { story_title: '原故事', logline: '原概述', beats: [{ title: '开场', visual: '人物进入' }] } },
+});
+assert.match(storyEditor, /data-node-inline-editor/);
+assert.match(storyEditor, /data-save-node-inline/);
+assert.match(storyEditor, /人物进入/);
 
 const shotWithSketch = workflowModule.graphNode({
   id: 'shot:1', type: 'shot', title: '推开窗户', subtitle: '人物走近窗边', media_url: '/sketch-1.png', detail: {}, position: { x: 0, y: 0 },
@@ -160,9 +178,27 @@ assert.match(workflowCss, /\.node-readable-section > p\s*\{[^}]*white-space:\s*p
 
 const uiSource = read('public/story-ad/components/ui.js').replace(/\bexport\s+/g, '');
 const sandbox = {};
-vm.runInNewContext(`${uiSource}\nglobalThis.__mediaPreview = mediaPreview;`, sandbox, { filename: 'story-ad-ui-contract.js' });
+vm.runInNewContext(`${uiSource}\nglobalThis.__mediaPreview = mediaPreview; globalThis.__generationProgressPanel = generationProgressPanel;`, sandbox, { filename: 'story-ad-ui-contract.js' });
 assert.match(sandbox.__mediaPreview({ media_url: '/api/assets/frame' }, { label: '帧' }), /<img/);
 assert.match(sandbox.__mediaPreview({ media_url: '/api/media/final', type: 'final' }, { label: '成片' }), /<video/);
 assert.match(sandbox.__mediaPreview({ thumbnail_url: '/api/assets/poster', video_url: '/api/media/clip' }, { label: '视频浏览' }), /<img/);
+const progressPanel = sandbox.__generationProgressPanel({
+  project: { active_generation_id: 'gen-1' },
+  generation: { progress: { stage: 'keyframes', status: 'running', completed: 2, total: 6, active_indexes: [3, 4], percent: 33 } },
+});
+assert.match(progressPanel, /33%/);
+assert.match(progressPanel, /已完成 2\/6/);
+assert.match(progressPanel, /正在生成第 3、4 镜/);
+assert.match(progressPanel, /data-cancel-generation/);
+
+const storeSource = read('public/story-ad/store/projectStore.js');
+assert.match(storeSource, /generation_progress:\s*progressTask\.generation_progress/, '轻量轮询必须把完整进度合并回 V6 bundle');
+assert.match(storeSource, /progressRevision/, '轮询必须使用独立进度 revision，不能误用内容 revision');
+const appSource = read('public/story-ad/app.js');
+assert.match(appSource, /store\.syncProgressPolling\(\)/, '页面内切换后必须恢复当前任务的进度轮询');
+assert.match(appSource, /generationProgressPanel/, '所有制作步骤必须共享同一个可见进度条');
+
+assert.match(platformCss, /\.btn:focus-visible[^}]*outline/s, '按钮必须有清晰键盘指向效果');
+assert.match(workspaceCss, /\[aria-selected="true"\]/, '可选择按钮必须有持久选中效果');
 
 console.log('story-ad workspace v6 UI regression contracts passed');
