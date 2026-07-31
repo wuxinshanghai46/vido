@@ -46,6 +46,16 @@ function storyAdStep(stage) {
   return 1;
 }
 
+function storyAdView(stage) {
+  const value = String(stage || 'draft').toLowerCase();
+  if (/final|compose|video|tts/.test(value)) return 'final';
+  if (/keyframe|shot/.test(value)) return 'shots';
+  if (/storyboard/.test(value)) return 'storyboard';
+  if (/blueprint|script|plot/.test(value)) return 'plot';
+  if (/scene|asset|character|product/.test(value)) return 'assets';
+  return 'brief';
+}
+
 function task(record, options) {
   const updatedAt = record.updated_at || record.created_at || '';
   const group = statusGroup(record.status);
@@ -160,7 +170,7 @@ function collectVideos({ projects, avatars, i2v, storyAds }) {
       thumbnailUrl: firstRelativeUrl(record.image_url, record.resolved_image_url),
       duration: record.duration,
       aspectRatio: record.aspect_ratio,
-      resumeUrl: '/?page=i2v'
+      resumeUrl: '/?page=works'
     }));
   });
 
@@ -178,7 +188,7 @@ function collectVideos({ projects, avatars, i2v, storyAds }) {
       duration: finalVideo.duration || record.duration,
       aspectRatio: record.aspect_ratio || record.ratio,
       updatedAt: finalVideo.created_at || record.updated_at,
-      resumeUrl: `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(record.id)}&nsa_step=5`
+      resumeUrl: `/story-ad/projects/${encodeURIComponent(record.id)}?view=final`
     }));
   });
 
@@ -202,8 +212,8 @@ function getDashboardData(req) {
   comics.forEach(x => rows.push(task(x, { title: x.title || '漫画项目', type: '漫画', module: 'comic', icon: '📚', resumeUrl: '/?page=comic' })));
   portraits.forEach(x => rows.push(task(x, { title: String(x.title || x.prompt || '角色形象').slice(0, 48), type: '角色形象', module: 'portrait', icon: '👤', resumeUrl: '/?page=portrait' })));
   novels.forEach(x => rows.push(task(x, { title: x.title || '小说项目', type: '小说', module: 'novel', icon: '✍️', resumeUrl: `/ai-novel?novel=${encodeURIComponent(x.id)}&panel=write` })));
-  i2v.forEach(x => rows.push(task(x, { title: String(x.title || x.prompt || '图生视频').slice(0, 48), type: '图生视频', module: 'i2v', icon: '🎞️', resumeUrl: '/?page=i2v' })));
-  storyAds.forEach(x => rows.push(task(x, { title: x.title || '剧情广告', type: '剧情广告', module: 'new-story-ad', icon: '🎭', stage: x.stage, resumeUrl: `/digital-human?tab=new-story-ad&nsa_task_id=${encodeURIComponent(x.id)}&nsa_step=${storyAdStep(x.stage)}` })));
+  i2v.forEach(x => rows.push(task(x, { title: String(x.title || x.prompt || '图生视频').slice(0, 48), type: '图生视频', module: 'i2v', icon: '🎞️', resumeUrl: '/?page=works' })));
+  storyAds.forEach(x => rows.push(task(x, { title: x.title || '剧情广告', type: '剧情广告', module: 'new-story-ad', icon: '剧', stage: x.stage, resumeUrl: `/story-ad/projects/${encodeURIComponent(x.id)}?view=${storyAdView(x.stage)}` })));
 
   rows.forEach(item => { item.stage_label = stageLabel(item); });
   rows.sort((a, b) => validDate(b.updated_at) - validDate(a.updated_at));

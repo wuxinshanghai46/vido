@@ -281,8 +281,8 @@ async function init() {
 
 // ═══ 导航 ═══
 const PAGE_TITLES = {
-  dashboard:'创作中心', create:'视频动漫', imggen:'图片生成', avatar:'广告/数字人',
-  comic:'漫画', novel:'小说', i2v:'图生视频', portrait:'我的角色',
+  dashboard:'创作中心', create:'视频动漫', avatar:'广告/数字人',
+  comic:'漫画', novel:'小说', portrait:'我的角色',
   projects:'我的项目', works:'我的作品', assets:'素材库', workbench:'声音克隆',
   radar:'素材获取', monitor:'素材库', contentlib:'内容库', replicate:'一键复刻',
   profile:'个人信息', workflow:'工作流画布'
@@ -378,9 +378,7 @@ function switchPage(page, opts = {}) {
   if (titleEl) titleEl.textContent = PAGE_TITLES[page] || page;
   if (breadEl) breadEl.textContent = page === 'dashboard' ? '/ 开始创作' : '';
   if (page === 'projects') loadProjects();
-  if (page === 'i2v') loadI2VPage();
   if (page === 'avatar') loadAvatarPage();
-  if (page === 'imggen') loadImgGenPage();
   if (page === 'comic') loadComicPage();
   if (page === 'drama') loadDramaPage();
   if (page === 'portrait') loadPortraitPage();
@@ -431,7 +429,7 @@ async function loadDashboard() {
   if (tasksRes?.success && tasksRes.tasks?.length) {
     const TYPE_ICON = { 'AI视频':'🎬', '数字人':'🧑‍💼', 'AI漫画':'📚', 'AI图片':'🖼️', 'AI小说':'✍️', '图生视频':'🎞️' };
     const STATUS_LABEL = { done:'已完成', completed:'已完成', processing:'生成中', generating:'生成中', error:'失败', pending:'等待中' };
-    const TYPE_PAGE = { 'AI视频':'projects', '数字人':'avatar', 'AI漫画':'comic', 'AI图片':'portrait', 'AI小说':'novel', '图生视频':'i2v' };
+    const TYPE_PAGE = { 'AI视频':'projects', '数字人':'avatar', 'AI漫画':'comic', 'AI图片':'portrait', 'AI小说':'novel', '图生视频':'works' };
     tasksEl.innerHTML = tasksRes.tasks.map(t => {
       const st = t.status || 'pending';
       const pg = TYPE_PAGE[t.type] || 'works';
@@ -459,10 +457,13 @@ async function loadDashboard() {
 function hubSmartRoute() {
   const text = (document.getElementById('hub-input')?.value || '').trim();
   if (!text) return;
+  const storyAdKW = ['剧情广告','品牌广告','产品广告','广告短片','商品卖点'];
   const avatarKW = ['数字人','口播','讲解','主播','直播','大家好','欢迎','分享','今天'];
   const comicKW = ['漫画','分镜','格漫','条漫'];
   const novelKW = ['小说','章节','写作','长篇','连载','第一章'];
-  if (avatarKW.some(k => text.includes(k))) {
+  if (storyAdKW.some(k => text.includes(k))) {
+    window.location.href = '/story-ad/projects/new';
+  } else if (avatarKW.some(k => text.includes(k))) {
     switchPage('avatar');
     const el = document.getElementById('av-text-input');
     if (el) el.value = text;
@@ -5838,270 +5839,6 @@ async function deleteSkill(id) {
   await loadSettingsPage(); switchSettingsTab('skills');
 }
 
-// ═══════════════════════════════════════════
-//  图生视频 (I2V) 模块
-// ═══════════════════════════════════════════
-let i2vImageUrl = null;
-let i2vSelectedProvider = null;
-let i2vSelectedModelId = null;
-let i2vDuration = 5;
-let i2vModels = [];
-let i2vPollingTimer = null;
-
-function loadI2VPage() {
-  loadI2VModels();
-  loadI2VHistory();
-}
-
-// ── 图片来源切换 ──
-function switchI2VSrc(mode) {
-  document.getElementById('i2v-tab-upload').classList.toggle('active', mode === 'upload');
-  document.getElementById('i2v-tab-url').classList.toggle('active', mode === 'url');
-  document.getElementById('i2v-src-upload').style.display = mode === 'upload' ? '' : 'none';
-  document.getElementById('i2v-src-url').style.display = mode === 'url' ? '' : 'none';
-}
-
-// ── 拖拽上传 ──
-function handleI2VDrop(e) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  const file = e.dataTransfer?.files?.[0];
-  if (file && file.type.startsWith('image/')) uploadI2VImage(file);
-}
-
-function handleI2VFileSelect(input) {
-  const file = input.files?.[0];
-  if (file) uploadI2VImage(file);
-  input.value = '';
-}
-
-async function uploadI2VImage(file) {
-  const formData = new FormData();
-  formData.append('image', file);
-  try {
-    const res = await authFetch('/api/i2v/upload-image', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    setI2VImage(data.data.image_url);
-  } catch (e) {
-    alert('上传失败: ' + e.message);
-  }
-}
-
-function loadI2VFromUrl() {
-  const url = document.getElementById('i2v-url-input').value.trim();
-  if (!url) return;
-  setI2VImage(url);
-}
-
-function setI2VImage(url) {
-  i2vImageUrl = url;
-  const sec = document.getElementById('i2v-img-preview-sec');
-  const preview = document.getElementById('i2v-img-preview');
-  if (sec) sec.style.display = '';
-  if (preview) preview.innerHTML = `<img src="${esc(url)}" onerror="this.parentElement.innerHTML='<div style=\\'color:var(--error);font-size:11px;padding:16px\\'>图片加载失败</div>'" />`;
-}
-
-function clearI2VImage() {
-  i2vImageUrl = null;
-  const sec = document.getElementById('i2v-img-preview-sec');
-  if (sec) sec.style.display = 'none';
-}
-
-// ── 模型加载 ──
-async function loadI2VModels() {
-  try {
-    const res = await authFetch('/api/settings');
-    const data = await res.json();
-    if (!data.success) return;
-    const providers = data.data.providers || [];
-    i2vModels = [];
-    for (const p of providers) {
-      const hasKey = !!(p.api_key || p.api_key_masked);
-      if (!p.enabled || !hasKey) continue;
-      for (const m of (p.models || [])) {
-        if (m.use !== 'video' || m.enabled === false) continue;
-        i2vModels.push({ providerId: p.id, providerName: p.name, modelId: m.id, modelName: m.name });
-      }
-    }
-    renderI2VModels();
-    if (!i2vSelectedProvider && i2vModels.length) {
-      selectI2VModel(i2vModels[0].providerId, i2vModels[0].modelId);
-    }
-  } catch {}
-}
-
-function renderI2VModels() {
-  const picker = document.getElementById('i2v-model-picker');
-  if (!picker) return;
-  const groups = {};
-  for (const m of i2vModels) {
-    if (!groups[m.providerId]) groups[m.providerId] = { name: m.providerName, id: m.providerId, models: [] };
-    groups[m.providerId].models.push(m);
-  }
-  let html = '';
-  const icons = { kling:'🎬', jimeng:'🎭', fal:'⚡', runway:'✈️', luma:'🌙', minimax:'🎞', zhipu:'🧠', replicate:'🔄', huggingface:'🤗', demo:'🧪' };
-  for (const g of Object.values(groups)) {
-    const icon = icons[g.id] || '🔹';
-    html += `<div class="i2v-mp-group"><div class="i2v-mp-group-label">${icon} ${g.name}</div>`;
-    for (const m of g.models) {
-      const active = m.providerId === i2vSelectedProvider && m.modelId === i2vSelectedModelId;
-      html += `<div class="i2v-mp-opt ${active ? 'active' : ''}" onclick="selectI2VModel('${m.providerId}','${m.modelId}')">
-        <span class="i2v-mp-opt-name">${m.modelName}</span>
-        <span class="i2v-mp-opt-id">${m.modelId}</span>
-        <span class="i2v-mp-opt-check">✓</span>
-      </div>`;
-    }
-    html += `</div>`;
-  }
-  if (!i2vModels.length) {
-    html = '<div style="padding:16px;text-align:center;color:var(--text3);font-size:11px">未配置视频模型<br><span onclick="window.location.href=\'/admin.html\'" style="color:var(--cyan);cursor:pointer">前往 AI 配置</span></div>';
-  }
-  picker.innerHTML = html;
-}
-
-function openI2VModelPicker() {
-  const picker = document.getElementById('i2v-model-picker');
-  if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
-}
-
-function selectI2VModel(providerId, modelId) {
-  i2vSelectedProvider = providerId;
-  i2vSelectedModelId = modelId;
-  const icons = { kling:'🎬', jimeng:'🎭', fal:'⚡', runway:'✈️', luma:'🌙', minimax:'🎞', zhipu:'🧠', replicate:'🔄', huggingface:'🤗', demo:'🧪' };
-  const trigger = document.getElementById('i2v-model-trigger');
-  if (trigger) {
-    trigger.classList.add('has-value');
-    const m = i2vModels.find(v => v.providerId === providerId && v.modelId === modelId);
-    document.getElementById('i2v-model-icon').textContent = icons[providerId] || '🔹';
-    document.getElementById('i2v-model-label').textContent = m ? `${m.providerName} · ${m.modelName}` : `${providerId} · ${modelId}`;
-  }
-  const picker = document.getElementById('i2v-model-picker');
-  if (picker) picker.style.display = 'none';
-  renderI2VModels();
-}
-
-// ── 时长 ──
-function setI2VDuration(dur, btn) {
-  i2vDuration = dur;
-  document.querySelectorAll('.i2v-dur-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-}
-
-// ── 生成 ──
-async function startI2VGeneration() {
-  if (!i2vImageUrl) { alert('请先上传图片或输入图片 URL'); return; }
-  if (!i2vSelectedProvider || !i2vSelectedModelId) { alert('请选择视频模型'); return; }
-
-  const btn = document.getElementById('i2v-gen-btn');
-  btn.disabled = true;
-  btn.textContent = '生成中...';
-
-  const previewBox = document.getElementById('i2v-preview-box');
-  previewBox.innerHTML = `<div class="i2v-progress">
-    <span class="i2v-progress-spin">⟳</span>
-    <span class="i2v-progress-text">正在生成视频，请稍候...</span>
-    <span class="i2v-progress-text" style="font-size:10px;color:var(--text3)">通常需要 1-5 分钟</span>
-  </div>`;
-
-  try {
-    const res = await authFetch('/api/i2v/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: i2vImageUrl,
-        prompt: document.getElementById('i2v-prompt').value.trim(),
-        duration: i2vDuration,
-        video_provider: i2vSelectedProvider,
-        video_model: i2vSelectedModelId
-      })
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error);
-    pollI2VTask(data.data.taskId);
-  } catch (e) {
-    previewBox.innerHTML = `<div class="i2v-progress"><span style="color:var(--error)">生成失败: ${esc(e.message)}</span></div>`;
-    btn.disabled = false;
-    btn.textContent = '生成视频';
-  }
-}
-
-function pollI2VTask(taskId) {
-  if (i2vPollingTimer) clearInterval(i2vPollingTimer);
-  i2vPollingTimer = setInterval(async () => {
-    try {
-      const res = await fetch(`/api/i2v/tasks/${taskId}`);
-      const data = await res.json();
-      if (!data.success) return;
-      const task = data.data;
-      if (task.status === 'done') {
-        clearInterval(i2vPollingTimer);
-        i2vPollingTimer = null;
-        showI2VResult(taskId);
-        const btn = document.getElementById('i2v-gen-btn');
-        if (btn) { btn.disabled = false; btn.textContent = '生成视频'; }
-        loadI2VHistory();
-      } else if (task.status === 'error') {
-        clearInterval(i2vPollingTimer);
-        i2vPollingTimer = null;
-        const previewBox = document.getElementById('i2v-preview-box');
-        previewBox.innerHTML = `<div class="i2v-progress"><span style="color:var(--error)">生成失败: ${esc(task.error_message)}</span></div>`;
-        const btn = document.getElementById('i2v-gen-btn');
-        if (btn) { btn.disabled = false; btn.textContent = '生成视频'; }
-        loadI2VHistory();
-      }
-    } catch {}
-  }, 5000);
-}
-
-function showI2VResult(taskId) {
-  const previewBox = document.getElementById('i2v-preview-box');
-  previewBox.innerHTML = `
-    <video controls autoplay loop src="${authUrl('/api/i2v/tasks/'+taskId+'/stream')}" style="width:100%;display:block"></video>
-    <div class="i2v-result-actions">
-      <a class="i2v-result-btn" href="${authUrl('/api/i2v/tasks/'+taskId+'/download')}" download>下载视频</a>
-      <button class="i2v-result-btn" onclick="clearI2VImage();document.getElementById('i2v-preview-box').innerHTML='<div class=\\'i2v-preview-empty\\'><span>继续上传新图片生成</span></div>'">新建任务</button>
-    </div>`;
-}
-
-// ── 历史记录 ──
-async function loadI2VHistory() {
-  const container = document.getElementById('i2v-history');
-  if (!container) return;
-  try {
-    const res = await authFetch('/api/i2v/tasks');
-    const data = await res.json();
-    if (!data.success) return;
-    const tasks = data.data || [];
-    if (!tasks.length) {
-      container.innerHTML = '<div class="i2v-history-empty">暂无记录</div>';
-      return;
-    }
-    container.innerHTML = tasks.map(t => {
-      const statusLabel = { processing: '生成中', done: '已完成', error: '失败' };
-      const time = new Date(t.created_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-      return `<div class="i2v-hist-card" onclick="${t.status === 'done' ? `showI2VResult('${t.id}')` : ''}">
-        <img class="i2v-hist-thumb" src="${esc(t.image_url)}" onerror="this.style.background='var(--bg2)'" />
-        <div class="i2v-hist-info">
-          <div class="i2v-hist-prompt">${esc(t.prompt || '无描述')}</div>
-          <div class="i2v-hist-meta">
-            <span class="i2v-hist-status ${t.status}">${statusLabel[t.status] || t.status}</span>
-            <span>${time}</span>
-            <span>${t.video_provider}</span>
-            <button class="i2v-hist-del" onclick="event.stopPropagation();deleteI2VTask('${t.id}')" title="删除">✕</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  } catch {}
-}
-
-async function deleteI2VTask(taskId) {
-  if (!confirm('确定删除此任务？')) return;
-  await fetch(`/api/i2v/tasks/${taskId}`, { method: 'DELETE' });
-  loadI2VHistory();
-}
-
 // ═══ 工具 ═══
 const g = id => (document.getElementById(id)?.value || '').trim();
 const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -9832,191 +9569,6 @@ async function generateAvatarPresets(type) {
     btn.innerHTML = origHTML;
   }
 }
-
-// ══════════════════════════════════════════
-//  AI 图片生成页面
-// ══════════════════════════════════════════
-let igSize = '1:1';
-let igCount = 1;
-let igStyle = 'auto';
-
-function loadImgGenPage() {
-  loadIgModels();
-}
-
-async function loadIgModels() {
-  try {
-    const resp = await authFetch('/api/settings');
-    const data = await resp.json();
-    if (!data.success) return;
-    const providers = data.data?.providers || [];
-    // v15: 改成下拉 select
-    const sel = document.getElementById('ig-model-select');
-    if (!sel) {
-      // 旧版兼容：还在用 div 卡片
-      const container = document.getElementById('ig-model-selector');
-      if (!container) return;
-      let html = `<div class="ig-model-opt active" data-model="auto" onclick="selectIgModel(this)">
-        <span class="ig-model-icon">A</span>
-        <div class="ig-model-info"><div class="ig-model-name">自动选择</div><div class="ig-model-desc">根据配置自动匹配最佳模型</div></div>
-      </div>`;
-      providers.forEach(p => {
-        if (!p.enabled || !(p.api_key || p.api_key_masked)) return;
-        (p.models || []).forEach(m => {
-          if (m.enabled === false || m.use !== 'image') return;
-          const initial = (p.name || p.id || '?')[0].toUpperCase();
-          html += `<div class="ig-model-opt" data-model="${m.id}" data-provider="${p.id}" onclick="selectIgModel(this)">
-            <span class="ig-model-icon">${initial}</span>
-            <div class="ig-model-info"><div class="ig-model-name">${esc(m.name || m.id)}</div><div class="ig-model-desc">${esc(p.name || p.id)}</div></div>
-          </div>`;
-        });
-      });
-      container.innerHTML = html;
-      return;
-    }
-    // 新版下拉
-    let html = `<option value="auto" data-provider="">自动选择 (按配置匹配)</option>`;
-    let count = 0;
-    // 按 provider 分组
-    providers.forEach(p => {
-      if (!p.enabled || !(p.api_key || p.api_key_masked)) return;
-      const imageModels = (p.models || []).filter(m => m.enabled !== false && m.use === 'image');
-      if (!imageModels.length) return;
-      html += `<optgroup label="${esc(p.name || p.id)}">`;
-      imageModels.forEach(m => {
-        count++;
-        const value = `${p.id}::${m.id}`;
-        html += `<option value="${esc(value)}" data-provider="${esc(p.id)}" data-model="${esc(m.id)}">${esc(m.name || m.id)}</option>`;
-      });
-      html += `</optgroup>`;
-    });
-    console.log(`[loadIgModels] 加载 ${count} 个图片模型 (下拉)`);
-    sel.innerHTML = html;
-  } catch (e) {
-    console.warn('[loadIgModels] failed:', e);
-  }
-}
-
-function selectIgModel(el) {
-  document.querySelectorAll('.ig-model-opt').forEach(o => o.classList.remove('active'));
-  el.classList.add('active');
-}
-
-function setIgSize(size, btn) {
-  igSize = size;
-  btn.closest('.ig-size-btns').querySelectorAll('.ig-size-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-}
-
-function setIgCount(count, btn) {
-  igCount = count;
-  btn.closest('.ig-size-btns').querySelectorAll('.ig-size-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-}
-
-function setIgStyle(style, el) {
-  igStyle = style;
-  document.querySelectorAll('.ig-style-tag').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-}
-
-function toggleIgNeg() {
-  const wrap = document.getElementById('ig-neg-wrap');
-  const arrow = document.getElementById('ig-neg-arrow');
-  const visible = wrap.style.display !== 'none';
-  wrap.style.display = visible ? 'none' : '';
-  arrow.classList.toggle('open', !visible);
-}
-
-function toggleIgRef() {
-  const wrap = document.getElementById('ig-ref-wrap');
-  const arrow = document.getElementById('ig-ref-arrow');
-  const visible = wrap.style.display !== 'none';
-  wrap.style.display = visible ? 'none' : '';
-  arrow.classList.toggle('open', !visible);
-}
-
-function handleIgRefUpload(input) {
-  if (!input.files || !input.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const drop = document.querySelector('.ig-ref-drop');
-    drop.innerHTML = `<img src="${e.target.result}" style="max-height:100px;border-radius:6px;object-fit:contain" />
-      <span style="font-size:10px;color:var(--text3)">已上传参考图</span>`;
-  };
-  reader.readAsDataURL(input.files[0]);
-  document.getElementById('ig-ref-strength').style.display = 'flex';
-}
-
-function enhanceImagePrompt() {
-  const ta = document.getElementById('ig-prompt');
-  if (!ta.value.trim()) return;
-  ta.value += ', high quality, detailed, masterpiece, 8K resolution';
-  updateCharCount(ta, 'ig-prompt-cnt');
-}
-
-async function startImageGeneration() {
-  const prompt = document.getElementById('ig-prompt')?.value?.trim();
-  if (!prompt) { alert('请输入提示词'); return; }
-
-  const btn = document.getElementById('ig-gen-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sto-li-spin">&#8635;</span> 生成中...';
-
-  const resultBox = document.getElementById('ig-result-box');
-  resultBox.innerHTML = `
-    <div class="ig-result-empty" style="animation:fadeUp .3s ease">
-      <div class="sto-li-spin" style="font-size:32px;color:var(--accent)">&#8635;</div>
-      <div class="ig-empty-text">正在生成图片...</div>
-      <div class="ig-empty-sub">请稍候</div>
-    </div>`;
-
-  try {
-    // v15: 优先读 select 下拉，回退到旧 ig-model-opt.active
-    let modelId = 'auto', providerId = '';
-    const sel = document.getElementById('ig-model-select');
-    if (sel && sel.value && sel.value !== 'auto') {
-      const [pid, mid] = sel.value.split('::');
-      providerId = pid || '';
-      modelId = mid || sel.value;
-    } else {
-      const activeModel = document.querySelector('.ig-model-opt.active');
-      modelId = activeModel?.dataset.model || 'auto';
-      providerId = activeModel?.dataset.provider || '';
-    }
-    const negative = document.getElementById('ig-negative')?.value || '';
-
-    const resp = await authFetch('/api/imggen/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, negative, model: modelId, provider: providerId, size: igSize, count: igCount, style: igStyle })
-    });
-    const data = await resp.json();
-
-    if (data.images && data.images.length > 0) {
-      const gridCols = data.images.length > 1 ? 'grid-template-columns:repeat(2,1fr)' : '';
-      resultBox.innerHTML = `<div style="display:grid;${gridCols};gap:8px;padding:16px;width:100%">
-        ${data.images.map(img => `<img src="${img}" style="width:100%;border-radius:10px;cursor:zoom-in" onclick="openLightbox('${img}','')" />`).join('')}
-      </div>`;
-    } else {
-      resultBox.innerHTML = `
-        <div class="ig-result-empty" style="animation:fadeUp .3s ease">
-          <div class="ig-empty-text" style="color:var(--success)">请求已提交</div>
-          <div class="ig-empty-sub">${data.message || '图片生成功能即将上线'}</div>
-        </div>`;
-    }
-  } catch (e) {
-    resultBox.innerHTML = `
-      <div class="ig-result-empty" style="animation:fadeUp .3s ease">
-        <div class="ig-empty-text" style="color:var(--error)">生成失败</div>
-        <div class="ig-empty-sub">${e.message}</div>
-      </div>`;
-  }
-
-  btn.disabled = false;
-  btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5H13l-3.5 2.5 1.3 4L7 8.5 3.2 11l1.3-4L1 4.5h4.5z" fill="currentColor"/></svg> 生成图片';
-}
-
 
 // ══════════════════════════════════════════
 //  我的素材页面

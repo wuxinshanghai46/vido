@@ -9,7 +9,7 @@
     videoFilter: 'all',
     videoLimit: 8
   };
-  const modulePermission = { create: 'create', avatar: 'avatar', 'new-story-ad': 'avatar', i2v: 'i2v' };
+  const modulePermission = { create: 'create', avatar: 'avatar', 'new-story-ad': 'dashboard' };
   const typeLabels = { 'new-story-ad': '剧情广告', avatar: '数字人', create: '视频动漫', i2v: '图生视频' };
   const safe = value => typeof esc === 'function'
     ? esc(String(value ?? ''))
@@ -53,7 +53,7 @@
   function shell() {
     const page = document.getElementById('page-dashboard');
     if (!page) return null;
-    page.className = 'page active dashboard-workbench-page';
+    page.classList.add('dashboard-workbench-page');
     page.innerHTML = `
       <div class="wb-consumer-head">
         <div><h1><span id="wb-greeting"></span>，<span id="wb-user-name"></span></h1><p>从未完成的任务继续，或者查看你已经做好的视频。</p></div>
@@ -80,12 +80,11 @@
 
   function renderCreator() {
     const entries = [
-      ['new-story-ad', '🎭', '剧情广告', '故事化营销短片', '/digital-human?tab=new-story-ad&nsa_intent=create'],
+      ['new-story-ad', '剧', '剧情广告', '创意、资产、分镜与成片一体制作', '/story-ad/'],
       ['avatar', '🧑‍💼', '数字人口播', '真人感讲解视频', '/digital-human'],
       ['create', '🎬', '视频动漫', '文字生成动画短片', '/?page=create'],
       ['comic', '📚', '漫画', '故事生成漫画', '/?page=comic'],
-      ['novel', '✍️', '小说', '长篇内容创作', '/ai-novel'],
-      ['i2v', '🎞️', '图生视频', '让图片动起来', '/?page=i2v']
+      ['novel', '✍️', '小说', '长篇内容创作', '/ai-novel']
     ];
     const box = document.getElementById('wb-creator-grid');
     if (!box) return;

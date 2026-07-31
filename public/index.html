@@ -7,9 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
-  <link rel="stylesheet" href="/css/style.css?v=20260626-theme-native-controls" />
+  <link rel="stylesheet" href="/css/style.css?v=20260731-story-ad-entry" />
   <link rel="stylesheet" href="/css/vido-ui.css?v=20260626-theme-native-controls" />
-  <link rel="stylesheet" href="/css/dashboard-workbench.css?v=20260711-consumer-thumb-v4" />
+  <link rel="stylesheet" href="/css/dashboard-workbench.css?v=20260731-page-isolation" />
   <script src="/js/auth.js?v=20260626-long-session"></script>
   <script src="/js/media-delivery.js?v=20260729-platform-media-v5"></script>
 </head>
@@ -32,20 +32,13 @@
   <div class="sidebar-section" data-group="内容创作">
     <div class="sidebar-section-title">内容创作</div>
     <div class="nav-item" data-page="aicanvas" data-perm="aicanvas" onclick="window.location.href='/video-canvas/'"><div class="nav-icon">🎨</div>视频画布</div>
+    <div class="nav-item" onclick="window.location.href='/story-ad/'"><div class="nav-icon">剧</div>剧情广告</div>
     <div class="nav-item" data-page="create"   data-perm="create"  ><div class="nav-icon">🎬</div>视频动漫</div>
     <div class="nav-item" data-perm="avatar" onclick="window.location.href='/digital-human'"><div class="nav-icon">🧑‍💼</div>广告/数字人</div>
     <div class="nav-item" data-page="comic"    data-perm="comic"   ><div class="nav-icon">📚</div>漫画</div>
     <div class="nav-item" data-page="drama"    data-perm="drama"   ><div class="nav-icon">🎭</div>AI 网剧</div>
     <div class="nav-item" data-perm="manga_drama" onclick="window.location.href='/ai-manga-drama'"><div class="nav-icon">🎞️</div>漫剧</div>
     <div class="nav-item" data-perm="novel" onclick="window.location.href='/ai-novel'"><div class="nav-icon">✍️</div>小说</div>
-  </div>
-
-  <div class="sidebar-divider" data-group="工具"></div>
-
-  <div class="sidebar-section" data-group="工具">
-    <div class="sidebar-section-title">工具</div>
-    <div class="nav-item" data-page="i2v"    data-perm="i2v"   ><div class="nav-icon">🎞️</div>图生视频</div>
-    <div class="nav-item" data-page="imggen" data-perm="imggen"><div class="nav-icon">🖼️</div>图片生成</div>
   </div>
 
   <div class="sidebar-divider" data-group="爆款复刻"></div>
@@ -142,8 +135,22 @@
           </div>
         </div>
 
-        <!-- 4 Content Type Cards -->
+        <!-- Content Type Cards -->
         <div class="hub-types">
+          <div class="hub-type-card" onclick="window.location.href='/story-ad/'">
+            <div class="hub-type-head">
+              <div class="hub-type-icon">剧</div>
+              <div class="hub-type-info">
+                <div class="hub-type-name">剧情广告</div>
+                <div class="hub-type-desc">从创意、资产、剧情和分镜到视频成片</div>
+              </div>
+              <div class="hub-type-count">独立模块</div>
+            </div>
+            <div class="hub-type-tags">
+              <span class="hub-tag">参考分析</span><span class="hub-tag">人物场景</span><span class="hub-tag">镜头设计</span><span class="hub-tag">工作流画布</span>
+            </div>
+            <button class="hub-type-btn">进入剧情广告 →</button>
+          </div>
           <div class="hub-type-card" onclick="switchPage('create')">
             <div class="hub-type-head">
               <div class="hub-type-icon">🎬</div>
@@ -1307,106 +1314,6 @@
 
         </div><!-- end studio -->
       </div><!-- end page-create -->
-
-      <!-- ══ 图生视频页面 ══ -->
-      <div id="page-i2v" class="page">
-        <div class="i2v-page">
-          <div class="page-top-bar">
-            <div class="page-top-title">图生视频</div>
-            <div class="page-top-sub">上传图片或输入 URL，AI 生成 2D/3D 动态视频</div>
-          </div>
-          <div class="i2v-main">
-            <!-- 左侧控制面板 -->
-            <div class="i2v-controls">
-              <!-- 图片上传区 -->
-              <div class="i2v-section">
-                <div class="i2v-sec-title">图片来源</div>
-                <div class="i2v-src-tabs">
-                  <button class="i2v-src-tab active" id="i2v-tab-upload" onclick="switchI2VSrc('upload')">上传图片</button>
-                  <button class="i2v-src-tab" id="i2v-tab-url" onclick="switchI2VSrc('url')">输入 URL</button>
-                </div>
-                <div id="i2v-src-upload" class="i2v-src-pane">
-                  <div class="i2v-dropzone" id="i2v-dropzone"
-                       ondrop="handleI2VDrop(event)" ondragover="event.preventDefault();this.classList.add('drag-over')"
-                       ondragleave="this.classList.remove('drag-over')">
-                    <input type="file" id="i2v-file-input" accept="image/*" style="display:none" onchange="handleI2VFileSelect(this)" />
-                    <label for="i2v-file-input" class="i2v-drop-label">
-                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="9" r="2" stroke="currentColor" stroke-width="1.2"/><path d="M2 17l5-5 3 3 4-4 8 8" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                      <span>点击或拖拽上传图片</span>
-                      <span class="i2v-drop-hint">PNG / JPG / WEBP，最大 20MB</span>
-                    </label>
-                  </div>
-                </div>
-                <div id="i2v-src-url" class="i2v-src-pane" style="display:none">
-                  <input type="text" class="i2v-url-input" id="i2v-url-input" placeholder="输入图片 URL（https://...）" />
-                  <button class="i2v-url-btn" onclick="loadI2VFromUrl()">加载</button>
-                </div>
-              </div>
-
-              <!-- 图片预览 -->
-              <div class="i2v-section" id="i2v-img-preview-sec" style="display:none">
-                <div class="i2v-sec-title">
-                  图片预览
-                  <button class="i2v-clear-btn" onclick="clearI2VImage()">清除</button>
-                </div>
-                <div class="i2v-img-preview" id="i2v-img-preview"></div>
-              </div>
-
-              <!-- 动效描述 -->
-              <div class="i2v-section">
-                <div class="i2v-sec-title">动效描述 <span class="i2v-optional">（可选）</span></div>
-                <textarea class="i2v-prompt-ta" id="i2v-prompt" rows="3" placeholder="描述图片的运动方式，如：镜头缓慢推进，人物微笑转头..."></textarea>
-              </div>
-
-              <!-- 视频模型 -->
-              <div class="i2v-section">
-                <div class="i2v-sec-title">视频模型 <span class="i2v-required">*必选</span></div>
-                <div class="i2v-model-trigger" id="i2v-model-trigger" onclick="openI2VModelPicker()">
-                  <span class="i2v-model-icon" id="i2v-model-icon">🎬</span>
-                  <span class="i2v-model-label" id="i2v-model-label">选择视频模型...</span>
-                  <svg width="10" height="6" viewBox="0 0 10 6" style="opacity:.4"><path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>
-                </div>
-                <div class="i2v-model-picker" id="i2v-model-picker" style="display:none"></div>
-              </div>
-
-              <!-- 时长 -->
-              <div class="i2v-section">
-                <div class="i2v-sec-title">视频时长</div>
-                <div class="i2v-dur-row">
-                  <button class="i2v-dur-btn active" onclick="setI2VDuration(5,this)">5秒</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(10,this)">10秒</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(30,this)">30秒</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(60,this)">1分钟</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(120,this)">2分钟</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(300,this)">5分钟</button>
-                  <button class="i2v-dur-btn" onclick="setI2VDuration(600,this)">10分钟</button>
-                </div>
-              </div>
-
-              <!-- 生成按钮 -->
-              <button class="i2v-gen-btn" id="i2v-gen-btn" onclick="startI2VGeneration()">生成视频</button>
-            </div>
-
-            <!-- 右侧预览区 -->
-            <div class="i2v-preview">
-              <div class="i2v-preview-box" id="i2v-preview-box">
-                <div class="i2v-preview-empty">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none"><rect x="2" y="3" width="20" height="18" rx="2" stroke="currentColor" stroke-width="1"/><path d="M9.5 8.5l7 4.5-7 4.5z" fill="currentColor" opacity=".3"/></svg>
-                  <span>上传图片并选择模型后，点击「生成视频」</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- 历史记录 -->
-          <div class="i2v-history-section">
-            <div class="i2v-sec-title" style="margin-bottom:12px">历史记录</div>
-            <div class="i2v-history" id="i2v-history">
-              <div class="i2v-history-empty">暂无记录</div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- ══ AI 网剧页面 ══ -->
       <div id="page-drama" class="page">
@@ -3354,159 +3261,6 @@
         </div>
       </div>
 
-      <!-- ══ 图片生成页面 ══ -->
-      <div id="page-imggen" class="page">
-        <div class="ig-page">
-          <div class="page-top-bar">
-            <div class="page-top-title">图片生成</div>
-            <div class="page-top-sub">输入文字描述，AI 为你生成高质量图片</div>
-          </div>
-          <div class="ig-main">
-            <!-- 左侧控制面板 -->
-            <div class="ig-controls">
-              <!-- 提示词 -->
-              <div class="ig-section">
-                <div class="ig-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h10M2 7h7M2 11h9" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-                  提示词
-                </div>
-                <textarea class="ig-prompt-ta" id="ig-prompt" rows="5" placeholder="描述你想要的图片内容...&#10;例：一只橘猫坐在窗台上，阳光透过窗帘洒在它的身上，水彩画风格" oninput="updateCharCount(this,'ig-prompt-cnt')"></textarea>
-                <div class="ig-prompt-footer">
-                  <button class="ig-enhance-btn" onclick="enhanceImagePrompt()">
-                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1l1 3h3l-2.5 2 1 3L6 7.5 3.5 9l1-3L2 4h3z" stroke="currentColor" stroke-width="1" stroke-linejoin="round"/></svg>
-                    智能优化
-                  </button>
-                  <span class="char-cnt" id="ig-prompt-cnt">0 / 2000</span>
-                </div>
-              </div>
-
-              <!-- 负面提示词 -->
-              <div class="ig-section">
-                <div class="ig-sec-title ig-sec-collapse" onclick="toggleIgNeg()">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M4 7h6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-                  负面提示词
-                  <svg class="ig-collapse-arrow" id="ig-neg-arrow" width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-                </div>
-                <div id="ig-neg-wrap" style="display:none">
-                  <textarea class="ig-neg-ta" id="ig-negative" rows="2" placeholder="不希望出现的元素，如：模糊、低质量、变形、水印..."></textarea>
-                </div>
-              </div>
-
-              <!-- 模型选择 (下拉) -->
-              <div class="ig-section">
-                <div class="ig-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="3" width="12" height="8" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 6h2M8 6h2M4 9h6" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
-                  图像模型
-                </div>
-                <select class="ig-model-select" id="ig-model-select">
-                  <option value="auto" data-provider="">自动选择 (按配置匹配)</option>
-                </select>
-              </div>
-
-              <!-- 图片参数 -->
-              <div class="ig-section">
-                <div class="ig-sec-title">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2h4v4H2zM8 2h4v4H8zM2 8h4v4H2zM8 8h4v4H8z" stroke="currentColor" stroke-width="1.1"/></svg>
-                  图片参数
-                </div>
-                <div class="ig-params">
-                  <div class="ig-param-row">
-                    <span class="ig-param-label">尺寸</span>
-                    <div class="ig-size-btns">
-                      <button class="ig-size-btn active" onclick="setIgSize('1:1',this)">1:1</button>
-                      <button class="ig-size-btn" onclick="setIgSize('16:9',this)">16:9</button>
-                      <button class="ig-size-btn" onclick="setIgSize('9:16',this)">9:16</button>
-                      <button class="ig-size-btn" onclick="setIgSize('4:3',this)">4:3</button>
-                      <button class="ig-size-btn" onclick="setIgSize('3:4',this)">3:4</button>
-                    </div>
-                  </div>
-                  <div class="ig-param-row">
-                    <span class="ig-param-label">数量</span>
-                    <div class="ig-size-btns">
-                      <button class="ig-size-btn active" onclick="setIgCount(1,this)">1 张</button>
-                      <button class="ig-size-btn" onclick="setIgCount(2,this)">2 张</button>
-                      <button class="ig-size-btn" onclick="setIgCount(4,this)">4 张</button>
-                    </div>
-                  </div>
-                  <div class="ig-param-row">
-                    <span class="ig-param-label">风格</span>
-                    <div class="ig-style-tags">
-                      <span class="ig-style-tag active" onclick="setIgStyle('auto',this)">自动</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('realistic',this)">写实</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('anime',this)">动漫</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('3d',this)">3D</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('watercolor',this)">水彩</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('oil',this)">油画</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('pixel',this)">像素</span>
-                      <span class="ig-style-tag" onclick="setIgStyle('sketch',this)">素描</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 参考图 -->
-              <div class="ig-section">
-                <div class="ig-sec-title ig-sec-collapse" onclick="toggleIgRef()">
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                  参考图
-                  <span class="ig-optional">(可选)</span>
-                  <svg class="ig-collapse-arrow" id="ig-ref-arrow" width="9" height="5" viewBox="0 0 9 5"><path d="M1 1l3.5 3 3.5-3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>
-                </div>
-                <div id="ig-ref-wrap" style="display:none">
-                  <div class="ig-ref-drop" onclick="document.getElementById('ig-ref-input').click()">
-                    <input type="file" id="ig-ref-input" accept="image/*" style="display:none" onchange="handleIgRefUpload(this)" />
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                    <span>上传参考图</span>
-                  </div>
-                  <div class="ig-ref-strength" id="ig-ref-strength" style="display:none">
-                    <span class="ig-param-label">参考强度</span>
-                    <input type="range" min="0" max="100" value="50" id="ig-ref-slider" />
-                    <span class="ig-ref-val" id="ig-ref-val">50%</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- 生成按钮 -->
-              <button class="ig-gen-btn" id="ig-gen-btn" onclick="startImageGeneration()">
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1l1.5 3.5H13l-3.5 2.5 1.3 4L7 8.5 3.2 11l1.3-4L1 4.5h4.5z" fill="currentColor"/></svg>
-                生成图片
-              </button>
-
-              <!-- 示例 -->
-              <div class="ig-examples">
-                <span class="ig-ex-label">快速试试:</span>
-                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='一只橘猫坐在日式庭院的石阶上，樱花纷飞，宫崎骏画风'">橘猫樱花</span>
-                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='赛博朋克城市夜景，霓虹灯倒映在雨水中，电影感构图，8K超清'">赛博夜城</span>
-                <span class="ig-ex-tag" onclick="document.getElementById('ig-prompt').value='中国古代仙侠场景，云雾缭绕的山峰上有一座悬浮的仙宫，金色阳光穿透云层'">仙宫云海</span>
-              </div>
-            </div>
-
-            <!-- 右侧结果展示 -->
-            <div class="ig-result">
-              <div class="ig-result-box" id="ig-result-box">
-                <div class="ig-result-empty">
-                  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-                    <rect x="6" y="8" width="44" height="40" rx="6" stroke="currentColor" stroke-width="1.5" opacity=".15"/>
-                    <circle cx="18" cy="22" r="5" stroke="currentColor" stroke-width="1.5" opacity=".15"/>
-                    <path d="M6 38l12-12 8 8 8-10 16 14" stroke="currentColor" stroke-width="1.5" opacity=".15" stroke-linejoin="round"/>
-                  </svg>
-                  <div class="ig-empty-text">输入提示词，开始生成</div>
-                  <div class="ig-empty-sub">支持中英文提示词</div>
-                </div>
-              </div>
-              <!-- 历史记录 -->
-              <div class="ig-history-section">
-                <div class="ig-sec-title" style="margin-bottom:8px">生成历史</div>
-                <div class="ig-history" id="ig-history">
-                  <div class="ig-history-empty">暂无记录</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-
       <!-- ═══ 工作流画布 ═══ -->
       <div id="page-workflow" class="page" style="padding:0;height:100%;overflow:hidden;">
         <iframe id="workflow-iframe" style="width:100%;height:100%;border:none;display:block;" src="about:blank"></iframe>
@@ -3804,7 +3558,7 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=20260625-module-button-tone"></script>
- <script src="/js/dashboard-workbench.js?v=20260711-consumer-thumb-v4"></script>
+<script src="/js/app.js?v=20260731-story-ad-entry"></script>
+ <script src="/js/dashboard-workbench.js?v=20260731-page-isolation"></script>
 </body>
 </html>

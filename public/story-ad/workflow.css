@@ -1,0 +1,116 @@
+.workflow-view { margin: -26px -30px -70px; height: calc(100vh - 64px); overflow: hidden; }
+.workflow-bar {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.workflow-bar h1 { font-size: 17px; }
+.workflow-bar p { color: var(--muted); font-size: 12px; }
+.workflow-tools { display: flex; gap: 6px; margin-left: auto; }
+.workflow-tools .icon-btn { min-height: 36px; min-width: 38px; }
+.canvas-viewport {
+  position: relative;
+  height: calc(100vh - 122px);
+  overflow: hidden;
+  cursor: grab;
+  background-color: var(--bg);
+  background-image: radial-gradient(color-mix(in srgb, var(--muted) 32%, transparent) 1px, transparent 1px);
+  background-size: 20px 20px;
+  touch-action: none;
+  user-select: none;
+}
+.canvas-viewport.is-panning { cursor: grabbing; }
+.canvas-stage {
+  position: absolute;
+  width: 2900px;
+  height: 1500px;
+  transform-origin: 0 0;
+}
+.canvas-cluster {
+  position: absolute;
+  min-width: 360px;
+  min-height: 260px;
+  padding: 45px 20px 20px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+.canvas-cluster > label { position: absolute; top: 14px; left: 18px; color: var(--muted); font-size: 12px; }
+.graph-node {
+  position: absolute;
+  width: 220px;
+  min-height: 142px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 10%);
+}
+.graph-node:hover, .graph-node.active { border-color: var(--mint); }
+.graph-node .media, .graph-node .media-placeholder { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; pointer-events: none; }
+.graph-node b, .graph-node small { display: block; pointer-events: none; }
+.graph-node b { margin-top: 8px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-node small { margin-top: 4px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--mint); }
+.node-dot.is-failed, .node-dot.is-blocked { background: var(--danger); }
+.node-dot.is-draft, .node-dot.is-pending { background: var(--amber); }
+.graph-lines { position: absolute; inset: 0; width: 2900px; height: 1500px; overflow: visible; pointer-events: none; }
+.graph-lines path { fill: none; stroke: color-mix(in srgb, var(--muted) 70%, transparent); stroke-width: 1.5; }
+.graph-lines path.is-continues { stroke: var(--mint); stroke-dasharray: 5 4; }
+.canvas-controls {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 4;
+  display: flex;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+}
+.canvas-controls button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: var(--surface-3); color: var(--text); cursor: pointer; }
+.canvas-zoom { min-width: 54px; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+.mini-map {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4;
+  width: 150px;
+  height: 96px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.mini-map i { position: absolute; display: block; width: 10px; height: 7px; border-radius: 2px; background: var(--muted); opacity: .65; }
+.mini-map .viewport-box { position: absolute; border: 1px solid var(--mint); background: color-mix(in srgb, var(--mint) 12%, transparent); }
+.node-panel {
+  position: absolute;
+  z-index: 8;
+  top: 58px;
+  right: 0;
+  width: 400px;
+  height: calc(100vh - 122px);
+  padding: 18px;
+  overflow-y: auto;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.node-panel[hidden] { display: none; }
+.node-panel header { display: flex; align-items: flex-start; gap: 10px; }
+.node-panel header .icon-btn { margin-left: auto; }
+.node-panel .media, .node-panel .media-placeholder { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; margin: 16px 0; border-radius: 11px; }
+.node-panel h2 { font-size: 19px; }
+.node-panel p { color: var(--muted); margin-top: 6px; line-height: 1.6; }
+
+@media (max-width: 1250px) {
+  .workflow-view { margin-left: -22px; margin-right: -22px; }
+  .node-panel { width: 360px; }
+}

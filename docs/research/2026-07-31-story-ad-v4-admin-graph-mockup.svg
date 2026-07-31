@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080C11"/><stop offset="1" stop-color="#10171E"/>
+    </linearGradient>
+    <filter id="nodeShadow"><feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".38"/></filter>
+    <style>
+      .ui{font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif}
+      .white{fill:#EEF3F6}.muted{fill:#86939D}.quiet{fill:#5B6873}.green{fill:#66F4B3}
+      .small{font-size:12px}.body{font-size:14px}.label{font-size:14px;font-weight:700}
+    </style>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#526671"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#bg2)"/>
+  <rect width="1600" height="70" fill="#0B1016"/>
+  <line x1="0" y1="70" x2="1600" y2="70" stroke="#1D2832"/>
+  <g class="ui">
+    <text x="28" y="43" class="white" font-size="18" font-weight="700">VIDO</text>
+    <text x="106" y="42" class="white body" font-weight="700">任务关系图</text>
+    <text x="204" y="42" class="quiet body">/ 保时捷 718 山路篇</text>
+    <rect x="1310" y="18" width="122" height="36" rx="10" fill="#151D25" stroke="#2C3945"/>
+    <text x="1336" y="41" class="white small">返回工作区</text>
+    <rect x="1446" y="18" width="112" height="36" rx="10" fill="#14271F" stroke="#2D7357"/>
+    <text x="1475" y="41" class="green small">只读模式</text>
+  </g>
+
+  <rect x="0" y="70" width="228" height="930" fill="#0C1218"/>
+  <line x1="228" y1="70" x2="228" y2="1000" stroke="#1D2832"/>
+  <g class="ui">
+    <text x="24" y="112" class="quiet small" font-weight="700">视图</text>
+    <rect x="14" y="132" width="200" height="48" rx="10" fill="#14271F" stroke="#2D7357"/>
+    <text x="44" y="161" class="white label">当前有效版本</text>
+    <text x="24" y="219" class="muted body">全部历史</text>
+    <text x="24" y="260" class="muted body">仅看异常</text>
+    <text x="24" y="301" class="muted body">费用与调用</text>
+    <line x1="24" y1="337" x2="204" y2="337" stroke="#202B35"/>
+    <text x="24" y="374" class="quiet small" font-weight="700">图层</text>
+    <rect x="24" y="397" width="14" height="14" rx="4" fill="#66F4B3"/>
+    <text x="50" y="409" class="muted small">证据与目标</text>
+    <rect x="24" y="430" width="14" height="14" rx="4" fill="#62A7F7"/>
+    <text x="50" y="442" class="muted small">基础资产包</text>
+    <rect x="24" y="463" width="14" height="14" rx="4" fill="#B184F7"/>
+    <text x="50" y="475" class="muted small">镜头关键帧</text>
+    <rect x="24" y="496" width="14" height="14" rx="4" fill="#F1BD6C"/>
+    <text x="50" y="508" class="muted small">视频候选</text>
+    <rect x="24" y="529" width="14" height="14" rx="4" fill="#F27C8C"/>
+    <text x="50" y="541" class="muted small">审核与异常</text>
+    <rect x="18" y="900" width="196" height="68" rx="12" fill="#101921" stroke="#202C36"/>
+    <text x="34" y="925" class="quiet small">权限</text>
+    <text x="34" y="949" class="muted small">超管 · 可看调用与费用</text>
+  </g>
+
+  <rect x="228" y="70" width="1012" height="930" fill="#0B1117"/>
+  <g class="ui">
+    <text x="260" y="116" class="white" font-size="24" font-weight="700">生产血缘</text>
+    <text x="260" y="143" class="muted small">只显示当前版本、有效依赖和阻塞项</text>
+    <rect x="754" y="96" width="110" height="34" rx="10" fill="#121B22" stroke="#2B3843"/>
+    <text x="778" y="118" class="muted small">状态：全部</text>
+    <rect x="876" y="96" width="118" height="34" rx="10" fill="#121B22" stroke="#2B3843"/>
+    <text x="898" y="118" class="muted small">类型：全部</text>
+    <rect x="1006" y="96" width="92" height="34" rx="10" fill="#14271F" stroke="#2D7357"/>
+    <text x="1027" y="118" class="green small">仅当前版本</text>
+    <rect x="1110" y="96" width="92" height="34" rx="10" fill="#121B22" stroke="#2B3843"/>
+    <text x="1135" y="118" class="muted small">自动布局</text>
+  </g>
+
+  <g class="ui">
+    <text x="276" y="190" class="quiet small" font-weight="700">证据与目标</text>
+    <text x="462" y="190" class="quiet small" font-weight="700">基础资产包</text>
+    <text x="700" y="190" class="quiet small" font-weight="700">镜头关键帧</text>
+    <text x="920" y="190" class="quiet small" font-weight="700">视频候选</text>
+    <text x="1103" y="190" class="quiet small" font-weight="700">审核</text>
+  </g>
+
+  <line x1="430" y1="202" x2="430" y2="953" stroke="#1C2831"/>
+  <line x1="665" y1="202" x2="665" y2="953" stroke="#1C2831"/>
+  <line x1="886" y1="202" x2="886" y2="953" stroke="#1C2831"/>
+  <line x1="1068" y1="202" x2="1068" y2="953" stroke="#1C2831"/>
+
+  <path d="M407 292 C440 292 430 292 466 292" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M407 365 C440 365 430 426 466 426" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M630 292 C670 292 666 316 703 316" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M630 426 C670 426 666 316 703 316" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M630 560 C670 560 666 508 703 508" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M853 316 C890 316 885 316 924 316" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M853 508 C890 508 885 508 924 508" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1037 316 C1066 316 1060 380 1090 380" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M1037 508 C1066 508 1060 456 1090 456" fill="none" stroke="#526671" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <g filter="url(#nodeShadow)" class="ui">
+    <rect x="266" y="246" width="142" height="92" rx="12" fill="#111B1A" stroke="#306B55"/>
+    <circle cx="287" cy="268" r="6" fill="#66F4B3"/>
+    <text x="301" y="273" class="green small">参考视频</text>
+    <text x="282" y="302" class="white label">718.mp4</text>
+    <text x="282" y="324" class="quiet small">44.5 秒 · v2</text>
+
+    <rect x="266" y="354" width="142" height="92" rx="12" fill="#111B1A" stroke="#306B55"/>
+    <circle cx="287" cy="376" r="6" fill="#66F4B3"/>
+    <text x="301" y="381" class="green small">分析结果</text>
+    <text x="282" y="410" class="white label">证据快照 v2</text>
+    <text x="282" y="432" class="quiet small">主体已确认</text>
+
+    <rect x="466" y="242" width="164" height="100" rx="12" fill="#111923" stroke="#376CA7"/>
+    <text x="484" y="268" fill="#62A7F7" class="small">产品 P01</text>
+    <text x="484" y="297" class="white label">718 跑车</text>
+    <text x="484" y="321" class="quiet small">6 角度 · 已锁定</text>
+
+    <rect x="466" y="376" width="164" height="100" rx="12" fill="#111923" stroke="#376CA7"/>
+    <text x="484" y="402" fill="#62A7F7" class="small">人物 C01</text>
+    <text x="484" y="431" class="white label">女性赛车手</text>
+    <text x="484" y="455" class="quiet small">造型 A · 已锁定</text>
+
+    <rect x="466" y="510" width="164" height="100" rx="12" fill="#111923" stroke="#376CA7"/>
+    <text x="484" y="536" fill="#62A7F7" class="small">场景 S01</text>
+    <text x="484" y="565" class="white label">湿润山路</text>
+    <text x="484" y="589" class="quiet small">3 机位 · 已锁定</text>
+
+    <rect x="703" y="262" width="150" height="108" rx="12" fill="#181422" stroke="#7952B8"/>
+    <text x="721" y="288" fill="#B184F7" class="small">镜头 SH04</text>
+    <text x="721" y="317" class="white label">低机位跟拍</text>
+    <text x="721" y="341" class="quiet small">关键帧 v3 · 已选</text>
+
+    <rect x="703" y="454" width="150" height="108" rx="12" fill="#181422" stroke="#7952B8"/>
+    <text x="721" y="480" fill="#B184F7" class="small">镜头 SH05</text>
+    <text x="721" y="509" class="white label">弯道反打</text>
+    <text x="721" y="533" fill="#F1BD6C" class="small">等待选择关键帧</text>
+
+    <rect x="924" y="270" width="113" height="92" rx="12" fill="#201B12" stroke="#7A5E2F"/>
+    <text x="942" y="295" fill="#F1BD6C" class="small">视频候选</text>
+    <text x="942" y="325" class="white label">V3 已选</text>
+    <text x="942" y="348" class="quiet small">12 秒 · 720p</text>
+
+    <rect x="924" y="462" width="113" height="92" rx="12" fill="#201B12" stroke="#7A5E2F"/>
+    <text x="942" y="487" fill="#F1BD6C" class="small">视频候选</text>
+    <text x="942" y="517" class="white label">尚未生成</text>
+    <text x="942" y="540" class="quiet small">等待关键帧</text>
+
+    <rect x="1090" y="328" width="116" height="104" rx="12" fill="#132019" stroke="#356E54"/>
+    <text x="1108" y="354" class="green small">审核通过</text>
+    <text x="1108" y="384" class="white label">SH04</text>
+    <text x="1108" y="408" class="quiet small">连续性正常</text>
+
+    <rect x="1090" y="444" width="116" height="104" rx="12" fill="#211519" stroke="#873E4A"/>
+    <text x="1108" y="470" fill="#F27C8C" class="small">阻塞</text>
+    <text x="1108" y="500" class="white label">SH05</text>
+    <text x="1108" y="524" class="quiet small">缺少关键帧</text>
+  </g>
+
+  <rect x="254" y="866" width="952" height="82" rx="14" fill="#0E161D" stroke="#22303B"/>
+  <g class="ui">
+    <text x="276" y="895" class="muted small">当前图：17 个业务节点 · 21 条有效依赖 · 1 个阻塞</text>
+    <text x="276" y="921" class="quiet small">历史候选、失败重试和已废弃版本默认折叠，避免画布成为生成记录堆积。</text>
+    <rect x="1030" y="886" width="154" height="36" rx="10" fill="#14271F" stroke="#2D7357"/>
+    <text x="1064" y="909" class="green small">只查看阻塞项</text>
+  </g>
+
+  <rect x="1240" y="70" width="360" height="930" fill="#0D141B"/>
+  <line x1="1240" y1="70" x2="1240" y2="1000" stroke="#26333E"/>
+  <g class="ui">
+    <text x="1268" y="116" class="white" font-size="19" font-weight="700">镜头 SH04</text>
+    <rect x="1462" y="96" width="102" height="30" rx="15" fill="#14281F"/>
+    <text x="1484" y="116" class="green small">当前版本</text>
+    <rect x="1268" y="152" width="296" height="164" rx="12" fill="#16242A"/>
+    <path d="M1268 286l90-76 56 45 62-66 88 72v55h-296z" fill="#243B42"/>
+    <path d="M1300 295q89-47 234-7" fill="none" stroke="#89969B" stroke-width="8"/>
+    <path d="M1382 275q14-24 53-24t59 23l23 4v10h-147z" fill="#D8DDDF"/>
+    <text x="1268" y="352" class="quiet small">状态</text><text x="1518" y="352" class="green small">已选中</text>
+    <line x1="1268" y1="369" x2="1564" y2="369" stroke="#202C36"/>
+    <text x="1268" y="402" class="quiet small">人物</text><text x="1456" y="402" class="muted small">C01 / 造型 A</text>
+    <text x="1268" y="435" class="quiet small">产品</text><text x="1493" y="435" class="muted small">P01 / v2</text>
+    <text x="1268" y="468" class="quiet small">场景</text><text x="1452" y="468" class="muted small">S01 / 低机位</text>
+    <text x="1268" y="501" class="quiet small">关键帧</text><text x="1485" y="501" class="muted small">候选 3</text>
+    <line x1="1268" y1="526" x2="1564" y2="526" stroke="#202C36"/>
+    <text x="1268" y="561" class="white label">下游影响</text>
+    <text x="1268" y="592" class="muted small">视频候选 V3</text>
+    <text x="1268" y="618" class="muted small">审核记录 SH04</text>
+    <line x1="1268" y1="646" x2="1564" y2="646" stroke="#202C36"/>
+    <text x="1268" y="681" class="white label">调用与费用</text>
+    <text x="1268" y="712" class="quiet small">图片调用</text><text x="1518" y="712" class="muted small">1 次</text>
+    <text x="1268" y="741" class="quiet small">视频调用</text><text x="1518" y="741" class="muted small">2 次</text>
+    <text x="1268" y="770" class="quiet small">重复计费</text><text x="1518" y="770" class="green small">0</text>
+    <rect x="1268" y="822" width="296" height="44" rx="11" fill="#151E26" stroke="#2B3944"/>
+    <text x="1369" y="850" class="white small">查看完整记录</text>
+    <text x="1268" y="911" class="quiet small">高级操作需要 manage 权限并写入审计日志。</text>
+  </g>
+</svg>

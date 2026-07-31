@@ -108,7 +108,8 @@ store.rememberRouteStep(1);
 assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_task_id'), 'old-task');
 assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_step'), '1');
 
-assert(dashboardSource.includes('/digital-human?tab=new-story-ad&nsa_intent=create'));
+assert(dashboardSource.includes("['new-story-ad', '剧', '剧情广告', '创意、资产、分镜与成片一体制作', '/story-ad/']"));
+assert(!dashboardSource.includes('/digital-human?tab=new-story-ad&nsa_intent=create'));
 assert(legacyUiSource.includes("state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId())"));
 assert(taskSessionSource.includes("['nsa_intent', 'nsa_task_id', 'nsa_step']"));
 location.href = 'https://example.test/digital-human?tab=new-story-ad&nsa_intent=create&nsa_task_id=old-task&nsa_step=4';

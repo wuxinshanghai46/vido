@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VIDO 剧情广告 V4 完整模块原型</title>
+  <style>
+    :root {
+      --bg:#090e13; --panel:#101820; --panel2:#121c25; --line:#25333e;
+      --text:#eef4f6; --muted:#8a98a3; --quiet:#5c6974;
+      --green:#63efb0; --green2:#173429; --amber:#efbd68; --red:#f17c8c;
+      --blue:#66aaf4; --purple:#b58af7;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+      font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}
+    button,input,textarea{font:inherit}
+    button{cursor:pointer}
+    .app{height:100vh;display:grid;grid-template-columns:226px 1fr;grid-template-rows:70px 1fr;background:
+      radial-gradient(circle at 62% 0%,rgba(40,77,76,.13),transparent 35%),var(--bg)}
+    .topbar{grid-column:1/-1;display:flex;align-items:center;border-bottom:1px solid #1d2832;background:#0b1016;padding:0 28px}
+    .brand{font-size:19px;font-weight:800}.divider{height:28px;width:1px;background:#293640;margin:0 20px}
+    .product{font-weight:700}.crumb{color:var(--quiet);margin-left:10px}
+    .top-actions{margin-left:auto;display:flex;align-items:center;gap:12px}
+    .saved{font-size:13px;color:var(--muted)}.dot{width:9px;height:9px;border-radius:50%;background:var(--green);display:inline-block;margin-right:8px}
+    .ghost,.primary,.warn{border-radius:11px;padding:10px 18px;border:1px solid var(--line);color:var(--text);background:#151e26}
+    .primary{background:var(--green);border-color:var(--green);color:#07120d;font-weight:800}
+    .warn{border-color:#6b522a;color:var(--amber);background:#201d15}
+    .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:#25333f;font-weight:800}
+    .sidebar{grid-row:2;padding:28px 14px 20px;background:#0c1218;border-right:1px solid #1d2832;display:flex;flex-direction:column}
+    .side-label{font-size:12px;color:var(--quiet);font-weight:800;padding:0 12px 12px}
+    .nav{display:flex;flex-direction:column;gap:7px}
+    .nav button{border:0;background:transparent;color:var(--muted);display:flex;align-items:center;text-align:left;padding:13px 12px;border-radius:10px;gap:12px}
+    .nav button.active{color:var(--text);background:#14271f;box-shadow:inset 0 0 0 1px #2d7357;font-weight:800}
+    .nav button.active:before{content:"";position:absolute;left:14px;width:4px;height:48px;border-radius:3px;background:var(--green)}
+    .step{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#1d2933;color:#60707d;font-size:12px;font-weight:800}
+    .active .step{background:var(--green);color:#07120d}.done .step{background:#17372b;color:var(--green)}
+    .side-sep{height:1px;background:#202b35;margin:26px 10px}
+    .status-row{display:flex;justify-content:space-between;padding:8px 12px;font-size:13px;color:var(--muted)}
+    .ok{color:var(--green)}.pending{color:var(--amber)}.disabled{color:var(--quiet)}
+    .admin-entry{margin-top:auto}.admin-entry button{width:100%;display:flex;justify-content:space-between;align-items:center}
+    .content{grid-row:2;overflow:auto;padding:28px 32px 44px}
+    .workspace{display:none;max-width:1374px;margin:0 auto}.workspace.active{display:block}
+    .head{display:flex;align-items:flex-start;margin-bottom:24px}.head h1{font-size:28px;margin:0 0 7px}.head p{margin:0;color:var(--muted);font-size:14px}
+    .head-actions{margin-left:auto;display:flex;gap:9px;align-items:center}
+    .pill{padding:8px 14px;border-radius:20px;border:1px solid #2b5847;background:#13251e;color:var(--green);font-size:12px}
+    .pill.amber{color:var(--amber);border-color:#6b522a;background:#211d14}
+    .card{background:linear-gradient(145deg,#111a23,#0f171e);border:1px solid var(--line);border-radius:16px}
+    .section-title{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:800;margin:28px 0 14px}
+    .count{font-size:12px;color:var(--quiet);font-weight:500}
+    .action-banner{display:flex;align-items:center;padding:20px 22px;border:1px solid #665027;border-left:5px solid var(--amber);background:#171811;border-radius:15px}
+    .alert-icon{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:#3a2f1b;color:var(--amber);font-weight:900;margin-right:16px}
+    .action-banner strong{display:block;margin-bottom:6px}.action-banner span{font-size:13px;color:var(--muted)}.action-banner button{margin-left:auto}
+    .two-col{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}
+    .three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+    .video-card{padding:20px}.video-thumb{height:220px;border-radius:12px;background:
+      linear-gradient(0deg,rgba(0,0,0,.35),transparent),linear-gradient(145deg,#44616b,#17262d 55%,#0b1115);position:relative;overflow:hidden}
+    .road{position:absolute;left:0;right:0;bottom:24px;height:45px;border-top:9px solid #809098;transform:skewY(-7deg);opacity:.8}
+    .car{position:absolute;right:80px;bottom:50px;width:170px;height:43px;border-radius:55% 55% 20% 20%;background:#d8dddf}
+    .car:before,.car:after{content:"";position:absolute;bottom:-12px;width:31px;height:31px;border-radius:50%;background:#101519}.car:before{left:25px}.car:after{right:25px}
+    .file-line{display:flex;align-items:center;margin-top:16px}.file-line strong{font-size:15px}.file-line .meta{font-size:12px;color:var(--muted);margin-left:12px}
+    .summary-card{padding:22px}.fact{padding:14px 0;border-bottom:1px solid #202c36}.fact:last-child{border:0}
+    .fact label{display:block;color:var(--quiet);font-size:12px;margin-bottom:7px}.fact span{font-size:14px}
+    .goal-card{padding:22px}.goal-card textarea{width:100%;height:118px;resize:none;border:1px solid #2b3944;background:#0d151b;color:var(--text);border-radius:12px;padding:14px;line-height:1.7}
+    .blueprint{margin-top:18px;padding:22px}.blueprint-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+    .mini{padding:14px;border:1px solid #263541;border-radius:11px;background:#101820}.mini label{font-size:11px;color:var(--quiet);display:block;margin-bottom:6px}.mini strong{font-size:13px}
+    .intent-question{max-width:940px;margin-bottom:18px}.intent-question h2{font-size:28px;margin:0 0 8px}.intent-question p{margin:0;color:var(--muted);font-size:13px}
+    .intent-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.intent-card{border:1px solid #293944;border-radius:12px;background:#101820;padding:16px;text-align:left;color:var(--text);min-height:106px}
+    .intent-card.selected{border-color:#36b982;background:#10231c;box-shadow:inset 0 0 0 1px #245f48}.intent-card strong{display:block;font-size:13px;margin-bottom:8px}.intent-card span{display:block;color:var(--muted);font-size:11px;line-height:1.55}
+    .brief-card{padding:18px;margin-bottom:18px}.brief-card label{display:block;font-size:12px;font-weight:800;margin-bottom:10px}.brief-card textarea{width:100%;height:96px;resize:none;border:1px solid #2b3944;background:#0d151b;color:var(--text);border-radius:12px;padding:14px;line-height:1.7}
+    .optional-source{padding:18px;margin-bottom:18px}.source-head{display:flex;align-items:center;margin-bottom:14px}.source-head strong{font-size:14px}.source-head span{margin-left:8px;color:var(--quiet);font-size:11px}.source-actions{margin-left:auto;display:flex;gap:8px}.source-actions button{height:34px}
+    .source-row{display:grid;grid-template-columns:90px 1fr auto;align-items:center;gap:14px;padding:12px;border:1px solid #273640;border-radius:10px;background:#0e171e}.source-preview{height:56px;border-radius:8px;background:linear-gradient(145deg,#4c6974,#172a32)}.source-row strong{display:block;font-size:12px}.source-row p{margin:5px 0 0;color:var(--muted);font-size:10px}
+    .asset-grid{display:grid;grid-template-columns:1.05fr .82fr .78fr;gap:18px}.asset-card{padding:19px;min-height:245px}
+    .portrait{float:left;width:145px;height:202px;margin-right:18px;border-radius:11px;background:linear-gradient(145deg,#274643,#142126);position:relative}
+    .portrait:before{content:"";position:absolute;left:49px;top:18px;width:48px;height:48px;border-radius:50%;background:#c9a58e}
+    .portrait:after{content:"";position:absolute;left:28px;bottom:18px;width:90px;height:117px;background:#11161a;clip-path:polygon(25% 0,75% 0,100% 100%,0 100%)}
+    .asset-title{font-size:20px;font-weight:800;margin:25px 0 7px}.asset-sub{color:var(--muted);font-size:13px}
+    .badge{display:inline-flex;padding:6px 10px;border-radius:14px;background:#142a21;color:var(--green);font-size:11px}
+    .ref-row{display:flex;gap:9px;margin-top:22px}.ref-box{flex:1;height:59px;border:1px solid #2b3944;border-radius:10px;background:#18232c;display:flex;align-items:center;justify-content:center;color:#8b99a4;font-size:11px}
+    .product-preview{height:148px;border-radius:11px;background:#e8ebed;position:relative}.product-preview .car{right:70px;bottom:56px;background:#cfd5d8}
+    .scene-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.scene-card{padding:18px}.scene-img{height:128px;border-radius:11px;position:relative;overflow:hidden}
+    .mountain{background:linear-gradient(145deg,#516b75,#1f3941 55%,#10191e)}.tunnel{background:linear-gradient(145deg,#5d5038,#252a2d 55%,#0c1013)}
+    .forest{background:linear-gradient(145deg,#263f36,#152820 60%,#0b1310)}
+    .scene-img:after{content:"";position:absolute;left:10px;right:16px;bottom:20px;border-top:8px solid #879397;transform:rotate(-8deg);opacity:.7}
+    .scene-card h3{font-size:15px;margin:16px 0 7px}.scene-card p{font-size:12px;color:var(--muted);margin:0}
+    .story-layout{display:grid;grid-template-columns:180px 1fr 330px;gap:18px;min-height:700px}
+    .beats{padding:16px}.beat{padding:14px 12px;border-left:2px solid #2b3944;color:var(--muted);font-size:13px}.beat.active{border-color:var(--purple);color:var(--text);background:#171421}
+    .shot-list{display:flex;flex-direction:column;gap:14px}.shot{padding:17px;display:grid;grid-template-columns:112px 1fr auto;gap:16px;align-items:center}
+    .shot.active{border-color:#7655ad;background:#15121e}.keyframe{height:74px;border-radius:9px;background:linear-gradient(145deg,#3e5c64,#182a31);position:relative}
+    .shot h3{font-size:15px;margin:0 0 7px}.shot p{font-size:12px;color:var(--muted);margin:0 0 8px}.chips{display:flex;gap:6px}.chip{font-size:10px;padding:5px 7px;border-radius:8px;background:#1a2730;color:#a6b4bd}
+    .shot-state{font-size:11px;color:var(--green)}.shot-state.wait{color:var(--amber)}
+    .inspector{padding:20px}.inspector h2{font-size:18px;margin:0 0 16px}.inspect-preview{height:170px;border-radius:11px;background:linear-gradient(145deg,#47626a,#172830)}
+    .kv{display:flex;justify-content:space-between;padding:12px 0;border-bottom:1px solid #202c36;font-size:12px}.kv label{color:var(--quiet)}.kv span{color:var(--muted)}
+    .candidate-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:13px}.candidate{height:60px;border-radius:8px;background:#22333b;border:1px solid #30444e}.candidate.selected{border:2px solid var(--green)}
+    .review-layout{display:grid;grid-template-columns:1fr 440px;gap:18px}.review-list{padding:18px}.review-row{display:grid;grid-template-columns:55px 105px 1fr 120px;align-items:center;gap:14px;padding:13px;border-bottom:1px solid #202c36}
+    .review-row:last-child{border:0}.review-thumb{height:56px;border-radius:8px;background:linear-gradient(145deg,#3c5962,#14252c)}
+    .review-row strong{font-size:13px}.review-row p{font-size:11px;color:var(--muted);margin:4px 0 0}.review-status{font-size:11px;text-align:right;color:var(--green)}.review-status.block{color:var(--amber)}
+    .final-panel{padding:20px}.final-preview{height:268px;border-radius:12px;background:linear-gradient(145deg,#425e67,#15262d);position:relative}
+    .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:58px;height:58px;border-radius:50%;display:grid;place-items:center;background:rgba(6,12,16,.72);font-size:22px}
+    .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:15px 0}.metric{padding:12px;border:1px solid #263541;border-radius:10px}.metric label{display:block;font-size:10px;color:var(--quiet);margin-bottom:6px}.metric strong{font-size:13px}
+    .drawer-mask{position:fixed;inset:70px 0 0;background:rgba(0,0,0,.44);display:none;z-index:8}.drawer-mask.open{display:block}
+    .drawer{position:absolute;right:0;top:0;height:100%;width:520px;background:#0d151b;border-left:1px solid #2a3742;box-shadow:-20px 0 40px rgba(0,0,0,.35);padding:23px;overflow:auto;transition:width .2s ease}
+    .drawer-head{display:flex;align-items:center}.drawer-head h2{font-size:20px;margin:0}.drawer-actions{margin-left:auto;display:flex;gap:8px}.drawer-head button{height:34px;border-radius:9px;padding:0 11px}
+    .drawer-collapsed-tab{display:none;border:0;background:#14271f;color:var(--green);width:54px;height:174px;border-radius:12px 0 0 12px;writing-mode:vertical-rl;letter-spacing:2px;font-size:12px;font-weight:800}
+    .drawer-mask.collapsed{background:transparent;pointer-events:none}
+    .drawer-mask.collapsed .drawer{width:54px;padding:0;overflow:visible;box-shadow:-8px 0 24px rgba(0,0,0,.22);background:transparent;border:0;display:flex;align-items:center;pointer-events:auto}
+    .drawer-mask.collapsed .drawer>*:not(.drawer-collapsed-tab){display:none}
+    .drawer-mask.collapsed .drawer-collapsed-tab{display:block}
+    .drawer-sub{font-size:12px;color:var(--muted);margin:7px 0 17px}.drawer-filters{display:flex;gap:8px;margin-bottom:18px}
+    .drawer-filters button{padding:7px 10px;border-radius:9px;border:1px solid #2b3944;background:#131d25;color:var(--muted);font-size:11px}
+    .flow-group{border:1px solid #25333e;border-radius:12px;margin-bottom:11px;background:#101820;overflow:hidden}
+    .flow-title{padding:10px 13px;font-size:11px;color:var(--quiet);border-bottom:1px solid #202c36}
+    .flow-items{padding:10px 12px;display:flex;flex-wrap:wrap;gap:8px}.flow-item{padding:9px 10px;border-radius:9px;background:#17232b;font-size:11px;border:1px solid #2a3a45}
+    .flow-item.ok{color:var(--green);border-color:#2d684f}.flow-item.warn{color:var(--amber);border-color:#71562c}.flow-arrow{text-align:center;color:#536773;font-size:18px;height:23px}
+    .drawer-note{font-size:11px;color:var(--quiet);line-height:1.7;padding:13px;border:1px dashed #2b3944;border-radius:10px;margin-top:15px}
+    .drawer-full-action{width:100%;margin-top:12px;height:42px}
+    .workflow-mask{position:fixed;inset:70px 0 0;background:#091016;z-index:10;display:none}
+    .workflow-mask.open{display:block}
+    .workflow-shell{height:100%;display:grid;grid-template-rows:auto 1fr}
+    .workflow-head{display:flex;align-items:center;gap:14px;padding:18px 24px;border-bottom:1px solid #26333d;background:#0d151b}
+    .workflow-head h2{font-size:20px;margin:0}.workflow-head p{font-size:11px;color:var(--muted);margin:4px 0 0}
+    .workflow-head-actions{margin-left:auto;display:flex;gap:8px}.workflow-head-actions button{height:36px}
+    .workflow-body{min-height:0;display:grid;grid-template-columns:1fr 300px}
+    .workflow-main{min-width:0;overflow:auto;padding:18px 22px 24px}
+    .workflow-toolbar{display:flex;align-items:center;gap:8px;margin-bottom:14px}.workflow-toolbar button{padding:7px 10px;border-radius:9px;border:1px solid #2b3944;background:#131d25;color:var(--muted);font-size:11px}
+    .workflow-toolbar .workflow-count{margin-left:auto;font-size:11px;color:var(--quiet)}
+    .workflow-grid{min-width:1120px;display:grid;grid-template-columns:repeat(5,minmax(190px,1fr));gap:12px;align-items:start}
+    .workflow-lane{border-left:1px solid #22303a;padding:0 10px 18px;min-height:690px}
+    .workflow-lane:first-child{border-left:0}.lane-title{font-size:11px;color:var(--quiet);padding:0 2px 12px;display:flex;justify-content:space-between}
+    .workflow-node{position:relative;border:1px solid #2a3a45;background:#101a22;border-radius:11px;padding:12px;margin-bottom:12px;min-height:74px}
+    .workflow-node:after{content:"→";position:absolute;right:-22px;top:27px;color:#4c626f;font-size:16px}
+    .workflow-lane:last-child .workflow-node:after{display:none}.workflow-node.ok{border-color:#2d684f}.workflow-node.warn{border-color:#765923}.workflow-node.block{border-color:#753b43}
+    .workflow-node small{display:block;color:var(--quiet);font-size:10px;margin-bottom:7px}.workflow-node strong{display:block;font-size:12px}.workflow-node span{display:block;color:var(--muted);font-size:10px;margin-top:6px}
+    .workflow-side{border-left:1px solid #26333d;background:#0d151b;padding:20px;overflow:auto}.workflow-side h3{font-size:15px;margin:0 0 15px}
+    .workflow-side .drawer-note{margin-top:18px}
+    @media(max-width:1100px){.asset-grid,.three-col,.scene-grid{grid-template-columns:1fr}.story-layout{grid-template-columns:1fr}.beats,.inspector{display:none}.review-layout{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div style="position:fixed;left:50%;top:76px;transform:translateX(-50%);z-index:50;background:#4b261d;color:#ffd9c8;border:1px solid #a6583e;border-radius:10px;padding:10px 16px;font-size:12px;box-shadow:0 10px 30px #0008">此 V4 原型已作废，请打开 <a href="./2026-07-31-story-ad-v5-integrated-workbench-prototype.html" style="color:#fff;font-weight:900">V5 一体化制作台</a></div>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">VIDO</div><div class="divider"></div>
+      <div class="product">剧情广告</div><div class="crumb">/ 保时捷 718 山路篇</div>
+      <div class="top-actions"><span class="saved"><i class="dot"></i>已保存 11:50</span><button class="ghost">任务中心</button><div class="avatar">U</div></div>
+    </header>
+    <aside class="sidebar">
+      <div class="side-label">工作区</div>
+      <nav class="nav">
+        <button data-view="reference"><span class="step">1</span>参考与目标</button>
+        <button data-view="assets"><span class="step">2</span>资产准备</button>
+        <button data-view="story"><span class="step">3</span>故事与镜头</button>
+        <button data-view="review"><span class="step">4</span>生成与审核</button>
+      </nav>
+      <div class="side-sep"></div>
+      <div class="side-label">项目状态</div>
+      <div class="status-row"><span>参考</span><b class="ok">已确认</b></div>
+      <div class="status-row"><span>人物</span><b class="ok">1 / 1</b></div>
+      <div class="status-row"><span>产品</span><b class="ok">1 / 1</b></div>
+      <div class="status-row"><span>场景</span><b class="pending">2 / 3</b></div>
+      <div class="status-row"><span>镜头</span><b class="disabled">5 / 8</b></div>
+      <div class="admin-entry"><button class="ghost" id="openDrawer"><span>生产概览</span><small>超管</small></button></div>
+    </aside>
+    <main class="content">
+      <section class="workspace" id="reference">
+        <div class="intent-question"><h2>这次想做什么？</h2><p>先说清广告目标，再决定是否需要参考视频、链接、现有素材或脚本。</p></div>
+        <div class="intent-grid">
+          <button class="intent-card" data-mode="idea"><strong>从一个想法开始</strong><span>只有产品和创作方向也可以开始</span></button>
+          <button class="intent-card selected" data-mode="reference"><strong>借鉴一个参考</strong><span>参考内容结构、节奏或视觉语言</span></button>
+          <button class="intent-card" data-mode="materials"><strong>使用已有素材</strong><span>用已有人物、产品、场景图片继续制作</span></button>
+          <button class="intent-card" data-mode="script"><strong>根据脚本制作</strong><span>已有文案、故事或分镜，直接转成镜头</span></button>
+        </div>
+        <div class="card brief-card">
+          <label>描述你想制作的广告</label>
+          <textarea>为保时捷 718 制作一支突出操控感与设计感的电影感广告；受众为关注驾驶体验与高端生活方式的年轻消费者。</textarea>
+        </div>
+        <div class="card optional-source" id="optionalSource">
+          <div class="source-head"><strong>参考材料</strong><span>可选，不添加也能继续</span><div class="source-actions"><button class="ghost">上传视频</button><button class="ghost">粘贴链接</button><button class="ghost">项目素材</button></div></div>
+          <div class="source-row"><div class="source-preview"></div><div><strong>保时捷718.mp4</strong><p>44.5 秒 · 2560×1440 · 已绑定当前文件</p></div><span class="badge">分析完成</span></div>
+        </div>
+        <div class="card summary-card" id="referenceSummary" style="margin-bottom:18px">
+          <div class="fact"><label>从参考中采用</label><span>湿润山路环境、建立悬念 → 驾驶展示 → 产品收束的节奏</span></div>
+          <div class="fact"><label>明确不采用</label><span>原视频具体人物、服装、品牌标识和逐镜复制</span></div>
+        </div>
+        <div class="card blueprint">
+          <strong>创作蓝图预览</strong>
+          <div class="blueprint-grid">
+            <div class="mini"><label>人物</label><strong>女性赛车手 × 1</strong></div>
+            <div class="mini"><label>产品</label><strong>718 跑车 × 1</strong></div>
+            <div class="mini"><label>场景</label><strong>湿润山路、隧道、停车区</strong></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="primary">确认方向并准备资产</button></div>
+        </div>
+      </section>
+
+      <section class="workspace" id="assets">
+        <div class="head"><div><h1>资产准备</h1><p>先锁定人物、产品和场景，后续镜头只使用确认版本。</p></div><div class="head-actions"><span class="pill">人物 1/1</span><span class="pill">产品 1/1</span><span class="pill amber">场景 2/3</span></div></div>
+        <div class="action-banner"><div class="alert-icon">!</div><div><strong>需要处理 · 场景 S03</strong><span>林间停车区还没有选择场景母版</span></div><button class="primary">选择母版</button></div>
+        <div class="section-title">人物 <span class="count">1 个</span></div>
+        <div class="asset-grid">
+          <div class="card asset-card"><div class="portrait"></div><span class="badge">身份已锁定</span><div class="asset-title">C01 · 女性赛车手</div><div class="asset-sub">当前造型：A · 黑色赛车服</div><div class="ref-row"><div class="ref-box">脸部三视图</div><div class="ref-box">全身三视图</div><div class="ref-box">服装与头盔</div></div></div>
+          <div class="card asset-card"><div class="product-preview"><div class="car"></div></div><div style="margin-top:14px"><span class="badge">产品已锁定</span><div class="asset-title" style="font-size:16px;margin-top:12px">P01 · 718 跑车</div><div class="asset-sub">6 个角度 · 4 个细节</div></div></div>
+          <div class="card asset-card"><strong>当前资产状态</strong><div class="kv"><label>人物连续性</label><span class="ok">通过</span></div><div class="kv"><label>产品结构完整性</label><span class="ok">通过</span></div><div class="kv"><label>场景机位</label><span class="pending">缺少 1 项</span></div><p style="color:var(--quiet);font-size:11px;line-height:1.7">没有阻塞时，这个状态区自动收起。</p></div>
+        </div>
+        <div class="section-title">场景 <span class="count">3 个</span></div>
+        <div class="scene-grid">
+          <div class="card scene-card"><div class="scene-img mountain"></div><h3>S01 · 湿润山路</h3><p>母版已锁定 · 3 个可用机位</p></div>
+          <div class="card scene-card"><div class="scene-img tunnel"></div><h3>S02 · 山间隧道</h3><p>母版已锁定 · 缺少反打位</p></div>
+          <div class="card scene-card" style="border-style:dashed;border-color:#665027"><div class="scene-img forest"></div><h3>S03 · 林间停车区</h3><p class="pending">4 个候选等待选择</p></div>
+        </div>
+      </section>
+
+      <section class="workspace" id="story">
+        <div class="head"><div><h1>故事与镜头</h1><p>故事节拍负责结构，镜头明确消费人物、产品和场景版本。</p></div><div class="head-actions"><button class="ghost">仅看未完成</button><button class="primary">新增镜头</button></div></div>
+        <div class="story-layout">
+          <div class="card beats"><div class="side-label">故事节拍</div><div class="beat">01 建立悬念<br><small>2 个镜头</small></div><div class="beat active">02 出发<br><small>3 个镜头</small></div><div class="beat">03 性能展示<br><small>2 个镜头</small></div><div class="beat">04 产品收束<br><small>1 个镜头</small></div></div>
+          <div class="shot-list">
+            <div class="card shot"><div class="keyframe"></div><div><h3>SH03 · 驶出车库</h3><p>中景跟拍，角色进入车辆并启动</p><div class="chips"><span class="chip">C01/A</span><span class="chip">P01/v2</span><span class="chip">S03/入口</span></div></div><div class="shot-state">已完成</div></div>
+            <div class="card shot active"><div class="keyframe"></div><div><h3>SH04 · 低机位跟拍</h3><p>银色跑车沿湿润山路高速通过</p><div class="chips"><span class="chip">C01/A</span><span class="chip">P01/v2</span><span class="chip">S01/低机位</span></div></div><div class="shot-state">关键帧已选</div></div>
+            <div class="card shot"><div class="keyframe"></div><div><h3>SH05 · 弯道反打</h3><p>从弯道外侧反打车辆入弯</p><div class="chips"><span class="chip">P01/v2</span><span class="chip">S01/反打</span></div></div><div class="shot-state wait">请选择关键帧</div></div>
+            <div class="card shot"><div class="keyframe" style="opacity:.45"></div><div><h3>SH06 · 隧道加速</h3><p>等待 SH05 锁定方向后生成</p><div class="chips"><span class="chip">P01/v2</span><span class="chip">S02/建立</span></div></div><div class="shot-state wait">等待上游</div></div>
+          </div>
+          <div class="card inspector"><h2>镜头 SH04</h2><div class="inspect-preview"></div><div class="kv"><label>时长</label><span>3.0 秒</span></div><div class="kv"><label>机位</label><span>低机位侧向跟拍</span></div><div class="kv"><label>连续性</label><span class="ok">方向一致</span></div><strong style="display:block;margin-top:18px;font-size:13px">关键帧候选</strong><div class="candidate-row"><div class="candidate"></div><div class="candidate selected"></div><div class="candidate"></div></div><button class="ghost" style="width:100%;margin-top:16px">仅重做本镜头</button></div>
+        </div>
+      </section>
+
+      <section class="workspace" id="review">
+        <div class="head"><div><h1>生成与审核</h1><p>只生成缺失或选中的镜头，费用在真正调用前确认一次。</p></div><div class="head-actions"><button class="ghost">生成选中镜头</button><button class="primary">生成全部缺失镜头</button></div></div>
+        <div class="review-layout">
+          <div class="card review-list">
+            <div class="review-row"><strong>SH01</strong><div class="review-thumb"></div><div><strong>建立山谷环境</strong><p>画面、连续性、视频均通过</p></div><div class="review-status">通过</div></div>
+            <div class="review-row"><strong>SH02</strong><div class="review-thumb"></div><div><strong>人物准备出发</strong><p>人物身份与造型一致</p></div><div class="review-status">通过</div></div>
+            <div class="review-row"><strong>SH03</strong><div class="review-thumb"></div><div><strong>驶出车库</strong><p>视频候选 V2 已选</p></div><div class="review-status">通过</div></div>
+            <div class="review-row" style="background:#17150f"><strong>SH05</strong><div class="review-thumb"></div><div><strong>弯道反打</strong><p>关键帧尚未选择，未触发视频调用</p></div><div class="review-status block">需要处理</div></div>
+            <div class="review-row"><strong>SH06</strong><div class="review-thumb" style="opacity:.35"></div><div><strong>隧道加速</strong><p>等待 SH05 的车辆方向</p></div><div class="review-status block">等待上游</div></div>
+          </div>
+          <div class="card final-panel"><strong>成片预览</strong><div class="final-preview" style="margin-top:14px"><div class="play">▶</div></div><div class="metrics"><div class="metric"><label>当前时长</label><strong>32 秒</strong></div><div class="metric"><label>完成镜头</label><strong>5 / 8</strong></div><div class="metric"><label>活动任务</label><strong class="ok">0</strong></div></div><div class="kv"><label>人物连续性</label><span class="ok">通过</span></div><div class="kv"><label>产品一致性</label><span class="ok">通过</span></div><div class="kv"><label>音画与字幕</label><span class="pending">等待成片</span></div><button class="primary" style="width:100%;margin-top:18px">完成缺失镜头后导出</button></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="drawer-mask" id="drawerMask">
+    <aside class="drawer">
+      <button class="drawer-collapsed-tab" id="expandDrawer">展开生产概览</button>
+      <div class="drawer-head"><h2>生产概览</h2><div class="drawer-actions"><button class="ghost" id="collapseDrawer">收起</button><button class="ghost" id="closeDrawer" aria-label="关闭生产概览">×</button></div></div>
+      <div class="drawer-sub">快速状态 · 当前有效版本 · 1 个阻塞</div>
+      <div class="drawer-filters"><button>全部</button><button>仅异常</button><button>调用与费用</button><button>历史版本</button></div>
+      <div class="flow-group"><div class="flow-title">证据与目标</div><div class="flow-items"><span class="flow-item ok">718.mp4 · v2</span><span class="flow-item ok">证据快照 · v2</span></div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-group"><div class="flow-title">基础资产包</div><div class="flow-items"><span class="flow-item ok">P01 跑车</span><span class="flow-item ok">C01 赛车手 / A</span><span class="flow-item ok">S01 湿润山路</span><span class="flow-item warn">S03 待选母版</span></div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-group"><div class="flow-title">镜头与关键帧</div><div class="flow-items"><span class="flow-item ok">SH04 关键帧 v3</span><span class="flow-item warn">SH05 等待选择</span><span class="flow-item">SH06 等待上游</span></div></div>
+      <div class="flow-arrow">↓</div>
+      <div class="flow-group"><div class="flow-title">视频与审核</div><div class="flow-items"><span class="flow-item ok">SH04 视频 V3</span><span class="flow-item ok">审核通过</span><span class="flow-item warn">SH05 未调用</span></div></div>
+      <div class="card" style="padding:16px;margin-top:16px"><div class="kv"><label>图片调用</label><span>12 次</span></div><div class="kv"><label>视频调用</label><span>7 次</span></div><div class="kv"><label>重复计费</label><span class="ok">0</span></div></div>
+      <button class="primary drawer-full-action" id="openWorkflow">打开关系画布</button>
+      <div class="drawer-note">这里仅用于快速查看状态，不是工作流。需要分析节点分支、合流和版本关系时，拥有 manage 权限的人员可打开关系画布；普通用户没有入口和接口数据。</div>
+    </aside>
+  </div>
+
+  <section class="workflow-mask" id="workflowMask">
+    <div class="workflow-shell">
+      <header class="workflow-head">
+        <div><h2>产物关系画布 · 保时捷 718 山路篇</h2><p>可缩放只读关系图 · 节点、分支、合流、版本与失败影响 · 不作为第二套业务状态</p></div>
+        <div class="workflow-head-actions"><button class="ghost" id="workflowToDrawer">收起到生产概览</button><button class="ghost" id="closeWorkflow">关闭</button></div>
+      </header>
+      <div class="workflow-body">
+        <div class="workflow-main">
+          <div class="workflow-toolbar"><button>当前有效版本</button><button>仅异常</button><button>人物分支</button><button>场景分支</button><button>镜头 SH05</button><span class="workflow-count">18 个产物 · 21 条关系 · 1 个阻塞</span></div>
+          <div class="workflow-grid">
+            <div class="workflow-lane">
+              <div class="lane-title"><span>01 证据与目标</span><span>2</span></div>
+              <div class="workflow-node ok"><small>参考视频</small><strong>718.mp4 · v2</strong><span>44.5 秒 · 2560×1440</span></div>
+              <div class="workflow-node ok"><small>证据快照</small><strong>事实与结构化分析</strong><span>绑定当前文件指纹</span></div>
+            </div>
+            <div class="workflow-lane">
+              <div class="lane-title"><span>02 人物 / 产品 / 场景</span><span>7</span></div>
+              <div class="workflow-node ok"><small>产品母版</small><strong>P01 · 718 跑车</strong><span>6 个角度 · 4 个细节</span></div>
+              <div class="workflow-node ok"><small>人物母版</small><strong>C01 · 女性赛车手</strong><span>三视图与造型 A 已锁定</span></div>
+              <div class="workflow-node ok"><small>场景母版</small><strong>S01 · 湿润山路</strong><span>环境空间已锁定</span></div>
+              <div class="workflow-node warn"><small>场景候选</small><strong>S03 · 林间停车区</strong><span>4 个候选等待选择</span></div>
+            </div>
+            <div class="workflow-lane">
+              <div class="lane-title"><span>03 故事与关键帧</span><span>5</span></div>
+              <div class="workflow-node ok"><small>镜头 SH04</small><strong>低机位跟拍</strong><span>关键帧 V3 已选</span></div>
+              <div class="workflow-node warn"><small>镜头 SH05</small><strong>弯道反打</strong><span>等待选择关键帧</span></div>
+              <div class="workflow-node"><small>镜头 SH06</small><strong>隧道加速</strong><span>等待 SH05 上游方向</span></div>
+            </div>
+            <div class="workflow-lane">
+              <div class="lane-title"><span>04 视频与声音</span><span>3</span></div>
+              <div class="workflow-node ok"><small>视频 SH04</small><strong>候选 V3</strong><span>画面连续性通过</span></div>
+              <div class="workflow-node warn"><small>视频 SH05</small><strong>尚未调用</strong><span>付费调用前阻断</span></div>
+              <div class="workflow-node"><small>声音轨</small><strong>引擎与环境声</strong><span>等待完整镜头</span></div>
+            </div>
+            <div class="workflow-lane">
+              <div class="lane-title"><span>05 审核与成片</span><span>1</span></div>
+              <div class="workflow-node ok"><small>审核 SH04</small><strong>通过</strong><span>人物 / 产品 / 场景一致</span></div>
+              <div class="workflow-node block"><small>成片门禁</small><strong>缺少 SH05、SH06</strong><span>禁止进入最终拼接</span></div>
+            </div>
+          </div>
+        </div>
+        <aside class="workflow-side">
+          <h3>当前阻塞 · SH05</h3>
+          <div class="kv"><label>最早阻塞点</label><span>场景 S03 未选母版</span></div>
+          <div class="kv"><label>受影响镜头</label><span>SH05、SH06</span></div>
+          <div class="kv"><label>图片调用</label><span>12 次</span></div>
+          <div class="kv"><label>视频调用</label><span>7 次</span></div>
+          <div class="kv"><label>重复计费</label><span class="ok">0</span></div>
+          <button class="primary" style="width:100%;margin-top:18px">返回处理 S03</button>
+          <div class="drawer-note">工作流只读取任务、资产、镜头、生成与审核的统一产物关系。画布中不保存业务字段，避免形成第二套状态和重复代码。</div>
+        </aside>
+      </div>
+    </div>
+  </section>
+  <script>
+    const views=[...document.querySelectorAll(".workspace")];
+    const nav=[...document.querySelectorAll(".nav button")];
+    function show(name){
+      views.forEach(v=>v.classList.toggle("active",v.id===name));
+      nav.forEach((b,i)=>{
+        const active=b.dataset.view===name;
+        b.classList.toggle("active",active);
+        b.classList.toggle("done",i<nav.findIndex(n=>n.dataset.view===name));
+      });
+      location.hash=name;
+    }
+    nav.forEach(b=>b.addEventListener("click",()=>show(b.dataset.view)));
+    const mask=document.getElementById("drawerMask");
+    document.getElementById("openDrawer").onclick=()=>{mask.classList.add("open");mask.classList.remove("collapsed")};
+    document.getElementById("collapseDrawer").onclick=()=>mask.classList.add("collapsed");
+    document.getElementById("expandDrawer").onclick=()=>mask.classList.remove("collapsed");
+    document.getElementById("closeDrawer").onclick=()=>{mask.classList.remove("open");mask.classList.remove("collapsed")};
+    mask.addEventListener("click",e=>{if(e.target===mask){mask.classList.remove("open");mask.classList.remove("collapsed")}});
+    const workflowMask=document.getElementById("workflowMask");
+    document.getElementById("openWorkflow").onclick=()=>{mask.classList.remove("open","collapsed");workflowMask.classList.add("open")};
+    document.getElementById("workflowToDrawer").onclick=()=>{workflowMask.classList.remove("open");mask.classList.add("open");mask.classList.remove("collapsed")};
+    document.getElementById("closeWorkflow").onclick=()=>workflowMask.classList.remove("open");
+    const intentCards=[...document.querySelectorAll(".intent-card")];
+    const optionalSource=document.getElementById("optionalSource");
+    const referenceSummary=document.getElementById("referenceSummary");
+    intentCards.forEach(card=>card.onclick=()=>{
+      intentCards.forEach(item=>item.classList.toggle("selected",item===card));
+      const usesReference=card.dataset.mode==="reference";
+      optionalSource.style.display=usesReference?"block":"none";
+      referenceSummary.style.display=usesReference?"block":"none";
+    });
+    const initial=location.hash.replace("#","")||"reference";
+    show(["reference","assets","story","review"].includes(initial)?initial:"reference");
+    if(location.search.includes("admin=1")) mask.classList.add("open");
+    if(location.search.includes("admin=collapsed")) {mask.classList.add("open");mask.classList.add("collapsed")}
+    if(location.search.includes("admin=workflow")) workflowMask.classList.add("open");
+  </script>
+</body>
+</html>

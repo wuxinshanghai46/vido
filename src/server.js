@@ -52,8 +52,11 @@ function shouldCompressTextResponse(req) {
   const requestPath = String(req.path || '');
   return req.method === 'GET' && (
     requestPath === '/digital-human'
+    || requestPath === '/story-ad'
+    || requestPath === '/story-ad/'
     || /\.(?:html|js|css|svg|json)$/i.test(requestPath)
     || /^\/api\/new-story-ad\/tasks\/[^/]+$/.test(requestPath)
+    || /^\/api\/story-ad\/projects(?:\/|$)/.test(requestPath)
   );
 }
 app.use((req, res, next) => (
@@ -674,7 +677,8 @@ app.get('/api/new-story-ad/assets/:filename', async (req, res) => {
   res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
   return res.sendFile(filePath);
 });
-app.use('/api/new-story-ad', authenticate, requirePermission('avatar'), require('./routes/newStoryAd'));
+app.use('/api/new-story-ad', authenticate, require('./routes/newStoryAd'));
+app.use('/api/story-ad', authenticate, require('./routes/storyAdWorkspace'));
 app.use('/api/imggen', authenticate, requirePermission('imggen'), require('./routes/imggen'));
 app.use('/api/novel', authenticate, requirePermission('novel'), require('./routes/novel'));
 app.use('/api/comic', authenticate, requirePermission('comic'), require('./routes/comic'));
@@ -762,6 +766,9 @@ function redirectLegacyStoryAdPage(req, res, next) {
 }
 app.get('/digital-human', redirectLegacyStoryAdPage, requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
 app.get('/digital-human.html', redirectLegacyStoryAdPage, requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
+app.get(/^\/story-ad$/, requirePageAuth, (_req, res) => res.redirect('/story-ad/'));
+app.get('/story-ad/', requirePageAuth, (_req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/story-ad/index.html')));
+app.get(/^\/story-ad\/projects\/[^/]+$/, requirePageAuth, (_req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/story-ad/index.html')));
 app.get(['/luxury-ad', '/luxury-ad.html'], (_req, res) => res.redirect(302, '/digital-human?tab=new-story-ad'));
 app.get('/new-story-ad', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
 app.get('/new-story-ad.html', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
