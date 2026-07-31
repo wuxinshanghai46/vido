@@ -15,6 +15,7 @@ function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
   return {
+    project_name: String(data.get('project_name') || '').trim(),
     brief,
     content: brief,
     product_subject: String(data.get('product_subject') || '').trim(),
@@ -66,6 +67,7 @@ export async function mount(host, context) {
       <form class="card brief-form" data-brief-form>
         <div class="card-head"><div><h2>这支剧情广告要讲什么？</h2><p>写清产品或主题、受众、情绪以及观众需要记住的内容。</p></div></div>
         <div class="card-body form-grid">
+          <label class="field full"><span>项目名称</span><input class="input" name="project_name" required minlength="2" maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="例如：新标门窗 · 全景窗剧情广告"><small>由你命名，只用于项目识别；修改广告目标不会再自动改名。</small></label>
           <label class="field full"><span>广告目标</span><textarea class="textarea" name="brief" rows="7" required minlength="8" placeholder="例如：为某个产品制作一支剧情广告，说明人物、场景、情绪和品牌目标。">${escapeHtml(brief.text || '')}</textarea></label>
           <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
@@ -117,6 +119,7 @@ export async function mount(host, context) {
   async function ensureProject(button) {
     if (createdProjectId) return createdProjectId;
     const payload = formPayload(form);
+    if (payload.project_name.length < 2) throw new Error('请先填写至少 2 个字的项目名称。');
     if (payload.brief.length < 8) throw new Error('请先填写至少 8 个字的广告目标。');
     setButtonBusy(button, true, '正在创建…');
     const project = await store.createProject(payload);

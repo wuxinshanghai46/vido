@@ -916,6 +916,7 @@ function buildContext(body = {}, user = {}) {
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
+    project_name: cleanText(body.project_name || body.projectName || '', 120),
     brief,
     product_subject: productSubject || inferSubjectFromBrief(brief),
     target_duration: targetDuration,
@@ -1234,7 +1235,7 @@ function contextConflicts(ctx = {}) {
 }
 
 function taskTitle(ctx = {}) {
-  return cleanText(ctx.product_subject || ctx.brief || '剧情广告任务', 60);
+  return cleanText(ctx.project_name || ctx.product_subject || ctx.brief || '剧情广告任务', 120);
 }
 
 function assertContextConsistent(ctx = {}) {

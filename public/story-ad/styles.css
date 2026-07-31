@@ -92,7 +92,7 @@ h1, h2, h3, p { margin: 0; }
   border-radius: 50%;
   font-size: 12px;
 }
-.top-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.top-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; margin-left: auto; }
 
 .platform-topbar {
   position: sticky;
@@ -111,14 +111,21 @@ h1, h2, h3, p { margin: 0; }
 .platform-brand { display: flex; align-items: center; gap: 10px; padding: 0 14px 0 0; border: 0; border-right: 1px solid var(--line); background: transparent; cursor: pointer; }
 .platform-brand span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(145deg, #5865f2, #7d52e8); color: #fff; font-weight: 900; }
 .platform-brand b { font-size: 17px; letter-spacing: .02em; }
-.platform-nav { display: flex; align-items: center; gap: 3px; }
-.platform-nav button { min-height: 38px; padding: 0 13px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); cursor: pointer; }
-.platform-nav button:hover, .platform-nav button.active { color: var(--text); background: color-mix(in srgb, #675cf2 18%, var(--surface)); }
 .module-context, .project-context { min-width: 0; display: flex; align-items: center; gap: 9px; color: var(--muted); }
 .module-context b, .project-context span { color: var(--text); white-space: nowrap; }
 .module-context span, .project-context b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
-.project-context { max-width: 420px; }
+.module-context, .project-context { flex: 1 1 auto; }
+.project-context { max-width: min(720px, 52vw); }
+.project-context b { min-width: 0; }
 .project-context i { color: var(--muted); font-style: normal; }
+
+@media (max-width: 1280px) {
+  .platform-topbar { gap: 10px; padding-inline: 14px; }
+  .project-context { max-width: 38vw; }
+  .module-context span, .save-state, .avatar { display: none; }
+  .top-actions { gap: 7px; }
+  .top-actions .btn { padding-inline: 11px; }
+}
 
 body.story-dialog-open { overflow: hidden; }
 .platform-dialog-backdrop {

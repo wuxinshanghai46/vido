@@ -292,6 +292,8 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     throw error;
   }
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const projectNameExplicit = Object.prototype.hasOwnProperty.call(body, 'project_name')
+    || Object.prototype.hasOwnProperty.call(body, 'projectName');
   const currentScene = sceneAuthority.currentState({ storage, taskId, task, normalizeScenePlan });
   const existingFinalVideo = storage.getOutput(taskId, 'final_video');
   const savingProgress = body.save_progress === true || body.saveProgress === true;
@@ -343,7 +345,8 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   ctx = withAssetContracts(ctx);
   let invalidated = [];
   const patch = {
-    title: taskTitle(ctx),
+    // 历史任务没有 project_name；无关的需求/产品保存不得再次推导并改写用户看到的项目名。
+    title: projectNameExplicit ? taskTitle(ctx) : task.title,
     brief: ctx.brief,
     request: ctx,
     content_revision: changedDomains.length ? currentRevision + 1 : currentRevision,

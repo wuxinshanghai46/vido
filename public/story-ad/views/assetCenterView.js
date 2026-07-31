@@ -86,9 +86,18 @@ function generationValidation(payload = {}) {
 
 function assetCard(item, group) {
   const views = Array.isArray(item.view_images) ? item.view_images.length : 0;
-  const detail = [item.role, views ? `${views} 个视图` : '', item.revision ? `版本 ${item.revision}` : ''].filter(Boolean).join(' · ');
+  const sceneDetail = group === 'scenes' ? [
+    item.reference_only ? '未绑定场景参考' : '',
+    item.zones?.length ? `${item.zones.length} 个区域` : '',
+    item.cameras?.length ? `${item.cameras.length} 个机位` : '',
+    views ? `${views} 个视角` : '',
+    item.candidate_count ? `${item.candidate_count} 选 1` : '',
+    item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头` : '',
+  ] : [];
+  const detail = (group === 'scenes' ? sceneDetail : [item.role, views ? `${views} 个视图` : '', item.revision ? `版本 ${item.revision}` : ''])
+    .filter(Boolean).join(' · ');
   const needsGeneration = GENERATABLE.has(group) && !hasGeneratedMedia(item);
-  return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''}">
+  return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <button class="asset-card-preview" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
       ${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group) })}
       <span class="asset-card-copy">
@@ -98,10 +107,16 @@ function assetCard(item, group) {
       </span>
     </button>
     <div class="asset-card-actions">
-      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">查看${item.dossier_sheet?.image_url ? '完整档案' : '完整视图'}</button>
+      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}</button>
       ${needsGeneration ? `<button class="btn small primary" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '该人物档案' : '该动物资产'}</button>` : ''}
     </div>
   </article>`;
+}
+
+function mediaSection(title, rows = [], className = '') {
+  const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
+  if (!items.length) return '';
+  return `<section class="drawer-media-section"><div class="drawer-section-head"><h3>${escapeHtml(title)}</h3><span>${items.length}</span></div><div class="drawer-media-grid ${className}">${items.map(item => `<figure>${mediaPreview(item, { label: item.label || item.key, width: 720, symbol: item.label || '素材' })}<figcaption>${escapeHtml(item.label || item.key || '素材')}</figcaption></figure>`).join('')}</div></section>`;
 }
 
 function profileDetails(item = {}, group = '') {
@@ -120,6 +135,40 @@ function profileDetails(item = {}, group = '') {
   return `<section class="drawer-profile"><h3>${group === 'people' ? '人物设定' : '动物设定'}</h3>${rows.filter(([, value]) => value).map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>`;
 }
 
+function dossierDetails(item = {}) {
+  return [
+    mediaSection('人物分类档案', item.category_atlases),
+    mediaSection('身份与形象视图', item.identity_views, 'is-portrait-grid'),
+    mediaSection('表情记录', item.expressions, 'is-portrait-grid'),
+    mediaSection('剧情动作姿态', item.base_actions, 'is-portrait-grid'),
+    mediaSection('可复用原子素材', item.atomic_assets, 'is-portrait-grid'),
+  ].join('');
+}
+
+function sceneDetails(item = {}) {
+  const spec = item.scene_spec || {};
+  const specRows = [
+    ['空间布局', spec.layout], ['材质与表面', spec.materials], ['天气', spec.weather],
+    ['时间', spec.time], ['主光与光线', spec.light], ['互动区域', spec.interaction],
+  ].filter(([, value]) => value);
+  const qa = item.qa || {};
+  const qaRows = [
+    ['空间锁', qa.full_space_lock ? '已完成' : (qa.space_lock_status || '未完成')],
+    ['需求匹配', qa.requirement_pass], ['跨视角一致性', qa.cross_view_pass],
+    ['空间覆盖', qa.spatial_pass], ['机位设计', qa.camera_pass], ['真实感', qa.realism_pass],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+  const boolText = value => value === true ? '通过' : (value === false ? '未通过' : value);
+  return `<div class="scene-detail-stack">
+    ${(item.description || item.story_purpose) ? `<section class="drawer-profile"><h3>场景用途</h3>${item.description ? `<div><span>空间描述</span><p>${escapeHtml(item.description)}</p></div>` : ''}${item.story_purpose ? `<div><span>剧情用途</span><p>${escapeHtml(item.story_purpose)}</p></div>` : ''}</section>` : ''}
+    ${item.layout?.image_url ? `<section class="scene-layout"><div class="drawer-section-head"><h3>空间母版 / 布局图</h3><span>${escapeHtml(item.layout.status || 'available')}</span></div>${mediaPreview({ image_url: item.layout.image_url }, { label: `${item.name}空间布局`, width: 1200, symbol: '空间布局' })}</section>` : ''}
+    ${specRows.length ? `<section class="drawer-profile"><h3>布局、材质与光线</h3>${specRows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>` : ''}
+    ${item.zones?.length ? `<section><div class="drawer-section-head"><h3>空间区域</h3><span>${item.zones.length}</span></div><div class="scene-zone-list">${item.zones.map(zone => `<article><b>${escapeHtml(zone.label || zone.id)}</b><span>${escapeHtml(zone.purpose || zone.id || '未提供用途')}</span></article>`).join('')}</div></section>` : ''}
+    ${item.cameras?.length ? `<section><div class="drawer-section-head"><h3>机位与视角参数</h3><span>${item.cameras.length}</span></div><div class="scene-camera-list">${item.cameras.map(camera => `<article><header><b>${escapeHtml(camera.label || camera.id)}</b><span>${escapeHtml(camera.view_id || camera.id || '')}</span></header><p>${escapeHtml([camera.role, camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '参数未提供')}</p><small>${escapeHtml([camera.orientation, camera.visible_evidence].filter(Boolean).join('；'))}</small></article>`).join('')}</div></section>` : ''}
+    ${item.routes?.length ? `<section><div class="drawer-section-head"><h3>跨场景路线与连续性</h3><span>${item.routes.length}</span></div><div class="scene-route-list">${item.routes.map(route => `<article><b>${escapeHtml(route.from || '当前场景')} → ${escapeHtml(route.to || '当前场景')}</b><span>${escapeHtml([route.time, route.weather, route.light, route.movement].filter(Boolean).join(' · ') || '连续性说明未提供')}</span></article>`).join('')}</div></section>` : ''}
+    ${qaRows.length ? `<section><div class="drawer-section-head"><h3>场景质量状态</h3></div><div class="meta-list">${qaRows.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(boolText(value))}</b></div>`).join('')}</div>${qa.reasons?.length ? `<ul class="scene-qa-reasons">${qa.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}</section>` : ''}
+  </div>`;
+}
+
 function openDrawer(item, group, { onGenerate } = {}) {
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -134,13 +183,15 @@ function openDrawer(item, group, { onGenerate } = {}) {
   const backdrop = document.createElement('div');
   backdrop.className = 'drawer-backdrop';
   const drawer = document.createElement('aside');
-  drawer.className = `drawer ${group === 'people' ? 'is-person-drawer' : ''}`;
+  drawer.className = `drawer ${group === 'people' ? 'is-person-drawer' : ''} ${group === 'scenes' ? 'is-scene-drawer' : ''}`;
   drawer.innerHTML = `
     <header class="drawer-head"><div><small>${escapeHtml(groupLabel(group))}</small><h2>${escapeHtml(item.name)}</h2></div><button class="icon-btn" type="button" data-close-drawer>×</button></header>
     <div class="drawer-content">
       ${dossier ? `<section class="dossier-hero"><div><span>完整人物档案</span><b>正面 / 侧面 / 背面 · 表情 · 服装 · 细节 · 动作</b></div>${mediaPreview(dossier, { label: `${item.name}完整人物档案`, width: 1600, symbol: '人物档案' })}</section>` : (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel(group) }) : '')}
       ${legacyLabel}
-      ${views.length ? `<section><h3>完整视图</h3><div class="drawer-media-grid ${group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''}">${views.map(view => `<figure>${mediaPreview(view, { label: view.label || view.key, width: 720, symbol: view.label || '视图' })}<figcaption>${escapeHtml(view.label || view.key || '视图')}</figcaption></figure>`).join('')}</div></section>` : ''}
+      ${views.length ? mediaSection(group === 'scenes' ? '场景视角' : '完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : '') : ''}
+      ${group === 'people' ? dossierDetails(item) : ''}
+      ${group === 'scenes' ? sceneDetails(item) : ''}
       ${profileDetails(item, group)}
       <div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>
     </div>
@@ -149,8 +200,8 @@ function openDrawer(item, group, { onGenerate } = {}) {
   backdrop.addEventListener('click', close);
   drawer.querySelector('[data-close-drawer]').addEventListener('click', close);
   drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => {
-    await onGenerate?.(item, group, event.currentTarget);
-    close();
+    const generated = await onGenerate?.(item, group, event.currentTarget);
+    if (generated === true) close();
   });
   document.body.append(backdrop, drawer);
 }
@@ -187,23 +238,29 @@ export async function mount(host, context) {
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total)}</div>`;
 
+  const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
-    const requestKey = `${bundle.project.id}:${target?.subject_id || 'all'}:${Date.now()}`;
+    const intent = target?.subject_id || 'all';
+    const requestKey = generationKeys.get(intent) || `${bundle.project.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+    generationKeys.set(intent, requestKey);
     const payload = subjectGenerationPayload(bundle, target, requestKey);
     const validation = generationValidation(payload);
-    if (validation) return toast(validation, 'warning');
+    if (validation) { toast(validation, 'warning'); return false; }
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
     if (!await confirmDialog(`本次将提交 ${selected} 个缺失或选中的主体生成。生成会调用图片模型；未选且已有四视图的主体会原样保留。`, {
       title: target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产',
       confirmText: '确认开始生成',
-    })) return;
+    })) return false;
     try {
       setButtonBusy(button, true, '正在生成完整档案…');
       await request('/api/new-story-ad/subject-assets', { method: 'POST', body: payload, timeoutMs: 2700000 });
       toast('人物或动物资产已生成完成。', 'success');
+      generationKeys.delete(intent);
       await context.refreshShell();
+      return true;
     } catch (error) {
       toast(error.message, 'danger');
+      return false;
     } finally {
       setButtonBusy(button, false);
     }

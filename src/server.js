@@ -108,6 +108,12 @@ app.use(express.static(path.join(__dirname, '../public'), {
       res.setHeader('Expires', '0');
       return;
     }
+    if (normalized.includes('/public/story-ad/') && /\.(?:js|css)$/i.test(normalized)) {
+      // 剧情广告是原生 ESM 多入口，HTML、CSS 与动态模块必须作为一个发布单元重验证，
+      // 否则会出现新 DOM 搭配旧 CSS/旧视图脚本的拆分缓存。
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      return;
+    }
     if (/\.(?:js|css|svg|ico|woff2?|ttf|otf)$/i.test(normalized)) {
       res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400');
       return;

@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const storyAd = require('../services/newStoryAd');
 const projectBundles = require('../services/storyAdWorkspace/projectBundleService');
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
+const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
 const videoCore = require('../services/videoGenerationCore');
 
@@ -28,6 +29,9 @@ function asyncRoute(fn) {
         error: String(publicError.message || error.message || '请求失败'),
         request_id: requestId,
         retryable: publicError.retryable === true,
+        ...(Number.isInteger(error.current_layout_revision)
+          ? { current_layout_revision: error.current_layout_revision }
+          : {}),
       });
     }
   };
@@ -36,6 +40,19 @@ function asyncRoute(fn) {
 /** 校验当前用户可以访问目标剧情广告任务。 */
 function projectForRequest(req) {
   return storyAd.assertTaskOwner(req.params.taskId, currentUser(req));
+}
+
+/** 每次从真实项目重新投影图谱，再叠加独立保存的用户布局。 */
+function graphForRequest(req, options = {}) {
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
+    sections: 'summary,reference,assets,story,shots,media',
+    user: currentUser(req),
+  });
+  const graph = graphProjection.projectGraph(bundle);
+  const allowedNodeIds = new Set((graph.nodes || []).map(item => item.id));
+  if (options.withLayout === false) return { graph, allowedNodeIds };
+  const layout = graphLayouts.getLayout(req.params.taskId, { allowedNodeIds });
+  return { graph: graphLayouts.mergeGraph(graph, layout), allowedNodeIds, layout };
 }
 
 router.get('/projects', asyncRoute(async (req, res) => {
@@ -77,14 +94,39 @@ router.get('/projects/:taskId/bundle', asyncRoute(async (req, res) => {
 
 router.get('/projects/:taskId/graph', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
-    sections: 'summary,reference,assets,story,shots,media',
-    user: currentUser(req),
-  });
-  const graph = graphProjection.projectGraph(bundle);
+  const { graph } = graphForRequest(req);
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   res.json({ success: true, graph });
+}));
+
+router.get('/projects/:taskId/graph-layout', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const { allowedNodeIds } = graphForRequest(req, { withLayout: false });
+  const layout = graphLayouts.getLayout(req.params.taskId, { allowedNodeIds });
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  res.json({ success: true, task_id: req.params.taskId, layout });
+}));
+
+router.put('/projects/:taskId/graph-layout', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const { allowedNodeIds } = graphForRequest(req, { withLayout: false });
+  const result = graphLayouts.saveLayout(req.params.taskId, req.body || {}, {
+    allowedNodeIds,
+    user: currentUser(req),
+  });
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.delete('/projects/:taskId/graph-layout', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const { allowedNodeIds } = graphForRequest(req, { withLayout: false });
+  const result = graphLayouts.resetLayout(req.params.taskId, req.body || {}, {
+    allowedNodeIds,
+    user: currentUser(req),
+  });
+  res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
 router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {

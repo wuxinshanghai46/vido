@@ -67,6 +67,17 @@ function projectedViews(source = {}, fallback = []) {
   }).filter(view => view.image_url);
 }
 
+/** 压缩人物档案的分类图集和原子素材，供详情抽屉按原型分区展示。 */
+function projectedDossierItems(source = []) {
+  return list(source).slice(0, 40).map((item, index) => ({
+    id: clean(item.id || item.asset_id || item.filename || item.key || `dossier-${index + 1}`, 120),
+    key: clean(item.key || item.kind || item.category || item.label || `item_${index + 1}`, 80),
+    kind: clean(item.kind || item.category || item.type, 80),
+    label: clean(item.label || item.name || item.title || item.key || item.kind || `素材 ${index + 1}`, 120),
+    image_url: mediaUrl(item),
+  })).filter(item => item.image_url);
+}
+
 /** 生成稳定可读的任务编号，不修改现有任务主键。 */
 function displayId(task = {}) {
   const date = new Date(task.created_at || task.updated_at || Date.now());
@@ -183,6 +194,11 @@ function peopleAssets(context = {}) {
         height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
       } : null,
       view_images: views,
+      category_atlases: projectedDossierItems(item.category_atlases),
+      atomic_assets: projectedDossierItems(item.atomic_assets),
+      identity_views: projectedDossierItems(item.identity_views),
+      expressions: projectedDossierItems(item.expressions),
+      base_actions: projectedDossierItems(item.base_actions),
       profile: canonical,
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
@@ -252,29 +268,142 @@ function logoAssets(context = {}) {
   }];
 }
 
-/** 将现有场景产物整理为场景与机位资产。 */
+/** 将场景规划、生成资产和未绑定参考合并成同一组稳定场景卡，避免规划已存在却显示为 0。 */
 function sceneAssets(outputs = {}, context = {}) {
-  const source = list(outputs.scene_assets).length ? list(outputs.scene_assets) : list(context.scene_assets);
-  return source.slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
-    id: clean(item.scene_id || item.id || `scene-${index + 1}`, 120),
-    kind: 'scene',
-    name: clean(item.name || item.scene_name || `场景 ${index + 1}`, 120),
-    image_url: mediaUrl(item),
-    view_images: list(item.view_images).slice(0, 20).map(view => ({
-      key: clean(view.key || view.id || view.label, 80),
-      label: clean(view.label || view.name || view.key, 100),
+  const plan = outputs.scene_config && typeof outputs.scene_config === 'object'
+    ? outputs.scene_config
+    : (context.scene_plan && typeof context.scene_plan === 'object' ? context.scene_plan : {});
+  const planned = list(plan.spaces);
+  const generated = list(outputs.scene_assets).length ? list(outputs.scene_assets) : list(context.scene_assets);
+  const references = list(context.assets).filter(item => clean(item.role || item.asset_role, 80) === 'scene_reference');
+  const consumedAssets = new Set();
+  const consumedReferences = new Set();
+  const rawKeyOf = (item = {}) => clean(item.scene_id || item.space_id || item.id, 120);
+  const keyOf = (item = {}, index = 0) => rawKeyOf(item) || `scene-${index + 1}`;
+  const findById = (rows, id, consumed) => rows.findIndex((item, index) => !consumed.has(index) && keyOf(item, index) === id);
+  const shots = list(outputs.storyboard_table);
+  const routes = list(plan.routes || plan.scene_routes || plan.transitions);
+
+  const projectScene = (space = {}, asset = {}, reference = {}, index = 0, options = {}) => {
+    const id = rawKeyOf(space) || rawKeyOf(asset) || rawKeyOf(reference) || `scene-${index + 1}`;
+    const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
+    const spec = space.scene_spec && typeof space.scene_spec === 'object'
+      ? space.scene_spec
+      : (asset.scene_spec && typeof asset.scene_spec === 'object' ? asset.scene_spec : {});
+    const rawCameras = list(contract.cameras || contract.camera_positions || asset.camera_positions);
+    const rawViews = list(asset.view_images);
+    const views = rawViews.slice(0, 24).map((view, viewIndex) => ({
+      ...(() => {
+        const key = clean(view.key || view.view_id || view.id || `view_${viewIndex + 1}`, 80);
+        const camera = rawCameras.find(item => clean(item.view_id || item.view || item.key, 100) === key) || {};
+        return {
+          key,
+          framing: clean(view.framing || view.shot_size || camera.framing || camera.shot_size, 100),
+          lens: clean(view.lens_class || view.lens || view.focal_length || camera.lens_class || camera.lens || camera.focal_length, 100),
+          orientation: clean(view.orientation || view.direction || camera.orientation || camera.direction, 160),
+          intent: clean(view.role || view.target_description || view.intent || camera.role || camera.target_description, 220),
+        };
+      })(),
+      label: clean(view.label || view.name || view.key || `视角 ${viewIndex + 1}`, 100),
       image_url: mediaUrl(view),
-    })),
-    status: clean(item.scene_contract?.status || item.status || 'draft', 50),
-    zones: list(item.scene_contract?.zones).slice(0, 30).map(zone => ({
-      id: clean(zone.id, 100),
-      label: clean(zone.label_zh || zone.label || zone.name, 120),
-    })),
-    cameras: list(item.scene_contract?.camera_positions || item.camera_positions).slice(0, 30).map(camera => ({
-      id: clean(camera.id || camera.key, 100),
-      label: clean(camera.label || camera.name || camera.id, 120),
-    })),
-  }));
+    })).filter(view => view.image_url);
+    const cameras = rawCameras.slice(0, 30).map((camera, cameraIndex) => ({
+      id: clean(camera.id || camera.camera_id || camera.key || `camera_${cameraIndex + 1}`, 100),
+      view_id: clean(camera.view_id || camera.view || camera.key, 100),
+      label: clean(camera.label || camera.name || camera.id || `机位 ${cameraIndex + 1}`, 120),
+      role: clean(camera.role || camera.target_description, 180),
+      framing: clean(camera.framing || camera.shot_size, 100),
+      lens: clean(camera.lens_class || camera.lens || camera.focal_length, 100),
+      height: clean(camera.height_class || camera.height, 80),
+      orientation: clean(camera.orientation || camera.direction, 180),
+      position: Array.isArray(camera.normalized_position) ? camera.normalized_position.slice(0, 3).map(Number) : [],
+      look_at: Array.isArray(camera.look_at) ? camera.look_at.slice(0, 3).map(Number) : [],
+      visible_evidence: clean(camera.visible_evidence, 260),
+    }));
+    const zones = list(contract.zones || spec.zones || space.zones).slice(0, 30).map((zone, zoneIndex) => ({
+      id: clean(zone.id || zone.zone_id || `zone_${zoneIndex + 1}`, 100),
+      label: clean(zone.label_zh || zone.label || zone.name || `区域 ${zoneIndex + 1}`, 120),
+      purpose: clean(zone.purpose || zone.description, 220),
+    }));
+    const layout = contract.layout_contract && typeof contract.layout_contract === 'object' ? contract.layout_contract : {};
+    const shotRefs = shots.filter(shot => clean(shot.scene_id || shot.scene_asset_id, 120) === id)
+      .map((shot, shotIndex) => clean(shot.shot_id || shot.id || `SH${shotIndex + 1}`, 80)).slice(0, 60);
+    const relevantRoutes = routes.filter(route => [route.from_scene_id, route.to_scene_id, route.scene_id, route.from, route.to]
+      .some(value => clean(value, 120) === id)).slice(0, 12).map(route => ({
+      from: clean(route.from_scene_id || route.from, 120),
+      to: clean(route.to_scene_id || route.to, 120),
+      time: clean(route.time || route.time_continuity, 120),
+      weather: clean(route.weather || route.weather_continuity, 120),
+      light: clean(route.light || route.light_continuity, 120),
+      movement: clean(route.movement || route.transition_reason, 180),
+    }));
+    const imageUrl = mediaUrl(asset) || views[0]?.image_url || mediaUrl(reference);
+    const candidateCount = list(asset.candidates || space.candidates || space.options).length;
+    return {
+      id,
+      kind: 'scene',
+      name: clean(space.display_name || space.name || asset.display_name || asset.name || asset.scene_name || reference.display_name || reference.name || `场景 ${index + 1}`, 120),
+      name_source: clean(space.name_source || asset.name_source || (space.name ? 'plan' : (asset.name || asset.scene_name ? 'asset' : (reference.name ? 'upload' : 'fallback'))), 40),
+      description: clean(space.description || asset.description || spec.description || spec.layoutText, 900),
+      story_purpose: clean(space.story_purpose || space.purpose || asset.story_purpose, 500),
+      image_url: imageUrl,
+      reference_image_url: mediaUrl(reference),
+      view_images: views,
+      status: clean(contract.status || asset.status || (candidateCount ? 'selecting' : (imageUrl ? 'generated' : 'planned')), 50),
+      revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0,
+      planned: options.planned === true,
+      reference_only: options.referenceOnly === true,
+      candidate_count: candidateCount,
+      selected_candidate_id: clean(asset.selected_candidate_id || space.selected_candidate_id, 120),
+      scene_spec: {
+        layout: clean(spec.layoutText || spec.layout || spec.spatialLayout, 800),
+        materials: clean(spec.materialText || spec.materials || spec.material, 600),
+        weather: clean(spec.weather || spec.weatherText, 200),
+        time: clean(spec.time || spec.timeOfDay || spec.timeText, 200),
+        light: clean(spec.lightText || spec.lighting || spec.keyLightDirection, 500),
+        interaction: clean(spec.interactionText || spec.interaction || spec.actionZone, 500),
+      },
+      layout: {
+        status: clean(layout.status || (layout.reference_image_url ? 'available' : ''), 60),
+        image_url: mediaUrl(layout.reference_image_url || layout),
+      },
+      zones,
+      cameras,
+      routes: relevantRoutes,
+      shot_refs: shotRefs,
+      qa: {
+        full_space_lock: contract.full_space_lock === true,
+        space_lock_status: clean(contract.space_lock_status, 80),
+        requirement_pass: contract.requirement_qa?.pass,
+        cross_view_pass: contract.cross_view_qa?.pass,
+        spatial_pass: contract.spatial_coverage_qa?.pass,
+        camera_pass: contract.camera_design_qa?.pass,
+        realism_pass: contract.photographic_realism_qa?.pass,
+        reasons: [
+          ...list(contract.verification?.reasons),
+          ...list(contract.requirement_qa?.mismatch_reasons),
+          ...list(contract.cross_view_qa?.mismatch_reasons),
+          ...list(contract.spatial_coverage_qa?.reasons || contract.spatial_coverage_qa?.mismatch_reasons),
+        ].slice(0, 20).map(reason => clean(reason, 220)),
+      },
+    };
+  };
+
+  const result = planned.map((space, index) => {
+    const id = keyOf(space, index);
+    const assetIndex = findById(generated, id, consumedAssets);
+    const referenceIndex = findById(references, id, consumedReferences);
+    if (assetIndex >= 0) consumedAssets.add(assetIndex);
+    if (referenceIndex >= 0) consumedReferences.add(referenceIndex);
+    return projectScene(space, assetIndex >= 0 ? generated[assetIndex] : {}, referenceIndex >= 0 ? references[referenceIndex] : {}, index, { planned: true });
+  });
+  generated.forEach((asset, index) => {
+    if (!consumedAssets.has(index)) result.push(projectScene({}, asset, {}, result.length, { planned: false }));
+  });
+  references.forEach((reference, index) => {
+    if (!consumedReferences.has(index)) result.push(projectScene({}, {}, reference, result.length, { referenceOnly: true }));
+  });
+  return result.slice(0, MAX_MEDIA_ITEMS);
 }
 
 /** 将现有道具产物整理为独立资产。 */
@@ -307,6 +436,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {}));
   const project = {
     ...projectSummary({ ...storyAd.taskSummary(raw.task), ...raw.task }),
+    name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),
     workspace: workspaceStage(raw.task, outputs),
     saved_progress: raw.task.saved_progress === true,
     active_stage: clean(raw.task.active_stage, 80),
@@ -377,6 +507,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       analysis_valid: analysis.analysis_quality?.valid === true,
     };
     bundle.brief = {
+      project_name: clean(context.project_name || raw.task.title, 120),
       text: clean(context.brief || raw.task.brief, 3000),
       product_subject: clean(context.product_subject, 200),
       target_duration: Number(context.target_duration || context.duration || 0) || 0,

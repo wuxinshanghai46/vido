@@ -13,6 +13,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const storyAd = require('../src/services/newStoryAd');
 const projectBundles = require('../src/services/storyAdWorkspace/projectBundleService');
 const graphProjection = require('../src/services/storyAdWorkspace/graphProjectionService');
+const graphLayouts = require('../src/services/storyAdWorkspace/graphLayoutService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
 
 const owner = { id: 'workspace-owner', role: 'user' };
@@ -181,6 +182,68 @@ async function main() {
   assert(graph.clusters.every(cluster => cluster.width > 0 && cluster.height > 0));
   assert(graph.bounds.width > 0 && graph.bounds.height > 0);
 
+  const contentRevisionBeforeLayout = storage.getTask(taskId).content_revision;
+  const allowedNodeIds = new Set(graph.nodes.map(node => node.id));
+  const initialLayout = graphLayouts.getLayout(taskId, { allowedNodeIds });
+  assert.equal(initialLayout.layout_revision, 0);
+  assert.deepEqual(initialLayout.nodes, []);
+  const movedNode = graph.nodes.find(node => node.id === 'person:person-current');
+  const savedLayout = graphLayouts.saveLayout(taskId, {
+    layout_revision: 0,
+    source_graph_revision: graph.revision,
+    nodes: [
+      { id: movedNode.id, x: 880, y: 420 },
+      { id: 'stale-node', x: 50, y: 50 },
+    ],
+    viewport: { zoom: 1.25, pan_x: -320, pan_y: 84 },
+  }, { allowedNodeIds, user: owner });
+  assert.equal(savedLayout.changed, true);
+  assert.equal(savedLayout.layout.layout_revision, 1);
+  assert.equal(savedLayout.layout.nodes.length, 1, '布局只能保存当前图谱中的稳定节点 ID');
+  assert.equal(storage.getTask(taskId).content_revision, contentRevisionBeforeLayout, '保存画布布局不得修改剧情内容版本');
+  const restoredLayout = graphLayouts.getLayout(taskId, { allowedNodeIds });
+  assert.equal(restoredLayout.nodes[0].x, 880);
+  assert.equal(restoredLayout.viewport.zoom, 1.25);
+  const mergedGraph = graphLayouts.mergeGraph(graphProjection.projectGraph(bundle), restoredLayout);
+  assert.equal(mergedGraph.read_only, false);
+  assert.equal(mergedGraph.layout_revision, 1);
+  assert.deepEqual(mergedGraph.nodes.find(node => node.id === movedNode.id).position, { x: 880, y: 420 });
+  assert(mergedGraph.clusters.every(cluster => cluster.width > 0 && cluster.height > 0));
+  const unchangedLayout = graphLayouts.saveLayout(taskId, {
+    layout_revision: 1,
+    source_graph_revision: graph.revision,
+    nodes: restoredLayout.nodes,
+    viewport: restoredLayout.viewport,
+  }, { allowedNodeIds, user: owner });
+  assert.equal(unchangedLayout.changed, false, '相同布局不得制造新布局版本');
+  assert.throws(
+    () => graphLayouts.saveLayout(taskId, {
+      layout_revision: 0,
+      source_graph_revision: graph.revision,
+      nodes: restoredLayout.nodes,
+      viewport: restoredLayout.viewport,
+    }, { allowedNodeIds, user: otherUser }),
+    error => error?.code === 'GRAPH_LAYOUT_REVISION_CONFLICT' && error?.current_layout_revision === 1,
+    '旧页面不得覆盖新布局',
+  );
+  const resetLayout = graphLayouts.resetLayout(taskId, {
+    layout_revision: 1,
+    source_graph_revision: graph.revision,
+  }, { allowedNodeIds, user: owner });
+  assert.equal(resetLayout.layout.layout_revision, 2);
+  assert.equal(resetLayout.layout.reset, true);
+  assert.deepEqual(resetLayout.layout.nodes, []);
+  assert.equal(storage.getTask(taskId).content_revision, contentRevisionBeforeLayout, '重置画布布局不得修改剧情内容版本');
+  assert.throws(
+    () => graphLayouts.saveLayout(taskId, {
+      layout_revision: 1,
+      source_graph_revision: graph.revision,
+      nodes: restoredLayout.nodes,
+    }, { allowedNodeIds, user: owner }),
+    error => error?.code === 'GRAPH_LAYOUT_REVISION_CONFLICT' && error?.current_layout_revision === 2,
+    '重置后布局版本不得回退形成并发覆盖',
+  );
+
   const draft = sketches.saveSketches(taskId, [{
     shot_index: 1,
     status: 'draft',
@@ -224,7 +287,7 @@ async function main() {
     error => error?.code === 'SKETCH_GENERATION_CONFIRMATION_REQUIRED',
   );
 
-  console.log('story-ad workspace v6 service tests: 24 checks passed');
+  console.log('story-ad workspace v6 service tests: project bundle, editable graph layout and sketches passed');
 }
 
 main().catch(error => {

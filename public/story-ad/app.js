@@ -14,13 +14,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260731-platform-shell'),
-  assets: () => import('./views/assetCenterView.js?v=20260731-platform-shell'),
-  plot: () => import('./views/plotRoomView.js?v=20260731-platform-shell'),
-  storyboard: () => import('./views/storyboardView.js?v=20260731-platform-shell'),
-  shot: () => import('./views/shotDesignerView.js?v=20260731-platform-shell'),
-  final: () => import('./views/finalView.js?v=20260731-platform-shell'),
-  workflow: () => import('./views/workflowView.js?v=20260731-platform-shell'),
+  brief: () => import('./views/briefView.js?v=20260731-interaction-r5'),
+  assets: () => import('./views/assetCenterView.js?v=20260731-interaction-r5'),
+  plot: () => import('./views/plotRoomView.js?v=20260731-interaction-r5'),
+  storyboard: () => import('./views/storyboardView.js?v=20260731-interaction-r5'),
+  shot: () => import('./views/shotDesignerView.js?v=20260731-interaction-r5'),
+  final: () => import('./views/finalView.js?v=20260731-interaction-r5'),
+  workflow: () => import('./views/workflowView.js?v=20260731-interaction-r5'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -29,10 +29,7 @@ let centerFilter = '';
 function platformTopbar({ project = null, saving = false, isNew = false } = {}) {
   return `<header class="platform-topbar ${project ? 'project-topbar' : ''}">
     <button class="platform-brand" type="button" data-workbench aria-label="返回 VIDO 工作台"><span>V</span><b>VIDO</b></button>
-    <nav class="platform-nav" aria-label="平台主导航">
-      <button type="button" data-workbench>工作台</button><button type="button">编辑器</button><button class="active" type="button" data-center>任务</button><button type="button">素材</button><button type="button">模板</button><button type="button">设置</button>
-    </nav>
-    ${project ? `<div class="project-context"><span>剧情广告</span><i>/</i><b>${escapeHtml(project.title || (isNew ? '新建项目' : '正在读取项目'))}</b></div>` : '<div class="module-context"><b>剧情广告任务中心</b><span>真实项目、生成任务与交付版本</span></div>'}
+    ${project ? `<div class="project-context"><span>剧情广告</span><i>/</i><b title="${escapeHtml(project.title || '')}">${escapeHtml(project.title || (isNew ? '新建项目' : '正在读取项目'))}</b></div>` : '<div class="module-context"><b>剧情广告任务中心</b><span>真实项目、生成任务与交付版本</span></div>'}
     <div class="top-actions">
       ${project ? `<span class="save-state">${saving ? '保存中…' : (isNew ? '尚未创建任务' : '已连接真实任务')}</span><button class="btn" type="button" data-center>返回任务中心</button>` : ''}
       <button class="btn" type="button" data-workbench>返回工作台 ↗</button>

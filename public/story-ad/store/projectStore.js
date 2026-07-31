@@ -322,7 +322,7 @@ export function createProjectStore() {
         set({ bundle });
         if (!project.active_generation_id && !['queued', 'running'].includes(String(data.status || ''))) {
           stopProgressPolling();
-          await refreshSections('summary,story,shots,media');
+          await refreshSections('summary,assets,story,shots,media');
           return;
         }
       } catch {}

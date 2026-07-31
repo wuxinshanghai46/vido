@@ -30,12 +30,15 @@ const files = [...new Set([
   'scripts/check-story-ad-workspace-v6-boundaries.js',
   'scripts/test-platform-module-navigation.js',
   'scripts/test-story-ad-workspace-v6.js',
+  'scripts/test-story-ad-workspace-interactions.js',
   'scripts/test-new-story-ad-reference-person-ui.js',
   'scripts/test-new-story-ad-task-resume.js',
   'scripts/deploy-2026-07-31-story-ad-v6.js',
   'src/routes/dashboard.js',
   'src/routes/storyAdWorkspace.js',
   'src/server.js',
+  'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/storyAdService.js',
   ...walk('src/services/storyAdWorkspace'),
 ])].filter(file => fs.existsSync(path.join(root, file)));
 
