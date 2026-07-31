@@ -41,6 +41,8 @@ const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecover
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
+const storyBeatAssist = require('./storyBeatAssistService');
+const { normalizeAssistedStoryBeat } = storyBeatAssist;
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
@@ -3481,6 +3483,7 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
     audio_bridge: textValue('audio_bridge', [], 240),
   };
 }
+
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
@@ -3490,6 +3493,7 @@ async function assistBrief(body = {}, user = {}) {
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
   const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
   const isShotSettings = mode === 'shot_settings' || mode === 'shot';
+  const isStoryBeat = mode === 'story_beat' || mode === 'beat';
   const hasAssistSubjectTarget = !!(body.assist_subject_target || body.assistSubjectTarget);
   const assistSubjectTarget = isPersonSpec ? assistSubjectProfiles.resolveAssistSubjectTarget(body, ctx) : null;
   if (isPersonSpec && hasAssistSubjectTarget && !assistSubjectTarget) { const error = new Error('单人物辅助补齐目标无效；没有调用文本模型'); error.code = 'ASSIST_SUBJECT_TARGET_INVALID'; error.status = 400; throw error; }
@@ -3523,6 +3527,7 @@ async function assistBrief(body = {}, user = {}) {
     '“一面墙、一整面墙、完整墙面”只表示主墙数量为 1，不等于无缝或隐藏拼缝；只有用户明确写出“连续、无缝、无接缝、隐藏拼缝”等要求时，才能输出 mode=continuous 或 seam_policy=hidden。当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
+    storyBeatAssist.systemRule(),
     '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
     'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
     'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
@@ -3572,6 +3577,8 @@ async function assistBrief(body = {}, user = {}) {
 }`
       : isSceneSpec
         ? assistScenePlan.outputSchema()
+        : isStoryBeat
+          ? storyBeatAssist.outputSchema()
         : isShotSettings
           ? `{
   "shot_settings": {
@@ -3621,11 +3628,13 @@ async function assistBrief(body = {}, user = {}) {
     next_shot: body.shot_assist_context?.next_shot || body.next_shot || null,
     scene_assets: body.shot_assist_context?.scene_assets || body.scene_assets || [],
   } : null;
+  const storyAssistContext = isStoryBeat ? storyBeatAssist.buildContext(body) : null;
   const userPrompt = `${contextPrompt(ctx)}
-模式：${isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+模式：${isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 ${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；这些字段属于空白、参考创作方向或系统默认描述，必须改写为可直接生成人物资产的具体设定。其余字段均为用户或业务事实权威，必须原样保留；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
   ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
+${isStoryBeat ? storyBeatAssist.contextPrompt(storyAssistContext) : ''}
 输出 JSON：
 ${outputSchema}`;
   const result = await modelGateway.generateText({
@@ -3697,6 +3706,9 @@ ${outputSchema}`;
       },
     };
   }
+  if (isStoryBeat) {
+    return storyBeatAssist.buildResponse(parsed, storyAssistContext, mode, result);
+  }
   return {
     brief: assistTextFormatter.formatAssistedBrief(parsed.brief || parsed.content || ctx.brief, 3000),
     product_subject: cleanText(parsed.product_subject || parsed.productSubject || ctx.product_subject, 200),
@@ -3755,6 +3767,7 @@ module.exports = {
   enforceAssistedPersonSpec,
   enforceAssistedSceneSpec: sceneAssistCompleteness.enforceAssistedSceneSpec,
   normalizeAssistedShotSettings,
+  normalizeAssistedStoryBeat,
   keyframeCompletion,
   keyframeTargetIndexes,
   keyframeStageBudgetMs,

@@ -13,6 +13,16 @@ function mediaCard(item, index, kind) {
   </article>`;
 }
 
+function finalVideoUrl(item = {}) {
+  return item.video_url || item.videoUrl || item.url || '';
+}
+
+function finalVideoPlayer(item = {}) {
+  const url = finalVideoUrl(item);
+  if (!url) return '<div class="media-placeholder final-video-empty"><span>成片文件尚未就绪</span></div>';
+  return `<video class="final-video" src="${escapeHtml(url)}" controls preload="metadata" playsinline aria-label="最终成片">您的浏览器暂不支持视频播放。</video>`;
+}
+
 function preflightDialog(preflight = {}) {
   const cost = preflight.cost_plan || {};
   const blockers = Array.isArray(preflight.blockers) ? preflight.blockers : [];
@@ -43,7 +53,11 @@ export async function mount(host, context) {
   const shots = bundle?.storyboard?.shots || [];
   const keyframes = Array.isArray(generation.keyframes) ? generation.keyframes : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
-  const finalVideo = generation.final_video || null;
+  const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? {
+    video_url: bundle.project.final_video_url,
+    status: '已生成',
+  } : null);
+  const finalUrl = finalVideoUrl(finalVideo || {});
   host.innerHTML = `
     <section class="view-head">
       <div><h1>生成与成片</h1><p>在同一页查看关键帧、视频片段、审核状态和最终成片。</p></div>
@@ -54,18 +68,18 @@ export async function mount(host, context) {
     </section>
     <div class="guide">关键帧和视频都使用当前项目的版本化分镜与资产；视频提交前必须再次核对镜头和费用。</div>
     ${finalVideo ? `<section class="card final-player">
-      <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')}</p></div>${finalVideo.video_url || finalVideo.url ? `<a class="btn primary" href="${escapeHtml(finalVideo.video_url || finalVideo.url)}" download>下载成片</a>` : ''}</div>
-      <div class="final-media">${mediaPreview(finalVideo, { label: '最终成片', width: 1280, symbol: '成片' })}</div>
+      <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(finalUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}">下载原始成片</a>` : ''}</div>
+      <div class="final-media">${finalVideoPlayer(finalVideo)}</div>
     </section>` : ''}
-    <section class="card generation-section">
-      <div class="card-head"><div><h2>关键帧</h2><p>${keyframes.length}/${shots.length || 0}</p></div></div>
+    <details class="card generation-section generation-details">
+      <summary class="card-head"><div><h2>关键帧</h2><p>${keyframes.length}/${shots.length || 0} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
       <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>` : emptyState({
         title: '还没有关键帧',
         body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成文字分镜和镜头设计。',
         action: shots.length ? '生成关键帧' : '返回分镜台',
         actionId: shots.length ? 'generate-keyframes' : 'back-storyboard',
       })}</div>
-    </section>
+    </details>
     <section class="card generation-section">
       <div class="card-head"><div><h2>视频片段</h2><p>${clips.length}/${shots.length || 0}</p></div></div>
       <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>` : emptyState({

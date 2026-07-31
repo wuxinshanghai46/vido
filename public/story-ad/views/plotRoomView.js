@@ -1,9 +1,11 @@
+import { request } from '../api.js';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js';
+import { confirmDialog } from '../components/dialog.js';
 
 /** 输出一个可编辑情节点。 */
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">
-    <header><code>B${String(index + 1).padStart(2, '0')}</code><input class="input" data-beat-field="title" value="${escapeHtml(beat.title || beat.role || '')}" placeholder="情节点名称"><button class="btn small danger" type="button" data-remove-beat>删除</button></header>
+    <header><code>B${String(index + 1).padStart(2, '0')}</code><input class="input" data-beat-field="title" value="${escapeHtml(beat.title || beat.role || '')}" placeholder="情节点名称"><span class="beat-actions"><button class="btn small ai-action" type="button" data-ai-beat>AI 帮写</button><button class="btn small danger delete-action" type="button" data-remove-beat><span aria-hidden="true">×</span><span>删除</span></button></span></header>
     <div class="form-grid">
       <label class="field full"><span>画面与剧情动作</span><textarea class="textarea" rows="3" data-beat-field="visual" placeholder="描述这一段实际发生的事情。">${escapeHtml(beat.visual || beat.plot || '')}</textarea></label>
       <label class="field"><span>人物动作</span><input class="input" data-beat-field="action" value="${escapeHtml(beat.action || '')}"></label>
@@ -12,6 +14,32 @@ function beatEditor(beat = {}, index = 0) {
       <label class="field"><span>可见证据</span><input class="input" data-beat-field="visual_proof" value="${escapeHtml(beat.visual_proof || beat.purpose || '')}"></label>
     </div>
   </article>`;
+}
+
+function collectBeat(row) {
+  const value = name => row.querySelector(`[data-beat-field="${name}"]`)?.value?.trim() || '';
+  return {
+    title: value('title'),
+    visual: value('visual'),
+    action: value('action'),
+    duration: Math.max(1, Number(value('duration')) || 3),
+    spoken_line: value('spoken_line'),
+    visual_proof: value('visual_proof'),
+  };
+}
+
+function applyBeat(row, beat = {}) {
+  Object.entries({
+    title: beat.title,
+    visual: beat.visual,
+    action: beat.action,
+    duration: beat.duration,
+    spoken_line: beat.spoken_line,
+    visual_proof: beat.visual_proof,
+  }).forEach(([name, value]) => {
+    const field = row.querySelector(`[data-beat-field="${name}"]`);
+    if (field && value !== undefined && value !== null) field.value = value;
+  });
 }
 
 /** 从当前编辑器收集剧情蓝图。 */
@@ -96,12 +124,49 @@ export async function mount(host, context) {
     wrapper.innerHTML = beatEditor({}, list.children.length);
     list.appendChild(wrapper.firstElementChild);
   });
-  host.querySelector('[data-beat-list]')?.addEventListener('click', event => {
+  host.querySelector('[data-beat-list]')?.addEventListener('click', async event => {
+    const row = event.target.closest('[data-beat-index]');
+    if (!row) return;
+    const assistButton = event.target.closest('[data-ai-beat]');
+    if (assistButton) {
+      const rows = [...host.querySelectorAll('[data-beat-index]')];
+      const index = rows.indexOf(row);
+      try {
+        setButtonBusy(assistButton, true, '帮写中…');
+        const currentBlueprint = collectBlueprint(host, blueprint);
+        const data = await request('/api/new-story-ad/assist', {
+          method: 'POST',
+          body: {
+            mode: 'story_beat',
+            task_id: bundle.project.id,
+            story_assist_context: {
+              current_blueprint: currentBlueprint,
+              previous_beat: index > 0 ? collectBeat(rows[index - 1]) : null,
+              current_beat: collectBeat(row),
+              next_beat: index < rows.length - 1 ? collectBeat(rows[index + 1]) : null,
+            },
+          },
+          timeoutMs: 180000,
+        });
+        applyBeat(row, data.story_beat || {});
+        toast('AI 建议已填入当前情节点；确认内容后再保存剧情。', 'success');
+      } catch (error) {
+        toast(error.message, 'danger');
+      } finally {
+        setButtonBusy(assistButton, false);
+      }
+      return;
+    }
     if (!event.target.closest('[data-remove-beat]')) return;
-    event.target.closest('[data-beat-index]')?.remove();
-    [...host.querySelectorAll('[data-beat-index]')].forEach((row, index) => {
-      row.dataset.beatIndex = index;
-      row.querySelector('code').textContent = `B${String(index + 1).padStart(2, '0')}`;
+    if (!await confirmDialog('删除后，该情节点只会从当前编辑器移除；点击“保存剧情”后才会写入项目。', {
+      title: '删除这个情节点？',
+      confirmText: '确认删除',
+      tone: 'danger',
+    })) return;
+    row.remove();
+    [...host.querySelectorAll('[data-beat-index]')].forEach((item, index) => {
+      item.dataset.beatIndex = index;
+      item.querySelector('code').textContent = `B${String(index + 1).padStart(2, '0')}`;
     });
   });
   host.querySelector('[data-save-story]')?.addEventListener('click', async event => {

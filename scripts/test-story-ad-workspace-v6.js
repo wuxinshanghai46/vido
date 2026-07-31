@@ -181,6 +181,17 @@ async function main() {
   assert(graph.edges.some(edge => edge.target === 'shot:1'));
   assert(graph.clusters.every(cluster => cluster.width > 0 && cluster.height > 0));
   assert(graph.bounds.width > 0 && graph.bounds.height > 0);
+  const mediaGraph = graphProjection.projectGraph({
+    ...bundle,
+    generation: {
+      keyframes: [{ shot_index: 1, image_url: '/api/new-story-ad/assets/keyframe-current.png', status: 'accepted' }],
+      clips: [{ shot_index: 1, video_url: '/api/new-story-ad/video/current', status: 'accepted' }],
+      final_video: { video_url: '/api/new-story-ad/final/current', status: 'done' },
+    },
+  });
+  assert.equal(mediaGraph.nodes.find(node => node.id === 'keyframe:1').media_url, '/api/new-story-ad/assets/keyframe-current.png');
+  assert.equal(mediaGraph.nodes.find(node => node.id === 'clip:1').media_url, '/api/new-story-ad/video/current');
+  assert.equal(mediaGraph.nodes.find(node => node.id.startsWith('final:')).media_url, '/api/new-story-ad/final/current');
 
   const contentRevisionBeforeLayout = storage.getTask(taskId).content_revision;
   const allowedNodeIds = new Set(graph.nodes.map(node => node.id));

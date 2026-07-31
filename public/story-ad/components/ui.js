@@ -81,10 +81,15 @@ export function emptyState({ title, body, action = '', actionId = '' }) {
 
 /** 输出真实媒体缩略图或语义占位。 */
 export function mediaPreview(item = {}, options = {}) {
-  const url = item.thumbnail_url || item.image_url || item.imageUrl || item.video_url || item.videoUrl || item.url || '';
+  const imageUrl = item.thumbnail_url || item.image_url || item.imageUrl || '';
+  const videoUrl = item.video_url || item.videoUrl || '';
+  const url = imageUrl || videoUrl || item.media_url || item.url || '';
   const label = options.label || item.name || item.title || '媒体';
-  if (url && /\.(?:mp4|webm|mov)(?:\?|$)/i.test(url)) {
-    return `<video class="media" src="${escapeHtml(url)}" preload="metadata" muted playsinline aria-label="${escapeHtml(label)}"></video>`;
+  const videoLike = !imageUrl && (Boolean(videoUrl)
+    || ['video', 'clip', 'final'].includes(String(item.type || item.kind || '').toLowerCase())
+    || /\.(?:mp4|webm|mov)(?:\?|$)/i.test(url));
+  if (url && videoLike) {
+    return `<video class="media" src="${escapeHtml(url)}" preload="metadata" ${options.controls ? 'controls' : 'muted'} playsinline aria-label="${escapeHtml(label)}"></video>`;
   }
   if (url) return `<img class="media" src="${escapeHtml(url)}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}" loading="lazy" alt="${escapeHtml(label)}">`;
   return `<div class="media-placeholder" aria-label="${escapeHtml(label)}"><span>${escapeHtml(options.symbol || '素材')}</span></div>`;

@@ -6,13 +6,18 @@ const STAGE_HEIGHT = 1500;
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 142;
 const DRAG_THRESHOLD = 4;
+const NODE_MEDIA_LABELS = {
+  brief: '需求摘要', reference: '参考素材', person: '人物资产', animal: '动物资产', product: '商品资产',
+  logo: '品牌标识', prop: '道具资产', scene: '场景资产', story: '剧情内容', shot: '镜头内容',
+  keyframe: '关键帧待生成', clip: '视频片段待生成', final: '成片待生成',
+};
 
 function graphNode(node) {
   const x = Number(node.position?.x || 0);
   const y = Number(node.position?.y || 0);
   return `<button class="graph-node" type="button" data-node-id="${escapeHtml(node.id)}" style="left:${x}px;top:${y}px">
     <span class="node-dot is-${escapeHtml(node.status || 'ready')}"></span>
-    ${mediaPreview(node, { label: node.title || '节点', width: 360, symbol: node.type || '节点' })}
+    ${mediaPreview(node, { label: node.title || '节点', width: 360, symbol: NODE_MEDIA_LABELS[node.type] || '内容待生成' })}
     <b>${escapeHtml(node.title || node.label || '未命名节点')}</b>
     <small>${escapeHtml(node.subtitle || '')}</small>
   </button>`;

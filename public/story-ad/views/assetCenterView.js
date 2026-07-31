@@ -135,6 +135,28 @@ function profileDetails(item = {}, group = '') {
   return `<section class="drawer-profile"><h3>${group === 'people' ? '人物设定' : '动物设定'}</h3>${rows.filter(([, value]) => value).map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>`;
 }
 
+function legacyDossierBoard(item = {}, views = []) {
+  const profile = item.profile || {};
+  const facts = [
+    ['身份 / 关系', profile.roleName || item.role || '待补充'],
+    ['年龄范围', profile.age || '待补充'],
+    ['形象气质', profile.appearanceText || '沿用现有参考图中的人物形象'],
+  ];
+  const notes = [
+    ['服装与配饰', profile.wardrobeText],
+    ['发型与妆造', profile.hairMakeupText],
+    ['一致性禁区', profile.negativeText],
+  ].filter(([, value]) => value);
+  return `<section class="reference-dossier-board" aria-label="${escapeHtml(item.name)}参考档案预览">
+    <header><div><span>参考档案预览</span><h3>${escapeHtml(item.name)}</h3></div><p>由当前任务的历史参考图和人物设定整理，不冒充新生成档案。</p></header>
+    <div class="reference-dossier-layout">
+      <aside class="reference-dossier-facts">${facts.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</aside>
+      <div class="reference-dossier-views">${views.slice(0, 4).map(view => `<figure>${mediaPreview(view, { label: view.label || view.key || item.name, width: 720, symbol: '人物参考' })}<figcaption>${escapeHtml(view.label || view.key || '人物视图')}</figcaption></figure>`).join('')}</div>
+      <aside class="reference-dossier-notes">${notes.length ? notes.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('') : '<div><span>设定说明</span><p>当前任务仅保留历史四视图，可在下方生成新版完整人物档案。</p></div>'}</aside>
+    </div>
+  </section>`;
+}
+
 function dossierDetails(item = {}) {
   return [
     mediaSection('人物分类档案', item.category_atlases),
@@ -179,7 +201,6 @@ function openDrawer(item, group, { onGenerate } = {}) {
     ['角色或用途', item.role || '—'], ['空间区域', zones.map(zone => zone.label).filter(Boolean).join('、') || '—'],
     ['机位', cameras.map(camera => camera.label).filter(Boolean).join('、') || '—'],
   ];
-  const legacyLabel = group === 'people' && !dossier && views.length ? '<p class="drawer-history-note">历史四视图资产：原始图片会完整显示；该任务尚未生成新版人物档案板。</p>' : '';
   const backdrop = document.createElement('div');
   backdrop.className = 'drawer-backdrop';
   const drawer = document.createElement('aside');
@@ -188,8 +209,8 @@ function openDrawer(item, group, { onGenerate } = {}) {
     <header class="drawer-head"><div><small>${escapeHtml(groupLabel(group))}</small><h2>${escapeHtml(item.name)}</h2></div><button class="icon-btn" type="button" data-close-drawer>×</button></header>
     <div class="drawer-content">
       ${dossier ? `<section class="dossier-hero"><div><span>完整人物档案</span><b>正面 / 侧面 / 背面 · 表情 · 服装 · 细节 · 动作</b></div>${mediaPreview(dossier, { label: `${item.name}完整人物档案`, width: 1600, symbol: '人物档案' })}</section>` : (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel(group) }) : '')}
-      ${legacyLabel}
-      ${views.length ? mediaSection(group === 'scenes' ? '场景视角' : '完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : '') : ''}
+      ${group === 'people' && !dossier && views.length ? legacyDossierBoard(item, views) : ''}
+      ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : mediaSection(group === 'scenes' ? '场景视角' : '完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : '')) : ''}
       ${group === 'people' ? dossierDetails(item) : ''}
       ${group === 'scenes' ? sceneDetails(item) : ''}
       ${profileDetails(item, group)}

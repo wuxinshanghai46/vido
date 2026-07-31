@@ -29,12 +29,14 @@ function sketchCard(shot, sketch = {}, index = 0) {
       <div>${mediaPreview(sketch, { label: `镜头 ${shotIndex} 线稿`, width: 720, symbol: '线稿' })}</div>
       <div class="form-grid">
         <label class="field full"><span>构图约束</span><textarea class="textarea" rows="6" data-sketch-notes placeholder="确认主体数量、站位、景别、视线和运动方向。">${escapeHtml(sketch.composition_notes || '')}</textarea></label>
-        <div class="field full form-actions">
+        <div class="field full sketch-action-bar">
           <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
-          <button class="btn" type="button" data-generate-sketch>生成线稿</button>
-          <button class="btn" type="button" data-upload-sketch>上传线稿</button>
-          <button class="btn" type="button" data-skip-sketch>跳过</button>
-          <button class="btn primary" type="button" data-confirm-sketch>确认构图</button>
+          <div class="sketch-media-actions">
+            <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch>${sketch.image_url ? '重新生成线稿' : '生成线稿'}</button>
+            <button class="btn" type="button" data-upload-sketch>上传参考线稿</button>
+            <button class="btn quiet" type="button" data-skip-sketch>本镜跳过</button>
+          </div>
+          <button class="btn primary sketch-confirm-action" type="button" data-confirm-sketch>确认构图</button>
         </div>
       </div>
     </div>
