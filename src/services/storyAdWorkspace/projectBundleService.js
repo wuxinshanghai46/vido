@@ -1,4 +1,5 @@
 const storyAd = require('../newStoryAd');
+const productAssetResolver = require('../newStoryAd/productAssetResolverService');
 
 const MAX_MEDIA_ITEMS = 120;
 
@@ -65,6 +66,28 @@ function projectedViews(source = {}, fallback = []) {
       image_url: mediaUrl(view),
     };
   }).filter(view => view.image_url);
+}
+
+/** 将单个场景机位与对应视图稳定关联；layout 只由独立布局合同投影。 */
+function projectSceneCamera(camera = {}, views = [], cameraIndex = 0) {
+  const viewId = clean(camera.view_id || camera.view || camera.key, 100);
+  const matchedView = viewId && viewId !== 'layout'
+    ? list(views).find(view => clean(view.key || view.view_id || view.id, 100) === viewId)
+    : null;
+  return {
+    id: clean(camera.id || camera.camera_id || camera.key || `camera_${cameraIndex + 1}`, 100),
+    view_id: viewId,
+    label: clean(camera.label || camera.name || camera.id || `机位 ${cameraIndex + 1}`, 120),
+    image_url: mediaUrl(camera.reference_image_url || camera.referenceImageUrl || '') || mediaUrl(matchedView || {}),
+    role: clean(camera.role || camera.target_description, 180),
+    framing: clean(camera.framing || camera.shot_size, 100),
+    lens: clean(camera.lens_class || camera.lens || camera.focal_length, 100),
+    height: clean(camera.height_class || camera.height, 80),
+    orientation: clean(camera.orientation || camera.direction, 180),
+    position: Array.isArray(camera.normalized_position) ? camera.normalized_position.slice(0, 3).map(Number) : [],
+    look_at: Array.isArray(camera.look_at) ? camera.look_at.slice(0, 3).map(Number) : [],
+    visible_evidence: clean(camera.visible_evidence, 260),
+  };
 }
 
 /** 压缩人物档案的分类图集和原子素材，供详情抽屉按原型分区展示。 */
@@ -231,9 +254,7 @@ function animalAssets(context = {}) {
 
 /** 将商品与品牌主体整理为独立资产。 */
 function productAssets(context = {}) {
-  const product = context.product_asset && typeof context.product_asset === 'object'
-    ? context.product_asset
-    : null;
+  const product = productAssetResolver.primaryProductAsset(context);
   if (!product && !clean(context.product_subject)) return [];
   return [{
     id: clean(product?.id || product?.asset_id || 'product-primary', 120),
@@ -307,19 +328,7 @@ function sceneAssets(outputs = {}, context = {}) {
       label: clean(view.label || view.name || view.key || `视角 ${viewIndex + 1}`, 100),
       image_url: mediaUrl(view),
     })).filter(view => view.image_url);
-    const cameras = rawCameras.slice(0, 30).map((camera, cameraIndex) => ({
-      id: clean(camera.id || camera.camera_id || camera.key || `camera_${cameraIndex + 1}`, 100),
-      view_id: clean(camera.view_id || camera.view || camera.key, 100),
-      label: clean(camera.label || camera.name || camera.id || `机位 ${cameraIndex + 1}`, 120),
-      role: clean(camera.role || camera.target_description, 180),
-      framing: clean(camera.framing || camera.shot_size, 100),
-      lens: clean(camera.lens_class || camera.lens || camera.focal_length, 100),
-      height: clean(camera.height_class || camera.height, 80),
-      orientation: clean(camera.orientation || camera.direction, 180),
-      position: Array.isArray(camera.normalized_position) ? camera.normalized_position.slice(0, 3).map(Number) : [],
-      look_at: Array.isArray(camera.look_at) ? camera.look_at.slice(0, 3).map(Number) : [],
-      visible_evidence: clean(camera.visible_evidence, 260),
-    }));
+    const cameras = rawCameras.slice(0, 30).map((camera, cameraIndex) => projectSceneCamera(camera, views, cameraIndex));
     const zones = list(contract.zones || spec.zones || space.zones).slice(0, 30).map((zone, zoneIndex) => ({
       id: clean(zone.id || zone.zone_id || `zone_${zoneIndex + 1}`, 100),
       label: clean(zone.label_zh || zone.label || zone.name || `区域 ${zoneIndex + 1}`, 120),
@@ -570,6 +579,7 @@ module.exports = {
   buildProjectBundle,
   displayId,
   listProjects,
+  projectSceneCamera,
   projectStats,
   projectSummary,
   workspaceStage,

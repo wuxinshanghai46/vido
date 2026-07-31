@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const { cleanText } = require('./contextBuilder');
+const productAssetResolver = require('./productAssetResolverService');
 const publicReferences = require('./publicReferenceService');
 const verification = require('./visualVerificationService');
 
@@ -13,32 +14,11 @@ function score(value) {
   return Math.max(0, Math.min(1, n > 1 && n <= 100 ? n / 100 : n));
 }
 
-function normalizedAssetType(asset = {}) {
-  return cleanText(asset.type || asset.asset_type || asset.kind || '', 120).toLowerCase().replace(/[\s-]+/g, '_');
-}
-
-function isProductAsset(asset = {}) {
-  if (!asset || !(asset.url || asset.image_url)) return false;
-  const type = normalizedAssetType(asset);
-  // The asset type is authoritative. An actor/scene description can legitimately
-  // mention the advertised product and must never turn that asset into a product
-  // reference that requires a separate visual verification gate.
-  if (/(?:^|_)(?:person|people|human|actor|character|cast|portrait|face|scene|environment|location|room|space|background)(?:_|$)/i.test(type)) return false;
-  if (/(?:^|_)(?:product|goods|package|packaging|packshot|merchandise|sku|product_material|material_sample)(?:_|$)/i.test(type)) return true;
-  if (/(?:商品|产品|包装|货品|样品)/.test(type)) return true;
-
-  // Older uploads sometimes used only a generic type. In that case accept an
-  // explicit reference name, but deliberately ignore free-form descriptions.
-  if (!type || /^(?:reference|image|asset|upload|uploaded_image)$/.test(type)) {
-    const name = cleanText(asset.name || asset.label || '', 160);
-    return /(?:产品|商品|包装|货品|样品)(?:参考|素材|图片|图|照)|(?:product|goods|package|packshot)\s*(?:reference|asset|image|photo)/i.test(name);
-  }
-  return false;
-}
-
-function productAssets(ctx = {}) {
-  return (Array.isArray(ctx.assets) ? ctx.assets : []).filter(isProductAsset);
-}
+const {
+  isProductAsset,
+  normalizedAssetType,
+  productAssets,
+} = productAssetResolver;
 
 function normalizeQa(input = {}) {
   const conflicts = Array.isArray(input.conflicts || input.mismatch_reasons)
@@ -97,7 +77,7 @@ function buildProductContract(ctx = {}, options = {}) {
     identity: contract.identity,
   })).digest('hex');
   const sameRevision = Number(existing.product_revision || revision) === revision;
-  const sameFingerprint = !existing.reference_fingerprint || existing.reference_fingerprint === contract.reference_fingerprint;
+  const sameFingerprint = !!existing.reference_fingerprint && existing.reference_fingerprint === contract.reference_fingerprint;
   if (contract.status === 'verified' && sameRevision && sameFingerprint) {
     contract.verification = existing.verification || verification.verified(qa.used_model);
   } else if (contract.status === 'verified') {
@@ -142,7 +122,20 @@ async function verifyProductContract({ taskId = '', ctx = {}, gateway = modelGat
       userPrompt: `Product contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"shape_score":0..1,"color_score":0..1,"material_score":0..1,"conflicts":string[]}.`,
       maxTokens: 2200,
     });
-    const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
+    let parsed;
+    try {
+      // 商品验证已经消耗一次视觉模型调用；JSON 异常只能本地修复/失败，禁止再调用文本模型造成隐性二次付费。
+      parsed = await repair.parseOrRepair({
+        raw: result.text,
+        expected: 'object',
+        modelGateway: null,
+        taskId,
+        stage: 'new_story_ad.json_repair',
+      });
+    } catch (parseError) {
+      parseError.code = 'VISION_QA_SCHEMA_INVALID';
+      throw parseError;
+    }
     contract.reference_qa = normalizeQa({ ...parsed, used_model: result.used_model });
     contract.status = contract.reference_qa.pass ? 'verified' : 'rejected';
     contract.qa_unavailable = false;

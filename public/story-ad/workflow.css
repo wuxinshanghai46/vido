@@ -44,7 +44,7 @@
   position: absolute;
   z-index: 2;
   width: 220px;
-  min-height: 142px;
+  min-height: 168px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -55,10 +55,41 @@
 }
 .graph-node:hover, .graph-node.active { border-color: var(--mint); }
 .graph-node.is-dragging { z-index: 3; cursor: grabbing; border-color: var(--mint); box-shadow: 0 14px 34px rgb(0 0 0 / 22%); }
-.graph-node .media, .graph-node .media-placeholder { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; pointer-events: none; }
+.graph-node .media, .graph-node .media-placeholder, .node-text-preview { width: 100%; height: 76px; object-fit: cover; border-radius: 8px; pointer-events: none; }
+.node-text-preview {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 10px;
+  overflow: hidden;
+  color: var(--text);
+  text-align: left;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--mint-2) 72%, var(--surface)), var(--surface-2));
+}
+.node-text-preview span { color: var(--mint); font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.node-text-preview p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
 .graph-node b, .graph-node small { display: block; pointer-events: none; }
 .graph-node b { margin-top: 8px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .graph-node small { margin-top: 4px; color: var(--muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-node .node-media-summary {
+  display: -webkit-box;
+  min-height: 28px;
+  line-height: 1.4;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .node-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--mint); }
 .node-dot.is-failed, .node-dot.is-blocked { background: var(--danger); }
 .node-dot.is-draft, .node-dot.is-pending { background: var(--amber); }
@@ -114,6 +145,16 @@
 .node-panel .media, .node-panel .media-placeholder { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; margin: 16px 0; border-radius: 11px; }
 .node-panel h2 { font-size: 19px; }
 .node-panel p { color: var(--muted); margin-top: 6px; line-height: 1.6; }
+.node-structured-detail { display: grid; gap: 12px; margin-top: 16px; }
+.node-readable-section { padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-2); }
+.node-readable-section h3 { margin: 0 0 8px; color: var(--mint); font-size: 13px; }
+.node-readable-section > p { margin: 0; color: var(--text); line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-readable-list { display: grid; gap: 8px; }
+.node-readable-list article { padding: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.node-readable-list article b { font-size: 12px; }
+.node-readable-list article p { margin: 5px 0 0; color: var(--muted); line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.node-panel .meta-list:empty { display: none; }
+.node-panel .panel-route { width: 100%; margin-top: 16px; }
 
 @media (max-width: 1250px) {
   .workflow-view { margin-left: -22px; margin-right: -22px; }

@@ -22,6 +22,18 @@ function hasGeneratedMedia(item = {}) {
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
 }
 
+function personAssetState(item = {}) {
+  if (item.dossier_sheet?.image_url) return 'complete_dossier';
+  if (Array.isArray(item.view_images) && item.view_images.length) return 'legacy_views';
+  return 'missing';
+}
+
+function subjectNeedsGeneration(item = {}, kind = '') {
+  return kind === 'human'
+    ? personAssetState(item) !== 'complete_dossier'
+    : !hasGeneratedMedia(item);
+}
+
 function profileList(bundle = {}, key = '') {
   return (bundle.assets?.[key] || []).map(item => item.profile).filter(profile => profile?.id);
 }
@@ -58,7 +70,9 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
     const missing = [
       ...people.map((item, subjectIndex) => ({ item, kind: 'human', index: subjectIndex })),
       ...animals.map((item, subjectIndex) => ({ item, kind: 'pet', index: subjectIndex })),
-    ].filter(entry => !hasGeneratedMedia(entry.item))
+    ].filter(entry => entry.kind === 'human'
+      ? personAssetState(entry.item) === 'missing'
+      : subjectNeedsGeneration(entry.item, entry.kind))
       .map(entry => ({ kind: entry.kind, id: entry.item.subject_id || entry.item.profile?.id || '', index: entry.index }));
     payload.subject_targets = [selected, ...missing].filter((entry, entryIndex, rows) => (
       entry.id && rows.findIndex(candidate => candidate.kind === entry.kind && candidate.id === entry.id && candidate.index === entry.index) === entryIndex
@@ -86,6 +100,7 @@ function generationValidation(payload = {}) {
 
 function assetCard(item, group) {
   const views = Array.isArray(item.view_images) ? item.view_images.length : 0;
+  const personState = group === 'people' ? personAssetState(item) : '';
   const sceneDetail = group === 'scenes' ? [
     item.reference_only ? '未绑定场景参考' : '',
     item.zones?.length ? `${item.zones.length} 个区域` : '',
@@ -94,21 +109,30 @@ function assetCard(item, group) {
     item.candidate_count ? `${item.candidate_count} 选 1` : '',
     item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头` : '',
   ] : [];
-  const detail = (group === 'scenes' ? sceneDetail : [item.role, views ? `${views} 个视图` : '', item.revision ? `版本 ${item.revision}` : ''])
+  const detail = (group === 'scenes' ? sceneDetail : [
+    personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
+    item.role,
+    views ? `${views} 个视图` : '',
+    item.revision ? `版本 ${item.revision}` : '',
+  ])
     .filter(Boolean).join(' · ');
-  const needsGeneration = GENERATABLE.has(group) && !hasGeneratedMedia(item);
+  const needsGeneration = group === 'people'
+    ? personState !== 'complete_dossier'
+    : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
+  const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <button class="asset-card-preview" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
       ${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group) })}
       <span class="asset-card-copy">
-        <span>${escapeHtml(item.status || '未确认')}</span>
+        <span>${escapeHtml(personState === 'legacy_views' ? '历史四视图' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认')))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
       </span>
     </button>
     <div class="asset-card-actions">
-      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}</button>
-      ${needsGeneration ? `<button class="btn small primary" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '该人物档案' : '该动物资产'}</button>` : ''}
+      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}`}</button>
+      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '完整人物档案' : '该动物资产'}</button>` : ''}
+      ${needsProductVerification ? `<button class="btn small primary" type="button" data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
 }
@@ -180,18 +204,28 @@ function sceneDetails(item = {}) {
     ['空间覆盖', qa.spatial_pass], ['机位设计', qa.camera_pass], ['真实感', qa.realism_pass],
   ].filter(([, value]) => value !== undefined && value !== null && value !== '');
   const boolText = value => value === true ? '通过' : (value === false ? '未通过' : value);
+  const sceneViews = Array.isArray(item.view_images) ? item.view_images : [];
+  const cameraWithImage = camera => {
+    if (camera.image_url) return camera;
+    const viewId = String(camera.view_id || camera.id || '').trim();
+    const matched = sceneViews.find(view => [view.key, view.view_id, view.id].some(value => String(value || '').trim() === viewId));
+    return matched?.image_url ? { ...camera, image_url: matched.image_url } : camera;
+  };
   return `<div class="scene-detail-stack">
     ${(item.description || item.story_purpose) ? `<section class="drawer-profile"><h3>场景用途</h3>${item.description ? `<div><span>空间描述</span><p>${escapeHtml(item.description)}</p></div>` : ''}${item.story_purpose ? `<div><span>剧情用途</span><p>${escapeHtml(item.story_purpose)}</p></div>` : ''}</section>` : ''}
     ${item.layout?.image_url ? `<section class="scene-layout"><div class="drawer-section-head"><h3>空间母版 / 布局图</h3><span>${escapeHtml(item.layout.status || 'available')}</span></div>${mediaPreview({ image_url: item.layout.image_url }, { label: `${item.name}空间布局`, width: 1200, symbol: '空间布局' })}</section>` : ''}
     ${specRows.length ? `<section class="drawer-profile"><h3>布局、材质与光线</h3>${specRows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>` : ''}
     ${item.zones?.length ? `<section><div class="drawer-section-head"><h3>空间区域</h3><span>${item.zones.length}</span></div><div class="scene-zone-list">${item.zones.map(zone => `<article><b>${escapeHtml(zone.label || zone.id)}</b><span>${escapeHtml(zone.purpose || zone.id || '未提供用途')}</span></article>`).join('')}</div></section>` : ''}
-    ${item.cameras?.length ? `<section><div class="drawer-section-head"><h3>机位与视角参数</h3><span>${item.cameras.length}</span></div><div class="scene-camera-list">${item.cameras.map(camera => `<article><header><b>${escapeHtml(camera.label || camera.id)}</b><span>${escapeHtml(camera.view_id || camera.id || '')}</span></header><p>${escapeHtml([camera.role, camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '参数未提供')}</p><small>${escapeHtml([camera.orientation, camera.visible_evidence].filter(Boolean).join('；'))}</small></article>`).join('')}</div></section>` : ''}
+    ${item.cameras?.length ? `<section><div class="drawer-section-head"><h3>机位与视角参数</h3><span>${item.cameras.length}</span></div><div class="scene-camera-list">${item.cameras.map(cameraWithImage).map(camera => `<article class="scene-camera-card ${camera.image_url ? 'has-image' : 'is-missing-image'}">
+      <div class="scene-camera-media">${camera.image_url ? mediaPreview(camera, { label: `${item.name} ${camera.label || camera.id}`, width: 720, symbol: '机位图' }) : '<div class="scene-camera-missing"><span>该机位图未生成</span></div>'}</div>
+      <div class="scene-camera-copy"><header><b>${escapeHtml(camera.label || camera.id)}</b><span>${escapeHtml(camera.view_id || camera.id || '')}</span></header><p>${escapeHtml([camera.role, camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '参数未提供')}</p><small>${escapeHtml([camera.orientation, camera.visible_evidence].filter(Boolean).join('；') || '方向与可见证据未提供')}</small></div>
+    </article>`).join('')}</div></section>` : ''}
     ${item.routes?.length ? `<section><div class="drawer-section-head"><h3>跨场景路线与连续性</h3><span>${item.routes.length}</span></div><div class="scene-route-list">${item.routes.map(route => `<article><b>${escapeHtml(route.from || '当前场景')} → ${escapeHtml(route.to || '当前场景')}</b><span>${escapeHtml([route.time, route.weather, route.light, route.movement].filter(Boolean).join(' · ') || '连续性说明未提供')}</span></article>`).join('')}</div></section>` : ''}
     ${qaRows.length ? `<section><div class="drawer-section-head"><h3>场景质量状态</h3></div><div class="meta-list">${qaRows.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(boolText(value))}</b></div>`).join('')}</div>${qa.reasons?.length ? `<ul class="scene-qa-reasons">${qa.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}</section>` : ''}
   </div>`;
 }
 
-function openDrawer(item, group, { onGenerate } = {}) {
+function openDrawer(item, group, { onGenerate, onVerifyProduct } = {}) {
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
   const zones = Array.isArray(item.zones) ? item.zones : [];
@@ -216,13 +250,18 @@ function openDrawer(item, group, { onGenerate } = {}) {
       ${profileDetails(item, group)}
       <div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>
     </div>
-    ${GENERATABLE.has(group) && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成${group === 'people' ? '完整人物档案' : '动物资产'}</button></footer>` : ''}`;
+    ${GENERATABLE.has(group) && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成${group === 'people' ? '完整人物档案' : '动物资产'}</button></footer>` : ''}
+    ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
   const close = () => { backdrop.remove(); drawer.remove(); };
   backdrop.addEventListener('click', close);
   drawer.querySelector('[data-close-drawer]').addEventListener('click', close);
   drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => {
     const generated = await onGenerate?.(item, group, event.currentTarget);
     if (generated === true) close();
+  });
+  drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => {
+    const verified = await onVerifyProduct?.(item, event.currentTarget);
+    if (verified === true) close();
   });
   document.body.append(backdrop, drawer);
 }
@@ -287,6 +326,39 @@ export async function mount(host, context) {
     }
   };
 
+  const verifyProduct = async (item, button = null) => {
+    if (!item?.image_url) {
+      toast('请先添加商品图片素材。', 'warning');
+      return false;
+    }
+    if (!await confirmDialog('商品验证会调用一次视觉审核模型，检查外观、形状、颜色和材质一致性；确认后才会提交。', {
+      title: `验证商品素材：${item.name || '当前商品'}`,
+      confirmText: '确认开始验证',
+    })) return false;
+    try {
+      setButtonBusy(button, true, '正在验证…');
+      const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/product-verify`, {
+        method: 'POST',
+        body: {},
+        timeoutMs: 360000,
+      });
+      const status = data.product_contract?.status || '';
+      if (status !== 'verified') {
+        toast(status === 'rejected' ? '商品素材未通过一致性验证，请查看原因或更换图片。' : '商品验证暂未完成，请稍后重试。', 'warning');
+        await context.refreshShell();
+        return false;
+      }
+      toast('商品素材已通过一致性验证。', 'success');
+      await context.refreshShell();
+      return true;
+    } catch (error) {
+      toast(error.message, 'danger');
+      return false;
+    } finally {
+      setButtonBusy(button, false);
+    }
+  };
+
   host.querySelectorAll('[data-asset-filter]').forEach(button => button.addEventListener('click', () => {
     const filter = button.dataset.assetFilter;
     host.querySelectorAll('[data-asset-filter]').forEach(item => item.classList.toggle('active', item === button));
@@ -300,13 +372,18 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { onGenerate: generate });
+    if (item) openDrawer(item, group, { onGenerate: generate, onVerifyProduct: verifyProduct });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-generate-asset]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
     const item = (assets[button.dataset.generateGroup] || []).find(asset => String(asset.id) === button.dataset.generateAsset);
     if (item) generate(item, button.dataset.generateGroup, button);
+  }));
+  host.querySelectorAll('[data-verify-product]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.verifyProduct);
+    if (item) verifyProduct(item, button);
   }));
 
   let uploadGroup = '';

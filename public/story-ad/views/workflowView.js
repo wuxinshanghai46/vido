@@ -4,22 +4,43 @@ import { emptyState, escapeHtml, mediaPreview, toast } from '../components/ui.js
 const STAGE_WIDTH = 2900;
 const STAGE_HEIGHT = 1500;
 const NODE_WIDTH = 220;
-const NODE_HEIGHT = 142;
+const NODE_HEIGHT = 168;
 const DRAG_THRESHOLD = 4;
 const NODE_MEDIA_LABELS = {
   brief: '需求摘要', reference: '参考素材', person: '人物资产', animal: '动物资产', product: '商品资产',
   logo: '品牌标识', prop: '道具资产', scene: '场景资产', story: '剧情内容', shot: '镜头内容',
   keyframe: '关键帧待生成', clip: '视频片段待生成', final: '成片待生成',
 };
+const TEXT_NODE_TYPES = new Set(['brief', 'story', 'shot']);
+
+function firstText(...values) {
+  return values.find(value => typeof value === 'string' && value.trim())?.trim() || '';
+}
+
+function nodeSummary(node = {}) {
+  const detail = node.detail || {};
+  if (node.type === 'brief') return firstText(detail.full_text, detail.brief_text, detail.brief, detail.text, node.subtitle);
+  if (node.type === 'story') return firstText(detail.logline, detail.summary, detail.full_text, node.subtitle);
+  if (node.type === 'shot') return firstText(detail.visual, detail.visual_description, detail.action, detail.full_text, node.subtitle);
+  return firstText(node.subtitle);
+}
+
+function textNodePreview(node = {}) {
+  return `<div class="node-text-preview is-${escapeHtml(node.type || 'text')}">
+    <span>${escapeHtml(NODE_MEDIA_LABELS[node.type] || '文字内容')}</span>
+    <p>${escapeHtml(nodeSummary(node) || '打开节点查看完整内容')}</p>
+  </div>`;
+}
 
 function graphNode(node) {
   const x = Number(node.position?.x || 0);
   const y = Number(node.position?.y || 0);
-  return `<button class="graph-node" type="button" data-node-id="${escapeHtml(node.id)}" style="left:${x}px;top:${y}px">
+  const isTextNode = TEXT_NODE_TYPES.has(node.type);
+  return `<button class="graph-node ${isTextNode && node.media_url ? 'has-text-media' : ''}" type="button" data-node-id="${escapeHtml(node.id)}" style="left:${x}px;top:${y}px">
     <span class="node-dot is-${escapeHtml(node.status || 'ready')}"></span>
-    ${mediaPreview(node, { label: node.title || '节点', width: 360, symbol: NODE_MEDIA_LABELS[node.type] || '内容待生成' })}
-    <b>${escapeHtml(node.title || node.label || '未命名节点')}</b>
-    <small>${escapeHtml(node.subtitle || '')}</small>
+    ${isTextNode && !node.media_url ? textNodePreview(node) : mediaPreview(node, { label: node.title || '节点', width: 360, symbol: NODE_MEDIA_LABELS[node.type] || '内容待生成' })}
+    <b title="${escapeHtml(node.title || node.label || '未命名节点')}">${escapeHtml(node.title || node.label || '未命名节点')}</b>
+    ${isTextNode && node.media_url ? `<small class="node-media-summary">${escapeHtml(nodeSummary(node) || '打开节点查看完整内容')}</small>` : (isTextNode ? '' : `<small>${escapeHtml(node.subtitle || '')}</small>`)}
   </button>`;
 }
 
@@ -52,6 +73,81 @@ function detailRows(detail = {}) {
     .slice(0, 30)
     .map(([key, value]) => `<div class="meta-row"><span>${escapeHtml(key)}</span><b>${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : value)}</b></div>`)
     .join('');
+}
+
+function readableList(items = [], { titleKey = 'title', bodyKeys = [] } = {}) {
+  if (!Array.isArray(items) || !items.length) return '';
+  return `<div class="node-readable-list">${items.map((item, index) => {
+    if (typeof item !== 'object' || item === null) return `<article><b>${index + 1}</b><p>${escapeHtml(item)}</p></article>`;
+    const title = firstText(item[titleKey], item.name, item.label, item.beat_title, item.id) || `第 ${index + 1} 项`;
+    const body = firstText(...bodyKeys.map(key => item[key]), item.content, item.description, item.summary, item.action, item.visual);
+    return `<article><b>${escapeHtml(title)}</b>${body ? `<p>${escapeHtml(body)}</p>` : ''}</article>`;
+  }).join('')}</div>`;
+}
+
+function readableSection(title, body = '') {
+  if (!body) return '';
+  return `<section class="node-readable-section"><h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></section>`;
+}
+
+function structuredNodeDetail(node = {}) {
+  const detail = node.detail || {};
+  if (node.type === 'brief') {
+    const fullText = firstText(detail.full_text, detail.brief_text, detail.brief, detail.text, node.subtitle);
+    return `<div class="node-structured-detail is-brief">
+      ${readableSection('广告目标与完整需求', fullText)}
+      ${readableSection('商品或服务主体', firstText(detail.product_subject, detail.subject))}
+      ${readableSection('创作方向', firstText(detail.creative_direction, detail.direction))}
+    </div>`;
+  }
+  if (node.type === 'story') {
+    const beats = Array.isArray(detail.beats) ? detail.beats : (Array.isArray(detail.story_beats) ? detail.story_beats : []);
+    return `<div class="node-structured-detail is-story">
+      ${readableSection('故事概述', firstText(detail.logline, detail.summary, detail.full_text, node.subtitle))}
+      ${beats.length ? `<section class="node-readable-section"><h3>剧情情节点</h3>${readableList(beats, { bodyKeys: ['content', 'description', 'summary', 'action'] })}</section>` : ''}
+    </div>`;
+  }
+  if (node.type === 'shot') {
+    const bindings = detail.bindings && typeof detail.bindings === 'object' ? detail.bindings : {};
+    const bindingText = [
+      detail.scene_id || bindings.scene_id,
+      detail.camera_id || bindings.camera_id,
+      ...(Array.isArray(detail.character_ids) ? detail.character_ids : (Array.isArray(bindings.character_ids) ? bindings.character_ids : [])),
+    ].filter(Boolean).join(' · ');
+    const dialogueLines = Array.isArray(detail.dialogue_lines) ? detail.dialogue_lines : [];
+    const dialogueText = firstText(detail.voiceover, detail.narration, detail.dialogue);
+    const transition = detail.transition && typeof detail.transition === 'object' ? detail.transition : {};
+    const transitionText = [
+      detail.continuity,
+      typeof detail.transition === 'string' ? detail.transition : '',
+      transition.from ? `承接 ${transition.from}` : '',
+      transition.type,
+      transition.duration ? `${transition.duration} 秒` : '',
+      transition.reason,
+      transition.match_anchor,
+      transition.requires_previous_frame === true ? '需要继承上一镜尾帧' : '',
+    ].filter(Boolean).join(' · ');
+    return `<div class="node-structured-detail is-shot">
+      ${readableSection('画面与动作', firstText(detail.visual, detail.visual_description, detail.action, detail.full_text, node.subtitle))}
+      ${readableSection('旁白 / 台词', dialogueText)}
+      ${dialogueLines.length ? `<section class="node-readable-section"><h3>角色台词</h3>${readableList(dialogueLines, { titleKey: 'speaker', bodyKeys: ['text', 'line', 'dialogue', 'content'] })}</section>` : ''}
+      ${readableSection('镜头目的', firstText(detail.purpose, detail.objective))}
+      ${readableSection('绑定资产', bindingText)}
+      ${readableSection('前后镜衔接', transitionText)}
+    </div>`;
+  }
+  return '';
+}
+
+function remainingDetail(detail = {}, type = '') {
+  const hiddenKeys = new Set(type === 'brief'
+    ? ['full_text', 'brief_text', 'brief', 'text', 'product_subject', 'subject', 'creative_direction', 'direction']
+    : type === 'story'
+      ? ['logline', 'summary', 'full_text', 'beats', 'story_beats']
+      : type === 'shot'
+        ? ['visual', 'visual_description', 'action', 'full_text', 'voiceover', 'narration', 'dialogue', 'dialogue_lines', 'purpose', 'objective', 'bindings', 'character_ids', 'camera_id', 'continuity', 'transition']
+        : []);
+  return Object.fromEntries(Object.entries(detail).filter(([key]) => !hiddenKeys.has(key)));
 }
 
 function clamp(value, min, max) {
@@ -319,9 +415,11 @@ export async function mount(host, context) {
     host.querySelectorAll('[data-node-id]').forEach(item => item.classList.toggle('active', item === button));
     const panel = host.querySelector('[data-node-panel]');
     panel.hidden = false;
-    panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2><p>${escapeHtml(node.subtitle || '')}</p></div><button class="icon-btn" type="button" data-panel-close>×</button></header>
-      ${mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' })}
-      <div class="meta-list">${detailRows(node.detail)}</div>
+    const isTextNode = TEXT_NODE_TYPES.has(node.type);
+    panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="关闭节点详情">×</button></header>
+      ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
+      ${structuredNodeDetail(node)}
+      <div class="meta-list">${detailRows(remainingDetail(node.detail, node.type))}</div>
       ${node.target_route ? '<button class="btn primary panel-route" type="button" data-node-route>打开对应编辑页</button>' : ''}`;
     panel.querySelector('[data-panel-close]').addEventListener('click', () => { panel.hidden = true; });
     panel.querySelector('[data-node-route]')?.addEventListener('click', () => context.navigate(node.target_route));

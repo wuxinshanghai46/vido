@@ -1,6 +1,54 @@
+const crypto = require('crypto');
+
 /** 把任意值整理为安全短文本。 */
 function clean(value = '', max = 200) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/** 工作流详情允许保留正文，但仍设置单字段上限，避免画布接口携带无界提示词。 */
+function detailText(value = '', max = 4000) {
+  return clean(value, max);
+}
+
+function uniqueText(values = [], maxItems = 40, maxLength = 160) {
+  return [...new Set(values.map(value => clean(value, maxLength)).filter(Boolean))].slice(0, maxItems);
+}
+
+function beatDetail(beat = {}, index = 0) {
+  if (typeof beat === 'string') {
+    return { title: `情节 ${index + 1}`, content: detailText(beat, 2400) };
+  }
+  const content = uniqueText([
+    beat.content,
+    beat.summary,
+    beat.description,
+    beat.story,
+    beat.purpose,
+    beat.action,
+    beat.visual,
+    beat.spoken_line,
+    beat.dialogue,
+    beat.voiceover,
+  ], 10, 1200).join('；');
+  return {
+    title: clean(beat.title || beat.name || beat.label || beat.beat_title || `情节 ${index + 1}`, 200),
+    content: detailText(content, 2400),
+  };
+}
+
+function dialogueDetails(value = []) {
+  const rows = Array.isArray(value) ? value : (value ? [value] : []);
+  return rows.slice(0, 6).map((item) => {
+    if (typeof item === 'string') return detailText(item, 200);
+    return {
+      speaker: clean(item?.speaker || item?.character || item?.name, 120),
+      text: detailText(item?.text || item?.line || item?.dialogue || item?.content, 200),
+    };
+  }).filter(item => (typeof item === 'string' ? item : (item.speaker || item.text)));
+}
+
+function stableNodeToken(value = {}) {
+  return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 12);
 }
 
 /** 从媒体对象中提取可展示地址。 */
@@ -58,6 +106,8 @@ function projectGraph(bundle = {}) {
   const firstByGroup = {};
   const lastByGroup = {};
   const groupY = {};
+  const usedNodeIds = new Set();
+  const usedEdgeIds = new Set();
   const columns = {
     input: 60,
     assets: 520,
@@ -69,6 +119,19 @@ function projectGraph(bundle = {}) {
 
   const add = (value) => {
     const current = { ...value };
+    const baseId = clean(current.id, 160) || `${clean(current.type, 60) || 'node'}:${stableNodeToken(current)}`;
+    let resolvedId = baseId;
+    if (usedNodeIds.has(resolvedId)) {
+      const token = stableNodeToken({ ...current, id: undefined });
+      resolvedId = `${baseId}:${token}`;
+      let collision = 2;
+      while (usedNodeIds.has(resolvedId)) {
+        resolvedId = `${baseId}:${token}:${collision}`;
+        collision += 1;
+      }
+    }
+    usedNodeIds.add(resolvedId);
+    current.id = resolvedId;
     const group = current.group;
     const row = groupY[group] || 0;
     current.x = current.x ?? columns[group] ?? 60;
@@ -81,7 +144,10 @@ function projectGraph(bundle = {}) {
   };
   const connect = (source, target, kind) => {
     const value = edge(source, target, kind);
-    if (value) edges.push(value);
+    if (value && !usedEdgeIds.has(value.id)) {
+      usedEdgeIds.add(value.id);
+      edges.push(value);
+    }
   };
 
   let inputRoot = '';
@@ -95,8 +161,10 @@ function projectGraph(bundle = {}) {
       status: 'confirmed',
       target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=brief`,
       detail: {
-        ratio: bundle.brief.output_ratio || '',
+        full_text: detailText(bundle.brief.text, 5000),
+        product_subject: detailText(bundle.brief.product_subject, 800),
         duration: bundle.brief.target_duration || 0,
+        ratio: clean(bundle.brief.output_ratio, 30),
       },
     });
   }
@@ -162,17 +230,33 @@ function projectGraph(bundle = {}) {
       status: 'ready',
       target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=plot`,
       detail: {
-        beats: Array.isArray(blueprint.beats) ? blueprint.beats.length : 0,
-        revision: blueprint.revision || 0,
+        logline: detailText(blueprint.logline, 2400),
+        summary: detailText(blueprint.summary || blueprint.synopsis || blueprint.story_summary, 2400),
+        beats: (Array.isArray(blueprint.beats) ? blueprint.beats : []).slice(0, 40).map(beatDetail),
       },
     });
     (assetNodes.length ? assetNodes : [inputRoot]).filter(Boolean).forEach(source => connect(source, storyId, 'informs'));
   }
 
   const shots = Array.isArray(bundle.storyboard?.shots) ? bundle.storyboard.shots : [];
+  const sketches = Array.isArray(bundle.storyboard?.sketches) ? bundle.storyboard.sketches : [];
   const shotIds = [];
   shots.forEach((shot, index) => {
     const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
+    const shotStableId = clean(shot.shot_id || shot.id, 120);
+    const sketch = sketches.find((item, sketchIndex) => {
+      const sketchStableId = clean(item.shot_id || item.source_shot_id, 120);
+      if (shotStableId && sketchStableId) return shotStableId === sketchStableId;
+      const sketchShotIndex = Number(item.shot_index || item.index || sketchIndex + 1) || sketchIndex + 1;
+      return sketchShotIndex === shotIndex;
+    });
+    const characterIds = uniqueText([
+      ...(Array.isArray(shot.character_ids) ? shot.character_ids : []),
+      ...(Array.isArray(shot.person_ids) ? shot.person_ids : []),
+      ...(Array.isArray(shot.characters) ? shot.characters.map(item => (
+        typeof item === 'string' ? item : (item?.id || item?.character_id || item?.person_id)
+      )) : []),
+    ], 40, 120);
     const shotId = add({
       id: `shot:${shotIndex}`,
       type: 'shot',
@@ -180,12 +264,28 @@ function projectGraph(bundle = {}) {
       title: shot.title || `镜头 ${shotIndex}`,
       subtitle: shot.visual || shot.visual_description || shot.action || '',
       status: shot.status || 'ready',
+      media: sketch || '',
       target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=shot&shot=${shotIndex}`,
       detail: {
-        index: shotIndex,
+        visual: detailText(shot.visual || shot.visual_description || shot.story_visual, 1000),
+        action: detailText(shot.action || shot.visual_action || shot.action_start, 500),
+        narration: detailText(shot.narration || shot.voiceover || shot.blueprint_spoken_line || shot.subtitle, 400),
+        dialogue_lines: dialogueDetails(shot.dialogue_lines || shot.dialogue || []),
+        purpose: detailText(shot.purpose || shot.objective || shot.role, 250),
+        bindings: {
+          scene_id: clean(shot.scene_id || shot.scene_asset_id, 120),
+          camera_id: clean(shot.camera_id, 120),
+          character_ids: characterIds,
+        },
         duration: Number(shot.duration || shot.duration_sec || 0) || 0,
-        scene_id: shot.scene_id || shot.scene_asset_id || '',
-        transition_from: shot.transition_from || '',
+        transition: {
+          from: clean(shot.transition_from, 120),
+          type: clean(shot.transition_type, 120),
+          duration: Number(shot.transition_duration_sec || 0) || 0,
+          reason: detailText(shot.transition_reason, 200),
+          match_anchor: detailText(shot.transition_match_anchor, 150),
+          requires_previous_frame: shot.requires_previous_frame === true,
+        },
       },
     });
     shotIds.push(shotId);
@@ -208,10 +308,33 @@ function projectGraph(bundle = {}) {
 
   const keyframes = Array.isArray(bundle.generation?.keyframes) ? bundle.generation.keyframes : [];
   const mediaIds = [];
+  const usedKeyframeIds = new Set();
+  const keyframeIdsByShot = new Map();
   keyframes.forEach((frame, index) => {
     const shotIndex = Number(frame.shot_index || frame.index || index + 1) || index + 1;
+    const baseId = `keyframe:${shotIndex}`;
+    let requestedId = baseId;
+    if (usedKeyframeIds.has(requestedId)) {
+      const naturalToken = clean(
+        frame.id || frame.keyframe_id || frame.generation_id || frame.selected_candidate_id || frame.candidate_id,
+        80,
+      ).replace(/[^a-z0-9_-]+/ig, '-');
+      const token = naturalToken || stableNodeToken({
+        shot_index: shotIndex,
+        status: frame.status || frame.current_generation_status || '',
+        media: mediaUrl(frame),
+        candidate: frame.selected_candidate_id || frame.candidate_id || '',
+      });
+      requestedId = `${baseId}:${token}`;
+      let collision = 2;
+      while (usedKeyframeIds.has(requestedId)) {
+        requestedId = `${baseId}:${token}:${collision}`;
+        collision += 1;
+      }
+    }
+    usedKeyframeIds.add(requestedId);
     const frameId = add({
-      id: `keyframe:${shotIndex}`,
+      id: requestedId,
       type: 'keyframe',
       group: 'media',
       title: `镜头 ${shotIndex} 关键帧`,
@@ -222,6 +345,8 @@ function projectGraph(bundle = {}) {
       detail: { candidate_id: frame.selected_candidate_id || '' },
     });
     mediaIds.push(frameId);
+    if (!keyframeIdsByShot.has(shotIndex)) keyframeIdsByShot.set(shotIndex, []);
+    keyframeIdsByShot.get(shotIndex).push(frameId);
     connect(`shot:${shotIndex}`, frameId, 'renders');
   });
 
@@ -240,7 +365,7 @@ function projectGraph(bundle = {}) {
       detail: { duration: Number(clip.duration || clip.duration_sec || 0) || 0 },
     });
     mediaIds.push(clipId);
-    const source = nodes.some(item => item.id === `keyframe:${shotIndex}`) ? `keyframe:${shotIndex}` : `shot:${shotIndex}`;
+    const source = keyframeIdsByShot.get(shotIndex)?.[0] || `shot:${shotIndex}`;
     connect(source, clipId, 'animates');
   });
 
@@ -274,7 +399,7 @@ function projectGraph(bundle = {}) {
     const minX = Math.min(...grouped.map(item => item.position.x));
     const minY = Math.min(...grouped.map(item => item.position.y));
     const maxX = Math.max(...grouped.map(item => item.position.x + 220));
-    const maxY = Math.max(...grouped.map(item => item.position.y + 142));
+    const maxY = Math.max(...grouped.map(item => item.position.y + 168));
     return {
       id,
       label,
