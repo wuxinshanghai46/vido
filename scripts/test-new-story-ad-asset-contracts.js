@@ -25,11 +25,11 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
   assert.strictEqual(referenceSet.rejected.length, 1);
   assert.strictEqual(referenceSet.duplicates.length, 1);
 
-  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master'] }).selected, 'single_view');
-  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master', 'reverse'] }).selected, 'image_derived');
+  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master'] }).selected, 'atlas_2x2');
+  assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requiredViews: ['master', 'reverse'] }).selected, 'atlas_2x2');
   assert.strictEqual(sceneViewStrategy.resolveSceneViewStrategy({ requested: '360', requiredViews: ['master', 'reverse'], videoAcquisitionEnabled: true }).selected, 'orbit_extract');
   const disabledOrbit = sceneViewStrategy.resolveSceneViewStrategy({ requested: 'orbit', requiredViews: ['master', 'reverse'], videoAcquisitionEnabled: false });
-  assert.strictEqual(disabledOrbit.selected, 'image_derived');
+  assert.strictEqual(disabledOrbit.selected, 'atlas_2x2');
   assert.strictEqual(disabledOrbit.fallback_reason, 'video_acquisition_not_enabled');
 
   const personContract = await person.verifyPersonAsset({
@@ -191,16 +191,20 @@ const personAsset = { id: 'person-any-task', actor_id: 'person-any-task', view_i
   assert.strictEqual(product.isProductAsset({ type: 'reference', name: '包装参考图', url: 'https://example.com/package.png' }), true);
 
   const verifiedContract = {
-    schema_version: 3,
+    schema_version: 6,
     status: 'verified',
     requirement_qa: { pass: true },
     cross_view_qa: { pass: true },
     spatial_coverage_qa: { pass: true },
+    camera_design_qa: { pass: true },
+    photographic_realism_qa: { pass: true },
     layout_contract: { status: 'available' },
   };
+  const completeSceneViews = id => ['master', 'reverse', 'interaction', 'detail', 'layout']
+    .map(key => ({ key, url: `https://example.com/${id}-${key}.png` }));
   const sceneAssets = [
-    { id: 'scene-a', scene_id: 'scene-a', scene_revision: 1, view_images: [{ key: 'layout', url: 'https://example.com/scene-a-layout.png' }], scene_contract: verifiedContract },
-    { id: 'scene-b', scene_id: 'scene-b', scene_revision: 2, view_images: [{ key: 'layout', url: 'https://example.com/scene-b-layout.png' }], scene_contract: verifiedContract },
+    { id: 'scene-a', scene_id: 'scene-a', scene_revision: 1, view_images: completeSceneViews('scene-a'), scene_contract: verifiedContract },
+    { id: 'scene-b', scene_id: 'scene-b', scene_revision: 2, view_images: completeSceneViews('scene-b'), scene_contract: verifiedContract },
   ];
   assert.doesNotThrow(() => scenes.assertVerifiedSceneAssets(sceneAssets));
   assert.throws(

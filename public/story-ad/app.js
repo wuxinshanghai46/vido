@@ -1,5 +1,5 @@
-import { createProjectStore } from './store/projectStore.js';
-import { escapeHtml, formatDate, generationProgressPanel, setButtonBusy, statusView, toast } from './components/ui.js';
+import { createProjectStore } from './store/projectStore.js?v=20260803-auto-completion-r30';
+import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-auto-completion-r30';
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,19 +14,19 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260801-interaction-r6'),
-  assets: () => import('./views/assetCenterView.js?v=20260801-interaction-r6'),
-  plot: () => import('./views/plotRoomView.js?v=20260801-interaction-r6'),
-  storyboard: () => import('./views/storyboardView.js?v=20260801-interaction-r6'),
-  shot: () => import('./views/shotDesignerView.js?v=20260801-interaction-r6'),
-  final: () => import('./views/finalView.js?v=20260801-interaction-r6'),
-  workflow: () => import('./views/workflowView.js?v=20260801-interaction-r6'),
+  brief: () => import('./views/briefView.js?v=20260803-auto-completion-r30'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-auto-completion-r30'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-auto-completion-r30'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-auto-completion-r30'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-auto-completion-r30'),
+  final: () => import('./views/finalView.js?v=20260803-auto-completion-r30'),
+  workflow: () => import('./views/workflowView.js?v=20260803-auto-completion-r30'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
 let observedGenerationCompletionSeq = 0;
+setInterval(() => refreshElapsedLabels(document), 1000);
 
-/** 平台统一顶栏：任务中心和项目工作区只传上下文，不再各自维护一套头部。 */
 function platformTopbar({ project = null, saving = false, isNew = false } = {}) {
   return `<header class="platform-topbar ${project ? 'project-topbar' : ''}">
     <button class="platform-brand" type="button" data-workbench aria-label="返回 VIDO 工作台"><span>V</span><b>VIDO</b></button>
@@ -40,7 +40,6 @@ function platformTopbar({ project = null, saving = false, isNew = false } = {}) 
   </header>`;
 }
 
-/** 读取当前独立模块路由。 */
 function currentRoute() {
   const match = location.pathname.match(/^\/story-ad\/projects\/([^/]+)$/);
   const params = new URLSearchParams(location.search);
@@ -54,13 +53,11 @@ function currentRoute() {
   };
 }
 
-/** 使用 History API 切换模块内部路由。 */
 function navigate(path, options = {}) {
   history[options.replace ? 'replaceState' : 'pushState']({}, '', path);
   renderRoute().catch(showFatal);
 }
 
-/** 应用平台主题，独立模块不维护第二套主题名。 */
 function applyTheme(theme, options = {}) {
   const platformTheme = window.vidoTheme?.normalize
     ? window.vidoTheme.normalize(theme)
@@ -77,7 +74,6 @@ function applyTheme(theme, options = {}) {
   });
 }
 
-/** 返回任务中心统计卡。 */
 function statCards(stats = {}) {
   return [
     ['进行中的项目', stats.running || 0, '需要继续制作或正在生成'],
@@ -92,7 +88,6 @@ function statCards(stats = {}) {
     </article>`).join('');
 }
 
-/** 渲染独立剧情广告任务中心。 */
 function renderCenter() {
   const { projects, stats, loading, error } = store.state;
   const visibleProjects = projects.filter(project => {
@@ -147,9 +142,9 @@ function renderCenter() {
   applyTheme(localStorage.getItem('vido-theme') || 'purple');
 }
 
-/** 返回项目左侧工作区导航。 */
 function projectNavigation(bundle, active) {
   const counts = bundle?.navigation?.counts || {};
+  const steps = bundle?.navigation?.steps || {};
   const countFor = view => ({
     assets: counts.assets,
     storyboard: counts.shots,
@@ -159,13 +154,13 @@ function projectNavigation(bundle, active) {
   return VIEW_ORDER.map(view => {
     const [number, label] = VIEW_META[view];
     const count = countFor(view);
-    return `<button class="workspace-nav ${view === active ? 'active' : ''} ${view === 'workflow' ? 'workflow' : ''}" type="button" data-view="${view}" ${view === active ? 'aria-current="page"' : ''}>
-      <span class="nav-number">${number}</span><span>${escapeHtml(label)}</span>${Number.isFinite(Number(count)) ? `<small>${Number(count) || 0}</small>` : ''}
+    const state = steps[view] || { enabled: true, completed: false, blocker: '' };
+    return `<button class="workspace-nav ${view === active ? 'active' : ''} ${view === 'workflow' ? 'workflow' : ''} ${state.completed ? 'is-complete' : ''} ${state.enabled === false ? 'is-locked' : ''}" type="button" data-view="${view}" aria-disabled="${state.enabled === false ? 'true' : 'false'}" title="${escapeHtml(state.blocker || '')}" ${view === active ? 'aria-current="page"' : ''}>
+      <span class="nav-number">${state.completed ? '✓' : number}</span><span>${escapeHtml(label)}</span>${Number.isFinite(Number(count)) ? `<small>${Number(count) || 0}</small>` : ''}
     </button>`;
   }).join('');
 }
 
-/** 生成项目工作区壳，内容视图按需加载。 */
 function renderProjectShell(route) {
   const bundle = store.state.bundle;
   const project = bundle?.project || {};
@@ -178,7 +173,7 @@ function renderProjectShell(route) {
         <nav>${projectNavigation(bundle, route.view)}</nav>
         ${!route.isNew ? `<div class="side-divider"></div>
           <div class="side-label">当前项目</div>
-          <div class="side-metric"><b>${Number(counts.assets) || 0}</b><span>人物 / 动物 / 商品 / 场景</span></div>
+          <div class="side-metric"><b>${Number(counts.assets) || 0}</b><span>已生成 / 已上传资产</span></div>
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">
@@ -199,7 +194,6 @@ function syncControlSemantics(scope = document) {
   });
 }
 
-/** 按当前路由异步加载一个工作区。 */
 async function mountView(route) {
   activeViewCleanup?.();
   activeViewCleanup = null;
@@ -225,7 +219,6 @@ async function mountView(route) {
   }
 }
 
-/** 渲染当前浏览器路由。 */
 async function renderRoute() {
   const route = currentRoute();
   activeViewCleanup?.();
@@ -244,12 +237,20 @@ async function renderRoute() {
     app.innerHTML = '<div class="app-loading"><div class="loading-mark">剧</div><div><b>正在读取项目</b><span>只加载当前项目的统一数据包…</span></div></div>';
     await store.loadBundle(route.taskId, 'all');
   }
+  const routeStep = store.state.bundle?.navigation?.steps?.[route.view];
+  if (!route.isNew && routeStep?.enabled === false) {
+    const fallback = [...VIEW_ORDER].reverse().find(view => view !== 'workflow'
+      && store.state.bundle?.navigation?.steps?.[view]?.enabled !== false
+      && VIEW_ORDER.indexOf(view) < VIEW_ORDER.indexOf(route.view)) || 'brief';
+    toast(routeStep.blocker || '请先完成上一个制作环节。', 'warning');
+    navigate(`/story-ad/projects/${encodeURIComponent(route.taskId)}?view=${encodeURIComponent(fallback)}`, { replace: true });
+    return;
+  }
   renderProjectShell(route);
   await mountView(route);
   store.syncProgressPolling();
 }
 
-/** 展示路由级错误。 */
 function showFatal(error) {
   app.innerHTML = `<div class="fatal-error"><b>页面没有打开</b><span>${escapeHtml(error.message || error)}</span><button class="btn" type="button" data-center>返回任务中心</button></div>`;
 }
@@ -282,6 +283,11 @@ document.addEventListener('click', event => {
     const route = currentRoute();
     if (route.isNew && target.dataset.view !== 'brief') {
       toast('先填写目标并创建项目，再进入其他工作区。', 'warning');
+      return;
+    }
+    const step = store.state.bundle?.navigation?.steps?.[target.dataset.view];
+    if (step?.enabled === false) {
+      toast(step.blocker || '请先完成上一个制作环节。', 'warning');
       return;
     }
     navigate(`/story-ad/projects/${encodeURIComponent(route.taskId)}?view=${encodeURIComponent(target.dataset.view)}`);

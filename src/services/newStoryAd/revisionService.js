@@ -23,6 +23,7 @@ function domainSlices(ctx = {}) {
       shot_count: ctx.shot_count,
       output_ratio: ctx.output_ratio,
       visible_text_policy: ctx.visible_text_policy,
+      reference_analysis_id: ctx.reference_video_analysis?.analysis_id || ctx.reference_video_analysis?.id || '',
     },
     creative: {
       production_mode: ctx.production_mode,
@@ -34,6 +35,7 @@ function domainSlices(ctx = {}) {
     },
     product: {
       product_subject: ctx.product_subject,
+      product_presentation: ctx.product_presentation,
       assets: ctx.assets,
       product_contract: ctx.product_contract,
       product_control: ctx.controlled_production?.product_control,
@@ -157,13 +159,13 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
 function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
   const scopes = Array.isArray(scope) ? scope : (scope && scope !== 'none' ? [scope] : []);
   const graph = {
-    source: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    product: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    scene: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
-    person: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    creative: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    blueprint: ['storyboard_table', 'storyboard_meta', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
-    storyboard: ['keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    source: ['asset_plan', 'scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    product: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    scene: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    person: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    creative: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    blueprint: ['storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    storyboard: ['storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     voice: ['tts_audio', 'final_video'],
     compose: ['final_video'],
   };

@@ -13,6 +13,7 @@ const sceneBinding = require('./sceneBindingService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAtlas = require('./sceneAtlasService');
 const blueprintQuality = require('./blueprintQualityService'), sceneStructuredContract = require('./sceneStructuredContractService');
+const generationSpecCompletion = require('./generationSpecCompletionService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -978,6 +979,39 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     context: baseCtx,
     body,
   });
+  const sceneCompletion = await generationSpecCompletion.completeSceneSpec({
+    taskId,
+    brief: baseCtx.brief || task.request?.brief || '',
+    productSubject: baseCtx.product_subject || task.request?.product_subject || '',
+    sceneId: target.scene_id,
+    sceneName: target.space?.name || body.name || '',
+    sceneSpec: target.scene_spec,
+  });
+  if (sceneCompletion.changed) {
+    target.scene_spec = sceneCompletion.scene_spec;
+    const targetIndex = Array.isArray(target.scene_plan?.spaces)
+      ? target.scene_plan.spaces.findIndex(space => String(space.id || space.space_id || space.scene_id) === String(target.scene_id))
+      : -1;
+    if (targetIndex >= 0) {
+      target.scene_plan.spaces[targetIndex] = {
+        ...target.scene_plan.spaces[targetIndex],
+        description: sceneDescriptionForSpec(sceneCompletion.scene_spec, target.scene_plan.spaces[targetIndex].description),
+        scene_spec: sceneCompletion.scene_spec,
+      };
+    }
+    storage.saveOutput(taskId, 'scene_config', target.scene_plan);
+    const completedCtx = {
+      ...baseCtx,
+      scene_mode: target.scene_plan.scene_mode,
+      scene_spec: target.multi_scene ? baseCtx.scene_spec : sceneCompletion.scene_spec,
+      generation_input_completion: {
+        ...(baseCtx.generation_input_completion || {}),
+        scene: { checkpoint_kind: sceneCompletion.checkpoint_kind, scene_id: target.scene_id, updated_at: new Date().toISOString() },
+      },
+    };
+    storage.saveOutput(taskId, 'context', completedCtx);
+    storage.updateTask(taskId, { request: completedCtx, updated_at: new Date().toISOString() });
+  }
   if (target.submitted_scene_spec_used) {
     const targetIndex = Array.isArray(target.scene_plan?.spaces)
       ? target.scene_plan.spaces.findIndex(space => String(space.id || space.space_id || space.scene_id) === String(target.scene_id))

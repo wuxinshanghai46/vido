@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const shotDesign = require('./shotDesignService');
 const subjectProfileText = require('./subjectProfileTextService');
 const referenceEvidenceText = require('./referenceEvidenceTextService');
+const benchmarkStrategy = require('./benchmarkStrategyService');
+const productAssetResolver = require('./productAssetResolverService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -33,13 +35,14 @@ function normalizeReferenceVideoAnalysis(input = null) {
     ? input.story_outline
     : {};
   const plotBeats = Array.isArray(input.plot_beats) ? input.plot_beats.slice(0, 24) : [];
-  const scenePrompts = Array.isArray(input.scene_prompts) ? input.scene_prompts.slice(0, 12) : [];
+  const scenePrompts = Array.isArray(input.scene_prompts) ? input.scene_prompts.slice(0, 120) : [];
   const cameraIntents = Array.isArray(input.camera_intents) ? input.camera_intents.slice(0, 24) : [];
   const rawSource = input.source && typeof input.source === 'object' ? input.source : {};
   const rawMetadata = rawSource.metadata && typeof rawSource.metadata === 'object' ? rawSource.metadata : {};
   const rawError = input.error && typeof input.error === 'object' ? input.error : {};
   if (status === 'completed' && (
     quality.valid !== true
+    || (Number(input.schema_version || 0) >= 5 && quality.visual_evidence_complete !== true)
     || !cleanText(sourceFacts.product_or_service || '', 200)
     || !cleanText(sourceFacts.environment || '', 300)
     || !plotBeats.length
@@ -54,8 +57,18 @@ function normalizeReferenceVideoAnalysis(input = null) {
     throw error;
   }
   return {
+    schema_version: Math.max(0, Number(input.schema_version || 0) || 0),
     analysis_id: cleanText(input.analysis_id || '', 100),
     status,
+    created_at: cleanText(input.created_at || '', 60),
+    started_at: cleanText(input.started_at || '', 60),
+    updated_at: cleanText(input.updated_at || '', 60),
+    completed_at: cleanText(input.completed_at || '', 60),
+    failed_at: cleanText(input.failed_at || '', 60),
+    cancelled_at: cleanText(input.cancelled_at || '', 60),
+    progress: Math.max(0, Math.min(100, Number(input.progress || 0) || 0)),
+    phase: cleanText(input.phase || '', 240),
+    checkpoints: Array.isArray(input.checkpoints) ? input.checkpoints.slice(-12) : [],
     source: {
       original_name: cleanText(rawSource.original_name || '', 240),
       size_bytes: Math.max(0, Number(rawSource.size_bytes || 0) || 0),
@@ -69,9 +82,20 @@ function normalizeReferenceVideoAnalysis(input = null) {
     error: cleanText(rawError.code || '', 100)
       ? {
           code: cleanText(rawError.code || '', 100),
+          message: cleanText(rawError.message || '', 500),
           retryable: rawError.retryable === true,
+          retry_after_ms: Math.max(0, Number(rawError.retry_after_ms || 0) || 0),
+          failures: Array.isArray(rawError.failures)
+            ? rawError.failures.slice(0, 20).map(item => cleanText(item, 100)).filter(Boolean)
+            : [],
         }
       : null,
+    evidence_batch_progress: {
+      total: Math.max(0, Number(input.evidence_batch_progress?.total || 0) || 0),
+      completed: Math.max(0, Number(input.evidence_batch_progress?.completed || 0) || 0),
+      remaining: Math.max(0, Number(input.evidence_batch_progress?.remaining || 0) || 0),
+      failed: Math.max(0, Number(input.evidence_batch_progress?.failed || 0) || 0),
+    },
     analysis_scope: cleanText(input.analysis_scope || 'reference_content_and_creative_structure', 80),
     generated_brief: cleanMultilineText(input.generated_brief || '', 4000),
     source_facts: sourceFacts,
@@ -82,6 +106,9 @@ function normalizeReferenceVideoAnalysis(input = null) {
     scene_prompts: scenePrompts,
     camera_intents: cameraIntents,
     character_actions: Array.isArray(input.character_actions) ? input.character_actions.slice(0, 24) : [],
+    animal_actions: Array.isArray(input.animal_actions) ? input.animal_actions.slice(0, 48) : [],
+    animal_prompts: Array.isArray(input.animal_prompts) ? input.animal_prompts.slice(0, 24) : [],
+    shot_breakdown: Array.isArray(input.shot_breakdown) ? input.shot_breakdown.slice(0, 120) : [],
     prompt_suggestions: input.prompt_suggestions && typeof input.prompt_suggestions === 'object'
       ? input.prompt_suggestions
       : {},
@@ -386,6 +413,20 @@ function normalizeSceneSpec(input = {}) {
     actor: cleanText(route?.actor, 120),
     continuity: cleanText(route?.continuity || route?.rule, 220),
   }));
+  const cameraPlan = (Array.isArray(raw.cameraPlan || raw.camera_plan)
+    ? (raw.cameraPlan || raw.camera_plan)
+    : []).slice(0, 24).map((camera, index) => ({
+    id: cleanText(camera?.id || camera?.camera_id || `camera_${index + 1}`, 100),
+    label: cleanText(camera?.label || camera?.name || `机位 ${index + 1}`, 100),
+    zone: cleanText(camera?.zone || camera?.zone_id, 120),
+    framing: cleanText(camera?.framing || camera?.shot_size, 100),
+    lens: cleanText(camera?.lens || camera?.lens_class || camera?.focal_length, 100),
+    movement: cleanText(camera?.movement || camera?.camera_movement || camera?.move, 300),
+    start_state: cleanText(camera?.start_state || camera?.start, 220),
+    end_state: cleanText(camera?.end_state || camera?.end, 220),
+    duration: Math.max(0, Math.min(60, Number(camera?.duration || camera?.duration_sec || 0) || 0)),
+    notes: cleanText(camera?.notes || camera?.purpose, 260),
+  }));
   const surfaceTopology = shotDesign.reconcileSceneSurfaceTopology(
     raw.surfaceTopology || raw.surface_topology,
     [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
@@ -399,6 +440,7 @@ function normalizeSceneSpec(input = {}) {
     storyStates,
     interactionAnchors,
     routes,
+    cameraPlan,
     surfaceTopology,
     materialContract: shotDesign.normalizeMaterialContract(raw.materialContract || raw.material_contract, {
       sourceText: materialLightText,
@@ -459,6 +501,7 @@ function normalizePersonDossierFields(input = {}) {
     identity_views: normalizePersonDossierRows(input.identity_views),
     expressions: normalizePersonDossierRows(input.expressions),
     base_actions: normalizePersonDossierRows(input.base_actions),
+    accessory_details: normalizePersonDossierRows(input.accessory_details || input.accessoryDetails),
     generation_summary: input.generation_summary && typeof input.generation_summary === 'object'
       ? {
           planned_provider_calls: Math.max(0, Number(input.generation_summary.planned_provider_calls || 0) || 0),
@@ -515,6 +558,10 @@ function normalizePersonAsset(input = null) {
       id: cleanText(member?.id || member?.actor_asset_id || `cast_${idx + 1}`, 120),
       actor_asset_id: cleanText(member?.actor_asset_id || member?.id || '', 120),
       actor_id: cleanText(member?.actor_id || '', 120),
+      deyunai_asset_id: cleanText(member?.deyunai_asset_id || member?.deyunaiAssetId || '', 160),
+      deyunai_asset_status: cleanText(member?.deyunai_asset_status || member?.deyunaiAssetStatus || '', 40),
+      deyunai_asset_group_id: cleanText(member?.deyunai_asset_group_id || member?.deyunaiAssetGroupId || '', 160),
+      deyunai_asset_group_type: cleanText(member?.deyunai_asset_group_type || member?.deyunaiAssetGroupType || '', 40),
       image_url: cleanText(member?.image_url || member?.url || '', 1000),
       ...normalizePersonDossierFields(member),
       extra_image_urls: Array.isArray(member?.extra_image_urls) ? member.extra_image_urls.map(x => cleanText(x, 1000)).filter(Boolean).slice(0, 6) : [],
@@ -918,7 +965,18 @@ function buildContext(body = {}, user = {}) {
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
     project_name: cleanText(body.project_name || body.projectName || '', 120),
     brief,
-    product_subject: productSubject || inferSubjectFromBrief(brief),
+    brief_source: ['user', 'reference_analysis', 'system'].includes(cleanText(body.brief_source || body.briefSource || '', 40))
+      ? cleanText(body.brief_source || body.briefSource, 40)
+      : '',
+    product_subject: productAssetResolver.inferredSubject({ product_subject: productSubject || inferSubjectFromBrief(brief), brief, reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis }),
+    product_presentation: productAssetResolver.productPresentation({
+      product_subject: productSubject || inferSubjectFromBrief(brief),
+      brief,
+      product_asset: body.product_asset || body.productAsset,
+      assets,
+      product_presentation: body.product_presentation || body.productPresentation,
+      reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
+    }),
     target_duration: targetDuration,
     duration_source: durationContract.source,
     shot_count: shotCount,
@@ -927,6 +985,8 @@ function buildContext(body = {}, user = {}) {
     visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
+    asset_setup_confirmed: body.asset_setup_confirmed === true || body.assetSetupConfirmed === true,
+    shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true,
     voice_id: voiceId,
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
     include_voiceover: includeVoiceover,
@@ -957,6 +1017,7 @@ function buildContext(body = {}, user = {}) {
     forbidden,
     controlled_production: controlledProduction,
     creative_direction: creativeDirection,
+    benchmark_strategy: benchmarkStrategy.normalize(body.benchmark_strategy || body.benchmarkStrategy),
     person_spec: noHuman ? { castMode: 'no_human' } : normalizedPersonSpec,
     person_asset: noHuman || animalOnly ? null : personAsset,
     person_contract: noHuman || animalOnly ? null : (body.person_contract && typeof body.person_contract === 'object'
@@ -1108,17 +1169,20 @@ function referenceVideoAnalysisPrompt(reference = null) {
     character_prompts: reference.character_prompts || [],
     scene_prompts: reference.scene_prompts || [],
     character_actions: reference.character_actions || [],
+    animal_actions: reference.animal_actions || [],
+    animal_prompts: reference.animal_prompts || [],
+    shot_breakdown: reference.shot_breakdown || [],
     camera_intents: reference.camera_intents || [],
     prompt_suggestions: reference.prompt_suggestions || {},
     scene_view_mapping: reference.scene_view_mapping || null,
   };
   return [
-    '参考视频内容与原创改写合同：已完成有效分析，以下可见产品、真实空间、核心材质、完整剧情、人物提示词、动作和机位运镜必须作为场景、剧情与剧本生成的显式参考。',
+    '参考视频内容与原创改写合同：已完成有效分析，以下可见产品、真实空间、核心材质、完整剧情、人物/动物提示词、真实动作、逐镜拆解和机位运镜必须作为场景、剧情与剧本生成的显式参考。',
     `结构化分析：${JSON.stringify(digest)}`,
     '用户当前“广告需求”文本是可编辑权威版本；若用户已经修改了分析成稿，必须以当前广告需求、人物档案、场景配置和已确认资产为准，结构化分析只补充未冲突的细节。',
     '人物提示词只能用于重新设计当前任务的原创角色，禁止复制参考视频人物身份、肖像、原片服装或私密属性。',
     '除非用户明确修改，场景与剧情必须保留 source_facts 中的产品类别、物理空间、材质、布局、人物动作和时间顺序；只能移除未授权品牌标识、水印或身份信息，禁止借“原创改写”把参考内容替换成无证据行业或房间。',
-    '后续输出必须让完整剧情、逐角色设定、逐场景设定、人物动作和机位运镜能够在剧本/分镜字段中被核对，不得只写一句“参考原片风格”。',
+    '后续输出必须让完整剧情、逐角色/动物设定、逐场景设定、人物/动物动作、shot_breakdown 的顺序与时间范围、场景/主体绑定、景别、角度、运镜和时长能够在剧本/分镜字段中被核对，不得只写一句“参考原片风格”。',
   ].join('\n');
 }
 
@@ -1126,6 +1190,7 @@ function contextPrompt(ctx) {
   return [
     `广告需求：${ctx.brief}`,
     `广告主体：${ctx.product_subject}`,
+    ctx.product_presentation ? `主体展示方式：${ctx.product_presentation.label || ctx.product_presentation.mode}；${ctx.product_presentation.description || ''}` : '',
     `目标时长：${ctx.target_duration} 秒`,
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
@@ -1162,6 +1227,7 @@ function contextPrompt(ctx) {
       JSON.stringify(ctx.creative_direction),
       'required=true 的动作、表情和台词是硬约束；动作必须绑定当前人物、场景或商品，禁止擅自新增未确认实体。',
     ].join('\n') : '用户剧情与表演合同：未填写，由系统在已确认业务事实和资产范围内创作。',
+    benchmarkStrategy.promptBlock(ctx),
     ctx.controlled_production?.enabled ? `高级设置：${JSON.stringify(ctx.controlled_production)}` : '高级设置：未启用',
     controlledProductionPrompt(ctx.controlled_production),
     ctx.person_asset ? `Locked real actor/person asset: ${JSON.stringify(ctx.person_asset)}` : '',

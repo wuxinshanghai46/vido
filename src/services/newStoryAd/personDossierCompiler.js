@@ -4,11 +4,19 @@ const mediaAdapterDefault = require('./mediaAdapter');
 const checkpointServiceDefault = require('./assetGenerationCheckpointService');
 const concurrencyDefault = require('./generationConcurrencyService');
 
-const PERSON_DOSSIER_SCHEMA_VERSION = 2;
+const PERSON_DOSSIER_SCHEMA_VERSION = 3;
 const BODY_VIEWS = ['front', 'three_quarter', 'side', 'back'];
 const IDENTITY_VIEWS = ['face_front', 'face_three_quarter', 'face_profile', 'hair_back'];
 const EXPRESSIONS = ['neutral', 'natural_smile', 'focused', 'doubtful', 'surprised', 'relaxed_approved'];
-const BASE_ACTIONS = ['neutral_stand', 'natural_walk', 'present_product'];
+const BASE_ACTIONS = [
+  'neutral_stand',
+  'natural_walk',
+  'sit_and_rise',
+  'reach_and_hold',
+  'present_product',
+  'interact_with_prop',
+];
+const EXPECTED_ATOMIC_COUNT = BODY_VIEWS.length + IDENTITY_VIEWS.length + EXPRESSIONS.length + BASE_ACTIONS.length;
 
 const CATEGORY_SPECS = [
   {
@@ -45,11 +53,11 @@ const CATEGORY_SPECS = [
     kind: 'action',
     keys: BASE_ACTIONS,
     columns: 3,
-    rows: 1,
-    aspectRatio: '3:1',
+    rows: 2,
+    aspectRatio: '3:2',
     outputWidth: 768,
     outputHeight: 1024,
-    instruction: 'Three full-body actions: neutral standing, natural walking, presenting a generic product-sized object with clear hands.',
+    instruction: 'Six full-body action references: neutral standing, natural walking, sitting or rising, reaching and holding, presenting a product-sized object, and interacting with a role-appropriate prop. Hands, feet, weight transfer and object contact must be physically clear.',
   },
 ];
 
@@ -233,8 +241,8 @@ async function compilePersonDossier(options = {}, deps = {}) {
   );
   const categories = generated.map(item => item.result);
   const atomicAssets = categories.flatMap(item => item.atomic_assets);
-  if (atomicAssets.length !== 17) {
-    const error = new Error(`人物档案原子资产不完整：期望17项，实际${atomicAssets.length}项`);
+  if (atomicAssets.length !== EXPECTED_ATOMIC_COUNT) {
+    const error = new Error(`人物档案原子资产不完整：期望${EXPECTED_ATOMIC_COUNT}项，实际${atomicAssets.length}项`);
     error.code = 'PERSON_DOSSIER_ATOMIC_COUNT_INVALID';
     throw error;
   }
@@ -263,6 +271,7 @@ module.exports = {
   IDENTITY_VIEWS,
   EXPRESSIONS,
   BASE_ACTIONS,
+  EXPECTED_ATOMIC_COUNT,
   CATEGORY_SPECS,
   compactAssetToken,
   personAtlasFilename,

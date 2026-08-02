@@ -12,6 +12,7 @@ const { continuityPrompt } = require('./continuityService');
 const cancellation = require('./cancellationContext');
 const personIdentity = require('./personIdentityContractService');
 const deyunaiService = require('../deyunaiService');
+const deyunaiPersonAssets = require('./deyunaiPersonAssetService');
 const videoScheduler = require('./videoParallelScheduler');
 const videoLineage = require('./videoLineageService');
 const sceneBlockService = require('./sceneBlockService'), videoSceneBlockGuard = require('./videoSceneBlockGuardService');
@@ -396,57 +397,13 @@ function resolvePinnedVideoModel(options = {}, existingClips = []) {
 }
 
 function deyunaiAssetGroupType(ctx = {}) {
-  return ctx.person_asset?.real_person_reference === true || ctx.person_context?.real_person_locked === true
-    ? 'LivenessFace'
-    : 'AIGC';
+  return deyunaiPersonAssets.groupType(ctx);
 }
 function personReferenceUrl(ctx = {}) {
-  const contract = ctx.person_contract || ctx.person_asset?.person_contract || {};
-  const refs = contract.reference_views || {};
-  return [refs.front, ...Object.values(refs), ctx.person_asset?.image_url, ctx.person_asset?.url]
-    .find(Boolean) || '';
+  return deyunaiPersonAssets.referenceUrl(ctx);
 }
 async function prepareDeyunaiPersonAsset({ taskId = '', ctx = {}, options = {} } = {}) {
-  if (!personIdentity.personRequired(ctx)) return null;
-  personIdentity.assertVerifiedPerson(ctx);
-  const castCount = Number(ctx.expected_people || ctx.person_asset?.expected_people || ctx.person_asset?.cast_assets?.length || 1) || 1;
-  // One provider asset cannot truthfully represent a multi-person cast; use the approved keyframe instead.
-  if (castCount > 1) return null;
-  const sourceUrl = absoluteAssetUrl(personReferenceUrl(ctx), options);
-  if (!sourceUrl) {
-    const error = new Error('人物合同没有可上传到漫路素材库的正面参考图');
-    error.code = 'DEYUNAI_PERSON_REFERENCE_REQUIRED';
-    error.status = 422;
-    throw error;
-  }
-  const saved = storage.getOutput(taskId, 'deyunai_person_asset');
-  const personKey = String(ctx.person_contract?.person_id || ctx.person_asset?.actor_id || ctx.person_asset?.id || taskId || 'person')
-    .replace(/[^a-z0-9_.-]+/ig, '_')
-    .slice(0, 42);
-  const personRevision = ctx.person_contract?.person_revision || 1;
-  const selectedAssetId = String(ctx.person_asset?.deyunai_asset_id || '').trim();
-  const selectedStatus = String(ctx.person_asset?.deyunai_asset_status || '').trim();
-  const existing = selectedAssetId && /^active$/i.test(selectedStatus)
-    ? {
-      asset_id: selectedAssetId,
-      status: 'Active',
-      source_url: sourceUrl,
-      group_id: ctx.person_asset?.deyunai_asset_group_id || '',
-      group_type: ctx.person_asset?.deyunai_asset_group_type || deyunaiAssetGroupType(ctx),
-    }
-    : saved;
-  const asset = await deyunaiService.ensurePersonImageAsset({
-    sourceUrl,
-    name: `vido_${personKey}_v${personRevision}`,
-    groupName: `vido_person_${personKey}_v${personRevision}`,
-    groupType: deyunaiAssetGroupType(ctx),
-    groupId: ctx.person_asset?.deyunai_asset_group_id || '',
-    projectName: options.deyunai_project_name || options.deyunaiProjectName || 'default',
-    existing,
-    signal: cancellation.signal(),
-  });
-  storage.saveOutput(taskId, 'deyunai_person_asset', asset);
-  return asset;
+  return deyunaiPersonAssets.prepare({ taskId, ctx, options, toAbsolute: absoluteAssetUrl });
 }
 async function prepareDeyunaiSceneReferenceAssets({ taskId = '', block = {}, options = {} } = {}) {
   const sources = (Array.isArray(block.spatial_reference_urls) ? block.spatial_reference_urls : [])
@@ -637,13 +594,16 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
     || clipPrompt(shot, ctx, contract, previousShot, keyframe, options._repairInstructions?.[index] || '');
   const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
   const directBoundary = options._boundaryRepairInputMode === boundaryRepair.DIRECT_TAIL_FIRST_FRAME, forceReferenceAssetMode = options._boundaryRepairInputMode === boundaryRepair.MANAGED_DUAL_REFERENCE;
-  const personReferenceAsset = !directBoundary && (useSeedanceReferenceAssets(options, { personRequired: shotNeedsPerson }) || forceReferenceAssetMode)
-    && options._deyunaiPersonAsset?.asset_url
+  const personReferenceAssets = !directBoundary && (useSeedanceReferenceAssets(options, { personRequired: shotNeedsPerson }) || forceReferenceAssetMode)
     && (shotNeedsPerson || forceReferenceAssetMode)
-    ? options._deyunaiPersonAsset.asset_url
-    : '';
+    ? [...new Set([
+        ...(Array.isArray(options._deyunaiPersonAsset?.asset_urls) ? options._deyunaiPersonAsset.asset_urls : []),
+        options._deyunaiPersonAsset?.asset_url,
+      ].filter(Boolean))].slice(0, 3)
+    : [];
+  const personReferenceAsset = personReferenceAssets[0] || '';
   const sceneReferenceAssets = personReferenceAsset
-    ? [...new Set((Array.isArray(options._sceneReferenceAssetUrls) ? options._sceneReferenceAssetUrls : []).filter(Boolean))].slice(0, 2)
+    ? [...new Set((Array.isArray(options._sceneReferenceAssetUrls) ? options._sceneReferenceAssetUrls : []).filter(Boolean))].slice(0, Math.max(0, 3 - personReferenceAssets.length))
     : [];
   const audioPath = localAudioPath(audio?.audio_url || audio?.audioUrl || audio?.url || '');
   boundaryGeneration.assertProviderInput({ contract: options._boundaryRepairContract, providerRoute: modelRoute(pinnedModel), inputMode: options._boundaryRepairInputMode, firstFrameUrl: options._boundaryFirstFrameUrl, currentKeyframeAssetUrl: personReferenceAsset, previousTailAssetUrl: options._boundaryReferenceAssetUrl, referenceAssetUrls: sceneReferenceAssets });
@@ -700,7 +660,7 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         // generation cannot silently replace the wall/space geometry. Asset
         // reference mode remains opt-in for exceptional tasks only.
         image_url: personReferenceAsset ? undefined : imageUrl,
-        reference_image_urls: personReferenceAsset ? [personReferenceAsset, ...sceneReferenceAssets] : [],
+        reference_image_urls: personReferenceAsset ? [...personReferenceAssets, ...sceneReferenceAssets] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
         videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
         resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',

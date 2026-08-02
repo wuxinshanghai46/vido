@@ -10,6 +10,7 @@ process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://test.invalid';
 process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS = '1';
+process.env.NEW_STORY_AD_MOCK_LLM = '1';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
@@ -764,6 +765,7 @@ async function main() {
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.person_sheet'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), 'gpt-image-2');
+    assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_sketch'), 'gpt-image-2');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_sheet');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_sheet');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.scene_asset');
@@ -817,7 +819,7 @@ async function main() {
         message: '供应商返回未分类 5xx，内部错误码没有公开定义；目前无法确认是审核拦截还是服务故障，已停止自动付费重试。',
       },
     );
-    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe'];
+    const strictImageStages = ['new_story_ad.person_sheet', 'new_story_ad.scene_asset', 'new_story_ad.keyframe', 'new_story_ad.storyboard_sketch'];
     strictImageStages.forEach(stageId => {
       assert.ok(pipelineModels.getStageDefaults(stageId).length > 0, `${stageId} must keep at least one Image2 default`);
       assert.ok(pipelineModels.getStageDefaults(stageId).every(item => item.model_id === 'gpt-image-2'), `${stageId} defaults must contain only Image2`);

@@ -4,7 +4,7 @@ const { auditPipelineCapabilities } = require('../src/services/pipelineCapabilit
 function main() {
   const report = auditPipelineCapabilities();
   assert.strictEqual(report.summary.group_count, 9);
-  assert.strictEqual(report.summary.stage_count, 57);
+  assert.strictEqual(report.summary.stage_count, 58);
   assert.strictEqual(report.summary.stages_without_enabled_model, 0);
   for (const stageId of [
     'imggen.i2v',
@@ -13,6 +13,7 @@ function main() {
     'new_story_ad.asset_plan',
     'new_story_ad.reference_video_vision',
     'new_story_ad.reference_video_synthesis',
+    'new_story_ad.storyboard_sketch',
   ]) {
     const row = report.stages.find(stage => stage.stage_id === stageId);
     assert.ok(row, `${stageId} must exist in audit`);

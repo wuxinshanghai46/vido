@@ -1,8 +1,11 @@
 const { Client } = require('ssh2');
+const { connectionOptions } = require('./lib/vidoSshAuth');
 const client = new Client();
 const script = String.raw`
   const crypto = require('crypto');
   const { loadSettings } = require('./src/services/settingsService');
+  const pipeline = require('./src/services/pipelineModelService');
+  const mediaAdapter = require('./src/services/newStoryAd/mediaAdapter');
   const settings = loadSettings();
   const provider = (settings.providers || []).find(item => item.id === 'deyunai' || item.preset === 'deyunai') || {};
   const key = String(provider.api_key || '');
@@ -13,6 +16,12 @@ const script = String.raw`
     key_present: !!key, key_length: key.length,
     key_fingerprint: key ? crypto.createHash('sha256').update(key).digest('hex').slice(0, 12) : '',
     image_models: models.map(model => ({ id: model.id, enabled: model.enabled !== false, channel: model.channel || '', type: model.type || '', use: model.use || '' })),
+    storyboard_sketch_route: {
+      configured: pipeline.getStageConfig('new_story_ad.storyboard_sketch'),
+      defaults: pipeline.getStageDefaults('new_story_ad.storyboard_sketch'),
+      enabled_with_default: pipeline.pickAllEnabledWithDefault('new_story_ad.storyboard_sketch'),
+      available_candidates: mediaAdapter.availableImageCandidates('new_story_ad.storyboard_sketch').map(model => ({ provider_id: model.provider_id, model_id: model.model_id })),
+    },
     effective_gpt_image_2_endpoint: 'https://api.deyunai.com/ent/v1/images/generations',
     effective_headers: ['Authorization: Bearer <provider api_key>', 'Content-Type: application/json'],
   }, null, 2));
@@ -26,4 +35,4 @@ client.on('ready', () => client.exec(`cd /opt/vido/app && node -e "eval(Buffer.f
 })).on('error', error => {
   console.error(error.message || error);
   process.exitCode = 1;
-}).connect({ host: process.env.VIDO_DEPLOY_HOST || '43.98.167.151', port: 22, username: 'root', password: process.env.VIDO_DEPLOY_PASSWORD, readyTimeout: 25000 });
+}).connect(connectionOptions());

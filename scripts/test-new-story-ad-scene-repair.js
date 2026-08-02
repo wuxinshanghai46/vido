@@ -9,6 +9,7 @@ fs.mkdirSync(outputDir, { recursive: true });
 process.env.OUTPUT_DIR = outputDir;
 process.env.DB_ENABLED = '0';
 process.env.NEW_STORY_AD_PUBLIC_BASE_URL = 'https://test.invalid';
+process.env.NEW_STORY_AD_MOCK_LLM = '1';
 
 const storage = require('../src/services/newStoryAd/storageService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');

@@ -1,16 +1,15 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 import { confirmDialog } from '../components/dialog.js';
 
-/** 把存储层 ID 投影成用户能识别的资产名称，原 ID 只保留在 title 中供排障。 */
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
   const scenes = Array.isArray(assets.scenes) ? assets.scenes : [];
   const subjects = [
-    ...(Array.isArray(assets.people) ? assets.people : []),
-    ...(Array.isArray(assets.animals) ? assets.animals : []),
-    ...(Array.isArray(assets.products) ? assets.products : []),
-    ...(Array.isArray(assets.props) ? assets.props : []),
+    ...(Array.isArray(assets.people) ? assets.people.map(item => ({ item, label: '人物' })) : []),
+    ...(Array.isArray(assets.animals) ? assets.animals.map(item => ({ item, label: '动物' })) : []),
+    ...(Array.isArray(assets.products) ? assets.products.map(item => ({ item, label: '商品' })) : []),
+    ...(Array.isArray(assets.props) ? assets.props.map(item => ({ item, label: '道具' })) : []),
   ];
   const sceneId = shot.scene_id || shot.scene_asset_id || '';
   const scene = scenes.find(item => [item.id, item.asset_id].filter(Boolean).includes(sceneId));
@@ -21,19 +20,17 @@ export function friendlyBindings(bundle = {}, shot = {}) {
     sceneId ? { id: sceneId, label: `场景：${scene?.name || shot.scene_name || '已绑定场景'}` } : null,
     cameraId ? { id: cameraId, label: `机位：${camera?.label || camera?.role || '已绑定机位'}` } : null,
     ...characterIds.map(id => {
-      const subject = subjects.find(item => [item.id, item.asset_id, item.subject_id].filter(Boolean).includes(id));
-      return { id, label: `人物：${subject?.name || subject?.role || '已绑定人物'}` };
+      const subject = subjects.find(entry => [entry.item.id, entry.item.asset_id, entry.item.subject_id].filter(Boolean).includes(id));
+      return { id, label: `${subject?.label || '主体'}：${subject?.item?.name || subject?.item?.role || '已绑定主体'}` };
     }),
   ].filter(Boolean);
 }
 
-/** 输出文字分镜表格行和当前行编辑器。 */
 function shotRow(shot = {}, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const bindings = friendlyBindings(bundle, shot);
   return `<div class="shot-row" data-storyboard-shot="${shotIndex}">
     <b>SH${String(shotIndex).padStart(2, '0')}</b>
-    <div class="media-placeholder"><span>线稿待确认</span></div>
     <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small></span>
     <span>${escapeHtml(shot.voiceover || shot.narration || '—')}</span>
     <span class="binding-chips">${bindings.length ? bindings.map(item => `<span class="chip ok" title="${escapeHtml(item.id)}">${escapeHtml(item.label)}</span>`).join('') : '<span class="chip">未绑定</span>'}</span>
@@ -49,48 +46,72 @@ function shotRow(shot = {}, index = 0, bundle = {}) {
   </div>`;
 }
 
-/** 输出逐镜线稿确认卡。 */
-function sketchCard(shot, sketch = {}, index = 0) {
+function sketchCard(shot, sketch = {}, index = 0, gate = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
-  return `<article class="card sketch-card" data-sketch-shot="${shotIndex}">
-    <div class="card-head"><div><h2>SH${String(shotIndex).padStart(2, '0')} · ${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</p></div><span class="status-tag is-${sketch.status === 'confirmed' ? 'success' : 'neutral'}">${escapeHtml(sketch.status === 'confirmed' ? '已确认' : (sketch.status === 'skipped' ? '已跳过' : '待确认'))}</span></div>
-    <div class="card-body two-column">
-      <div>${mediaPreview(sketch, { label: `镜头 ${shotIndex} 线稿`, width: 720, symbol: '线稿' })}</div>
-      <div class="form-grid">
-        <label class="field full"><span>构图约束</span><textarea class="textarea" rows="6" data-sketch-notes placeholder="确认主体数量、站位、景别、视线和运动方向。">${escapeHtml(sketch.composition_notes || '')}</textarea></label>
+  const disabled = gate.ready === false ? 'disabled' : '';
+  return `<article class="card sketch-card sketch-tile ${gate.ready === false ? 'is-gated' : ''}" data-sketch-shot="${shotIndex}">
+    <div class="sketch-tile-media">${mediaPreview(sketch, { label: `SH${String(shotIndex).padStart(2, '0')} · ${shot.title || `镜头 ${shotIndex}`}`, width: 960, symbol: '线稿', zoomable: true, zoomGroup: 'storyboard-sketches' })}<span class="sketch-shot-number">SH${String(shotIndex).padStart(2, '0')}</span></div>
+    <div class="sketch-tile-copy"><div><h2>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</h2><p>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</p></div><span class="status-tag is-${sketch.status === 'confirmed' ? 'success' : 'neutral'}">${escapeHtml(sketch.status === 'confirmed' ? '已确认' : (sketch.status === 'skipped' ? '已跳过' : '待确认'))}</span></div>
+    <details class="sketch-tile-editor"><summary>构图约束与操作</summary><div class="form-grid">
+        <label class="field full"><span>构图约束</span><textarea class="textarea" rows="4" data-sketch-notes placeholder="确认主体数量、站位、景别、视线和运动方向。" ${disabled}>${escapeHtml(sketch.composition_notes || '')}</textarea></label>
         <div class="field full sketch-action-bar">
           <input class="hidden-input" type="file" accept="image/png,image/jpeg,image/webp" data-sketch-file>
           <div class="sketch-actions" role="group" aria-label="镜头 ${shotIndex} 线稿操作">
-            <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch>${sketch.image_url ? '重新生成' : '生成线稿'}</button>
-            <button class="btn" type="button" data-upload-sketch>上传线稿</button>
-            <button class="btn quiet" type="button" data-skip-sketch>跳过本镜</button>
-            <button class="btn primary sketch-confirm-action" type="button" data-confirm-sketch>确认构图</button>
+            <button class="btn ${sketch.image_url ? '' : 'primary'}" type="button" data-generate-sketch ${disabled}>${sketch.image_url ? '重新生成' : '生成线稿'}</button>
+            <button class="btn" type="button" data-upload-sketch ${disabled}>上传线稿</button>
+            <button class="btn quiet" type="button" data-skip-sketch ${disabled}>跳过本镜</button>
+            <button class="btn primary sketch-confirm-action" type="button" data-confirm-sketch ${disabled}>确认构图</button>
           </div>
         </div>
-      </div>
-    </div>
+      </div></details>
   </article>`;
 }
 
-/** 挂载分镜台。 */
+function sketchBatchMarkup(batch = null, total = 0) {
+  if (!batch || typeof batch !== 'object') return '';
+  const status = String(batch.status || '');
+  const active = ['queued', 'running'].includes(status);
+  const requested = Math.max(0, Number(batch.requested || total) || 0);
+  const completed = Math.max(0, Math.min(requested, Number(batch.completed || 0) || 0));
+  const percent = requested ? Math.round((completed / requested) * 100) : 100;
+  const title = status === 'failed' ? '线稿批次已停止' : (status === 'succeeded' ? '线稿批次已完成' : '正在批量生成线稿');
+  return `<div class="sketch-batch-progress is-${escapeHtml(status)}" role="status" aria-live="polite">
+    <div class="sketch-batch-progress-head"><b>${title}</b><span>${completed}/${requested} · ${percent}%</span></div>
+    ${active ? `<div class="project-progress-track" aria-hidden="true"><i style="width:${percent}%"></i></div>` : ''}
+    <small>${escapeHtml(batch.message || '')}</small>
+  </div>`;
+}
+
 export async function mount(host, context) {
   const { bundle, store } = context;
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
+  const isReferenceDraft = bundle?.storyboard?.source === 'reference_analysis_projection';
   const sketches = Array.isArray(bundle?.storyboard?.sketches) ? bundle.storyboard.sketches : [];
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
+  const generatedSketchCount = shots.filter((shot, index) => sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.image_url).length;
+  const resolvedSketchCount = shots.filter((shot, index) => ['confirmed', 'skipped'].includes(sketchByShot.get(Number(shot.shot_index || shot.index || index + 1))?.status)).length;
+  const missingSketchCount = Math.max(0, shots.length - generatedSketchCount);
+  const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
+  const sketchBatchTargetCount = regenerateAllSketches ? shots.length : missingSketchCount;
+  const sketchGate = bundle?.storyboard?.sketch_gate || { ready: false, reason: '文字分镜状态尚未核对，请刷新页面。', issues: [] };
+  let sketchBatch = bundle?.storyboard?.sketch_batch || null;
+  const sketchBatchActive = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>分镜台</h1><p>文字分镜决定剧情和动作；线稿只确认构图与衔接，不直接生成付费视频。</p></div>
-      <div class="view-actions">${shots.length ? '<button class="btn primary" type="button" data-open-shot-design>进入镜头设计</button>' : '<button class="btn primary" type="button" data-generate-storyboard>生成文字分镜</button>'}</div>
+      <div><h1>分镜台</h1><p>文字分镜决定剧情和动作；线稿只确认构图与衔接，不直接生成付费视频。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频逐镜草稿 · 待优化</span>' : ''}</div>
+      <div class="view-actions">${shots.length ? (isReferenceDraft
+        ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
+        : `<button class="btn" type="button" data-regenerate-storyboard>批量重生成文字分镜</button><button class="btn primary" type="button" ${sketchGate.ready ? (resolvedSketchCount >= shots.length ? 'data-open-shot-design' : 'data-open-sketches') : 'disabled'}>${sketchGate.ready ? (resolvedSketchCount >= shots.length ? '进入镜头设计' : '下一步：线稿分镜') : '文字分镜审核未通过'}</button>`)
+        : '<button class="btn primary" type="button" data-generate-storyboard>生成文字分镜</button>'}</div>
     </section>
-    <div class="guide">线稿可逐镜生成、上传或跳过；确认后构图约束会写入现有分镜并使关键帧合同按版本重建。</div>
+    <div class="guide ${!isReferenceDraft && !sketchGate.ready ? 'is-danger' : ''}">${isReferenceDraft ? '这里仅显示参考视频提取的逐镜草稿。可逐镜打开编辑，确认剧情、动作和时长；机位、景别和运镜在镜头设计中继续优化。' : (sketchGate.ready ? '线稿可逐镜生成、上传或跳过；确认后构图约束会写入现有分镜并使关键帧合同按版本重建。' : `线稿已锁定：${escapeHtml(sketchGate.reason || '文字分镜审核通过后才能继续。')} 请先修改或重新生成文字分镜。`)}</div>
     <div class="tabs">
       <button class="tab active" type="button" role="tab" aria-selected="true" data-board-tab="shots">文字分镜 ${shots.length}</button>
-      <button class="tab" type="button" role="tab" aria-selected="false" data-board-tab="sketches">线稿确认 ${sketches.filter(item => item.status === 'confirmed').length}/${shots.length}</button>
+      <button class="tab" type="button" role="tab" aria-selected="false" data-board-tab="sketches" ${sketchGate.ready ? '' : 'disabled'}>线稿分镜 ${generatedSketchCount}/${shots.length}</button>
     </div>
     <section data-board-panel="shots">
       ${shots.length ? `<div class="card shot-table">
-        <div class="shot-row header"><span>镜头</span><span>线稿</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
+        <div class="shot-row header"><span>镜头</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
         ${shots.map((shot, index) => shotRow(shot, index, bundle)).join('')}
       </div>` : `<div class="card">${emptyState({
         title: '还没有文字分镜',
@@ -100,8 +121,12 @@ export async function mount(host, context) {
       })}</div>`}
     </section>
     <section data-board-panel="sketches" hidden>
-      ${shots.length ? `<div class="beat-list">${shots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || index + 1)) || {}, index)).join('')}</div>` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
+      ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(sketchGate.reason || '文字分镜审核通过后才能生成线稿。')}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
+      <div data-sketch-batch-host>${sketchBatchMarkup(sketchBatch, missingSketchCount || generatedSketchCount)}</div>
+      ${shots.length ? `<div class="storyboard-sketch-grid">${shots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || index + 1)) || {}, index, sketchGate)).join('')}</div>` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
     </section>`;
+
+  bindMediaLightbox(host);
 
   host.querySelectorAll('[data-board-tab]').forEach(button => {
     button.addEventListener('click', () => {
@@ -110,13 +135,13 @@ export async function mount(host, context) {
       host.querySelectorAll('[data-board-panel]').forEach(panel => { panel.hidden = panel.dataset.boardPanel !== button.dataset.boardTab; });
     });
   });
+  if (sketchBatchActive) host.querySelector('[data-board-tab="sketches"]')?.click();
 
   const generateStoryboard = async button => {
     try {
-      setButtonBusy(button, true, '正在提交…');
+      setButtonBusy(button, true, '正在提交…', { elapsed: true });
       await store.runStage('storyboard');
-      toast('文字分镜生成任务已提交。', 'success');
-      await context.refreshShell();
+      toast('文字分镜生成任务已提交，页面顶部会持续显示本次进度、耗时和当前阶段。', 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {
@@ -125,7 +150,100 @@ export async function mount(host, context) {
   };
   host.querySelector('[data-generate-storyboard]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
   host.querySelector('[data-empty-action="generate-storyboard"]')?.addEventListener('click', event => generateStoryboard(event.currentTarget));
+  host.querySelector('[data-regenerate-storyboard]')?.addEventListener('click', async event => {
+    if (!await confirmDialog(`将一次性重新生成 ${shots.length} 镜文字分镜。已手动编辑的内容可能被新版覆盖，旧线稿和下游结果会按版本失效。`, {
+      title: '批量重生成文字分镜', confirmText: '确认批量生成',
+    })) return;
+    await generateStoryboard(event.currentTarget);
+  });
+  host.querySelector('[data-open-sketches]')?.addEventListener('click', () => host.querySelector('[data-board-tab="sketches"]')?.click());
+  host.querySelector('[data-save-reference-storyboard]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    try {
+      setButtonBusy(button, true, '保存中…');
+      const confirmed = shots.map(shot => ({
+        ...shot,
+        source: shot.source === 'reference_analysis_projection' ? 'user_confirmed_reference' : shot.source,
+        projection_only: false,
+      }));
+      await store.saveStoryboard(confirmed);
+      toast('参考视频分镜草稿已保存，可继续逐镜优化。', 'success');
+      await context.refreshShell();
+    } catch (error) {
+      toast(error.message, 'danger');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  });
   host.querySelector('[data-open-shot-design]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot`));
+  let disposed = false;
+  let sketchBatchPollTimer = null;
+  let batchFinalizing = false;
+  const batchButton = host.querySelector('[data-generate-sketch-batch]');
+  const batchButtonLabel = () => regenerateAllSketches
+    ? `批量重生成全部线稿（${shots.length}）`
+    : `批量生成全部缺失线稿（${missingSketchCount}）`;
+  const renderSketchBatch = progress => {
+    sketchBatch = progress || null;
+    const batchHost = host.querySelector('[data-sketch-batch-host]');
+    if (batchHost) batchHost.innerHTML = sketchBatchMarkup(sketchBatch, sketchBatchTargetCount || generatedSketchCount);
+    const active = ['queued', 'running'].includes(String(sketchBatch?.status || ''));
+    if (batchButton) {
+      batchButton.disabled = active;
+      batchButton.textContent = active ? `线稿生成中 ${sketchBatch.completed || 0}/${sketchBatch.requested || sketchBatchTargetCount}` : batchButtonLabel();
+    }
+  };
+  const finishSketchBatch = async progress => {
+    if (batchFinalizing || disposed) return;
+    batchFinalizing = true;
+    if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
+    renderSketchBatch(progress);
+    const failed = progress?.status === 'failed';
+    toast(failed ? progress.message : `线稿已完成 ${progress?.completed || 0}/${progress?.requested || 0}，结果显示在下方镜头卡片中。`, failed ? 'danger' : 'success');
+    await context.refreshShell();
+    document.querySelector('[data-board-tab="sketches"]')?.click();
+  };
+  const pollSketchBatch = async () => {
+    if (disposed || batchFinalizing) return;
+    try {
+      const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sketches/generate-batch`);
+      renderSketchBatch(data.progress);
+      if (['succeeded', 'failed'].includes(data.progress?.status)) return finishSketchBatch(data.progress);
+    } catch {}
+    if (!disposed) sketchBatchPollTimer = setTimeout(pollSketchBatch, 1500);
+  };
+  if (sketchBatchActive) sketchBatchPollTimer = setTimeout(pollSketchBatch, 300);
+
+  batchButton?.addEventListener('click', async event => {
+    const regenerateAll = event.currentTarget.dataset.regenerateAll === 'true';
+    const targetCount = regenerateAll ? shots.length : missingSketchCount;
+    const confirmBody = regenerateAll
+      ? `将按已审核通过的文字分镜一次性重新生成 ${targetCount} 张线稿，每镜调用一次 gpt-image-2，并覆盖现有线稿。人物、商品与场景参考图会重新绑定。`
+      : `将按文字分镜顺序一次性生成 ${targetCount} 张缺失线稿，每镜调用一次 gpt-image-2。已存在的线稿不会重复生成；失败后重试只补缺失项。`;
+    if (!await confirmDialog(confirmBody, {
+      title: regenerateAll ? '批量重生成全部线稿' : '批量生成线稿', confirmText: `确认生成 ${targetCount} 张`,
+    })) return;
+    const button = event.currentTarget;
+    try {
+      batchFinalizing = false;
+      setButtonBusy(button, true, `正在启动 0/${targetCount}…`, { elapsed: true });
+      renderSketchBatch({ status: 'running', requested: targetCount, completed: 0, message: '批次已提交，生成结果会逐镜保存到下方镜头卡片。' });
+      sketchBatchPollTimer = setTimeout(pollSketchBatch, 500);
+      const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sketches/generate-batch`, {
+        method: 'POST',
+        body: { confirmed: true, regenerate_all: regenerateAll, client_request_id: globalThis.crypto?.randomUUID?.() || `${Date.now()}` },
+        timeoutMs: 45 * 60 * 1000,
+      });
+      await finishSketchBatch(data.progress || {
+        status: 'succeeded', requested: data.requested, completed: data.completed,
+      });
+    } catch (error) {
+      toast(error.code === 'SKETCH_BATCH_IN_PROGRESS' ? '已连接正在执行的线稿批次。' : error.message, error.code === 'SKETCH_BATCH_IN_PROGRESS' ? 'warning' : 'danger');
+      sketchBatchPollTimer = setTimeout(pollSketchBatch, 100);
+    } finally {
+      if (!disposed && !['queued', 'running'].includes(String(sketchBatch?.status || ''))) setButtonBusy(button, false);
+    }
+  });
   const closeInlineEditor = row => {
     const editor = row?.querySelector('[data-shot-inline-editor]');
     const button = row?.querySelector('[data-edit-shot]');
@@ -178,7 +296,6 @@ export async function mount(host, context) {
     }
   }));
 
-  /** 保存某一镜线稿，并保留其它镜头状态。 */
   async function saveSketch(card, patch) {
     const shotIndex = Number(card.dataset.sketchShot);
     const current = sketchByShot.get(shotIndex) || { id: `storyboard-sketch-${shotIndex}`, shot_index: shotIndex, status: 'draft' };
@@ -233,7 +350,7 @@ export async function mount(host, context) {
       })) return;
       const button = event.currentTarget;
       try {
-        setButtonBusy(button, true, '生成中…');
+        setButtonBusy(button, true, '生成中…', { elapsed: true });
         const data = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/sketches/${shotIndex}/generate`, {
           method: 'POST',
           body: { confirmed: true },
@@ -249,4 +366,8 @@ export async function mount(host, context) {
       }
     });
   });
+  return () => {
+    disposed = true;
+    if (sketchBatchPollTimer) clearTimeout(sketchBatchPollTimer);
+  };
 }

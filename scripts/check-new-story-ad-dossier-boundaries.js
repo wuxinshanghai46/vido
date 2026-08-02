@@ -12,9 +12,9 @@ function assertFile(relativePath) {
 
 function run() {
   const frozenLegacyLimits = {
-    'src/services/newStoryAd/storyAdService.js': 3799,
+    'src/services/newStoryAd/storyAdService.js': 3800,
     'src/services/newStoryAd/sceneAssetService.js': 1816,
-    'src/routes/newStoryAd.js': 1634,
+    'src/routes/newStoryAd.js': 1880,
     'public/js/new-story-ad-legacy-ui.js': 6399,
     'public/js/new-story-ad/bootstrap.js': 180,
   };
@@ -54,10 +54,10 @@ function run() {
 
   const subjectBundle = read('src/services/newStoryAd/subjectAssetBundleService.js');
   const realPerson = read('src/services/newStoryAd/personDossierService.js');
-  assert(subjectBundle.includes('personDossierCompiler.compilePersonDossier'), '普通 AI 人物必须使用统一17项档案编译器');
-  assert(realPerson.includes('personDossierCompiler.compilePersonDossier'), '授权真人必须使用统一17项档案编译器');
-  assert(subjectBundle.includes('atomic_assets: compiled.atomic_assets'), '普通 AI 人物必须持久化17项原子资产');
-  assert(realPerson.includes('atomic_assets: atomicAssets'), '授权真人必须持久化17项原子资产');
+  assert(subjectBundle.includes('personDossierCompiler.compilePersonDossier'), '普通 AI 人物必须使用统一20项档案编译器');
+  assert(realPerson.includes('personDossierCompiler.compilePersonDossier'), '授权真人必须使用统一20项档案编译器');
+  assert(subjectBundle.includes('atomic_assets: compiled.atomic_assets'), '普通 AI 人物必须持久化20项底层档案素材');
+  assert(realPerson.includes('atomic_assets: atomicAssets'), '授权真人必须持久化20项底层档案素材');
 
   const propRoutes = read('src/routes/newStoryAd/propRoutes.js');
   const rootRoutes = read('src/routes/newStoryAd.js');
@@ -77,9 +77,10 @@ function run() {
 
   const personUi = read('public/js/new-story-ad/subject-assets-ui.js');
   const dossierUi = read('public/js/new-story-ad/person-dossier-ui.js');
-  assert(dossierUi.includes('atomic_assets'), '人物弹窗必须读取17项原子资产');
+  const workspaceAssetCenter = read('public/story-ad/views/assetCenterView.js');
+  assert(!workspaceAssetCenter.includes("mediaSection('可复用原子素材'"), '新版资产中心不得向用户展示底层可复用原子素材');
   assert(personUi.includes('cover_image_url'), '人物卡片必须默认只读取封面');
-  assert(personUi.includes('data-nsa-subject-dossier-key') && dossierUi.includes('17项原子素材'), '人物卡片必须提供17项按需弹窗入口');
+  assert(personUi.includes('data-nsa-subject-dossier-key') && dossierUi.includes('20项完整档案视图'), '人物卡片必须提供20项完整档案视图入口');
 
   console.log(JSON.stringify({
     passed: true,

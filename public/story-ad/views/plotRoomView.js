@@ -1,15 +1,14 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 import { confirmDialog } from '../components/dialog.js';
 
-/** 输出一个可编辑情节点。 */
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">
     <header><code>B${String(index + 1).padStart(2, '0')}</code><input class="input" data-beat-field="title" value="${escapeHtml(beat.title || beat.role || '')}" placeholder="情节点名称"><span class="beat-actions"><button class="btn small ai-action" type="button" data-ai-beat>AI 帮写</button><button class="btn small danger delete-action" type="button" data-remove-beat><span aria-hidden="true">×</span><span>删除</span></button></span></header>
     <div class="form-grid">
       <label class="field full"><span>画面与剧情动作</span><textarea class="textarea" rows="3" data-beat-field="visual" placeholder="描述这一段实际发生的事情。">${escapeHtml(beat.visual || beat.plot || '')}</textarea></label>
       <label class="field"><span>人物动作</span><input class="input" data-beat-field="action" value="${escapeHtml(beat.action || '')}"></label>
-      <label class="field"><span>时长（秒）</span><input class="input" type="number" min="1" max="30" data-beat-field="duration" value="${Number(beat.duration || beat.duration_sec || 3) || 3}"></label>
+      <label class="field"><span>时长（秒）</span><input class="input" type="number" min="1" max="30" step="0.01" data-beat-field="duration" value="${Number((Number(beat.duration || beat.duration_sec || 3) || 3).toFixed(2))}"></label>
       <label class="field"><span>旁白或台词</span><input class="input" data-beat-field="spoken_line" value="${escapeHtml(beat.spoken_line || beat.voiceover || '')}"></label>
       <label class="field"><span>可见证据</span><input class="input" data-beat-field="visual_proof" value="${escapeHtml(beat.visual_proof || beat.purpose || '')}"></label>
     </div>
@@ -42,7 +41,6 @@ function applyBeat(row, beat = {}) {
   });
 }
 
-/** 从当前编辑器收集剧情蓝图。 */
 function collectBlueprint(host, original = {}) {
   const beats = [...host.querySelectorAll('[data-beat-index]')].map((row, index) => {
     const value = name => row.querySelector(`[data-beat-field="${name}"]`)?.value?.trim() || '';
@@ -70,22 +68,26 @@ function collectBlueprint(host, original = {}) {
   };
 }
 
-/** 挂载剧情室。 */
 export async function mount(host, context) {
   const { bundle, store } = context;
-  const blueprint = bundle?.story?.blueprint || null;
+  const savedBlueprint = bundle?.story?.blueprint || null;
+  const referenceDraft = bundle?.story?.reference_draft || null;
+  const blueprint = savedBlueprint || referenceDraft;
+  const isReferenceDraft = !savedBlueprint && !!referenceDraft;
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>剧情室</h1><p>剧情蓝图是分镜和镜头的唯一上游；人物、商品和场景都从资产中心引用。</p></div>
+      <div><h1>剧情室</h1><p>剧情蓝图是分镜和镜头的唯一上游；人物、商品和场景都从资产中心引用。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
-        ${blueprint ? '<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn primary" type="button" data-save-story>保存剧情</button>' : '<button class="btn primary" type="button" data-generate-story>生成剧情蓝图</button>'}
+        <button class="btn" type="button" data-import-script>导入脚本</button>
+        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn ${isReferenceDraft ? 'primary' : ''}" type="button" data-save-story>${isReferenceDraft ? '保存参考故事草稿' : '保存剧情'}</button>${!isReferenceDraft ? '<button class="btn" type="button" data-regenerate-story>批量重生成全部剧情</button><button class="btn primary" type="button" data-open-storyboard>进入分镜台</button>' : ''}` : '<button class="btn primary" type="button" data-generate-story>批量生成全部剧情</button>'}
       </div>
     </section>
-    <div class="guide">先确认故事因果和品牌目标，再进入分镜。修改剧情会使下游镜头按现有版本规则失效。</div>
+    <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请在本环节修改故事与情节点，保存后再进入分镜。' : '先确认故事因果和品牌目标，再进入分镜。修改剧情会使下游镜头按现有版本规则失效。'}</div>
+    <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
     ${blueprint ? `<div class="plot-layout">
       <aside class="card">
-        <div class="card-head"><div><h2>故事与角色</h2><p>来自当前任务蓝图。</p></div></div>
+        <div class="card-head"><div><h2>故事与角色</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
         <div class="card-body form-grid">
           <label class="field full"><span>故事标题</span><input class="input" name="story_title" value="${escapeHtml(blueprint.story_title || blueprint.title || '')}"></label>
           <label class="field full"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="5">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
@@ -99,15 +101,15 @@ export async function mount(host, context) {
     </div>` : `<section class="card">${emptyState({
       title: '还没有剧情蓝图',
       body: '系统会根据当前目标、人物、商品和场景生成剧情；不会引用原型或其他任务内容。',
-      action: '生成剧情蓝图',
+      action: '批量生成全部剧情',
       actionId: 'generate-story',
     })}</section>`}`;
 
-  const generate = async button => {
+  const generate = async (button, force = false) => {
     try {
-      setButtonBusy(button, true, '正在提交…');
-      await store.runStage('blueprint');
-      toast('剧情生成任务已提交。', 'success');
+      setButtonBusy(button, true, '正在提交…', { elapsed: true });
+      await store.runStage('blueprint', force ? { force_regenerate: true } : {});
+      toast('全部剧情生成任务已提交。', 'success');
       await context.refreshShell();
     } catch (error) {
       toast(error.message, 'danger');
@@ -117,6 +119,40 @@ export async function mount(host, context) {
   };
   host.querySelector('[data-generate-story]')?.addEventListener('click', event => generate(event.currentTarget));
   host.querySelector('[data-empty-action="generate-story"]')?.addEventListener('click', event => generate(event.currentTarget));
+  host.querySelector('[data-regenerate-story]')?.addEventListener('click', async event => {
+    if (!await confirmDialog('将重新生成故事标题、一句话剧情和全部情节点；当前剧情及已有分镜、线稿和下游媒体会按版本失效。', {
+      title: '批量重生成全部剧情', confirmText: '确认批量生成',
+    })) return;
+    await generate(event.currentTarget, true);
+  });
+
+  const scriptInput = host.querySelector('[data-script-file]');
+  host.querySelector('[data-import-script]')?.addEventListener('click', () => scriptInput?.click());
+  scriptInput?.addEventListener('change', async () => {
+    const file = scriptInput.files?.[0];
+    if (!file) return;
+    const button = host.querySelector('[data-import-script]');
+    let importedName = '';
+    try {
+      const text = await file.text();
+      if (!text.trim()) throw new Error('脚本文本为空。');
+      setButtonBusy(button, true, '正在导入…');
+      await store.updateRequest({
+        creative_direction: { raw: text.slice(0, 12000), source_name: file.name },
+      });
+      importedName = file.name;
+      toast('脚本已作为剧情生成依据导入；请在剧情室生成或继续编辑剧情。', 'success');
+    } catch (error) {
+      toast(error.message, 'danger');
+    } finally {
+      setButtonBusy(button, false);
+      if (importedName) {
+        button.textContent = `已导入：${importedName}`;
+        button.dataset.previousText = button.textContent;
+      }
+      scriptInput.value = '';
+    }
+  });
 
   host.querySelector('[data-add-beat]')?.addEventListener('click', () => {
     const list = host.querySelector('[data-beat-list]');
@@ -132,7 +168,7 @@ export async function mount(host, context) {
       const rows = [...host.querySelectorAll('[data-beat-index]')];
       const index = rows.indexOf(row);
       try {
-        setButtonBusy(assistButton, true, '帮写中…');
+        setButtonBusy(assistButton, true, '帮写中…', { elapsed: true });
         const currentBlueprint = collectBlueprint(host, blueprint);
         const data = await request('/api/new-story-ad/assist', {
           method: 'POST',
@@ -181,5 +217,8 @@ export async function mount(host, context) {
     } finally {
       setButtonBusy(button, false);
     }
+  });
+  host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => {
+    context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
   });
 }

@@ -1,14 +1,15 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-auto-completion-r30';
 import { confirmDialog } from '../components/dialog.js';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-auto-completion-r30';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-auto-completion-r30';
 
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
-  ['products', '商品'],
+  ['products', '商品 / 展示主体'],
   ['logos', 'LOGO'],
   ['scenes', '场景与机位'],
-  ['props', '道具'],
 ];
 
 const GENERATABLE = new Set(['people', 'animals']);
@@ -38,7 +39,6 @@ function profileList(bundle = {}, key = '') {
   return (bundle.assets?.[key] || []).map(item => item.profile).filter(profile => profile?.id);
 }
 
-/** 构造与主体生成服务完全一致的请求合同；target 只控制本次需要生成的主体。 */
 export function subjectGenerationPayload(bundle = {}, target = null, requestKey = '') {
   const people = bundle.assets?.people || [];
   const animals = bundle.assets?.animals || [];
@@ -88,7 +88,7 @@ function generationValidation(payload = {}) {
   if (payload.cast_profiles.length !== payload.expected_people) return `人物档案数量不完整：需要 ${payload.expected_people} 份。`;
   if (payload.pet_profiles.length !== payload.expected_animals) return `动物档案数量不完整：需要 ${payload.expected_animals} 份。`;
   for (const [index, profile] of payload.cast_profiles.entries()) {
-    const missing = [['姓名', profile.displayName], ['角色', profile.roleName], ['外貌', profile.appearanceText], ['服装', profile.wardrobeText], ['发型/妆造', profile.hairMakeupText]]
+    const missing = [['姓名', profile.displayName], ['角色', profile.roleName], ['外貌', profile.appearanceText], ['发型/妆造', profile.hairMakeupText]]
       .filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
     if (missing.length) return `人物 ${index + 1} 缺少：${missing.join('、')}。`;
   }
@@ -109,17 +109,23 @@ function assetCard(item, group) {
     item.candidate_count ? `${item.candidate_count} 选 1` : '',
     item.shot_refs?.length ? `用于 ${item.shot_refs.length} 个镜头` : '',
   ] : [];
-  const detail = (group === 'scenes' ? sceneDetail : [
+  const productDetail = group === 'products' ? [
+    item.presentation?.label,
+    item.presentation?.scene_linked ? `关联 ${item.linked_scene_ids?.length || 0} 个场景` : '',
+    item.image_url ? '已有独立素材' : '无独立商品图',
+  ] : [];
+  const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
     item.role,
     views ? `${views} 个视图` : '',
     item.revision ? `版本 ${item.revision}` : '',
-  ])
+  ]))
     .filter(Boolean).join(' · ');
   const needsGeneration = group === 'people'
     ? personState !== 'complete_dossier'
     : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
+  const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <button class="asset-card-preview" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
       ${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group) })}
@@ -132,6 +138,10 @@ function assetCard(item, group) {
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}`}</button>
       ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '完整人物档案' : '该动物资产'}</button>` : ''}
+      ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成高清服装与配饰档案</button>` : ''}
+      ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
+      ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
+      ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-generate-scene="${escapeHtml(item.id)}">${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
@@ -140,7 +150,8 @@ function assetCard(item, group) {
 function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
   if (!items.length) return '';
-  return `<section class="drawer-media-section"><div class="drawer-section-head"><h3>${escapeHtml(title)}</h3><span>${items.length}</span></div><div class="drawer-media-grid ${className}">${items.map(item => `<figure>${mediaPreview(item, { label: item.label || item.key, width: 720, symbol: item.label || '素材' })}<figcaption>${escapeHtml(item.label || item.key || '素材')}</figcaption></figure>`).join('')}</div></section>`;
+  const zoomGroup = `drawer-${String(title).replace(/[^a-z0-9\u4e00-\u9fff]+/ig, '-')}`;
+  return `<section class="drawer-media-section"><div class="drawer-section-head"><h3>${escapeHtml(title)}</h3><span>${items.length}</span></div><div class="drawer-media-grid ${className}">${items.map(item => `<figure>${mediaPreview(item, { label: item.label || item.key, width: 720, symbol: item.label || '素材', zoomable: true, zoomGroup })}<figcaption>${escapeHtml(item.label || item.key || '素材')}</figcaption></figure>`).join('')}</div></section>`;
 }
 
 function profileDetails(item = {}, group = '') {
@@ -175,95 +186,44 @@ function legacyDossierBoard(item = {}, views = []) {
     <header><div><span>参考档案预览</span><h3>${escapeHtml(item.name)}</h3></div><p>由当前任务的历史参考图和人物设定整理，不冒充新生成档案。</p></header>
     <div class="reference-dossier-layout">
       <aside class="reference-dossier-facts">${facts.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</aside>
-      <div class="reference-dossier-views">${views.slice(0, 4).map(view => `<figure>${mediaPreview(view, { label: view.label || view.key || item.name, width: 720, symbol: '人物参考' })}<figcaption>${escapeHtml(view.label || view.key || '人物视图')}</figcaption></figure>`).join('')}</div>
+      <div class="reference-dossier-views">${views.slice(0, 4).map(view => `<figure>${mediaPreview(view, { label: view.label || view.key || item.name, width: 720, symbol: '人物参考', zoomable: true, zoomGroup: `legacy-${item.id || 'person'}` })}<figcaption>${escapeHtml(view.label || view.key || '人物视图')}</figcaption></figure>`).join('')}</div>
       <aside class="reference-dossier-notes">${notes.length ? notes.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('') : '<div><span>设定说明</span><p>当前任务仅保留历史四视图，可在下方生成新版完整人物档案。</p></div>'}</aside>
     </div>
   </section>`;
 }
 
 function dossierDetails(item = {}) {
-  return [
+  const sections = [
     mediaSection('人物分类档案', item.category_atlases),
     mediaSection('身份与形象视图', item.identity_views, 'is-portrait-grid'),
     mediaSection('表情记录', item.expressions, 'is-portrait-grid'),
     mediaSection('剧情动作姿态', item.base_actions, 'is-portrait-grid'),
-    mediaSection('可复用原子素材', item.atomic_assets, 'is-portrait-grid'),
   ].join('');
+  return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
 
-function sceneDetails(item = {}) {
-  const spec = item.scene_spec || {};
-  const specRows = [
-    ['空间布局', spec.layout], ['材质与表面', spec.materials], ['天气', spec.weather],
-    ['时间', spec.time], ['主光与光线', spec.light], ['互动区域', spec.interaction],
-  ].filter(([, value]) => value);
-  const qa = item.qa || {};
-  const qaRows = [
-    ['空间锁', qa.full_space_lock ? '已完成' : (qa.space_lock_status || '未完成')],
-    ['需求匹配', qa.requirement_pass], ['跨视角一致性', qa.cross_view_pass],
-    ['空间覆盖', qa.spatial_pass], ['机位设计', qa.camera_pass], ['真实感', qa.realism_pass],
-  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
-  const boolText = value => value === true ? '通过' : (value === false ? '未通过' : value);
-  const sceneViews = Array.isArray(item.view_images) ? item.view_images : [];
-  const cameraWithImage = camera => {
-    if (camera.image_url) return camera;
-    const viewId = String(camera.view_id || camera.id || '').trim();
-    const matched = sceneViews.find(view => [view.key, view.view_id, view.id].some(value => String(value || '').trim() === viewId));
-    return matched?.image_url ? { ...camera, image_url: matched.image_url } : camera;
-  };
-  return `<div class="scene-detail-stack">
-    ${(item.description || item.story_purpose) ? `<section class="drawer-profile"><h3>场景用途</h3>${item.description ? `<div><span>空间描述</span><p>${escapeHtml(item.description)}</p></div>` : ''}${item.story_purpose ? `<div><span>剧情用途</span><p>${escapeHtml(item.story_purpose)}</p></div>` : ''}</section>` : ''}
-    ${item.layout?.image_url ? `<section class="scene-layout"><div class="drawer-section-head"><h3>空间母版 / 布局图</h3><span>${escapeHtml(item.layout.status || 'available')}</span></div>${mediaPreview({ image_url: item.layout.image_url }, { label: `${item.name}空间布局`, width: 1200, symbol: '空间布局' })}</section>` : ''}
-    ${specRows.length ? `<section class="drawer-profile"><h3>布局、材质与光线</h3>${specRows.map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>` : ''}
-    ${item.zones?.length ? `<section><div class="drawer-section-head"><h3>空间区域</h3><span>${item.zones.length}</span></div><div class="scene-zone-list">${item.zones.map(zone => `<article><b>${escapeHtml(zone.label || zone.id)}</b><span>${escapeHtml(zone.purpose || zone.id || '未提供用途')}</span></article>`).join('')}</div></section>` : ''}
-    ${item.cameras?.length ? `<section><div class="drawer-section-head"><h3>机位与视角参数</h3><span>${item.cameras.length}</span></div><div class="scene-camera-list">${item.cameras.map(cameraWithImage).map(camera => `<article class="scene-camera-card ${camera.image_url ? 'has-image' : 'is-missing-image'}">
-      <div class="scene-camera-media">${camera.image_url ? mediaPreview(camera, { label: `${item.name} ${camera.label || camera.id}`, width: 720, symbol: '机位图' }) : '<div class="scene-camera-missing"><span>该机位图未生成</span></div>'}</div>
-      <div class="scene-camera-copy"><header><b>${escapeHtml(camera.label || camera.id)}</b><span>${escapeHtml(camera.view_id || camera.id || '')}</span></header><p>${escapeHtml([camera.role, camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '参数未提供')}</p><small>${escapeHtml([camera.orientation, camera.visible_evidence].filter(Boolean).join('；') || '方向与可见证据未提供')}</small></div>
-    </article>`).join('')}</div></section>` : ''}
-    ${item.routes?.length ? `<section><div class="drawer-section-head"><h3>跨场景路线与连续性</h3><span>${item.routes.length}</span></div><div class="scene-route-list">${item.routes.map(route => `<article><b>${escapeHtml(route.from || '当前场景')} → ${escapeHtml(route.to || '当前场景')}</b><span>${escapeHtml([route.time, route.weather, route.light, route.movement].filter(Boolean).join(' · ') || '连续性说明未提供')}</span></article>`).join('')}</div></section>` : ''}
-    ${qaRows.length ? `<section><div class="drawer-section-head"><h3>场景质量状态</h3></div><div class="meta-list">${qaRows.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(boolText(value))}</b></div>`).join('')}</div>${qa.reasons?.length ? `<ul class="scene-qa-reasons">${qa.reasons.map(reason => `<li>${escapeHtml(reason)}</li>`).join('')}</ul>` : ''}</section>` : ''}
-  </div>`;
+
+function personEditForm(item = {}) {
+  const profile = item.profile || {};
+  const field = (name, label, value, textarea = false) => `<label><span>${label}</span>${textarea
+    ? `<textarea name="${name}" rows="3">${escapeHtml(value || '')}</textarea>`
+    : `<input name="${name}" value="${escapeHtml(value || '')}">`}</label>`;
+  return `<details class="person-edit-panel"><summary>修改人物信息</summary><form data-person-edit>
+    <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}${field('age', '年龄范围', profile.age)}</div>
+    ${field('appearanceText', '外貌与气质', profile.appearanceText, true)}
+    ${field('wardrobeText', '服装 / 鞋 / 配饰（可留空或只写明确要求）', profile.wardrobeText, true)}
+    <p class="form-hint">生成前会保留你写下的每个要求，并只自动补齐缺少的服装组成、鞋履、配饰、配色和面料。</p>
+    ${field('hairMakeupText', '发型 / 妆造', profile.hairMakeupText, true)}
+    ${field('negativeText', '禁止项', profile.negativeText, true)}
+    <button class="btn primary" type="submit">保存人物信息</button>
+  </form></details>`;
 }
 
-function openDrawer(item, group, { onGenerate, onVerifyProduct } = {}) {
-  const views = Array.isArray(item.view_images) ? item.view_images : [];
-  const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
-  const zones = Array.isArray(item.zones) ? item.zones : [];
-  const cameras = Array.isArray(item.cameras) ? item.cameras : [];
-  const metadata = [
-    ['资产类型', groupLabel(group)], ['当前状态', item.status || '未确认'], ['版本', item.revision || '—'],
-    ['角色或用途', item.role || '—'], ['空间区域', zones.map(zone => zone.label).filter(Boolean).join('、') || '—'],
-    ['机位', cameras.map(camera => camera.label).filter(Boolean).join('、') || '—'],
-  ];
-  const backdrop = document.createElement('div');
-  backdrop.className = 'drawer-backdrop';
-  const drawer = document.createElement('aside');
-  drawer.className = `drawer ${group === 'people' ? 'is-person-drawer' : ''} ${group === 'scenes' ? 'is-scene-drawer' : ''}`;
-  drawer.innerHTML = `
-    <header class="drawer-head"><div><small>${escapeHtml(groupLabel(group))}</small><h2>${escapeHtml(item.name)}</h2></div><button class="icon-btn" type="button" data-close-drawer>×</button></header>
-    <div class="drawer-content">
-      ${dossier ? `<section class="dossier-hero"><div><span>完整人物档案</span><b>正面 / 侧面 / 背面 · 表情 · 服装 · 细节 · 动作</b></div>${mediaPreview(dossier, { label: `${item.name}完整人物档案`, width: 1600, symbol: '人物档案' })}</section>` : (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel(group) }) : '')}
-      ${group === 'people' && !dossier && views.length ? legacyDossierBoard(item, views) : ''}
-      ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : mediaSection(group === 'scenes' ? '场景视角' : '完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : '')) : ''}
-      ${group === 'people' ? dossierDetails(item) : ''}
-      ${group === 'scenes' ? sceneDetails(item) : ''}
-      ${profileDetails(item, group)}
-      <div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div>
-    </div>
-    ${GENERATABLE.has(group) && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成${group === 'people' ? '完整人物档案' : '动物资产'}</button></footer>` : ''}
-    ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
-  const close = () => { backdrop.remove(); drawer.remove(); };
-  backdrop.addEventListener('click', close);
-  drawer.querySelector('[data-close-drawer]').addEventListener('click', close);
-  drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => {
-    const generated = await onGenerate?.(item, group, event.currentTarget);
-    if (generated === true) close();
+function openDrawer(item, group, handlers = {}) {
+  return openAssetDrawer(item, group, handlers, {
+    groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
+    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
   });
-  drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => {
-    const verified = await onVerifyProduct?.(item, event.currentTarget);
-    if (verified === true) close();
-  });
-  document.body.append(backdrop, drawer);
 }
 
 function renderSections(assets = {}, total = 0) {
@@ -283,20 +243,24 @@ function renderSections(assets = {}, total = 0) {
     }).join('')}`;
 }
 
-/** 挂载真实资产中心。 */
 export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
+  const assetPlanReady = bundle?.navigation?.steps?.brief?.completed === true;
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>资产中心</h1><p>人物、动物、商品、LOGO、场景和道具分别建档；人物默认展示完整档案，不再裁切全身图。</p></div>
-      <div class="view-actions"><button class="btn" type="button" data-generate-subjects>生成人物 / 动物资产</button><button class="btn primary" type="button" data-build-scenes>建立场景规划</button></div>
+      <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
+      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn primary" type="button" data-build-scenes>建立场景规划</button></div>
     </section>
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
-    <div data-asset-sections>${renderSections(assets, total)}</div>`;
+    <div data-asset-sections>${renderSections(assets, total)}</div>
+    <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
+      <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? '请核对人物、动物、商品与场景是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。' : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
+      <button class="btn primary" type="button" data-confirm-assets ${assetPlanReady ? '' : 'disabled'}>确认资产方案，进入剧情室</button>
+    </section>`;
 
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
@@ -307,16 +271,15 @@ export async function mount(host, context) {
     const validation = generationValidation(payload);
     if (validation) { toast(validation, 'warning'); return false; }
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
-    if (!await confirmDialog(`本次将提交 ${selected} 个缺失或选中的主体生成。生成会调用图片模型；未选且已有四视图的主体会原样保留。`, {
+    if (!await confirmDialog(`本次将提交 ${selected} 个缺失或选中的主体生成。系统会先保留用户设定并自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型；未选且已有四视图的主体会原样保留。`, {
       title: target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产',
       confirmText: '确认开始生成',
     })) return false;
     try {
-      setButtonBusy(button, true, '正在生成完整档案…');
-      await request('/api/new-story-ad/subject-assets', { method: 'POST', body: payload, timeoutMs: 2700000 });
-      toast('人物或动物资产已生成完成。', 'success');
+      setButtonBusy(button, true, '正在生成完整档案…', { elapsed: true });
+      await store.runStage('subject-assets', payload);
+      toast('人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
       generationKeys.delete(intent);
-      await context.refreshShell();
       return true;
     } catch (error) {
       toast(error.message, 'danger');
@@ -324,6 +287,120 @@ export async function mount(host, context) {
     } finally {
       setButtonBusy(button, false);
     }
+  };
+
+  const generateProduct = async (item = null, button = null) => {
+    const name = item?.name || bundle.brief?.product_subject || '';
+    if (!name) return toast('请先在目标与材料中填写商品或广告主体。', 'warning');
+    const standalone = item?.presentation?.standalone_generation_supported !== false;
+    const body = standalone
+      ? `将为“${name}”生成正面、三分之四、侧面和细节视图。完成后仍需进行商品一致性验证。`
+      : `将为“${name}”生成一张可复用的展示主体参考图，用于后续场景、分镜和关键帧锁定。它不会伪装成独立商品四视图。`;
+    if (!await confirmDialog(body, { title: standalone ? 'AI 生成商品资产' : 'AI 生成展示主体参考图', confirmText: '确认生成' })) return false;
+    try {
+      setButtonBusy(button, true, '正在提交商品生成…', { elapsed: true });
+      await store.runStage('product-assets', { product_name: name, description: item?.description || '', reference_only: !standalone });
+      toast(`${standalone ? '商品资产' : '展示主体参考图'}生成已提交，进度和耗时将在页面顶部显示。`, 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+  };
+
+  const generateScene = async (item, button = null) => {
+    const sceneGenerated = Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
+    const prompt = sceneGenerated
+      ? `“${item.name}”已有空间母版和机位。系统会保留用户填写的场景设定，只补齐缺少的布局关系、材质、光线、互动点和行动路线；重新生成会建立新版本，并使不兼容的旧结果按依赖关系失效。`
+      : `将先保留用户填写的场景设定并自动补齐布局关系、材质、光线、互动点和行动路线，再生成“${item.name}”的空间母版、场景视角和机位图。`;
+    if (!await confirmDialog(prompt, { title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位', confirmText: sceneGenerated ? '确认重新生成' : '确认生成' })) return false;
+    try {
+      setButtonBusy(button, true, '正在提交场景生成…', { elapsed: true });
+      await store.runStage('scene-assets', { space_id: item.id, scene_id: item.id, name: item.name, regenerate: sceneGenerated });
+      toast(`${sceneGenerated ? '场景与机位重新生成' : '场景与机位生成'}已提交，进度和耗时将在页面顶部显示。`, 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+  };
+
+  const savePerson = async (item, values, button = null) => {
+    const profiles = (assets.people || []).map(row => row.profile || {}).map(profile => (
+      String(profile.id || '') === String(item.profile?.id || '') ? { ...profile, ...values } : profile
+    ));
+    try {
+      setButtonBusy(button, true, '正在保存…', { elapsed: true });
+      await store.updateRequest({ cast_profiles: profiles });
+      toast('人物信息已保存；下次生成会使用最新设定。', 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+  };
+
+  const saveProduct = async (item, values, button = null) => {
+    try {
+      setButtonBusy(button, true, '正在保存…', { elapsed: true });
+      await store.updateRequest({
+        product_subject: String(values.product_subject || '').trim(),
+        product_presentation: {
+          ...(item.presentation || {}),
+          mode: String(values.mode || '').trim(),
+          description: String(values.description || '').trim(),
+          source: 'user_edit',
+        },
+      });
+      toast('展示主体已保存；后续场景、剧情和分镜会使用最新设置。', 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+  };
+
+  const saveScene = async (item, values, button = null) => {
+    const sourcePlan = bundle.asset_editor?.scene_plan || { scene_mode: 'single', spaces: [] };
+    const plan = JSON.parse(JSON.stringify(sourcePlan));
+    const index = (plan.spaces || []).findIndex(space => String(space.id || space.space_id || space.scene_id) === String(item.id));
+    if (index < 0) return toast('当前场景不在权威场景计划中，已停止保存，避免覆盖其他场景。', 'danger');
+    const current = plan.spaces[index];
+    const currentSpec = current.scene_spec || current.sceneSpec || {};
+    const cameraSource = item.camera_plan?.length ? item.camera_plan : (item.cameras || []);
+    plan.spaces[index] = {
+      ...current,
+      name: String(values.name || '').trim(),
+      description: String(values.description || '').trim(),
+      story_purpose: String(values.story_purpose || '').trim(),
+      scene_spec: {
+        ...currentSpec,
+        layoutText: String(values.layout || '').trim(),
+        materialLightText: String(values.materials || '').trim(),
+        interactionText: String(values.interaction || '').trim(),
+        negativeText: String(values.negative || '').trim(),
+        cameraPlan: cameraSource.map((camera, cameraIndex) => ({
+          ...camera,
+          movement: String(values[`camera_movement_${cameraIndex}`] || camera.movement || '').trim(),
+        })),
+      },
+    };
+    try {
+      setButtonBusy(button, true, '正在保存…', { elapsed: true });
+      await store.updateRequest({ scene_plan: plan, changed_domains: ['scene'] });
+      toast('场景与机位预案已保存；不兼容的旧场景和下游结果已按版本规则处理。', 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
+  };
+
+  const generateProp = async (owner, prop, button = null, referenceFile = null) => {
+    const input = { ...prop };
+    if (!String(input.name || '').trim() || !String(input.description || '').trim()) return toast('请填写道具名称和外观描述。', 'warning');
+    if (!await confirmDialog(`道具“${input.name}”会绑定到人物“${owner.name}”，生成身份视图和必要状态图。`, { title: '生成人物随身道具', confirmText: '确认生成' })) return false;
+    try {
+      setButtonBusy(button, true, '正在提交道具生成…', { elapsed: true });
+      if (referenceFile instanceof File && referenceFile.size) {
+        const uploaded = await store.upload(referenceFile, 'prop_reference');
+        const media = uploaded.asset || uploaded.data || {};
+        input.reference_image_url = media.image_url || media.url || media.file_url || '';
+      }
+      await store.runStage('prop-assets', {
+        ...input,
+        id: input.id || `prop_${Date.now()}`,
+        owner_id: owner.subject_id || owner.profile?.id || owner.id,
+        type: input.type || 'handheld', quantity: Number(input.quantity || 1) || 1,
+      });
+      toast('人物随身道具生成已提交，进度和耗时将在页面顶部显示。', 'success');
+      return true;
+    } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
   };
 
   const verifyProduct = async (item, button = null) => {
@@ -336,7 +413,7 @@ export async function mount(host, context) {
       confirmText: '确认开始验证',
     })) return false;
     try {
-      setButtonBusy(button, true, '正在验证…');
+      setButtonBusy(button, true, '正在验证…', { elapsed: true });
       const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/product-verify`, {
         method: 'POST',
         body: {},
@@ -372,7 +449,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { onGenerate: generate, onVerifyProduct: verifyProduct });
+    if (item) openDrawer(item, group, { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products') });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-generate-asset]').forEach(button => button.addEventListener('click', event => {
@@ -385,10 +462,36 @@ export async function mount(host, context) {
     const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.verifyProduct);
     if (item) verifyProduct(item, button);
   }));
+  host.querySelectorAll('[data-generate-product]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.products || []).find(asset => String(asset.id) === button.dataset.generateProduct);
+    generateProduct(item, button);
+  }));
+  host.querySelectorAll('[data-upload-product]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    openUpload('products');
+  }));
+  host.querySelectorAll('[data-generate-scene]').forEach(button => button.addEventListener('click', event => {
+    event.stopPropagation();
+    const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.generateScene);
+    if (item) generateScene(item, button);
+  }));
+  host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
+    event.stopPropagation();
+    try {
+      setButtonBusy(button, true, '正在提交同步…', { elapsed: true });
+      await store.runStage('person-provider-sync');
+      toast('Seedance 人物 ID 同步已提交；失败时可继续从该按钮单独重试，不会重新生成人物。', 'success');
+    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+  }));
 
   let uploadGroup = '';
   const uploadInput = host.querySelector('[data-asset-upload-file]');
-  const openUpload = group => { uploadGroup = group; uploadInput.click(); };
+  const openUpload = group => {
+    if (group === 'people') { openRealPersonFlow({ context, taskId: bundle.project.id }); return; }
+    uploadGroup = group;
+    uploadInput.click();
+  };
   host.querySelectorAll('[data-add-asset]').forEach(button => button.addEventListener('click', () => openUpload(button.dataset.addAsset)));
   host.querySelectorAll('[data-empty-action]').forEach(button => button.addEventListener('click', () => openUpload(button.dataset.emptyAction)));
   uploadInput.addEventListener('change', async () => {
@@ -406,13 +509,35 @@ export async function mount(host, context) {
   });
 
   host.querySelector('[data-generate-subjects]').addEventListener('click', event => generate(null, '', event.currentTarget));
+  host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
+  host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
+  host.querySelector('[data-generate-product-main]').addEventListener('click', event => {
+    const item = (assets.products || [])[0] || null;
+    if (item && !item.presentation?.standalone_generation_supported) {
+      openDrawer(item, 'products', { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products') });
+      return;
+    }
+    generateProduct(item, event.currentTarget);
+  });
   host.querySelector('[data-build-scenes]').addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
-      setButtonBusy(button, true, '正在建立…');
+      setButtonBusy(button, true, '正在建立…', { elapsed: true });
       await store.runStage('scene-config');
       toast('场景规划已提交，请稍后查看状态。', 'success');
       await context.refreshShell();
     } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+  });
+  host.querySelector('[data-confirm-assets]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    try {
+      setButtonBusy(button, true, '正在确认…');
+      await store.updateRequest({ asset_setup_confirmed: true });
+      toast('资产方案已确认，剧情室将使用当前人物、动物、商品和场景。', 'success');
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=plot`);
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
   });
 }

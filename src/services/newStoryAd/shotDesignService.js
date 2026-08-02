@@ -37,7 +37,7 @@ const SURFACE_MODES = ['auto', 'continuous', 'segmented', 'modular'];
 const SEAM_POLICIES = ['auto', 'hidden', 'visible', 'task_defined'];
 const FINISH_DISTRIBUTIONS = ['auto', 'uniform', 'gradient', 'regional', 'sample_comparison'];
 const SECONDARY_SURFACE_POLICIES = ['auto', 'forbidden', 'task_defined'];
-const MOTION_EFFECTS = ['none', 'particle_assembly', 'fade', 'dissolve', 'material_flow', 'custom'];
+const MOTION_EFFECTS = ['none', 'particle_assembly', 'mechanical_assembly', 'explode_view', 'layer_separation', 'material_morph', 'cutaway_reveal', 'before_after_reveal', 'fade', 'dissolve', 'material_flow', 'custom'];
 const EFFECT_INTENSITIES = ['low', 'medium', 'high'];
 
 function normalizeSurfaceTopology(input = null) {
@@ -440,6 +440,9 @@ function keyframeEffectPrompt(input = null) {
   if (effect.type === 'particle_assembly') {
     lines.push('START KEYFRAME rule: the target is not yet fully formed; show the authored source particles/material and keep a clean target area for later convergence.');
   }
+  if (['mechanical_assembly', 'explode_view', 'layer_separation'].includes(effect.type)) {
+    lines.push('START KEYFRAME rule: show the exact authored starting arrangement and all real components with stable identity, scale and orientation; do not invent extra parts or complete the assembly early.');
+  }
   if (effect.source_state) lines.push(`Effect source state visible in keyframe: ${effect.source_state}`);
   if (effect.target_state) lines.push(`Later animation target (do not prematurely complete it in the start keyframe): ${effect.target_state}`);
   if (effect.preserve_scene_geometry) lines.push('Preserve the locked scene geometry, surface topology, camera and lighting throughout the effect.');
@@ -456,6 +459,12 @@ function motionEffectPrompt(input = null) {
   if (effect.target_state) lines.push(`End at: ${effect.target_state}`);
   if (effect.timeline) lines.push(`Required effect timeline: ${effect.timeline}`);
   if (effect.type === 'particle_assembly') lines.push('Animate many physically plausible particles or grains flowing and converging into the authored target silhouette; the target must emerge progressively from the particles, then hold stable at the end. Do not substitute a simple opacity fade or dissolve.');
+  if (effect.type === 'mechanical_assembly') lines.push('Animate only real authored components along physically plausible, collision-free paths into exact mating positions. Preserve part count, scale, material, orientation and fastener logic; finish with a stable fully assembled hold, not a dissolve.');
+  if (effect.type === 'explode_view') lines.push('Move authored components outward from the intact object along readable non-overlapping axes, hold the exploded arrangement long enough to inspect layer order, then return each component to its exact original position. Keep the camera locked unless the timeline explicitly authorizes a move.');
+  if (effect.type === 'layer_separation') lines.push('Separate only the task-defined construction layers in correct physical order and thickness. Keep every layer registered to the same parent geometry and do not multiply, replace or stylize components.');
+  if (effect.type === 'material_morph') lines.push('Transform only the explicitly named material or finish region while preserving object geometry, boundaries, scale and lighting continuity. Show a readable progressive transition with a stable before and after state, not a global scene replacement.');
+  if (effect.type === 'cutaway_reveal') lines.push('Reveal internal structure through a physically coherent cutaway or peel-back of the explicitly authorized shell region. Preserve exterior identity and internal spatial relationships; do not create impossible transparent geometry.');
+  if (effect.type === 'before_after_reveal') lines.push('Stage a clean, spatially registered before-to-after comparison using the authored transition method. Preserve camera, composition and unaffected geometry so the change itself is the visible proof.');
   if (effect.preserve_scene_geometry) lines.push('Do not bend, replace, segment or redesign the surrounding scene while the effect runs.');
   if (effect.reference_asset_id) lines.push(`Use target reference asset ${effect.reference_asset_id} as the exact assembly target when the asset is attached.`);
   if (effect.notes) lines.push(`Effect note: ${effect.notes}`);

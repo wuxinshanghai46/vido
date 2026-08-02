@@ -14,6 +14,7 @@ const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
 const visualVerification = require('./visualVerificationService');
 const personDossierCompiler = require('./personDossierCompiler');
 const dossierComposites = require('./dossierCompositeService');
+const generationSpecCompletion = require('./generationSpecCompletionService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -127,7 +128,7 @@ function personGenerationSpec(spec = {}) {
 
 function checkpointKind(taskId, brief, spec, counts, body = {}) {
   const hash = crypto.createHash('sha256').update(JSON.stringify({
-    fingerprint_version: 2,
+    fingerprint_version: 3,
     brief,
     spec: personGenerationSpec(spec),
     counts,
@@ -146,6 +147,8 @@ function checkpointKind(taskId, brief, spec, counts, body = {}) {
           id: cleanText(item?.id || '', 80),
         })) : []),
     image_model: cleanText(body.image_model || body.imageModel || 'auto', 120),
+    regenerate_selected: body.regenerate_selected === true,
+    regenerate_request_key: body.regenerate_selected === true ? cleanText(body.request_key || '', 160) : '',
   })).digest('hex').slice(0, 20);
   return `subject_asset_checkpoint:${cleanText(taskId || 'detached', 80)}:${hash}`;
 }
@@ -445,7 +448,7 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
 
 function humanPrompt(member, count) {
   return [
-    'Create one production-ready photorealistic actor identity for a complete 17-item dossier.',
+    'Create one production-ready photorealistic actor identity for a complete 20-item dossier.',
     'This identity will be rendered into separate body, face, expression and action contact sheets.',
     subjectContinuityPolicy.generationRuleEn(),
     'Use a real neutral casting studio with even soft light, subtle floor contact and natural tonal falloff; no text, watermark, other person or collage border inside cells.',
@@ -686,13 +689,46 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   const petIdentity = deps.petIdentity || petIdentityDefault;
   const cancellation = deps.cancellation || cancellationDefault;
   const storage = deps.storage || storageDefault;
-  const body = options.body || {};
-  const spec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
+  let body = options.body || {};
   const brief = cleanText(body.brief || body.content || '', 4000);
   const taskId = cleanText(options.taskId || body.task_id || '', 120);
+  const completion = await generationSpecCompletion.completePersonProfiles({
+    taskId,
+    brief,
+    castProfiles: body.cast_profiles,
+  }, {
+    storage,
+    ...(deps.modelGateway ? { modelGateway: deps.modelGateway } : {}),
+    ...(deps.jsonRepair ? { jsonRepair: deps.jsonRepair } : {}),
+    ...(deps.forceCompletionModel === true ? { forceModel: true } : {}),
+    ...(deps.mediaAdapter && deps.mediaAdapter !== mediaAdapterDefault ? { deterministic: true } : {}),
+  });
+  if (completion.changed) {
+    body = { ...body, cast_profiles: completion.cast_profiles };
+    if (taskId && typeof storage.getOutput === 'function' && typeof storage.saveOutput === 'function') {
+      const current = storage.getOutput(taskId, 'context') || {};
+      storage.saveOutput(taskId, 'context', {
+        ...current,
+        cast_profiles: completion.cast_profiles,
+        generation_input_completion: {
+          ...(current.generation_input_completion || {}),
+          person: { checkpoint_kind: completion.checkpoint_kind, updated_at: new Date().toISOString() },
+        },
+      });
+    }
+  }
+  const spec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const counts = resolveCounts(spec, body);
   const humans = humanMemberSpecs(spec, body, counts.people);
   const pets = petMemberSpecs(spec, body, counts.pets);
+  const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+  const totalUnits = Math.max(1, humans.length * 5 + pets.length * 2 + 1);
+  let processedUnits = 0;
+  const report = async (phase, message, detail = {}) => {
+    if (!onProgress) return;
+    await onProgress({ phase, message, processed: processedUnits, completed: processedUnits, total: totalUnits, ...detail });
+  };
+  await report('preparing', '正在核对人物、动物档案与可复用检查点');
   assertCompleteSubjectProfiles(counts, humans, pets);
   const targets = requestedSubjectTargets(body, humans, pets);
   const reusable = existingSubjectAssets(storage, taskId, humans, pets);
@@ -734,8 +770,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   let checkpoint = null;
   let save = () => {};
   try {
+  const forceRegenerate = body.regenerate_selected === true;
   const previous = taskId
-    ? (storage.getOutput(taskId, kind) || compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) || {})
+    ? (storage.getOutput(taskId, kind) || (!forceRegenerate ? compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) : null) || {})
     : {};
   const previousHumans = Array.isArray(previous.humans) ? previous.humans : [];
   const previousPets = Array.isArray(previous.pets) ? previous.pets : [];
@@ -767,7 +804,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   };
   save();
   for (let index = 0; index < humans.length; index += 1) {
-    if (reusableHumanAsset(checkpoint.humans[index])) continue;
+    if (reusableHumanAsset(checkpoint.humans[index])) {
+      processedUnits += 5;
+      await report('checkpoint_reused', `已复用人物 ${index + 1} 的完整档案`, { subject_index: index + 1, subject_kind: 'human' });
+      continue;
+    }
     cancellation.throwIfCancelled();
     const member = humans[index];
     const actorId = `new_story_actor_${crypto.createHash('sha256').update(`${kind}:${member.id}:${index}`).digest('hex').slice(0, 16)}`;
@@ -782,6 +823,14 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         checkpoint.person_dossier_checkpoints[key] = value;
         save();
       },
+      onProgress: async ({ completed, total, kind, reused }) => {
+        processedUnits += 1;
+        await report('person_dossier', `${reused ? '复用' : '生成'}人物 ${index + 1} 的${kind}档案 ${completed}/${total}`, {
+          subject_index: index + 1,
+          subject_kind: 'human',
+          unit_kind: kind,
+        });
+      },
     }, {
       mediaAdapter,
     });
@@ -795,12 +844,38 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       { ...bodyBack, key: 'back', url: bodyBack?.image_url },
       { ...baseAction, key: 'action', url: baseAction?.image_url },
     ].filter(view => view.url);
+    const detailCheckpoint = async key => checkpoint.person_dossier_checkpoints[key] || null;
+    const saveDetailCheckpoint = async (key, value) => {
+      checkpoint.person_dossier_checkpoints[key] = value;
+      save();
+    };
+    const accessoryDetails = await dossierComposites.generateWearableDetails({
+      taskId: taskId || options.generationId,
+      assetId: actorId,
+      atomicAssets: compiled.atomic_assets,
+      revision: 1,
+      profile: member,
+      loadCheckpoint: detailCheckpoint,
+      saveCheckpoint: saveDetailCheckpoint,
+    }, { mediaAdapter });
+    const wardrobeDetails = await dossierComposites.generateWardrobeDetails({
+      taskId: taskId || options.generationId,
+      assetId: actorId,
+      atomicAssets: compiled.atomic_assets,
+      revision: 1,
+      profile: member,
+      loadCheckpoint: detailCheckpoint,
+      saveCheckpoint: saveDetailCheckpoint,
+    }, { mediaAdapter });
     const dossierSheet = await dossierComposites.composePersonDossier({
       taskId: taskId || options.generationId,
       assetId: actorId,
       atomicAssets: compiled.atomic_assets,
       revision: 1,
-      title: 'AI Character Production Dossier',
+      title: member.displayName || '完整人物制作档案',
+      profile: member,
+      wardrobeDetails,
+      accessoryDetails,
     }, { mediaAdapter });
     cancellation.throwIfCancelled();
     const asset = {
@@ -818,10 +893,19 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       identity_views: compiled.identity_views,
       expressions: compiled.expressions,
       base_actions: compiled.base_actions,
+      accessory_details: accessoryDetails,
+      wardrobe_details: {
+        source: 'gpt_image_2_high_resolution_details',
+        description: member.wardrobeText || '',
+        items: wardrobeDetails,
+        model_call_count: wardrobeDetails.reduce((sum, item) => sum + Number(item.model_call_count || 0), 0),
+      },
       generation_summary: compiled.generation_summary,
       subject_profile: member,
     };
     asset.person_contract = await personIdentity.verifyPersonAsset({ taskId: taskId || options.generationId, asset, spec: member, revision: 1 });
+    processedUnits += 1;
+    await report('person_verification', `人物 ${index + 1} 档案已完成一致性验证`, { subject_index: index + 1, subject_kind: 'human' });
     asset.person_contract.display_name = member.displayName;
     asset.person_contract.role_name = member.roleName;
     asset.person_revision = asset.person_contract.person_revision;
@@ -831,7 +915,11 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     save();
   }
   for (let index = 0; index < pets.length; index += 1) {
-    if (reusablePetAsset(checkpoint.pets[index])) continue;
+    if (reusablePetAsset(checkpoint.pets[index])) {
+      processedUnits += 2;
+      await report('checkpoint_reused', `已复用动物 ${index + 1} 的身份档案`, { subject_index: index + 1, subject_kind: 'pet' });
+      continue;
+    }
     cancellation.throwIfCancelled();
     const profile = pets[index];
     const petId = `new_story_pet_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`;
@@ -842,6 +930,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       imageModel: body.image_model || body.imageModel || 'auto',
     });
     const views = await mediaAdapter.splitActorSheet({ source: sheet, filenamePrefix: `pet_${petId}`, viewKeys: HUMAN_VIEW_KEYS });
+    processedUnits += 1;
+    await report('pet_dossier', `动物 ${index + 1} 多视图已生成`, { subject_index: index + 1, subject_kind: 'pet' });
     cancellation.throwIfCancelled();
     const asset = {
       id: `pet_asset_${petId}`, pet_asset_id: `pet_asset_${petId}`, pet_id: petId, name: profile.name,
@@ -850,6 +940,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       view_images: views, view_count: views.length, description: profile.appearance,
     };
     asset.pet_contract = await petIdentity.verifyPetAsset({ taskId: taskId || options.generationId, asset, profile, revision: 1 });
+    processedUnits += 1;
+    await report('pet_verification', `动物 ${index + 1} 已完成一致性验证`, { subject_index: index + 1, subject_kind: 'pet' });
     checkpoint.pets[index] = { ...profile, ...asset, reference_images: views.map(view => view.url).filter(Boolean) };
     checkpoint.generated_counts.pets += 1;
     save();
@@ -870,6 +962,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     checkpoint.subject_board_url = subjectBoardUrl;
   }
   checkpoint.status = 'complete';
+  processedUnits = totalUnits;
+  await report('complete', '主体档案已完成并写入当前项目');
   save();
   if (personContract) personContract.subject_board_url = subjectBoardUrl;
   if (petContract) petContract.subject_board_url = subjectBoardUrl;

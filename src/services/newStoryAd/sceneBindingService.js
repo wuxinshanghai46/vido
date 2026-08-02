@@ -293,7 +293,7 @@ function normalizeScenePlan(input = {}) {
       };
     })
     .filter(space => space.name || space.description)
-    .slice(0, 12);
+    .slice(0, 120);
   const declaredMode = cleanText(source.scene_mode || source.sceneMode || '', 20).toLowerCase();
   const sceneMode = spaces.length > 1 ? 'multi' : (['single', 'multi'].includes(declaredMode) ? declaredMode : (spaces.length === 1 ? 'single' : 'auto'));
   return { ...source, scene_mode: sceneMode, spaces };

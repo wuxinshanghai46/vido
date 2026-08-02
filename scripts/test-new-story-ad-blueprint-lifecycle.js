@@ -132,6 +132,26 @@ async function main() {
     assert.equal(task.generation_progress.percent, 100);
     assert.equal(jobService.stageBudgetMs('blueprint'), 480000);
 
+    const persistedMeta = storage.getOutput('blueprint-lifecycle-task', 'blueprint_meta');
+    storage.saveOutput('blueprint-lifecycle-task', 'storyboard_table', [{ shot_index: 1, title: '旧分镜' }]);
+    storage.saveOutput('blueprint-lifecycle-task', 'storyboard_sketches', [{ shot_index: 1, image_url: '/old-sketch.png' }]);
+    let forcedGeneratorCalls = 0;
+    const forced = await blueprintLifecycle.generateBlueprintStage('blueprint-lifecycle-task', {
+      generationId: 'generation-blueprint-current',
+      inputFingerprint: persistedMeta.input_fingerprint,
+      force_regenerate: true,
+    }, {
+      versionedBlueprint: (value, previous) => ({ ...value, revision: Number(previous.revision || 1) + 1, fingerprint: 'forced-blueprint' }),
+      generateBlueprintFn: async () => {
+        forcedGeneratorCalls += 1;
+        return { ...premiumBlueprint, story_title: '强制重生成剧情' };
+      },
+    });
+    assert.equal(forcedGeneratorCalls, 1, '显式批量重生成不得命中相同输入指纹缓存');
+    assert.equal(forced.story_title, '强制重生成剧情');
+    assert.equal(storage.getOutput('blueprint-lifecycle-task', 'storyboard_table'), null, '剧情变化后必须失效旧分镜');
+    assert.equal(storage.getOutput('blueprint-lifecycle-task', 'storyboard_sketches'), null, '剧情变化后必须失效旧线稿');
+
     storage.createTask({
       id: 'blueprint-checkpoint-retry',
       brief: context.brief,
@@ -213,6 +233,11 @@ async function main() {
     const taskStoreSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/task-store.js'), 'utf8');
     assert(taskStoreSource.includes('人物、场景和已通过的空间验证均已保留'));
     assert(taskStoreSource.includes("state.taskErrorCode === 'STAGE_DEADLINE_EXCEEDED'"));
+    const plotRoomSource = fs.readFileSync(path.join(root, 'public/story-ad/views/plotRoomView.js'), 'utf8');
+    assert(plotRoomSource.includes('批量重生成全部剧情'));
+    assert(plotRoomSource.includes("force_regenerate: true"));
+    const routeSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd.js'), 'utf8');
+    assert(routeSource.includes('force_regenerate: forceRegenerate'));
     console.log('new story ad blueprint lifecycle: ok');
   } finally {
     modelGateway.generateText = originalGenerateText;

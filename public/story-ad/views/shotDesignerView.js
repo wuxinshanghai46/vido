@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
@@ -29,6 +29,19 @@ const VALUE_OPTIONS = {
 };
 
 const LONG_FIELDS = new Set(['entry_frame_state', 'exit_frame_state', 'transition_reason', 'eyeline', 'camera_axis']);
+const EFFECT_OPTIONS = [
+  ['none', '无特殊效果'], ['mechanical_assembly', '机械精确组装'], ['explode_view', '产品爆炸分解'],
+  ['layer_separation', '结构分层'], ['particle_assembly', '粒子汇聚成形'], ['material_morph', '材质渐变 / 变形'],
+  ['cutaway_reveal', '剖切揭示内部'], ['before_after_reveal', '前后对比揭示'], ['custom', '任务自定义效果'],
+];
+
+function motionEffectEditor(shot = {}) {
+  const effect = shot.motion_effect || {};
+  return `<section class="motion-effect-editor"><h3>产品分解 / 组合 / 变化效果</h3><p>效果必须写清起点、终点和本镜时间轴；只选类型不会产生可靠结果。</p>
+    <div class="form-grid"><label class="field"><span>效果类型</span><select class="select" data-motion-effect-field="type">${EFFECT_OPTIONS.map(([value, label]) => `<option value="${value}" ${(effect.type || 'none') === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label><label class="field"><span>强度</span><select class="select" data-motion-effect-field="intensity">${[['low','轻'],['medium','中'],['high','强']].map(([value,label]) => `<option value="${value}" ${(effect.intensity || 'medium') === value ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
+    <label class="field full"><span>起始状态</span><textarea class="textarea" rows="2" data-motion-effect-field="source_state">${escapeHtml(effect.source_state || '')}</textarea></label><label class="field full"><span>目标状态</span><textarea class="textarea" rows="2" data-motion-effect-field="target_state">${escapeHtml(effect.target_state || '')}</textarea></label><label class="field full"><span>本镜时间轴</span><textarea class="textarea" rows="3" data-motion-effect-field="timeline" placeholder="例：0-1秒完整产品定格；1-3秒部件沿三轴分离；3-4秒悬停展示；4-6秒精确复位">${escapeHtml(effect.timeline || '')}</textarea></label><label class="field full"><span>补充约束</span><textarea class="textarea" rows="2" data-motion-effect-field="notes">${escapeHtml(effect.notes || '')}</textarea></label></div>
+  </section>`;
+}
 
 function shotNumber(shot = {}, index = 0) {
   return Number(shot.shot_index || shot.index || index + 1) || index + 1;
@@ -97,16 +110,54 @@ function collectShot(host, original) {
     if (next[key] !== value) next._nsa_user_edited_fields[key] = true;
     next[key] = value;
   });
+  const effect = { ...(original.motion_effect || {}) };
+  host.querySelectorAll('[data-motion-effect-field]').forEach(input => { effect[input.dataset.motionEffectField] = input.value.trim(); });
+  effect.preserve_scene_geometry = original.motion_effect?.preserve_scene_geometry !== false;
+  next.motion_effect = effect;
   next.visual_description = next.visual;
   next.duration_sec = Math.max(1, Number(next.duration) || Number(next.duration_sec) || 3);
   next.duration = next.duration_sec;
   return next;
 }
 
+function shotEditableFingerprint(shot = {}) {
+  const fields = [
+    'visual', 'action', 'duration', 'voiceover',
+    ...FIELD_GROUPS.flatMap(([, definitions]) => definitions.map(([name]) => name)),
+    'motion_effect',
+  ];
+  return JSON.stringify(Object.fromEntries(fields.map(name => {
+    if (name === 'visual') return [name, String(shot.visual || shot.visual_description || '').trim()];
+    if (name === 'voiceover') return [name, String(shot.voiceover || shot.narration || '').trim()];
+    if (name === 'duration') return [name, Math.max(1, Number(shot.duration || shot.duration_sec || 3) || 3)];
+    if (name === 'motion_effect') return [name, JSON.stringify(shot.motion_effect || {})];
+    return [name, shot[name] === undefined || shot[name] === null ? '' : String(shot[name]).trim()];
+  })));
+}
+
+function missingShotDesign(shot = {}, index = 0) {
+  const fields = [
+    ['画面说明', shot.visual || shot.visual_description],
+    ['动作', shot.action],
+    ['使用场景', shot.scene_id || shot.scene_asset_id],
+    ['景别', shot.shot_size],
+    ['机位角度', shot.camera_angle || shot.angle],
+    ['运镜', shot.camera_movement || shot.movement],
+    ['起始状态', shot.entry_frame_state],
+    ['结束状态', shot.exit_frame_state],
+  ].filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
+  if (shot.motion_effect?.type && shot.motion_effect.type !== 'none') {
+    [['效果起始状态', shot.motion_effect.source_state], ['效果目标状态', shot.motion_effect.target_state], ['效果时间轴', shot.motion_effect.timeline]]
+      .filter(([, value]) => !String(value || '').trim()).forEach(([label]) => fields.push(label));
+  }
+  return fields.length ? { index, number: shotNumber(shot, index), fields } : null;
+}
+
 /** 挂载逐镜设计页，所有字段直接编辑现有 storyboard_table。 */
 export async function mount(host, context) {
   const { bundle, store, route } = context;
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
+  const isReferenceDraft = bundle?.storyboard?.source === 'reference_analysis_projection';
   if (!shots.length) {
     host.innerHTML = `<section class="view-head"><div><h1>镜头设计</h1><p>逐镜设置必须建立在真实文字分镜上。</p></div></section><section class="card">${emptyState({
       title: '还没有可设计的镜头',
@@ -125,8 +176,8 @@ export async function mount(host, context) {
   const next = shots[selectedIndex + 1] || null;
   host.innerHTML = `
     <section class="view-head compact">
-      <div><h1>镜头设计</h1><p>逐镜确认场景、机位、构图、运镜、起止状态和相邻镜头衔接。</p></div>
-      <div class="view-actions"><button class="btn" type="button" data-ai-shot>AI 帮我完善镜头</button><button class="btn primary" type="button" data-save-shot>保存当前镜头</button></div>
+      <div><h1>镜头设计</h1><p>逐镜确认场景、机位、构图、运镜、起止状态和相邻镜头衔接。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频机位草稿 · 保存当前镜头后转为项目分镜</span>' : ''}</div>
+      <div class="view-actions"><button class="btn" type="button" data-ai-shot>AI 帮我完善镜头</button><button class="btn" type="button" data-save-shot>保存当前镜头</button><button class="btn primary" type="button" data-finish-shot-design>完成镜头设计，进入生成</button></div>
     </section>
     <div class="shot-designer">
       <aside class="shot-rail card">
@@ -168,6 +219,7 @@ export async function mount(host, context) {
         <div class="card-body settings-groups">
           <section class="shot-readable-summary"><h3>当前拍摄摘要</h3>${shotSummary(bundle, selected).map(([label, value]) => `<div><span>${escapeHtml(label)}</span><p>${escapeHtml(value)}</p></div>`).join('')}</section>
           ${FIELD_GROUPS.map(([title, fields]) => `<section><h3>${escapeHtml(title)}</h3><div class="form-grid">${fields.map(field => fieldEditor(bundle, selected, field)).join('')}</div></section>`).join('')}
+          ${motionEffectEditor(selected)}
           <details class="technical-details"><summary>查看技术标识</summary><dl><div><dt>场景标识</dt><dd>${escapeHtml(selected.scene_id || selected.scene_asset_id || '未设置')}</dd></div><div><dt>机位标识</dt><dd>${escapeHtml(selected.camera_id || '未设置')}</dd></div></dl></details>
         </div>
       </aside>
@@ -177,24 +229,62 @@ export async function mount(host, context) {
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot&shot=${encodeURIComponent(button.dataset.selectShot)}`);
   }));
 
-  const saveCurrent = async button => {
+  const saveCurrent = async (button, options = {}) => {
     try {
-      setButtonBusy(button, true, '保存中…');
-      const nextShots = shots.map((shot, index) => index === selectedIndex ? collectShot(host, shot) : shot);
-      await store.saveStoryboard(nextShots);
-      toast('当前镜头已保存。', 'success');
-      await context.refreshShell();
+      setButtonBusy(button, true, options.busyLabel || '保存中…');
+      const collectedCurrent = collectShot(host, selected);
+      const nextShots = shots.map((shot, index) => ({
+        ...(index === selectedIndex ? collectedCurrent : shot),
+        source: shot.source === 'reference_analysis_projection' ? 'user_confirmed_reference' : shot.source,
+        projection_only: false,
+      }));
+      const hasEditableChange = shotEditableFingerprint(selected) !== shotEditableFingerprint(collectedCurrent);
+      if (!hasEditableChange && selected.source !== 'reference_analysis_projection' && selected.projection_only !== true) {
+        if (options.toast !== false) toast('当前镜头没有待保存的修改。', 'success');
+        return shots;
+      }
+      const saved = await store.saveStoryboard(nextShots);
+      const persistedShots = Array.isArray(saved?.shots) && saved.shots.length
+        ? saved.shots
+        : (Array.isArray(store.state.bundle?.storyboard?.shots) ? store.state.bundle.storyboard.shots : nextShots);
+      if (options.toast !== false) toast('当前镜头已保存。', 'success');
+      if (options.refresh !== false) await context.refreshShell();
+      return persistedShots;
     } catch (error) {
       toast(error.message, 'danger');
+      return null;
     } finally {
-      setButtonBusy(button, false);
+      if (options.keepBusy !== true) setButtonBusy(button, false);
     }
   };
   host.querySelector('[data-save-shot]').addEventListener('click', event => saveCurrent(event.currentTarget));
+  host.querySelector('[data-finish-shot-design]').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const nextShots = await saveCurrent(button, {
+      busyLabel: '正在校验全部镜头…', toast: false, refresh: false, keepBusy: true,
+    });
+    if (!nextShots) return setButtonBusy(button, false);
+    const missing = nextShots.map(missingShotDesign).filter(Boolean);
+    if (missing.length) {
+      const first = missing[0];
+      toast(`镜头 SH${String(first.number).padStart(2, '0')} 还缺少：${first.fields.join('、')}。`, 'warning');
+      setButtonBusy(button, false);
+      if (first.index !== selectedIndex) context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot&shot=${encodeURIComponent(first.number)}`);
+      return;
+    }
+    try {
+      await store.updateRequest({ shot_design_confirmed: true });
+      toast('全部镜头设计已确认，可以进入关键帧与视频生成。', 'success');
+      context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=final`);
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  });
   host.querySelector('[data-ai-shot]').addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
-      setButtonBusy(button, true, '正在补齐…');
+      setButtonBusy(button, true, '正在补齐…', { elapsed: true });
       const currentShot = collectShot(host, selected);
       const data = await request('/api/new-story-ad/assist', {
         method: 'POST',

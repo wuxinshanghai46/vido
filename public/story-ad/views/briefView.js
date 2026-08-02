@@ -1,13 +1,10 @@
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js';
+import { request } from '../api.js';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 import { confirmDialog, promptDialog } from '../components/dialog.js';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
   ['product', '商品 / 主体', '上传商品或服务主体图片'],
-  ['person', '人物 / 宠物', '上传身份参考，或进入资产中心生成'],
-  ['scene', '场景 / 空间', '上传环境参考图片'],
-  ['logo', '品牌标识', '仅使用已经授权的图片文件'],
-  ['script', '脚本 / 分镜', '上传文本文件或直接写入目标'],
 ];
 
 /** 从表单生成现有任务接口可以接受的请求。 */
@@ -23,10 +20,19 @@ function formPayload(form) {
     output_ratio: String(data.get('output_ratio') || '9:16'),
     output_size: String(data.get('output_size') || 'standard'),
     video_resolution: String(data.get('video_resolution') || '720p'),
-    cast_mode: String(data.get('cast_mode') || 'auto'),
-    expected_people: Math.max(0, Number(data.get('expected_people') || 0) || 0),
-    expected_animals: Math.max(0, Number(data.get('expected_animals') || 0) || 0),
     production_mode: String(data.get('production_mode') || 'auto'),
+    benchmark_strategy: {
+      source: 'platform_competitor_learning',
+      opening_hook: String(data.get('benchmark_opening_hook') || '').trim(),
+      subject_introduction: String(data.get('benchmark_subject_introduction') || '').trim(),
+      proof_sequence: String(data.get('benchmark_proof_sequence') || '').trim(),
+      spectacle: String(data.get('benchmark_spectacle') || '').trim(),
+      closing: String(data.get('benchmark_closing') || '').trim(),
+      camera_language: String(data.get('benchmark_camera_language') || '').trim(),
+      prompt_method: String(data.get('benchmark_prompt_method') || '').trim(),
+      naturalness_review: String(data.get('benchmark_naturalness_review') || '').trim(),
+      user_edited: true,
+    },
   };
 }
 
@@ -36,7 +42,9 @@ function materialRows(bundle, isNew) {
   const assets = bundle?.assets || {};
   const ready = {
     reference: !!(reference.analysis_id || reference.filename || reference.url),
-    product: !!assets.products?.length,
+    product: !!assets.products?.some(item => item.image_url
+      || item.dossier_sheet?.image_url
+      || (Array.isArray(item.view_images) && item.view_images.some(view => view.image_url))),
     person: !!(assets.people?.length || assets.animals?.length),
     scene: !!(assets.scenes?.length || bundle?.materials?.roles?.includes('scene_reference')),
     logo: !!assets.logos?.length,
@@ -48,8 +56,86 @@ function materialRows(bundle, isNew) {
       <span class="material-actions">
         ${id === 'reference' ? '<button class="btn" type="button" data-reference-link>粘贴链接</button>' : ''}
         <button class="btn" type="button" data-material-upload="${id}">${isNew ? '创建并添加' : (ready[id] ? '更换' : '添加')}</button>
+        ${id === 'reference' && ready[id] && !reference.client_pending ? '<button class="material-remove" type="button" data-reference-remove aria-label="移除参考视频" title="移除参考视频">×</button>' : ''}
       </span>
     </div>`).join('');
+}
+
+/** 首屏只展示参考分析状态；结构化内容继续按制作环节渐进展示。 */
+export function referenceProgress(reference = {}) {
+  if (!reference.analysis_id) return '';
+  const status = String(reference.status || '').toLowerCase();
+  const active = ['uploading', 'importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(status);
+  const completed = status === 'completed';
+  const failed = status === 'failed';
+  const cancelled = status === 'cancelled';
+  const labels = {
+    uploading: '正在上传参考视频',
+    importing: '正在读取参考链接',
+    uploaded: '视频已就绪，等待分析',
+    queued: '已进入分析队列',
+    running: '正在分析参考视频',
+    cancelling: '正在停止分析',
+    completed: '参考视频分析完成',
+    failed: '参考视频分析失败',
+    cancelled: '参考视频分析已取消',
+  };
+  const numeric = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
+  const percent = completed ? 100 : numeric;
+  const phase = String(reference.phase || labels[status] || '等待分析').trim();
+  const tone = failed ? 'is-failed' : (completed ? 'is-completed' : (cancelled ? 'is-cancelled' : 'is-active'));
+  const baseNote = completed
+    ? '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。'
+    : (failed
+      ? (reference.error || '本次分析没有完成，请更换参考视频或重新尝试。')
+      : (cancelled
+        ? '分析已经停止，当前未完成的结果不会进入后续制作环节。'
+        : '正在后台读取和理解视频；完成后会自动填写广告目标，并把其他结果分配到对应制作环节。'));
+  const batchProgress = reference.evidence_batch_progress && typeof reference.evidence_batch_progress === 'object'
+    ? reference.evidence_batch_progress
+    : {};
+  const batchTotal = Math.max(0, Number(batchProgress.total || 0) || 0);
+  const batchCompleted = Math.max(0, Math.min(batchTotal, Number(batchProgress.completed || 0) || 0));
+  const partialEvidence = failed && batchTotal > 0 && batchCompleted > 0 && batchCompleted < batchTotal;
+  const retryMinutes = Math.ceil(Math.max(0, Number(reference.retry_after_ms || 0) || 0) / 60000);
+  const note = [
+    baseNote,
+    partialEvidence ? `已完成 ${batchCompleted}/${batchTotal} 批，重试只会继续读取剩余 ${batchTotal - batchCompleted} 批。` : '',
+    failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
+  ].filter(Boolean).join(' ');
+  const retry = failed && reference.client_pending !== true
+    ? `<button class="btn" type="button" data-reference-retry>${reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '复用完整证据重新整理' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据'))}</button>`
+    : '';
+  const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.updated_at || '';
+  return `<section class="reference-progress-card ${tone}" aria-live="polite">
+    <div class="reference-progress-head">
+      <span><b>${escapeHtml(labels[status] || '参考视频状态')}</b><small>${escapeHtml(reference.filename || '当前参考视频')}</small></span>
+      <span class="reference-progress-stats">${elapsedTimeTag({ startedAt: reference.started_at, finishedAt, active })}<strong>${percent}%</strong></span>
+    </div>
+    <div class="reference-progress-phase"><span class="reference-progress-pulse" aria-hidden="true"></span>${escapeHtml(phase)}</div>
+    <div class="reference-progress-track" role="progressbar" aria-label="参考视频分析进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div>
+    <div class="reference-progress-foot"><p>${escapeHtml(note)}</p>${retry}</div>
+  </section>`;
+}
+
+/** 统一目标页主操作对参考分析状态的判定，避免进度卡和按钮各自维护一套状态。 */
+export function referenceActionState(reference = {}) {
+  if (!reference.analysis_id) return { blocked: false, label: '进行资产创建' };
+  const status = String(reference.status || '').toLowerCase();
+  if (status === 'completed' && reference.analysis_valid === true) {
+    return { blocked: false, label: '进行资产创建' };
+  }
+  if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
+  if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };
+  if (status === 'completed') return { blocked: true, label: '分析结果不完整，请重试' };
+  return { blocked: true, label: '等待参考视频分析完成' };
+}
+
+export function syncReferenceAction(button, reference = {}) {
+  if (!button) return;
+  const action = referenceActionState(reference);
+  button.disabled = action.blocked;
+  button.textContent = action.label;
 }
 
 /** 挂载目标与材料页。 */
@@ -57,18 +143,22 @@ export async function mount(host, context) {
   const { route, store, navigate } = context;
   const bundle = store.state.bundle || {};
   const brief = bundle.brief || {};
+  const referenceAttached = Boolean(bundle.reference?.analysis_id);
+  const benchmark = brief.benchmark_strategy || {};
+  const referenceAction = referenceActionState(bundle.reference || {});
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>先说清楚要做什么</h1><p>只写一句话也可以建立项目；参考视频、人物、商品、场景和脚本都不是创建前提。</p></div>
-      ${!route.isNew ? '<span class="status-tag is-success">自动保存到真实任务</span>' : ''}
+      <div><h1>先说清楚要做什么</h1><p>命名项目后，可以自己填写广告目标，也可以直接添加参考视频并让系统读取内容。</p></div>
+      ${!route.isNew ? '<span class="status-tag is-neutral">第 1 步 · 目标确认</span>' : ''}
     </section>
-    <div class="guide"><b>操作方法</b>　①填写目标　②按需添加材料　③保存后进入资产中心</div>
+    <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
+    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
     <div class="two-column">
       <form class="card brief-form" data-brief-form>
-        <div class="card-head"><div><h2>这支剧情广告要讲什么？</h2><p>写清产品或主题、受众、情绪以及观众需要记住的内容。</p></div></div>
+        <div class="card-head"><div><h2>这支剧情广告要讲什么？</h2><p>可以手动填写；选择参考视频时，这里会自动采用分析出的广告内容。</p></div></div>
         <div class="card-body form-grid">
-          <label class="field full"><span>项目名称</span><input class="input" name="project_name" required minlength="2" maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="例如：新标门窗 · 全景窗剧情广告"><small>由你命名，只用于项目识别；修改广告目标不会再自动改名。</small></label>
-          <label class="field full"><span>广告目标</span><textarea class="textarea" name="brief" rows="7" required minlength="8" placeholder="例如：为某个产品制作一支剧情广告，说明人物、场景、情绪和品牌目标。">${escapeHtml(brief.text || '')}</textarea></label>
+          <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改广告目标不会再自动改名。</small></label>
+          <label class="field full"><span class="field-label-with-action"><span>广告目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="先输入一句广告想法，再点击 AI 帮写；添加参考视频时也可以留空。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '分析完成后这里只显示提炼出的广告目标，其他内容会进入对应制作环节。' : 'AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位；生成后仍可继续修改。'}</small></label>
           <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${value} 秒</option>`).join('')}
@@ -79,48 +169,124 @@ export async function mount(host, context) {
           <label class="field"><span>视频分辨率</span><select class="select" name="video_resolution">
             ${['720p', '1080p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}
           </select></label>
-          <label class="field"><span>人物模式</span><select class="select" name="cast_mode">
-            <option value="auto" ${brief.cast_mode === 'auto' ? 'selected' : ''}>按需求判断</option>
-            <option value="single" ${brief.cast_mode === 'single' ? 'selected' : ''}>单人</option>
-            <option value="dual" ${brief.cast_mode === 'dual' ? 'selected' : ''}>双人</option>
-            <option value="multi" ${brief.cast_mode === 'multi' ? 'selected' : ''}>多人</option>
-            <option value="human_pet" ${brief.cast_mode === 'human_pet' ? 'selected' : ''}>人物与宠物</option>
-            <option value="animal" ${brief.cast_mode === 'animal' ? 'selected' : ''}>仅动物</option>
-            <option value="no_human" ${brief.cast_mode === 'no_human' ? 'selected' : ''}>无人物</option>
-          </select></label>
-          <label class="field"><span>人物数量</span><input class="input" type="number" min="0" max="12" name="expected_people" value="${Number(brief.expected_people) || 0}"></label>
-          <label class="field"><span>动物数量</span><input class="input" type="number" min="0" max="12" name="expected_animals" value="${Number(brief.expected_animals) || 0}"></label>
-          <div class="field full form-actions"><button class="btn primary" type="submit">${route.isNew ? '创建项目' : '保存目标'}</button></div>
+          <input type="hidden" name="benchmark_opening_hook" value="${escapeHtml(benchmark.opening_hook || '')}">
+          <input type="hidden" name="benchmark_subject_introduction" value="${escapeHtml(benchmark.subject_introduction || '')}">
+          <input type="hidden" name="benchmark_proof_sequence" value="${escapeHtml(benchmark.proof_sequence || '')}">
+          <input type="hidden" name="benchmark_spectacle" value="${escapeHtml(benchmark.spectacle || '')}">
+          <input type="hidden" name="benchmark_closing" value="${escapeHtml(benchmark.closing || '')}">
+          <input type="hidden" name="benchmark_camera_language" value="${escapeHtml(benchmark.camera_language || '')}">
+          <input type="hidden" name="benchmark_prompt_method" value="${escapeHtml(benchmark.prompt_method || '')}">
+          <input type="hidden" name="benchmark_naturalness_review" value="${escapeHtml(benchmark.naturalness_review || '')}">
+          <div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '创建项目' : referenceAction.label}</button></div>
         </div>
       </form>
       <aside class="card">
-        <div class="card-head"><div><h2>补充材料</h2><p>全部可选，只在确实需要时添加。</p></div></div>
+        <div class="card-head"><div><h2>启动材料</h2><p>这里只放决定项目起点的参考视频和商品。人物、场景、LOGO 在资产中心添加，故事和分镜到对应环节编辑。</p></div></div>
         <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
       </aside>
     </div>
-    ${bundle.reference?.analysis_id ? `<section class="card reference-summary">
-      <div class="card-head"><div><h2>参考内容分析</h2><p>${escapeHtml(bundle.reference.filename || '当前参考视频')} · ${escapeHtml(bundle.reference.status || '等待分析')}</p></div></div>
-      <div class="card-body">
-        ${bundle.reference.error ? `<div class="inline-error">${escapeHtml(bundle.reference.error)}</div>` : ''}
-        <div class="reference-facts">
-          <div><span>识别主体</span><p>${escapeHtml(bundle.reference.source_facts?.product_or_service || (bundle.reference.status === 'completed' ? '未提取到明确主体' : '分析完成后显示'))}</p></div>
-          <div><span>内容环境</span><p>${escapeHtml(bundle.reference.source_facts?.environment || (bundle.reference.status === 'completed' ? '未提取到明确环境' : '分析完成后显示'))}</p></div>
-          <div class="full"><span>人物与行为</span><p>${escapeHtml(bundle.reference.source_facts?.human_actions?.join('；') || (bundle.reference.source_facts?.human_presence === false ? '未发现人物出镜' : '分析完成后显示'))}</p></div>
-          ${bundle.reference.generated_brief ? `<div class="full"><span>参考内容摘要</span><p>${escapeHtml(bundle.reference.generated_brief)}</p></div>` : ''}
-        </div>
-      </div>
-    </section>` : ''}
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
 
   const form = host.querySelector('[data-brief-form]');
   let createdProjectId = route.isNew ? '' : bundle.project?.id;
+  const dirtyFields = new Set();
+  form.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
+  form.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
+
+  /** 未经本次页面主动编辑的字段始终使用 Store 最新值，防止分析完成后旧 DOM 覆盖识别结果。 */
+  function safeFormPayload() {
+    const current = formPayload(form);
+    if (route.isNew) return current;
+    const latest = store.state.bundle?.brief || {};
+    const authoritative = {
+      project_name: latest.project_name || store.state.bundle?.project?.title || '',
+      brief: latest.text || '',
+      content: latest.text || '',
+      product_subject: latest.product_subject || '',
+      target_duration: Number(latest.target_duration || 30) || 30,
+      output_ratio: latest.output_ratio || '9:16',
+      output_size: latest.output_size || 'standard',
+      video_resolution: latest.video_resolution || '720p',
+      production_mode: 'auto',
+      benchmark_strategy: latest.benchmark_strategy || {},
+    };
+    Object.keys(current).forEach(key => {
+      if (dirtyFields.has(key) || (key === 'content' && dirtyFields.has('brief')) || (key === 'benchmark_strategy' && [...dirtyFields].some(name => name.startsWith('benchmark_')))) authoritative[key] = current[key];
+    });
+    authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
+    return authoritative;
+  }
+
+  const unsubscribeProgress = store.subscribe(nextState => {
+    const progressHost = host.querySelector('[data-reference-progress-host]');
+    if (progressHost) progressHost.innerHTML = referenceProgress(nextState.bundle?.reference || {});
+    const latest = nextState.bundle?.brief || {};
+    const values = {
+      project_name: latest.project_name || nextState.bundle?.project?.title || '',
+      brief: latest.text || '',
+      product_subject: latest.product_subject || '',
+      target_duration: String(Number(latest.target_duration || 30) || 30),
+      output_ratio: latest.output_ratio || '9:16',
+      video_resolution: latest.video_resolution || '720p',
+      benchmark_opening_hook: latest.benchmark_strategy?.opening_hook || '',
+      benchmark_subject_introduction: latest.benchmark_strategy?.subject_introduction || '',
+      benchmark_proof_sequence: latest.benchmark_strategy?.proof_sequence || '',
+      benchmark_spectacle: latest.benchmark_strategy?.spectacle || '',
+      benchmark_closing: latest.benchmark_strategy?.closing || '',
+      benchmark_camera_language: latest.benchmark_strategy?.camera_language || '',
+      benchmark_prompt_method: latest.benchmark_strategy?.prompt_method || '',
+      benchmark_naturalness_review: latest.benchmark_strategy?.naturalness_review || '',
+    };
+    Object.entries(values).forEach(([name, value]) => {
+      if (dirtyFields.has(name)) return;
+      const control = form.elements.namedItem(name);
+      if (control && String(control.value) !== String(value)) control.value = value;
+    });
+    if (!route.isNew) {
+      syncReferenceAction(form.querySelector('[data-brief-submit]'), nextState.bundle?.reference || {});
+    }
+  });
+
+  host.querySelector('[data-ai-brief]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const textarea = form.elements.namedItem('brief');
+    const idea = String(textarea?.value || '').trim();
+    try {
+      if (!idea) throw new Error('请先输入一句广告想法，再让 AI 帮你丰富。');
+      if (store.state.bundle?.reference?.analysis_id) throw new Error('当前项目已经添加参考视频，请使用视频分析出的广告目标。');
+      const payload = safeFormPayload();
+      setButtonBusy(button, true, 'AI 帮写中…', { elapsed: true });
+      const data = await request('/api/new-story-ad/assist', {
+        method: 'POST',
+        body: {
+          mode: 'brief_goal',
+          task_id: createdProjectId || '',
+          brief: idea,
+          product_subject: payload.product_subject,
+          target_duration: payload.target_duration,
+          output_ratio: payload.output_ratio,
+        },
+        timeoutMs: 120000,
+      });
+      if (store.state.bundle?.reference?.analysis_id) throw new Error('AI 帮写期间已添加参考视频，本次结果没有覆盖视频分析内容。');
+      if (String(textarea?.value || '').trim() !== idea) throw new Error('你在 AI 帮写期间修改了广告目标，本次结果没有覆盖你的新内容。');
+      const assisted = String(data.brief || '').trim();
+      if (!assisted) throw new Error('AI 没有返回可用的广告目标，请保留当前想法后重试。');
+      textarea.value = assisted;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      toast('AI 已丰富广告目标；确认或修改后再进行资产创建。', 'success');
+    } catch (error) {
+      toast(error.message, 'danger');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  });
 
   /** 新建模式下先建立真实任务，后续材料全部绑定该任务。 */
   async function ensureProject(button) {
     if (createdProjectId) return createdProjectId;
-    const payload = formPayload(form);
-    if (payload.project_name.length < 2) throw new Error('请先填写至少 2 个字的项目名称。');
-    if (payload.brief.length < 8) throw new Error('请先填写至少 8 个字的广告目标。');
+    const payload = safeFormPayload();
+    if (!payload.project_name) throw new Error('请先填写项目名称。');
     setButtonBusy(button, true, '正在创建…');
     const project = await store.createProject(payload);
     createdProjectId = project.id;
@@ -137,10 +303,16 @@ export async function mount(host, context) {
         toast('项目已创建。', 'success');
         navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
       } else {
-        setButtonBusy(button, true, '保存中…');
-        await store.updateRequest(formPayload(form));
-        toast('目标已保存。', 'success');
-        setButtonBusy(button, false);
+        const reference = store.state.bundle?.reference || {};
+        const status = String(reference.status || '').toLowerCase();
+        if (referenceActionState(reference).blocked) {
+          throw new Error(status === 'failed' ? '参考视频分析失败，请重新识别或更换视频后再创建资产。' : '参考视频仍在分析中，请等待完成后再创建资产。');
+        }
+        setButtonBusy(button, true, '正在保存并创建资产…', { elapsed: true });
+        await store.updateRequest(safeFormPayload());
+        await store.runStage('scene-config');
+        toast('已按当前目标和参考识别结果开始创建资产方案。', 'success');
+        navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
       }
     } catch (error) {
       setButtonBusy(button, false);
@@ -170,14 +342,6 @@ export async function mount(host, context) {
         if (role === 'reference') {
           setButtonBusy(button, true, '上传视频…');
           await store.uploadReference(file);
-        } else if (role === 'script') {
-          const text = await file.text();
-          if (!text.trim()) throw new Error('脚本文本为空。');
-          const current = formPayload(form);
-          await store.updateRequest({
-            ...current,
-            creative_direction: { raw: text.slice(0, 12000), source_name: file.name },
-          });
         } else {
           setButtonBusy(button, true, '上传中…');
           const uploaded = await store.upload(file, role === 'logo' ? 'brand_logo' : `${role}_reference`);
@@ -225,4 +389,56 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   });
+  host.querySelector('[data-reference-remove]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const confirmed = await confirmDialog('移除后将解除当前项目的参考视频，停止仍在进行的分析，并清理仅由该参考生成的资产方案、剧情和分镜草稿；已完成的参考分析记录会同时删除，无法恢复。你手动填写的广告目标和材料会保留，如需再次使用请重新上传视频或粘贴链接。', {
+      title: '移除参考视频',
+      confirmText: '确认移除',
+    });
+    if (!confirmed) return;
+    try {
+      setButtonBusy(button, true, '…');
+      await store.removeReference();
+      toast('参考视频已移除，现在可以手动填写或使用 AI 帮写广告目标。', 'success');
+      await context.refreshShell();
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  });
+  const handleReferenceRetry = async event => {
+    const button = event.target.closest('[data-reference-retry]');
+    if (!button) return;
+    const currentReference = store.state.bundle?.reference || {};
+    const reusable = currentReference.visual_evidence_reusable === true;
+    const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
+    const batchProgress = currentReference.evidence_batch_progress || {};
+    const partialEvidence = Number(batchProgress.completed || 0) > 0
+      && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
+    const retryMessage = semanticReusable
+      ? '画面证据和语义整理结果都已完整保存，本次只重新校验场景与分镜映射，不再调用模型，是否继续？'
+      : (reusable
+        ? '当前逐帧镜头证据已经通过完整性校验，本次只重新整理结构，是否继续？'
+        : (partialEvidence
+          ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只调用视觉模型读取剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次，可能产生剩余批次的模型费用。是否继续？`
+          : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉模型，可能产生新的模型费用。是否继续？'));
+    const confirmed = await confirmDialog(retryMessage, {
+      title: semanticReusable ? '重新校验参考视频' : (reusable ? '重新整理参考视频' : '重新读取镜头证据'),
+      confirmText: semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析'),
+    });
+    if (!confirmed) return;
+    try {
+      setButtonBusy(button, true, semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…'), { elapsed: true });
+      await store.retryReferenceAnalysis();
+      toast(semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据开始重新整理。' : '已开始重新检测并分析镜头证据。'), 'success');
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(button, false);
+    }
+  };
+  host.addEventListener('click', handleReferenceRetry);
+  return () => {
+    unsubscribeProgress();
+    host.removeEventListener('click', handleReferenceRetry);
+  };
 }

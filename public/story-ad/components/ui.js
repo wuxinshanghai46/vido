@@ -1,4 +1,5 @@
-/** 转义用户或模型返回文本。 */
+
+
 export function escapeHtml(value = '') {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
     '&': '&amp;',
@@ -9,7 +10,6 @@ export function escapeHtml(value = '') {
   }[character]));
 }
 
-/** 格式化日期，不制造示例时间。 */
 export function formatDate(value = '') {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
@@ -21,7 +21,6 @@ export function formatDate(value = '') {
   }).format(date);
 }
 
-/** 返回任务状态的中文标签。 */
 export function statusView(project = {}) {
   const status = String(project.status || '').toLowerCase();
   const stage = String(project.stage || '').toLowerCase();
@@ -39,8 +38,44 @@ export function statusView(project = {}) {
   return { label: labels[project.workspace] || (stage === 'draft' ? '需求编辑' : '继续制作'), tone: 'neutral' };
 }
 
+export function formatElapsedText(milliseconds = 0) {
+  const seconds = Math.max(0, Math.floor((Number(milliseconds) || 0) / 1000));
+  return `${Math.floor(seconds / 60)}分${String(seconds % 60).padStart(2, '0')}秒`;
+}
+
+export function elapsedMilliseconds(startedAt = '', finishedAt = '', nowMs = Date.now()) {
+  const started = Date.parse(String(startedAt || ''));
+  if (!Number.isFinite(started)) return null;
+  const finished = Date.parse(String(finishedAt || ''));
+  const ended = Number.isFinite(finished) ? finished : Number(nowMs || Date.now());
+  return Math.max(0, ended - started);
+}
+
+export function elapsedTimeTag({ startedAt = '', finishedAt = '', active = false } = {}) {
+  const elapsed = elapsedMilliseconds(startedAt, active ? '' : finishedAt);
+  if (elapsed == null) return '';
+  const prefix = active ? '已耗时' : '本次耗时';
+  return `<em class="elapsed-time" data-elapsed-started-at="${escapeHtml(startedAt)}" data-elapsed-finished-at="${escapeHtml(active ? '' : finishedAt)}" data-elapsed-prefix="${prefix}">${prefix} ${formatElapsedText(elapsed)}</em>`;
+}
+
+export function refreshElapsedLabels(scope = document, nowMs = Date.now()) {
+  scope.querySelectorAll?.('[data-elapsed-started-at]').forEach(element => {
+    const elapsed = elapsedMilliseconds(element.dataset.elapsedStartedAt, element.dataset.elapsedFinishedAt, nowMs);
+    if (elapsed == null) return;
+    element.textContent = `${element.dataset.elapsedPrefix || '已耗时'} ${formatElapsedText(elapsed)}`;
+  });
+  scope.querySelectorAll?.('[data-busy-started-at]').forEach(button => {
+    const elapsed = Math.max(0, Number(nowMs || Date.now()) - Number(button.dataset.busyStartedAt || nowMs));
+    button.textContent = `${button.dataset.busyLabel || '处理中…'} · 已耗时 ${formatElapsedText(elapsed)}`;
+  });
+}
+
 const GENERATION_STAGE_LABELS = {
   subject_assets: '人物与动物资产',
+  person_provider_sync: '人物 ID 与 Seedance 同步',
+  product_asset: '商品资产',
+  prop_asset: '人物随身道具',
+  scene_config: '场景规划',
   scene_asset: '场景视图',
   blueprint: '剧情蓝图',
   storyboard: '文字分镜',
@@ -53,11 +88,10 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  subject_assets: '项资产', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  subject_assets: '项资产', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
-/** 把后端权威进度整理成所有 V6 页面共用的用户可读状态。 */
 export function generationProgressView(bundle = {}) {
   const project = bundle.project || {};
   const progress = bundle.generation?.progress || project.generation_progress || {};
@@ -77,29 +111,38 @@ export function generationProgressView(bundle = {}) {
   const currentIndex = Math.max(0, Math.round(Number(progress.current_index) || 0));
   const stageLabel = GENERATION_STAGE_LABELS[stage] || '当前任务';
   const unitLabel = GENERATION_UNIT_LABELS[stage] || '项';
+  const startedAt = String(progress.started_at || project.generation_started_at || project.generation_queued_at || '');
+  const finishedAt = String(progress.finished_at || project.generation_finished_at || project.updated_at || '');
   let liveText = '';
-  if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
+  if (failed) liveText = progress.phase === 'review_failed' ? '自动审核未通过，生成已经停止' : '任务已经停止';
+  else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText,
     message: String(progress.message || project.error || `${stageLabel}正在处理中，请保持页面打开。`),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
+    startedAt,
+    finishedAt,
   };
 }
 
-/** 输出跨页面保持可见的生成进度；失败状态也保留明确处理信息。 */
 export function generationProgressPanel(bundle = {}) {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  if (view.failed) {
+    return `<section class="project-generation-progress is-failed is-terminal" role="alert">
+      <div class="project-progress-head"><div><b>${escapeHtml(`${view.stageLabel}审核未通过`)}</b><span>已产出 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
+      <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div>
+    </section>`;
+  }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">
-    <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>已完成 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><strong>${view.percent}%</strong></div>
+    <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>已完成 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="project-progress-stats">${elapsedTimeTag({ startedAt: view.startedAt, finishedAt: view.finishedAt, active: view.active })}<strong>${view.percent}%</strong></span></div>
     <div class="project-progress-track" aria-hidden="true"><i style="width:${view.percent}%"></i></div>
     <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.active ? `<button class="btn small danger" type="button" data-cancel-generation data-generation-id="${escapeHtml(view.generationId)}">停止生成</button>` : ''}</div>
   </section>`;
 }
 
-/** 显示短时反馈。 */
 export function toast(message, tone = 'info') {
   const host = document.querySelector('#storyAdToast');
   if (!host || !message) return;
@@ -114,22 +157,29 @@ export function toast(message, tone = 'info') {
   }, 3200);
 }
 
-/** 切换按钮忙碌状态。 */
-export function setButtonBusy(button, busy, label = '处理中…') {
+export function setButtonBusy(button, busy, label = '处理中…', options = {}) {
   if (!button) return;
   if (busy) {
-    button.dataset.previousText = button.textContent;
-    button.textContent = label;
+    if (!button.dataset.previousText) button.dataset.previousText = button.textContent;
+    if (options.elapsed === true) {
+      button.dataset.busyStartedAt = String(Date.now());
+      button.dataset.busyLabel = label;
+      button.textContent = `${label} · 已耗时 ${formatElapsedText(0)}`;
+    } else {
+      button.textContent = label;
+    }
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
   } else {
     button.textContent = button.dataset.previousText || button.textContent;
+    delete button.dataset.previousText;
+    delete button.dataset.busyStartedAt;
+    delete button.dataset.busyLabel;
     button.disabled = false;
     button.removeAttribute('aria-busy');
   }
 }
 
-/** 输出没有伪造内容的统一空状态。 */
 export function emptyState({ title, body, action = '', actionId = '' }) {
   return `<div class="empty-state">
     <div class="empty-icon" aria-hidden="true">＋</div>
@@ -139,9 +189,9 @@ export function emptyState({ title, body, action = '', actionId = '' }) {
   </div>`;
 }
 
-/** 输出真实媒体缩略图或语义占位。 */
 export function mediaPreview(item = {}, options = {}) {
-  const imageUrl = item.thumbnail_url || item.image_url || item.imageUrl || '';
+  const sourceImageUrl = item.image_url || item.imageUrl || '';
+  const imageUrl = item.thumbnail_url || sourceImageUrl;
   const videoUrl = item.video_url || item.videoUrl || '';
   const url = imageUrl || videoUrl || item.media_url || item.url || '';
   const label = options.label || item.name || item.title || '媒体';
@@ -151,6 +201,120 @@ export function mediaPreview(item = {}, options = {}) {
   if (url && videoLike) {
     return `<video class="media" src="${escapeHtml(url)}" preload="none" ${options.controls ? 'controls' : 'muted'} playsinline aria-label="${escapeHtml(label)}"></video>`;
   }
-  if (url) return `<img class="media" src="${escapeHtml(url)}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}" loading="lazy" alt="${escapeHtml(label)}">`;
+  if (url) {
+    const previewUrl = `${url}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}`;
+    const image = `<img class="media" src="${escapeHtml(previewUrl)}" loading="lazy" alt="${escapeHtml(label)}">`;
+    if (options.zoomable === true) {
+      return `<button class="media-zoom-trigger" type="button" data-media-zoom-url="${escapeHtml(sourceImageUrl || url)}" data-media-preview-url="${escapeHtml(previewUrl)}" data-media-zoom-label="${escapeHtml(label)}" data-media-zoom-group="${escapeHtml(options.zoomGroup || 'media')}">${image}<span aria-hidden="true">⌕</span></button>`;
+    }
+    return image;
+  }
   return `<div class="media-placeholder" aria-label="${escapeHtml(label)}"><span>${escapeHtml(options.symbol || '素材')}</span></div>`;
+}
+
+export function uniqueLightboxEntries(nodes = [], group = 'media') {
+  return [...nodes]
+    .filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)
+    .map(node => ({ url: node.dataset?.mediaZoomUrl || '', previewUrl: node.dataset?.mediaPreviewUrl || node.dataset?.mediaZoomUrl || '', label: node.dataset?.mediaZoomLabel || '图片' }))
+    .filter((item, itemIndex, rows) => item.url && rows.findIndex(candidate => candidate.url === item.url) === itemIndex);
+}
+
+export function nextLightboxIndex(index = 0, direction = 1, total = 0) {
+  const count = Math.max(0, Number(total) || 0);
+  return count ? (Number(index || 0) + Number(direction || 0) + count) % count : 0;
+}
+
+export function bindMediaLightbox(scope = document) {
+  if (!scope || scope.dataset?.mediaLightboxBound === 'true') return;
+  if (scope.dataset) scope.dataset.mediaLightboxBound = 'true';
+  scope.addEventListener('click', event => {
+    const trigger = event.target.closest?.('[data-media-zoom-url]');
+    if (!trigger || !scope.contains(trigger)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const group = trigger.dataset.mediaZoomGroup || 'media';
+    const entries = uniqueLightboxEntries(scope.querySelectorAll('[data-media-zoom-url]'), group);
+    let index = Math.max(0, entries.findIndex(item => item.url === (trigger.dataset.mediaZoomUrl || '')));
+    if (!entries.length) return;
+    document.querySelector('[data-media-lightbox]')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'media-lightbox';
+    overlay.dataset.mediaLightbox = 'true';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img alt=""><figcaption><span></span><b></b></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
+    const image = overlay.querySelector('img');
+    const caption = overlay.querySelector('figcaption span');
+    const counter = overlay.querySelector('figcaption b');
+    const strip = overlay.querySelector('.media-lightbox-strip');
+    strip.innerHTML = entries.map((entry, entryIndex) => `<button type="button" role="listitem" data-lightbox-index="${entryIndex}" aria-label="查看${escapeHtml(entry.label)}"><img src="${escapeHtml(entry.previewUrl)}" alt=""></button>`).join('');
+    let renderToken = 0;
+    const prefetch = entry => {
+      if (!entry?.url || entry.url === entry.previewUrl) return;
+      const preload = new Image();
+      preload.src = entry.url;
+    };
+    const render = () => {
+      const current = entries[index];
+      const requestedIndex = index;
+      const token = ++renderToken;
+      const previewUrl = current.previewUrl || current.url;
+      image.src = previewUrl;
+      image.alt = current.label;
+      caption.textContent = current.label;
+      counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
+      overlay.dataset.currentMediaUrl = previewUrl;
+      strip.querySelectorAll('[data-lightbox-index]').forEach(button => button.classList.toggle('active', Number(button.dataset.lightboxIndex) === requestedIndex));
+      overlay.querySelectorAll('.media-lightbox-nav').forEach(button => { button.hidden = entries.length < 2; });
+      if (!current.url || current.url === previewUrl) {
+        overlay.classList.remove('is-loading');
+        overlay.removeAttribute('aria-busy');
+        return;
+      }
+      const preload = new Image();
+      overlay.classList.add('is-loading');
+      overlay.setAttribute('aria-busy', 'true');
+      overlay.dataset.pendingMediaUrl = current.url;
+      preload.onload = () => {
+        if (token !== renderToken) return;
+        image.src = current.url;
+        overlay.dataset.currentMediaUrl = current.url;
+        delete overlay.dataset.pendingMediaUrl;
+        overlay.classList.remove('is-loading');
+        overlay.removeAttribute('aria-busy');
+        if (entries.length > 1) {
+          prefetch(entries[nextLightboxIndex(requestedIndex, -1, entries.length)]);
+          prefetch(entries[nextLightboxIndex(requestedIndex, 1, entries.length)]);
+        }
+      };
+      preload.onerror = () => {
+        if (token !== renderToken) return;
+        caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
+        delete overlay.dataset.pendingMediaUrl;
+        overlay.classList.remove('is-loading');
+        overlay.removeAttribute('aria-busy');
+      };
+      preload.src = current.url;
+    };
+    const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
+    const move = direction => { index = nextLightboxIndex(index, direction, entries.length); render(); };
+    const onKey = keyEvent => {
+      if (keyEvent.key === 'Escape') close();
+      else if (keyEvent.key === 'ArrowLeft') move(-1);
+      else if (keyEvent.key === 'ArrowRight') move(1);
+    };
+    overlay.addEventListener('click', clickEvent => { if (clickEvent.target === overlay) close(); });
+    overlay.querySelector('.media-lightbox-close').addEventListener('click', close);
+    overlay.querySelector('.is-prev').addEventListener('click', () => move(-1));
+    overlay.querySelector('.is-next').addEventListener('click', () => move(1));
+    strip.addEventListener('click', stripEvent => {
+      const button = stripEvent.target.closest?.('[data-lightbox-index]');
+      if (!button) return;
+      index = Number(button.dataset.lightboxIndex) || 0;
+      render();
+    });
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    render();
+  });
 }

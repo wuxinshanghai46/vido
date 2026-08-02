@@ -4,6 +4,8 @@ const LABELS = [
   '产品或服务', '广告主体', '产品', '可见文字', '真实环境', '环境', '空间', '场景',
   '材质', '颜色', '色彩', '色调', '空间布局', '布局', '构图', '光线', '照明', '灯光',
   '人物动作', '人物', '动作', '景别', '机位', '运镜变化', '运镜',
+  '动物是否出现', '动物动作', '动物', '宠物动作', '宠物',
+  'animal_presence', 'animal_actions',
 ];
 
 function clean(value = '', max = 1200) {
@@ -48,6 +50,11 @@ function field(value = '', labels = [], fallback = '') {
 }
 
 function facts(value = '') {
+  const animalDescription = field(value, ['动物是否出现', '动物', '宠物', 'animal_presence']);
+  const animalAction = field(value, ['动物动作', '宠物动作', 'animal_actions']);
+  const animalPresence = animalDescription
+    ? !/^(?:false|无|没有|未出现|未见|不确定|无法确认|none|no)$/iu.test(clean(animalDescription, 80))
+    : undefined;
   return {
     product: field(value, ['产品或服务', '广告主体', '产品']),
     visibleText: field(value, ['可见文字']),
@@ -57,6 +64,9 @@ function facts(value = '') {
     layout: field(value, ['空间布局', '布局', '构图']),
     lighting: field(value, ['光线', '照明', '灯光']),
     action: field(value, ['人物动作', '动作', '人物']),
+    animalPresence,
+    animalDescription: animalPresence === true ? clean(animalDescription, 500) : '',
+    animalAction: animalPresence === true ? clean(animalAction, 500) : '',
   };
 }
 
@@ -121,6 +131,55 @@ function unique(values = [], maxItems = 16) {
     .slice(0, maxItems);
 }
 
+function normalizeRange(value) {
+  if (!Array.isArray(value) || value.length < 2) return [];
+  const start = Number(value[0]);
+  const end = Number(value[1]);
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? [start, end] : [];
+}
+
+function normalizeAnimalActions(input = []) {
+  return (Array.isArray(input) ? input : []).slice(0, 48).map((item, index) => ({
+    ...item,
+    animal_id: clean(item?.animal_id || item?.animalId || `animal_${index + 1}`, 100),
+    action: clean(item?.action || item?.key_action || '', 700),
+    range: normalizeRange(item?.range || item?.time_range),
+    scene_id: clean(item?.scene_id || item?.sceneId || '', 100),
+  })).filter(item => item.action);
+}
+
+function normalizeAnimalPrompts(input = []) {
+  return (Array.isArray(input) ? input : []).slice(0, 24).map((item, index) => ({
+    ...item,
+    id: clean(item?.id || item?.animal_id || `animal_${index + 1}`, 100),
+    species: clean(item?.species || item?.type || '', 120),
+    appearance_direction: clean(item?.appearance_direction || item?.appearance || '', 800),
+    continuity_rules: clean(item?.continuity_rules || item?.continuity || '', 800),
+  })).filter(item => item.species || item.appearance_direction);
+}
+
+function normalizeShotBreakdown(input = []) {
+  return (Array.isArray(input) ? input : []).slice(0, 120).map((item, index) => {
+    const range = normalizeRange(item?.range || item?.time_range);
+    const duration = Number(item?.duration_seconds);
+    return {
+      ...item,
+      order: Math.max(1, Number(item?.order) || index + 1),
+      range,
+      visual: clean(item?.visual || item?.visual_description || '', 1000),
+      action: clean(item?.action || item?.action_description || '', 800),
+      scene_id: clean(item?.scene_id || item?.sceneId || '', 100),
+      subject_ids: unique(Array.isArray(item?.subject_ids) ? item.subject_ids : [], 24),
+      shot_size: clean(item?.shot_size || '', 80),
+      angle: clean(item?.angle || '', 80),
+      movement: clean(item?.movement || '', 120),
+      duration_seconds: Number.isFinite(duration) && duration >= 0
+        ? duration
+        : (range.length === 2 ? Number((range[1] - range[0]).toFixed(3)) : 0),
+    };
+  }).filter(item => item.visual || item.action);
+}
+
 function summary(input = {}, fallback = '') {
   const row = typeof input === 'string' ? facts(input) : (input || {});
   const parts = [
@@ -175,6 +234,7 @@ function buildBrief(analysis = {}) {
   const factsRow = analysis.source_facts || {};
   const outline = analysis.story_outline || {};
   const characters = Array.isArray(analysis.character_prompts) ? analysis.character_prompts : [];
+  const animals = Array.isArray(analysis.animal_prompts) ? analysis.animal_prompts : [];
   const scenes = Array.isArray(analysis.scene_prompts) ? analysis.scene_prompts : [];
   const characterText = characters.length
     ? characters.map((item, index) => [
@@ -185,10 +245,22 @@ function buildBrief(analysis = {}) {
   const sceneText = scenes.length
     ? scenes.map((item, index) => `${index + 1}. ${clean(item.location_type || `场景 ${index + 1}`, 120)}；${clean(item.layout_prompt || '', 360)}`).join('；')
     : clean(factsRow.environment || factsRow.layout || '', 500);
+  const narrativeAnimalPresence = typeof factsRow.narrative_animal_presence === 'boolean'
+    ? factsRow.narrative_animal_presence
+    : factsRow.animal_presence === true;
+  const ambientAnimalText = !narrativeAnimalPresence && Array.isArray(factsRow.ambient_animals) && factsRow.ambient_animals.length
+    ? `画面包含环境动物（${factsRow.ambient_animals.map(item => clean(item, 120)).join('、')}），仅作为场景元素，不创建宠物/动物角色资产。`
+    : '';
+  const animalText = narrativeAnimalPresence
+    ? (animals.length
+      ? animals.map((item, index) => `${index + 1}. ${clean(item.species || `动物 ${index + 1}`, 120)}；${clean(item.appearance_direction || '', 360)}；${clean(item.continuity_rules || '', 360)}`).join('；')
+      : '画面明确存在动物，但缺少可用动物提示词，必须重新识别，不得猜测物种或外观。')
+    : (ambientAnimalText || '参考证据未确认叙事动物角色，不得自行添加宠物/动物资产。');
   return [
     `【参考内容事实】广告主体：${clean(factsRow.product_or_service || '待确认主体', 240)}；实际空间：${clean(factsRow.environment || '待确认空间', 500)}；材质与光线：${clean([...(factsRow.materials || []), factsRow.lighting].filter(Boolean).join('、'), 600)}`,
     `【完整剧情】${clean(outline.logline || analysis.summary || '按参考内容的真实事件顺序组织开场、发展和结尾。', 700)}`,
     `【人物提示词】${characterText}`,
+    `【动物提示词】${animalText}`,
     `【场景提示词】${sceneText}`,
   ].join('\n').slice(0, 3800);
 }
@@ -251,6 +323,19 @@ function sanitizeAnalysis(input = {}) {
     lighting,
     human_actions: humanActions,
   };
+  const explicitAnimalPresence = typeof existing.animal_presence === 'boolean'
+    ? existing.animal_presence
+    : undefined;
+  if (typeof explicitAnimalPresence === 'boolean') {
+    sourceFacts.animal_presence = explicitAnimalPresence;
+    const narrativeAnimalPresence = typeof existing.narrative_animal_presence === 'boolean'
+      ? existing.narrative_animal_presence
+      : explicitAnimalPresence;
+    sourceFacts.narrative_animal_presence = narrativeAnimalPresence;
+    sourceFacts.animal_actions = narrativeAnimalPresence
+      ? unique(Array.isArray(existing.animal_actions) ? existing.animal_actions : [])
+      : [];
+  }
   const priorChronology = Array.isArray(existing.chronological_story) ? existing.chronological_story : [];
   sourceFacts.chronological_story = (priorChronology.length > parsedPrompts.length
     ? priorChronology.map((item, index) => chronologyItem(
@@ -270,9 +355,12 @@ function sanitizeAnalysis(input = {}) {
 
   const scenePrompts = prompts.map((item, index) => {
     const row = parsedPrompts[index] || {};
+    const explicitLocation = kindValue(item?.location_type, 'environment', '');
     return {
       ...item,
-      location_type: clean(row.environment || kindValue(item?.location_type, 'environment', environment), 500),
+      id: clean(item?.id || `scene_prompt_${index + 1}`, 100),
+      // location_type 是场景自身的权威名称；布局中的“环境”可能只是全片概述，不能反向覆盖每个独立空间。
+      location_type: clean(explicitLocation || row.environment || environment, 500),
       layout_prompt: clean([
         row.environment || environment ? `环境：${row.environment || environment}` : '',
         row.layout || layout ? `布局：${row.layout || layout}` : '',
@@ -337,6 +425,9 @@ function sanitizeAnalysis(input = {}) {
     camera_intents: cameraIntents,
     character_actions: characterActions,
     prompt_suggestions: unique(promptSuggestions),
+    animal_actions: sourceFacts.narrative_animal_presence === false ? [] : normalizeAnimalActions(source.animal_actions),
+    animal_prompts: sourceFacts.narrative_animal_presence === false ? [] : normalizeAnimalPrompts(source.animal_prompts),
+    shot_breakdown: normalizeShotBreakdown(source.shot_breakdown),
   };
   output.generated_brief = FRAME_MARKER.test(String(source.generated_brief || ''))
     ? buildBrief(output)
@@ -358,6 +449,10 @@ module.exports = {
   kindValue,
   chronologyPrefix,
   chronologyItem,
+  normalizeRange,
+  normalizeAnimalActions,
+  normalizeAnimalPrompts,
+  normalizeShotBreakdown,
   buildBrief,
   sanitizeAnalysis,
 };

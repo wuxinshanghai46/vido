@@ -373,7 +373,7 @@ async function runCandidates(initial, source, outfitSource) {
   }
 }
 
-function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mode = 'ai_outfit', wardrobe = '' } = {}) {
+function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mode = 'ai_outfit', wardrobe = '', personProfile = {} } = {}) {
   const userId = ownerId(user);
   const source = assertSource(sourceId, user);
   if (source.kind !== 'identity') {
@@ -407,6 +407,15 @@ function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mod
     outfit_reference_id: outfitSource?.id || '',
     mode,
     wardrobe: String(wardrobe || '').slice(0, 1000),
+    person_profile: personProfile && typeof personProfile === 'object' ? {
+      displayName: String(personProfile.displayName || personProfile.name || '').slice(0, 120),
+      roleName: String(personProfile.roleName || personProfile.role || '').slice(0, 120),
+      age: String(personProfile.age || '').slice(0, 80),
+      appearanceText: String(personProfile.appearanceText || personProfile.appearance || '').slice(0, 1000),
+      wardrobeText: String(personProfile.wardrobeText || wardrobe || '').slice(0, 1000),
+      hairMakeupText: String(personProfile.hairMakeupText || '').slice(0, 1000),
+      negativeText: String(personProfile.negativeText || '').slice(0, 1000),
+    } : {},
     candidates: [],
     approved_candidate_id: '',
     approved_anchor: null,
@@ -538,6 +547,12 @@ async function runDossier(initial) {
       personPrompt: [
         production.wardrobe || '',
         production.approved_anchor?.prompt || '',
+        production.person_profile?.displayName ? `Character name: ${production.person_profile.displayName}.` : '',
+        production.person_profile?.roleName ? `Story role: ${production.person_profile.roleName}.` : '',
+        production.person_profile?.age ? `Apparent age range: ${production.person_profile.age}.` : '',
+        production.person_profile?.appearanceText ? `Authorized appearance notes: ${production.person_profile.appearanceText}.` : '',
+        production.person_profile?.hairMakeupText ? `Hair and makeup lock: ${production.person_profile.hairMakeupText}.` : '',
+        production.person_profile?.negativeText ? `Do not introduce: ${production.person_profile.negativeText}.` : '',
         'Authorized real-person identity. Preserve the approved outfit anchor exactly.',
       ].filter(Boolean).join('\n'),
       requireReferences: true,
@@ -580,19 +595,52 @@ async function runDossier(initial) {
       phase: '本地合成人物设定档案',
       progress: 94,
     });
-    const sheet = await dossierComposites.composePersonDossier({
-      taskId: production.task_id,
-      assetId: production.approved_candidate_id || 'authorized_person',
-      anchor: production.approved_anchor,
-      atomicAssets,
-      revision,
-    });
     const referenceBoard = await dossierComposites.composePersonReferenceBoard({
       taskId: production.task_id,
       assetId: production.approved_candidate_id || 'authorized_person',
       anchor: production.approved_anchor,
       atomicAssets,
       revision,
+    });
+    const loadDetailCheckpoint = async key => (
+      readProduction(production.user_id, production.task_id).dossier_checkpoints?.[key] || null
+    );
+    const saveDetailCheckpoint = async (key, value) => {
+      const latest = readProduction(production.user_id, production.task_id);
+      saveProduction({
+        ...latest,
+        dossier_checkpoints: { ...(latest.dossier_checkpoints || {}), [key]: value },
+      });
+    };
+    const accessoryDetails = await dossierComposites.generateWearableDetails({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
+      anchor: production.approved_anchor,
+      atomicAssets,
+      revision,
+      profile: production.person_profile || {},
+      loadCheckpoint: loadDetailCheckpoint,
+      saveCheckpoint: saveDetailCheckpoint,
+    });
+    const wardrobeDetails = await dossierComposites.generateWardrobeDetails({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
+      anchor: production.approved_anchor,
+      atomicAssets,
+      revision,
+      profile: production.person_profile || {},
+      loadCheckpoint: loadDetailCheckpoint,
+      saveCheckpoint: saveDetailCheckpoint,
+    });
+    const sheet = await dossierComposites.composePersonDossier({
+      taskId: production.task_id,
+      assetId: production.approved_candidate_id || 'authorized_person',
+      anchor: production.approved_anchor,
+      atomicAssets,
+      revision,
+      profile: production.person_profile || {},
+      wardrobeDetails,
+      accessoryDetails,
     });
     production = readProduction(production.user_id, production.task_id);
     production = saveProduction({
@@ -610,9 +658,12 @@ async function runDossier(initial) {
         identity_views: atomicAssets.filter(item => item.kind === 'identity'),
         expressions: atomicAssets.filter(item => item.kind === 'expression'),
         base_actions: atomicAssets.filter(item => item.kind === 'action'),
+        accessory_details: accessoryDetails,
         wardrobe_details: {
-          source: 'approved_anchor_local_crops',
+          source: 'gpt_image_2_high_resolution_details',
           description: production.wardrobe || (production.mode === 'retain_original' ? '保留原穿搭' : ''),
+          items: wardrobeDetails,
+          model_call_count: wardrobeDetails.reduce((sum, item) => sum + Number(item.model_call_count || 0), 0),
         },
         motion_profile: {
           dominant_hand: 'confirm_in_storyboard',
@@ -701,6 +752,34 @@ function approveDossier({ taskId, user = {} } = {}) {
       approved_at: now(),
       production_usable_actor: true,
     },
+    provider_sync: {
+      status: 'pending',
+      progress: 0,
+      phase: '人物档案已确认，等待同步到 Seedance 人物资产库',
+      error: null,
+      updated_at: now(),
+    },
+  });
+}
+
+function updateApprovedAsset({ taskId, user = {}, asset = null, providerSync = null } = {}) {
+  const production = readProduction(ownerId(user), taskId);
+  if (production.dossier?.status !== 'approved') {
+    const error = new Error('人物档案尚未确认，不能写入人物资产或厂商人物 ID');
+    error.code = 'PERSON_DOSSIER_NOT_APPROVED';
+    error.status = 422;
+    throw error;
+  }
+  return saveProduction({
+    ...production,
+    ...(asset ? { committed_asset: asset } : {}),
+    ...(providerSync ? {
+      provider_sync: {
+        ...(production.provider_sync || {}),
+        ...providerSync,
+        updated_at: now(),
+      },
+    } : {}),
   });
 }
 
@@ -875,6 +954,7 @@ module.exports = {
   approveCandidate,
   startDossier,
   approveDossier,
+  updateApprovedAsset,
   startActionAssets,
   cancelJob,
   getProduction,

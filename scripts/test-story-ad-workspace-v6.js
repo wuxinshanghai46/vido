@@ -108,7 +108,10 @@ function seedProject() {
       character_ids: ['person-current'],
     },
   ]);
-  storage.updateTask(taskId, { shot_count: 2, stage: 'storyboard_done', status: 'working' });
+  storage.saveOutput(taskId, 'storyboard_meta', { status: 'ready', source: 'generated' });
+  storage.saveOutput(taskId, 'quality_review', { passed: true, blocking_issues: [], rewrite_issues: [] });
+  storage.saveOutput(taskId, 'keyframe_contracts', [1, 2].map(index => ({ shot_index: index, scene_lock: { scene_id: 'scene-current', scene_view: 'master' } })));
+  storage.updateTask(taskId, { shot_count: 2, stage: 'keyframe_contract_ready', status: 'done' });
   return taskId;
 }
 
@@ -132,6 +135,66 @@ async function main() {
   assert.equal(bundle.assets.animals[0].image_url, '/api/new-story-ad/assets/pet-current-front.png', '旧宠物 reference_images 必须恢复为可见封面');
   assert.equal(bundle.assets.animals[0].view_images.length, 4, '旧宠物四视图必须完整投影');
   assert(bundle.assets.products.some(item => item.id === 'product-current'));
+  assert(bundle.navigation.counts.assets >= 3, '已生成或已上传资产必须计入侧栏');
+
+  const placeholderTask = storyAd.createTask({
+    brief: '仅创建项目，不生成任何资产。',
+    product_subject: '只有文字描述的广告主体',
+    cast_mode: 'none',
+    expected_people: 0,
+    expected_animals: 0,
+  }, owner).task.id;
+  const placeholderBundle = projectBundles.buildProjectBundle(placeholderTask, { sections: 'all', user: owner });
+  assert.equal(placeholderBundle.navigation.counts.assets, 0, '只有文字占位不得伪装成已生成资产');
+  assert.ok(placeholderBundle.navigation.counts.planned_assets >= 1, '文字占位仍可保留为后续待生成计划');
+  storyAd.updateStoryboardTable(placeholderTask, [{
+    title: '无版本漂移镜头',
+    visual: '商品保持在画面中央，镜头静止展示。',
+    action: '主体保持稳定。',
+    duration: 3,
+    shot_size: 'medium',
+    camera_angle: 'eye_level',
+    camera_movement: 'static',
+  }], owner, { expected_content_revision: storage.getTask(placeholderTask).content_revision });
+  const normalizedStoryboard = storage.getOutput(placeholderTask, 'storyboard_table');
+  const storyboardRevision = storage.getTask(placeholderTask).content_revision;
+  storyAd.updateStoryboardTable(placeholderTask, normalizedStoryboard, owner, {
+    expected_content_revision: storyboardRevision,
+  });
+  assert.equal(
+    storage.getTask(placeholderTask).content_revision,
+    storyboardRevision,
+    '未修改内容的再次保存不得因 edited_at 等投影字段制造新版本并阻塞下一环节',
+  );
+  const referenceContractTask = storyAd.createTask({ brief: '参考视频镜头合同测试' }, owner).task.id;
+  storyAd.updateStoryboardTable(referenceContractTask, [{
+    title: '参考镜头',
+    visual: '一家三口在客厅落地窗前交流。',
+    action: '三人同时看向窗外。',
+    duration: 4,
+    scene_id: 'reference-scene-1',
+    shot_size: 'wide',
+    camera_angle: 'eye_level',
+    camera_movement: 'static',
+    source: 'reference_analysis_projection',
+  }], owner, { expected_content_revision: storage.getTask(referenceContractTask).content_revision });
+  const referenceContractShot = storage.getOutput(referenceContractTask, 'storyboard_table')[0];
+  assert.match(referenceContractShot.entry_frame_state, /^镜头开始：/);
+  assert.match(referenceContractShot.exit_frame_state, /^镜头结束：/);
+  const workflowStateTask = storyAd.createTask({ brief: '工作流确认状态测试' }, owner).task.id;
+  const assetConfirmation = storyAd.updateTaskRequest(workflowStateTask, {
+    asset_setup_confirmed: true,
+    base_content_revision: storage.getTask(workflowStateTask).content_revision,
+  }, owner);
+  assert.equal(assetConfirmation.context.asset_setup_confirmed, true);
+  assert.deepEqual(assetConfirmation.changed_domains, [], '纯资产确认不得伪装成创意内容变化');
+  const shotConfirmation = storyAd.updateTaskRequest(workflowStateTask, {
+    shot_design_confirmed: true,
+    base_content_revision: storage.getTask(workflowStateTask).content_revision,
+  }, owner);
+  assert.equal(shotConfirmation.context.asset_setup_confirmed, true, '确认镜头不得反向取消已经完成的资产环节');
+  assert.equal(shotConfirmation.context.shot_design_confirmed, true);
+  assert.deepEqual(shotConfirmation.changed_domains, [], '纯镜头确认不得触发内容失效传播');
   assert(bundle.payload_bytes > 0 && bundle.payload_bytes < 200000, 'Project Bundle 首包必须保持轻量');
 
   const assetCenterSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8')

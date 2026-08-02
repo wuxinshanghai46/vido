@@ -366,7 +366,9 @@ function classifyError(error) {
   if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(explicitCode)) {
     return { code: explicitCode, retryable: false };
   }
-  if (['PROVIDER_RESPONSE_INVALID', 'PROVIDER_EMPTY_RESPONSE'].includes(explicitCode)) return { code: explicitCode, retryable: true };
+  if (['PROVIDER_RESPONSE_INVALID', 'PROVIDER_EMPTY_RESPONSE', 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID'].includes(explicitCode)) {
+    return { code: explicitCode, retryable: true };
+  }
   if (['RATE_LIMIT', 'PROVIDER_5XX', 'TIMEOUT_OR_NETWORK'].includes(explicitCode)) return { code: explicitCode, retryable: true };
   if (['PROVIDER_BILLING', 'AUTH_CONFIG', 'MODEL_CONFIG'].includes(explicitCode)) return { code: explicitCode, retryable: false };
   if (/InputImageSensitiveContentDetected\.PrivacyInformation|input image may contain real person|PrivacyInformation/i.test(msg)) return { code: 'INPUT_PERSON_PRIVACY', retryable: false };
@@ -480,6 +482,7 @@ async function generateText({
         model_id: model.model_id,
         code: classified.code,
         message: String(err.message || err).slice(0, 300),
+        response_diagnostics: err.response_diagnostics || null,
       });
       recordHealth(model, { ok: false, error: err, latencyMs: latency });
       storage.saveModelCall({
@@ -680,13 +683,17 @@ async function generateVision({
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const latency = Date.now() - start;
       const classified = classifyError(err);
-      failed.push({
+      const failure = {
         provider_id: model.provider_id,
         model_id: model.model_id,
         code: classified.code,
         message: String(err.message || err).slice(0, 300),
-      });
+        response_diagnostics: err.response_diagnostics || null,
+        retry_after_ms: 0,
+      };
       recordHealth(model, { ok: false, error: err, latencyMs: latency });
+      failure.retry_after_ms = Math.max(0, Number(healthState(model).cooldown_remaining_ms || 0));
+      failed.push(failure);
       storage.saveModelCall({
         task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
         status: 'failed', error_code: classified.code,
@@ -699,6 +706,7 @@ async function generateVision({
   error.code = 'VISION_QA_UNAVAILABLE';
   error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX|PROVIDER_RESPONSE_INVALID|PROVIDER_EMPTY_RESPONSE/.test(item.code));
   error.failed_models = failed;
+  error.retry_after_ms = Math.max(0, ...failed.map(item => Number(item.retry_after_ms || 0)));
   throw error;
 }
 

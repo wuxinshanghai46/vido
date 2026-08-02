@@ -153,7 +153,8 @@ function localReview(ctx, shots) {
     const asksStory = /(剧情|故事|人物|客户|顾问|销售|用户|情绪|冲突|对话|对白|真人|主角)/.test(requiredHints);
     const asksProduct = /(产品|服务|主体|卖点|材质|材料|纹理|界面|功能|品牌|证明|证据|对比|结果|方案|报价|优惠)/.test(requiredHints);
     if (!visualLayers.length && !visual.trim()) rewrite.push(`第 ${n} 镜缺少按用户需求拆出的视觉层`);
-    if (asksStory && !/(story|character|emotion|故事|人物|情绪|关系|对话)/i.test(layerText) && !/(人物|客户|顾问|销售|用户|表情|情绪|看|拿|走|触摸|确认|转身|交流|对话|点头|微笑)/.test(all)) {
+    const hasNamedCharacterEvidence = charNames.some(name => name && all.includes(name));
+    if (asksStory && !hasNamedCharacterEvidence && !/(story|character|emotion|故事|人物|情绪|关系|对话)/i.test(layerText) && !/(人物|客户|顾问|销售|用户|表情|情绪|看|拿|走|触摸|确认|转身|交流|对话|点头|微笑)/.test(all)) {
       rewrite.push(`第 ${n} 镜用户需求需要故事/人物，但故事视觉维度偏弱`);
     }
     if (asksProduct && !/(product|material|proof|comparison|brand|ui|result|offer|产品|材料|证据|对比|品牌|界面|结果)/i.test(layerText) && !/(产品|服务|主体|纹理|质感|界面|材料|对比|结果|证据|卖点|品牌|细节|方案|客户价值)/.test(all)) {
@@ -212,7 +213,12 @@ function localReview(ctx, shots) {
       }
       if (!String(shot.camera_id || '').trim()) rewrite.push(`第 ${n} 镜缺少场景机位 camera_id`);
       if (!String(shot.scene_zone || '').trim()) rewrite.push(`第 ${n} 镜缺少场景区域 scene_zone`);
-      const validZoneIds = new Set((sceneAsset?.scene_contract?.zones || []).map(zone => String(zone.id || '')).filter(Boolean));
+      const shotSceneView = String(shot.scene_view || '').trim();
+      const validZoneIds = new Set((sceneAsset?.scene_contract?.zones || [])
+        .filter(zone => !Array.isArray(zone.visible_in_views)
+          || !zone.visible_in_views.length
+          || zone.visible_in_views.includes(shotSceneView))
+        .map(zone => String(zone.id || '')).filter(Boolean));
       const shotZoneIds = Array.isArray(shot.zone_ids) ? shot.zone_ids.map(String) : [];
       if (validZoneIds.size && (!shotZoneIds.length || shotZoneIds.some(id => !validZoneIds.has(id)))) {
         rewrite.push(`第 ${n} 镜缺少有效的结构化场景区域 zone_ids`);

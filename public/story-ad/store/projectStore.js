@@ -1,6 +1,6 @@
 import { request, uploadAsset, uploadReferenceVideo } from '../api.js';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260801-reference-remove-r20';
 
-/** 创建全模块唯一状态仓库。 */
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -15,12 +15,12 @@ export function createProjectStore() {
     generationCompletionSeq: 0,
     referenceTimer: null,
     referenceAnalysisId: '',
+    referenceReplacementSeq: 0,
   };
   const listeners = new Set();
   const notify = () => listeners.forEach(listener => listener(state));
   const set = patch => { Object.assign(state, patch); notify(); };
 
-  /** 加载真实任务列表和同响应统计。 */
   async function loadProjects(options = {}) {
     set({ loading: true, error: '' });
     try {
@@ -35,7 +35,6 @@ export function createProjectStore() {
     }
   }
 
-  /** 创建新任务，仍写入现有剧情广告任务存储。 */
   async function createProject(payload) {
     set({ saving: true, error: '' });
     try {
@@ -48,13 +47,13 @@ export function createProjectStore() {
     }
   }
 
-  /** 加载统一 Project Bundle。 */
   async function loadBundle(taskId, sections = 'all') {
     set({ loading: true, error: '' });
     try {
       if (state.bundle?.project?.id && state.bundle.project.id !== taskId) state.progressRevision = '';
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`);
       set({ bundle: data.bundle, loading: false });
+      await hydrateReferenceFailure();
       syncProgressPolling();
       syncReferencePolling();
       return data.bundle;
@@ -64,7 +63,6 @@ export function createProjectStore() {
     }
   }
 
-  /** 合并局部 bundle，避免切换视图重复下载未变化数据。 */
   async function refreshSections(sections) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) return null;
@@ -81,7 +79,58 @@ export function createProjectStore() {
     return next;
   }
 
-  /** 保存目标、格式和材料元数据。 */
+  function applyMutationResult(data = {}) {
+    const current = state.bundle;
+    if (!current) return null;
+    const task = data.task && typeof data.task === 'object' ? data.task : {};
+    const context = data.context && typeof data.context === 'object' ? data.context : null;
+    const contentRevision = Math.max(1, Number(data.content_revision || task.content_revision || current.revisions?.content || 1) || 1);
+    const clientEditSeq = Math.max(0, Number(data.acknowledged_client_edit_seq || task.latest_client_edit_seq || current.revisions?.client_edit_seq || 0) || 0);
+    const next = {
+      ...current,
+      project: {
+        ...(current.project || {}),
+        ...task,
+        id: task.id || current.project?.id,
+      },
+      revisions: {
+        ...(current.revisions || {}),
+        content: contentRevision,
+        client_edit_seq: clientEditSeq,
+        snapshot_id: task.current_snapshot_id || current.revisions?.snapshot_id || '',
+      },
+    };
+    if (context) {
+      next.brief = {
+        ...(current.brief || {}),
+        project_name: context.project_name || task.title || current.brief?.project_name || '',
+        text: context.brief ?? current.brief?.text,
+        product_subject: context.product_subject ?? current.brief?.product_subject,
+        target_duration: context.target_duration ?? context.duration ?? current.brief?.target_duration,
+        output_ratio: context.output_ratio ?? current.brief?.output_ratio,
+        output_size: context.output_size ?? current.brief?.output_size,
+        video_resolution: context.video_resolution ?? current.brief?.video_resolution,
+        cast_mode: context.cast_mode ?? current.brief?.cast_mode,
+        expected_people: context.expected_people ?? current.brief?.expected_people,
+        expected_animals: context.expected_animals ?? current.brief?.expected_animals,
+        brief_source: context.brief_source ?? current.brief?.brief_source,
+        asset_setup_confirmed: context.asset_setup_confirmed === true,
+        shot_design_confirmed: context.shot_design_confirmed === true,
+        creative_direction: context.creative_direction ?? current.brief?.creative_direction,
+      };
+    }
+    if (data.blueprint) next.story = { ...(current.story || {}), blueprint: data.blueprint, reference_draft: null, status: 'ready' };
+    if (Array.isArray(data.shots)) next.storyboard = {
+      ...(current.storyboard || {}),
+      shots: data.shots,
+      reference_draft: [],
+      source: 'saved_storyboard',
+    };
+    if (task.active_generation_id) next.generation = { ...(current.generation || {}), progress: task.generation_progress || null };
+    set({ bundle: next });
+    return next;
+  }
+
   async function updateRequest(patch) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
@@ -92,8 +141,12 @@ export function createProjectStore() {
         base_content_revision: state.bundle?.revisions?.content || 1,
         client_edit_seq: (state.bundle?.revisions?.client_edit_seq || 0) + 1,
       };
-      await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body });
-      const bundle = await loadBundle(taskId, 'summary,reference,assets');
+      const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
+      applyMutationResult(data);
+      // refreshSections merges into the existing complete bundle.  It updates
+      // navigation without dropping story/shots and avoids a large all-section
+      // response on every workflow transition.
+      const bundle = await refreshSections('summary');
       set({ saving: false });
       return bundle;
     } catch (error) {
@@ -102,7 +155,6 @@ export function createProjectStore() {
     }
   }
 
-  /** 执行现有文本、资产或媒体阶段。 */
   async function runStage(path, body = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
@@ -113,6 +165,9 @@ export function createProjectStore() {
         body,
         timeoutMs: 60000,
       });
+      applyMutationResult(data);
+      state.progressRevision = '';
+      if (path === 'scene-config') await refreshSections('summary,assets');
       set({ saving: false });
       syncProgressPolling(true);
       return data;
@@ -122,29 +177,30 @@ export function createProjectStore() {
     }
   }
 
-  /** 保存用户编辑后的剧情蓝图。 */
   async function saveBlueprint(blueprint) {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
       method: 'PUT',
       body: { blueprint, expected_content_revision: state.bundle?.revisions?.content || 1 },
+      timeoutMs: 120000,
     });
-    await refreshSections('summary,story,shots');
+    applyMutationResult(data);
+    await refreshSections('summary');
     return data;
   }
 
-  /** 保存用户编辑后的真实分镜。 */
   async function saveStoryboard(shots) {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
       method: 'PUT',
       body: { shots, expected_content_revision: state.bundle?.revisions?.content || 1 },
+      timeoutMs: 120000,
     });
-    await refreshSections('summary,story,shots,media');
+    applyMutationResult(data);
+    await refreshSections('summary');
     return data;
   }
 
-  /** 保存线稿草稿、确认或跳过状态。 */
   async function saveSketches(sketches) {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/sketches`, {
@@ -155,12 +211,10 @@ export function createProjectStore() {
     return data;
   }
 
-  /** 上传材料并返回现有资产对象。 */
   async function upload(file, role) {
     return uploadAsset(file, role);
   }
 
-  /** 将单个上传结果按角色追加到现有任务，避免前端回写整份资产数组。 */
   async function attachMaterial(role, asset, options = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
@@ -172,79 +226,185 @@ export function createProjectStore() {
     return data;
   }
 
-  /** 上传参考视频并开始分析。 */
   async function uploadReference(file) {
     const taskId = state.bundle?.project?.id || '';
-    const created = await uploadReferenceVideo(file, taskId);
-    const analysis = created.analysis || {};
-    await bindReferenceAnalysis(analysis);
-    if (analysis.id || analysis.analysis_id) {
-      await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysis.id || analysis.analysis_id)}/start`, {
+    const replacement = beginReferenceReplacement(state, set, stopReferencePolling, { filename: file?.name || '新参考视频', status: 'uploading', phase: '正在创建新的上传任务' });
+    try {
+      const created = await uploadReferenceVideo(file, taskId);
+      if (!replacementCurrent(state, replacement)) return created.analysis || {};
+      let analysis = created.analysis || {};
+      applyReferenceLiveState(analysis);
+      if (!created.task_bound) await bindReferenceAnalysis(analysis);
+      if (analysis.id || analysis.analysis_id) {
+        const started = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysis.id || analysis.analysis_id)}/start`, {
+          method: 'POST',
+          body: {},
+        });
+        analysis = started.analysis || analysis;
+        applyReferenceLiveState(analysis);
+        await bindReferenceAnalysis(analysis);
+      }
+      if (taskId) {
+        await refreshSections('summary,reference');
+        syncReferencePolling(true);
+      }
+      return analysis;
+    } catch (error) {
+      restoreReferenceReplacement(state, set, replacement);
+      throw error;
+    }
+  }
+
+  async function addReferenceLink(url) {
+    const taskId = state.bundle?.project?.id || '';
+    const replacement = beginReferenceReplacement(state, set, stopReferencePolling, { filename: '新参考链接', status: 'importing', phase: '正在创建新的链接读取任务' });
+    try {
+      const data = await request('/api/new-story-ad/reference-video-links', {
+        method: 'POST',
+        body: { url, task_id: taskId, rights_confirmed: 'true' },
+        timeoutMs: 120000,
+      });
+      if (!replacementCurrent(state, replacement)) return data.analysis;
+      applyReferenceLiveState(data.analysis || {});
+      if (!data.task_bound) await bindReferenceAnalysis(data.analysis || {});
+      if (taskId) {
+        await refreshSections('summary,reference');
+        syncReferencePolling(true);
+      }
+      return data.analysis;
+    } catch (error) {
+      restoreReferenceReplacement(state, set, replacement);
+      throw error;
+    }
+  }
+
+  async function retryReferenceAnalysis() {
+    const analysisId = state.bundle?.reference?.analysis_id || '';
+    if (!analysisId) throw new Error('当前没有可重新整理的参考视频。');
+    set({ saving: true, error: '' });
+    try {
+      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/start`, {
         method: 'POST',
         body: {},
       });
-    }
-    if (taskId) {
-      await refreshSections('summary,reference');
+      const analysis = data.analysis || {};
+      applyReferenceLiveState(analysis);
+      await bindReferenceAnalysis(analysis);
       syncReferencePolling(true);
+      set({ saving: false });
+      return analysis;
+    } catch (error) {
+      set({ saving: false, error: error.message });
+      throw error;
     }
-    return analysis;
   }
 
-  /** 创建参考链接分析记录。 */
-  async function addReferenceLink(url) {
-    const taskId = state.bundle?.project?.id || '';
-    const data = await request('/api/new-story-ad/reference-video-links', {
-      method: 'POST',
-      body: { url, task_id: taskId, rights_confirmed: 'true' },
-    });
-    await bindReferenceAnalysis(data.analysis || {});
-    if (taskId) {
-      await refreshSections('summary,reference');
-      syncReferencePolling(true);
-    }
-    return data.analysis;
-  }
-
-  /** 把参考分析记录压缩为现有 contextBuilder 的权威输入。 */
   function referenceTaskRecord(analysis = {}) {
     const result = analysis.result && typeof analysis.result === 'object' ? analysis.result : {};
     return {
       analysis_id: analysis.id || analysis.analysis_id || '',
       status: analysis.status || '',
+      progress: Math.max(0, Math.min(100, Number(analysis.progress || 0) || 0)),
+      phase: String(analysis.phase || '').trim(),
+      created_at: analysis.created_at || '',
+      started_at: analysis.started_at || '',
+      updated_at: analysis.updated_at || '',
+      completed_at: analysis.completed_at || '',
+      failed_at: analysis.failed_at || '',
+      cancelled_at: analysis.cancelled_at || '',
+      checkpoints: Array.isArray(analysis.checkpoints) ? analysis.checkpoints.slice(-12) : [],
       source: analysis.source || null,
       error: analysis.error || null,
+      visual_evidence_reusable: analysis.visual_evidence_reusable === true,
+      semantic_result_reusable: analysis.semantic_result_reusable === true,
+      evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object'
+        ? analysis.evidence_batch_progress
+        : { total: 0, completed: 0, remaining: 0, failed: 0 },
       schema_version: Number(result.schema_version || analysis.schema_version || 3) || 3,
       analysis_scope: result.analysis_scope || analysis.analysis_scope || 'reference_content_and_creative_structure',
       generated_brief: result.generated_brief || analysis.generated_brief || '',
+      summary: result.summary || analysis.summary || '',
       source_facts: result.source_facts || analysis.source_facts || {},
       analysis_quality: result.analysis_quality || analysis.analysis_quality || {},
       story_outline: result.story_outline || analysis.story_outline || {},
       plot_beats: result.plot_beats || analysis.plot_beats || [],
       character_prompts: result.character_prompts || analysis.character_prompts || [],
+      animal_prompts: result.animal_prompts || analysis.animal_prompts || [],
       scene_prompts: result.scene_prompts || analysis.scene_prompts || [],
+      shot_breakdown: result.shot_breakdown || analysis.shot_breakdown || [],
       camera_intents: result.camera_intents || analysis.camera_intents || [],
       character_actions: result.character_actions || analysis.character_actions || [],
+      animal_actions: result.animal_actions || analysis.animal_actions || [],
       prompt_suggestions: result.prompt_suggestions || analysis.prompt_suggestions || {},
       scene_view_mapping: analysis.scene_view_mapping || null,
       identity_extraction_allowed: false,
     };
   }
 
-  /** 将当前分析 ID 绑定到当前任务，禁止复用上一任务分析。 */
-  async function bindReferenceAnalysis(analysis) {
-    if (!analysis?.id && !analysis?.analysis_id) return;
-    await updateRequest({ reference_video_analysis: referenceTaskRecord(analysis) });
+  function applyReferenceLiveState(analysis = {}) {
+    if (!state.bundle) return;
+    const live = referenceTaskRecord(analysis);
+    set({
+      bundle: {
+        ...state.bundle,
+        reference: {
+          ...(state.bundle.reference || {}),
+          analysis_id: live.analysis_id || state.bundle.reference?.analysis_id || '',
+          status: live.status || state.bundle.reference?.status || '',
+          progress: live.progress,
+          phase: live.phase,
+          started_at: live.started_at || state.bundle.reference?.started_at || '',
+          updated_at: live.updated_at || state.bundle.reference?.updated_at || '',
+          completed_at: live.completed_at,
+          failed_at: live.failed_at,
+          cancelled_at: live.cancelled_at,
+          checkpoints: live.checkpoints,
+          error: live.error && typeof live.error === 'object'
+            ? (live.error.message || live.error.code || '')
+            : (live.error || ''),
+          retry_after_ms: Math.max(0, Number(live.error?.retry_after_ms || 0) || 0),
+          visual_evidence_reusable: live.visual_evidence_reusable === true,
+          semantic_result_reusable: live.semantic_result_reusable === true,
+          evidence_batch_progress: live.evidence_batch_progress,
+        },
+      },
+    });
   }
 
-  /** 停止唯一参考分析轮询器。 */
+  async function hydrateReferenceFailure() {
+    const reference = state.bundle?.reference || {};
+    if (!reference.analysis_id || String(reference.status || '').toLowerCase() !== 'failed') return;
+    try {
+      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(reference.analysis_id)}`);
+      if (state.bundle?.reference?.analysis_id !== reference.analysis_id) return;
+      applyReferenceLiveState(data.analysis || {});
+    } catch {}
+  }
+
+  async function bindReferenceAnalysis(analysis) {
+    if (!analysis?.id && !analysis?.analysis_id) return;
+    const record = referenceTaskRecord(analysis);
+    const currentBrief = state.bundle?.brief || {};
+    const completedAndValid = record.status === 'completed' && record.analysis_quality?.valid === true;
+    const derivedBrief = String(record.story_outline?.logline || record.summary || record.generated_brief || '').trim();
+    const derivedProduct = String(record.source_facts?.product_or_service || '').trim();
+    await updateRequest({
+      reference_video_analysis: record,
+      ...(completedAndValid && derivedBrief
+        ? { brief: derivedBrief, content: derivedBrief, brief_source: 'reference_analysis' }
+        : {}),
+      ...(completedAndValid && !String(currentBrief.product_subject || '').trim() && derivedProduct
+        ? { product_subject: derivedProduct }
+        : {}),
+    });
+  }
+
   function stopReferencePolling() {
     if (state.referenceTimer) clearTimeout(state.referenceTimer);
     state.referenceTimer = null;
     state.referenceAnalysisId = '';
   }
 
-  /** 轮询当前任务明确绑定的分析 ID，完成后一次性写回结构化结果。 */
   function syncReferencePolling(force = false) {
     const reference = state.bundle?.reference || {};
     const analysisId = reference.analysis_id || '';
@@ -257,35 +417,52 @@ export function createProjectStore() {
       if (state.referenceAnalysisId !== analysisId) return;
       try {
         const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}`);
-        const analysis = data.analysis || {};
+        if (state.referenceAnalysisId !== analysisId) return;
+        let analysis = data.analysis || {};
+        if (String(analysis.status || '').toLowerCase() === 'uploaded') {
+          const started = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/start`, {
+            method: 'POST',
+            body: {},
+          });
+          if (state.referenceAnalysisId !== analysisId) return;
+          analysis = started.analysis || analysis;
+        }
+        const previousStatus = state.bundle?.reference?.status || '';
         const terminal = ['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase());
-        if (terminal || analysis.status !== state.bundle?.reference?.status) await bindReferenceAnalysis(analysis);
+        applyReferenceLiveState(analysis);
+        if (terminal || analysis.status !== previousStatus) await bindReferenceAnalysis(analysis);
         if (terminal) {
           stopReferencePolling();
-          await refreshSections('summary,reference,assets');
+          await refreshSections('all');
           return;
         }
-      } catch {}
+      } catch (error) {
+        if (state.referenceAnalysisId !== analysisId) return;
+        set({
+          error: error.message,
+          bundle: state.bundle ? {
+            ...state.bundle,
+            reference: { ...(state.bundle.reference || {}), error: error.message },
+          } : state.bundle,
+        });
+      }
       state.referenceTimer = setTimeout(poll, 2500);
     };
     state.referenceTimer = setTimeout(poll, 1200);
   }
 
-  /** 离开现有任务或进入新建页时清空内存数据，禁止跨任务复用。 */
   function clearProject() {
     stopProgressPolling();
     stopReferencePolling();
     set({ bundle: null, saving: false, error: '', progressRevision: '' });
   }
 
-  /** 读取付费视频预检结果。 */
   async function videoPreflight(mode = 'economy') {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/video/preflight?mode=${encodeURIComponent(mode)}`);
     return data.preflight;
   }
 
-  /** 按用户确认的不可变方案提交视频生成。 */
   async function startVideo(preflight, options = {}) {
     const cost = preflight?.cost_plan || {};
     return runStage('video', {
@@ -298,14 +475,12 @@ export function createProjectStore() {
     });
   }
 
-  /** 停止唯一进度轮询器。 */
   function stopProgressPolling() {
     if (state.progressTimer) clearTimeout(state.progressTimer);
     state.progressTimer = null;
     state.progressTaskId = '';
   }
 
-  /** 根据任务活动状态维护唯一进度轮询器。 */
   function syncProgressPolling(force = false) {
     const taskId = state.bundle?.project?.id || '';
     const active = force || !!state.bundle?.project?.active_generation_id;
@@ -326,6 +501,9 @@ export function createProjectStore() {
           stage: progressTask.stage || state.bundle?.project?.stage || '',
           active_stage: progressTask.active_stage || '',
           active_generation_id: progressTask.active_generation_id || '',
+          generation_queued_at: progressTask.generation_queued_at || state.bundle?.project?.generation_queued_at || '',
+          generation_started_at: progressTask.generation_started_at || state.bundle?.project?.generation_started_at || '',
+          generation_finished_at: progressTask.generation_finished_at || state.bundle?.project?.generation_finished_at || '',
           generation_progress: progressTask.generation_progress || null,
           error: progressTask.error || '',
           error_code: progressTask.error_code || '',
@@ -349,7 +527,6 @@ export function createProjectStore() {
     state.progressTimer = setTimeout(poll, 900);
   }
 
-  /** 停止当前后台生成；使用 generation id 防止误停已经切换的新任务。 */
   async function cancelGeneration(generationId = '') {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('当前没有可停止的项目。');
@@ -379,6 +556,8 @@ export function createProjectStore() {
     attachMaterial,
     uploadReference,
     addReferenceLink,
+    retryReferenceAnalysis,
+    removeReference: () => removeProjectReference({ state, set, request, stopPolling: stopReferencePolling, applyMutationResult }),
     videoPreflight,
     startVideo,
     cancelGeneration,

@@ -27,6 +27,16 @@ function createTask(name, productSubject) {
 }
 
 function testProductResolverAndProjection() {
+  const materialPresentation = productResolver.productPresentation({
+    product_subject: '当前广告主体',
+    brief: '为不锈钢原材料制作广告，人物从展示墙介绍铂棕碎钻纹理和高级金属背景墙。',
+  });
+  assert.equal(materialPresentation.mode, 'material_surface');
+  assert.equal(materialPresentation.standalone_generation_supported, false);
+  assert.match(materialPresentation.subject, /不锈钢/);
+  const robotPresentation = productResolver.productPresentation({ product_subject: '模块化服务机器人', brief: '展示机器人的分解与精确组合过程' });
+  assert.equal(robotPresentation.mode, 'standalone_product');
+  assert.equal(robotPresentation.standalone_generation_supported, true);
   const canonical = { id: 'product-primary', type: 'product', image_url: '/same-product.png', name: '主商品' };
   const duplicateLegacy = { id: 'legacy-copy', type: 'product', image_url: '/same-product.png', name: '历史副本' };
   const secondary = { id: 'legacy-second', type: 'product', image_url: '/second-product.png', name: '历史商品二' };
@@ -148,6 +158,9 @@ function testSceneCameraProjection() {
   assert.equal(bundles.projectSceneCamera({ id: 'cam-fallback', view_id: 'reverse' }, projectedViews).image_url, '/reverse.png');
   assert.equal(bundles.projectSceneCamera({ id: 'cam-missing', view_id: 'missing' }, projectedViews).image_url, '');
   assert.equal(bundles.projectSceneCamera({ id: 'cam-layout', view_id: 'layout' }, projectedViews).image_url, '', '机位不得借用 layout 图');
+  const movingCamera = bundles.projectSceneCamera({ id: 'cam-move', movement: '从入口缓慢推进至展示墙', duration_sec: 4 }, projectedViews);
+  assert.equal(movingCamera.movement, '从入口缓慢推进至展示墙');
+  assert.equal(movingCamera.duration, 4);
 
   const taskId = createTask('场景机位图片投影', '空间产品');
   const context = storage.getOutput(taskId, 'context');
@@ -182,6 +195,34 @@ function testSceneCameraProjection() {
   assert.equal(scene.cameras[2].image_url, '/interaction.png');
   assert.equal(scene.cameras[3].image_url, '/detail.png');
   assert.equal(scene.layout.image_url, '/layout-view.png', '本地化后的 layout 必须保持独立来源');
+}
+
+function testHumanFacingSemanticProjection() {
+  const taskId = storyAd.createTask({
+    project_name: '中文语义投影',
+    brief: '人物在完整空间中展示不锈钢背景墙，并用旧钢板做对比。',
+    product_subject: '不锈钢材料',
+    cast_mode: 'single',
+    expected_people: 1,
+  }, user).task.id;
+  const context = storage.getOutput(taskId, 'context');
+  storage.saveOutput(taskId, 'context', {
+    ...context,
+    person_asset: {
+      id: 'person-semantic',
+      dossier_sheet: { image_url: '/dossier.png', layout: 'reference_character_dossier_v4' },
+      view_images: [{ key: 'front', image_url: '/front.png' }],
+      expressions: [{ key: 'neutral', label: 'neutral', image_url: '/neutral.png' }, { key: 'natural_smile', image_url: '/smile.png' }],
+      accessory_details: [{ key: 'shoes', label: 'shoes', image_url: '/shoes.png' }],
+      wardrobe_details: { items: [{ key: 'fabric_drape', label: '面料光泽与垂坠', image_url: '/fabric.png' }] },
+    },
+  });
+  const bundle = bundles.buildProjectBundle(taskId, { sections: 'summary,assets', user });
+  assert.deepEqual(bundle.assets.people[0].expressions.map(item => item.label), ['自然平静', '自然微笑']);
+  assert.equal(bundle.assets.people[0].accessory_details[0].label, '鞋履细节');
+  assert.equal(bundle.assets.people[0].wardrobe_details[0].label, '面料光泽与垂坠');
+  assert.match(bundle.brief.benchmark_strategy.opening_hook, /完整空间|旧方案/);
+  assert.match(bundle.brief.benchmark_strategy.prompt_method, /摄影机轨迹/);
 }
 
 function graphFixture() {
@@ -308,8 +349,9 @@ async function main() {
   testProductResolverAndProjection();
   await testProductVerificationCallBoundary();
   testSceneCameraProjection();
+  testHumanFacingSemanticProjection();
   testGraphStructuredDetailsAndStableIds();
-  console.log('story-ad workspace backend projection tests: 53 checks passed');
+  console.log('story-ad workspace backend projection tests: 57 checks passed');
 }
 
 main().catch((error) => {

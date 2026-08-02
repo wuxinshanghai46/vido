@@ -46,6 +46,17 @@ function inferCausalRole(beat = {}, dialogueFunction = '', index = 0, total = 1)
   return 'development';
 }
 
+function inferAdPhase(beat = {}, index = 0, total = 1) {
+  const explicit = clean(beat.ad_phase || beat.adPhase || '', 40).toLowerCase().replace(/[\s-]+/g, '_');
+  if (['opening_hook', 'product_introduction', 'product_proof', 'transformation', 'closing_payoff'].includes(explicit)) return explicit;
+  if (index === 0) return 'opening_hook';
+  if (index === total - 1) return 'closing_payoff';
+  const evidence = clean(`${beat.dialogue_function || ''} ${beat.role || ''} ${beat.visual_proof || ''} ${beat.selling_point || ''}`, 260);
+  if (/证明|证据|细节|对比|演示|proof|evidence|detail|comparison/i.test(evidence)) return 'product_proof';
+  if (/变化|组合|拆解|分解|转化|transform|assembl|morph/i.test(evidence)) return 'transformation';
+  return index === 1 ? 'product_introduction' : 'product_proof';
+}
+
 function cleanList(value, maxItems = 12, maxText = 180) {
   return (Array.isArray(value) ? value : (value ? [value] : []))
     .map(item => clean(item, maxText))
@@ -365,6 +376,7 @@ function normalizeBlueprint(blueprint, ctx) {
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
+      ad_phase: inferAdPhase(beat, idx, beats.length),
       causal_role: inferCausalRole(beat, dialogueFunction, idx, beats.length),
       subject_type: beat.subject_type || 'auto',
       scene: clean(beat.scene || beat.location || '', 120),
@@ -393,6 +405,10 @@ function normalizeBlueprint(blueprint, ctx) {
   }).filter(x => x.plot || x.story_visual || x.promo_visual || x.visual_proof || x.spoken_line);
   const limitedBeats = compactBeatsByPacing(normalizedBeats, beatLimit);
   const timedBeats = allocateBeatDurations(limitedBeats, profile.targetDuration);
+  const structuredBeats = timedBeats.map((beat, index) => ({
+    ...beat,
+    ad_phase: inferAdPhase(beat, index, timedBeats.length),
+  }));
   return {
     story_title: bp.story_title || bp.title || `${ctx.product_subject}剧情广告`,
     logline: bp.logline || bp.synopsis || '',
@@ -411,9 +427,21 @@ function normalizeBlueprint(blueprint, ctx) {
       speech_policy: speechPlan.policy,
       authored_line_count: speechPlan.authored_line_count,
     },
+    ad_structure_contract: {
+      version: 'opening-proof-closing-v1',
+      required_phases: ['opening_hook', 'product_introduction_or_proof', 'closing_payoff'],
+      first_beat: 'opening_hook',
+      final_beat: 'closing_payoff',
+    },
+    copy_naturalness_policy: {
+      version: 'meaning-preserving-spoken-copy-v1',
+      preserve: ['facts', 'brand_terms', 'numbers', 'claims', 'speaker_intent'],
+      improve: ['remove_empty_summary', 'remove_formulaic_parallelism', 'vary_sentence_length', 'natural_spoken_rhythm'],
+      never_apply_to: ['camera_contracts', 'image_prompts', 'video_effect_timelines', 'legal_claims'],
+    },
     segment_plan: Array.isArray(bp.segment_plan) ? bp.segment_plan : [],
     characters: noHuman ? [] : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed),
-    beats: timedBeats,
+    beats: structuredBeats,
     model_meta: bp.model_meta || {},
   };
 }
@@ -491,9 +519,11 @@ async function generateBlueprint(ctx, {
     'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
     'The spoken track must carry the story, not merely react to visuals. Do not hide motivation, obstacle, evidence, value change or decision only in plot, visual, action or why_next.',
     'Give every beat a distinct dialogue_function such as setup_goal, obstacle, question, discovery, proof, value_shift, decision, resolution or brand_closure. Across the whole film, the heard lines must cover setup/obstacle, development/proof and decision/resolution.',
+    'Every advertisement must have a visible beginning, middle proof and ending: beat 1 is an opening hook or establishing problem/scene; middle beats introduce the actual product, material, service or scene-embedded result and prove it through detail, use, comparison, transformation, assembly or outcome; the final beat resolves the value and closes on a stable result or authorized brand ending. Do not start with an unexplained beauty shot or end immediately after a detail montage.',
     'For natural Chinese with deliberate pauses, target roughly 2.4-4.8 spoken Chinese characters per second across the full film. A normal 4-6 second beat usually needs about 10-22 meaningful characters; a brand end card may be shorter.',
     'Do not use a generic reaction such as “原来……可以这样做”“就是它了”“太棒了” as the whole line. Each line must add a concrete intention, question, product/material evidence, consequence or decision.',
     'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
+    'Natural spoken-copy pass: preserve all facts, brand terms, numbers, claims and speaker intent; remove empty conclusions, overly symmetrical parallel phrasing, mechanical transition words and correct-but-useless filler. Vary sentence length and allow controlled spoken pauses, but never introduce mistakes, vague claims or deliberately broken language.',
     'The visual field describes what the audience sees; the action field describes what changes or what the subject does. Never duplicate the same sentence across visual and action.',
     'Do not use a fixed template, fixed large segments, or fixed shot count. The number of beats must follow the user brief content, event density and pacing.',
     'First extract concrete user-provided story events, actions, selling points, proof points, emotional turns, and call-to-action moments. Each real filmable event becomes one beat.',
@@ -548,6 +578,7 @@ Return JSON in this shape:
   "beats": [{
     "beat_index": 1,
     "role": "story function label",
+    "ad_phase": "opening_hook/product_introduction/product_proof/transformation/closing_payoff",
     "causal_role": "setup/trigger/development/evidence/transformation/resolution/brand_closure",
     "subject_type": "human_scene/product_only/ui_screen/proof_scene/environment/brand_endcard/auto",
     "scene": "place or carrier",

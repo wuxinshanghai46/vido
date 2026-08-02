@@ -82,6 +82,53 @@ function fallbackVoiceover(shot = {}, idx = 0, ctx = {}) {
   return `继续看${subject}的第 ${idx + 1} 个关键画面。`;
 }
 
+function contractText(value, max = 70) {
+  const values = Array.isArray(value)
+    ? value.flatMap(item => contractText(item, max)).filter(Boolean)
+    : (value && typeof value === 'object'
+      ? Object.values(value).flatMap(item => contractText(item, max)).filter(Boolean)
+      : [clampText(value, max)]);
+  return clampText(values.filter(Boolean).join('、')
+    .replace(/\[object\s+Object\]/gi, '')
+    .replace(/[；;\n]+/g, '、')
+    .replace(/、{2,}/g, '、')
+    .replace(/^、|、$/g, ''), max);
+}
+
+function contractField(value, keys = []) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
+  for (const key of keys) {
+    const text = contractText(value[key]);
+    if (text) return text;
+  }
+  return '';
+}
+
+function stringClause(value = '', label = '') {
+  const match = String(value || '').match(new RegExp(`${label}\\s*[:：]\\s*([^；;\\n]+)`));
+  return contractText(match?.[1] || '');
+}
+
+function normalizeKeyframeNotes(shot = {}, ctx = {}) {
+  const raw = shot.keyframe_notes || shot.keyframeNotes || {};
+  const rawText = typeof raw === 'string'
+    ? clampText(String(raw).replace(/\[object\s+Object\]/gi, '').replace(/\s+/g, ' ').trim(), 500)
+    : '';
+  const freeformRawText = /本镜目的\s*[:：]|必须出现\s*[:：]|禁止出现\s*[:：]/.test(rawText) ? '' : rawText;
+  const purpose = stringClause(rawText, '本镜目的') || contractField(raw, ['本镜目的', 'purpose', 'objective', 'intent', 'shot_purpose'])
+    || contractText(shot.purpose || shot.objective || shot.role || shot.title || '推进当前剧情节点', 50);
+  const mustAppear = stringClause(rawText, '必须出现') || contractField(raw, ['必须出现', 'must_appear', 'must_include', 'must_have', 'required', 'positive'])
+    || contractText(freeformRawText || shot.material_usage || shot.promo_visual || shot.story_visual || shot.visual || shot.action || ctx.product_subject || '当前镜头已确认主体与场景', 70);
+  const mustAvoid = stringClause(rawText, '禁止出现') || contractField(raw, ['禁止出现', 'must_not_appear', 'must_avoid', 'forbidden', 'negative', 'avoid'])
+    || contractText([
+      ctx.forbidden,
+      ctx.negative_requirements,
+      ctx.creative_direction?.must_avoid,
+      ctx.controlled_production?.negative_control,
+    ], 60) || '未授权人物、商品、场景、文字与标识';
+  return `本镜目的：${contractText(purpose, 50)}；必须出现：${contractText(mustAppear, 70)}；禁止出现：${contractText(mustAvoid, 60)}`;
+}
+
 function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
   const characters = normalizeCharacters(ctx.characters || [], `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`);
   const n = Number(shot.index || shot.shot_index || idx + 1);
@@ -95,11 +142,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
   const actionRaw = shot.action || shot.visual_action || '';
   const emotionalTurn = clampText(shot.emotional_turn || shot.emotion || shot.character_reaction || '', 80);
   const sellingPoint = clampText(shot.selling_point || shot.benefit || shot.value_point || '', 80);
-  const keyframeNotes = clampText([
-    emotionalTurn ? `情绪/转折：${emotionalTurn}` : '',
-    sellingPoint ? `宣传卖点：${sellingPoint}` : '',
-    shot.keyframe_notes || '',
-  ].filter(Boolean).join('；'), 220);
+  const keyframeNotes = normalizeKeyframeNotes(shot, ctx);
   const design = shotDesign.normalizeShotDesign(shot);
   const speechMode = normalizeSpeechMode(shot.speech_mode || shot.speechMode || shot.on_screen_speech_mode);
   const proposedDialogue = normalizeDialogue(shot.dialogue_lines, voice, characters);
@@ -151,7 +194,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
       action: clampText(c?.action || '', 80),
     })).filter(c => c.name || c.action) : [],
     material_usage: clampText(shot.material_usage || promoVisual || visualLayers.find(layer => /product|material|proof|brand|offer|result/i.test(layer.type))?.content || '', 160),
-    keyframe_notes: keyframeNotes || clampText(shot.keyframe_notes || '', 180),
+    keyframe_notes: keyframeNotes,
     scene_id: clampText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120),
     scene_asset_id: clampText(shot.scene_asset_id || shot.sceneAssetId || shot.scene_id || shot.sceneId || '', 120),
     scene_name: clampText(shot.scene_name || shot.sceneName || '', 120),
@@ -640,6 +683,7 @@ module.exports = {
   generateStoryboardTable,
   rewriteStoryboard,
   normalizeShots,
+  normalizeKeyframeNotes,
   alignShotsToBeats,
   missingBeatIndexes,
 };

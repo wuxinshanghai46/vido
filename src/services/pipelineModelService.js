@@ -81,6 +81,7 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
     { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
+    { id: 'new_story_ad.storyboard_sketch', name: '剧情广告分镜线稿', type: 'image', desc: '在文字分镜之后批量生成构图线稿，供镜头设计确认' },
     { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间五视图，锁定场景布局、材质和光线一致性' },
     { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
     { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
@@ -137,6 +138,7 @@ const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
   'new_story_ad.scene_asset',
   'new_story_ad.keyframe',
+  'new_story_ad.storyboard_sketch',
 ]);
 const NEW_STORY_AD_REQUIRED_IMAGE_MODEL = 'gpt-image-2';
 const NEW_STORY_AD_IMAGE_DEFAULTS = [
@@ -385,6 +387,7 @@ const STAGE_DEFAULTS = {
   'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.scene_asset': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-260128', priority: 1, enabled: true },
     { provider_id: 'webang-seedance', model_id: 'doubao-seedance-2-0-fast-260128', priority: 2, enabled: true },

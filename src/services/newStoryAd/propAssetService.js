@@ -134,11 +134,36 @@ function upsertById(values = [], item = {}) {
   return list;
 }
 
+function updateProgress(storage, taskId, generationId, patch = {}) {
+  if (!generationId) return;
+  const task = storage.getTask(taskId) || {};
+  const previous = task.generation_progress?.stage === 'prop_asset' ? task.generation_progress : {};
+  const timestamp = new Date().toISOString();
+  storage.updateTask(taskId, {
+    generation_progress: {
+      schema_version: 1,
+      stage: 'prop_asset',
+      generation_id: generationId,
+      status: patch.status || 'running',
+      phase: patch.phase || previous.phase || '正在准备人物随身道具',
+      message: patch.message || previous.message || '',
+      total: 2,
+      completed: Number(patch.completed ?? previous.completed ?? 0) || 0,
+      processed: Number(patch.completed ?? previous.completed ?? 0) || 0,
+      percent: Math.max(0, Math.min(100, Number(patch.percent ?? previous.percent ?? 0) || 0)),
+      started_at: previous.started_at || task.generation_started_at || timestamp,
+      updated_at: timestamp,
+      ...(patch.status === 'completed' ? { finished_at: timestamp } : {}),
+    },
+  });
+}
+
 async function generatePropAsset(taskId, input = {}, deps = {}) {
   const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
   const storage = deps.storage || storageDefault;
   const checkpoints = deps.checkpoints || checkpointsDefault;
   const prop = propIdentity.normalizeProp(input.prop || input, 0);
+  const generationId = String(input.generation_id || input.generationId || '');
   if (!prop.name || !prop.description) {
     const error = new Error('生成道具档案前必须填写道具名称和外观描述');
     error.code = 'PROP_PROFILE_REQUIRED';
@@ -153,6 +178,7 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
   }
   const repository = checkpointRepository(storage, taskId, prop.id);
   const references = prop.reference_image_url ? [prop.reference_image_url] : [];
+  updateProgress(storage, taskId, generationId, { percent: 5, phase: '正在建立道具身份和材质锁' });
   const base = await generateAtlasUnit({
     taskId,
     prop,
@@ -166,6 +192,7 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
     checkpoints,
     repository,
   });
+  updateProgress(storage, taskId, generationId, { percent: 58, completed: 1, phase: '道具身份视图已完成，正在处理动作状态' });
   const stateKeys = prop.states.length > 1 ? prop.states.slice(0, 4) : [];
   const state = stateKeys.length ? await generateAtlasUnit({
     taskId,
@@ -205,6 +232,7 @@ async function generatePropAsset(taskId, input = {}, deps = {}) {
   storage.saveOutput(taskId, 'prop_assets', assets);
   const context = storage.getOutput(taskId, 'context');
   if (context) storage.saveOutput(taskId, 'context', { ...context, prop_assets: assets });
+  updateProgress(storage, taskId, generationId, { percent: 100, completed: 2, status: 'completed', phase: '人物随身道具档案已建立' });
   return asset;
 }
 

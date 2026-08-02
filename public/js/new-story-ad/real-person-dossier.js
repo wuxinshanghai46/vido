@@ -414,9 +414,9 @@
   async function startDossier() {
     if (!await confirmModelCalls({
       title: '生成完整人物档案',
-      summary: '完整档案包含 17 项原子资产。',
-      description: '将生成身体视图、身份细节、表情与基础动作；生成后仍需人工确认，才会写入后续分镜。',
-      calls: 17,
+      summary: '完整档案会生成 4 个分类图集，并在本地拆分为 20 项人物视图。',
+      description: '将补全身体视图、身份细节、6 种表情与 6 种动作；生成后仍需人工确认，才会写入后续分镜和 Seedance 人物资产库。',
+      calls: 4,
       confirmLabel: '确认生成完整档案',
     })) return;
     try {
@@ -433,8 +433,10 @@
     try {
       const result = await api().request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId())}/person-dossiers/approve`, { method: 'POST' });
       render(result.production);
-      adoptApprovedProduction(result.production);
-      notify('人物档案已确认并写入当前任务，后续分镜将使用该人物资产', 'success');
+      if (!result.actor_asset) adoptApprovedProduction(result.production);
+      notify(result.provider_sync?.status === 'failed'
+        ? '人物档案已写入当前任务；Seedance 人物 ID 同步失败，可单独重试'
+        : '人物档案、人物 ID 与 Seedance 厂商人物 ID 已写入当前任务', result.provider_sync?.status === 'failed' ? 'warning' : 'success');
     } catch (error) {
       notify(error.message, 'error');
     }

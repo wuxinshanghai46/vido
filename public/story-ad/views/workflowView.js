@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js';
 
 const STAGE_WIDTH = 2900;

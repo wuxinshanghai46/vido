@@ -1,7 +1,6 @@
 const TOKEN_KEYS = ['vido_token', 'token'];
 let refreshPromise = null;
 
-/** 读取平台登录令牌。 */
 export function readToken() {
   for (const key of TOKEN_KEYS) {
     const token = sessionStorage.getItem(key) || localStorage.getItem(key) || '';
@@ -10,14 +9,12 @@ export function readToken() {
   return '';
 }
 
-/** 保存刷新后的平台登录令牌。 */
 function writeToken(token = '') {
   if (!token) return;
   sessionStorage.setItem('vido_token', token);
   localStorage.setItem('vido_token', token);
 }
 
-/** 使用长期会话刷新短期令牌。 */
 async function refreshAuth() {
   if (refreshPromise) return refreshPromise;
   refreshPromise = fetch('/api/auth/refresh', {
@@ -37,7 +34,6 @@ async function refreshAuth() {
   return refreshPromise;
 }
 
-/** 将接口技术错误转换为可执行的中文提示。 */
 function errorMessage(data, status) {
   const raw = String(data?.error || data?.message || data?.code || '').trim();
   if (/[\u3400-\u9fff]/.test(raw)) return raw;
@@ -49,7 +45,6 @@ function errorMessage(data, status) {
   return status ? `请求失败（状态码 ${status}）` : '请求失败，请稍后重试。';
 }
 
-/** 调用工作区或现有剧情广告接口。 */
 export async function request(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   const isForm = options.body instanceof FormData;
@@ -96,7 +91,6 @@ export async function request(path, options = {}) {
   }
 }
 
-/** 上传普通图片、音频或线稿资产。 */
 export function uploadAsset(file, role = 'asset') {
   const body = new FormData();
   body.append('file', file);
@@ -104,7 +98,6 @@ export function uploadAsset(file, role = 'asset') {
   return request('/api/new-story-ad/upload', { method: 'POST', body, timeoutMs: 180000 });
 }
 
-/** 上传参考视频并创建分析记录。 */
 export function uploadReferenceVideo(file, taskId = '') {
   const body = new FormData();
   body.append('file', file);

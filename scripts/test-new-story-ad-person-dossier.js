@@ -99,16 +99,35 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.body_views.length, 4);
   assert.strictEqual(dossierDone.dossier.identity_views.length, 4);
   assert.strictEqual(dossierDone.dossier.expressions.length, 6);
-  assert.strictEqual(dossierDone.dossier.base_actions.length, 3);
-  assert.strictEqual(dossierDone.dossier.atomic_assets.length, 17);
+  assert.strictEqual(dossierDone.dossier.base_actions.length, 6);
+  assert.strictEqual(dossierDone.dossier.accessory_details.length, 1);
+  assert.deepStrictEqual(dossierDone.dossier.accessory_details.map(item => item.key), ['shoes']);
+  assert.ok(dossierDone.dossier.accessory_details.every(item => item.kind === 'wearable_accessory' && item.derived_locally === false && item.detail_mode === 'generated_high_resolution' && item.model_call_count === 1));
+  assert.ok(dossierDone.dossier.accessory_details.every(item => fs.existsSync(mediaAdapter.assetPathFromName(item.filename))));
+  assert.strictEqual(dossierDone.dossier.wardrobe_details.items.length, 4);
+  assert.deepStrictEqual(dossierDone.dossier.wardrobe_details.items.map(item => item.key), [
+    'outfit_silhouette', 'neckline_cut', 'fabric_drape', 'hem_and_footwear',
+  ]);
+  assert.ok(dossierDone.dossier.wardrobe_details.items.every(item => item.kind === 'wardrobe_detail' && item.derived_locally === false && item.detail_mode === 'generated_high_resolution' && item.model_call_count === 1));
+  assert.ok(dossierDone.dossier.wardrobe_details.items.every(item => fs.existsSync(mediaAdapter.assetPathFromName(item.filename))));
+  assert.strictEqual(dossierDone.dossier.atomic_assets.length, 20);
   assert.strictEqual(dossierDone.dossier.category_atlases.length, 4);
   assert.strictEqual(dossierDone.dossier.generation_summary.planned_provider_calls, 4);
   assert.strictEqual(dossierDone.dossier.generation_summary.provider_calls_this_run, 4);
   assert.strictEqual(dossierDone.dossier.sheet.composition, 'local_sharp');
   assert.strictEqual(dossierDone.dossier.sheet.model_generated_text, false);
-  assert.strictEqual(dossierDone.dossier.sheet.layout, 'editorial_character_bible_v2');
-  assert.ok(dossierDone.dossier.sheet.detail_crop_count >= 6);
-  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_source, 'finished_atomic_assets');
+  assert.strictEqual(dossierDone.dossier.sheet.layout, 'reference_character_dossier_v4');
+  assert.strictEqual(dossierDone.dossier.sheet.width, 1800);
+  assert.strictEqual(dossierDone.dossier.sheet.height, 2400);
+  assert.deepStrictEqual(dossierDone.dossier.sheet.sections, [
+    'basic_info', 'turnaround', 'expressions', 'wardrobe', 'accessories',
+    'details', 'keywords', 'actions', 'role_intro', 'usage_constraints',
+  ]);
+  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_count, 0);
+  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_source, 'none_generated_assets_only');
+  assert.strictEqual(dossierDone.dossier.sheet.generated_wardrobe_count, 4);
+  assert.strictEqual(dossierDone.dossier.sheet.generated_accessory_count, 1);
+  assert.ok(dossierDone.dossier.sheet.generated_detail_count >= 3);
   assert.strictEqual(dossierDone.dossier.reference_board.composition, 'local_sharp_reference_compiler');
   assert.strictEqual(dossierDone.dossier.reference_board.provider_reference_slot_cost, 1);
   assert.ok(fs.existsSync(mediaAdapter.assetPathFromName(dossierDone.dossier.reference_board.filename)));
@@ -126,8 +145,8 @@ async function main() {
   );
   assert.strictEqual(
     new Set(dossierDone.dossier.atomic_assets.map(item => item.filename)).size,
-    17,
-    'maximum-length task and asset ids must retain 17 unique locally split filenames',
+    20,
+    'maximum-length task and asset ids must retain 20 unique locally split filenames',
   );
 
   const dossierApproved = service.approveDossier({ taskId, user });
@@ -191,7 +210,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 50,
+    checks: 54,
     strict_reference_calls: calls.length,
     outfit_candidates: candidatesDone.candidates.length,
     atomic_assets: dossierDone.dossier.atomic_assets.length,
@@ -209,5 +228,6 @@ main()
   .finally(() => {
     mediaAdapter.generateActorReference = originalGenerate;
     const resolved = path.resolve(tempRoot);
-    if (resolved.startsWith(path.resolve(os.tmpdir()))) fs.rmSync(resolved, { recursive: true, force: true });
+    if (process.env.KEEP_PERSON_DOSSIER_FIXTURE === '1') console.log(`PERSON_DOSSIER_FIXTURE=${resolved}`);
+    else if (resolved.startsWith(path.resolve(os.tmpdir()))) fs.rmSync(resolved, { recursive: true, force: true });
   });

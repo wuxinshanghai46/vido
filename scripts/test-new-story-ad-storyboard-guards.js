@@ -1,6 +1,6 @@
 const assert = require('assert');
 const { localReview, internalProcessHits } = require('../src/services/newStoryAd/qualityReviewService');
-const { alignShotsToBeats, missingBeatIndexes } = require('../src/services/newStoryAd/storyboardTableService');
+const { alignShotsToBeats, missingBeatIndexes, normalizeShots } = require('../src/services/newStoryAd/storyboardTableService');
 
 const validShots = [
   { index: 1, visual: '开发者打开 AI 模型库，清晰看到不同能力分类', action: '她移动鼠标浏览不同模型卡片并停在目标分类', voiceover: '海量模型，按需选择。' },
@@ -57,6 +57,64 @@ const detailedShots = Array.from({ length: 4 }, (_, index) => ({
 }));
 const detailedReview = localReview({ expected_storyboard_count: 4 }, detailedShots);
 assert.deepStrictEqual(detailedReview.blocking_issues, [], '动态精细分镜应通过本地硬门禁');
+
+const structuredNotesShot = normalizeShots([{
+  ...detailedShots[0],
+  emotional_turn: '这一段故意写得很长，不能挤掉后面的关键帧合同字段。'.repeat(6),
+  selling_point: '卖点说明同样不能覆盖本镜目的、必须出现和禁止出现。'.repeat(6),
+  keyframe_notes: {
+    purpose: '建立传统材料与设计材料的价值反差',
+    must_appear: ['当前任务人物', '经过授权的产品材料', '已确认场景锚点'],
+    must_avoid: ['未授权人物', '无关品牌文字', '水印'],
+  },
+}], { product_subject: '经过授权的产品材料', forbidden: ['水印'] })[0];
+assert(!structuredNotesShot.keyframe_notes.includes('[object Object]'), '结构化关键帧合同不得被字符串化为 object Object');
+assert.match(structuredNotesShot.keyframe_notes, /^本镜目的：.+；必须出现：.+；禁止出现：.+$/);
+assert.deepStrictEqual(localReview({}, [structuredNotesShot]).blocking_issues, [], '结构化关键帧合同归一化后必须通过三段硬门禁');
+
+const legacyPollutedNotesShot = normalizeShots([{
+  ...detailedShots[1],
+  keyframe_notes: '情绪/转折：人物发现材质差异；宣传卖点：温暖纹理；[object Object]',
+}], { product_subject: '铂棕碎钻材料' })[0];
+assert(!legacyPollutedNotesShot.keyframe_notes.includes('[object Object]'), '历史字符串污染不得进入关键帧合同');
+const normalizedAgain = normalizeShots([legacyPollutedNotesShot], { product_subject: '铂棕碎钻材料' })[0];
+assert.strictEqual(normalizedAgain.keyframe_notes, legacyPollutedNotesShot.keyframe_notes, '关键帧合同重复归一化必须保持幂等');
+
+const namedCharacterReview = localReview({ brief: '人物故事与材料对比', characters: [{ name: '苏晚' }] }, [{
+  ...detailedShots[2],
+  visual_layers: [],
+  story_visual: '',
+  visual: '同一束光线下并列展示两块材料，苏晚的手部从左侧悬停到右侧点触。',
+  action: '苏晚先观察传统材料，再将手指移向新材料并轻轻点触。',
+}]);
+assert(!namedCharacterReview.rewrite_issues.some(issue => /故事视觉维度偏弱/.test(issue)), '已确认人物姓名及可拍动作必须计入故事视觉证据');
+
+const viewRestrictedZoneScene = {
+  scene_id: 'scene_verified',
+  scene_revision: 1,
+  view_images: ['master', 'reverse', 'interaction', 'detail', 'layout'].map(key => ({ key, url: `https://example.com/${key}.png` })),
+  scene_contract: {
+    schema_version: 6,
+    status: 'verified',
+    requirement_qa: { pass: true },
+    photographic_realism_qa: { pass: true },
+    camera_design_qa: { pass: true },
+    cross_view_qa: { pass: true },
+    spatial_coverage_qa: { pass: true },
+    layout_contract: { status: 'available' },
+    zones: [{ id: 'zone_master_only', visible_in_views: ['master'] }],
+  },
+};
+const viewRestrictedZoneReview = localReview({ scene_assets: [viewRestrictedZoneScene] }, [{
+  ...detailedShots[0],
+  scene_id: 'scene_verified',
+  scene_revision: 1,
+  scene_view: 'detail',
+  camera_id: 'camera_detail',
+  scene_zone: '材质细节',
+  zone_ids: [],
+}]);
+assert(!viewRestrictedZoneReview.rewrite_issues.some(issue => /zone_ids/.test(issue)), '当前镜位没有可见区域时不得伪造 zone_ids 或误报缺失');
 
 const garbledReview = localReview({}, [{ ...detailedShots[0], subject_position: '????????????????' }]);
 assert(garbledReview.blocking_issues.some(issue => /乱码或连续问号/.test(issue)), '连续问号必须在分镜阶段硬阻断');

@@ -38,7 +38,7 @@
     modal.className = 'dh-nsa-dossier-modal';
     modal.dataset.nsaDossierModal = 'true';
     modal.innerHTML = `<div class="dh-nsa-dossier-dialog" role="dialog" aria-modal="true" aria-label="${escape(name || '人物档案')}">
-      <header><div><b>${escape(name || '人物档案')}</b><small>17项原子素材与本地组合大图</small></div><button type="button" data-nsa-dossier-close aria-label="关闭">×</button></header>
+      <header><div><b>${escape(name || '人物档案')}</b><small>20项完整档案视图与本地组合大图</small></div><button type="button" data-nsa-dossier-close aria-label="关闭">×</button></header>
       <div class="dh-nsa-dossier-scroll">
         ${cover ? `<section><h4>组合大图</h4><a href="${escape(cover)}" target="_blank" rel="noopener"><img class="dh-nsa-dossier-cover" src="${escape(assetThumbUrl(cover, 1200))}" alt="${escape(name)} 组合大图"></a></section>` : ''}
         ${['body', 'identity', 'expression', 'action'].map(kind => {
@@ -62,7 +62,7 @@
 
   function progressStages(total) {
     return [
-      { at: 0, percent: 10, message: `已提交 ${total} 份主体身份资产，人物将按4类图集生成17项档案。` },
+      { at: 0, percent: 10, message: `已提交 ${total} 份主体身份资产，人物将按4类图集生成20项档案视图。` },
       { at: 8000, percent: 36, message: '正在有限并发生成并拆分人物档案图集；宠物仍生成独立身份四视图。' },
       { at: 18000, percent: 66, message: '正在逐个执行身份、外观与跨视图一致性验证。' },
       { at: 32000, percent: 84, message: '正在汇总已验证资产，并写入当前任务一致性合同。' },
@@ -70,7 +70,7 @@
   }
 
   function initialProgress(total) {
-    return { active: true, startedAt: Date.now(), label: '主体身份资产', percent: 10, message: `已提交 ${total} 份主体身份资产，人物将生成17项完整档案。` };
+    return { active: true, startedAt: Date.now(), label: '主体身份资产', percent: 10, message: `已提交 ${total} 份主体身份资产，人物将生成20项完整档案视图。` };
   }
 
   window.NewStoryAdPersonDossierUI = { items, register, open, openByKey, close, progressStages, initialProgress };

@@ -67,10 +67,71 @@ function primaryProductAsset(context = {}) {
   return productAssets(context)[0] || null;
 }
 
+const GENERIC_SUBJECTS = new Set(['当前广告主体', '广告主体', '当前产品', '商品主体', '产品主体']);
+
+function inferredSubject(context = {}) {
+  const explicit = text(context.product_subject || context.productSubject, 200);
+  if (explicit && !GENERIC_SUBJECTS.has(explicit)) return explicit;
+  const sourceFact = text(context.reference_video_analysis?.source_facts?.product_or_service, 200);
+  if (sourceFact) return sourceFact;
+  const brief = text(context.brief || context.content || '', 1000);
+  const patterns = [
+    /为([^，。；,.!?！？]{2,40}?)(?:制作|生成|打造)(?:一支|一条|一个)?广告/i,
+    /(?:做|制作|生成)(?:一个|一支|一条|一款)?([^，。；,.!?！？]{2,40}?)(?:的)?广告/i,
+    /(?:推广|宣传|介绍|展示)(?:我们的|一款|一个)?([^，。；,.!?！？]{2,40})/i,
+    /([^，。；,.!?！？]{2,36}(?:原材料|背景墙|墙面|门窗|机器人|设备|板材|材料|产品|商品|服务))/i,
+  ];
+  for (const pattern of patterns) {
+    const candidate = text(brief.match(pattern)?.[1] || '', 120)
+      .replace(/^(?:要|需要|想要|我们的|一个|一款)+/, '')
+      .replace(/(?:的)?广告$/, '')
+      .trim();
+    if (candidate.length >= 2 && !GENERIC_SUBJECTS.has(candidate)) return candidate;
+  }
+  return explicit || '待明确的展示主体';
+}
+
+/** 区分独立商品与依附场景呈现的材料、墙面或空间成果。 */
+function productPresentation(context = {}) {
+  const explicit = context.product_presentation || context.productPresentation || {};
+  const product = primaryProductAsset(context);
+  const subject = inferredSubject(context);
+  const evidence = text([subject, context.brief, explicit.notes, explicit.description].filter(Boolean).join(' '), 1800);
+  let mode = text(explicit.mode || explicit.type, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  if (!mode) {
+    if (/(?:原材料|板材|钢板|材质|纹理|表面|墙面|背景墙|涂层|面料|饰面)/i.test(evidence)) mode = 'material_surface';
+    else if (/(?:展厅|展示墙|展台|样板间|建筑|住宅|空间|场景|门窗|橱柜|家居)/i.test(evidence)) mode = 'scene_embedded_showcase';
+    else if (/(?:机器人|机器|设备|装置|包装|瓶|盒|车辆|家具|家电|商品|实体产品)/i.test(evidence)) mode = 'standalone_product';
+    else if (/(?:软件|平台|应用|app|小程序|系统|服务)/i.test(evidence)) mode = 'service_or_digital';
+    else mode = 'standalone_product';
+  }
+  const standalone = mode === 'standalone_product';
+  const labels = {
+    standalone_product: '独立商品',
+    material_surface: '场景中的材料 / 表面成果',
+    scene_embedded_showcase: '场景中的展示成果',
+    service_or_digital: '服务 / 数字界面',
+  };
+  return {
+    mode,
+    label: labels[mode] || '任务自定义展示主体',
+    subject,
+    standalone_generation_supported: standalone,
+    scene_linked: !standalone,
+    source: text(explicit.source || (product ? 'canonical_product_asset' : 'brief_semantics'), 80),
+    description: text(explicit.description || (standalone
+      ? '以独立商品多视图、细节和使用证明呈现。'
+      : '主体依附于场景、展示墙、材料表面或空间成果，应从场景全景进入，再用细节、对比和人物互动证明卖点。'), 500),
+  };
+}
+
 module.exports = {
+  GENERIC_SUBJECTS,
+  inferredSubject,
   isProductAsset,
   mediaUrl,
   normalizedAssetType,
   primaryProductAsset,
+  productPresentation,
   productAssets,
 };

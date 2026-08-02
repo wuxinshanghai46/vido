@@ -2,6 +2,7 @@ const storage = require('./storageService');
 const { assertContextConsistent, cleanText } = require('./contextBuilder');
 const { generateBlueprint } = require('./blueprintService');
 const blueprintProgress = require('./blueprintProgressService');
+const revisionService = require('./revisionService');
 
 function checkpointMatches(checkpoint, task, inputFingerprint) {
   if (!checkpoint || checkpoint.reusable !== true || !checkpoint.payload) return false;
@@ -56,7 +57,8 @@ async function generateBlueprintStage(taskId, options = {}, {
   );
   const previous = storage.getOutput(taskId, 'blueprint') || {};
   const previousMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
-  if (previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length) {
+  const forceRegenerate = options.force_regenerate === true || options.forceRegenerate === true;
+  if (!forceRegenerate && previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length) {
     storage.saveStage(taskId, 'blueprint', {
       status: 'done',
       output_summary: `${previous.beats.length} 个剧情 beat（输入未变化，已复用）`,
@@ -76,6 +78,7 @@ async function generateBlueprintStage(taskId, options = {}, {
     phase: 'context_ready', completed: 1, total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
     message: '上下文和原创过审规则已准备，正在生成剧本初稿。',
   }, { generationId });
+  if (forceRegenerate) storage.deleteOutput(taskId, 'blueprint_draft_checkpoint');
   const storedCheckpoint = storage.getOutput(taskId, 'blueprint_draft_checkpoint');
   const draftCheckpoint = checkpointMatches(storedCheckpoint, task, inputFingerprint) ? storedCheckpoint : null;
   if (storedCheckpoint && !draftCheckpoint) storage.deleteOutput(taskId, 'blueprint_draft_checkpoint');
@@ -118,6 +121,9 @@ async function generateBlueprintStage(taskId, options = {}, {
     error.code = 'BLUEPRINT_OUTPUT_EMPTY';
     error.retryable = true;
     throw error;
+  }
+  if (forceRegenerate && Array.isArray(previous.beats) && previous.beats.length) {
+    revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
   }
   storage.saveOutput(taskId, 'blueprint', blueprint);
   storage.saveOutput(taskId, 'blueprint_meta', {

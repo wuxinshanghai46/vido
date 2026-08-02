@@ -1,17 +1,20 @@
-const storyAd = require('../newStoryAd');
-const productAssetResolver = require('../newStoryAd/productAssetResolverService');
-
+const storyAd = require('../newStoryAd'), productAssetResolver = require('../newStoryAd/productAssetResolverService');
+const referenceDrafts = require('./referenceDraftProjectionService');
+const countProjection = require('./projectCountProjectionService');
+const timingProjection = require('./projectTimingProjectionService');
+const workflowNavigation = require('./workflowNavigationService');
+const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
+const semantic = require('./productionSemanticLocalizationService');
+const benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
+const storyboardSketchGate = require('./storyboardSketchGateService');
+const { projectedDossierItems } = require('./dossierItemProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 
 /** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
-function clean(value = '', max = 240) {
-  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
-}
+function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 
 /** 只返回真实数组，避免各页面重复编写兼容判断。 */
-function list(value) {
-  return Array.isArray(value) ? value.filter(Boolean) : [];
-}
+function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 
 /** 提取现有媒体对象中的当前展示地址。 */
 function mediaUrl(value = {}) {
@@ -69,38 +72,7 @@ function projectedViews(source = {}, fallback = []) {
 }
 
 /** 将单个场景机位与对应视图稳定关联；layout 只由独立布局合同投影。 */
-function projectSceneCamera(camera = {}, views = [], cameraIndex = 0) {
-  const viewId = clean(camera.view_id || camera.view || camera.key, 100);
-  const matchedView = viewId && viewId !== 'layout'
-    ? list(views).find(view => clean(view.key || view.view_id || view.id, 100) === viewId)
-    : null;
-  return {
-    id: clean(camera.id || camera.camera_id || camera.key || `camera_${cameraIndex + 1}`, 100),
-    view_id: viewId,
-    label: clean(camera.label || camera.name || camera.id || `机位 ${cameraIndex + 1}`, 120),
-    image_url: mediaUrl(camera.reference_image_url || camera.referenceImageUrl || '') || mediaUrl(matchedView || {}),
-    role: clean(camera.role || camera.target_description, 180),
-    framing: clean(camera.framing || camera.shot_size, 100),
-    lens: clean(camera.lens_class || camera.lens || camera.focal_length, 100),
-    height: clean(camera.height_class || camera.height, 80),
-    orientation: clean(camera.orientation || camera.direction, 180),
-    position: Array.isArray(camera.normalized_position) ? camera.normalized_position.slice(0, 3).map(Number) : [],
-    look_at: Array.isArray(camera.look_at) ? camera.look_at.slice(0, 3).map(Number) : [],
-    visible_evidence: clean(camera.visible_evidence, 260),
-  };
-}
-
 /** 压缩人物档案的分类图集和原子素材，供详情抽屉按原型分区展示。 */
-function projectedDossierItems(source = []) {
-  return list(source).slice(0, 40).map((item, index) => ({
-    id: clean(item.id || item.asset_id || item.filename || item.key || `dossier-${index + 1}`, 120),
-    key: clean(item.key || item.kind || item.category || item.label || `item_${index + 1}`, 80),
-    kind: clean(item.kind || item.category || item.type, 80),
-    label: clean(item.label || item.name || item.title || item.key || item.kind || `素材 ${index + 1}`, 120),
-    image_url: mediaUrl(item),
-  })).filter(item => item.image_url);
-}
-
 /** 生成稳定可读的任务编号，不修改现有任务主键。 */
 function displayId(task = {}) {
   const date = new Date(task.created_at || task.updated_at || Date.now());
@@ -179,7 +151,7 @@ function listProjects({ limit = 50, page = 1, status = '', userId = '' } = {}) {
 }
 
 /** 将人物主档和多人子资产整理为统一卡片。 */
-function peopleAssets(context = {}) {
+function peopleAssets(context = {}, projectedProps = []) {
   const master = context.person_asset && typeof context.person_asset === 'object' ? context.person_asset : null;
   const castAssets = list(master?.cast_assets);
   const profiles = list(context.cast_profiles);
@@ -197,7 +169,8 @@ function peopleAssets(context = {}) {
     if (!used.has(index) && profiles.length) rows.push({ profile: asset.subject_profile || {}, asset, index: rows.length });
   });
   return rows.slice(0, MAX_MEDIA_ITEMS).map(({ profile, asset: item, index }) => {
-    const canonical = personProfile({ ...profile, ...(item.subject_profile || {}) }, index);
+    // 当前任务人物档案是用户可编辑的权威输入；生成资产里的 subject_profile 只能补缺，不能覆盖后续编辑。
+    const canonical = personProfile({ ...(item.subject_profile || {}), ...profile }, index);
     const views = projectedViews(item);
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
     const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
@@ -213,8 +186,8 @@ function peopleAssets(context = {}) {
       cover_image_url: coverUrl,
       dossier_sheet: dossierUrl ? {
         image_url: dossierUrl,
-        width: Math.max(0, Number(item.dossier_sheet?.width || 0) || 0),
-        height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
+        width: Math.max(0, Number(item.dossier_sheet?.width || 0) || 0), height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
+        layout: clean(item.dossier_sheet?.layout, 100), sections: list(item.dossier_sheet?.sections).map(value => clean(value, 80)).filter(Boolean),
       } : null,
       view_images: views,
       category_atlases: projectedDossierItems(item.category_atlases),
@@ -222,7 +195,16 @@ function peopleAssets(context = {}) {
       identity_views: projectedDossierItems(item.identity_views),
       expressions: projectedDossierItems(item.expressions),
       base_actions: projectedDossierItems(item.base_actions),
+      accessory_details: projectedDossierItems(item.accessory_details || item.dossier?.accessory_details),
+      wardrobe_details: projectedDossierItems(item.wardrobe_detail_items || item.wardrobe_details?.items || item.dossier?.wardrobe_details?.items),
       profile: canonical,
+      provider_asset_id: clean(item.deyunai_asset_id || item.provider_asset_id, 160),
+      provider_asset_status: clean(item.deyunai_asset_status || item.provider_asset_status, 40),
+      provider_asset_group_id: clean(item.deyunai_asset_group_id || '', 160),
+      owned_props: list(projectedProps).filter((prop) => {
+        const owner = clean(prop.owner_id, 120), identities = [canonical.id, item.actor_id, item.actor_asset_id, item.id].map(value => clean(value, 120)).filter(Boolean);
+        return owner ? identities.includes(owner) : index === 0;
+      }),
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
       source: clean(item.source || master?.source, 100),
@@ -255,11 +237,15 @@ function animalAssets(context = {}) {
 /** 将商品与品牌主体整理为独立资产。 */
 function productAssets(context = {}) {
   const product = productAssetResolver.primaryProductAsset(context);
-  if (!product && !clean(context.product_subject)) return [];
+  const presentation = productAssetResolver.productPresentation(context);
+  if (!product && !clean(presentation.subject)) return [];
   return [{
     id: clean(product?.id || product?.asset_id || 'product-primary', 120),
-    kind: 'product',
-    name: clean(product?.name || context.product_subject || '商品主体', 120),
+    kind: presentation.scene_linked ? 'showcase_subject' : 'product',
+    name: clean(product?.name || presentation.subject || '展示主体', 120),
+    presentation,
+    description: clean(presentation.description, 500),
+    linked_scene_ids: list(context.scene_plan?.spaces).map(space => clean(space.id || space.scene_id, 120)).filter(Boolean),
     image_url: mediaUrl(product || {}),
     view_images: list(product?.view_images).slice(0, 16).map(view => ({
       key: clean(view.key || view.id || view.label, 80),
@@ -313,7 +299,7 @@ function sceneAssets(outputs = {}, context = {}) {
       : (asset.scene_spec && typeof asset.scene_spec === 'object' ? asset.scene_spec : {});
     const rawCameras = list(contract.cameras || contract.camera_positions || asset.camera_positions);
     const rawViews = list(asset.view_images);
-    const views = rawViews.slice(0, 24).map((view, viewIndex) => ({
+    const views = rawViews.slice(0, 24).map((view, viewIndex) => semantic.sceneView({
       ...(() => {
         const key = clean(view.key || view.view_id || view.id || `view_${viewIndex + 1}`, 80);
         const camera = rawCameras.find(item => clean(item.view_id || item.view || item.key, 100) === key) || {};
@@ -327,8 +313,8 @@ function sceneAssets(outputs = {}, context = {}) {
       })(),
       label: clean(view.label || view.name || view.key || `视角 ${viewIndex + 1}`, 100),
       image_url: mediaUrl(view),
-    })).filter(view => view.image_url);
-    const cameras = rawCameras.slice(0, 30).map((camera, cameraIndex) => projectSceneCamera(camera, views, cameraIndex));
+    }, viewIndex)).filter(view => view.image_url);
+    const cameras = rawCameras.slice(0, 30).map((camera, cameraIndex) => semantic.sceneCamera(projectSceneCamera(camera, views, cameraIndex), cameraIndex));
     const zones = list(contract.zones || spec.zones || space.zones).slice(0, 30).map((zone, zoneIndex) => ({
       id: clean(zone.id || zone.zone_id || `zone_${zoneIndex + 1}`, 100),
       label: clean(zone.label_zh || zone.label || zone.name || `区域 ${zoneIndex + 1}`, 120),
@@ -371,7 +357,25 @@ function sceneAssets(outputs = {}, context = {}) {
         time: clean(spec.time || spec.timeOfDay || spec.timeText, 200),
         light: clean(spec.lightText || spec.lighting || spec.keyLightDirection, 500),
         interaction: clean(spec.interactionText || spec.interaction || spec.actionZone, 500),
+        negative: clean(spec.negativeText || spec.negative, 500),
       },
+      camera_plan: list(spec.cameraPlan || spec.camera_plan || space.camera_plan).slice(0, 24).map((camera, cameraIndex) => ({
+        id: clean(camera.id || camera.camera_id || `camera_${cameraIndex + 1}`, 100),
+        label: clean(camera.label || camera.name || `机位 ${cameraIndex + 1}`, 120),
+        zone: clean(camera.zone || camera.zone_id, 120),
+        framing: clean(camera.framing || camera.shot_size, 100),
+        lens: clean(camera.lens || camera.lens_class || camera.focal_length, 100),
+        height: clean(camera.height || camera.height_class, 80),
+        movement: clean(camera.movement || camera.camera_movement || camera.move, 260),
+        movement_type: clean(camera.movement_type || camera.move_type || camera.rig || camera.support, 100), route: clean(camera.route || camera.camera_path || camera.path, 260), speed: clean(camera.speed || camera.movement_speed || camera.pace, 80),
+        start_state: clean(camera.start_state || camera.start, 220),
+        end_state: clean(camera.end_state || camera.end, 220),
+        duration: Math.max(0, Number(camera.duration || camera.duration_sec || 0) || 0),
+        subject_action: clean(camera.subject_action || camera.action || camera.performance, 260), focus: clean(camera.focus || camera.focus_target || camera.focus_plan, 220),
+        continuity: clean(camera.continuity || camera.transition || camera.axis_rule, 260), stabilization: clean(camera.stabilization || camera.stabilizer || camera.rig_note, 180),
+        notes: clean(camera.notes || camera.purpose, 260),
+        ...projectShootingRules(camera, cameraIndex, list(spec.cameraPlan || spec.camera_plan || space.camera_plan)[cameraIndex - 1] || {}),
+      })),
       layout: {
         status: clean(layout.status || (layout.reference_image_url ? 'available' : ''), 60),
         image_url: mediaUrl(layout.reference_image_url || layout),
@@ -449,24 +453,25 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     workspace: workspaceStage(raw.task, outputs),
     saved_progress: raw.task.saved_progress === true,
     active_stage: clean(raw.task.active_stage, 80),
+    ...timingProjection.generationTiming(raw.task, clean),
   };
+  const projectedProps = propAssets(outputs, context);
+  const projectedAssets = {
+    people: peopleAssets(context, projectedProps),
+    animals: animalAssets(context),
+    products: productAssets(context),
+    logos: logoAssets(context),
+    props: projectedProps,
+    scenes: sceneAssets(outputs, context),
+  };
+  const projectedCounts = countProjection.projectCounts(projectedAssets, mediaUrl, list);
+  const navigation = workflowNavigation.build({ task: raw.task, context, outputs, counts: projectedCounts, clean, list });
   const bundle = {
     schema_version: 'story-ad-project-bundle-v1',
     project,
     navigation: {
       current: project.workspace,
-      counts: {
-        assets: peopleAssets(context).length
-          + animalAssets(context).length
-          + productAssets(context).length
-          + logoAssets(context).length
-          + sceneAssets(outputs, context).length
-          + propAssets(outputs, context).length,
-        scenes: sceneAssets(outputs, context).length,
-        shots: list(outputs.storyboard_table).length,
-        keyframes: list(outputs.keyframes).length,
-        clips: list(outputs.video_clips).length,
-      },
+      ...navigation,
     },
     permissions: {
       can_view: true,
@@ -500,6 +505,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       required: context.reference_required === true,
       analysis_id: clean(analysis.id || analysis.analysis_id || context.reference_video_analysis_id, 120),
       status: clean(analysis.status || context.reference_video_status, 60),
+      ...timingProjection.referenceTiming(analysis, clean, list),
       filename: clean(analysis.filename || analysis.original_name || analysis.source?.original_name || context.reference_video_name, 180),
       url: mediaUrl(analysis),
       duration: Number(analysis.duration || analysis.duration_sec || analysis.source?.metadata?.duration_seconds || 0) || 0,
@@ -511,14 +517,30 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
         product_or_service: clean(analysis.source_facts?.product_or_service, 300),
         environment: clean(analysis.source_facts?.environment, 500),
         human_presence: analysis.source_facts?.human_presence,
+        human_count: Math.max(0, Number(analysis.source_facts?.human_count || 0) || 0),
         human_actions: list(analysis.source_facts?.human_actions).slice(0, 12).map(item => clean(item, 220)),
+        animal_presence: analysis.source_facts?.animal_presence,
+        narrative_animal_presence: analysis.source_facts?.narrative_animal_presence,
+        ambient_animals: list(analysis.source_facts?.ambient_animals).slice(0, 12).map(item => clean(item, 220)),
+        animal_actions: list(analysis.source_facts?.animal_actions).slice(0, 12).map(item => clean(item, 220)),
       },
       analysis_valid: analysis.analysis_quality?.valid === true,
+      story_outline: analysis.story_outline && typeof analysis.story_outline === 'object'
+        ? analysis.story_outline
+        : {},
+      plot_beats: list(analysis.plot_beats).slice(0, 24),
+      character_prompts: list(analysis.character_prompts).slice(0, 12),
+      animal_prompts: list(analysis.animal_prompts).slice(0, 12),
+      scene_prompts: list(analysis.scene_prompts).slice(0, 120),
+      shot_breakdown: list(analysis.shot_breakdown).slice(0, 120),
+      camera_intents: list(analysis.camera_intents).slice(0, 24),
+      character_actions: list(analysis.character_actions).slice(0, 24),
     };
     bundle.brief = {
       project_name: clean(context.project_name || raw.task.title, 120),
       text: clean(context.brief || raw.task.brief, 3000),
       product_subject: clean(context.product_subject, 200),
+      product_presentation: productAssetResolver.productPresentation(context),
       target_duration: Number(context.target_duration || context.duration || 0) || 0,
       output_ratio: clean(context.output_ratio || '9:16', 20),
       output_size: clean(context.output_size || 'standard', 30),
@@ -526,37 +548,34 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       cast_mode: clean(context.cast_mode || context.person_spec?.castMode || 'auto', 40),
       expected_people: Math.max(0, Number(context.expected_people || 0) || 0),
       expected_animals: Math.max(0, Number(context.expected_animals || 0) || 0),
+      brief_source: clean(context.brief_source, 40),
+      asset_setup_confirmed: context.asset_setup_confirmed === true,
+      shot_design_confirmed: context.shot_design_confirmed === true,
       creative_direction: context.creative_direction || null,
+      benchmark_strategy: benchmarkStrategy.resolve({ ...context, product_presentation: productAssetResolver.productPresentation(context) }),
     };
   }
 
   if (include('assets')) {
     bundle.assets = {
-      people: peopleAssets(context),
-      animals: animalAssets(context),
-      products: productAssets(context),
-      logos: logoAssets(context),
-      props: propAssets(outputs, context),
-      scenes: sceneAssets(outputs, context),
+      ...projectedAssets,
       relations: list(context.subject_relations || context.asset_relations).slice(0, 200),
+    };
+    bundle.asset_editor = {
+      scene_plan: outputs.scene_config && typeof outputs.scene_config === 'object'
+        ? outputs.scene_config
+        : (context.scene_plan && typeof context.scene_plan === 'object' ? context.scene_plan : { scene_mode: 'auto', spaces: [] }),
     };
   }
 
   if (include('story')) {
-    bundle.story = {
-      setup: context.story_setup || null,
-      blueprint: outputs.blueprint || null,
-      status: outputs.blueprint ? 'ready' : 'empty',
-    };
+    bundle.story = referenceDrafts.storySection(context, outputs);
   }
 
   if (include('shots')) {
-    bundle.storyboard = {
-      shots: list(outputs.storyboard_table).slice(0, 200),
-      sketches: list(outputs.storyboard_sketches).slice(0, 200),
-      status: raw.storyboard_status || null,
-      continuity: list(outputs.continuity_contracts || outputs.keyframe_contracts).slice(0, 200),
-    };
+    bundle.storyboard = referenceDrafts.storyboardSection(context, outputs, raw);
+    bundle.storyboard.sketch_gate = storyboardSketchGate.inspect(taskId);
+    if (!bundle.navigation.counts.shots) bundle.navigation.counts.shots = bundle.storyboard.shots.length;
   }
 
   if (include('media')) {
@@ -575,12 +594,4 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   return bundle;
 }
 
-module.exports = {
-  buildProjectBundle,
-  displayId,
-  listProjects,
-  projectSceneCamera,
-  projectStats,
-  projectSummary,
-  workspaceStage,
-};
+module.exports = { buildProjectBundle, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, workspaceStage };

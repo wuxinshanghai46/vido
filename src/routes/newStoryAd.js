@@ -19,11 +19,16 @@ const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnit
 const cancellation = require('../services/newStoryAd/cancellationContext');
 const taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
 const personIdentity = require('../services/newStoryAd/personIdentityContractService');
+const productAssetGeneration = require('../services/newStoryAd/productAssetGenerationService');
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
+const referenceDetach = require('../services/newStoryAd/referenceDetachService');
+const assetPlanService = require('../services/newStoryAd/assetPlanService');
 const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes');
 const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
+const personProviderAssets = require('../services/newStoryAd/personProviderAssetLifecycleService');
+const registerPersonDossierApprovalRoute = require('./newStoryAd/personDossierApprovalRoute');
 const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
@@ -713,12 +718,59 @@ router.delete('/reference-video-upload-sessions/:sessionId', asyncRoute(async (r
   return res.json({ success: true, ...cancelled });
 }));
 
+function referenceTaskId(body = {}) {
+  return String(body.task_id || body.taskId || '').trim();
+}
+
+function upsertActorAssetForUser(userId, actor = {}, patch = {}) {
+  return personProviderAssets.upsertActorAsset({ db, userId, actor, patch, ensureActor: ensureActorAssetForUser });
+}
+
+function persistProviderPersonIds(userId, context = {}) {
+  return personProviderAssets.persistProviderPersonIds({ context, upsert: (actor, patch) => upsertActorAssetForUser(userId, actor, patch) });
+}
+
+function assertReferenceReplacementAllowed(taskId, user) {
+  if (!taskId) return null;
+  const task = service.assertTaskOwner(taskId, user);
+  if (task.active_generation_id) {
+    const error = new Error('当前生成正在使用已锁定内容；请先取消或等待生成完成，再更换参考视频');
+    error.code = 'GENERATION_ACTIVE_EDIT_BLOCKED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  return task;
+}
+
+/** 在接口返回前先把新分析 ID 绑定当前任务，避免页面延迟时继续显示旧视频。 */
+function bindInitialReferenceTask(taskId, analysis, user) {
+  if (!taskId || !analysis?.id) return false;
+  const current = storage.getOutput(taskId, 'context') || storage.getTask(taskId)?.request || {};
+  const previous = current.reference_video_analysis || {};
+  const previousCreatedAt = Date.parse(previous.created_at || '') || 0;
+  const nextCreatedAt = Date.parse(analysis.created_at || '') || 0;
+  if (previous.analysis_id && previous.analysis_id !== analysis.id
+    && previousCreatedAt && nextCreatedAt && previousCreatedAt > nextCreatedAt) {
+    try { referenceVideoAnalyses.cancel(analysis.id, user); } catch {}
+    return false;
+  }
+  service.updateTaskRequest(taskId, {
+    reference_video_analysis: referenceVideoAnalyses.taskRecord(analysis),
+  }, user);
+  return true;
+}
+
 router.post('/reference-video-links', asyncRoute(async (req, res) => {
+  const user = userFromReq(req);
+  const taskId = referenceTaskId(req.body || {});
+  assertReferenceReplacementAllowed(taskId, user);
   const analysis = await referenceVideoAnalyses.createFromUrl({
     body: req.body || {},
-    user: userFromReq(req),
+    user,
   });
-  return res.status(202).json({ success: true, analysis });
+  const taskBound = bindInitialReferenceTask(taskId, analysis, user);
+  return res.status(202).json({ success: true, analysis, task_bound: taskBound });
 }));
 
 router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async (req, res) => {
@@ -730,12 +782,16 @@ router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async 
     });
   }
   try {
+    const user = userFromReq(req);
+    const taskId = referenceTaskId(req.body || {});
+    assertReferenceReplacementAllowed(taskId, user);
     const analysis = await referenceVideoAnalyses.create({
       file: req.file,
       body: req.body || {},
-      user: userFromReq(req),
+      user,
     });
-    return res.status(201).json({ success: true, analysis });
+    const taskBound = bindInitialReferenceTask(taskId, analysis, user);
+    return res.status(201).json({ success: true, analysis, task_bound: taskBound });
   } catch (error) {
     try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {}
     throw error;
@@ -813,6 +869,7 @@ router.post('/tasks/:id/person-outfit-candidates', asyncRoute(async (req, res) =
     outfitSourceId: req.body?.outfit_source_id || req.body?.outfitSourceId || '',
     mode: req.body?.mode || 'ai_outfit',
     wardrobe: req.body?.wardrobe || '',
+    personProfile: req.body?.person_profile || req.body?.personProfile || {},
   });
   return res.status(202).json({ success: true, ...started });
 }));
@@ -836,14 +893,10 @@ router.post('/tasks/:id/person-dossiers', asyncRoute(async (req, res) => {
   return res.status(202).json({ success: true, ...started });
 }));
 
-router.post('/tasks/:id/person-dossiers/approve', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const production = personDossiers.approveDossier({
-    taskId: req.params.id,
-    user: userFromReq(req),
-  });
-  return res.json({ success: true, production });
-}));
+registerPersonDossierApprovalRoute(router, {
+  asyncRoute, taskForReq, userFromReq, personDossiers, personProviderAssets, service,
+  upsertActorAssetForUser, storage, videoAdapter, persistProviderPersonIds, uuidv4,
+});
 
 router.post('/tasks/:id/person-action-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
@@ -986,9 +1039,54 @@ router.delete('/tasks/:id', asyncRoute(async (req, res) => {
   });
 }));
 
+router.delete('/tasks/:id/reference-video', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const detached = referenceDetach.detach({
+    taskId: req.params.id,
+    body: req.body || {},
+    user: userFromReq(req),
+    storyAdService: service,
+    storage,
+    referenceVideoAnalyses,
+  });
+  return res.json({ success: true, ...detached });
+}));
+
 router.put('/tasks/:id', asyncRoute(async (req, res) => {
   taskForReq(req);
+  const previousContext = storage.getOutput(req.params.id, 'context') || {};
+  const previousScenePlan = storage.getOutput(req.params.id, 'scene_config');
+  const referenceExplicit = Object.prototype.hasOwnProperty.call(req.body || {}, 'reference_video_analysis')
+    || Object.prototype.hasOwnProperty.call(req.body || {}, 'referenceVideoAnalysis');
+  const suppliedReference = referenceExplicit
+    ? (req.body?.reference_video_analysis ?? req.body?.referenceVideoAnalysis ?? null)
+    : undefined;
   const updated = service.updateTaskRequest(req.params.id, req.body || {}, userFromReq(req));
+  const metadataKeys = new Set(['base_content_revision', 'baseContentRevision', 'client_edit_seq', 'clientEditSeq']);
+  const workflowKeys = new Set(['asset_setup_confirmed', 'assetSetupConfirmed', 'shot_design_confirmed', 'shotDesignConfirmed']);
+  const businessKeys = Object.keys(req.body || {}).filter(key => !metadataKeys.has(key));
+  const workflowStateOnly = businessKeys.length > 0 && businessKeys.every(key => workflowKeys.has(key));
+  const projection = workflowStateOnly ? {
+    projected: false,
+    reason: 'workflow_state_only',
+    model_call_count: 0,
+  } : (referenceExplicit && suppliedReference === null ? {
+    projected: false,
+    reason: 'reference_removed',
+    model_call_count: 0,
+  } : await assetPlanService.projectReferenceIntake(req.params.id, {
+    previous_context: previousContext,
+    existing_scene_plan: previousScenePlan,
+    reference_analysis: suppliedReference
+      ? { ...(updated.context?.reference_video_analysis || {}), ...suppliedReference }
+      : { ...(previousContext.reference_video_analysis || {}), ...(updated.context?.reference_video_analysis || {}) },
+  }));
+  if (projection.projected) updated.context = projection.context;
+  updated.reference_projection = {
+    projected: projection.projected,
+    reason: projection.reason,
+    model_call_count: projection.model_call_count || 0,
+  };
   res.json({ success: true, ...updated });
 }));
 
@@ -1091,7 +1189,7 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       spec,
       revision: 1,
     });
-    let actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, {
+    let actorAsset = upsertActorAssetForUser(userId, {
       id: `actor_asset_${actorId}`,
       actor_asset_id: `actor_asset_${actorId}`,
       actor_id: actorId,
@@ -1129,11 +1227,24 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       committed = service.commitGeneratedPersonAsset(taskId, actorAsset, spec);
       actorAsset = committed.person_asset;
     }
+    let providerSync = { status: taskId ? 'pending' : 'not_required' };
+    if (taskId && committed?.person_contract?.status === 'verified') {
+      try {
+        const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId, ctx: storage.getOutput(taskId, 'context') || {}, options: {} });
+        persistProviderPersonIds(userId, storage.getOutput(taskId, 'context') || {});
+        providerSync = { status: 'completed', ...synced };
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      } catch (error) {
+        providerSync = { status: 'failed', error_code: error.code || 'PERSON_PROVIDER_SYNC_FAILED', error: String(error.message || error).slice(0, 500), retryable: true };
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      }
+    }
     return res.json(actorPayload(actorAsset, {
       status: 'done',
       generated: true,
       fallback_used: false,
-      public_actor_library: true,
+      public_actor_library: false,
+      provider_sync: providerSync,
       provider_used: providerUsed,
       request_key: body.request_key || '',
       verification_status: personContract.status,
@@ -1154,7 +1265,16 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
       err.code = err.code || 'NEW_STORY_PERSON_SHEET_PROVIDER_UNAVAILABLE';
       throw err;
     }
-    let actorAsset = ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, fallback, {
+    const fallbackSourceId = String(fallback.actor_asset_id || fallback.id || fallback.actor_id || 'library_actor')
+      .replace(/[^a-z0-9_-]/ig, '_').slice(0, 48);
+    const privateFallbackId = `actor_asset_${String(taskId || generationId).replace(/[^a-z0-9_-]/ig, '_').slice(0, 36)}_${fallbackSourceId}`;
+    let actorAsset = upsertActorAssetForUser(userId, {
+      ...fallback,
+      id: privateFallbackId,
+      actor_asset_id: privateFallbackId,
+      actor_id: `actor_${privateFallbackId}`,
+      source_library_asset_id: fallback.actor_asset_id || fallback.id || '',
+    }, {
       generated_by: 'new_story_ad.person_sheet.fallback',
       fallback_reason: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',
@@ -1177,11 +1297,24 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
     };
     const committed = taskId ? service.commitGeneratedPersonAsset(taskId, actorAsset, spec) : null;
     if (committed) actorAsset = committed.person_asset;
+    let providerSync = { status: taskId ? 'pending' : 'not_required' };
+    if (taskId && committed?.person_contract?.status === 'verified') {
+      try {
+        const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId, ctx: storage.getOutput(taskId, 'context') || {}, options: {} });
+        persistProviderPersonIds(userId, storage.getOutput(taskId, 'context') || {});
+        providerSync = { status: 'completed', ...synced };
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      } catch (providerError) {
+        providerSync = { status: 'failed', error_code: providerError.code || 'PERSON_PROVIDER_SYNC_FAILED', error: String(providerError.message || providerError).slice(0, 500), retryable: true };
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      }
+    }
     return res.json(actorPayload(actorAsset, {
       status: 'fallback_actor_library',
       generated: false,
       fallback_used: true,
-      public_actor_library: true,
+      public_actor_library: false,
+      provider_sync: providerSync,
       fallback_reason: '图片供应商额度/频率或通道失败，已切换到本地可商用演员库候选。',
       provider_error: String(err.message || err).slice(0, 500),
       request_key: body.request_key || '',
@@ -1192,16 +1325,44 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   });
 }));
 
-router.post('/subject-assets', asyncRoute(async (req, res) => {
-  const body = req.body || {};
-  const user = userFromReq(req);
-  const taskId = String(body.task_id || body.taskId || '').trim();
-  if (taskId) service.assertTaskOwner(taskId, user);
-  const generationId = String(body.generation_id || body.generationId || uuidv4());
-  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
-  return cancellation.run({ generationId, taskId, stage: 'subject_assets', ownerId }, async () => {
-    const bundle = await subjectAssets.generateSubjectBundle({ body, taskId, generationId });
-    const persistedCast = bundle.cast_assets.map((asset) => ensureActorAssetForUser(PUBLIC_ACTOR_USER_ID, asset, {
+function updateSubjectAssetProgress(taskId, generationId, update = {}) {
+  if (!taskId) return null;
+  const task = storage.getTask(taskId);
+  if (!task) return null;
+  const previous = task.generation_progress?.stage === 'subject_assets' ? task.generation_progress : {};
+  const total = Math.max(1, Number(update.total || previous.total || 1) || 1);
+  const processed = Math.max(0, Math.min(total, Number(update.processed ?? update.completed ?? previous.processed ?? 0) || 0));
+  const percent = Number.isFinite(Number(update.percent))
+    ? Math.max(0, Math.min(100, Number(update.percent)))
+    : Math.max(1, Math.min(90, Math.round((processed / total) * 90)));
+  const now = new Date().toISOString();
+  const progress = {
+    schema_version: 1,
+    stage: 'subject_assets',
+    generation_id: generationId || task.active_generation_id || previous.generation_id || '',
+    status: update.status || (percent >= 100 ? 'completed' : 'running'),
+    phase: update.phase || previous.phase || 'preparing',
+    message: update.message || previous.message || '正在建立人物与动物档案',
+    total,
+    processed,
+    completed: processed,
+    percent,
+    started_at: previous.started_at || task.generation_started_at || task.generation_queued_at || now,
+    updated_at: now,
+    ...(percent >= 100 ? { finished_at: now } : {}),
+  };
+  storage.updateTask(taskId, { generation_progress: progress });
+  return progress;
+}
+
+async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generationId = '', userId = 'anonymous' } = {}) {
+    const bundle = await subjectAssets.generateSubjectBundle({
+      body,
+      taskId,
+      generationId,
+      onProgress: progress => updateSubjectAssetProgress(taskId, generationId, progress),
+    });
+    const persistedCast = bundle.cast_assets.map((asset) => upsertActorAssetForUser(userId, asset, {
       generated_by: 'new_story_ad.subject_assets',
       cast_member_index: asset.cast_member_index,
       cast_role: asset.cast_role,
@@ -1231,8 +1392,32 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
           pet_contract: normalizedBundle.pet_contract,
           subject_board_url: normalizedBundle.subject_board_url || '',
         };
-    return res.json({
-      success: true,
+    let providerSync = { status: normalizedBundle.cast_assets.length ? 'pending' : 'not_required', assets: [] };
+    if (taskId && committed.person_asset && committed.person_contract?.status === 'verified') {
+      updateSubjectAssetProgress(taskId, generationId, { percent: 94, phase: 'provider_sync', message: '正在上传人物档案到 Seedance 人物素材库' });
+      try {
+        const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId, ctx: storage.getOutput(taskId, 'context') || {}, options: {} });
+        providerSync = { status: 'completed', ...synced };
+        persistProviderPersonIds(userId, storage.getOutput(taskId, 'context') || {});
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      } catch (error) {
+        providerSync = {
+          status: 'failed',
+          error_code: error.code || 'PERSON_PROVIDER_SYNC_FAILED',
+          error: String(error.message || error).slice(0, 500),
+          retryable: true,
+          updated_at: new Date().toISOString(),
+        };
+        storage.saveOutput(taskId, 'person_provider_sync', providerSync);
+      }
+    }
+    updateSubjectAssetProgress(taskId, generationId, {
+      percent: 100,
+      status: 'completed',
+      phase: providerSync.status === 'failed' ? 'complete_with_provider_sync_warning' : 'complete',
+      message: providerSync.status === 'failed' ? '人物档案已保存，Seedance 人物素材同步待重试' : '人物档案与 Seedance 人物素材 ID 已保存',
+    });
+    return {
       module: 'new_story_ad',
       status: 'done',
       counts: normalizedBundle.counts,
@@ -1243,8 +1428,58 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
         people: committed.person_contract?.status || 'not_required',
         pets: committed.pet_contract?.status || 'not_required',
       },
-    });
+      provider_sync: providerSync,
+    };
+}
+
+router.post('/subject-assets', asyncRoute(async (req, res) => {
+  const body = req.body || {};
+  const user = userFromReq(req);
+  const taskId = String(body.task_id || body.taskId || '').trim();
+  if (taskId) service.assertTaskOwner(taskId, user);
+  const generationId = String(body.generation_id || body.generationId || uuidv4());
+  const ownerId = String(user.id || user.userId || user.username || 'anonymous');
+  return cancellation.run({ generationId, taskId, stage: 'subject_assets', ownerId }, async () => {
+    const result = await generateAndCommitSubjectAssets({ body, taskId, generationId, userId: ownerId });
+    return res.json({ success: true, ...result });
   });
+}));
+
+router.post('/tasks/:id/subject-assets', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const user = userFromReq(req);
+  const userId = String(user.id || user.userId || user.username || 'anonymous');
+  const body = { ...(req.body || {}), task_id: req.params.id };
+  return queueTaskStage(req, res, 'subject_assets', job => generateAndCommitSubjectAssets({ body, taskId: req.params.id, generationId: job.generationId, userId }), {
+    deadlineMs: 45 * 60 * 1000,
+  });
+}));
+
+router.post('/tasks/:id/person-provider-sync', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const user = userFromReq(req);
+  const userId = String(user.id || user.userId || user.username || 'anonymous');
+  return queueTaskStage(req, res, 'person_provider_sync', async (job) => {
+    const ctx = storage.getOutput(req.params.id, 'context') || {};
+    const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId: req.params.id, ctx, options: {} });
+    const latestContext = storage.getOutput(req.params.id, 'context') || {};
+    const persistedActors = persistProviderPersonIds(userId, latestContext);
+    const production = personDossiers.getProduction(req.params.id, user);
+    if (production.dossier?.status === 'approved') {
+      personDossiers.updateApprovedAsset({
+        taskId: req.params.id,
+        user,
+        asset: persistedActors[0] || latestContext.person_asset || null,
+        providerSync: {
+          status: 'completed', progress: 100, phase: '人物档案和 Seedance 人物资产 ID 已保存',
+          provider_asset_ids: synced?.asset_ids || [synced?.asset_id].filter(Boolean),
+          completed_at: new Date().toISOString(), error: null,
+        },
+      });
+    }
+    storage.saveOutput(req.params.id, 'person_provider_sync', { status: 'completed', ...synced, generation_id: job.generationId });
+    return synced;
+  }, { deadlineMs: 10 * 60 * 1000 });
 }));
 
 router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => {
@@ -1269,6 +1504,14 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
     },
   });
 })); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService });
+
+router.post('/tasks/:id/product-assets', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const body = req.body || {};
+  return queueTaskStage(req, res, 'product_asset', job => productAssetGeneration.generateProductAsset(req.params.id, body, { generationId: job.generationId }), {
+    deadlineMs: 20 * 60 * 1000,
+  });
+}));
 
 router.post('/tasks/:id/person-verify', asyncRoute(async (req, res) => {
   taskForReq(req);
@@ -1412,7 +1655,8 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, job));
+  const forceRegenerate = req.body?.force_regenerate === true || req.body?.forceRegenerate === true;
+  return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, { ...job, force_regenerate: forceRegenerate }));
 }));
 
 router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {

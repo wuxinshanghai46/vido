@@ -1,4 +1,4 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
@@ -93,7 +93,7 @@ export async function mount(host, context) {
 
   const run = async (button, path, pending, success) => {
     try {
-      setButtonBusy(button, true, pending);
+      setButtonBusy(button, true, pending, { elapsed: true });
       await store.runStage(path);
       toast(success, 'success');
       await context.refreshShell();
@@ -129,7 +129,7 @@ export async function mount(host, context) {
           return;
         }
         try {
-          setButtonBusy(submit, true, '正在提交…');
+          setButtonBusy(submit, true, '正在提交…', { elapsed: true });
           await store.startVideo(preflight, {
             complexity_review_confirmed: !complexityRequired || modalHost.querySelector('[data-complexity-confirm]')?.checked,
           });

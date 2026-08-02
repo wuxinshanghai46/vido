@@ -270,6 +270,37 @@ assert.throws(
     });
     assert(response.text.includes('禁止新增人物'));
     assert.strictEqual(response.mode, 'creative_direction');
+
+    let briefGoalModelCalls = 0;
+    modelGateway.generateText = async options => {
+      briefGoalModelCalls += 1;
+      assert.strictEqual(options.stage, 'new_story_ad.assist');
+      assert(options.systemPrompt.includes('只扩写“广告目标”这一项'));
+      assert(options.userPrompt.includes('brief_goal 只丰富广告目标'));
+      assert(options.userPrompt.includes('年轻人的便携咖啡广告'));
+      assert.doesNotMatch(options.userPrompt, /mode 是 brief_goal 时[^\n]*完整故事/);
+      const text = JSON.stringify({
+        brief: '为注重效率与品质的年轻上班族推广一款便携咖啡产品，重点传达随时获得稳定口感与清醒状态的产品价值，让观众记住它适合通勤、工作间隙和临时出行，并建立方便、可靠且有品质感的品牌认知，最终产生主动了解或购买的意愿。',
+      });
+      assert.strictEqual(await options.validateText(text), true);
+      return { text, used_model: 'fixture-brief-goal', fallback_used: false, failed_models: [] };
+    };
+    const goalResponse = await storyAdService.assistBrief({
+      mode: 'brief_goal',
+      brief: '年轻人的便携咖啡广告',
+      product_subject: '便携咖啡',
+      target_duration: 30,
+    }, { id: 'test-user' });
+    assert.match(goalResponse.brief, /年轻上班族/);
+    assert.match(goalResponse.brief, /品牌认知/);
+    assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'characters'), false, '目标帮写不得提前输出人物');
+    assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'shot_count'), false, '目标帮写不得提前输出分镜数量');
+    assert.equal(briefGoalModelCalls, 1);
+    await assert.rejects(
+      storyAdService.assistBrief({ mode: 'brief_goal', brief: '' }, { id: 'test-user' }),
+      error => error.code === 'ASSIST_BRIEF_GOAL_EMPTY' && /没有调用文本模型/.test(error.message),
+    );
+    assert.equal(briefGoalModelCalls, 1, '空想法必须在模型调用前阻断');
   } finally {
     modelGateway.generateText = originalGenerateText;
   }

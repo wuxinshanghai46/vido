@@ -203,4 +203,19 @@ router.post('/projects/:taskId/sketches/:shotIndex/generate', asyncRoute(async (
   res.json({ success: true, task_id: req.params.taskId, ...result });
 }));
 
+router.post('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const result = await storyboardSketches.generateSketchBatch(
+    req.params.taskId,
+    req.body || {},
+  );
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.get('/projects/:taskId/sketches/generate-batch', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const result = storyboardSketches.getSketchBatch(req.params.taskId);
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
 module.exports = router;
