@@ -8,6 +8,8 @@ const mediaDelivery = require('./services/mediaDeliveryService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-world-v1';
+const STORY_AD_CONTRACT_VERSION = 'scene-world-v1';
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
 const authStore = require('./models/authStore');
@@ -67,6 +69,23 @@ app.use('/openapi', express.json({
   verify: (req, _res, buf) => { req.rawBody = Buffer.from(buf); },
 }));
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '5mb' }));
+app.use((req, res, next) => {
+  const storyAdRequest = /^\/api\/(?:new-story-ad|story-ad)(?:\/|$)/.test(String(req.path || ''));
+  if (!storyAdRequest) return next();
+  res.setHeader('X-VIDO-Build', STORY_AD_BUILD_ID);
+  res.setHeader('X-VIDO-Contract-Version', STORY_AD_CONTRACT_VERSION);
+  if (['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())) return next();
+  if (process.env.STORY_AD_ALLOW_LEGACY_CLIENT === '1') return next();
+  const clientBuild = String(req.get('X-VIDO-Client-Build') || '').trim();
+  if (clientBuild === STORY_AD_BUILD_ID) return next();
+  return res.status(426).json({
+    success: false,
+    code: 'CLIENT_BUILD_EXPIRED',
+    error: '当前剧情广告页面版本已经过期，为避免旧代码覆盖新内容，已停止本次操作。请刷新后继续。',
+    expected_build: STORY_AD_BUILD_ID,
+    received_build: clientBuild || 'missing',
+  });
+});
 // 手动解析 cookie（不引入 cookie-parser 依赖）
 app.use((req, res, next) => {
   req.cookies = {};
@@ -664,6 +683,15 @@ function legacyStoryAdDisabled(req, res, next) {
 }
 
 app.use('/api/dh', legacyStoryAdDisabled, authenticate, requirePermission('avatar'), require('./routes/digitalHuman'));
+app.get('/api/story-ad/version', (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.json({
+    success: true,
+    build_id: STORY_AD_BUILD_ID,
+    contract_version: STORY_AD_CONTRACT_VERSION,
+    legacy_story_ad_ui_enabled: false,
+  });
+});
 app.get('/api/new-story-ad/assets/:filename', async (req, res) => {
   const fs = require('fs');
   const mediaAdapter = require('./services/newStoryAd/mediaAdapter');
@@ -767,7 +795,15 @@ function sendNoStoreHtml(res, filePath) {
 }
 function redirectLegacyStoryAdPage(req, res, next) {
   const tab = String(req.query?.tab || '').trim().toLowerCase();
-  if (tab === 'luxury-ad' || tab === 'luxury_ad') return res.redirect(302, '/digital-human?tab=new-story-ad');
+  if (['luxury-ad', 'luxury_ad', 'new-story-ad', 'new_story_ad'].includes(tab)) {
+    const taskId = String(req.query?.nsa_task_id || req.query?.task_id || '').trim();
+    const rawStep = Math.max(1, Math.min(6, Number(req.query?.nsa_step || 1) || 1));
+    const view = ['brief', 'assets', 'plot', 'storyboard', 'shot', 'final'][rawStep - 1];
+    const target = taskId
+      ? `/story-ad/projects/${encodeURIComponent(taskId)}?view=${encodeURIComponent(view)}`
+      : '/story-ad/';
+    return res.redirect(302, target);
+  }
   return next();
 }
 app.get('/digital-human', redirectLegacyStoryAdPage, requirePageAuth, (req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/digital-human.html')));
@@ -775,9 +811,9 @@ app.get('/digital-human.html', redirectLegacyStoryAdPage, requirePageAuth, (req,
 app.get(/^\/story-ad$/, requirePageAuth, (_req, res) => res.redirect('/story-ad/'));
 app.get('/story-ad/', requirePageAuth, (_req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/story-ad/index.html')));
 app.get(/^\/story-ad\/projects\/[^/]+$/, requirePageAuth, (_req, res) => sendNoStoreHtml(res, path.join(__dirname, '../public/story-ad/index.html')));
-app.get(['/luxury-ad', '/luxury-ad.html'], (_req, res) => res.redirect(302, '/digital-human?tab=new-story-ad'));
-app.get('/new-story-ad', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
-app.get('/new-story-ad.html', requirePageAuth, (_req, res) => res.redirect('/digital-human?tab=new-story-ad'));
+app.get(['/luxury-ad', '/luxury-ad.html'], (_req, res) => res.redirect(302, '/story-ad/'));
+app.get('/new-story-ad', requirePageAuth, (_req, res) => res.redirect('/story-ad/'));
+app.get('/new-story-ad.html', requirePageAuth, (_req, res) => res.redirect('/story-ad/'));
 function sendNoStorePage(res, filePath) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
   res.setHeader('Pragma', 'no-cache');

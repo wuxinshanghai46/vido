@@ -1,0 +1,131 @@
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+
+const root = path.join(__dirname, '..');
+const sceneWorlds = require('../src/services/storyAdWorkspace/sceneWorldService');
+
+function scene(id, name, description, extra = {}) {
+  return {
+    id,
+    name,
+    description,
+    story_purpose: extra.story_purpose || '',
+    zones: extra.zones || [],
+    cameras: extra.cameras || [],
+    scene_spec: extra.scene_spec || {},
+    view_images: extra.view_images || [],
+    revision: 3,
+  };
+}
+
+const bundle = {
+  project: { id: 'scene-world-test' },
+  revisions: { content: 7 },
+  brief: { text: '通用行业多人物多场景广告' },
+  assets: {
+    people: [
+      { id: 'p1', subject_id: 'p1', name: '林岚', profile: { displayName: '林岚', wardrobeText: '深蓝工作服、黑色安全鞋、银色腕表' } },
+      { id: 'p2', subject_id: 'p2', name: '周启', profile: { displayName: '周启', wardrobeText: '白色实验服、护目镜' } },
+      { id: 'p3', subject_id: 'p3', name: '苏遥', profile: { displayName: '苏遥', wardrobeText: '品牌定制服装与耳饰' } },
+    ],
+    animals: [],
+    products: [{ id: 'product-1' }],
+    scenes: [
+      scene('factory', '智能工厂', '大型车间、设备区域与人员移动路线', {
+        zones: [{ id: 'line', label: '生产线' }, { id: 'control', label: '控制区' }],
+        cameras: [
+          { id: 'factory-wide', label: '生产线总览', normalized_position: [0.1, 0.2], look_at: [0.5, 0.5] },
+          { id: 'factory-follow', label: '人物跟随机位', normalized_position: [0.8, 0.6], look_at: [0.45, 0.45] },
+        ],
+      }),
+      scene('road', '城市道路', '车辆在道路与城市广场之间移动，包含航拍路线'),
+      scene('app', '服务平台', '展示APP界面、用户操作流程与数据仪表盘'),
+      scene('cg', '产品微观世界', '抽象液体、粒子与材质微观CG变化'),
+    ],
+  },
+  asset_editor: {
+    scene_plan: {
+      routes: [
+        { from_scene_id: 'factory', to_scene_id: 'road', transition_reason: '人物动作接续到车辆出发', audio_bridge: '机器声延续为道路环境声' },
+        { from_scene_id: 'road', to_scene_id: 'app', transition_reason: '车载屏幕推进到APP界面' },
+        { from_scene_id: 'app', to_scene_id: 'cg', transition_reason: '产品图标推进到微观材质世界' },
+      ],
+    },
+  },
+  storyboard: {
+    shots: [
+      { scene_id: 'factory', characters: ['林岚'], action: '沿生产线讲解' },
+      { scene_id: 'factory', characters: ['周启'], action: '检查设备' },
+      { scene_id: 'road', characters: ['苏遥'], action: '驾驶车辆' },
+    ],
+  },
+};
+
+const worlds = sceneWorlds.buildSceneWorlds(bundle);
+assert.strictEqual(worlds.length, 4, 'must create every requested scene world');
+assert.strictEqual(worlds[0].cameras.length, 2, 'camera count must follow content instead of forcing four cameras');
+assert.strictEqual(worlds[0].capabilities.supports_character_blocking, true);
+assert.strictEqual(worlds[1].capabilities.map_mode, 'route_map');
+assert.strictEqual(worlds[1].capabilities.supports_panorama, true);
+assert.strictEqual(worlds[2].capabilities.world_mode, 'digital_state');
+assert.strictEqual(worlds[2].capabilities.supports_panorama, false, 'digital UI must not receive a fake panorama');
+assert.strictEqual(worlds[2].capabilities.map_mode, 'state_graph');
+assert.strictEqual(worlds[3].capabilities.world_mode, 'abstract_cg');
+assert.strictEqual(worlds[3].capabilities.supports_3d_proxy, true);
+assert.strictEqual(worlds[0].portals[0].to_world_id, 'road');
+
+const manifest = sceneWorlds.productionManifest(bundle, worlds);
+assert.deepStrictEqual(manifest.counts, {
+  people: 3,
+  animals: 0,
+  products: 1,
+  worlds: 4,
+  cameras: 2,
+  transitions: 3,
+});
+assert.strictEqual(manifest.character_world_matrix.length, 3);
+assert.strictEqual(manifest.character_world_matrix[0].cells.find(cell => cell.world_id === 'factory').presence, 'confirmed');
+assert.strictEqual(manifest.character_world_matrix[2].cells.find(cell => cell.world_id === 'road').presence, 'confirmed');
+
+const explicit = sceneWorlds.inferCapabilities(scene('custom', '用户自定义场景', '纯产品空间', {
+  scene_spec: { capabilities: { supports_panorama: true, supports_structure_map: false } },
+}));
+assert.strictEqual(explicit.supports_panorama, true, 'explicit user capability must override inference');
+assert.strictEqual(explicit.supports_structure_map, false, 'explicit false must override inference');
+
+const apiSource = fs.readFileSync(path.join(root, 'public/story-ad/api.js'), 'utf8');
+const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
+const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
+const workspaceSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
+const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
+const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
+
+assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-world-v1'"));
+assert(apiSource.includes("headers['X-VIDO-Client-Build']"));
+assert(serverSource.includes("code: 'CLIENT_BUILD_EXPIRED'"));
+assert(serverSource.includes("legacy_story_ad_ui_enabled: false"));
+assert(serverSource.includes("res.redirect(302, '/story-ad/')"));
+const loadStart = bootstrapSource.indexOf('async function loadStoryAd()');
+const loadEnd = bootstrapSource.indexOf('/** 人物档案生产', loadStart);
+const loadBody = bootstrapSource.slice(loadStart, loadEnd);
+assert(loadBody.includes('location.assign(target)'), 'legacy entry must redirect to the new workspace');
+assert(!loadBody.includes('loadScript('), 'legacy entry must not load legacy UI scripts');
+assert(workspaceSource.includes('initNativeSceneWorldViewer'));
+assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
+assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
+assert(workspaceSource.includes('data-focus-camera'));
+assert(workspaceSource.includes('character-world-matrix'));
+assert(appSource.includes('20260803-scene-world-v1'));
+assert(indexSource.includes('20260803-scene-world-v1'));
+assert(!appSource.includes('20260803-person-age-lightbox-r33'));
+
+console.log(JSON.stringify({
+  success: true,
+  worlds: worlds.length,
+  cameras: manifest.counts.cameras,
+  transitions: manifest.counts.transitions,
+  matrix_rows: manifest.character_world_matrix.length,
+  old_entry_redirected: true,
+  client_build_gate: true,
+}, null, 2));

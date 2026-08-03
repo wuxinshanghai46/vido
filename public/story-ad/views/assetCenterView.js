@@ -1,8 +1,9 @@
 import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-person-age-lightbox-r33';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-v1';
 import { confirmDialog } from '../components/dialog.js';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-person-age-lightbox-r33';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-person-age-lightbox-r33';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-world-v1';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-world-v1';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-world-v1';
 
 const GROUPS = [
   ['people', '人物'],
@@ -141,7 +142,7 @@ function assetCard(item, group) {
       ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
-      ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-generate-scene="${escapeHtml(item.id)}">${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button>` : ''}
+      ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-edit-scene-world="${escapeHtml(item.id)}">${sceneGenerated ? '编辑 / 补齐场景世界' : '完善并生成场景世界'}</button>` : ''}
       ${needsProductVerification ? `<button class="btn small primary" type="button" data-verify-product="${escapeHtml(item.id)}">验证商品素材</button>` : ''}
     </div>
   </article>`;
@@ -252,6 +253,7 @@ export async function mount(host, context) {
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn primary" type="button" data-build-scenes>建立场景规划</button></div>
     </section>
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
+    ${renderSceneWorldWorkspace(bundle)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total)}</div>
@@ -259,6 +261,8 @@ export async function mount(host, context) {
       <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? '请核对人物、动物、商品与场景是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。' : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
       <button class="btn primary" type="button" data-confirm-assets ${assetPlanReady ? '' : 'disabled'}>确认资产方案，进入剧情室</button>
     </section>`;
+
+  bindSceneWorldWorkspace(host, bundle);
 
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
@@ -271,7 +275,7 @@ export async function mount(host, context) {
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
     const regeneratingCompletePerson = group === 'people' && personAssetState(target || {}) === 'complete_dossier';
     const confirmation = regeneratingCompletePerson
-      ? `将为“${target.name}”重建完整人物档案：身体视角、面部与发型、6 种表情、6 种动作，以及服装、鞋履和配饰细节，共 4 个分类图集和 20 项拆分视图。旧版会保留到新版完整生成并通过校验。`
+      ? `将为“${target.name}”重新生成完整人物档案：身体视角、面部与发型、6 种表情、6 种动作，以及服装、鞋履和配饰细节，共 4 个分类图集和 20 项拆分视图。`
       : `本次将提交 ${selected} 个缺失或选中的主体生成。系统会先保留用户设定并自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型；未选且已有四视图的主体会原样保留。`;
     if (!await confirmDialog(confirmation, {
       title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产'),
@@ -473,10 +477,10 @@ export async function mount(host, context) {
     event.stopPropagation();
     openUpload('products');
   }));
-  host.querySelectorAll('[data-generate-scene]').forEach(button => button.addEventListener('click', event => {
+  host.querySelectorAll('[data-edit-scene-world]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
-    const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.generateScene);
-    if (item) generateScene(item, button);
+    const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.editSceneWorld);
+    if (item) openDrawer(item, 'scenes', { onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp });
   }));
   host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
     event.stopPropagation();

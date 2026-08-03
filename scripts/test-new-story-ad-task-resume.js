@@ -142,15 +142,18 @@ assert(immediateRender.index < restoreBlock.indexOf('recoverPersonAssetFromLibra
 assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
 assert(restoreBlock.includes('?compact=1'));
 assert(restoreBlock.includes("new-story-ad:restore-finished"));
-assert(bootstrapSource.includes('bootstrapSupport.preloadScripts?.(CORE_SCRIPT_PATHS, SCRIPT_VERSION)'));
-assert(bootstrapSource.includes('bootstrapSupport.prefetchRouteTask?.()'));
-assert(bootstrapSource.includes('await waitForStoryTemplate();'));
-assert(bootstrapSource.includes('(document.body || document.head || document.documentElement).appendChild(script)'));
-assert(bootstrapSource.includes('(restoring || routeTaskExpected) && !restoreFinished'));
+assert(bootstrapSource.includes("const taskId = String(params.get('nsa_task_id')"));
+assert(bootstrapSource.includes("? `/story-ad/projects/${encodeURIComponent(taskId)}"));
+assert(bootstrapSource.includes('location.assign(target)'));
+const legacyBootstrapBody = bootstrapSource.slice(
+  bootstrapSource.indexOf('async function loadStoryAd()'),
+  bootstrapSource.indexOf('/** 人物档案生产'),
+);
+assert(!legacyBootstrapBody.includes('loadScript('));
 assert(bootstrapSupportSource.includes("document.documentElement.dataset.nsaStoryLoading = '1'"));
 assert(bootstrapSupportSource.includes('delete document.documentElement.dataset.nsaStoryLoading'));
 assert(bootstrapSupportSource.includes("link.rel = 'preload'"));
-assert(bootstrapSource.includes('正在恢复已保存的任务数据，任务内容不会丢失'));
+assert(bootstrapSource.includes("const view = ['brief', 'assets', 'plot', 'storyboard', 'shot', 'final'][step - 1]"));
 assert(routeSource.includes("String(req.query.compact || '') === '1'"));
 assert(serverSource.includes("const compression = require('compression')"));
 assert(serverSource.includes("requestPath === '/digital-human'"));

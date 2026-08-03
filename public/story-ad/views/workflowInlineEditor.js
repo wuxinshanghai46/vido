@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260803-person-age-lightbox-r33';
+import { escapeHtml } from '../components/ui.js?v=20260803-scene-world-v1';
 
 /** 在画布侧栏编辑权威剧情/分镜，不使用图投影中的截断摘要回写。 */
 export function inlineNodeEditor(node = {}, bundle = {}) {

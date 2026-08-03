@@ -72,44 +72,15 @@
 
   /** 首次进入剧情广告时加载全部兼容模块，后续进入直接复用。 */
   async function loadStoryAd() {
-    if (window.__newStoryAdLegacyUI) return window.__newStoryAdLegacyUI;
-    if (loadPromise) return loadPromise;
-    loadPromise = (async () => {
-      setLoadingState('loading', '正在按需加载剧情广告工作台，不会影响其他平台模块…');
-      let restoreFinished = false;
-      const onRestoreFinished = () => {
-        restoreFinished = true;
-        setLoadingState('ready');
-      };
-      document.addEventListener('new-story-ad:restore-finished', onRestoreFinished, { once: true });
-      bootstrapSupport.preloadScripts?.(CORE_SCRIPT_PATHS, SCRIPT_VERSION);
-      for (const path of CORE_SCRIPT_PATHS) {
-        await loadScript(path);
-        if (path.endsWith('/api.js')) bootstrapSupport.prefetchRouteTask?.();
-      }
-      await waitForStoryTemplate();
-      document.dispatchEvent(new CustomEvent('new-story-ad:mount'));
-      let requestedStep = 0;
-      try { requestedStep = Number(new URLSearchParams(location.search || '').get('nsa_step') || 0) || 0; } catch {}
-      if (requestedStep === 2) setTimeout(() => loadAssetModules().catch(() => {}), 0);
-      const restoring = window.__newStoryAdLegacyUI?.state?.restoringTask === true;
-      let routeTaskExpected = false;
-      try {
-        routeTaskExpected = !!new URLSearchParams(location.search || '').get('nsa_task_id');
-      } catch {}
-      if ((restoring || routeTaskExpected) && !restoreFinished) {
-        setLoadingState('loading', '正在恢复已保存的任务数据，任务内容不会丢失…');
-      } else {
-        document.removeEventListener('new-story-ad:restore-finished', onRestoreFinished);
-        setLoadingState('ready');
-      }
-      return window.__newStoryAdLegacyUI || null;
-    })().catch((error) => {
-      loadPromise = null;
-      setLoadingState('error', error?.message || '剧情广告工作台加载失败，请刷新页面后重试。');
-      throw error;
-    });
-    return loadPromise;
+    const params = new URLSearchParams(location.search || '');
+    const taskId = String(params.get('nsa_task_id') || params.get('task_id') || '').trim();
+    const step = Math.max(1, Math.min(6, Number(params.get('nsa_step') || 1) || 1));
+    const view = ['brief', 'assets', 'plot', 'storyboard', 'shot', 'final'][step - 1];
+    const target = taskId
+      ? `/story-ad/projects/${encodeURIComponent(taskId)}?view=${encodeURIComponent(view)}`
+      : '/story-ad/';
+    if (`${location.pathname}${location.search}` !== target) location.assign(target);
+    return null;
   }
 
   /** 人物档案生产、演员库和单人物 AI 补齐只在第 2 步需要，不进入参考识别首屏。 */

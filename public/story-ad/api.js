@@ -1,4 +1,6 @@
 const TOKEN_KEYS = ['vido_token', 'token'];
+export const CLIENT_BUILD_ID = '20260803-scene-world-v1';
+export const CLIENT_CONTRACT_VERSION = 'scene-world-v1';
 let refreshPromise = null;
 
 export function readToken() {
@@ -41,12 +43,15 @@ function errorMessage(data, status) {
   if (status === 403) return '当前账号没有执行此操作的权限。';
   if (status === 404) return '没有找到对应项目，请返回任务中心刷新。';
   if (status === 409) return '项目内容已经变化，请刷新后再继续。';
+  if (status === 426) return '当前页面版本已经过期。为避免旧代码覆盖新内容，请刷新页面后继续。';
   if (status === 429) return '调用过于频繁，请稍后重试。';
   return status ? `请求失败（状态码 ${status}）` : '请求失败，请稍后重试。';
 }
 
 export async function request(path, options = {}) {
   const headers = { ...(options.headers || {}) };
+  headers['X-VIDO-Client-Build'] ||= CLIENT_BUILD_ID;
+  headers['X-VIDO-Contract-Version'] ||= CLIENT_CONTRACT_VERSION;
   const isForm = options.body instanceof FormData;
   if (!isForm) headers['Content-Type'] ||= 'application/json';
   const token = readToken();
@@ -71,6 +76,13 @@ export async function request(path, options = {}) {
     if (response.status === 401) {
       location.href = `/?login=1&target=${encodeURIComponent(location.pathname + location.search)}`;
       throw new Error('登录状态已失效，请重新登录。');
+    }
+    const serverBuild = String(response.headers.get('X-VIDO-Build') || '').trim();
+    if (serverBuild && serverBuild !== CLIENT_BUILD_ID) {
+      const versionError = new Error('服务器已经发布新版本。为避免旧页面覆盖新内容，请刷新后继续。');
+      versionError.status = 426;
+      versionError.code = 'CLIENT_BUILD_EXPIRED';
+      throw versionError;
     }
     const text = await response.text();
     let data = {};

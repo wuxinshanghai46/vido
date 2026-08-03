@@ -5,6 +5,7 @@ const projectBundles = require('../services/storyAdWorkspace/projectBundleServic
 const graphProjection = require('../services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
+const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const videoCore = require('../services/videoGenerationCore');
 
 const router = express.Router();
@@ -32,6 +33,9 @@ function asyncRoute(fn) {
         ...(Number.isInteger(error.current_layout_revision)
           ? { current_layout_revision: error.current_layout_revision }
           : {}),
+        ...(Number.isInteger(error.current_world_revision)
+          ? { current_world_revision: error.current_world_revision }
+          : {}),
       });
     }
   };
@@ -40,6 +44,14 @@ function asyncRoute(fn) {
 /** 校验当前用户可以访问目标剧情广告任务。 */
 function projectForRequest(req) {
   return storyAd.assertTaskOwner(req.params.taskId, currentUser(req));
+}
+
+function attachSceneWorldProjection(taskId, bundle) {
+  if (!bundle?.assets) return bundle;
+  const projection = sceneWorlds.resolve(taskId, bundle);
+  bundle.scene_worlds = projection.worlds;
+  bundle.production_manifest = projection.manifest;
+  return bundle;
 }
 
 /** 每次从真实项目重新投影图谱，再叠加独立保存的用户布局。 */
@@ -83,10 +95,10 @@ router.post('/projects', asyncRoute(async (req, res) => {
 
 router.get('/projects/:taskId/bundle', asyncRoute(async (req, res) => {
   projectForRequest(req);
-  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
+  const bundle = attachSceneWorldProjection(req.params.taskId, projectBundles.buildProjectBundle(req.params.taskId, {
     sections: req.query.sections || '',
     user: currentUser(req),
-  });
+  }));
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   res.json({ success: true, bundle });
@@ -127,6 +139,43 @@ router.delete('/projects/:taskId/graph-layout', asyncRoute(async (req, res) => {
     user: currentUser(req),
   });
   res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.get('/projects/:taskId/scene-worlds', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
+    sections: 'summary,assets,shots',
+    user: currentUser(req),
+  });
+  const result = sceneWorlds.resolve(req.params.taskId, bundle);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.json({ success: true, task_id: req.params.taskId, ...result });
+}));
+
+router.put('/projects/:taskId/scene-worlds/:worldId', asyncRoute(async (req, res) => {
+  const task = projectForRequest(req);
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
+    sections: 'summary,assets,shots',
+    user: currentUser(req),
+  });
+  const current = sceneWorlds.resolve(req.params.taskId, bundle).worlds
+    .find(world => String(world.id) === String(req.params.worldId));
+  if (!current) {
+    const error = new Error('没有找到对应场景世界');
+    error.status = 404;
+    error.code = 'SCENE_WORLD_NOT_FOUND';
+    throw error;
+  }
+  const saved = sceneWorlds.saveWorld(req.params.taskId, current.id, req.body || {}, {
+    expected_revision: req.body?.expected_revision,
+    content_revision: Number(task.content_revision || 1) || 1,
+  });
+  const nextBundle = projectBundles.buildProjectBundle(req.params.taskId, {
+    sections: 'summary,assets,shots',
+    user: currentUser(req),
+  });
+  const result = sceneWorlds.resolve(req.params.taskId, nextBundle);
+  res.json({ success: true, task_id: req.params.taskId, world: result.worlds.find(world => world.id === current.id) || saved, manifest: result.manifest });
 }));
 
 router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {

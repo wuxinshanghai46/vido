@@ -36,7 +36,8 @@
     "story-ad:v2:benchmark": "node scripts/analyze-new-story-ad-v2-real-benchmark.js",
     "story-ad:v2:test": "node scripts/test-new-story-ad-v2-open-graph.js && node scripts/test-new-story-ad-v2-performance.js && node scripts/test-new-story-ad-shot-assist.js && node scripts/test-new-story-ad-storyboard-ui.js && node scripts/test-new-story-ad-video-frame-qa.js && npm run story-ad:v3:test",
     "story-ad:v6:boundaries": "node scripts/check-story-ad-workspace-v6-boundaries.js",
-    "story-ad:v6:test": "node scripts/test-story-ad-workspace-v6.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-workspace-reference-intake.js && node scripts/test-new-story-ad-story-beat-assist.js && node scripts/test-story-ad-workspace-interactions.js && node scripts/test-story-ad-workspace-backend-projection.js && node scripts/test-story-ad-production-planning-upgrade.js && npm run story-ad:v6:boundaries"
+    "story-ad:scene-world:test": "node scripts/test-story-ad-scene-world-v1.js",
+    "story-ad:v6:test": "node scripts/test-story-ad-workspace-v6.js && node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-workspace-reference-intake.js && node scripts/test-new-story-ad-story-beat-assist.js && node scripts/test-story-ad-workspace-interactions.js && node scripts/test-story-ad-workspace-backend-projection.js && node scripts/test-story-ad-production-planning-upgrade.js && npm run story-ad:scene-world:test && npm run story-ad:v6:boundaries"
   },
   "dependencies": {
     "axios": "^1.6.8",

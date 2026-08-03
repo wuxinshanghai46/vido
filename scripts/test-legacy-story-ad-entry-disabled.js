@@ -22,7 +22,8 @@ assert(ui.includes("return tab === 'luxury-ad' ? 'new-story-ad' : tab;"), '统�
 assert(ui.includes("const initialLuxuryProjectRouteId = initialTab === 'material-film' ? getLuxuryAdProjectRouteId() : '';"),
   '新版剧情广告不得恢复旧 luxury_project');
 assert(css.includes('.dh-app [hidden] { display: none !important; }'), '页面必须保证 hidden 不被组件 display 样式覆盖');
-assert(server.includes("tab === 'luxury-ad' || tab === 'luxury_ad'"), '服务端页面路由必须识别旧标签');
+assert(server.includes("['luxury-ad', 'luxury_ad', 'new-story-ad', 'new_story_ad'].includes(tab)"), '服务端页面路由必须识别旧标签并统一转入独立新版工作台');
+assert(server.includes("? `/story-ad/projects/${encodeURIComponent(taskId)}"), '旧任务深链必须保留任务 ID 并进入独立新版工作台');
 assert(server.includes("app.get(['/luxury-ad', '/luxury-ad.html']"), '旧独立页面地址必须重定向到当前剧情广告');
 assert(server.includes("code: 'LEGACY_STORY_AD_DISABLED'"), '旧剧情广告 API 必须继续返回永久下线错误');
 
