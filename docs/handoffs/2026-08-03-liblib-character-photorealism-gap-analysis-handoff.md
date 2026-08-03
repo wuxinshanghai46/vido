@@ -1,8 +1,11 @@
 # VIDO 与 Liblib 案例人物真人感差距分析及优化交接
 
-> 日期：2026-08-03  
-> 目标分支：`codex/story-ad-v3-upgrade`  
-> 竞品案例：[Liblib「虫村第二集」](https://www.liblib.tv/detail/7620db473ccb4a52978fcd02a43321bd)  
+> 日期：2026-08-03
+>
+> 目标分支：`codex/story-ad-v3-upgrade`
+>
+> 竞品案例：[Liblib「虫村第二集」](https://www.liblib.tv/detail/7620db473ccb4a52978fcd02a43321bd)
+>
 > 文档性质：只读分析与实施方案；本轮没有修改生成代码、调用付费模型或覆盖已有任务资产。
 
 ## 1. 结论先行
