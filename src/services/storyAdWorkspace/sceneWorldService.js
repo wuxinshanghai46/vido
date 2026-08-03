@@ -68,14 +68,17 @@ function inferCapabilities(scene = {}) {
   const stage = /棚拍|摄影棚|影棚|展示台|转台|产品台|无影棚|静物台|珠宝台/i.test(text);
   const enclosed = /室内|房间|展厅|门店|商场|办公室|教室|医院|实验室|工厂|车间|仓库|厨房|餐厅|酒店|住宅|舱内|车内/i.test(text);
   const physical = !digital && !abstract;
-  const photoViewCount = sceneViews(scene).length;
+  const views = sceneViews(scene);
+  const photoViewCount = views.length;
   const panoramaCount = panoramaAssets(scene).length;
-  const inferredMapMode = digital ? 'state_graph' : (open ? 'route_map' : (enclosed ? 'structure_map' : 'stage_map'));
+  const hasLayoutView = views.some(view => /^(?:layout|blueprint|floor_plan|topdown)$/i.test(clean(view.key || view.view, 80)))
+    || Boolean(scene.layout_contract || scene.scene_contract?.layout_contract);
+  const inferredMapMode = digital ? 'state_graph' : (open ? 'route_map' : ((enclosed || hasLayoutView) ? 'structure_map' : 'stage_map'));
   const inferredWorldMode = digital ? 'digital_state' : (abstract ? 'abstract_cg' : (stage ? 'studio_stage' : (open ? 'physical_open' : 'physical_space')));
   return {
     supports_photo_views: boolOverride(explicit, 'supports_photo_views', photoViewCount > 0),
     supports_panorama: boolOverride(explicit, 'supports_panorama', panoramaCount > 0),
-    supports_structure_map: boolOverride(explicit, 'supports_structure_map', physical && (enclosed || open)),
+    supports_structure_map: boolOverride(explicit, 'supports_structure_map', physical && (enclosed || open || hasLayoutView)),
     supports_3d_proxy: boolOverride(explicit, 'supports_3d_proxy', !digital && (physical || abstract || stage)),
     supports_navigation: boolOverride(explicit, 'supports_navigation', physical && (panoramaCount > 0 || photoViewCount > 1)),
     supports_camera_orbit: boolOverride(explicit, 'supports_camera_orbit', !digital && (stage || abstract || physical)),

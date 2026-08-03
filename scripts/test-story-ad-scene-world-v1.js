@@ -104,6 +104,12 @@ const explicit = sceneWorlds.inferCapabilities(scene('custom', '用户自定义�
 assert.strictEqual(explicit.supports_panorama, true, 'explicit user capability must override inference');
 assert.strictEqual(explicit.supports_structure_map, false, 'explicit false must override inference');
 
+const assetLedMap = sceneWorlds.inferCapabilities(scene('gallery', '光影艺廊', '安静的艺术空间', {
+  view_images: [{ key: 'master', image_url: '/master.png' }, { key: 'layout', image_url: '/layout.png' }],
+}));
+assert.strictEqual(assetLedMap.supports_structure_map, true, 'layout asset must enable structure map without indoor keywords');
+assert.strictEqual(assetLedMap.map_mode, 'structure_map', 'layout asset must select structure map mode');
+
 const apiSource = fs.readFileSync(path.join(root, 'public/story-ad/api.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
