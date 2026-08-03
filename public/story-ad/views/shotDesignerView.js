@@ -1,5 +1,5 @@
-import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
@@ -172,6 +172,7 @@ export async function mount(host, context) {
   const selectedIndex = Math.max(0, shots.findIndex((shot, index) => shotNumber(shot, index) === requested));
   const selected = shots[selectedIndex];
   const media = shotMedia(bundle, selected, selectedIndex);
+  const referencePack = (bundle?.storyboard?.reference_packs || []).find((item, index) => Number(item?.shot_index ?? index) === selectedIndex) || null;
   const previous = shots[selectedIndex - 1] || null;
   const next = shots[selectedIndex + 1] || null;
   host.innerHTML = `
@@ -213,6 +214,10 @@ export async function mount(host, context) {
             <div><span>下一镜进入</span><p>${escapeHtml(next?.entry_frame_state || next?.visual || '没有下一镜')}</p></div>
           </div>
         </article>
+        <article class="card shot-reference-pack-card">
+          <div class="card-head"><div><h2>本镜头实际参考包</h2><p>这里只展示生成接口真实使用的图片及顺序，不展示未送入模型的候选图。</p></div><span class="status-tag ${referencePack?.status === 'active_verified' ? 'is-success' : 'is-neutral'}">${referencePack?.status === 'active_verified' ? `已锁定 ${referencePack.references?.length || 0} 张` : '生成关键帧后显示'}</span></div>
+          ${referencePack?.references?.length ? `<div class="shot-reference-pack-grid">${referencePack.references.map(reference => `<figure>${mediaPreview({ image_url: reference.url }, { label: reference.role, width: 420, zoomable: true, zoomGroup: `shot-reference-${selectedIndex}` })}<figcaption><b>${escapeHtml(`#${reference.order} ${reference.role}`)}</b><small>${reference.required ? '生成必需' : '辅助参考'}</small></figcaption></figure>`).join('')}</div><div class="shot-reference-pack-meta"><span>人物版本 ${Number(referencePack.person_revision || 0)}</span><span>场景版本 ${Number(referencePack.scene_revision || 0)}</span><span>导演台版本 ${Number(referencePack.director_revision || 0)}</span><code>${escapeHtml(String(referencePack.fingerprint || '').slice(0, 12))}</code></div>` : '<div class="card-body muted">尚无已编译参考包。生成关键帧时系统会按人物、商品、场景、导演台构图和上一镜通过统一选择器编译并留痕。</div>'}
+        </article>
       </section>
       <aside class="shot-settings card">
         <div class="card-head"><div><h2>镜头怎么拍</h2><p>优先显示普通人能理解的名称，选择后仍保存原有标准值。</p></div></div>
@@ -224,6 +229,8 @@ export async function mount(host, context) {
         </div>
       </aside>
     </div>`;
+
+  bindMediaLightbox(host);
 
   host.querySelectorAll('[data-select-shot]').forEach(button => button.addEventListener('click', () => {
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot&shot=${encodeURIComponent(button.dataset.selectShot)}`);

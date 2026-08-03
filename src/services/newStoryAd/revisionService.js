@@ -75,6 +75,7 @@ function domainSlices(ctx = {}) {
       subtitle_style: ctx.subtitle_style,
       subtitle_config: ctx.subtitle_config,
       video_resolution: ctx.video_resolution,
+      video_quality: ctx.video_quality,
     },
   };
 }

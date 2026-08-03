@@ -1,14 +1,10 @@
 const storyAd = require('../newStoryAd'), productAssetResolver = require('../newStoryAd/productAssetResolverService');
-const referenceDrafts = require('./referenceDraftProjectionService');
-const countProjection = require('./projectCountProjectionService');
-const timingProjection = require('./projectTimingProjectionService');
-const workflowNavigation = require('./workflowNavigationService');
+const referenceDrafts = require('./referenceDraftProjectionService'), countProjection = require('./projectCountProjectionService');
+const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
-const semantic = require('./productionSemanticLocalizationService');
-const benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
+const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService');
-const { projectedDossierItems } = require('./dossierItemProjectionService');
-const { normalizeAppearanceAgeText } = require('./personTextProjectionService');
+const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 
 /** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
@@ -190,6 +186,10 @@ function peopleAssets(context = {}, projectedProps = []) {
         width: Math.max(0, Number(item.dossier_sheet?.width || 0) || 0), height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
         layout: clean(item.dossier_sheet?.layout, 100), sections: list(item.dossier_sheet?.sections).map(value => clean(value, 80)).filter(Boolean),
       } : null,
+      quality_status: clean(item.quality_status || (item.native_masters?.face?.image_url && item.native_masters?.body?.image_url ? 'native_masters_ready' : 'legacy_view_only'), 50),
+      native_masters: Object.fromEntries(['face', 'body'].map(key => [key, item.native_masters?.[key]])
+        .filter(([, value]) => mediaUrl(value))
+        .map(([key, value]) => [key, { ...value, image_url: mediaUrl(value) }])),
       view_images: views,
       category_atlases: projectedDossierItems(item.category_atlases),
       atomic_assets: projectedDossierItems(item.atomic_assets),
@@ -545,7 +545,8 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       target_duration: Number(context.target_duration || context.duration || 0) || 0,
       output_ratio: clean(context.output_ratio || '9:16', 20),
       output_size: clean(context.output_size || 'standard', 30),
-      video_resolution: clean(context.video_resolution || '720p', 30),
+      video_resolution: clean(context.video_resolution || '1080p', 30),
+      video_quality: clean(context.video_quality || 'final', 30),
       cast_mode: clean(context.cast_mode || context.person_spec?.castMode || 'auto', 40),
       expected_people: Math.max(0, Number(context.expected_people || 0) || 0),
       expected_animals: Math.max(0, Number(context.expected_animals || 0) || 0),
@@ -576,6 +577,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   if (include('shots')) {
     bundle.storyboard = referenceDrafts.storyboardSection(context, outputs, raw);
     bundle.storyboard.sketch_gate = storyboardSketchGate.inspect(taskId);
+    bundle.storyboard.reference_packs = list(outputs.shot_reference_packs).slice(0, 200);
     if (!bundle.navigation.counts.shots) bundle.navigation.counts.shots = bundle.storyboard.shots.length;
   }
 

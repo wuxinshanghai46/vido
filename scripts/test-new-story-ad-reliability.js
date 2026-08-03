@@ -327,6 +327,11 @@ async function main() {
     gateway: qaFrom({ pass: true, identity_score: 0.95, age_score: 0.92, wardrobe_score: 0.9, body_score: 0.88, hand_owner_score: 0 }), repair: jsonRepair,
   });
   assert.equal(faceQa.pass, true, '正脸特写不应因画面没有手而失败');
+  const plasticFaceQa = await personKeyframeQa.reviewPersonKeyframe({
+    taskId: 'plastic-face-qa', ctx: verifiedPersonCtx, shot: { visual: '人物正脸特写' }, generatedUrl: 'https://example.test/plastic-face.png',
+    gateway: qaFrom({ pass: true, identity_score: 0.95, age_score: 0.92, wardrobe_score: 0.9, body_score: 0.88, hand_owner_score: 0, skin_texture_score: 0.32, hair_detail_score: 0.9, ocular_dental_score: 0.9, lighting_integration_score: 0.9, plastic_skin: true }), repair: jsonRepair,
+  });
+  assert.equal(plasticFaceQa.pass, false, '身份相似但塑料皮肤或微纹理不足的人物必须被真实感门禁拒绝');
   const reflectionQa = await personKeyframeQa.reviewPersonKeyframe({
     taskId: 'reflection-qa', ctx: verifiedPersonCtx, shot: { visual: '镜面里出现人物倒影与深色衣袖' }, generatedUrl: 'https://example.test/reflection.png',
     gateway: qaFrom({ pass: true, identity_score: 0.1, age_score: 0.9, wardrobe_score: 0.95, body_score: 0.9, hand_owner_score: 0.9 }), repair: jsonRepair,

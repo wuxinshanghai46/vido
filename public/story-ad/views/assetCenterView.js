@@ -1,9 +1,9 @@
-import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
-import { confirmDialog } from '../components/dialog.js';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-world-regeneration-v4';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-world-regeneration-v4';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-world-regeneration-v4';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { confirmDialog } from '../components/dialog.js?v=20260803-photoreal-director-v8';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-photoreal-director-v8';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-photoreal-director-v8';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-photoreal-director-v8';
 
 const GROUPS = [
   ['people', '人物'],
@@ -129,14 +129,14 @@ function assetCard(item, group) {
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
-    <button class="asset-card-preview" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
-      ${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group) })}
-      <span class="asset-card-copy">
+    <div class="asset-card-preview">
+      <div class="asset-card-media">${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
+      <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
         <span>${escapeHtml(personState === 'legacy_views' ? '历史四视图' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认')))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
-      </span>
-    </button>
+      </button>
+    </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}`}</button>
       ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '完整人物档案' : '该动物资产'}</button>` : ''}
@@ -264,6 +264,7 @@ export async function mount(host, context) {
     </section>`;
 
   bindSceneWorldWorkspace(host, bundle);
+  bindMediaLightbox(host);
 
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {

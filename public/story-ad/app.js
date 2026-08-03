@@ -1,5 +1,9 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-scene-world-regeneration-v4';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-scene-world-regeneration-v4';
+import { createProjectStore } from './store/projectStore.js?v=20260803-photoreal-director-v8';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-photoreal-director-v8';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260803-photoreal-director-v8';
+
+await assertCurrentRelease();
+startReleaseHeartbeat();
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-scene-world-regeneration-v4'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-scene-world-regeneration-v4'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-scene-world-regeneration-v4'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-scene-world-regeneration-v4'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-scene-world-regeneration-v4'),
-  final: () => import('./views/finalView.js?v=20260803-scene-world-regeneration-v4'),
-  workflow: () => import('./views/workflowView.js?v=20260803-scene-world-regeneration-v4'),
+  brief: () => import('./views/briefView.js?v=20260803-photoreal-director-v8'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-photoreal-director-v8'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-photoreal-director-v8'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-photoreal-director-v8'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-photoreal-director-v8'),
+  final: () => import('./views/finalView.js?v=20260803-photoreal-director-v8'),
+  workflow: () => import('./views/workflowView.js?v=20260803-photoreal-director-v8'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

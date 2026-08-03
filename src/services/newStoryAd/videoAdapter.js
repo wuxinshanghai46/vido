@@ -186,9 +186,9 @@ function ratioSize(ratio = '9:16') {
   return { width: 720, height: 1280 };
 }
 
-function outputSize(ratio = '9:16', resolution = '720p') {
+function outputSize(ratio = '9:16', resolution = '1080p') {
   const base = ratioSize(ratio);
-  const scale = { '480p': 480 / 720, '720p': 1, '1080p': 1080 / 720, '4k': 2160 / 720 }[String(resolution || '720p').toLowerCase()] || 1;
+  const scale = { '480p': 480 / 720, '720p': 1, '1080p': 1080 / 720, '4k': 2160 / 720 }[String(resolution || '1080p').toLowerCase()] || 1;
   const even = value => Math.max(2, Math.round(value * scale / 2) * 2);
   return { width: even(base.width), height: even(base.height) };
 }
@@ -232,9 +232,17 @@ function probeDuration(filePath = '') {
   });
 }
 
-async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '720p' } = {}) {
+function encodingProfile(qualityTier = 'final', resolution = '1080p') {
+  const tier = String(qualityTier || 'final').toLowerCase();
+  if (tier === 'draft') return { tier: 'draft', preset: 'veryfast', crf: '22', audio_bitrate: '128k' };
+  if (String(resolution || '').toLowerCase() === '4k') return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '192k' };
+  return { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '160k' };
+}
+
+async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', durationSec = 4, startSec = 0, aspectRatio = '9:16', resolution = '1080p', qualityTier = 'final' } = {}) {
   ensureDir(path.dirname(outputPath));
   const { width, height } = outputSize(aspectRatio, resolution);
+  const profile = encodingProfile(qualityTier, resolution);
   const duration = clamp(durationSec, 1, 15, 4);
   const args = ['-y'];
   if (Number(startSec) > 0) args.push('-ss', String(Math.max(0, Number(startSec) || 0)));
@@ -246,8 +254,8 @@ async function normalizeProviderClip({ inputPath, outputPath, audioPath = '', du
     '-vf', `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},fps=30,setsar=1,format=yuv420p`,
     '-af', `apad,atrim=0:${duration},aresample=44100`,
     '-map', '0:v:0', '-map', '1:a:0',
-    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '22',
-    '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
+    '-c:v', 'libx264', '-preset', profile.preset, '-crf', profile.crf,
+    '-c:a', 'aac', '-b:a', profile.audio_bitrate, '-ar', '44100', '-ac', '2',
     '-movflags', '+faststart', outputPath,
   );
   await execFfmpeg(args, 240000);
@@ -662,8 +670,8 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         image_url: personReferenceAsset ? undefined : imageUrl,
         reference_image_urls: personReferenceAsset ? [...personReferenceAssets, ...sceneReferenceAssets] : [],
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-        videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
-        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+        videoResolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
         userId: ctx.user_id || '',
         agentId: VIDEO_STAGE,
         signal: cancellation.signal(),
@@ -699,7 +707,8 @@ async function generateProviderClip({ taskId, shot, previousShot, keyframe, audi
         audioPath,
         durationSec: duration,
         aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+        resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+        qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final',
       });
       modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
       const successfulProviderTaskId = generated.providerTaskId || storage.getOutput(taskId, videoShotStatusKind(index))?.provider_task_id || '';
@@ -1024,7 +1033,8 @@ async function splitSceneBlockClip({ taskId = '', block = {}, sourceClip = {}, s
       startSec: beat.start_sec,
       durationSec: beat.duration_sec,
       aspectRatio: ctx.output_ratio || options.aspectRatio || '9:16',
-      resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+      resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
+      qualityTier: options.video_quality || options.videoQuality || ctx.video_quality || 'final',
     });
     output.push(outputPayload(filePath, {
       ...sourceClip,
@@ -1301,8 +1311,10 @@ module.exports = {
   explicitShotSpeechMode,
   hardVideoDependency,
   renderLocalClip,
+  outputSize,
   generateLocalMotionClip,
   normalizeProviderClip,
+  encodingProfile,
   splitSceneBlockClip,
   clipPrompt,
   probeDuration,

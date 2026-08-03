@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260803-scene-world-regeneration-v4';
-import { escapeHtml, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -60,9 +60,9 @@ function worldCards(bundle = {}) {
   const worlds = list(bundle.scene_worlds);
   if (!worlds.length) return '<div class="scene-world-empty">尚未建立场景世界。请先点击“建立场景规划”。</div>';
   return `<div class="scene-world-card-grid">${worlds.map(world => `<article class="scene-world-card">
-    <div class="scene-world-card-visual" style="${world.source_asset?.image_url ? `background-image:linear-gradient(180deg,transparent,#071418dd),url('${escapeHtml(world.source_asset.image_url)}')` : ''}">
-      <span>${escapeHtml(world.capabilities?.world_mode || 'scene_world')}</span>
-      <b>${escapeHtml(world.name)}</b>
+    <div class="scene-world-card-visual">
+      ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
+      <div class="scene-world-card-title"><span>${escapeHtml(world.capabilities?.world_mode || 'scene_world')}</span><b>${escapeHtml(world.name)}</b></div>
     </div>
     <div class="scene-world-card-body">
       <p>${escapeHtml(world.story_purpose || world.description || '等待补充当前场景的剧情作用')}</p>
@@ -385,7 +385,7 @@ async function openSceneWorldStudio(bundle, world) {
       <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度或空间模型"'}>3D漫游</button>
       <button type="button" data-world-mode="structure">结构 / 路线</button>
       <button type="button" data-world-mode="blocking">人物站位</button>
-      <button type="button" data-world-mode="camera">机位与镜头</button>
+      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>3D导演台</button>
     </nav>
     <div class="scene-world-studio-layout">
       <aside><h3>真实图片视角</h3><div class="scene-world-observation-list">${realPhotoNodes.length ? realPhotoNodes.map((node, index) => `<button type="button" data-focus-observation="${escapeHtml(node.id)}"><b>${escapeHtml(node.name || `视角 ${index + 1}`)}</b><small>${escapeHtml(node.view_key === 'layout' ? '俯视布局与路线参考' : node.is_panorama ? '可360度环视的全景观察点' : '现有真实场景图片')}</small></button>`).join('') : '<small>当前场景还没有真实图片。</small>'}</div><h3>空间区域</h3><div class="scene-world-zone-list">${list(world.zones).map(zone => `<button type="button" data-focus-zone="${escapeHtml(zone.id)}"><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(zone.purpose || '场景区域')}</small></button>`).join('')}</div><h3>场景入口</h3><div class="scene-world-portal-list">${list(world.portals).length ? list(world.portals).map(portal => `<button type="button" data-open-world="${escapeHtml(portal.to_world_id)}">${escapeHtml(portal.label)}</button>`).join('') : '<small>当前没有跨场景入口</small>'}</div></aside>
@@ -406,6 +406,12 @@ async function openSceneWorldStudio(bundle, world) {
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
 
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
+  overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
+    try {
+      const module = await import('./directorStudioView.js?v=20260803-photoreal-director-v8');
+      await module.openDirectorStudio({ taskId: bundle.project.id, world });
+    } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
+  });
 
   overlay.querySelectorAll('[data-open-world]').forEach(button => button.addEventListener('click', () => {
     const next = worldById(bundle, button.dataset.openWorld);

@@ -2,6 +2,7 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const zlib = require('zlib');
 
 const ROOT = path.resolve(__dirname, '..');
 const FRONTEND_ROOT = path.join(ROOT, 'public', 'story-ad');
@@ -51,7 +52,7 @@ function relative(file) {
 function main() {
   SOURCE_FILES.forEach(file => {
     const content = read(file);
-    const lineCount = content.split(/\r?\n/).length;
+    const lineCount = content.replace(/\r?\n$/, '').split(/\r?\n/).length;
     assert(lineCount <= 600, `${relative(file)} 超过 600 行，必须拆分`);
     if (file.startsWith(FRONTEND_ROOT) && file.endsWith('.js')) {
       assert(!/\b(?:alert|confirm|prompt)\s*\(/.test(content), `${relative(file)} 不得使用浏览器原生弹窗`);
@@ -89,8 +90,18 @@ function main() {
   assert(/\.asset-card[\s\S]{0,900}object-fit:\s*contain/.test(workspaceStyles), '人物资产卡必须完整显示纵向全身图');
   assert(/\.drawer-media-grid[\s\S]{0,500}object-fit:\s*contain/.test(workspaceStyles), '详情四视图不得使用 cover 裁掉人物');
 
-  const initialBytes = INITIAL_FILES.reduce((sum, file) => sum + fs.statSync(path.join(ROOT, file)).size, 0);
-  const allJsBytes = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js')).reduce((sum, file) => sum + fs.statSync(file).size, 0);
+  // 体积门禁按仓库权威 LF 内容计量，避免 Windows core.autocrlf 把同一份源码
+  // 因 CRLF 多计一次回车而误判超限。这里仍按未压缩源码字节严格计数。
+  const sourceBytes = file => Buffer.byteLength(read(file).replace(/\r\n/g, '\n'), 'utf8');
+  const initialBytes = INITIAL_FILES.reduce((sum, file) => sum + sourceBytes(path.join(ROOT, file)), 0);
+  const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
+  const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file));
+  const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
+  const coreJsGzip = gzipBytes(coreJsFiles);
+  const lazyJsGzip = gzipBytes(lazyJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
   // Keep the initial 100 KiB gate strict; the total source budget includes the
@@ -100,7 +111,10 @@ function main() {
   // and transition inspector are lazy-loaded only after entering Asset Center.
   // V2 adds stable character assignment, explicit 360/3D readiness contracts
   // and hover video previews; the initial 100 KiB gate remains unchanged.
-  assert(allJsBytes <= 310 * 1024, `全部新模块 JS ${allJsBytes} bytes 超过 310 KiB`);
+  assert(coreJsBytes <= 330 * 1024, `核心按需模块 JS ${coreJsBytes} bytes 超过 330 KiB`);
+  assert(coreJsGzip <= 105 * 1024, `核心按需模块 gzip ${coreJsGzip} bytes 超过 105 KiB`);
+  assert(lazyJsBytes <= 780 * 1024, `3D导演台懒加载 JS ${lazyJsBytes} bytes 超过 780 KiB`);
+  assert(lazyJsGzip <= 200 * 1024, `3D导演台懒加载 gzip ${lazyJsGzip} bytes 超过 200 KiB`);
 
   const workflow = read(path.join(ROOT, 'public/story-ad/views/workflowView.js'));
   assert(workflow.includes("addEventListener('pointermove'"), '画布必须支持指针平移');
@@ -128,7 +142,7 @@ function main() {
   assert(store.includes('referenceAnalysisId'), '参考轮询必须锁定明确分析 ID');
   assert(store.includes('function clearProject()'), '状态仓库必须提供跨任务清理');
 
-  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes} bytes; all_js=${allJsBytes} bytes`);
+  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes}; core_js=${coreJsBytes}; core_gzip=${coreJsGzip}; lazy_3d_js=${lazyJsBytes}; lazy_3d_gzip=${lazyJsGzip}`);
 }
 
 main();

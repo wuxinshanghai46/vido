@@ -2,10 +2,13 @@ const { cleanText } = require('./contextBuilder');
 const propReferences = require('./propReferenceService');
 
 function memberIdentityReference(item = {}) {
+  const nativeFace = item.native_masters?.face || item.nativeMasters?.face;
+  const nativeBody = item.native_masters?.body || item.nativeMasters?.body;
   const atomic = Array.isArray(item.atomic_assets) ? item.atomic_assets : [];
   const preferred = atomic.find(asset => asset.kind === 'identity' && asset.key === 'face_front')
     || atomic.find(asset => asset.kind === 'body' && asset.key === 'front');
-  return preferred?.image_url || preferred?.url
+  return nativeFace?.image_url || nativeFace?.url || nativeBody?.image_url || nativeBody?.url
+    || preferred?.image_url || preferred?.url
     || item.referenceImageUrl || item.image_url || item.url
     || item.view_images?.[0]?.url || item.view_images?.[0]?.image_url || '';
 }
@@ -61,7 +64,7 @@ function productReference(ctx = {}) {
   return product?.url || product?.image_url || ctx.product_contract?.reference_images?.[0] || '';
 }
 
-function keyframeReferenceUrls(ctx = {}, options = {}) {
+function keyframeReferenceCandidates(ctx = {}, options = {}) {
   const person = ctx.person_asset || {};
   const cast = options.includePerson ? castReferenceUrls(ctx, options.shot || {}) : [];
   const pets = petReferenceUrls(ctx);
@@ -72,11 +75,28 @@ function keyframeReferenceUrls(ctx = {}, options = {}) {
   const continuity = options.previousFrame?.image_url || '';
   const motion = options.includePerson ? (shotActionReference(person, options.shot || {}) || continuity) : continuity;
   const product = options.includeProduct ? productReference(ctx) : '';
-  const ordered = board
-    ? [options.sceneReference, board, product, ...propRefs, motion]
-    : [options.sceneReference, ...cast, ...pets, product, ...propRefs, motion];
-  if (options.layoutReference) ordered.push(options.layoutReference);
-  return [...new Set(ordered.filter(Boolean))].slice(0, 4);
+  const rows = [];
+  const push = (url, role, priority, required = false) => { if (url) rows.push({ url, role, priority, required }); };
+  push(options.directorReference, 'director_composition', 110, true);
+  if (!options.directorReference) push(options.sceneReference, 'scene_identity', 100, true);
+  if (board) push(board, 'cast_identity_board', 98, true);
+  else cast.forEach((url, index) => push(url, `person_identity_${index + 1}`, 96 - index, true));
+  if (!board) pets.forEach((url, index) => push(url, `pet_identity_${index + 1}`, 92 - index, true));
+  push(product, 'product_identity', 94, options.includeProduct === true);
+  propRefs.forEach((url, index) => push(url, `prop_${index + 1}`, 86 - index));
+  push(motion, motion === continuity ? 'previous_accepted_frame' : 'action_pose', 90, Boolean(options.includePerson));
+  push(options.sceneReference, 'scene_identity', options.directorReference ? 84 : 100);
+  push(options.layoutReference, 'scene_layout', 72);
+  const unique = new Map();
+  rows.sort((a, b) => Number(b.required) - Number(a.required) || b.priority - a.priority).forEach(row => {
+    if (!unique.has(row.url)) unique.set(row.url, row);
+  });
+  return [...unique.values()];
+}
+
+function keyframeReferenceUrls(ctx = {}, options = {}) {
+  const limit = Math.max(1, Math.min(12, Number(options.providerLimit || options.limit || 4) || 4));
+  return keyframeReferenceCandidates(ctx, options).slice(0, limit).map(item => item.url);
 }
 
 module.exports = {
@@ -86,5 +106,6 @@ module.exports = {
   subjectBoardUrl,
   shotActionReference,
   productReference,
+  keyframeReferenceCandidates,
   keyframeReferenceUrls,
 };

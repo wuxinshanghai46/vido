@@ -35,6 +35,26 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 body { min-width: 1080px; }
+.story-ad-release-blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(4 7 16 / 88%);
+  backdrop-filter: blur(12px);
+}
+.story-ad-release-blocker section {
+  width: min(520px, 100%);
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--mint) 42%, transparent);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 42%);
+}
+.story-ad-release-blocker b { display: block; margin-bottom: 10px; font-size: 20px; }
+.story-ad-release-blocker p { margin: 0; color: var(--muted); line-height: 1.7; }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {

@@ -4,6 +4,7 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const sceneWorlds = require('../src/services/storyAdWorkspace/sceneWorldService');
+const releaseConfig = require('../config/story-ad-release.json');
 
 function scene(id, name, description, extra = {}) {
   return {
@@ -111,6 +112,7 @@ assert.strictEqual(assetLedMap.supports_structure_map, true, 'layout asset must 
 assert.strictEqual(assetLedMap.map_mode, 'structure_map', 'layout asset must select structure map mode');
 
 const apiSource = fs.readFileSync(path.join(root, 'public/story-ad/api.js'), 'utf8');
+const releaseSource = fs.readFileSync(path.join(root, 'public/story-ad/release.js'), 'utf8');
 const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
 const workspaceSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
@@ -118,10 +120,12 @@ const workspaceCss = fs.readFileSync(path.join(root, 'public/story-ad/workspace.
 const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
 
-assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-world-regeneration-v4'"));
+assert(apiSource.includes(`./release.js?v=${releaseConfig.build_id}`));
+assert(releaseSource.includes(`CLIENT_BUILD_ID = ${JSON.stringify(releaseConfig.build_id)}`));
+assert(releaseSource.includes(`CLIENT_CONTRACT_VERSION = ${JSON.stringify(releaseConfig.contract_version)}`));
 assert(apiSource.includes("headers['X-VIDO-Client-Build']"));
 assert(serverSource.includes("code: 'CLIENT_BUILD_EXPIRED'"));
-assert(serverSource.includes("STORY_AD_CONTRACT_VERSION = 'scene-world-v2'"));
+assert(serverSource.includes('STORY_AD_CONTRACT_VERSION = storyAdRelease.contract_version'));
 assert(serverSource.includes("legacy_story_ad_ui_enabled: false"));
 assert(serverSource.includes("res.redirect(302, '/story-ad/')"));
 const loadStart = bootstrapSource.indexOf('async function loadStoryAd()');
@@ -141,8 +145,8 @@ assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
 assert(workspaceSource.includes('data-focus-camera'));
 assert(workspaceSource.includes('character-world-matrix'));
-assert(appSource.includes('20260803-scene-world-regeneration-v4'));
-assert(indexSource.includes('20260803-scene-world-regeneration-v4'));
+assert(appSource.includes(releaseConfig.build_id));
+assert(indexSource.includes(releaseConfig.build_id));
 assert(!appSource.includes('20260803-person-age-lightbox-r33'));
 
 console.log(JSON.stringify({

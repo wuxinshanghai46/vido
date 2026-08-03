@@ -14,6 +14,9 @@ const videoAdapter = require('../src/services/newStoryAd/videoAdapter');
 const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
 
 (async () => {
+  assert.deepStrictEqual(videoAdapter.outputSize('9:16', '1080p'), { width: 1080, height: 1920 });
+  assert.deepStrictEqual(videoAdapter.encodingProfile('final', '1080p'), { tier: 'final', preset: 'fast', crf: '18', audio_bitrate: '160k' });
+  assert.strictEqual(videoAdapter.encodingProfile('draft', '1080p').crf, '22');
   const provenanceDecision = videoQa.reviewDecision({
     pass: false,
     person_pass: true,
@@ -48,6 +51,11 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
     people_count_pass: true,
     text_watermark_pass: false,
   }, ['Unexpected commercial watermark visible.'], { provider_used: 'other/provider' }).pass, false);
+  assert.strictEqual(videoQa.reviewDecision({
+    pass: true, person_pass: true, product_pass: true, scene_pass: true, action_pass: true,
+    people_count_pass: true, text_watermark_pass: true, anatomy_physics_pass: true,
+    temporal_stability_pass: false, rendering_intent_pass: true,
+  }, [], { provider_used: 'deyunai/doubao-seedance-2-0-260128' }).pass, false, 'cross-frame flicker must fail even when every sampled frame looks semantically correct');
   assert.strictEqual(videoQa.reviewDecision({
     pass: true,
     person_pass: true,
@@ -98,7 +106,7 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
     contract: { contract_fingerprint: 'contract-current' },
     ctx: { cast_mode: 'no_human' },
     index: 0,
-    gateway: { generateVision: async () => ({ text: JSON.stringify({ pass: false, person_pass: false, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: false, keyframe_people_match: true, unexpected_people_added: false, text_watermark_pass: true, problems: ['Expected no visible human, but a partial human hand is present.'] }), used_model: 'test/vision' }) },
+    gateway: { generateVision: async () => ({ text: JSON.stringify({ pass: false, person_pass: false, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: false, keyframe_people_match: true, unexpected_people_added: false, text_watermark_pass: true, anatomy_physics_pass: true, temporal_stability_pass: true, rendering_intent_pass: true, problems: ['Expected no visible human, but a partial human hand is present.'] }), used_model: 'test/vision' }) },
     repair: { parseOrRepair: async ({ raw }) => JSON.parse(raw) },
   });
   assert.strictEqual(matchedKeyframeQa.pass, true, 'a partial person already present in the approved keyframe must not trigger a paid redraw');
@@ -121,6 +129,7 @@ const videoQa = require('../src/services/newStoryAd/videoFrameQaService');
       pass: false, person_pass: false, product_pass: true, scene_pass: false, action_pass: true,
       people_count_pass: false, keyframe_people_match: false, unexpected_people_added: true,
       text_watermark_pass: true,
+      anatomy_physics_pass: true, temporal_stability_pass: true, rendering_intent_pass: true,
       problems: [
         'The presence of a hand interacting with the surface introduces a visible partial person, which was not part of the authoritative keyframe.',
         'The inclusion of the hand conflicts with the hard rule against new visible body parts appearing in the clip.',

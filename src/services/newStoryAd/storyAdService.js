@@ -23,6 +23,7 @@ const keyframePromptInvariants = require('./keyframePromptInvariantService');
 const { compactKeyframePrompt } = require('./keyframePromptCompactorService');
 const composeService = require('./composeService');
 const { bindShotsToScenes, selectSceneAsset, assertVerifiedSceneAssets, assertSceneModeAssets, normalizeScenePlan, assertScenePlanContract, resolveSceneMode, completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
+const shotReferencePacks = require('./shotReferencePackService');
 const subjectReferences = require('./subjectReferenceService');
 const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
@@ -1488,7 +1489,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     const shotCandidates = [];
     try {
       const sceneReference = selectedSceneReference(sceneAsset, contracts[i] || {});
-      const referenceImages = keyframeReferenceImages(ctx, sceneReference, previousFrame, shot, contracts[i] || {}, sceneAsset);
+      const referenceImages = keyframeReferenceImages(taskId, i, ctx, sceneReference, previousFrame, shot, contracts[i] || {}, sceneAsset);
       const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contracts[i] || {});
       const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
       const productRequired = productIdentity.shotProductRequired(ctx, shot, contracts[i] || {});
@@ -2040,15 +2041,8 @@ function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference 
   };
 }
 
-function keyframeReferenceImages(ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
-  const includePerson = personIdentity.shotPersonRequired(ctx, shot, contract) && !personIdentity.shotForbidsPerson(ctx, shot);
-  const includeProduct = productIdentity.shotProductRequired(ctx, shot, contract);
-  const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset)?.url : '';
-  const refs = subjectReferences.keyframeReferenceUrls(ctx, {
-    sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
-  });
-  const seen = new Set();
-  return refs.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url));
+function keyframeReferenceImages(taskId = '', shotIndex = 0, ctx = {}, sceneReference = '', previousFrame = null, shot = {}, contract = {}, sceneAsset = {}) {
+  return shotReferencePacks.referenceUrls(taskId, shotIndex, ctx, sceneReference, previousFrame, shot, contract, sceneAsset);
 }
 
 async function ensureStoryboardForMedia(taskId) {
@@ -2380,7 +2374,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
     ...ctx,
     ...(visualOnly ? {} : { voice_id: voiceId, include_voiceover: includeVoiceover }),
     output_ratio: options.aspect_ratio || options.aspectRatio || ctx.output_ratio || '9:16',
-    video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '720p',
+    video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
   };
   ctx = {
     ...persistedCtx,

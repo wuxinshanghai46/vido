@@ -6,6 +6,7 @@ const graphProjection = require('../services/storyAdWorkspace/graphProjectionSer
 const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
+const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const videoCore = require('../services/videoGenerationCore');
 
 const router = express.Router();
@@ -35,6 +36,9 @@ function asyncRoute(fn) {
           : {}),
         ...(Number.isInteger(error.current_world_revision)
           ? { current_world_revision: error.current_world_revision }
+          : {}),
+        ...(Number.isInteger(error.current_director_revision)
+          ? { current_director_revision: error.current_director_revision }
           : {}),
       });
     }
@@ -190,6 +194,31 @@ router.put('/projects/:taskId/scene-world-assignments', asyncRoute(async (req, r
   });
   const result = sceneWorlds.resolve(req.params.taskId, bundle);
   res.json({ success: true, task_id: req.params.taskId, ...saved, manifest: result.manifest });
+}));
+
+router.get('/projects/:taskId/scene-worlds/:worldId/director', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, { sections: 'summary,assets,shots', user: currentUser(req) });
+  const projection = sceneWorlds.resolve(req.params.taskId, bundle);
+  const world = projection.worlds.find(item => String(item.id) === String(req.params.worldId));
+  if (!world) { const error = new Error('没有找到对应场景世界'); error.status = 404; error.code = 'SCENE_WORLD_NOT_FOUND'; throw error; }
+  const director_scene = directorScenes.resolve(req.params.taskId, bundle, world, projection.manifest);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.json({ success: true, task_id: req.params.taskId, director_scene });
+}));
+
+router.put('/projects/:taskId/scene-worlds/:worldId/director', asyncRoute(async (req, res) => {
+  const task = projectForRequest(req);
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, { sections: 'summary,assets,shots', user: currentUser(req) });
+  const projection = sceneWorlds.resolve(req.params.taskId, bundle);
+  const world = projection.worlds.find(item => String(item.id) === String(req.params.worldId));
+  if (!world) { const error = new Error('没有找到对应场景世界'); error.status = 404; error.code = 'SCENE_WORLD_NOT_FOUND'; throw error; }
+  const director_scene = directorScenes.save(req.params.taskId, bundle, world, req.body || {}, {
+    expected_revision: req.body?.expected_revision,
+    content_revision: Number(task.content_revision || 1) || 1,
+    manifest: projection.manifest,
+  });
+  res.json({ success: true, task_id: req.params.taskId, director_scene });
 }));
 
 router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {

@@ -51,7 +51,7 @@ async function reviewPersonKeyframe({
   if (!personIdentity.shotPersonRequired(ctx, shot, shotContract)) return notApplicable('当前镜头不需要人物身份检查');
   const contract = personIdentity.assertVerifiedPerson(ctx);
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
-    return { pass: true, status: 'verified', identity_score: 0.95, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.92, hand_owner_score: 0.9, conflicts: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-person-keyframe-qa' };
+    return { pass: true, status: 'verified', identity_score: 0.95, age_score: 0.94, wardrobe_score: 0.95, body_score: 0.92, hand_owner_score: 0.9, skin_texture_score: 0.9, hair_detail_score: 0.9, ocular_dental_score: 0.9, lighting_integration_score: 0.92, plastic_skin: false, conflicts: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-person-keyframe-qa' };
   }
   const memberContracts = contract.contract_type === 'cast_bundle' && Array.isArray(contract.member_contracts)
     ? contract.member_contracts
@@ -72,7 +72,7 @@ async function reviewPersonKeyframe({
       'The first images are the locked person references and the final image is the generated shot. The task may involve any lawful industry, scene, identity, ethnicity, wardrobe or visual medium. Never impose a fixed character template.',
       'Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Person contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, person_presence: presence })}\nJudge only visible dimensions: require hand ownership only when a hand/arm is visible, wardrobe only when clothing is visible, identity/age when a face is visible, and body proportions when enough body is visible. A required partial person can never be not_applicable. Return {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"hand_owner_score":0..1,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
+    userPrompt: `Person contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, person_presence: presence })}\nJudge only visible dimensions: require hand ownership only when a hand/arm is visible, wardrobe only when clothing is visible, identity/age/skin/hair/eyes/teeth when a face is visible, and body proportions when enough body is visible. Inspect for waxy or plastic skin, smeared pores, painted hair, glassy eyes, fused teeth, excessive beauty filtering, and lighting that does not integrate the person with the scene. A required partial person can never be not_applicable. Return {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"hand_owner_score":0..1,"skin_texture_score":0..1,"hair_detail_score":0..1,"ocular_dental_score":0..1,"lighting_integration_score":0..1,"plastic_skin":boolean,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
     maxTokens: 2400,
     timeoutMs,
     maxCandidates,
@@ -91,6 +91,11 @@ async function reviewPersonKeyframe({
     wardrobe_score: score(parsed.wardrobe_score),
     body_score: score(parsed.body_score),
     hand_owner_score: score(parsed.hand_owner_score),
+    skin_texture_score: score(parsed.skin_texture_score ?? parsed.identity_score),
+    hair_detail_score: score(parsed.hair_detail_score ?? parsed.identity_score),
+    ocular_dental_score: score(parsed.ocular_dental_score ?? parsed.identity_score),
+    lighting_integration_score: score(parsed.lighting_integration_score ?? parsed.body_score ?? parsed.identity_score),
+    plastic_skin: parsed.plastic_skin === true,
     conflicts,
     retry_instruction: cleanText(parsed.retry_instruction || '', 600),
     person_presence: presence.mode,
@@ -101,15 +106,23 @@ async function reviewPersonKeyframe({
   const handPass = !visibleParts.has('hand') || qa.hand_owner_score >= 0.75;
   const wardrobePass = !visibleParts.has('wardrobe') || qa.wardrobe_score >= 0.85;
   const bodyPass = !visibleParts.has('body') || qa.body_score >= 0.75;
+  const faceVisible = presence.mode === 'full' || presence.mode === 'face_partial' || visibleParts.has('face');
+  const realismPass = !faceVisible || (
+    qa.skin_texture_score >= 0.72
+    && qa.hair_detail_score >= 0.68
+    && qa.ocular_dental_score >= 0.72
+    && qa.lighting_integration_score >= 0.7
+    && qa.plastic_skin === false
+  );
   qa.pass = presence.mode === 'partial'
-    ? qa.pass && handPass && wardrobePass && !qa.conflicts.length
+    ? qa.pass && handPass && wardrobePass && realismPass && !qa.conflicts.length
     : (presence.mode === 'face_partial'
-      ? qa.pass && qa.identity_score >= 0.82 && qa.age_score >= 0.78 && wardrobePass && handPass && !qa.conflicts.length
+      ? qa.pass && qa.identity_score >= 0.82 && qa.age_score >= 0.78 && wardrobePass && handPass && realismPass && !qa.conflicts.length
       : (presence.mode === 'reflection'
         ? qa.pass && qa.identity_score >= 0.65 && wardrobePass && handPass && !qa.conflicts.length
         : (presence.mode === 'obscured'
           ? qa.pass && wardrobePass && (!visibleParts.has('body') || qa.body_score >= 0.65) && handPass && !qa.conflicts.length
-          : qa.pass && qa.identity_score >= 0.82 && qa.age_score >= 0.8 && wardrobePass && bodyPass && handPass && !qa.conflicts.length)));
+          : qa.pass && qa.identity_score >= 0.82 && qa.age_score >= 0.8 && wardrobePass && bodyPass && handPass && realismPass && !qa.conflicts.length)));
   qa.status = qa.pass ? 'verified' : 'rejected';
   return qa;
 }

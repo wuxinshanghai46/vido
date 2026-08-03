@@ -14,7 +14,7 @@ const { cleanText } = require('./contextBuilder');
 const contractFreshness = require('./keyframeContractFreshnessService');
 
 const FRAME_POINTS = [0, 0.25, 0.5, 0.75, 1];
-const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v5';
+const VIDEO_FRAME_QA_POLICY_VERSION = 'story-ad-video-frame-qa-v6';
 const FRAME_DIMENSIONS = {
   person_pass: ['person_identity', '人物身份与造型'],
   product_pass: ['product_identity', '产品与主体一致性'],
@@ -24,6 +24,9 @@ const FRAME_DIMENSIONS = {
   animal_count_pass: ['animal_count', '出镜宠物/动物数量'],
   pet_identity_pass: ['pet_identity', '宠物身份与外观一致性'],
   text_watermark_pass: ['text_watermark', '文字或水印'],
+  anatomy_physics_pass: ['anatomy_physics', '人体与物体运动物理'],
+  temporal_stability_pass: ['temporal_stability', '跨帧稳定与闪烁'],
+  rendering_intent_pass: ['rendering_intent', '画面媒介与真实感意图'],
 };
 const CROSS_DIMENSIONS = {
   person_position_score: ['person_position', '人物位置连续性'],
@@ -240,9 +243,11 @@ async function ensureBoundaryFrameEvidence({ taskId = '', clips = [], targetInde
 
 function aggregatePass(parsed = {}) {
   const legacyDimensions = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass', 'text_watermark_pass'];
+  const qualityDimensions = ['anatomy_physics_pass', 'temporal_stability_pass', 'rendering_intent_pass'];
   const petDimensions = ['animal_count_pass', 'pet_identity_pass'];
   return parsed.pass === true
     && legacyDimensions.every(key => parsed[key] === true)
+    && qualityDimensions.every(key => parsed[key] !== false)
     && petDimensions.every(key => parsed[key] !== false);
 }
 
@@ -267,6 +272,7 @@ function reviewDecision(parsed = {}, problems = [], clip = {}) {
   }
   const coreDimensionsPass = ['person_pass', 'product_pass', 'scene_pass', 'action_pass', 'people_count_pass']
     .every(key => parsed[key] === true)
+    && ['anatomy_physics_pass', 'temporal_stability_pass', 'rendering_intent_pass'].every(key => parsed[key] !== false)
     && ['animal_count_pass', 'pet_identity_pass'].every(key => parsed[key] !== false);
   const normalPass = aggregatePass(parsed);
   const provenanceOnlyPass = acceptedProvenanceWatermark
@@ -382,7 +388,7 @@ async function verifyDeterministicLocalMotionClip({ taskId = '', clip = {}, keyf
 async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {}, contract = {}, ctx = {}, index = 0, gateway = modelGateway, repair = jsonRepair } = {}) {
   const frames = await extractReviewFrames({ taskId, clip, index });
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
-    return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, animal_count_pass: true, pet_identity_pass: true, text_watermark_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
+    return { pass: true, status: 'verified', qa_policy_version: VIDEO_FRAME_QA_POLICY_VERSION, frames, person_pass: true, product_pass: true, scene_pass: true, action_pass: true, people_count_pass: true, animal_count_pass: true, pet_identity_pass: true, text_watermark_pass: true, anatomy_physics_pass: true, temporal_stability_pass: true, rendering_intent_pass: true, problems: [], checked_at: new Date().toISOString(), used_model: 'mock/new-story-ad-video-frame-qa' };
   }
   const sceneRef = contract.scene_lock?.view_images?.find(view => view.key === contract.scene_lock?.scene_view)
     || contract.scene_lock?.view_images?.[0] || {};
@@ -419,7 +425,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
       'The first optional images are current-task scene/person/product references. The remaining images are ordered samples from one generated clip.',
       'The task may cover any lawful industry, scene, person, product or visual medium. Never impose a fixed template. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, pet: ctx.pet_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null, temporal_evidence: temporalEvidence })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, expected_person_presence: keyframePersonPresence || 'unknown', reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, pets: shot.pets || [], duration: shot.duration, expected_people: expectedPeople, expected_animals: expectedAnimals, expected_person_presence: keyframePersonPresence || null, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. The structured expected_person_presence value comes from the already-approved keyframe review and is authoritative: when it is partial, the hand/arm/body part already present in the approved keyframe is allowed and must not be treated as a newly introduced person merely because characters is empty. In that case set keyframe_people_match=true and people_count_pass=true when the clip preserves that partial-person state. Still reject a genuinely new principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. Judge pets independently from people: animal_count_pass is true only when the visible pet/animal count equals expected_animals; pet_identity_pass is true only when every required pet preserves the declared species/breed, coat color and texture, body size, age impression, facial markings, collar/accessories and unique identifiers across all sampled frames. Reject added, missing, replaced, recolored, duplicated or merged pets. When expected_animals is 0, reject any newly added pet/animal. action_pass is true only when the authored action visibly progresses through a physically plausible start, interaction/movement phase and causal result; reject teleporting, morphing, sliding without contact, disappearing/duplicated subjects, reversed events, frozen-photo motion or a result with no visible cause. For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"what is visibly proved","frame_indexes":[ordered sample indexes],"time_sec":[visible times]}. Every required dimension needs at least two distinct timeline points; state_transition and event_completion need at least three distinct start/middle/result points. Missing visible proof is false; never infer proof from the prompt. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"animal_count_pass":boolean,"pet_identity_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"unexpected_animals_added":boolean,"text_watermark_pass":boolean,"evidence_checks":object,"problems":string[],"retry_instruction":string}. Use true for a legacy dimension only when it is genuinely not applicable.`,
+    userPrompt: `Current task contracts: ${JSON.stringify({ person: ctx.person_contract || null, pet: ctx.pet_contract || null, product: ctx.product_contract || null, scene: contract.scene_lock || null, temporal_evidence: temporalEvidence })}\nCurrent approved keyframe: ${JSON.stringify(currentKeyframeAccepted ? { authoritative: true, human_override: humanApproved, expected_person_presence: keyframePersonPresence || 'unknown', reason: keyframe.qa?.override_reason || keyframe.manual_acceptance?.reason || 'current contract-matched keyframe passed QA' } : { authoritative: false })}\nShot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, pets: shot.pets || [], duration: shot.duration, expected_people: expectedPeople, expected_animals: expectedAnimals, expected_person_presence: keyframePersonPresence || null, surface_topology: shot.surface_topology || null })}\nHard rules: if the current approved keyframe is authoritative, judge scene geometry, material topology, seams, panel layout, crop, starting subject placement, and any already-visible partial person/body part against that keyframe. Reject added seams, wall segmentation, ceiling/floor reconstruction, material replacement or any other visible drift away from it, even when older scene observations differ. The structured expected_person_presence value comes from the already-approved keyframe review and is authoritative: when it is partial, the hand/arm/body part already present in the approved keyframe is allowed and must not be treated as a newly introduced person merely because characters is empty. In that case set keyframe_people_match=true and people_count_pass=true when the clip preserves that partial-person state. Still reject a genuinely new principal person, wrong action, identity/product changes or watermarks. If a verified person contract exists, every visible principal person must match it; reject any replacement, extra principal person, identity drift or wardrobe drift. If no authoritative keyframe exists and expected_people is 0, reject any visible human. If expected_people is a number, people_count_pass is true only when the visible principal cast count matches it or the approved keyframe visibly proves the authored partial-person state. Judge pets independently from people: animal_count_pass is true only when the visible pet/animal count equals expected_animals; pet_identity_pass is true only when every required pet preserves the declared species/breed, coat color and texture, body size, age impression, facial markings, collar/accessories and unique identifiers across all sampled frames. Reject added, missing, replaced, recolored, duplicated or merged pets. When expected_animals is 0, reject any newly added pet/animal. action_pass is true only when the authored action visibly progresses through a physically plausible start, interaction/movement phase and causal result; reject teleporting, morphing, sliding without contact, disappearing/duplicated subjects, reversed events, frozen-photo motion or a result with no visible cause. anatomy_physics_pass requires stable hands, limbs, faces, contacts and object mass without fusion or impossible deformation. temporal_stability_pass requires no identity/texture/background flicker, boiling edges, intermittent objects or exposure pumping. rendering_intent_pass requires the frames to match the authored medium (photoreal, stylized, animation, etc.); for photoreal people reject waxy skin, painted hair, glassy eyes and synthetic lighting. For required V2.0 dimensions ${JSON.stringify(requiredEvidenceDimensions)}, return evidence_checks[key]={"pass":boolean,"evidence":"what is visibly proved","frame_indexes":[ordered sample indexes],"time_sec":[visible times]}. Every required dimension needs at least two distinct timeline points; state_transition and event_completion need at least three distinct start/middle/result points. Missing visible proof is false; never infer proof from the prompt. Return {"pass":boolean,"person_pass":boolean,"product_pass":boolean,"scene_pass":boolean,"action_pass":boolean,"people_count_pass":boolean,"animal_count_pass":boolean,"pet_identity_pass":boolean,"keyframe_people_match":boolean,"unexpected_people_added":boolean,"unexpected_animals_added":boolean,"text_watermark_pass":boolean,"anatomy_physics_pass":boolean,"temporal_stability_pass":boolean,"rendering_intent_pass":boolean,"evidence_checks":object,"problems":string[],"retry_instruction":string}. Use true only when the dimension visibly passes or is genuinely not applicable.`,
     maxTokens: 3000,
   });
   const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });
@@ -445,6 +451,9 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     animal_count_pass: petRequired ? parsed.animal_count_pass === true : parsed.unexpected_animals_added !== true,
     pet_identity_pass: petRequired ? parsed.pet_identity_pass === true : true,
     text_watermark_pass: parsed.text_watermark_pass === true,
+    anatomy_physics_pass: parsed.anatomy_physics_pass === true,
+    temporal_stability_pass: parsed.temporal_stability_pass === true,
+    rendering_intent_pass: parsed.rendering_intent_pass === true,
   };
   const decision = reviewDecision(normalized, problems, clip);
   const temporalDecision = normalizeTemporalEvidenceChecks(parsed, requiredEvidenceDimensions, {
@@ -465,6 +474,9 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     action_pass: normalized.action_pass,
     people_count_pass: normalized.people_count_pass,
     text_watermark_pass: normalized.text_watermark_pass || decision.accepted_provenance_watermark,
+    anatomy_physics_pass: normalized.anatomy_physics_pass,
+    temporal_stability_pass: normalized.temporal_stability_pass,
+    rendering_intent_pass: normalized.rendering_intent_pass,
     problems: [...decision.problems, ...temporalProblems],
     warnings: decision.warnings,
     keyframe_people_match: approvedPeopleMatch,

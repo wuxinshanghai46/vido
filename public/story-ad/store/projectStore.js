@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260801-reference-remove-r20';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260803-photoreal-director-v8';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260803-photoreal-director-v8';
 
 export function createProjectStore() {
   const state = {

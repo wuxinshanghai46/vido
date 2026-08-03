@@ -5,11 +5,16 @@ const compression = require('compression');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const mediaDelivery = require('./services/mediaDeliveryService');
+const storyAdRelease = require('../config/story-ad-release.json');
+const storyAdReleaseIntegrity = require('./services/storyAdReleaseIntegrityService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-world-regeneration-v4';
-const STORY_AD_CONTRACT_VERSION = 'scene-world-v2';
+const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || storyAdRelease.build_id;
+const STORY_AD_CONTRACT_VERSION = storyAdRelease.contract_version;
+if (process.env.STORY_AD_VERIFY_RELEASE !== '0') {
+  storyAdReleaseIntegrity.assertCurrent({ root: path.resolve(__dirname, '..'), release: storyAdRelease });
+}
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
 const authStore = require('./models/authStore');
@@ -74,6 +79,9 @@ app.use((req, res, next) => {
   if (!storyAdRequest) return next();
   res.setHeader('X-VIDO-Build', STORY_AD_BUILD_ID);
   res.setHeader('X-VIDO-Contract-Version', STORY_AD_CONTRACT_VERSION);
+  if (!/\/assets\//.test(String(req.path || ''))) {
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  }
   if (['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())) return next();
   if (process.env.STORY_AD_ALLOW_LEGACY_CLIENT === '1') return next();
   const clientBuild = String(req.get('X-VIDO-Client-Build') || '').trim();
@@ -136,12 +144,17 @@ app.use(express.static(path.join(__dirname, '../public'), {
       res.setHeader('Expires', '0');
       return;
     }
-    if (normalized.includes('/public/story-ad/') && /\.(?:js|css)$/i.test(normalized)) {
-      // 剧情广告是原生 ESM 多入口，HTML、CSS 与动态模块必须作为一个发布单元重验证，
-      // 否则会出现新 DOM 搭配旧 CSS/旧视图脚本的拆分缓存。
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
+    if (normalized.includes('/public/story-ad/') && /\.(?:js|css|json)$/i.test(normalized)) {
+      const originalUrl = String(res.req?.originalUrl || '');
+      const version = (() => { try { return new URL(originalUrl, 'http://local').searchParams.get('v') || ''; } catch { return ''; } })();
+      const versionedCode = /\.(?:js|css)$/i.test(normalized) && version === STORY_AD_BUILD_ID;
+      if (versionedCode) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
       return;
     }
     if (/\.(?:js|css|svg|ico|woff2?|ttf|otf)$/i.test(normalized)) {

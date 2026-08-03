@@ -4,7 +4,7 @@ const mediaAdapterDefault = require('./mediaAdapter');
 const checkpointServiceDefault = require('./assetGenerationCheckpointService');
 const concurrencyDefault = require('./generationConcurrencyService');
 
-const PERSON_DOSSIER_SCHEMA_VERSION = 3;
+const PERSON_DOSSIER_SCHEMA_VERSION = 4;
 const BODY_VIEWS = ['front', 'three_quarter', 'side', 'back'];
 const IDENTITY_VIEWS = ['face_front', 'face_three_quarter', 'face_profile', 'hair_back'];
 const EXPRESSIONS = ['neutral', 'natural_smile', 'focused', 'doubtful', 'surprised', 'relaxed_approved'];
@@ -61,6 +61,21 @@ const CATEGORY_SPECS = [
   },
 ];
 
+const NATIVE_MASTER_SPECS = [
+  {
+    kind: 'face_master',
+    key: 'face',
+    aspectRatio: '1:1',
+    instruction: 'One native-resolution head-and-shoulders identity portrait, eye-level, neutral expression, both eyes tack sharp, individual skin pores and fine facial hair visible.',
+  },
+  {
+    kind: 'body_master',
+    key: 'body',
+    aspectRatio: '3:4',
+    instruction: 'One native-resolution full-body casting portrait from head to complete shoes, natural weight distribution, anatomically correct hands, garment weave and footwear construction visible.',
+  },
+];
+
 function compactAssetToken(...values) {
   return crypto.createHash('sha256')
     .update(values.map(value => String(value || '')).join('\n'))
@@ -88,6 +103,17 @@ function categoryPrompt(spec, personPrompt = '') {
     'All cells must preserve the exact same face identity, apparent age, body proportions, hairstyle, garments, shoes and accessories.',
     'Use the same plain light-gray casting studio in every cell. No scene, logo, caption, border label or watermark.',
     'Do not merge cells. Do not add extra people. Keep hands and body anatomy realistic.',
+  ].filter(Boolean).join('\n');
+}
+
+function nativeMasterPrompt(spec, personPrompt = '') {
+  return [
+    'Create one photorealistic commercial casting master image of exactly one reusable actor.',
+    spec.instruction,
+    personPrompt ? `Actor contract: ${personPrompt}` : '',
+    'Preserve the exact identity, apparent age, facial geometry, body proportions, hairstyle, garments, shoes and accessories from the supplied identity anchor.',
+    'Neutral light-gray casting studio, soft large-source key light with realistic falloff, physically plausible skin subsurface scattering and natural micro-contrast.',
+    'No beauty filter, no plastic skin, no waxy face, no illustration, no CGI look, no grid, no collage, no text, no logo, no watermark and no extra people.',
   ].filter(Boolean).join('\n');
 }
 
@@ -186,6 +212,47 @@ async function generateCategory({
   });
 }
 
+async function generateNativeMaster({
+  taskId, assetId, revision, anchorUrl, personPrompt, requireReferences, spec,
+  loadCheckpoint, saveCheckpoint, onEvent, mediaAdapter, checkpointService,
+}) {
+  const checkpointSpec = { ...spec, keys: [spec.key] };
+  const identity = checkpointIdentity({ taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt });
+  return checkpointService.runCheckpointedUnit({
+    identity,
+    load: loadCheckpoint,
+    save: saveCheckpoint,
+    onEvent,
+    execute: async controls => {
+      const image = controls.providerResult || await mediaAdapter.generateActorReference({
+        taskId,
+        stage: 'new_story_ad.person_dossier_native_master',
+        prompt: nativeMasterPrompt(spec, personPrompt),
+        filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }).replace('_atlas_', '_'),
+        aspectRatio: spec.aspectRatio,
+        referenceImages: anchorUrl ? [anchorUrl] : [],
+        requireReferences,
+        inputFidelity: 'high',
+        clientRequestId: identity.key || checkpointService.checkpointKey(identity),
+        onSubmitting: controls.onSubmitting,
+        onSubmitted: controls.onSubmitted,
+      });
+      if (!controls.providerResult) await controls.onProviderResult(image);
+      return {
+        kind: spec.kind,
+        key: spec.key,
+        image_url: image.image_url || image.url,
+        filename: image.filename || '',
+        provider_used: image.provider_used || '',
+        native_resolution: true,
+        locally_split: false,
+        strict_reference_required: requireReferences,
+        input_fidelity: 'high',
+      };
+    },
+  });
+}
+
 async function compilePersonDossier(options = {}, deps = {}) {
   const {
     taskId = '',
@@ -210,19 +277,23 @@ async function compilePersonDossier(options = {}, deps = {}) {
   const checkpointService = deps.checkpointService || checkpointServiceDefault;
   const concurrencyService = deps.concurrencyService || concurrencyDefault;
   let completed = 0;
+  const units = [
+    ...CATEGORY_SPECS.map(spec => ({ type: 'category', spec })),
+    ...NATIVE_MASTER_SPECS.map(spec => ({ type: 'native_master', spec })),
+  ];
   const generated = await concurrencyService.map(
     'new_story_ad.person_dossier',
-    CATEGORY_SPECS,
+    units,
     concurrency,
-    async spec => {
-      const row = await generateCategory({
+    async unit => {
+      const row = await (unit.type === 'category' ? generateCategory : generateNativeMaster)({
         taskId,
         assetId,
         revision,
         anchorUrl,
         personPrompt,
         requireReferences,
-        spec,
+        spec: unit.spec,
         loadCheckpoint,
         saveCheckpoint,
         onEvent,
@@ -232,14 +303,16 @@ async function compilePersonDossier(options = {}, deps = {}) {
       completed += 1;
       if (onProgress) await onProgress({
         completed,
-        total: CATEGORY_SPECS.length,
-        kind: spec.kind,
+        total: units.length,
+        kind: unit.spec.kind,
         reused: row.reused,
       });
-      return row;
+      return { ...row, unit_type: unit.type };
     },
   );
-  const categories = generated.map(item => item.result);
+  const categories = generated.filter(item => item.unit_type === 'category').map(item => item.result);
+  const nativeMasterRows = generated.filter(item => item.unit_type === 'native_master').map(item => item.result);
+  const nativeMasters = Object.fromEntries(nativeMasterRows.map(item => [item.key, item]));
   const atomicAssets = categories.flatMap(item => item.atomic_assets);
   if (atomicAssets.length !== EXPECTED_ATOMIC_COUNT) {
     const error = new Error(`人物档案原子资产不完整：期望${EXPECTED_ATOMIC_COUNT}项，实际${atomicAssets.length}项`);
@@ -248,6 +321,8 @@ async function compilePersonDossier(options = {}, deps = {}) {
   }
   return {
     schema_version: PERSON_DOSSIER_SCHEMA_VERSION,
+    quality_status: nativeMasters.face?.image_url && nativeMasters.body?.image_url ? 'native_masters_ready' : 'legacy_view_only',
+    native_masters: nativeMasters,
     category_atlases: categories.map(item => item.atlas),
     categories,
     atomic_assets: atomicAssets,
@@ -256,8 +331,9 @@ async function compilePersonDossier(options = {}, deps = {}) {
     expressions: atomicAssets.filter(item => item.kind === 'expression'),
     base_actions: atomicAssets.filter(item => item.kind === 'action'),
     generation_summary: {
-      planned_provider_calls: 4,
+      planned_provider_calls: units.length,
       category_count: categories.length,
+      native_master_count: nativeMasterRows.length,
       atomic_count: atomicAssets.length,
       checkpoint_hits: generated.filter(item => item.reused).length,
       provider_calls_this_run: generated.filter(item => !item.reused).length,
@@ -273,9 +349,11 @@ module.exports = {
   BASE_ACTIONS,
   EXPECTED_ATOMIC_COUNT,
   CATEGORY_SPECS,
+  NATIVE_MASTER_SPECS,
   compactAssetToken,
   personAtlasFilename,
   personViewPrefix,
   categoryPrompt,
+  nativeMasterPrompt,
   compilePersonDossier,
 };

@@ -1,6 +1,6 @@
-import { request } from '../api.js';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260803-photoreal-director-v8';
 
 const STAGE_WIDTH = 2900;
 const STAGE_HEIGHT = 1500;

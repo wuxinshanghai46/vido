@@ -1,6 +1,6 @@
-import { request } from '../api.js';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
-import { confirmDialog, promptDialog } from '../components/dialog.js';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260803-photoreal-director-v8';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -19,7 +19,7 @@ function formPayload(form) {
     target_duration: Number(data.get('target_duration') || 30) || 30,
     output_ratio: String(data.get('output_ratio') || '9:16'),
     output_size: String(data.get('output_size') || 'standard'),
-    video_resolution: String(data.get('video_resolution') || '720p'),
+    video_resolution: String(data.get('video_resolution') || '1080p'),
     production_mode: String(data.get('production_mode') || 'auto'),
     benchmark_strategy: {
       source: 'platform_competitor_learning',
@@ -167,7 +167,7 @@ export async function mount(host, context) {
             ${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}
           </select></label>
           <label class="field"><span>视频分辨率</span><select class="select" name="video_resolution">
-            ${['720p', '1080p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}
+            ${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}
           </select></label>
           <input type="hidden" name="benchmark_opening_hook" value="${escapeHtml(benchmark.opening_hook || '')}">
           <input type="hidden" name="benchmark_subject_introduction" value="${escapeHtml(benchmark.subject_introduction || '')}">
@@ -206,7 +206,7 @@ export async function mount(host, context) {
       target_duration: Number(latest.target_duration || 30) || 30,
       output_ratio: latest.output_ratio || '9:16',
       output_size: latest.output_size || 'standard',
-      video_resolution: latest.video_resolution || '720p',
+      video_resolution: latest.video_resolution || '1080p',
       production_mode: 'auto',
       benchmark_strategy: latest.benchmark_strategy || {},
     };
@@ -227,7 +227,7 @@ export async function mount(host, context) {
       product_subject: latest.product_subject || '',
       target_duration: String(Number(latest.target_duration || 30) || 30),
       output_ratio: latest.output_ratio || '9:16',
-      video_resolution: latest.video_resolution || '720p',
+      video_resolution: latest.video_resolution || '1080p',
       benchmark_opening_hook: latest.benchmark_strategy?.opening_hook || '',
       benchmark_subject_introduction: latest.benchmark_strategy?.subject_introduction || '',
       benchmark_proof_sequence: latest.benchmark_strategy?.proof_sequence || '',

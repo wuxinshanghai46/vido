@@ -1813,37 +1813,4 @@ async function reverifySceneAsset(taskId, sceneId) {
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }
-
-module.exports = {
-  SCENE_VIEW_KEYS,
-  REQUIRED_SCENE_VIEW_KEYS,
-  SCENE_GENERATION_ORDER,
-  SCENE_IMAGE_MAX_ATTEMPTS,
-  SCENE_IMAGE_EXTRA_ATTEMPTS,
-  SCENE_GENERATION_CONTRACT_VERSION,
-  sceneViewLabel,
-  sceneViewContentHash,
-  exactSceneViewDuplicate,
-  assertCompleteUpgradeSceneSpec,
-  assertSceneRightsPreflight,
-  sceneMaterialReferenceImages,
-  buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile,
-  sceneDescriptionForSpec,
-  buildLayoutAcquisitionPrompt,
-  legacyScenePromptFingerprintText,
-  buildDerivedViewPrompt,
-  buildSceneAuditSafePrompt,
-  sceneVisionThumbnailUrl,
-  needsLayoutView,
-  sceneRequest,
-  buildSceneRepairPlan,
-  sceneGenerationUpgradeRequired,
-  normalizeSceneAssets,
-  localizeSceneViews,
-  localizeSceneAssets,
-  saveSceneAssetsToTask,
-  generateSceneAsset,
-  repairSceneAsset,
-  reverifySceneAsset,
-  _resetSceneImageCircuit: resetSceneImageCircuit,
-};
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };

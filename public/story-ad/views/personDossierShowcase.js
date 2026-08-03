@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-photoreal-director-v8';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',
@@ -37,6 +37,8 @@ export function personDossierShowcase(item = {}) {
   const identity = list(item.identity_views);
   const expressions = list(item.expressions);
   const actions = list(item.base_actions);
+  const nativeFace = item.native_masters?.face?.image_url ? item.native_masters.face : null;
+  const nativeBody = item.native_masters?.body?.image_url ? item.native_masters.body : null;
   const generatedAccessories = list(item.accessory_details).filter(view => view.detail_mode === 'generated_high_resolution');
   const generatedWardrobe = list(item.wardrobe_details).filter(view => view.detail_mode === 'generated_high_resolution');
   const groupRoot = `person-dossier-${item.id || profile.id || 'current'}`;
@@ -48,6 +50,7 @@ export function personDossierShowcase(item = {}) {
     accessories: `${groupRoot}-accessories`,
     details: `${groupRoot}-details`,
     actions: `${groupRoot}-actions`,
+    masters: `${groupRoot}-native-masters`,
   };
   const displayName = item.name || profile.displayName || '人物档案';
   const views = [byKey(body, 'front', 0), byKey(body, 'side', 2), byKey(body, 'back', 3)].filter(Boolean);
@@ -59,8 +62,9 @@ export function personDossierShowcase(item = {}) {
     : null;
   return `<section class="character-dossier-showcase" aria-label="${escapeHtml(displayName)}完整人物档案">
     <header class="character-dossier-title">
-      <div><small>CHARACTER PRODUCTION DOSSIER</small><h2>人物制作档案 · ${escapeHtml(displayName)}</h2><p>${text(profile.roleName || item.role, '剧情广告人物')} · 身份一致、服装一致、动作可复用</p></div>
+      <div><small>CHARACTER PRODUCTION DOSSIER</small><h2>人物制作档案 · ${escapeHtml(displayName)}</h2><p>${text(profile.roleName || item.role, '剧情广告人物')} · 身份一致、服装一致、动作可复用</p></div><span class="status-tag ${nativeFace && nativeBody ? 'is-success' : 'is-warning'}">${nativeFace && nativeBody ? '原生高清母版可用' : '历史档案 · 建议升级母版'}</span>
     </header>
+    ${nativeFace || nativeBody ? `<section class="character-dossier-panel dossier-native-masters"><h3>原生高清身份母版</h3><p>独立生成的原生图，不是从拼版放大裁切；关键帧优先使用面部身份母版。</p><div>${nativeFace ? `<figure>${image(nativeFace, `${displayName} 面部身份母版`, groups.masters, 1600)}<figcaption>面部身份母版</figcaption></figure>` : ''}${nativeBody ? `<figure>${image(nativeBody, `${displayName} 全身比例母版`, groups.masters, 1600)}<figcaption>全身比例母版</figcaption></figure>` : ''}</div></section>` : ''}
     ${dossier ? `<div class="character-dossier-hero">${image(dossier, `${displayName}完整人物设定档案`, groups.sheet, 2400)}<p>完整人物档案 · 点击查看高清大图</p></div><details class="character-dossier-breakdown"><summary>展开查看可复用单图与动作素材</summary>` : `<div class="character-dossier-regenerate-notice"><b>当前是历史人物档案</b><p>历史档案只有人物原图裁切，不能作为正式人物档案。请使用下方“重生成完整人物档案”，新版会重新生成身体、面部、表情、动作、服装、鞋履和饰品的全部内容。</p></div>`}
     <div class="character-dossier-primary">
       <aside class="character-dossier-panel character-dossier-facts"><h3>基本信息</h3>

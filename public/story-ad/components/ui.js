@@ -280,11 +280,36 @@ export function bindMediaLightbox(scope = document) {
     overlay.dataset.mediaLightbox = 'true';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img data-media-lock="true" alt=""><figcaption><span></span><b></b></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
+    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img data-media-lock="true" alt=""><figcaption><span></span><b></b><div class="media-lightbox-tools" aria-label="图片缩放工具"><button type="button" data-media-zoom-out aria-label="缩小">−</button><output data-media-zoom-level>100%</output><button type="button" data-media-zoom-in aria-label="放大">＋</button><button type="button" data-media-zoom-reset>适应屏幕</button><small data-media-pixel-size></small></div></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
     const image = overlay.querySelector('img');
     const caption = overlay.querySelector('figcaption span');
     const counter = overlay.querySelector('figcaption b');
     const strip = overlay.querySelector('.media-lightbox-strip');
+    const zoomLevel = overlay.querySelector('[data-media-zoom-level]');
+    const pixelSize = overlay.querySelector('[data-media-pixel-size]');
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let drag = null;
+    const applyTransform = () => {
+      image.style.transform = `translate(${translateX}px,${translateY}px) scale(${scale})`;
+      image.classList.toggle('is-zoomed', scale > 1.001);
+      zoomLevel.textContent = `${Math.round(scale * 100)}%`;
+    };
+    const resetTransform = () => { scale = 1; translateX = 0; translateY = 0; applyTransform(); };
+    const setScale = (next, anchorX = 0, anchorY = 0) => {
+      const prior = scale;
+      scale = Math.max(1, Math.min(8, Number(next) || 1));
+      if (prior !== scale && anchorX && anchorY) {
+        const rect = image.getBoundingClientRect();
+        const offsetX = anchorX - (rect.left + rect.width / 2);
+        const offsetY = anchorY - (rect.top + rect.height / 2);
+        translateX -= offsetX * (scale / prior - 1);
+        translateY -= offsetY * (scale / prior - 1);
+      }
+      if (scale === 1) { translateX = 0; translateY = 0; }
+      applyTransform();
+    };
     strip.innerHTML = entries.map((entry, entryIndex) => `<button type="button" role="listitem" data-lightbox-index="${entryIndex}" aria-label="查看${escapeHtml(entry.label)}"><img src="${escapeHtml(entry.previewUrl)}" alt=""></button>`).join('');
     let renderToken = 0;
     const prefetch = entry => {
@@ -297,6 +322,8 @@ export function bindMediaLightbox(scope = document) {
       const requestedIndex = index;
       const token = ++renderToken;
       const previewUrl = current.previewUrl || current.url;
+      resetTransform();
+      pixelSize.textContent = '';
       strip.querySelectorAll('[data-lightbox-index]').forEach(button => button.classList.toggle('active', Number(button.dataset.lightboxIndex) === requestedIndex));
       overlay.querySelectorAll('.media-lightbox-nav').forEach(button => { button.hidden = entries.length < 2; });
       overlay.classList.add('is-loading', 'is-switching');
@@ -311,9 +338,11 @@ export function bindMediaLightbox(scope = document) {
           displayedUrl = await preloadLightboxUrl(current.url);
         }
         if (token !== renderToken) return;
+        image.onload = () => { pixelSize.textContent = image.naturalWidth && image.naturalHeight ? `${image.naturalWidth} × ${image.naturalHeight}px` : ''; };
         image.removeAttribute('src');
-        image.src = displayedUrl;
         image.alt = current.label;
+        image.src = displayedUrl;
+        if (image.complete) image.onload();
         caption.textContent = current.label;
         counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
         overlay.dataset.currentMediaUrl = displayedUrl;
@@ -326,6 +355,7 @@ export function bindMediaLightbox(scope = document) {
             if (token !== renderToken) return;
             image.removeAttribute('src');
             image.src = originalUrl;
+            if (image.complete) image.onload();
             overlay.dataset.currentMediaUrl = originalUrl;
           } catch {
             if (token === renderToken) caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
@@ -358,6 +388,27 @@ export function bindMediaLightbox(scope = document) {
     overlay.querySelector('.media-lightbox-close').addEventListener('click', close);
     overlay.querySelector('.is-prev').addEventListener('click', () => move(-1));
     overlay.querySelector('.is-next').addEventListener('click', () => move(1));
+    overlay.querySelector('[data-media-zoom-in]').addEventListener('click', () => setScale(scale * 1.25));
+    overlay.querySelector('[data-media-zoom-out]').addEventListener('click', () => setScale(scale / 1.25));
+    overlay.querySelector('[data-media-zoom-reset]').addEventListener('click', resetTransform);
+    image.addEventListener('dblclick', event => { event.preventDefault(); setScale(scale > 1 ? 1 : 2, event.clientX, event.clientY); });
+    image.addEventListener('wheel', event => {
+      event.preventDefault();
+      setScale(scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), event.clientX, event.clientY);
+    }, { passive: false });
+    image.addEventListener('pointerdown', event => {
+      if (scale <= 1) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, tx: translateX, ty: translateY };
+      image.setPointerCapture?.(event.pointerId);
+    });
+    image.addEventListener('pointermove', event => {
+      if (!drag || drag.id !== event.pointerId) return;
+      translateX = drag.tx + event.clientX - drag.x;
+      translateY = drag.ty + event.clientY - drag.y;
+      applyTransform();
+    });
+    image.addEventListener('pointerup', () => { drag = null; });
+    image.addEventListener('pointercancel', () => { drag = null; });
     strip.addEventListener('click', stripEvent => {
       const button = stripEvent.target.closest?.('[data-lightbox-index]');
       if (!button) return;

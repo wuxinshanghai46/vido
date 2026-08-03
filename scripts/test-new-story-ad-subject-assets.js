@@ -186,11 +186,13 @@ function harness({ cancelAt = 0 } = {}) {
       pet_profiles: [petProfile(1, { name: '豆包', type: '金毛犬' })],
     },
   }, batch.deps);
-  assert.strictEqual(batch.submissions(), 13, 'three complete 4-atlas people plus one pet sheet must submit thirteen calls');
+  assert.strictEqual(batch.submissions(), 19, 'three complete 4-atlas plus 2-native-master people and one pet sheet must submit nineteen calls');
   assert.strictEqual(bundle.cast_assets.length, 3);
   assert(bundle.cast_assets.every(asset => asset.atomic_assets.length === 20));
   assert(bundle.cast_assets.every(asset => asset.category_atlases.length === 4));
-  assert(bundle.cast_assets.every(asset => asset.generation_summary.planned_provider_calls === 4));
+  assert(bundle.cast_assets.every(asset => asset.generation_summary.planned_provider_calls === 6));
+  assert(bundle.cast_assets.every(asset => asset.quality_status === 'native_masters_ready'));
+  assert(bundle.cast_assets.every(asset => asset.native_masters.face.image_url && asset.native_masters.body.image_url));
   assert.strictEqual(bundle.pet_profiles.length, 1);
   assert.strictEqual(new Set(bundle.cast_assets.map(asset => asset.actor_id)).size, 3, 'cast members must have distinct stable IDs');
   const persistedDossier = subjectAssetPersistence.restoreGeneratedDossierFields(
@@ -199,14 +201,15 @@ function harness({ cancelAt = 0 } = {}) {
   )[0];
   assert.strictEqual(persistedDossier.atomic_assets.length, 20, 'actor-library persistence must not truncate the unified dossier');
   assert.strictEqual(persistedDossier.category_atlases.length, 4);
+  assert.ok(persistedDossier.native_masters.face.image_url);
   assert.ok(persistedDossier.cover_image_url);
   assert.strictEqual(bundle.person_contract.status, 'verified');
   assert.strictEqual(bundle.person_contract.cross_view_qa.member_count_pass, true);
   assert.strictEqual(bundle.pet_contract.status, 'verified');
   assert.strictEqual(bundle.pet_profiles[0].reference_images.length, 4);
   assert(batch.prompts[0].includes('妈妈林悦') && !batch.prompts[0].includes('爸爸周屿'), 'each human prompt must contain only the selected member');
-  assert(batch.prompts[4].includes('爸爸周屿') && !batch.prompts[4].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
-  assert(batch.prompts[12].includes('豆包') && !batch.prompts[12].includes('妈妈林悦'), 'pet prompt must not contain any human member');
+  assert(batch.prompts[6].includes('爸爸周屿') && !batch.prompts[6].includes('妈妈林悦'), 'the second human prompt must not contain the first member');
+  assert(batch.prompts[18].includes('豆包') && !batch.prompts[18].includes('妈妈林悦'), 'pet prompt must not contain any human member');
   const normalizedContext = contextBuilder.buildContext({
     brief: '一家三口与一只金毛在客厅互动',
     cast_mode: 'human_pet',
@@ -303,7 +306,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   const legacyInitial = await subjectAssets.generateSubjectBundle(legacyCompatibilityRequest, legacyCompatibility.deps);
-  assert.strictEqual(legacyCompatibility.submissions(), 4);
+  assert.strictEqual(legacyCompatibility.submissions(), 6);
   const storedCheckpoint = legacyCompatibility.outputs.get(
     `${legacyCompatibilityRequest.taskId}:${legacyInitial.checkpoint_kind}`,
   );
@@ -321,7 +324,7 @@ function harness({ cancelAt = 0 } = {}) {
   }, legacyCompatibility.deps);
   assert.strictEqual(
     legacyCompatibility.submissions(),
-    4,
+    6,
     'a complete semantically compatible legacy checkpoint must migrate without another paid image submission',
   );
   assert.strictEqual(legacyReused.cast_assets[0].atomic_assets.length, 20);
@@ -362,7 +365,7 @@ function harness({ cancelAt = 0 } = {}) {
       subject_targets: [{ kind: 'human', index: 0, id: 'cast_1' }],
     },
   }, scoped.deps);
-  assert.strictEqual(scoped.submissions(), 4, 'scoped subject regeneration must submit only the selected complete person dossier');
+  assert.strictEqual(scoped.submissions(), 6, 'scoped subject regeneration must submit only the selected complete person dossier');
   assert.strictEqual(scopedBundle.generated_counts.people, 1);
   assert.strictEqual(scopedBundle.generated_counts.pets, 0);
   assert.notStrictEqual(scopedBundle.cast_assets[0].actor_id, bundle.cast_assets[0].actor_id, 'selected person must receive a new asset');
@@ -594,7 +597,7 @@ function harness({ cancelAt = 0 } = {}) {
     },
   };
   await assert.rejects(() => subjectAssets.generateSubjectBundle(request, first.deps), error => error.code === 'USER_CANCELLED');
-  assert.strictEqual(first.submissions(), 4, 'cancellation must stop before the second person dossier starts');
+  assert.strictEqual(first.submissions(), 6, 'cancellation must stop before the second person dossier starts');
   const cancelledCheckpoint = Array.from(resumeStore.entries())
     .find(([key]) => key.includes(':subject_asset_checkpoint:'))?.[1];
   assert.strictEqual(cancelledCheckpoint.status, 'partial', 'a cancelled batch with completed assets must not remain stuck in running state');
@@ -603,7 +606,7 @@ function harness({ cancelAt = 0 } = {}) {
   second.deps.storage.getOutput = (taskId, kind) => resumeStore.get(`${taskId}:${kind}`) || null;
   second.deps.storage.saveOutput = (taskId, kind, value) => resumeStore.set(`${taskId}:${kind}`, JSON.parse(JSON.stringify(value)));
   const resumed = await subjectAssets.generateSubjectBundle(request, second.deps);
-  assert.strictEqual(second.submissions(), 4, 'resume must reuse the completed first dossier and generate only the missing person');
+  assert.strictEqual(second.submissions(), 6, 'resume must reuse the completed first dossier and generate only the missing person');
   assert.strictEqual(resumed.cast_assets.length, 2);
 
   const failureStore = new Map();
@@ -677,7 +680,7 @@ function harness({ cancelAt = 0 } = {}) {
     'concurrent requests for the same task must be rejected even when their checkpoint kinds differ',
   );
   await firstConcurrent;
-  assert.strictEqual(concurrent.submissions(), 8, 'only one concurrent batch may submit two complete four-atlas dossiers');
+  assert.strictEqual(concurrent.submissions(), 12, 'only one concurrent batch may submit two complete dossiers');
 
   const missingProfiles = harness();
   await assert.rejects(
@@ -710,7 +713,7 @@ function harness({ cancelAt = 0 } = {}) {
   }, single.deps);
   assert.strictEqual(singleBundle.cast_assets.length, 1);
   assert.strictEqual(singleBundle.pet_profiles.length, 0);
-  assert.strictEqual(single.submissions(), 4, 'single person must use one independent profile and four category-atlas submissions');
+  assert.strictEqual(single.submissions(), 6, 'single person must use one independent profile, four category atlases and two native masters');
 
   const petOnly = harness();
   const petOnlyBundle = await subjectAssets.generateSubjectBundle({
@@ -743,6 +746,7 @@ function harness({ cancelAt = 0 } = {}) {
   const adapter = fs.readFileSync(path.join(root, 'src/services/newStoryAd/videoAdapter.js'), 'utf8');
   const providerAssets = fs.readFileSync(path.join(root, 'src/services/newStoryAd/deyunaiPersonAssetService.js'), 'utf8');
   const storySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
+  const referencePackSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/shotReferencePackService.js'), 'utf8');
   const taskViewSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/taskViewService.js'), 'utf8');
   const stateSyncSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/state-sync.js'), 'utf8');
   const checkpointPollingSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-checkpoint-polling.js'), 'utf8');
@@ -759,7 +763,7 @@ function harness({ cancelAt = 0 } = {}) {
   assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
   assert(providerAssets.includes('for (let index = 0; index < cast.length; index += 1)'), 'multi-person video must upload every cast member to the managed person library');
   assert(providerAssets.includes('asset_ids: assets.map'), 'multi-person provider asset ids must be persisted as a complete list');
-  assert(storySource.includes('subjectReferences.keyframeReferenceUrls'), 'keyframes must use the reference-capacity orchestrator');
+  assert(storySource.includes('shotReferencePacks.referenceUrls') && referencePackSource.includes('references.keyframeReferenceUrls'), 'keyframes must use the single reference-pack capacity orchestrator');
   assert(
     taskViewSource.includes('personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs)'),
     'the task API must expose exactly the latest subject checkpoint so refresh recovery receives the running batch',

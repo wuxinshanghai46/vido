@@ -1,6 +1,6 @@
-import { request } from '../api.js';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
-import { confirmDialog } from '../components/dialog.js';
+import { request } from '../api.js?v=20260803-photoreal-director-v8';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { confirmDialog } from '../components/dialog.js?v=20260803-photoreal-director-v8';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

@@ -63,6 +63,7 @@ function buildShotLineage({
     }),
     output_ratio: String(ctx.output_ratio || ''),
     video_resolution: String(ctx.video_resolution || ''),
+    video_quality: String(ctx.video_quality || 'final'),
     scene_block_policy_version: String(sceneBlock?.policy_version || ''),
     scene_block_id: String(sceneBlock?.id || ''),
     scene_block_fingerprint: String(sceneBlock?.fingerprint || ''),

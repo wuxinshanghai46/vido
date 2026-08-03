@@ -651,6 +651,8 @@ async function runDossier(initial) {
         status: 'pending_approval',
         anchor_candidate_id: production.approved_candidate_id,
         schema_version: compiled.schema_version,
+        quality_status: compiled.quality_status,
+        native_masters: compiled.native_masters,
         category_atlases: compiled.category_atlases,
         generation_summary: compiled.generation_summary,
         atomic_assets: atomicAssets,

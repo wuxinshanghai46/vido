@@ -679,6 +679,7 @@ main()
     try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
   })
   .catch(error => {
+    if (error?.details) console.error(JSON.stringify(error.details, null, 2));
     console.error(error.stack || error.message);
     process.exit(1);
   });

@@ -6,6 +6,8 @@ function restoreGeneratedDossierFields(persistedCast = [], generatedCast = []) {
       cover_image_url: generated.cover_image_url || generated.dossier_sheet?.image_url || row.image_url || '',
       dossier_sheet: generated.dossier_sheet || null,
       dossier_schema_version: generated.dossier_schema_version || 0,
+      quality_status: generated.quality_status || 'legacy_view_only',
+      native_masters: generated.native_masters || {},
       category_atlases: Array.isArray(generated.category_atlases) ? generated.category_atlases : [],
       atomic_assets: Array.isArray(generated.atomic_assets) ? generated.atomic_assets : [],
       body_views: Array.isArray(generated.body_views) ? generated.body_views : [],

@@ -4,7 +4,7 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const read = relativePath => fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
-const lines = relativePath => read(relativePath).split(/\r?\n/).length;
+const lines = relativePath => read(relativePath).replace(/\r?\n$/, '').split(/\r?\n/).length;
 
 function assertFile(relativePath) {
   assert(fs.existsSync(path.join(ROOT, relativePath)), `${relativePath} 不存在`);
@@ -58,6 +58,8 @@ function run() {
   assert(realPerson.includes('personDossierCompiler.compilePersonDossier'), '授权真人必须使用统一20项档案编译器');
   assert(subjectBundle.includes('atomic_assets: compiled.atomic_assets'), '普通 AI 人物必须持久化20项底层档案素材');
   assert(realPerson.includes('atomic_assets: atomicAssets'), '授权真人必须持久化20项底层档案素材');
+  assert(subjectBundle.includes('native_masters: compiled.native_masters'), '普通 AI 人物必须持久化原生面部与全身母版');
+  assert(realPerson.includes('native_masters: compiled.native_masters'), '授权真人必须持久化原生面部与全身母版');
 
   const propRoutes = read('src/routes/newStoryAd/propRoutes.js');
   const rootRoutes = read('src/routes/newStoryAd.js');

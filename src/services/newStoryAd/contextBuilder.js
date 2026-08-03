@@ -484,6 +484,9 @@ function normalizePersonDossierFields(input = {}) {
     cover_image_url: cleanText(input.cover_image_url || sheet?.image_url || '', 1000),
     dossier_sheet: sheet,
     dossier_schema_version: Math.max(0, Number(input.dossier_schema_version || 0) || 0),
+    quality_status: cleanText(input.quality_status || (input.native_masters?.face?.image_url && input.native_masters?.body?.image_url ? 'native_masters_ready' : 'legacy_view_only'), 50),
+    native_masters: Object.fromEntries(['face', 'body'].map(key => [key, normalizePersonDossierItem(input.native_masters?.[key] || {})])
+      .filter(([, item]) => item.image_url || item.url)),
     category_atlases: (Array.isArray(input.category_atlases) ? input.category_atlases : []).map((atlas, index) => ({
       kind: cleanText(atlas?.kind || atlas?.key || `atlas_${index + 1}`, 40),
       image_url: cleanText(atlas?.image_url || atlas?.url || '', 1000),
@@ -508,6 +511,7 @@ function normalizePersonDossierFields(input = {}) {
           provider_calls_this_run: Math.max(0, Number(input.generation_summary.provider_calls_this_run || 0) || 0),
           checkpoint_hits: Math.max(0, Number(input.generation_summary.checkpoint_hits || 0) || 0),
           category_count: Math.max(0, Number(input.generation_summary.category_count || 0) || 0),
+          native_master_count: Math.max(0, Number(input.generation_summary.native_master_count || 0) || 0),
           atomic_count: Math.max(0, Number(input.generation_summary.atomic_count || 0) || 0),
         }
       : null,
@@ -981,7 +985,8 @@ function buildContext(body = {}, user = {}) {
     duration_source: durationContract.source,
     shot_count: shotCount,
     output_ratio: outputRatio,
-    video_resolution: cleanText(body.video_resolution || body.videoResolution || '720p', 20),
+    video_resolution: cleanText(body.video_resolution || body.videoResolution || '1080p', 20),
+    video_quality: cleanText(body.video_quality || body.videoQuality || 'final', 20),
     visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
@@ -1240,7 +1245,7 @@ function contextPrompt(ctx) {
     referenceVideoAnalysisPrompt(ctx.reference_video_analysis),
     propAssetsPrompt(ctx.prop_assets),
     sceneAssetsPrompt(ctx.scene_assets),
-    `视频分辨率：${ctx.video_resolution || '720p'}`,
+    `视频分辨率：${ctx.video_resolution || '1080p'}`,
   ].join('\n');
 }
 
