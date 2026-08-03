@@ -120,8 +120,9 @@
 | `17741c7` | 2026-08-03 23:25 | 真实感导演台部署与交接记录 |
 | `cebcd70` | 2026-08-04 00:14 | ReferenceUnderstanding V6 与通用导演画布 |
 | `e21e918` | 2026-08-04 00:23 | V9 生产部署日志 |
+| `2134085` | 2026-08-04 00:41 | 本交接文件初版与三方核对日志 |
 
-本文将在完成最终三方核对后独立提交并推送；公司电脑不需要手工指定提交，直接对目标分支执行 `git pull --ff-only`。
+交接文件初版已提交并同步到 origin/Gitee 与 GitHub；公司电脑不需要手工指定提交，直接对目标分支执行 `git pull --ff-only`，即可取得本文及其最终状态修订。
 
 ## 5. 本地、Git、生产三方一致性
 
@@ -130,9 +131,10 @@
 | 核对项 | 结果 |
 |---|---|
 | 本地分支 | `codex/story-ad-v3-upgrade` |
-| 核对前本地 HEAD | `e21e918c68e5a7141e96d3638ddf534e9fffcdfd` |
-| origin / Gitee | 与本地相同，`ahead 0 / behind 0` |
-| GitHub 镜像 | GitHub 连接器实时 compare 结果 `identical`，`ahead 0 / behind 0` |
+| 交接前应用/部署日志 HEAD | `e21e918c68e5a7141e96d3638ddf534e9fffcdfd` |
+| 交接文件初版提交 | `21340857993e72cc13f90eb5e37558135483b1b2` |
+| origin / Gitee | 交接初版与本地相同，`ahead 0 / behind 0` |
+| GitHub 镜像 | 交接初版实时 compare 结果 `identical`，`ahead 0 / behind 0` |
 | 本地服务 | `http://localhost:3007`，健康 `ok` |
 | 本地 build / contract | `20260803-reference-director-v9 / reference-director-v2` |
 | 生产发布清单 | 78/78 个文件 SHA-256 一致，差异 0 |
@@ -184,7 +186,7 @@
 
 1. 未执行真实付费人物、场景或视频生成，避免重复计费和覆盖已有项目；最终模型画面审美仍需用户做一次受控验收。
 2. 新代码强制刷新并阻止旧客户端写入，但不会自动改写用户历史业务内容。历史参考分析只有在已有证据完整时才能零模型调用重编译；明日验收旧项目时应确认是否需要补充迁移入口或提示。
-3. GitHub HTTPS 在本次核对中连续三次连接失败；已通过 GitHub 连接器实时 compare 确认交接前分支与 `e21e918` identical。交接提交后仍需把最终提交推到 GitHub 镜像并再次核对。
+3. GitHub HTTPS 在本次核对中连续三次连接失败；随后通过 GitHub Git Database API 上传并逐项验证相同 blob、tree 和 commit SHA，交接初版实时 compare 为 `identical`。这是当前电脑到 `github.com` 的瞬时网络限制，不是镜像内容差异。
 4. 生产数据库和既有项目均未因本次交接核对被写入或覆盖。
 
 ## 8. 明天公司电脑续接步骤
