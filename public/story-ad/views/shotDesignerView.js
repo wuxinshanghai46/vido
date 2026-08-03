@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260803-photoreal-director-v8';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { request } from '../api.js?v=20260803-reference-director-v9';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-reference-director-v9';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

@@ -1,0 +1,45 @@
+.graph-node:has(.workflow-port) { overflow: visible; }
+.workflow-port {
+  position: absolute;
+  z-index: 4;
+  top: calc(52px + var(--port-index) * 22px);
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mint) 70%, var(--line));
+  pointer-events: auto;
+}
+.workflow-port.is-input { left: -6px; }
+.workflow-port.is-output { right: -6px; }
+.graph-node:has(.workflow-port):hover .workflow-port { transform: scale(1.18); }
+.graph-node .node-dot.is-stale { background: var(--amber); }
+.graph-node .node-dot.is-conflict { background: var(--danger); box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 20%, transparent); }
+.graph-lines path.is-extracts { stroke: color-mix(in srgb, var(--mint) 76%, var(--muted)); stroke-dasharray: 3 4; }
+.graph-lines path.is-stages { stroke: color-mix(in srgb, #4f8cff 72%, var(--muted)); }
+.graph-lines path.is-directs { stroke: color-mix(in srgb, #a879ff 72%, var(--muted)); stroke-dasharray: 7 4; }
+.graph-lines path.is-animates { stroke: color-mix(in srgb, #ff9c45 62%, var(--muted)); }
+.graph-lines path.is-drives_motion { stroke: color-mix(in srgb, #ff9c45 76%, var(--muted)); stroke-width: 2; }
+.workflow-contract-panel { display: grid; gap: 12px; margin-top: 16px; }
+.workflow-contract-panel > header { align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.workflow-contract-panel > header h3 { margin: 0; font-size: 14px; }
+.workflow-contract-panel > header span { margin-left: auto; padding: 4px 8px; border-radius: 999px; color: var(--mint); background: var(--mint-2); font-size: 10px; font-weight: 800; }
+.workflow-contract-panel > header span.is-stale { color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, var(--surface)); }
+.workflow-contract-panel > header span.is-conflict { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+.workflow-contract-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.workflow-contract-columns > div { padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.workflow-contract-columns > div > b { color: var(--mint); font-size: 11px; }
+.workflow-contract-columns ul { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
+.workflow-contract-columns li { min-width: 0; padding: 8px; border-radius: 8px; background: var(--surface); }
+.workflow-contract-columns li b, .workflow-contract-columns li small { display: block; overflow: hidden; text-overflow: ellipsis; }
+.workflow-contract-columns li b { font-size: 10px; white-space: nowrap; }
+.workflow-contract-columns li small { margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.workflow-sync-warning { padding: 11px; border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--amber) 8%, var(--surface)); }
+.workflow-sync-warning.is-conflict { border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }
+.workflow-sync-warning b { font-size: 12px; }
+.workflow-sync-warning p { margin: 4px 0 0; font-size: 10px; line-height: 1.55; }
+
+@media (max-width: 720px) {
+  .workflow-contract-columns { grid-template-columns: 1fr; }
+}

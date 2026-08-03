@@ -1,9 +1,10 @@
-import { request } from '../api.js?v=20260803-photoreal-director-v8';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260803-photoreal-director-v8';
+import { request } from '../api.js?v=20260803-reference-director-v9';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-reference-director-v9';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260803-reference-director-v9';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260803-reference-director-v9';
 
-const STAGE_WIDTH = 2900;
-const STAGE_HEIGHT = 1500;
+const MIN_STAGE_WIDTH = 3400;
+const MIN_STAGE_HEIGHT = 1500;
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 168;
 const DRAG_THRESHOLD = 4;
@@ -11,6 +12,7 @@ const NODE_MEDIA_LABELS = {
   brief: '需求摘要', reference: '参考素材', person: '人物资产', animal: '动物资产', product: '商品资产',
   logo: '品牌标识', prop: '道具资产', scene: '场景资产', story: '剧情内容', shot: '镜头内容',
   keyframe: '关键帧待生成', clip: '视频片段待生成', final: '成片待生成',
+  reference_understanding: '参考理解', director_scene: '3D导演台', director_animation: '导演动画',
 };
 const TEXT_NODE_TYPES = new Set(['brief', 'story', 'shot']);
 
@@ -39,6 +41,7 @@ function graphNode(node) {
   const isTextNode = TEXT_NODE_TYPES.has(node.type);
   return `<button class="graph-node ${isTextNode && node.media_url ? 'has-text-media' : ''}" type="button" data-node-id="${escapeHtml(node.id)}" aria-pressed="false" style="left:${x}px;top:${y}px">
     <span class="node-dot is-${escapeHtml(node.status || 'ready')}"></span>
+    ${workflowNodePortMarkup(node)}
     ${isTextNode && !node.media_url ? textNodePreview(node) : mediaPreview(node, { label: node.title || '节点', width: 360, symbol: NODE_MEDIA_LABELS[node.type] || '内容待生成' })}
     <b title="${escapeHtml(node.title || node.label || '未命名节点')}">${escapeHtml(node.title || node.label || '未命名节点')}</b>
     ${isTextNode && node.media_url ? `<small class="node-media-summary">${escapeHtml(nodeSummary(node) || '打开节点查看完整内容')}</small>` : (isTextNode ? '' : `<small>${escapeHtml(node.subtitle || '')}</small>`)}
@@ -158,11 +161,12 @@ function clamp(value, min, max) {
 /** 挂载可编辑、可持久化的项目工作流画布。 */
 export async function mount(host, context) {
   const taskId = context.bundle?.project?.id;
+  ensureWorkflowDirectorStyles();
   host.innerHTML = '<div class="workflow-view"><div class="workflow-bar"><div><h1>工作流画布</h1><p>正在读取当前项目关系…</p></div></div><div class="view-loading">正在加载画布…</div></div>';
   let graph;
   try {
     const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/graph`);
-    graph = data.graph || { nodes: [], edges: [], clusters: [] };
+    graph = projectWorkflowDirectorNodes(data.graph || { nodes: [], edges: [], clusters: [] }, context.bundle || {});
   } catch (error) {
     host.innerHTML = `<section class="card">${emptyState({ title: '工作流暂时无法读取', body: error.message })}</section>`;
     return;
@@ -177,6 +181,8 @@ export async function mount(host, context) {
     host.querySelector('[data-empty-action="back-brief"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`));
     return;
   }
+  const stageWidth = Math.max(MIN_STAGE_WIDTH, ...graph.nodes.map(node => Number(node.position?.x || 0) + NODE_WIDTH + 120));
+  const stageHeight = Math.max(MIN_STAGE_HEIGHT, ...graph.nodes.map(node => Number(node.position?.y || 0) + NODE_HEIGHT + 120));
   host.innerHTML = `
     <div class="workflow-view">
       <div class="workflow-bar">
@@ -190,7 +196,7 @@ export async function mount(host, context) {
       <div class="canvas-viewport" data-viewport>
         <div class="canvas-stage" data-stage>
           ${(graph.clusters || []).map(cluster => `<section class="canvas-cluster" data-cluster-id="${escapeHtml(cluster.id)}" style="left:${Number(cluster.x || 0)}px;top:${Number(cluster.y || 0)}px;width:${Number(cluster.width || 360)}px;height:${Number(cluster.height || 260)}px"><label>${escapeHtml(cluster.label || '')}</label></section>`).join('')}
-          <svg class="graph-lines" viewBox="0 0 ${STAGE_WIDTH} ${STAGE_HEIGHT}" aria-hidden="true" data-graph-lines>${graphEdges(graph)}</svg>
+          <svg class="graph-lines" viewBox="0 0 ${stageWidth} ${stageHeight}" style="width:${stageWidth}px;height:${stageHeight}px" aria-hidden="true" data-graph-lines>${graphEdges(graph)}</svg>
           ${(graph.nodes || []).map(graphNode).join('')}
         </div>
         <div class="canvas-controls">
@@ -206,6 +212,8 @@ export async function mount(host, context) {
 
   const viewport = host.querySelector('[data-viewport]');
   const stage = host.querySelector('[data-stage]');
+  stage.style.width = `${stageWidth}px`;
+  stage.style.height = `${stageHeight}px`;
   const lines = host.querySelector('[data-graph-lines]');
   const zoomLabel = host.querySelector('[data-zoom-label]');
   const miniMap = host.querySelector('[data-minimap]');
@@ -225,6 +233,7 @@ export async function mount(host, context) {
   let saving = false;
   let savePending = false;
   let destroyed = false;
+  const disposeDirectorSync = bindWorkflowDirectorSync({ taskId, refresh: () => context.refreshShell() });
 
   const updateBoundsAndClusters = () => {
     (graph.clusters || []).forEach(cluster => {
@@ -264,8 +273,8 @@ export async function mount(host, context) {
     graph.nodes.forEach(node => {
       const element = miniNodes.get(node.id);
       if (!element) return;
-      element.style.left = `${clamp(Number(node.position?.x || 0) / STAGE_WIDTH * 150, 2, 144)}px`;
-      element.style.top = `${clamp(Number(node.position?.y || 0) / STAGE_HEIGHT * 96, 2, 90)}px`;
+      element.style.left = `${clamp(Number(node.position?.x || 0) / stageWidth * 150, 2, 144)}px`;
+      element.style.top = `${clamp(Number(node.position?.y || 0) / stageHeight * 96, 2, 90)}px`;
     });
   };
 
@@ -285,14 +294,14 @@ export async function mount(host, context) {
     stage.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
     zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
     const rect = viewport.getBoundingClientRect();
-    minimapViewport.style.left = `${clamp(-panX / zoom / STAGE_WIDTH * 150, 0, 150)}px`;
-    minimapViewport.style.top = `${clamp(-panY / zoom / STAGE_HEIGHT * 96, 0, 96)}px`;
-    minimapViewport.style.width = `${Math.min(150, rect.width / zoom / STAGE_WIDTH * 150)}px`;
-    minimapViewport.style.height = `${Math.min(96, rect.height / zoom / STAGE_HEIGHT * 96)}px`;
+    minimapViewport.style.left = `${clamp(-panX / zoom / stageWidth * 150, 0, 150)}px`;
+    minimapViewport.style.top = `${clamp(-panY / zoom / stageHeight * 96, 0, 96)}px`;
+    minimapViewport.style.width = `${Math.min(150, rect.width / zoom / stageWidth * 150)}px`;
+    minimapViewport.style.height = `${Math.min(96, rect.height / zoom / stageHeight * 96)}px`;
   };
 
   const fit = () => {
-    const bounds = graph.bounds || { x: 0, y: 0, width: STAGE_WIDTH, height: STAGE_HEIGHT };
+    const bounds = graph.bounds || { x: 0, y: 0, width: stageWidth, height: stageHeight };
     const rect = viewport.getBoundingClientRect();
     zoom = Math.max(.22, Math.min(1, Math.min((rect.width - 80) / Math.max(600, bounds.width), (rect.height - 80) / Math.max(420, bounds.height))));
     panX = 40 - Number(bounds.x || 0) * zoom;
@@ -384,8 +393,8 @@ export async function mount(host, context) {
 
   const navigateMinimap = event => {
     const rect = miniMap.getBoundingClientRect();
-    const worldX = clamp((event.clientX - rect.left) / rect.width, 0, 1) * STAGE_WIDTH;
-    const worldY = clamp((event.clientY - rect.top) / rect.height, 0, 1) * STAGE_HEIGHT;
+    const worldX = clamp((event.clientX - rect.left) / rect.width, 0, 1) * stageWidth;
+    const worldY = clamp((event.clientY - rect.top) / rect.height, 0, 1) * stageHeight;
     panX = viewport.clientWidth / 2 - worldX * zoom;
     panY = viewport.clientHeight / 2 - worldY * zoom;
     renderTransform();
@@ -423,6 +432,7 @@ export async function mount(host, context) {
     panel.innerHTML = `<header><div><h2>${escapeHtml(node.title || node.label)}</h2>${isTextNode ? '' : `<p>${escapeHtml(node.subtitle || '')}</p>`}</div><button class="icon-btn" type="button" data-panel-close aria-label="关闭节点详情">×</button></header>
       ${node.media_url ? mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }) : (isTextNode ? '' : mediaPreview(node, { label: node.title || '节点', width: 720, symbol: node.type || '节点' }))}
       ${structuredNodeDetail(node)}
+      ${workflowNodePanelMarkup(node)}
       <div class="meta-list">${detailRows(remainingDetail(node.detail, node.type))}</div>
       ${['story', 'shot'].includes(node.type) ? `<button class="btn primary panel-route" type="button" data-edit-node-inline>在此编辑${node.type === 'story' ? '剧情' : '分镜'}</button><div data-node-editor-host hidden>${inlineNodeEditor(node, context.bundle)}</div>` : (node.target_route ? '<button class="btn primary panel-route" type="button" data-node-route>打开对应编辑页</button>' : '')}`;
     const closePanel = () => {
@@ -434,6 +444,18 @@ export async function mount(host, context) {
     };
     panel.querySelector('[data-panel-close]').addEventListener('click', closePanel);
     panel.querySelector('[data-node-route]')?.addEventListener('click', () => context.navigate(node.target_route));
+    panel.querySelector('[data-open-workflow-director]')?.addEventListener('click', async event => {
+      const worldId = event.currentTarget.dataset.openWorkflowDirector;
+      const world = (context.bundle?.scene_worlds || []).find(item => String(item.id) === String(worldId));
+      try {
+        setButtonBusy(event.currentTarget, true, '正在打开…');
+        await openWorkflowDirector({ taskId, world, refresh: () => context.refreshShell() });
+        setButtonBusy(event.currentTarget, false);
+      } catch (error) {
+        setButtonBusy(event.currentTarget, false);
+        toast(error.message || '导演台加载失败', 'danger');
+      }
+    });
     panel.querySelector('[data-edit-node-inline]')?.addEventListener('click', event => {
       const editorHost = panel.querySelector('[data-node-editor-host]');
       if (!editorHost) return;
@@ -488,8 +510,8 @@ export async function mount(host, context) {
       if (!nodeDrag.moved && Math.hypot(screenDx, screenDy) < DRAG_THRESHOLD) return;
       nodeDrag.moved = true;
       nodeDrag.node.position = {
-        x: clamp(nodeDrag.originX + screenDx / zoom, 20, STAGE_WIDTH - NODE_WIDTH - 20),
-        y: clamp(nodeDrag.originY + screenDy / zoom, 56, STAGE_HEIGHT - NODE_HEIGHT - 20),
+        x: clamp(nodeDrag.originX + screenDx / zoom, 20, stageWidth - NODE_WIDTH - 20),
+        y: clamp(nodeDrag.originY + screenDy / zoom, 56, stageHeight - NODE_HEIGHT - 20),
       };
       renderGeometry();
     });
@@ -566,5 +588,6 @@ export async function mount(host, context) {
     panDrag = null;
     nodeDrag = null;
     minimapDrag = null;
+    disposeDirectorSync();
   };
 }

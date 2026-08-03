@@ -7,6 +7,7 @@ const graphLayouts = require('../services/storyAdWorkspace/graphLayoutService');
 const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketchService');
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
+const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
 const videoCore = require('../services/videoGenerationCore');
 
 const router = express.Router();
@@ -40,6 +41,10 @@ function asyncRoute(fn) {
         ...(Number.isInteger(error.current_director_revision)
           ? { current_director_revision: error.current_director_revision }
           : {}),
+        ...(Number.isInteger(error.current_content_revision)
+          ? { current_content_revision: error.current_content_revision }
+          : {}),
+        ...(Array.isArray(error.failures) ? { failures: error.failures } : {}),
       });
     }
   };
@@ -64,6 +69,15 @@ function graphForRequest(req, options = {}) {
     sections: 'summary,reference,assets,story,shots,media',
     user: currentUser(req),
   });
+  const sceneProjection = sceneWorlds.resolve(req.params.taskId, bundle);
+  bundle.scene_worlds = sceneProjection.worlds;
+  bundle.production_manifest = sceneProjection.manifest;
+  bundle.director_scenes = directorScenes.listProjected(
+    req.params.taskId,
+    bundle,
+    sceneProjection.worlds,
+    sceneProjection.manifest,
+  );
   const graph = graphProjection.projectGraph(bundle);
   const allowedNodeIds = new Set((graph.nodes || []).map(item => item.id));
   if (options.withLayout === false) return { graph, allowedNodeIds };
@@ -194,6 +208,19 @@ router.put('/projects/:taskId/scene-world-assignments', asyncRoute(async (req, r
   });
   const result = sceneWorlds.resolve(req.params.taskId, bundle);
   res.json({ success: true, task_id: req.params.taskId, ...saved, manifest: result.manifest });
+}));
+
+router.post('/projects/:taskId/reference-understanding/confirm', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const raw = storyAd.publicTaskBundle(req.params.taskId);
+  const context = raw?.context || raw?.outputs?.context || raw?.task?.request || {};
+  const reference_understanding_confirmation = referenceUnderstandingConfirmations.confirm(
+    req.params.taskId,
+    context,
+    req.body || {},
+    { user: currentUser(req) },
+  );
+  res.json({ success: true, task_id: req.params.taskId, reference_understanding_confirmation });
 }));
 
 router.get('/projects/:taskId/scene-worlds/:worldId/director', asyncRoute(async (req, res) => {

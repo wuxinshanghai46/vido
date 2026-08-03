@@ -15,6 +15,7 @@ const referenceVideoLinks = require('./referenceVideoLinkService');
 const { getApiKey } = require('../settingsService');
 const generationConcurrency = require('./generationConcurrencyService');
 const evidenceText = require('./referenceEvidenceTextService');
+const referenceUnderstanding = require('./referenceUnderstandingService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -154,6 +155,7 @@ function taskRecord(analysis = {}) {
     analysis_quality: result.analysis_quality || analysis.analysis_quality || {},
     story_outline: result.story_outline || analysis.story_outline || {},
     plot_beats: result.plot_beats || analysis.plot_beats || [],
+    reference_understanding: result.reference_understanding || analysis.reference_understanding || null,
     character_prompts: result.character_prompts || analysis.character_prompts || [],
     animal_prompts: result.animal_prompts || analysis.animal_prompts || [],
     scene_prompts: result.scene_prompts || analysis.scene_prompts || [],
@@ -1234,6 +1236,13 @@ function validateAnalysisResult(result = {}) {
       failures.push('shot_breakdown_incomplete');
     }
   }
+  if (Number(source.schema_version || 0) >= 6) {
+    try {
+      referenceUnderstanding.validate(source);
+    } catch (error) {
+      failures.push(...(Array.isArray(error.failures) ? error.failures : ['reference_understanding_invalid']));
+    }
+  }
   const normalizedOutline = ['opening', 'development', 'turning_point', 'resolution']
     .map(key => String(outline[key] || '').replace(/[\s，,。；;：:]/gu, ''));
   if (normalizedOutline.filter(Boolean).some((value, index, all) => all.indexOf(value) !== index)) {
@@ -1287,6 +1296,7 @@ function buildChineseBrief(result = {}) {
   const animalActions = Array.isArray(result.animal_actions) ? result.animal_actions.slice(0, 12) : [];
   const scenes = Array.isArray(result.scene_prompts) ? result.scene_prompts.slice(0, 8) : [];
   const outline = result.story_outline && typeof result.story_outline === 'object' ? result.story_outline : {};
+  const deepStory = result.reference_understanding?.story_summary || {};
   const facts = result.source_facts && typeof result.source_facts === 'object' ? result.source_facts : {};
   const shotLabels = {
     wide: '全景',
@@ -1341,6 +1351,7 @@ function buildChineseBrief(result = {}) {
     }).join('；')
     : '1. 开场建立情境与问题；2. 中段展示行动和解决过程；3. 结尾呈现结果并以行动号召收束';
   const outlineText = [
+    hasReadableChinese(deepStory.full_synopsis) ? `完整故事：${String(deepStory.full_synopsis).trim()}` : '',
     hasReadableChinese(outline.logline) ? `故事梗概：${String(outline.logline).trim()}` : '',
     hasReadableChinese(outline.opening) ? `开端：${String(outline.opening).trim()}` : '',
     hasReadableChinese(outline.development) ? `发展：${String(outline.development).trim()}` : '',
@@ -2107,7 +2118,8 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
   const merged = {
     ...evidence,
     ...model,
-    schema_version: Math.max(5, Number(evidence.schema_version || 0), Number(model.schema_version || 0)),
+    // V6 is only asserted after the deep understanding contract has been normalized and evidence refs audited.
+    schema_version: 5,
     source_facts: {
       ...evidenceFacts,
       ...modelFacts,
@@ -2173,7 +2185,9 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
 
 async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], transcript = {}) {
   const deterministic = compileAnalysisFromEvidence(record, visualEvidence, transcript);
-  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') return deterministic;
+  if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
+    return referenceUnderstanding.enrichAnalysis(deterministic, { visualEvidence, transcript });
+  }
   const stage = 'new_story_ad.reference_video_synthesis';
   let response;
   if (record._reuse_synthesis_raw === true && hasChineseDetail(record._synthesis_raw?.text, 20)) {
@@ -2194,6 +2208,8 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         '人物必须按逐帧证据保留精确最大同屏人数 human_count，并在 character_prompts 中为每个叙事人物输出一个独立条目；不得把多人合并成一个“夫妇/家庭”条目，也不得复制同一人物凑数。',
         '动物必须区分“真实出现”和“叙事资产”：source_facts.animal_presence 记录是否可见，source_facts.narrative_animal_presence 只在动物是持续主角、宠物、产品主体或与人物/产品发生明确互动时为 true。风景蒙太奇、远景鸟群和环境野生动物写入 ambient_animals，不得生成 animal_prompts。',
       '场景目录、逐镜结构和机位已由通过校验的逐帧证据单独编译，本阶段不要输出 scene_prompts、shot_breakdown 或 camera_intents，只整理全局故事、人物和动物语义。',
+      '必须额外输出 reference_understanding，完整说明故事因果、人物状态变化、场景叙事职责、品牌职责、音画对应，并区分 fact、inference、unknown。',
+      '任何 fact 都必须绑定实际存在的 F### 画面证据或 T### 转写证据；看不见的人物动机不得写成事实。合同必须适用于所有行业和叙事类型，禁止按行业关键词套模板。',
       '输出单个 JSON 对象，所有用户可见文本使用简体中文。',
     ].join('\n'),
     userPrompt: [
@@ -2230,6 +2246,36 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
           development: '发展',
           turning_point: '转折',
           resolution: '结尾',
+        },
+        reference_understanding: {
+          contract_version: 'reference-understanding-v6',
+          story_summary: {
+            logline: '一句话故事', short_synopsis: '短故事简介', full_synopsis: '完整故事介绍，覆盖开端、发展、转折、高潮和结尾',
+            theme: '主题', central_conflict: '核心问题或冲突', trigger: '触发事件', turning_point: '关键转折',
+            climax: '高潮', resolution: '结果', brand_function: '品牌或产品在故事中的职责', cta: '行动号召',
+          },
+          causal_chain: [{
+            id: 'event_1', range: [0, 1], scene_id: 'scene_prompt_1', subject: '事件主体', action: '可见动作',
+            motivation: '仅有证据时填写，否则留空或标 inference', result: '造成的结果', caused_by: null,
+            leads_to: 'event_2', evidence_refs: ['F001', 'T001'], motivation_evidence_refs: [], certainty: 'fact',
+          }],
+          characters: [{
+            character_id: 'character_prompt_1', role: '角色', relationships: [], initial_state: '初始状态', goal: '目标',
+            obstacle: '阻碍', key_decision: '关键决定', final_state: '最终状态', emotional_arc: [],
+            evidence_refs: ['F001'], certainty: 'fact',
+          }],
+          scenes: [{
+            scene_id: 'scene_prompt_1', narrative_function: '叙事作用', entry_transition: '进入方式', events: ['event_1'],
+            state_change: '发生的故事状态变化', exit_transition: '离开方式', evidence_refs: ['F001'], certainty: 'fact',
+          }],
+          brand_role: {
+            subject: '产品或品牌主体', story_function: '故事职责', visible_claims: [], proof_moments: [], cta: '',
+            evidence_refs: ['F001'], certainty: 'fact',
+          },
+          audio_visual: { transcript_status: 'completed', alignments: [], ocr: [] },
+          facts: [{ id: 'fact_1', claim: '有证据的事实', evidence_refs: ['F001'] }],
+          inferences: [{ id: 'inference_1', claim: '合理推断', evidence_refs: ['F001'], reason: '推断依据' }],
+          unknowns: [{ id: 'unknown_1', question: '无法确认的问题', affected_fields: ['characters'] }],
         },
         plot_beats: [{ range: [0, 1], purpose: '节拍目的', evidence_summary: '证据' }],
         character_prompts: [{
@@ -2294,7 +2340,10 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     taskId: record.id,
     stage: 'new_story_ad.json_repair',
   });
-  const merged = mergeAnalysisWithEvidence(deterministic, parsed);
+  const merged = referenceUnderstanding.enrichAnalysis(
+    mergeAnalysisWithEvidence(deterministic, parsed),
+    { visualEvidence, transcript },
+  );
   validateAnalysisResult(merged);
   return merged;
 }
@@ -2499,7 +2548,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
   const coveredFrameIds = visualEvidence.flatMap(item => item.payload?.frames || []).map(item => item.frame_id);
   const expectedFrameIds = selectedFrames.map(item => item.frame_id);
   return {
-    schema_version: 5,
+    schema_version: 6,
     analysis_scope: 'reference_content_and_creative_structure',
     prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
     ...result,
@@ -2527,7 +2576,13 @@ async function analyzeWithModels(record, frames, transcript = {}) {
 }
 
 function normalizeResult(result = {}) {
-  const safe = evidenceText.sanitizeAnalysis(result);
+  const inputSchemaVersion = Number(result.schema_version || 0);
+  const safe = referenceUnderstanding.enrichAnalysis(evidenceText.sanitizeAnalysis(result), {
+    transcript: result.transcript,
+  });
+  // Preserve the source contract while legacy fields are being validated; schema-less
+  // fixtures historically did not claim the V4 shot contract.
+  safe.schema_version = inputSchemaVersion;
   safe.camera_intents = Array.isArray(safe.camera_intents) ? safe.camera_intents.slice(0, 24) : [];
   safe.character_actions = Array.isArray(safe.character_actions) ? safe.character_actions.slice(0, 24) : [];
   safe.plot_beats = Array.isArray(safe.plot_beats) ? safe.plot_beats.slice(0, 24) : [];
@@ -2546,7 +2601,9 @@ function normalizeResult(result = {}) {
     : buildChineseBrief(safe);
   safe.output_language = 'zh-CN';
   const sourceSchemaVersion = Number(safe.schema_version || 0);
-  safe.schema_version = sourceSchemaVersion >= 3 ? sourceSchemaVersion : 4;
+  safe.schema_version = sourceSchemaVersion >= 5
+    ? 6
+    : (sourceSchemaVersion >= 3 ? sourceSchemaVersion : 4);
   safe.analysis_scope = 'reference_content_and_creative_structure';
   safe.prohibited_reuse = ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'];
   const transcriptStatus = String(safe.transcript?.status || '').trim();
@@ -2568,6 +2625,8 @@ function normalizeResult(result = {}) {
     animal_action_count: safe.animal_actions.length,
     animal_prompt_count: safe.animal_prompts.length,
     shot_breakdown_count: safe.shot_breakdown.length,
+    reference_understanding_contract: safe.reference_understanding?.contract_version || '',
+    reference_understanding_complete: safe.reference_understanding?.completeness?.valid === true,
     transcript_status: transcriptStatus || 'unknown',
     visual_evidence_complete: safe.evidence_coverage?.complete === true,
     expected_evidence_frames: Number(safe.evidence_coverage?.expected_frame_count || 0),
@@ -2639,7 +2698,7 @@ async function rebuildStoredAnalysis(analysisId, user = {}) {
   const expectedFrameIds = frames.map(frame => frame.frame_id);
   const coveredFrameIds = visualEvidence.flatMap(item => item.payload.frames.map(frame => frame.frame_id));
   const result = normalizeResult({
-    schema_version: 5,
+    schema_version: 6,
     analysis_scope: 'reference_content_and_creative_structure',
     prohibited_reuse: ['person_identity', 'face', 'source_wardrobe_copy', 'private_attributes'],
     ...synthesized,

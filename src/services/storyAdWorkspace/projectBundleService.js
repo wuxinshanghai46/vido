@@ -3,10 +3,9 @@ const referenceDrafts = require('./referenceDraftProjectionService'), countProje
 const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
-const storyboardSketchGate = require('./storyboardSketchGateService');
+const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const MAX_MEDIA_ITEMS = 120;
-
 /** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 
@@ -536,6 +535,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       shot_breakdown: list(analysis.shot_breakdown).slice(0, 120),
       camera_intents: list(analysis.camera_intents).slice(0, 24),
       character_actions: list(analysis.character_actions).slice(0, 24),
+      ...referenceUnderstandingProjection.project(taskId, context, analysis),
     };
     bundle.brief = {
       project_name: clean(context.project_name || raw.task.title, 120),

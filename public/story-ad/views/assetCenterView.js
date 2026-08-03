@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260803-photoreal-director-v8';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
-import { confirmDialog } from '../components/dialog.js?v=20260803-photoreal-director-v8';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-photoreal-director-v8';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-photoreal-director-v8';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-photoreal-director-v8';
+import { request } from '../api.js?v=20260803-reference-director-v9';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-reference-director-v9';
+import { confirmDialog } from '../components/dialog.js?v=20260803-reference-director-v9';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-reference-director-v9';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-reference-director-v9';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-reference-director-v9';
 
 const GROUPS = [
   ['people', '人物'],

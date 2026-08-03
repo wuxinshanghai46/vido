@@ -4,6 +4,7 @@ const subjectProfileText = require('./subjectProfileTextService');
 const referenceEvidenceText = require('./referenceEvidenceTextService');
 const benchmarkStrategy = require('./benchmarkStrategyService');
 const productAssetResolver = require('./productAssetResolverService');
+const referenceUnderstandingService = require('./referenceUnderstandingService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -40,6 +41,7 @@ function normalizeReferenceVideoAnalysis(input = null) {
   const rawSource = input.source && typeof input.source === 'object' ? input.source : {};
   const rawMetadata = rawSource.metadata && typeof rawSource.metadata === 'object' ? rawSource.metadata : {};
   const rawError = input.error && typeof input.error === 'object' ? input.error : {};
+  const referenceUnderstanding = referenceUnderstandingService.contextDigest(input.reference_understanding);
   if (status === 'completed' && (
     quality.valid !== true
     || (Number(input.schema_version || 0) >= 5 && quality.visual_evidence_complete !== true)
@@ -49,6 +51,7 @@ function normalizeReferenceVideoAnalysis(input = null) {
     || !scenePrompts.length
     || !cameraIntents.length
     || !Object.keys(storyOutline).length
+    || (Number(input.schema_version || 0) >= 6 && referenceUnderstanding?.completeness?.valid !== true)
   )) {
     const error = new Error('参考视频识别结果缺少产品、场景、剧情或机位证据，请删除旧分析并重新识别；已停止后续场景和剧情生成');
     error.code = 'REFERENCE_VIDEO_ANALYSIS_INCOMPLETE';
@@ -102,6 +105,7 @@ function normalizeReferenceVideoAnalysis(input = null) {
     analysis_quality: quality,
     story_outline: storyOutline,
     plot_beats: plotBeats,
+    reference_understanding: referenceUnderstanding,
     character_prompts: Array.isArray(input.character_prompts) ? input.character_prompts.slice(0, 12) : [],
     scene_prompts: scenePrompts,
     camera_intents: cameraIntents,
@@ -1171,6 +1175,7 @@ function referenceVideoAnalysisPrompt(reference = null) {
     analysis_quality: reference.analysis_quality || {},
     story_outline: reference.story_outline || {},
     plot_beats: reference.plot_beats || [],
+    reference_understanding: referenceUnderstandingService.contextDigest(reference.reference_understanding),
     character_prompts: reference.character_prompts || [],
     scene_prompts: reference.scene_prompts || [],
     character_actions: reference.character_actions || [],

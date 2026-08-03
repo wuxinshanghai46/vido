@@ -68,7 +68,7 @@ function mediaUrl(value = {}) {
 }
 
 /** 创建 VideoCanvas 兼容的只读节点。 */
-function node({ id, type, group, title, subtitle = '', status = '', media = '', target = '', detail = {}, x = 0, y = 0 }) {
+function node({ id, type, group, title, subtitle = '', status = '', media = '', target = '', detail = {}, ports = null, x = 0, y = 0 }) {
   return {
     id: clean(id, 160),
     type: clean(type, 60),
@@ -80,6 +80,7 @@ function node({ id, type, group, title, subtitle = '', status = '', media = '', 
     media_url: mediaUrl(media),
     target_route: clean(target, 500),
     detail,
+    ...(ports ? { ports } : {}),
     position: { x, y },
     read_only: true,
   };
@@ -112,9 +113,10 @@ function projectGraph(bundle = {}) {
     input: 60,
     assets: 520,
     story: 1020,
-    shots: 1460,
-    media: 1940,
-    final: 2400,
+    director: 1460,
+    shots: 1900,
+    media: 2380,
+    final: 2840,
   };
 
   const add = (value) => {
@@ -189,6 +191,35 @@ function projectGraph(bundle = {}) {
     else inputRoot = referenceId;
   }
 
+  let understandingId = '';
+  const understanding = bundle.reference?.reference_understanding;
+  if (understanding && typeof understanding === 'object') {
+    const confirmation = bundle.reference?.understanding_confirmation || {};
+    understandingId = add({
+      id: `reference-understanding:${bundle.reference.analysis_id || projectId}`,
+      type: 'reference_understanding',
+      group: 'input',
+      title: '参考内容深度理解',
+      subtitle: understanding.story_summary?.short_synopsis || understanding.story_summary?.logline || '',
+      status: confirmation.status === 'confirmed' ? 'confirmed' : (confirmation.ready ? 'ready' : 'blocked'),
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=brief`,
+      ports: {
+        inputs: [{ id: 'reference', contract: 'ReferenceMedia', max: 1 }],
+        outputs: [{ id: 'understanding', contract: 'ReferenceUnderstanding' }],
+      },
+      detail: {
+        contract_version: clean(understanding.contract_version, 80),
+        confirmation_status: clean(confirmation.status, 40),
+        causal_event_count: Array.isArray(understanding.causal_chain) ? understanding.causal_chain.length : 0,
+        character_count: Array.isArray(understanding.characters) ? understanding.characters.length : 0,
+        scene_count: Array.isArray(understanding.scenes) ? understanding.scenes.length : 0,
+        unknown_count: Array.isArray(understanding.unknowns) ? understanding.unknowns.length : 0,
+      },
+    });
+    const referenceNode = nodes.find(item => item.type === 'reference');
+    if (referenceNode) connect(referenceNode.id, understandingId, 'learns');
+  }
+
   const assets = bundle.assets || {};
   const assetNodes = [];
   const addAssets = (rows, type, route) => {
@@ -208,7 +239,8 @@ function projectGraph(bundle = {}) {
         },
       });
       assetNodes.push(assetId);
-      if (inputRoot) connect(inputRoot, assetId, 'defines');
+      if (understandingId) connect(understandingId, assetId, 'extracts');
+      else if (inputRoot) connect(inputRoot, assetId, 'defines');
     });
   };
   addAssets(assets.people, 'person', 'assets');
@@ -217,6 +249,79 @@ function projectGraph(bundle = {}) {
   addAssets(assets.logos, 'logo', 'assets');
   addAssets(assets.props, 'prop', 'assets');
   addAssets(assets.scenes, 'scene', 'assets');
+
+  const directorByWorld = new Map();
+  const animationByWorld = new Map();
+  const worldsById = new Map((Array.isArray(bundle.scene_worlds) ? bundle.scene_worlds : [])
+    .map(world => [String(world.id || ''), world]));
+  (Array.isArray(bundle.director_scenes) ? bundle.director_scenes : []).forEach((director, index) => {
+    const worldId = clean(director.world_id, 120);
+    if (!worldId) return;
+    const world = worldsById.get(worldId) || {};
+    const worldLabel = world.display_name || world.name || `场景 ${index + 1}`;
+    const directorId = add({
+      id: `director:${worldId}`,
+      type: 'director_scene',
+      group: 'director',
+      title: `${worldLabel} · 导演台`,
+      subtitle: director.path_count ? `${director.camera_count || 0} 个机位 · ${director.path_count} 条运动轨迹` : '布置人物、机位与运动轨迹',
+      status: director.status || 'draft',
+      media: world.source_asset?.image_url || world.source_asset?.layout_image_url || '',
+      target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=workflow&director=${encodeURIComponent(worldId)}`,
+      ports: {
+        inputs: [
+          { id: 'scene', contract: 'SceneReference', max: 1 },
+          { id: 'people', contract: 'PersonReference' },
+          { id: 'products', contract: 'ProductReference' },
+        ],
+        outputs: [{ id: 'scene', contract: 'DirectorScene' }],
+      },
+      detail: {
+        director_scene_id: clean(director.director_scene_id, 120),
+        world_id: worldId,
+        revision: Number(director.revision || 1) || 1,
+        world_revision: Number(director.world_revision || 1) || 1,
+        source_revision: Number(director.source_revision || 0) || 0,
+        status: clean(director.status, 50),
+        compatibility_status: clean(director.compatibility_status, 50),
+        entity_refs: (Array.isArray(director.entity_refs) ? director.entity_refs : []).slice(0, 60),
+        camera_count: Number(director.camera_count || 0) || 0,
+        path_count: Number(director.path_count || 0) || 0,
+        snapshot_count: Number(director.snapshot_count || 0) || 0,
+        updated_at: clean(director.updated_at, 80),
+      },
+    });
+    directorByWorld.set(worldId, directorId);
+    const sceneSource = nodes.find(item => item.type === 'scene' && item.id.endsWith(`:${worldId}`));
+    if (sceneSource) connect(sceneSource.id, directorId, 'stages');
+    (Array.isArray(director.entity_refs) ? director.entity_refs : []).forEach(ref => {
+      const entityId = clean(ref.entity_id, 120);
+      const source = entityId && nodes.find(item => ['person', 'product'].includes(item.type) && item.id.endsWith(`:${entityId}`));
+      if (source) connect(source.id, directorId, 'stages');
+    });
+    if (Number(director.path_count || 0) > 0) {
+      const animationId = add({
+        id: `director-animation:${worldId}`,
+        type: 'director_animation',
+        group: 'director',
+        title: `${worldLabel} · 运动设计`,
+        subtitle: `${director.path_count} 条运动轨迹`,
+        status: director.status || 'ready',
+        target: `/story-ad/projects/${encodeURIComponent(projectId)}?view=workflow&director=${encodeURIComponent(worldId)}`,
+        ports: {
+          inputs: [{ id: 'scene', contract: 'DirectorScene', max: 1 }],
+          outputs: [{ id: 'motion', contract: 'DirectorAnimation' }],
+        },
+        detail: {
+          world_id: worldId,
+          director_revision: Number(director.revision || 1) || 1,
+          path_count: Number(director.path_count || 0) || 0,
+        },
+      });
+      animationByWorld.set(worldId, animationId);
+      connect(directorId, animationId, 'animates');
+    }
+  });
 
   let storyId = '';
   const blueprint = bundle.story?.blueprint;
@@ -235,7 +340,7 @@ function projectGraph(bundle = {}) {
         beats: (Array.isArray(blueprint.beats) ? blueprint.beats : []).slice(0, 40).map(beatDetail),
       },
     });
-    (assetNodes.length ? assetNodes : [inputRoot]).filter(Boolean).forEach(source => connect(source, storyId, 'informs'));
+    (assetNodes.length ? assetNodes : [understandingId || inputRoot]).filter(Boolean).forEach(source => connect(source, storyId, 'informs'));
   }
 
   const shots = Array.isArray(bundle.storyboard?.shots) ? bundle.storyboard.shots : [];
@@ -296,6 +401,7 @@ function projectGraph(bundle = {}) {
     if (index > 0) connect(shotIds[index - 1], shotId, 'continues');
 
     const sceneId = clean(shot.scene_id || shot.scene_asset_id, 120);
+    if (directorByWorld.has(sceneId)) connect(directorByWorld.get(sceneId), shotId, 'directs');
     if (sceneId && nodes.some(item => item.id === `scene:${sceneId}`)) connect(`scene:${sceneId}`, shotId, 'binds');
     const referencedIds = [
       ...(Array.isArray(shot.person_ids) ? shot.person_ids : []),
@@ -369,6 +475,11 @@ function projectGraph(bundle = {}) {
     mediaIds.push(clipId);
     const source = keyframeIdsByShot.get(shotIndex)?.[0] || `shot:${shotIndex}`;
     connect(source, clipId, 'animates');
+    const sourceShot = shots.find((item, shotArrayIndex) => (
+      (Number(item.shot_index || item.index || shotArrayIndex + 1) || shotArrayIndex + 1) === shotIndex
+    )) || {};
+    const worldId = clean(sourceShot.scene_id || sourceShot.scene_asset_id, 120);
+    if (animationByWorld.has(worldId)) connect(animationByWorld.get(worldId), clipId, 'drives_motion');
   });
 
   const finalVideo = bundle.generation?.final_video;
@@ -392,6 +503,7 @@ function projectGraph(bundle = {}) {
     ['input', '输入与目标'],
     ['assets', '身份资产'],
     ['story', '剧情'],
+    ['director', '导演台与运动设计'],
     ['shots', '分镜与镜头'],
     ['media', '生成结果'],
     ['final', '成片'],

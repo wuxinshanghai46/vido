@@ -401,7 +401,12 @@ assert.match(workspaceCss, /\.step-completion-card\.is-ready/);
 const workflowModule = loadBrowserModule(
   'public/story-ad/views/workflowView.js',
   ['graphNode', 'structuredNodeDetail'],
-  { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); } },
+  {
+    escapeHtml,
+    mediaPreview,
+    workflowNodePortMarkup() { return ''; },
+    request() { throw new Error('UI render test must not call request'); },
+  },
 );
 Object.assign(workflowModule, loadBrowserModule(
   'public/story-ad/views/workflowInlineEditor.js',

@@ -30,10 +30,14 @@ try {
   assert.strictEqual(saved.revision, 2);
   assert.strictEqual(director.activeSnapshot(taskId, world.id, { source_revision: 7, camera_id: 'camera-a' }).image_url, '/assets/director.png');
   assert.strictEqual(director.activeSnapshot(taskId, world.id, { source_revision: 8 }), null, 'stale scene source may not reuse an old director snapshot');
+  assert.strictEqual(director.activeSnapshot(taskId, world.id, { source_revision: 7, entity_revisions: { 'person-a': 3 } }), null, 'stale person revision may not reuse an old director snapshot');
   assert.throws(() => director.save(taskId, bundle, world, {}, { expected_revision: 1 }), error => error.code === 'DIRECTOR_SCENE_REVISION_CONFLICT' && error.current_director_revision === 2);
   const stale = director.resolve(taskId, bundle, { ...world, revision: 4 }, {});
   assert.strictEqual(stale.status, 'stale_input');
   assert.strictEqual(stale.compatibility_status, 'stale_source');
+  const staleEntity = director.resolve(taskId, { assets: { ...bundle.assets, people: [{ ...bundle.assets.people[0], revision: 3 }] } }, world, {});
+  assert.strictEqual(staleEntity.status, 'stale_input');
+  assert.strictEqual(staleEntity.compatibility_status, 'stale_entities');
 
   const pack = packs.compile({
     taskId, shotIndex: 0,
@@ -47,7 +51,15 @@ try {
   assert.strictEqual(pack.references[0].url, '/assets/director.png');
   assert(pack.references.some(reference => reference.url === '/assets/native-face.jpg'));
   assert.strictEqual(storage.getOutput(taskId, packs.OUTPUT_KIND)[0].fingerprint, pack.fingerprint);
-  console.log(JSON.stringify({ passed: true, checks: 14, director_revision: saved.revision, compiled_references: pack.references.length, stale_source_blocked: true }));
+  const stalePack = packs.compile({
+    taskId, shotIndex: 1,
+    ctx: { person_asset: { id: 'person-a', revision: 3, native_masters: { face: { image_url: '/assets/new-face.jpg' } } } },
+    shot: { id: 'shot-2', scene_id: world.id, camera_id: 'camera-a', characters: ['person-a'], visual: '人物继续展示商品' },
+    contract: { fingerprint: 'contract-2' }, sceneAsset: { id: world.id, revision: 7 },
+    sceneReference: '/assets/scene.jpg', includePerson: true, includeProduct: false, providerLimit: 4,
+  });
+  assert.strictEqual(stalePack.references.some(reference => reference.role === 'director_composition'), false, '逐镜参考包不得编入包含旧人物的导演快照');
+  console.log(JSON.stringify({ passed: true, checks: 19, director_revision: saved.revision, compiled_references: pack.references.length, stale_source_blocked: true, stale_entity_blocked: true }));
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

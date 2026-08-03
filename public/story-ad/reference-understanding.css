@@ -1,0 +1,70 @@
+.reference-understanding { margin-top: 18px; overflow: hidden; }
+.reference-understanding-head { align-items: flex-start; gap: 18px; }
+.reference-understanding-head .status-tag { flex: 0 0 auto; }
+.reference-understanding-summary { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .85fr); gap: 18px; padding: 20px; border-top: 1px solid var(--line); }
+.reference-understanding-summary > div { min-width: 0; padding: 17px; border-radius: 13px; background: var(--surface-2); }
+.reference-understanding-summary small { color: var(--muted); }
+.reference-understanding-summary p { margin-top: 9px; line-height: 1.7; white-space: pre-wrap; }
+.reference-understanding-summary dl { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; margin: 0; }
+.reference-understanding-summary dl div { padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+.reference-understanding-summary dt { color: var(--muted); font-size: 12px; }
+.reference-understanding-summary dd { margin: 6px 0 0; font-size: 23px; font-weight: 700; }
+.reference-evidence-player { display: grid; grid-template-columns: minmax(280px, 520px) 1fr; gap: 14px; align-items: center; padding: 0 20px 20px; color: var(--muted); }
+.reference-evidence-player video { width: 100%; max-height: 292px; border-radius: 12px; background: #050608; }
+.reference-evidence-player.is-unavailable { display: block; padding-top: 2px; }
+.reference-understanding-tabs { display: flex; gap: 7px; overflow-x: auto; padding: 0 20px; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
+.reference-understanding-tabs button { flex: 0 0 auto; min-height: 43px; border: 0; border-bottom: 2px solid transparent; padding: 0 11px; color: var(--muted); background: transparent; cursor: pointer; }
+.reference-understanding-tabs button.active { border-bottom-color: var(--mint); color: var(--text); font-weight: 700; }
+.reference-understanding-panel { min-height: 220px; padding: 20px; }
+.reference-claim-grid, .reference-entity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.reference-claim-card, .reference-entity-card, .reference-audio-list article { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.reference-claim-card header, .reference-entity-card header, .reference-audio-list header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reference-claim-card p { margin-top: 10px; line-height: 1.65; white-space: pre-wrap; }
+.reference-claim-status { flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; font-size: 11px; color: var(--muted); background: var(--surface-3); }
+.reference-claim-status.is-fact { color: var(--mint); background: color-mix(in srgb, var(--mint) 12%, var(--surface)); }
+.reference-claim-status.is-inference { color: var(--amber); background: color-mix(in srgb, var(--amber) 13%, var(--surface)); }
+.reference-claim-status.is-unknown { color: var(--danger); background: color-mix(in srgb, var(--danger) 11%, var(--surface)); }
+.reference-claim-status.is-corrected { color: var(--info); background: color-mix(in srgb, var(--info) 12%, var(--surface)); }
+.reference-understanding-section { margin-top: 20px; }
+.reference-understanding-section > h4 { margin-bottom: 10px; }
+.reference-evidence-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+.reference-evidence-tag { min-height: 28px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 9px; color: var(--muted); background: var(--surface); font-size: 11px; }
+button.reference-evidence-tag.is-seekable { color: var(--info); cursor: pointer; }
+.reference-timeline { position: relative; display: grid; gap: 14px; margin: 0; padding: 0; list-style: none; }
+.reference-timeline::before { content: ''; position: absolute; top: 11px; bottom: 11px; left: 48px; width: 1px; background: var(--line); }
+.reference-timeline li { position: relative; display: grid; grid-template-columns: 98px 1fr; gap: 14px; }
+.reference-timeline-time { z-index: 1; align-self: start; min-height: 32px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); }
+.reference-timeline-time.is-seekable { color: var(--info); cursor: pointer; }
+.reference-timeline article { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+.reference-timeline article header { display: flex; justify-content: space-between; gap: 12px; }
+.reference-timeline article p { display: grid; grid-template-columns: 56px 1fr; gap: 8px; margin-top: 9px; line-height: 1.55; }
+.reference-timeline article strong { color: var(--muted); font-size: 12px; }
+.reference-entity-card h4 { margin: 0; }
+.reference-entity-card > p { display: grid; grid-template-columns: 104px 1fr; gap: 10px; margin-top: 10px; line-height: 1.55; }
+.reference-entity-card > p b { color: var(--muted); font-size: 12px; }
+.reference-audio-list { display: grid; gap: 11px; }
+.reference-audio-list header button { border: 0; padding: 0; color: var(--info); background: transparent; cursor: pointer; }
+.reference-audio-list article p { display: grid; grid-template-columns: 104px 1fr; gap: 10px; margin-top: 9px; line-height: 1.55; }
+.reference-audio-list article p b { color: var(--muted); font-size: 12px; }
+.reference-understanding-empty { display: grid; min-height: 180px; place-items: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
+.reference-understanding-actions { display: flex; align-items: center; gap: 18px; padding: 16px 20px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.reference-understanding-actions > div { min-width: 0; margin-right: auto; }
+.reference-understanding-actions b, .reference-understanding-actions small { display: block; }
+.reference-understanding-actions small { margin-top: 5px; color: var(--muted); line-height: 1.5; }
+.reference-understanding-actions .btn { flex: 0 0 auto; }
+
+@media (max-width: 920px) {
+  .reference-understanding-summary { grid-template-columns: 1fr; }
+  .reference-evidence-player { grid-template-columns: 1fr; }
+  .reference-claim-grid, .reference-entity-grid { grid-template-columns: 1fr; }
+  .reference-understanding-actions { align-items: stretch; flex-direction: column; }
+  .reference-understanding-actions .btn { width: 100%; }
+}
+
+@media (max-width: 600px) {
+  .reference-understanding-summary, .reference-understanding-panel { padding: 14px; }
+  .reference-understanding-tabs { padding: 0 14px; }
+  .reference-timeline li { grid-template-columns: 1fr; }
+  .reference-timeline::before { display: none; }
+  .reference-timeline-time { justify-self: start; }
+}

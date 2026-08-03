@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-photoreal-director-v8';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-photoreal-director-v8';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260803-photoreal-director-v8';
+import { createProjectStore } from './store/projectStore.js?v=20260803-reference-director-v9';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-reference-director-v9';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260803-reference-director-v9';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-photoreal-director-v8'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-photoreal-director-v8'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-photoreal-director-v8'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-photoreal-director-v8'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-photoreal-director-v8'),
-  final: () => import('./views/finalView.js?v=20260803-photoreal-director-v8'),
-  workflow: () => import('./views/workflowView.js?v=20260803-photoreal-director-v8'),
+  brief: () => import('./views/briefView.js?v=20260803-reference-director-v9'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-reference-director-v9'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-reference-director-v9'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-reference-director-v9'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-reference-director-v9'),
+  final: () => import('./views/finalView.js?v=20260803-reference-director-v9'),
+  workflow: () => import('./views/workflowView.js?v=20260803-reference-director-v9'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

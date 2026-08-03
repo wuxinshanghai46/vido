@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260803-photoreal-director-v8';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260803-photoreal-director-v8';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260803-reference-director-v9';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260803-reference-director-v9';
 
 export function createProjectStore() {
   const state = {
@@ -386,11 +386,17 @@ export function createProjectStore() {
     const record = referenceTaskRecord(analysis);
     const currentBrief = state.bundle?.brief || {};
     const completedAndValid = record.status === 'completed' && record.analysis_quality?.valid === true;
-    const derivedBrief = String(record.story_outline?.logline || record.summary || record.generated_brief || '').trim();
+    // The generated brief is the complete, evidence-grounded hand-off.  A
+    // one-line logline is useful for cards, but must never replace the full
+    // story understanding at the first workflow step.
+    const derivedBrief = String(record.generated_brief || record.summary || record.story_outline?.logline || '').trim();
     const derivedProduct = String(record.source_facts?.product_or_service || '').trim();
+    const currentBriefText = String(currentBrief.text || '').trim();
+    const canRefreshReferenceBrief = !currentBriefText
+      || ['', 'reference_analysis'].includes(String(currentBrief.brief_source || '').trim());
     await updateRequest({
       reference_video_analysis: record,
-      ...(completedAndValid && derivedBrief
+      ...(completedAndValid && derivedBrief && canRefreshReferenceBrief
         ? { brief: derivedBrief, content: derivedBrief, brief_source: 'reference_analysis' }
         : {}),
       ...(completedAndValid && !String(currentBrief.product_subject || '').trim() && derivedProduct

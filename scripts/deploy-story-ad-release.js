@@ -26,6 +26,8 @@ const extraFiles = [
   'src/services/newStoryAd/personDossierCompiler.js',
   'src/services/newStoryAd/personDossierService.js',
   'src/services/newStoryAd/referenceSelectionService.js',
+  'src/services/newStoryAd/referenceUnderstandingService.js',
+  'src/services/newStoryAd/referenceVideoAnalysisService.js',
   'src/services/newStoryAd/revisionService.js',
   'src/services/newStoryAd/sceneAssetService.js',
   'src/services/newStoryAd/shotReferencePackService.js',
@@ -36,20 +38,29 @@ const extraFiles = [
   'src/services/newStoryAd/videoLineageService.js',
   'src/services/storyAdReleaseIntegrityService.js',
   'src/services/storyAdWorkspace/directorSceneService.js',
+  'src/services/storyAdWorkspace/graphProjectionService.js',
   'src/services/storyAdWorkspace/projectBundleService.js',
+  'src/services/storyAdWorkspace/referenceUnderstandingConfirmationService.js',
+  'src/services/storyAdWorkspace/referenceUnderstandingProjectionService.js',
   'scripts/build-story-ad-release.js',
   'scripts/check-new-story-ad-dossier-boundaries.js',
   'scripts/check-story-ad-workspace-v6-boundaries.js',
   'scripts/test-new-story-ad-keyframe-parallel.js',
   'scripts/test-new-story-ad-multi-space-cast-recovery.js',
   'scripts/test-new-story-ad-person-dossier.js',
+  'scripts/test-new-story-ad-reference-understanding-v6.js',
+  'scripts/test-new-story-ad-reference-video-analysis.js',
   'scripts/test-new-story-ad-reliability.js',
   'scripts/test-new-story-ad-subject-assets.js',
   'scripts/test-new-story-ad-video-frame-qa.js',
   'scripts/test-story-ad-director-scene-v1.js',
+  'scripts/test-story-ad-reference-understanding-confirmation.js',
+  'scripts/test-story-ad-reference-understanding-ui.js',
   'scripts/test-story-ad-release-integrity.js',
   'scripts/test-story-ad-scene-world-v1.js',
-  'scripts/deploy-2026-08-03-photoreal-director-v8.js',
+  'scripts/test-story-ad-workflow-director-nodes.js',
+  'scripts/test-story-ad-workspace-v6-ui-regressions.js',
+  'scripts/deploy-story-ad-release.js',
 ];
 const files = [...new Set([...publicReleaseFiles, ...extraFiles])].sort();
 
@@ -59,9 +70,10 @@ for (const file of files) {
 
 const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 const token = `${stamp}-${process.pid}`;
-const lockDir = '/opt/vido/deploy-locks/story-ad-photoreal-director-v8';
-const stagingDir = `/opt/vido/releases/story-ad-photoreal-director-v8-${token}`;
-const backupDir = `/opt/vido/backups/story-ad-photoreal-director-v8-${stamp}`;
+const releaseSlug = `story-ad-${String(release.build_id || 'release').replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
+const lockDir = `/opt/vido/deploy-locks/${releaseSlug}`;
+const stagingDir = `/opt/vido/releases/${releaseSlug}-${token}`;
+const backupDir = `/opt/vido/backups/${releaseSlug}-${stamp}`;
 const client = new Client();
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 let lockAcquired = false;
@@ -243,4 +255,3 @@ client.on('ready', async () => {
   console.error(error.message || error);
   process.exitCode = 1;
 }).connect(connectionOptions({ host, port: 22, username }));
-

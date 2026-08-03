@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-reference-director-v9';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',

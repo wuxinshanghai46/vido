@@ -17,6 +17,22 @@ function worldIdFor(shot = {}, sceneAsset = {}) {
   return text(shot.scene_world_id || shot.scene_id || shot.scene_asset_id || sceneAsset.id || sceneAsset.scene_id, 120);
 }
 
+function directorEntityRevisions(ctx = {}) {
+  const rows = [
+    ctx.person_asset,
+    ...((Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [])),
+    ctx.product_asset,
+    ...((Array.isArray(ctx.product_assets) ? ctx.product_assets : [])),
+    ...((Array.isArray(ctx.assets) ? ctx.assets : []).filter(item => ['person', 'product'].includes(String(item.kind || item.type || item.role || '').toLowerCase()))),
+  ].filter(item => item && typeof item === 'object');
+  return rows.reduce((result, item) => {
+    const id = text(item.subject_id || item.profile?.id || item.asset_id || item.id, 120);
+    const revision = Math.max(0, Number(item.revision || item.person_revision || item.entity_revision || 0) || 0);
+    if (id && revision) result[id] = revision;
+    return result;
+  }, {});
+}
+
 function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, sceneReference = '', previousFrame = null, includePerson = false, includeProduct = false, layoutReference = '', providerLimit = 4 } = {}) {
   sceneAsset = sceneAsset || {};
   shot = shot || {};
@@ -26,6 +42,7 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
   const directorSnapshot = worldId ? directorScenes.activeSnapshot(taskId, worldId, {
     source_revision: Number(sceneAsset.revision || sceneAsset.scene_revision || 0) || 0,
     camera_id: requestedCamera,
+    entity_revisions: directorEntityRevisions(ctx),
   }) : null;
   const candidates = references.keyframeReferenceCandidates(ctx, {
     sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
@@ -72,4 +89,4 @@ function referenceUrls(taskId = '', shotIndex = 0, ctx = {}, sceneReference = ''
   return rows.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url));
 }
 
-module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, compile, referenceUrls, fingerprint };
+module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, directorEntityRevisions, compile, referenceUrls, fingerprint };

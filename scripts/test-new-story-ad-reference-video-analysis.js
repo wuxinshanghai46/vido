@@ -760,6 +760,10 @@ async function main() {
     assert.equal(rebuilt.result.character_prompts.length, 3);
     assert.equal(rebuilt.result.source_facts.narrative_animal_presence, false);
     assert.equal(rebuilt.result.animal_prompts.length, 0);
+    assert.equal(rebuilt.result.reference_understanding.contract_version, 'reference-understanding-v6');
+    assert.equal(rebuilt.result.reference_understanding.completeness.story_complete, true);
+    assert.equal(rebuilt.result.reference_understanding.completeness.cause_chain_complete, true);
+    assert.ok(rebuilt.result.reference_understanding.causal_chain.every(event => event.evidence_refs.length > 0));
     assert.equal(rebuilt.semantic_contract_migration.from, 'shot-aware-v1');
     assert.equal(rebuilt.semantic_contract_migration.to, 'shot-aware-v2');
     assert.equal(rebuilt.semantic_contract_migration.model_calls, 0);
@@ -1591,7 +1595,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 181,
+    checks: 185,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

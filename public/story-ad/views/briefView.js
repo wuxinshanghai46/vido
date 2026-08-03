@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260803-photoreal-director-v8';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260803-photoreal-director-v8';
+import { request } from '../api.js?v=20260803-reference-director-v9';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-reference-director-v9';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260803-reference-director-v9';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -84,8 +84,16 @@ export function referenceProgress(reference = {}) {
   const percent = completed ? 100 : numeric;
   const phase = String(reference.phase || labels[status] || '等待分析').trim();
   const tone = failed ? 'is-failed' : (completed ? 'is-completed' : (cancelled ? 'is-cancelled' : 'is-active'));
+  const hasDeepReport = !!(
+    Object.keys(reference.reference_understanding?.story_bible || reference.reference_understanding?.story_summary || reference.story_bible || {}).length
+    || (reference.reference_understanding?.story_events || reference.reference_understanding?.causal_chain || reference.story_events)?.length
+    || (reference.reference_understanding?.character_arcs || reference.reference_understanding?.characters || reference.character_arcs)?.length
+    || (reference.reference_understanding?.scene_narratives || reference.reference_understanding?.scenes || reference.scene_narratives)?.length
+  );
   const baseNote = completed
-    ? '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。'
+    ? (hasDeepReport
+      ? '深度理解报告已就绪。请核对故事、人物、场景、品牌、镜头与声音证据；确认前不会进入后续资产创建。'
+      : '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。')
     : (failed
       ? (reference.error || '本次分析没有完成，请更换参考视频或重新尝试。')
       : (cancelled
@@ -123,6 +131,29 @@ export function referenceActionState(reference = {}) {
   if (!reference.analysis_id) return { blocked: false, label: '进行资产创建' };
   const status = String(reference.status || '').toLowerCase();
   if (status === 'completed' && reference.analysis_valid === true) {
+    const understanding = reference.reference_understanding && typeof reference.reference_understanding === 'object'
+      ? { ...reference, ...reference.reference_understanding }
+      : reference;
+    const hasDeepUnderstanding = !!(
+      Object.keys(understanding.story_bible || {}).length
+      || Object.keys(understanding.story_summary || {}).length
+      || understanding.story_events?.length
+      || understanding.causal_chain?.length
+      || understanding.character_arcs?.length
+      || understanding.characters?.length
+      || understanding.scene_narratives?.length
+      || understanding.scenes?.length
+      || Object.keys(understanding.brand_role || {}).length
+      || understanding.audio_visual_alignment?.length
+      || understanding.inferences?.length
+      || understanding.unknowns?.length
+    );
+    const confirmation = understanding.reference_understanding_confirmation || understanding.understanding_confirmation || understanding.confirmation || {};
+    const confirmed = understanding.understanding_confirmed === true
+      || understanding.authoritative_input_confirmed === true
+      || confirmation.confirmed === true
+      || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
+    if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '请先确认参考理解报告' };
     return { blocked: false, label: '进行资产创建' };
   }
   if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
@@ -185,11 +216,54 @@ export async function mount(host, context) {
         <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
       </aside>
     </div>
+    <div data-reference-understanding-host></div>
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
 
   const form = host.querySelector('[data-brief-form]');
   let createdProjectId = route.isNew ? '' : bundle.project?.id;
   const dirtyFields = new Set();
+  const understandingHost = host.querySelector('[data-reference-understanding-host]');
+  let understandingController = null;
+  let understandingLoadSequence = 0;
+  let disposed = false;
+
+  /** 深度报告按需加载；未附加参考或分析未完成时不下载报告代码与样式。 */
+  async function syncReferenceUnderstanding(reference = {}) {
+    const sequence = ++understandingLoadSequence;
+    const nested = reference.reference_understanding && typeof reference.reference_understanding === 'object'
+      ? { ...reference, ...reference.reference_understanding }
+      : reference;
+    const hasReport = String(reference.status || '').toLowerCase() === 'completed' && !!(
+      Object.keys(nested.story_bible || {}).length
+      || Object.keys(nested.story_summary || {}).length
+      || nested.story_events?.length
+      || nested.causal_chain?.length
+      || nested.character_arcs?.length
+      || nested.characters?.length
+      || nested.scene_narratives?.length
+      || nested.scenes?.length
+      || Object.keys(nested.brand_role || {}).length
+      || nested.audio_visual_alignment?.length
+      || nested.inferences?.length
+      || nested.unknowns?.length
+    );
+    if (!hasReport) {
+      understandingController?.destroy();
+      understandingController = null;
+      if (understandingHost) understandingHost.innerHTML = '';
+      return;
+    }
+    const module = await import('./referenceUnderstandingView.js?v=20260803-reference-director-v9');
+    if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
+    if (understandingController) understandingController.update(reference);
+    else understandingController = module.mountReferenceUnderstanding(understandingHost, {
+      reference,
+      taskId: createdProjectId,
+      store,
+    });
+  }
+
+  syncReferenceUnderstanding(bundle.reference || {}).catch(error => toast(error.message, 'danger'));
   form.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
   form.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
 
@@ -245,6 +319,7 @@ export async function mount(host, context) {
     if (!route.isNew) {
       syncReferenceAction(form.querySelector('[data-brief-submit]'), nextState.bundle?.reference || {});
     }
+    syncReferenceUnderstanding(nextState.bundle?.reference || {}).catch(error => toast(error.message, 'danger'));
   });
 
   host.querySelector('[data-ai-brief]')?.addEventListener('click', async event => {
@@ -305,8 +380,13 @@ export async function mount(host, context) {
       } else {
         const reference = store.state.bundle?.reference || {};
         const status = String(reference.status || '').toLowerCase();
-        if (referenceActionState(reference).blocked) {
-          throw new Error(status === 'failed' ? '参考视频分析失败，请重新识别或更换视频后再创建资产。' : '参考视频仍在分析中，请等待完成后再创建资产。');
+        const actionState = referenceActionState(reference);
+        if (actionState.blocked) {
+          throw new Error(status === 'failed'
+            ? '参考视频分析失败，请重新识别或更换视频后再创建资产。'
+            : (status === 'completed' && reference.analysis_valid === true
+              ? '请先核对并确认参考理解报告，再进行资产创建。'
+              : '参考视频仍在分析中，请等待完成后再创建资产。'));
         }
         setButtonBusy(button, true, '正在保存并创建资产…', { elapsed: true });
         await store.updateRequest(safeFormPayload());
@@ -438,6 +518,9 @@ export async function mount(host, context) {
   };
   host.addEventListener('click', handleReferenceRetry);
   return () => {
+    disposed = true;
+    understandingLoadSequence += 1;
+    understandingController?.destroy();
     unsubscribeProgress();
     host.removeEventListener('click', handleReferenceRetry);
   };

@@ -134,17 +134,57 @@ function storedPayload(taskId) {
   return storage.getOutput(taskId, OUTPUT_KIND) || { schema_version: DIRECTOR_SCENE_SCHEMA_VERSION, states: {} };
 }
 
-function resolve(taskId, bundle = {}, world = {}, manifest = {}) {
+function resolveStored(bundle = {}, world = {}, manifest = {}, stored = null) {
   const base = defaultState(bundle, world, manifest);
-  const stored = storedPayload(taskId).states?.[world.id];
   if (!stored) return base;
   const currentHash = base.source_contract_hash;
+  const currentEntities = new Map(list(base.entities).map(entity => [String(entity.entity_id), entity]));
+  const staleEntityRefs = list(stored.entities).filter(entity => {
+    const current = currentEntities.get(String(entity.entity_id));
+    if (!current) return ['person', 'product'].includes(String(entity.kind || ''));
+    return Number(current.entity_revision || 0) !== Number(entity.entity_revision || 0);
+  }).map(entity => text(entity.entity_id, 120));
+  const sourceCurrent = stored.source_contract_hash === currentHash;
+  const entitiesCurrent = staleEntityRefs.length === 0;
   return {
     ...base, ...stored, world_id: base.world_id, world_revision: base.world_revision,
     source_contract_hash: currentHash,
-    compatibility_status: stored.source_contract_hash === currentHash ? 'current' : 'stale_source',
-    status: stored.source_contract_hash === currentHash ? (stored.status || 'active_verified') : 'stale_input',
+    compatibility_status: !sourceCurrent ? 'stale_source' : (entitiesCurrent ? 'current' : 'stale_entities'),
+    stale_entity_refs: staleEntityRefs,
+    status: sourceCurrent && entitiesCurrent ? (stored.status || 'active_verified') : 'stale_input',
   };
+}
+
+function resolve(taskId, bundle = {}, world = {}, manifest = {}) {
+  return resolveStored(bundle, world, manifest, storedPayload(taskId).states?.[world.id]);
+}
+
+function projectedSummary(state = {}) {
+  return {
+    director_scene_id: text(state.director_scene_id, 120),
+    world_id: text(state.world_id, 120),
+    revision: Math.max(1, number(state.revision, 1, 1, 1000000)),
+    world_revision: Math.max(1, number(state.world_revision, 1, 1, 1000000)),
+    source_revision: Math.max(0, number(state.source_revision, 0, 0, 1000000)),
+    status: text(state.status || 'draft', 50),
+    compatibility_status: text(state.compatibility_status || 'current', 50),
+    entity_refs: list(state.entities).slice(0, 60).map(entity => ({
+      entity_id: text(entity.entity_id, 120),
+      entity_revision: Math.max(1, number(entity.entity_revision, 1, 1, 1000000)),
+      kind: text(entity.kind, 40),
+    })),
+    camera_count: list(state.cameras).length,
+    path_count: list(state.paths).length,
+    snapshot_count: list(state.snapshots).length,
+    updated_at: text(state.updated_at, 80),
+  };
+}
+
+function listProjected(taskId, bundle = {}, worlds = [], manifest = {}) {
+  const states = storedPayload(taskId).states || {};
+  return list(worlds).slice(0, 120).map(world => projectedSummary(
+    resolveStored(bundle, world, manifest, states[world.id]),
+  ));
 }
 
 function save(taskId, bundle = {}, world = {}, patch = {}, options = {}) {
@@ -181,9 +221,28 @@ function activeSnapshot(taskId, worldId, options = {}) {
   if (!state || state.status !== 'active_verified') return null;
   const requiredSourceRevision = Math.max(0, number(options.source_revision, 0, 0, 1000000));
   if (requiredSourceRevision && state.source_revision && requiredSourceRevision !== state.source_revision) return null;
+  const expectedEntityRevisions = options.entity_revisions && typeof options.entity_revisions === 'object'
+    ? options.entity_revisions
+    : {};
+  if (Object.keys(expectedEntityRevisions).length && list(state.entities).some(entity => {
+    if (!['person', 'product'].includes(String(entity.kind || ''))) return false;
+    const expected = Number(expectedEntityRevisions[entity.entity_id] || 0);
+    return expected > 0 && expected !== Number(entity.entity_revision || 0);
+  })) return null;
   const cameraId = text(options.camera_id, 120);
   const snapshots = list(state.snapshots).filter(item => text(item.image_url, 1000));
   return (cameraId ? snapshots.find(item => item.camera_id === cameraId) : null) || snapshots.at(-1) || null;
 }
 
-module.exports = { DIRECTOR_SCENE_SCHEMA_VERSION, OUTPUT_KIND, sourceContract, stableHash, defaultState, resolve, save, activeSnapshot };
+module.exports = {
+  DIRECTOR_SCENE_SCHEMA_VERSION,
+  OUTPUT_KIND,
+  sourceContract,
+  stableHash,
+  defaultState,
+  resolve,
+  save,
+  activeSnapshot,
+  projectedSummary,
+  listProjected,
+};

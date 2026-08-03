@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260803-photoreal-director-v8';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260803-photoreal-director-v8';
+import { request } from '../api.js?v=20260803-reference-director-v9';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260803-reference-director-v9';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -408,7 +408,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260803-photoreal-director-v8');
+      const module = await import('./directorStudioView.js?v=20260803-reference-director-v9');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
