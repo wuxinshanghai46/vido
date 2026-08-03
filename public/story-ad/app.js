@@ -1,5 +1,5 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-scene-photo-world-v3';
-import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-scene-photo-world-v3';
+import { createProjectStore } from './store/projectStore.js?v=20260803-scene-world-regeneration-v4';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-scene-world-regeneration-v4';
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,13 +14,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-scene-photo-world-v3'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-scene-photo-world-v3'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-scene-photo-world-v3'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-scene-photo-world-v3'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-scene-photo-world-v3'),
-  final: () => import('./views/finalView.js?v=20260803-scene-photo-world-v3'),
-  workflow: () => import('./views/workflowView.js?v=20260803-scene-photo-world-v3'),
+  brief: () => import('./views/briefView.js?v=20260803-scene-world-regeneration-v4'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-scene-world-regeneration-v4'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-scene-world-regeneration-v4'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-scene-world-regeneration-v4'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-scene-world-regeneration-v4'),
+  final: () => import('./views/finalView.js?v=20260803-scene-world-regeneration-v4'),
+  workflow: () => import('./views/workflowView.js?v=20260803-scene-world-regeneration-v4'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -214,6 +214,9 @@ async function mountView(route) {
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
+    const disposeHoverPreviews = bindHoverVideoPreviews(host);
+    const previousCleanup = activeViewCleanup;
+    activeViewCleanup = () => { disposeHoverPreviews(); previousCleanup?.(); };
   } catch (error) {
     host.innerHTML = `<div class="view-error"><b>工作区没有加载完成</b><span>${escapeHtml(error.message)}</span><button class="btn" type="button" data-retry-view>重试</button></div>`;
   }

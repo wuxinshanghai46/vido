@@ -372,6 +372,14 @@ function getArtifact(artifactId) {
   return getRow('artifacts', String(artifactId || ''));
 }
 
+function listArtifacts(taskId, kind = '') {
+  return listRows('artifacts', { project_id: String(taskId) })
+    .filter(row => String(row.task_id) === String(taskId)
+      && (!kind || String(row.kind) === String(kind)))
+    .sort((left, right) => Date.parse(right.updated_at || right.created_at || 0)
+      - Date.parse(left.updated_at || left.created_at || 0));
+}
+
 function enableLineage(taskId) {
   const task = getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -604,6 +612,7 @@ module.exports = {
   getSnapshot,
   saveArtifact,
   getArtifact,
+  listArtifacts,
   enableLineage,
   publishArtifact,
   carryManifestRevision,

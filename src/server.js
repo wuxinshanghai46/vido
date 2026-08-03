@@ -8,8 +8,8 @@ const mediaDelivery = require('./services/mediaDeliveryService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-photo-world-v3';
-const STORY_AD_CONTRACT_VERSION = 'scene-photo-world-v2';
+const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-world-regeneration-v4';
+const STORY_AD_CONTRACT_VERSION = 'scene-world-v2';
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
 const authStore = require('./models/authStore');
@@ -117,6 +117,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// The legacy 360 KB story-ad client is retained only as source evidence for
+// migration regression tests. It is never executable in production; cached
+// legacy pages also cannot reload it and their write requests are rejected by
+// the build gate above.
+app.get('/js/new-story-ad-legacy-ui.js', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.status(410).type('text/plain').send('旧剧情广告客户端已停用，请使用 /story-ad/');
+});
+
 app.use(express.static(path.join(__dirname, '../public'), {
   index: false,
   setHeaders(res, filePath) {
@@ -130,7 +139,9 @@ app.use(express.static(path.join(__dirname, '../public'), {
     if (normalized.includes('/public/story-ad/') && /\.(?:js|css)$/i.test(normalized)) {
       // 剧情广告是原生 ESM 多入口，HTML、CSS 与动态模块必须作为一个发布单元重验证，
       // 否则会出现新 DOM 搭配旧 CSS/旧视图脚本的拆分缓存。
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return;
     }
     if (/\.(?:js|css|svg|ico|woff2?|ttf|otf)$/i.test(normalized)) {

@@ -447,7 +447,10 @@ assert.equal(sandbox.__formatElapsedText(65000), '1分05秒');
 assert.equal(sandbox.__elapsedMilliseconds('2026-08-01T00:00:00.000Z', '2026-08-01T00:01:05.000Z'), 65000);
 assert.match(sandbox.__mediaPreview({ media_url: '/api/assets/frame' }, { label: '帧' }), /<img/);
 assert.match(sandbox.__mediaPreview({ media_url: '/api/media/final', type: 'final' }, { label: '成片' }), /<video/);
-assert.match(sandbox.__mediaPreview({ thumbnail_url: '/api/assets/poster', video_url: '/api/media/clip' }, { label: '视频浏览' }), /<img/);
+const hoverVideo = sandbox.__mediaPreview({ thumbnail_url: '/api/assets/poster', video_url: '/api/media/clip' }, { label: '视频浏览' });
+assert.match(hoverVideo, /<video/);
+assert.match(hoverVideo, /poster="\/api\/assets\/poster"/);
+assert.match(hoverVideo, /data-hover-video-preview/);
 const progressPanel = sandbox.__generationProgressPanel({
   project: { active_generation_id: 'gen-1', generation_started_at: '2026-08-01T00:00:00.000Z' },
   generation: { progress: { stage: 'keyframes', status: 'running', completed: 2, total: 6, active_indexes: [3, 4], percent: 33 } },

@@ -1,11 +1,12 @@
-import { request } from '../api.js?v=20260803-scene-photo-world-v3';
-import { escapeHtml, toast } from '../components/ui.js?v=20260803-scene-photo-world-v3';
+import { request } from '../api.js?v=20260803-scene-world-regeneration-v4';
+import { escapeHtml, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
   supports_panorama: '360全景漫游',
   supports_structure_map: '结构 / 路线',
   supports_3d_proxy: '可旋转结构代理',
+  supports_spatial_model: '真实3D空间',
   supports_navigation: '空间导航',
   supports_camera_orbit: '环绕机位',
   supports_character_blocking: '人物站位',
@@ -66,10 +67,12 @@ function worldCards(bundle = {}) {
     <div class="scene-world-card-body">
       <p>${escapeHtml(world.story_purpose || world.description || '等待补充当前场景的剧情作用')}</p>
       <div class="scene-world-capabilities">${capabilityChips(world)}</div>
-      <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · 版本 ${world.revision || 1}</small>
+      <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '360全景', spatial_3d: '3D漫游', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
     </div>
     <div class="scene-world-card-actions">
       <button class="btn small primary" type="button" data-enter-scene-world="${escapeHtml(world.id)}">进入场景</button>
+      <button class="btn small" type="button" data-edit-scene-world="${escapeHtml(world.id)}">编辑场景设定</button>
+      <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">规划360 / 3D</button>
       <button class="btn small" type="button" data-scene-world-tab-target="matrix">人物×场景</button>
       <button class="btn small" type="button" data-scene-world-tab-target="transitions">查看衔接</button>
     </div>
@@ -80,11 +83,12 @@ function characterWorldMatrix(bundle = {}) {
   const worlds = list(bundle.scene_worlds);
   const rows = list(bundle.production_manifest?.character_world_matrix);
   if (!rows.length) return '<div class="scene-world-empty">当前任务没有人物；场景世界仍可作为无人产品或环境广告使用。</div>';
-  return `<div class="character-world-matrix-wrap"><table class="character-world-matrix">
+  const statusLabel = cell => ({ confirmed: cell.shot_count ? `已绑定 ${cell.shot_count} 镜` : '确认出场', suggested: '建议出场', excluded: '不出场', unassigned: '待确认' }[cell.presence] || '待确认');
+  return `<div class="character-world-matrix-actions"><p>可直接确认每个人物在哪些场景出场；人物档案换版本后仍按稳定人物 ID 保留分配。</p><button class="btn primary" type="button" data-save-world-assignments>保存人物分配</button></div><div class="character-world-matrix-wrap"><table class="character-world-matrix">
     <thead><tr><th>人物</th>${worlds.map(world => `<th>${escapeHtml(world.name)}</th>`).join('')}</tr></thead>
     <tbody>${rows.map(row => `<tr><th><b>${escapeHtml(row.name)}</b><small>${escapeHtml(row.wardrobe || '沿用人物档案穿戴版本')}</small></th>${worlds.map(world => {
       const cell = list(row.cells).find(item => item.world_id === world.id) || {};
-      return `<td class="${cell.presence === 'confirmed' ? 'is-confirmed' : ''}"><b>${cell.presence === 'confirmed' ? `已绑定 ${cell.shot_count || 0} 镜` : '待分配'}</b><small>${escapeHtml(cell.role || '可在分镜规划时指定')}</small></td>`;
+      return `<td class="is-${escapeHtml(cell.presence || 'unassigned')}"><b>${escapeHtml(statusLabel(cell))}</b><small>${escapeHtml(cell.reason || '尚未确认人物与场景关系')}</small><select data-world-assignment data-character-id="${escapeHtml(row.character_id)}" data-world-id="${escapeHtml(world.id)}" aria-label="${escapeHtml(`${row.name}在${world.name}的出场状态`)}"><option value="confirmed" ${['confirmed', 'suggested'].includes(cell.presence) ? 'selected' : ''}>出场</option><option value="excluded" ${cell.presence === 'excluded' ? 'selected' : ''}>不出场</option><option value="unassigned" ${cell.presence === 'unassigned' ? 'selected' : ''}>待确认</option></select><input data-world-assignment-role value="${escapeHtml(cell.role || '')}" placeholder="角色、动作或服装说明"></td>`;
     }).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
 }
@@ -298,6 +302,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     || nodes.find(node => String(node.view_key || '').toLowerCase() !== 'layout')
     || nodes[0];
   const interactionNode = nodes.find(node => String(node.view_key || '').toLowerCase() === 'interaction') || primaryNode;
+  const panoramaNode = nodes.find(node => node.is_panorama);
   let currentNode = primaryNode;
 
   const showCanvas = () => {
@@ -329,6 +334,8 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.dataset.activePhotoNode = String(node.id || '');
   };
   const showMode = mode => {
+    if (mode === 'panorama') return panoramaNode ? showPhoto(panoramaNode) : showPhoto(primaryNode);
+    if (mode === 'spatial') return showCanvas();
     if (mode === 'structure') return layoutNode ? showPhoto(layoutNode) : showCanvas();
     if (mode === 'blocking') return showPhoto(interactionNode);
     if (mode === 'camera') return showPhoto(currentNode || primaryNode);
@@ -373,7 +380,9 @@ async function openSceneWorldStudio(bundle, world) {
   overlay.innerHTML = `<section>
     <header><div><small>${escapeHtml(world.capabilities?.world_mode || 'scene_world')} · 版本 ${world.revision || 1}</small><h2>${escapeHtml(world.name)}</h2><p>${escapeHtml(world.story_purpose || world.description || '场景世界交互预演')}</p></div><button type="button" data-close-scene-world aria-label="关闭">×</button></header>
     <nav class="scene-world-view-modes">
-      <button class="active" type="button" data-world-mode="model">${hasRealPhotos ? '真实场景' : '场景结构'}</button>
+      <button class="active" type="button" data-world-mode="model">${hasRealPhotos ? '真实图片' : '场景结构'}</button>
+      <button type="button" data-world-mode="panorama" ${world.capabilities?.supports_panorama ? '' : 'disabled title="当前没有2:1全景观察点"'}>360全景</button>
+      <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度或空间模型"'}>3D漫游</button>
       <button type="button" data-world-mode="structure">结构 / 路线</button>
       <button type="button" data-world-mode="blocking">人物站位</button>
       <button type="button" data-world-mode="camera">机位与镜头</button>
@@ -419,6 +428,62 @@ export function bindSceneWorldWorkspace(host, bundle = {}) {
     const world = worldById(bundle, button.dataset.enterSceneWorld);
     if (world) openSceneWorldStudio(bundle, world);
   }));
+  root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', () => {
+    const world = worldById(bundle, button.dataset.planSceneExperience);
+    if (world) openSceneExperiencePlanner(bundle, world);
+  }));
+  root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const assignments = [...root.querySelectorAll('[data-world-assignment]')].map(select => ({
+      character_id: select.dataset.characterId,
+      world_id: select.dataset.worldId,
+      presence: select.value,
+      role: select.closest('td')?.querySelector('[data-world-assignment-role]')?.value || '',
+    }));
+    button.disabled = true;
+    try {
+      const result = await request(`/api/story-ad/projects/${encodeURIComponent(bundle.project.id)}/scene-world-assignments`, {
+        method: 'PUT',
+        body: { assignments, expected_revision: bundle.production_manifest?.assignment_revision || 1 },
+      });
+      bundle.production_manifest = result.manifest || bundle.production_manifest;
+      toast('人物与场景分配已保存。后续人物图片换版本不会清空该关系。', 'success');
+    } catch (error) { toast(error.message, 'danger'); } finally { button.disabled = false; }
+  });
+}
+
+function openSceneExperiencePlanner(bundle, world) {
+  const current = world.experience || {};
+  const overlay = document.createElement('div');
+  overlay.className = 'scene-experience-planner';
+  overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前内容选择需要的空间体验；普通图片不会被冒充为360或3D。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视</option><option value="spatial_3d">多点3D漫游</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="例如：从入口进入主展示区，再到产品细节区；也可以是单一室内、纯外景、棚拍、数字界面或抽象空间。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>产出边界</b><p>360需要2:1全景观察点；3D漫游还需要多观察点、深度/几何和连接路线。保存这里的规划不会消耗生成次数，也不会把现有五张图片伪装成空间模型。</p></div></div><footer><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
+  document.body.appendChild(overlay);
+  document.body.classList.add('modal-open');
+  const form = overlay.querySelector('form');
+  form.elements.requested_mode.value = current.requested_mode || current.current_mode || 'photo_views';
+  form.elements.source_mode.value = current.source_mode || 'existing_assets';
+  const close = () => { overlay.remove(); document.body.classList.remove('modal-open'); };
+  overlay.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
+  overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      const requestedMode = form.elements.requested_mode.value;
+      await saveSceneWorld(bundle.project.id, world, { experience: {
+        ...current,
+        requested_mode: requestedMode,
+        source_mode: form.elements.source_mode.value,
+        observation_point_target: Math.max(1, Math.min(30, Number(form.elements.observation_point_target.value) || 1)),
+        route_brief: form.elements.route_brief.value.trim(),
+        status: requestedMode === current.current_mode ? current.status || 'base_ready' : 'planned',
+      } });
+      toast('空间规划已保存。需要新增全景或3D素材时，系统会按该规划生成或接收上传素材。', 'success');
+      close();
+      location.reload();
+    } catch (error) { toast(error.message, 'danger'); submit.disabled = false; }
+  });
 }
 
 export async function saveSceneWorld(taskId, world, patch = {}) {

@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-photo-world-v3';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
 import { confirmDialog } from '../components/dialog.js';
 
 function beatEditor(beat = {}, index = 0) {

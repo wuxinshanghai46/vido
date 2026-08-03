@@ -193,13 +193,13 @@ export function mediaPreview(item = {}, options = {}) {
   const sourceImageUrl = item.image_url || item.imageUrl || '';
   const imageUrl = item.thumbnail_url || sourceImageUrl;
   const videoUrl = item.video_url || item.videoUrl || '';
-  const url = imageUrl || videoUrl || item.media_url || item.url || '';
+  const url = videoUrl || imageUrl || item.media_url || item.url || '';
   const label = options.label || item.name || item.title || '媒体';
-  const videoLike = !imageUrl && (Boolean(videoUrl)
+  const videoLike = Boolean(videoUrl)
     || ['video', 'clip', 'final'].includes(String(item.type || item.kind || '').toLowerCase())
-    || /\.(?:mp4|webm|mov)(?:\?|$)/i.test(url));
+    || /\.(?:mp4|webm|mov)(?:\?|$)/i.test(url);
   if (url && videoLike) {
-    return `<video class="media" src="${escapeHtml(url)}" preload="none" ${options.controls ? 'controls' : 'muted'} playsinline aria-label="${escapeHtml(label)}"></video>`;
+    return `<video class="media" src="${escapeHtml(url)}" ${imageUrl ? `poster="${escapeHtml(imageUrl)}"` : ''} preload="metadata" ${options.controls ? 'controls' : 'muted data-hover-video-preview tabindex="0"'} playsinline aria-label="${escapeHtml(label)}"></video>`;
   }
   if (url) {
     const previewUrl = `${url}${url.includes('?') ? '&' : '?'}thumb=${options.width || 480}`;
@@ -210,6 +210,34 @@ export function mediaPreview(item = {}, options = {}) {
     return image;
   }
   return `<div class="media-placeholder" aria-label="${escapeHtml(label)}"><span>${escapeHtml(options.symbol || '素材')}</span></div>`;
+}
+
+export function bindHoverVideoPreviews(scope = document) {
+  const cleanups = [];
+  scope.querySelectorAll('video[data-hover-video-preview]').forEach(video => {
+    if (video.dataset.hoverPreviewBound === 'true') return;
+    video.dataset.hoverPreviewBound = 'true';
+    video.muted = true;
+    video.loop = true;
+    const play = () => video.play().catch(() => {});
+    const stop = () => {
+      video.pause();
+      try { video.currentTime = 0; } catch {}
+    };
+    video.addEventListener('pointerenter', play);
+    video.addEventListener('focus', play);
+    video.addEventListener('pointerleave', stop);
+    video.addEventListener('blur', stop);
+    cleanups.push(() => {
+      stop();
+      video.removeEventListener('pointerenter', play);
+      video.removeEventListener('focus', play);
+      video.removeEventListener('pointerleave', stop);
+      video.removeEventListener('blur', stop);
+      delete video.dataset.hoverPreviewBound;
+    });
+  });
+  return () => cleanups.forEach(cleanup => cleanup());
 }
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {

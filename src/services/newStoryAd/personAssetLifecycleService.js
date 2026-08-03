@@ -23,7 +23,22 @@ function carryContract(contract = {}, revision = 1) {
   return next;
 }
 
-function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}) {
+function personChangeScope(options = {}) {
+  return ['visual', 'visual_dossier', 'appearance', 'wardrobe', 'accessories'].includes(String(options.change_kind || options.changeKind || '').trim().toLowerCase())
+    ? 'person_visual'
+    : 'person';
+}
+
+function stableCastProfileId(previousProfiles = [], asset = {}, index = 0) {
+  const incoming = String(asset.subject_profile?.id || '').trim();
+  const incomingName = String(asset.subject_profile?.displayName || asset.name || '').trim();
+  const exact = previousProfiles.find(profile => incoming && [profile.id, profile.cast_id, profile.castId]
+    .map(value => String(value || '').trim()).includes(incoming));
+  const named = previousProfiles.find(profile => incomingName && String(profile.displayName || profile.name || '').trim() === incomingName);
+  return String(exact?.id || named?.id || previousProfiles[index]?.id || incoming || asset.actor_id || asset.id || `cast_${index + 1}`);
+}
+
+function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -50,7 +65,8 @@ function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}) {
     person_contract: personContract,
     revisions: { ...(previousCtx.revisions || {}), person: personRevision },
   };
-  const invalidated = revisionService.invalidateOutputs(storage, taskId, 'person');
+  const changeScope = personChangeScope(options);
+  const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
   storage.saveOutput(taskId, 'context', next);
   storage.saveOutput(taskId, 'person_contract', personContract);
   storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
@@ -58,10 +74,18 @@ function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}) {
     status: personContract.status === 'verified' ? 'done' : 'review',
     output_summary: personContract.status === 'verified' ? '人物资产已生成并自动验证' : '人物资产已生成，等待处理验证结果',
   });
-  return { person_asset: committedAsset, person_contract: personContract, invalidated_outputs: invalidated };
+  const visualRefresh = {
+    change_scope: changeScope,
+    person_revision: personRevision,
+    invalidated_outputs: invalidated,
+    preserved_outputs: changeScope === 'person_visual' ? ['blueprint', 'storyboard_table', 'storyboard_meta', 'tts_audio'] : [],
+    updated_at: new Date().toISOString(),
+  };
+  storage.saveOutput(taskId, 'person_visual_refresh', visualRefresh);
+  return { person_asset: committedAsset, person_contract: personContract, invalidated_outputs: invalidated, visual_refresh: visualRefresh };
 }
 
-function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
+function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
@@ -88,9 +112,10 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     subject_board_url: bundle.subject_board_url || '',
     production_usable_actor: personContract?.status === 'verified',
   } : null;
+  const previousProfiles = Array.isArray(previousCtx.cast_profiles) ? previousCtx.cast_profiles : [];
   const castProfiles = castAssets.map((asset, index) => subjectProfileText.canonicalProfile({
     ...(asset.subject_profile && typeof asset.subject_profile === 'object' ? asset.subject_profile : {}),
-    id: asset.actor_id || asset.id || `cast_${index + 1}`,
+    id: stableCastProfileId(previousProfiles, asset, index),
     name: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
     displayName: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
     roleName: asset.subject_profile?.roleName || asset.cast_role || `角色${index + 1}`,
@@ -119,7 +144,8 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     subject_board_url: bundle.subject_board_url || '',
     revisions: { ...(previousCtx.revisions || {}), person: personRevision },
   };
-  const invalidated = revisionService.invalidateOutputs(storage, taskId, 'person');
+  const changeScope = personChangeScope(options);
+  const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
   storage.saveOutput(taskId, 'context', next);
   if (personContract) storage.saveOutput(taskId, 'person_contract', personContract);
   if (bundle.pet_contract) storage.saveOutput(taskId, 'pet_contract', bundle.pet_contract);
@@ -128,10 +154,18 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}) {
     status: (!personContract || personContract.status === 'verified') && (!bundle.pet_contract || bundle.pet_contract.status === 'verified') ? 'done' : 'review',
     output_summary: `主体资产已建立：${castAssets.length}个人物、${petProfiles.length}个宠物`,
   });
+  const visualRefresh = {
+    change_scope: changeScope,
+    person_revision: personRevision,
+    invalidated_outputs: invalidated,
+    preserved_outputs: changeScope === 'person_visual' ? ['blueprint', 'storyboard_table', 'storyboard_meta', 'tts_audio'] : [],
+    updated_at: new Date().toISOString(),
+  };
+  storage.saveOutput(taskId, 'person_visual_refresh', visualRefresh);
   return {
     person_asset: personAsset, person_contract: personContract, cast_profiles: castProfiles,
     pet_profiles: petProfiles, pet_contract: bundle.pet_contract || null,
-    subject_board_url: bundle.subject_board_url || '', invalidated_outputs: invalidated,
+    subject_board_url: bundle.subject_board_url || '', invalidated_outputs: invalidated, visual_refresh: visualRefresh,
   };
 }
 
@@ -156,6 +190,8 @@ function projectLatestSubjectCheckpoint(visibleRows = [], sourceRows = []) {
 module.exports = {
   contractMatchesInput,
   carryContract,
+  personChangeScope,
+  stableCastProfileId,
   commitGeneratedPersonAsset,
   commitGeneratedSubjectAssets,
   latestSubjectCheckpointRow,

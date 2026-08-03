@@ -1,9 +1,9 @@
 import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-photo-world-v3';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-regeneration-v4';
 import { confirmDialog } from '../components/dialog.js';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-photo-world-v3';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-photo-world-v3';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-photo-world-v3';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-world-regeneration-v4';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-world-regeneration-v4';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-world-regeneration-v4';
 
 const GROUPS = [
   ['people', '人物'],
@@ -79,6 +79,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       entry.id && rows.findIndex(candidate => candidate.kind === entry.kind && candidate.id === entry.id && candidate.index === entry.index) === entryIndex
     ));
     payload.regenerate_selected = true;
+    payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
   }
   return payload;
 }
@@ -275,7 +276,7 @@ export async function mount(host, context) {
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
     const regeneratingCompletePerson = group === 'people' && personAssetState(target || {}) === 'complete_dossier';
     const confirmation = regeneratingCompletePerson
-      ? `将为“${target.name}”重新生成完整人物档案：身体视角、面部与发型、6 种表情、6 种动作，以及服装、鞋履和配饰细节，共 4 个分类图集和 20 项拆分视图。`
+      ? `将为“${target.name}”重新生成视觉档案：身体视角、面部与发型、6 种表情、6 种动作，以及服装、鞋履和配饰细节，共 4 个分类图集和 20 项拆分视图。人物身份、剧情蓝图、文字故事板、场景和人物场景分配保持不变；完成后只需要刷新草图、关键帧和视频。`
       : `本次将提交 ${selected} 个缺失或选中的主体生成。系统会先保留用户设定并自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型；未选且已有四视图的主体会原样保留。`;
     if (!await confirmDialog(confirmation, {
       title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产'),
@@ -284,7 +285,7 @@ export async function mount(host, context) {
     try {
       setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
       await store.runStage('subject-assets', payload);
-      toast(regeneratingCompletePerson ? '完整人物档案重生成已提交，4 个分类图集和 20 项视图会全部建立新版本。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
+      toast(regeneratingCompletePerson ? '人物视觉档案重生成已提交；剧情、文字故事板和场景分配会继续保留。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
       generationKeys.delete(intent);
       return true;
     } catch (error) {

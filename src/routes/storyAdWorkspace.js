@@ -178,6 +178,20 @@ router.put('/projects/:taskId/scene-worlds/:worldId', asyncRoute(async (req, res
   res.json({ success: true, task_id: req.params.taskId, world: result.worlds.find(world => world.id === current.id) || saved, manifest: result.manifest });
 }));
 
+router.put('/projects/:taskId/scene-world-assignments', asyncRoute(async (req, res) => {
+  const task = projectForRequest(req);
+  const saved = sceneWorlds.saveAssignments(req.params.taskId, req.body?.assignments || [], {
+    expected_revision: req.body?.expected_revision,
+    content_revision: Number(task.content_revision || 1) || 1,
+  });
+  const bundle = projectBundles.buildProjectBundle(req.params.taskId, {
+    sections: 'summary,assets,shots',
+    user: currentUser(req),
+  });
+  const result = sceneWorlds.resolve(req.params.taskId, bundle);
+  res.json({ success: true, task_id: req.params.taskId, ...saved, manifest: result.manifest });
+}));
+
 router.post('/projects/:taskId/materials', asyncRoute(async (req, res) => {
   const task = projectForRequest(req);
   const body = req.body || {};

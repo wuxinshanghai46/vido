@@ -1372,7 +1372,9 @@ async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generati
       cast_assets: subjectAssetPersistence.restoreGeneratedDossierFields(persistedCast, bundle.cast_assets),
     };
     const committed = taskId
-      ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {})
+      ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {}, {
+          change_kind: body.person_change_kind || body.change_kind || (body.regenerate_selected ? 'visual_dossier' : 'semantic'),
+        })
       : {
           person_asset: normalizedBundle.cast_assets.length ? {
             id: `cast_bundle_${generationId}`,

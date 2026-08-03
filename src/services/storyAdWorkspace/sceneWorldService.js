@@ -1,6 +1,6 @@
 const storage = require('../newStoryAd/storageService');
 
-const SCENE_WORLD_SCHEMA_VERSION = 1;
+const SCENE_WORLD_SCHEMA_VERSION = 2;
 
 function clean(value, max = 240) {
   return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -55,6 +55,12 @@ function panoramaAssets(scene = {}) {
   return [...(direct ? [{ image_url: direct, projection: 'equirectangular' }] : []), ...rows];
 }
 
+function spatialModelAssets(scene = {}) {
+  const assets = scene.scene_world_assets || scene.sceneWorldAssets || {};
+  return list(assets.models || assets.spatial_models || scene.spatial_models)
+    .filter(item => clean(item?.url || item?.model_url || item?.mesh_url || item, 1000));
+}
+
 /**
  * Capabilities are inferred from the requested content, never from a fixed
  * industry template. Explicit user/plan overrides always win.
@@ -80,6 +86,7 @@ function inferCapabilities(scene = {}) {
     supports_panorama: boolOverride(explicit, 'supports_panorama', panoramaCount > 0),
     supports_structure_map: boolOverride(explicit, 'supports_structure_map', physical && (enclosed || open || hasLayoutView)),
     supports_3d_proxy: boolOverride(explicit, 'supports_3d_proxy', !digital && (physical || abstract || stage)),
+    supports_spatial_model: boolOverride(explicit, 'supports_spatial_model', spatialModelAssets(scene).length > 0),
     supports_navigation: boolOverride(explicit, 'supports_navigation', physical && (panoramaCount > 0 || photoViewCount > 1)),
     supports_camera_orbit: boolOverride(explicit, 'supports_camera_orbit', !digital && (stage || abstract || physical)),
     supports_character_blocking: boolOverride(explicit, 'supports_character_blocking', scene.no_human !== true && !/纯产品|无人|无人物/i.test(text)),
@@ -212,6 +219,9 @@ function baseWorld(scene = {}, index = 0) {
   const cameras = normalizeCameras(scene);
   const views = sceneViews(scene);
   const layoutView = views.find(view => String(view.key || view.view || '').toLowerCase() === 'layout');
+  const panoramaCount = panoramaAssets(scene).length;
+  const spatialModelCount = spatialModelAssets(scene).length;
+  const currentExperience = spatialModelCount ? 'spatial_3d' : (panoramaCount ? 'panorama_360' : (views.length ? 'photo_views' : 'structure_proxy'));
   return {
     id: clean(scene.id || `scene-${index + 1}`, 120),
     schema_version: SCENE_WORLD_SCHEMA_VERSION,
@@ -228,9 +238,22 @@ function baseWorld(scene = {}, index = 0) {
       image_url: clean(scene.image_url, 1000),
       layout_image_url: clean(scene.layout?.image_url || layoutView?.image_url || layoutView?.url, 1000),
       photo_view_count: views.length,
-      panorama_count: panoramaAssets(scene).length,
+      panorama_count: panoramaCount,
+      spatial_model_count: spatialModelCount,
       legacy_view_count: views.length,
       source_revision: finite(scene.revision, 0),
+    },
+    experience: {
+      current_mode: currentExperience,
+      requested_mode: currentExperience,
+      status: ['photo_views', 'structure_proxy'].includes(currentExperience) ? 'base_ready' : 'ready',
+      source_mode: 'existing_assets',
+      observation_point_target: panoramaCount || 1,
+      route_brief: '',
+      requirements: {
+        panorama_360: panoramaCount ? [] : ['至少一个 2:1 等距柱状全景观察点'],
+        spatial_3d: spatialModelCount ? [] : ['多观察点或扫描素材', '深度/几何空间数据', '观察点连接与漫游路线'],
+      },
     },
     legacy_static_world: finite(scene.generation_contract_version || scene.scene_contract?.generation_contract_version, 0) > 0,
   };
@@ -245,6 +268,7 @@ function mergeWorld(base, override = {}) {
     schema_version: SCENE_WORLD_SCHEMA_VERSION,
     revision: Math.max(base.revision, finite(override.revision, base.revision)),
     capabilities: { ...base.capabilities, ...(override.capabilities || {}) },
+    experience: { ...base.experience, ...(override.experience || {}) },
     zones: list(override.zones).length ? override.zones : base.zones,
     cameras: list(override.cameras).length ? override.cameras : base.cameras,
     observation_nodes: list(override.observation_nodes).length ? override.observation_nodes : base.observation_nodes,
@@ -267,30 +291,57 @@ function buildSceneWorlds(bundle = {}, overrides = {}) {
   }));
 }
 
-function characterWorldMatrix(bundle = {}, worlds = []) {
+function historicalStoryboard(taskId, bundle = {}, worlds = []) {
+  if (!taskId || list(bundle.storyboard?.shots).length || typeof storage.listArtifacts !== 'function') return null;
+  const worldIds = new Set(worlds.map(world => world.id));
+  const names = list(bundle.assets?.people).flatMap(person => [person.name, person.profile?.displayName]).map(value => clean(value, 120)).filter(Boolean);
+  return storage.listArtifacts(taskId, 'storyboard_table').find(artifact => {
+    if (!['published', 'carried_forward'].includes(String(artifact.qa_status || ''))) return false;
+    return list(artifact.payload).some(shot => {
+      const sceneId = clean(shot.scene_id || shot.scene_asset_id, 120);
+      const text = list(shot.characters).map(item => clean(item?.name || item, 120)).join(' ');
+      return worldIds.has(sceneId) && (!text || names.some(name => text.includes(name)));
+    });
+  }) || null;
+}
+
+function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
   const people = list(bundle.assets?.people);
-  const shots = list(bundle.storyboard?.shots);
+  const currentShots = list(bundle.storyboard?.shots);
+  const historical = options.historical_storyboard || null;
+  const shots = currentShots.length ? currentShots : list(historical?.payload);
+  const shotSource = currentShots.length ? 'current_storyboard' : (shots.length ? 'published_history' : 'none');
+  const manual = new Map(list(options.assignments).map(item => [`${clean(item.character_id, 120)}:${clean(item.world_id, 120)}`, item]));
   return people.map((person, personIndex) => ({
     character_id: clean(person.subject_id || person.profile?.id || person.id || `person-${personIndex + 1}`, 120),
     name: clean(person.name || person.profile?.displayName || `人物 ${personIndex + 1}`, 120),
     wardrobe: clean(person.profile?.wardrobeText, 320),
     cells: worlds.map(world => {
+      const characterId = clean(person.subject_id || person.profile?.id || person.id || `person-${personIndex + 1}`, 120);
+      const explicit = manual.get(`${characterId}:${world.id}`);
       const matched = shots.filter(shot => {
         const sameWorld = clean(shot.scene_id || shot.scene_asset_id, 120) === world.id;
         const characterText = list(shot.characters).map(item => clean(item?.name || item, 120)).join(' ');
         return sameWorld && (!characterText || characterText.includes(person.name) || characterText.includes(person.profile?.displayName));
       });
+      const defaultSuggested = people.length === 1 && worlds.length === 1 && world.capabilities?.supports_character_blocking !== false;
+      const explicitPresence = clean(explicit?.presence, 30);
+      const presence = explicitPresence || (matched.length ? 'confirmed' : (defaultSuggested ? 'suggested' : 'unassigned'));
       return {
         world_id: world.id,
-        presence: matched.length ? 'confirmed' : 'unassigned',
+        presence,
         shot_count: matched.length,
-        role: clean(matched.map(shot => shot.action || shot.subject_action).filter(Boolean).join('；'), 260),
+        role: clean(explicit?.role || matched.map(shot => shot.action || shot.subject_action).filter(Boolean).join('；'), 260),
+        source: explicitPresence ? 'manual' : (matched.length ? shotSource : (defaultSuggested ? 'single_scene_default' : 'none')),
+        reason: explicitPresence ? '用户已明确设置人物是否在该场景出场'
+          : (matched.length ? `${shotSource === 'published_history' ? '来自历史已发布故事板' : '来自当前故事板'} ${matched.length} 个镜头`
+            : (defaultSuggested ? '当前只有一个人物和一个可出场场景，默认建议出场' : '尚未在故事板或人工分配中确认')),
       };
     }),
   }));
 }
 
-function productionManifest(bundle = {}, worlds = []) {
+function productionManifest(bundle = {}, worlds = [], options = {}) {
   const transitions = routeEdges(bundle, worlds);
   return {
     schema_version: 1,
@@ -304,8 +355,9 @@ function productionManifest(bundle = {}, worlds = []) {
       cameras: worlds.reduce((sum, world) => sum + list(world.cameras).length, 0),
       transitions: transitions.length,
     },
-    character_world_matrix: characterWorldMatrix(bundle, worlds),
+    character_world_matrix: characterWorldMatrix(bundle, worlds, options),
     transitions,
+    assignment_revision: Math.max(1, finite(options.assignment_revision, 1)),
   };
 }
 
@@ -313,7 +365,12 @@ function resolve(taskId, bundle = {}) {
   const stored = storage.getOutput(taskId, 'scene_world_overrides') || {};
   const overrides = stored.worlds && typeof stored.worlds === 'object' ? stored.worlds : {};
   const worlds = buildSceneWorlds(bundle, overrides);
-  return { worlds, manifest: productionManifest(bundle, worlds) };
+  const historical = historicalStoryboard(taskId, bundle, worlds);
+  return { worlds, manifest: productionManifest(bundle, worlds, {
+    assignments: stored.assignments,
+    assignment_revision: stored.assignment_revision,
+    historical_storyboard: historical,
+  }) };
 }
 
 function saveWorld(taskId, worldId, patch = {}, options = {}) {
@@ -340,9 +397,39 @@ function saveWorld(taskId, worldId, patch = {}, options = {}) {
   const payload = {
     schema_version: SCENE_WORLD_SCHEMA_VERSION,
     worlds: { ...(stored.worlds || {}), [worldId]: next },
+    assignments: list(stored.assignments),
+    assignment_revision: Math.max(1, finite(stored.assignment_revision, 1)),
   };
   storage.saveOutput(taskId, 'scene_world_overrides', payload, { content_revision: options.content_revision });
   return next;
+}
+
+function saveAssignments(taskId, assignments = [], options = {}) {
+  const stored = storage.getOutput(taskId, 'scene_world_overrides') || { schema_version: SCENE_WORLD_SCHEMA_VERSION, worlds: {} };
+  const current = Math.max(1, finite(stored.assignment_revision, 1));
+  const expected = finite(options.expected_revision, 0);
+  if (expected && expected !== current) {
+    const error = new Error('人物与场景分配已被其他修改更新，请刷新后再保存');
+    error.status = 409;
+    error.code = 'SCENE_WORLD_ASSIGNMENT_CONFLICT';
+    error.current_world_revision = current;
+    throw error;
+  }
+  const normalized = list(assignments).slice(0, 500).map(item => ({
+    character_id: clean(item.character_id, 120),
+    world_id: clean(item.world_id, 120),
+    presence: ['confirmed', 'excluded', 'unassigned'].includes(clean(item.presence, 30)) ? clean(item.presence, 30) : 'unassigned',
+    role: clean(item.role, 260),
+  })).filter(item => item.character_id && item.world_id);
+  const payload = {
+    schema_version: SCENE_WORLD_SCHEMA_VERSION,
+    worlds: stored.worlds || {},
+    assignments: normalized,
+    assignment_revision: current + 1,
+    updated_at: new Date().toISOString(),
+  };
+  storage.saveOutput(taskId, 'scene_world_overrides', payload, { content_revision: options.content_revision });
+  return { assignments: normalized, assignment_revision: payload.assignment_revision };
 }
 
 module.exports = {
@@ -352,4 +439,6 @@ module.exports = {
   productionManifest,
   resolve,
   saveWorld,
+  saveAssignments,
+  historicalStoryboard,
 };

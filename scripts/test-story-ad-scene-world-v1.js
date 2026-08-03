@@ -118,10 +118,10 @@ const workspaceCss = fs.readFileSync(path.join(root, 'public/story-ad/workspace.
 const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
 
-assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-photo-world-v3'"));
+assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-world-regeneration-v4'"));
 assert(apiSource.includes("headers['X-VIDO-Client-Build']"));
 assert(serverSource.includes("code: 'CLIENT_BUILD_EXPIRED'"));
-assert(serverSource.includes("STORY_AD_CONTRACT_VERSION = 'scene-photo-world-v2'"));
+assert(serverSource.includes("STORY_AD_CONTRACT_VERSION = 'scene-world-v2'"));
 assert(serverSource.includes("legacy_story_ad_ui_enabled: false"));
 assert(serverSource.includes("res.redirect(302, '/story-ad/')"));
 const loadStart = bootstrapSource.indexOf('async function loadStoryAd()');
@@ -141,8 +141,8 @@ assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
 assert(workspaceSource.includes('data-focus-camera'));
 assert(workspaceSource.includes('character-world-matrix'));
-assert(appSource.includes('20260803-scene-photo-world-v3'));
-assert(indexSource.includes('20260803-scene-photo-world-v3'));
+assert(appSource.includes('20260803-scene-world-regeneration-v4'));
+assert(indexSource.includes('20260803-scene-world-regeneration-v4'));
 assert(!appSource.includes('20260803-person-age-lightbox-r33'));
 
 console.log(JSON.stringify({

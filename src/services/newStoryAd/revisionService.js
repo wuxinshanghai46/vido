@@ -163,6 +163,10 @@ function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
     product: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     scene: ['scene_config', 'scene_assets', 'blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
     person: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
+    // A dossier/image refresh does not change the story meaning. Keep the
+    // approved blueprint, text storyboard, scene bindings and voice, then
+    // refresh only outputs that contain the previous visual identity.
+    person_visual: ['storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'video_clips', 'video_scene_blocks', 'final_video'],
     creative: ['blueprint_draft_checkpoint', 'blueprint', 'storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     blueprint: ['storyboard_table', 'storyboard_meta', 'storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
     storyboard: ['storyboard_sketches', 'storyboard_sketch_batch', 'keyframe_contracts', 'keyframes', 'quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video'],
