@@ -15,6 +15,7 @@ function scene(id, name, description, extra = {}) {
     cameras: extra.cameras || [],
     scene_spec: extra.scene_spec || {},
     view_images: extra.view_images || [],
+    panorama_images: extra.panorama_images || [],
     revision: 3,
   };
 }
@@ -37,6 +38,11 @@ const bundle = {
         cameras: [
           { id: 'factory-wide', label: '生产线总览', normalized_position: [0.1, 0.2], look_at: [0.5, 0.5] },
           { id: 'factory-follow', label: '人物跟随机位', normalized_position: [0.8, 0.6], look_at: [0.45, 0.45] },
+        ],
+        view_images: [
+          { key: 'master', label: '主视角', image_url: '/assets/factory-master.png' },
+          { key: 'reverse', label: '反向视角', image_url: '/assets/factory-reverse.png' },
+          { key: 'layout', label: '俯视布局', image_url: '/assets/factory-layout.png' },
         ],
       }),
       scene('road', '城市道路', '车辆在道路与城市广场之间移动，包含航拍路线'),
@@ -66,8 +72,12 @@ const worlds = sceneWorlds.buildSceneWorlds(bundle);
 assert.strictEqual(worlds.length, 4, 'must create every requested scene world');
 assert.strictEqual(worlds[0].cameras.length, 2, 'camera count must follow content instead of forcing four cameras');
 assert.strictEqual(worlds[0].capabilities.supports_character_blocking, true);
+assert.strictEqual(worlds[0].capabilities.supports_photo_views, true, 'existing scene images must enable the real-photo viewer');
+assert.strictEqual(worlds[0].capabilities.supports_panorama, false, 'ordinary perspective images must not be labeled as 360 panorama');
+assert.strictEqual(worlds[0].source_asset.photo_view_count, 3);
+assert.strictEqual(worlds[0].source_asset.layout_image_url, '/assets/factory-layout.png');
 assert.strictEqual(worlds[1].capabilities.map_mode, 'route_map');
-assert.strictEqual(worlds[1].capabilities.supports_panorama, true);
+assert.strictEqual(worlds[1].capabilities.supports_panorama, false, 'physical scenes without panorama assets must not advertise 360');
 assert.strictEqual(worlds[2].capabilities.world_mode, 'digital_state');
 assert.strictEqual(worlds[2].capabilities.supports_panorama, false, 'digital UI must not receive a fake panorama');
 assert.strictEqual(worlds[2].capabilities.map_mode, 'state_graph');
@@ -98,12 +108,14 @@ const apiSource = fs.readFileSync(path.join(root, 'public/story-ad/api.js'), 'ut
 const serverSource = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
 const workspaceSource = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
+const workspaceCss = fs.readFileSync(path.join(root, 'public/story-ad/workspace.css'), 'utf8');
 const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'public/story-ad/index.html'), 'utf8');
 
-assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-world-v1'"));
+assert(apiSource.includes("CLIENT_BUILD_ID = '20260803-scene-photo-world-v3'"));
 assert(apiSource.includes("headers['X-VIDO-Client-Build']"));
 assert(serverSource.includes("code: 'CLIENT_BUILD_EXPIRED'"));
+assert(serverSource.includes("STORY_AD_CONTRACT_VERSION = 'scene-photo-world-v2'"));
 assert(serverSource.includes("legacy_story_ad_ui_enabled: false"));
 assert(serverSource.includes("res.redirect(302, '/story-ad/')"));
 const loadStart = bootstrapSource.indexOf('async function loadStoryAd()');
@@ -112,12 +124,19 @@ const loadBody = bootstrapSource.slice(loadStart, loadEnd);
 assert(loadBody.includes('location.assign(target)'), 'legacy entry must redirect to the new workspace');
 assert(!loadBody.includes('loadScript('), 'legacy entry must not load legacy UI scripts');
 assert(workspaceSource.includes('initNativeSceneWorldViewer'));
+assert(workspaceSource.includes('initSceneWorldViewer'));
+assert(workspaceSource.includes('scene-world-photo-viewer'));
+assert(workspaceSource.includes('data-focus-observation'));
+assert(workspaceSource.includes("'real-photo'"));
+assert(workspaceSource.includes('image.dataset.mediaOriginal = node.image_url'), 'dynamic scene view must replace media-delivery source of truth');
+assert(workspaceSource.includes("image.removeAttribute('srcset')"), 'dynamic scene view must clear stale responsive image candidates');
+assert(workspaceCss.includes('.scene-world-photo-error[hidden]{display:none}'), 'loaded scene image must suppress the stale error overlay');
 assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));
 assert(workspaceSource.includes('data-focus-camera'));
 assert(workspaceSource.includes('character-world-matrix'));
-assert(appSource.includes('20260803-scene-world-v1'));
-assert(indexSource.includes('20260803-scene-world-v1'));
+assert(appSource.includes('20260803-scene-photo-world-v3'));
+assert(indexSource.includes('20260803-scene-photo-world-v3'));
 assert(!appSource.includes('20260803-person-age-lightbox-r33'));
 
 console.log(JSON.stringify({

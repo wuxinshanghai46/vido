@@ -34,6 +34,27 @@ function worldText(scene = {}) {
   ].map(value => clean(value, 1200)).join(' ');
 }
 
+function sceneViews(scene = {}) {
+  return list(scene.view_images).filter(view => clean(view?.image_url || view?.url, 1000));
+}
+
+function panoramaAssets(scene = {}) {
+  const worldAssets = scene.scene_world_assets || scene.sceneWorldAssets || {};
+  const rows = [
+    ...list(scene.panorama_images),
+    ...list(scene.panoramas),
+    ...list(worldAssets.panoramas),
+    ...sceneViews(scene).filter(view => /panorama|equirect|cubemap|cube_face|360/i.test(clean([
+      view.key,
+      view.source_kind,
+      view.source_role,
+      view.projection,
+    ].join(' '), 300))),
+  ];
+  const direct = clean(scene.panorama_url || worldAssets.panorama_url, 1000);
+  return [...(direct ? [{ image_url: direct, projection: 'equirectangular' }] : []), ...rows];
+}
+
 /**
  * Capabilities are inferred from the requested content, never from a fixed
  * industry template. Explicit user/plan overrides always win.
@@ -47,13 +68,16 @@ function inferCapabilities(scene = {}) {
   const stage = /棚拍|摄影棚|影棚|展示台|转台|产品台|无影棚|静物台|珠宝台/i.test(text);
   const enclosed = /室内|房间|展厅|门店|商场|办公室|教室|医院|实验室|工厂|车间|仓库|厨房|餐厅|酒店|住宅|舱内|车内/i.test(text);
   const physical = !digital && !abstract;
+  const photoViewCount = sceneViews(scene).length;
+  const panoramaCount = panoramaAssets(scene).length;
   const inferredMapMode = digital ? 'state_graph' : (open ? 'route_map' : (enclosed ? 'structure_map' : 'stage_map'));
   const inferredWorldMode = digital ? 'digital_state' : (abstract ? 'abstract_cg' : (stage ? 'studio_stage' : (open ? 'physical_open' : 'physical_space')));
   return {
-    supports_panorama: boolOverride(explicit, 'supports_panorama', physical && (enclosed || open)),
+    supports_photo_views: boolOverride(explicit, 'supports_photo_views', photoViewCount > 0),
+    supports_panorama: boolOverride(explicit, 'supports_panorama', panoramaCount > 0),
     supports_structure_map: boolOverride(explicit, 'supports_structure_map', physical && (enclosed || open)),
     supports_3d_proxy: boolOverride(explicit, 'supports_3d_proxy', !digital && (physical || abstract || stage)),
-    supports_navigation: boolOverride(explicit, 'supports_navigation', physical && (enclosed || open)),
+    supports_navigation: boolOverride(explicit, 'supports_navigation', physical && (panoramaCount > 0 || photoViewCount > 1)),
     supports_camera_orbit: boolOverride(explicit, 'supports_camera_orbit', !digital && (stage || abstract || physical)),
     supports_character_blocking: boolOverride(explicit, 'supports_character_blocking', scene.no_human !== true && !/纯产品|无人|无人物/i.test(text)),
     supports_motion_path: boolOverride(explicit, 'supports_motion_path', !stage || /移动|行走|驾驶|跟随|穿行|路线/i.test(text)),
@@ -125,12 +149,12 @@ function normalizeCameras(scene = {}) {
     lens: clean(camera.lens || camera.lens_class, 80),
     movement: clean(camera.movement, 220),
     pose: cameraPose(camera, index, rows.length),
-    image_url: clean(camera.image_url, 1000),
+    image_url: clean(camera.image_url || camera.reference_image_url, 1000),
   }));
 }
 
 function observationNodes(scene = {}, zones = [], cameras = []) {
-  const views = list(scene.view_images);
+  const views = sceneViews(scene);
   const nodeCount = Math.max(1, Math.min(12, Math.max(zones.length, cameras.length, views.length)));
   return Array.from({ length: nodeCount }, (_, index) => {
     const zone = zones[index % zones.length] || zones[0];
@@ -141,7 +165,15 @@ function observationNodes(scene = {}, zones = [], cameras = []) {
       name: clean(camera?.name || view?.label || zone?.name || `观察点 ${index + 1}`, 120),
       zone_id: clean(zone?.id, 120),
       camera_id: clean(camera?.id, 120),
-      image_url: clean(view?.image_url || camera?.image_url, 1000),
+      image_url: clean(view?.image_url || view?.url || camera?.image_url, 1000),
+      view_key: clean(view?.key || view?.view, 40),
+      projection: clean(view?.projection || view?.source_role, 80),
+      is_panorama: /panorama|equirect|cubemap|cube_face|360/i.test(clean([
+        view?.key,
+        view?.source_kind,
+        view?.source_role,
+        view?.projection,
+      ].join(' '), 300)),
       pose: camera?.pose || cameraPose({}, index, nodeCount),
     };
   });
@@ -175,6 +207,8 @@ function routeEdges(bundle = {}, worlds = []) {
 function baseWorld(scene = {}, index = 0) {
   const zones = normalizeZones(scene);
   const cameras = normalizeCameras(scene);
+  const views = sceneViews(scene);
+  const layoutView = views.find(view => String(view.key || view.view || '').toLowerCase() === 'layout');
   return {
     id: clean(scene.id || `scene-${index + 1}`, 120),
     schema_version: SCENE_WORLD_SCHEMA_VERSION,
@@ -189,8 +223,10 @@ function baseWorld(scene = {}, index = 0) {
     observation_nodes: observationNodes(scene, zones, cameras),
     source_asset: {
       image_url: clean(scene.image_url, 1000),
-      layout_image_url: clean(scene.layout?.image_url, 1000),
-      legacy_view_count: list(scene.view_images).length,
+      layout_image_url: clean(scene.layout?.image_url || layoutView?.image_url || layoutView?.url, 1000),
+      photo_view_count: views.length,
+      panorama_count: panoramaAssets(scene).length,
+      legacy_view_count: views.length,
       source_revision: finite(scene.revision, 0),
     },
     legacy_static_world: finite(scene.generation_contract_version || scene.scene_contract?.generation_contract_version, 0) > 0,

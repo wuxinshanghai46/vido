@@ -1,9 +1,9 @@
 import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-v1';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-photo-world-v3';
 import { confirmDialog } from '../components/dialog.js';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-world-v1';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-world-v1';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-world-v1';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-scene-photo-world-v3';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-scene-photo-world-v3';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260803-scene-photo-world-v3';
 
 const GROUPS = [
   ['people', '人物'],

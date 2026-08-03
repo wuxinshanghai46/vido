@@ -1,5 +1,5 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-scene-world-v1';
-import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-scene-world-v1';
+import { createProjectStore } from './store/projectStore.js?v=20260803-scene-photo-world-v3';
+import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-scene-photo-world-v3';
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,13 +14,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-scene-world-v1'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-scene-world-v1'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-scene-world-v1'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-scene-world-v1'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-scene-world-v1'),
-  final: () => import('./views/finalView.js?v=20260803-scene-world-v1'),
-  workflow: () => import('./views/workflowView.js?v=20260803-scene-world-v1'),
+  brief: () => import('./views/briefView.js?v=20260803-scene-photo-world-v3'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-scene-photo-world-v3'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-scene-photo-world-v3'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-scene-photo-world-v3'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-scene-photo-world-v3'),
+  final: () => import('./views/finalView.js?v=20260803-scene-photo-world-v3'),
+  workflow: () => import('./views/workflowView.js?v=20260803-scene-photo-world-v3'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

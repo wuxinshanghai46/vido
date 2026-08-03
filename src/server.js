@@ -8,8 +8,8 @@ const mediaDelivery = require('./services/mediaDeliveryService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-world-v1';
-const STORY_AD_CONTRACT_VERSION = 'scene-world-v1';
+const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || '20260803-scene-photo-world-v3';
+const STORY_AD_CONTRACT_VERSION = 'scene-photo-world-v2';
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
 const authStore = require('./models/authStore');

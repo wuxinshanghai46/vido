@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-world-v1';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-scene-photo-world-v3';
 import { confirmDialog, promptDialog } from '../components/dialog.js';
 
 const MATERIALS = [

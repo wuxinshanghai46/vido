@@ -1,5 +1,5 @@
 const TOKEN_KEYS = ['vido_token', 'token'];
-export const CLIENT_BUILD_ID = '20260803-scene-world-v1';
+export const CLIENT_BUILD_ID = '20260803-scene-photo-world-v3';
 export const CLIENT_CONTRACT_VERSION = 'scene-world-v1';
 let refreshPromise = null;
 

@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-scene-world-v1';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260803-scene-world-v1';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260803-scene-photo-world-v3';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260803-scene-photo-world-v3';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
