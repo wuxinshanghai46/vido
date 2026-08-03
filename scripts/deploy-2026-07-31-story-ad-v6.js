@@ -32,6 +32,8 @@ const files = [...new Set([
   'scripts/test-new-story-ad-v2-performance.js',
   'scripts/test-platform-module-navigation.js',
   'scripts/test-story-ad-workspace-v6.js',
+  'scripts/test-story-ad-detail-sketch-batch.js',
+  'scripts/test-story-ad-production-planning-upgrade.js',
   'scripts/test-story-ad-workspace-backend-projection.js',
   'scripts/test-story-ad-workspace-interactions.js',
   'scripts/test-story-ad-workspace-v6-ui-regressions.js',
