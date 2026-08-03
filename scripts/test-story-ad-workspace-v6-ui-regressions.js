@@ -240,13 +240,18 @@ assert.match(appWorkflowSource, /state\.completed \? '✓' : number/, '完成的
 
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
-  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'subjectGenerationPayload'],
+  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
   { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const planningModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanningDetails.js',
   ['sceneDetails'],
   { escapeHtml, mediaPreview, bindMediaLightbox() {}, personDossierShowcase() { return ''; } },
+);
+const dossierModule = loadBrowserModule(
+  'public/story-ad/views/personDossierShowcase.js',
+  ['personDossierShowcase'],
+  { escapeHtml, mediaPreview },
 );
 assert.match(assets, /data-confirm-assets/);
 assert.match(assets, /asset_setup_confirmed:\s*true/);
@@ -267,8 +272,19 @@ const completePerson = { ...legacyPerson, dossier_sheet: { image_url: '/dossier.
 assert.equal(assetModule.personAssetState(completePerson), 'complete_dossier');
 const completeCard = assetModule.assetCard(completePerson, 'people');
 assert.match(completeCard, /完整档案/);
-assert.match(completeCard, /重生成高清服装与配饰档案/);
+assert.match(completeCard, /重生成完整人物档案/);
+assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
 assert.match(completeCard, /data-generate-asset="legacy-person"/);
+const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性' } };
+const personEdit = assetModule.personEditForm(readableProfile);
+assert.doesNotMatch(personEdit, /name="age"|年龄范围|match_brief/, '人物编辑区不得再暴露内部年龄枚举或重复年龄字段');
+assert.match(personEdit, /外貌、气质与年龄（请在正文写明实际年龄）/);
+assert.match(personEdit, /年龄约28岁/);
+const personProfileDetails = assetModule.profileDetails(readableProfile, 'people');
+assert.doesNotMatch(personProfileDetails, /年龄范围|match_brief/);
+assert.match(personProfileDetails, /外貌、气质与年龄/);
+const dossierDetails = dossierModule.personDossierShowcase(readableProfile);
+assert.doesNotMatch(dossierDetails, /match_brief/, '人物档案风格关键词不得泄漏内部年龄占位值');
 
 const precisePayload = assetModule.subjectGenerationPayload({
   project: { id: 'precise-person-task' },

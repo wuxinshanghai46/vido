@@ -55,13 +55,19 @@ async function main() {
   assert.equal(pipeline.getStageDefaults('new_story_ad.storyboard_sketch')[0].model_id, 'gpt-image-2');
   assert(pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.storyboard_sketch'));
 
-  const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel', 'mediaPreview', 'nextLightboxIndex']);
+  const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel', 'mediaPreview', 'nextLightboxIndex', 'preloadLightboxUrl']);
   const preview = ui.mediaPreview({ thumbnail_url: '/thumb/a.jpg', image_url: '/full/a.png' }, { zoomable: true, zoomGroup: 'g' });
   assert.match(preview, /data-media-zoom-url="\/full\/a\.png"/);
   assert.match(preview, /src="\/thumb\/a\.jpg\?thumb=/);
   assert.equal(ui.nextLightboxIndex(1, 1, 4), 2);
   assert.equal(ui.nextLightboxIndex(3, 1, 4), 0);
   assert.equal(ui.nextLightboxIndex(0, -1, 4), 3);
+  const loadedLightboxUrl = await ui.preloadLightboxUrl('/thumb/next.png', () => {
+    const candidate = {};
+    Object.defineProperty(candidate, 'src', { set(value) { this.loaded = value; this.onload(); } });
+    return candidate;
+  });
+  assert.equal(loadedLightboxUrl, '/thumb/next.png', '灯箱必须先确认下一张预览已加载，再同步替换主图与字幕');
   const failedProgress = ui.generationProgressPanel({
     project: { status: 'failed', stage: 'storyboard_failed', active_generation_id: '', error: '审核失败' },
     generation: { progress: { stage: 'storyboard', status: 'failed', phase: 'review_failed', completed: 4, total: 4, percent: 100, current_index: 4, message: '审核失败' } },
@@ -73,6 +79,7 @@ async function main() {
   const css = read('public/story-ad/workspace.css');
   assert.match(css, /\.media-lightbox-nav\.is-prev\{left:22px\}/);
   assert.match(css, /\.media-lightbox-strip/);
+  assert.match(css, /\.media-lightbox\.is-switching figure>img\{opacity:0\}/, '切图期间不得继续显示上一张图片造成字幕与图片错位');
 
   const view = read('public/story-ad/views/storyboardView.js');
   assert.match(view, /批量重生成文字分镜/);

@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260803-person-age-lightbox-r33';
 import { confirmDialog, promptDialog } from '../components/dialog.js';
 
 const MATERIALS = [

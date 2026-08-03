@@ -8,6 +8,7 @@ const semantic = require('./productionSemanticLocalizationService');
 const benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService');
 const { projectedDossierItems } = require('./dossierItemProjectionService');
+const { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 
 /** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
@@ -40,7 +41,7 @@ function personProfile(source = {}, index = 0) {
     displayName: clean(source.displayName || source.display_name || source.name, 120),
     roleName: clean(source.roleName || source.role_name || source.role, 120),
     age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
-    appearanceText: clean(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description, 800),
+    appearanceText: normalizeAppearanceAgeText(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description),
     wardrobeText: clean(source.wardrobeText || source.wardrobe?.userPrompt || source.wardrobe?.description || source.outfit, 600),
     hairMakeupText: clean(source.hairMakeupText || source.hairMakeup?.userPrompt || source.hairMakeup?.description || source.hair_style, 500),
     negativeText: clean(source.negativeText || source.negative, 600),

@@ -1,8 +1,8 @@
 import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-auto-completion-r30';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-person-age-lightbox-r33';
 import { confirmDialog } from '../components/dialog.js';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-auto-completion-r30';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-auto-completion-r30';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260803-person-age-lightbox-r33';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260803-person-age-lightbox-r33';
 
 const GROUPS = [
   ['people', '人物'],
@@ -138,7 +138,7 @@ function assetCard(item, group) {
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}`}</button>
       ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '完整人物档案' : '该动物资产'}</button>` : ''}
-      ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成高清服装与配饰档案</button>` : ''}
+      ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
       ${group === 'scenes' ? `<button class="btn small ${sceneGenerated ? '' : 'primary'}" type="button" data-generate-scene="${escapeHtml(item.id)}">${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button>` : ''}
@@ -158,8 +158,7 @@ function profileDetails(item = {}, group = '') {
   const profile = item.profile || {};
   const rows = group === 'people' ? [
     ['身份 / 关系', profile.roleName || item.role],
-    ['年龄范围', profile.age],
-    ['外貌与气质', profile.appearanceText],
+    ['外貌、气质与年龄', profile.appearanceText],
     ['服装 / 鞋 / 配饰', profile.wardrobeText],
     ['发型 / 妆造', profile.hairMakeupText],
     ['禁止项', profile.negativeText],
@@ -174,8 +173,7 @@ function legacyDossierBoard(item = {}, views = []) {
   const profile = item.profile || {};
   const facts = [
     ['身份 / 关系', profile.roleName || item.role || '待补充'],
-    ['年龄范围', profile.age || '待补充'],
-    ['形象气质', profile.appearanceText || '沿用现有参考图中的人物形象'],
+    ['形象、气质与年龄', profile.appearanceText || '沿用现有参考图中的人物形象'],
   ];
   const notes = [
     ['服装与配饰', profile.wardrobeText],
@@ -209,8 +207,8 @@ function personEditForm(item = {}) {
     ? `<textarea name="${name}" rows="3">${escapeHtml(value || '')}</textarea>`
     : `<input name="${name}" value="${escapeHtml(value || '')}">`}</label>`;
   return `<details class="person-edit-panel"><summary>修改人物信息</summary><form data-person-edit>
-    <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}${field('age', '年龄范围', profile.age)}</div>
-    ${field('appearanceText', '外貌与气质', profile.appearanceText, true)}
+    <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}</div>
+    ${field('appearanceText', '外貌、气质与年龄（请在正文写明实际年龄）', profile.appearanceText, true)}
     ${field('wardrobeText', '服装 / 鞋 / 配饰（可留空或只写明确要求）', profile.wardrobeText, true)}
     <p class="form-hint">生成前会保留你写下的每个要求，并只自动补齐缺少的服装组成、鞋履、配饰、配色和面料。</p>
     ${field('hairMakeupText', '发型 / 妆造', profile.hairMakeupText, true)}
@@ -271,14 +269,18 @@ export async function mount(host, context) {
     const validation = generationValidation(payload);
     if (validation) { toast(validation, 'warning'); return false; }
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
-    if (!await confirmDialog(`本次将提交 ${selected} 个缺失或选中的主体生成。系统会先保留用户设定并自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型；未选且已有四视图的主体会原样保留。`, {
-      title: target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产',
-      confirmText: '确认开始生成',
+    const regeneratingCompletePerson = group === 'people' && personAssetState(target || {}) === 'complete_dossier';
+    const confirmation = regeneratingCompletePerson
+      ? `将为“${target.name}”重建完整人物档案：身体视角、面部与发型、6 种表情、6 种动作，以及服装、鞋履和配饰细节，共 4 个分类图集和 20 项拆分视图。旧版会保留到新版完整生成并通过校验。`
+      : `本次将提交 ${selected} 个缺失或选中的主体生成。系统会先保留用户设定并自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型；未选且已有四视图的主体会原样保留。`;
+    if (!await confirmDialog(confirmation, {
+      title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产'),
+      confirmText: regeneratingCompletePerson ? '确认重生成完整档案' : '确认开始生成',
     })) return false;
     try {
-      setButtonBusy(button, true, '正在生成完整档案…', { elapsed: true });
+      setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
       await store.runStage('subject-assets', payload);
-      toast('人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
+      toast(regeneratingCompletePerson ? '完整人物档案重生成已提交，4 个分类图集和 20 项视图会全部建立新版本。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
       generationKeys.delete(intent);
       return true;
     } catch (error) {

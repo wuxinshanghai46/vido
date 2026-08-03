@@ -143,7 +143,9 @@ async function main() {
     { dataset: { mediaZoomGroup: 'person', mediaZoomUrl: '/next.png', mediaZoomLabel: '下一张' } },
   ], 'person');
   assert.deepEqual(Array.from(unique, item => item.url), ['/same.png', '/next.png']);
-  assert.match(uiSource, /image\.src = previewUrl[\s\S]+preload\.src = current\.url/, '灯箱必须先显示小图，再异步替换原图');
+  assert.match(uiSource, /displayedUrl = await preloadLightboxUrl\(previewUrl\)[\s\S]+image\.src = displayedUrl/, '灯箱必须等待预览图可用后再同步替换主图与字幕');
+  assert.match(uiSource, /image\.removeAttribute\('src'\)[\s\S]+overlay\.classList\.remove\('is-switching'\)/, '切换时必须清除旧主图并在新图提交后结束切换状态');
+  assert.match(uiSource, /<img data-media-lock="true" alt="">/, '动态大图必须阻止全局媒体优化器复用第一张图片地址');
   assert.match(uiSource, /data-media-preview-url="\$\{escapeHtml\(previewUrl\)\}"/, '灯箱预览地址必须复用已经请求的缩略图');
 
   const dossierUi = read('public/story-ad/views/personDossierShowcase.js');

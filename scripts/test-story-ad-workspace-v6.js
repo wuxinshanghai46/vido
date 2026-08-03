@@ -12,12 +12,19 @@ process.env.DB_ENABLED = '0';
 const storage = require('../src/services/newStoryAd/storageService');
 const storyAd = require('../src/services/newStoryAd');
 const projectBundles = require('../src/services/storyAdWorkspace/projectBundleService');
+const { normalizeAppearanceAgeText } = require('../src/services/storyAdWorkspace/personTextProjectionService');
 const graphProjection = require('../src/services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../src/services/storyAdWorkspace/graphLayoutService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
 
 const owner = { id: 'workspace-owner', role: 'user' };
 const otherUser = { id: 'workspace-other', role: 'user' };
+
+assert.equal(
+  normalizeAppearanceAgeText('年龄约28-，东方古典气质的现代女性'),
+  '年龄约28岁，东方古典气质的现代女性',
+  '工作区必须把被截断的年龄范围尾巴投影为可读实际年龄',
+);
 
 /** 建立不依赖模型的真实任务与真实产物。 */
 function seedProject() {

@@ -224,6 +224,16 @@ export function nextLightboxIndex(index = 0, direction = 1, total = 0) {
   return count ? (Number(index || 0) + Number(direction || 0) + count) % count : 0;
 }
 
+export function preloadLightboxUrl(url = '', createImage = () => new Image()) {
+  return new Promise((resolve, reject) => {
+    if (!url) return reject(new Error('图片地址为空'));
+    const candidate = createImage();
+    candidate.onload = () => resolve(url);
+    candidate.onerror = () => reject(new Error('图片加载失败'));
+    candidate.src = url;
+  });
+}
+
 export function bindMediaLightbox(scope = document) {
   if (!scope || scope.dataset?.mediaLightboxBound === 'true') return;
   if (scope.dataset) scope.dataset.mediaLightboxBound = 'true';
@@ -242,7 +252,7 @@ export function bindMediaLightbox(scope = document) {
     overlay.dataset.mediaLightbox = 'true';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img alt=""><figcaption><span></span><b></b></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
+    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img data-media-lock="true" alt=""><figcaption><span></span><b></b></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
     const image = overlay.querySelector('img');
     const caption = overlay.querySelector('figcaption span');
     const counter = overlay.querySelector('figcaption b');
@@ -259,42 +269,55 @@ export function bindMediaLightbox(scope = document) {
       const requestedIndex = index;
       const token = ++renderToken;
       const previewUrl = current.previewUrl || current.url;
-      image.src = previewUrl;
-      image.alt = current.label;
-      caption.textContent = current.label;
-      counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
-      overlay.dataset.currentMediaUrl = previewUrl;
       strip.querySelectorAll('[data-lightbox-index]').forEach(button => button.classList.toggle('active', Number(button.dataset.lightboxIndex) === requestedIndex));
       overlay.querySelectorAll('.media-lightbox-nav').forEach(button => { button.hidden = entries.length < 2; });
-      if (!current.url || current.url === previewUrl) {
-        overlay.classList.remove('is-loading');
-        overlay.removeAttribute('aria-busy');
-        return;
-      }
-      const preload = new Image();
-      overlay.classList.add('is-loading');
+      overlay.classList.add('is-loading', 'is-switching');
       overlay.setAttribute('aria-busy', 'true');
-      overlay.dataset.pendingMediaUrl = current.url;
-      preload.onload = () => {
+      overlay.dataset.pendingMediaUrl = previewUrl;
+      void (async () => {
+        let displayedUrl = '';
+        try {
+          displayedUrl = await preloadLightboxUrl(previewUrl);
+        } catch {
+          if (!current.url || current.url === previewUrl) throw new Error('图片加载失败');
+          displayedUrl = await preloadLightboxUrl(current.url);
+        }
         if (token !== renderToken) return;
-        image.src = current.url;
-        overlay.dataset.currentMediaUrl = current.url;
+        image.removeAttribute('src');
+        image.src = displayedUrl;
+        image.alt = current.label;
+        caption.textContent = current.label;
+        counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
+        overlay.dataset.currentMediaUrl = displayedUrl;
         delete overlay.dataset.pendingMediaUrl;
-        overlay.classList.remove('is-loading');
+        overlay.classList.remove('is-switching');
+        if (current.url && current.url !== displayedUrl) {
+          overlay.dataset.pendingMediaUrl = current.url;
+          try {
+            const originalUrl = await preloadLightboxUrl(current.url);
+            if (token !== renderToken) return;
+            image.removeAttribute('src');
+            image.src = originalUrl;
+            overlay.dataset.currentMediaUrl = originalUrl;
+          } catch {
+            if (token === renderToken) caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
+          }
+        }
+        if (token !== renderToken) return;
+        delete overlay.dataset.pendingMediaUrl;
+        overlay.classList.remove('is-loading', 'is-switching');
         overlay.removeAttribute('aria-busy');
         if (entries.length > 1) {
           prefetch(entries[nextLightboxIndex(requestedIndex, -1, entries.length)]);
           prefetch(entries[nextLightboxIndex(requestedIndex, 1, entries.length)]);
         }
-      };
-      preload.onerror = () => {
+      })().catch(() => {
         if (token !== renderToken) return;
-        caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
+        caption.textContent = `${current.label}（图片加载失败）`;
         delete overlay.dataset.pendingMediaUrl;
-        overlay.classList.remove('is-loading');
+        overlay.classList.remove('is-loading', 'is-switching');
         overlay.removeAttribute('aria-busy');
-      };
-      preload.src = current.url;
+      });
     };
     const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
     const move = direction => { index = nextLightboxIndex(index, direction, entries.length); render(); };

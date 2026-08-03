@@ -1,5 +1,5 @@
 import { request } from '../api.js';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260802-shooting-lightbox-r29';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260803-person-age-lightbox-r33';
 import { confirmDialog } from '../components/dialog.js';
 
 export function friendlyBindings(bundle = {}, shot = {}) {

@@ -95,8 +95,9 @@ function main() {
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
   // Keep the initial 100 KiB gate strict; the total source budget includes the
   // on-demand line-sketch batch workflow, HD dossier gallery, scene shooting
-  // details and reusable product-reference controls. Initial loading stays strict.
-  assert(allJsBytes <= 271 * 1024, `全部新模块 JS ${allJsBytes} bytes 超过 271 KiB`);
+  // details, reusable product-reference controls and atomic lightbox switching.
+  // Initial loading stays strict; the lazy-loaded source budget grows by 2 KiB.
+  assert(allJsBytes <= 273 * 1024, `全部新模块 JS ${allJsBytes} bytes 超过 273 KiB`);
 
   const workflow = read(path.join(ROOT, 'public/story-ad/views/workflowView.js'));
   assert(workflow.includes("addEventListener('pointermove'"), '画布必须支持指针平移');

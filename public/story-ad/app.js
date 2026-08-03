@@ -1,5 +1,5 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-auto-completion-r30';
-import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-auto-completion-r30';
+import { createProjectStore } from './store/projectStore.js?v=20260803-person-age-lightbox-r33';
+import { escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-person-age-lightbox-r33';
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
@@ -14,13 +14,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-auto-completion-r30'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-auto-completion-r30'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-auto-completion-r30'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-auto-completion-r30'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-auto-completion-r30'),
-  final: () => import('./views/finalView.js?v=20260803-auto-completion-r30'),
-  workflow: () => import('./views/workflowView.js?v=20260803-auto-completion-r30'),
+  brief: () => import('./views/briefView.js?v=20260803-person-age-lightbox-r33'),
+  assets: () => import('./views/assetCenterView.js?v=20260803-person-age-lightbox-r33'),
+  plot: () => import('./views/plotRoomView.js?v=20260803-person-age-lightbox-r33'),
+  storyboard: () => import('./views/storyboardView.js?v=20260803-person-age-lightbox-r33'),
+  shot: () => import('./views/shotDesignerView.js?v=20260803-person-age-lightbox-r33'),
+  final: () => import('./views/finalView.js?v=20260803-person-age-lightbox-r33'),
+  workflow: () => import('./views/workflowView.js?v=20260803-person-age-lightbox-r33'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
