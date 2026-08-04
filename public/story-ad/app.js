@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260803-reference-director-v9';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260803-reference-director-v9';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260803-reference-director-v9';
+import { createProjectStore } from './store/projectStore.js?v=20260804-reference-task-sync-v10';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260804-reference-task-sync-v10';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260804-reference-task-sync-v10';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260803-reference-director-v9'),
-  assets: () => import('./views/assetCenterView.js?v=20260803-reference-director-v9'),
-  plot: () => import('./views/plotRoomView.js?v=20260803-reference-director-v9'),
-  storyboard: () => import('./views/storyboardView.js?v=20260803-reference-director-v9'),
-  shot: () => import('./views/shotDesignerView.js?v=20260803-reference-director-v9'),
-  final: () => import('./views/finalView.js?v=20260803-reference-director-v9'),
-  workflow: () => import('./views/workflowView.js?v=20260803-reference-director-v9'),
+  brief: () => import('./views/briefView.js?v=20260804-reference-task-sync-v10'),
+  assets: () => import('./views/assetCenterView.js?v=20260804-reference-task-sync-v10'),
+  plot: () => import('./views/plotRoomView.js?v=20260804-reference-task-sync-v10'),
+  storyboard: () => import('./views/storyboardView.js?v=20260804-reference-task-sync-v10'),
+  shot: () => import('./views/shotDesignerView.js?v=20260804-reference-task-sync-v10'),
+  final: () => import('./views/finalView.js?v=20260804-reference-task-sync-v10'),
+  workflow: () => import('./views/workflowView.js?v=20260804-reference-task-sync-v10'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

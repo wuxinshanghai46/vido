@@ -3,7 +3,7 @@ const referenceDrafts = require('./referenceDraftProjectionService'), countProje
 const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
-const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService');
+const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 /** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
@@ -444,9 +444,9 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   const requested = new Set(clean(sections, 300).split(',').map(item => item.trim()).filter(Boolean));
   const include = name => !requested.size || requested.has(name) || requested.has('all');
   const outputs = raw.outputs && typeof raw.outputs === 'object' ? raw.outputs : {};
-  const context = outputs.context && typeof outputs.context === 'object'
+  const context = authoritativeReference.resolve(raw.task, outputs.context && typeof outputs.context === 'object'
     ? outputs.context
-    : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {}));
+    : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
   const project = {
     ...projectSummary({ ...storyAd.taskSummary(raw.task), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),

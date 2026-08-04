@@ -2789,7 +2789,7 @@ async function runAnalysis(initialRecord) {
     throwIfCancelled(record);
     const result = normalizeResult(raw);
     record = checkpoint(record, '整理中文广告需求草稿', 90, { result });
-    save(record, {
+    record = save(record, {
       status: 'completed',
       phase: result.warnings?.length
         ? `分析完成；${result.warnings[0]}`
@@ -2798,6 +2798,32 @@ async function runAnalysis(initialRecord) {
       completed_at: now(),
       downstream_generation_triggered: false,
     });
+    // Completion persistence belongs to the server lifecycle. The browser may
+    // be closed while a long analysis is running, so polling cannot be the
+    // authority that writes the completed result back into the task.
+    try {
+      const taskSync = require('./referenceAnalysisTaskSyncService');
+      const syncResult = await taskSync.syncTerminalAnalysis(record, taskRecord(record));
+      record = save(readRecord(record.user_id, record.id) || record, {
+        task_sync: {
+          status: syncResult.synced ? 'synced' : 'unchanged',
+          reason: syncResult.reason || '',
+          model_call_count: 0,
+          updated_at: now(),
+        },
+      });
+    } catch (syncError) {
+      // The analysis is still valid and completed. Persist a retryable
+      // projection failure without converting the paid analysis into failed.
+      record = save(readRecord(record.user_id, record.id) || record, {
+        task_sync: {
+          status: 'failed',
+          reason: String(syncError.code || 'TASK_SYNC_FAILED').slice(0, 100),
+          model_call_count: 0,
+          updated_at: now(),
+        },
+      });
+    }
   } catch (error) {
     const latest = readRecord(record.user_id, record.id) || record;
     if (error.cancelled || latest.cancelled) {

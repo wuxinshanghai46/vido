@@ -216,7 +216,7 @@ async function testShortProjectNameAndBriefGate() {
 
   await assetPlan.projectReferenceIntake(emptyBriefTaskId, { reference_analysis: completedReference() });
   assert.ok(storage.getOutput(emptyBriefTaskId, 'context').brief.length >= 8, '有效参考分析必须零模型形成可用广告目标');
-  assert.equal(storage.getOutput(emptyBriefTaskId, 'context').brief, completedReference().story_outline.logline, '广告目标只能采用参考视频目标摘要，不得填入人物、场景和分镜全集');
+  assert.equal(storage.getOutput(emptyBriefTaskId, 'context').brief, completedReference().generated_brief, '广告目标必须保留参考视频生成的完整证据摘要，不能退化为单行 logline');
   try {
     storyAd.prepareGeneration(emptyBriefTaskId, {}, user);
   } catch (error) {
@@ -504,7 +504,7 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
   try {
     await assetPlan.projectReferenceIntake(taskId, { reference_analysis: familyReference });
     let context = storage.getOutput(taskId, 'context');
-    assert.equal(context.brief, familyReference.story_outline.logline);
+    assert.equal(context.brief, familyReference.generated_brief);
     assert.equal(context.brief_source, 'reference_analysis');
     assert.equal(context.expected_people, 3);
     assert.equal(context.expected_animals, 0);

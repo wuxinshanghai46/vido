@@ -292,9 +292,9 @@ async function projectReferenceIntake(taskId, options = {}) {
   const projectedPets = petProfiles === plan.pet_profiles;
   const primaryCast = castProfiles[0] || {};
   const referenceBrief = cleanText(
-    reference.story_outline?.logline
+    reference.generated_brief
       || reference.summary
-      || reference.generated_brief
+      || reference.story_outline?.logline
       || reference.source_facts?.product_or_service
       || '',
     3000,

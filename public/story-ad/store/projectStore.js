@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260803-reference-director-v9';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260803-reference-director-v9';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-task-sync-v10';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-task-sync-v10';
 
 export function createProjectStore() {
   const state = {
@@ -328,6 +328,7 @@ export function createProjectStore() {
       analysis_quality: result.analysis_quality || analysis.analysis_quality || {},
       story_outline: result.story_outline || analysis.story_outline || {},
       plot_beats: result.plot_beats || analysis.plot_beats || [],
+      reference_understanding: result.reference_understanding || analysis.reference_understanding || null,
       character_prompts: result.character_prompts || analysis.character_prompts || [],
       animal_prompts: result.animal_prompts || analysis.animal_prompts || [],
       scene_prompts: result.scene_prompts || analysis.scene_prompts || [],
@@ -366,6 +367,19 @@ export function createProjectStore() {
           visual_evidence_reusable: live.visual_evidence_reusable === true,
           semantic_result_reusable: live.semantic_result_reusable === true,
           evidence_batch_progress: live.evidence_batch_progress,
+          generated_brief: live.generated_brief,
+          source_facts: live.source_facts,
+          analysis_valid: live.analysis_quality?.valid === true,
+          analysis_quality: live.analysis_quality,
+          story_outline: live.story_outline,
+          plot_beats: live.plot_beats,
+          reference_understanding: live.reference_understanding,
+          character_prompts: live.character_prompts,
+          animal_prompts: live.animal_prompts,
+          scene_prompts: live.scene_prompts,
+          shot_breakdown: live.shot_breakdown,
+          camera_intents: live.camera_intents,
+          character_actions: live.character_actions,
         },
       },
     });
@@ -394,12 +408,15 @@ export function createProjectStore() {
     const currentBriefText = String(currentBrief.text || '').trim();
     const canRefreshReferenceBrief = !currentBriefText
       || ['', 'reference_analysis'].includes(String(currentBrief.brief_source || '').trim());
+    const currentProduct = String(currentBrief.product_subject || '').trim();
+    const canRefreshReferenceProduct = !currentProduct
+      || ['当前广告主体', '广告主体', '当前产品', '商品主体', '产品主体'].includes(currentProduct);
     await updateRequest({
       reference_video_analysis: record,
       ...(completedAndValid && derivedBrief && canRefreshReferenceBrief
         ? { brief: derivedBrief, content: derivedBrief, brief_source: 'reference_analysis' }
         : {}),
-      ...(completedAndValid && !String(currentBrief.product_subject || '').trim() && derivedProduct
+      ...(completedAndValid && canRefreshReferenceProduct && derivedProduct
         ? { product_subject: derivedProduct }
         : {}),
     });
@@ -421,6 +438,7 @@ export function createProjectStore() {
     state.referenceAnalysisId = analysisId;
     const poll = async () => {
       if (state.referenceAnalysisId !== analysisId) return;
+      let terminal = false;
       try {
         const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}`);
         if (state.referenceAnalysisId !== analysisId) return;
@@ -434,16 +452,18 @@ export function createProjectStore() {
           analysis = started.analysis || analysis;
         }
         const previousStatus = state.bundle?.reference?.status || '';
-        const terminal = ['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase());
+        terminal = ['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase());
         applyReferenceLiveState(analysis);
+        // A terminal analysis must never be polled again just because its
+        // projection write failed. Stop first, then bind/refresh once.
+        if (terminal) stopReferencePolling();
         if (terminal || analysis.status !== previousStatus) await bindReferenceAnalysis(analysis);
         if (terminal) {
-          stopReferencePolling();
           await refreshSections('all');
           return;
         }
       } catch (error) {
-        if (state.referenceAnalysisId !== analysisId) return;
+        if (!terminal && state.referenceAnalysisId !== analysisId) return;
         set({
           error: error.message,
           bundle: state.bundle ? {
@@ -451,7 +471,9 @@ export function createProjectStore() {
             reference: { ...(state.bundle.reference || {}), error: error.message },
           } : state.bundle,
         });
+        if (terminal) return;
       }
+      if (state.referenceAnalysisId !== analysisId) return;
       state.referenceTimer = setTimeout(poll, 2500);
     };
     state.referenceTimer = setTimeout(poll, 1200);

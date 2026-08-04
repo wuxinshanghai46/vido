@@ -23,6 +23,7 @@ const productAssetGeneration = require('../services/newStoryAd/productAssetGener
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
+const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
 const assetPlanService = require('../services/newStoryAd/assetPlanService');
 const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes');
@@ -804,7 +805,20 @@ router.post('/reference-video-analyses/:analysisId/start', asyncRoute(async (req
 }));
 
 router.get('/reference-video-analyses/:analysisId', asyncRoute(async (req, res) => {
-  const analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
+  let analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
+  if (['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase())) {
+    try {
+      await referenceAnalysisTaskSync.syncTerminalAnalysis(
+        analysis,
+        referenceVideoAnalyses.taskRecord(analysis),
+      );
+    } catch (syncError) {
+      // Reading a paid, completed analysis must remain available even when a
+      // recoverable task projection needs another server-side retry.
+      console.error(`[new-story-ad] reference task sync failed analysis_id=${analysis.id || analysis.analysis_id || ''} code=${syncError.code || 'TASK_SYNC_FAILED'}`);
+    }
+    analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
+  }
   return res.json({ success: true, analysis });
 }));
 
