@@ -42,6 +42,16 @@ function buildDetachPatch(previous = {}, scenePlan = null, body = {}) {
   return patch;
 }
 
+/** 重新识别时保留同一视频绑定，只撤下该参考自动投影出的旧草稿。 */
+function buildReanalysisPatch(previous = {}, scenePlan = null, reference = {}, body = {}) {
+  return {
+    ...buildDetachPatch(previous, scenePlan, body),
+    reference_video_analysis: reference,
+    reference_analysis_projection: null,
+    reference_required: true,
+  };
+}
+
 /** 从项目解除参考绑定；任务数据先成功提交，再停止或清理孤立分析记录。 */
 function detach({ taskId, body = {}, user = {}, storyAdService, storage, referenceVideoAnalyses } = {}) {
   const task = storyAdService.assertTaskOwner(taskId, user);
@@ -76,4 +86,4 @@ function detach({ taskId, body = {}, user = {}, storyAdService, storage, referen
   return { ...updated, reference_removed: true, removed_analysis_id: analysisId, analysis_cleanup: analysisCleanup };
 }
 
-module.exports = { ACTIVE_STATUSES, projected, buildDetachPatch, detach };
+module.exports = { ACTIVE_STATUSES, projected, buildDetachPatch, buildReanalysisPatch, detach };

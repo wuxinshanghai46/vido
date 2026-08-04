@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
+import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-v12';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

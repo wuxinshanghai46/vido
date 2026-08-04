@@ -2925,6 +2925,92 @@ function start(analysisId, user = {}) {
   return { record: publicRecord(record), accepted: true, duplicate: false };
 }
 
+/**
+ * 对“任务已结束但深度语义未通过质量门”的记录重新识别。
+ *
+ * 普通 start() 必须继续把 completed 当成幂等终态；只有用户明确点击
+ * “重新识别当前视频”时才进入这里。原视频与可校验的逐帧缓存会保留，
+ * 旧语义结果会在排队前撤下，避免页面或下游继续读取不合格报告。
+ */
+function reanalyze(analysisId, user = {}) {
+  let record = assertOwned(analysisId, user);
+  if (activeImports.has(analysisId) || activeRuns.has(analysisId)
+    || ['importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(record.status)) {
+    return { record: publicRecord(record), accepted: false, duplicate: true };
+  }
+  if (['failed', 'cancelled'].includes(record.status)) return start(analysisId, user);
+  if (record.status !== 'completed') {
+    const error = new Error('当前参考视频尚未结束，不能重复提交重新识别');
+    error.code = 'REFERENCE_VIDEO_REANALYSIS_NOT_READY';
+    error.status = 409;
+    throw error;
+  }
+  if (record.result?.analysis_quality?.valid === true) {
+    const error = new Error('当前参考视频识别结果已经通过质量校验，无需重新识别');
+    error.code = 'REFERENCE_VIDEO_REANALYSIS_NOT_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  if (!record.source?.local_path || !fs.existsSync(record.source.local_path)) {
+    const error = new Error('原参考视频文件已不存在，无法直接重新识别，请重新上传或粘贴链接');
+    error.code = 'REFERENCE_VIDEO_SOURCE_MISSING';
+    error.status = 409;
+    throw error;
+  }
+  const reuseEvidence = hasReusableVisualEvidence(record);
+  if (process.env.NEW_STORY_AD_MOCK_LLM !== '1' && !reuseEvidence) {
+    const availability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
+    if (!availability.available_count) {
+      const error = new Error('视觉模型当前不可用，未启动重新识别，也没有覆盖现有记录。');
+      error.code = 'VISION_CIRCUIT_OPEN';
+      error.status = 503;
+      error.retryable = true;
+      error.failed_models = availability.models
+        .filter(item => !item.available)
+        .map(item => ({
+          provider_id: item.provider_id,
+          model_id: item.model_id,
+          code: String(item.reason || 'unavailable').toUpperCase(),
+          retry_after_ms: item.retry_after_ms,
+        }));
+      error.retry_after_ms = Math.max(0, ...error.failed_models.map(item => Number(item.retry_after_ms || 0)));
+      throw error;
+    }
+  }
+  const previousResultDigest = crypto.createHash('sha256')
+    .update(JSON.stringify(record.result || {}))
+    .digest('hex');
+  const reanalysisAttempt = Math.max(0, Number(record.reanalysis?.attempt || 0) || 0) + 1;
+  record = save(record, {
+    status: 'queued',
+    phase: reuseEvidence
+      ? '已保留当前视频并复用镜头证据，等待重新识别'
+      : '已保留当前视频，等待重新读取并识别',
+    progress: 1,
+    cancelled: false,
+    error: null,
+    result: null,
+    scene_view_mapping: null,
+    started_at: now(),
+    completed_at: '',
+    failed_at: '',
+    cancelled_at: '',
+    _synthesis_raw: null,
+    _reuse_synthesis_raw: false,
+    reanalysis: {
+      attempt: reanalysisAttempt,
+      reason: 'completed_semantic_quality_invalid',
+      previous_result_digest: previousResultDigest,
+      visual_evidence_reused: reuseEvidence,
+      requested_at: now(),
+    },
+  });
+  const promise = Promise.resolve().then(() => runAnalysis(record));
+  activeRuns.set(analysisId, promise);
+  return { record: publicRecord(record), accepted: true, duplicate: false };
+}
+
 function get(analysisId, user = {}) {
   return publicRecord(assertOwned(analysisId, user));
 }
@@ -3031,6 +3117,7 @@ module.exports = {
   completeUploadSession,
   cancelUploadSession,
   start,
+  reanalyze,
   get,
   cancel,
   remove,

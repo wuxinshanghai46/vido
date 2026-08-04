@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-semantic-gate-v11';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-semantic-gate-v11';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-reanalysis-v12';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-reanalysis-v12';
 
 export function createProjectStore() {
   const state = {
@@ -283,7 +283,7 @@ export function createProjectStore() {
     if (!analysisId) throw new Error('当前没有可重新整理的参考视频。');
     set({ saving: true, error: '' });
     try {
-      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/start`, {
+      const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reanalyze`, {
         method: 'POST',
         body: {},
       });

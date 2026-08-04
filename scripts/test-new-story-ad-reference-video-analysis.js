@@ -1048,6 +1048,63 @@ async function main() {
   const privateVisionFrame = service._private.frameVisionUrl(completed.result.evidence_frames[0]);
   assert.ok(privateVisionFrame.startsWith('data:image/jpeg;base64,'), 'vision provider must receive embedded evidence instead of a localhost URL');
   assert.ok(!privateVisionFrame.includes('localhost'));
+  assert.throws(
+    () => service.reanalyze(uploaded.id, user),
+    error => error.code === 'REFERENCE_VIDEO_REANALYSIS_NOT_REQUIRED' && error.status === 409,
+    '已经通过质量门的完成记录不得误触发重复付费识别',
+  );
+
+  const invalidReanalysisId = `ref_video_${'r'.repeat(70)}`;
+  const invalidReanalysisDir = service._private.analysisDir(user.id, invalidReanalysisId);
+  fs.mkdirSync(invalidReanalysisDir, { recursive: true });
+  const invalidReanalysisSource = path.join(invalidReanalysisDir, 'source.mp4');
+  fs.copyFileSync(service._private.readRecord(user.id, uploaded.id).source.local_path, invalidReanalysisSource);
+  const invalidReanalysisRecord = JSON.parse(JSON.stringify(service._private.readRecord(user.id, uploaded.id)));
+  invalidReanalysisRecord.id = invalidReanalysisId;
+  invalidReanalysisRecord.analysis_id = invalidReanalysisId;
+  invalidReanalysisRecord.source.local_path = invalidReanalysisSource;
+  invalidReanalysisRecord.source.private_directory = invalidReanalysisDir;
+  invalidReanalysisRecord.result.analysis_quality.valid = false;
+  invalidReanalysisRecord.result.analysis_quality.reference_understanding_complete = false;
+  invalidReanalysisRecord.result.reference_understanding.completeness.valid = false;
+  invalidReanalysisRecord.result.reference_understanding.completeness.failures = ['story_semantic_generic'];
+  const invalidReanalysisBatches = [];
+  for (let index = 0; index < invalidReanalysisRecord.evidence_frames.length; index += 4) {
+    invalidReanalysisBatches.push(testVisionRow(
+      invalidReanalysisRecord.evidence_frames.slice(index, index + 4),
+      invalidReanalysisBatches.length + 1,
+    ));
+  }
+  invalidReanalysisRecord._visual_evidence_cache = {
+    contract_version: 'shot-aware-v2',
+    batches: invalidReanalysisBatches,
+    completed_batch_indexes: invalidReanalysisBatches.map((_, index) => index),
+    failed_attempts: {},
+  };
+  invalidReanalysisRecord._visual_evidence_cache.key = service._private.visualEvidenceCacheKey(
+    invalidReanalysisRecord,
+    invalidReanalysisRecord.evidence_frames,
+  );
+  fs.writeFileSync(
+    path.join(invalidReanalysisDir, 'record.json'),
+    JSON.stringify(invalidReanalysisRecord, null, 2),
+  );
+  const invalidReanalysisStarted = service.reanalyze(invalidReanalysisId, user);
+  assert.equal(invalidReanalysisStarted.accepted, true, '质量无效完成态必须复用同一视频 ID 进入重新识别队列');
+  assert.equal(invalidReanalysisStarted.record.status, 'queued');
+  assert.equal(invalidReanalysisStarted.record.progress, 1, '重新识别必须开启新的进度与耗时，不能重放旧 100%');
+  assert.equal(invalidReanalysisStarted.record.result, null, '排队前必须撤下旧的不合格语义结果');
+  assert.equal(invalidReanalysisStarted.record.reanalysis.visual_evidence_reused, true, '完整逐帧缓存应保留并避免重复视觉调用');
+  assert.ok(invalidReanalysisStarted.record.reanalysis.previous_result_digest, '旧结果只保留审计摘要，不得继续作为当前结果');
+  const concurrentInvalidReanalysis = service.reanalyze(invalidReanalysisId, user);
+  assert.equal(concurrentInvalidReanalysis.duplicate, true, '并发重复点击重新识别必须幂等，不能创建第二个付费任务');
+  const invalidReanalysisCompleted = await waitFor(invalidReanalysisId, user, ['completed', 'failed']);
+  assert.equal(invalidReanalysisCompleted.status, 'completed');
+  assert.equal(invalidReanalysisCompleted.result.analysis_quality.valid, true);
+  assert.equal(invalidReanalysisCompleted.source.original_name, completed.source.original_name, '重新识别必须保留当前视频来源');
+  if (service._private.activeRuns.get(invalidReanalysisId)) await service._private.activeRuns.get(invalidReanalysisId);
+  assert.equal(service._private.activeRuns.has(invalidReanalysisId), false, '重新识别完成后不得残留活动任务');
+  service.remove(invalidReanalysisId, user);
 
   const legacyAuthTranscript = {
     status: 'failed_non_blocking',
@@ -1646,7 +1703,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 185,
+    checks: 197,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

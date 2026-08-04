@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

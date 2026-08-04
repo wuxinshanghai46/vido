@@ -89,6 +89,16 @@ assert.match(runningReference, /已耗时 1分05秒/);
 assert.match(runningReference, /证据帧与语音已提取/);
 assert.doesNotMatch(runningReference, /故事结构|人物分析|场景分析|逐镜分析/);
 assert.match(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90 }), /aria-valuenow="100"/);
+const invalidCompletedProgress = briefModule.referenceProgress({
+  analysis_id: 'done-invalid', status: 'completed', progress: 100, analysis_valid: false,
+  phase: '深度理解报告已就绪',
+});
+assert.match(invalidCompletedProgress, /镜头读取完成，深度识别未通过/);
+assert.match(invalidCompletedProgress, /原视频已保留/);
+assert.match(invalidCompletedProgress, /重新识别当前视频/);
+assert.match(invalidCompletedProgress, /data-reference-retry/);
+assert.match(invalidCompletedProgress, /深度识别未通过质量校验，旧结果已停止使用/);
+assert.doesNotMatch(invalidCompletedProgress, /深度理解报告已就绪。请核对/);
 const partialFailureProgress = briefModule.referenceProgress({
   analysis_id: 'partial-failure', status: 'failed',
   error: '备用模型访问量过大',
@@ -166,15 +176,26 @@ assert.match(briefModule.referenceProgress({
   assert.match(rendered, /重新读取镜头证据/, `证据不可复用时必须重新识别：${analysisId}`);
   assert.match(rendered, new RegExp(error), `失败原因必须与当前任务绑定：${analysisId}`);
 });
-['importing', 'uploaded', 'queued', 'running', 'cancelling', 'completed', 'cancelled'].forEach(status => {
+['importing', 'uploaded', 'queued', 'running', 'cancelling'].forEach(status => {
   assert.doesNotMatch(
     briefModule.referenceProgress({ analysis_id: `non-failed-${status}`, status }),
     /data-reference-retry/,
     `非失败任务不得暴露重复提交入口：${status}`,
   );
 });
+assert.doesNotMatch(
+  briefModule.referenceProgress({ analysis_id: 'valid-completed', status: 'completed', analysis_valid: true }),
+  /data-reference-retry/,
+  '已通过质量门的完成任务不得暴露重复付费入口',
+);
+assert.match(
+  briefModule.referenceProgress({ analysis_id: 'cancelled-current', status: 'cancelled' }),
+  /重新识别当前视频/,
+  '取消后原视频仍在时必须允许用户直接重新识别',
+);
 assert.match(briefView, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
 assert.match(briefView, /store\.retryReferenceAnalysis\(\)/, '失败卡必须复用同一分析 ID 重试，不能要求更换视频制造重复视觉调用');
+assert.match(briefView, /无需更换或重新上传|不需要更换或重新上传/, '质量无效完成态必须明确告知用户保留当前视频');
 assert.doesNotMatch(briefView, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
 assert.match(briefView, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
 assert.match(briefView, /removeEventListener\('click', handleReferenceRetry\)/, '离开页面必须注销重试事件，避免重复提交');
@@ -205,6 +226,7 @@ assert.match(projectStore, /applyReferenceLiveState\(analysis\)/, '同一状态�
 assert.match(projectStore, /async function hydrateReferenceFailure\(\)/, '历史失败任务必须从权威分析记录补回中文错误原因');
 assert.match(projectStore, /live\.error\.message \|\| live\.error\.code/, '实时失败状态必须优先展示中文错误信息而不是内部代码');
 assert.match(projectStore, /async function retryReferenceAnalysis\(\)/, '参考分析失败后必须提供同一 ID 的缓存重试能力');
+assert.match(projectStore, /reference-video-analyses\/\$\{encodeURIComponent\(analysisId\)\}\/reanalyze/, '重新识别必须调用专用接口，不能被 completed 幂等门静默吞掉');
 assert.match(projectStore, /visual_evidence_reusable:\s*analysis\.visual_evidence_reusable === true/, '界面只能按后端逐帧覆盖结论决定是否复用证据');
 assert.match(projectStore, /evidence_batch_progress:\s*analysis\.evidence_batch_progress/, '失败恢复必须把已完成批次投影到页面，不能误导为全部重读');
 assert.match(projectStore, /refreshSections\('all'\)/, '终态分析采用后必须刷新完整工作区投影');
@@ -221,6 +243,7 @@ const referenceDetachService = read('src/services/newStoryAd/referenceDetachServ
 assert.match(referenceDetachService, /brief_source === 'reference_analysis'[\s\S]*brief:\s*''/, '只清空参考分析自动填写的目标，不得误删用户手写目标');
 assert.match(referenceDetachService, /filter\(item => !projected\(item\)\)/, '解绑只清理由参考投影的草稿，必须保留用户自建材料');
 assert.match(referenceDetachService, /ACTIVE_STATUSES[\s\S]*referenceVideoAnalyses\.cancel/, '移除正在分析的参考时必须停止后台分析');
+assert.match(referenceDetachService, /function buildReanalysisPatch[\s\S]*reference_video_analysis:\s*reference/, '重新识别必须保留当前视频绑定并撤下旧投影');
 
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
 assert.match(newStoryAdRoute, /function bindInitialReferenceTask[\s\S]*referenceVideoAnalyses\.taskRecord/, '参考来源创建后必须在接口返回前绑定当前任务');

@@ -316,6 +316,21 @@ async function testProjectReferenceRemoval() {
   assert.equal(Object.prototype.hasOwnProperty.call(manualPatch, 'brief'), false, '删除参考不得清空用户手写广告目标');
   assert.deepEqual(manualPatch.cast_profiles.map(item => item.id), ['manual'], '删除参考必须保留用户自建人物');
   assert.equal(Object.prototype.hasOwnProperty.call(manualPatch, 'pet_profiles'), false, '没有参考投影动物时不得重写用户动物');
+  const reanalysisPatch = referenceDetach.buildReanalysisPatch({
+    brief: '旧参考自动目标',
+    brief_source: 'reference_analysis',
+    cast_profiles: [{ id: 'projected', source: 'reference_analysis_projection', projection_only: true }],
+    story_seed: { logline: '旧参考故事', source: 'reference_analysis_projection' },
+    reference_video_analysis: { analysis_id: 'same-reference', status: 'completed' },
+  }, { source: 'reference_analysis_projection', spaces: [{ id: 'old-space' }] }, {
+    analysis_id: 'same-reference', status: 'queued', progress: 1, analysis_quality: {},
+  });
+  assert.equal(reanalysisPatch.reference_video_analysis.analysis_id, 'same-reference', '重新识别必须保留同一视频绑定');
+  assert.equal(reanalysisPatch.reference_video_analysis.status, 'queued');
+  assert.equal(reanalysisPatch.brief, '', '旧参考自动目标必须在重新识别排队时撤下');
+  assert.deepEqual(reanalysisPatch.cast_profiles, [], '旧参考人物投影不得跨重新识别继续使用');
+  assert.equal(reanalysisPatch.story_seed, null, '旧参考故事投影不得跨重新识别继续使用');
+  assert.deepEqual(reanalysisPatch.scene_spec, {}, '旧参考场景投影不得跨重新识别继续使用');
   const taskId = createTask();
   await assetPlan.projectReferenceIntake(taskId, { reference_analysis: completedReference() });
   storage.saveOutput(taskId, 'asset_plan', { cast_profiles: [{ id: 'owner' }], scene_plan: { spaces: [{ id: 'living-room' }] } });
@@ -395,6 +410,69 @@ async function testProjectReferenceRemoval() {
     referenceVideoAnalyses.get = originalGet;
     referenceVideoAnalyses.cancel = originalCancel;
     referenceVideoAnalyses.remove = originalRemove;
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+async function testInvalidCompletedReferenceReanalysisRoute() {
+  const taskId = createTask();
+  await assetPlan.projectReferenceIntake(taskId, { reference_analysis: completedReference() });
+  storage.saveOutput(taskId, 'asset_plan', { source: 'reference_analysis_projection' });
+  storage.saveOutput(taskId, 'blueprint', { story_title: '旧参考剧情' });
+  storage.saveOutput(taskId, 'storyboard_table', [{ shot_index: 1, title: '旧参考分镜' }]);
+  const analysisId = completedReference().analysis_id;
+  const originalGet = referenceVideoAnalyses.get;
+  const originalReanalyze = referenceVideoAnalyses.reanalyze;
+  referenceVideoAnalyses.get = id => ({
+    id,
+    analysis_id: id,
+    task_id: taskId,
+    status: 'completed',
+    progress: 100,
+    result: { analysis_quality: { valid: false } },
+  });
+  referenceVideoAnalyses.reanalyze = id => ({
+    accepted: true,
+    duplicate: false,
+    record: {
+      id,
+      analysis_id: id,
+      task_id: taskId,
+      status: 'queued',
+      progress: 1,
+      phase: '已保留当前视频，等待重新读取并识别',
+      result: null,
+      analysis_quality: {},
+      started_at: new Date().toISOString(),
+    },
+  });
+  const app = express();
+  app.use(express.json({ limit: '5mb' }));
+  app.use((req, res, next) => { req.user = user; next(); });
+  app.use('/api/new-story-ad', newStoryAdRouter);
+  const server = await new Promise(resolve => {
+    const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+  });
+  try {
+    const response = await postJson(
+      `http://127.0.0.1:${server.address().port}/api/new-story-ad/reference-video-analyses/${analysisId}/reanalyze`,
+      {},
+    );
+    assert.equal(response.status, 202);
+    assert.equal(response.payload.task_reset, true);
+    assert.equal(response.payload.analysis.status, 'queued');
+    assert.equal(response.payload.analysis.progress, 1);
+    const context = storage.getOutput(taskId, 'context');
+    assert.equal(context.reference_video_analysis.analysis_id, analysisId, '专用接口必须继续绑定当前视频');
+    assert.equal(context.reference_video_analysis.status, 'queued', '项目必须立即采用新的识别状态');
+    assert.equal(context.brief, '', '旧参考自动目标必须在新模型调用前撤下');
+    assert.equal(context.cast_profiles.length, 0, '旧参考人物投影必须在新模型调用前撤下');
+    assert.equal(storage.getOutput(taskId, 'asset_plan'), null, '旧参考资产方案不得跨重新识别继续使用');
+    assert.equal(storage.getOutput(taskId, 'blueprint'), null, '旧参考剧情不得跨重新识别继续使用');
+    assert.equal(storage.getOutput(taskId, 'storyboard_table'), null, '旧参考分镜不得跨重新识别继续使用');
+  } finally {
+    referenceVideoAnalyses.get = originalGet;
+    referenceVideoAnalyses.reanalyze = originalReanalyze;
     await new Promise(resolve => server.close(resolve));
   }
 }
@@ -584,9 +662,10 @@ async function main() {
   await testTaskPutAwaitsProjection();
   await testLinkCreationBindsNewReferenceBeforeResponse();
   await testProjectReferenceRemoval();
+  await testInvalidCompletedReferenceReanalysisRoute();
   await testManualAuthorityAndReferenceReplacement();
   await testFamilyRecognitionAndSequentialWorkflowGates();
-  console.log('story-ad workspace reference intake tests: 147 checks passed');
+  console.log('story-ad workspace reference intake tests: 158 checks passed');
 }
 
 main().catch((error) => {

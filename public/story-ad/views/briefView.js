@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
+import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-v12';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -67,6 +67,7 @@ export function referenceProgress(reference = {}) {
   const status = String(reference.status || '').toLowerCase();
   const active = ['uploading', 'importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(status);
   const completed = status === 'completed';
+  const completedInvalid = completed && reference.analysis_valid !== true;
   const failed = status === 'failed';
   const cancelled = status === 'cancelled';
   const labels = {
@@ -76,14 +77,16 @@ export function referenceProgress(reference = {}) {
     queued: '已进入分析队列',
     running: '正在分析参考视频',
     cancelling: '正在停止分析',
-    completed: '参考视频分析完成',
+    completed: completedInvalid ? '镜头读取完成，深度识别未通过' : '参考视频分析完成',
     failed: '参考视频分析失败',
     cancelled: '参考视频分析已取消',
   };
   const numeric = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
   const percent = completed ? 100 : numeric;
-  const phase = String(reference.phase || labels[status] || '等待分析').trim();
-  const tone = failed ? 'is-failed' : (completed ? 'is-completed' : (cancelled ? 'is-cancelled' : 'is-active'));
+  const phase = completedInvalid
+    ? '深度识别未通过质量校验，旧结果已停止使用'
+    : String(reference.phase || labels[status] || '等待分析').trim();
+  const tone = failed || completedInvalid ? 'is-failed' : (completed ? 'is-completed' : (cancelled ? 'is-cancelled' : 'is-active'));
   const hasDeepReport = !!(
     Object.keys(reference.reference_understanding?.story_bible || reference.reference_understanding?.story_summary || reference.story_bible || {}).length
     || (reference.reference_understanding?.story_events || reference.reference_understanding?.causal_chain || reference.story_events)?.length
@@ -91,9 +94,11 @@ export function referenceProgress(reference = {}) {
     || (reference.reference_understanding?.scene_narratives || reference.reference_understanding?.scenes || reference.scene_narratives)?.length
   );
   const baseNote = completed
-    ? (hasDeepReport
+    ? (completedInvalid
+      ? '本次深度识别没有通过质量校验，旧结果不会进入后续制作。原视频已保留，可直接重新识别，无需更换或重新上传。'
+      : (hasDeepReport
       ? '深度理解报告已就绪。请核对故事、人物、场景、品牌、镜头与声音证据；确认前不会进入后续资产创建。'
-      : '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。')
+      : '广告目标已自动填入；故事、人物/动物、场景、分镜和机位已分配到后续对应环节。'))
     : (failed
       ? (reference.error || '本次分析没有完成，请更换参考视频或重新尝试。')
       : (cancelled
@@ -111,8 +116,8 @@ export function referenceProgress(reference = {}) {
     partialEvidence ? `已完成 ${batchCompleted}/${batchTotal} 批，重试只会继续读取剩余 ${batchTotal - batchCompleted} 批。` : '',
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
-  const retry = failed && reference.client_pending !== true
-    ? `<button class="btn" type="button" data-reference-retry>${reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '复用完整证据重新整理' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据'))}</button>`
+  const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
+    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '复用完整证据重新整理' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
     : '';
   const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.updated_at || '';
   return `<section class="reference-progress-card ${tone}" aria-live="polite">
@@ -253,7 +258,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-semantic-gate-v11');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-reanalysis-v12');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -493,24 +498,29 @@ export async function mount(host, context) {
     const reusable = currentReference.visual_evidence_reusable === true;
     const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
     const batchProgress = currentReference.evidence_batch_progress || {};
+    const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
     const partialEvidence = Number(batchProgress.completed || 0) > 0
       && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
-    const retryMessage = semanticReusable
+    const retryMessage = completedInvalid
+      ? (reusable
+        ? '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，复用已校验的镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'
+        : '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，并重新调用视觉与语义识别模型，可能产生新的模型费用。是否继续？')
+      : (semanticReusable
       ? '画面证据和语义整理结果都已完整保存，本次只重新校验场景与分镜映射，不再调用模型，是否继续？'
       : (reusable
-        ? '当前逐帧镜头证据已经通过完整性校验，本次只重新整理结构，是否继续？'
+        ? '当前逐帧镜头证据已经通过完整性校验，本次会复用镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'
         : (partialEvidence
           ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只调用视觉模型读取剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次，可能产生剩余批次的模型费用。是否继续？`
-          : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉模型，可能产生新的模型费用。是否继续？'));
+          : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉与语义模型，可能产生新的模型费用。是否继续？')));
     const confirmed = await confirmDialog(retryMessage, {
-      title: semanticReusable ? '重新校验参考视频' : (reusable ? '重新整理参考视频' : '重新读取镜头证据'),
-      confirmText: semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析'),
+      title: completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '重新整理参考视频' : '重新读取镜头证据')),
+      confirmText: completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析')),
     });
     if (!confirmed) return;
     try {
-      setButtonBusy(button, true, semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…'), { elapsed: true });
+      setButtonBusy(button, true, completedInvalid ? '正在重新识别…' : (semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…')), { elapsed: true });
       await store.retryReferenceAnalysis();
-      toast(semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据开始重新整理。' : '已开始重新检测并分析镜头证据。'), 'success');
+      toast(completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据开始重新整理。' : '已开始重新检测并分析镜头证据。')), 'success');
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);
