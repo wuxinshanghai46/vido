@@ -1,6 +1,7 @@
-import { request } from '../api.js?v=20260804-panorama-authority-v18';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-panorama-authority-v18';
+import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260804-reference-confirm-flow-v20';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -50,7 +51,7 @@ function materialRows(bundle, isNew) {
   };
   return MATERIALS.map(([id, label, hint]) => `
     <div class="material-row ${ready[id] ? 'is-ready' : ''}" data-material-row="${id}">
-      <span><b>${escapeHtml(label)}</b><small>${ready[id] ? '已连接当前项目内容' : escapeHtml(hint)}</small></span>
+      <span><b>${escapeHtml(label)}</b><small>${ready[id] ? (id === 'reference' ? '已用于本次识别，可在左侧查看理解报告' : '已作为当前项目的补充材料') : escapeHtml(hint)}</small></span>
       <span class="material-actions">
         ${id === 'reference' ? '<button class="btn" type="button" data-reference-link>粘贴链接</button>' : ''}
         <button class="btn" type="button" data-material-upload="${id}">${isNew ? '创建并添加' : (ready[id] ? '更换' : '添加')}</button>
@@ -134,7 +135,7 @@ export function referenceProgress(reference = {}) {
 }
 
 export function referenceActionState(reference = {}) {
-  if (!reference.analysis_id) return { blocked: false, label: '进行资产创建' };
+  if (!reference.analysis_id) return { blocked: false, label: '保存目标并创建人物与场景方案' };
   const status = String(reference.status || '').toLowerCase();
   if (status === 'completed' && reference.analysis_valid === true) {
     const understanding = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -159,13 +160,22 @@ export function referenceActionState(reference = {}) {
       || understanding.authoritative_input_confirmed === true
       || confirmation.confirmed === true
       || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
-    if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '请先确认参考理解报告' };
-    return { blocked: false, label: '进行资产创建' };
+    if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '先确认上方参考理解' };
+    return { blocked: false, label: '下一步：创建人物与场景方案' };
   }
   if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
   if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };
   if (status === 'completed') return { blocked: true, label: '分析结果不完整，请重试' };
   return { blocked: true, label: '等待参考视频分析完成' };
+}
+
+export function referenceNextStepDescription(reference = {}) {
+  const action = referenceActionState(reference);
+  if (!action.blocked) return '保存你的最新设置，并创建可编辑的人物、道具和场景方案；这里只建立方案，不生成图片或视频。';
+  const status = String(reference.status || '').toLowerCase();
+  if (status === 'completed' && reference.analysis_valid === true) return '先核对并确认上方参考理解；确认成功后会自动创建方案并进入资产中心。';
+  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '当前参考识别不可用于后续制作，请按上方提示重新识别或更换参考。';
+  return '参考内容仍在分析，完成并确认理解结果后会自动继续。';
 }
 
 export function syncReferenceAction(button, reference = {}) {
@@ -182,6 +192,7 @@ export async function mount(host, context) {
   const referenceAttached = Boolean(bundle.reference?.analysis_id);
   const benchmark = brief.benchmark_strategy || {};
   const referenceAction = referenceActionState(bundle.reference || {});
+  const referenceStepVisible = referenceAttached && !route.isNew;
   host.innerHTML = `
     <section class="view-head">
       <div><h1>先说清楚要做什么</h1><p>命名项目后，可以自己填写广告目标，也可以直接添加参考视频并让系统读取内容。</p></div>
@@ -191,8 +202,9 @@ export async function mount(host, context) {
     <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
     <div data-reference-understanding-host></div>
     <div class="two-column">
+      <div class="brief-main-column">
       <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
-        <summary class="brief-settings-summary"><span><b>广告目标与成片设置</b><small>${referenceAttached ? '已根据参考内容填入；点击展开后仍可自行填写或修改' : '请填写广告目标；添加参考视频或链接后将自动折叠'}</small></span><i aria-hidden="true"></i></summary>
+        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>广告目标与成片设置</b><small>${referenceAttached ? '已从参考内容填写，可随时展开修改；保存后以你的版本为准' : '请填写广告目标；添加参考视频或链接后将自动折叠'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改广告目标不会再自动改名。</small></label>
@@ -215,10 +227,15 @@ export async function mount(host, context) {
           <input type="hidden" name="benchmark_camera_language" value="${escapeHtml(benchmark.camera_language || '')}">
           <input type="hidden" name="benchmark_prompt_method" value="${escapeHtml(benchmark.prompt_method || '')}">
           <input type="hidden" name="benchmark_naturalness_review" value="${escapeHtml(benchmark.naturalness_review || '')}">
-          <div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '创建项目' : referenceAction.label}</button></div>
+          ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '创建项目' : referenceAction.label}</button></div>`}
           </div>
         </form>
       </details>
+      ${referenceStepVisible ? `<section class="card brief-reference-primary-action" data-brief-inline-action aria-live="polite">
+        <div class="brief-next-step-copy"><span class="status-tag ${referenceAction.blocked ? 'is-neutral' : 'is-info'}" data-brief-next-tag>${referenceAction.blocked ? '等待完成' : '下一步'}</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
+        <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit ${referenceAction.blocked ? 'disabled' : ''}>${escapeHtml(referenceAction.label)}</button>
+      </section>` : ''}
+      </div>
       <aside class="card">
         <div class="card-head"><div><h2>启动材料</h2><p>这里只放决定项目起点的参考视频和商品。人物、场景、LOGO 在资产中心添加，故事和分镜到对应环节编辑。</p></div></div>
         <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
@@ -234,6 +251,7 @@ export async function mount(host, context) {
   let understandingLoadSequence = 0;
   let disposed = false;
   let lastReferenceAttached = referenceAttached;
+  let assetPlanTransitioning = false;
 
   async function syncReferenceUnderstanding(reference = {}) {
     const sequence = ++understandingLoadSequence;
@@ -260,13 +278,18 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-panorama-authority-v18');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-confirm-flow-v20');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
       reference,
       taskId: createdProjectId,
       store,
+      onConfirmed: async () => {
+        const nextButton = host.querySelector('[data-brief-inline-action] [data-brief-submit]');
+        const proceeded = await proceedToAssetPlan(nextButton);
+        if (!proceeded) host.querySelector('[data-brief-inline-action]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      },
     });
   }
 
@@ -327,7 +350,20 @@ export async function mount(host, context) {
     const briefSettings = host.querySelector('[data-brief-settings]');
     if (briefSettings && nextReferenceAttached !== lastReferenceAttached) briefSettings.open = !nextReferenceAttached;
     lastReferenceAttached = nextReferenceAttached;
-    if (!route.isNew) host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
+    if (!route.isNew) {
+      host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
+      const description = host.querySelector('[data-brief-next-description]');
+      if (description) description.textContent = referenceNextStepDescription(nextReference);
+      const nextTag = host.querySelector('[data-brief-next-tag]');
+      if (nextTag) {
+        const action = referenceActionState(nextReference);
+        nextTag.textContent = action.blocked ? '等待完成' : '下一步';
+        nextTag.className = `status-tag ${action.blocked ? 'is-neutral' : 'is-info'}`;
+        nextTag.dataset.briefNextTag = '';
+      }
+      const summaryValues = host.querySelector('[data-brief-settings-values]');
+      if (summaryValues) summaryValues.outerHTML = briefSettingsSummary(nextState.bundle || {});
+    }
     syncReferenceUnderstanding(nextReference).catch(error => toast(error.message, 'danger'));
   });
 
@@ -377,35 +413,53 @@ export async function mount(host, context) {
     return createdProjectId;
   }
 
+  async function proceedToAssetPlan(button) {
+    if (assetPlanTransitioning) return false;
+    try {
+      const reference = store.state.bundle?.reference || {};
+      const status = String(reference.status || '').toLowerCase();
+      const actionState = referenceActionState(reference);
+      if (actionState.blocked) {
+        throw new Error(status === 'failed'
+          ? '参考视频分析失败，请重新识别或更换视频后再创建方案。'
+          : (status === 'completed' && reference.analysis_valid === true
+            ? '请先核对并确认参考理解报告，再创建人物与场景方案。'
+            : '参考视频仍在分析中，请等待完成后再创建方案。'));
+      }
+      assetPlanTransitioning = true;
+      host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
+      await store.updateRequest(safeFormPayload());
+      await store.runStage('scene-config');
+      toast('人物与场景方案已提交，正在进入资产中心。视觉图片仍由你在资产中心确认后生成。', 'success');
+      navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
+      return true;
+    } catch (error) {
+      toast(error.message, 'danger');
+      return false;
+    } finally {
+      assetPlanTransitioning = false;
+      host.querySelectorAll('[data-brief-submit]').forEach(target => {
+        setButtonBusy(target, false);
+        syncReferenceAction(target, store.state.bundle?.reference || {});
+      });
+    }
+  }
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.submitter;
-    try {
-      if (route.isNew) {
+    if (route.isNew) {
+      try {
         const taskId = await ensureProject(button);
         toast('项目已创建。', 'success');
         navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
-      } else {
-        const reference = store.state.bundle?.reference || {};
-        const status = String(reference.status || '').toLowerCase();
-        const actionState = referenceActionState(reference);
-        if (actionState.blocked) {
-          throw new Error(status === 'failed'
-            ? '参考视频分析失败，请重新识别或更换视频后再创建资产。'
-            : (status === 'completed' && reference.analysis_valid === true
-              ? '请先核对并确认参考理解报告，再进行资产创建。'
-              : '参考视频仍在分析中，请等待完成后再创建资产。'));
-        }
-        setButtonBusy(button, true, '正在保存并创建资产…', { elapsed: true });
-        await store.updateRequest(safeFormPayload());
-        await store.runStage('scene-config');
-        toast('已按当前目标和参考识别结果开始创建资产方案。', 'success');
-        navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
+      } catch (error) {
+        setButtonBusy(button, false);
+        toast(error.message, 'danger');
       }
-    } catch (error) {
-      setButtonBusy(button, false);
-      toast(error.message, 'danger');
+      return;
     }
+    await proceedToAssetPlan(button);
   });
 
   host.querySelectorAll('[data-material-upload]').forEach(button => {

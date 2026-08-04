@@ -50,7 +50,10 @@ assert.match(briefView, /if \(!payload\.project_name\)/, '项目名称仍需非�
 assert.doesNotMatch(briefView, /referenceAnalysisSections/, '目标与材料页不得堆叠完整参考分析');
 assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分析|逐镜分析/, '参考详情必须按制作环节分流');
 assert.match(briefView, /data-brief-settings \$\{referenceAttached \? '' : 'open'\}/, '只有选择参考视频或链接后才折叠广告目标设置');
-assert.match(briefView, /点击展开后仍可自行填写或修改/, '折叠后必须明确允许用户展开修改');
+assert.match(briefView, /已从参考内容填写，可随时展开修改；保存后以你的版本为准/, '折叠后必须明确允许用户展开修改');
+assert.match(briefView, /data-brief-settings-values/, '折叠状态必须展示真实广告目标与成片设置摘要');
+assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
+assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
 assert(briefView.indexOf('data-reference-progress-host') < briefView.indexOf('<div class="two-column">'), '参考分析进度必须位于大表单之前，进入页面即可见');
 assert(briefView.indexOf('data-reference-understanding-host') < briefView.indexOf('<div class="two-column">'), '识别后的参考内容必须显示在折叠设置之前');
@@ -61,7 +64,7 @@ assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注�
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
 assert.match(briefView, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
-assert.match(briefView, /进行资产创建/, '第一步完成后的主操作必须明确进入资产创建，而不是泛化为保存目标');
+assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /mode:\s*'brief_goal'/, '广告目标帮写必须使用独立模式，不能提前生成完整剧情结构');
 assert.match(briefView, /AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位/, '目标页必须解释 AI 帮写的职责边界');
@@ -72,6 +75,7 @@ assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页�
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
 assert.match(briefView, /await store\.updateRequest\(safeFormPayload\(\)\);[\s\S]*await store\.runStage\('scene-config'\);[\s\S]*view=assets/, '目标确认必须按保存最新输入、创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
 const briefModule = loadBrowserModule('public/story-ad/views/briefView.js', ['referenceProgress', 'referenceActionState', 'syncReferenceAction'], {
   escapeHtml,
   elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },
@@ -121,7 +125,7 @@ assert.match(partialFailureProgress, /继续读取缺失镜头（4\/5 批）/);
 assert.match(partialFailureProgress, /建议约 5 分钟后继续/);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'done', status: 'completed', analysis_valid: true }))),
-  { blocked: false, label: '进行资产创建' },
+  { blocked: false, label: '下一步：创建人物与场景方案' },
   '有效完成态必须立即开放资产创建',
 );
 assert.deepStrictEqual(
@@ -145,7 +149,7 @@ briefModule.syncReferenceAction(liveActionButton, {
 });
 assert.deepStrictEqual(
   liveActionButton,
-  { disabled: false, textContent: '进行资产创建' },
+  { disabled: false, textContent: '下一步：创建人物与场景方案' },
   '分析从运行态实时切换到有效完成态时，现有 DOM 按钮必须立即启用且同步文案',
 );
 briefModule.syncReferenceAction(liveActionButton, {
@@ -283,7 +287,7 @@ assert.match(appWorkflowSource, /state\.completed \? '✓' : number/, '完成的
 
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
-  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
+  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
   { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const planningModule = loadBrowserModule(
@@ -299,6 +303,12 @@ const dossierModule = loadBrowserModule(
 assert.match(assets, /data-confirm-assets/);
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=plot/, '资产方案确认后必须进入剧情室');
+assert.match(assets, /asset-visual-next-step/, '进入资产中心后必须明确展示人物与场景视觉生成的下一步');
+assert.match(assets, /不会因刚才确认参考理解而自动付费/, '必须明确区分零调用方案创建与付费视觉生成');
+assert.match(assets, /data-generate-missing-subjects/, '必须提供通用的缺失人物和动物生成入口');
+assert.match(assets, /data-show-pending-scenes/, '必须提供通用的待生成场景入口');
+assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-missing' }), true);
+assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-ready', layout: { image_url: '/scene.png' } }), false);
 const legacyPerson = {
   id: 'legacy-person', kind: 'person', name: '历史人物', status: 'verified', role: '体验者',
   view_images: ['front', 'side', 'back', 'action'].map(key => ({ key, image_url: `/${key}.png` })),

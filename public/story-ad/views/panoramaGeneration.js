@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-panorama-authority-v18';
-import { toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
-import { confirmDialog } from '../components/dialog.js?v=20260804-panorama-authority-v18';
+import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
+import { toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

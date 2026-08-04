@@ -10,7 +10,9 @@ const css = fs.readFileSync(path.join(root, 'public/story-ad/reference-understan
 
 assert.match(brief, /import\('\.\/referenceUnderstandingView\.js\?v=/, '深度报告必须按需加载，不能加入所有项目首屏');
 assert.match(brief, /String\(reference\.status \|\| ''\)\.toLowerCase\(\) === 'completed'/, '分析未完成时不得挂载理解报告');
-assert.match(brief, /请先确认参考理解报告/, '深度报告存在时，未确认不得进入资产创建');
+assert.match(brief, /先确认上方参考理解/, '深度报告存在时，未确认不得进入资产方案创建');
+assert.match(brief, /data-brief-inline-action/, '参考设置折叠时，下一步主操作必须始终可见');
+assert.match(brief, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的主操作必须提交同一份可编辑设置');
 assert.match(brief, /understandingController\?\.destroy\(\)/, '视图退出时必须释放报告事件与 DOM');
 
 for (const field of ['story_bible', 'story_events', 'character_arcs', 'scene_narratives', 'brand_role', 'audio_visual_alignment', 'inferences', 'unknowns']) {
@@ -45,7 +47,10 @@ assert.match(report, /不会调用生成模型/, '编辑参考内容不得触发
 assert.match(report, /analysis_id: analysisId, base_revision: baseRevision, confirmation: 'authoritative_input'/, '确认操作必须携带分析编号、基线版本和确认语义');
 assert.match(report, /bundle\?\.revisions\?\.content/, '确认必须使用项目内容版本，不能误用分析合同版本');
 assert.match(report, /error\?\.status === 409/, '必须处理并发版本冲突');
-assert.match(report, /不会自动生成任何资产/, '确认后必须明确告知不会触发生成');
+assert.match(report, /确认并创建人物与场景方案/, '确认按钮必须明确说明会继续建立人物与场景方案');
+assert.match(report, /不生成图片或视频/, '确认时必须明确区分零视觉生成的方案创建与付费图片生成');
+assert.match(report, /await options\.onConfirmed/, '确认成功后必须把控制权交回目标页继续下一步');
+assert.match(brief, /onConfirmed:[\s\S]*proceedToAssetPlan/, '目标页必须接通确认成功到资产方案的连续流程');
 assert.doesNotMatch(report, /runStage\s*\(/, '理解报告不得直接触发任何生成阶段');
 assert.doesNotMatch(report, /scene-config|generate-keyframe|generate-video/, '理解报告不得绑定下游生成接口');
 
@@ -85,10 +90,11 @@ assert.strictEqual(reportFunctions.isReferenceUnderstandingConfirmed({ ...backen
 const briefFunctions = browserFunctions(brief, ['referenceActionState']);
 assert.strictEqual(briefFunctions.referenceActionState(backendShape).blocked, true, '深度报告未确认时必须阻止资产创建');
 assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).blocked, false, '确认后才允许用户主动进入资产创建');
+assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).label, '下一步：创建人物与场景方案', '确认后的可见主操作必须说明真实下一步');
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 40,
+  checks: 46,
   tabs: 7,
   max_items: 120,
   max_evidence_badges: 8,

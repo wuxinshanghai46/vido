@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-panorama-authority-v18';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
-import { confirmDialog } from '../components/dialog.js?v=20260804-panorama-authority-v18';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-panorama-authority-v18';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-panorama-authority-v18';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-panorama-authority-v18';
+import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-confirm-flow-v20';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-confirm-flow-v20';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-confirm-flow-v20';
 
 const GROUPS = [
   ['people', '人物'],
@@ -34,6 +34,13 @@ function subjectNeedsGeneration(item = {}, kind = '') {
   return kind === 'human'
     ? personAssetState(item) !== 'complete_dossier'
     : !hasGeneratedMedia(item);
+}
+
+function sceneNeedsGeneration(item = {}) {
+  return !Boolean(item.layout?.image_url
+    || item.scene_master?.image_url
+    || (Array.isArray(item.view_images) && item.view_images.some(view => view?.image_url))
+    || (Array.isArray(item.cameras) && item.cameras.some(camera => camera?.image_url)));
 }
 
 function profileList(bundle = {}, key = '') {
@@ -248,12 +255,19 @@ export async function mount(host, context) {
   const assets = bundle?.assets || {};
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const assetPlanReady = bundle?.navigation?.steps?.brief?.completed === true;
+  const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
+    + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
+  const missingSceneCount = (assets.scenes || []).filter(sceneNeedsGeneration).length;
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn primary" type="button" data-build-scenes>建立场景规划</button></div>
     </section>
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
+    ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
+      <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
+      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>${missingSubjectCount ? `生成缺失人物 / 动物（${missingSubjectCount}）` : '人物 / 动物视觉已齐全'}</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>${missingSceneCount ? `查看待生成场景（${missingSceneCount}）` : '场景视觉已齐全'}</button></div>
+    </section>` : ''}
     ${renderSceneWorldWorkspace(bundle)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
@@ -516,7 +530,11 @@ export async function mount(host, context) {
     } catch (error) { toast(error.message, 'danger'); } finally { uploadInput.value = ''; }
   });
 
-  host.querySelector('[data-generate-subjects]').addEventListener('click', event => generate(null, '', event.currentTarget));
+  host.querySelectorAll('[data-generate-subjects], [data-generate-missing-subjects]').forEach(button => button.addEventListener('click', event => generate(null, '', event.currentTarget)));
+  host.querySelector('[data-show-pending-scenes]')?.addEventListener('click', () => {
+    host.querySelector('[data-scene-world-workspace]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('请在待生成的场景卡中核对设定，再点击“生成场景与机位”。', 'info');
+  });
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
   host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
   host.querySelector('[data-generate-product-main]').addEventListener('click', event => {

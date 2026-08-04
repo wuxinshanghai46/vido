@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-panorama-authority-v18';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
-import { confirmDialog } from '../components/dialog.js?v=20260804-panorama-authority-v18';
+import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

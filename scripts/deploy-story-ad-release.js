@@ -80,6 +80,7 @@ const extraFiles = [
   'scripts/test-reference-understanding-edit-persistence.js',
   'scripts/test-story-ad-director-scene-v1.js',
   'scripts/test-story-ad-reference-understanding-confirmation.js',
+  'scripts/test-story-ad-reference-confirm-continue.js',
   'scripts/test-story-ad-reference-understanding-ui.js',
   'scripts/test-story-ad-release-integrity.js',
   'scripts/test-story-ad-scene-world-v1.js',

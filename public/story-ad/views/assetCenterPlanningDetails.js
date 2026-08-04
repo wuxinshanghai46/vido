@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-panorama-authority-v18';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-panorama-authority-v18';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-confirm-flow-v20';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
