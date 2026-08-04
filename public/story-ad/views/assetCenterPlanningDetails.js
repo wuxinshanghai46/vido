@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-model-routing-v14';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-model-routing-v14';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-retry-label-v15';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-retry-label-v15';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-model-routing-v14';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-model-routing-v14';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-model-routing-v14';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-model-routing-v14';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-model-routing-v14';
+import { request } from '../api.js?v=20260804-reference-retry-label-v15';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-retry-label-v15';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-retry-label-v15';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-retry-label-v15';
 
 const GROUPS = [
   ['people', '人物'],

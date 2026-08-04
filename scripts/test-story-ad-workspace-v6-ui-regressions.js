@@ -162,7 +162,7 @@ assert.match(failedReference, /data-reference-retry/);
 assert.match(failedReference, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-reusable', status: 'failed', visual_evidence_reusable: true,
-}), /复用完整证据重新整理/);
+}), />重新识别<\/button>/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-semantic-reusable', status: 'failed', visual_evidence_reusable: true, semantic_result_reusable: true,
 }), /复用现有结果重新校验/);

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-model-routing-v14';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-model-routing-v14';
+import { request } from '../api.js?v=20260804-reference-retry-label-v15';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -121,7 +121,7 @@ export function referenceProgress(reference = {}) {
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
-    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '复用完整证据重新整理' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
+    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '重新识别' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
     : '';
   const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at
     || reference.sync_interrupted_at || reference.updated_at || '';
@@ -263,7 +263,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-model-routing-v14');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-retry-label-v15');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

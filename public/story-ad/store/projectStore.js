@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-model-routing-v14';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-model-routing-v14';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-retry-label-v15';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-retry-label-v15';
 
 export function createProjectStore() {
   const state = {
