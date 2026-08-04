@@ -88,6 +88,13 @@ assert.match(runningReference, /width:42%/);
 assert.match(runningReference, /已耗时 1分05秒/);
 assert.match(runningReference, /证据帧与语音已提取/);
 assert.doesNotMatch(runningReference, /故事结构|人物分析|场景分析|逐镜分析/);
+const interruptedReference = briefModule.referenceProgress({
+  analysis_id: 'analysis-sync-interrupted', status: 'sync_interrupted', progress: 42,
+  started_at: '2026-08-01T00:00:00.000Z', sync_interrupted_at: '2026-08-01T00:01:05.000Z',
+});
+assert.match(interruptedReference, /状态同步暂时中断/);
+assert.match(interruptedReference, /已停止本地耗时计数/);
+assert.doesNotMatch(interruptedReference, /data-reference-retry/);
 assert.match(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90 }), /aria-valuenow="100"/);
 const invalidCompletedProgress = briefModule.referenceProgress({
   analysis_id: 'done-invalid', status: 'completed', progress: 100, analysis_valid: false,
@@ -217,6 +224,9 @@ assert.match(projectStore, /async function addReferenceLink[\s\S]*beginReference
 assert.match(projectStore, /async function uploadReference[\s\S]*beginReferenceReplacement\(state, set, stopReferencePolling[\s\S]*uploadReferenceVideo/, '更换本地视频也必须立即显示新任务状态');
 assert.match(projectStore, /if \(!replacementCurrent\(state, replacement\)\) return data\.analysis/, '迟到的新建链接响应不得抢回已经再次更换的来源');
 assert.match(projectStore, /if \(!data\.task_bound\) await bindReferenceAnalysis/, '服务端已绑定的新来源不得由浏览器重复写入一次');
+assert.doesNotMatch(projectStore, /async function retryReferenceAnalysis\(\)[\s\S]*?await bindReferenceAnalysis[\s\S]*?function referenceTaskRecord/, 'reanalysis acknowledgement must not trigger a duplicate browser binding');
+assert.doesNotMatch(projectStore, /function syncReferencePolling[\s\S]*?bindReferenceAnalysis[\s\S]*?function clearProject/, 'polling must remain read-only because the server owns task projection');
+assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, interruptedAt\)/, 'polling interruption must freeze elapsed time while automatic reconnect continues');
 const referenceReplacementState = read('public/story-ad/store/referenceReplacementState.js');
 assert.match(referenceReplacementState, /client_pending_reference_\$\{token\}/, '后端返回分析 ID 前必须使用仅限内存的替换占位状态');
 assert.match(referenceReplacementState, /replacement\?\.token === state\.referenceReplacementSeq/, '来源替换状态必须用单调序号阻止乱序覆盖');

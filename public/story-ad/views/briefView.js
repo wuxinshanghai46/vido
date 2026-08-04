@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-v12';
+import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -70,6 +70,7 @@ export function referenceProgress(reference = {}) {
   const completedInvalid = completed && reference.analysis_valid !== true;
   const failed = status === 'failed';
   const cancelled = status === 'cancelled';
+  const interrupted = status === 'sync_interrupted';
   const labels = {
     uploading: '正在上传参考视频',
     importing: '正在读取参考链接',
@@ -81,19 +82,22 @@ export function referenceProgress(reference = {}) {
     failed: '参考视频分析失败',
     cancelled: '参考视频分析已取消',
   };
+  labels.sync_interrupted = '状态同步暂时中断';
   const numeric = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
   const percent = completed ? 100 : numeric;
   const phase = completedInvalid
     ? '深度识别未通过质量校验，旧结果已停止使用'
     : String(reference.phase || labels[status] || '等待分析').trim();
-  const tone = failed || completedInvalid ? 'is-failed' : (completed ? 'is-completed' : (cancelled ? 'is-cancelled' : 'is-active'));
+  const tone = failed || completedInvalid ? 'is-failed' : (completed ? 'is-completed' : (cancelled || interrupted ? 'is-cancelled' : 'is-active'));
   const hasDeepReport = !!(
     Object.keys(reference.reference_understanding?.story_bible || reference.reference_understanding?.story_summary || reference.story_bible || {}).length
     || (reference.reference_understanding?.story_events || reference.reference_understanding?.causal_chain || reference.story_events)?.length
     || (reference.reference_understanding?.character_arcs || reference.reference_understanding?.characters || reference.character_arcs)?.length
     || (reference.reference_understanding?.scene_narratives || reference.reference_understanding?.scenes || reference.scene_narratives)?.length
   );
-  const baseNote = completed
+  const baseNote = interrupted
+    ? '状态同步暂时中断，页面正在自动重连；已停止本地耗时计数，任务仍由服务器继续处理。'
+    : completed
     ? (completedInvalid
       ? '本次深度识别没有通过质量校验，旧结果不会进入后续制作。原视频已保留，可直接重新识别，无需更换或重新上传。'
       : (hasDeepReport
@@ -119,7 +123,8 @@ export function referenceProgress(reference = {}) {
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
     ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '复用完整证据重新整理' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
     : '';
-  const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.updated_at || '';
+  const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at
+    || reference.sync_interrupted_at || reference.updated_at || '';
   return `<section class="reference-progress-card ${tone}" aria-live="polite">
     <div class="reference-progress-head">
       <span><b>${escapeHtml(labels[status] || '参考视频状态')}</b><small>${escapeHtml(reference.filename || '当前参考视频')}</small></span>
@@ -258,7 +263,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-reanalysis-v12');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-reanalysis-reliability-v13');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

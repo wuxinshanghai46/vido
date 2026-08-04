@@ -18,6 +18,7 @@ const service = require('../src/services/newStoryAd/referenceVideoAnalysisServic
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const referenceEvidenceText = require('../src/services/newStoryAd/referenceEvidenceTextService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const referenceAnalysisTaskSync = require('../src/services/newStoryAd/referenceAnalysisTaskSyncService');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
 const assetPlanService = require('../src/services/newStoryAd/assetPlanService');
 assert.throws(
@@ -1089,7 +1090,36 @@ async function main() {
     path.join(invalidReanalysisDir, 'record.json'),
     JSON.stringify(invalidReanalysisRecord, null, 2),
   );
-  const invalidReanalysisStarted = service.reanalyze(invalidReanalysisId, user);
+  const originalTerminalSync = referenceAnalysisTaskSync.syncTerminalAnalysis;
+  let failedTerminalSyncs = 0;
+  referenceAnalysisTaskSync.syncTerminalAnalysis = async (analysis) => {
+    if (analysis.status === 'failed') failedTerminalSyncs += 1;
+    return { synced: false, reason: 'test_projection', model_call_count: 0 };
+  };
+  const preparationFailure = new Error('project reset failed before model execution');
+  preparationFailure.code = 'REFERENCE_REANALYSIS_PREPARE_FAILED';
+  const failedPreparationStart = service.reanalyze(invalidReanalysisId, user, {
+    beforeRun: async () => { throw preparationFailure; },
+  });
+  assert.equal(failedPreparationStart.accepted, true);
+  const failedPreparationRecord = await waitFor(invalidReanalysisId, user, ['failed']);
+  assert.equal(failedPreparationRecord.error.code, 'REFERENCE_REANALYSIS_PREPARE_FAILED');
+  assert.equal(failedTerminalSyncs, 1, 'server lifecycle must synchronize failed terminal state without browser polling');
+  referenceAnalysisTaskSync.syncTerminalAnalysis = originalTerminalSync;
+
+  let releasePreparation;
+  let preparationStarted = false;
+  const preparationGate = new Promise(resolve => { releasePreparation = resolve; });
+  const invalidReanalysisStarted = service.reanalyze(invalidReanalysisId, user, {
+    beforeRun: async () => {
+      preparationStarted = true;
+      await preparationGate;
+    },
+  });
+  assert.equal(preparationStarted, false, 'reanalysis acknowledgement must return before background preparation starts');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(preparationStarted, true, 'background preparation must start before analysis execution');
+  assert.equal(service.get(invalidReanalysisId, user).status, 'queued', 'paid analysis must not start before preparation completes');
   assert.equal(invalidReanalysisStarted.accepted, true, '质量无效完成态必须复用同一视频 ID 进入重新识别队列');
   assert.equal(invalidReanalysisStarted.record.status, 'queued');
   assert.equal(invalidReanalysisStarted.record.progress, 1, '重新识别必须开启新的进度与耗时，不能重放旧 100%');
@@ -1098,6 +1128,7 @@ async function main() {
   assert.ok(invalidReanalysisStarted.record.reanalysis.previous_result_digest, '旧结果只保留审计摘要，不得继续作为当前结果');
   const concurrentInvalidReanalysis = service.reanalyze(invalidReanalysisId, user);
   assert.equal(concurrentInvalidReanalysis.duplicate, true, '并发重复点击重新识别必须幂等，不能创建第二个付费任务');
+  releasePreparation();
   const invalidReanalysisCompleted = await waitFor(invalidReanalysisId, user, ['completed', 'failed']);
   assert.equal(invalidReanalysisCompleted.status, 'completed');
   assert.equal(invalidReanalysisCompleted.result.analysis_quality.valid, true);
@@ -1143,6 +1174,19 @@ async function main() {
       && error.failures.includes('story_outline_incomplete')
       && error.failures.includes('scene_prompts_incomplete'),
     'provider refusal must not become a completed generic Chinese brief',
+  );
+  assert.equal(
+    service._private.assertCandidateAnalysisText(JSON.stringify({
+      source_facts: { product_or_service: '测试产品' },
+      reference_understanding: { story_summary: { logline: '测试故事' } },
+    })),
+    true,
+    'a parseable partial JSON response must reach deterministic merge and the deep semantic quality gate',
+  );
+  assert.throws(
+    () => service._private.assertCandidateAnalysisText('plain text without a structured object'),
+    error => error.code === 'PROVIDER_RESPONSE_INVALID',
+    'non-structured semantic output must still fall through to another candidate',
   );
 
   const times = service._private.evidenceTimes(10.194);
@@ -1392,7 +1436,8 @@ async function main() {
       assert.ok(!options.userPrompt.includes('"scene_prompts"'));
       assert.ok(!options.userPrompt.includes('"shot_breakdown"'));
       assert.ok(!options.userPrompt.includes('"camera_intents"'));
-      const text = JSON.stringify(semanticContract);
+      const { plot_beats: _omittedPlotBeats, ...partialSemanticContract } = semanticContract;
+      const text = JSON.stringify(partialSemanticContract);
       await options.validateText(text);
       return { text, used_model: 'test/reference-synthesis' };
     };
@@ -1402,6 +1447,7 @@ async function main() {
     }, stagedEvidenceBatches, { status: 'no_audio', text: '' });
     assert.match(synthesized.source_facts.product_or_service, /测试品牌|测试门窗产品/);
     assert.strictEqual(synthesisCalls, 1, 'real reference analysis must run one semantic synthesis pass after visual evidence extraction');
+    assert.ok(synthesized.plot_beats.length >= 2, 'missing top-level plot_beats must be restored from deterministic evidence after semantic validation');
     const synthesisAudit = service._private.readRecord('anonymous', 'reference-synthesis-test');
     assert.ok(synthesisAudit._synthesis_raw.text.includes('测试门窗产品'), '最终汇总原文必须持久化，失败后仍可审计模型真实输出');
     assert.equal(synthesisAudit._synthesis_raw.used_model, 'test/reference-synthesis');

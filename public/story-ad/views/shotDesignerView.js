@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
+import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

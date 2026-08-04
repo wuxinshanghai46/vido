@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260804-reference-reanalysis-v12';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260804-reference-reanalysis-v12';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260804-reference-reanalysis-v12';
+import { createProjectStore } from './store/projectStore.js?v=20260804-reference-reanalysis-reliability-v13';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260804-reference-reanalysis-reliability-v13';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260804-reference-reanalysis-v12'),
-  assets: () => import('./views/assetCenterView.js?v=20260804-reference-reanalysis-v12'),
-  plot: () => import('./views/plotRoomView.js?v=20260804-reference-reanalysis-v12'),
-  storyboard: () => import('./views/storyboardView.js?v=20260804-reference-reanalysis-v12'),
-  shot: () => import('./views/shotDesignerView.js?v=20260804-reference-reanalysis-v12'),
-  final: () => import('./views/finalView.js?v=20260804-reference-reanalysis-v12'),
-  workflow: () => import('./views/workflowView.js?v=20260804-reference-reanalysis-v12'),
+  brief: () => import('./views/briefView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  assets: () => import('./views/assetCenterView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  plot: () => import('./views/plotRoomView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  storyboard: () => import('./views/storyboardView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  shot: () => import('./views/shotDesignerView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  final: () => import('./views/finalView.js?v=20260804-reference-reanalysis-reliability-v13'),
+  workflow: () => import('./views/workflowView.js?v=20260804-reference-reanalysis-reliability-v13'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

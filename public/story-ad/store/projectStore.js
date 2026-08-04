@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-reanalysis-v12';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-reanalysis-v12';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
+import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-reanalysis-reliability-v13';
 
 export function createProjectStore() {
   const state = {
@@ -289,7 +289,6 @@ export function createProjectStore() {
       });
       const analysis = data.analysis || {};
       applyReferenceLiveState(analysis);
-      await bindReferenceAnalysis(analysis);
       syncReferencePolling(true);
       set({ saving: false });
       return analysis;
@@ -380,6 +379,9 @@ export function createProjectStore() {
           shot_breakdown: live.shot_breakdown,
           camera_intents: live.camera_intents,
           character_actions: live.character_actions,
+          sync_interrupted: false,
+          sync_interrupted_at: '',
+          last_known_status: '',
         },
       },
     });
@@ -431,7 +433,8 @@ export function createProjectStore() {
   function syncReferencePolling(force = false) {
     const reference = state.bundle?.reference || {};
     const analysisId = reference.analysis_id || '';
-    const active = ['importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(String(reference.status || '').toLowerCase());
+    const status = String(reference.status || '').toLowerCase();
+    const active = ['importing', 'uploaded', 'queued', 'running', 'cancelling', 'sync_interrupted'].includes(status);
     if (!analysisId || (!active && !force)) return stopReferencePolling();
     if (state.referenceTimer && state.referenceAnalysisId === analysisId) return;
     stopReferencePolling();
@@ -451,24 +454,24 @@ export function createProjectStore() {
           if (state.referenceAnalysisId !== analysisId) return;
           analysis = started.analysis || analysis;
         }
-        const previousStatus = state.bundle?.reference?.status || '';
         terminal = ['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase());
         applyReferenceLiveState(analysis);
-        // A terminal analysis must never be polled again just because its
-        // projection write failed. Stop first, then bind/refresh once.
+        // Terminal projection belongs to the server. Stop polling first, then
+        // refresh the server-owned workspace once.
         if (terminal) stopReferencePolling();
-        if (terminal || analysis.status !== previousStatus) await bindReferenceAnalysis(analysis);
         if (terminal) {
           await refreshSections('all');
           return;
         }
       } catch (error) {
         if (!terminal && state.referenceAnalysisId !== analysisId) return;
+        const currentReference = state.bundle?.reference || {};
+        const interruptedAt = currentReference.sync_interrupted_at || new Date().toISOString();
         set({
           error: error.message,
           bundle: state.bundle ? {
             ...state.bundle,
-            reference: { ...(state.bundle.reference || {}), error: error.message },
+            reference: referenceSyncInterrupted(currentReference, error, interruptedAt),
           } : state.bundle,
         });
         if (terminal) return;

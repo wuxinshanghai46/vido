@@ -135,7 +135,7 @@ async function main() {
   assert.match(storeSource, /reference_understanding:\s*result\.reference_understanding\s*\|\|\s*analysis\.reference_understanding/, 'browser transport must include V6 reference_understanding');
   const stopIndex = storeSource.indexOf('if (terminal) stopReferencePolling();');
   const bindIndex = storeSource.indexOf('if (terminal || analysis.status !== previousStatus) await bindReferenceAnalysis(analysis);');
-  assert.ok(stopIndex >= 0 && bindIndex > stopIndex, 'terminal polling must stop before the projection write');
+  assert.ok(stopIndex >= 0 && bindIndex === -1, 'browser polling must stay read-only because the server owns terminal projection');
 
   console.log(JSON.stringify({
     passed: true,

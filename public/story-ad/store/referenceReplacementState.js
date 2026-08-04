@@ -30,6 +30,19 @@ export function replacementCurrent(state, replacement) {
   return replacement?.token === state.referenceReplacementSeq;
 }
 
+export function referenceSyncInterrupted(reference = {}, error = null, interruptedAt = '') {
+  return {
+    ...reference,
+    status: 'sync_interrupted',
+    last_known_status: reference.last_known_status || reference.status || '',
+    sync_interrupted: true,
+    sync_interrupted_at: interruptedAt,
+    updated_at: interruptedAt,
+    phase: '状态同步暂时中断，正在自动重连',
+    error: error?.message || String(error || ''),
+  };
+}
+
 /** 仅当前请求失败时恢复旧来源；迟到请求不得覆盖后续更换。 */
 export function restoreReferenceReplacement(state, set, replacement) {
   if (!replacementCurrent(state, replacement) || !state.bundle) return;

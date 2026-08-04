@@ -393,8 +393,9 @@ async function runLinkImport(initialRecord, linkService, inspected) {
     });
   } catch (error) {
     const latest = readRecord(record.user_id, record.id) || record;
+    let terminal;
     if (error.cancelled || latest.cancelled || error.code === 'REFERENCE_VIDEO_IMPORT_CANCELLED') {
-      save(latest, {
+      terminal = save(latest, {
         status: 'cancelled',
         phase: '链接读取已取消',
         progress: 0,
@@ -402,7 +403,7 @@ async function runLinkImport(initialRecord, linkService, inspected) {
         cancelled_at: now(),
       });
     } else {
-      save(latest, {
+      terminal = save(latest, {
         status: 'failed',
         phase: '链接视频读取失败',
         progress: 0,
@@ -413,6 +414,7 @@ async function runLinkImport(initialRecord, linkService, inspected) {
         failed_at: now(),
       });
     }
+    await syncTerminalRecord(terminal);
   } finally {
     activeImports.delete(initialRecord.id);
   }
@@ -1131,24 +1133,49 @@ function refusalLike(value = '') {
 
 function assertCandidateAnalysisText(text = '') {
   const raw = String(text || '').trim();
-  const requiredKeys = ['story_outline', 'plot_beats', 'source_facts'];
-  const foundKeys = requiredKeys.filter(key => raw.includes(key));
   const refused = refusalLike(raw);
-  if (!raw || refused || foundKeys.length < requiredKeys.length) {
+  const jsonLike = raw.startsWith('{') || raw.startsWith('```') || /\{[\s\S]*\}/.test(raw);
+  if (!raw || refused || !jsonLike) {
     const error = new Error(
-      `视觉模型未返回可用的参考视频内容识别合同`
-      + `（长度=${raw.length}，字段=${foundKeys.join('|') || 'none'}，拒绝=${refused ? 'yes' : 'no'}），已切换下一候选模型`,
+      `语义模型未返回可解析的参考视频结构化内容`
+      + `（长度=${raw.length}，JSON=${jsonLike ? 'yes' : 'no'}，拒绝=${refused ? 'yes' : 'no'}），已切换下一候选模型`,
     );
     error.code = 'PROVIDER_RESPONSE_INVALID';
     error.retryable = true;
     error.response_diagnostics = {
       response_length: raw.length,
-      required_keys_found: foundKeys,
+      json_like: jsonLike,
       refusal_detected: refused,
     };
     throw error;
   }
   return true;
+}
+
+async function syncTerminalRecord(record) {
+  let latest = readRecord(record.user_id, record.id) || record;
+  try {
+    const taskSync = require('./referenceAnalysisTaskSyncService');
+    const syncResult = await taskSync.syncTerminalAnalysis(latest, taskRecord(latest));
+    latest = save(readRecord(latest.user_id, latest.id) || latest, {
+      task_sync: {
+        status: syncResult.synced ? 'synced' : 'unchanged',
+        reason: syncResult.reason || '',
+        model_call_count: 0,
+        updated_at: now(),
+      },
+    });
+  } catch (syncError) {
+    latest = save(readRecord(latest.user_id, latest.id) || latest, {
+      task_sync: {
+        status: 'failed',
+        reason: String(syncError.code || 'TASK_SYNC_FAILED').slice(0, 100),
+        model_call_count: 0,
+        updated_at: now(),
+      },
+    });
+  }
+  return latest;
 }
 
 function validateAnalysisResult(result = {}) {
@@ -2193,6 +2220,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
   }
   const stage = 'new_story_ad.reference_video_synthesis';
   let response;
+  let validatedCandidate = null;
   if (record._reuse_synthesis_raw === true && hasChineseDetail(record._synthesis_raw?.text, 20)) {
     response = {
       text: String(record._synthesis_raw.text),
@@ -2330,7 +2358,36 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     maxTokens: 6000,
     temperature: 0.1,
     timeoutMs: 120000,
-    validateText: assertCandidateAnalysisText,
+    validateText: async (text) => {
+      assertCandidateAnalysisText(text);
+      try {
+        const parsedCandidate = await jsonRepair.parseOrRepair({
+          raw: text,
+          expected: 'object',
+          modelGateway,
+          taskId: record.id,
+          stage: 'new_story_ad.json_repair',
+        });
+        const mergedCandidate = referenceUnderstanding.enrichAnalysis(
+          mergeAnalysisWithEvidence(deterministic, parsedCandidate),
+          { visualEvidence, transcript },
+        );
+        validateAnalysisResult(mergedCandidate);
+        validatedCandidate = { text: String(text || ''), result: mergedCandidate };
+        return true;
+      } catch (error) {
+        if (error.code === 'PROVIDER_RESPONSE_INVALID') throw error;
+        const invalid = new Error(`语义模型结构化结果未通过参考理解质量校验：${String(error.message || error).slice(0, 300)}`);
+        invalid.code = 'PROVIDER_RESPONSE_INVALID';
+        invalid.retryable = true;
+        invalid.response_diagnostics = {
+          response_length: String(text || '').length,
+          semantic_error_code: String(error.code || 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID'),
+          semantic_failures: Array.isArray(error.failures) ? error.failures.slice(0, 20) : [],
+        };
+        throw invalid;
+      }
+    },
   });
   const latest = readRecord(record.user_id, record.id) || record;
   if (response.reused === true) {
@@ -2345,6 +2402,9 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         saved_at: now(),
       },
     });
+  }
+  if (validatedCandidate && validatedCandidate.text === String(response.text || '')) {
+    return validatedCandidate.result;
   }
   const parsed = await jsonRepair.parseOrRepair({
     raw: response.text,
@@ -2774,9 +2834,13 @@ async function rebuildStoredAnalysis(analysisId, user = {}) {
   return publicRecord(next);
 }
 
-async function runAnalysis(initialRecord) {
+async function runAnalysis(initialRecord, options = {}) {
   let record = initialRecord;
   try {
+    if (typeof options.beforeRun === 'function') {
+      await options.beforeRun(publicRecord(record));
+      record = readRecord(record.user_id, record.id) || record;
+    }
     record = checkpoint(record, '读取视频元数据', 8, { status: 'running', error: null });
     throwIfCancelled(record);
     const reuseEvidence = hasReusableVisualEvidence(record);
@@ -2846,27 +2910,39 @@ async function runAnalysis(initialRecord) {
     }
   } catch (error) {
     const latest = readRecord(record.user_id, record.id) || record;
+    let terminal;
     if (error.cancelled || latest.cancelled) {
-      save(latest, {
+      terminal = save(latest, {
         status: 'cancelled',
         phase: '已取消',
         error: null,
         cancelled_at: now(),
       });
     } else {
-      save(latest, {
+      terminal = save(latest, {
         status: 'failed',
         phase: '分析失败',
         error: publicVisionFailure(error),
         failed_at: now(),
       });
     }
+    await syncTerminalRecord(terminal);
   } finally {
     activeRuns.delete(initialRecord.id);
   }
 }
 
-function start(analysisId, user = {}) {
+function scheduleAnalysis(record, options = {}) {
+  const promise = new Promise((resolve) => {
+    setImmediate(() => {
+      Promise.resolve(runAnalysis(record, options)).then(resolve);
+    });
+  });
+  activeRuns.set(record.id, promise);
+  return promise;
+}
+
+function start(analysisId, user = {}, options = {}) {
   let record = assertOwned(analysisId, user);
   if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
   if (activeImports.has(analysisId) || record.status === 'importing') {
@@ -2919,9 +2995,8 @@ function start(analysisId, user = {}) {
     cancelled_at: '',
     _reuse_synthesis_raw: reuseSynthesisRaw,
   });
-  // 先登记再进入执行微任务，避免缓存恢复路径同步完成后 finally 先 delete、随后又被 set 回活动表。
-  const promise = Promise.resolve().then(() => runAnalysis(record));
-  activeRuns.set(analysisId, promise);
+  // 先登记再进入下一事件循环，确保 HTTP 202 能在同步视频处理开始前发出。
+  scheduleAnalysis(record, options);
   return { record: publicRecord(record), accepted: true, duplicate: false };
 }
 
@@ -2932,13 +3007,13 @@ function start(analysisId, user = {}) {
  * “重新识别当前视频”时才进入这里。原视频与可校验的逐帧缓存会保留，
  * 旧语义结果会在排队前撤下，避免页面或下游继续读取不合格报告。
  */
-function reanalyze(analysisId, user = {}) {
+function reanalyze(analysisId, user = {}, options = {}) {
   let record = assertOwned(analysisId, user);
   if (activeImports.has(analysisId) || activeRuns.has(analysisId)
     || ['importing', 'uploaded', 'queued', 'running', 'cancelling'].includes(record.status)) {
     return { record: publicRecord(record), accepted: false, duplicate: true };
   }
-  if (['failed', 'cancelled'].includes(record.status)) return start(analysisId, user);
+  if (['failed', 'cancelled'].includes(record.status)) return start(analysisId, user, options);
   if (record.status !== 'completed') {
     const error = new Error('当前参考视频尚未结束，不能重复提交重新识别');
     error.code = 'REFERENCE_VIDEO_REANALYSIS_NOT_READY';
@@ -3006,8 +3081,7 @@ function reanalyze(analysisId, user = {}) {
       requested_at: now(),
     },
   });
-  const promise = Promise.resolve().then(() => runAnalysis(record));
-  activeRuns.set(analysisId, promise);
+  scheduleAnalysis(record, options);
   return { record: publicRecord(record), accepted: true, duplicate: false };
 }
 
@@ -3158,6 +3232,8 @@ module.exports = {
     compileAnalysisFromEvidence,
     mergeAnalysisWithEvidence,
     synthesizeAnalysisFromEvidence,
+    syncTerminalRecord,
+    scheduleAnalysis,
     visibleHumanCount,
     narrativeAnimalEvidence,
     characterEvidenceProfiles,

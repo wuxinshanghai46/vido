@@ -832,15 +832,14 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
     }
     scenePlan = storage.getOutput(taskId, 'scene_config');
   }
-  const started = referenceVideoAnalyses.reanalyze(req.params.analysisId, user);
-  if (started.accepted && taskId) {
-    service.updateTaskRequest(taskId, referenceDetach.buildReanalysisPatch(
+  const started = referenceVideoAnalyses.reanalyze(req.params.analysisId, user, taskId ? {
+    beforeRun: (queuedRecord) => service.updateTaskRequest(taskId, referenceDetach.buildReanalysisPatch(
       previousContext,
       scenePlan,
-      referenceVideoAnalyses.taskRecord(started.record),
+      referenceVideoAnalyses.taskRecord(queuedRecord),
       req.body || {},
-    ), user);
-  }
+    ), user),
+  } : {});
   return res.status(202).json({
     success: true,
     ...started,

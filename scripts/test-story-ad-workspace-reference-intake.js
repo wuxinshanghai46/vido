@@ -423,6 +423,8 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
   const analysisId = completedReference().analysis_id;
   const originalGet = referenceVideoAnalyses.get;
   const originalReanalyze = referenceVideoAnalyses.reanalyze;
+  let queuedRecord = null;
+  let beforeRun = null;
   referenceVideoAnalyses.get = id => ({
     id,
     analysis_id: id,
@@ -431,10 +433,9 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
     progress: 100,
     result: { analysis_quality: { valid: false } },
   });
-  referenceVideoAnalyses.reanalyze = id => ({
-    accepted: true,
-    duplicate: false,
-    record: {
+  referenceVideoAnalyses.reanalyze = (id, _user, options = {}) => {
+    beforeRun = options.beforeRun;
+    queuedRecord = {
       id,
       analysis_id: id,
       task_id: taskId,
@@ -444,8 +445,9 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
       result: null,
       analysis_quality: {},
       started_at: new Date().toISOString(),
-    },
-  });
+    };
+    return { accepted: true, duplicate: false, record: queuedRecord };
+  };
   const app = express();
   app.use(express.json({ limit: '5mb' }));
   app.use((req, res, next) => { req.user = user; next(); });
@@ -462,7 +464,11 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
     assert.equal(response.payload.task_reset, true);
     assert.equal(response.payload.analysis.status, 'queued');
     assert.equal(response.payload.analysis.progress, 1);
-    const context = storage.getOutput(taskId, 'context');
+    assert.equal(typeof beforeRun, 'function', '重新识别接口必须把项目重置注册为后台分析前置步骤');
+    let context = storage.getOutput(taskId, 'context');
+    assert.equal(context.reference_video_analysis.status, 'completed', 'HTTP 202 返回不得等待项目持久化完成');
+    await beforeRun(queuedRecord);
+    context = storage.getOutput(taskId, 'context');
     assert.equal(context.reference_video_analysis.analysis_id, analysisId, '专用接口必须继续绑定当前视频');
     assert.equal(context.reference_video_analysis.status, 'queued', '项目必须立即采用新的识别状态');
     assert.equal(context.brief, '', '旧参考自动目标必须在新模型调用前撤下');

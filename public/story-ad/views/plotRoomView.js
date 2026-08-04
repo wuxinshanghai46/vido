@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-v12';
+import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

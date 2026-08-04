@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-v12';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-v12';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-v12';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-reanalysis-v12';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-reanalysis-v12';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-reanalysis-v12';
+import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-reanalysis-reliability-v13';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-reanalysis-reliability-v13';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-reanalysis-reliability-v13';
 
 const GROUPS = [
   ['people', '人物'],

@@ -337,7 +337,13 @@ async function main() {
   assert.strictEqual(failed.status, 'failed');
   assert.strictEqual(failed.progress, 0, 'failed link imports must not remain on a partial percentage');
   assert.strictEqual(analysisService._private.readRecord(user.id, failing.id).progress, 0);
+  if (analysisService._private.activeImports.get(failing.id)?.promise) {
+    await analysisService._private.activeImports.get(failing.id).promise;
+  }
 
+  if (analysisService._private.activeRuns.get(created.id)) {
+    await analysisService._private.activeRuns.get(created.id);
+  }
   analysisService.remove(created.id, user);
   analysisService.remove(cancellable.id, user);
   analysisService.remove(failing.id, user);
