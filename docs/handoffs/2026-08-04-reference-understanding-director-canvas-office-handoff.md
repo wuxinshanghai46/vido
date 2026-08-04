@@ -245,3 +245,14 @@ Invoke-RestMethod https://vido.smsend.cn/api/story-ad/version
 - 功能提交 `f6309bb`、发布清单提交 `1bb090a` 已推送。生产版本为 `20260804-reference-reanalysis-reliability-v13 / reference-director-v2`，86 个发布文件 SHA-256 差异 0。
 - 本地与服务器完整 `platform:upgrade:test` 均退出码 0；发布前后活动生成任务均为 0，PM2、内外网健康、数据库和 SQLite quick_check 正常。
 - 目标任务当前为权威失败终态，8/8 视觉证据批次保留，可从页面点击“复用完整证据重新整理”。本轮修复前后该分析的模型调用数均为 21，未自动重新识别、未新增付费调用。
+
+## 12. 2026-08-04 下午补充：重新识别启动反馈与语义模型路由 v14
+
+- 15:16:40 的重新整理请求已在服务端受理，但首个新进度到 15:17:04 才写出，约 24.7 秒耗在后台项目状态清理和 SQLite/JSON 投影；此前响应虽已调用 `res.json`，同一事件循环随后执行同步投影，浏览器可能在 socket 真正刷出前继续等待。
+- 本次失败不在镜头识别：30 张证据帧和 8/8 视觉批次完整保留。失败发生在语义总编阶段：`webang-maas/gemini-2.5-pro` 返回令牌过期，`deyunai/deepseek-r1` 与 `deyunai/gemini-3.1-flash-lite-preview` 均返回无正文 HTTP 400。
+- 根因是语义候选按静态配置优先级取前三个，两个从未成功的模型占满了 3 次预算，近期有成功记录的 DeyunAI `gemini-2.5-flash`、`gemini-2.5-pro`、`gpt-4o` 排在第 6～8 位而未被尝试。
+- v14 为 HTTP 202 预留 100ms 刷出窗口，并在后台投影前写入“任务已受理，正在准备项目状态”；失败/取消再次启动时进度统一重置为 1%，不继承内部旧进度。
+- 参考视频语义总编改为近期成功模型优先；无正文 HTTP 400 识别为 `PROVIDER_REQUEST_REJECTED` 并对单个模型冷却 30 分钟，不再以 `UNKNOWN` 重复占用候选预算。发布清单补入此前遗漏的 `modelGateway.js`。
+- 提交 `df9a8f333c5986f8ffda8ff797f6ae760d20709d` 已推送。生产版本为 `20260804-reference-model-routing-v14 / reference-director-v2`，87/87 文件 SHA-256 差异 0。
+- 本地完整回归 234.8 秒退出码 0；服务器完整回归和发布后健康检查通过，活动任务前后 0，PM2 online，内外网健康、数据库、SQLite quick_check 正常。
+- 线上语义候选现为：1) `deyunai/gemini-2.5-flash`，2) `deyunai/gemini-2.5-pro`，3) `deyunai/gpt-4o`。目标分析保持 failed，8/8 证据保留；失败后及本次发布后新增模型调用均为 0，未自动重跑。
