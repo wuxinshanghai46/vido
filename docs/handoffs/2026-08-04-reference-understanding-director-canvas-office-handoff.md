@@ -256,3 +256,10 @@ Invoke-RestMethod https://vido.smsend.cn/api/story-ad/version
 - 提交 `df9a8f333c5986f8ffda8ff797f6ae760d20709d` 已推送。生产版本为 `20260804-reference-model-routing-v14 / reference-director-v2`，87/87 文件 SHA-256 差异 0。
 - 本地完整回归 234.8 秒退出码 0；服务器完整回归和发布后健康检查通过，活动任务前后 0，PM2 online，内外网健康、数据库、SQLite quick_check 正常。
 - 线上语义候选现为：1) `deyunai/gemini-2.5-flash`，2) `deyunai/gemini-2.5-pro`，3) `deyunai/gpt-4o`。目标分析保持 failed，8/8 证据保留；失败后及本次发布后新增模型调用均为 0，未自动重跑。
+
+## 13. 2026-08-04 16:31 补充：重新识别入口文案 v15
+
+- 用户可见按钮已由“复用完整证据重新整理”简化为“重新识别”；执行路径不变，仍使用同一分析 ID 并复用已通过的 8/8 镜头证据，确认框继续说明执行范围与可能的语义模型费用。
+- 提交 `5806c0b` 已推送；生产版本为 `20260804-reference-retry-label-v15 / reference-director-v2`，87/87 发布文件 SHA-256 一致。
+- 本地完整回归 214.4 秒退出码 0；服务器完整回归退出码 0，发布前后活动任务均为 0；PM2、内外网健康、数据库与 SQLite `quick_check` 正常。
+- 线上旧长文案已不存在。目标任务仍为失败终态并保留 8/8 证据；最后一次模型调用时间仍为 15:17:12，本次文案发布没有自动重跑或新增付费调用。
