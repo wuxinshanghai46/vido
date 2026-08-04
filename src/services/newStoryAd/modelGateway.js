@@ -406,7 +406,7 @@ function classifyError(error) {
   if (/AuditSubmitIllegal|submit.*illegal|content audit|审核|违规|safety|policy/i.test(msg)) return { code: 'PROVIDER_CONTENT_AUDIT', retryable: false };
   if (/prompt:\s*size must be between|prompt.*(?:too long|length|limit)/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
   if (/InvalidParameter|BadRequest|parameter .* not valid|cannot be mixed/i.test(msg)) return { code: 'INVALID_PROVIDER_INPUT', retryable: false };
-  if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up|connection error|fetch failed/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
+  if (/timeout|timed\s*out|ETIMEDOUT|ECONNRESET|socket hang up|connection error|fetch failed|upstream connect error|disconnect\/reset|reset before headers|connection termination/i.test(msg)) return { code: 'TIMEOUT_OR_NETWORK', retryable: true };
   if (/insufficient quota|account balance not enough|insufficient balance|balance not enough|["']code["']\s*:\s*(1005|1102)/i.test(msg)) return { code: 'PROVIDER_BILLING', retryable: false };
   if (/429|rate limit|quota/i.test(msg)) return { code: 'RATE_LIMIT', retryable: true };
   if (/token not valid|invalid.*token|api key|unauthorized|401|403|令牌.*(?:过期|无效|不正确)|验证不正确/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };

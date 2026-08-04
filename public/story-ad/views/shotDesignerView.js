@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

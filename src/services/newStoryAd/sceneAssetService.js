@@ -14,6 +14,7 @@ const visualRealismPolicy = require('./visualRealismPolicyService');
 const sceneAtlas = require('./sceneAtlasService');
 const blueprintQuality = require('./blueprintQualityService'), sceneStructuredContract = require('./sceneStructuredContractService');
 const generationSpecCompletion = require('./generationSpecCompletionService');
+const visualAssetProgress = require('./visualAssetProgressService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -224,6 +225,20 @@ function sceneMaterialReferenceImages(ctx = {}, body = {}) {
 function updateSceneGenerationProgress(taskId, update = {}) {
   const task = storage.getTask(taskId);
   if (!task) return null;
+  if (task.generation_progress?.stage === 'visual_assets') {
+    const keys = normalizeRepairViewKeys(update.viewKeys || []);
+    const current = task.generation_progress.lanes?.scenes?.current_view_progress || {};
+    const processed = update.viewStatus === 'succeeded'
+      ? Math.min(keys.length || Number(current.total || 1), Number(current.completed || 0) + 1)
+      : Number(current.completed || 0);
+    return visualAssetProgress.updateSceneUnit(taskId, {
+      scene_id: update.sceneId || update.scene_id || '',
+      target_total: keys.length || Number(current.total || 1),
+      processed,
+      status: update.viewStatus === 'failed' ? 'failed' : 'running',
+      message: update.phase === 'verification' ? '正在验证场景空间一致性' : '',
+    });
+  }
   const previous = task.generation_progress?.stage === 'scene_asset'
     ? task.generation_progress
     : {};
@@ -958,8 +973,10 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
     ...(options.sceneSpec ? { scene_spec: options.sceneSpec } : {}),
     scene_assets: normalized,
   };
-  storage.saveOutput(taskId, 'context', nextCtx);
-  storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
+  if (options.deferContextWrite !== true) {
+    storage.saveOutput(taskId, 'context', nextCtx);
+    storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
+  }
   storage.saveStage(taskId, 'scene_asset', {
     status: 'done',
     output_summary: `${normalized.length} scene asset packages`,
@@ -1002,7 +1019,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         scene_spec: sceneCompletion.scene_spec,
       };
     }
-    storage.saveOutput(taskId, 'scene_config', target.scene_plan);
+    if (runOptions.deferPublish !== true) storage.saveOutput(taskId, 'scene_config', target.scene_plan);
     const completedCtx = {
       ...baseCtx,
       scene_mode: target.scene_plan.scene_mode,
@@ -1012,8 +1029,10 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         scene: { checkpoint_kind: sceneCompletion.checkpoint_kind, scene_id: target.scene_id, updated_at: new Date().toISOString() },
       },
     };
-    storage.saveOutput(taskId, 'context', completedCtx);
-    storage.updateTask(taskId, { request: completedCtx, updated_at: new Date().toISOString() });
+    if (runOptions.deferPublish !== true) {
+      storage.saveOutput(taskId, 'context', completedCtx);
+      storage.updateTask(taskId, { request: completedCtx, updated_at: new Date().toISOString() });
+    }
   }
   if (target.submitted_scene_spec_used) {
     const targetIndex = Array.isArray(target.scene_plan?.spaces)
@@ -1026,14 +1045,16 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         scene_spec: target.scene_spec,
       };
     }
-    storage.saveOutput(taskId, 'scene_config', target.scene_plan);
+    if (runOptions.deferPublish !== true) storage.saveOutput(taskId, 'scene_config', target.scene_plan);
     const editedCtx = {
       ...baseCtx,
       scene_mode: target.scene_plan.scene_mode,
       scene_spec: target.multi_scene ? baseCtx.scene_spec : target.scene_spec,
     };
-    storage.saveOutput(taskId, 'context', editedCtx);
-    storage.updateTask(taskId, { request: editedCtx, updated_at: new Date().toISOString() });
+    if (runOptions.deferPublish !== true) {
+      storage.saveOutput(taskId, 'context', editedCtx);
+      storage.updateTask(taskId, { request: editedCtx, updated_at: new Date().toISOString() });
+    }
   }
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const sceneConfig = target.isolated_scene_config;
@@ -1052,7 +1073,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   };
   assertCompleteUpgradeSceneSpec(body);
   assertSceneRightsPreflight(ctx, body);
-  const existing = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
+  const existing = runOptions.existingSceneAssets || storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const sceneId = target.scene_id;
   const previous = normalizeSceneAssets(existing).find(item => String(item.scene_id) === String(sceneId));
   const repairViewKeys = previous ? normalizeRepairViewKeys(runOptions.repairViewKeys) : [];
@@ -1613,12 +1634,13 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     repair_history: repairHistory,
   });
   const sceneAssets = mergeSceneAssets(existing, asset);
-  saveSceneAssetsToTask(taskId, sceneAssets, {
+  const publishOptions = {
     sceneSpec: target.multi_scene
       ? null
       : resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
-  });
-  sceneCheckpoint.markPublished(checkpoint, asset);
+  };
+  if (runOptions.deferPublish !== true) saveSceneAssetsToTask(taskId, sceneAssets, publishOptions);
+  if (runOptions.deferPublish !== true) sceneCheckpoint.markPublished(checkpoint, asset);
   const autoRepairPass = Math.max(0, Number(runOptions.autoRepairPass || 0) || 0);
   const autoRepairEligible = !repairMode
     && autoRepairPass < 1
@@ -1665,6 +1687,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     space_lock_status: sceneContract.space_lock_status,
     full_space_lock: sceneContract.full_space_lock === true,
     repair_plan: repairPlan,
+    scene_spec: publishOptions.sceneSpec || null,
   };
 }
 

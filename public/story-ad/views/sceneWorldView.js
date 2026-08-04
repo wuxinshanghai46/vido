@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
+import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -131,12 +131,20 @@ function transitionCards(bundle = {}) {
 }
 
 export function renderSceneWorldWorkspace(bundle = {}) {
+  const counts = bundle.production_manifest?.counts || {};
+  const ready = Number(counts.worlds || 0);
+  const planned = Number(counts.planned_scenes || bundle.assets?.scenes?.length || 0);
+  if (!ready) return `<section class="scene-world-locked" data-scene-world-locked>
+    <div><span>场景生成后的下一步</span><h2>场景世界与生产清单</h2><p>${planned ? `当前 ${planned} 个场景仍只有文字方案。先生成场景视觉资产，系统才会建立世界观、人物×场景和镜头衔接。` : '先建立并生成场景视觉资产，系统才会开放世界观与生产清单。'}</p></div>
+    <span class="status-tag is-neutral">等待场景视觉</span>
+  </section>`;
+  const partial = planned > ready ? `<div class="scene-world-partial">已就绪 ${ready}/${planned} 个场景；未生成的场景不会进入世界观和生产清单。</div>` : '';
   return `<section class="scene-world-workspace" data-scene-world-workspace>
     <header>
       <div><small>SCENEWORLD · 通用场景生产</small><h2>生产清单与场景世界</h2><p>人物档案保持独立；这里负责人物与场景分配、动态观察点、机位以及跨场景衔接。</p></div>
       <div><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
     </header>
-    <div class="scene-world-tabs">
+    ${partial}<div class="scene-world-tabs">
       <button class="active" type="button" data-scene-world-tab="overview">生产清单</button>
       <button type="button" data-scene-world-tab="worlds">场景世界</button>
       <button type="button" data-scene-world-tab="matrix">人物×场景</button>
@@ -353,7 +361,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260804-reference-confirm-flow-v20');
+      const module = await import('./panoramaViewer.js?v=20260804-visual-assets-sync-v23');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -454,7 +462,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260804-reference-confirm-flow-v20');
+      const module = await import('./directorStudioView.js?v=20260804-visual-assets-sync-v23');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
@@ -487,7 +495,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   let panoramaActionModule;
   root.querySelectorAll('[data-generate-panorama]').forEach(button => button.addEventListener('click', async () => {
     try {
-      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260804-reference-confirm-flow-v20');
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260804-visual-assets-sync-v23');
       const module = await panoramaActionModule;
       await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
     } catch (error) { toast(error.message || '全景生成操作没有加载完成', 'danger'); }

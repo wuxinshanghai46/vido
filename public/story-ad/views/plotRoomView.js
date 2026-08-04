@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
+import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
+import { confirmDialog } from '../components/dialog.js?v=20260804-visual-assets-sync-v23';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

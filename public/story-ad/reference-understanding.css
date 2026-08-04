@@ -1,5 +1,6 @@
-.reference-understanding { margin-top: 18px; overflow: hidden; }
-.reference-understanding-head { align-items: flex-start; gap: 18px; }
+.reference-understanding { display: flex; flex-direction: column; margin-top: 18px; overflow: hidden; }
+.reference-understanding-head { order: -2; align-items: flex-start; gap: 18px; }
+.reference-understanding-actions { order: -1; }
 .reference-understanding-head .status-tag { flex: 0 0 auto; }
 .reference-understanding-summary { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(320px, .85fr); gap: 18px; padding: 20px; border-top: 1px solid var(--line); }
 .reference-understanding-summary > div { min-width: 0; padding: 17px; border-radius: 13px; background: var(--surface-2); }

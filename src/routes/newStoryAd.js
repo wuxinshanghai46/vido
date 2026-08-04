@@ -23,6 +23,7 @@ const personIdentity = require('../services/newStoryAd/personIdentityContractSer
 const productAssetGeneration = require('../services/newStoryAd/productAssetGenerationService');
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
+const visualAssetProgress = require('../services/newStoryAd/visualAssetProgressService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
@@ -1397,6 +1398,16 @@ function updateSubjectAssetProgress(taskId, generationId, update = {}) {
   if (!taskId) return null;
   const task = storage.getTask(taskId);
   if (!task) return null;
+  if (task.generation_progress?.stage === 'visual_assets') {
+    return require('../services/newStoryAd/visualAssetProgressService').updateLane(taskId, 'subjects', {
+      status: update.status || 'running',
+      phase: update.phase || 'generation',
+      message: update.message || '正在生成人物与动物档案',
+      total: Math.max(1, Number(update.total || 1)),
+      completed: Math.max(0, Number(update.processed ?? update.completed ?? 0)),
+      percent: Number(update.percent),
+    });
+  }
   const previous = task.generation_progress?.stage === 'subject_assets' ? task.generation_progress : {};
   const total = Math.max(1, Number(update.total || previous.total || 1) || 1);
   const processed = Math.max(0, Math.min(total, Number(update.processed ?? update.completed ?? previous.processed ?? 0) || 0));
@@ -1423,11 +1434,12 @@ function updateSubjectAssetProgress(taskId, generationId, update = {}) {
   return progress;
 }
 
-async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generationId = '', userId = 'anonymous' } = {}) {
+async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generationId = '', userId = 'anonymous', deferCommit = false } = {}) {
     const bundle = await subjectAssets.generateSubjectBundle({
       body,
       taskId,
       generationId,
+      deferContextCommit: deferCommit,
       onProgress: progress => updateSubjectAssetProgress(taskId, generationId, progress),
     });
     const persistedCast = bundle.cast_assets.map((asset) => upsertActorAssetForUser(userId, asset, {
@@ -1439,6 +1451,9 @@ async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generati
       ...bundle,
       cast_assets: subjectAssetPersistence.restoreGeneratedDossierFields(persistedCast, bundle.cast_assets),
     };
+    if (deferCommit) {
+      return { module: 'new_story_ad', status: 'generated', normalized_bundle: normalizedBundle };
+    }
     const committed = taskId
       ? personAssetLifecycle.commitGeneratedSubjectAssets(taskId, normalizedBundle, body.person_spec || {}, {
           change_kind: body.person_change_kind || body.change_kind || (body.regenerate_selected ? 'visual_dossier' : 'semantic'),
@@ -1581,6 +1596,129 @@ router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (r
   res.setHeader('Vary', 'Authorization');
   const plan = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
   res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, ...plan });
+}));
+
+function normalizedSceneTargets(body = {}) {
+  return (Array.isArray(body.scene_targets) ? body.scene_targets : [])
+    .map((target, index) => ({
+      scene_id: String(target?.scene_id || target?.space_id || target?.id || '').trim(),
+      space_id: String(target?.space_id || target?.scene_id || target?.id || '').trim(),
+      name: String(target?.name || `场景 ${index + 1}`).trim(),
+      scene_spec: target?.scene_spec && typeof target.scene_spec === 'object' ? target.scene_spec : undefined,
+    }))
+    .filter(target => target.scene_id)
+    .filter((target, index, rows) => rows.findIndex(row => row.scene_id === target.scene_id) === index)
+    .slice(0, 50);
+}
+
+router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const user = userFromReq(req);
+  const userId = String(user.id || user.userId || user.username || 'anonymous');
+  const body = { ...(req.body || {}), task_id: req.params.id };
+  const sceneTargets = normalizedSceneTargets(body);
+  const subjectTotal = Math.max(0, Number(body.expected_people || 0)) + Math.max(0, Number(body.expected_animals || 0));
+  const subjectsRequired = body.generate_subjects !== false && subjectTotal > 0;
+  return queueTaskStage(req, res, 'visual_assets', async (job) => {
+    const taskId = req.params.id;
+    const baseContext = storage.getOutput(taskId, 'context') || storage.getTask(taskId)?.request || {};
+    visualAssetProgress.initialize(taskId, job.generationId, {
+      subjectsRequired,
+      subjectTotal,
+      scenesRequired: sceneTargets.length > 0,
+      sceneTotal: sceneTargets.length,
+    });
+    const subjectLane = subjectsRequired
+      ? generateAndCommitSubjectAssets({ body, taskId, generationId: job.generationId, userId, deferCommit: true })
+      : Promise.resolve(null);
+    const sceneLane = (async () => {
+      let sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
+      let latestSceneSpec = null;
+      for (let index = 0; index < sceneTargets.length; index += 1) {
+        const target = sceneTargets[index];
+        visualAssetProgress.updateLane(taskId, 'scenes', {
+          status: 'running', completed_scenes: index, completed: index,
+          current_scene_id: target.scene_id,
+          message: `正在生成场景 ${index + 1}/${sceneTargets.length}：${target.name}`,
+        });
+        let result;
+        try {
+          result = await sceneAssetService.generateSceneAsset(taskId, {
+            ...target,
+            generation_id: job.generationId,
+          }, {
+            generationId: job.generationId,
+            deferPublish: true,
+            existingSceneAssets: sceneAssets,
+          });
+        } catch (sceneError) {
+          sceneError.partial_scene_assets = sceneAssets;
+          sceneError.partial_scene_spec = latestSceneSpec;
+          throw sceneError;
+        }
+        sceneAssets = result.scene_assets || sceneAssets;
+        latestSceneSpec = result.scene_spec || latestSceneSpec;
+        visualAssetProgress.updateLane(taskId, 'scenes', {
+          status: index + 1 === sceneTargets.length ? 'completed' : 'running',
+          completed_scenes: index + 1, completed: index + 1, percent: Math.round(((index + 1) / sceneTargets.length) * 100),
+          message: `已完成场景 ${index + 1}/${sceneTargets.length}`,
+        });
+      }
+      return { scene_assets: sceneAssets, scene_spec: latestSceneSpec };
+    })();
+    const [subjects, scenes] = await Promise.allSettled([subjectLane, sceneLane]);
+    const sceneCommit = scenes.status === 'fulfilled'
+      ? scenes.value
+      : { scene_assets: scenes.reason?.partial_scene_assets || [], scene_spec: scenes.reason?.partial_scene_spec || null };
+    let subjectCommit = null;
+    if (subjects.status === 'fulfilled' && subjects.value?.normalized_bundle) {
+      subjectCommit = personAssetLifecycle.commitGeneratedSubjectAssets(
+        taskId,
+        subjects.value.normalized_bundle,
+        body.person_spec || {},
+        { change_kind: body.person_change_kind || body.change_kind || 'semantic', deferContextWrite: true },
+      );
+      visualAssetProgress.updateLane(taskId, 'subjects', { status: 'completed', percent: 100, message: '人物与动物档案已保存' });
+    }
+    if (sceneCommit.scene_assets?.length) {
+      sceneAssetService.saveSceneAssetsToTask(taskId, sceneCommit.scene_assets, { deferContextWrite: true });
+    }
+    if (subjectCommit || sceneCommit.scene_assets?.length) {
+      const combined = {
+        ...baseContext,
+        ...(subjectCommit || {}),
+        ...(sceneCommit.scene_assets?.length ? { scene_assets: sceneCommit.scene_assets } : {}),
+        ...(sceneCommit.scene_spec ? { scene_spec: sceneCommit.scene_spec } : {}),
+      };
+      delete combined.invalidated_outputs;
+      delete combined.visual_refresh;
+      storage.saveOutput(taskId, 'context', combined);
+      storage.updateTask(taskId, { request: combined, updated_at: new Date().toISOString() });
+      if (subjectCommit?.person_contract?.status === 'verified') {
+        try {
+          const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId, ctx: combined, options: {} });
+          persistProviderPersonIds(userId, combined);
+          storage.saveOutput(taskId, 'person_provider_sync', { status: 'completed', ...synced, generation_id: job.generationId });
+        } catch (syncError) {
+          storage.saveOutput(taskId, 'person_provider_sync', {
+            status: 'failed', error_code: syncError.code || 'PERSON_PROVIDER_SYNC_FAILED',
+            error: String(syncError.message || syncError).slice(0, 500), retryable: true,
+            generation_id: job.generationId, updated_at: new Date().toISOString(),
+          });
+        }
+      }
+    }
+    const failed = [subjects, scenes].find(result => result.status === 'rejected');
+    if (failed) {
+      visualAssetProgress.finish(taskId, 'partial_failed');
+      const error = failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason || '视觉资产生成失败'));
+      error.retryable = error.retryable !== false;
+      error.partial_results_saved = Boolean(subjectCommit || sceneCommit.scene_assets?.length);
+      throw error;
+    }
+    visualAssetProgress.finish(taskId, 'completed');
+    return { subjects: subjectCommit, scenes: scenes.value, synchronized: true };
+  }, { deadlineMs: 45 * 60 * 1000 });
 }));
 
 router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, res) => {

@@ -67,9 +67,9 @@ function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}, options = {})
   };
   const changeScope = personChangeScope(options);
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
-  storage.saveOutput(taskId, 'context', next);
+  if (options.deferContextWrite !== true) storage.saveOutput(taskId, 'context', next);
   storage.saveOutput(taskId, 'person_contract', personContract);
-  storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
+  if (options.deferContextWrite !== true) storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
   storage.saveStage(taskId, 'person_asset', {
     status: personContract.status === 'verified' ? 'done' : 'review',
     output_summary: personContract.status === 'verified' ? '人物资产已生成并自动验证' : '人物资产已生成，等待处理验证结果',
@@ -146,10 +146,10 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
   };
   const changeScope = personChangeScope(options);
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
-  storage.saveOutput(taskId, 'context', next);
+  if (options.deferContextWrite !== true) storage.saveOutput(taskId, 'context', next);
   if (personContract) storage.saveOutput(taskId, 'person_contract', personContract);
   if (bundle.pet_contract) storage.saveOutput(taskId, 'pet_contract', bundle.pet_contract);
-  storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
+  if (options.deferContextWrite !== true) storage.updateTask(taskId, { request: next, updated_at: new Date().toISOString() });
   storage.saveStage(taskId, 'person_asset', {
     status: (!personContract || personContract.status === 'verified') && (!bundle.pet_contract || bundle.pet_contract.status === 'verified') ? 'done' : 'review',
     output_summary: `主体资产已建立：${castAssets.length}个人物、${petProfiles.length}个宠物`,

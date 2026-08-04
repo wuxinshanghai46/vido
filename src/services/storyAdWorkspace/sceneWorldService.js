@@ -38,6 +38,14 @@ function sceneViews(scene = {}) {
   return list(scene.view_images).filter(view => clean(view?.image_url || view?.url, 1000));
 }
 
+function hasSceneVisualAuthority(scene = {}) {
+  return Boolean(
+    clean(scene.image_url || scene.url || scene.scene_master?.image_url || scene.layout?.image_url, 1000)
+    || sceneViews(scene).length
+    || list(scene.cameras).some(camera => clean(camera?.image_url || camera?.reference_image_url, 1000)),
+  );
+}
+
 function validPanorama(item = {}, scene = {}) {
   const url = clean(item?.image_url || item?.url, 1000);
   const projection = clean(item?.projection || item?.kind, 100);
@@ -301,7 +309,7 @@ function mergeWorld(base, override = {}) {
 }
 
 function buildSceneWorlds(bundle = {}, overrides = {}) {
-  const scenes = list(bundle.assets?.scenes);
+  const scenes = list(bundle.assets?.scenes).filter(hasSceneVisualAuthority);
   const worlds = scenes.map((scene, index) => mergeWorld(baseWorld(scene, index), overrides?.[scene.id]));
   const transitions = routeEdges(bundle, worlds);
   return worlds.map(world => ({
@@ -367,6 +375,7 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
 
 function productionManifest(bundle = {}, worlds = [], options = {}) {
   const transitions = routeEdges(bundle, worlds);
+  const plannedScenes = list(bundle.assets?.scenes);
   return {
     schema_version: 1,
     task_id: clean(bundle.project?.id, 120),
@@ -376,6 +385,8 @@ function productionManifest(bundle = {}, worlds = [], options = {}) {
       animals: list(bundle.assets?.animals).length,
       products: list(bundle.assets?.products).length,
       worlds: worlds.length,
+      planned_scenes: plannedScenes.length,
+      pending_scenes: Math.max(0, plannedScenes.length - worlds.length),
       cameras: worlds.reduce((sum, world) => sum + list(world.cameras).length, 0),
       transitions: transitions.length,
     },
@@ -459,6 +470,7 @@ function saveAssignments(taskId, assignments = [], options = {}) {
 module.exports = {
   SCENE_WORLD_SCHEMA_VERSION,
   buildSceneWorlds,
+  hasSceneVisualAuthority,
   validPanorama,
   panoramaAssets,
   inferCapabilities,

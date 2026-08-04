@@ -47,9 +47,9 @@ const bundle = {
         ],
         scene_spec: { scene_experience_contract: { representation: 'physical', extent: 'enclosed', actor_blocking_required: true } },
       }),
-      scene('road', '开放空间', '按结构化合同呈现开放范围', { scene_spec: { scene_experience_contract: { representation: 'physical', extent: 'open' } } }),
-      scene('app', '数字界面', '按结构化合同呈现数字状态', { scene_spec: { scene_experience_contract: { representation: 'digital', extent: 'screen' } } }),
-      scene('cg', '抽象空间', '按结构化合同呈现抽象视觉', { scene_spec: { scene_experience_contract: { representation: 'abstract', extent: 'stage' } } }),
+      scene('road', '开放空间', '按结构化合同呈现开放范围', { view_images: [{ key: 'master', image_url: '/assets/road.png' }], scene_spec: { scene_experience_contract: { representation: 'physical', extent: 'open' } } }),
+      scene('app', '数字界面', '按结构化合同呈现数字状态', { view_images: [{ key: 'master', image_url: '/assets/app.png' }], scene_spec: { scene_experience_contract: { representation: 'digital', extent: 'screen' } } }),
+      scene('cg', '抽象空间', '按结构化合同呈现抽象视觉', { view_images: [{ key: 'master', image_url: '/assets/cg.png' }], scene_spec: { scene_experience_contract: { representation: 'abstract', extent: 'stage' } } }),
     ],
   },
   asset_editor: {
@@ -93,10 +93,14 @@ assert.deepStrictEqual(manifest.counts, {
   animals: 0,
   products: 1,
   worlds: 4,
+  planned_scenes: 4,
+  pending_scenes: 0,
   cameras: 2,
   transitions: 3,
 });
 assert.strictEqual(manifest.character_world_matrix.length, 3);
+const plannedOnly = sceneWorlds.buildSceneWorlds({ assets: { scenes: [scene('planned', '只有方案', '尚未生成图片')] } });
+assert.strictEqual(plannedOnly.length, 0, 'text-only scene plans must not unlock SceneWorld');
 assert.strictEqual(manifest.character_world_matrix[0].cells.find(cell => cell.world_id === 'factory').presence, 'confirmed');
 assert.strictEqual(manifest.character_world_matrix[2].cells.find(cell => cell.world_id === 'road').presence, 'confirmed');
 

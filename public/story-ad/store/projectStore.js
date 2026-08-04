@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-reference-confirm-flow-v20';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-visual-assets-sync-v23';
 
 export function createProjectStore() {
   const state = {
@@ -154,7 +154,6 @@ export function createProjectStore() {
       throw error;
     }
   }
-
   async function runStage(path, body = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
@@ -165,6 +164,7 @@ export function createProjectStore() {
         body,
         timeoutMs: 60000,
       });
+      if (data.accepted === false) { const error = new Error(`项目已有“${data.job?.stage || state.bundle?.project?.active_stage || '当前'}”任务在运行，本次没有重复提交模型调用。`); Object.assign(error, { code: 'GENERATION_ALREADY_RUNNING', active_generation_id: data.job?.generation_id || data.job?.id || '' }); throw error; }
       applyMutationResult(data);
       state.progressRevision = '';
       if (path === 'scene-config') await refreshSections('summary,assets');

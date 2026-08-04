@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260804-reference-confirm-flow-v20';
+import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-visual-assets-sync-v23';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260804-visual-assets-sync-v23';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -199,6 +199,10 @@ export async function mount(host, context) {
       ${!route.isNew ? '<span class="status-tag is-neutral">第 1 步 · 目标确认</span>' : ''}
     </section>
     <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
+    ${referenceStepVisible && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
+      <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
+      <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
+    </section>` : ''}
     <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
     <div data-reference-understanding-host></div>
     <div class="two-column">
@@ -231,10 +235,6 @@ export async function mount(host, context) {
           </div>
         </form>
       </details>
-      ${referenceStepVisible ? `<section class="card brief-reference-primary-action" data-brief-inline-action aria-live="polite">
-        <div class="brief-next-step-copy"><span class="status-tag ${referenceAction.blocked ? 'is-neutral' : 'is-info'}" data-brief-next-tag>${referenceAction.blocked ? '等待完成' : '下一步'}</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
-        <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit ${referenceAction.blocked ? 'disabled' : ''}>${escapeHtml(referenceAction.label)}</button>
-      </section>` : ''}
       </div>
       <aside class="card">
         <div class="card-head"><div><h2>启动材料</h2><p>这里只放决定项目起点的参考视频和商品。人物、场景、LOGO 在资产中心添加，故事和分镜到对应环节编辑。</p></div></div>
@@ -278,7 +278,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-confirm-flow-v20');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-visual-assets-sync-v23');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

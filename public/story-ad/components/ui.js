@@ -72,6 +72,7 @@ export function refreshElapsedLabels(scope = document, nowMs = Date.now()) {
 
 const GENERATION_STAGE_LABELS = {
   subject_assets: '人物与动物资产',
+  visual_assets: '人物与场景视觉资产',
   person_provider_sync: '人物 ID 与 Seedance 同步',
   product_asset: '商品资产',
   prop_asset: '人物随身道具',
@@ -88,7 +89,7 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  subject_assets: '项资产', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  subject_assets: '项资产', visual_assets: '项资产', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
@@ -113,13 +114,22 @@ export function generationProgressView(bundle = {}) {
   const unitLabel = GENERATION_UNIT_LABELS[stage] || '项';
   const startedAt = String(progress.started_at || project.generation_started_at || project.generation_queued_at || '');
   const finishedAt = String(progress.finished_at || project.generation_finished_at || project.updated_at || '');
+  const failureCode = String(progress.error_code || project.error_code || '').toUpperCase();
+  const failureText = String(progress.message || project.error || '');
+  const billingUnknown = progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
+  let failureTitle = `${stageLabel}生成失败`;
+  if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
+  else if (progress.phase === 'review_failed' || /(?:QUALITY|QA|REVIEW).*FAILED/.test(failureCode)) failureTitle = `${stageLabel}质量审核未通过`;
+  else if (billingUnknown) failureTitle = `${stageLabel}生成中断（计费待核对）`;
+  else if (/TIMEOUT|NETWORK|IMAGE_ATTEMPTS_EXHAUSTED/.test(failureCode) || /upstream connect error|connection termination|reset before headers/i.test(failureText)) failureTitle = `${stageLabel}生成中断（模型连接失败）`;
   let liveText = '';
-  if (failed) liveText = progress.phase === 'review_failed' ? '自动审核未通过，生成已经停止' : '任务已经停止';
+  if (failed) liveText = billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续';
   else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {
-    active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText,
+    active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
+    lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
     message: String(progress.message || project.error || `${stageLabel}正在处理中，请保持页面打开。`),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
     startedAt,
@@ -130,15 +140,24 @@ export function generationProgressView(bundle = {}) {
 export function generationProgressPanel(bundle = {}) {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  const laneRows = view.lanes ? `<div class="generation-lanes">${[
+    ['subjects', '人物 / 动物'], ['scenes', '场景'],
+  ].map(([key, label]) => {
+    const lane = view.lanes[key] || {};
+    const total = Math.max(0, Number(lane.total || 0));
+    const completed = Math.max(0, Math.min(total || 1, Number(lane.completed || 0)));
+    const status = lane.required === false ? '不需要' : (lane.status === 'completed' ? '已完成' : (lane.status === 'failed' ? '需处理' : `${Math.floor(completed)}/${total}`));
+    return `<div><span><b>${label}</b><small>${escapeHtml(lane.message || '')}</small></span><strong>${escapeHtml(status)}</strong></div>`;
+  }).join('')}</div>` : '';
   if (view.failed) {
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
-      <div class="project-progress-head"><div><b>${escapeHtml(`${view.stageLabel}审核未通过`)}</b><span>已产出 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
-      <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div>
+      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>已产出 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
+      ${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div>
     </section>`;
   }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">
     <div class="project-progress-head"><div><b>${escapeHtml(view.failed ? `${view.stageLabel}需要处理` : `正在生成${view.stageLabel}`)}</b><span>已完成 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="project-progress-stats">${elapsedTimeTag({ startedAt: view.startedAt, finishedAt: view.finishedAt, active: view.active })}<strong>${view.percent}%</strong></span></div>
-    <div class="project-progress-track" aria-hidden="true"><i style="width:${view.percent}%"></i></div>
+    <div class="project-progress-track" aria-hidden="true"><i style="width:${view.percent}%"></i></div>${laneRows}
     <div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.active ? `<button class="btn small danger" type="button" data-cancel-generation data-generation-id="${escapeHtml(view.generationId)}">停止生成</button>` : ''}</div>
   </section>`;
 }

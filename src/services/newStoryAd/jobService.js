@@ -4,11 +4,12 @@ const cancellation = require('./cancellationContext');
 const videoCore = require('../videoGenerationCore');
 
 const runningJobs = new Map();
-const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
+const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
 const ORPHAN_GRACE_MS = Math.max(30000, Number(process.env.NEW_STORY_AD_ORPHAN_GRACE_MS) || 120000);
 const ORPHAN_RECONCILE_INTERVAL_MS = Math.max(30000, Math.min(60000, ORPHAN_GRACE_MS));
 const DEFAULT_STAGE_BUDGETS = Object.freeze({
   scene_config: 120000,
+  visual_assets: 2700000,
   blueprint: 480000,
   script_package: 900000,
   storyboard: 480000,
@@ -56,7 +57,7 @@ function classifyFailure(error) {
   if (/token not valid|invalid.*token|api key|unauthorized|401|403/i.test(rawMessage)) {
     return { code: 'AUTH_CONFIG', retryable: false, message: '模型访问凭证无效，请联系管理员检查模型配置。' };
   }
-  if (/timeout|timed out|ETIMEDOUT|ECONNRESET|socket hang up/i.test(rawMessage)) {
+  if (/timeout|timed out|ETIMEDOUT|ECONNRESET|socket hang up|upstream connect error|disconnect\/reset|reset before headers|connection termination/i.test(rawMessage)) {
     return { code: 'TIMEOUT_OR_NETWORK', retryable: true, message };
   }
   if (/429|rate limit|quota|频率|额度/i.test(rawMessage)) {
@@ -430,6 +431,7 @@ function queueStage({
       job.error = withSupportId(failure.message, id).slice(0, 1000);
       job.retryable = failure.retryable;
       const failureDetails = sanitizedFailureDetails(error);
+      const failureBillingState = String(error?.billingState || error?.billing_state || '').trim().slice(0, 40);
       const failureSceneId = String(error?.scene_id || error?.sceneId || job.failureSceneId || '').trim().slice(0, 120);
       const failureSceneName = String(error?.scene_name || error?.sceneName || job.failureSceneName || '').trim().slice(0, 120);
       const current = storage.getTask(taskId);
@@ -441,6 +443,7 @@ function queueStage({
           ...(failureSceneId ? { scene_id: failureSceneId } : {}),
           ...(failureSceneName ? { scene_name: failureSceneName } : {}),
           ...(failureDetails.length ? { failure_details: failureDetails } : {}),
+          ...(failureBillingState ? { billing_state: failureBillingState } : {}),
           message: job.error,
           finished_at: job.finishedAt,
           updated_at: job.finishedAt,
@@ -456,7 +459,7 @@ function queueStage({
           status: 'failed',
           started_at: job.startedAt,
           finished_at: job.finishedAt,
-          output_summary: '执行失败，未保存可用结果',
+          output_summary: error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果',
           error: job.error,
           diagnostics: {
             generation_id: id,

@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-confirm-flow-v20';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-confirm-flow-v20';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-confirm-flow-v20';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-confirm-flow-v20';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-confirm-flow-v20';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-confirm-flow-v20';
+import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
+import { confirmDialog } from '../components/dialog.js?v=20260804-visual-assets-sync-v23';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-visual-assets-sync-v23';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-visual-assets-sync-v23';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-visual-assets-sync-v23';
 
 const GROUPS = [
   ['people', '人物'],
@@ -266,12 +266,12 @@ export async function mount(host, context) {
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
-      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>${missingSubjectCount ? `生成缺失人物 / 动物（${missingSubjectCount}）` : '人物 / 动物视觉已齐全'}</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>${missingSceneCount ? `查看待生成场景（${missingSceneCount}）` : '场景视觉已齐全'}</button></div>
+      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${missingSubjectCount && missingSceneCount ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）` : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全'))}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
     </section>` : ''}
-    ${renderSceneWorldWorkspace(bundle)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total)}</div>
+    ${renderSceneWorldWorkspace(bundle)}
     <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
       <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? '请核对人物、动物、商品与场景是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。' : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
       <button class="btn primary" type="button" data-confirm-assets ${assetPlanReady ? '' : 'disabled'}>确认资产方案，进入剧情室</button>
@@ -531,8 +531,32 @@ export async function mount(host, context) {
   });
 
   host.querySelectorAll('[data-generate-subjects], [data-generate-missing-subjects]').forEach(button => button.addEventListener('click', event => generate(null, '', event.currentTarget)));
+  host.querySelector('[data-generate-visual-assets]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    const subjectPayload = subjectGenerationPayload(bundle, null, `${bundle.project.id}:visual:${globalThis.crypto?.randomUUID?.() || Date.now()}`);
+    const sceneTargets = (assets.scenes || []).filter(sceneNeedsGeneration).map(scene => ({
+      scene_id: scene.id, space_id: scene.id, name: scene.name, scene_spec: scene.scene_spec || scene.spec,
+    }));
+    if (missingSubjectCount) {
+      const validation = generationValidation(subjectPayload);
+      if (validation) { toast(validation, 'warning'); return; }
+    }
+    const summary = [missingSubjectCount ? `${missingSubjectCount} 个人物 / 动物` : '', missingSceneCount ? `${missingSceneCount} 个场景` : ''].filter(Boolean).join('和');
+    if (!await confirmDialog(`将同步生成${summary}。人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`, {
+      title: '确认同步生成人物与场景', confirmText: '开始同步生成',
+    })) return;
+    try {
+      setButtonBusy(button, true, '正在提交同步生成…', { elapsed: true });
+      await store.runStage('visual-assets', {
+        ...subjectPayload,
+        generate_subjects: missingSubjectCount > 0,
+        scene_targets: sceneTargets,
+      });
+      toast('人物与场景已进入同一个同步生成任务，可分别查看两条进度。', 'success');
+    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+  });
   host.querySelector('[data-show-pending-scenes]')?.addEventListener('click', () => {
-    host.querySelector('[data-scene-world-workspace]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    host.querySelector('[data-asset-section="scenes"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     toast('请在待生成的场景卡中核对设定，再点击“生成场景与机位”。', 'info');
   });
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));

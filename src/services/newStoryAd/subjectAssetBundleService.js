@@ -705,7 +705,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   });
   if (completion.changed) {
     body = { ...body, cast_profiles: completion.cast_profiles };
-    if (taskId && typeof storage.getOutput === 'function' && typeof storage.saveOutput === 'function') {
+    if (options.deferContextCommit !== true && taskId && typeof storage.getOutput === 'function' && typeof storage.saveOutput === 'function') {
       const current = storage.getOutput(taskId, 'context') || {};
       storage.saveOutput(taskId, 'context', {
         ...current,
