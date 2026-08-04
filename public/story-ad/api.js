@@ -1,4 +1,4 @@
-import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260804-reference-editable-brief-fold-v17';
+import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260804-panorama-authority-v18';
 
 export { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION };
 const TOKEN_KEYS = ['vido_token', 'token'];
@@ -37,16 +37,34 @@ function showReleaseBlock(expectedBuild = '') {
   }
 }
 
+function showManualReleaseRetry(expectedBuild = '') {
+  const blocker = document.querySelector('[data-story-ad-release-blocker]');
+  const section = blocker?.querySelector('section');
+  if (!section || section.querySelector('[data-release-retry]')) return;
+  section.insertAdjacentHTML('beforeend', '<button type="button" data-release-retry>重新载入最新版本</button>');
+  section.querySelector('[data-release-retry]')?.addEventListener('click', () => {
+    try { sessionStorage.removeItem(`story-ad-release-reload:${expectedBuild}`); } catch {}
+    const url = new URL(location.href);
+    url.searchParams.set('_reload_nonce', `${Date.now()}`);
+    location.replace(url.toString());
+  });
+}
+
 function expireAndReload(expectedBuild = '') {
   if (releaseExpired) return;
   preserveVisibleDraft();
   showReleaseBlock(expectedBuild);
   const url = new URL(location.href);
   const prior = url.searchParams.get('_build') || '';
-  if (expectedBuild && prior !== expectedBuild) {
-    url.searchParams.set('_build', expectedBuild);
-    setTimeout(() => location.replace(url.toString()), 80);
-  }
+  if (!expectedBuild) return showManualReleaseRetry('unknown');
+  const reloadKey = `story-ad-release-reload:${expectedBuild}`;
+  let attempted = false;
+  try { attempted = sessionStorage.getItem(reloadKey) === '1'; } catch {}
+  if (attempted) return showManualReleaseRetry(expectedBuild);
+  try { sessionStorage.setItem(reloadKey, '1'); } catch {}
+  url.searchParams.set('_build', expectedBuild);
+  if (prior === expectedBuild) url.searchParams.set('_reload_nonce', `${Date.now()}`);
+  setTimeout(() => location.replace(url.toString()), 80);
 }
 
 async function readServerRelease() {
@@ -67,6 +85,7 @@ export async function assertCurrentRelease() {
     error.code = 'CLIENT_BUILD_EXPIRED';
     throw error;
   }
+  try { sessionStorage.removeItem(`story-ad-release-reload:${release.build_id}`); } catch {}
   return release;
 }
 

@@ -13,6 +13,7 @@ const ttsAdapter = require('../services/newStoryAd/ttsAdapter');
 const videoAdapter = require('../services/newStoryAd/videoAdapter');
 const composeService = require('../services/newStoryAd/composeService');
 const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
+const scenePanoramaService = require('../services/newStoryAd/scenePanoramaService');
 const jobService = require('../services/newStoryAd/jobService');
 const mediaPipeline = require('../services/newStoryAd/mediaPipelineService');
 const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnitProjection');
@@ -649,6 +650,11 @@ router.get('/health', (req, res) => {
     'new_story_ad.assist',
     'new_story_ad.person_sheet',
     'new_story_ad.scene_asset',
+    'new_story_ad.scene_panorama',
+    'new_story_ad.scene_panorama_qa',
+    'new_story_ad.scene_depth',
+    'new_story_ad.scene_spatial_reconstruction',
+    'new_story_ad.scene_spatial_qa',
     'new_story_ad.keyframe',
     'new_story_ad.video',
     'new_story_ad.tts',
@@ -1568,6 +1574,54 @@ router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
     },
   });
 })); registerPropRoutes(router, { asyncRoute, taskForReq, queueTaskStage, propAssetService });
+
+router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  const plan = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
+  res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, ...plan });
+}));
+
+router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, res) => {
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  const body = req.body || {};
+  const plan = body.model_call_plan && typeof body.model_call_plan === 'object' ? body.model_call_plan : {};
+  const expected = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
+  const expectedPlan = expected.model_call_plan;
+  const planConfirmed = body.cost_confirmation === true
+    && body.plan_fingerprint === expected.plan_fingerprint
+    && Number(plan.panorama_generation) === expectedPlan.panorama_generation
+    && Number(plan.panorama_qa) === expectedPlan.panorama_qa
+    && Number(plan.local_projection) === expectedPlan.local_projection
+    && Number(plan.depth) === expectedPlan.depth
+    && Number(plan.spatial_reconstruction) === expectedPlan.spatial_reconstruction;
+  if (!planConfirmed) {
+    const error = new Error('开始 360 场景前必须读取并确认服务端最新调用计划；计划变化时不会继续调用模型');
+    error.code = 'PANORAMA_COST_CONFIRMATION_REQUIRED';
+    error.status = 400;
+    error.retryable = false;
+    error.current_plan = expected;
+    throw error;
+  }
+  req.body = {
+    ...body,
+    idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+  };
+  return queueTaskStage(req, res, 'scene_panorama', job => scenePanoramaService.generateScenePanorama(
+    req.params.id,
+    req.params.sceneId,
+    { ...body, generation_id: job.generationId },
+    { generationId: job.generationId },
+  ), {
+    deadlineMs: 12 * 60 * 1000,
+    failureContext: {
+      scene_id: req.params.sceneId,
+      scene_name: body.scene_name || body.sceneName || '',
+    },
+  });
+}));
 
 router.post('/tasks/:id/product-assets', asyncRoute(async (req, res) => {
   taskForReq(req);

@@ -143,6 +143,9 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     view_count: Number(asset.view_count || viewImages.length || (primary ? 1 : 0)) || 0,
     view_strategy: cleanText(asset.view_strategy || asset.viewStrategy || 'image_derived', 40),
     view_acquisition: asset.view_acquisition && typeof asset.view_acquisition === 'object' ? asset.view_acquisition : null,
+    scene_world_assets: asset.scene_world_assets && typeof asset.scene_world_assets === 'object'
+      ? asset.scene_world_assets
+      : (asset.sceneWorldAssets && typeof asset.sceneWorldAssets === 'object' ? asset.sceneWorldAssets : null),
     space_asset_contract: asset.space_asset_contract && typeof asset.space_asset_contract === 'object'
       ? asset.space_asset_contract
       : null,
@@ -1537,6 +1540,9 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     layout_summary: body.layout_summary || body.layoutSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).layoutText || sceneConfig.business_boundary || ctx.brief || '',
     material_summary: body.material_summary || body.materialSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).materialLightText || '',
     interaction_summary: body.interaction_summary || body.interactionSummary || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).interactionText || '', structured_scene_contract: requested.structured_scene_contract,
+    scene_experience_contract: (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).sceneExperienceContract
+      || (body.scene_spec || body.sceneSpec || ctx.scene_spec || {}).scene_experience_contract
+      || {},
     style_summary: ctx.controlled_production?.style_control?.notes || '',
     negative: [
       '空场景资产，不要出现真人、背影、侧脸、手、身体局部、模特、人形剪影或人物倒影。',

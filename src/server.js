@@ -10,7 +10,17 @@ const storyAdReleaseIntegrity = require('./services/storyAdReleaseIntegrityServi
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const STORY_AD_BUILD_ID = process.env.STORY_AD_BUILD_ID || storyAdRelease.build_id;
+const ENV_STORY_AD_BUILD_ID = String(process.env.STORY_AD_BUILD_ID || '').trim();
+if (ENV_STORY_AD_BUILD_ID && ENV_STORY_AD_BUILD_ID !== storyAdRelease.build_id) {
+  throw new Error(`STORY_AD_BUILD_ID ${ENV_STORY_AD_BUILD_ID} 与发布配置 ${storyAdRelease.build_id} 不一致，拒绝以伪版本启动`);
+}
+if (process.env.NODE_ENV === 'production' && process.env.STORY_AD_VERIFY_RELEASE === '0') {
+  throw new Error('生产环境禁止关闭剧情广告发布清单校验');
+}
+if (process.env.NODE_ENV === 'production' && process.env.STORY_AD_ALLOW_LEGACY_CLIENT === '1') {
+  throw new Error('生产环境禁止放行旧剧情广告客户端写入');
+}
+const STORY_AD_BUILD_ID = storyAdRelease.build_id;
 const STORY_AD_CONTRACT_VERSION = storyAdRelease.contract_version;
 if (process.env.STORY_AD_VERIFY_RELEASE !== '0') {
   storyAdReleaseIntegrity.assertCurrent({ root: path.resolve(__dirname, '..'), release: storyAdRelease });

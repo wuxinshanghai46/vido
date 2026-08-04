@@ -5,9 +5,11 @@ const directorScenes = require('../storyAdWorkspace/directorSceneService');
 const personIdentity = require('./personIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
 const mediaAdapter = require('./mediaAdapter');
+const panoramaProjection = require('./panoramaProjectionService');
+const scenePanorama = require('./scenePanoramaService');
 const { completeSpaceLock, layoutSceneReference } = require('./sceneBindingService');
 
-const SHOT_REFERENCE_PACK_VERSION = 1;
+const SHOT_REFERENCE_PACK_VERSION = 2;
 const OUTPUT_KIND = 'shot_reference_packs';
 
 function text(value, max = 1000) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -33,6 +35,20 @@ function directorEntityRevisions(ctx = {}) {
   }, {});
 }
 
+function activePanorama(sceneAsset = {}) {
+  return scenePanorama.authoritativePanorama(sceneAsset || {});
+}
+
+function panoramaCameraReference(sceneAsset = {}, shot = {}, contract = {}) {
+  sceneAsset = sceneAsset || {};
+  const panorama = activePanorama(sceneAsset);
+  if (!panorama) return null;
+  const cameraId = text(shot.camera_id || contract.camera_id || contract.scene_lock?.camera_id, 120);
+  const sceneView = text(shot.scene_view || shot.view_key || contract.scene_view || contract.scene_lock?.scene_view, 80);
+  const selected = panoramaProjection.selectDerivedView(panorama, { camera_id: cameraId, scene_view: sceneView });
+  return selected?.image_url ? { ...selected, panorama_sha256: panorama.sha256 } : null;
+}
+
 function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, sceneReference = '', previousFrame = null, includePerson = false, includeProduct = false, layoutReference = '', providerLimit = 4 } = {}) {
   sceneAsset = sceneAsset || {};
   shot = shot || {};
@@ -44,9 +60,10 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
     camera_id: requestedCamera,
     entity_revisions: directorEntityRevisions(ctx),
   }) : null;
+  const panoramaReference = panoramaCameraReference(sceneAsset, shot, contract);
   const candidates = references.keyframeReferenceCandidates(ctx, {
     sceneReference, previousFrame, shot, includePerson, includeProduct, layoutReference,
-    directorReference: directorSnapshot?.image_url || '',
+    directorReference: directorSnapshot?.image_url || panoramaReference?.image_url || '',
   });
   const limit = Math.max(1, Math.min(12, Number(providerLimit) || 4));
   const selected = candidates.slice(0, limit).map((item, order) => ({
@@ -58,6 +75,8 @@ function compile({ taskId = '', shotIndex = 0, ctx = {}, shot = {}, contract = {
     person_revision: Number(ctx.person_asset?.revision || ctx.person_asset?.person_revision || 0) || 0,
     scene_revision: Number(sceneAsset.revision || sceneAsset.scene_revision || 0) || 0,
     director_revision: Number(directorSnapshot ? (storage.getOutput(taskId, 'director_scene_states')?.states?.[worldId]?.revision || 0) : 0),
+    panorama_sha256: text(panoramaReference?.panorama_sha256, 80),
+    panorama_view_sha256: text(panoramaReference?.sha256, 80),
     contract_fingerprint: text(contract.fingerprint || contract.contract_fingerprint, 120), provider_limit: limit,
     references: selected,
   };
@@ -89,4 +108,4 @@ function referenceUrls(taskId = '', shotIndex = 0, ctx = {}, sceneReference = ''
   return rows.map(mediaAdapter.absolutePublicImageUrl).filter(url => url && !seen.has(url) && !!seen.add(url));
 }
 
-module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, directorEntityRevisions, compile, referenceUrls, fingerprint };
+module.exports = { SHOT_REFERENCE_PACK_VERSION, OUTPUT_KIND, worldIdFor, directorEntityRevisions, activePanorama, panoramaCameraReference, compile, referenceUrls, fingerprint };

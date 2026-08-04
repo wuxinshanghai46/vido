@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { request } from '../api.js?v=20260804-panorama-authority-v18';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
-  supports_panorama: '360全景漫游',
+  supports_panorama: '360原地环视（3DoF）',
   supports_structure_map: '结构 / 路线',
   supports_3d_proxy: '可旋转结构代理',
-  supports_spatial_model: '真实3D空间',
-  supports_navigation: '空间导航',
+  supports_spatial_model: '可移动空间（6DoF）',
+  supports_navigation: '6DoF空间导航',
   supports_camera_orbit: '环绕机位',
   supports_character_blocking: '人物站位',
   supports_motion_path: '行动路线',
@@ -25,12 +25,29 @@ function worldById(bundle, id) {
 
 function photoNodes(world = {}) {
   const seen = new Set();
+  const panoramaRows = [
+    ...list(world.panorama_assets),
+    ...list(world.source_asset?.panoramas),
+    ...list(world.scene_world_assets?.panoramas),
+    ...(world.source_asset?.panorama_url ? [{ image_url: world.source_asset.panorama_url }] : []),
+    ...(world.panorama_url ? [{ image_url: world.panorama_url }] : []),
+  ].map((item, index) => typeof item === 'string'
+    ? { image_url: item, id: `${world.id}:panorama:${index + 1}` }
+    : { ...item, image_url: item.image_url || item.url, id: item.id || `${world.id}:panorama:${index + 1}` });
   const candidates = [
     ...list(world.observation_nodes),
+    ...panoramaRows.map((item, index) => ({ ...item, name: item.name || `360观察点 ${index + 1}`, projection: item.projection || 'equirectangular', is_panorama: true })),
     ...(world.source_asset?.image_url ? [{ id: `${world.id}:source:master`, name: '主视角', view_key: 'master', image_url: world.source_asset.image_url }] : []),
     ...(world.source_asset?.layout_image_url ? [{ id: `${world.id}:source:layout`, name: '俯视布局', view_key: 'layout', image_url: world.source_asset.layout_image_url }] : []),
   ];
-  return candidates.filter(node => {
+  return candidates.map(node => {
+    const projection = String(node.projection || node.view_key || node.source_role || '');
+    return {
+      ...node,
+      is_panorama: !/cubemap|cube_face/i.test(projection)
+        && (node.is_panorama === true || /panorama|equirect|360/i.test(projection)),
+    };
+  }).filter(node => {
     const url = String(node?.image_url || '').trim();
     if (!url || seen.has(url)) return false;
     seen.add(url);
@@ -59,7 +76,10 @@ function manifestSummary(bundle = {}) {
 function worldCards(bundle = {}) {
   const worlds = list(bundle.scene_worlds);
   if (!worlds.length) return '<div class="scene-world-empty">尚未建立场景世界。请先点击“建立场景规划”。</div>';
-  return `<div class="scene-world-card-grid">${worlds.map(world => `<article class="scene-world-card">
+  return `<div class="scene-world-card-grid">${worlds.map(world => {
+    const panoramaReady = photoNodes(world).some(node => node.is_panorama);
+    const panoramaStatus = panoramaReady ? 'ready' : String(world.experience?.panorama_status || world.experience?.status || 'not_started');
+    return `<article class="scene-world-card" data-scene-world-card="${escapeHtml(world.id)}">
     <div class="scene-world-card-visual">
       ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
       <div class="scene-world-card-title"><span>${escapeHtml(world.capabilities?.world_mode || 'scene_world')}</span><b>${escapeHtml(world.name)}</b></div>
@@ -67,16 +87,19 @@ function worldCards(bundle = {}) {
     <div class="scene-world-card-body">
       <p>${escapeHtml(world.story_purpose || world.description || '等待补充当前场景的剧情作用')}</p>
       <div class="scene-world-capabilities">${capabilityChips(world)}</div>
-      <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '360全景', spatial_3d: '3D漫游', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
+      <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '3DoF原地环视', spatial_3d: '6DoF可移动空间', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
+      <span class="scene-panorama-status is-${escapeHtml(panoramaStatus)}" data-panorama-status="${escapeHtml(world.id)}">${panoramaReady ? '全景已就绪 · 3DoF' : '尚未生成360全景'}</span>
     </div>
     <div class="scene-world-card-actions">
       <button class="btn small primary" type="button" data-enter-scene-world="${escapeHtml(world.id)}">进入场景</button>
       <button class="btn small" type="button" data-edit-scene-world="${escapeHtml(world.id)}">编辑场景设定</button>
       <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">规划360 / 3D</button>
+      <button class="btn small ${panoramaReady ? '' : 'primary'}" type="button" data-generate-panorama="${escapeHtml(world.id)}">${panoramaReady ? '重新生成360全景' : '生成360全景'}</button>
       <button class="btn small" type="button" data-scene-world-tab-target="matrix">人物×场景</button>
       <button class="btn small" type="button" data-scene-world-tab-target="transitions">查看衔接</button>
     </div>
-  </article>`).join('')}</div>`;
+  </article>`;
+  }).join('')}</div>`;
 }
 
 function characterWorldMatrix(bundle = {}) {
@@ -228,7 +251,7 @@ function initNativeSceneWorldViewer({ overlay, bundle, world }) {
     context.fillStyle = '#8aabb2'; context.font = '11px system-ui'; context.textAlign = 'left';
     context.fillText('NATIVE 3D PROXY · 实时旋转预览', 18, 26);
   };
-  const reset = () => { Object.assign(state, { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0, mode: 'model' }); draw(); };
+  const reset = () => { Object.assign(state, { yaw: -0.62, pitch: 0.62, zoom: 34, centerX: 0, centerZ: 0 }); draw(); };
   const pointerDown = event => { state.dragging = true; state.x = event.clientX; state.y = event.clientY; canvas.setPointerCapture?.(event.pointerId); };
   const pointerMove = event => {
     if (!state.dragging) return;
@@ -238,122 +261,146 @@ function initNativeSceneWorldViewer({ overlay, bundle, world }) {
   };
   const pointerUp = () => { state.dragging = false; };
   const wheel = event => { event.preventDefault(); state.zoom = Math.max(18, Math.min(68, state.zoom * (event.deltaY > 0 ? 0.9 : 1.1))); draw(); };
-  canvas.addEventListener('pointerdown', pointerDown);
-  canvas.addEventListener('pointermove', pointerMove);
-  canvas.addEventListener('pointerup', pointerUp);
-  canvas.addEventListener('pointercancel', pointerUp);
-  canvas.addEventListener('wheel', wheel, { passive: false });
+  const bindings = [];
+  const bind = (target, type, handler, options) => {
+    target?.addEventListener(type, handler, options);
+    if (target) bindings.push(() => target.removeEventListener(type, handler, options));
+  };
+  bind(canvas, 'pointerdown', pointerDown);
+  bind(canvas, 'pointermove', pointerMove);
+  bind(canvas, 'pointerup', pointerUp);
+  bind(canvas, 'pointercancel', pointerUp);
+  bind(canvas, 'wheel', wheel, { passive: false });
   const resizeObserver = new ResizeObserver(draw);
   resizeObserver.observe(host);
-  overlay.querySelector('[data-reset-world-view]').addEventListener('click', reset);
-  overlay.querySelectorAll('[data-focus-zone]').forEach(button => button.addEventListener('click', () => {
+  bind(overlay.querySelector('[data-reset-world-view]'), 'click', reset);
+  overlay.querySelectorAll('[data-focus-zone]').forEach(button => bind(button, 'click', () => {
     const zone = zones.find(item => String(item.id) === String(button.dataset.focusZone));
     if (!zone) return;
     state.centerX = Number(zone.bounds?.x || 0); state.centerZ = Number(zone.bounds?.z || 0); state.zoom = 48; draw();
   }));
-  overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.addEventListener('click', () => {
+  overlay.querySelectorAll('[data-focus-camera]').forEach(button => bind(button, 'click', () => {
     const cameraNode = list(world.cameras).find(item => item.id === button.dataset.focusCamera);
     const pose = list(cameraNode?.pose?.position);
     if (!cameraNode) return;
     state.centerX = Number(pose[0]) || 0; state.centerZ = Number(pose[2]) || 0; state.mode = 'camera'; state.zoom = 48; draw();
   }));
-  overlay.querySelectorAll('[data-world-mode]').forEach(button => button.addEventListener('click', () => {
-    overlay.querySelectorAll('[data-world-mode]').forEach(item => item.classList.toggle('active', item === button));
-    state.mode = button.dataset.worldMode;
+  const setMode = mode => {
+    state.mode = mode;
     if (state.mode === 'structure') { state.pitch = 1.18; state.zoom = 32; }
     else if (state.mode === 'blocking') { state.pitch = 0.72; state.zoom = 40; }
     else if (state.mode === 'camera') { state.pitch = 0.5; state.zoom = 38; }
     else reset();
     draw();
-  }));
-  reset();
-  return () => {
-    resizeObserver.disconnect();
-    canvas.removeEventListener('pointerdown', pointerDown);
-    canvas.removeEventListener('pointermove', pointerMove);
-    canvas.removeEventListener('pointerup', pointerUp);
-    canvas.removeEventListener('pointercancel', pointerUp);
-    canvas.removeEventListener('wheel', wheel);
   };
+  reset();
+  return { reset, setMode, dispose() {
+    resizeObserver.disconnect();
+    bindings.forEach(dispose => dispose());
+    host.replaceChildren();
+  } };
 }
 
 function initSceneWorldViewer({ overlay, bundle, world }) {
-  const disposeNative = initNativeSceneWorldViewer({ overlay, bundle, world });
   const host = overlay.querySelector('[data-scene-world-canvas]');
-  const canvas = host.querySelector('canvas');
+  const help = overlay.querySelector('[data-scene-world-help]');
   const nodes = photoNodes(world);
-  if (!nodes.length) return disposeNative;
-
-  const layer = document.createElement('div');
-  layer.className = 'scene-world-photo-viewer';
-  layer.innerHTML = `<div class="scene-world-photo-stage">
-    <img alt="${escapeHtml(world.name)}真实场景视图">
-    <div class="scene-world-photo-status"><b data-photo-title></b><small data-photo-count></small></div>
-    <div class="scene-world-photo-error" data-photo-error hidden>当前真实图片无法加载，请刷新后重试。</div>
-  </div>
-  <div class="scene-world-photo-strip">${nodes.map((node, index) => `<button type="button" data-photo-node="${escapeHtml(node.id)}" title="${escapeHtml(node.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(node.image_url)}" alt=""><span>${escapeHtml(node.name || `视角 ${index + 1}`)}</span></button>`).join('')}</div>`;
-  host.appendChild(layer);
-  const image = layer.querySelector('.scene-world-photo-stage>img');
-  const title = layer.querySelector('[data-photo-title]');
-  const count = layer.querySelector('[data-photo-count]');
-  const error = layer.querySelector('[data-photo-error]');
   const layoutNode = nodes.find(node => String(node.view_key || '').toLowerCase() === 'layout');
   const primaryNode = nodes.find(node => String(node.view_key || '').toLowerCase() === 'master')
-    || nodes.find(node => String(node.view_key || '').toLowerCase() !== 'layout')
-    || nodes[0];
+    || nodes.find(node => !node.is_panorama && String(node.view_key || '').toLowerCase() !== 'layout')
+    || null;
   const interactionNode = nodes.find(node => String(node.view_key || '').toLowerCase() === 'interaction') || primaryNode;
   const panoramaNode = nodes.find(node => node.is_panorama);
   let currentNode = primaryNode;
-
-  const showCanvas = () => {
-    layer.hidden = true;
-    canvas.style.visibility = 'visible';
-    host.dataset.viewerEngine = 'native-canvas';
+  let viewer = null;
+  let activation = 0;
+  const clearViewer = () => {
+    activation += 1;
+    viewer?.dispose?.();
+    viewer = null;
+    host.replaceChildren();
+    delete host.dataset.viewerEngine;
   };
-  const showPhoto = node => {
-    if (!node?.image_url) return showCanvas();
+  const activateModeButton = mode => overlay.querySelectorAll('[data-world-mode]').forEach(button => button.classList.toggle('active', button.dataset.worldMode === mode));
+  const thumbUrl = url => window.VidoMediaDelivery?.previewUrl?.(url, 320, 'webp') || url;
+  const showPhoto = (node, mode = 'model') => {
+    if (!node?.image_url) return showNative('structure');
+    if (node.is_panorama) return showPanorama(node);
+    clearViewer();
+    activateModeButton(mode);
     currentNode = node;
-    error.hidden = true;
-    image.hidden = false;
-    // media-delivery.js caches the first image in data-media-original/srcset.
-    // Dynamic scene switching must update that source of truth before changing src,
-    // otherwise its MutationObserver restores the previous view immediately.
-    if (image.dataset.mediaOriginal !== node.image_url) {
-      image.dataset.mediaOriginal = node.image_url;
-      image.removeAttribute('srcset');
-      image.removeAttribute('sizes');
-      image.setAttribute('src', node.image_url);
-      window.VidoMediaDelivery?.processImage?.(image);
-    }
-    title.textContent = node.name || '真实场景视图';
-    count.textContent = `${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length}${node.is_panorama ? ' · 360全景' : ' · 真实图片'}`;
-    layer.querySelectorAll('[data-photo-node]').forEach(button => button.classList.toggle('active', button.dataset.photoNode === String(node.id)));
-    layer.hidden = false;
-    canvas.style.visibility = 'hidden';
-    host.dataset.viewerEngine = node.is_panorama ? 'panorama-photo' : 'real-photo';
+    host.innerHTML = `<div class="scene-world-photo-viewer"><div class="scene-world-photo-stage">
+      <img alt="${escapeHtml(world.name)}真实场景视图" data-media-original="${escapeHtml(node.image_url)}">
+      <div class="scene-world-photo-status"><b>${escapeHtml(node.name || '真实场景视图')}</b><small>${Math.max(1, nodes.indexOf(node) + 1)} / ${nodes.length} · 平面参考图</small></div>
+      <div class="scene-world-photo-error" data-photo-error hidden>当前图片无法加载，请重试或检查场景资产。</div>
+    </div><div class="scene-world-photo-strip">${nodes.map((item, index) => `<button type="button" data-photo-node="${escapeHtml(item.id)}" class="${item.id === node.id ? 'active' : ''}" title="${escapeHtml(item.name || `视角 ${index + 1}`)}"><img src="${escapeHtml(thumbUrl(item.image_url))}" loading="lazy" decoding="async" alt=""><span>${escapeHtml(item.name || `视角 ${index + 1}`)}${item.is_panorama ? '<small>3DoF</small>' : ''}</span></button>`).join('')}</div></div>`;
+    const image = host.querySelector('.scene-world-photo-stage>img');
+    const error = host.querySelector('[data-photo-error]');
+    image.addEventListener('load', () => { image.hidden = false; error.hidden = true; }, { once: true });
+    image.addEventListener('error', () => { image.hidden = true; error.hidden = false; }, { once: true });
+    image.src = node.image_url;
+    window.VidoMediaDelivery?.processImage?.(image);
+    host.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => showPhoto(nodes.find(item => String(item.id) === String(button.dataset.photoNode)))));
+    host.dataset.viewerEngine = 'real-photo';
     host.dataset.activePhotoNode = String(node.id || '');
+    if (help) help.textContent = '平面参考图 · 点击下方视角切换；360观察点会单独加载球形查看器';
+  };
+  const showPanorama = async node => {
+    if (!node?.image_url) return;
+    clearViewer();
+    const requestToken = activation;
+    activateModeButton('panorama');
+    host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
+    if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
+    try {
+      const module = await import('./panoramaViewer.js?v=20260804-panorama-authority-v18');
+      if (requestToken !== activation) return;
+      host.replaceChildren();
+      viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
+      currentNode = node;
+      host.dataset.activePhotoNode = String(node.id || '');
+    } catch (error) {
+      if (requestToken !== activation) return;
+      host.innerHTML = `<div class="scene-world-canvas-error"><div><b>全景查看器没有加载完成</b><span>${escapeHtml(error.message || '请稍后重试')}</span></div></div>`;
+      host.dataset.viewerEngine = 'panorama-load-failed';
+    }
+  };
+  const showNative = mode => {
+    clearViewer();
+    activateModeButton(mode);
+    viewer = initNativeSceneWorldViewer({ overlay, bundle, world });
+    viewer.setMode(mode);
+    if (help) help.textContent = mode === 'blocking'
+      ? '结构代理站位 · 仅用于编排方向，不代表6DoF深度、碰撞与真实遮挡'
+      : (mode === 'camera' ? '机位结构代理 · 拖动旋转，滚轮缩放' : '场景结构 / 路线代理 · 仅在本模式下初始化Canvas');
+  };
+  const showSpatialNotice = () => {
+    clearViewer();
+    activateModeButton('spatial');
+    host.dataset.viewerEngine = 'spatial-6dof-handoff';
+    host.innerHTML = '<div class="scene-world-mode-notice"><b>6DoF可移动空间</b><p>前后左右移动、人物路径和遮挡需使用深度 / 几何空间资产，不会用平面全景或结构代理冒充。</p><button class="btn" type="button" data-spatial-director-handoff>打开6DoF导演台</button></div>';
+    host.querySelector('[data-spatial-director-handoff]')?.addEventListener('click', () => overlay.querySelector('[data-open-director-studio]')?.click());
+    if (help) help.textContent = '6DoF仅在空间模型及深度 / 几何证据就绪后可用';
+  };
+  const showInitialNotice = () => {
+    clearViewer();
+    activateModeButton('model');
+    host.dataset.viewerEngine = 'scene-mode-not-selected';
+    host.innerHTML = `<div class="scene-world-mode-notice"><b>${panoramaNode ? '全景观察点已就绪' : '尚无可显示的平面场景图'}</b><p>${panoramaNode ? '点击上方“360原地环视（3DoF）”后才会按需加载球形查看器。' : '可选择“结构 / 路线”查看轻量代理，或先生成360全景。'}</p></div>`;
+    if (help) help.textContent = '只在选择对应模式后加载查看器，避免无效的首次绘制';
   };
   const showMode = mode => {
-    if (mode === 'panorama') return panoramaNode ? showPhoto(panoramaNode) : showPhoto(primaryNode);
-    if (mode === 'spatial') return showCanvas();
-    if (mode === 'structure') return layoutNode ? showPhoto(layoutNode) : showCanvas();
-    if (mode === 'blocking') return showPhoto(interactionNode);
-    if (mode === 'camera') return showPhoto(currentNode || primaryNode);
-    return showPhoto(primaryNode);
+    activateModeButton(mode);
+    if (mode === 'panorama') return panoramaNode ? showPanorama(panoramaNode) : showPhoto(primaryNode);
+    if (mode === 'spatial') return showSpatialNotice();
+    if (mode === 'structure') return layoutNode ? showPhoto(layoutNode, 'structure') : showNative('structure');
+    if (mode === 'blocking') return interactionNode ? showPhoto(interactionNode, 'blocking') : showNative('blocking');
+    if (mode === 'camera') return currentNode && !currentNode.is_panorama ? showPhoto(currentNode, 'camera') : showNative('camera');
+    return primaryNode ? showPhoto(primaryNode) : showInitialNotice();
   };
 
-  image.addEventListener('load', () => { error.hidden = true; image.hidden = false; });
-  image.addEventListener('error', () => { image.hidden = true; error.hidden = false; });
-  layer.querySelectorAll('[data-photo-node]').forEach(button => button.addEventListener('click', () => {
-    const node = nodes.find(item => String(item.id) === String(button.dataset.photoNode));
-    if (node) showPhoto(node);
-  }));
   overlay.querySelectorAll('[data-focus-observation]').forEach(button => button.addEventListener('click', () => {
     const node = nodes.find(item => String(item.id) === String(button.dataset.focusObservation));
-    if (node) showPhoto(node);
-  }));
-  overlay.querySelectorAll('[data-focus-zone]').forEach(button => button.addEventListener('click', () => {
-    const node = nodes.find(item => String(item.zone_id) === String(button.dataset.focusZone));
     if (node) showPhoto(node);
   }));
   overlay.querySelectorAll('[data-focus-camera]').forEach(button => button.addEventListener('click', () => {
@@ -363,12 +410,11 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     if (node) showPhoto(node);
   }));
   overlay.querySelectorAll('[data-world-mode]').forEach(button => button.addEventListener('click', () => showMode(button.dataset.worldMode)));
-  showPhoto(primaryNode);
+  overlay.querySelector('[data-reset-world-view]')?.addEventListener('click', () => viewer?.reset?.());
+  if (primaryNode) showPhoto(primaryNode); else showInitialNotice();
 
   return () => {
-    image.removeAttribute('src');
-    layer.remove();
-    disposeNative();
+    clearViewer();
   };
 }
 
@@ -381,15 +427,15 @@ async function openSceneWorldStudio(bundle, world) {
     <header><div><small>${escapeHtml(world.capabilities?.world_mode || 'scene_world')} · 版本 ${world.revision || 1}</small><h2>${escapeHtml(world.name)}</h2><p>${escapeHtml(world.story_purpose || world.description || '场景世界交互预演')}</p></div><button type="button" data-close-scene-world aria-label="关闭">×</button></header>
     <nav class="scene-world-view-modes">
       <button class="active" type="button" data-world-mode="model">${hasRealPhotos ? '真实图片' : '场景结构'}</button>
-      <button type="button" data-world-mode="panorama" ${world.capabilities?.supports_panorama ? '' : 'disabled title="当前没有2:1全景观察点"'}>360全景</button>
-      <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度或空间模型"'}>3D漫游</button>
+      <button type="button" data-world-mode="panorama" ${realPhotoNodes.some(node => node.is_panorama) ? '' : 'disabled title="当前没有已验收的2:1等距柱状全景"'}>360原地环视（3DoF）</button>
+      <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度、几何或空间模型"'}>可移动空间（6DoF）</button>
       <button type="button" data-world-mode="structure">结构 / 路线</button>
       <button type="button" data-world-mode="blocking">人物站位</button>
-      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>3D导演台</button>
+      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>6DoF导演台</button>
     </nav>
     <div class="scene-world-studio-layout">
       <aside><h3>真实图片视角</h3><div class="scene-world-observation-list">${realPhotoNodes.length ? realPhotoNodes.map((node, index) => `<button type="button" data-focus-observation="${escapeHtml(node.id)}"><b>${escapeHtml(node.name || `视角 ${index + 1}`)}</b><small>${escapeHtml(node.view_key === 'layout' ? '俯视布局与路线参考' : node.is_panorama ? '可360度环视的全景观察点' : '现有真实场景图片')}</small></button>`).join('') : '<small>当前场景还没有真实图片。</small>'}</div><h3>空间区域</h3><div class="scene-world-zone-list">${list(world.zones).map(zone => `<button type="button" data-focus-zone="${escapeHtml(zone.id)}"><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(zone.purpose || '场景区域')}</small></button>`).join('')}</div><h3>场景入口</h3><div class="scene-world-portal-list">${list(world.portals).length ? list(world.portals).map(portal => `<button type="button" data-open-world="${escapeHtml(portal.to_world_id)}">${escapeHtml(portal.label)}</button>`).join('') : '<small>当前没有跨场景入口</small>'}</div></aside>
-      <main><div class="scene-world-canvas" data-scene-world-canvas><div class="scene-world-canvas-loading">${hasRealPhotos ? '正在载入现有真实场景图片…' : '正在建立可旋转场景代理…'}</div></div><div class="scene-world-canvas-help">${hasRealPhotos ? '点击左侧观察点或右侧机位切换真实图片 · 结构视图显示俯视布局' : '拖动旋转 · 滚轮缩放 · 点击右侧机位进入视角'}</div></main>
+      <main><div class="scene-world-canvas" data-scene-world-canvas><div class="scene-world-canvas-loading">${hasRealPhotos ? '正在载入现有场景图片…' : '结构代理将在选择后按需建立…'}</div></div><div class="scene-world-canvas-help" data-scene-world-help>${hasRealPhotos ? '点击左侧观察点或右侧机位切换参考图' : '选择结构 / 路线后才初始化可旋转代理'}</div></main>
       <aside class="scene-world-inspector"><h3>动态机位</h3><div>${list(world.cameras).length ? list(world.cameras).map(camera => `<button type="button" data-focus-camera="${escapeHtml(camera.id)}"><b>${escapeHtml(camera.name)}</b><small>${escapeHtml([camera.framing, camera.lens, camera.movement].filter(Boolean).join(' · ') || '机位参数待完善')}</small></button>`).join('') : '<small>尚未生成机位；可以先查看场景代理模型。</small>'}</div><details open><summary>当前能力</summary><div class="scene-world-capabilities">${capabilityChips(world)}</div></details><button class="btn" type="button" data-reset-world-view>重置视角</button></aside>
     </div>
   </section>`;
@@ -408,7 +454,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260804-reference-editable-brief-fold-v17');
+      const module = await import('./directorStudioView.js?v=20260804-panorama-authority-v18');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
@@ -421,7 +467,7 @@ async function openSceneWorldStudio(bundle, world) {
   }));
 }
 
-export function bindSceneWorldWorkspace(host, bundle = {}) {
+export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   const root = host.querySelector('[data-scene-world-workspace]');
   if (!root) return;
   const activate = name => {
@@ -437,6 +483,14 @@ export function bindSceneWorldWorkspace(host, bundle = {}) {
   root.querySelectorAll('[data-plan-scene-experience]').forEach(button => button.addEventListener('click', () => {
     const world = worldById(bundle, button.dataset.planSceneExperience);
     if (world) openSceneExperiencePlanner(bundle, world);
+  }));
+  let panoramaActionModule;
+  root.querySelectorAll('[data-generate-panorama]').forEach(button => button.addEventListener('click', async () => {
+    try {
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260804-panorama-authority-v18');
+      const module = await panoramaActionModule;
+      await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
+    } catch (error) { toast(error.message || '全景生成操作没有加载完成', 'danger'); }
   }));
   root.querySelector('[data-save-world-assignments]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
@@ -462,7 +516,7 @@ function openSceneExperiencePlanner(bundle, world) {
   const current = world.experience || {};
   const overlay = document.createElement('div');
   overlay.className = 'scene-experience-planner';
-  overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前内容选择需要的空间体验；普通图片不会被冒充为360或3D。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视</option><option value="spatial_3d">多点3D漫游</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="例如：从入口进入主展示区，再到产品细节区；也可以是单一室内、纯外景、棚拍、数字界面或抽象空间。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>产出边界</b><p>360需要2:1全景观察点；3D漫游还需要多观察点、深度/几何和连接路线。保存这里的规划不会消耗生成次数，也不会把现有五张图片伪装成空间模型。</p></div></div><footer><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
+  overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前内容选择需要的空间体验；普通图片不会被冒充为360或6DoF空间。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视（3DoF）</option><option value="spatial_3d">可移动空间（6DoF）</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="说明希望查看的区域、镜头方向，以及是否需要摄像机或人物真实位移。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>3DoF / 6DoF 边界</b><p>3DoF需要经质检的2:1全景观察点，只能原地转向；6DoF还需要深度、几何、可移动区域和遮挡验证。保存规划不会调用模型，付费生成会再次明确确认。</p></div></div><footer><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
   document.body.appendChild(overlay);
   document.body.classList.add('modal-open');
   const form = overlay.querySelector('form');
@@ -477,7 +531,7 @@ function openSceneExperiencePlanner(bundle, world) {
     submit.disabled = true;
     try {
       const requestedMode = form.elements.requested_mode.value;
-      await saveSceneWorld(bundle.project.id, world, { experience: {
+      const result = await saveSceneWorld(bundle.project.id, world, { experience: {
         ...current,
         requested_mode: requestedMode,
         source_mode: form.elements.source_mode.value,
@@ -485,9 +539,10 @@ function openSceneExperiencePlanner(bundle, world) {
         route_brief: form.elements.route_brief.value.trim(),
         status: requestedMode === current.current_mode ? current.status || 'base_ready' : 'planned',
       } });
+      if (result.world) Object.assign(world, result.world);
+      if (result.manifest) bundle.production_manifest = result.manifest;
       toast('空间规划已保存。需要新增全景或3D素材时，系统会按该规划生成或接收上传素材。', 'success');
       close();
-      location.reload();
     } catch (error) { toast(error.message, 'danger'); submit.disabled = false; }
   });
 }

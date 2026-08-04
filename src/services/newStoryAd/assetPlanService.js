@@ -585,7 +585,7 @@ async function generate(taskId, options = {}) {
   "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"advertised_product/wearable_accessory/story_prop/fixed_scene_object","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
   "scene_plan": {
     "business_boundary":"业务边界","advertised_subject":"广告主体","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",
-    "spaces":[{"id":"稳定空间ID","name":"中文空间名","description":"仅描述该物理空间","story_purpose":"剧情作用","scene_spec":{"layoutText":"布局、出入口和固定结构","materialLightText":"材质、色彩和光线","interactionText":"动作区、锚点与路线","negativeText":"禁止出现内容","storyStates":[],"interactionAnchors":[],"routes":[],"propPlacements":[]}}],
+    "spaces":[{"id":"稳定空间ID","name":"中文空间名","description":"仅描述该独立空间","story_purpose":"剧情作用","scene_spec":{"layoutText":"布局、出入口和固定结构","materialLightText":"材质、色彩和光线","interactionText":"动作区、锚点与路线","negativeText":"禁止出现内容","storyStates":[],"interactionAnchors":[],"routes":[],"propPlacements":[],"sceneExperienceContract":{"required_authority":"panorama_3dof或geometry_6dof","representation":"physical或digital或abstract","extent":"enclosed或open或stage或screen","rotation_required":true,"translation_required":false,"actor_blocking_required":false,"camera_path_required":false,"metric_scale_required":false}}}],
     "asset_strategy":[],"story_strategy":[],"forbidden":[],"suggested_shot_count":5
   },
   "story_seed":{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":""}

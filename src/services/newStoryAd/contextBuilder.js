@@ -435,6 +435,13 @@ function normalizeSceneSpec(input = {}) {
     raw.surfaceTopology || raw.surface_topology,
     [layoutText, materialLightText, negativeText, raw.surfaceTopology?.notes, raw.surface_topology?.notes],
   );
+  const experienceInput = raw.sceneExperienceContract || raw.scene_experience_contract || {};
+  const representation = ['physical', 'digital', 'abstract'].includes(cleanText(experienceInput.representation, 40).toLowerCase())
+    ? cleanText(experienceInput.representation, 40).toLowerCase()
+    : 'physical';
+  const extent = ['enclosed', 'open', 'stage', 'screen', 'unspecified'].includes(cleanText(experienceInput.extent, 40).toLowerCase())
+    ? cleanText(experienceInput.extent, 40).toLowerCase()
+    : 'unspecified';
   return {
     mode: cleanText(raw.mode || raw.sceneMode || 'auto', 40),
     layoutText,
@@ -445,6 +452,18 @@ function normalizeSceneSpec(input = {}) {
     interactionAnchors,
     routes,
     cameraPlan,
+    sceneExperienceContract: {
+      required_authority: experienceInput.required_authority === 'geometry_6dof' ? 'geometry_6dof' : 'panorama_3dof',
+      representation,
+      extent,
+      rotation_required: experienceInput.rotation_required !== false,
+      translation_required: experienceInput.translation_required === true,
+      actor_blocking_required: experienceInput.actor_blocking_required === true || interactionAnchors.length > 0,
+      camera_path_required: experienceInput.camera_path_required === true,
+      metric_scale_required: experienceInput.metric_scale_required === true,
+      coordinate_system: 'right_handed_y_up',
+      units: experienceInput.units === 'meters' ? 'meters' : 'unknown',
+    },
     surfaceTopology,
     materialContract: shotDesign.normalizeMaterialContract(raw.materialContract || raw.material_contract, {
       sourceText: materialLightText,

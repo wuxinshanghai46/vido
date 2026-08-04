@@ -17,6 +17,15 @@ const CAPABILITY_LABELS = {
   seedance2_compatible: 'Seedance2',
   actor_sheet_full_body: 'Actor sheet full body',
   portrait_aspect_lock: 'Portrait aspect lock',
+  panorama_outpaint: '全景扩展',
+  equirectangular_2to1: '2:1经纬全景',
+  wraparound_consistency: '环形接缝一致',
+  source_view_preserving: '原始视角保真',
+  panorama_visual_qa: '全景视觉质检',
+  depth_estimation: '深度估计',
+  spatial_reconstruction: '空间重建',
+  camera_pose_control: '机位姿态控制',
+  novel_view_render: '新视角渲染',
 };
 
 function normalizeModel(model = {}) {
@@ -42,6 +51,15 @@ function _baseCapabilities() {
     seedance2_compatible: false,
     actor_sheet_full_body: false,
     portrait_aspect_lock: false,
+    panorama_outpaint: false,
+    equirectangular_2to1: false,
+    wraparound_consistency: false,
+    source_view_preserving: false,
+    panorama_visual_qa: false,
+    depth_estimation: false,
+    spatial_reconstruction: false,
+    camera_pose_control: false,
+    novel_view_render: false,
   };
 }
 
@@ -93,6 +111,10 @@ function inferModelCapabilities(model = {}) {
   if (/gpt-image-2/.test(modelId) || /topview-gpt-image-2/.test(modelId)) {
     caps.actor_sheet_full_body = true;
     caps.portrait_aspect_lock = true;
+  }
+
+  if (/gpt-4o|gemini|glm-4(?:\.|-)?(?:5|6)?v|qwen.*vl|vision|multimodal/.test(text)) {
+    caps.panorama_visual_qa = true;
   }
 
   if (/nano-banana|qwen-image-edit|flux-kontext|kontext/.test(text)) {

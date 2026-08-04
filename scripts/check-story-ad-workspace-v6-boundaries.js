@@ -97,14 +97,20 @@ function main() {
   const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
   const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file));
+  const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
+  const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorldView/.test(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const featureLazyJsBytes = featureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const panoramaLazyJsBytes = panoramaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const sceneWorldLazyJsBytes = sceneWorldLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
   const coreJsGzip = gzipBytes(coreJsFiles);
   const lazyJsGzip = gzipBytes(lazyJsFiles);
   const featureLazyJsGzip = gzipBytes(featureLazyJsFiles);
+  const panoramaLazyJsGzip = gzipBytes(panoramaLazyJsFiles);
+  const sceneWorldLazyJsGzip = gzipBytes(sceneWorldLazyJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
   // Keep the initial 100 KiB gate strict; the total source budget includes the
@@ -118,6 +124,10 @@ function main() {
   assert(coreJsGzip <= 105 * 1024, `核心按需模块 gzip ${coreJsGzip} bytes 超过 105 KiB`);
   assert(featureLazyJsBytes <= 60 * 1024, `参考理解与画布导演功能模块 ${featureLazyJsBytes} bytes 超过 60 KiB`);
   assert(featureLazyJsGzip <= 16 * 1024, `参考理解与画布导演功能模块 gzip ${featureLazyJsGzip} bytes 超过 16 KiB`);
+  assert(panoramaLazyJsBytes <= 20 * 1024, `360全景按需模块 ${panoramaLazyJsBytes} bytes 超过 20 KiB`);
+  assert(panoramaLazyJsGzip <= 8 * 1024, `360全景按需模块 gzip ${panoramaLazyJsGzip} bytes 超过 8 KiB`);
+  assert(sceneWorldLazyJsBytes <= 50 * 1024, `场景世界按需模块 ${sceneWorldLazyJsBytes} bytes 超过 50 KiB`);
+  assert(sceneWorldLazyJsGzip <= 15 * 1024, `场景世界按需模块 gzip ${sceneWorldLazyJsGzip} bytes 超过 15 KiB`);
   assert(lazyJsBytes <= 780 * 1024, `3D导演台懒加载 JS ${lazyJsBytes} bytes 超过 780 KiB`);
   assert(lazyJsGzip <= 200 * 1024, `3D导演台懒加载 gzip ${lazyJsGzip} bytes 超过 200 KiB`);
 
@@ -147,7 +157,7 @@ function main() {
   assert(store.includes('referenceAnalysisId'), '参考轮询必须锁定明确分析 ID');
   assert(store.includes('function clearProject()'), '状态仓库必须提供跨任务清理');
 
-  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes}; core_js=${coreJsBytes}; core_gzip=${coreJsGzip}; feature_lazy_js=${featureLazyJsBytes}; feature_lazy_gzip=${featureLazyJsGzip}; lazy_3d_js=${lazyJsBytes}; lazy_3d_gzip=${lazyJsGzip}`);
+  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes}; core_js=${coreJsBytes}; core_gzip=${coreJsGzip}; feature_lazy_js=${featureLazyJsBytes}; feature_lazy_gzip=${featureLazyJsGzip}; panorama_lazy_js=${panoramaLazyJsBytes}; panorama_lazy_gzip=${panoramaLazyJsGzip}; scene_world_lazy_js=${sceneWorldLazyJsBytes}; scene_world_lazy_gzip=${sceneWorldLazyJsGzip}; lazy_3d_js=${lazyJsBytes}; lazy_3d_gzip=${lazyJsGzip}`);
 }
 
 main();

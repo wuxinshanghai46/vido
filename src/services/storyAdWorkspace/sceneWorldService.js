@@ -38,6 +38,17 @@ function sceneViews(scene = {}) {
   return list(scene.view_images).filter(view => clean(view?.image_url || view?.url, 1000));
 }
 
+function validPanorama(item = {}, scene = {}) {
+  const url = clean(item?.image_url || item?.url, 1000);
+  const projection = clean(item?.projection || item?.kind, 100);
+  const width = Number(item?.width || 0) || 0;
+  const height = Number(item?.height || 0) || 0;
+  const ratioValid = item?.aspect_ratio === '2:1' || (width > 0 && height > 0 && width === height * 2);
+  const authorityValid = item?.status === 'active_verified' && item?.qa?.pass === true;
+  const revisionValid = Number(item?.source_scene_revision || 0) + 1 === Number(scene?.scene_revision || scene?.revision || 0);
+  return Boolean(url && /equirectangular|360_panorama/i.test(projection) && ratioValid && authorityValid && revisionValid);
+}
+
 function panoramaAssets(scene = {}) {
   const worldAssets = scene.scene_world_assets || scene.sceneWorldAssets || {};
   const rows = [
@@ -51,14 +62,21 @@ function panoramaAssets(scene = {}) {
       view.projection,
     ].join(' '), 300))),
   ];
-  const direct = clean(scene.panorama_url || worldAssets.panorama_url, 1000);
-  return [...(direct ? [{ image_url: direct, projection: 'equirectangular' }] : []), ...rows];
+  const unique = new Map();
+  rows.filter(item => validPanorama(item, scene)).forEach(item => {
+    const url = clean(item.image_url || item.url, 1000);
+    if (!unique.has(url)) unique.set(url, item);
+  });
+  return [...unique.values()];
 }
 
 function spatialModelAssets(scene = {}) {
   const assets = scene.scene_world_assets || scene.sceneWorldAssets || {};
   return list(assets.models || assets.spatial_models || scene.spatial_models)
-    .filter(item => clean(item?.url || item?.model_url || item?.mesh_url || item, 1000));
+    .filter(item => item?.status === 'active_verified'
+      && item?.qa?.pass === true
+      && clean(item?.geometry_url || item?.model_url || item?.mesh_url || item?.url, 1000)
+      && clean(item?.navmesh_url, 1000));
 }
 
 /**
@@ -66,33 +84,41 @@ function spatialModelAssets(scene = {}) {
  * industry template. Explicit user/plan overrides always win.
  */
 function inferCapabilities(scene = {}) {
-  const text = worldText(scene);
   const explicit = scene.capabilities || scene.scene_spec?.capabilities || {};
-  const digital = /软件|APP|应用|网页|网站|界面|UI|后台|仪表盘|数字屏幕|屏幕录制/i.test(text);
-  const abstract = /抽象|粒子|液体|微观|CG|三维动画|概念空间|光效|能量|数据流/i.test(text);
-  const open = /道路|街道|广场|农场|田野|景区|山地|海边|沙漠|工地|运动场|园区|航拍|户外|室外/i.test(text);
-  const stage = /棚拍|摄影棚|影棚|展示台|转台|产品台|无影棚|静物台|珠宝台/i.test(text);
-  const enclosed = /室内|房间|展厅|门店|商场|办公室|教室|医院|实验室|工厂|车间|仓库|厨房|餐厅|酒店|住宅|舱内|车内/i.test(text);
-  const physical = !digital && !abstract;
+  const contract = scene.scene_experience_contract || scene.scene_spec?.scene_experience_contract || {};
+  const representation = clean(contract.representation || explicit.representation || 'physical', 40).toLowerCase();
+  const extent = clean(contract.extent || explicit.extent || 'unspecified', 40).toLowerCase();
   const views = sceneViews(scene);
   const photoViewCount = views.length;
   const panoramaCount = panoramaAssets(scene).length;
+  const spatialCount = spatialModelAssets(scene).length;
   const hasLayoutView = views.some(view => /^(?:layout|blueprint|floor_plan|topdown)$/i.test(clean(view.key || view.view, 80)))
     || Boolean(scene.layout_contract || scene.scene_contract?.layout_contract);
-  const inferredMapMode = digital ? 'state_graph' : (open ? 'route_map' : ((enclosed || hasLayoutView) ? 'structure_map' : 'stage_map'));
-  const inferredWorldMode = digital ? 'digital_state' : (abstract ? 'abstract_cg' : (stage ? 'studio_stage' : (open ? 'physical_open' : 'physical_space')));
+  const inferredMapMode = representation === 'digital' ? 'state_graph'
+    : extent === 'open' ? 'route_map'
+      : hasLayoutView ? 'structure_map' : 'stage_map';
+  const inferredWorldMode = representation === 'digital' ? 'digital_state'
+    : representation === 'abstract' ? 'abstract_cg'
+      : extent === 'stage' ? 'studio_stage'
+        : extent === 'open' ? 'physical_open' : 'physical_space';
+  const translationRequired = contract.translation_required === true || contract.camera_path_required === true;
+  const blockingRequired = contract.actor_blocking_required !== false && scene.no_human !== true;
   return {
+    representation,
+    extent,
     supports_photo_views: boolOverride(explicit, 'supports_photo_views', photoViewCount > 0),
-    supports_panorama: boolOverride(explicit, 'supports_panorama', panoramaCount > 0),
-    supports_structure_map: boolOverride(explicit, 'supports_structure_map', physical && (enclosed || open || hasLayoutView)),
-    supports_3d_proxy: boolOverride(explicit, 'supports_3d_proxy', !digital && (physical || abstract || stage)),
-    supports_spatial_model: boolOverride(explicit, 'supports_spatial_model', spatialModelAssets(scene).length > 0),
-    supports_navigation: boolOverride(explicit, 'supports_navigation', physical && (panoramaCount > 0 || photoViewCount > 1)),
-    supports_camera_orbit: boolOverride(explicit, 'supports_camera_orbit', !digital && (stage || abstract || physical)),
-    supports_character_blocking: boolOverride(explicit, 'supports_character_blocking', scene.no_human !== true && !/纯产品|无人|无人物/i.test(text)),
-    supports_motion_path: boolOverride(explicit, 'supports_motion_path', !stage || /移动|行走|驾驶|跟随|穿行|路线/i.test(text)),
+    supports_panorama: panoramaCount > 0 && explicit.supports_panorama !== false,
+    supports_structure_map: boolOverride(explicit, 'supports_structure_map', hasLayoutView),
+    supports_3d_proxy: boolOverride(explicit, 'supports_3d_proxy', representation !== 'digital'),
+    supports_spatial_model: spatialCount > 0 && explicit.supports_spatial_model !== false,
+    supports_rotation_navigation: panoramaCount > 0,
+    supports_translation_navigation: spatialCount > 0 && translationRequired,
+    supports_navigation: spatialCount > 0 && translationRequired && explicit.supports_navigation !== false,
+    supports_camera_orbit: spatialCount > 0,
+    supports_character_blocking: spatialCount > 0 && blockingRequired,
+    supports_motion_path: spatialCount > 0 && translationRequired,
     supports_transition_portal: boolOverride(explicit, 'supports_transition_portal', true),
-    supports_state_variants: boolOverride(explicit, 'supports_state_variants', /白天|夜晚|时间|灯光|变化|前后|状态|季节/i.test(text) || digital || abstract),
+    supports_state_variants: boolOverride(explicit, 'supports_state_variants', representation === 'digital' || representation === 'abstract'),
     map_mode: clean(explicit.map_mode || inferredMapMode, 40),
     world_mode: clean(explicit.world_mode || inferredWorldMode, 40),
   };
@@ -164,12 +190,14 @@ function normalizeCameras(scene = {}) {
 }
 
 function observationNodes(scene = {}, zones = [], cameras = []) {
-  const views = sceneViews(scene);
-  const nodeCount = Math.max(1, Math.min(12, Math.max(zones.length, cameras.length, views.length)));
+  const panoramas = panoramaAssets(scene);
+  const views = sceneViews(scene).filter(view => !panoramas.some(item => clean(item.image_url || item.url, 1000) === clean(view.image_url || view.url, 1000)));
+  const sources = [...panoramas, ...views];
+  const nodeCount = Math.max(1, Math.min(12, Math.max(zones.length, cameras.length, sources.length)));
   return Array.from({ length: nodeCount }, (_, index) => {
     const zone = zones[index % zones.length] || zones[0];
     const camera = cameras[index] || cameras[index % Math.max(1, cameras.length)];
-    const view = views[index] || views[index % Math.max(1, views.length)];
+    const view = sources[index] || sources[index % Math.max(1, sources.length)];
     return {
       id: `${scene.id}:observation:${index + 1}`,
       name: clean(camera?.name || view?.label || zone?.name || `观察点 ${index + 1}`, 120),
@@ -178,12 +206,7 @@ function observationNodes(scene = {}, zones = [], cameras = []) {
       image_url: clean(view?.image_url || view?.url || camera?.image_url, 1000),
       view_key: clean(view?.key || view?.view, 40),
       projection: clean(view?.projection || view?.source_role, 80),
-      is_panorama: /panorama|equirect|cubemap|cube_face|360/i.test(clean([
-        view?.key,
-        view?.source_kind,
-        view?.source_role,
-        view?.projection,
-      ].join(' '), 300)),
+      is_panorama: validPanorama(view, scene),
       pose: camera?.pose || cameraPose({}, index, nodeCount),
     };
   });
@@ -239,6 +262,7 @@ function baseWorld(scene = {}, index = 0) {
       layout_image_url: clean(scene.layout?.image_url || layoutView?.image_url || layoutView?.url, 1000),
       photo_view_count: views.length,
       panorama_count: panoramaCount,
+      panorama_url: clean(panoramaAssets(scene)[0]?.image_url || panoramaAssets(scene)[0]?.url, 1000),
       spatial_model_count: spatialModelCount,
       legacy_view_count: views.length,
       source_revision: finite(scene.revision, 0),
@@ -435,6 +459,8 @@ function saveAssignments(taskId, assignments = [], options = {}) {
 module.exports = {
   SCENE_WORLD_SCHEMA_VERSION,
   buildSceneWorlds,
+  validPanorama,
+  panoramaAssets,
   inferCapabilities,
   productionManifest,
   resolve,

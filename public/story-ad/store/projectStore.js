@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-reference-editable-brief-fold-v17';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-panorama-authority-v18';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-panorama-authority-v18';
 
 export function createProjectStore() {
   const state = {

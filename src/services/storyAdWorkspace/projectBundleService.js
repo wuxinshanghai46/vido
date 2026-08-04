@@ -5,14 +5,10 @@ const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProje
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
+const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService');
 const MAX_MEDIA_ITEMS = 120;
-/** 把任意值整理为安全短文本，避免把大型提示词带入工作区首包。 */
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
-
-/** 只返回真实数组，避免各页面重复编写兼容判断。 */
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
-
-/** 提取现有媒体对象中的当前展示地址。 */
 function mediaUrl(value = {}) {
   if (typeof value === 'string') return clean(value, 1200);
   return clean(
@@ -28,7 +24,6 @@ function mediaUrl(value = {}) {
     1200,
   );
 }
-
 /** 将持久化人物档案压缩成生成服务可直接复用的标准结构。 */
 function personProfile(source = {}, index = 0) {
   return {
@@ -321,6 +316,10 @@ function sceneAssets(outputs = {}, context = {}) {
       purpose: clean(zone.purpose || zone.description, 220),
     }));
     const layout = contract.layout_contract && typeof contract.layout_contract === 'object' ? contract.layout_contract : {};
+    const rawWorldAssets = asset.scene_world_assets && typeof asset.scene_world_assets === 'object'
+      ? asset.scene_world_assets
+      : {};
+    const projectedWorldAssets = projectSceneWorldAssets(rawWorldAssets, id, { clean, list, mediaUrl });
     const shotRefs = shots.filter(shot => clean(shot.scene_id || shot.scene_asset_id, 120) === id)
       .map((shot, shotIndex) => clean(shot.shot_id || shot.id || `SH${shotIndex + 1}`, 80)).slice(0, 60);
     const relevantRoutes = routes.filter(route => [route.from_scene_id, route.to_scene_id, route.scene_id, route.from, route.to]
@@ -344,6 +343,7 @@ function sceneAssets(outputs = {}, context = {}) {
       image_url: imageUrl,
       reference_image_url: mediaUrl(reference),
       view_images: views,
+      scene_world_assets: projectedWorldAssets,
       status: clean(contract.status || asset.status || (candidateCount ? 'selecting' : (imageUrl ? 'generated' : 'planned')), 50),
       revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0,
       planned: options.planned === true,

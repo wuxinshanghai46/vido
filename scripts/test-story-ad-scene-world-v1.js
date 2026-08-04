@@ -45,10 +45,11 @@ const bundle = {
           { key: 'reverse', label: '反向视角', image_url: '/assets/factory-reverse.png' },
           { key: 'layout', label: '俯视布局', image_url: '/assets/factory-layout.png' },
         ],
+        scene_spec: { scene_experience_contract: { representation: 'physical', extent: 'enclosed', actor_blocking_required: true } },
       }),
-      scene('road', '城市道路', '车辆在道路与城市广场之间移动，包含航拍路线'),
-      scene('app', '服务平台', '展示APP界面、用户操作流程与数据仪表盘'),
-      scene('cg', '产品微观世界', '抽象液体、粒子与材质微观CG变化'),
+      scene('road', '开放空间', '按结构化合同呈现开放范围', { scene_spec: { scene_experience_contract: { representation: 'physical', extent: 'open' } } }),
+      scene('app', '数字界面', '按结构化合同呈现数字状态', { scene_spec: { scene_experience_contract: { representation: 'digital', extent: 'screen' } } }),
+      scene('cg', '抽象空间', '按结构化合同呈现抽象视觉', { scene_spec: { scene_experience_contract: { representation: 'abstract', extent: 'stage' } } }),
     ],
   },
   asset_editor: {
@@ -72,7 +73,7 @@ const bundle = {
 const worlds = sceneWorlds.buildSceneWorlds(bundle);
 assert.strictEqual(worlds.length, 4, 'must create every requested scene world');
 assert.strictEqual(worlds[0].cameras.length, 2, 'camera count must follow content instead of forcing four cameras');
-assert.strictEqual(worlds[0].capabilities.supports_character_blocking, true);
+assert.strictEqual(worlds[0].capabilities.supports_character_blocking, false, 'without verified geometry and navmesh, blocking must stay disabled');
 assert.strictEqual(worlds[0].capabilities.supports_photo_views, true, 'existing scene images must enable the real-photo viewer');
 assert.strictEqual(worlds[0].capabilities.supports_panorama, false, 'ordinary perspective images must not be labeled as 360 panorama');
 assert.strictEqual(worlds[0].source_asset.photo_view_count, 3);
@@ -102,7 +103,7 @@ assert.strictEqual(manifest.character_world_matrix[2].cells.find(cell => cell.wo
 const explicit = sceneWorlds.inferCapabilities(scene('custom', '用户自定义场景', '纯产品空间', {
   scene_spec: { capabilities: { supports_panorama: true, supports_structure_map: false } },
 }));
-assert.strictEqual(explicit.supports_panorama, true, 'explicit user capability must override inference');
+assert.strictEqual(explicit.supports_panorama, false, 'a flag without a verified 2:1 authority must never create panorama capability');
 assert.strictEqual(explicit.supports_structure_map, false, 'explicit false must override inference');
 
 const assetLedMap = sceneWorlds.inferCapabilities(scene('gallery', '光影艺廊', '安静的艺术空间', {
@@ -138,8 +139,8 @@ assert(workspaceSource.includes('initSceneWorldViewer'));
 assert(workspaceSource.includes('scene-world-photo-viewer'));
 assert(workspaceSource.includes('data-focus-observation'));
 assert(workspaceSource.includes("'real-photo'"));
-assert(workspaceSource.includes('image.dataset.mediaOriginal = node.image_url'), 'dynamic scene view must replace media-delivery source of truth');
-assert(workspaceSource.includes("image.removeAttribute('srcset')"), 'dynamic scene view must clear stale responsive image candidates');
+assert(workspaceSource.includes('data-media-original="${escapeHtml(node.image_url)}"'), 'dynamic scene view must bind the selected source as media-delivery authority');
+assert(workspaceSource.includes('image.src = node.image_url'), 'dynamic scene view must load the selected source without stale candidates');
 assert(workspaceCss.includes('.scene-world-photo-error[hidden]{display:none}'), 'loaded scene image must suppress the stale error overlay');
 assert(workspaceSource.includes("host.dataset.viewerEngine = 'native-canvas'"));
 assert(!workspaceSource.includes("import('/vendor/three.module.min.js')"));

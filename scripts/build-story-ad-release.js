@@ -36,6 +36,20 @@ function main() {
   if (!/^[a-z0-9][a-z0-9._-]{7,80}$/i.test(String(release.build_id || ''))) {
     throw new Error('story-ad build_id 无效');
   }
+  if (fs.existsSync(MANIFEST_PATH)) {
+    const prior = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    if (prior.build_id === release.build_id) {
+      const changed = (Array.isArray(prior.files) ? prior.files : []).filter(entry => {
+        const absolute = path.resolve(ROOT, String(entry.path || ''));
+        if (!absolute.startsWith(PUBLIC_ROOT + path.sep) || !fs.existsSync(absolute)) return true;
+        const content = fs.readFileSync(absolute);
+        return content.length !== Number(entry.bytes) || sha256(content) !== entry.sha256;
+      });
+      if (changed.length) {
+        throw new Error(`禁止复用已发布 build_id ${release.build_id} 覆盖不同静态代码；请先生成新的 build_id。变化文件：${changed.slice(0, 6).map(item => item.path).join(', ')}`);
+      }
+    }
+  }
   fs.mkdirSync(path.dirname(THREE_TARGET), { recursive: true });
   fs.copyFileSync(THREE_SOURCE, THREE_TARGET);
   fs.copyFileSync(THREE_CORE_SOURCE, THREE_CORE_TARGET);

@@ -83,6 +83,11 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
     { id: 'new_story_ad.storyboard_sketch', name: '剧情广告分镜线稿', type: 'image', desc: '在文字分镜之后批量生成构图线稿，供镜头设计确认' },
     { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间五视图，锁定场景布局、材质和光线一致性' },
+    { id: 'new_story_ad.scene_panorama', name: '场景360全景', type: 'image', desc: '从权威场景主视图扩展无缝2:1经纬全景，作为跨方向镜头的同一空间来源' },
+    { id: 'new_story_ad.scene_panorama_qa', name: '场景360全景质检', type: 'vlm', desc: '检查原图保真、空间结构、环形接缝和本地机位投影一致性' },
+    { id: 'new_story_ad.scene_depth', name: '场景深度估计（可选6DoF）', type: 'image', desc: '仅在用户明确需要镜头平移或真实走位时估计深度，不用于3DoF原地环视' },
+    { id: 'new_story_ad.scene_spatial_reconstruction', name: '场景空间重建（可选6DoF）', type: 'image', desc: '由全景、深度和多观察点建立可移动空间；没有几何证据时保持不可用' },
+    { id: 'new_story_ad.scene_spatial_qa', name: '场景空间质检（可选6DoF）', type: 'vlm', desc: '检查几何、遮挡、导航网格与机位路径；未通过时不会开放平移和人物走位' },
     { id: 'new_story_ad.keyframe', name: '4 关键帧图片', type: 'image', desc: '按分镜表和关键帧合同生成画面资产' },
     { id: 'new_story_ad.video', name: '5 图生视频', type: 'video', desc: '后续按关键帧合同生成视频镜头' },
     { id: 'new_story_ad.tts', name: '5 配音 TTS', type: 'tts', desc: '后续按分镜表生成旁白、对白或字幕配音' },
@@ -137,6 +142,7 @@ const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
 const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
   'new_story_ad.scene_asset',
+  'new_story_ad.scene_panorama',
   'new_story_ad.keyframe',
   'new_story_ad.storyboard_sketch',
 ]);
@@ -376,6 +382,8 @@ const STAGE_DEFAULTS = {
   'new_story_ad.product_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.scene_vision': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.scene_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.scene_panorama_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.scene_spatial_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.asset_plan': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.scene_config': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.blueprint': NEW_STORY_AD_TEXT_DEFAULTS,
@@ -386,6 +394,9 @@ const STAGE_DEFAULTS = {
   'new_story_ad.assist': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.scene_asset': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_panorama': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_depth': [],
+  'new_story_ad.scene_spatial_reconstruction': [],
   'new_story_ad.keyframe': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.storyboard_sketch': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.video': [

@@ -24,6 +24,8 @@ const extraFiles = [
   'src/routes/storyAdWorkspace.js',
   'src/repositories/contentRecordRepository.js',
   'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/jobService.js',
+  'src/services/newStoryAd/mediaAdapter.js',
   'src/services/newStoryAd/modelGateway.js',
   'src/services/newStoryAd/assetPlanService.js',
   'src/services/newStoryAd/personConsistencyQaService.js',
@@ -37,6 +39,9 @@ const extraFiles = [
   'src/services/newStoryAd/referenceVideoAnalysisService.js',
   'src/services/newStoryAd/revisionService.js',
   'src/services/newStoryAd/sceneAssetService.js',
+  'src/services/newStoryAd/panoramaProjectionService.js',
+  'src/services/newStoryAd/panoramaProjectionWorker.js',
+  'src/services/newStoryAd/scenePanoramaService.js',
   'src/services/newStoryAd/shotReferencePackService.js',
   'src/services/newStoryAd/storyAdService.js',
   'src/services/newStoryAd/storageService.js',
@@ -45,10 +50,14 @@ const extraFiles = [
   'src/services/newStoryAd/videoFrameQaService.js',
   'src/services/newStoryAd/videoLineageService.js',
   'src/services/storyAdReleaseIntegrityService.js',
+  'src/services/modelCapabilityService.js',
+  'src/services/pipelineModelService.js',
   'src/services/storyAdWorkspace/directorSceneService.js',
   'src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js',
   'src/services/storyAdWorkspace/graphProjectionService.js',
   'src/services/storyAdWorkspace/projectBundleService.js',
+  'src/services/storyAdWorkspace/sceneWorldAssetProjectionService.js',
+  'src/services/storyAdWorkspace/sceneWorldService.js',
   'src/services/storyAdWorkspace/referenceUnderstandingConfirmationService.js',
   'src/services/storyAdWorkspace/referenceUnderstandingProjectionService.js',
   'scripts/build-story-ad-release.js',
@@ -57,6 +66,7 @@ const extraFiles = [
   'scripts/test-new-story-ad-keyframe-parallel.js',
   'scripts/test-new-story-ad-multi-space-cast-recovery.js',
   'scripts/test-new-story-ad-person-dossier.js',
+  'scripts/test-new-story-ad-panorama.js',
   'scripts/test-new-story-ad-reference-understanding-v6.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
   'scripts/test-new-story-ad-reference-video-link.js',
@@ -149,6 +159,11 @@ client.on('ready', async () => {
       `printf %s ${quote(token)} > ${quote(`${lockDir}/token`)}`,
     ].join(' && '));
     lockAcquired = true;
+
+    await exec([
+      `cd ${quote(remoteRoot)}`,
+      `node scripts/run-with-pm2-env.js vido node -e ${quote("if(process.env.STORY_AD_VERIFY_RELEASE==='0'||process.env.STORY_AD_ALLOW_LEGACY_CLIENT==='1')throw new Error('unsafe story-ad release gate environment')")}`,
+    ].join(' && '));
 
     const activeBefore = parseLastJson(await exec([
       `cd ${quote(remoteRoot)}`,

@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-editable-brief-fold-v17';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-editable-brief-fold-v17';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-editable-brief-fold-v17';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-editable-brief-fold-v17';
+import { request } from '../api.js?v=20260804-panorama-authority-v18';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-panorama-authority-v18';
+import { confirmDialog } from '../components/dialog.js?v=20260804-panorama-authority-v18';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-panorama-authority-v18';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-panorama-authority-v18';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-panorama-authority-v18';
 
 const GROUPS = [
   ['people', '人物'],
@@ -263,7 +263,7 @@ export async function mount(host, context) {
       <button class="btn primary" type="button" data-confirm-assets ${assetPlanReady ? '' : 'disabled'}>确认资产方案，进入剧情室</button>
     </section>`;
 
-  bindSceneWorldWorkspace(host, bundle);
+  bindSceneWorldWorkspace(host, bundle, store);
   bindMediaLightbox(host);
 
   const generationKeys = new Map();

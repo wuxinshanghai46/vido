@@ -1494,7 +1494,7 @@ async function generateKeyframesStage(taskId, options = {}) {
     const filename = `scene_new_story_ad_${taskId}_${String(i + 1).padStart(2, '0')}_${Date.now()}`;
     const shotCandidates = [];
     try {
-      const sceneReference = selectedSceneReference(sceneAsset, contracts[i] || {});
+      const sceneReference = selectedSceneReference(sceneAsset, contracts[i] || {}, shot);
       const referenceImages = keyframeReferenceImages(taskId, i, ctx, sceneReference, previousFrame, shot, contracts[i] || {}, sceneAsset);
       const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contracts[i] || {});
       const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
@@ -1956,8 +1956,9 @@ async function generateKeyframesStage(taskId, options = {}) {
     : { status: 'working', stage: 'keyframes_partial', error: '', error_code: '', generation_progress: { ...generationProgress } });
   return { keyframes, keyframe_contracts: contracts, attempts, keyframe_status: finalStatus };
 }
-
-function selectedSceneReference(sceneAsset = {}, contract = {}) {
+function selectedSceneReference(sceneAsset = {}, contract = {}, shot = {}) {
+  const panoramaReference = shotReferencePacks.panoramaCameraReference(sceneAsset, shot, contract);
+  if (panoramaReference?.image_url) return mediaAdapter.absolutePublicImageUrl(panoramaReference.image_url);
   const viewKey = cleanText(contract?.scene_lock?.scene_view || contract?.scene_view || 'master', 40) || 'master';
   const views = Array.isArray(sceneAsset?.view_images) ? sceneAsset.view_images : [];
   const view = views.find(item => cleanText(item?.key || item?.view || '', 40) === viewKey)
@@ -1965,9 +1966,8 @@ function selectedSceneReference(sceneAsset = {}, contract = {}) {
     || views[0];
   return mediaAdapter.absolutePublicImageUrl(view?.url || view?.image_url || sceneAsset?.image_url || '');
 }
-
 async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}, sceneAsset = {}, generatedUrl = '' } = {}) {
-  const sceneReference = selectedSceneReference(sceneAsset, contract);
+  const sceneReference = selectedSceneReference(sceneAsset, contract, shot);
   const layoutReference = completeSpaceLock(sceneAsset) ? layoutSceneReference(sceneAsset) : null;
   const reviewUrl = /^https?:\/\//i.test(String(generatedUrl || ''))
     ? String(generatedUrl)
@@ -3044,7 +3044,7 @@ async function retryKeyframeCandidateQa(taskId, shotIndex, candidateId) {
       ctx,
       shot,
       contract,
-      sceneReference: selectedSceneReference(sceneAsset, contract),
+      sceneReference: selectedSceneReference(sceneAsset, contract, shot),
       sceneQa: reclassifiedSceneQa,
       personQa: reusableQa.person || {},
       productQa: reusableQa.product || {},
@@ -3790,7 +3790,7 @@ module.exports = {
   structuredQaFeedback,
   buildKeyframeDependencyPlan,
   buildKeyframePrompt,
-  keyframeReferenceImages,
+  keyframeReferenceImages, selectedSceneReference, runKeyframeQaReviews,
   acceptedKeyframeContextAt,
   compactKeyframePrompt,
   previewShotPrompts,
