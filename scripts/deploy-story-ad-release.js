@@ -29,6 +29,7 @@ const extraFiles = [
   'src/services/newStoryAd/personDossierService.js',
   'src/services/newStoryAd/referenceSelectionService.js',
   'src/services/newStoryAd/referenceAnalysisTaskSyncService.js',
+  'src/services/newStoryAd/referenceDetachService.js',
   'src/services/newStoryAd/referenceUnderstandingService.js',
   'src/services/newStoryAd/referenceVideoAnalysisService.js',
   'src/services/newStoryAd/revisionService.js',
