@@ -24,6 +24,10 @@ function domainSlices(ctx = {}) {
       output_ratio: ctx.output_ratio,
       visible_text_policy: ctx.visible_text_policy,
       reference_analysis_id: ctx.reference_video_analysis?.analysis_id || ctx.reference_video_analysis?.id || '',
+      reference_understanding: ctx.reference_video_analysis?.reference_understanding || null,
+      reference_camera_intents: ctx.reference_video_analysis?.camera_intents || [],
+      reference_source_facts: ctx.reference_video_analysis?.source_facts || {},
+      reference_generated_brief: ctx.reference_video_analysis?.generated_brief || '',
     },
     creative: {
       production_mode: ctx.production_mode,

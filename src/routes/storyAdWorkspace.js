@@ -8,6 +8,8 @@ const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketc
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
+const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
+const referenceUnderstandingEdits = require('../services/newStoryAd/referenceUnderstandingEditService');
 const videoCore = require('../services/videoGenerationCore');
 
 const router = express.Router();
@@ -43,6 +45,9 @@ function asyncRoute(fn) {
           : {}),
         ...(Number.isInteger(error.current_content_revision)
           ? { current_content_revision: error.current_content_revision }
+          : {}),
+        ...(Number.isInteger(error.current_edit_revision)
+          ? { current_edit_revision: error.current_edit_revision }
           : {}),
         ...(Array.isArray(error.failures) ? { failures: error.failures } : {}),
       });
@@ -221,6 +226,44 @@ router.post('/projects/:taskId/reference-understanding/confirm', asyncRoute(asyn
     { user: currentUser(req) },
   );
   res.json({ success: true, task_id: req.params.taskId, reference_understanding_confirmation });
+}));
+
+router.put('/projects/:taskId/reference-understanding', asyncRoute(async (req, res) => {
+  const task = projectForRequest(req);
+  const user = currentUser(req);
+  const raw = storyAd.publicTaskBundle(req.params.taskId);
+  const context = raw?.context || raw?.outputs?.context || raw?.task?.request || {};
+  const analysisId = String(context.reference_video_analysis?.analysis_id || '').trim();
+  const requestedAnalysisId = String(req.body?.analysis_id || req.body?.analysisId || '').trim();
+  if (!analysisId || requestedAnalysisId !== analysisId) {
+    const error = new Error('当前参考内容已经变化，请刷新后再修改');
+    error.code = 'REFERENCE_UNDERSTANDING_ANALYSIS_CONFLICT';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  const baseReference = referenceVideoAnalyses.taskRecord(referenceVideoAnalyses.get(analysisId, user));
+  const edited = referenceUnderstandingEdits.createOverride(
+    baseReference,
+    context.reference_understanding_override,
+    req.body || {},
+    { user },
+  );
+  const updated = storyAd.updateTaskRequest(req.params.taskId, {
+    reference_video_analysis: edited.reference,
+    reference_understanding_override: edited.override,
+    base_content_revision: req.body?.base_content_revision ?? req.body?.baseContentRevision ?? task.content_revision,
+  }, user, { referenceUnderstandingEdit: true });
+  res.json({
+    success: true,
+    task_id: req.params.taskId,
+    reference_video_analysis: updated.context.reference_video_analysis,
+    edit_revision: edited.edit_revision,
+    changed_fields: edited.changed_fields,
+    content_revision: updated.content_revision,
+    invalidated_outputs: updated.invalidated_outputs,
+    model_call_count: 0,
+  });
 }));
 
 router.get('/projects/:taskId/scene-worlds/:worldId/director', asyncRoute(async (req, res) => {

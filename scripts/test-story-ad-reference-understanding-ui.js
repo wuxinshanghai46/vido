@@ -35,6 +35,13 @@ for (const kind of ['fact', 'inference', 'unknown', 'corrected']) {
 }
 
 assert.match(report, /\/reference-understanding\/confirm/, '确认操作必须使用独立的权威输入接口');
+assert.match(report, /method: 'PUT'/, '参考内容修改必须使用独立的保存接口');
+assert.match(report, /data-edit-reference-understanding/, '识别后的参考内容必须提供修改入口');
+assert.match(report, /data-reference-edit-path/, '每个可编辑字段必须携带稳定字段路径');
+assert.match(report, /base_edit_revision: baseEditRevision/, '保存必须携带参考内容修订版本，防止覆盖新内容');
+assert.match(report, /base_content_revision: baseContentRevision/, '保存必须携带项目内容版本');
+assert.match(report, /保存后以你的修改为准/, '编辑态必须向用户解释修改后的权威关系');
+assert.match(report, /不会调用生成模型/, '编辑参考内容不得触发付费模型');
 assert.match(report, /analysis_id: analysisId, base_revision: baseRevision, confirmation: 'authoritative_input'/, '确认操作必须携带分析编号、基线版本和确认语义');
 assert.match(report, /bundle\?\.revisions\?\.content/, '确认必须使用项目内容版本，不能误用分析合同版本');
 assert.match(report, /error\?\.status === 409/, '必须处理并发版本冲突');

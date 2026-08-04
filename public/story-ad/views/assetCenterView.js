@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-sync-idempotency-v16';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-sync-idempotency-v16';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-sync-idempotency-v16';
+import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-editable-brief-fold-v17';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-editable-brief-fold-v17';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-editable-brief-fold-v17';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-editable-brief-fold-v17';
 
 const GROUPS = [
   ['people', '人物'],

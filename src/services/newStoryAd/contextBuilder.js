@@ -1037,6 +1037,9 @@ function buildContext(body = {}, user = {}) {
     scene_assets: sceneAssets,
     prop_assets: propAssets,
     reference_video_analysis: normalizeReferenceVideoAnalysis(body.reference_video_analysis),
+    reference_understanding_override: body.reference_understanding_override && typeof body.reference_understanding_override === 'object'
+      ? body.reference_understanding_override
+      : null,
     scene_mode: ['auto', 'single', 'multi'].includes(cleanText(body.scene_mode || body.sceneMode || 'auto', 20))
       ? cleanText(body.scene_mode || body.sceneMode || 'auto', 20)
       : 'auto',

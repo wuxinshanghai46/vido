@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260804-reference-sync-idempotency-v16';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260804-reference-sync-idempotency-v16';
+import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260804-reference-editable-brief-fold-v17';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260804-reference-editable-brief-fold-v17';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

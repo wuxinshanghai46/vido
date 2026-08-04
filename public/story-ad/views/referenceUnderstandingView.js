@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
+import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-editable-brief-fold-v17';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-sync-idempotency-v16';
+  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-editable-brief-fold-v17';
   document.head.appendChild(link);
 }
 
@@ -297,8 +297,108 @@ function renderTab(data, tab) {
   return renderOverview(data);
 }
 
+function editorField(path, label, value, options = {}) {
+  const rows = Math.max(2, Number(options.rows || 3) || 3);
+  const normalized = Array.isArray(value) ? value.map(claimText).filter(Boolean).join('\n') : claimText(value);
+  if (options.select === 'narrative_mode') {
+    return `<label class="reference-editor-field"><span>${escapeHtml(label)}</span><select class="select" data-reference-edit-path="${escapeHtml(path)}">${[
+      ['narrative_story', '剧情叙事'], ['showcase_montage', '展示蒙太奇'], ['unclassified', '暂未分类'],
+    ].map(([id, text]) => `<option value="${id}" ${normalized === id ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
+  }
+  return `<label class="reference-editor-field ${options.full ? 'is-full' : ''}"><span>${escapeHtml(label)}${options.required ? '<em>必填</em>' : ''}</span><textarea class="textarea" rows="${rows}" data-reference-edit-path="${escapeHtml(path)}">${escapeHtml(normalized)}</textarea>${options.list ? '<small>每行一项</small>' : ''}</label>`;
+}
+
+function editorGroup(title, fields, note = '') {
+  return `<section class="reference-editor-group"><h4>${escapeHtml(title)}</h4>${note ? `<p>${escapeHtml(note)}</p>` : ''}<div class="reference-editor-grid">${fields.join('')}</div></section>`;
+}
+
+function renderEditor(reference, tab) {
+  const nested = object(reference.reference_understanding || reference.understanding);
+  if (tab === 'overview') {
+    const story = object(nested.story_summary);
+    const fields = STORY_FIELDS.map(([key, label]) => editorField(
+      `reference_understanding.story_summary.${key}`,
+      label,
+      story[key],
+      { full: ['short_synopsis', 'full_synopsis'].includes(key), rows: key === 'full_synopsis' ? 8 : 3, required: ['logline', 'full_synopsis'].includes(key), select: key === 'narrative_mode' ? 'narrative_mode' : '' },
+    ));
+    const inferences = list(nested.inferences).flatMap((item, index) => {
+      const row = object(item);
+      return Object.keys(row).length ? [
+        editorField(`reference_understanding.inferences.${index}.claim`, `推断 ${index + 1}`, row.claim, { full: true }),
+        editorField(`reference_understanding.inferences.${index}.reason`, '推断依据', row.reason, { full: true }),
+      ] : [];
+    });
+    const unknowns = list(nested.unknowns).flatMap((item, index) => {
+      const row = object(item);
+      return Object.keys(row).length ? [editorField(`reference_understanding.unknowns.${index}.question`, `待确认 ${index + 1}`, row.question || row.claim, { full: true })] : [];
+    });
+    return editorGroup('故事全貌', fields, '这里修改的是识别后的参考内容，不会重新调用模型。')
+      + (inferences.length ? editorGroup('推断', inferences) : '')
+      + (unknowns.length ? editorGroup('待确认', unknowns) : '');
+  }
+  if (tab === 'timeline') return list(nested.causal_chain).map((item, index) => {
+    const row = object(item);
+    return editorGroup(`事件 ${index + 1}`, [
+      editorField(`reference_understanding.causal_chain.${index}.subject`, '主体', row.subject),
+      editorField(`reference_understanding.causal_chain.${index}.action`, '动作', row.action, { required: true }),
+      editorField(`reference_understanding.causal_chain.${index}.motivation`, '动机', row.motivation),
+      editorField(`reference_understanding.causal_chain.${index}.result`, '结果', row.result),
+    ]);
+  }).join('') || emptyState('没有可编辑的时间线事件。');
+  if (tab === 'characters') return list(nested.characters).map((item, index) => {
+    const row = object(item);
+    return editorGroup(firstText(row.name, row.character_name, row.character_id, `人物 ${index + 1}`), [
+      editorField(`reference_understanding.characters.${index}.role`, '角色', row.role, { required: true }),
+      editorField(`reference_understanding.characters.${index}.narrative_function`, '叙事职责', row.narrative_function),
+      editorField(`reference_understanding.characters.${index}.relationships`, '人物关系', row.relationships, { list: true }),
+      editorField(`reference_understanding.characters.${index}.initial_state`, '初始状态', row.initial_state),
+      editorField(`reference_understanding.characters.${index}.goal`, '目标', row.goal),
+      editorField(`reference_understanding.characters.${index}.obstacle`, '阻碍', row.obstacle),
+      editorField(`reference_understanding.characters.${index}.key_decision`, '关键决定', row.key_decision),
+      editorField(`reference_understanding.characters.${index}.final_state`, '最终状态', row.final_state),
+      editorField(`reference_understanding.characters.${index}.emotional_arc`, '情绪变化', row.emotional_arc, { list: true, full: true }),
+    ]);
+  }).join('') || emptyState('没有可编辑的人物内容。');
+  if (tab === 'scenes') return list(nested.scenes).map((item, index) => {
+    const row = object(item);
+    return editorGroup(firstText(row.name, row.scene_name, row.scene_id, `场景 ${index + 1}`), [
+      editorField(`reference_understanding.scenes.${index}.narrative_function`, '叙事作用', row.narrative_function, { required: true, full: true }),
+      editorField(`reference_understanding.scenes.${index}.entry_transition`, '进入方式', row.entry_transition),
+      editorField(`reference_understanding.scenes.${index}.state_change`, '状态变化', row.state_change),
+      editorField(`reference_understanding.scenes.${index}.exit_transition`, '离开方式', row.exit_transition),
+    ]);
+  }).join('') || emptyState('没有可编辑的场景内容。');
+  if (tab === 'brand') {
+    const row = object(nested.brand_role);
+    return editorGroup('商品与品牌', [
+      editorField('reference_understanding.brand_role.subject', '商品 / 品牌', row.subject, { required: true }),
+      editorField('reference_understanding.brand_role.story_function', '故事职责', row.story_function, { required: true, full: true }),
+      editorField('reference_understanding.brand_role.visible_claims', '可见卖点', row.visible_claims, { list: true, full: true }),
+      editorField('reference_understanding.brand_role.proof_moments', '证明时刻', row.proof_moments, { list: true, full: true }),
+      editorField('reference_understanding.brand_role.cta', '行动号召', row.cta, { full: true }),
+    ]);
+  }
+  if (tab === 'camera') return list(reference.camera_intents).map((item, index) => {
+    const row = object(item);
+    return editorGroup(firstText(row.title, row.shot_name, row.shot_id, `镜头 ${index + 1}`), [
+      editorField(`camera_intents.${index}.description`, '镜头与运镜', firstText(row.description, row.camera, row.movement, row.intent, row.visual), { full: true }),
+      editorField(`camera_intents.${index}.narrative_purpose`, '叙事目的', firstText(row.narrative_purpose, row.story_function, row.reason, row.emotional_effect), { full: true }),
+    ]);
+  }).join('') || emptyState('没有可编辑的镜头内容。');
+  const alignments = list(object(nested.audio_visual).alignments);
+  return alignments.map((item, index) => {
+    const row = object(item);
+    return editorGroup(`声音段落 ${index + 1}`, [
+      editorField(`reference_understanding.audio_visual.alignments.${index}.spoken_text`, '旁白 / 字幕 / 声音', firstText(row.spoken_text, row.transcript, row.dialogue, row.voiceover, row.audio, row.text), { full: true }),
+      editorField(`reference_understanding.audio_visual.alignments.${index}.visual`, '同期画面', firstText(row.visual, row.image, row.on_screen_action, row.scene), { full: true }),
+      editorField(`reference_understanding.audio_visual.alignments.${index}.function`, '叙事作用', firstText(row.function, row.narrative_function, row.purpose), { full: true }),
+    ]);
+  }).join('') || emptyState('没有可编辑的声音内容。');
+}
+
 function reportRevision(reference, data) {
-  return Math.max(0, Number(data.revision || data.understanding_revision || data.schema_version || reference.understanding_revision || 0) || 0);
+  return Math.max(0, Number(data.user_edit_revision || data.revision || data.understanding_revision || data.schema_version || reference.understanding_revision || 0) || 0);
 }
 
 function playableVideoUrl(reference = {}) {
@@ -310,7 +410,7 @@ function playableVideoUrl(reference = {}) {
     : '';
 }
 
-function renderShell(reference, activeTab) {
+function renderShell(reference, activeTab, editing = false) {
   const data = understanding(reference);
   const bible = object(data.story_bible);
   const confirmed = isReferenceUnderstandingConfirmed(reference);
@@ -327,10 +427,12 @@ function renderShell(reference, activeTab) {
     </div>
     ${videoUrl ? `<div class="reference-evidence-player"><video controls preload="metadata" data-reference-video src="${escapeHtml(videoUrl)}"></video><small>点击时间线或证据标签，可跳到对应时间核对画面。</small></div>` : '<div class="reference-evidence-player is-unavailable"><small>当前来源没有可直接播放的视频；证据时间仍会保留在报告中。</small></div>'}
     <div class="reference-understanding-tabs" role="tablist" aria-label="参考理解报告栏目">${TAB_DEFINITIONS.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === activeTab}" class="${id === activeTab ? 'active' : ''}" data-reference-tab="${id}">${escapeHtml(label)}</button>`).join('')}</div>
-    <div class="reference-understanding-panel" role="tabpanel" data-reference-panel>${renderTab(data, activeTab)}</div>
+    <div class="reference-understanding-panel ${editing ? 'is-editing' : ''}" role="tabpanel" data-reference-panel>${editing ? renderEditor(reference, activeTab) : renderTab(data, activeTab)}</div>
     <footer class="reference-understanding-actions">
-      <div><b>${confirmed ? '该版本已作为项目权威输入' : (ready ? '确认前不会创建人物、场景、剧情、分镜或触发付费生成' : '报告尚未达到确认标准')}</b><small>${confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。' : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`)}</small></div>
-      ${confirmed || !ready ? '' : '<button class="btn primary" type="button" data-confirm-reference-understanding>确认理解结果，作为项目权威输入</button>'}
+      <div><b>${editing ? `正在修改“${escapeHtml(TAB_DEFINITIONS.find(([id]) => id === activeTab)?.[1] || '')}”` : (confirmed ? '该版本已作为项目权威输入' : (ready ? '确认前不会创建人物、场景、剧情、分镜或触发付费生成' : '报告尚未达到确认标准'))}</b><small>${editing ? '保存后以你的修改为准；旧确认和受影响的下游结果会失效，但不会调用生成模型。' : (confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。' : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`))}</small></div>
+      ${editing
+        ? '<button class="btn" type="button" data-cancel-reference-edit>取消</button><button class="btn primary" type="button" data-save-reference-edit>保存当前栏目</button>'
+        : `${ready ? '<button class="btn" type="button" data-edit-reference-understanding>修改当前栏目</button>' : ''}${confirmed || !ready ? '' : '<button class="btn primary" type="button" data-confirm-reference-understanding>确认理解结果，作为项目权威输入</button>'}`}
     </footer>
   </section>`;
 }
@@ -340,6 +442,7 @@ export function mountReferenceUnderstanding(host, options = {}) {
   ensureStyles();
   let currentReference = options.reference || {};
   let activeTab = 'overview';
+  let editing = false;
   let destroyed = false;
 
   const render = () => {
@@ -348,14 +451,68 @@ export function mountReferenceUnderstanding(host, options = {}) {
       host.innerHTML = '';
       return;
     }
-    host.innerHTML = renderShell(currentReference, activeTab);
+    host.innerHTML = renderShell(currentReference, activeTab, editing);
   };
 
   const click = async event => {
     const tab = event.target.closest('[data-reference-tab]');
     if (tab) {
+      if (editing) {
+        toast('请先保存或取消当前栏目的修改。', 'warning');
+        return;
+      }
       activeTab = TAB_DEFINITIONS.some(([id]) => id === tab.dataset.referenceTab) ? tab.dataset.referenceTab : 'overview';
       render();
+      return;
+    }
+    if (event.target.closest('[data-edit-reference-understanding]')) {
+      editing = true;
+      render();
+      host.querySelector('[data-reference-edit-path]')?.focus();
+      return;
+    }
+    if (event.target.closest('[data-cancel-reference-edit]')) {
+      editing = false;
+      render();
+      return;
+    }
+    const saveButton = event.target.closest('[data-save-reference-edit]');
+    if (saveButton) {
+      const data = understanding(currentReference);
+      const analysisId = firstText(data.analysis_id, currentReference.analysis_id);
+      const baseContentRevision = Math.max(0, Number(options.store?.state?.bundle?.revisions?.content || 0) || 0);
+      const baseEditRevision = Math.max(0, Number(object(currentReference.reference_understanding).user_edit_revision || 0) || 0);
+      const fields = {};
+      host.querySelectorAll('[data-reference-edit-path]').forEach(control => { fields[control.dataset.referenceEditPath] = control.value; });
+      if (!analysisId || !baseContentRevision || !Object.keys(fields).length) {
+        toast('当前栏目缺少可保存内容或版本信息，请刷新后重试。', 'danger');
+        return;
+      }
+      try {
+        setButtonBusy(saveButton, true, '正在保存…');
+        await request(`/api/story-ad/projects/${encodeURIComponent(options.taskId)}/reference-understanding`, {
+          method: 'PUT',
+          body: {
+            analysis_id: analysisId,
+            tab: activeTab,
+            fields,
+            base_content_revision: baseContentRevision,
+            base_edit_revision: baseEditRevision,
+          },
+        });
+        editing = false;
+        await options.store?.loadBundle?.(options.taskId, 'all');
+        toast('参考内容已保存为你的修订版本；请核对后重新确认。', 'success');
+      } catch (error) {
+        if (error?.status === 409) {
+          editing = false;
+          await options.store?.loadBundle?.(options.taskId, 'all').catch(() => {});
+          toast('参考内容已有更新，已读取最新版本，请重新修改。', 'warning');
+        } else {
+          toast(error.message, 'danger');
+          setButtonBusy(saveButton, false);
+        }
+      }
       return;
     }
     const seek = event.target.closest('[data-reference-seek]');
@@ -407,7 +564,10 @@ export function mountReferenceUnderstanding(host, options = {}) {
   return {
     update(reference = {}) {
       currentReference = reference;
-      if (isReferenceUnderstandingConfirmed(currentReference)) activeTab = 'overview';
+      if (isReferenceUnderstandingConfirmed(currentReference)) {
+        activeTab = 'overview';
+        editing = false;
+      }
       render();
     },
     destroy() {

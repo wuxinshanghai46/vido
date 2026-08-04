@@ -2,6 +2,7 @@ const storage = require('./storageService');
 const storyAdService = require('./storyAdService');
 const assetPlanService = require('./assetPlanService');
 const productAssetResolver = require('./productAssetResolverService');
+const referenceUnderstandingEdits = require('./referenceUnderstandingEditService');
 
 const activeSyncs = new Map();
 
@@ -37,15 +38,19 @@ function canReplaceProduct(context = {}) {
 }
 
 function completionPatch(context = {}, reference = {}) {
-  const patch = { reference_video_analysis: reference };
-  if (!completedAndValid(reference)) return patch;
+  const projectedReference = referenceUnderstandingEdits.applyOverride(
+    reference,
+    context.reference_understanding_override,
+  );
+  const patch = { reference_video_analysis: projectedReference };
+  if (!completedAndValid(projectedReference)) return patch;
 
   const generatedBrief = text(
-    reference.generated_brief
-      || reference.summary
-      || reference.story_outline?.logline,
+    projectedReference.generated_brief
+      || projectedReference.summary
+      || projectedReference.story_outline?.logline,
   );
-  const product = text(reference.source_facts?.product_or_service);
+  const product = text(projectedReference.source_facts?.product_or_service);
   if (generatedBrief && canReplaceBrief(context)) Object.assign(patch, {
     brief: generatedBrief,
     content: generatedBrief,
@@ -84,27 +89,28 @@ async function runSync(analysis = {}, reference = {}) {
   if (boundId && boundId !== analysisId) return { synced: false, reason: 'newer_reference_bound' };
 
   const patch = completionPatch(previousContext, reference);
+  const projectedReference = patch.reference_video_analysis || reference;
   const currentReference = previousContext.reference_video_analysis || {};
-  const completedValid = completedAndValid(reference);
+  const completedValid = completedAndValid(projectedReference);
   const projectionFingerprint = completedValid
-    ? assetPlanService.referenceProjectionFingerprint(reference)
+    ? assetPlanService.referenceProjectionFingerprint(projectedReference)
     : '';
   const sameProjection = !completedValid
     || text(previousContext.reference_analysis_projection?.fingerprint) === projectionFingerprint;
-  const sameCompletedContract = !completedAndValid(reference)
+  const sameCompletedContract = !completedAndValid(projectedReference)
     || (
       currentReference.analysis_quality?.valid === true
       && Boolean(currentReference.reference_understanding)
-      && text(currentReference.generated_brief) === text(reference.generated_brief)
+      && text(currentReference.generated_brief) === text(projectedReference.generated_brief)
     );
   const sameBrief = !Object.prototype.hasOwnProperty.call(patch, 'brief')
     || (comparableText(previousContext.brief) === comparableText(patch.brief)
       && text(previousContext.brief_source) === 'reference_analysis');
   const sameProduct = !Object.prototype.hasOwnProperty.call(patch, 'product_subject')
     || text(previousContext.product_subject) === text(patch.product_subject);
-  const sameTerminal = reference.status === previousContext.reference_video_analysis?.status
-    && Number(reference.progress || 0) === Number(previousContext.reference_video_analysis?.progress || 0)
-    && terminalAt(reference) === terminalAt(previousContext.reference_video_analysis || {})
+  const sameTerminal = projectedReference.status === previousContext.reference_video_analysis?.status
+    && Number(projectedReference.progress || 0) === Number(previousContext.reference_video_analysis?.progress || 0)
+    && terminalAt(projectedReference) === terminalAt(previousContext.reference_video_analysis || {})
     && sameCompletedContract
     && sameBrief
     && sameProduct
@@ -123,7 +129,7 @@ async function runSync(analysis = {}, reference = {}) {
   if (completedValid && !sameProjection) {
     projection = await assetPlanService.projectReferenceIntake(taskId, {
       previous_context: previousContext,
-      reference_analysis: reference,
+      reference_analysis: projectedReference,
     });
   }
   return {

@@ -16,6 +16,17 @@
 .reference-understanding-tabs button { flex: 0 0 auto; min-height: 43px; border: 0; border-bottom: 2px solid transparent; padding: 0 11px; color: var(--muted); background: transparent; cursor: pointer; }
 .reference-understanding-tabs button.active { border-bottom-color: var(--mint); color: var(--text); font-weight: 700; }
 .reference-understanding-panel { min-height: 220px; padding: 20px; }
+.reference-understanding-panel.is-editing { background: color-mix(in srgb, var(--info) 3%, var(--surface)); }
+.reference-editor-group + .reference-editor-group { margin-top: 18px; }
+.reference-editor-group > h4 { margin-bottom: 5px; }
+.reference-editor-group > p { margin-bottom: 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.reference-editor-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.reference-editor-field { display: grid; gap: 7px; min-width: 0; }
+.reference-editor-field.is-full { grid-column: 1 / -1; }
+.reference-editor-field > span { color: var(--muted); font-size: 12px; }
+.reference-editor-field > span em { margin-left: 6px; color: var(--danger); font-style: normal; }
+.reference-editor-field > small { color: var(--muted); font-size: 11px; }
+.reference-editor-field .textarea { min-height: 84px; }
 .reference-claim-grid, .reference-entity-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .reference-claim-card, .reference-entity-card, .reference-audio-list article { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .reference-claim-card header, .reference-entity-card header, .reference-audio-list header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -57,6 +68,8 @@ button.reference-evidence-tag.is-seekable { color: var(--info); cursor: pointer;
   .reference-understanding-summary { grid-template-columns: 1fr; }
   .reference-evidence-player { grid-template-columns: 1fr; }
   .reference-claim-grid, .reference-entity-grid { grid-template-columns: 1fr; }
+  .reference-editor-grid { grid-template-columns: 1fr; }
+  .reference-editor-field.is-full { grid-column: auto; }
   .reference-understanding-actions { align-items: stretch; flex-direction: column; }
   .reference-understanding-actions .btn { width: 100%; }
 }

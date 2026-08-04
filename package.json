@@ -7,7 +7,7 @@
     "story-ad:release:build": "node scripts/build-story-ad-release.js",
     "story-ad:release:test": "node scripts/test-story-ad-release-integrity.js",
     "story-ad:director-scene:test": "node scripts/test-story-ad-director-scene-v1.js",
-    "story-ad:reference-understanding:test": "node scripts/test-new-story-ad-reference-understanding-v6.js && node scripts/test-story-ad-reference-understanding-confirmation.js && node scripts/test-story-ad-reference-understanding-ui.js",
+    "story-ad:reference-understanding:test": "node scripts/test-new-story-ad-reference-understanding-v6.js && node scripts/test-story-ad-reference-understanding-confirmation.js && node scripts/test-reference-understanding-edit.js && node scripts/test-reference-understanding-edit-persistence.js && node scripts/test-story-ad-reference-understanding-ui.js",
     "story-ad:reference-sync:test": "node scripts/test-reference-analysis-task-sync.js && node scripts/test-new-story-ad-storage-batch-delete.js",
     "story-ad:director-canvas:test": "node scripts/test-story-ad-workflow-director-nodes.js",
     "start": "node src/server.js",

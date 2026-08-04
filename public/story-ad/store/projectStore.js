@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-reference-sync-idempotency-v16';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-reference-editable-brief-fold-v17';
 
 export function createProjectStore() {
   const state = {

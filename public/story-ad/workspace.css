@@ -110,6 +110,19 @@
 .card-head .btn { margin-left: auto; }
 .card-body { padding: 18px; }
 .two-column { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+.brief-settings { overflow: hidden; }
+.brief-settings-summary { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 18px; cursor: pointer; list-style: none; }
+.brief-settings-summary::-webkit-details-marker { display: none; }
+.brief-settings-summary span { min-width: 0; }
+.brief-settings-summary b, .brief-settings-summary small { display: block; }
+.brief-settings-summary b { font-size: 17px; }
+.brief-settings-summary small { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.brief-settings-summary i { width: 10px; height: 10px; flex: 0 0 auto; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); transition: transform .2s ease; }
+.brief-settings[open] .brief-settings-summary { border-bottom: 1px solid var(--line); }
+.brief-settings[open] .brief-settings-summary i { transform: rotate(225deg); }
+.brief-reference-primary-action { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 16px; }
+.brief-reference-primary-action[hidden], [data-brief-inline-action][hidden] { display: none !important; }
+.brief-reference-primary-action small { max-width: 520px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .three-column { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .field { display: grid; gap: 7px; }

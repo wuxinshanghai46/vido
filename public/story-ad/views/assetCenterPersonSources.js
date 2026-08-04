@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
+import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-editable-brief-fold-v17';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

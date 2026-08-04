@@ -1,13 +1,12 @@
-import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
+import { request } from '../api.js?v=20260804-reference-editable-brief-fold-v17';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-editable-brief-fold-v17';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-editable-brief-fold-v17';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
   ['product', '商品 / 主体', '上传商品或服务主体图片'],
 ];
 
-/** 从表单生成现有任务接口可以接受的请求。 */
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -36,7 +35,6 @@ function formPayload(form) {
   };
 }
 
-/** 输出真实材料当前状态。 */
 function materialRows(bundle, isNew) {
   const reference = bundle?.reference || {};
   const assets = bundle?.assets || {};
@@ -61,7 +59,6 @@ function materialRows(bundle, isNew) {
     </div>`).join('');
 }
 
-/** 首屏只展示参考分析状态；结构化内容继续按制作环节渐进展示。 */
 export function referenceProgress(reference = {}) {
   if (!reference.analysis_id) return '';
   const status = String(reference.status || '').toLowerCase();
@@ -136,7 +133,6 @@ export function referenceProgress(reference = {}) {
   </section>`;
 }
 
-/** 统一目标页主操作对参考分析状态的判定，避免进度卡和按钮各自维护一套状态。 */
 export function referenceActionState(reference = {}) {
   if (!reference.analysis_id) return { blocked: false, label: '进行资产创建' };
   const status = String(reference.status || '').toLowerCase();
@@ -179,7 +175,6 @@ export function syncReferenceAction(button, reference = {}) {
   button.textContent = action.label;
 }
 
-/** 挂载目标与材料页。 */
 export async function mount(host, context) {
   const { route, store, navigate } = context;
   const bundle = store.state.bundle || {};
@@ -194,12 +189,14 @@ export async function mount(host, context) {
     </section>
     <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
     <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
+    <div data-reference-understanding-host></div>
     <div class="two-column">
-      <form class="card brief-form" data-brief-form>
-        <div class="card-head"><div><h2>这支剧情广告要讲什么？</h2><p>可以手动填写；选择参考视频时，这里会自动采用分析出的广告内容。</p></div></div>
-        <div class="card-body form-grid">
+      <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
+        <summary class="brief-settings-summary"><span><b>广告目标与成片设置</b><small>${referenceAttached ? '已根据参考内容填入；点击展开后仍可自行填写或修改' : '请填写广告目标；添加参考视频或链接后将自动折叠'}</small></span><i aria-hidden="true"></i></summary>
+        <form id="storyAdBriefForm" class="brief-form" data-brief-form>
+          <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改广告目标不会再自动改名。</small></label>
-          <label class="field full"><span class="field-label-with-action"><span>广告目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="先输入一句广告想法，再点击 AI 帮写；添加参考视频时也可以留空。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '分析完成后这里只显示提炼出的广告目标，其他内容会进入对应制作环节。' : 'AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位；生成后仍可继续修改。'}</small></label>
+          <label class="field full"><span class="field-label-with-action"><span>广告目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="可以自行填写；添加参考视频时也可以留空，识别后仍能继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的广告目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位；生成后仍可继续修改。'}</small></label>
           <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${value} 秒</option>`).join('')}
@@ -219,14 +216,14 @@ export async function mount(host, context) {
           <input type="hidden" name="benchmark_prompt_method" value="${escapeHtml(benchmark.prompt_method || '')}">
           <input type="hidden" name="benchmark_naturalness_review" value="${escapeHtml(benchmark.naturalness_review || '')}">
           <div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '创建项目' : referenceAction.label}</button></div>
-        </div>
-      </form>
+          </div>
+        </form>
+      </details>
       <aside class="card">
         <div class="card-head"><div><h2>启动材料</h2><p>这里只放决定项目起点的参考视频和商品。人物、场景、LOGO 在资产中心添加，故事和分镜到对应环节编辑。</p></div></div>
         <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
       </aside>
     </div>
-    <div data-reference-understanding-host></div>
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
 
   const form = host.querySelector('[data-brief-form]');
@@ -236,8 +233,8 @@ export async function mount(host, context) {
   let understandingController = null;
   let understandingLoadSequence = 0;
   let disposed = false;
+  let lastReferenceAttached = referenceAttached;
 
-  /** 深度报告按需加载；未附加参考或分析未完成时不下载报告代码与样式。 */
   async function syncReferenceUnderstanding(reference = {}) {
     const sequence = ++understandingLoadSequence;
     const nested = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -263,7 +260,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-sync-idempotency-v16');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-editable-brief-fold-v17');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -277,7 +274,6 @@ export async function mount(host, context) {
   form.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
   form.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
 
-  /** 未经本次页面主动编辑的字段始终使用 Store 最新值，防止分析完成后旧 DOM 覆盖识别结果。 */
   function safeFormPayload() {
     const current = formPayload(form);
     if (route.isNew) return current;
@@ -326,10 +322,13 @@ export async function mount(host, context) {
       const control = form.elements.namedItem(name);
       if (control && String(control.value) !== String(value)) control.value = value;
     });
-    if (!route.isNew) {
-      syncReferenceAction(form.querySelector('[data-brief-submit]'), nextState.bundle?.reference || {});
-    }
-    syncReferenceUnderstanding(nextState.bundle?.reference || {}).catch(error => toast(error.message, 'danger'));
+    const nextReference = nextState.bundle?.reference || {};
+    const nextReferenceAttached = Boolean(nextReference.analysis_id);
+    const briefSettings = host.querySelector('[data-brief-settings]');
+    if (briefSettings && nextReferenceAttached !== lastReferenceAttached) briefSettings.open = !nextReferenceAttached;
+    lastReferenceAttached = nextReferenceAttached;
+    if (!route.isNew) host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
+    syncReferenceUnderstanding(nextReference).catch(error => toast(error.message, 'danger'));
   });
 
   host.querySelector('[data-ai-brief]')?.addEventListener('click', async event => {
@@ -367,7 +366,6 @@ export async function mount(host, context) {
     }
   });
 
-  /** 新建模式下先建立真实任务，后续材料全部绑定该任务。 */
   async function ensureProject(button) {
     if (createdProjectId) return createdProjectId;
     const payload = safeFormPayload();

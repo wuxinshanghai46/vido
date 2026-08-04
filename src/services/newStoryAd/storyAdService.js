@@ -261,7 +261,7 @@ function createTask(body = {}, user = {}) {
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
   return { task: storage.getTask(id), context: ctx, content_revision: 1, acknowledged_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0) };
 }
-function updateTaskRequest(taskId, body = {}, user = {}) {
+function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
   let task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   if (task.lineage_enforced !== true) task = storage.enableLineage(taskId);
@@ -279,6 +279,10 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     throw error;
   }
   const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  if (body.reference_understanding_override && typeof body.reference_understanding_override === 'object' && revisionService.signature(body.reference_understanding_override) !== revisionService.signature(previousCtx.reference_understanding_override) && options.referenceUnderstandingEdit !== true) {
+    const error = Object.assign(new Error('参考内容修订只能通过专用编辑接口保存'), { code: 'REFERENCE_UNDERSTANDING_OVERRIDE_FORBIDDEN', status: 403, retryable: false });
+    throw error;
+  }
   const workflowConfirmationOnly = workflowTransition.isWorkflowConfirmationOnly(body);
   const briefExplicit = Object.prototype.hasOwnProperty.call(body, 'brief')
     || Object.prototype.hasOwnProperty.call(body, 'content');

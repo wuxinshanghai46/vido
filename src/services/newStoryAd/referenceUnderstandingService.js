@@ -388,6 +388,8 @@ function contextDigest(understanding = null) {
   return {
     contract_version: text(understanding.contract_version, 60),
     schema_version: Number(understanding.schema_version || 0),
+    user_edit_revision: Math.max(0, Number(understanding.user_edit_revision || 0) || 0),
+    user_edited_at: text(understanding.user_edited_at, 60),
     story_summary: understanding.story_summary || {},
     causal_chain: list(understanding.causal_chain, 48),
     characters: list(understanding.characters, 24),
