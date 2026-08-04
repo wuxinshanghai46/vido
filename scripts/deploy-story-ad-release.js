@@ -55,6 +55,7 @@ const extraFiles = [
   'scripts/test-new-story-ad-person-dossier.js',
   'scripts/test-new-story-ad-reference-understanding-v6.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
+  'scripts/test-new-story-ad-reference-video-link.js',
   'scripts/test-new-story-ad-reliability.js',
   'scripts/test-new-story-ad-subject-assets.js',
   'scripts/test-new-story-ad-video-frame-qa.js',
