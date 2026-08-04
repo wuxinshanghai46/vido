@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260804-reference-reanalysis-reliability-v13';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260804-reference-reanalysis-reliability-v13';
+import { request } from '../api.js?v=20260804-reference-model-routing-v14';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260804-reference-model-routing-v14';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260804-reference-model-routing-v14';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

@@ -425,6 +425,7 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
   const originalReanalyze = referenceVideoAnalyses.reanalyze;
   let queuedRecord = null;
   let beforeRun = null;
+  let scheduleDelayMs = null;
   referenceVideoAnalyses.get = id => ({
     id,
     analysis_id: id,
@@ -435,6 +436,7 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
   });
   referenceVideoAnalyses.reanalyze = (id, _user, options = {}) => {
     beforeRun = options.beforeRun;
+    scheduleDelayMs = options.scheduleDelayMs;
     queuedRecord = {
       id,
       analysis_id: id,
@@ -465,6 +467,7 @@ async function testInvalidCompletedReferenceReanalysisRoute() {
     assert.equal(response.payload.analysis.status, 'queued');
     assert.equal(response.payload.analysis.progress, 1);
     assert.equal(typeof beforeRun, 'function', '重新识别接口必须把项目重置注册为后台分析前置步骤');
+    assert.equal(scheduleDelayMs, 100, 'HTTP 202 must get a socket flush window before background projection blocks the event loop');
     let context = storage.getOutput(taskId, 'context');
     assert.equal(context.reference_video_analysis.status, 'completed', 'HTTP 202 返回不得等待项目持久化完成');
     await beforeRun(queuedRecord);

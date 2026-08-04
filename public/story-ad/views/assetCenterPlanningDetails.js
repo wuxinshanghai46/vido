@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-reanalysis-reliability-v13';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-model-routing-v14';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-model-routing-v14';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

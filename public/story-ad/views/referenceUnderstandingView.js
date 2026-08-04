@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
+import { request } from '../api.js?v=20260804-reference-model-routing-v14';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-model-routing-v14';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-reanalysis-reliability-v13';
+  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-model-routing-v14';
   document.head.appendChild(link);
 }
 

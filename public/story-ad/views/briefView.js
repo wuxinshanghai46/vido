@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
+import { request } from '../api.js?v=20260804-reference-model-routing-v14';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-model-routing-v14';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -263,7 +263,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-reanalysis-reliability-v13');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-model-routing-v14');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

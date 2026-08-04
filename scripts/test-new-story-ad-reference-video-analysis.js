@@ -1119,7 +1119,8 @@ async function main() {
   assert.equal(preparationStarted, false, 'reanalysis acknowledgement must return before background preparation starts');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(preparationStarted, true, 'background preparation must start before analysis execution');
-  assert.equal(service.get(invalidReanalysisId, user).status, 'queued', 'paid analysis must not start before preparation completes');
+  assert.equal(service.get(invalidReanalysisId, user).status, 'running', 'accepted analysis must expose a live preparation state before the expensive project reset finishes');
+  assert.match(service.get(invalidReanalysisId, user).phase, /已受理|准备项目状态/, 'preparation must be visible instead of leaving the browser on a silent queued card');
   assert.equal(invalidReanalysisStarted.accepted, true, '质量无效完成态必须复用同一视频 ID 进入重新识别队列');
   assert.equal(invalidReanalysisStarted.record.status, 'queued');
   assert.equal(invalidReanalysisStarted.record.progress, 1, '重新识别必须开启新的进度与耗时，不能重放旧 100%');
@@ -1212,6 +1213,34 @@ async function main() {
     ], 'new_story_ad.reference_video_vision').map(item => item.model_id),
     ['gemini-2.5-flash', 'gemini-2.5-pro', 'gpt-4o', 'glm-4.6v'],
     'reference analysis must prefer the faster compatible vision model within each provider',
+  );
+
+  const unverifiedTextModel = { provider_id: 'unverified-text-provider', model_id: 'unverified-text-model' };
+  const provenTextModel = { provider_id: 'proven-text-provider', model_id: 'proven-text-model' };
+  const rejectedTextModel = { provider_id: 'rejected-text-provider', model_id: 'rejected-text-model' };
+  modelGateway.recordHealth(provenTextModel, { ok: true, latencyMs: 1200 });
+  modelGateway.recordHealth(rejectedTextModel, {
+    ok: false,
+    error: new Error('400 status code (no body)'),
+    latencyMs: 150,
+  });
+  assert.deepStrictEqual(
+    modelGateway.preferReliableTextCandidates([
+      unverifiedTextModel,
+      rejectedTextModel,
+      provenTextModel,
+    ], 'new_story_ad.reference_video_synthesis').map(item => item.model_id),
+    ['proven-text-model', 'unverified-text-model', 'rejected-text-model'],
+    'reference synthesis must spend its limited attempt budget on recently proven models first',
+  );
+  assert.deepStrictEqual(
+    modelGateway.classifyError(new Error('400 status code (no body)')),
+    { code: 'PROVIDER_REQUEST_REJECTED', retryable: false },
+    'opaque provider HTTP 400 responses must not remain UNKNOWN',
+  );
+  assert.ok(
+    modelGateway.healthState(rejectedTextModel).cooldown_remaining_ms >= 29 * 60 * 1000,
+    'opaque provider HTTP 400 responses must place only that model endpoint into cooldown',
   );
 
   const previousMock = process.env.NEW_STORY_AD_MOCK_LLM;

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-reanalysis-reliability-v13';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-reanalysis-reliability-v13';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-reanalysis-reliability-v13';
+import { request } from '../api.js?v=20260804-reference-model-routing-v14';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-model-routing-v14';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-model-routing-v14';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

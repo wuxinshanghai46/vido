@@ -10,6 +10,8 @@ const localVisionReferences = require('./localVisionReferenceService');
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
 const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 5));
 const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
+const REFERENCE_SYNTHESIS_STAGE = 'new_story_ad.reference_video_synthesis';
+const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 const FALLBACKS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 800, enabled: true },
@@ -188,6 +190,31 @@ function healthState(model) {
   };
 }
 
+function textReliabilityTier(model, at = Date.now()) {
+  const row = healthState(model);
+  const successCount = Number(row.success_count || 0);
+  const failureCount = Number(row.failure_count || 0);
+  const lastSuccessAt = Date.parse(row.last_success_at || '');
+  if (successCount > 0 && Number.isFinite(lastSuccessAt)
+    && at - lastSuccessAt <= RECENT_TEXT_SUCCESS_WINDOW_MS) return 0;
+  if (successCount > 0) return 1;
+  if (failureCount <= 0) return 2;
+  return 3;
+}
+
+/**
+ * Reference synthesis is an expensive terminal stage. Prefer endpoints that
+ * have actually succeeded recently so three unverified configuration entries
+ * cannot consume the complete attempt budget ahead of proven fallbacks.
+ */
+function preferReliableTextCandidates(candidates = [], stage = '', at = Date.now()) {
+  if (String(stage || '') !== REFERENCE_SYNTHESIS_STAGE) return candidates.slice();
+  return candidates
+    .map((model, index) => ({ model, index, tier: textReliabilityTier(model, at) }))
+    .sort((left, right) => left.tier - right.tier || left.index - right.index)
+    .map(item => item.model);
+}
+
 function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
   if (!model) return;
   const health = storage.readHealth();
@@ -225,6 +252,8 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
       row.blocked_until_config_change = true;
     } else if (code === 'PROVIDER_BILLING') {
       row.cooldown_until = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    } else if (code === 'PROVIDER_REQUEST_REJECTED') {
+      row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     } else if (/TIMEOUT|RATE_LIMIT|NETWORK/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     }
@@ -262,7 +291,7 @@ function candidatesForStage(stage) {
   const configured = pipeline.pickAllEnabled(inheritedStage);
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
   const configuredOrSettings = configured.length ? configured : settingsStoryCandidates();
-  return uniqueModels([...configuredOrSettings, ...defaults])
+  const ranked = uniqueModels([...configuredOrSettings, ...defaults])
     .map((m, i) => ({ ...m, fallback_rank: i + 1 }))
     .filter(m => isConfiguredAndUsable(m).ok)
     .filter(m => !healthState(m).circuit_open)
@@ -271,6 +300,7 @@ function candidatesForStage(stage) {
       if (priorityDelta) return priorityDelta;
       return getHealthScore(b) - getHealthScore(a);
     });
+  return preferReliableTextCandidates(ranked, stage);
 }
 
 function candidatesForVisionStage(stage) {
@@ -382,6 +412,9 @@ function classifyError(error) {
   if (/token not valid|invalid.*token|api key|unauthorized|401|403|令牌.*(?:过期|无效|不正确)|验证不正确/i.test(msg)) return { code: 'AUTH_CONFIG', retryable: false };
   if (/configuration not found|model.*not found|model_not_found|不是可用|没有可用配置|not available|disabled/i.test(msg)) return { code: 'MODEL_CONFIG', retryable: false };
   if (/JSON_PARSE|Unexpected end|Unexpected token/i.test(msg)) return { code: 'MODEL_JSON', retryable: true };
+  if (/(?:\bHTTP\s*)?400\s*status code\s*\(no body\)|\bHTTP\s*400\b.*(?:no body|empty body)/i.test(msg)) {
+    return { code: 'PROVIDER_REQUEST_REJECTED', retryable: false };
+  }
   if (/\bHTTP\s*5\d\d\b|\bstatus(?:\s*code)?\s*[:=]?\s*5\d\d\b|Internal Server Error|Service Unavailable/i.test(msg)) return { code: 'PROVIDER_5XX', retryable: true };
   return { code: 'UNKNOWN', retryable: false };
 }
@@ -787,6 +820,7 @@ module.exports = {
   visionAvailability,
   diversifyVisionCandidates,
   preferReferenceVisionCandidates,
+  preferReliableTextCandidates,
   generateText,
   generateVision,
   visionAttemptTimeoutForBudget,

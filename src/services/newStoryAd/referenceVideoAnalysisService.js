@@ -2837,6 +2837,10 @@ async function rebuildStoredAnalysis(analysisId, user = {}) {
 async function runAnalysis(initialRecord, options = {}) {
   let record = initialRecord;
   try {
+    record = checkpoint(record, '任务已受理，正在准备项目状态', Math.max(2, Number(record.progress || 0)), {
+      status: 'running',
+      error: null,
+    });
     if (typeof options.beforeRun === 'function') {
       await options.beforeRun(publicRecord(record));
       record = readRecord(record.user_id, record.id) || record;
@@ -2934,9 +2938,12 @@ async function runAnalysis(initialRecord, options = {}) {
 
 function scheduleAnalysis(record, options = {}) {
   const promise = new Promise((resolve) => {
-    setImmediate(() => {
+    const launch = () => {
       Promise.resolve(runAnalysis(record, options)).then(resolve);
-    });
+    };
+    const delayMs = Math.max(0, Math.min(1000, Number(options.scheduleDelayMs || 0) || 0));
+    if (delayMs > 0) setTimeout(launch, delayMs);
+    else setImmediate(launch);
   });
   activeRuns.set(record.id, promise);
   return promise;
@@ -2944,6 +2951,7 @@ function scheduleAnalysis(record, options = {}) {
 
 function start(analysisId, user = {}, options = {}) {
   let record = assertOwned(analysisId, user);
+  const restartingTerminal = ['failed', 'cancelled'].includes(String(record.status || '').toLowerCase());
   if (record.status === 'completed') return { record: publicRecord(record), accepted: false, duplicate: true };
   if (activeImports.has(analysisId) || record.status === 'importing') {
     const error = new Error('视频链接仍在读取，请读取完成后再开始分析');
@@ -2986,7 +2994,7 @@ function start(analysisId, user = {}, options = {}) {
     phase: reuseSynthesisRaw
       ? '已复用画面证据与语义结果，等待重新校验'
       : (reuseEvidence ? '已复用画面证据，等待重新整理' : '已进入分析队列'),
-    progress: Math.max(1, Number(record.progress || 0)),
+    progress: restartingTerminal ? 1 : Math.max(1, Number(record.progress || 0)),
     cancelled: false,
     error: null,
     started_at: now(),

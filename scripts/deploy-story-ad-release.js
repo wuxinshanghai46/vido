@@ -23,6 +23,7 @@ const extraFiles = [
   'src/routes/newStoryAd/subjectAssetPersistence.js',
   'src/routes/storyAdWorkspace.js',
   'src/services/newStoryAd/contextBuilder.js',
+  'src/services/newStoryAd/modelGateway.js',
   'src/services/newStoryAd/assetPlanService.js',
   'src/services/newStoryAd/personConsistencyQaService.js',
   'src/services/newStoryAd/personDossierCompiler.js',
