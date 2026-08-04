@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-retry-label-v15';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
+import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

@@ -230,12 +230,16 @@ assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, i
 const referenceReplacementState = read('public/story-ad/store/referenceReplacementState.js');
 assert.match(referenceReplacementState, /client_pending_reference_\$\{token\}/, '后端返回分析 ID 前必须使用仅限内存的替换占位状态');
 assert.match(referenceReplacementState, /replacement\?\.token === state\.referenceReplacementSeq/, '来源替换状态必须用单调序号阻止乱序覆盖');
+assert.match(referenceReplacementState, /function beginReferenceRetry[\s\S]*phase:\s*'重新识别请求已提交，正在等待服务器受理'/, '重新识别必须立即投影 1% 受理态');
+assert.match(referenceReplacementState, /function restoreReferenceRetry[\s\S]*reference:\s*previousReference/, '重新识别提交失败必须恢复旧权威状态');
 assert.match(projectStore, /progress:\s*Math\.max\(0, Math\.min\(100/, '参考分析绑定必须保留真实进度');
 assert.match(projectStore, /phase:\s*String\(analysis\.phase/, '参考分析绑定必须保留后端阶段说明');
 assert.match(projectStore, /applyReferenceLiveState\(analysis\)/, '同一状态内的轮询进度必须立即合并到界面状态');
 assert.match(projectStore, /async function hydrateReferenceFailure\(\)/, '历史失败任务必须从权威分析记录补回中文错误原因');
 assert.match(projectStore, /live\.error\.message \|\| live\.error\.code/, '实时失败状态必须优先展示中文错误信息而不是内部代码');
 assert.match(projectStore, /async function retryReferenceAnalysis\(\)/, '参考分析失败后必须提供同一 ID 的缓存重试能力');
+assert.match(projectStore, /beginReferenceRetry\(state, set\)[\s\S]*request\(`\/api\/new-story-ad\/reference-video-analyses/, '点击重新识别后必须先显示本地受理状态，不能等待网络响应');
+assert.match(projectStore, /catch \(error\)[\s\S]*restoreReferenceRetry\(state, set, previousReference, error\)/, '重新识别请求失败时必须恢复权威旧状态');
 assert.match(projectStore, /reference-video-analyses\/\$\{encodeURIComponent\(analysisId\)\}\/reanalyze/, '重新识别必须调用专用接口，不能被 completed 幂等门静默吞掉');
 assert.match(projectStore, /visual_evidence_reusable:\s*analysis\.visual_evidence_reusable === true/, '界面只能按后端逐帧覆盖结论决定是否复用证据');
 assert.match(projectStore, /evidence_batch_progress:\s*analysis\.evidence_batch_progress/, '失败恢复必须把已完成批次投影到页面，不能误导为全部重读');
@@ -258,6 +262,7 @@ const releaseDeploySource = read('scripts/deploy-story-ad-release.js');
 assert.match(releaseDeploySource, /src\/services\/newStoryAd\/referenceDetachService\.js/, '生产发布清单必须包含重新识别使用的项目清理服务');
 
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
+assert.match(newStoryAdRoute, /analysis\.task_sync\?\.status !== 'synced'/, '已经由服务端同步成功的终态轮询必须保持只读');
 assert.match(newStoryAdRoute, /function bindInitialReferenceTask[\s\S]*referenceVideoAnalyses\.taskRecord/, '参考来源创建后必须在接口返回前绑定当前任务');
 assert.match(newStoryAdRoute, /reference-video-links[\s\S]*task_bound:\s*taskBound/, '链接创建接口必须明确返回服务端绑定结果');
 

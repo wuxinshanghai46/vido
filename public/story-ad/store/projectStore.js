@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-retry-label-v15';
-import { beginReferenceReplacement, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-retry-label-v15';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-reference-sync-idempotency-v16';
 
 export function createProjectStore() {
   const state = {
@@ -281,7 +281,7 @@ export function createProjectStore() {
   async function retryReferenceAnalysis() {
     const analysisId = state.bundle?.reference?.analysis_id || '';
     if (!analysisId) throw new Error('当前没有可重新整理的参考视频。');
-    set({ saving: true, error: '' });
+    const previousReference = beginReferenceRetry(state, set);
     try {
       const data = await request(`/api/new-story-ad/reference-video-analyses/${encodeURIComponent(analysisId)}/reanalyze`, {
         method: 'POST',
@@ -293,7 +293,7 @@ export function createProjectStore() {
       set({ saving: false });
       return analysis;
     } catch (error) {
-      set({ saving: false, error: error.message });
+      restoreReferenceRetry(state, set, previousReference, error);
       throw error;
     }
   }

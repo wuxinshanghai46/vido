@@ -40,7 +40,7 @@ function completedRecord() {
     source: { original_name: 'reference.mp4', metadata: { duration_seconds: 30 } },
     result: {
       schema_version: 3,
-      generated_brief: 'Complete evidence-grounded advertising objective from the reference video.',
+      generated_brief: 'Complete evidence-grounded advertising objective\nfrom the reference video.',
       summary: 'Short summary that must not replace the complete objective.',
       source_facts: {
         product_or_service: 'Custom furniture set',
@@ -105,7 +105,7 @@ async function main() {
   assert.equal(firstBundle.reference.status, 'completed', 'first project read must use the authoritative terminal status');
   assert.equal(firstBundle.reference.progress, 100, 'first project read must not replay stale progress');
   assert.equal(firstBundle.reference.analysis_valid, true);
-  assert.equal(firstBundle.brief.text, record.result.generated_brief, 'first project read must project the completed objective immediately');
+  assert.equal(firstBundle.brief.text, 'Complete evidence-grounded advertising objective from the reference video.', 'first project read must project the normalized completed objective immediately');
   assert.equal(firstBundle.brief.product_subject, record.result.source_facts.product_or_service);
   assert.equal(
     Date.parse(firstBundle.reference.completed_at) - Date.parse(firstBundle.reference.started_at),
@@ -124,11 +124,15 @@ async function main() {
   assert.equal(context.reference_video_analysis.status, 'completed');
   assert.equal(context.reference_video_analysis.progress, 100);
   assert.equal(context.reference_video_analysis.reference_understanding.completeness.valid, true, 'V6 understanding must survive the task transport');
-  assert.equal(context.brief, record.result.generated_brief, 'full generated brief must be persisted');
+  assert.equal(context.brief, 'Complete evidence-grounded advertising objective from the reference video.', 'full generated brief must be normalized and persisted');
   assert.equal(context.brief_source, 'reference_analysis');
   assert.equal(context.product_subject, record.result.source_facts.product_or_service, 'generic subject must be replaced by recognized evidence');
   assert.ok(context.reference_analysis_projection?.fingerprint, 'zero-model asset/story projection must be persisted');
   assert.ok(storage.getTask(taskId).content_revision <= revisionBefore + 1, 'concurrent terminal reads must not create repeated content revisions');
+  const stableRevision = storage.getTask(taskId).content_revision;
+  const stableResult = await taskSync.syncTerminalAnalysis(record, reference);
+  assert.equal(stableResult.reason, 'unchanged', 'normalized whitespace must not look like new terminal content');
+  assert.equal(storage.getTask(taskId).content_revision, stableRevision, 'a later terminal poll must not create another revision');
   assert.equal((storyAd.publicTaskBundle(taskId, { diagnostics: true }).model_calls || []).length, 0, 'repair path must not call any model');
 
   const storeSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/store/projectStore.js'), 'utf8');
@@ -139,7 +143,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 24,
+    checks: 27,
     concurrent_sync_requests: results.length,
     model_calls: 0,
     elapsed_ms: 272272,

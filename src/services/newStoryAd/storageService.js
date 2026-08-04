@@ -505,22 +505,48 @@ function getOutput(taskId, kind) {
   return getRow('outputs', `${taskId}:${kind}`)?.payload ?? null;
 }
 
-function deleteOutput(taskId, kind) {
-  removeRow('outputs', `${taskId}:${kind}`);
+function deleteOutputs(taskId, kinds = []) {
+  const uniqueKinds = [...new Set((Array.isArray(kinds) ? kinds : [kinds]).map(String).filter(Boolean))];
+  if (!uniqueKinds.length) return [];
+  const ids = uniqueKinds.map(kind => `${taskId}:${kind}`);
+  if (useSqlite()) {
+    ensureDbSeeded();
+    contentRecords.removeMany(COLLECTIONS.outputs, ids);
+    if (dbConfig().dualWrite) {
+      const idSet = new Set(ids);
+      mutateJson('outputs', list => {
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+          if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
+        }
+      });
+    }
+  } else {
+    const idSet = new Set(ids);
+    mutateJson('outputs', list => {
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
+      }
+    });
+  }
   const task = getTask(taskId);
   if (task?.lineage_enforced === true) {
     const manifest = getManifest(taskId);
     const artifacts = { ...(manifest.artifacts || {}) };
-    delete artifacts[kind];
-    const invalidated = {
-      ...(manifest.invalidated || {}),
-      [kind]: {
+    const invalidated = { ...(manifest.invalidated || {}) };
+    uniqueKinds.forEach(kind => {
+      delete artifacts[kind];
+      invalidated[kind] = {
         content_revision: Number(task.content_revision || 1) || 1,
         invalidated_at: nowIso(),
-      },
-    };
+      };
+    });
     saveManifest(taskId, { content_revision: Number(task.content_revision || 1) || 1, artifacts, invalidated });
   }
+  return uniqueKinds;
+}
+
+function deleteOutput(taskId, kind) {
+  deleteOutputs(taskId, [kind]);
 }
 
 function listOutputs(taskId) {
@@ -604,6 +630,7 @@ module.exports = {
   saveOutput,
   getOutput,
   deleteOutput,
+  deleteOutputs,
   listOutputs,
   canonicalFingerprint,
   getManifest,

@@ -368,7 +368,9 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
     patch.saved_progress_at = new Date().toISOString();
   }
   storage.updateTask(taskId, patch);
-  if (changedDomains.length) storage.carryManifestRevision(taskId, patch.content_revision);
+  if (changedDomains.length && !changedDomains.includes('source')) {
+    storage.carryManifestRevision(taskId, patch.content_revision);
+  }
   const sceneInvalidation = sceneAuthority.publishAndInvalidate({ storage, taskId, explicitScenePlan, delta: sceneChange.delta, changedDomains, sceneAssets: ctx.scene_assets || [], contentRevision: patch.content_revision });
   invalidated = sceneInvalidation.invalidated;
   const mediaInvalidated = taskProgressSave.mediaInvalidatedOutputs(previousCtx, ctx, {
@@ -386,7 +388,7 @@ function updateTaskRequest(taskId, body = {}, user = {}) {
   else if (!invalidated.includes('final_video') && (existingFinalVideo?.video_url || existingFinalVideo?.videoUrl)) Object.assign(patch, {
     status: 'done', stage: 'final_video_ready', saved_progress: false,
   });
-  mediaInvalidated.forEach(kind => storage.deleteOutput(taskId, kind));
+  if (mediaInvalidated.length) storage.deleteOutputs(taskId, mediaInvalidated);
   invalidated = [...new Set([...invalidated, ...mediaInvalidated])];
   const updated = storage.updateTask(taskId, patch);
   const snapshot = storage.saveSnapshot(taskId, {

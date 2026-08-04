@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-retry-label-v15';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
+import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

@@ -43,6 +43,46 @@ export function referenceSyncInterrupted(reference = {}, error = null, interrupt
   };
 }
 
+/** 重新识别点击后立即显示受理态，不等待网络或同步存储响应。 */
+export function beginReferenceRetry(state, set) {
+  const previousReference = state.bundle?.reference ? { ...state.bundle.reference } : null;
+  const requestedAt = new Date().toISOString();
+  set({
+    saving: true,
+    error: '',
+    bundle: state.bundle ? {
+      ...state.bundle,
+      reference: {
+        ...(state.bundle.reference || {}),
+        status: 'queued',
+        progress: 1,
+        phase: '重新识别请求已提交，正在等待服务器受理',
+        started_at: requestedAt,
+        updated_at: requestedAt,
+        completed_at: '',
+        failed_at: '',
+        cancelled_at: '',
+        error: '',
+        sync_interrupted: false,
+        sync_interrupted_at: '',
+        last_known_status: '',
+      },
+    } : state.bundle,
+  });
+  return previousReference;
+}
+
+export function restoreReferenceRetry(state, set, previousReference, error) {
+  set({
+    saving: false,
+    error: error?.message || String(error || ''),
+    bundle: state.bundle && previousReference ? {
+      ...state.bundle,
+      reference: previousReference,
+    } : state.bundle,
+  });
+}
+
 /** 仅当前请求失败时恢复旧来源；迟到请求不得覆盖后续更换。 */
 export function restoreReferenceReplacement(state, set, replacement) {
   if (!replacementCurrent(state, replacement) || !state.bundle) return;

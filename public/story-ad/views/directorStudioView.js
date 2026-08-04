@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260804-reference-retry-label-v15';
-import { request, uploadAsset } from '../api.js?v=20260804-reference-retry-label-v15';
-import { escapeHtml, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
+import * as THREE from '../vendor/three.module.min.js?v=20260804-reference-sync-idempotency-v16';
+import { request, uploadAsset } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { escapeHtml, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
 
 const VERSION = '20260803-photoreal-director-v8';
 

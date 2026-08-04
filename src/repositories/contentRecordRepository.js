@@ -255,6 +255,27 @@ function remove(collection, id) {
   removeDomainTable(db, collection, id);
 }
 
+function removeMany(collection, ids = []) {
+  const unique = [...new Set((Array.isArray(ids) ? ids : []).map(String).filter(Boolean))];
+  if (!unique.length) return 0;
+  const db = requireDatabase();
+  invalidateCollection(collection);
+  const operations = unique.map(id => ({
+    sql: 'DELETE FROM content_records WHERE collection = ? AND id = ?',
+    params: [collection, id],
+  }));
+  if (typeof db.batch === 'function') db.batch(operations);
+  else {
+    const apply = db.transaction(() => {
+      const statement = db.prepare('DELETE FROM content_records WHERE collection = ? AND id = ?');
+      unique.forEach(id => statement.run(collection, id));
+    });
+    apply();
+  }
+  if (DOMAIN_TABLES.has(collection)) unique.forEach(id => removeDomainTable(db, collection, id));
+  return unique.length;
+}
+
 function replaceCollection(collection, rows) {
   const db = requireDatabase();
   invalidateCollection(collection);
@@ -278,6 +299,7 @@ module.exports = {
   list,
   pruneBefore,
   remove,
+  removeMany,
   replaceCollection,
   stableId,
   update,

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-retry-label-v15';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
+import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -263,7 +263,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-retry-label-v15');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-sync-idempotency-v16');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

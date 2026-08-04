@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-retry-label-v15';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',

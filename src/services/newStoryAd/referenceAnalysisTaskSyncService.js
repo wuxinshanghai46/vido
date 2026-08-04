@@ -9,6 +9,14 @@ function text(value = '') {
   return String(value || '').trim();
 }
 
+function comparableText(value = '') {
+  return text(value).replace(/\s+/g, ' ');
+}
+
+function terminalAt(reference = {}) {
+  return text(reference.completed_at || reference.failed_at || reference.cancelled_at);
+}
+
 function referenceId(value = {}) {
   return text(value.analysis_id || value.id);
 }
@@ -77,6 +85,12 @@ async function runSync(analysis = {}, reference = {}) {
 
   const patch = completionPatch(previousContext, reference);
   const currentReference = previousContext.reference_video_analysis || {};
+  const completedValid = completedAndValid(reference);
+  const projectionFingerprint = completedValid
+    ? assetPlanService.referenceProjectionFingerprint(reference)
+    : '';
+  const sameProjection = !completedValid
+    || text(previousContext.reference_analysis_projection?.fingerprint) === projectionFingerprint;
   const sameCompletedContract = !completedAndValid(reference)
     || (
       currentReference.analysis_quality?.valid === true
@@ -84,23 +98,29 @@ async function runSync(analysis = {}, reference = {}) {
       && text(currentReference.generated_brief) === text(reference.generated_brief)
     );
   const sameBrief = !Object.prototype.hasOwnProperty.call(patch, 'brief')
-    || (text(previousContext.brief) === text(patch.brief) && text(previousContext.brief_source) === 'reference_analysis');
+    || (comparableText(previousContext.brief) === comparableText(patch.brief)
+      && text(previousContext.brief_source) === 'reference_analysis');
   const sameProduct = !Object.prototype.hasOwnProperty.call(patch, 'product_subject')
     || text(previousContext.product_subject) === text(patch.product_subject);
   const sameTerminal = reference.status === previousContext.reference_video_analysis?.status
     && Number(reference.progress || 0) === Number(previousContext.reference_video_analysis?.progress || 0)
-    && text(reference.updated_at) === text(previousContext.reference_video_analysis?.updated_at)
+    && terminalAt(reference) === terminalAt(previousContext.reference_video_analysis || {})
     && sameCompletedContract
     && sameBrief
-    && sameProduct;
+    && sameProduct
+    && sameProjection;
 
   let updated = { context: previousContext };
   if (!sameTerminal) {
     updated = storyAdService.updateTaskRequest(taskId, patch, { id: ownerId, userId: ownerId });
   }
 
-  let projection = { projected: false, reason: 'reference_not_completed_or_invalid', model_call_count: 0 };
-  if (completedAndValid(reference)) {
+  let projection = {
+    projected: false,
+    reason: completedValid && sameProjection ? 'unchanged' : 'reference_not_completed_or_invalid',
+    model_call_count: 0,
+  };
+  if (completedValid && !sameProjection) {
     projection = await assetPlanService.projectReferenceIntake(taskId, {
       previous_context: previousContext,
       reference_analysis: reference,
@@ -132,6 +152,7 @@ module.exports = {
   activeSyncs,
   canReplaceBrief,
   canReplaceProduct,
+  comparableText,
   completionPatch,
   completedAndValid,
   projectContext,

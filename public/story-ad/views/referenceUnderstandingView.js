@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-retry-label-v15';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-retry-label-v15';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-retry-label-v15';
+import { request } from '../api.js?v=20260804-reference-sync-idempotency-v16';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-sync-idempotency-v16';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-sync-idempotency-v16';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-retry-label-v15';
+  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-sync-idempotency-v16';
   document.head.appendChild(link);
 }
 

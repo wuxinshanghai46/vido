@@ -177,7 +177,8 @@ function invalidateOutputs(storage, taskId, scope = 'none', options = {}) {
   const preserveKinds = new Set(Array.isArray(options.preserveKinds) ? options.preserveKinds : []);
   const downstream = [...new Set(scopes.flatMap(domain => graph[domain] || []))]
     .filter(kind => !preserveKinds.has(kind));
-  downstream.forEach(kind => storage.deleteOutput(taskId, kind));
+  if (typeof storage.deleteOutputs === 'function') storage.deleteOutputs(taskId, downstream);
+  else downstream.forEach(kind => storage.deleteOutput(taskId, kind));
   return downstream;
 }
 

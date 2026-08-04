@@ -853,7 +853,8 @@ router.post('/reference-video-analyses/:analysisId/reanalyze', asyncRoute(async 
 
 router.get('/reference-video-analyses/:analysisId', asyncRoute(async (req, res) => {
   let analysis = referenceVideoAnalyses.get(req.params.analysisId, userFromReq(req));
-  if (['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase())) {
+  if (['completed', 'failed', 'cancelled'].includes(String(analysis.status || '').toLowerCase())
+    && analysis.task_sync?.status !== 'synced') {
     try {
       await referenceAnalysisTaskSync.syncTerminalAnalysis(
         analysis,
