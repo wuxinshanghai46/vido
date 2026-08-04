@@ -1,8 +1,8 @@
 # VIDO 2026-08-04 参考分析与导演画布回家续接交接
 
-> 生成时间：2026-08-04 17:55（Asia/Shanghai）  
-> 目标分支：`codex/story-ad-v3-upgrade`  
-> Git 权威远端：`origin`（Gitee）  
+> 生成时间：2026-08-04 17:55（Asia/Shanghai）<br>
+> 目标分支：`codex/story-ad-v3-upgrade`<br>
+> Git 权威远端：`origin`（Gitee）<br>
 > 生产运行版本：`20260804-reference-sync-idempotency-v16 / reference-director-v2`
 
 ## 1. 当日目标与用户决策
