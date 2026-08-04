@@ -3,6 +3,7 @@ const assert = require('assert');
 const understandingService = require('../src/services/newStoryAd/referenceUnderstandingService');
 const analysisService = require('../src/services/newStoryAd/referenceVideoAnalysisService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
+const assetPlanService = require('../src/services/newStoryAd/assetPlanService');
 
 const frames = [
   {
@@ -86,9 +87,12 @@ const base = {
   transcript,
   reference_understanding: {
     story_summary: {
+      narrative_mode: 'narrative_story',
+      narrative_mode_reason: '存在明确的问题、行动和结果变化。',
       logline: '人物通过连续行动解决问题并确认结果。',
       short_synopsis: '人物先发现问题，随后采取行动，最终看到变化。',
       full_synopsis: '开场中人物进入真实空间并发现需要处理的问题；发展阶段人物围绕可见主体执行实际行动；关键行动带来状态变化，人物最终观察并确认结果，画面以明确的信息完成收束。',
+      theme: '主动行动带来可见改变。',
       central_conflict: '初始状态与期望结果之间存在差距。',
       trigger: '人物发现需要处理的问题。', turning_point: '实际行动改变当前状态。',
       climax: '结果变化被清楚展示。', resolution: '人物确认结果。', brand_function: '可见主体参与解决过程。', cta: '了解更多。',
@@ -143,11 +147,63 @@ const legacyZeroCall = understandingService.enrichAnalysis({
 }, { transcript: { status: 'no_audio', segments: [] } });
 assert.equal(legacyZeroCall.reference_understanding.causal_chain.length, 3);
 assert.ok(legacyZeroCall.reference_understanding.causal_chain.every(row => row.evidence_refs.length), '旧合同应从已审计逐镜结果零模型迁移证据引用');
-assert.doesNotThrow(() => understandingService.validate(legacyZeroCall));
+assert.ok(legacyZeroCall.reference_understanding.causal_chain.every(row => !row.caused_by && !row.leads_to), '时间顺序不得伪造成因果关系');
+assert.ok(!legacyZeroCall.reference_understanding.story_summary.full_synopsis.includes('形成下一事件'), '兜底摘要不得输出机械因果文案');
+assert.equal(legacyZeroCall.reference_understanding.completeness.valid, false, '没有模型深度语义的旧合同不得继续标记为完整');
+assert.ok(legacyZeroCall.reference_understanding.completeness.failures.includes('semantic_understanding_missing'));
+assert.throws(() => understandingService.validate(legacyZeroCall), /深度理解不完整/);
+
+const productionFalsePositive = understandingService.enrichAnalysis({
+  ...base,
+  reference_understanding: {
+    story_summary: {
+      logline: '通过真实镜头时间线展示定制家具的核心价值与可见结果。',
+      full_synopsis: '行走，形成下一事件“触摸”的画面条件；触摸，完成该参考内容的可见收束',
+      resolution: '人物坐下。',
+    },
+    causal_chain: base.shot_breakdown.map((shot, index) => ({
+      id: `event_${index + 1}`, range: shot.range, scene_id: 'scene_prompt_1', subject: '出镜人物 1',
+      action: shot.action, result: index < 2 ? '形成下一事件的画面条件' : '完成收束',
+      caused_by: index ? `event_${index}` : null, leads_to: index < 2 ? `event_${index + 2}` : null,
+      evidence_refs: [`F00${index + 1}`], certainty: 'fact',
+    })),
+    characters: [{ character_id: 'character_prompt_1', role: '出镜人物 1', evidence_refs: [], certainty: 'unknown' }],
+    scenes: [{ scene_id: 'scene_prompt_1', narrative_function: '按镜头时间线展示广告主体、空间关系和可见结果', events: ['event_1', 'event_2', 'event_3'], evidence_refs: ['F001', 'F002', 'F003'], certainty: 'fact' }],
+    brand_role: { subject: '定制家具', story_function: '', evidence_refs: [], certainty: 'unknown' },
+  },
+}, { transcript });
+assert.equal(productionFalsePositive.reference_understanding.completeness.valid, false, '线上同型机械故事必须被质量门拦截');
+for (const failure of ['narrative_mode_unclassified', 'temporal_adjacency_mislabeled_as_causality', 'story_summary_generic', 'character_semantics_incomplete', 'scene_semantics_incomplete', 'brand_semantics_incomplete']) {
+  assert.ok(productionFalsePositive.reference_understanding.completeness.failures.includes(failure), `缺少回归失败码：${failure}`);
+}
+assert.throws(() => understandingService.validate(productionFalsePositive), /深度理解不完整/);
+
+const groupedProjection = assetPlanService.projectReferencePlan({
+  product_subject: '当前可见叙事主体', shot_count: 3,
+  reference_video_analysis: {
+    status: 'completed', analysis_id: 'grouped-scenes', analysis_quality: { valid: true },
+    source_facts: base.source_facts,
+    character_prompts: base.character_prompts,
+    scene_prompts: [
+      { ...base.scene_prompts[0], id: 'scene_prompt_1', location_type: '同一空间远景' },
+      { ...base.scene_prompts[0], id: 'scene_prompt_2', location_type: '同一空间特写' },
+      { ...base.scene_prompts[0], id: 'scene_prompt_3', location_type: '第二物理空间' },
+    ],
+    shot_breakdown: base.shot_breakdown.map((shot, index) => ({ ...shot, scene_id: `scene_prompt_${index + 1}` })),
+    reference_understanding: {
+      scenes: [
+        { scene_id: 'scene_prompt_1', narrative_function: '承载问题与行动', events: ['event_1', 'event_2'] },
+        { scene_id: 'scene_prompt_3', narrative_function: '呈现最终结果', events: ['event_3'] },
+      ],
+    },
+  },
+});
+assert.equal(groupedProjection.scene_plan.spaces.length, 2, '下游只应投影语义合并后的独立物理空间');
+assert.deepEqual(groupedProjection.story_seed.shot_breakdown.map(item => item.scene_id), ['scene_prompt_1', 'scene_prompt_1', 'scene_prompt_3'], '逐镜场景引用必须跟随语义分组重映射');
 
 console.log(JSON.stringify({
   passed: true,
-  checks: 26,
+  checks: 42,
   contract: enriched.reference_understanding.contract_version,
   events: enriched.reference_understanding.causal_chain.length,
   evidence_refs: enriched.reference_understanding.causal_chain.flatMap(row => row.evidence_refs).length,

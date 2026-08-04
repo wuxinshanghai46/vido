@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-task-sync-v10';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-task-sync-v10';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-reference-semantic-gate-v11';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

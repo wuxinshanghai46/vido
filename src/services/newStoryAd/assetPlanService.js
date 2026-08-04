@@ -89,6 +89,20 @@ function uniquePrompts(items = [], prefix = 'reference_subject') {
 
 function projectReferencePlan(ctx = {}) {
   const reference = ctx.reference_video_analysis;
+  const deepScenes = Array.isArray(reference.reference_understanding?.scenes)
+    ? reference.reference_understanding.scenes.filter(item => (
+      item && item.scene_id && Array.isArray(item.events) && item.events.length
+    ))
+    : [];
+  const canonicalSceneIds = new Set(deepScenes.map(item => cleanText(item.scene_id, 100)).filter(Boolean));
+  const sourceScenePrompts = canonicalSceneIds.size
+    ? reference.scene_prompts.filter(item => canonicalSceneIds.has(cleanText(item.id, 100)))
+    : reference.scene_prompts;
+  const eventSceneIds = new Map();
+  deepScenes.forEach(scene => (scene.events || []).forEach(eventId => {
+    const match = /^event_(\d+)$/u.exec(cleanText(eventId, 80));
+    if (match) eventSceneIds.set(Number(match[1]), cleanText(scene.scene_id, 100));
+  }));
   const characterPrompts = Array.isArray(reference.character_prompts) ? reference.character_prompts : [];
   const narrativeAnimalPresence = typeof reference.source_facts?.narrative_animal_presence === 'boolean'
     ? reference.source_facts.narrative_animal_presence
@@ -134,13 +148,14 @@ function projectReferencePlan(ctx = {}) {
     identity_extraction_allowed: false,
     reference_images: [],
   }));
-  const spaces = reference.scene_prompts.map((item, index) => {
+  const spaces = sourceScenePrompts.map((item, index) => {
     const id = cleanText(item.id || `reference_space_${index + 1}`, 100);
+    const deepScene = deepScenes.find(scene => cleanText(scene.scene_id, 100) === id) || {};
     return {
       id,
       name: cleanText(item.location_type || `参考空间${index + 1}`, 120),
       description: cleanText(item.layout_prompt || reference.source_facts?.environment || '', 500),
-      story_purpose: cleanText(item.camera_purpose || '', 300),
+      story_purpose: cleanText(deepScene.narrative_function || item.camera_purpose || '', 300),
       source: 'reference_analysis_projection',
       projection_only: true,
       generated_asset: false,
@@ -183,7 +198,10 @@ function projectReferencePlan(ctx = {}) {
     story_seed: {
       ...reference.story_outline,
       plot_beats: reference.plot_beats || [],
-      shot_breakdown: reference.shot_breakdown || [],
+      shot_breakdown: (reference.shot_breakdown || []).map((shot, index) => ({
+        ...shot,
+        scene_id: eventSceneIds.get(index + 1) || shot.scene_id,
+      })),
       camera_intents: reference.camera_intents || [],
       character_actions: reference.character_actions || [],
       source: 'reference_analysis_projection',

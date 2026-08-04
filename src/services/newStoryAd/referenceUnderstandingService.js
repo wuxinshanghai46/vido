@@ -1,5 +1,10 @@
 const CONTRACT_VERSION = 'reference-understanding-v6';
 
+const NARRATIVE_MODES = new Set(['narrative_story', 'showcase_montage']);
+const FABRICATED_SEQUENCE_PATTERN = /形成下一事件[“"]/u;
+const GENERIC_STORY_PATTERN = /^(?:通过)?(?:真实)?镜头时间线展示.+核心价值与可见结果[。.]?$/u;
+const GENERIC_SCENE_PATTERN = /按镜头时间线展示广告主体、空间关系和可见结果/u;
+
 function text(value = '', max = 1200) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
@@ -83,9 +88,11 @@ function derivedCausalChain(analysis, frames, transcripts) {
       subject: list(row.subject_ids, 16).map(item => text(item, 100)).filter(Boolean).join('、') || '画面主体',
       action: action || '展示当前镜头中可见的状态变化',
       motivation: '',
-      result: index < rows.length - 1 ? `形成下一事件“${text(rows[index + 1]?.action || rows[index + 1]?.purpose || rows[index + 1]?.visual, 240)}”的画面条件` : '完成该参考内容的可见收束',
-      caused_by: index ? `event_${index}` : null,
-      leads_to: index < rows.length - 1 ? `event_${index + 2}` : null,
+      // 镜头先后只证明时间顺序，不能自动证明因果。兜底时间线保留可见动作，
+      // 但绝不伪造“上一镜头导致下一镜头”的故事关系。
+      result: '',
+      caused_by: null,
+      leads_to: null,
       evidence_refs: evidenceRefs,
       certainty: evidenceRefs.length ? 'fact' : 'unknown',
     };
@@ -123,9 +130,11 @@ function normalizeCausalChain(proposed, fallback, validRefs) {
 
 function normalizeStorySummary(proposed = {}, analysis = {}, chain = []) {
   const outline = analysis.story_outline || {};
-  const eventText = chain.map(event => `${event.action}${event.result ? `，${event.result}` : ''}`).join('；');
-  const fullSynopsis = text(proposed.full_synopsis || eventText || outline.logline || analysis.summary, 5000);
+  const eventText = chain.map(event => event.action).filter(Boolean).join('；');
+  const fullSynopsis = text(proposed.full_synopsis || outline.logline || analysis.summary || eventText, 5000);
   return {
+    narrative_mode: NARRATIVE_MODES.has(proposed.narrative_mode) ? proposed.narrative_mode : 'unclassified',
+    narrative_mode_reason: text(proposed.narrative_mode_reason, 700),
     logline: text(proposed.logline || outline.logline || analysis.summary, 700),
     short_synopsis: text(proposed.short_synopsis || outline.logline || analysis.summary, 1500),
     full_synopsis: fullSynopsis,
@@ -144,13 +153,14 @@ function normalizeCharacters(proposed, analysis, validRefs) {
   const fallback = list(analysis.character_prompts, 24).map((row, index) => ({
     character_id: text(row.id || `character_prompt_${index + 1}`, 80),
     role: text(row.role || `人物 ${index + 1}`, 200),
-    initial_state: '', goal: '', obstacle: '', key_decision: '', final_state: '',
+    narrative_function: '', initial_state: '', goal: '', obstacle: '', key_decision: '', final_state: '',
     relationships: [], emotional_arc: [], evidence_refs: [], certainty: 'unknown',
   }));
   const rows = list(proposed, 24).length ? list(proposed, 24) : fallback;
   return rows.map((row, index) => ({
     character_id: text(row.character_id || row.id || fallback[index]?.character_id || `character_prompt_${index + 1}`, 80),
     role: text(row.role || fallback[index]?.role, 200),
+    narrative_function: text(row.narrative_function, 500),
     relationships: list(row.relationships, 24).map(item => typeof item === 'string' ? text(item, 300) : {
       character_id: text(item?.character_id, 80), relationship: text(item?.relationship, 300),
     }),
@@ -163,6 +173,7 @@ function normalizeCharacters(proposed, analysis, validRefs) {
 }
 
 function normalizeScenes(proposed, analysis, chain, validRefs) {
+  const validEventIds = new Set(chain.map(event => event.id));
   const fallback = list(analysis.scene_prompts, 120).map(row => {
     const events = chain.filter(event => event.scene_id === row.id);
     return {
@@ -177,7 +188,7 @@ function normalizeScenes(proposed, analysis, chain, validRefs) {
     scene_id: text(row.scene_id || fallback[index]?.scene_id || `scene_prompt_${index + 1}`, 100),
     narrative_function: text(row.narrative_function || fallback[index]?.narrative_function, 700),
     entry_transition: text(row.entry_transition, 400),
-    events: list(row.events, 120).map(item => text(item, 80)).filter(Boolean),
+    events: unique(list(row.events, 120).map(item => text(item, 80)).filter(item => validEventIds.has(item)), 120),
     state_change: text(row.state_change, 700),
     exit_transition: text(row.exit_transition, 400),
     evidence_refs: normalizeRefs(row.evidence_refs, validRefs).length
@@ -202,6 +213,11 @@ function enrichAnalysis(analysis = {}, options = {}) {
   const validRefs = new Set([...frames.map(row => row.frame_id), ...transcripts.map(row => row.id)]);
   const proposed = analysis.reference_understanding && typeof analysis.reference_understanding === 'object'
     ? analysis.reference_understanding : {};
+  const hasProposedUnderstanding = Boolean(
+    text(proposed.story_summary?.full_synopsis, 5000)
+    && list(proposed.causal_chain).length
+    && list(proposed.scenes).length,
+  );
   const fallbackChain = derivedCausalChain(analysis, frames, transcripts);
   const causalChain = normalizeCausalChain(proposed.causal_chain, fallbackChain, validRefs);
   const storySummary = normalizeStorySummary(proposed.story_summary, analysis, causalChain);
@@ -239,18 +255,79 @@ function enrichAnalysis(analysis = {}, options = {}) {
     evidence_refs: event.evidence_refs,
   }));
   const tracedEvents = causalChain.filter(row => row.evidence_refs.length).length;
+  const characters = normalizeCharacters(proposed.characters, analysis, validRefs);
+  const scenes = normalizeScenes(proposed.scenes, analysis, causalChain, validRefs);
+  const narrativeMode = storySummary.narrative_mode;
+  const causeChainComplete = narrativeMode === 'showcase_montage'
+    ? causalChain.length > 0 && tracedEvents === causalChain.length
+    : causalChain.length > 0 && causalChain.every((row, index) => (
+      index === 0 ? row.caused_by === null : Boolean(row.caused_by)
+    ));
+  const storyComplete = Boolean(
+    NARRATIVE_MODES.has(narrativeMode)
+    && storySummary.logline
+    && storySummary.full_synopsis
+    && storySummary.resolution
+    && storySummary.theme
+    && storySummary.brand_function
+    && (narrativeMode === 'showcase_montage' || (
+      storySummary.central_conflict && storySummary.trigger && storySummary.turning_point
+    )),
+  );
+  const characterCoverage = list(analysis.character_prompts).length
+    ? Number((characters.filter(row => (
+      row.evidence_refs.length
+      && row.role
+      && !/^出镜人物\s*\d*$/u.test(row.role)
+      && (row.narrative_function || (row.initial_state && row.final_state))
+    )).length / list(analysis.character_prompts).length).toFixed(3))
+    : 1;
+  const validSceneIds = new Set(list(analysis.scene_prompts).map((row, index) => (
+    text(row?.id || `scene_prompt_${index + 1}`, 100)
+  )));
+  const sceneEventIds = scenes.flatMap(row => row.events);
+  const sceneReferencesValid = scenes.length > 0 && scenes.every(row => validSceneIds.has(row.scene_id));
+  const sceneEventsComplete = causalChain.length > 0
+    && sceneEventIds.length === causalChain.length
+    && new Set(sceneEventIds).size === causalChain.length;
+  const sceneCoverage = scenes.length
+    ? Number((scenes.filter(row => (
+      row.evidence_refs.length
+      && row.events.length
+      && row.narrative_function
+      && !GENERIC_SCENE_PATTERN.test(row.narrative_function)
+    )).length / scenes.length).toFixed(3))
+    : 0;
+  const brandRoleReady = Boolean(
+    text(proposed.brand_role?.subject || analysis.source_facts?.product_or_service, 500)
+    && text(proposed.brand_role?.story_function || storySummary.brand_function, 700)
+    && normalizeRefs(proposed.brand_role?.evidence_refs, validRefs).length,
+  );
   const failures = [];
+  if (!hasProposedUnderstanding) failures.push('semantic_understanding_missing');
   if (!causalChain.length) failures.push('causal_chain_missing');
   if (!storySummary.full_synopsis) failures.push('full_synopsis_missing');
   if (causalChain.length && tracedEvents !== causalChain.length) failures.push('event_evidence_incomplete');
+  if (!NARRATIVE_MODES.has(narrativeMode)) failures.push('narrative_mode_unclassified');
+  if (FABRICATED_SEQUENCE_PATTERN.test(storySummary.full_synopsis)) failures.push('temporal_adjacency_mislabeled_as_causality');
+  if (GENERIC_STORY_PATTERN.test(storySummary.logline)) failures.push('story_summary_generic');
+  if (!storyComplete) failures.push('story_semantics_incomplete');
+  if (!causeChainComplete) failures.push('cause_or_progression_incomplete');
+  if (characterCoverage < 1) failures.push('character_semantics_incomplete');
+  if (sceneCoverage < 1) failures.push('scene_semantics_incomplete');
+  if (!sceneReferencesValid) failures.push('scene_reference_invalid');
+  if (!sceneEventsComplete) failures.push('scene_event_mapping_incomplete');
+  if (!brandRoleReady) failures.push('brand_semantics_incomplete');
   const completeness = {
     valid: failures.length === 0,
     timeline_coverage: causalChain.length ? Number((tracedEvents / causalChain.length).toFixed(3)) : 0,
     evidence_traceability: validRefs.size ? Number((tracedEvents / Math.max(1, causalChain.length)).toFixed(3)) : 0,
-    cause_chain_complete: causalChain.length > 0 && causalChain.every((row, index) => index === 0 || row.caused_by),
-    story_complete: Boolean(storySummary.logline && storySummary.full_synopsis && storySummary.resolution),
-    character_coverage: list(analysis.character_prompts).length ? Number((normalizeCharacters(proposed.characters, analysis, validRefs).length / list(analysis.character_prompts).length).toFixed(3)) : 1,
-    scene_coverage: list(analysis.scene_prompts).length ? Number((normalizeScenes(proposed.scenes, analysis, causalChain, validRefs).length / list(analysis.scene_prompts).length).toFixed(3)) : 1,
+    cause_chain_complete: causeChainComplete,
+    story_complete: storyComplete,
+    character_coverage: characterCoverage,
+    scene_coverage: sceneCoverage,
+    brand_complete: brandRoleReady,
+    semantic_source: hasProposedUnderstanding ? 'model_proposed' : 'timeline_fallback',
     audio_visual_coverage: transcript.status === 'no_audio' ? 1 : (transcripts.length ? 1 : 0),
     failures,
   };
@@ -262,8 +339,8 @@ function enrichAnalysis(analysis = {}, options = {}) {
       schema_version: 6,
       story_summary: storySummary,
       causal_chain: causalChain,
-      characters: normalizeCharacters(proposed.characters, analysis, validRefs),
-      scenes: normalizeScenes(proposed.scenes, analysis, causalChain, validRefs),
+      characters,
+      scenes,
       brand_role: {
         subject: text(proposed.brand_role?.subject || analysis.source_facts?.product_or_service, 500),
         story_function: text(proposed.brand_role?.story_function || storySummary.brand_function, 700),

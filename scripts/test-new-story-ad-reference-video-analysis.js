@@ -291,6 +291,9 @@ async function main() {
   const normalizedAnimalContext = contextBuilder.normalizeReferenceVideoAnalysis({
     analysis_id: 'animal-contract',
     ...normalizedAnimalContract,
+    status: 'completed',
+    schema_version: 5,
+    analysis_quality: { ...normalizedAnimalContract.analysis_quality, valid: true, visual_evidence_complete: true },
   });
   assert.deepEqual(normalizedAnimalContext.animal_actions, animalContractFixture.animal_actions);
   assert.deepEqual(normalizedAnimalContext.animal_prompts, animalContractFixture.animal_prompts);
@@ -451,7 +454,11 @@ async function main() {
     ['山脉自然景观', '现代住宅客厅'],
     '场景自身名称不得被布局中重复的全片环境概述覆盖',
   );
-  assert.doesNotThrow(() => service._private.normalizeResult(distinctSceneInput));
+  assert.throws(
+    () => service._private.normalizeResult(distinctSceneInput),
+    /shot_breakdown_incomplete/,
+    '替换场景目录后没有同步逐镜 scene_id 时必须拒绝，不能留下悬空引用',
+  );
   assert.throws(
     () => service._private.validateAnalysisResult({
       ...productionLikeCompiled,
@@ -754,20 +761,14 @@ async function main() {
   modelGateway.generateVision = async () => { legacyModelCalls += 1; throw new Error('stored contract migration must not call vision model'); };
   try {
     process.env.NEW_STORY_AD_MOCK_LLM = '0';
-    const rebuilt = await service.rebuildStoredAnalysis(legacyAnalysisId, user);
+    await assert.rejects(
+      () => service.rebuildStoredAnalysis(legacyAnalysisId, user),
+      error => error.code === 'REFERENCE_VIDEO_ANALYSIS_SEMANTIC_INVALID'
+        && error.failures.includes('semantic_understanding_missing'),
+      '缺少真实深度语义的旧记录不得零模型伪造为 V6 完整报告',
+    );
     assert.equal(legacyModelCalls, 0, '旧证据契约升级必须保持零模型调用，避免重复付费');
-    assert.equal(rebuilt.result.source_facts.human_count, 3);
-    assert.equal(rebuilt.result.character_prompts.length, 3);
-    assert.equal(rebuilt.result.source_facts.narrative_animal_presence, false);
-    assert.equal(rebuilt.result.animal_prompts.length, 0);
-    assert.equal(rebuilt.result.reference_understanding.contract_version, 'reference-understanding-v6');
-    assert.equal(rebuilt.result.reference_understanding.completeness.story_complete, true);
-    assert.equal(rebuilt.result.reference_understanding.completeness.cause_chain_complete, true);
-    assert.ok(rebuilt.result.reference_understanding.causal_chain.every(event => event.evidence_refs.length > 0));
-    assert.equal(rebuilt.semantic_contract_migration.from, 'shot-aware-v1');
-    assert.equal(rebuilt.semantic_contract_migration.to, 'shot-aware-v2');
-    assert.equal(rebuilt.semantic_contract_migration.model_calls, 0);
-    assert.equal(service._private.hasReusableVisualEvidence(service._private.readRecord(user.id, legacyAnalysisId)), true);
+    assert.equal(service._private.readRecord(user.id, legacyAnalysisId).evidence_frames.length, familyFrames.length, '拒绝伪迁移后必须保留原始证据帧');
   } finally {
     process.env.NEW_STORY_AD_MOCK_LLM = originalMockMode;
     modelGateway.generateText = originalLegacyText;
@@ -1271,7 +1272,8 @@ async function main() {
     assert.equal(staged.evidence_coverage.complete, true);
     assert.equal(staged.evidence_coverage.covered_frame_count, 8);
     assert.ok(staged.story_outline.logline.includes('测试门窗产品'));
-    assert.strictEqual(service._private.normalizeResult(staged).analysis_quality.valid, true);
+    assert.strictEqual(service._private.normalizeResult(staged).analysis_quality.valid, false, '只有逐帧证据、没有深度语义时不得标记为完整分析');
+    const stagedEvidenceBatches = service._private.readRecord('anonymous', 'batch-analysis-test')._visual_evidence_cache.batches;
 
     const {
       shot_breakdown: omittedModelShots,
@@ -1279,6 +1281,50 @@ async function main() {
       scene_prompts: omittedModelScenes,
       ...semanticContract
     } = staged;
+    const semanticEvents = staged.shot_breakdown.map((shot, index) => ({
+      id: `event_${index + 1}`,
+      range: shot.range,
+      scene_id: shot.scene_id,
+      subject: '测试门窗产品',
+      action: shot.action,
+      motivation: '',
+      result: index === staged.shot_breakdown.length - 1 ? '完成空间体验递进' : '展示下一层产品体验',
+      caused_by: null,
+      leads_to: null,
+      evidence_refs: staged.evidence_frames.filter(frame => frame.timestamp_seconds >= shot.range[0] && frame.timestamp_seconds <= shot.range[1]).map(frame => frame.frame_id),
+      certainty: 'fact',
+    }));
+    const semanticSceneIds = [...new Set(staged.shot_breakdown.map(shot => shot.scene_id))];
+    semanticContract.reference_understanding = {
+      contract_version: 'reference-understanding-v6',
+      story_summary: {
+        narrative_mode: 'showcase_montage',
+        narrative_mode_reason: '画面以连续空间和产品体验递进为主，没有传统戏剧冲突。',
+        logline: '镜头从空间建立推进到门窗细节与使用体验，完成产品价值展示。',
+        short_synopsis: '以空间、材质和采光体验逐层展示测试门窗产品。',
+        full_synopsis: '开场建立真实空间与门窗产品的整体关系，随后通过多个有证据的镜头展示材质、采光和使用体验，最后以完整空间效果完成展示型广告收束。',
+        theme: '空间体验与产品细节共同证明使用价值。',
+        central_conflict: '', trigger: '进入产品所在空间', turning_point: '从整体空间转向使用体验', climax: '产品效果被集中展示',
+        resolution: '完整空间效果完成收束。', brand_function: '门窗产品是空间采光与体验变化的核心证明对象。', cta: '进一步了解产品方案。',
+      },
+      causal_chain: semanticEvents,
+      characters: [],
+      scenes: semanticSceneIds.map((sceneId, index) => {
+        const events = semanticEvents.filter(event => event.scene_id === sceneId);
+        return {
+          scene_id: sceneId,
+          narrative_function: index === 0 ? '建立产品与整体空间的关系' : `承载第 ${index + 1} 层产品体验证明`,
+          events: events.map(event => event.id),
+          state_change: '展示信息从整体空间推进到具体体验',
+          evidence_refs: [...new Set(events.flatMap(event => event.evidence_refs))], certainty: 'fact',
+        };
+      }),
+      brand_role: {
+        subject: '测试门窗产品', story_function: '连接空间采光、材质和使用体验', visible_claims: [], proof_moments: semanticEvents.map(event => event.id),
+        cta: '进一步了解产品方案', evidence_refs: semanticEvents.flatMap(event => event.evidence_refs).slice(0, 4), certainty: 'fact',
+      },
+      facts: [], inferences: [], unknowns: [],
+    };
 
     const mockFlagBeforeSynthesis = process.env.NEW_STORY_AD_MOCK_LLM;
     process.env.NEW_STORY_AD_MOCK_LLM = '0';
@@ -1296,8 +1342,7 @@ async function main() {
     const synthesized = await service._private.synthesizeAnalysisFromEvidence({
       id: 'reference-synthesis-test',
       source: { metadata: { duration_seconds: 8 } },
-    }, staged.visual_evidence_batches, { status: 'no_audio', text: '' });
-    process.env.NEW_STORY_AD_MOCK_LLM = mockFlagBeforeSynthesis;
+    }, stagedEvidenceBatches, { status: 'no_audio', text: '' });
     assert.match(synthesized.source_facts.product_or_service, /测试品牌|测试门窗产品/);
     assert.strictEqual(synthesisCalls, 1, 'real reference analysis must run one semantic synthesis pass after visual evidence extraction');
     const synthesisAudit = service._private.readRecord('anonymous', 'reference-synthesis-test');
@@ -1313,12 +1358,18 @@ async function main() {
         text: `\`\`\`json\n${JSON.stringify(semanticContract)}\n\`\`\``,
         used_model: 'test/stored-reference-synthesis',
       },
-    }, staged.visual_evidence_batches, { status: 'no_audio', text: '' });
+    }, stagedEvidenceBatches, { status: 'no_audio', text: '' });
     assert.strictEqual(synthesisCalls, 1, '结构校验失败恢复必须复用已保存语义结果，不得再次调用文本模型');
+    process.env.NEW_STORY_AD_MOCK_LLM = mockFlagBeforeSynthesis;
     const reusedSceneIds = new Set(reusedSynthesis.scene_prompts.map(item => item.id));
     assert.ok(reusedSynthesis.scene_prompts.length > 0);
     assert.ok(reusedSynthesis.shot_breakdown.length > 0);
     assert.ok(reusedSynthesis.shot_breakdown.every(shot => reusedSceneIds.has(shot.scene_id)));
+    assert.equal(
+      reusedSynthesis.reference_understanding?.completeness?.valid,
+      true,
+      JSON.stringify(reusedSynthesis.reference_understanding?.completeness || {}),
+    );
     assert.doesNotThrow(() => service._private.validateAnalysisResult(reusedSynthesis));
 
     const recoveryInput = path.join(tempRoot, 'rate-limit-recovery-input.mp4');

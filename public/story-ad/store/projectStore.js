@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-task-sync-v10';
-import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-task-sync-v10';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-reference-semantic-gate-v11';
+import { beginReferenceReplacement, replacementCurrent, removeProjectReference, restoreReferenceReplacement } from './referenceReplacementState.js?v=20260804-reference-semantic-gate-v11';
 
 export function createProjectStore() {
   const state = {

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-task-sync-v10';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-task-sync-v10';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-task-sync-v10';
+import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -17,6 +17,8 @@ const TAB_DEFINITIONS = [
 ];
 
 const STORY_FIELDS = [
+  ['narrative_mode', '叙事类型'],
+  ['narrative_mode_reason', '类型判断依据'],
   ['logline', '一句话故事'],
   ['short_synopsis', '故事简介'],
   ['full_synopsis', '完整故事介绍'],
@@ -93,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-task-sync-v10';
+  link.href = '/story-ad/reference-understanding.css?v=20260804-reference-semantic-gate-v11';
   document.head.appendChild(link);
 }
 
@@ -168,7 +170,12 @@ function claimCard(label, value, fallbackKind = 'fact') {
 
 function renderOverview(data) {
   const bible = object(data.story_bible);
-  const primary = STORY_FIELDS.map(([key, label]) => claimCard(label, bible[key])).filter(Boolean).join('');
+  const narrativeMode = {
+    narrative_story: '剧情叙事',
+    showcase_montage: '展示型蒙太奇（没有传统冲突剧情）',
+    unclassified: '尚未完成类型判断',
+  }[String(bible.narrative_mode || '')] || bible.narrative_mode;
+  const primary = STORY_FIELDS.map(([key, label]) => claimCard(label, key === 'narrative_mode' ? narrativeMode : bible[key])).filter(Boolean).join('');
   const inferences = list(data.inferences).map((item, index) => claimCard(`推断 ${index + 1}`, item, 'inference')).join('');
   const unknowns = list(data.unknowns).map((item, index) => claimCard(`待确认 ${index + 1}`, item, 'unknown')).join('');
   return `${primary || emptyState('尚未形成完整故事说明。')}
@@ -216,7 +223,7 @@ function renderCharacters(data) {
     const item = object(arc);
     const title = firstText(item.name, item.character_name, item.character_id, `人物 ${index + 1}`);
     const fields = [
-      ['角色', item.role], ['与其他人物的关系', item.relationship_to_others || item.relationships],
+      ['角色', item.role], ['叙事职责', item.narrative_function], ['与其他人物的关系', item.relationship_to_others || item.relationships],
       ['初始状态', item.initial_state], ['目标', item.goal], ['阻碍', item.obstacle],
       ['关键决定', item.key_decision], ['最终状态', item.final_state], ['情绪变化', item.emotional_arc],
     ];
@@ -234,7 +241,7 @@ function renderScenes(data) {
     const item = object(scene);
     const title = firstText(item.name, item.scene_name, item.scene_id, `场景 ${index + 1}`);
     const fields = [
-      ['环境', item.environment || item.description], ['场景事件', item.event || item.action],
+      ['环境', item.environment || item.description], ['场景事件', item.events || item.event || item.action],
       ['叙事作用', item.narrative_function || item.story_function], ['进入方式', item.entry || item.transition_in || item.entry_transition],
       ['离开方式', item.exit || item.transition_out || item.exit_transition], ['状态变化', item.state_change],
     ];

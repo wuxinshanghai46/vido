@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260804-reference-task-sync-v10';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-task-sync-v10';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-task-sync-v10';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-task-sync-v10';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-task-sync-v10';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-task-sync-v10';
+import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260804-reference-semantic-gate-v11';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260804-reference-semantic-gate-v11';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260804-reference-semantic-gate-v11';
 
 const GROUPS = [
   ['people', '人物'],

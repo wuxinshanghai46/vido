@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-task-sync-v10';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-task-sync-v10';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-task-sync-v10';
+import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -253,7 +253,7 @@ export async function mount(host, context) {
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-task-sync-v10');
+    const module = await import('./referenceUnderstandingView.js?v=20260804-reference-semantic-gate-v11');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

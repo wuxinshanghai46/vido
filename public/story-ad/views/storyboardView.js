@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-reference-task-sync-v10';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-task-sync-v10';
-import { confirmDialog } from '../components/dialog.js?v=20260804-reference-task-sync-v10';
+import { request } from '../api.js?v=20260804-reference-semantic-gate-v11';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260804-reference-semantic-gate-v11';
+import { confirmDialog } from '../components/dialog.js?v=20260804-reference-semantic-gate-v11';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

@@ -2170,6 +2170,9 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
   } catch (error) {
     const fallback = evidenceText.sanitizeAnalysis({
       ...evidence,
+      // 视觉证据字段可以回退，但已经返回的深度语义不能被静默丢弃后再由
+      // 时间线模板伪造成“完整故事”。后续 V6 质量门会单独审计这部分。
+      reference_understanding: model.reference_understanding,
       schema_version: Math.max(5, Number(evidence.schema_version || 0)),
     });
     validateAnalysisResult(fallback);
@@ -2209,6 +2212,8 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         '动物必须区分“真实出现”和“叙事资产”：source_facts.animal_presence 记录是否可见，source_facts.narrative_animal_presence 只在动物是持续主角、宠物、产品主体或与人物/产品发生明确互动时为 true。风景蒙太奇、远景鸟群和环境野生动物写入 ambient_animals，不得生成 animal_prompts。',
       '场景目录、逐镜结构和机位已由通过校验的逐帧证据单独编译，本阶段不要输出 scene_prompts、shot_breakdown 或 camera_intents，只整理全局故事、人物和动物语义。',
       '必须额外输出 reference_understanding，完整说明故事因果、人物状态变化、场景叙事职责、品牌职责、音画对应，并区分 fact、inference、unknown。',
+      '必须先判断 narrative_mode：有明确问题、行动和状态改变时写 narrative_story；没有传统冲突、主要靠空间/产品体验递进时写 showcase_montage。不得为了凑剧情伪造冲突，也不得把相邻镜头自动写成因果。',
+      'reference_understanding.scenes 必须按独立物理空间合并，同一空间的远景、近景、人物特写和物件特写只保留一个条目；每个事件必须且只能归属一个场景条目。',
       '任何 fact 都必须绑定实际存在的 F### 画面证据或 T### 转写证据；看不见的人物动机不得写成事实。合同必须适用于所有行业和叙事类型，禁止按行业关键词套模板。',
       '输出单个 JSON 对象，所有用户可见文本使用简体中文。',
     ].join('\n'),
@@ -2219,6 +2224,13 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         evidence: item.payload || cleanEvidenceText(item.text, 12000),
       })))}`,
       `语音转写：${cleanEvidenceText(transcript.text || '', 5000) || '无可用转写，仅依据画面'}`,
+      `逐镜索引（用于场景合并与事件映射）：${JSON.stringify((deterministic.shot_breakdown || []).map((shot, index) => ({
+        event_id: `event_${index + 1}`,
+        scene_id: shot.scene_id,
+        range: shot.range,
+        visual: shot.visual,
+        action: shot.action,
+      })))}`,
       '返回字段合同：',
       JSON.stringify({
         source_facts: {
@@ -2250,6 +2262,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         reference_understanding: {
           contract_version: 'reference-understanding-v6',
           story_summary: {
+            narrative_mode: 'narrative_story 或 showcase_montage', narrative_mode_reason: '为何属于该叙事类型',
             logline: '一句话故事', short_synopsis: '短故事简介', full_synopsis: '完整故事介绍，覆盖开端、发展、转折、高潮和结尾',
             theme: '主题', central_conflict: '核心问题或冲突', trigger: '触发事件', turning_point: '关键转折',
             climax: '高潮', resolution: '结果', brand_function: '品牌或产品在故事中的职责', cta: '行动号召',
@@ -2260,12 +2273,12 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
             leads_to: 'event_2', evidence_refs: ['F001', 'T001'], motivation_evidence_refs: [], certainty: 'fact',
           }],
           characters: [{
-            character_id: 'character_prompt_1', role: '角色', relationships: [], initial_state: '初始状态', goal: '目标',
+            character_id: 'character_prompt_1', role: '角色', narrative_function: '人物在叙事或展示递进中的具体职责', relationships: [], initial_state: '初始状态', goal: '目标',
             obstacle: '阻碍', key_decision: '关键决定', final_state: '最终状态', emotional_arc: [],
             evidence_refs: ['F001'], certainty: 'fact',
           }],
           scenes: [{
-            scene_id: 'scene_prompt_1', narrative_function: '叙事作用', entry_transition: '进入方式', events: ['event_1'],
+            scene_id: '从逐镜索引选择一个代表性 scene_id，同一物理空间只出现一次', narrative_function: '该物理空间独有的叙事作用', entry_transition: '进入方式', events: ['该空间承载的全部 event_id'],
             state_change: '发生的故事状态变化', exit_transition: '离开方式', evidence_refs: ['F001'], certainty: 'fact',
           }],
           brand_role: {
@@ -2593,7 +2606,11 @@ function normalizeResult(result = {}) {
   safe.shot_breakdown = Array.isArray(safe.shot_breakdown) ? safe.shot_breakdown.slice(0, 120) : [];
   safe.story_outline = safe.story_outline && typeof safe.story_outline === 'object' ? safe.story_outline : {};
   safe.source_facts = safe.source_facts && typeof safe.source_facts === 'object' ? safe.source_facts : {};
-  const assessment = validateAnalysisResult(safe);
+  // 先独立审计镜头证据合同。旧结果或零模型迁移可以保留已审计证据供修复，
+  // 但缺少深度语义时必须在 analysis_quality 中明确标为无效，不能再次冒充完整结果。
+  const assessment = validateAnalysisResult({ ...safe, schema_version: Math.min(5, inputSchemaVersion || 5) });
+  const semanticComplete = safe.reference_understanding?.completeness?.valid === true;
+  const semanticRequired = inputSchemaVersion >= 6;
   const generated = String(safe.generated_brief || '').trim();
   const requiredSections = ['【参考内容事实】', '【完整剧情】', '【人物提示词】', '【场景提示词】'];
   safe.generated_brief = hasReadableChinese(generated) && requiredSections.every(section => generated.includes(section))
@@ -2601,7 +2618,7 @@ function normalizeResult(result = {}) {
     : buildChineseBrief(safe);
   safe.output_language = 'zh-CN';
   const sourceSchemaVersion = Number(safe.schema_version || 0);
-  safe.schema_version = sourceSchemaVersion >= 5
+  safe.schema_version = sourceSchemaVersion >= 6 || semanticComplete
     ? 6
     : (sourceSchemaVersion >= 3 ? sourceSchemaVersion : 4);
   safe.analysis_scope = 'reference_content_and_creative_structure';
@@ -2614,8 +2631,11 @@ function normalizeResult(result = {}) {
   if (['failed_non_blocking', 'provider_not_configured'].includes(transcriptStatus)) {
     safe.warnings.push('语音转写不可用，本次剧情、字幕和行动号召仅依据画面证据识别');
   }
+  if (semanticRequired && !semanticComplete) {
+    safe.warnings.push('深度故事、人物、场景或品牌语义未通过质量校验，当前结果不可确认，也不会进入下游生成');
+  }
   safe.analysis_quality = {
-    valid: true,
+    valid: semanticRequired ? semanticComplete : true,
     source_fact_count: assessment.source_fact_count,
     story_outline_parts: 5,
     plot_beat_count: safe.plot_beats.length,
