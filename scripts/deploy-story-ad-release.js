@@ -112,6 +112,7 @@ const localHashes = Object.fromEntries(files.map(file => [
   file,
   crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'),
 ]));
+const hashSpec = Buffer.from(JSON.stringify({ files, localHashes }), 'utf8').toString('base64');
 
 function exec(command) {
   return new Promise((resolve, reject) => client.exec(command, (error, stream) => {
@@ -134,6 +135,20 @@ function parseLastJson(output) {
     try { return JSON.parse(lines[index]); } catch {}
   }
   throw new Error(`No JSON in remote output: ${lines.slice(-5).join(' | ')}`);
+}
+
+async function auditRemoteHashes() {
+  return parseLastJson(await exec([
+    `cd ${quote(remoteRoot)}`,
+    `node -e ${quote(`
+      const crypto = require('crypto');
+      const fs = require('fs');
+      const spec = JSON.parse(Buffer.from('${hashSpec}', 'base64').toString('utf8'));
+      const mismatches = spec.files.filter(file => !fs.existsSync(file)
+        || crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== spec.localHashes[file]);
+      console.log(JSON.stringify({ checked: spec.files.length, mismatches }));
+    `)}`,
+  ].join(' && ')));
 }
 
 async function releaseLock() {
@@ -216,27 +231,29 @@ client.on('ready', async () => {
     await exec(publishCommands.join(' && '));
     published = true;
 
+    const publishedHashAudit = await auditRemoteHashes();
+    if (publishedHashAudit.mismatches.length) {
+      throw new Error(`Production pre-test hash mismatch: ${publishedHashAudit.mismatches.join(', ')}`);
+    }
+
     const testOutput = await exec([
       `cd ${quote(remoteRoot)}`,
       `mkdir -p ${quote(`${backupDir}/test-outputs`)}`,
       `env OUTPUT_DIR=${quote(`${backupDir}/test-outputs`)} DB_ENABLED=0 DB_READ_PRIMARY=0 DB_DUAL_WRITE=0 DB_JSON_FALLBACK=1 npm run platform:upgrade:test`,
+    ].join(' && '));
+
+    const testedHashAudit = await auditRemoteHashes();
+    if (testedHashAudit.mismatches.length) {
+      throw new Error(`Production post-test hash mismatch: ${testedHashAudit.mismatches.join(', ')}`);
+    }
+
+    await exec([
       'pm2 reload vido --update-env >/dev/null',
       'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && curl -fsS https://vido.smsend.cn/api/health >/dev/null && exit 0; done; exit 1',
     ].join(' && '));
 
-    const hashSpec = Buffer.from(JSON.stringify({ files, localHashes }), 'utf8').toString('base64');
-    const hashAudit = parseLastJson(await exec([
-      `cd ${quote(remoteRoot)}`,
-      `node -e ${quote(`
-        const crypto = require('crypto');
-        const fs = require('fs');
-        const spec = JSON.parse(Buffer.from('${hashSpec}', 'base64').toString('utf8'));
-        const mismatches = spec.files.filter(file => !fs.existsSync(file)
-          || crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== spec.localHashes[file]);
-        console.log(JSON.stringify({ checked: spec.files.length, mismatches }));
-      `)}`,
-    ].join(' && ')));
-    if (hashAudit.mismatches.length) throw new Error(`Production hash mismatch: ${hashAudit.mismatches.join(', ')}`);
+    const hashAudit = await auditRemoteHashes();
+    if (hashAudit.mismatches.length) throw new Error(`Production post-reload hash mismatch: ${hashAudit.mismatches.join(', ')}`);
 
     const activeAfter = parseLastJson(await exec([
       `cd ${quote(remoteRoot)}`,
