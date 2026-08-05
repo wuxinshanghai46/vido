@@ -13,6 +13,31 @@ function generationTiming(task = {}, clean) {
   };
 }
 
+function semanticContractProgress(value = {}, clean, list) {
+  if (!value || typeof value !== 'object') return null;
+  const allowedContracts = ['story', 'timeline', 'cast', 'scenes', 'brand_audio'];
+  const contracts = {};
+  for (const name of allowedContracts) {
+    const state = value.contracts?.[name];
+    if (!state || typeof state !== 'object') continue;
+    contracts[name] = {
+      complete: state.complete === true,
+      status: clean(state.status, 40),
+      failures: list(state.failures).slice(0, 8).map(item => clean(item, 100)).filter(Boolean),
+    };
+  }
+  return {
+    version: clean(value.version, 80),
+    valid: value.valid === true,
+    completed: Math.max(0, Math.min(allowedContracts.length, Number(value.completed || 0) || 0)),
+    total: Math.max(0, Math.min(allowedContracts.length, Number(value.total || 0) || 0)),
+    score: Math.max(0, Math.min(100, Number(value.score || 0) || 0)),
+    active_contract: allowedContracts.includes(value.active_contract) ? value.active_contract : '',
+    missing_contracts: list(value.missing_contracts).filter(name => allowedContracts.includes(name)),
+    contracts,
+  };
+}
+
 function referenceTiming(analysis = {}, clean, list) {
   return {
     progress: Math.max(0, Math.min(100, Number(analysis.progress || 0) || 0)),
@@ -29,6 +54,7 @@ function referenceTiming(analysis = {}, clean, list) {
       remaining: Math.max(0, Number(analysis.evidence_batch_progress?.remaining || 0) || 0),
       failed: Math.max(0, Number(analysis.evidence_batch_progress?.failed || 0) || 0),
     },
+    semantic_contract_progress: semanticContractProgress(analysis.semantic_contract_progress, clean, list),
     checkpoints: list(analysis.checkpoints).slice(-12).map(item => ({
       phase: clean(item?.phase, 180),
       progress: Math.max(0, Math.min(100, Number(item?.progress || 0) || 0)),
@@ -37,4 +63,4 @@ function referenceTiming(analysis = {}, clean, list) {
   };
 }
 
-module.exports = { generationTiming, referenceTiming };
+module.exports = { generationTiming, referenceTiming, semanticContractProgress };

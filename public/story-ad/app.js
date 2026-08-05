@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260805-longform-semantic-resume-v34';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-longform-semantic-resume-v34';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-longform-semantic-resume-v34';
+import { createProjectStore } from './store/projectStore.js?v=20260805-structured-semantic-contracts-v35';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-structured-semantic-contracts-v35';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260805-longform-semantic-resume-v34'),
-  assets: () => import('./views/assetCenterView.js?v=20260805-longform-semantic-resume-v34'),
-  plot: () => import('./views/plotRoomView.js?v=20260805-longform-semantic-resume-v34'),
-  storyboard: () => import('./views/storyboardView.js?v=20260805-longform-semantic-resume-v34'),
-  shot: () => import('./views/shotDesignerView.js?v=20260805-longform-semantic-resume-v34'),
-  final: () => import('./views/finalView.js?v=20260805-longform-semantic-resume-v34'),
-  workflow: () => import('./views/workflowView.js?v=20260805-longform-semantic-resume-v34'),
+  brief: () => import('./views/briefView.js?v=20260805-structured-semantic-contracts-v35'),
+  assets: () => import('./views/assetCenterView.js?v=20260805-structured-semantic-contracts-v35'),
+  plot: () => import('./views/plotRoomView.js?v=20260805-structured-semantic-contracts-v35'),
+  storyboard: () => import('./views/storyboardView.js?v=20260805-structured-semantic-contracts-v35'),
+  shot: () => import('./views/shotDesignerView.js?v=20260805-structured-semantic-contracts-v35'),
+  final: () => import('./views/finalView.js?v=20260805-structured-semantic-contracts-v35'),
+  workflow: () => import('./views/workflowView.js?v=20260805-structured-semantic-contracts-v35'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

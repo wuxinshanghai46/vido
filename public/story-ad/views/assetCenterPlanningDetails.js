@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-longform-semantic-resume-v34';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-structured-semantic-contracts-v35';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

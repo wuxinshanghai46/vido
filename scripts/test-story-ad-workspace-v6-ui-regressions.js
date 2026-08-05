@@ -7,6 +7,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
+const timingProjection = require('../src/services/storyAdWorkspace/projectTimingProjectionService');
 
 function loadBrowserModule(file, exposed, globals = {}) {
   const source = read(file)
@@ -27,6 +28,23 @@ const mediaPreview = item => item?.media_url || item?.image_url
   ? `<img class="media" src="${escapeHtml(item.media_url || item.image_url)}">`
   : '<div class="media-placeholder"></div>';
 
+const projectedSemanticTiming = timingProjection.referenceTiming({
+  progress: 82,
+  semantic_contract_progress: {
+    version: 'reference-semantic-recovery-v1', completed: 3, total: 5, score: 65,
+    active_contract: 'cast', missing_contracts: ['cast', 'scenes', 'unknown_contract'],
+    contracts: {
+      story: { complete: true, status: 'complete', failures: [] },
+      cast: { complete: false, status: 'repairing', failures: ['character_semantics_incomplete'] },
+      scenes: { complete: false, status: 'missing', failures: ['scene_semantics_incomplete'] },
+    },
+  },
+}, (value, max) => String(value || '').slice(0, max), value => (Array.isArray(value) ? value : []));
+assert.equal(projectedSemanticTiming.semantic_contract_progress.completed, 3);
+assert.equal(projectedSemanticTiming.semantic_contract_progress.active_contract, 'cast');
+assert.deepStrictEqual(projectedSemanticTiming.semantic_contract_progress.missing_contracts, ['cast', 'scenes']);
+assert.equal(projectedSemanticTiming.semantic_contract_progress.contracts.cast.failures[0], 'character_semantics_incomplete');
+
 const assets = read('public/story-ad/views/assetCenterView.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 assert.match(assets, /reference-dossier-board/);
@@ -34,6 +52,7 @@ assert.match(assets, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const referenceProgressSource = read('public/story-ad/views/referenceProgressCard.js');
 assert.match(briefView, /<h2>启动材料<\/h2>/, '目标页必须把材料区明确限定为项目启动输入');
 assert.match(briefView, /\['reference', '参考视频'/);
 assert.match(briefView, /\['product', '商品 \/ 主体'/);
@@ -75,7 +94,7 @@ assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brie
 assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注销进度订阅');
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
-assert.match(briefView, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
+assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
 assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /mode:\s*'brief_goal'/, '广告目标帮写必须使用独立模式，不能提前生成完整剧情结构');
@@ -88,8 +107,13 @@ assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Stor
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
 assert.match(briefView, /await store\.updateRequest\(safeFormPayload\(\)\);[\s\S]*await store\.runStage\('scene-config'\);[\s\S]*view=assets/, '目标确认必须按保存最新输入、创建资产方案、进入资产中心的顺序执行');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
+const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
+  escapeHtml,
+  elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },
+});
 const briefModule = loadBrowserModule('public/story-ad/views/briefView.js', ['referenceProgress', 'referenceActionState', 'syncReferenceAction'], {
   escapeHtml,
+  renderReferenceProgress: progressModule.referenceProgress,
   elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },
   setButtonBusy() {},
   toast() {},
@@ -181,26 +205,37 @@ assert.match(failedReference, /data-reference-retry/);
 assert.match(failedReference, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-reusable', status: 'failed', visual_evidence_reusable: true,
-}), />继续补齐语义结构<\/button>/);
+}), />仅补齐缺失语义（不重读镜头）<\/button>/);
 const semanticFailureProgress = briefModule.referenceProgress({
   analysis_id: 'failed-semantic-contracts', status: 'failed', progress: 82, visual_evidence_reusable: true,
   evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
-  semantic_contract_progress: { total: 5, completed: 4 },
+  semantic_contract_progress: {
+    total: 5, completed: 4, missing_contracts: ['scenes'],
+    contracts: {
+      story: { complete: true }, timeline: { complete: true }, cast: { complete: true },
+      scenes: { complete: false, failures: ['scene_semantics_incomplete'] }, brand_audio: { complete: true },
+    },
+  },
 });
 assert.match(semanticFailureProgress, /82%/);
 assert.match(semanticFailureProgress, /镜头证据已完成 8\/8 批/);
 assert.match(semanticFailureProgress, /语义合同已完成 4\/5 项/);
+assert.match(semanticFailureProgress, /镜头证据已保留，语义整理待补齐/);
+assert.match(semanticFailureProgress, /镜头证据<\/b><small>8\/8 批已完整保留/);
+assert.match(semanticFailureProgress, /故事理解<\/b><small>已完成并保留/);
+assert.match(semanticFailureProgress, /场景与事件<\/b><small>待定向补齐/);
+assert.match(semanticFailureProgress, /不会重读图片，只补缺失语义合同/);
 assert.doesNotMatch(semanticFailureProgress, /重新读取镜头证据/);
 const completedEvidenceWithStaleFlag = briefModule.referenceProgress({
   analysis_id: 'failed-semantic-stale-flag', status: 'failed', progress: 55, visual_evidence_reusable: false,
   evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
   semantic_contract_progress: { total: 5, completed: 3, missing_contracts: ['cast', 'scenes'] },
 });
-assert.match(completedEvidenceWithStaleFlag, />继续补齐语义结构<\/button>/);
+assert.match(completedEvidenceWithStaleFlag, />仅补齐缺失语义（不重读镜头）<\/button>/);
 assert.doesNotMatch(completedEvidenceWithStaleFlag, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-semantic-reusable', status: 'failed', visual_evidence_reusable: true, semantic_result_reusable: true,
-}), /复用现有结果重新校验/);
+}), /复用已保留结果重新校验/);
 [
   ['semantic-invalid', '参考视频识别结果不完整：场景证据重复'],
   ['coverage-invalid', '逐帧镜头证据覆盖不完整'],
@@ -241,6 +276,8 @@ assert.match(briefView, /无需更换或重新上传|不需要更换或重新上
 assert.doesNotMatch(briefView, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
 assert.match(briefView, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
 assert.match(briefView, /removeEventListener\('click', handleReferenceRetry\)/, '离开页面必须注销重试事件，避免重复提交');
+assert.match(briefView, /referenceRetryPending \|\| button\.disabled/, '确认框打开与请求提交期间必须阻止重复点击');
+assert.match(briefView, /referenceRetryPending = true;[\s\S]*setButtonBusy\(button, true, '正在确认…'\)/, '防重入锁必须在打开确认框前立即生效');
 
 const projectStore = read('public/story-ad/store/projectStore.js');
 assert.match(projectStore, /function applyMutationResult\(data = \{\}\)/, '所有写接口必须先采用服务端返回的权威版本和规范化内容');
@@ -476,7 +513,13 @@ assert.match(finalView, /<details class="card generation-section generation-deta
 assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
 
 const workspaceCss = read('public/story-ad/workspace.css');
+const referenceProgressCss = read('public/story-ad/reference-progress.css');
 const platformCss = read('public/story-ad/styles.css');
+const storyAdPage = read('public/story-ad/index.html');
+assert.match(storyAdPage, /\/story-ad\/reference-progress\.css/, '合同级参考分析状态样式必须由页面入口加载');
+assert.match(referenceProgressCss, /\.reference-contract-state\.is-missing/);
+assert.match(referenceProgressCss, /var\(--amber\)/, '缺失合同必须使用平台已定义的警告主题色');
+assert.doesNotMatch(referenceProgressCss, /var\(--warning\)/, '不得引用未定义的主题变量');
 assert.match(workspaceCss, /\.final-video\s*\{[^}]*width:\s*auto;[^}]*max-width:\s*100%;[^}]*height:\s*auto;/s);
 assert.match(workspaceCss, /\.sketch-actions\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
 assert.match(workspaceCss, /\.scene-camera-media \.media[^}]*object-fit:\s*contain/s);

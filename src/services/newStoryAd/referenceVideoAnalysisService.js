@@ -19,6 +19,7 @@ const referenceUnderstanding = require('./referenceUnderstandingService');
 const entityContinuity = require('./referenceEntityContinuityService');
 const evidenceStrategy = require('./referenceEvidenceStrategyService');
 const semanticRecovery = require('./referenceSemanticRecoveryService');
+const semanticContractPrompts = require('./referenceSemanticContractPromptService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -98,6 +99,7 @@ function publicRecord(record = {}) {
     _visual_evidence_cache: privateVisualEvidence,
     _synthesis_raw: privateSynthesisRaw,
     _semantic_checkpoint: privateSemanticCheckpoint,
+    _semantic_active_contract: privateSemanticActiveContract,
     _reuse_synthesis_raw: privateReuseFlag,
     ...publicFields
   } = record || {};
@@ -107,6 +109,7 @@ function publicRecord(record = {}) {
   copy.evidence_batch_progress = evidenceBatchProgress(record);
   if (privateSemanticCheckpoint) {
     copy.semantic_contract_progress = semanticRecovery.publicProgress(privateSemanticCheckpoint);
+    copy.semantic_contract_progress.active_contract = String(privateSemanticActiveContract || '');
   }
   if (copy.status === 'cancelled') copy.progress = 0;
   if (copy.source) {
@@ -2292,23 +2295,43 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
   let semanticCheckpoint = semanticRecovery.checkpointMatches(record._semantic_checkpoint, semanticInputFingerprint)
     ? record._semantic_checkpoint
     : semanticRecovery.emptyCheckpoint(semanticInputFingerprint);
+  const persistSemanticCheckpoint = (activeContract = '') => {
+    const publicProgress = semanticRecovery.publicProgress(semanticCheckpoint);
+    const latestRecord = readRecord(record.user_id, record.id) || record;
+    return save(latestRecord, {
+      _semantic_checkpoint: semanticCheckpoint,
+      _semantic_active_contract: String(activeContract || ''),
+      progress: Math.max(Number(latestRecord.progress || 0), Math.min(95, 55 + Math.round(publicProgress.score * 0.4))),
+      phase: activeContract
+        ? `正在补齐${semanticContractPrompts.CONTRACT_LABELS[activeContract] || activeContract}语义合同`
+        : latestRecord.phase,
+    });
+  };
   const persistSemanticCandidate = ({ analysis, model = '', candidateIndex = 0 }) => {
     semanticCheckpoint = semanticRecovery.retainBestCandidate(semanticCheckpoint, {
       analysis,
       model,
       candidateIndex,
     });
-    const latestRecord = readRecord(record.user_id, record.id) || record;
-    save(latestRecord, { _semantic_checkpoint: semanticCheckpoint });
+    persistSemanticCheckpoint();
     return semanticRecovery.auditContracts(analysis);
   };
   const repairSemanticCandidate = async (candidate = {}) => {
     const candidateAudit = candidate.audit || semanticRecovery.auditContracts(candidate.result);
     if (!candidate.result || !semanticRecovery.isRepairable(candidateAudit, { minimumScore: 50 })) return null;
-    const missingContracts = semanticRecovery.missingContracts(candidateAudit);
+    const timelineMissesAuthoritativeScenes = (analysis = {}) => {
+      const requiredSceneIds = new Set((deterministic.scene_prompts || []).map(item => String(item.id || '')).filter(Boolean));
+      const eventSceneIds = new Set((analysis.reference_understanding?.causal_chain || [])
+        .map(item => String(item.scene_id || '')).filter(Boolean));
+      return requiredSceneIds.size > 0 && [...requiredSceneIds].some(sceneId => !eventSceneIds.has(sceneId));
+    };
+    let workingAnalysis = referenceUnderstanding.enrichAnalysis(
+      mergeAnalysisWithEvidence(deterministic, semanticRecovery.compositeDraft(semanticCheckpoint)),
+      { visualEvidence, transcript },
+    );
     try {
       const deterministicRepair = referenceUnderstanding.enrichAnalysis(
-        mergeAnalysisWithEvidence(deterministic, candidate.result),
+        mergeAnalysisWithEvidence(deterministic, workingAnalysis),
         { visualEvidence, transcript },
       );
       validateAnalysisResult(deterministicRepair);
@@ -2317,83 +2340,111 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     } catch {
       // Some missing contracts require semantic interpretation. Repair only their owned fields.
     }
-    let repairedCandidate = null;
-    const repairResponse = await modelGateway.generateText({
-      taskId: record.id,
-      stage,
-      systemPrompt: [
-        '你是参考视频语义合同修复员。只补指定的缺失合同，不改写已经通过的合同。',
-        '所有事实必须引用输入中已有 F### 或 T### 证据；不得新增人物、动物、商品、场景或行业模板。',
-        '只返回 JSON 补丁。reference_understanding 内只允许出现本次缺失合同拥有的字段。',
-      ].join('\n'),
-      userPrompt: [
-        `缺失合同：${missingContracts.join('、')}`,
-        `权威场景与逐镜索引：${JSON.stringify({
-          scene_prompts: deterministic.scene_prompts || [],
-          shot_breakdown: deterministic.shot_breakdown || [],
-          source_facts: deterministic.source_facts || {},
-          character_prompts: deterministic.character_prompts || [],
-          animal_prompts: deterministic.animal_prompts || [],
-        })}`,
-        `已通过并必须保持不变的最佳草稿：${JSON.stringify(semanticRecovery.extractSemanticDraft(candidate.result))}`,
-        '字段归属：story=summary/story_outline/reference_understanding.story_summary；timeline=plot_beats/causal_chain/facts/inferences/unknowns；cast=characters及人物动物提示与动作；scenes=reference_understanding.scenes；brand_audio=brand_role/audio_visual/subtitle_cta。',
-      ].join('\n'),
-      maxTokens: 4200,
-      temperature: 0.05,
-      timeoutMs: 120000,
-      maxCandidates: 2,
-      validateText: async (text, meta = {}) => {
-        assertCandidateAnalysisText(text);
-        const patch = await jsonRepair.parseOrRepair({
-          raw: text,
-          expected: 'object',
-          modelGateway,
+    const repairQueue = semanticContractPrompts.CONTRACT_ORDER
+      .filter(contract => semanticRecovery.missingContracts(candidateAudit).includes(contract));
+    if (repairQueue.includes('scenes') && !repairQueue.includes('timeline')
+      && timelineMissesAuthoritativeScenes(workingAnalysis)) {
+      repairQueue.splice(repairQueue.indexOf('scenes'), 0, 'timeline');
+    }
+    for (const contract of repairQueue) {
+      const currentAudit = semanticRecovery.auditContracts(workingAnalysis);
+      const dependencyRepair = contract === 'timeline' && timelineMissesAuthoritativeScenes(workingAnalysis);
+      if (currentAudit.contracts?.[contract]?.complete === true && !dependencyRepair) continue;
+      const acceptedDraft = semanticRecovery.compositeDraft({
+        ...semanticCheckpoint,
+        best_candidate: null,
+        contract_candidates: { ...semanticCheckpoint.contract_candidates, [contract]: null },
+      });
+      const semanticEvidenceFrames = visualEvidence.flatMap(batch => (
+        Array.isArray(batch?.payload?.frames) ? batch.payload.frames : []
+      ));
+      const prompts = semanticContractPrompts.buildRepairPrompts({
+        contract,
+        deterministic: { ...deterministic, transcript, evidence_frames: semanticEvidenceFrames },
+        acceptedDraft,
+      });
+      let acceptedCandidate = null;
+      persistSemanticCheckpoint(contract);
+      try {
+        const repairResponse = await modelGateway.generateText({
           taskId: record.id,
-          stage: 'new_story_ad.json_repair',
+          stage,
+          systemPrompt: prompts.systemPrompt,
+          userPrompt: prompts.userPrompt,
+          structuredOutput: prompts.structuredOutput,
+          maxTokens: 4200,
+          temperature: 0.05,
+          timeoutMs: 120000,
+          stageBudgetMs: 180000,
+          maxCandidates: 3,
+          validateText: async (text, meta = {}) => {
+            const patch = meta.parsed_json || jsonRepair.parseJson(text, 'object');
+            const ownedMerge = semanticRecovery.mergeContractPatch(workingAnalysis, patch, [contract]);
+            const normalized = referenceUnderstanding.enrichAnalysis(
+              mergeAnalysisWithEvidence(deterministic, ownedMerge),
+              { visualEvidence, transcript },
+            );
+            const audit = persistSemanticCandidate({
+              analysis: normalized,
+              model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
+              candidateIndex: meta.candidate_index,
+            });
+            if (audit.contracts?.[contract]?.complete === true) {
+              acceptedCandidate = normalized;
+              return true;
+            }
+            const invalid = new Error(`定向语义修复仍缺少合同：${contract}`);
+            invalid.code = 'PROVIDER_RESPONSE_INVALID';
+            invalid.retryable = true;
+            invalid.response_diagnostics = {
+              contract,
+              semantic_failures: audit.contracts?.[contract]?.failures?.slice(0, 20) || [],
+            };
+            throw invalid;
+          },
         });
-        const ownedMerge = semanticRecovery.mergeContractPatch(candidate.result, patch, missingContracts);
-        const normalized = referenceUnderstanding.enrichAnalysis(
-          mergeAnalysisWithEvidence(deterministic, ownedMerge),
-          { visualEvidence, transcript },
-        );
-        persistSemanticCandidate({
-          analysis: normalized,
-          model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
-          candidateIndex: meta.candidate_index,
-        });
-        try {
-          validateAnalysisResult(normalized);
-          repairedCandidate = normalized;
-          return true;
-        } catch (error) {
-          const invalid = new Error(`定向语义修复仍缺少合同：${semanticRecovery.missingContracts(semanticRecovery.auditContracts(normalized)).join('、')}`);
-          invalid.code = 'PROVIDER_RESPONSE_INVALID';
-          invalid.retryable = true;
-          invalid.response_diagnostics = {
-            semantic_failures: Array.isArray(error.failures) ? error.failures.slice(0, 20) : [],
-          };
-          throw invalid;
+        for (const [index, failure] of (repairResponse.failed_models || []).entries()) {
+          semanticCheckpoint = semanticRecovery.recordAttempt(semanticCheckpoint, {
+            model: `${failure.provider_id || ''}/${failure.model_id || ''}`.replace(/^\/$/, ''),
+            candidateIndex: index,
+            rawText: JSON.stringify(failure.response_diagnostics || {}),
+            status: 'failed',
+            errorCode: failure.code,
+            errorMessage: failure.message,
+            failures: [contract],
+          });
         }
-      },
-    });
-    if (!repairedCandidate) return null;
-    const latestRecord = readRecord(record.user_id, record.id) || record;
-    save(latestRecord, {
-      _synthesis_raw: {
-        contract_version: EVIDENCE_CONTRACT_VERSION,
-        text: String(repairResponse.text || '').slice(0, 50000),
-        used_model: String(repairResponse.used_model || ''),
-        response_length: String(repairResponse.text || '').length,
-        saved_at: now(),
-        repair_contracts: missingContracts,
-      },
-    });
-    return repairedCandidate;
+        persistSemanticCheckpoint(contract);
+      } catch (error) {
+        for (const [index, failure] of (error.failed_models || []).entries()) {
+          semanticCheckpoint = semanticRecovery.recordAttempt(semanticCheckpoint, {
+            model: `${failure.provider_id || ''}/${failure.model_id || ''}`.replace(/^\/$/, ''),
+            candidateIndex: index,
+            rawText: JSON.stringify(failure.response_diagnostics || {}),
+            status: 'failed',
+            errorCode: failure.code || error.code,
+            errorMessage: failure.message || error.message,
+            failures: [contract],
+          });
+        }
+        persistSemanticCheckpoint('');
+        throw error;
+      }
+      if (!acceptedCandidate) return null;
+      workingAnalysis = referenceUnderstanding.enrichAnalysis(
+        mergeAnalysisWithEvidence(deterministic, semanticRecovery.compositeDraft(semanticCheckpoint)),
+        { visualEvidence, transcript },
+      );
+    }
+    validateAnalysisResult(workingAnalysis);
+    persistSemanticCheckpoint('');
+    return workingAnalysis;
   };
   if (semanticCheckpoint.best_candidate?.draft) {
+    const resumedDraft = semanticRecovery.compositeDraft(semanticCheckpoint);
     try {
       const resumed = referenceUnderstanding.enrichAnalysis(
-        mergeAnalysisWithEvidence(deterministic, semanticCheckpoint.best_candidate.draft),
+        mergeAnalysisWithEvidence(deterministic, resumedDraft),
         { visualEvidence, transcript },
       );
       validateAnalysisResult(resumed);
@@ -2402,7 +2453,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
       return resumed;
     } catch {
       const resumed = referenceUnderstanding.enrichAnalysis(
-        mergeAnalysisWithEvidence(deterministic, semanticCheckpoint.best_candidate.draft),
+        mergeAnalysisWithEvidence(deterministic, resumedDraft),
         { visualEvidence, transcript },
       );
       const repaired = await repairSemanticCandidate({
@@ -2552,20 +2603,20 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         prompt_suggestions: ['后续生成建议'],
       }),
     ].join('\n'),
+    structuredOutput: { mode: 'json_object', name: 'reference_full_semantic' },
     maxTokens: 6000,
     temperature: 0.1,
     timeoutMs: 120000,
     validateText: async (text, meta = {}) => {
-      assertCandidateAnalysisText(text);
       let mergedCandidate = null;
       try {
-        const parsedCandidate = await jsonRepair.parseOrRepair({
-          raw: text,
-          expected: 'object',
-          modelGateway,
-          taskId: record.id,
-          stage: 'new_story_ad.json_repair',
-        });
+        const parsedCandidate = meta.parsed_json || await jsonRepair.parseOrRepair({
+            raw: text,
+            expected: 'object',
+            modelGateway,
+            taskId: record.id,
+            stage: 'new_story_ad.json_repair',
+          });
         mergedCandidate = referenceUnderstanding.enrichAnalysis(
           mergeAnalysisWithEvidence(deterministic, parsedCandidate),
           { visualEvidence, transcript },

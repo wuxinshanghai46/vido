@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
-import { confirmDialog } from '../components/dialog.js?v=20260805-longform-semantic-resume-v34';
+import { request } from '../api.js?v=20260805-structured-semantic-contracts-v35';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { confirmDialog } from '../components/dialog.js?v=20260805-structured-semantic-contracts-v35';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

@@ -6,6 +6,7 @@ const providerAdapters = require('./providerAdapterRegistry');
 const cancellation = require('./cancellationContext');
 const publicReferences = require('./publicReferenceService');
 const localVisionReferences = require('./localVisionReferenceService');
+const jsonRepair = require('./jsonRepairService');
 
 const TEXT_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES) || 3));
 const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STORY_AD_VISION_MAX_CANDIDATES) || 5));
@@ -419,6 +420,39 @@ function classifyError(error) {
   return { code: 'UNKNOWN', retryable: false };
 }
 
+function parseStructuredJson(text = '', request = null, adapterMeta = null) {
+  const normalized = providerAdapters.normalizeStructuredOutput(request);
+  if (!normalized) return { parsed: null, diagnostics: null };
+  const raw = String(text || '').trim();
+  try {
+    // Deterministic local parsing accepts fenced JSON, explanatory prefixes,
+    // balanced JSON blocks and harmless truncation/trailing commas. This runs
+    // before any extra model repair, so a provider's useful JSON is not billed
+    // for twice merely because it added prose around the object.
+    const parsed = jsonRepair.parseJson(raw, 'object');
+    if (normalized.mode === 'json_object' && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
+      throw new Error('Structured output root must be a JSON object');
+    }
+    return { parsed, diagnostics: null };
+  } catch (error) {
+    const diagnostics = {
+      kind: 'structured_output_response',
+      requested_mode: normalized.mode,
+      applied_mode: adapterMeta?.applied_mode || '',
+      native: adapterMeta?.native === true,
+      degraded: adapterMeta?.degraded === true,
+      parse_error: String(error.message || error).slice(0, 240),
+      response_length: raw.length,
+      response_excerpt: raw.slice(0, 300),
+    };
+    const invalid = new Error(`Structured output was not valid JSON: ${diagnostics.parse_error}`);
+    invalid.code = 'PROVIDER_RESPONSE_INVALID';
+    invalid.retryable = true;
+    invalid.response_diagnostics = diagnostics;
+    throw invalid;
+  }
+}
+
 async function generateText({
   taskId = '',
   stage,
@@ -431,13 +465,18 @@ async function generateText({
   maxCandidates = TEXT_MAX_CANDIDATES,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
   validateText = null,
+  structuredOutput = null,
   _candidateModels = null,
+  _generateText = null,
 } = {}) {
   if (!stage) throw new Error('剧情广告模型调用缺少阶段标识。');
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     const text = mockResponse(stage, userPrompt);
+    const structured = parseStructuredJson(text, structuredOutput, { applied_mode: 'mock', native: false, degraded: false });
     return {
       text,
+      parsed_json: structured.parsed,
+      structured_output: structuredOutput ? { requested_mode: providerAdapters.normalizeStructuredOutput(structuredOutput)?.mode || '', applied_mode: 'mock', native: false, degraded: false } : null,
       used_model: 'mock/new-story-ad',
       fallback_used: false,
       failed_models: [],
@@ -460,7 +499,7 @@ async function generateText({
     const model = attemptCandidates[i];
     const start = Date.now();
     try {
-      const result = await providerAdapters.generateText({
+      const result = await (typeof _generateText === 'function' ? _generateText : providerAdapters.generateText)({
         model: { ...model, _stageId: stage },
         stage,
         taskId,
@@ -470,13 +509,17 @@ async function generateText({
         temperature,
         timeoutMs,
         signal: cancellation.signal(),
+        structuredOutput,
       });
       cancellation.throwIfCancelled(taskId);
       const text = result.text;
+      const structured = parseStructuredJson(text, structuredOutput, result.structured_output);
       if (typeof validateText === 'function') {
         const validation = await validateText(text, {
           model,
           result,
+          parsed_json: structured.parsed,
+          structured_output: result.structured_output || null,
           candidate_index: i,
         });
         if (validation === false) {
@@ -498,9 +541,14 @@ async function generateText({
         status: 'success',
         latency_ms: latency,
         fallback_rank: i + 1,
+        provider_reason: result.structured_output
+          ? `structured_output:${result.structured_output.requested_mode}->${result.structured_output.applied_mode}`
+          : '',
       });
       return {
         text,
+        parsed_json: structured.parsed,
+        structured_output: result.structured_output || null,
         used_model: `${model.provider_id}/${model.model_id}`,
         fallback_used: i > 0,
         failed_models: failed,
@@ -528,6 +576,9 @@ async function generateText({
         status: 'failed',
         error_code: classified.code,
         error_message: String(err.message || err).slice(0, 500),
+        provider_reason: err.response_diagnostics?.kind
+          ? `${err.response_diagnostics.kind}:${err.response_diagnostics.requested_mode || ''}->${err.response_diagnostics.applied_mode || ''}`
+          : '',
         latency_ms: latency,
         fallback_rank: i + 1,
       });
@@ -824,6 +875,7 @@ module.exports = {
   generateText,
   generateVision,
   visionAttemptTimeoutForBudget,
+  parseStructuredJson,
   classifyError,
   isConfiguredAndUsable,
   recordHealth,

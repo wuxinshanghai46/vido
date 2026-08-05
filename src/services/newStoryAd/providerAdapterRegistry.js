@@ -5,6 +5,7 @@ const { loadSettings } = require('../settingsService');
 const cancellation = require('./cancellationContext');
 
 const DEYUNAI_C35_VENDOR = String(process.env.DEYUNAI_C35_VENDOR || '').trim();
+const STRUCTURED_OUTPUT_MODES = new Set(['json_schema', 'json_object']);
 
 function providerMatches(provider = {}, providerId = '') {
   const target = String(providerId || '').trim().toLowerCase();
@@ -61,6 +62,132 @@ function isGpt5FamilyModel(modelId = '') {
   return /^gpt-5(?:[.\-\s]|$)/i.test(String(modelId || '').trim());
 }
 
+function normalizeStructuredOutput(value = null) {
+  if (!value) return null;
+  const input = value === true ? { mode: 'json_object' } : value;
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null;
+  const embedded = input.json_schema && typeof input.json_schema === 'object' ? input.json_schema : {};
+  const schema = input.schema || embedded.schema || null;
+  let mode = String(input.mode || input.type || (schema ? 'json_schema' : 'json_object')).trim().toLowerCase();
+  if (mode === 'auto') mode = schema ? 'json_schema' : 'json_object';
+  if (!STRUCTURED_OUTPUT_MODES.has(mode)) return null;
+  if (mode === 'json_schema' && (!schema || typeof schema !== 'object' || Array.isArray(schema))) {
+    mode = 'json_object';
+  }
+  const rawName = String(input.name || embedded.name || 'structured_response').trim();
+  const name = (rawName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'structured_response').slice(0, 64);
+  return {
+    mode,
+    name,
+    schema: mode === 'json_schema' ? schema : null,
+    strict: input.strict !== false && embedded.strict !== false,
+  };
+}
+
+function modesFromCapabilityDeclaration(value) {
+  if (value === true) return ['json_schema', 'json_object'];
+  if (!value || value === false) return [];
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(item => String(item || '').toLowerCase()).filter(item => STRUCTURED_OUTPUT_MODES.has(item)))];
+  }
+  if (typeof value === 'string') {
+    return modesFromCapabilityDeclaration(value.split(/[\s,|]+/));
+  }
+  if (typeof value === 'object') {
+    const nested = value.modes || value.types || value.response_formats;
+    if (nested) return modesFromCapabilityDeclaration(nested);
+    return ['json_schema', 'json_object'].filter(mode => value[mode] === true || value[mode]?.enabled === true);
+  }
+  return [];
+}
+
+function declaredStructuredOutputModes(config = {}) {
+  const declarations = [
+    config.providerModel?.capabilities?.structured_output,
+    config.providerModel?.capabilities?.structured_outputs,
+    config.providerModel?.structured_output,
+    config.providerModel?.response_formats,
+    config.provider?.capabilities?.structured_output,
+    config.provider?.capabilities?.structured_outputs,
+    config.provider?.adapter_config?.structured_output,
+    config.provider?.structured_output,
+  ];
+  for (const declaration of declarations) {
+    if (declaration !== undefined) return modesFromCapabilityDeclaration(declaration);
+  }
+  const explicitFlags = {
+    json_schema: config.providerModel?.supports_json_schema ?? config.provider?.supports_json_schema,
+    json_object: config.providerModel?.supports_json_object ?? config.provider?.supports_json_object,
+  };
+  if (Object.values(explicitFlags).some(value => value !== undefined)) {
+    return Object.entries(explicitFlags).filter(([, value]) => value === true).map(([mode]) => mode);
+  }
+  const officialOpenAI = /(?:^|\b)openai(?:\b|$)/i.test(String(config.providerId || ''))
+    && (!config.baseURL || /api\.openai\.com/i.test(String(config.baseURL)));
+  if (officialOpenAI && /^(?:gpt-4o|gpt-4\.1|gpt-5|o[1-9])(?:[.\-]|$)/i.test(String(config.modelId || ''))) {
+    return ['json_schema', 'json_object'];
+  }
+  const deyunGeminiCompatible = (config.family?.includes('deyunai') || /deyunai|漫路/i.test(String(config.providerId || '')))
+    && /^gemini-/i.test(String(config.modelId || ''));
+  if (deyunGeminiCompatible) return ['json_object'];
+  return [];
+}
+
+function structuredOutputPlan(config = {}, request = null) {
+  const normalized = normalizeStructuredOutput(request);
+  if (!normalized) return { request: null, modes: ['prompt'], supported_modes: [] };
+  const supported = declaredStructuredOutputModes(config);
+  const modes = [];
+  if (normalized.mode === 'json_schema' && supported.includes('json_schema')) modes.push('json_schema');
+  if (supported.includes('json_object')
+    && (normalized.mode === 'json_object' || normalized.schema?.type === 'object' || !normalized.schema?.type)) {
+    modes.push('json_object');
+  }
+  modes.push('prompt');
+  return { request: normalized, modes: [...new Set(modes)], supported_modes: supported };
+}
+
+function structuredPrompt(systemPrompt = '', request = null, { includeSchema = true } = {}) {
+  const normalized = normalizeStructuredOutput(request);
+  if (!normalized) return String(systemPrompt || '');
+  const schemaInstruction = normalized.schema && includeSchema
+    ? ` The JSON must conform to this schema: ${JSON.stringify(normalized.schema)}`
+    : (normalized.mode === 'json_object' ? ' The root value must be a JSON object.' : ' Follow the supplied JSON schema exactly.');
+  return `${String(systemPrompt || '').trim()}\n\nReturn JSON only: one valid JSON value, with no markdown fence, commentary, or text before or after it.${schemaInstruction}`.trim();
+}
+
+function structuredResponseFormat(request = null, mode = 'prompt') {
+  const normalized = normalizeStructuredOutput(request);
+  if (!normalized || mode === 'prompt') return null;
+  if (mode === 'json_schema') {
+    return {
+      type: 'json_schema',
+      json_schema: {
+        name: normalized.name,
+        strict: normalized.strict,
+        schema: normalized.schema,
+      },
+    };
+  }
+  if (mode === 'json_object') return { type: 'json_object' };
+  return null;
+}
+
+function providerStatus(error = {}) {
+  return Number(error.status || error.statusCode || error.response?.status || error.response?.statusCode || 0) || 0;
+}
+
+function isStructuredOutputUnsupportedError(error, mode = '') {
+  if (!STRUCTURED_OUTPUT_MODES.has(mode) || providerStatus(error) !== 400) return false;
+  const message = [
+    error?.message,
+    error?.response?.data?.error?.message,
+    error?.response?.data?.message,
+  ].filter(Boolean).join(' ');
+  return /response[_\s-]?format|json[_\s-]?schema|json[_\s-]?object|structured[_\s-]?output/i.test(message)
+    && /not\s+support|unsupported|unknown|unrecognized|invalid|not\s+allowed|does\s+not\s+support/i.test(message);
+}
+
 function deyunaiVendorHeader(config = {}) {
   const vendor = String(config.vendor || DEYUNAI_C35_VENDOR || '').trim();
   if (!vendor || vendor === 'API_VENDOR') return '';
@@ -73,6 +200,7 @@ function textFromCompletion(completion) {
   if (Array.isArray(content)) {
     return content.map(part => typeof part === 'string' ? part : (part?.text || '')).filter(Boolean).join('\n').trim();
   }
+  if (content && typeof content === 'object') return JSON.stringify(content);
   return String(content || '').trim();
 }
 
@@ -213,19 +341,62 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   }
   if (Object.keys(headers).length) sdkOpts.defaultHeaders = headers;
 
-  const client = new OpenAI(sdkOpts);
+  const client = opts._client || new OpenAI(sdkOpts);
   const maxTokenValue = Math.max(1024, Math.min(32000, Number(opts.maxTokens) || 4096));
-  const buildPayload = (tokenLimit) => ({
-    model: config.modelId,
-    messages: Array.isArray(opts.messages) && opts.messages.length ? opts.messages : [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    ...(isGpt5FamilyModel(config.modelId)
-      ? { max_completion_tokens: tokenLimit }
-      : { max_tokens: tokenLimit }),
-  });
-  let completion = await client.chat.completions.create(buildPayload(maxTokenValue), { signal: opts.signal });
+  const plan = structuredOutputPlan(config, opts.structuredOutput);
+  const structuredAttempts = [];
+  const buildPayload = (tokenLimit, mode = 'prompt') => {
+    const responseFormat = structuredResponseFormat(plan.request, mode);
+    const effectiveSystemPrompt = plan.request
+      ? structuredPrompt(systemPrompt, plan.request, { includeSchema: mode === 'prompt' })
+      : systemPrompt;
+    return {
+      model: config.modelId,
+      messages: Array.isArray(opts.messages) && opts.messages.length ? opts.messages.map((message, index) => (
+        index === 0 && message?.role === 'system' && plan.request
+          ? { ...message, content: structuredPrompt(message.content, plan.request, { includeSchema: mode === 'prompt' }) }
+          : message
+      )) : [
+        { role: 'system', content: effectiveSystemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      ...(isGpt5FamilyModel(config.modelId)
+        ? { max_completion_tokens: tokenLimit }
+        : { max_tokens: tokenLimit }),
+      ...(!isGpt5FamilyModel(config.modelId) && Number.isFinite(Number(opts.temperature))
+        ? { temperature: Math.max(0, Math.min(2, Number(opts.temperature))) }
+        : {}),
+      ...(responseFormat ? { response_format: responseFormat } : {}),
+    };
+  };
+  let completion;
+  let appliedMode = 'prompt';
+  for (let index = 0; index < plan.modes.length; index += 1) {
+    const mode = plan.modes[index];
+    try {
+      completion = await client.chat.completions.create(buildPayload(maxTokenValue, mode), { signal: opts.signal });
+      appliedMode = mode;
+      structuredAttempts.push({ mode, status: 'success' });
+      break;
+    } catch (error) {
+      const unsupported = isStructuredOutputUnsupportedError(error, mode);
+      structuredAttempts.push({
+        mode,
+        status: 'failed',
+        provider_status: providerStatus(error),
+        code: unsupported ? 'STRUCTURED_OUTPUT_UNSUPPORTED' : String(error?.code || 'PROVIDER_REQUEST_FAILED'),
+        message: String(error?.message || error).slice(0, 240),
+      });
+      if (unsupported && index < plan.modes.length - 1) continue;
+      error.response_diagnostics = {
+        ...(error.response_diagnostics || {}),
+        kind: 'structured_output_request',
+        requested_mode: plan.request?.mode || '',
+        attempts: structuredAttempts,
+      };
+      throw error;
+    }
+  }
   if (typeof completion === 'string') {
     try { completion = JSON.parse(completion); } catch (_) {}
   }
@@ -233,7 +404,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   if ((!completion?.choices?.length || !text) && reasoningBudgetExhausted(completion, maxTokenValue)) {
     const retryTokenValue = Math.min(32000, Math.max(maxTokenValue + 6000, Math.ceil(maxTokenValue * 2)));
     if (retryTokenValue > maxTokenValue) {
-      completion = await client.chat.completions.create(buildPayload(retryTokenValue), { signal: opts.signal });
+      completion = await client.chat.completions.create(buildPayload(retryTokenValue, appliedMode), { signal: opts.signal });
       if (typeof completion === 'string') {
         try { completion = JSON.parse(completion); } catch (_) {}
       }
@@ -247,18 +418,32 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
     error.retryable = true;
     throw error;
   }
-  return { text, usage: completion.usage || {} };
+  return {
+    text,
+    usage: completion.usage || {},
+    structured_output: plan.request ? {
+      requested_mode: plan.request.mode,
+      applied_mode: appliedMode,
+      native: appliedMode !== 'prompt',
+      degraded: appliedMode !== plan.request.mode,
+      supported_modes: plan.supported_modes,
+      attempts: structuredAttempts,
+    } : null,
+  };
 }
 
-async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000, signal = cancellation.signal() } = {}) {
+async function generateText({ model, systemPrompt, userPrompt, messages = null, maxTokens = 4096, temperature = 0.3, timeoutMs = 90000, signal = cancellation.signal(), structuredOutput = null, _client = null } = {}) {
   const config = resolveTextAdapter(model);
+  const effectiveSystemPrompt = structuredOutput ? structuredPrompt(systemPrompt, structuredOutput) : systemPrompt;
   let result;
   if (config.family.includes('anthropic') || config.providerId === 'anthropic') {
-    result = await callAnthropicMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
+    result = await callAnthropicMessages(config, effectiveSystemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
   } else if ((config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) && /^claude-/i.test(config.modelId)) {
-    result = await callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
+    result = await callDeyunaiClaudeMessages(config, effectiveSystemPrompt, userPrompt, { maxTokens, temperature, timeoutMs, signal });
   } else {
-    result = await callOpenAICompatible(config, systemPrompt, userPrompt, { messages, maxTokens, temperature, timeoutMs, signal });
+    result = await callOpenAICompatible(config, systemPrompt, userPrompt, {
+      messages, maxTokens, temperature, timeoutMs, signal, structuredOutput, _client,
+    });
   }
   return {
     text: result.text,
@@ -267,10 +452,25 @@ async function generateText({ model, systemPrompt, userPrompt, messages = null, 
     family: config.family,
     provider_id: config.providerId,
     model_id: config.modelId,
+    structured_output: result.structured_output || (structuredOutput ? {
+      requested_mode: normalizeStructuredOutput(structuredOutput)?.mode || '',
+      applied_mode: 'prompt',
+      native: false,
+      degraded: true,
+      supported_modes: [],
+      attempts: [{ mode: 'prompt', status: 'success' }],
+    } : null),
   };
 }
 
 module.exports = {
   resolveTextAdapter,
+  normalizeStructuredOutput,
+  declaredStructuredOutputModes,
+  structuredOutputPlan,
+  structuredPrompt,
+  structuredResponseFormat,
+  isStructuredOutputUnsupportedError,
+  callOpenAICompatible,
   generateText,
 };

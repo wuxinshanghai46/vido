@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { escapeHtml } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

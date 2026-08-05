@@ -17,6 +17,8 @@ const sceneAudit = recovery.auditContracts(sceneOnlyFailures);
 assert.equal(sceneAudit.score, 80);
 assert.deepStrictEqual(recovery.missingContracts(sceneAudit), ['scenes']);
 assert.equal(recovery.isRepairable(sceneAudit), true);
+assert.deepStrictEqual(recovery.missingContracts(recovery.auditContracts({})), ['story', 'timeline', 'cast', 'scenes', 'brand_audio'],
+  '缺少 completeness 的空对象不能被误判为五类合同全部完成');
 
 const productionScore65Audit = recovery.auditContracts({
   reference_understanding: {
@@ -87,6 +89,116 @@ assert.equal(recovery.checkpointMatches(checkpoint, recovery.fingerprint({ evide
 assert.deepStrictEqual(recovery.publicProgress(checkpoint).missing_contracts, ['scenes']);
 assert.equal(Object.prototype.hasOwnProperty.call(recovery.publicProgress(checkpoint), 'best_candidate'), false);
 
+// Equivalent production fixture: Flash returned a useful semantic candidate but
+// omitted cast and scene contracts. A later Pro response was not JSON. The
+// useful contracts and their owned fields must survive independently.
+const flashMissingCastScenes = {
+  summary: '人物完成一次可见体验并形成结果。',
+  story_outline: { opening: '人物进入', development: '开始体验', resolution: '结果出现' },
+  plot_beats: [{ index: 1, event: '进入' }, { index: 2, event: '完成体验' }],
+  character_prompts: [],
+  character_actions: [],
+  reference_understanding: {
+    completeness: {
+      valid: false,
+      failures: ['character_semantics_incomplete', 'scene_semantics_incomplete'],
+    },
+    story_summary: { full_synopsis: '人物进入当前任务空间，完成体验并得到可见结果。' },
+    causal_chain: [{ id: 'event_1', evidence_refs: ['F001'] }],
+    facts: [{ content: '体验结果可见', evidence_refs: ['F002'] }],
+    inferences: [],
+    unknowns: [],
+    brand_role: { story_function: '提供完成体验所需的主体' },
+    audio_visual: { rhythm: '按可见事件推进' },
+  },
+};
+let providerCheckpoint = recovery.emptyCheckpoint(recovery.fingerprint({ frames: ['F001', 'F002'] }));
+providerCheckpoint = recovery.retainBestCandidate(providerCheckpoint, {
+  analysis: flashMissingCastScenes,
+  model: 'deyunai/gemini-2.5-flash',
+  candidateIndex: 0,
+  savedAt: '2026-08-05T11:00:00.000Z',
+});
+assert.deepStrictEqual(recovery.publicProgress(providerCheckpoint).missing_contracts, ['cast', 'scenes']);
+assert.equal(recovery.publicProgress(providerCheckpoint).score, 65);
+const flashBestDigest = providerCheckpoint.best_candidate.digest;
+providerCheckpoint = recovery.recordAttempt(providerCheckpoint, {
+  model: 'deyunai/gemini-2.5-pro',
+  candidateIndex: 1,
+  rawText: 'upstream returned a non-json response',
+  status: 'invalid_json',
+  errorCode: 'PROVIDER_RESPONSE_INVALID',
+  errorMessage: '模型响应不是 JSON',
+  savedAt: '2026-08-05T11:00:01.000Z',
+});
+const afterFirstInvalid = JSON.stringify(providerCheckpoint);
+providerCheckpoint = recovery.recordAttempt(providerCheckpoint, {
+  model: 'deyunai/gemini-2.5-pro',
+  candidateIndex: 1,
+  rawText: 'upstream returned a non-json response',
+  status: 'invalid_json',
+  errorCode: 'PROVIDER_RESPONSE_INVALID',
+  errorMessage: '模型响应不是 JSON',
+  savedAt: '2026-08-05T11:00:02.000Z',
+});
+assert.equal(JSON.stringify(providerCheckpoint), afterFirstInvalid, '同一非 JSON 响应重放必须幂等，不得重复扩张 checkpoint');
+assert.equal(providerCheckpoint.best_candidate.digest, flashBestDigest, 'Pro 非 JSON 不得覆盖 Flash 的最佳草稿');
+assert.ok(!JSON.stringify(providerCheckpoint).includes('upstream returned a non-json response'), '失败原文不得进入持久化 checkpoint');
+
+const maliciousCastScenePatch = {
+  summary: '试图覆盖已通过故事',
+  plot_beats: [{ index: 99, event: '试图覆盖已通过时间线' }],
+  subtitle_cta: '试图覆盖已通过品牌音频',
+  character_prompts: [{ id: 'person_1', role: '当前证据中的人物' }],
+  character_actions: [{ character_id: 'person_1', action: '完成可见动作', evidence_refs: ['F001'] }],
+  reference_understanding: {
+    story_summary: { full_synopsis: '不应写入' },
+    causal_chain: [{ id: 'event_bad' }],
+    characters: [{ id: 'person_1', evidence_refs: ['F001'] }],
+    scenes: [{ scene_id: 'scene_1', events: ['event_1'], evidence_refs: ['F001', 'F002'] }],
+    brand_role: { story_function: '不应写入' },
+  },
+};
+const ownedMerge = recovery.mergeContractPatch(flashMissingCastScenes, maliciousCastScenePatch, ['cast', 'scenes']);
+assert.equal(ownedMerge.summary, flashMissingCastScenes.summary);
+assert.deepStrictEqual(ownedMerge.plot_beats, flashMissingCastScenes.plot_beats);
+assert.deepStrictEqual(ownedMerge.reference_understanding.story_summary, flashMissingCastScenes.reference_understanding.story_summary);
+assert.deepStrictEqual(ownedMerge.reference_understanding.brand_role, flashMissingCastScenes.reference_understanding.brand_role);
+assert.equal(ownedMerge.character_prompts.length, 1);
+assert.equal(ownedMerge.reference_understanding.scenes.length, 1);
+
+const castSceneOnlyCandidate = {
+  character_prompts: ownedMerge.character_prompts,
+  character_actions: ownedMerge.character_actions,
+  animal_prompts: [],
+  animal_actions: [],
+  reference_understanding: {
+    completeness: {
+      valid: false,
+      failures: ['story_semantics_incomplete', 'causal_chain_missing', 'brand_semantics_incomplete'],
+    },
+    characters: ownedMerge.reference_understanding.characters,
+    scenes: ownedMerge.reference_understanding.scenes,
+  },
+};
+providerCheckpoint = recovery.retainBestCandidate(providerCheckpoint, {
+  analysis: castSceneOnlyCandidate,
+  model: 'targeted-contract-repair',
+  candidateIndex: 0,
+  savedAt: '2026-08-05T11:00:03.000Z',
+});
+const independentProgress = recovery.publicProgress(providerCheckpoint);
+assert.equal(independentProgress.valid, true, '互补候选中分别通过的五类合同必须可独立汇合');
+assert.equal(independentProgress.completed, 5);
+assert.equal(providerCheckpoint.best_candidate.digest, flashBestDigest, '低总分互补候选不得覆盖整份最佳草稿');
+const composite = recovery.compositeDraft(providerCheckpoint);
+assert.equal(composite.summary, flashMissingCastScenes.summary);
+assert.equal(composite.character_prompts[0].id, 'person_1');
+assert.equal(composite.reference_understanding.scenes[0].scene_id, 'scene_1');
+assert.ok(Object.values(providerCheckpoint.contract_candidates).every(candidate => candidate && candidate.fragment));
+assert.ok(Object.values(providerCheckpoint.contract_candidates).every(candidate => !Object.prototype.hasOwnProperty.call(candidate, 'draft')),
+  '逐合同候选只能保存 owned fragment，不能重复保存整份大草稿');
+
 for (let index = 2; index < 10; index += 1) {
   checkpoint = recovery.retainBestCandidate(checkpoint, {
     analysis: weakCandidate,
@@ -100,13 +212,19 @@ assert.equal(checkpoint.best_candidate.model, 'provider/scene-repairable', '低�
 
 const hardFailure = recovery.auditContracts(['provider_refusal', 'scene_semantics_incomplete']);
 assert.equal(recovery.isRepairable(hardFailure), false, '供应商拒绝不得伪装成可定向补写的候选');
+const blockedCheckpoint = recovery.retainBestCandidate(recovery.emptyCheckpoint('blocked-fixture'), {
+  analysis: { reference_understanding: { completeness: { valid: false, failures: ['provider_refusal'] } } },
+  model: 'provider/refusal',
+});
+assert.equal(recovery.publicProgress(blockedCheckpoint).completed, 0, '硬失败候选不得把五类合同误记为完成');
+assert.ok(Object.values(recovery.publicProgress(blockedCheckpoint).contracts).every(state => state.status === 'blocked'));
 const unknownFailure = recovery.auditContracts(['new_unclassified_contract_failure']);
 assert.equal(recovery.isRepairable(unknownFailure), false, '未知质量失败必须保持关闭，不能被错误放行');
-assert.throws(
-  () => recovery.extractSemanticDraft({ summary: '长'.repeat(recovery.MAX_BEST_DRAFT_BYTES) }),
-  error => error.code === 'REFERENCE_SEMANTIC_CANDIDATE_TOO_LARGE',
-  '超长候选不得无限扩张 record.json 和轮询读取成本',
-);
+const compactedOversize = recovery.extractSemanticDraft({
+  summary: '长'.repeat(recovery.MAX_BEST_DRAFT_BYTES),
+});
+assert.equal(compactedOversize.summary.length, 4000, '异常超长单一标量应受控压缩，不应误杀整份合法候选');
+assert.ok(Buffer.byteLength(JSON.stringify(compactedOversize), 'utf8') < recovery.MAX_BEST_DRAFT_BYTES);
 
 const frames = [
   { frame_id: 'F001', timestamp_seconds: 0.5, summary: '人物进入住宅客厅并观察空间布局', visible_text: [] },
@@ -185,6 +303,40 @@ const largeNormalized = understanding.enrichAnalysis({
 const mappedEventIds = largeNormalized.reference_understanding.scenes.flatMap(scene => scene.events);
 assert.equal(mappedEventIds.length, 120);
 assert.equal(new Set(mappedEventIds).size, 120, '最大事件集合中的每个事件必须且只能归属一个权威场景');
+
+const extremeSemanticCandidate = {
+  summary: '覆盖长参考片的语义摘要',
+  story_outline: { opening: '开始', development: '推进', resolution: '完成' },
+  plot_beats: largeChain.map((event, index) => ({ index: index + 1, event: event.action })),
+  character_prompts: Array.from({ length: 12 }, (_, index) => ({ id: `person_${index + 1}`, role: `人物${index + 1}` })),
+  character_actions: Array.from({ length: 120 }, (_, index) => ({ character_id: `person_${(index % 12) + 1}`, action: `动作${index + 1}` })),
+  animal_prompts: [],
+  animal_actions: [],
+  subtitle_cta: '按当前任务证据收束',
+  reference_understanding: {
+    completeness: { valid: true, failures: [] },
+    story_summary: { full_synopsis: '120 个事件按证据时间线完成，不依赖任何行业模板。' },
+    causal_chain: largeChain,
+    facts: largeChain.map(event => ({ content: event.action, evidence_refs: event.evidence_refs })),
+    inferences: [],
+    unknowns: [],
+    characters: Array.from({ length: 12 }, (_, index) => ({ id: `person_${index + 1}`, evidence_refs: [index % 2 ? 'F002' : 'F001'] })),
+    scenes: Array.from({ length: 24 }, (_, index) => ({ scene_id: `scene_${index + 1}`, events: [`event_${index + 1}`], evidence_refs: [index % 2 ? 'F002' : 'F001'] })),
+    brand_role: { story_function: '按证据推动事件完成' },
+    audio_visual: { rhythm: '按事件顺序推进' },
+  },
+};
+let extremeCheckpoint = recovery.emptyCheckpoint('extreme-120-events');
+extremeCheckpoint = recovery.retainBestCandidate(extremeCheckpoint, {
+  analysis: extremeSemanticCandidate,
+  model: 'fixture/extreme',
+  savedAt: '2026-08-05T12:00:00.000Z',
+});
+assert.equal(extremeCheckpoint.contract_candidates.timeline.fragment.reference_understanding.causal_chain.length, 120);
+assert.equal(extremeCheckpoint.contract_candidates.cast.fragment.reference_understanding.characters.length, 12);
+assert.equal(extremeCheckpoint.contract_candidates.scenes.fragment.reference_understanding.scenes.length, 24);
+assert.ok(Buffer.byteLength(JSON.stringify(extremeCheckpoint), 'utf8') < recovery.MAX_BEST_DRAFT_BYTES * 2 + 128 * 1024,
+  '120事件、多人物、多场景 checkpoint 必须保持有界，合同候选不得五份复制完整草稿');
 
 console.log('reference semantic recovery: ok', {
   best_score: checkpoint.best_candidate.audit.score,
