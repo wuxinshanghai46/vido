@@ -82,6 +82,7 @@ const extraFiles = [
   'scripts/test-new-story-ad-reference-semantic-recovery.js',
   'scripts/test-new-story-ad-product-proof-contract.js',
   'scripts/test-new-story-ad-reference-video-analysis.js',
+  'scripts/test-new-story-ad-spatial-generation-order.js',
   'scripts/test-reference-evidence-strategy.js',
   'scripts/test-new-story-ad-reference-video-link.js',
   'scripts/test-new-story-ad-storage-batch-delete.js',
