@@ -58,6 +58,10 @@ function execFfmpeg(args, timeoutMs = 180000) {
   });
 }
 
+function ffmpegDurationBudgetMs(durationSec = 0, minimumMs = 360000) {
+  return Math.max(minimumMs, Math.ceil(Math.max(1, Number(durationSec) || 1) * 3000));
+}
+
 function hasAudioStream(filePath = '') {
   if (!filePath || !fs.existsSync(filePath) || !ffprobePath) return Promise.resolve(false);
   return new Promise(resolve => {
@@ -157,7 +161,7 @@ async function applyBrandOverlay(videoPath = '', overlay = {}, outputPath = '') 
     '-map', '[v]', '-map', '0:a?',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
     '-c:a', 'copy', '-t', finalDuration.toFixed(3), '-movflags', '+faststart', outputPath,
-  ], 300000);
+  ], ffmpegDurationBudgetMs(finalDuration));
   return outputPath;
 }
 
@@ -422,7 +426,77 @@ async function composeWithTransitionFilters(inputs = [], outputPath = '', plan =
     '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2',
     '-movflags', '+faststart', outputPath,
   );
-  await execFfmpeg(args, 360000);
+  await execFfmpeg(args, ffmpegDurationBudgetMs(timeline));
+}
+
+function transitionTimelineDuration(durations = [], plan = []) {
+  return Math.max(0, durations.reduce((sum, value) => sum + Number(value || 0), 0)
+    - plan.reduce((sum, row) => sum + Number(row?.overlap_sec || 0), 0));
+}
+
+async function composeTransitionHierarchy(inputs = [], outputPath = '', plan = [], durations = [], {
+  taskId = '',
+  groupSize = 12,
+  level = 1,
+} = {}) {
+  const width = Math.max(2, Math.min(16, Number(groupSize) || 12));
+  if (inputs.length <= width) {
+    await composeWithTransitionFilters(inputs, outputPath, plan, durations);
+    return { outputPath, duration: transitionTimelineDuration(durations, plan), levels: level };
+  }
+  const nextInputs = [];
+  const nextDurations = [];
+  const nextPlan = [];
+  for (let start = 0, groupIndex = 0; start < inputs.length; start += width, groupIndex += 1) {
+    const groupInputs = inputs.slice(start, start + width);
+    const groupDurations = durations.slice(start, start + width);
+    const groupPlan = plan.slice(start, start + width).map((row, index) => index === 0
+      ? { ...row, overlap_sec: 0, audio_overlap_sec: 0, execution: 'hard_cut', audio_bridge_execution: 'none' }
+      : row);
+    const groupPath = path.join(COMPOSE_DIR, `${safeBase(`transition_${taskId || 'task'}_l${level}_g${groupIndex + 1}_${Date.now()}`)}.mp4`);
+    await composeWithTransitionFilters(groupInputs, groupPath, groupPlan, groupDurations);
+    nextInputs.push(groupPath);
+    nextDurations.push(transitionTimelineDuration(groupDurations, groupPlan));
+    nextPlan.push(groupIndex === 0
+      ? { ...plan[start], overlap_sec: 0, audio_overlap_sec: 0, execution: 'hard_cut', audio_bridge_execution: 'none' }
+      : plan[start]);
+  }
+  return composeTransitionHierarchy(nextInputs, outputPath, nextPlan, nextDurations, {
+    taskId,
+    groupSize: width,
+    level: level + 1,
+  });
+}
+
+async function conformVideoDuration(inputPath = '', targetDurationSec = 0, outputPath = '') {
+  const target = Math.max(0, Number(targetDurationSec) || 0);
+  if (!target) return inputPath;
+  const actual = Math.max(0.2, await videoAdapter.probeDuration(inputPath));
+  if (Math.abs(actual - target) <= 0.25) return inputPath;
+  const videoRatio = target / actual;
+  const args = ['-y', '-i', inputPath, '-map', '0:v:0', '-map', '0:a?', '-filter:v', `setpts=${videoRatio.toFixed(8)}*PTS`];
+  if (await hasAudioStream(inputPath)) args.push('-filter:a', audioTempoFilter(1 / videoRatio));
+  args.push(
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-b:a', '160k', '-t', target.toFixed(3), '-movflags', '+faststart', outputPath,
+  );
+  await execFfmpeg(args, ffmpegDurationBudgetMs(target));
+  return outputPath;
+}
+
+function audioTempoFilter(rate = 1) {
+  let remaining = Math.max(0.01, Number(rate) || 1);
+  const factors = [];
+  while (remaining > 2) {
+    factors.push(2);
+    remaining /= 2;
+  }
+  while (remaining < 0.5) {
+    factors.push(0.5);
+    remaining /= 0.5;
+  }
+  factors.push(remaining);
+  return factors.map(value => `atempo=${value.toFixed(8)}`).join(',');
 }
 
 function adjustSubtitlesForTransitionOverlaps(subtitles = [], plan = []) {
@@ -450,6 +524,7 @@ async function concatVideos({
   subtitleStyle = 'popup',
   transitions = [],
   brandOverlay = null,
+  targetDurationSec = 0,
 } = {}) {
   ensureDir(COMPOSE_DIR);
   const visualUnits = buildVisualComposeUnits(clips);
@@ -491,7 +566,7 @@ async function concatVideos({
   if (inputs.length === 1) {
     fs.copyFileSync(inputs[0], out);
   } else if (needsTransitionFilters) {
-    await composeWithTransitionFilters(inputs, out, transitionPlan, durations);
+    await composeTransitionHierarchy(inputs, out, transitionPlan, durations, { taskId });
   } else {
     const listFile = path.join(COMPOSE_DIR, `${safeBase(`concat_${taskId || 'task'}_${Date.now()}`)}.txt`);
     fs.writeFileSync(listFile, inputs.map(p => `file '${quoteConcatPath(p)}'`).join('\n'), 'utf8');
@@ -535,9 +610,19 @@ async function concatVideos({
     finalUrl = publicComposeUrl(brandedFilename);
     providerUsed += '+authorized-brand-overlay';
   }
-  const expectedDurationSec = durations.reduce((sum, value) => sum + Number(value || 0), 0)
-    - transitionPlan.reduce((sum, row) => sum + Number(row.overlap_sec || 0), 0)
-    + (normalizedBrandOverlay.enabled ? normalizedBrandOverlay.end_duration_sec : 0);
+  const requestedDurationSec = Math.max(0, Number(targetDurationSec) || 0);
+  if (requestedDurationSec > 0) {
+    const conformedFilename = `${safeBase(`duration_${taskId || 'task'}_${Date.now()}`)}.mp4`;
+    const conformedPath = path.join(COMPOSE_DIR, conformedFilename);
+    const conformed = await conformVideoDuration(finalPath, requestedDurationSec, conformedPath);
+    if (conformed !== finalPath) {
+      finalPath = conformed;
+      finalUrl = publicComposeUrl(conformedFilename);
+      providerUsed += '+target-duration-contract';
+    }
+  }
+  const expectedDurationSec = requestedDurationSec || (transitionTimelineDuration(durations, transitionPlan)
+    + (normalizedBrandOverlay.enabled ? normalizedBrandOverlay.end_duration_sec : 0));
   const technicalQa = await finalVideoQa.inspectFinalVideo({
     filePath: finalPath,
     expectedDurationSec,
@@ -598,6 +683,10 @@ module.exports = {
   muxVoiceTrack,
   muxTimelineVoiceTracks,
   buildTransitionPlan,
+  transitionTimelineDuration,
+  composeTransitionHierarchy,
+  conformVideoDuration,
+  audioTempoFilter,
   adjustSubtitlesForTransitionOverlaps,
   normalizeBrandOverlay,
   applyBrandOverlay,

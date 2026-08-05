@@ -309,10 +309,15 @@ async function reviewStoryboard(ctx, shots, { taskId = '' } = {}) {
     'Reject mojibake, replacement characters, placeholders and repeated question marks.',
     'Flag copied camera signatures across unrelated beats. Do not demand a fixed lens, angle, scene, person, product or industry; all values must be derived from this task.',
   ].join('\n');
-  const userPrompt = `Context: ${JSON.stringify(ctx).slice(0, 8000)}
-Storyboard: ${JSON.stringify(shots).slice(0, 18000)}
+  const batches = storyboardQaChunks(shots);
+  const modelReviews = [];
+  for (const batch of batches) {
+    const first = Number(batch[0]?.index || batch[0]?.shot_index || 1);
+    const last = Number(batch.at(-1)?.index || batch.at(-1)?.shot_index || first);
+    const userPrompt = `Context: ${JSON.stringify(ctx).slice(0, 8000)}
+Storyboard window ${first}-${last} of ${shots.length}: ${JSON.stringify(batch)}
 
-Return JSON:
+Review every shot in this window. Prefix every shot-specific issue with its exact shot number. Return JSON:
 {
   "pass": true,
   "blocking_issues": [],
@@ -320,27 +325,45 @@ Return JSON:
   "warnings": [],
   "scores": {"commercial":0.8,"shootability":0.8,"character_consistency":0.8}
 }`;
-
-  let modelReview = {};
-  try {
-    const result = await modelGateway.generateText({
-      taskId,
-      stage: 'new_story_ad.qa',
-      systemPrompt,
-      userPrompt,
-      maxTokens: 4000,
-    });
-    modelReview = await jsonRepair.parseOrRepair({
-      raw: result.text,
-      expected: 'object',
-      modelGateway,
-      taskId,
-      stage: 'new_story_ad.json_repair',
-    });
-  } catch (err) {
-    local.warnings.push(`模型 QA 不可用，已使用本地 QA：${String(err.message || err).slice(0, 120)}`);
+    try {
+      const result = await modelGateway.generateText({
+        taskId,
+        stage: 'new_story_ad.qa',
+        systemPrompt,
+        userPrompt,
+        maxTokens: 4000,
+      });
+      modelReviews.push(await jsonRepair.parseOrRepair({
+        raw: result.text,
+        expected: 'object',
+        modelGateway,
+        taskId,
+        stage: 'new_story_ad.json_repair',
+      }));
+    } catch (err) {
+      local.warnings.push(`模型 QA 第 ${first}-${last} 镜不可用，已使用本地 QA：${String(err.message || err).slice(0, 120)}`);
+    }
   }
+  const scoreAverage = key => modelReviews.length
+    ? modelReviews.reduce((sum, review) => sum + Number(review?.scores?.[key] || 0), 0) / modelReviews.length
+    : 0;
+  const modelReview = {
+    blocking_issues: modelReviews.flatMap(review => review?.blocking_issues || []),
+    rewrite_issues: modelReviews.flatMap(review => review?.rewrite_issues || []),
+    warnings: modelReviews.flatMap(review => review?.warnings || []),
+    scores: {
+      commercial: scoreAverage('commercial'),
+      shootability: scoreAverage('shootability'),
+      character_consistency: scoreAverage('character_consistency'),
+    },
+  };
   return mergeReviews(local, modelReview);
+}
+
+function storyboardQaChunks(shots = [], size = 8) {
+  const rows = Array.isArray(shots) ? shots : [];
+  const width = Math.max(1, Math.min(12, Number(size) || 8));
+  return Array.from({ length: Math.ceil(rows.length / width) }, (_, index) => rows.slice(index * width, (index + 1) * width));
 }
 
 module.exports = {
@@ -353,4 +376,5 @@ module.exports = {
   localReview,
   reviewStoryboard,
   mergeReviews,
+  storyboardQaChunks,
 };

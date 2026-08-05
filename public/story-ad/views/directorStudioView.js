@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260805-adaptive-reference-recovery-v29';
-import { request, uploadAsset } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { escapeHtml, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
+import * as THREE from '../vendor/three.module.min.js?v=20260805-longform-semantic-resume-v34';
+import { request, uploadAsset } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { escapeHtml, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
 
 const VERSION = '20260803-photoreal-director-v8';
 

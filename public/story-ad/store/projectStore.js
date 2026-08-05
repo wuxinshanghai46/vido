@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-adaptive-reference-recovery-v29';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-longform-semantic-resume-v34';
 
 export function createProjectStore() {
   const state = {

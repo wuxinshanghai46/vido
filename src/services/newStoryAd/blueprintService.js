@@ -6,6 +6,9 @@ const { ensureChineseOutput } = require('./outputLanguageService');
 const { polishBlueprint } = require('./blueprintQualityService');
 const brandEnding = require('./brandEndingService');
 const { BLUEPRINT_PROGRESS_TOTAL } = require('./blueprintProgressService');
+const productionLimits = require('./productionLimitsService');
+
+const EXPLICIT_SHOT_NUMBER_PATTERN = '(?:[1-9]|[1-9][0-9]|1[01][0-9]|120)';
 
 const DIALOGUE_CONTRACT_VERSION = 'dialogue-arc-v1';
 const CAUSAL_STORY_CONTRACT_VERSION = 'causal-story-v1';
@@ -114,7 +117,7 @@ function reportBlueprintProgress(onProgress, phase, completed, message) {
 }
 
 function desiredBeatCount(ctx = {}) {
-  if (ctx.shot_count) return Math.max(1, Math.min(18, Number(ctx.shot_count) || 0));
+  if (ctx.shot_count) return productionLimits.shotCount(ctx.shot_count);
   return 0;
 }
 
@@ -129,7 +132,7 @@ function authoredStructureText(ctx = {}) {
 
 function explicitAuthoredSegments(ctx = {}) {
   const text = authoredStructureText(ctx);
-  const marker = /(?:\[|【)\s*(?:镜头|分镜|shot)\s*([1-9]|1[0-8])\s*(?:\]|】)|(?:^|[\s。；;，,•])第\s*([1-9]|1[0-8])\s*(?:镜|个镜头|个分镜)(?=[:：、.\s]|$)/gim;
+  const marker = new RegExp(`(?:\\[|【)\\s*(?:镜头|分镜|shot)\\s*(${EXPLICIT_SHOT_NUMBER_PATTERN})\\s*(?:\\]|】)|(?:^|[\\s。；;，,•])第\\s*(${EXPLICIT_SHOT_NUMBER_PATTERN})\\s*(?:镜|个镜头|个分镜)(?=[:：、.\\s]|$)`, 'gim');
   const matches = [];
   let found;
   while ((found = marker.exec(text))) {
@@ -180,7 +183,7 @@ function sequentialMarkerCount(text = '', patterns = []) {
     pattern.lastIndex = 0;
     while ((match = pattern.exec(text))) nums.push(Number(match[1]));
   });
-  const unique = [...new Set(nums.filter(value => value >= 1 && value <= 18))].sort((a, b) => a - b);
+  const unique = [...new Set(nums.filter(value => value >= 1 && value <= productionLimits.MAX_SHOT_COUNT))].sort((a, b) => a - b);
   if (unique.length < 2) return 0;
   return unique.every((value, index) => value === index + 1) ? unique.length : 0;
 }
@@ -190,9 +193,9 @@ function explicitSegmentCount(ctx = {}) {
   if (authoredSegments.length >= 2) return authoredSegments.length;
   const text = authoredStructureText(ctx);
   return sequentialMarkerCount(text, [
-    /(?:^|[\s。；;，,])(?:\[|【)?\s*(?:镜头|分镜|shot)\s*([1-9]|1[0-8])\s*(?:\]|】|[:：、.\s]|$)/gim,
-    /(?:^|[\s。；;，,])第\s*([1-9]|1[0-8])\s*(?:镜|个镜头|个分镜)(?:[:：、.\s]|$)/gim,
-    /(?:^|[\r\n。；;])\s*([1-9]|1[0-8])\s*[\.、．:：]/gm,
+    new RegExp(`(?:^|[\\s。；;，,])(?:\\[|【)?\\s*(?:镜头|分镜|shot)\\s*(${EXPLICIT_SHOT_NUMBER_PATTERN})\\s*(?:\\]|】|[:：、.\\s]|$)`, 'gim'),
+    new RegExp(`(?:^|[\\s。；;，,])第\\s*(${EXPLICIT_SHOT_NUMBER_PATTERN})\\s*(?:镜|个镜头|个分镜)(?:[:：、.\\s]|$)`, 'gim'),
+    new RegExp(`(?:^|[\\r\\n。；;])\\s*(${EXPLICIT_SHOT_NUMBER_PATTERN})\\s*[\\.、．:：]`, 'gm'),
   ]);
 }
 
@@ -200,7 +203,7 @@ function authoredSpeechPlan(ctx = {}) {
   const segments = explicitAuthoredSegments(ctx);
   const text = authoredStructureText(ctx);
   const matches = text.match(/(?:^|[\s；;。•])(?:旁白|画外音|配音|VO|台词|对白|解说)(?:\s*[\(（][^()（）]{0,20}[\)）])?\s*[:：]\s*[^\r\n；;。•]+/gim) || [];
-  const lineCount = Math.min(18, segments.length
+  const lineCount = Math.min(productionLimits.MAX_SHOT_COUNT, segments.length
     ? segments.filter(segment => segment.spoken_line).length
     : matches.length);
   const segmentCount = segments.length || explicitSegmentCount(ctx);
@@ -245,7 +248,7 @@ function alignBlueprintToAuthoredSegments(ctx = {}, payload = {}) {
 
 function pacingProfile(ctx = {}) {
   const exactCount = desiredBeatCount(ctx);
-  const targetDuration = Math.max(10, Math.min(180, Number(ctx.target_duration || ctx.duration || ctx.duration_sec || 30) || 30));
+  const targetDuration = productionLimits.targetDuration(ctx.target_duration || ctx.duration || ctx.duration_sec);
   const explicitSegments = explicitSegmentCount(ctx);
   const brief = [
     ctx.brief,
@@ -260,10 +263,10 @@ function pacingProfile(ctx = {}) {
   // 剧情广告必须通用：这里不按行业/场景写死镜头数，只按用户内容密度和单镜可理解时长推导节奏。
   const minimumSecondsPerBeat = fastCut ? 2.4 : (processHeavy || eventSignals >= 5 ? 3.4 : 4.2);
   const preferredSecondsPerBeat = fastCut ? 3.0 : (processHeavy || eventSignals >= 5 ? 4.0 : 5.0);
-  const durationRecommended = Math.max(3, Math.min(18, Math.round(targetDuration / preferredSecondsPerBeat)));
+  const durationRecommended = Math.max(3, Math.min(productionLimits.MAX_AUTO_BLUEPRINT_BEATS, Math.round(targetDuration / preferredSecondsPerBeat)));
   const recommended = exactCount || explicitSegments || durationRecommended;
-  const durationLimit = Math.min(18, Math.floor(targetDuration / minimumSecondsPerBeat));
-  const structureLimit = explicitSegments ? Math.min(18, explicitSegments + (fastCut ? 2 : 1)) : 18;
+  const durationLimit = Math.min(productionLimits.MAX_SHOT_COUNT, Math.floor(targetDuration / minimumSecondsPerBeat));
+  const structureLimit = explicitSegments ? Math.min(productionLimits.MAX_SHOT_COUNT, explicitSegments + (fastCut ? 2 : 1)) : productionLimits.MAX_AUTO_BLUEPRINT_BEATS;
   const maxReasonable = exactCount || Math.max(recommended, Math.min(durationLimit, structureLimit));
   return {
     exactCount,
@@ -346,8 +349,8 @@ function mergeBeatGroup(group = [], index = 0) {
   };
 }
 
-function compactBeatsByPacing(beats = [], limit = 18) {
-  const max = Math.max(1, Math.min(18, Number(limit) || 18));
+function compactBeatsByPacing(beats = [], limit = productionLimits.MAX_AUTO_BLUEPRINT_BEATS) {
+  const max = Math.max(1, Math.min(productionLimits.MAX_SHOT_COUNT, Number(limit) || productionLimits.MAX_AUTO_BLUEPRINT_BEATS));
   if (beats.length <= max) return beats.map((beat, idx) => ({ ...beat, beat_index: idx + 1 }));
   const groups = Array.from({ length: max }, () => []);
   beats.forEach((beat, idx) => {

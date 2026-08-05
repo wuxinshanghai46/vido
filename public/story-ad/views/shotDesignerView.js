@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
+import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
@@ -171,6 +171,9 @@ export async function mount(host, context) {
   const requested = Math.max(1, Number(route.params.get('shot')) || 1);
   const selectedIndex = Math.max(0, shots.findIndex((shot, index) => shotNumber(shot, index) === requested));
   const selected = shots[selectedIndex];
+  const railPageSize = 20;
+  const railStart = Math.floor(selectedIndex / railPageSize) * railPageSize;
+  const railShots = shots.slice(railStart, railStart + railPageSize);
   const media = shotMedia(bundle, selected, selectedIndex);
   const referencePack = (bundle?.storyboard?.reference_packs || []).find((item, index) => Number(item?.shot_index ?? index) === selectedIndex) || null;
   const previous = shots[selectedIndex - 1] || null;
@@ -183,7 +186,8 @@ export async function mount(host, context) {
     <div class="shot-designer">
       <aside class="shot-rail card">
         <div class="card-head"><div><h2>${shots.length} 个镜头</h2><p>点击切换，画布不使用假数据。</p></div></div>
-        <div class="shot-rail-list">${shots.map((shot, index) => {
+        <div class="shot-rail-list">${railShots.map((shot, offset) => {
+          const index = railStart + offset;
           const number = shotNumber(shot, index);
           return `<button class="shot-rail-item ${index === selectedIndex ? 'active' : ''}" type="button" data-select-shot="${number}" aria-pressed="${index === selectedIndex ? 'true' : 'false'}">
             <b>SH${String(number).padStart(2, '0')} · ${escapeHtml(shot.title || `镜头 ${number}`)}</b>

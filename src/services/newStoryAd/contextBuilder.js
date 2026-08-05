@@ -5,6 +5,7 @@ const referenceEvidenceText = require('./referenceEvidenceTextService');
 const benchmarkStrategy = require('./benchmarkStrategyService');
 const productAssetResolver = require('./productAssetResolverService');
 const referenceUnderstandingService = require('./referenceUnderstandingService');
+const productionLimits = require('./productionLimitsService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -799,8 +800,7 @@ function inferExpectedAnimalCount(brief = '') {
 }
 
 const DEFAULT_TARGET_DURATION = 30;
-const MIN_TARGET_DURATION = 10;
-const MAX_TARGET_DURATION = 120;
+const { MIN_TARGET_DURATION, MAX_TARGET_DURATION } = productionLimits;
 
 function chineseDurationNumber(value = '') {
   const raw = cleanText(value, 20).replace(/[秒分钟钟\s]/g, '');
@@ -871,7 +871,7 @@ function resolveTargetDuration(body = {}, brief = '') {
     ? briefDuration
     : (structuredDuration || briefDuration || DEFAULT_TARGET_DURATION);
   return {
-    value: Math.max(MIN_TARGET_DURATION, Math.min(MAX_TARGET_DURATION, Math.round(chosen))),
+    value: productionLimits.targetDuration(chosen),
     source: briefDuration && chosen === briefDuration
       ? 'explicit_brief'
       : (durationSource || (structuredDuration ? 'structured_request' : 'system_default')),
@@ -889,7 +889,7 @@ function buildContext(body = {}, user = {}) {
   const durationContract = resolveTargetDuration(body, brief);
   const targetDuration = durationContract.value;
   const rawShotCount = Number(body.shot_count || body.shotCount || 0) || 0;
-  const shotCount = rawShotCount > 0 ? Math.max(1, Math.min(18, rawShotCount)) : 0;
+  const shotCount = productionLimits.shotCount(rawShotCount);
   const outputRatio = cleanText(body.output_ratio || body.outputRatio || body.ratio || '9:16', 20);
   const forbidden = Array.isArray(body.forbidden)
     ? body.forbidden.map(x => cleanText(x, 100)).filter(Boolean)

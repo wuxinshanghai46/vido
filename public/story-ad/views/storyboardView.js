@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
-import { confirmDialog } from '../components/dialog.js?v=20260805-adaptive-reference-recovery-v29';
+import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { confirmDialog } from '../components/dialog.js?v=20260805-longform-semantic-resume-v34';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -85,6 +85,13 @@ function sketchBatchMarkup(batch = null, total = 0) {
 export async function mount(host, context) {
   const { bundle, store } = context;
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(shots.length / pageSize));
+  const requestedPage = Math.max(1, Number(context.route?.params?.get('page')) || 1);
+  const page = Math.min(pageCount, requestedPage);
+  const pageStart = (page - 1) * pageSize;
+  const visibleShots = shots.slice(pageStart, pageStart + pageSize);
+  const pageNav = shots.length > pageSize ? `<nav class="storyboard-pagination" aria-label="分镜分页"><span>第 ${page}/${pageCount} 页 · 共 ${shots.length} 镜</span><button class="btn small" type="button" data-storyboard-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button><button class="btn small" type="button" data-storyboard-page="${page + 1}" ${page >= pageCount ? 'disabled' : ''}>下一页</button></nav>` : '';
   const isReferenceDraft = bundle?.storyboard?.source === 'reference_analysis_projection';
   const sketches = Array.isArray(bundle?.storyboard?.sketches) ? bundle.storyboard.sketches : [];
   const sketchByShot = new Map(sketches.map(item => [Number(item.shot_index), item]));
@@ -112,8 +119,8 @@ export async function mount(host, context) {
     <section data-board-panel="shots">
       ${shots.length ? `<div class="card shot-table">
         <div class="shot-row header"><span>镜头</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
-        ${shots.map((shot, index) => shotRow(shot, index, bundle)).join('')}
-      </div>` : `<div class="card">${emptyState({
+        ${visibleShots.map((shot, index) => shotRow(shot, pageStart + index, bundle)).join('')}
+      </div>${pageNav}` : `<div class="card">${emptyState({
         title: '还没有文字分镜',
         body: '先确认剧情蓝图，再生成与剧情情节点一一对应的镜头。',
         action: '生成文字分镜',
@@ -123,7 +130,7 @@ export async function mount(host, context) {
     <section data-board-panel="sketches" hidden>
       ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(sketchGate.reason || '文字分镜审核通过后才能生成线稿。')}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
       <div data-sketch-batch-host>${sketchBatchMarkup(sketchBatch, missingSketchCount || generatedSketchCount)}</div>
-      ${shots.length ? `<div class="storyboard-sketch-grid">${shots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || index + 1)) || {}, index, sketchGate)).join('')}</div>` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
+      ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate)).join('')}</div>${pageNav}` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
     </section>`;
 
   bindMediaLightbox(host);
@@ -136,6 +143,10 @@ export async function mount(host, context) {
     });
   });
   if (sketchBatchActive) host.querySelector('[data-board-tab="sketches"]')?.click();
+  host.querySelectorAll('[data-storyboard-page]').forEach(button => button.addEventListener('click', () => {
+    const targetPage = Math.max(1, Math.min(pageCount, Number(button.dataset.storyboardPage) || 1));
+    context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard&page=${targetPage}`);
+  }));
 
   const generateStoryboard = async button => {
     try {

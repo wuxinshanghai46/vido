@@ -408,7 +408,7 @@
 .shot-inline-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 .shot-designer { display: grid; grid-template-columns: 270px minmax(480px, 1fr) 390px; gap: 14px; align-items: start; }
 .shot-rail, .shot-settings { max-height: calc(100vh - 150px); overflow: auto; position: sticky; top: 86px; }
-.shot-rail-list { display: grid; gap: 7px; padding: 10px; }
+.shot-rail-list { display: grid; gap: 7px; padding: 10px; }.storyboard-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin: 12px 0 20px; color: var(--muted); font-size: 12px; }.storyboard-pagination span { margin-right: auto; }
 .shot-rail-item { min-height: 92px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--text); text-align: left; cursor: pointer; }
 .shot-rail-item:hover, .shot-rail-item.active { border-color: var(--mint); background: var(--mint-2); }
 .shot-rail-item b, .shot-rail-item span, .shot-rail-item small { display: block; }

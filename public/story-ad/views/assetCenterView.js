@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
-import { confirmDialog } from '../components/dialog.js?v=20260805-adaptive-reference-recovery-v29';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-adaptive-reference-recovery-v29';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-adaptive-reference-recovery-v29';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-adaptive-reference-recovery-v29';
+import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { confirmDialog } from '../components/dialog.js?v=20260805-longform-semantic-resume-v34';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-longform-semantic-resume-v34';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-longform-semantic-resume-v34';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-longform-semantic-resume-v34';
 
 const GROUPS = [
   ['people', '人物'],

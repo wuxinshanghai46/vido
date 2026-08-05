@@ -2302,6 +2302,94 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     save(latestRecord, { _semantic_checkpoint: semanticCheckpoint });
     return semanticRecovery.auditContracts(analysis);
   };
+  const repairSemanticCandidate = async (candidate = {}) => {
+    const candidateAudit = candidate.audit || semanticRecovery.auditContracts(candidate.result);
+    if (!candidate.result || !semanticRecovery.isRepairable(candidateAudit, { minimumScore: 50 })) return null;
+    const missingContracts = semanticRecovery.missingContracts(candidateAudit);
+    try {
+      const deterministicRepair = referenceUnderstanding.enrichAnalysis(
+        mergeAnalysisWithEvidence(deterministic, candidate.result),
+        { visualEvidence, transcript },
+      );
+      validateAnalysisResult(deterministicRepair);
+      persistSemanticCandidate({ analysis: deterministicRepair, model: 'deterministic-contract-repair', candidateIndex: 0 });
+      return deterministicRepair;
+    } catch {
+      // Some missing contracts require semantic interpretation. Repair only their owned fields.
+    }
+    let repairedCandidate = null;
+    const repairResponse = await modelGateway.generateText({
+      taskId: record.id,
+      stage,
+      systemPrompt: [
+        '你是参考视频语义合同修复员。只补指定的缺失合同，不改写已经通过的合同。',
+        '所有事实必须引用输入中已有 F### 或 T### 证据；不得新增人物、动物、商品、场景或行业模板。',
+        '只返回 JSON 补丁。reference_understanding 内只允许出现本次缺失合同拥有的字段。',
+      ].join('\n'),
+      userPrompt: [
+        `缺失合同：${missingContracts.join('、')}`,
+        `权威场景与逐镜索引：${JSON.stringify({
+          scene_prompts: deterministic.scene_prompts || [],
+          shot_breakdown: deterministic.shot_breakdown || [],
+          source_facts: deterministic.source_facts || {},
+          character_prompts: deterministic.character_prompts || [],
+          animal_prompts: deterministic.animal_prompts || [],
+        })}`,
+        `已通过并必须保持不变的最佳草稿：${JSON.stringify(semanticRecovery.extractSemanticDraft(candidate.result))}`,
+        '字段归属：story=summary/story_outline/reference_understanding.story_summary；timeline=plot_beats/causal_chain/facts/inferences/unknowns；cast=characters及人物动物提示与动作；scenes=reference_understanding.scenes；brand_audio=brand_role/audio_visual/subtitle_cta。',
+      ].join('\n'),
+      maxTokens: 4200,
+      temperature: 0.05,
+      timeoutMs: 120000,
+      maxCandidates: 2,
+      validateText: async (text, meta = {}) => {
+        assertCandidateAnalysisText(text);
+        const patch = await jsonRepair.parseOrRepair({
+          raw: text,
+          expected: 'object',
+          modelGateway,
+          taskId: record.id,
+          stage: 'new_story_ad.json_repair',
+        });
+        const ownedMerge = semanticRecovery.mergeContractPatch(candidate.result, patch, missingContracts);
+        const normalized = referenceUnderstanding.enrichAnalysis(
+          mergeAnalysisWithEvidence(deterministic, ownedMerge),
+          { visualEvidence, transcript },
+        );
+        persistSemanticCandidate({
+          analysis: normalized,
+          model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
+          candidateIndex: meta.candidate_index,
+        });
+        try {
+          validateAnalysisResult(normalized);
+          repairedCandidate = normalized;
+          return true;
+        } catch (error) {
+          const invalid = new Error(`定向语义修复仍缺少合同：${semanticRecovery.missingContracts(semanticRecovery.auditContracts(normalized)).join('、')}`);
+          invalid.code = 'PROVIDER_RESPONSE_INVALID';
+          invalid.retryable = true;
+          invalid.response_diagnostics = {
+            semantic_failures: Array.isArray(error.failures) ? error.failures.slice(0, 20) : [],
+          };
+          throw invalid;
+        }
+      },
+    });
+    if (!repairedCandidate) return null;
+    const latestRecord = readRecord(record.user_id, record.id) || record;
+    save(latestRecord, {
+      _synthesis_raw: {
+        contract_version: EVIDENCE_CONTRACT_VERSION,
+        text: String(repairResponse.text || '').slice(0, 50000),
+        used_model: String(repairResponse.used_model || ''),
+        response_length: String(repairResponse.text || '').length,
+        saved_at: now(),
+        repair_contracts: missingContracts,
+      },
+    });
+    return repairedCandidate;
+  };
   if (semanticCheckpoint.best_candidate?.draft) {
     try {
       const resumed = referenceUnderstanding.enrichAnalysis(
@@ -2313,7 +2401,16 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
       save(latestRecord, { _semantic_checkpoint: semanticCheckpoint, _synthesis_reused_at: now() });
       return resumed;
     } catch {
-      // Continue from the checkpoint. The next candidate/repair call receives only missing work.
+      const resumed = referenceUnderstanding.enrichAnalysis(
+        mergeAnalysisWithEvidence(deterministic, semanticCheckpoint.best_candidate.draft),
+        { visualEvidence, transcript },
+      );
+      const repaired = await repairSemanticCandidate({
+        result: resumed,
+        audit: semanticRecovery.auditContracts(resumed),
+        model: semanticCheckpoint.best_candidate.model || 'stored-semantic-checkpoint',
+      });
+      if (repaired) return repaired;
     }
   }
   let response;
@@ -2485,7 +2582,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
       } catch (error) {
         if (error.code === 'PROVIDER_RESPONSE_INVALID') throw error;
         const audit = mergedCandidate ? semanticRecovery.auditContracts(mergedCandidate) : null;
-        if (mergedCandidate && semanticRecovery.isRepairable(audit, { minimumScore: 75 })) {
+        if (mergedCandidate && semanticRecovery.isRepairable(audit, { minimumScore: 50 })) {
           partialCandidate = {
             text: String(text || ''),
             result: mergedCandidate,
@@ -2526,95 +2623,8 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     return validatedCandidate.result;
   }
   if (partialCandidate && partialCandidate.text === String(response.text || '')) {
-    const missingContracts = semanticRecovery.missingContracts(partialCandidate.audit);
-    try {
-      const deterministicRepair = referenceUnderstanding.enrichAnalysis(
-        mergeAnalysisWithEvidence(deterministic, partialCandidate.result),
-        { visualEvidence, transcript },
-      );
-      validateAnalysisResult(deterministicRepair);
-      persistSemanticCandidate({ analysis: deterministicRepair, model: 'deterministic-contract-repair', candidateIndex: 0 });
-      return deterministicRepair;
-    } catch {
-      // Some missing contracts require semantic interpretation. Repair only their owned fields.
-    }
-    let repairedCandidate = null;
-    const repairResponse = await modelGateway.generateText({
-      taskId: record.id,
-      stage,
-      systemPrompt: [
-        '你是参考视频语义合同修复员。只补指定的缺失合同，不改写已经通过的合同。',
-        '所有事实必须引用输入中已有 F### 或 T### 证据；不得新增人物、动物、商品、场景或行业模板。',
-        '只返回 JSON 补丁。reference_understanding 内只允许出现本次缺失合同拥有的字段。',
-      ].join('\n'),
-      userPrompt: [
-        `缺失合同：${missingContracts.join('、')}`,
-        `权威场景与逐镜索引：${JSON.stringify({
-          scene_prompts: deterministic.scene_prompts || [],
-          shot_breakdown: deterministic.shot_breakdown || [],
-          source_facts: deterministic.source_facts || {},
-          character_prompts: deterministic.character_prompts || [],
-          animal_prompts: deterministic.animal_prompts || [],
-        })}`,
-        `已通过并必须保持不变的最佳草稿：${JSON.stringify(semanticRecovery.extractSemanticDraft(partialCandidate.result))}`,
-        '字段归属：story=summary/story_outline/reference_understanding.story_summary；timeline=plot_beats/causal_chain/facts/inferences/unknowns；cast=characters及人物动物提示与动作；scenes=reference_understanding.scenes；brand_audio=brand_role/audio_visual/subtitle_cta。',
-      ].join('\n'),
-      maxTokens: 4200,
-      temperature: 0.05,
-      timeoutMs: 120000,
-      maxCandidates: 2,
-      validateText: async (text, meta = {}) => {
-        assertCandidateAnalysisText(text);
-        const patch = await jsonRepair.parseOrRepair({
-          raw: text,
-          expected: 'object',
-          modelGateway,
-          taskId: record.id,
-          stage: 'new_story_ad.json_repair',
-        });
-        const ownedMerge = semanticRecovery.mergeContractPatch(
-          partialCandidate.result,
-          patch,
-          missingContracts,
-        );
-        const normalized = referenceUnderstanding.enrichAnalysis(
-          mergeAnalysisWithEvidence(deterministic, ownedMerge),
-          { visualEvidence, transcript },
-        );
-        persistSemanticCandidate({
-          analysis: normalized,
-          model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
-          candidateIndex: meta.candidate_index,
-        });
-        try {
-          validateAnalysisResult(normalized);
-          repairedCandidate = normalized;
-          return true;
-        } catch (error) {
-          const invalid = new Error(`定向语义修复仍缺少合同：${semanticRecovery.missingContracts(semanticRecovery.auditContracts(normalized)).join('、')}`);
-          invalid.code = 'PROVIDER_RESPONSE_INVALID';
-          invalid.retryable = true;
-          invalid.response_diagnostics = {
-            semantic_failures: Array.isArray(error.failures) ? error.failures.slice(0, 20) : [],
-          };
-          throw invalid;
-        }
-      },
-    });
-    if (repairedCandidate) {
-      const latestRecord = readRecord(record.user_id, record.id) || record;
-      save(latestRecord, {
-        _synthesis_raw: {
-          contract_version: EVIDENCE_CONTRACT_VERSION,
-          text: String(repairResponse.text || '').slice(0, 50000),
-          used_model: String(repairResponse.used_model || ''),
-          response_length: String(repairResponse.text || '').length,
-          saved_at: now(),
-          repair_contracts: missingContracts,
-        },
-      });
-      return repairedCandidate;
-    }
+    const repaired = await repairSemanticCandidate(partialCandidate);
+    if (repaired) return repaired;
   }
   const parsed = await jsonRepair.parseOrRepair({
     raw: response.text,

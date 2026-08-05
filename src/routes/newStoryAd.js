@@ -1921,12 +1921,18 @@ router.post('/tasks/:id/script-package', asyncRoute(async (req, res) => {
     res,
     'script_package',
     job => service.generateScriptPackageStage(req.params.id, job),
-    { deadlineMs: 15 * 60 * 1000 },
+    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'script_package') },
   );
 }));
 
 router.post('/tasks/:id/storyboard', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'storyboard', job => service.generateStoryboardStage(req.params.id, { generation_id: job.generationId }));
+  return queueTaskStage(
+    req,
+    res,
+    'storyboard',
+    job => service.generateStoryboardStage(req.params.id, { generation_id: job.generationId }),
+    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'storyboard') },
+  );
 }));
 
 router.post('/tasks/:id/keyframe-contract', asyncRoute(async (req, res) => {
@@ -1980,7 +1986,13 @@ router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncR
 
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'tts', () => service.generateTtsStage(req.params.id, body));
+  return queueTaskStage(
+    req,
+    res,
+    'tts',
+    () => service.generateTtsStage(req.params.id, body),
+    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'tts') },
+  );
 }));
 
 router.get('/tasks/:id/video/preflight', asyncRoute(async (req, res) => {
@@ -2008,7 +2020,13 @@ router.post('/tasks/:id/video', asyncRoute(async (req, res) => {
   paidExecutionPolicy.assertExternalRequest(req.body || {});
   const body = paidExecutionPolicy.canonicalize({ ...(req.body || {}), require_video_preflight: true });
   service.assertVideoPreflightConfirmation(req.params.id, body);
-  return queueTaskStage(req, res, 'video', job => service.generateVideoStage(req.params.id, { ...body, generation_id: job.generationId }));
+  return queueTaskStage(
+    req,
+    res,
+    'video',
+    job => service.generateVideoStage(req.params.id, { ...body, generation_id: job.generationId }),
+    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'video') },
+  );
 }));
 
 router.post('/tasks/:id/video/:index/manual-accept', asyncRoute(async (req, res) => {
@@ -2024,7 +2042,13 @@ router.post('/tasks/:id/video/:index/manual-accept', asyncRoute(async (req, res)
 
 router.post('/tasks/:id/compose', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'compose', job => service.composeStage(req.params.id, { ...body, generation_id: job.generationId }));
+  return queueTaskStage(
+    req,
+    res,
+    'compose',
+    job => service.composeStage(req.params.id, { ...body, generation_id: job.generationId }),
+    { deadlineMs: task => service.longFormStageBudgetMs(task.id, 'compose') },
+  );
 }));
 
 router.get('/admin/tasks/:id/video-monitor', adminOnly, asyncRoute(async (req, res) => {

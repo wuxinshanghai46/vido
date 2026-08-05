@@ -95,8 +95,9 @@ async function inspectFinalVideo({ filePath = '', expectedDurationSec = 0, requi
     || !(Number(row.audio_overlap_sec) > 0))) {
     problems.push('An authored audio bridge was not represented by an executable J-cut crossfade plan.');
   }
+  const decodeBudgetMs = Math.max(360000, Math.ceil(Math.max(1, duration) * 3000));
   const decode = videoStream
-    ? await run(ffmpegPath, ['-v', 'info', '-i', filePath, '-an', '-vf', 'blackdetect=d=0.20:pix_th=0.10,freezedetect=n=-50dB:d=0.80', '-f', 'null', '-'], 360000)
+    ? await run(ffmpegPath, ['-v', 'info', '-i', filePath, '-an', '-vf', 'blackdetect=d=0.20:pix_th=0.10,freezedetect=n=-50dB:d=0.80', '-f', 'null', '-'], decodeBudgetMs)
     : { code: 1, stderr: 'video stream missing' };
   if (decode.code !== 0) problems.push('Final output failed full-stream decode.');
   const blackIntervals = parseIntervals(decode.stderr, 'black');

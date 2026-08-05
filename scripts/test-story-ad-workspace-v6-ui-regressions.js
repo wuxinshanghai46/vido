@@ -52,6 +52,10 @@ assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分
 assert.match(briefView, /data-brief-settings \$\{referenceAttached \? '' : 'open'\}/, '只有选择参考视频或链接后才折叠广告目标设置');
 assert.match(briefView, /已从参考内容填写，可随时展开修改；保存后以你的版本为准/, '折叠后必须明确允许用户展开修改');
 assert.match(briefView, /data-brief-settings-values/, '折叠状态必须展示真实广告目标与成片设置摘要');
+assert.match(briefView, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
+assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return remainder \? `\$\{minutes\} 分 \$\{remainder\} 秒` : `\$\{minutes\} 分钟`/, '折叠摘要必须把 300/600 秒显示为 5/10 分钟');
+assert.match(briefView, /if \(referenceAttached\) host\.querySelector\('\[data-brief-settings\]'\)\?\.removeAttribute\('open'\)/, '已有参考视频时广告目标设置首次挂载必须默认收起');
+assert.match(briefView, /nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus/, '参考分析状态切换后广告目标设置必须恢复默认收起');
 assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
@@ -187,6 +191,13 @@ assert.match(semanticFailureProgress, /82%/);
 assert.match(semanticFailureProgress, /镜头证据已完成 8\/8 批/);
 assert.match(semanticFailureProgress, /语义合同已完成 4\/5 项/);
 assert.doesNotMatch(semanticFailureProgress, /重新读取镜头证据/);
+const completedEvidenceWithStaleFlag = briefModule.referenceProgress({
+  analysis_id: 'failed-semantic-stale-flag', status: 'failed', progress: 55, visual_evidence_reusable: false,
+  evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
+  semantic_contract_progress: { total: 5, completed: 3, missing_contracts: ['cast', 'scenes'] },
+});
+assert.match(completedEvidenceWithStaleFlag, />继续补齐语义结构<\/button>/);
+assert.doesNotMatch(completedEvidenceWithStaleFlag, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-semantic-reusable', status: 'failed', visual_evidence_reusable: true, semantic_result_reusable: true,
 }), /复用现有结果重新校验/);
@@ -421,12 +432,17 @@ assert.match(storyboard, /storyboard\?\.source === 'reference_analysis_projectio
 assert.match(storyboard, /data-save-reference-storyboard/, '参考逐镜草稿必须提供明确保存入口');
 assert.match(storyboard, /机位、景别和运镜在镜头设计中继续优化/, '分镜台必须把机位优化引导到对应环节');
 assert.match(storyboard, /isReferenceDraft[\s\S]*data-save-reference-storyboard[\s\S]*data-open-shot-design/, '参考逐镜与正式分镜必须分别显示保存和进入镜头设计操作');
+assert.match(storyboard, /const pageSize = 20/, '长片分镜台必须分页，不能一次渲染100个文字和媒体节点');
+assert.match(storyboard, /visibleShots\.map/, '分镜与线稿只能渲染当前分页');
+assert.match(storyboard, /data-storyboard-page/, '长片分镜台必须提供上一页和下一页入口');
 const sketchActions = storyboard.slice(storyboard.indexOf('class="sketch-actions"'), storyboard.indexOf('</div>', storyboard.indexOf('class="sketch-actions"')));
 const sketchOrder = ['data-generate-sketch', 'data-upload-sketch', 'data-skip-sketch', 'data-confirm-sketch'].map(token => sketchActions.indexOf(token));
 assert(sketchOrder.every(index => index >= 0), '线稿四个操作必须属于同一个 DOM 操作组');
 assert.deepEqual([...sketchOrder].sort((a, b) => a - b), sketchOrder, '线稿操作的 DOM/键盘顺序必须为生成、上传、跳过、确认');
 
 const shot = read('public/story-ad/views/shotDesignerView.js');
+assert.match(shot, /const railPageSize = 20/, '长片镜头设计侧栏必须限制单次渲染数量');
+assert.match(shot, /railShots\.map/, '镜头设计侧栏必须只渲染当前20镜窗口');
 const shotModule = loadBrowserModule(
   'public/story-ad/views/shotDesignerView.js',
   ['shotEditableFingerprint'],

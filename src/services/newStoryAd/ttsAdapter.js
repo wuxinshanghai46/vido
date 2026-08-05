@@ -94,18 +94,20 @@ function voiceoverPlanMatches(ttsAudio = {}, shots = [], voiceId = '') {
 function voiceoverFilesReady(ttsAudio = {}) {
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : [];
   if (!tracks.length) return false;
-  return tracks.every(track => {
-    if (track?.file_path && fs.existsSync(track.file_path)) return true;
-    const raw = String(track?.audio_url || track?.audioUrl || track?.url || '').trim().split('?')[0];
-    const prefix = '/api/new-story-ad/audio/';
-    if (!raw.startsWith(prefix)) return false;
-    try {
-      const filePath = audioPathFromName(decodeURIComponent(raw.slice(prefix.length)));
-      return !!filePath && fs.existsSync(filePath);
-    } catch {
-      return false;
-    }
-  });
+  return tracks.every(trackFileReady);
+}
+
+function trackFileReady(track = {}) {
+  if (track?.file_path && fs.existsSync(track.file_path)) return true;
+  const raw = String(track?.audio_url || track?.audioUrl || track?.url || '').trim().split('?')[0];
+  const prefix = '/api/new-story-ad/audio/';
+  if (!raw.startsWith(prefix)) return false;
+  try {
+    const filePath = audioPathFromName(decodeURIComponent(raw.slice(prefix.length)));
+    return !!filePath && fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
 }
 
 function voiceoverReady(ttsAudio = {}, shots = [], voiceId = '') {
@@ -239,19 +241,34 @@ async function generateVoiceover({
   voiceId = '',
   speed = 1,
   allowSilentFallback = false,
+  existingTracks = [],
+  onCheckpoint = null,
+  concurrency = Number(process.env.NEW_STORY_AD_TTS_CONCURRENCY) || 3,
 } = {}) {
   const list = Array.isArray(shots) ? shots : [];
-  const tracks = [];
-  for (let i = 0; i < list.length; i += 1) {
+  const previous = Array.isArray(existingTracks) ? existingTracks : [];
+  const tracks = Array.from({ length: list.length }, (_, index) => {
+    const track = previous[index];
+    return trackFileReady(track)
+      && normalizeSpeechSegment(track?.text) === shotSpeechText(list[index])
+      ? track
+      : null;
+  });
+  const pending = tracks.map((track, index) => track ? -1 : index).filter(index => index >= 0);
+  const width = Math.max(1, Math.min(5, Number(concurrency) || 3));
+  for (let start = 0; start < pending.length; start += width) {
     cancellation.throwIfCancelled(taskId);
-    tracks.push(await generateShotAudio({
+    const indexes = pending.slice(start, start + width);
+    const generated = await Promise.all(indexes.map(index => generateShotAudio({
       taskId,
-      shot: list[i],
-      index: i,
+      shot: list[index],
+      index,
       voiceId,
       speed,
       allowSilentFallback,
-    }));
+    })));
+    indexes.forEach((index, offset) => { tracks[index] = generated[offset]; });
+    if (typeof onCheckpoint === 'function') await onCheckpoint(tracks.slice());
     cancellation.throwIfCancelled(taskId);
   }
   return {
@@ -271,6 +288,7 @@ module.exports = {
   voiceoverPlanMatches,
   voiceoverFilesReady,
   voiceoverReady,
+  trackFileReady,
   generateShotAudio,
   generateVoiceover,
 };

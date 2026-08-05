@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
-import { confirmDialog } from '../components/dialog.js?v=20260805-adaptive-reference-recovery-v29';
+import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { confirmDialog } from '../components/dialog.js?v=20260805-longform-semantic-resume-v34';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

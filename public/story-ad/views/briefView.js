@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-adaptive-reference-recovery-v29';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-adaptive-reference-recovery-v29';
+import { request } from '../api.js?v=20260805-longform-semantic-resume-v34';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-longform-semantic-resume-v34';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-longform-semantic-resume-v34';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -100,9 +100,7 @@ export function referenceProgress(reference = {}) {
       : (cancelled
         ? '分析已经停止，当前未完成的结果不会进入后续制作环节。'
         : '正在后台读取和理解视频；完成后会自动填写广告目标，并把其他结果分配到对应制作环节。'));
-  const batchProgress = reference.evidence_batch_progress && typeof reference.evidence_batch_progress === 'object'
-    ? reference.evidence_batch_progress
-    : {};
+  const batchProgress = reference.evidence_batch_progress && typeof reference.evidence_batch_progress === 'object' ? reference.evidence_batch_progress : {};
   const batchTotal = Math.max(0, Number(batchProgress.total || 0) || 0);
   const batchCompleted = Math.max(0, Math.min(batchTotal, Number(batchProgress.completed || 0) || 0));
   const partialEvidence = failed && batchTotal > 0 && batchCompleted > 0 && batchCompleted < batchTotal;
@@ -117,10 +115,9 @@ export function referenceProgress(reference = {}) {
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
-    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '继续补齐语义结构' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
+    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true || completeEvidence ? '继续补齐语义结构' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
     : '';
-  const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at
-    || reference.sync_interrupted_at || reference.updated_at || '';
+  const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at || reference.sync_interrupted_at || reference.updated_at || '';
   return `<section class="reference-progress-card ${tone}" aria-live="polite">
     <div class="reference-progress-head">
       <span><b>${escapeHtml(labels[status] || '参考视频状态')}</b><small>${escapeHtml(reference.filename || '当前参考视频')}</small></span>
@@ -213,7 +210,7 @@ export async function mount(host, context) {
           <label class="field full"><span class="field-label-with-action"><span>广告目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="可以自行填写；添加参考视频时也可以留空，识别后仍能继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的广告目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位；生成后仍可继续修改。'}</small></label>
           <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
-            ${[15, 30, 45, 60].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${value} 秒</option>`).join('')}
+            ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
           </select></label>
           <label class="field"><span>画面比例</span><select class="select" name="output_ratio">
             ${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}
@@ -257,6 +254,8 @@ export async function mount(host, context) {
   let understandingLoadSequence = 0;
   let disposed = false;
   let lastReferenceAttached = referenceAttached;
+  let lastReferenceStatus = String(bundle.reference?.status || '').toLowerCase();
+  if (referenceAttached) host.querySelector('[data-brief-settings]')?.removeAttribute('open');
   let assetPlanTransitioning = false;
   async function syncReferenceUnderstanding(reference = {}) {
     const sequence = ++understandingLoadSequence;
@@ -284,7 +283,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260805-adaptive-reference-recovery-v29');
+    const module = await import('./referenceUnderstandingView.js?v=20260805-longform-semantic-resume-v34');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -354,8 +353,9 @@ export async function mount(host, context) {
     const nextReference = nextState.bundle?.reference || {};
     const nextReferenceAttached = Boolean(nextReference.analysis_id);
     const briefSettings = host.querySelector('[data-brief-settings]');
-    if (briefSettings && nextReferenceAttached !== lastReferenceAttached) briefSettings.open = !nextReferenceAttached;
-    lastReferenceAttached = nextReferenceAttached;
+    const nextReferenceStatus = String(nextReference.status || '').toLowerCase();
+    if (briefSettings && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettings.open = !nextReferenceAttached;
+    lastReferenceAttached = nextReferenceAttached; lastReferenceStatus = nextReferenceStatus;
     if (!route.isNew) {
       host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
       const description = host.querySelector('[data-brief-next-description]');
@@ -558,12 +558,12 @@ export async function mount(host, context) {
     const button = event.target.closest('[data-reference-retry]');
     if (!button) return;
     const currentReference = store.state.bundle?.reference || {};
-    const reusable = currentReference.visual_evidence_reusable === true;
-    const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
     const batchProgress = currentReference.evidence_batch_progress || {};
+    const completeEvidence = Number(batchProgress.total || 0) > 0 && Number(batchProgress.completed || 0) === Number(batchProgress.total || 0);
+    const reusable = currentReference.visual_evidence_reusable === true || completeEvidence;
+    const semanticReusable = store.state.bundle?.reference?.semantic_result_reusable === true;
     const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
-    const partialEvidence = Number(batchProgress.completed || 0) > 0
-      && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
+    const partialEvidence = Number(batchProgress.completed || 0) > 0 && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
     const retryMessage = completedInvalid
       ? (reusable
         ? '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，复用已校验的镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'

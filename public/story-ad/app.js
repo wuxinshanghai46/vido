@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260805-adaptive-reference-recovery-v29';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-adaptive-reference-recovery-v29';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-adaptive-reference-recovery-v29';
+import { createProjectStore } from './store/projectStore.js?v=20260805-longform-semantic-resume-v34';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-longform-semantic-resume-v34';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-longform-semantic-resume-v34';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260805-adaptive-reference-recovery-v29'),
-  assets: () => import('./views/assetCenterView.js?v=20260805-adaptive-reference-recovery-v29'),
-  plot: () => import('./views/plotRoomView.js?v=20260805-adaptive-reference-recovery-v29'),
-  storyboard: () => import('./views/storyboardView.js?v=20260805-adaptive-reference-recovery-v29'),
-  shot: () => import('./views/shotDesignerView.js?v=20260805-adaptive-reference-recovery-v29'),
-  final: () => import('./views/finalView.js?v=20260805-adaptive-reference-recovery-v29'),
-  workflow: () => import('./views/workflowView.js?v=20260805-adaptive-reference-recovery-v29'),
+  brief: () => import('./views/briefView.js?v=20260805-longform-semantic-resume-v34'),
+  assets: () => import('./views/assetCenterView.js?v=20260805-longform-semantic-resume-v34'),
+  plot: () => import('./views/plotRoomView.js?v=20260805-longform-semantic-resume-v34'),
+  storyboard: () => import('./views/storyboardView.js?v=20260805-longform-semantic-resume-v34'),
+  shot: () => import('./views/shotDesignerView.js?v=20260805-longform-semantic-resume-v34'),
+  final: () => import('./views/finalView.js?v=20260805-longform-semantic-resume-v34'),
+  workflow: () => import('./views/workflowView.js?v=20260805-longform-semantic-resume-v34'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

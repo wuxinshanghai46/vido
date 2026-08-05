@@ -52,6 +52,7 @@ const { createTextStageRecovery } = require('./textStageRecoveryService');
 const brandEnding = require('./brandEndingService');
 const propAssets = require('./propAssetService'), propTimeline = require('./propTimelineService');
 const assetPlan = require('./assetPlanService'), workflowTransition = require('./workflowTransitionContractService'), { blueprintFingerprint } = workflowTransition;
+const productionLimits = require('./productionLimitsService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -134,15 +135,14 @@ function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
   });
 }
 function keyframeStageBudgetMs(taskId, options = {}) {
-  const shots = storage.getOutput(taskId, 'storyboard_table');
-  const existing = storage.getOutput(taskId, 'keyframes');
-  const shotList = Array.isArray(shots) ? shots : [];
-  const keyframes = Array.isArray(existing) ? existing : [];
+  const shotList = storage.getOutput(taskId, 'storyboard_table') || [], keyframes = storage.getOutput(taskId, 'keyframes') || [];
   const targetCount = Math.max(1, keyframeTargetIndexes(shotList, keyframes, options).length || shotList.length || 1);
-  // Budget follows batch size instead of a fixed industry/model assumption.
-  // QA runs in parallel below, while this allowance protects slow providers
-  // without making the browser stop at an arbitrary 15-minute boundary.
-  return Math.min(60 * 60 * 1000, Math.max(10 * 60 * 1000, (4 + targetCount * 4) * 60 * 1000));
+  return Math.min(8 * 60 * 60 * 1000, Math.max(10 * 60 * 1000, (4 + targetCount * 4) * 60 * 1000));
+}
+function longFormStageBudgetMs(taskId, stage = '') {
+  const task = storage.getTask(taskId) || {};
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  return productionLimits.longFormStageBudgetMs(stage, ctx.target_duration, Math.max(ctx.shot_count || 0, (storage.getOutput(taskId, 'storyboard_table') || []).length));
 }
 const isQaInfrastructureError = keyframeFailure.isQaInfrastructureError;
 async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
@@ -848,12 +848,13 @@ async function generateStoryboardStage(taskId, options = {}) {
   const stageCtx = {
     ...ctx,
     scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [],
-    expected_storyboard_count: Array.isArray(blueprint.beats) && blueprint.beats.length
-      ? blueprint.beats.length
-      : Number(ctx.shot_count || 0),
+    expected_storyboard_count: productionLimits.requiredStoryboardShotCount(
+      ctx.target_duration,
+      Math.max(Number(ctx.shot_count || 0), Number(blueprint.beats?.length || 0)),
+    ),
     characters: normalizeCharacters(Array.isArray(blueprint.characters) && blueprint.characters.length ? blueprint.characters : ctx.characters, characterSeed),
   };
-  const expectedTotal = Math.max(1, Number(blueprint.beats?.length || stageCtx.expected_storyboard_count || 1));
+  const expectedTotal = Math.max(1, Number(stageCtx.expected_storyboard_count || blueprint.beats?.length || 1));
   storage.updateTask(taskId, { status: 'running', stage: 'storyboard' });
   const initialStoryboardProgress = stageProgress.update(taskId, { stage: 'storyboard', phase: 'preparing', completed: 0, total: expectedTotal, processed: 0, currentIndex: 1, percent: 0, generationId, startedAt, message: '正在准备已确认剧本与分镜生成合同' });
   storage.updateTask(taskId, { generation_progress: { ...initialStoryboardProgress, target_total: expectedTotal } });
@@ -2192,11 +2193,11 @@ async function generateTtsStage(taskId, options = {}) {
   }
   const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
   const tts_audio = await ttsAdapter.generateVoiceover({
-    taskId,
-    shots,
-    voiceId,
+    taskId, shots, voiceId,
     speed: options.speed || ctx.tts_speed || 1,
     allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
+    existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),
+    onCheckpoint: tracks => storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() }),
   });
   storage.saveOutput(taskId, 'tts_audio', tts_audio);
   storage.saveStage(taskId, 'tts', {
@@ -3300,6 +3301,7 @@ async function composeStage(taskId, options = {}) {
     subtitleStyle,
     transitions: shots,
     brandOverlay,
+    targetDurationSec: ctx.target_duration,
   });
   const finalVideoWithLineage = {
     ...final_video,
@@ -3724,7 +3726,7 @@ ${outputSchema}`;
     brief: assistTextFormatter.formatAssistedBrief(parsed.brief || parsed.content || ctx.brief, 3000),
     product_subject: cleanText(parsed.product_subject || parsed.productSubject || ctx.product_subject, 200),
     cast_mode: cleanText(parsed.cast_mode || parsed.castMode || ctx.cast_mode || 'auto', 40),
-    shot_count: Math.max(0, Math.min(18, Number(parsed.shot_count || parsed.shotCount || ctx.shot_count || 0) || 0)),
+    shot_count: productionLimits.shotCount(parsed.shot_count || parsed.shotCount || ctx.shot_count),
     forbidden: Array.isArray(parsed.forbidden) ? parsed.forbidden.map(x => cleanText(x, 100)).filter(Boolean) : ctx.forbidden,
     characters: Array.isArray(parsed.characters)
       ? normalizeCharacters(parsed.characters, `${ctx.request_id || body.task_id || body.taskId || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`)
@@ -3782,6 +3784,7 @@ module.exports = {
   keyframeCompletion,
   keyframeTargetIndexes,
   keyframeStageBudgetMs,
+  longFormStageBudgetMs,
   keyframeSubmissionPreflight,
   isQaInfrastructureError,
   structuredQaFeedback,

@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const recovery = require('../src/services/newStoryAd/referenceSemanticRecoveryService');
 const understanding = require('../src/services/newStoryAd/referenceUnderstandingService');
 
@@ -15,6 +17,34 @@ const sceneAudit = recovery.auditContracts(sceneOnlyFailures);
 assert.equal(sceneAudit.score, 80);
 assert.deepStrictEqual(recovery.missingContracts(sceneAudit), ['scenes']);
 assert.equal(recovery.isRepairable(sceneAudit), true);
+
+const productionScore65Audit = recovery.auditContracts({
+  reference_understanding: {
+    completeness: {
+      valid: false,
+      failures: ['character_semantics_incomplete', 'scene_semantics_incomplete'],
+    },
+  },
+});
+assert.equal(productionScore65Audit.score, 65);
+assert.deepStrictEqual(recovery.missingContracts(productionScore65Audit), ['cast', 'scenes']);
+assert.equal(
+  recovery.isRepairable(productionScore65Audit, { minimumScore: 50 }),
+  true,
+  '8/8 镜头已完成且仅缺人物、场景合同的 65 分候选必须进入定向修复',
+);
+const analysisServiceSource = fs.readFileSync(
+  path.join(__dirname, '../src/services/newStoryAd/referenceVideoAnalysisService.js'),
+  'utf8',
+);
+assert.doesNotMatch(analysisServiceSource, /isRepairable\(audit, \{ minimumScore: 75 \}\)/);
+const checkpointStart = analysisServiceSource.indexOf('if (semanticCheckpoint.best_candidate?.draft)');
+const checkpointRepair = analysisServiceSource.indexOf('await repairSemanticCandidate({', checkpointStart);
+const fullSynthesis = analysisServiceSource.indexOf('} else response = await modelGateway.generateText({', checkpointStart);
+assert.ok(
+  checkpointStart >= 0 && checkpointRepair > checkpointStart && fullSynthesis > checkpointRepair,
+  '已持久化的 65 分候选必须在任何完整合同模型调用前直接进入缺项修复',
+);
 
 const weakCandidate = {
   reference_understanding: {

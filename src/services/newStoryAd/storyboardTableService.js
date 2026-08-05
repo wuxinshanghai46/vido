@@ -6,6 +6,7 @@ const { withContinuityContracts } = require('./continuityService');
 const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const brandEnding = require('./brandEndingService');
+const productionLimits = require('./productionLimitsService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -258,7 +259,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
 
 function normalizeDurations(shots, ctx) {
   if (!shots.length) return shots;
-  const target = Math.max(10, Math.min(120, Number(ctx.target_duration || 30) || 30));
+  const target = productionLimits.targetDuration(ctx.target_duration);
   const base = Math.max(2, Math.min(5, Math.round(target / shots.length)));
   let rows = shots.map((shot, idx) => normalizeShot(shot, ctx, idx, base));
   let total = rows.reduce((sum, shot) => sum + Number(shot.duration || 0), 0);
@@ -299,20 +300,63 @@ function chunksOf(items, size) {
   return out;
 }
 
+function storyboardBeatChunks(beats = [], pendingBeats = []) {
+  const pending = Array.isArray(pendingBeats) ? pendingBeats : [];
+  if (!pending.some(beat => beat?.long_form_segment)) return chunksOf(pending, beats.length > 8 ? 3 : 4);
+  const groups = new Map();
+  pending.forEach(beat => {
+    const key = Number(beat?.source_beat_index || beat?.beat_index || 0);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(beat);
+  });
+  return [...groups.values()].flatMap(group => chunksOf(group, 8));
+}
+
+function storyboardBlueprintDigest(blueprint = {}) {
+  const { beats, ...global } = blueprint && typeof blueprint === 'object' ? blueprint : {};
+  return { ...global, beat_count: Array.isArray(beats) ? beats.length : 0 };
+}
+
 function plannedBeats(blueprint, ctx) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
-  const target = ctx.shot_count ? Math.max(1, Math.min(18, Number(ctx.shot_count) || 0)) : 0;
+  const base = beats.length ? beats : [{ beat_index: 1, role: 'story', plot: ctx.brief, spoken_line: '' }];
+  const target = Math.max(
+    productionLimits.shotCount(ctx.shot_count),
+    productionLimits.requiredStoryboardShotCount(ctx.target_duration, base.length),
+  );
 
-  if (target && beats.length !== target) {
-    const out = [];
-    for (let i = 0; i < target; i += 1) {
-      const source = beats[i] || beats[beats.length - 1] || { beat_index: i + 1, role: 'story', plot: ctx.brief, spoken_line: '' };
-      out.push({ ...source, beat_index: i + 1 });
-    }
-    return out;
-  }
-
-  return beats.length ? beats : [{ beat_index: 1, role: 'story', plot: ctx.brief, spoken_line: '' }];
+  if (base.length === target) return base.map((beat, index) => ({ ...beat, beat_index: index + 1 }));
+  const allocations = Array.from({ length: base.length }, (_, sourceIndex) => {
+    const start = Math.ceil((sourceIndex * target) / base.length);
+    const end = Math.ceil(((sourceIndex + 1) * target) / base.length);
+    return Math.max(1, end - start);
+  });
+  return Array.from({ length: target }, (_, index) => {
+    const sourceIndex = Math.min(base.length - 1, Math.floor((index * base.length) / target));
+    const source = base[sourceIndex];
+    const groupStart = Math.ceil((sourceIndex * target) / base.length);
+    const segmentIndex = index - groupStart + 1;
+    const segmentCount = allocations[sourceIndex];
+    const phase = segmentCount === 1 ? 'complete' : (segmentIndex === 1 ? 'entry' : (segmentIndex === segmentCount ? 'exit' : 'progress'));
+    return {
+      ...source,
+      beat_index: index + 1,
+      source_beat_index: Number(source.beat_index || sourceIndex + 1),
+      long_form_segment: {
+        sequence_id: `sequence_${Number(source.beat_index || sourceIndex + 1)}`,
+        index: segmentIndex,
+        total: segmentCount,
+        phase,
+        duration_budget_sec: productionLimits.MAX_SHOT_DURATION,
+        entry_state: segmentIndex === 1 ? (source.state_before || []) : [],
+        exit_state: segmentIndex === segmentCount ? (source.state_after || []) : [],
+        proof_requirements: source.visible_evidence || source.visual_proof || [],
+        instruction: `这是同一章节的第 ${segmentIndex}/${segmentCount} 个连续镜头；只推进本段可见状态，不重复前段动作，不提前完成后段结果。`,
+      },
+      spoken_line: segmentIndex === 1 ? source.spoken_line : '',
+      why_next: segmentIndex === segmentCount ? source.why_next : '',
+    };
+  });
 }
 
 function alignShotsToBeats(rows, beats) {
@@ -408,7 +452,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
     .filter(([index]) => expectedIndexes.has(index)));
   const all = [...resumedByIndex.values()];
   const pendingBeats = beats.filter((beat, index) => !resumedByIndex.has(Number(beat?.beat_index || index + 1)));
-  const beatChunks = chunksOf(pendingBeats, beats.length > 8 ? 3 : 4);
+  const beatChunks = storyboardBeatChunks(beats, pendingBeats);
   const meta = [];
 
   const checkpoint = async phase => {
@@ -429,6 +473,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'All user-visible text values must be natural Simplified Chinese, including shot title, role, purpose, visuals, actions, voiceover/dialogue, character names/actions, material notes, scene descriptions and transition/continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
       'Do not force fixed segments, fixed template, or fixed shot count. Shots must follow the user story content.',
       'Each input beat must produce one corresponding shot.',
+      'When long_form_segment is present, all beats with the same sequence_id are one macro chapter. Give every segment a distinct visible action/state progression, close the supplied entry/exit states, satisfy proof_requirements, and never repeat the same plot, framing or action as padding.',
       'Do not force every shot into a fixed story_visual + promo_visual pair.',
       'For each shot, choose the visual layers required by the user brief and blueprint: story, character, product, material, space, UI, proof, comparison, emotion, brand, offer, process, result, or other.',
       'Some shots may need only product/material proof, some may need story/emotion, some may need comparison or brand result. Follow the actual user request.',
@@ -466,7 +511,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
 
     const userPrompt = `${contextPrompt(ctx)}
 
-Blueprint: ${JSON.stringify(blueprint).slice(0, 14000)}
+Blueprint global contract: ${JSON.stringify(storyboardBlueprintDigest(blueprint)).slice(0, 8000)}
 
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 
@@ -605,15 +650,26 @@ Return JSON array for current beats only. Fields:
   return { shots, model_meta: meta };
 }
 
-async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '' } = {}) {
+function issueShotIndexes(issue = '', total = 0) {
+  const matches = [...String(issue || '').matchAll(/(?:shot|镜头|第)?\s*(\d{1,3})/gi)];
+  return matches.map(match => Number(match[1])).filter(index => index >= 1 && index <= total);
+}
+
+async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '', onlyIndexes = null } = {}) {
   if (!Array.isArray(issues) || !issues.length) return shots;
-  const indexes = Array.from(new Set(issues.flatMap((issue) => {
-    const matches = [...String(issue || '').matchAll(/第\s*(\d+)\s*镜/g)];
-    return matches.map(match => Number(match[1])).filter(n => n >= 1 && n <= shots.length);
-  }))).slice(0, 8);
+  const indexes = Array.isArray(onlyIndexes)
+    ? onlyIndexes.filter(index => Number.isInteger(index) && index >= 1 && index <= shots.length)
+    : Array.from(new Set(issues.flatMap(issue => issueShotIndexes(issue, shots.length))));
   if (!indexes.length) return shots;
+  if (indexes.length > 8) {
+    let repaired = shots;
+    for (const batch of chunksOf(indexes, 8)) {
+      repaired = await rewriteStoryboard(ctx, blueprint, repaired, issues, { taskId, onlyIndexes: batch });
+    }
+    return repaired;
+  }
   const selected = indexes.map(index => shots[index - 1]).filter(Boolean);
-  const selectedIssues = issues.filter(issue => indexes.some(index => new RegExp(`第\\s*${index}\\s*镜`).test(String(issue || ''))));
+  const selectedIssues = issues.filter(issue => issueShotIndexes(issue, shots.length).some(index => indexes.includes(index)));
 
   const systemPrompt = [
     'You are the storyboard rewrite agent. Return a JSON array containing only the requested shot indexes.',
@@ -686,4 +742,7 @@ module.exports = {
   normalizeKeyframeNotes,
   alignShotsToBeats,
   missingBeatIndexes,
+  plannedBeats,
+  storyboardBeatChunks,
+  storyboardBlueprintDigest,
 };

@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-longform-semantic-resume-v34';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',
