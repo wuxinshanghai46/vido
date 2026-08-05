@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v37';
-import { toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v37';
-import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v37';
+import { request } from '../api.js?v=20260805-visual-retry-consent-v38';
+import { toast } from '../components/ui.js?v=20260805-visual-retry-consent-v38';
+import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v38';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

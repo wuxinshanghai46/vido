@@ -48,6 +48,10 @@ function normalizeCheckpoint(value = {}, identity = {}) {
     provider_result: value.provider_result || null,
     result: value.result || null,
     error: value.error || null,
+    retry_authorization: value.retry_authorization && typeof value.retry_authorization === 'object'
+      ? { ...value.retry_authorization }
+      : null,
+    attempt_history: Array.isArray(value.attempt_history) ? value.attempt_history.slice(-20) : [],
     started_at: value.started_at || '',
     submitted_at: value.submitted_at || '',
     completed_at: value.completed_at || '',
@@ -59,10 +63,20 @@ function reusable(checkpoint = {}) {
   return checkpoint.status === 'completed' && checkpoint.result;
 }
 
+function hasAmbiguousSubmission(checkpoint = {}) {
+  return SUBMISSION_STATES.has(String(checkpoint.provider_submission_state || ''))
+    || String(checkpoint.billing_state || '') === 'unknown';
+}
+
+function hasRetryAuthorization(checkpoint = {}) {
+  const authorization = checkpoint.retry_authorization || {};
+  return authorization.accept_duplicate_charge_risk === true
+    && Number(authorization.remaining_uses || 0) > 0
+    && String(authorization.checkpoint_key || '') === String(checkpoint.key || '');
+}
+
 function assertRetrySafe(checkpoint = {}) {
-  const state = String(checkpoint.provider_submission_state || '');
-  const billing = String(checkpoint.billing_state || '');
-  if (SUBMISSION_STATES.has(state) || billing === 'unknown') {
+  if (hasAmbiguousSubmission(checkpoint) && !hasRetryAuthorization(checkpoint)) {
     const error = new Error('供应商提交或计费状态尚未确认，已停止自动重试，避免重复付费。');
     error.code = 'GENERATION_BILLING_STATE_UNKNOWN';
     error.status = 409;
@@ -70,6 +84,39 @@ function assertRetrySafe(checkpoint = {}) {
     error.checkpoint = checkpoint;
     throw error;
   }
+}
+
+function authorizeAmbiguousRetry(value = {}, authorization = {}) {
+  const checkpoint = normalizeCheckpoint(value);
+  if (!hasAmbiguousSubmission(checkpoint)) {
+    const error = new Error('当前生成单元不存在计费未知状态，不需要重复计费风险授权。');
+    error.code = 'GENERATION_RETRY_AUTHORIZATION_NOT_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
+  if (authorization.acceptDuplicateChargeRisk !== true && authorization.accept_duplicate_charge_risk !== true) {
+    const error = new Error('必须明确接受该生成单元可能重复计费，才能创建一次性重试授权。');
+    error.code = 'GENERATION_DUPLICATE_CHARGE_ACCEPTANCE_REQUIRED';
+    error.status = 400;
+    error.retryable = false;
+    throw error;
+  }
+  return {
+    ...checkpoint,
+    retry_authorization: {
+      id: String(authorization.id || crypto.randomUUID()),
+      checkpoint_key: checkpoint.key,
+      accept_duplicate_charge_risk: true,
+      accepted_by: String(authorization.acceptedBy || authorization.accepted_by || '').slice(0, 120),
+      support_id: String(authorization.supportId || authorization.support_id || '').slice(0, 120),
+      reason: String(authorization.reason || 'user_explicit_acceptance').slice(0, 240),
+      remaining_uses: 1,
+      accepted_at: now(),
+      consumed_at: '',
+    },
+    updated_at: now(),
+  };
 }
 
 async function runCheckpointedUnit({
@@ -92,6 +139,37 @@ async function runCheckpointedUnit({
     return { result: checkpoint.result, checkpoint, reused: true };
   }
   assertRetrySafe(checkpoint);
+  if (hasAmbiguousSubmission(checkpoint) && hasRetryAuthorization(checkpoint)) {
+    const priorAttempt = {
+      status: checkpoint.status,
+      provider_submission_state: checkpoint.provider_submission_state,
+      billing_state: checkpoint.billing_state,
+      provider_request_id: checkpoint.provider_request_id,
+      provider_task_id: checkpoint.provider_task_id,
+      error: checkpoint.error,
+      archived_at: now(),
+    };
+    checkpoint = {
+      ...checkpoint,
+      status: 'pending',
+      provider_submission_state: 'not_submitted',
+      billing_state: 'not_submitted',
+      provider_request_id: '',
+      provider_task_id: '',
+      provider_result: null,
+      result: null,
+      error: null,
+      attempt_history: [...checkpoint.attempt_history, priorAttempt].slice(-20),
+      retry_authorization: {
+        ...checkpoint.retry_authorization,
+        remaining_uses: 0,
+        consumed_at: now(),
+      },
+      updated_at: now(),
+    };
+    await save(key, checkpoint);
+    if (onEvent) onEvent({ type: 'checkpoint_retry_authorized', key, checkpoint });
+  }
   checkpoint = {
     ...checkpoint,
     status: 'running',
@@ -196,6 +274,9 @@ module.exports = {
   checkpointKey,
   normalizeCheckpoint,
   reusable,
+  hasAmbiguousSubmission,
+  hasRetryAuthorization,
   assertRetrySafe,
+  authorizeAmbiguousRetry,
   runCheckpointedUnit,
 };

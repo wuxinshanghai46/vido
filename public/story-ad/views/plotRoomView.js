@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v37';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v37';
-import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v37';
+import { request } from '../api.js?v=20260805-visual-retry-consent-v38';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v38';
+import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v38';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

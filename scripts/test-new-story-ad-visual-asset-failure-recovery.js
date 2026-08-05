@@ -3,6 +3,8 @@ const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleServ
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const visualAssetProgress = require('../src/services/newStoryAd/visualAssetProgressService');
 const projectStorage = require('../src/services/newStoryAd/storageService');
+const checkpointService = require('../src/services/newStoryAd/assetGenerationCheckpointService');
+const billingAuthorization = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -115,6 +117,41 @@ async function main() {
   assert.strictEqual(accessoryProviderCalls, 1, 'billing-unknown accessory must never be resubmitted automatically');
   assert.strictEqual(petProviderCalls, 1, 'completed pet checkpoint must be reused');
 
+  const latestRow = storage.listOutputs('visual-recovery-task')
+    .find(row => row.kind.startsWith('subject_asset_checkpoint:'));
+  const latestAccessoryEntry = Object.entries(latestRow.payload.person_dossier_checkpoints)
+    .find(([, checkpoint]) => checkpoint?.status === 'submitted_unknown' && checkpoint?.billing_state === 'unknown');
+  const [latestAccessoryKey, latestAccessoryCheckpoint] = latestAccessoryEntry;
+  const authorizedCheckpoint = checkpointService.authorizeAmbiguousRetry(latestAccessoryCheckpoint, {
+    acceptDuplicateChargeRisk: true,
+    acceptedBy: 'test-user',
+    supportId: 'support-test',
+  });
+  storage.saveOutput('visual-recovery-task', latestRow.kind, {
+    ...latestRow.payload,
+    person_dossier_checkpoints: {
+      ...latestRow.payload.person_dossier_checkpoints,
+      [latestAccessoryKey]: authorizedCheckpoint,
+    },
+  });
+  await assert.rejects(
+    subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps),
+    error => error.code === 'PROVIDER_5XX_AMBIGUOUS' && error.billingState === 'unknown',
+  );
+  assert.strictEqual(accessoryProviderCalls, 2, 'explicit acceptance grants exactly one additional accessory submission');
+  assert.strictEqual(petProviderCalls, 1, 'authorized accessory retry must still reuse the completed pet');
+  await assert.rejects(
+    subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps),
+    error => error.code === 'GENERATION_BILLING_STATE_UNKNOWN',
+  );
+  assert.strictEqual(accessoryProviderCalls, 2, 'a second ambiguous failure must lock again after the one-time authorization is consumed');
+  const consumedCheckpoint = Object.values(storage.listOutputs('visual-recovery-task')
+    .find(row => row.kind.startsWith('subject_asset_checkpoint:')).payload.person_dossier_checkpoints)
+    .find(checkpoint => checkpoint?.unit === 'wearable_accessory:wrist_wearables');
+  assert.strictEqual(consumedCheckpoint.retry_authorization.remaining_uses, 0);
+  assert.ok(consumedCheckpoint.retry_authorization.consumed_at);
+  assert.strictEqual(consumedCheckpoint.attempt_history.length, 1);
+
   const originalGetTask = projectStorage.getTask;
   const originalUpdateTask = projectStorage.updateTask;
   let progressTask = { id: 'progress-task' };
@@ -138,14 +175,60 @@ async function main() {
     projectStorage.updateTask = originalUpdateTask;
   }
 
+  const originalStorage = {
+    getTask: projectStorage.getTask,
+    listOutputs: projectStorage.listOutputs,
+    saveOutput: projectStorage.saveOutput,
+    updateTask: projectStorage.updateTask,
+  };
+  let authorizationTask = {
+    id: 'authorization-task', support_id: 'support-authorization', active_generation_id: '',
+    retryable: false, error_code: 'GENERATION_BILLING_STATE_UNKNOWN', generation_progress: { lanes: { subjects: {} } },
+  };
+  let authorizationOutput = {
+    kind: 'subject_asset_checkpoint:authorization-task:one',
+    payload: {
+      person_dossier_checkpoints: {
+        'person_detail:actor:1:wearable_accessory:wrist': {
+          key: 'person_detail:actor:1:wearable_accessory:wrist',
+          status: 'submitted_unknown', provider_submission_state: 'submitted_unknown', billing_state: 'unknown',
+        },
+      },
+    },
+  };
+  try {
+    projectStorage.getTask = () => clone(authorizationTask);
+    projectStorage.listOutputs = () => [clone(authorizationOutput)];
+    projectStorage.saveOutput = (taskId, kind, payload) => { authorizationOutput = { kind, payload: clone(payload) }; return payload; };
+    projectStorage.updateTask = (taskId, patch) => { authorizationTask = { ...authorizationTask, ...clone(patch) }; return clone(authorizationTask); };
+    assert.throws(() => billingAuthorization.authorizeTaskRetry({
+      taskId: 'authorization-task', supportId: 'support-authorization', acceptedBy: 'owner',
+    }), error => error.code === 'GENERATION_DUPLICATE_CHARGE_ACCEPTANCE_REQUIRED');
+    const authorization = billingAuthorization.authorizeTaskRetry({
+      taskId: 'authorization-task', supportId: 'support-authorization', acceptedBy: 'owner', acceptDuplicateChargeRisk: true,
+    });
+    assert.strictEqual(authorization.authorized, true);
+    assert.strictEqual(authorization.remaining_uses, 1);
+    assert.strictEqual(authorizationTask.retryable, true);
+    assert.strictEqual(authorizationTask.error_code, 'VISUAL_ASSET_RETRY_AUTHORIZED');
+    const duplicateAuthorization = billingAuthorization.authorizeTaskRetry({
+      taskId: 'authorization-task', supportId: 'support-authorization', acceptedBy: 'owner', acceptDuplicateChargeRisk: true,
+    });
+    assert.strictEqual(duplicateAuthorization.duplicate, true, 'repeated confirmation before submission must not mint extra uses');
+  } finally {
+    Object.assign(projectStorage, originalStorage);
+  }
+
   console.log(JSON.stringify({
     passed: true,
     provider_500_classification: 'PROVIDER_5XX_AMBIGUOUS',
     core_person_calls: personProviderCalls,
     accessory_calls: accessoryProviderCalls,
+    authorized_retry_calls: 1,
     pet_calls: petProviderCalls,
     billing_unknown_resubmissions: 0,
     stale_running_lanes: 0,
+    authorization_remaining_uses: 1,
   }));
 }
 

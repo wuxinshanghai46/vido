@@ -25,6 +25,7 @@ const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService'
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const visualAssetProgress = require('../services/newStoryAd/visualAssetProgressService');
 const visualAssetOrchestration = require('../services/newStoryAd/visualAssetOrchestrationService');
+const visualAssetBillingAuthorization = require('../services/newStoryAd/visualAssetBillingAuthorizationService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
@@ -1560,6 +1561,19 @@ router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (r
   res.setHeader('Vary', 'Authorization');
   const plan = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
   res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, ...plan });
+}));
+
+router.post('/tasks/:id/visual-assets/retry-authorization', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const user = userFromReq(req);
+  const body = req.body || {};
+  const result = visualAssetBillingAuthorization.authorizeTaskRetry({
+    taskId: req.params.id,
+    supportId: String(body.support_id || body.supportId || ''),
+    acceptedBy: String(user.id || user.userId || user.username || 'anonymous'),
+    acceptDuplicateChargeRisk: body.accept_duplicate_charge_risk === true || body.acceptDuplicateChargeRisk === true,
+  });
+  res.json({ success: true, ...result });
 }));
 
 router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {

@@ -49,6 +49,10 @@ assert(route.includes('deferCommit: true'));
 assert(route.includes('deferPublish: true'));
 assert(route.includes('existingSceneAssets: sceneAssets'));
 assert(route.includes('sceneError.partial_scene_assets = sceneAssets'), 'completed scenes must survive a later scene failure');
+assert(route.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must expose an owned one-time authorization endpoint');
+assert(assetView.includes('接受费用风险并继续缺失项'));
+assert(assetView.includes('accept_duplicate_charge_risk: true'));
+assert(assetView.includes('/visual-assets/retry-authorization'));
 
 const jobs = read('src/services/newStoryAd/jobService.js');
 assert(jobs.includes("function jobKey(taskId)"), 'single outer task lock must remain');

@@ -31,6 +31,7 @@ function run() {
     'src/services/newStoryAd/personDossierCompiler.js',
     'src/services/newStoryAd/dossierCompositeService.js',
     'src/services/newStoryAd/visualAssetOrchestrationService.js',
+    'src/services/newStoryAd/visualAssetBillingAuthorizationService.js',
     'src/services/newStoryAd/propAssetService.js',
     'src/services/newStoryAd/propIdentityContractService.js',
     'src/services/newStoryAd/propTimelineService.js',

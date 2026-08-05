@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260805-semantic-root-cause-closure-v37';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-semantic-root-cause-closure-v37';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-semantic-root-cause-closure-v37';
+import { createProjectStore } from './store/projectStore.js?v=20260805-visual-retry-consent-v38';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-visual-retry-consent-v38';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-visual-retry-consent-v38';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260805-semantic-root-cause-closure-v37'),
-  assets: () => import('./views/assetCenterView.js?v=20260805-semantic-root-cause-closure-v37'),
-  plot: () => import('./views/plotRoomView.js?v=20260805-semantic-root-cause-closure-v37'),
-  storyboard: () => import('./views/storyboardView.js?v=20260805-semantic-root-cause-closure-v37'),
-  shot: () => import('./views/shotDesignerView.js?v=20260805-semantic-root-cause-closure-v37'),
-  final: () => import('./views/finalView.js?v=20260805-semantic-root-cause-closure-v37'),
-  workflow: () => import('./views/workflowView.js?v=20260805-semantic-root-cause-closure-v37'),
+  brief: () => import('./views/briefView.js?v=20260805-visual-retry-consent-v38'),
+  assets: () => import('./views/assetCenterView.js?v=20260805-visual-retry-consent-v38'),
+  plot: () => import('./views/plotRoomView.js?v=20260805-visual-retry-consent-v38'),
+  storyboard: () => import('./views/storyboardView.js?v=20260805-visual-retry-consent-v38'),
+  shot: () => import('./views/shotDesignerView.js?v=20260805-visual-retry-consent-v38'),
+  final: () => import('./views/finalView.js?v=20260805-visual-retry-consent-v38'),
+  workflow: () => import('./views/workflowView.js?v=20260805-visual-retry-consent-v38'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

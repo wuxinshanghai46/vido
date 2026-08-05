@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v37';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v37';
-import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v37';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-semantic-root-cause-closure-v37';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-semantic-root-cause-closure-v37';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-semantic-root-cause-closure-v37';
+import { request } from '../api.js?v=20260805-visual-retry-consent-v38';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v38';
+import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v38';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-visual-retry-consent-v38';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-visual-retry-consent-v38';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-visual-retry-consent-v38';
 
 const GROUPS = [
   ['people', '人物'],
@@ -258,6 +258,14 @@ export async function mount(host, context) {
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
   const missingSceneCount = (assets.scenes || []).filter(sceneNeedsGeneration).length;
+  const billingReviewRequired = bundle.project?.error_code === 'GENERATION_BILLING_STATE_UNKNOWN'
+    || bundle.generation?.progress?.error_code === 'GENERATION_BILLING_STATE_UNKNOWN';
+  const billingReviewSupportId = bundle.generation?.progress?.support_id || '';
+  const visualActionLabel = billingReviewRequired
+    ? '接受费用风险并继续缺失项'
+    : (missingSubjectCount && missingSceneCount
+      ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）`
+      : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全')));
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
@@ -266,7 +274,7 @@ export async function mount(host, context) {
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
-      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${missingSubjectCount && missingSceneCount ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）` : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全'))}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
+      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${visualActionLabel}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount && !billingReviewRequired ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
     </section>` : ''}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
@@ -282,6 +290,10 @@ export async function mount(host, context) {
 
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
+    if (billingReviewRequired) {
+      toast('当前人物配饰存在计费未知记录，请使用“接受费用风险并继续缺失项”完成一次性授权。', 'warning');
+      return false;
+    }
     const intent = target?.subject_id || 'all';
     const requestKey = generationKeys.get(intent) || `${bundle.project.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
     generationKeys.set(intent, requestKey);
@@ -542,11 +554,25 @@ export async function mount(host, context) {
       if (validation) { toast(validation, 'warning'); return; }
     }
     const summary = [missingSubjectCount ? `${missingSubjectCount} 个人物 / 动物` : '', missingSceneCount ? `${missingSceneCount} 个场景` : ''].filter(Boolean).join('和');
-    if (!await confirmDialog(`将同步生成${summary}。人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`, {
-      title: '确认同步生成人物与场景', confirmText: '开始同步生成',
+    const confirmation = billingReviewRequired
+      ? `上次配饰图片已提交给供应商，但供应商没有返回可查询任务 ID，无法确认是否计费。继续后，该配饰可能再次计费；已有 6 项人物核心资产会复用，只补配饰、宠物和缺失场景。此授权仅允许使用一次，若再次出现计费未知会重新锁定。`
+      : `将同步生成${summary}。人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`;
+    if (!await confirmDialog(confirmation, {
+      title: billingReviewRequired ? '接受可能重复计费并继续' : '确认同步生成人物与场景',
+      confirmText: billingReviewRequired ? '我接受风险，继续缺失项' : '开始同步生成',
     })) return;
     try {
       setButtonBusy(button, true, '正在提交同步生成…', { elapsed: true });
+      if (billingReviewRequired) {
+        if (!billingReviewSupportId) throw new Error('缺少本次失败支持编号，请刷新页面后重试。');
+        await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/visual-assets/retry-authorization`, {
+          method: 'POST',
+          body: {
+            support_id: billingReviewSupportId,
+            accept_duplicate_charge_risk: true,
+          },
+        });
+      }
       await store.runStage('visual-assets', {
         ...subjectPayload,
         generate_subjects: missingSubjectCount > 0,
