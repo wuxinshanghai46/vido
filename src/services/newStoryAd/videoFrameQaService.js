@@ -444,7 +444,7 @@ async function reviewVideoClip({ taskId = '', clip = {}, shot = {}, keyframe = {
     ...parsed,
     pass: parsed.pass === true || approvedPeopleMatch,
     person_pass: personIdentity.shotPersonRequired(ctx, shot, contract) ? parsed.person_pass === true : true,
-    product_pass: productIdentity.productRequired(ctx) ? parsed.product_pass === true : true,
+    product_pass: productIdentity.shotProductProofRequired(ctx, shot, contract) ? parsed.product_pass === true : true,
     scene_pass: parsed.scene_pass === true || structuredPartialPeopleMatch,
     action_pass: parsed.action_pass === true,
     people_count_pass: parsed.people_count_pass === true || approvedPeopleMatch,

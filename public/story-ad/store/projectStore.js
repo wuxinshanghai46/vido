@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-reference-progress-priority-v28';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-reference-progress-priority-v28';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-adaptive-reference-recovery-v29';
 
 export function createProjectStore() {
   const state = {
@@ -316,9 +316,8 @@ export function createProjectStore() {
       error: analysis.error || null,
       visual_evidence_reusable: analysis.visual_evidence_reusable === true,
       semantic_result_reusable: analysis.semantic_result_reusable === true,
-      evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object'
-        ? analysis.evidence_batch_progress
-        : { total: 0, completed: 0, remaining: 0, failed: 0 },
+      evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object' ? analysis.evidence_batch_progress : { total: 0, completed: 0, remaining: 0, failed: 0 },
+      semantic_contract_progress: analysis.semantic_contract_progress && typeof analysis.semantic_contract_progress === 'object' ? analysis.semantic_contract_progress : null,
       schema_version: Number(result.schema_version || analysis.schema_version || 3) || 3,
       analysis_scope: result.analysis_scope || analysis.analysis_scope || 'reference_content_and_creative_structure',
       generated_brief: result.generated_brief || analysis.generated_brief || '',
@@ -366,6 +365,7 @@ export function createProjectStore() {
           visual_evidence_reusable: live.visual_evidence_reusable === true,
           semantic_result_reusable: live.semantic_result_reusable === true,
           evidence_batch_progress: live.evidence_batch_progress,
+          semantic_contract_progress: live.semantic_contract_progress,
           generated_brief: live.generated_brief,
           source_facts: live.source_facts,
           analysis_valid: live.analysis_quality?.valid === true,

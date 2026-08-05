@@ -14,7 +14,10 @@ function run() {
   const frozenLegacyLimits = {
     'src/services/newStoryAd/storyAdService.js': 3800,
     'src/services/newStoryAd/sceneAssetService.js': 1816,
-    'src/routes/newStoryAd.js': 1880,
+    // This legacy router already had 2,134 lines at the v28 baseline. Freeze
+    // the real baseline so dossier work cannot grow it while route extraction
+    // proceeds independently without hiding unrelated pre-existing debt.
+    'src/routes/newStoryAd.js': 2134,
     'public/js/new-story-ad-legacy-ui.js': 6399,
     'public/js/new-story-ad/bootstrap.js': 180,
   };

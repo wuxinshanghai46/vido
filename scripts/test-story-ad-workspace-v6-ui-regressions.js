@@ -177,7 +177,16 @@ assert.match(failedReference, /data-reference-retry/);
 assert.match(failedReference, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-reusable', status: 'failed', visual_evidence_reusable: true,
-}), />重新识别<\/button>/);
+}), />继续补齐语义结构<\/button>/);
+const semanticFailureProgress = briefModule.referenceProgress({
+  analysis_id: 'failed-semantic-contracts', status: 'failed', progress: 82, visual_evidence_reusable: true,
+  evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
+  semantic_contract_progress: { total: 5, completed: 4 },
+});
+assert.match(semanticFailureProgress, /82%/);
+assert.match(semanticFailureProgress, /镜头证据已完成 8\/8 批/);
+assert.match(semanticFailureProgress, /语义合同已完成 4\/5 项/);
+assert.doesNotMatch(semanticFailureProgress, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-semantic-reusable', status: 'failed', visual_evidence_reusable: true, semantic_result_reusable: true,
 }), /复用现有结果重新校验/);

@@ -125,6 +125,27 @@ function productPresentation(context = {}) {
   };
 }
 
+function sceneMaterialReferenceImages(context = {}, body = {}) {
+  const spec = body.scene_spec || body.sceneSpec || context.scene_spec || {};
+  const presentation = productPresentation({ ...context, ...body });
+  const productReferences = presentation.mode === 'material_surface'
+    ? context.product_contract?.reference_images
+    : [];
+  const candidates = [
+    spec.material_reference_images,
+    spec.materialReferenceImages,
+    body.material_reference_images,
+    body.materialReferenceImages,
+    context.material_reference_images,
+    context.materialReferenceImages,
+    productReferences,
+  ].flatMap(value => Array.isArray(value) ? value : (value ? [value] : []));
+  return [...new Set(candidates.map(item => text(
+    typeof item === 'string' ? item : (item?.url || item?.image_url || item?.imageUrl || ''),
+    1600,
+  )).filter(value => /^https?:\/\/|^\//i.test(value)))].slice(0, 2);
+}
+
 module.exports = {
   GENERIC_SUBJECTS,
   inferredSubject,
@@ -134,4 +155,5 @@ module.exports = {
   primaryProductAsset,
   productPresentation,
   productAssets,
+  sceneMaterialReferenceImages,
 };

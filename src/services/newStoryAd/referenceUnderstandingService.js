@@ -114,7 +114,10 @@ function normalizeCausalChain(proposed, fallback, validRefs) {
     return {
       id: text(row.id || base.id || `event_${index + 1}`, 80),
       range: range(row.range, base.range || [0, 0]),
-      scene_id: text(row.scene_id || base.scene_id, 100),
+      // The audited shot breakdown owns physical-space identity. A synthesis
+      // candidate may explain a scene, but it must not remap an event to an
+      // invented or different space.
+      scene_id: text(base.scene_id || row.scene_id, 100),
       subject: text(row.subject || base.subject || '画面主体', 300),
       action: text(row.action || base.action, 700),
       motivation: text(row.motivation, 500),
@@ -174,27 +177,62 @@ function normalizeCharacters(proposed, analysis, validRefs) {
 
 function normalizeScenes(proposed, analysis, chain, validRefs) {
   const validEventIds = new Set(chain.map(event => event.id));
-  const fallback = list(analysis.scene_prompts, 120).map(row => {
-    const events = chain.filter(event => event.scene_id === row.id);
+  const authoritativeScenes = list(analysis.scene_prompts, 120).filter((row, index, all) => {
+    const sceneId = text(row?.id || `scene_prompt_${index + 1}`, 100);
+    return sceneId && all.findIndex((candidate, candidateIndex) => (
+      text(candidate?.id || `scene_prompt_${candidateIndex + 1}`, 100) === sceneId
+    )) === index;
+  });
+  const fallback = authoritativeScenes.map((row, index) => {
+    const sceneId = text(row.id || `scene_prompt_${index + 1}`, 100);
+    const events = chain.filter(event => event.scene_id === sceneId);
+    const eventSummary = unique(events.map(event => text(event.action || event.result, 300)), 6).join('；');
+    const proposedFunction = text(row.camera_purpose || row.interaction_prompt, 600);
+    const narrativeFunction = proposedFunction && !GENERIC_SCENE_PATTERN.test(proposedFunction)
+      ? proposedFunction
+      : text(`${row.location_type || '该物理空间'}承载${eventSummary || row.interaction_prompt || '可见主体、动作与状态变化'}`, 700);
     return {
-      scene_id: text(row.id, 100),
-      narrative_function: text(row.camera_purpose || row.interaction_prompt, 600),
-      entry_transition: '', events: events.map(event => event.id), state_change: '', exit_transition: '',
+      scene_id: sceneId,
+      narrative_function: narrativeFunction,
+      entry_transition: '', events: events.map(event => event.id),
+      state_change: text(unique(events.map(event => event.result || event.action), 4).join('；'), 700), exit_transition: '',
       evidence_refs: unique(events.flatMap(event => event.evidence_refs), 48), certainty: 'fact',
     };
   });
-  const rows = list(proposed, 120).length ? list(proposed, 120) : fallback;
-  return rows.map((row, index) => ({
-    scene_id: text(row.scene_id || fallback[index]?.scene_id || `scene_prompt_${index + 1}`, 100),
-    narrative_function: text(row.narrative_function || fallback[index]?.narrative_function, 700),
-    entry_transition: text(row.entry_transition, 400),
-    events: unique(list(row.events, 120).map(item => text(item, 80)).filter(item => validEventIds.has(item)), 120),
-    state_change: text(row.state_change, 700),
-    exit_transition: text(row.exit_transition, 400),
-    evidence_refs: normalizeRefs(row.evidence_refs, validRefs).length
-      ? normalizeRefs(row.evidence_refs, validRefs) : (fallback[index]?.evidence_refs || []),
-    certainty: ['fact', 'inference', 'unknown'].includes(row.certainty) ? row.certainty : 'fact',
-  }));
+  const proposedRows = list(proposed, 120);
+  const rows = fallback.length ? fallback.map((base) => {
+    const matches = proposedRows.filter(row => text(row?.scene_id, 100) === base.scene_id);
+    return matches.reduce((merged, row) => ({
+      ...merged,
+      ...row,
+      scene_id: base.scene_id,
+      narrative_function: text(row?.narrative_function || merged.narrative_function, 700),
+      evidence_refs: unique([
+        ...list(merged.evidence_refs, 48),
+        ...list(row?.evidence_refs, 48),
+      ], 48),
+    }), base);
+  }) : proposedRows;
+  return rows.map((row, index) => {
+    const sceneId = text(row.scene_id || fallback[index]?.scene_id || `scene_prompt_${index + 1}`, 100);
+    const authoritativeEvents = chain.filter(event => event.scene_id === sceneId);
+    const eventIds = authoritativeEvents.length
+      ? authoritativeEvents.map(event => event.id)
+      : unique(list(row.events, 120).map(item => text(item, 80)).filter(item => validEventIds.has(item)), 120);
+    const authoritativeRefs = unique(authoritativeEvents.flatMap(event => event.evidence_refs), 48);
+    const normalizedProposedRefs = normalizeRefs(row.evidence_refs, validRefs);
+    const combinedRefs = unique([...normalizedProposedRefs, ...authoritativeRefs], 48);
+    return {
+      scene_id: sceneId,
+      narrative_function: text(row.narrative_function || fallback[index]?.narrative_function, 700),
+      entry_transition: text(row.entry_transition, 400),
+      events: unique(eventIds, 120),
+      state_change: text(row.state_change, 700),
+      exit_transition: text(row.exit_transition, 400),
+      evidence_refs: combinedRefs.length ? combinedRefs : (fallback[index]?.evidence_refs || []),
+      certainty: ['fact', 'inference', 'unknown'].includes(row.certainty) ? row.certainty : 'fact',
+    };
+  });
 }
 
 function normalizeEvidenceClaims(values, prefix, validRefs) {

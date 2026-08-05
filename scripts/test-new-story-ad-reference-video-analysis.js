@@ -914,7 +914,7 @@ async function main() {
   assert.equal(cachedRetryStarted.record.phase, '已复用画面证据，等待重新整理');
   const cachedRetryCompleted = await waitFor(cachedRetryId, user, ['completed', 'failed']);
   assert.equal(cachedRetryCompleted.status, 'completed');
-  assert.ok(cachedRetryCompleted.checkpoints.some(item => item.phase === '已复用画面证据，重新整理分析结构'));
+  assert.ok(cachedRetryCompleted.checkpoints.some(item => /已复用画面证据(?:并独立恢复语音转写)?，重新整理分析结构/.test(item.phase)));
   assert.equal(cachedRetryCompleted.result.analysis_quality.valid, true);
   if (service._private.activeRuns.get(cachedRetryId)) await service._private.activeRuns.get(cachedRetryId);
   assert.equal(service._private.activeRuns.has(cachedRetryId), false, '缓存快速恢复完成后不得残留幽灵活动任务');
@@ -1159,6 +1159,20 @@ async function main() {
     }),
     legacyAuthTranscript,
     'a legacy 401 transcript failure must not issue another provider request during visual recovery',
+  );
+  const recoveredTransientTranscript = await service._private.transcribeAudio({
+    transcript: {
+      status: 'failed_non_blocking',
+      text: '',
+      segments: [],
+      error: { code: 'RATE_LIMIT', message: 'HTTP 429 rate limit', retryable: true },
+    },
+    source: { metadata: { has_audio: true, duration_seconds: 12 } },
+  });
+  assert.strictEqual(
+    recoveredTransientTranscript.status,
+    'mocked',
+    'a transient ASR failure must recover independently even when visual evidence is reused',
   );
   assert.strictEqual(
     service._private.isReusableTranscriptFailure({
@@ -1778,7 +1792,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 197,
+    checks: 198,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

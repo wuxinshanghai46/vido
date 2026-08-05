@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260805-reference-progress-priority-v28';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260805-reference-progress-priority-v28';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260805-reference-progress-priority-v28';
+import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260805-adaptive-reference-recovery-v29';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260805-adaptive-reference-recovery-v29';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

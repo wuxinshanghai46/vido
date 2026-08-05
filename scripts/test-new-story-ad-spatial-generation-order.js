@@ -748,10 +748,18 @@ async function main() {
     assert.match(continuousTradeFinishPrompt, /No authoritative material sample image is attached/i);
     assert.doesNotMatch(continuousTradeFinishPrompt, /physically supplied as sheets, boards or panels|Keep any physically necessary task-supported joints visually recessive/i);
     assert.deepEqual(sceneAssets.sceneMaterialReferenceImages({
+      product_presentation: { mode: 'material_surface' },
       product_contract: { reference_images: ['https://example.invalid/material-a.png', 'https://example.invalid/material-a.png'] },
     }), ['https://example.invalid/material-a.png']);
+    assert.deepEqual(sceneAssets.sceneMaterialReferenceImages({
+      product_presentation: { mode: 'standalone_product' },
+      product_contract: { reference_images: ['https://example.invalid/standalone-product.png'] },
+    }), [], 'standalone product packshots must not be injected as scene material references');
     const referencedMaterialPrompt = sceneAssets.buildSceneSheetPrompt({
-      ctx: { product_contract: { reference_images: ['https://example.invalid/material-a.png'] } },
+      ctx: {
+        product_presentation: { mode: 'material_surface' },
+        product_contract: { reference_images: ['https://example.invalid/material-a.png'] },
+      },
       body: { scene_spec: { materialLightText: 'task-defined finish' } },
       outputRole: 'contract',
     });

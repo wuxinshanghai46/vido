@@ -15,6 +15,8 @@ const sceneAtlas = require('./sceneAtlasService');
 const blueprintQuality = require('./blueprintQualityService'), sceneStructuredContract = require('./sceneStructuredContractService');
 const generationSpecCompletion = require('./generationSpecCompletionService');
 const visualAssetProgress = require('./visualAssetProgressService');
+const productAssetResolver = require('./productAssetResolverService');
+const sceneGenerationPolicy = require('./sceneGenerationPolicyService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -175,52 +177,14 @@ function normalizeSceneAsset(asset = {}, index = 0) {
   };
 }
 
-function sceneGenerationContractVersion(asset = {}) {
-  return Math.max(0, Number(
-    asset.generation_contract_version
-    || asset.view_acquisition?.generation_contract_version
-    || 0,
-  ) || 0);
-}
-
-function sceneGenerationUpgradeRequired(asset = {}) {
-  // Stored assets created during the contract transition may not carry the
-  // generation provenance field. A fully verified five-view space lock is
-  // stronger evidence than that missing metadata; only incomplete legacy
-  // assets must be rebuilt.
-  return !sceneBinding.completeSpaceLock(asset)
-    && sceneGenerationContractVersion(asset) < SCENE_GENERATION_CONTRACT_VERSION;
-}
-
-function fullSceneUpgradePlan() {
-  return {
-    version: SCENE_REPAIR_PLAN_VERSION,
-    action: 'regenerate_full_scene',
-    view_keys: [...SCENE_GENERATION_ORDER],
-    view_labels: SCENE_GENERATION_ORDER.map(sceneViewLabel),
-    count: SCENE_GENERATION_ORDER.length,
-    reasons: ['场景图片生成于旧版空间合同，不能通过重复审核升级'],
-    issue_codes: ['GENERATION_CONTRACT_UPGRADE_REQUIRED'],
-    message: '系统将先重新补齐当前空间设定，再用 2 次图片调用生成 5 张新版参考（2×2 母图本地裁切 4 张 + 1 张俯视布局）并自动验收。',
-  };
-}
-
-function sceneMaterialReferenceImages(ctx = {}, body = {}) {
-  const spec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
-  const candidates = [
-    spec.material_reference_images,
-    spec.materialReferenceImages,
-    body.material_reference_images,
-    body.materialReferenceImages,
-    ctx.material_reference_images,
-    ctx.materialReferenceImages,
-    ctx.product_contract?.reference_images,
-  ].flatMap(value => Array.isArray(value) ? value : (value ? [value] : []));
-  return [...new Set(candidates.map(item => cleanText(
-    typeof item === 'string' ? item : (item?.url || item?.image_url || item?.imageUrl || ''),
-    1600,
-  )).filter(value => /^https?:\/\/|^\//i.test(value)))].slice(0, 2);
-}
+const sceneGenerationContractVersion = sceneGenerationPolicy.contractVersion;
+const sceneGenerationUpgradeRequired = asset => sceneGenerationPolicy.upgradeRequired(asset, SCENE_GENERATION_CONTRACT_VERSION);
+const fullSceneUpgradePlan = () => sceneGenerationPolicy.fullUpgradePlan({
+  version: SCENE_REPAIR_PLAN_VERSION,
+  viewKeys: SCENE_GENERATION_ORDER,
+  viewLabels: SCENE_GENERATION_ORDER.map(sceneViewLabel),
+});
+const sceneMaterialReferenceImages = productAssetResolver.sceneMaterialReferenceImages;
 
 function updateSceneGenerationProgress(taskId, update = {}) {
   const task = storage.getTask(taskId);

@@ -1,12 +1,9 @@
-import { request } from '../api.js?v=20260805-reference-progress-priority-v28';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-reference-progress-priority-v28';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-reference-progress-priority-v28';
+import { request } from '../api.js?v=20260805-adaptive-reference-recovery-v29';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-adaptive-reference-recovery-v29';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-adaptive-reference-recovery-v29';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-adaptive-reference-recovery-v29';
 
-const MATERIALS = [
-  ['reference', '参考视频', '上传视频或粘贴公开链接'],
-  ['product', '商品 / 主体', '上传商品或服务主体图片'],
-];
+const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -109,14 +106,18 @@ export function referenceProgress(reference = {}) {
   const batchTotal = Math.max(0, Number(batchProgress.total || 0) || 0);
   const batchCompleted = Math.max(0, Math.min(batchTotal, Number(batchProgress.completed || 0) || 0));
   const partialEvidence = failed && batchTotal > 0 && batchCompleted > 0 && batchCompleted < batchTotal;
+  const completeEvidence = failed && batchTotal > 0 && batchCompleted === batchTotal;
+  const semanticProgress = reference.semantic_contract_progress && typeof reference.semantic_contract_progress === 'object' ? reference.semantic_contract_progress : {};
   const retryMinutes = Math.ceil(Math.max(0, Number(reference.retry_after_ms || 0) || 0) / 60000);
   const note = [
     baseNote,
     partialEvidence ? `已完成 ${batchCompleted}/${batchTotal} 批，重试只会继续读取剩余 ${batchTotal - batchCompleted} 批。` : '',
+    completeEvidence ? `镜头证据已完成 ${batchCompleted}/${batchTotal} 批；当前失败仅在语义合同整理，已完成部分会保留，只补缺失合同。` : '',
+    Number(semanticProgress.total || 0) > 0 ? `语义合同已完成 ${Number(semanticProgress.completed || 0)}/${Number(semanticProgress.total || 0)} 项。` : '',
     failed && retryMinutes > 0 ? `备用模型正在限流保护中，建议约 ${retryMinutes} 分钟后继续。` : '',
   ].filter(Boolean).join(' ');
   const retry = (failed || cancelled || completedInvalid) && reference.client_pending !== true
-    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '重新识别' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
+    ? `<button class="btn" type="button" data-reference-retry>${completedInvalid || cancelled ? '重新识别当前视频' : (reference.semantic_result_reusable === true ? '复用现有结果重新校验' : (reference.visual_evidence_reusable === true ? '继续补齐语义结构' : (partialEvidence ? `继续读取缺失镜头（${batchCompleted}/${batchTotal} 批）` : '重新读取镜头证据')))}</button>`
     : '';
   const finishedAt = reference.completed_at || reference.failed_at || reference.cancelled_at
     || reference.sync_interrupted_at || reference.updated_at || '';
@@ -283,7 +284,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260805-reference-progress-priority-v28');
+    const module = await import('./referenceUnderstandingView.js?v=20260805-adaptive-reference-recovery-v29');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -570,19 +571,19 @@ export async function mount(host, context) {
       : (semanticReusable
       ? '画面证据和语义整理结果都已完整保存，本次只重新校验场景与分镜映射，不再调用模型，是否继续？'
       : (reusable
-        ? '当前逐帧镜头证据已经通过完整性校验，本次会复用镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'
+        ? '当前逐帧镜头证据已经通过完整性校验，本次不会重读图片；系统会保留最佳语义候选，只补齐未通过的语义合同，可能产生缺项修复的模型费用。是否继续？'
         : (partialEvidence
           ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只调用视觉模型读取剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次，可能产生剩余批次的模型费用。是否继续？`
           : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉与语义模型，可能产生新的模型费用。是否继续？')));
     const confirmed = await confirmDialog(retryMessage, {
-      title: completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '重新整理参考视频' : '重新读取镜头证据')),
+      title: completedInvalid ? '重新识别当前视频' : (semanticReusable ? '重新校验参考视频' : (reusable ? '继续补齐语义结构' : '重新读取镜头证据')),
       confirmText: completedInvalid ? '确认重新识别' : (semanticReusable ? '确认重新校验' : (reusable ? '确认重新整理' : '确认重新分析')),
     });
     if (!confirmed) return;
     try {
       setButtonBusy(button, true, completedInvalid ? '正在重新识别…' : (semanticReusable ? '正在重新校验…' : (reusable ? '正在重新整理…' : '正在重新分析…')), { elapsed: true });
       await store.retryReferenceAnalysis();
-      toast(completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据开始重新整理。' : '已开始重新检测并分析镜头证据。')), 'success');
+      toast(completedInvalid ? '已保留当前视频并开始重新识别，无需重新上传。' : (semanticReusable ? '已复用现有结果开始重新校验，不会再次调用模型。' : (reusable ? '已复用完整镜头证据，只继续补齐语义结构。' : '已开始重新检测并分析镜头证据。')), 'success');
     } catch (error) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);

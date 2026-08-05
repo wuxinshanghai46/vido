@@ -1223,7 +1223,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const personPresence = personIdentity.shotPersonPresence(shot, contract);
   const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
   const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
-  const shotNeedsProduct = productIdentity.shotProductRequired(ctx, shot, contract);
+  const productPromptContract = productIdentity.keyframePromptContract(ctx, shot, contract);
+  const shotNeedsProduct = productPromptContract.proof_required;
   const personContract = ctx.person_contract || personAsset.person_contract || {};
   const productContract = ctx.product_contract || {};
   const subjectBoardReferenceText = subjectReferences.subjectBoardUrl(ctx)
@@ -1237,15 +1238,8 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     !personSpec.wardrobeText && personAsset.description ? `Actor appearance and wardrobe lock: ${cleanText(personAsset.description, 520)}` : '',
     actorViews.length ? `Actor reference images attached by role: ${cleanText(actorViews.map(v => v.key || v.label || 'view').join(', '), 160)}` : '',
   ].filter(Boolean).join('\n');
-  const productReferenceText = shotNeedsProduct ? [
-    productContract.identity?.description ? `Product identity lock: ${cleanText(productContract.identity.description, 360)}${Array.isArray(productContract.reference_images) && productContract.reference_images.length ? `; ${productContract.reference_images.length} reference images attached` : ''}` : '',
-    productContract.identity?.shape ? `Product shape lock: ${cleanText(productContract.identity.shape, 180)}` : '',
-    productContract.identity?.material ? `Product material lock: ${cleanText(productContract.identity.material, 180)}` : '',
-    Array.isArray(productContract.identity?.dominant_colors) && productContract.identity.dominant_colors.length
-      ? `Product color lock: ${cleanText(productContract.identity.dominant_colors.join(', '), 140)}` : '',
-    !productContract.identity?.description && Array.isArray(productContract.reference_images) && productContract.reference_images.length
-      ? `Product reference images attached: ${productContract.reference_images.length}` : '',
-  ].filter(Boolean).join('\n') : '';
+  const productReferenceText = productPromptContract.reference_text;
+  const productProofText = productPromptContract.proof_text;
   const parts = [
     'Photorealistic live-action commercial storyboard keyframe.',
     `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}`,
@@ -1272,6 +1266,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     visualContract.scene_direction && visualContract.scene_direction !== 'auto' ? `Scene direction: ${cleanText(visualContract.scene_direction, 80)}` : '',
     visualContract.custom_scene_requirement ? `Custom scene requirement: ${cleanText(visualContract.custom_scene_requirement, 240)}` : '',
     !userVisualOverride && shotNeedsProduct ? `Product visibility: required, presence ${cleanText(visualContract.product_presence || 'medium', 40)}, lock ${cleanText(visualContract.product_lock_strength || 'standard', 40)}.` : '',
+    !userVisualOverride && productProofText ? `Advertised-subject visible proof requirements: ${cleanText(productProofText, 1200)}. The frame must visibly demonstrate the applicable proof; do not substitute unrelated symbols or generic decoration.` : '',
     !userVisualOverride && shotNeedsProduct && Array.isArray(visualContract.product_methods) && visualContract.product_methods.length ? `Product presentation methods: ${cleanText(visualContract.product_methods.join(', '), 240)}` : '',
     productReferenceText,
     visualContract.style_direction ? `Visual style direction: ${cleanText(visualContract.style_direction, 360)}` : '',
@@ -1310,7 +1305,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     personForbidden,
     actorLocked: !!ctx.person_asset,
     productRequired: shotNeedsProduct,
-    productLocked: !!productContract.identity,
+    productLocked: productPromptContract.identity_locked,
     userVisualOverride,
   });
 }
@@ -1498,7 +1493,7 @@ async function generateKeyframesStage(taskId, options = {}) {
       const referenceImages = keyframeReferenceImages(taskId, i, ctx, sceneReference, previousFrame, shot, contracts[i] || {}, sceneAsset);
       const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contracts[i] || {});
       const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
-      const productRequired = productIdentity.shotProductRequired(ctx, shot, contracts[i] || {});
+      const productRequired = productIdentity.shotProductProofRequired(ctx, shot, contracts[i] || {});
       const requireVisualQa = !!sceneReference || shotNeedsPerson || personForbidden || productRequired;
       const maxQaRetries = keyframeTarget.qaRetryLimit(options, requireVisualQa);
       let accepted = null;
@@ -2024,7 +2019,7 @@ async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}
 function combineKeyframeQa({ ctx = {}, shot = {}, contract = {}, sceneReference = '', sceneQa = {}, personQa = {}, productQa = {} } = {}) {
   const shotNeedsPerson = personIdentity.shotPersonRequired(ctx, shot, contract);
   const personForbidden = personIdentity.shotForbidsPerson(ctx, shot);
-  const productRequired = productIdentity.shotProductRequired(ctx, shot, contract);
+  const productRequired = productIdentity.shotProductProofRequired(ctx, shot, contract);
   const conflicts = [
     ...(sceneQa.mismatch_reasons || []),
     ...(sceneQa.forbidden_new_elements || []),
@@ -2106,7 +2101,7 @@ function assertVideoInputsReady({ ctx = {}, shots = [], keyframes = [], contract
     if ((shotNeedsPerson || personForbidden) && (qa.person?.pass !== true || qa.person?.status !== 'verified')) {
       failures.push(`第 ${index + 1} 镜缺少已通过的人物一致性 QA`);
     }
-    const shotNeedsProduct = productIdentity.shotProductRequired(ctx, shots[index] || {}, contracts[index] || {});
+    const shotNeedsProduct = productIdentity.shotProductProofRequired(ctx, shots[index] || {}, contracts[index] || {});
     if (shotNeedsProduct && (qa.product?.pass !== true || qa.product?.status !== 'verified')) {
       failures.push(`第 ${index + 1} 镜缺少已通过的产品一致性 QA`);
     }
@@ -3292,6 +3287,7 @@ async function composeStage(taskId, options = {}) {
     subtitle_config: subtitleConfig,
   });
   stageProgress.update(taskId, { stage: 'compose', phase: 'timeline_ready', completed: 2, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '成片时间线已确认，正在封装最终视频' });
+  const advertisedSubjectProofCoverage = productIdentity.assertProofCoverage(ctx, shots, clips);
   const final_video = await composeService.concatVideos({
     taskId,
     clips,
@@ -3307,6 +3303,7 @@ async function composeStage(taskId, options = {}) {
   });
   const finalVideoWithLineage = {
     ...final_video,
+    advertised_subject_proof_coverage: advertisedSubjectProofCoverage,
     pipeline_policy_version: videoLineage.VIDEO_PIPELINE_POLICY_VERSION,
     clip_lineage_fingerprints: clips.map(clip => clip.lineage_fingerprint),
     scene_blocks: [...new Map(clips.filter(clip => clip.scene_block_id).map(clip => [clip.scene_block_id, {

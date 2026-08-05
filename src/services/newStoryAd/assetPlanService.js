@@ -6,10 +6,11 @@ const outputLanguage = require('./outputLanguageService');
 const stageProgress = require('./stageProgressService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const propIdentity = require('./propIdentityContractService');
+const productIdentity = require('./productIdentityContractService');
 const { contextPrompt, cleanText, assertContextConsistent } = require('./contextBuilder');
 const { normalizeScenePlan, assertScenePlanContract } = require('./sceneBindingService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 3;
+const ASSET_PLAN_PROJECTION_VERSION = 4;
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -31,6 +32,10 @@ function fingerprint(task = {}, ctx = {}) {
     version: ASSET_PLAN_PROJECTION_VERSION,
     brief: ctx.brief,
     product_subject: ctx.product_subject,
+    advertised_subject_contract: ctx.advertised_subject_contract
+      || (referenceIsValid(ctx.reference_video_analysis)
+        ? advertisedSubjectContract(ctx, ctx.reference_video_analysis)
+        : null),
     reference_analysis: ctx.reference_video_analysis || null,
     cast_profiles: castProfiles,
     pet_profiles: ctx.pet_profiles,
@@ -85,6 +90,10 @@ function uniquePrompts(items = [], prefix = 'reference_subject') {
     used.add(key);
     return true;
   });
+}
+
+function advertisedSubjectContract(ctx = {}, reference = {}) {
+  return productIdentity.projectAdvertisedSubjectContract(ctx, reference);
 }
 
 function projectReferencePlan(ctx = {}) {
@@ -172,12 +181,14 @@ function projectReferencePlan(ctx = {}) {
     };
   });
   const product = cleanText(reference.source_facts?.product_or_service || ctx.product_subject || '', 200);
+  const subjectContract = advertisedSubjectContract(ctx, reference);
   return {
     cast_profiles: castProfiles,
     pet_profiles: petProfiles,
     // 参考视频识别出的广告主体已经进入 product_subject / advertised_subject。
     // 它不是剧情中需要单独持有、移动或改变状态的道具，不能重复投影成“独立道具”。
     prop_plan: [],
+    advertised_subject_contract: subjectContract,
     scene_plan: {
       source: 'reference_analysis_projection',
       projection_only: true,
@@ -204,6 +215,8 @@ function projectReferencePlan(ctx = {}) {
       })),
       camera_intents: reference.camera_intents || [],
       character_actions: reference.character_actions || [],
+      advertised_subject: subjectContract.subject || product,
+      product_proof_requirements: subjectContract.proof_requirements || [],
       source: 'reference_analysis_projection',
       projection_only: true,
     },
@@ -237,6 +250,9 @@ function normalizePlan(source = {}, ctx = {}) {
     prop_plan: Array.isArray(source.prop_plan || source.propPlan)
       ? (source.prop_plan || source.propPlan).slice(0, 24)
       : [],
+    advertised_subject_contract: source.advertised_subject_contract && typeof source.advertised_subject_contract === 'object'
+      ? source.advertised_subject_contract
+      : (ctx.advertised_subject_contract || null),
     scene_plan: scenePlan,
     story_seed: source.story_seed && typeof source.story_seed === 'object' ? source.story_seed : {},
   };
@@ -258,6 +274,7 @@ function referenceProjectionFingerprint(reference = {}) {
     camera_intents: reference.camera_intents || [],
     character_actions: reference.character_actions || [],
     animal_actions: reference.animal_actions || [],
+    reference_understanding: reference.reference_understanding || {},
   }))).digest('hex');
 }
 
@@ -319,6 +336,10 @@ async function projectReferenceIntake(taskId, options = {}) {
   );
   const keepUserBrief = projectionContext.brief_source === 'user'
     && cleanText(projectionContext.brief, 3000);
+  const projectedProductContract = productIdentity.buildProductContract({
+    ...projectionContext,
+    advertised_subject_contract: plan.advertised_subject_contract,
+  });
   const nextContext = assertContextConsistent({
     ...projectionContext,
     brief: keepUserBrief ? cleanText(projectionContext.brief, 3000) : referenceBrief,
@@ -346,6 +367,8 @@ async function projectReferenceIntake(taskId, options = {}) {
       profiles: petProfiles,
       source: 'reference_analysis_projection',
     } : projectionContext.pet_contract,
+    advertised_subject_contract: plan.advertised_subject_contract,
+    product_contract: projectedProductContract,
     reference_analysis_projection: {
       fingerprint: projectionFingerprint,
       analysis_id: cleanText(reference.analysis_id || reference.id || '', 100),
@@ -448,6 +471,12 @@ function persist(taskId, ctx, rawPlan, meta) {
     .update(JSON.stringify(canonical(plan.cast_profiles || [])))
     .digest('hex');
   const primaryCast = plan.cast_profiles[0] || {};
+  const projectedProductContract = plan.advertised_subject_contract
+    ? productIdentity.buildProductContract({
+        ...ctx,
+        advertised_subject_contract: plan.advertised_subject_contract,
+      })
+    : ctx.product_contract;
   const personSpec = {
     ...(ctx.person_spec || {}),
     castMode: plan.scene_plan.cast_mode || ctx.cast_mode || 'auto',
@@ -469,6 +498,8 @@ function persist(taskId, ctx, rawPlan, meta) {
     prop_plan: plan.prop_plan,
     prop_assets: props,
     story_seed: plan.story_seed,
+    advertised_subject_contract: plan.advertised_subject_contract || ctx.advertised_subject_contract || null,
+    product_contract: projectedProductContract,
     person_spec: personSpec,
     asset_plan_fingerprint: meta.fingerprint,
     asset_plan_generated_cast_fingerprint: castFingerprint,
@@ -658,6 +689,7 @@ module.exports = {
   fingerprint,
   referenceIsValid,
   assertReferenceReady,
+  advertisedSubjectContract,
   projectReferencePlan,
   projectReferenceIntake,
   referenceProjectionFingerprint,

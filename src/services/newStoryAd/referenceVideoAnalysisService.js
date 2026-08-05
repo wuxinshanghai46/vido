@@ -16,6 +16,9 @@ const { getApiKey } = require('../settingsService');
 const generationConcurrency = require('./generationConcurrencyService');
 const evidenceText = require('./referenceEvidenceTextService');
 const referenceUnderstanding = require('./referenceUnderstandingService');
+const entityContinuity = require('./referenceEntityContinuityService');
+const evidenceStrategy = require('./referenceEvidenceStrategyService');
+const semanticRecovery = require('./referenceSemanticRecoveryService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
@@ -89,14 +92,23 @@ function readRecord(userId, analysisId) {
 }
 
 function publicRecord(record = {}) {
-  const copy = JSON.parse(JSON.stringify(record || {}));
+  // Do not serialize large private evidence/model checkpoints only to delete them afterwards.
+  // This path is called by browser polling, so its cost must stay proportional to the public payload.
+  const {
+    _visual_evidence_cache: privateVisualEvidence,
+    _synthesis_raw: privateSynthesisRaw,
+    _semantic_checkpoint: privateSemanticCheckpoint,
+    _reuse_synthesis_raw: privateReuseFlag,
+    ...publicFields
+  } = record || {};
+  const copy = JSON.parse(JSON.stringify(publicFields));
   copy.visual_evidence_reusable = hasReusableVisualEvidence(record);
   copy.semantic_result_reusable = canReuseSynthesisRaw(record);
   copy.evidence_batch_progress = evidenceBatchProgress(record);
-  delete copy._visual_evidence_cache;
-  delete copy._synthesis_raw;
-  delete copy._reuse_synthesis_raw;
-  if (['failed', 'cancelled'].includes(copy.status)) copy.progress = 0;
+  if (privateSemanticCheckpoint) {
+    copy.semantic_contract_progress = semanticRecovery.publicProgress(privateSemanticCheckpoint);
+  }
+  if (copy.status === 'cancelled') copy.progress = 0;
   if (copy.source) {
     delete copy.source.local_path;
     delete copy.source.private_directory;
@@ -147,6 +159,9 @@ function taskRecord(analysis = {}) {
     evidence_batch_progress: analysis.evidence_batch_progress && typeof analysis.evidence_batch_progress === 'object'
       ? analysis.evidence_batch_progress
       : { total: 0, completed: 0, remaining: 0, failed: 0 },
+    semantic_contract_progress: analysis.semantic_contract_progress && typeof analysis.semantic_contract_progress === 'object'
+      ? analysis.semantic_contract_progress
+      : null,
     schema_version: Number(result.schema_version || analysis.schema_version || 3) || 3,
     analysis_scope: result.analysis_scope || analysis.analysis_scope || 'reference_content_and_creative_structure',
     generated_brief: result.generated_brief || analysis.generated_brief || '',
@@ -767,31 +782,18 @@ function buildShotAwareEvidencePlan(duration, cuts = []) {
     error.retryable = false;
     throw error;
   }
-  const samplesPerSegment = segments.length * 2 <= MAX_EVIDENCE_FRAMES ? 2 : 1;
-  const plan = [];
-  for (const segment of segments) {
-    const [start, end] = segment.range;
-    const length = Math.max(0.1, end - start);
-    const samples = samplesPerSegment === 2 && length >= 0.5
-      ? [
-        { role: 'opening', time: start + Math.min(0.3, length * 0.2) },
-        { role: 'closing', time: end - Math.min(0.3, length * 0.2) },
-      ]
-      : [{ role: 'representative', time: start + (length / 2) }];
-    for (const sample of samples) {
-      const timestamp = Math.max(0.05, Math.min(Number(duration) - 0.05, sample.time));
-      if (plan.some(item => Math.abs(item.timestamp_seconds - timestamp) < 0.04)) continue;
-      plan.push({
-        frame_id: `F${String(plan.length + 1).padStart(3, '0')}`,
-        timestamp_seconds: Number(timestamp.toFixed(3)),
-        shot_index: segment.shot_index,
-        shot_range: segment.range,
-        sample_role: sample.role,
-        detection_source: segment.source,
-      });
+  try {
+    return evidenceStrategy.buildAdaptiveEvidencePlan({
+      duration,
+      segments,
+      max_frames: MAX_EVIDENCE_FRAMES,
+    }).frames;
+  } catch (error) {
+    if (error.code === 'REFERENCE_EVIDENCE_SEGMENT_BUDGET_EXCEEDED') {
+      error.code = 'REFERENCE_VIDEO_TOO_MANY_SHOTS';
     }
+    throw error;
   }
-  return plan;
 }
 
 async function detectShotBoundaries(record) {
@@ -1215,8 +1217,9 @@ function validateAnalysisResult(result = {}) {
   ))) failures.push('scene_prompts_incomplete');
   if (!cameras.length) failures.push('camera_intents_missing');
   if (facts.human_presence === true && !actions.length) failures.push('character_actions_missing');
-  if (facts.human_presence === true && Number(facts.human_count || 0) > 0
-    && (!Array.isArray(source.character_prompts) || source.character_prompts.length !== Number(facts.human_count))) {
+  const distinctHumanCount = Number(facts.distinct_human_count || facts.human_count || 0);
+  if (facts.human_presence === true && distinctHumanCount > 0
+    && (!Array.isArray(source.character_prompts) || source.character_prompts.length !== distinctHumanCount)) {
     failures.push('character_count_mismatch');
   }
   if (facts.human_presence === true && actions.length && actions.every(item => (
@@ -1502,9 +1505,18 @@ function parseVisionEvidencePayload(text = '', expectedFrames = []) {
     appearance: cleanEvidenceText(item?.appearance || item?.visible_appearance || '', 300),
     action: cleanEvidenceText(item?.action || item?.visible_action || '', 300),
   }));
+  const animals = value => (Array.isArray(value) ? value : []).slice(0, 24).map((item, index) => ({
+    id: cleanEvidenceText(item?.id || item?.animal_id || `visible_animal_${index + 1}`, 80),
+    species: cleanEvidenceText(item?.species || item?.type || '', 120),
+    role: cleanEvidenceText(item?.role || item?.animal_role || '', 100).toLowerCase(),
+    position: cleanEvidenceText(item?.position || item?.screen_position || '', 160),
+    appearance: cleanEvidenceText(item?.appearance || item?.description || '', 300),
+    action: cleanEvidenceText(item?.action || item?.visible_action || '', 300),
+  }));
   const frames = rows.map(row => {
     const expected = expectedFrames.find(frame => String(frame.frame_id || '') === String(row.frame_id || ''));
     const visiblePeople = people(row.people || row.visible_people);
+    const visibleAnimals = animals(row.animals || row.visible_animals);
     const explicitHumanCount = Number(row.human_count || row.visible_human_count || 0);
     return {
       frame_id: String(row.frame_id),
@@ -1512,6 +1524,9 @@ function parseVisionEvidencePayload(text = '', expectedFrames = []) {
       shot_index: Number(expected.shot_index || 0),
       shot_range: Array.isArray(expected.shot_range) ? expected.shot_range.map(Number) : [],
       sample_role: String(expected.sample_role || 'representative'),
+      intents: Array.isArray(expected.intents) ? evidenceStrategy.normalizeIntents(expected.intents) : [],
+      covered_intents: evidenceStrategy.normalizeIntents(row.covered_intents || row.intent_coverage),
+      transition: cleanEvidenceText(row.transition || row.transition_type || row.state_change || '', 300),
       product_or_service: cleanEvidenceText(row.product_or_service || '', 500),
       visible_text: list(row.visible_text),
       environment: cleanEvidenceText(row.environment || '', 500),
@@ -1527,8 +1542,9 @@ function parseVisionEvidencePayload(text = '', expectedFrames = []) {
       human_actions: list(row.human_actions),
       animal_presence: row.animal_presence === true,
       animal_count: row.animal_presence === true
-        ? Math.max(1, Math.min(100, Math.round(Number(row.animal_count || 1) || 1)))
+        ? Math.max(1, Math.min(100, Math.round(Number(row.animal_count || visibleAnimals.length || 1) || 1)))
         : 0,
+      animals: visibleAnimals,
       animal_role: cleanEvidenceText(row.animal_role || row.animal_context || '', 80).toLowerCase(),
       animal_description: cleanEvidenceText(row.animal_description || '', 500),
       animal_actions: list(row.animal_actions),
@@ -1571,7 +1587,7 @@ function visualEvidenceCacheKey(record = {}, frames = []) {
   try {
     sourceStat = fs.statSync(record.source?.local_path || '');
   } catch {}
-  return crypto.createHash('sha256').update(JSON.stringify({
+  const fingerprint = {
     contract_version: EVIDENCE_CONTRACT_VERSION,
     source_size: Number(sourceStat.size || record.source?.size_bytes || 0),
     source_mtime_ms: Number(sourceStat.mtimeMs || 0),
@@ -1583,7 +1599,13 @@ function visualEvidenceCacheKey(record = {}, frames = []) {
       shot_index: Number(frame.shot_index || 0),
       shot_range: Array.isArray(frame.shot_range) ? frame.shot_range.map(Number) : [],
     })),
-  })).digest('hex');
+  };
+  if (frames.some(frame => frame.strategy_version === evidenceStrategy.CONTRACT_VERSION)) {
+    fingerprint.strategy_version = evidenceStrategy.CONTRACT_VERSION;
+    fingerprint.vision_prompt_version = 'reference-vision-intents-v1';
+    fingerprint.frame_intents = frames.map(frame => evidenceStrategy.normalizeIntents(frame.intents));
+  }
+  return crypto.createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
 }
 
 /** 失败重试只在证据帧和全部视觉批次齐全时复用，禁止拿不完整缓存伪装成功。 */
@@ -1716,7 +1738,7 @@ function narrativeAnimalEvidence(frames = [], advertisedSubject = '') {
   };
 }
 
-function characterEvidenceProfiles(frames = [], count = 0) {
+function characterEvidenceProfiles(frames = [], count = 0, tracks = []) {
   const maxFrame = frames.reduce((best, frame) => (
     visibleHumanCount(frame) > visibleHumanCount(best) ? frame : best
   ), {});
@@ -1731,7 +1753,14 @@ function characterEvidenceProfiles(frames = [], count = 0) {
   const familyContext = residentialGroup
     || frames.some(frame => /(?:一家|家庭|家人|亲子|夫妇|夫妻)/u.test(`${frame.summary || ''} ${frame.layout || ''}`));
   return Array.from({ length: count }, (_, index) => {
-    const row = visible[index] || {};
+    const track = Array.isArray(tracks) ? tracks[index] : null;
+    const observation = track?.observations?.find(item => item.description || item.action) || {};
+    const row = track ? {
+      role_hint: track.role,
+      appearance: track.appearance || observation.description,
+      action: observation.action,
+      position: observation.position,
+    } : (visible[index] || {});
     const number = index + 1;
     return {
       id: `character_prompt_${number}`,
@@ -1750,6 +1779,7 @@ function characterEvidenceProfiles(frames = [], count = 0) {
 function compileAnalysisFromStructuredEvidence(record = {}, visualEvidence = [], transcript = {}) {
   const frames = visualEvidence.flatMap(item => Array.isArray(item?.payload?.frames) ? item.payload.frames : []);
   if (!frames.length) return null;
+  const continuity = entityContinuity.buildContinuity(frames);
   const duration = Number(record.source?.metadata?.duration_seconds || 0);
   const uniqueText = (values, max = 24) => [...new Set(values.flatMap(value => (
     Array.isArray(value) ? value : [value]
@@ -1768,17 +1798,25 @@ function compileAnalysisFromStructuredEvidence(record = {}, visualEvidence = [],
     .sort((left, right) => left - right)
     .map(shotIndex => frames.filter(frame => Number(frame.shot_index || 0) === shotIndex));
   const humanPresence = frames.some(frame => frame.human_presence === true);
-  const humanCount = humanPresence ? Math.max(...frames.map(visibleHumanCount)) : 0;
+  const maxSimultaneousHumans = humanPresence ? Math.max(...frames.map(visibleHumanCount)) : 0;
+  const humanCount = humanPresence
+    ? Math.max(maxSimultaneousHumans, continuity.distinct_human_count)
+    : 0;
   const animalPresence = frames.some(frame => frame.animal_presence === true);
   const animalEvidence = narrativeAnimalEvidence(frames, product);
   const narrativeAnimalPresence = animalEvidence.present;
-  const sceneRows = [];
+  const sceneRows = continuity.scene_tracks.map((track, index) => ({
+    key: track.id,
+    id: `scene_prompt_${index + 1}`,
+    location: track.observations.find(item => item.environment)?.environment || track.description,
+    frame: frames.find(frame => track.evidence_refs.includes(frame.frame_id)) || frames[0],
+    evidence_refs: track.evidence_refs,
+  }));
   const sceneIdFor = frame => {
-    const location = cleanEvidenceText(frame.environment || environments[0] || '', 500);
-    const key = location.replace(/[\s，,。；;：:]/gu, '');
-    let row = sceneRows.find(item => item.key === key);
+    let row = sceneRows.find(item => item.evidence_refs?.includes(frame.frame_id));
     if (!row) {
-      row = { key: key || `scene_${sceneRows.length + 1}`, id: `scene_prompt_${sceneRows.length + 1}`, location, frame };
+      const location = cleanEvidenceText(frame.environment || environments[0] || '', 500);
+      row = { key: `scene_track_${sceneRows.length + 1}`, id: `scene_prompt_${sceneRows.length + 1}`, location, frame, evidence_refs: [frame.frame_id] };
       sceneRows.push(row);
     }
     return row.id;
@@ -1842,19 +1880,29 @@ function compileAnalysisFromStructuredEvidence(record = {}, visualEvidence = [],
     expression_change: '只保留可见表情变化',
     previous_frame_dependency: event.order === 1 ? '无' : '承接上一镜头可见状态',
   })) : [];
+  const animalTracks = narrativeAnimalPresence ? continuity.animal_tracks : [];
   const animalDescriptions = uniqueText(frames.filter(frame => frame.animal_presence).map(frame => frame.animal_description), 12);
-  const animalPrompts = narrativeAnimalPresence ? animalDescriptions.map((description, index) => ({
+  const animalPromptSources = animalTracks.length ? animalTracks : animalDescriptions.map(description => ({ appearance: description, role: '' }));
+  const animalPrompts = narrativeAnimalPresence ? animalPromptSources.map((track, index) => ({
     id: `animal_${index + 1}`,
-    species: description,
-    appearance_direction: description,
+    species: cleanEvidenceText(track.role || track.appearance || `叙事动物 ${index + 1}`, 200),
+    appearance_direction: cleanEvidenceText(track.appearance || '仅保留逐帧可见特征', 500),
+    evidence_refs: Array.isArray(track.evidence_refs) ? track.evidence_refs : [],
     continuity_rules: '只保留逐帧证据中可见的物种、毛色、体型和佩戴物，未知特征不得补写',
   })) : [];
-  const animalActions = narrativeAnimalPresence ? storyEvents.filter(event => event.group.some(frame => frame.animal_presence)).map(event => ({
-    animal_id: animalPrompts[0]?.id || 'animal_1',
-    action: uniqueText(event.group.map(frame => frame.animal_actions), 12).join('；') || '动物出现但动作未确认',
-    range: event.range,
-    scene_id: sceneIdFor(event.group[0] || {}),
-  })) : [];
+  const animalActions = narrativeAnimalPresence ? storyEvents.flatMap(event => {
+    const eventRefs = new Set(event.group.map(frame => frame.frame_id));
+    const matching = animalTracks.filter(track => track.evidence_refs.some(ref => eventRefs.has(ref)));
+    const targets = matching.length ? matching : (animalPrompts.length ? [null] : []);
+    return targets.map((track, index) => ({
+      animal_id: track ? `animal_${animalTracks.indexOf(track) + 1}` : (animalPrompts[index]?.id || 'animal_1'),
+      action: uniqueText(track
+        ? track.observations.filter(item => eventRefs.has(item.frame_id)).map(item => item.action)
+        : event.group.map(frame => frame.animal_actions), 12).join('；') || '动物出现但动作未确认',
+      range: event.range,
+      scene_id: sceneIdFor(event.group[0] || {}),
+    }));
+  }) : [];
   const opening = storyEvents[0]?.summary || '建立广告主体与真实环境';
   const resolution = storyEvents[storyEvents.length - 1]?.summary || '以可见产品信息完成广告收束';
   return {
@@ -1868,8 +1916,12 @@ function compileAnalysisFromStructuredEvidence(record = {}, visualEvidence = [],
       lighting: lighting.join('；'),
       human_presence: humanPresence,
       human_count: humanCount,
+      distinct_human_count: humanCount,
+      max_simultaneous_humans: maxSimultaneousHumans,
       human_actions: uniqueText(frames.map(frame => frame.human_actions), 32),
       animal_presence: animalPresence,
+      distinct_animal_count: animalTracks.length,
+      max_simultaneous_animals: continuity.max_simultaneous_animals,
       narrative_animal_presence: narrativeAnimalPresence,
       animal_narrative_reason: animalEvidence.reason,
       ambient_animals: animalEvidence.ambient,
@@ -1887,7 +1939,9 @@ function compileAnalysisFromStructuredEvidence(record = {}, visualEvidence = [],
       resolution,
     },
     plot_beats: storyEvents.map(event => ({ range: event.range, purpose: event.summary, evidence_summary: event.summary })),
-    character_prompts: characterEvidenceProfiles(frames, humanCount),
+    character_prompts: characterEvidenceProfiles(frames, humanCount, continuity.human_tracks),
+    subject_tracks: [...continuity.human_tracks, ...animalTracks],
+    scene_tracks: continuity.scene_tracks,
     scene_prompts: scenePrompts,
     camera_intents: storyEvents.map(event => ({
       range: event.range,
@@ -2131,10 +2185,14 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
     : (Array.isArray(evidence[key]) ? evidence[key] : []);
   const evidenceCharacters = Array.isArray(evidence.character_prompts) ? evidence.character_prompts : [];
   const modelCharacters = Array.isArray(model.character_prompts) ? model.character_prompts : [];
-  const exactHumanCount = Math.max(0, Number(evidenceFacts.human_count || evidenceCharacters.length || 0) || 0);
+  const exactHumanCount = Math.max(
+    0,
+    Number(evidenceFacts.distinct_human_count || evidenceFacts.human_count || evidenceCharacters.length || 0) || 0,
+    Math.min(24, modelCharacters.length),
+  );
   const characterPrompts = exactHumanCount > 0
     ? Array.from({ length: exactHumanCount }, (_, index) => ({
-        ...(modelCharacters.length === exactHumanCount ? (modelCharacters[index] || {}) : {}),
+        ...(modelCharacters[index] || {}),
         ...(evidenceCharacters[index] || {}),
         id: `character_prompt_${index + 1}`,
       }))
@@ -2165,6 +2223,9 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
         ...(Array.isArray(evidenceFacts.evidence_timestamps) ? evidenceFacts.evidence_timestamps : []),
         ...(Array.isArray(modelFacts.evidence_timestamps) ? modelFacts.evidence_timestamps : []),
       ].map(Number).filter(Number.isFinite))].sort((left, right) => left - right),
+      human_count: exactHumanCount,
+      distinct_human_count: exactHumanCount,
+      max_simultaneous_humans: Number(evidenceFacts.max_simultaneous_humans || evidenceFacts.human_count || 0),
       animal_presence: evidenceFacts.animal_presence === true,
       narrative_animal_presence: narrativeAnimalPresence,
       ambient_animals: Array.isArray(evidenceFacts.ambient_animals) ? evidenceFacts.ambient_animals : [],
@@ -2219,8 +2280,45 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     return referenceUnderstanding.enrichAnalysis(deterministic, { visualEvidence, transcript });
   }
   const stage = 'new_story_ad.reference_video_synthesis';
+  const semanticInputFingerprint = semanticRecovery.fingerprint({
+    contract_version: semanticRecovery.CHECKPOINT_VERSION,
+    evidence_contract: EVIDENCE_CONTRACT_VERSION,
+    visual_cache_key: record._visual_evidence_cache?.key || visualEvidence.map(item => item.frame_ids),
+    transcript_status: transcript.status || '',
+    transcript_text: transcript.text || '',
+    scene_ids: (deterministic.scene_prompts || []).map(item => item.id),
+    shot_ids: (deterministic.shot_breakdown || []).map(item => [item.order, item.scene_id, item.range]),
+  });
+  let semanticCheckpoint = semanticRecovery.checkpointMatches(record._semantic_checkpoint, semanticInputFingerprint)
+    ? record._semantic_checkpoint
+    : semanticRecovery.emptyCheckpoint(semanticInputFingerprint);
+  const persistSemanticCandidate = ({ analysis, model = '', candidateIndex = 0 }) => {
+    semanticCheckpoint = semanticRecovery.retainBestCandidate(semanticCheckpoint, {
+      analysis,
+      model,
+      candidateIndex,
+    });
+    const latestRecord = readRecord(record.user_id, record.id) || record;
+    save(latestRecord, { _semantic_checkpoint: semanticCheckpoint });
+    return semanticRecovery.auditContracts(analysis);
+  };
+  if (semanticCheckpoint.best_candidate?.draft) {
+    try {
+      const resumed = referenceUnderstanding.enrichAnalysis(
+        mergeAnalysisWithEvidence(deterministic, semanticCheckpoint.best_candidate.draft),
+        { visualEvidence, transcript },
+      );
+      validateAnalysisResult(resumed);
+      const latestRecord = readRecord(record.user_id, record.id) || record;
+      save(latestRecord, { _semantic_checkpoint: semanticCheckpoint, _synthesis_reused_at: now() });
+      return resumed;
+    } catch {
+      // Continue from the checkpoint. The next candidate/repair call receives only missing work.
+    }
+  }
   let response;
   let validatedCandidate = null;
+  let partialCandidate = null;
   if (record._reuse_synthesis_raw === true && hasChineseDetail(record._synthesis_raw?.text, 20)) {
     response = {
       text: String(record._synthesis_raw.text),
@@ -2236,7 +2334,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
       '片尾产品名、型号、品牌落版和清晰可见文字的产品证据，优先级高于开场环境画面。',
       '场景按独立物理空间合并：同一客厅的不同镜头只能算一个空间；室外建筑与室内客厅必须分开。',
       '人物动作只能写证据中真实看见的动作；人物外貌和服装只能给原创再设计方向，禁止复制真人身份或原片穿着。',
-        '人物必须按逐帧证据保留精确最大同屏人数 human_count，并在 character_prompts 中为每个叙事人物输出一个独立条目；不得把多人合并成一个“夫妇/家庭”条目，也不得复制同一人物凑数。',
+        '人物计数必须同时保留 distinct_human_count（全片去重人物数）和 max_simultaneous_humans（最大同屏人数）；human_count 兼容字段等于 distinct_human_count。character_prompts 为每个持续叙事人物输出一个独立条目；不得把多人合并成一个“夫妇/家庭”条目，也不得复制同一人物凑数。',
         '动物必须区分“真实出现”和“叙事资产”：source_facts.animal_presence 记录是否可见，source_facts.narrative_animal_presence 只在动物是持续主角、宠物、产品主体或与人物/产品发生明确互动时为 true。风景蒙太奇、远景鸟群和环境野生动物写入 ambient_animals，不得生成 animal_prompts。',
       '场景目录、逐镜结构和机位已由通过校验的逐帧证据单独编译，本阶段不要输出 scene_prompts、shot_breakdown 或 camera_intents，只整理全局故事、人物和动物语义。',
       '必须额外输出 reference_understanding，完整说明故事因果、人物状态变化、场景叙事职责、品牌职责、音画对应，并区分 fact、inference、unknown。',
@@ -2271,6 +2369,8 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
           lighting: '真实光线',
           human_presence: true,
           human_count: 1,
+          distinct_human_count: 1,
+          max_simultaneous_humans: 1,
           human_actions: ['逐条可见动作'],
           animal_presence: false,
           narrative_animal_presence: false,
@@ -2358,8 +2458,9 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     maxTokens: 6000,
     temperature: 0.1,
     timeoutMs: 120000,
-    validateText: async (text) => {
+    validateText: async (text, meta = {}) => {
       assertCandidateAnalysisText(text);
+      let mergedCandidate = null;
       try {
         const parsedCandidate = await jsonRepair.parseOrRepair({
           raw: text,
@@ -2368,15 +2469,33 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
           taskId: record.id,
           stage: 'new_story_ad.json_repair',
         });
-        const mergedCandidate = referenceUnderstanding.enrichAnalysis(
+        mergedCandidate = referenceUnderstanding.enrichAnalysis(
           mergeAnalysisWithEvidence(deterministic, parsedCandidate),
           { visualEvidence, transcript },
         );
+        const modelName = `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, '');
+        const audit = persistSemanticCandidate({
+          analysis: mergedCandidate,
+          model: modelName,
+          candidateIndex: meta.candidate_index,
+        });
         validateAnalysisResult(mergedCandidate);
         validatedCandidate = { text: String(text || ''), result: mergedCandidate };
         return true;
       } catch (error) {
         if (error.code === 'PROVIDER_RESPONSE_INVALID') throw error;
+        const audit = mergedCandidate ? semanticRecovery.auditContracts(mergedCandidate) : null;
+        if (mergedCandidate && semanticRecovery.isRepairable(audit, { minimumScore: 75 })) {
+          partialCandidate = {
+            text: String(text || ''),
+            result: mergedCandidate,
+            audit,
+            model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
+          };
+          // A high-quality partial candidate is accepted by the gateway so we stop asking other
+          // models for the whole large contract. The missing contracts are repaired below.
+          return true;
+        }
         const invalid = new Error(`语义模型结构化结果未通过参考理解质量校验：${String(error.message || error).slice(0, 300)}`);
         invalid.code = 'PROVIDER_RESPONSE_INVALID';
         invalid.retryable = true;
@@ -2405,6 +2524,97 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
   }
   if (validatedCandidate && validatedCandidate.text === String(response.text || '')) {
     return validatedCandidate.result;
+  }
+  if (partialCandidate && partialCandidate.text === String(response.text || '')) {
+    const missingContracts = semanticRecovery.missingContracts(partialCandidate.audit);
+    try {
+      const deterministicRepair = referenceUnderstanding.enrichAnalysis(
+        mergeAnalysisWithEvidence(deterministic, partialCandidate.result),
+        { visualEvidence, transcript },
+      );
+      validateAnalysisResult(deterministicRepair);
+      persistSemanticCandidate({ analysis: deterministicRepair, model: 'deterministic-contract-repair', candidateIndex: 0 });
+      return deterministicRepair;
+    } catch {
+      // Some missing contracts require semantic interpretation. Repair only their owned fields.
+    }
+    let repairedCandidate = null;
+    const repairResponse = await modelGateway.generateText({
+      taskId: record.id,
+      stage,
+      systemPrompt: [
+        '你是参考视频语义合同修复员。只补指定的缺失合同，不改写已经通过的合同。',
+        '所有事实必须引用输入中已有 F### 或 T### 证据；不得新增人物、动物、商品、场景或行业模板。',
+        '只返回 JSON 补丁。reference_understanding 内只允许出现本次缺失合同拥有的字段。',
+      ].join('\n'),
+      userPrompt: [
+        `缺失合同：${missingContracts.join('、')}`,
+        `权威场景与逐镜索引：${JSON.stringify({
+          scene_prompts: deterministic.scene_prompts || [],
+          shot_breakdown: deterministic.shot_breakdown || [],
+          source_facts: deterministic.source_facts || {},
+          character_prompts: deterministic.character_prompts || [],
+          animal_prompts: deterministic.animal_prompts || [],
+        })}`,
+        `已通过并必须保持不变的最佳草稿：${JSON.stringify(semanticRecovery.extractSemanticDraft(partialCandidate.result))}`,
+        '字段归属：story=summary/story_outline/reference_understanding.story_summary；timeline=plot_beats/causal_chain/facts/inferences/unknowns；cast=characters及人物动物提示与动作；scenes=reference_understanding.scenes；brand_audio=brand_role/audio_visual/subtitle_cta。',
+      ].join('\n'),
+      maxTokens: 4200,
+      temperature: 0.05,
+      timeoutMs: 120000,
+      maxCandidates: 2,
+      validateText: async (text, meta = {}) => {
+        assertCandidateAnalysisText(text);
+        const patch = await jsonRepair.parseOrRepair({
+          raw: text,
+          expected: 'object',
+          modelGateway,
+          taskId: record.id,
+          stage: 'new_story_ad.json_repair',
+        });
+        const ownedMerge = semanticRecovery.mergeContractPatch(
+          partialCandidate.result,
+          patch,
+          missingContracts,
+        );
+        const normalized = referenceUnderstanding.enrichAnalysis(
+          mergeAnalysisWithEvidence(deterministic, ownedMerge),
+          { visualEvidence, transcript },
+        );
+        persistSemanticCandidate({
+          analysis: normalized,
+          model: `${meta.model?.provider_id || ''}/${meta.model?.model_id || ''}`.replace(/^\/$/, ''),
+          candidateIndex: meta.candidate_index,
+        });
+        try {
+          validateAnalysisResult(normalized);
+          repairedCandidate = normalized;
+          return true;
+        } catch (error) {
+          const invalid = new Error(`定向语义修复仍缺少合同：${semanticRecovery.missingContracts(semanticRecovery.auditContracts(normalized)).join('、')}`);
+          invalid.code = 'PROVIDER_RESPONSE_INVALID';
+          invalid.retryable = true;
+          invalid.response_diagnostics = {
+            semantic_failures: Array.isArray(error.failures) ? error.failures.slice(0, 20) : [],
+          };
+          throw invalid;
+        }
+      },
+    });
+    if (repairedCandidate) {
+      const latestRecord = readRecord(record.user_id, record.id) || record;
+      save(latestRecord, {
+        _synthesis_raw: {
+          contract_version: EVIDENCE_CONTRACT_VERSION,
+          text: String(repairResponse.text || '').slice(0, 50000),
+          used_model: String(repairResponse.used_model || ''),
+          response_length: String(repairResponse.text || '').length,
+          saved_at: now(),
+          repair_contracts: missingContracts,
+        },
+      });
+      return repairedCandidate;
+    }
   }
   const parsed = await jsonRepair.parseOrRepair({
     raw: response.text,
@@ -2470,6 +2680,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       progress: Math.min(82, 55 + Math.round(slots.filter(Boolean).length / Math.max(1, batches.length) * 27)),
       _visual_evidence_cache: {
         contract_version: EVIDENCE_CONTRACT_VERSION,
+        strategy_version: selectedFrames.every(item => item.strategy_version === evidenceStrategy.CONTRACT_VERSION)
+          ? evidenceStrategy.CONTRACT_VERSION : '',
+        vision_prompt_version: 'reference-vision-intents-v1',
         key: cacheKey,
         batches: slots,
         completed_batch_indexes: slots.map((item, slot) => item ? slot : -1).filter(slot => slot >= 0),
@@ -2501,6 +2714,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     save(latest, {
       _visual_evidence_cache: {
         contract_version: EVIDENCE_CONTRACT_VERSION,
+        strategy_version: selectedFrames.every(item => item.strategy_version === evidenceStrategy.CONTRACT_VERSION)
+          ? evidenceStrategy.CONTRACT_VERSION : '',
+        vision_prompt_version: 'reference-vision-intents-v1',
         key: cacheKey,
         batches: slots,
         completed_batch_indexes: slots.map((item, slot) => item ? slot : -1).filter(slot => slot >= 0),
@@ -2524,7 +2740,16 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       shot_index: Number(item.shot_index || 0),
       shot_range: item.shot_range,
       sample_role: item.sample_role,
+      intents: Array.isArray(item.intents) ? item.intents : evidenceStrategy.routeFrameIntents(item),
     }));
+    const batchIntents = [...new Set(frameManifest.flatMap(item => item.intents))];
+    const intentInstructions = {
+      entity: '主体专项：逐一记录人物、动物、广告主体及其进入/离开，不得把多人或多只动物合并。',
+      scene: '空间专项：记录可复核的空间锚点、布局与材质，用于跨镜判断同一或不同物理空间。',
+      action: '动作专项：记录动作起点、过程状态与结果；静止也要明确写出，不得只写“人物出现”。',
+      transition: '转场专项：记录镜头开结状态、主体或空间变化；没有变化时明确写“无可见转场变化”。',
+      brand_text: '品牌文字专项：检查商品、包装、界面、标志、字幕和片尾落版；不可见时明确写“无可见文字/标志”。',
+    };
     let validatedPayload = null;
     let vision;
     try {
@@ -2534,10 +2759,11 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       systemPrompt: '你是广告视频逐帧证据分析员。每张输入图都必须按给定 frame_id 独立返回一条 JSON 证据，不能跳帧、合并或只写批次总结。只描述真实可见内容，不识别人脸身份，不编造画面外事实。必须区分广告产品与建筑、房间、窗帘、家具等环境；动物只有明确可见时才记录。所有描述使用简体中文。',
       userPrompt: [
         `这是第 ${index + 1}/${batches.length} 组镜头证据，图片顺序与清单完全一致：${JSON.stringify(frameManifest)}。`,
+        `本批按镜头角色需要完成以下通用证据维度：${batchIntents.join('、')}。${batchIntents.map(intent => intentInstructions[intent]).filter(Boolean).join('')}`,
         '对每张图分别填写：产品/品牌/型号、可见文字、真实环境、材质、颜色、布局、光线、人物是否出现及真实动作、动物是否明确出现及真实动作、景别、机位角度、可见的运镜线索和画面总结。单项不确定可以写“不确定”，但 summary 必须用至少 12 个简体中文字符概括该帧真实可见内容，不得只写“不确定”，不得用前一张图代替后一张图。',
         '人物逐帧合同：human_count 必须填写画面可见总人数；people 必须逐人列出屏幕位置、可见外观和动作。无法确认身份关系时 role_hint 留空，不得把多人概括成一个条目。',
-        '动物逐帧合同：animal_role 只能是 narrative_character、companion、product_subject、ambient_wildlife、background 或 uncertain；自然风光中的鸟群/野生动物通常是 ambient_wildlife，不能当宠物。',
-        '只返回单个合法 JSON，不要 Markdown：{"frames":[{"frame_id":"F001","timestamp_seconds":0.3,"product_or_service":"","visible_text":[],"environment":"","materials":[],"colors":[],"layout":"","lighting":"","human_presence":false,"human_count":0,"people":[],"human_actions":[],"animal_presence":false,"animal_count":0,"animal_role":"","animal_description":"","animal_actions":[],"shot_size":"","angle":"","movement":"","summary":"该帧真实可见内容的简体中文总结"}],"batch_summary":"本批在广告时间线中的作用"}',
+        '动物逐帧合同：animal_role 只能是 narrative_character、companion、product_subject、ambient_wildlife、background 或 uncertain；自然风光中的鸟群/野生动物通常是 ambient_wildlife，不能当宠物。多只动物必须在 animals 中逐只列出可见物种、位置、外观和动作，不得合并。',
+        '每帧必须返回 covered_intents，且只能填写该帧清单要求并已实际检查的维度。只返回单个合法 JSON，不要 Markdown：{"frames":[{"frame_id":"F001","timestamp_seconds":0.3,"covered_intents":["entity","scene","action","transition","brand_text"],"transition":"无可见转场变化","product_or_service":"","visible_text":[],"environment":"","materials":[],"colors":[],"layout":"","lighting":"","human_presence":false,"human_count":0,"people":[],"human_actions":[],"animal_presence":false,"animal_count":0,"animal_role":"","animal_description":"","animals":[],"animal_actions":[],"shot_size":"","angle":"","movement":"","summary":"该帧真实可见内容的简体中文总结"}],"batch_summary":"本批在广告时间线中的作用"}',
         `frames 必须恰好包含 ${batch.length} 条，frame_id 必须且只能是：${batch.map(item => item.frame_id).join('、')}。`,
       ].join('\n'),
       imageUrls: batch.map(item => item.image_url),
@@ -2620,6 +2846,12 @@ async function analyzeWithModels(record, frames, transcript = {}) {
   result.generated_brief = buildChineseBrief(result);
   const coveredFrameIds = visualEvidence.flatMap(item => item.payload?.frames || []).map(item => item.frame_id);
   const expectedFrameIds = selectedFrames.map(item => item.frame_id);
+  const frameIdCoverageComplete = expectedFrameIds.length > 0
+    && expectedFrameIds.every(id => coveredFrameIds.includes(id))
+    && coveredFrameIds.length === expectedFrameIds.length;
+  const intentCoverage = evidenceStrategy.computeCoverage({ frames: selectedFrames }, visualEvidence);
+  const adaptiveContract = latest._visual_evidence_cache?.strategy_version === evidenceStrategy.CONTRACT_VERSION
+    && latest._visual_evidence_cache?.vision_prompt_version === 'reference-vision-intents-v1';
   return {
     schema_version: 6,
     analysis_scope: 'reference_content_and_creative_structure',
@@ -2627,9 +2859,11 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     ...result,
     evidence_coverage: {
       contract_version: EVIDENCE_CONTRACT_VERSION,
-      complete: expectedFrameIds.length > 0
-        && expectedFrameIds.every(id => coveredFrameIds.includes(id))
-        && coveredFrameIds.length === expectedFrameIds.length,
+      strategy_version: adaptiveContract ? evidenceStrategy.CONTRACT_VERSION : 'legacy-frame-coverage',
+      complete: frameIdCoverageComplete && (!adaptiveContract || intentCoverage.complete),
+      frame_id_complete: frameIdCoverageComplete,
+      intent_complete: adaptiveContract ? intentCoverage.complete : null,
+      intent_coverage: intentCoverage,
       expected_frame_count: expectedFrameIds.length,
       covered_frame_count: coveredFrameIds.length,
       expected_frame_ids: expectedFrameIds,
@@ -2852,10 +3086,15 @@ async function runAnalysis(initialRecord, options = {}) {
     let transcript;
     if (reuseEvidence) {
       frames = record.evidence_frames;
-      transcript = record.transcript || { status: 'provider_not_configured', text: '', segments: [] };
+      const storedTranscript = record.transcript || { status: 'provider_not_configured', text: '', segments: [] };
+      // Visual evidence and ASR have independent recovery boundaries. Reusing
+      // validated frames must not permanently freeze a transient ASR failure.
+      transcript = await transcribeAudio({ ...record, transcript: storedTranscript });
       record = checkpoint(record, record._reuse_synthesis_raw === true
         ? '已复用画面证据与语义结果，重新校验结构'
-        : '已复用画面证据，重新整理分析结构', 55, { evidence_frames: frames, transcript });
+        : transcript === storedTranscript
+          ? '已复用画面证据，重新整理分析结构'
+          : '已复用画面证据并独立恢复语音转写，重新整理分析结构', 55, { evidence_frames: frames, transcript });
     } else {
       record = checkpoint(record, '正在检测真实镜头边界', 14);
       const transcriptPromise = transcribeAudio(record);
@@ -3246,5 +3485,6 @@ module.exports = {
     narrativeAnimalEvidence,
     characterEvidenceProfiles,
     evidenceBatchProgress,
+    publicRecord,
   },
 };
