@@ -1,10 +1,14 @@
-import { request } from '../api.js?v=20260805-visual-retry-consent-v39';
-import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v39';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v39';
+import { request } from '../api.js?v=20260805-visual-retry-consent-v40';
+import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v40';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
+  const progress = bundle.generation?.progress || {};
+  const subjectLane = progress.lanes?.subjects || {};
   const billingReviewRequired = bundle.project?.error_code === 'GENERATION_BILLING_STATE_UNKNOWN'
-    || bundle.generation?.progress?.error_code === 'GENERATION_BILLING_STATE_UNKNOWN';
+    || progress.error_code === 'GENERATION_BILLING_STATE_UNKNOWN'
+    || progress.billing_state === 'unknown'
+    || subjectLane.billing_state === 'unknown';
   return {
     billingReviewRequired,
     billingReviewSupportId: bundle.generation?.progress?.support_id || '',

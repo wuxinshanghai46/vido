@@ -380,11 +380,13 @@ function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {
       { required_scene_count: 2, current_scene_count: spaces.length },
     );
   }
+  const allowIncompleteSceneSpec = body.allow_incomplete_scene_spec === true
+    || body.allowIncompleteSceneSpec === true;
   if (multiScene) {
     const incomplete = spaces
       .map(space => ({ space_id: space.id, missing_fields: sceneSpecMissingFields(space.scene_spec) }))
       .filter(item => item.missing_fields.length);
-    if (incomplete.length) {
+    if (incomplete.length && !allowIncompleteSceneSpec) {
       throw generationTargetError(
         `多场景计划缺少逐空间 scene_spec：${incomplete.map(item => item.space_id).join('、')}`,
         'MULTI_SCENE_SPEC_REQUIRED',
@@ -421,7 +423,7 @@ function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {
     || space?.scene_spec
     || normalizeSceneSpec(context.scene_spec || context.sceneSpec || {});
   const missingFields = sceneSpecMissingFields(sceneSpec);
-  if (spaces.length && missingFields.length) {
+  if (spaces.length && missingFields.length && !allowIncompleteSceneSpec) {
     throw generationTargetError(
       `目标空间 ${sceneId} 的 scene_spec 不完整：${missingFields.join('、')}`,
       'SCENE_SPEC_REQUIRED_FOR_SPACE',

@@ -54,6 +54,8 @@ assert(route.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billin
 assert(billingRetryView.includes('接受费用风险并继续缺失项'));
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorization'));
+assert(billingRetryView.includes("progress.billing_state === 'unknown'"), '再次供应商未知后必须继续显示费用风险入口');
+assert(billingRetryView.includes("subjectLane.billing_state === 'unknown'"), '主体分支未知计费必须继续锁定通用生成入口');
 
 const jobs = read('src/services/newStoryAd/jobService.js');
 assert(jobs.includes("function jobKey(taskId)"), 'single outer task lock must remain');

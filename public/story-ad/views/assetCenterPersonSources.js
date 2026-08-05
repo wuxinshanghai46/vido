@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-visual-retry-consent-v39';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v39';
-import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v39';
+import { request } from '../api.js?v=20260805-visual-retry-consent-v40';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
+import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v40';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

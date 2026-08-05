@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const completion = require('../src/services/newStoryAd/generationSpecCompletionService');
+const sceneBinding = require('../src/services/newStoryAd/sceneBindingService');
 
 function memoryStorage() {
   const rows = new Map();
@@ -17,6 +18,21 @@ function fakeRepair() {
 }
 
 async function main() {
+  const partialScenePlan = {
+    scene_mode: 'single',
+    spaces: [{ id: 'partial-scene', name: '待补齐场景', scene_spec: { layoutText: '入口、主体区和背景形成连续空间边界' } }],
+  };
+  assert.throws(
+    () => sceneBinding.resolveSceneGenerationTarget({ sceneConfig: partialScenePlan, body: { scene_id: 'partial-scene' } }),
+    error => error?.code === 'SCENE_SPEC_REQUIRED_FOR_SPACE' && error.missing_fields.includes('materialLightText'),
+    '未进入生成补齐流程时仍须严格拒绝不完整场景合同',
+  );
+  const completionTarget = sceneBinding.resolveSceneGenerationTarget({
+    sceneConfig: partialScenePlan,
+    body: { scene_id: 'partial-scene', allow_incomplete_scene_spec: true },
+  });
+  assert(completion.sceneMissingComponents(completionTarget.scene_spec).includes('materialLightText'));
+
   assert.deepEqual(
     completion.wardrobeMissingComponents('紫色真丝连衣裙'),
     ['shoes', 'accessories'],
@@ -131,6 +147,7 @@ async function main() {
 
   const subjectSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
   const sceneSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/sceneAssetService.js'), 'utf8');
+  assert(sceneSource.includes("body: { ...body, allow_incomplete_scene_spec: true }"), '场景生成必须允许补齐器接收不完整的逐空间合同');
   const uiSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8');
   assert(subjectSource.indexOf('const completion = await generationSpecCompletion.completePersonProfiles') < subjectSource.indexOf('assertCompleteSubjectProfiles(counts, humans, pets)'), '人物补齐必须发生在完整性门禁和图片生成之前');
   assert(sceneSource.indexOf('const sceneCompletion = await generationSpecCompletion.completeSceneSpec') < sceneSource.indexOf('assertCompleteUpgradeSceneSpec(body)'), '场景补齐必须发生在付费图片生成门禁之前');

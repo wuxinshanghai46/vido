@@ -961,7 +961,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const target = sceneBinding.resolveSceneGenerationTarget({
     sceneConfig: storedSceneConfig,
     context: baseCtx,
-    body,
+    body: { ...body, allow_incomplete_scene_spec: true },
   });
   const sceneCompletion = await generationSpecCompletion.completeSceneSpec({
     taskId,

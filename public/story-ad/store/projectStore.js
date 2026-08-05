@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-visual-retry-consent-v39';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-visual-retry-consent-v39';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-visual-retry-consent-v40';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-visual-retry-consent-v40';
 
 export function createProjectStore() {
   const state = {

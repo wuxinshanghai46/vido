@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-visual-retry-consent-v39';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-visual-retry-consent-v39';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-visual-retry-consent-v40';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
