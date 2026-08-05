@@ -23,11 +23,12 @@ assert.strictEqual(partialManifest.counts.planned_scenes, 2);
 assert.strictEqual(partialManifest.counts.pending_scenes, 1);
 
 const assetView = read('public/story-ad/views/assetCenterView.js');
+const billingRetryView = read('public/story-ad/views/assetCenterBillingRetry.js');
 const mountBody = assetView.slice(assetView.indexOf('export async function mount'));
 assert(mountBody.indexOf('renderSections(assets, total)') < mountBody.indexOf('renderSceneWorldWorkspace(bundle)'), 'SceneWorld must render below scene assets');
 assert(assetView.includes('data-generate-visual-assets'));
-assert(assetView.includes("store.runStage('visual-assets'"));
-assert(assetView.includes('同时生成人物与场景'));
+assert(billingRetryView.includes("store.runStage('visual-assets'"));
+assert(billingRetryView.includes('同时生成人物与场景'));
 
 const briefView = read('public/story-ad/views/briefView.js');
 assert.strictEqual((briefView.match(/brief-reference-primary-action/g) || []).length, 1, 'next-step CTA must not be duplicated below the report');
@@ -50,9 +51,9 @@ assert(route.includes('deferPublish: true'));
 assert(route.includes('existingSceneAssets: sceneAssets'));
 assert(route.includes('sceneError.partial_scene_assets = sceneAssets'), 'completed scenes must survive a later scene failure');
 assert(route.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must expose an owned one-time authorization endpoint');
-assert(assetView.includes('接受费用风险并继续缺失项'));
-assert(assetView.includes('accept_duplicate_charge_risk: true'));
-assert(assetView.includes('/visual-assets/retry-authorization'));
+assert(billingRetryView.includes('接受费用风险并继续缺失项'));
+assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
+assert(billingRetryView.includes('/visual-assets/retry-authorization'));
 
 const jobs = read('src/services/newStoryAd/jobService.js');
 assert(jobs.includes("function jobKey(taskId)"), 'single outer task lock must remain');
