@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v36';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
-import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v36';
+import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v37';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v37';
+import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v37';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

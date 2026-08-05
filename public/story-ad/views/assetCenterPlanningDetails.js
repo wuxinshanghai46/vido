@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-semantic-root-cause-closure-v36';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v37';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-semantic-root-cause-closure-v37';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

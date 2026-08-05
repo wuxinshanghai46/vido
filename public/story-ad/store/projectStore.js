@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-semantic-root-cause-closure-v36';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-semantic-root-cause-closure-v36';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-semantic-root-cause-closure-v37';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-semantic-root-cause-closure-v37';
 
 export function createProjectStore() {
   const state = {
