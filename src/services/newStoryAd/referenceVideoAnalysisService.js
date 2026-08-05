@@ -2188,11 +2188,16 @@ function mergeAnalysisWithEvidence(deterministic = {}, modelResult = {}) {
     : (Array.isArray(evidence[key]) ? evidence[key] : []);
   const evidenceCharacters = Array.isArray(evidence.character_prompts) ? evidence.character_prompts : [];
   const modelCharacters = Array.isArray(model.character_prompts) ? model.character_prompts : [];
-  const exactHumanCount = Math.max(
+  const auditedHumanCount = Math.max(
     0,
     Number(evidenceFacts.distinct_human_count || evidenceFacts.human_count || evidenceCharacters.length || 0) || 0,
-    Math.min(24, modelCharacters.length),
   );
+  // Cross-frame evidence owns entity cardinality. The semantic model describes
+  // those entities, but must never increase the count by treating hands, angle
+  // changes or repeated appearances as new people.
+  const exactHumanCount = evidenceFacts.human_presence === false
+    ? 0
+    : (auditedHumanCount > 0 ? auditedHumanCount : Math.min(24, modelCharacters.length));
   const characterPrompts = exactHumanCount > 0
     ? Array.from({ length: exactHumanCount }, (_, index) => ({
         ...(modelCharacters[index] || {}),
@@ -2292,9 +2297,28 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     scene_ids: (deterministic.scene_prompts || []).map(item => item.id),
     shot_ids: (deterministic.shot_breakdown || []).map(item => [item.order, item.scene_id, item.range]),
   });
-  let semanticCheckpoint = semanticRecovery.checkpointMatches(record._semantic_checkpoint, semanticInputFingerprint)
+  const storedCheckpointMatches = semanticRecovery.checkpointMatches(
+    record._semantic_checkpoint,
+    semanticInputFingerprint,
+  );
+  let semanticCheckpoint = storedCheckpointMatches
     ? record._semantic_checkpoint
     : semanticRecovery.emptyCheckpoint(semanticInputFingerprint);
+  if (!storedCheckpointMatches
+    && record._semantic_checkpoint?.version === semanticRecovery.CHECKPOINT_VERSION
+    && record._semantic_checkpoint?.best_candidate?.draft
+    && Array.isArray(record._visual_evidence_cache?.batches)
+    && record._visual_evidence_cache.batches.length > 0) {
+    // A deterministic compiler upgrade may change scene/entity fingerprints
+    // while the underlying record and completed evidence batches remain the
+    // same. Re-audit the stored semantic draft against current evidence instead
+    // of silently discarding it and paying for the same full synthesis again.
+    semanticCheckpoint = semanticRecovery.retainBestCandidate(semanticCheckpoint, {
+      analysis: record._semantic_checkpoint.best_candidate.draft,
+      model: 'stored-checkpoint-reaudit',
+      candidateIndex: 0,
+    });
+  }
   const persistSemanticCheckpoint = (activeContract = '') => {
     const publicProgress = semanticRecovery.publicProgress(semanticCheckpoint);
     const latestRecord = readRecord(record.user_id, record.id) || record;
@@ -2346,6 +2370,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
       && timelineMissesAuthoritativeScenes(workingAnalysis)) {
       repairQueue.splice(repairQueue.indexOf('scenes'), 0, 'timeline');
     }
+    const contractErrors = [];
     for (const contract of repairQueue) {
       const currentAudit = semanticRecovery.auditContracts(workingAnalysis);
       const dependencyRepair = contract === 'timeline' && timelineMissesAuthoritativeScenes(workingAnalysis);
@@ -2428,15 +2453,35 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
           });
         }
         persistSemanticCheckpoint('');
-        throw error;
+        contractErrors.push({ contract, error });
       }
-      if (!acceptedCandidate) return null;
+      // Contracts own disjoint fields. A provider failure for cast must not
+      // prevent scenes (or any later contract) from being attempted and saved.
+      // This also preserves every accepted fragment for a later resume without
+      // paying again for already completed work.
+      if (!acceptedCandidate) continue;
       workingAnalysis = referenceUnderstanding.enrichAnalysis(
         mergeAnalysisWithEvidence(deterministic, semanticRecovery.compositeDraft(semanticCheckpoint)),
         { visualEvidence, transcript },
       );
     }
-    validateAnalysisResult(workingAnalysis);
+    try {
+      validateAnalysisResult(workingAnalysis);
+    } catch (validationError) {
+      if (!contractErrors.length) throw validationError;
+      const aggregate = new Error(`参考视频语义合同未全部完成：${contractErrors.map(item => item.contract).join(', ')}`);
+      aggregate.code = 'REFERENCE_SEMANTIC_CONTRACTS_INCOMPLETE';
+      aggregate.status = 422;
+      aggregate.retryable = true;
+      aggregate.failures = semanticRecovery.missingContracts(semanticRecovery.auditContracts(workingAnalysis));
+      aggregate.failed_models = contractErrors.flatMap(item => item.error?.failed_models || []);
+      aggregate.contract_errors = contractErrors.map(item => ({
+        contract: item.contract,
+        code: String(item.error?.code || 'PROVIDER_RESPONSE_INVALID'),
+        message: String(item.error?.message || item.error || '').slice(0, 500),
+      }));
+      throw aggregate;
+    }
     persistSemanticCheckpoint('');
     return workingAnalysis;
   };
@@ -2448,6 +2493,11 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
         { visualEvidence, transcript },
       );
       validateAnalysisResult(resumed);
+      persistSemanticCandidate({
+        analysis: resumed,
+        model: storedCheckpointMatches ? 'stored-semantic-checkpoint' : 'stored-checkpoint-reaudit',
+        candidateIndex: 0,
+      });
       const latestRecord = readRecord(record.user_id, record.id) || record;
       save(latestRecord, { _semantic_checkpoint: semanticCheckpoint, _synthesis_reused_at: now() });
       return resumed;

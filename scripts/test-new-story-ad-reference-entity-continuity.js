@@ -33,6 +33,33 @@ const samePersonDrift = continuity.buildContinuity([
 assert.equal(samePersonDrift.distinct_human_count, 1, '同一人物换站位和描述语序不能被拆成两人');
 assert.equal(samePersonDrift.scene_tracks.length, 1, '同一镜头内的空间描述漂移不能拆成两个场景');
 
+const partialHandsAndRecurringProtagonist = continuity.buildContinuity([
+  {
+    frame_id: 'F012', shot_index: 4, timestamp_seconds: 4, human_count: 1,
+    people: [{ appearance: '女性的双手拿起耳机', action: '拿起耳机' }],
+    environment: '列车站台', layout: '手部与耳机特写', lighting: '自然光',
+  },
+  {
+    frame_id: 'F013', shot_index: 5, timestamp_seconds: 5, human_count: 1,
+    people: [{ appearance: '年轻女性，黑色长发，白色上衣，佩戴耳机', action: '走过站台' }],
+    environment: '列车站台', layout: '人物中景', lighting: '自然光',
+  },
+  {
+    frame_id: 'F014', shot_index: 8, timestamp_seconds: 8, human_count: 1,
+    people: [{ appearance: '佩戴耳机的黑色长发年轻女性，白色上衣', action: '望向远方' }],
+    environment: '列车站台近景', layout: '人物侧脸特写', lighting: '逆光',
+  },
+]);
+assert.equal(partialHandsAndRecurringProtagonist.distinct_human_count, 1, '手部产品特写不得被计为独立人物，跨镜同一主角必须合并');
+assert.deepEqual(partialHandsAndRecurringProtagonist.human_tracks[0].evidence_refs, ['F012', 'F013', 'F014'], '带有人物归属的手部特写应并入主角轨迹而不是另建人物');
+assert.equal(partialHandsAndRecurringProtagonist.scene_tracks.length, 1, '同一物理站台的远近景和光线变化不得拆成多个场景');
+
+const separatePhysicalSpaces = continuity.buildContinuity([
+  { frame_id: 'F015', shot_index: 9, environment: '列车站台', layout: '轨道背景', lighting: '日光' },
+  { frame_id: 'F016', shot_index: 10, environment: '室内咖啡店', layout: '木桌背景', lighting: '暖光' },
+]);
+assert.equal(separatePhysicalSpaces.scene_tracks.length, 2, '不同物理空间仍必须保持分离');
+
 const twoAnimals = continuity.buildContinuity([
   {
     frame_id: 'F020', shot_index: 4, animal_count: 2,
@@ -54,7 +81,7 @@ const twoAnimals = continuity.buildContinuity([
 assert.equal(twoAnimals.distinct_animal_count, 2, '两只同种宠物必须保留两个稳定动物轨迹');
 assert.ok(twoAnimals.animal_tracks.every(track => track.observations.length === 2), '每只宠物动作必须绑定自己的跨帧轨迹');
 
-assert.ok(!JSON.stringify({ sequentialPeople, samePersonDrift, twoAnimals }).match(/汽车|餐饮|医疗|教育|家具/), '连续性核心不能依赖行业模板');
+assert.ok(!JSON.stringify({ sequentialPeople, samePersonDrift, twoAnimals, partialHandsAndRecurringProtagonist }).match(/汽车|餐饮|医疗|教育|家具/), '连续性核心不能依赖行业模板');
 
 let checkpoint = semanticRecovery.emptyCheckpoint('performance-fixture');
 checkpoint = semanticRecovery.retainBestCandidate(checkpoint, {

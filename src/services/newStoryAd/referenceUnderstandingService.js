@@ -100,7 +100,19 @@ function derivedCausalChain(analysis, frames, transcripts) {
 }
 
 function normalizeCausalChain(proposed, fallback, validRefs) {
-  const rows = list(proposed).length ? list(proposed, 120) : fallback;
+  const proposedRows = list(proposed, 120);
+  // The audited shot breakdown owns timeline cardinality. A model may enrich an
+  // event, but a partial response must not collapse a 16-shot timeline to one
+  // event and then be mistaken for a complete contract.
+  const rows = fallback.length ? fallback.map((base, index) => {
+    const byId = proposedRows.find(row => text(row?.id, 80) === text(base.id, 80));
+    const byRange = proposedRows.find(row => {
+      const candidateRange = range(row?.range);
+      return overlaps(candidateRange, base.range || [0, 0])
+        && text(row?.scene_id, 100) === text(base.scene_id, 100);
+    });
+    return { ...base, ...(byId || byRange || proposedRows[index] || {}) };
+  }) : proposedRows;
   return rows.map((row, index) => {
     const base = fallback[index] || {};
     const evidenceRefs = normalizeRefs(row.evidence_refs, validRefs);
@@ -153,13 +165,26 @@ function normalizeStorySummary(proposed = {}, analysis = {}, chain = []) {
 }
 
 function normalizeCharacters(proposed, analysis, validRefs) {
-  const fallback = list(analysis.character_prompts, 24).map((row, index) => ({
-    character_id: text(row.id || `character_prompt_${index + 1}`, 80),
-    role: text(row.role || `人物 ${index + 1}`, 200),
-    narrative_function: '', initial_state: '', goal: '', obstacle: '', key_decision: '', final_state: '',
-    relationships: [], emotional_arc: [], evidence_refs: [], certainty: 'unknown',
-  }));
-  const rows = list(proposed, 24).length ? list(proposed, 24) : fallback;
+  const subjectTracks = list(analysis.subject_tracks, 48).filter(track => track?.kind === 'human');
+  const fallback = list(analysis.character_prompts, 24).map((row, index) => {
+    const characterId = text(row.id || `character_prompt_${index + 1}`, 80);
+    const track = subjectTracks[index] || {};
+    return {
+      character_id: characterId,
+      role: text(row.role || `人物 ${index + 1}`, 200),
+      narrative_function: text(row.narrative_function || row.performance_style, 500),
+      initial_state: '', goal: '', obstacle: '', key_decision: '', final_state: '',
+      relationships: [], emotional_arc: [],
+      evidence_refs: normalizeRefs(track.evidence_refs, validRefs),
+      certainty: track.evidence_refs?.length ? 'fact' : 'unknown',
+    };
+  });
+  const proposedRows = list(proposed, 24);
+  const rows = fallback.length ? fallback.map((base, index) => {
+    const match = proposedRows.find(row => text(row?.character_id || row?.id, 80) === base.character_id)
+      || proposedRows[index];
+    return { ...base, ...(match || {}) };
+  }) : proposedRows;
   return rows.map((row, index) => ({
     character_id: text(row.character_id || row.id || fallback[index]?.character_id || `character_prompt_${index + 1}`, 80),
     role: text(row.role || fallback[index]?.role, 200),
@@ -301,6 +326,14 @@ function enrichAnalysis(analysis = {}, options = {}) {
     : causalChain.length > 0 && causalChain.every((row, index) => (
       index === 0 ? row.caused_by === null : Boolean(row.caused_by)
     ));
+  const authoritativeShots = list(analysis.shot_breakdown, 120);
+  const timelineEventCoverageComplete = !authoritativeShots.length
+    || (causalChain.length === authoritativeShots.length && authoritativeShots.every((shot, index) => {
+      const event = causalChain[index];
+      return Boolean(event)
+        && text(event.scene_id, 100) === text(shot?.scene_id, 100)
+        && overlaps(event.range, range(shot?.range));
+    }));
   const storyComplete = Boolean(
     NARRATIVE_MODES.has(narrativeMode)
     && storySummary.logline
@@ -346,6 +379,7 @@ function enrichAnalysis(analysis = {}, options = {}) {
   if (!causalChain.length) failures.push('causal_chain_missing');
   if (!storySummary.full_synopsis) failures.push('full_synopsis_missing');
   if (causalChain.length && tracedEvents !== causalChain.length) failures.push('event_evidence_incomplete');
+  if (!timelineEventCoverageComplete) failures.push('timeline_event_coverage_incomplete');
   if (!NARRATIVE_MODES.has(narrativeMode)) failures.push('narrative_mode_unclassified');
   if (FABRICATED_SEQUENCE_PATTERN.test(storySummary.full_synopsis)) failures.push('temporal_adjacency_mislabeled_as_causality');
   if (GENERIC_STORY_PATTERN.test(storySummary.logline)) failures.push('story_summary_generic');
@@ -361,6 +395,7 @@ function enrichAnalysis(analysis = {}, options = {}) {
     timeline_coverage: causalChain.length ? Number((tracedEvents / causalChain.length).toFixed(3)) : 0,
     evidence_traceability: validRefs.size ? Number((tracedEvents / Math.max(1, causalChain.length)).toFixed(3)) : 0,
     cause_chain_complete: causeChainComplete,
+    timeline_event_coverage_complete: timelineEventCoverageComplete,
     story_complete: storyComplete,
     character_coverage: characterCoverage,
     scene_coverage: sceneCoverage,

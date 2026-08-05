@@ -10,6 +10,7 @@ process.env.DB_ENABLED = 'false';
 
 const adapters = require('../src/services/newStoryAd/providerAdapterRegistry');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const semanticContracts = require('../src/services/newStoryAd/referenceSemanticContractPromptService');
 
 function completion(content = '{}') {
   return {
@@ -61,6 +62,22 @@ async function testJsonSchemaPayload() {
   assert.equal(result.structured_output.applied_mode, 'json_schema');
   assert.equal(result.structured_output.native, true);
   assert.equal(result.structured_output.degraded, false);
+}
+
+function testSemanticContractSchemasDescribeBusinessItems() {
+  const timeline = semanticContracts.semanticSchema('timeline');
+  const cast = semanticContracts.semanticSchema('cast');
+  const scenes = semanticContracts.semanticSchema('scenes');
+  assert.deepEqual(
+    timeline.properties.reference_understanding.properties.causal_chain.items.required,
+    ['id', 'range', 'scene_id', 'subject', 'action', 'evidence_refs', 'certainty'],
+    '时间线 schema 必须约束每个事件，而不是只声明 object 数组',
+  );
+  assert.ok(cast.properties.reference_understanding.properties.characters.items.required.includes('narrative_function'));
+  assert.deepEqual(
+    scenes.properties.reference_understanding.properties.scenes.items.required,
+    ['scene_id', 'narrative_function', 'events', 'evidence_refs', 'certainty'],
+  );
 }
 
 async function testDeyunGeminiJsonObjectDefault() {
@@ -172,6 +189,7 @@ async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
 }
 
 async function main() {
+  testSemanticContractSchemasDescribeBusinessItems();
   await testJsonSchemaPayload();
   await testDeyunGeminiJsonObjectDefault();
   await testUnsupported400FallsBackToPrompt();

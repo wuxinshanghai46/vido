@@ -12,9 +12,55 @@ function objectSchema(properties = {}, required = Object.keys(properties)) {
   return { type: 'object', properties, required, additionalProperties: false };
 }
 
-function arraySchema() {
-  return { type: 'array', items: { type: 'object', additionalProperties: true } };
+function arraySchema(items = { type: 'object', additionalProperties: true }) {
+  return { type: 'array', items };
 }
+
+const stringSchema = { type: 'string' };
+const stringArraySchema = { type: 'array', items: stringSchema };
+const rangeSchema = {
+  type: 'array',
+  items: { type: 'number' },
+  minItems: 2,
+  maxItems: 2,
+};
+
+const timelineEventSchema = objectSchema({
+  id: stringSchema,
+  range: rangeSchema,
+  scene_id: stringSchema,
+  subject: stringSchema,
+  action: stringSchema,
+  evidence_refs: stringArraySchema,
+  certainty: stringSchema,
+}, ['id', 'range', 'scene_id', 'subject', 'action', 'evidence_refs', 'certainty']);
+
+const characterUnderstandingSchema = objectSchema({
+  character_id: stringSchema,
+  role: stringSchema,
+  narrative_function: stringSchema,
+  evidence_refs: stringArraySchema,
+  certainty: stringSchema,
+}, ['character_id', 'role', 'narrative_function', 'evidence_refs', 'certainty']);
+
+const sceneUnderstandingSchema = objectSchema({
+  scene_id: stringSchema,
+  narrative_function: stringSchema,
+  events: stringArraySchema,
+  evidence_refs: stringArraySchema,
+  certainty: stringSchema,
+}, ['scene_id', 'narrative_function', 'events', 'evidence_refs', 'certainty']);
+
+const promptEntitySchema = objectSchema({
+  id: stringSchema,
+  role: stringSchema,
+}, ['id']);
+
+const actionSchema = objectSchema({
+  action: stringSchema,
+  range: rangeSchema,
+  scene_id: stringSchema,
+}, ['action', 'range', 'scene_id']);
 
 function semanticSchema(contract = '') {
   const flexibleText = { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: true }] };
@@ -29,21 +75,21 @@ function semanticSchema(contract = '') {
     timeline: objectSchema({
       plot_beats: arraySchema(),
       reference_understanding: objectSchema({
-        causal_chain: arraySchema(),
+        causal_chain: arraySchema(timelineEventSchema),
         facts: arraySchema(),
         inferences: arraySchema(),
         unknowns: arraySchema(),
       }),
     }),
     cast: objectSchema({
-      character_prompts: arraySchema(),
-      character_actions: arraySchema(),
-      animal_prompts: arraySchema(),
-      animal_actions: arraySchema(),
-      reference_understanding: objectSchema({ characters: arraySchema() }),
+      character_prompts: arraySchema(promptEntitySchema),
+      character_actions: arraySchema(actionSchema),
+      animal_prompts: arraySchema(promptEntitySchema),
+      animal_actions: arraySchema(actionSchema),
+      reference_understanding: objectSchema({ characters: arraySchema(characterUnderstandingSchema) }),
     }),
     scenes: objectSchema({
-      reference_understanding: objectSchema({ scenes: arraySchema() }),
+      reference_understanding: objectSchema({ scenes: arraySchema(sceneUnderstandingSchema) }),
     }),
     brand_audio: objectSchema({
       subtitle_cta: flexibleText,

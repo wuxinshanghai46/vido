@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260805-structured-semantic-contracts-v35';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v36';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

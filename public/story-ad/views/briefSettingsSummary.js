@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { escapeHtml } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

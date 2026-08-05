@@ -27,6 +27,7 @@ const CONTRACTS = Object.freeze({
       'semantic_understanding_missing',
       'causal_chain_missing',
       'event_evidence_incomplete',
+      'timeline_event_coverage_incomplete',
       'cause_or_progression_incomplete',
     ]),
   }),

@@ -178,6 +178,27 @@ for (const failure of ['narrative_mode_unclassified', 'temporal_adjacency_mislab
 }
 assert.throws(() => understandingService.validate(productionFalsePositive), /深度理解不完整/);
 
+const partialContractCannotCollapseEvidence = understandingService.enrichAnalysis({
+  ...base,
+  character_prompts: [
+    { id: 'character_prompt_1', role: '行动者一', narrative_function: '完成第一组可见动作' },
+    { id: 'character_prompt_2', role: '行动者二', narrative_function: '完成第二组可见动作' },
+  ],
+  subject_tracks: [
+    { id: 'human_track_1', kind: 'human', evidence_refs: ['F001', 'F002'] },
+    { id: 'human_track_2', kind: 'human', evidence_refs: ['F003'] },
+  ],
+  reference_understanding: {
+    ...base.reference_understanding,
+    causal_chain: [base.reference_understanding.causal_chain[0]],
+    characters: [base.reference_understanding.characters[0]],
+  },
+}, { transcript });
+assert.equal(partialContractCannotCollapseEvidence.reference_understanding.causal_chain.length, 3, '模型只返回一个事件时不得覆盖三镜权威时间线');
+assert.equal(partialContractCannotCollapseEvidence.reference_understanding.characters.length, 2, '模型只返回一个人物时不得覆盖两条权威人物轨迹');
+assert.equal(partialContractCannotCollapseEvidence.reference_understanding.completeness.timeline_event_coverage_complete, true);
+assert.deepEqual(partialContractCannotCollapseEvidence.reference_understanding.characters[1].evidence_refs, ['F003']);
+
 const groupedProjection = assetPlanService.projectReferencePlan({
   product_subject: '当前可见叙事主体', shot_count: 3,
   reference_video_analysis: {

@@ -120,46 +120,8 @@ async function main() {
   const calls = [];
   const originalGenerateText = modelGateway.generateText;
   modelGateway.generateText = async (options = {}) => {
-    assert.equal(options.stage, 'new_story_ad.reference_video_synthesis');
-    const contract = String(options.structuredOutput?.name || '').replace(/^reference_|_contract$/g, '');
-    calls.push(contract);
-    const evidence = promptJson(options.userPrompt, '当前合同证据：');
-    const accepted = promptJson(options.userPrompt, '已通过且禁止改写的其他合同：');
-    const validPatch = contract === 'cast'
-      ? castPatch(evidence)
-      : (contract === 'timeline' ? timelinePatch(evidence) : scenePatch(evidence, accepted));
-    const failedModels = [];
-    if (contract === 'cast') {
-      const flashPatch = {
-        character_prompts: [], character_actions: [], animal_prompts: [], animal_actions: [],
-        reference_understanding: { characters: [] },
-      };
-      await assert.rejects(
-        options.validateText(JSON.stringify(flashPatch), {
-          model: { provider_id: 'deyunai', model_id: 'gemini-2.5-flash' },
-          candidate_index: 0,
-          parsed_json: flashPatch,
-        }),
-        error => error.code === 'PROVIDER_RESPONSE_INVALID',
-      );
-      failedModels.push({
-        provider_id: 'deyunai', model_id: 'gemini-2.5-flash', code: 'PROVIDER_RESPONSE_INVALID',
-        message: '定向语义修复仍缺少合同：cast', response_diagnostics: { contract: 'cast' },
-      }, {
-        provider_id: 'deyunai', model_id: 'gemini-2.5-pro', code: 'PROVIDER_RESPONSE_INVALID',
-        message: '3212字符响应不是JSON', response_diagnostics: { response_length: 3212, json_like: false },
-      });
-    }
-    await options.validateText(JSON.stringify(validPatch), {
-      model: { provider_id: 'openai', model_id: 'gpt-4o' },
-      candidate_index: failedModels.length,
-      parsed_json: validPatch,
-    });
-    return {
-      text: JSON.stringify(validPatch),
-      used_model: 'openai/gpt-4o',
-      failed_models: failedModels,
-    };
+    calls.push(String(options.structuredOutput?.name || 'unknown'));
+    throw new Error('生产失败记录应由已保存候选与当前权威证据零调用重审恢复');
   };
   try {
     const result = await analysisService._private.synthesizeAnalysisFromEvidence(
@@ -168,13 +130,12 @@ async function main() {
       fixture.transcript || { status: 'no_audio', text: '', segments: [] },
     );
     assert.equal(result.reference_understanding?.completeness?.valid, true, JSON.stringify(result.reference_understanding?.completeness));
-    assert.deepStrictEqual(calls, ['cast', 'timeline'], '人物与场景事件映射补齐后应由确定性场景投影收敛，不得重复调用场景或镜头模型');
+    assert.deepStrictEqual(calls, [], '已保存语义候选经当前权威证据重审通过后不得重复调用付费模型');
     const saved = analysisService._private.readRecord('replay-user', 'production-semantic-replay');
     assert.equal(saved._visual_evidence_cache?.batches?.length, 8, '已完成的8批画面证据必须原样保留');
     const progress = require('../src/services/newStoryAd/referenceSemanticRecoveryService').publicProgress(saved._semantic_checkpoint);
     assert.equal(progress.completed, 5);
     assert.equal(progress.valid, true);
-    assert.ok(saved._semantic_checkpoint.attempt_summaries.some(item => item.model === 'deyunai/gemini-2.5-pro'));
     console.log(JSON.stringify({ passed: true, evidence_batches_recalled: 0, semantic_calls: calls.length, completed_contracts: progress.completed }));
   } finally {
     modelGateway.generateText = originalGenerateText;

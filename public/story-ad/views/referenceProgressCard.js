@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

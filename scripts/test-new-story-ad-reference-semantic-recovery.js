@@ -47,6 +47,14 @@ assert.ok(
   checkpointStart >= 0 && checkpointRepair > checkpointStart && fullSynthesis > checkpointRepair,
   '已持久化的 65 分候选必须在任何完整合同模型调用前直接进入缺项修复',
 );
+const repairFunctionStart = analysisServiceSource.indexOf('const repairSemanticCandidate = async');
+const isolatedFailure = analysisServiceSource.indexOf('contractErrors.push({ contract, error })', repairFunctionStart);
+const isolatedContinue = analysisServiceSource.indexOf('if (!acceptedCandidate) continue', isolatedFailure);
+const aggregateFailure = analysisServiceSource.indexOf("aggregate.code = 'REFERENCE_SEMANTIC_CONTRACTS_INCOMPLETE'", isolatedContinue);
+assert.ok(
+  isolatedFailure > repairFunctionStart && isolatedContinue > isolatedFailure && aggregateFailure > isolatedContinue,
+  '单个语义合同失败必须继续执行后续独立合同，并在全部尝试后统一报告',
+);
 
 const weakCandidate = {
   reference_understanding: {
@@ -295,6 +303,13 @@ const largeChain = Array.from({ length: 120 }, (_, index) => ({
 }));
 const largeNormalized = understanding.enrichAnalysis({
   ...baseAnalysis,
+  shot_breakdown: largeChain.map((event, index) => ({
+    order: index + 1,
+    range: event.range,
+    scene_id: event.scene_id,
+    subject_ids: ['person_1'],
+    action: event.action,
+  })),
   reference_understanding: { ...baseAnalysis.reference_understanding, causal_chain: largeChain },
 }, {
   visualEvidence: [{ payload: { frames } }],

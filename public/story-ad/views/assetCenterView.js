@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260805-structured-semantic-contracts-v35';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-structured-semantic-contracts-v35';
-import { confirmDialog } from '../components/dialog.js?v=20260805-structured-semantic-contracts-v35';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-structured-semantic-contracts-v35';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-structured-semantic-contracts-v35';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-structured-semantic-contracts-v35';
+import { request } from '../api.js?v=20260805-semantic-root-cause-closure-v36';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-semantic-root-cause-closure-v36';
+import { confirmDialog } from '../components/dialog.js?v=20260805-semantic-root-cause-closure-v36';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-semantic-root-cause-closure-v36';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-semantic-root-cause-closure-v36';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-semantic-root-cause-closure-v36';
 
 const GROUPS = [
   ['people', '人物'],
