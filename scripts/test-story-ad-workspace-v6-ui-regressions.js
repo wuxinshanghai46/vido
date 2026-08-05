@@ -56,6 +56,14 @@ assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
 assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留可恢复的页面锚点');
+assert.ok(
+  briefView.indexOf('data-reference-progress-host') < briefView.indexOf('data-brief-settings-anchor'),
+  '分析中或失败时，参考视频状态卡必须位于广告目标与启动材料上方',
+);
+assert.ok(
+  briefView.indexOf('data-brief-settings-anchor') < briefView.indexOf('data-reference-understanding-host'),
+  '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
+);
 assert.match(briefView, /restoreBriefSettingsLayout/, '没有参考报告时必须把广告目标与启动材料恢复到目标页');
 assert.match(briefView, /briefSettings\.open = !nextReferenceAttached/, '选择或移除参考时必须实时折叠或展开设置');
 assert.match(briefView, /store\.subscribe\([\s\S]*referenceProgress\(nextState\.bundle\?\.reference/, '同一分析状态内的实时进度必须局部更新，不能等待整页重载');

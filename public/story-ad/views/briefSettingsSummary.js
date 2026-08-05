@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
+import { escapeHtml } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

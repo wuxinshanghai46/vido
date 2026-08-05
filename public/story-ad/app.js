@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260805-brief-settings-inline-v27';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-brief-settings-inline-v27';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-brief-settings-inline-v27';
+import { createProjectStore } from './store/projectStore.js?v=20260805-reference-progress-priority-v28';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-reference-progress-priority-v28';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-reference-progress-priority-v28';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260805-brief-settings-inline-v27'),
-  assets: () => import('./views/assetCenterView.js?v=20260805-brief-settings-inline-v27'),
-  plot: () => import('./views/plotRoomView.js?v=20260805-brief-settings-inline-v27'),
-  storyboard: () => import('./views/storyboardView.js?v=20260805-brief-settings-inline-v27'),
-  shot: () => import('./views/shotDesignerView.js?v=20260805-brief-settings-inline-v27'),
-  final: () => import('./views/finalView.js?v=20260805-brief-settings-inline-v27'),
-  workflow: () => import('./views/workflowView.js?v=20260805-brief-settings-inline-v27'),
+  brief: () => import('./views/briefView.js?v=20260805-reference-progress-priority-v28'),
+  assets: () => import('./views/assetCenterView.js?v=20260805-reference-progress-priority-v28'),
+  plot: () => import('./views/plotRoomView.js?v=20260805-reference-progress-priority-v28'),
+  storyboard: () => import('./views/storyboardView.js?v=20260805-reference-progress-priority-v28'),
+  shot: () => import('./views/shotDesignerView.js?v=20260805-reference-progress-priority-v28'),
+  final: () => import('./views/finalView.js?v=20260805-reference-progress-priority-v28'),
+  workflow: () => import('./views/workflowView.js?v=20260805-reference-progress-priority-v28'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

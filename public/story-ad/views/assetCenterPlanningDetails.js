@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-brief-settings-inline-v27';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-reference-progress-priority-v28';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

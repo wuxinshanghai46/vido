@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-brief-settings-inline-v27';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
-import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v27';
+import { request } from '../api.js?v=20260805-reference-progress-priority-v28';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
+import { confirmDialog } from '../components/dialog.js?v=20260805-reference-progress-priority-v28';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

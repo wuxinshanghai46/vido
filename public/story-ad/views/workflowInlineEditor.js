@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
+import { escapeHtml } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
 
 /** 在画布侧栏编辑权威剧情/分镜，不使用图投影中的截断摘要回写。 */
 export function inlineNodeEditor(node = {}, bundle = {}) {

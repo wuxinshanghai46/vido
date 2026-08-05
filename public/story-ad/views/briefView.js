@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260805-brief-settings-inline-v27';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v27';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-brief-settings-inline-v27';
+import { request } from '../api.js?v=20260805-reference-progress-priority-v28';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-reference-progress-priority-v28';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-reference-progress-priority-v28';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-reference-progress-priority-v28';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -200,6 +200,7 @@ export async function mount(host, context) {
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
+    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
     <div data-brief-settings-anchor>
     <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">
@@ -238,7 +239,6 @@ export async function mount(host, context) {
       </aside>
     </div>
     </div>
-    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
     <div data-reference-understanding-host></div>
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
 
@@ -283,7 +283,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260805-brief-settings-inline-v27');
+    const module = await import('./referenceUnderstandingView.js?v=20260805-reference-progress-priority-v28');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
