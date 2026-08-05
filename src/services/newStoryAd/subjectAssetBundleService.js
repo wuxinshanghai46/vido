@@ -15,6 +15,7 @@ const visualVerification = require('./visualVerificationService');
 const personDossierCompiler = require('./personDossierCompiler');
 const dossierComposites = require('./dossierCompositeService');
 const generationSpecCompletion = require('./generationSpecCompletionService');
+const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -803,12 +804,14 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     if (taskId) storage.saveOutput(taskId, kind, checkpoint);
   };
   save();
+  const subjectFailures = [];
   for (let index = 0; index < humans.length; index += 1) {
     if (reusableHumanAsset(checkpoint.humans[index])) {
       processedUnits += 5;
       await report('checkpoint_reused', `已复用人物 ${index + 1} 的完整档案`, { subject_index: index + 1, subject_kind: 'human' });
       continue;
     }
+    try {
     cancellation.throwIfCancelled();
     const member = humans[index];
     const actorId = `new_story_actor_${crypto.createHash('sha256').update(`${kind}:${member.id}:${index}`).digest('hex').slice(0, 16)}`;
@@ -831,6 +834,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
           unit_kind: kind,
         });
       },
+      concurrency: Math.max(0, Number(options.personDossierConcurrency || 0)) || undefined,
     }, {
       mediaAdapter,
     });
@@ -915,6 +919,16 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     checkpoint.humans[index] = asset;
     checkpoint.generated_counts.people += 1;
     save();
+    } catch (error) {
+      if (error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
+      subjectFailures.push({ kind: 'human', index, id: humans[index]?.id || '', error });
+      save();
+      await report('subject_failed', `人物 ${index + 1} 生成中断，继续处理其它独立主体`, {
+        subject_index: index + 1,
+        subject_kind: 'human',
+        error_code: error?.code || 'SUBJECT_ASSET_GENERATION_FAILED',
+      });
+    }
   }
   for (let index = 0; index < pets.length; index += 1) {
     if (reusablePetAsset(checkpoint.pets[index])) {
@@ -922,16 +936,44 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       await report('checkpoint_reused', `已复用动物 ${index + 1} 的身份档案`, { subject_index: index + 1, subject_kind: 'pet' });
       continue;
     }
+    try {
     cancellation.throwIfCancelled();
     const profile = pets[index];
     const petId = `new_story_pet_${Date.now()}_${index + 1}_${Math.random().toString(36).slice(2, 7)}`;
-    const sheet = await mediaAdapter.generateActorReference({
-      filename: `pet_${petId}_sheet`,
-      prompt: petPrompt(profile, pets.length),
-      aspectRatio: '3:4',
-      imageModel: body.image_model || body.imageModel || 'auto',
+    const petCheckpointKey = `pet_dossier:${profile.id || index + 1}:1`;
+    const checkpointedPet = await assetGenerationCheckpoint.runCheckpointedUnit({
+      identity: {
+        key: petCheckpointKey,
+        taskId: taskId || options.generationId,
+        assetType: 'pet_dossier',
+        assetId: profile.id || `pet_${index + 1}`,
+        unit: 'reference_sheet',
+        revision: 1,
+        input: petGenerationProfile(profile),
+      },
+      load: async key => checkpoint.person_dossier_checkpoints[key] || null,
+      save: async (key, value) => {
+        checkpoint.person_dossier_checkpoints[key] = value;
+        save();
+      },
+      execute: async controls => {
+        const sheet = controls.providerResult || await mediaAdapter.generateActorReference({
+          taskId: taskId || options.generationId,
+          stage: 'new_story_ad.pet_dossier',
+          filename: `pet_${petId}_sheet`,
+          prompt: petPrompt(profile, pets.length),
+          aspectRatio: '3:4',
+          imageModel: body.image_model || body.imageModel || 'auto',
+          clientRequestId: petCheckpointKey,
+          onSubmitting: controls.onSubmitting,
+          onSubmitted: controls.onSubmitted,
+        });
+        if (!controls.providerResult) await controls.onProviderResult(sheet);
+        const views = await mediaAdapter.splitActorSheet({ source: sheet, filenamePrefix: `pet_${petId}`, viewKeys: HUMAN_VIEW_KEYS });
+        return { sheet, views };
+      },
     });
-    const views = await mediaAdapter.splitActorSheet({ source: sheet, filenamePrefix: `pet_${petId}`, viewKeys: HUMAN_VIEW_KEYS });
+    const { views } = checkpointedPet.result;
     processedUnits += 1;
     await report('pet_dossier', `动物 ${index + 1} 多视图已生成`, { subject_index: index + 1, subject_kind: 'pet' });
     cancellation.throwIfCancelled();
@@ -947,13 +989,31 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     checkpoint.pets[index] = { ...profile, ...asset, reference_images: views.map(view => view.url).filter(Boolean) };
     checkpoint.generated_counts.pets += 1;
     save();
+    } catch (error) {
+      if (error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
+      subjectFailures.push({ kind: 'pet', index, id: pets[index]?.id || '', error });
+      save();
+      await report('subject_failed', `动物 ${index + 1} 生成中断，已保留其它独立主体`, {
+        subject_index: index + 1,
+        subject_kind: 'pet',
+        error_code: error?.code || 'SUBJECT_ASSET_GENERATION_FAILED',
+      });
+    }
   }
   if (checkpoint.humans.some(asset => !reusableHumanAsset(asset))
     || checkpoint.pets.some(asset => !reusablePetAsset(asset))) {
-    const error = new Error('主体批次没有形成完整可复用资产，已停止提交');
-    error.code = 'SUBJECT_BUNDLE_INCOMPLETE';
-    error.status = 500;
-    error.retryable = true;
+    const firstFailure = subjectFailures[0]?.error;
+    const error = firstFailure instanceof Error ? firstFailure : new Error('主体批次没有形成完整可复用资产，已停止提交');
+    error.code = error.code || 'SUBJECT_BUNDLE_INCOMPLETE';
+    error.status = error.status || 500;
+    error.retryable = error.retryable !== false;
+    error.subject_failures = subjectFailures.map(item => ({
+      kind: item.kind,
+      index: item.index,
+      id: item.id,
+      error_code: item.error?.code || 'SUBJECT_ASSET_GENERATION_FAILED',
+      billing_state: item.error?.billingState || item.error?.billing_state || '',
+    }));
     throw error;
   }
   const personContract = checkpoint.humans.length ? aggregatePersonContract(checkpoint.humans) : null;

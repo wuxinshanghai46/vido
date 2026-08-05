@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const mediaAdapterDefault = require('./mediaAdapter');
+const checkpointServiceDefault = require('./assetGenerationCheckpointService');
 
 function localAsset(asset = {}, mediaAdapter = mediaAdapterDefault) {
   return mediaAdapter.assetPathFromName(asset.filename || path.basename(String(asset.image_url || '')));
@@ -67,6 +68,7 @@ async function generateDetailRows({
   onProgress = async () => {},
 } = {}, deps = {}) {
   const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
+  const checkpointService = deps.checkpointService || checkpointServiceDefault;
   if (typeof mediaAdapter.generateImage !== 'function') throw new Error('人物高清细节生成缺少图片模型适配器');
   const rows = [];
   for (let index = 0; index < definitions.length; index += 1) {
@@ -89,39 +91,62 @@ async function generateDetailRows({
       `人物服装与配饰设定：${String(profile.wardrobeText || profile.wardrobe || '').trim()}`,
       '严格依据参考图，不改变服装款式和配色，不加入文字、标签、水印、拼贴边框或人物档案排版。',
     ].filter(Boolean).join('\n');
-    const generated = await mediaAdapter.generateImage({
-      taskId,
-      stage: `new_story_ad.person_dossier_${detailKind}`,
-      prompt,
-      auditSafePrompt: prompt,
-      filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
-      aspectRatio: spec.aspectRatio || '4:3',
-      resolution: '2K',
-      imageModel: 'gpt-image-2',
-      referenceImages: [reference.image_url],
-      requireReferences: true,
-      inputFidelity: 'high',
-      singleAttempt: true,
-      clientRequestId: checkpointKey,
+    const checkpointed = await checkpointService.runCheckpointedUnit({
+      identity: {
+        key: checkpointKey,
+        taskId,
+        assetType: 'person_detail',
+        assetId,
+        unit: `${detailKind}:${spec.key}`,
+        revision,
+        input: {
+          detail_kind: detailKind,
+          detail_key: spec.key,
+          reference_image: reference.image_url,
+          wardrobe: String(profile.wardrobeText || profile.wardrobe || '').trim(),
+        },
+      },
+      load: loadCheckpoint,
+      save: saveCheckpoint,
+      execute: async controls => {
+        const generated = controls.providerResult || await mediaAdapter.generateImage({
+          taskId,
+          stage: `new_story_ad.person_dossier_${detailKind}`,
+          prompt,
+          auditSafePrompt: prompt,
+          filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
+          aspectRatio: spec.aspectRatio || '4:3',
+          resolution: '2K',
+          imageModel: 'gpt-image-2',
+          referenceImages: [reference.image_url],
+          requireReferences: true,
+          inputFidelity: 'high',
+          singleAttempt: true,
+          clientRequestId: checkpointKey,
+          onSubmitting: controls.onSubmitting,
+          onSubmitted: controls.onSubmitted,
+        });
+        if (!controls.providerResult) await controls.onProviderResult(generated);
+        return {
+          id: `${assetId}_${spec.key}_r${Math.max(1, Number(revision) || 1)}`,
+          key: spec.key,
+          kind: detailKind,
+          label: spec.label,
+          filename: generated.filename || '',
+          image_url: generated.image_url || generated.url || '',
+          source_asset_id: reference.id || reference.asset_id || reference.key || '',
+          derived_locally: false,
+          detail_mode: 'generated_high_resolution',
+          resolution: '2K',
+          provider_used: generated.provider_used || '',
+          model_call_count: 1,
+        };
+      },
     });
-    const row = {
-      id: `${assetId}_${spec.key}_r${Math.max(1, Number(revision) || 1)}`,
-      key: spec.key,
-      kind: detailKind,
-      label: spec.label,
-      filename: generated.filename || '',
-      image_url: generated.image_url || generated.url || '',
-      source_asset_id: reference.id || reference.asset_id || reference.key || '',
-      derived_locally: false,
-      detail_mode: 'generated_high_resolution',
-      resolution: '2K',
-      provider_used: generated.provider_used || '',
-      model_call_count: 1,
-    };
+    const row = checkpointed.result;
     if (!row.image_url) throw new Error(`人物高清细节 ${spec.label} 未返回图片`);
-    await saveCheckpoint(checkpointKey, row);
     rows.push(row);
-    await onProgress({ completed: index + 1, total: definitions.length, key: spec.key, reused: false });
+    await onProgress({ completed: index + 1, total: definitions.length, key: spec.key, reused: checkpointed.reused });
   }
   return rows;
 }

@@ -88,8 +88,20 @@ function finish(taskId, status = 'completed', message = '') {
   const state = current(taskId);
   if (!state) return null;
   const now = new Date().toISOString();
+  const terminalLanes = Object.fromEntries(Object.entries(state.progress.lanes || {}).map(([name, lane]) => {
+    if (status === 'completed' || lane?.required === false || !['queued', 'running'].includes(String(lane?.status || ''))) {
+      return [name, lane];
+    }
+    return [name, {
+      ...lane,
+      status: 'failed',
+      message: lane?.message || '该分支未完成，已停止',
+      finished_at: now,
+      updated_at: now,
+    }];
+  }));
   const progress = aggregate({
-    ...state.progress, status, phase: status === 'completed' ? 'complete' : 'partial_failed',
+    ...state.progress, lanes: terminalLanes, status, phase: status === 'completed' ? 'complete' : 'partial_failed',
     message: message || (status === 'completed' ? '人物与场景视觉资产已生成。' : '部分资产已保留；再次提交只会继续缺失项。'),
     finished_at: now,
   });

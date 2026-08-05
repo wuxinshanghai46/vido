@@ -231,7 +231,13 @@ function classifyImageGenerationError(error = null) {
     };
   }
   const classified = modelGateway.classifyError(error);
-  if (classified.code === 'PROVIDER_5XX') {
+  const providerStatus = Number(error?.response?.status
+    || error?.providerPayload?.status
+    || error?.providerPayload?.code
+    || error?.response?.data?.status
+    || error?.response?.data?.code
+    || 0);
+  if (classified.code === 'PROVIDER_5XX' || (providerStatus >= 500 && providerStatus < 600)) {
     return {
       code: 'PROVIDER_5XX_AMBIGUOUS',
       retryable: false,

@@ -24,6 +24,7 @@ const productAssetGeneration = require('../services/newStoryAd/productAssetGener
 const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
 const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const visualAssetProgress = require('../services/newStoryAd/visualAssetProgressService');
+const visualAssetOrchestration = require('../services/newStoryAd/visualAssetOrchestrationService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
@@ -1394,53 +1395,16 @@ router.post('/person-sheet', asyncRoute(async (req, res) => {
   });
 }));
 
-function updateSubjectAssetProgress(taskId, generationId, update = {}) {
-  if (!taskId) return null;
-  const task = storage.getTask(taskId);
-  if (!task) return null;
-  if (task.generation_progress?.stage === 'visual_assets') {
-    return require('../services/newStoryAd/visualAssetProgressService').updateLane(taskId, 'subjects', {
-      status: update.status || 'running',
-      phase: update.phase || 'generation',
-      message: update.message || '正在生成人物与动物档案',
-      total: Math.max(1, Number(update.total || 1)),
-      completed: Math.max(0, Number(update.processed ?? update.completed ?? 0)),
-      percent: Number(update.percent),
-    });
-  }
-  const previous = task.generation_progress?.stage === 'subject_assets' ? task.generation_progress : {};
-  const total = Math.max(1, Number(update.total || previous.total || 1) || 1);
-  const processed = Math.max(0, Math.min(total, Number(update.processed ?? update.completed ?? previous.processed ?? 0) || 0));
-  const percent = Number.isFinite(Number(update.percent))
-    ? Math.max(0, Math.min(100, Number(update.percent)))
-    : Math.max(1, Math.min(90, Math.round((processed / total) * 90)));
-  const now = new Date().toISOString();
-  const progress = {
-    schema_version: 1,
-    stage: 'subject_assets',
-    generation_id: generationId || task.active_generation_id || previous.generation_id || '',
-    status: update.status || (percent >= 100 ? 'completed' : 'running'),
-    phase: update.phase || previous.phase || 'preparing',
-    message: update.message || previous.message || '正在建立人物与动物档案',
-    total,
-    processed,
-    completed: processed,
-    percent,
-    started_at: previous.started_at || task.generation_started_at || task.generation_queued_at || now,
-    updated_at: now,
-    ...(percent >= 100 ? { finished_at: now } : {}),
-  };
-  storage.updateTask(taskId, { generation_progress: progress });
-  return progress;
-}
-
 async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generationId = '', userId = 'anonymous', deferCommit = false } = {}) {
     const bundle = await subjectAssets.generateSubjectBundle({
       body,
       taskId,
       generationId,
       deferContextCommit: deferCommit,
-      onProgress: progress => updateSubjectAssetProgress(taskId, generationId, progress),
+      // The combined visual-assets stage shares a provider pool with scenes.
+      // Keep one slot available so a large person dossier cannot starve the scene lane.
+      personDossierConcurrency: deferCommit ? 1 : undefined,
+      onProgress: progress => visualAssetOrchestration.updateSubjectProgress(taskId, generationId, progress),
     });
     const persistedCast = bundle.cast_assets.map((asset) => upsertActorAssetForUser(userId, asset, {
       generated_by: 'new_story_ad.subject_assets',
@@ -1479,7 +1443,7 @@ async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generati
         };
     let providerSync = { status: normalizedBundle.cast_assets.length ? 'pending' : 'not_required', assets: [] };
     if (taskId && committed.person_asset && committed.person_contract?.status === 'verified') {
-      updateSubjectAssetProgress(taskId, generationId, { percent: 94, phase: 'provider_sync', message: '正在上传人物档案到 Seedance 人物素材库' });
+      visualAssetOrchestration.updateSubjectProgress(taskId, generationId, { percent: 94, phase: 'provider_sync', message: '正在上传人物档案到 Seedance 人物素材库' });
       try {
         const synced = await videoAdapter.prepareDeyunaiPersonAsset({ taskId, ctx: storage.getOutput(taskId, 'context') || {}, options: {} });
         providerSync = { status: 'completed', ...synced };
@@ -1496,7 +1460,7 @@ async function generateAndCommitSubjectAssets({ body = {}, taskId = '', generati
         storage.saveOutput(taskId, 'person_provider_sync', providerSync);
       }
     }
-    updateSubjectAssetProgress(taskId, generationId, {
+    visualAssetOrchestration.updateSubjectProgress(taskId, generationId, {
       percent: 100,
       status: 'completed',
       phase: providerSync.status === 'failed' ? 'complete_with_provider_sync_warning' : 'complete',
@@ -1598,25 +1562,12 @@ router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (r
   res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, ...plan });
 }));
 
-function normalizedSceneTargets(body = {}) {
-  return (Array.isArray(body.scene_targets) ? body.scene_targets : [])
-    .map((target, index) => ({
-      scene_id: String(target?.scene_id || target?.space_id || target?.id || '').trim(),
-      space_id: String(target?.space_id || target?.scene_id || target?.id || '').trim(),
-      name: String(target?.name || `场景 ${index + 1}`).trim(),
-      scene_spec: target?.scene_spec && typeof target.scene_spec === 'object' ? target.scene_spec : undefined,
-    }))
-    .filter(target => target.scene_id)
-    .filter((target, index, rows) => rows.findIndex(row => row.scene_id === target.scene_id) === index)
-    .slice(0, 50);
-}
-
 router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
   const user = userFromReq(req);
   const userId = String(user.id || user.userId || user.username || 'anonymous');
   const body = { ...(req.body || {}), task_id: req.params.id };
-  const sceneTargets = normalizedSceneTargets(body);
+  const sceneTargets = visualAssetOrchestration.normalizedSceneTargets(body);
   const subjectTotal = Math.max(0, Number(body.expected_people || 0)) + Math.max(0, Number(body.expected_animals || 0));
   const subjectsRequired = body.generate_subjects !== false && subjectTotal > 0;
   return queueTaskStage(req, res, 'visual_assets', async (job) => {
@@ -1667,6 +1618,7 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
       return { scene_assets: sceneAssets, scene_spec: latestSceneSpec };
     })();
     const [subjects, scenes] = await Promise.allSettled([subjectLane, sceneLane]);
+    visualAssetOrchestration.markRejectedLanes(taskId, subjects, scenes);
     const sceneCommit = scenes.status === 'fulfilled'
       ? scenes.value
       : { scene_assets: scenes.reason?.partial_scene_assets || [], scene_spec: scenes.reason?.partial_scene_spec || null };
@@ -1708,13 +1660,12 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
         }
       }
     }
-    const failed = [subjects, scenes].find(result => result.status === 'rejected');
+    const rejected = visualAssetOrchestration.rejectedResults(subjects, scenes);
+    const failed = visualAssetOrchestration.primaryFailure(rejected);
     if (failed) {
       visualAssetProgress.finish(taskId, 'partial_failed');
       const error = failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason || '视觉资产生成失败'));
-      error.retryable = error.retryable !== false;
-      error.partial_results_saved = Boolean(subjectCommit || sceneCommit.scene_assets?.length);
-      throw error;
+      throw visualAssetOrchestration.attachFailureMetadata(error, rejected, { subjectCommit, sceneCommit, subjects, scenes });
     }
     visualAssetProgress.finish(taskId, 'completed');
     return { subjects: subjectCommit, scenes: scenes.value, synchronized: true };
