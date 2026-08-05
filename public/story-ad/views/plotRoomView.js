@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-brief-settings-inline-v26';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
-import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v26';
+import { request } from '../api.js?v=20260805-brief-settings-inline-v27';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
+import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v27';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

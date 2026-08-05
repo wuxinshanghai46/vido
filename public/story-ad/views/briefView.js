@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260805-brief-settings-inline-v26';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v26';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-brief-settings-inline-v26';
+import { request } from '../api.js?v=20260805-brief-settings-inline-v27';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v27';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-brief-settings-inline-v27';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
@@ -283,7 +283,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260805-brief-settings-inline-v26');
+    const module = await import('./referenceUnderstandingView.js?v=20260805-brief-settings-inline-v27');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

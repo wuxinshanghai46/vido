@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
+import { escapeHtml } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

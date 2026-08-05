@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260805-brief-settings-inline-v26';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
-import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v26';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-brief-settings-inline-v26';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-brief-settings-inline-v26';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-brief-settings-inline-v26';
+import { request } from '../api.js?v=20260805-brief-settings-inline-v27';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v27';
+import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v27';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-brief-settings-inline-v27';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-brief-settings-inline-v27';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-brief-settings-inline-v27';
 
 const GROUPS = [
   ['people', '人物'],
