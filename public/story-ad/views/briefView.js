@@ -1,13 +1,12 @@
-import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260804-visual-assets-sync-v23';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260804-visual-assets-sync-v23';
+import { request } from '../api.js?v=20260805-brief-settings-inline-v26';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v26';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260805-brief-settings-inline-v26';
 
 const MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接'],
   ['product', '商品 / 主体', '上传商品或服务主体图片'],
 ];
-
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -35,7 +34,6 @@ function formPayload(form) {
     },
   };
 }
-
 function materialRows(bundle, isNew) {
   const reference = bundle?.reference || {};
   const assets = bundle?.assets || {};
@@ -59,7 +57,6 @@ function materialRows(bundle, isNew) {
       </span>
     </div>`).join('');
 }
-
 export function referenceProgress(reference = {}) {
   if (!reference.analysis_id) return '';
   const status = String(reference.status || '').toLowerCase();
@@ -203,9 +200,8 @@ export async function mount(host, context) {
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
-    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
-    <div data-reference-understanding-host></div>
-    <div class="two-column">
+    <div data-brief-settings-anchor>
+    <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">
       <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
         <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>广告目标与成片设置</b><small>${referenceAttached ? '已从参考内容填写，可随时展开修改；保存后以你的版本为准' : '请填写广告目标；添加参考视频或链接后将自动折叠'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
@@ -241,9 +237,18 @@ export async function mount(host, context) {
         <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
       </aside>
     </div>
+    </div>
+    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
+    <div data-reference-understanding-host></div>
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
 
   const form = host.querySelector('[data-brief-form]');
+  const briefSettingsAnchor = host.querySelector('[data-brief-settings-anchor]');
+  const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
+  const restoreBriefSettingsLayout = () => briefSettingsAnchor
+    && briefSettingsLayout
+    && briefSettingsLayout.parentElement !== briefSettingsAnchor
+    && briefSettingsAnchor.appendChild(briefSettingsLayout);
   let createdProjectId = route.isNew ? '' : bundle.project?.id;
   const dirtyFields = new Set();
   const understandingHost = host.querySelector('[data-reference-understanding-host]');
@@ -252,7 +257,6 @@ export async function mount(host, context) {
   let disposed = false;
   let lastReferenceAttached = referenceAttached;
   let assetPlanTransitioning = false;
-
   async function syncReferenceUnderstanding(reference = {}) {
     const sequence = ++understandingLoadSequence;
     const nested = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -276,15 +280,17 @@ export async function mount(host, context) {
       understandingController?.destroy();
       understandingController = null;
       if (understandingHost) understandingHost.innerHTML = '';
+      restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260804-visual-assets-sync-v23');
+    const module = await import('./referenceUnderstandingView.js?v=20260805-brief-settings-inline-v26');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
       reference,
       taskId: createdProjectId,
       store,
+      briefSettingsNode: briefSettingsLayout,
       onConfirmed: async () => {
         const nextButton = host.querySelector('[data-brief-inline-action] [data-brief-submit]');
         const proceeded = await proceedToAssetPlan(nextButton);
@@ -292,7 +298,6 @@ export async function mount(host, context) {
       },
     });
   }
-
   syncReferenceUnderstanding(bundle.reference || {}).catch(error => toast(error.message, 'danger'));
   form.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
   form.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });

@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260804-visual-assets-sync-v23';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260804-visual-assets-sync-v23';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260804-visual-assets-sync-v23';
+import { createProjectStore } from './store/projectStore.js?v=20260805-brief-settings-inline-v26';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-brief-settings-inline-v26';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-brief-settings-inline-v26';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260804-visual-assets-sync-v23'),
-  assets: () => import('./views/assetCenterView.js?v=20260804-visual-assets-sync-v23'),
-  plot: () => import('./views/plotRoomView.js?v=20260804-visual-assets-sync-v23'),
-  storyboard: () => import('./views/storyboardView.js?v=20260804-visual-assets-sync-v23'),
-  shot: () => import('./views/shotDesignerView.js?v=20260804-visual-assets-sync-v23'),
-  final: () => import('./views/finalView.js?v=20260804-visual-assets-sync-v23'),
-  workflow: () => import('./views/workflowView.js?v=20260804-visual-assets-sync-v23'),
+  brief: () => import('./views/briefView.js?v=20260805-brief-settings-inline-v26'),
+  assets: () => import('./views/assetCenterView.js?v=20260805-brief-settings-inline-v26'),
+  plot: () => import('./views/plotRoomView.js?v=20260805-brief-settings-inline-v26'),
+  storyboard: () => import('./views/storyboardView.js?v=20260805-brief-settings-inline-v26'),
+  shot: () => import('./views/shotDesignerView.js?v=20260805-brief-settings-inline-v26'),
+  final: () => import('./views/finalView.js?v=20260805-brief-settings-inline-v26'),
+  workflow: () => import('./views/workflowView.js?v=20260805-brief-settings-inline-v26'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

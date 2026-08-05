@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
+import { escapeHtml } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

@@ -51,6 +51,11 @@ assert.match(report, /确认并创建人物与场景方案/, '确认按钮必须
 assert.match(report, /不生成图片或视频/, '确认时必须明确区分零视觉生成的方案创建与付费图片生成');
 assert.match(report, /await options\.onConfirmed/, '确认成功后必须把控制权交回目标页继续下一步');
 assert.match(brief, /onConfirmed:[\s\S]*proceedToAssetPlan/, '目标页必须接通确认成功到资产方案的连续流程');
+assert.match(brief, /briefSettingsNode: briefSettingsLayout/, '广告目标与启动材料必须作为稳定节点交给参考报告插槽');
+assert.match(report, /data-reference-brief-slot/, '参考报告必须提供确认操作与摘要之间的设置插槽');
+assert.match(report, /briefSlot\.appendChild\(options\.briefSettingsNode\)/, '报告每次重绘后都必须恢复广告目标与启动材料节点');
+assert(report.indexOf('reference-understanding-actions') < report.indexOf('data-reference-brief-slot'), '设置插槽必须位于确认操作之后');
+assert(report.indexOf('data-reference-brief-slot') < report.indexOf('reference-understanding-summary'), '设置插槽必须位于报告摘要之前');
 assert.doesNotMatch(report, /runStage\s*\(/, '理解报告不得直接触发任何生成阶段');
 assert.doesNotMatch(report, /scene-config|generate-keyframe|generate-video/, '理解报告不得绑定下游生成接口');
 

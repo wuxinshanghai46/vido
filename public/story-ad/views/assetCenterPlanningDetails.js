@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260804-visual-assets-sync-v23';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-brief-settings-inline-v26';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

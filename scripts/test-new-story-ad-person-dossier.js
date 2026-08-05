@@ -16,6 +16,17 @@ mediaAdapter.generateActorReference = async options => {
   calls.push(options);
   return originalGenerate(options);
 };
+const originalRenameSync = fs.renameSync;
+let simulatedWindowsRenameLock = false;
+fs.renameSync = (from, to) => {
+  if (process.platform === 'win32' && !simulatedWindowsRenameLock && String(from).includes(`${path.sep}tasks${path.sep}`)) {
+    simulatedWindowsRenameLock = true;
+    const error = new Error('simulated Windows file lock');
+    error.code = 'EPERM';
+    throw error;
+  }
+  return originalRenameSync(from, to);
+};
 const service = require('../src/services/newStoryAd/personDossierService');
 const subjectReferences = require('../src/services/newStoryAd/subjectReferenceService');
 
@@ -79,6 +90,7 @@ async function main() {
   assert.strictEqual(duplicateStart.duplicate, true);
   const candidatesDone = await waitFor(taskId, user, 'candidate', ['completed', 'failed']);
   assert.strictEqual(candidatesDone.candidate_job.status, 'completed', JSON.stringify(candidatesDone.candidate_job.error || {}));
+  if (process.platform === 'win32') assert.strictEqual(simulatedWindowsRenameLock, true, '必须覆盖 Windows 原子重命名瞬时文件锁');
   assert.strictEqual(candidatesDone.candidates.length, 2);
   assert.ok(candidatesDone.candidates.every(item => item.strict_reference_required && item.input_fidelity === 'high'));
   assert.ok(candidatesDone.candidates.every(item => item.qa.source_identity_score >= 0.86));

@@ -64,6 +64,8 @@ button.reference-evidence-tag.is-seekable { color: var(--info); cursor: pointer;
 .reference-understanding-actions b, .reference-understanding-actions small { display: block; }
 .reference-understanding-actions small { margin-top: 5px; color: var(--muted); line-height: 1.5; }
 .reference-understanding-actions .btn { flex: 0 0 auto; }
+.reference-understanding-brief-slot { padding: 18px 20px 20px; border-top: 1px solid var(--line); }
+.reference-understanding-brief-slot:empty { display: none; }
 
 @media (max-width: 920px) {
   .reference-understanding-summary { grid-template-columns: 1fr; }
@@ -77,6 +79,7 @@ button.reference-evidence-tag.is-seekable { color: var(--info); cursor: pointer;
 
 @media (max-width: 600px) {
   .reference-understanding-summary, .reference-understanding-panel { padding: 14px; }
+  .reference-understanding-brief-slot { padding: 14px; }
   .reference-understanding-tabs { padding: 0 14px; }
   .reference-timeline li { grid-template-columns: 1fr; }
   .reference-timeline::before { display: none; }

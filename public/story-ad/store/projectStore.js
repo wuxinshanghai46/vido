@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260804-visual-assets-sync-v23';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260804-visual-assets-sync-v23';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260805-brief-settings-inline-v26';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260805-brief-settings-inline-v26';
 
 export function createProjectStore() {
   const state = {

@@ -46,11 +46,44 @@ function sourceRecordPath(userId, sourceId) {
   return path.join(sourceDir(userId, sourceId), 'record.json');
 }
 
+function waitForWindowsFileRelease(delayMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+}
+
+function replaceAtomicFile(tmp, filePath) {
+  let lastError = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      fs.renameSync(tmp, filePath);
+      return;
+    } catch (error) {
+      lastError = error;
+      const retryableWindowsLock = process.platform === 'win32'
+        && ['EPERM', 'EACCES', 'EBUSY'].includes(error.code);
+      if (!retryableWindowsLock) throw error;
+      if (attempt < 4) waitForWindowsFileRelease(10 * (attempt + 1));
+    }
+  }
+  try {
+    fs.copyFileSync(tmp, filePath);
+    fs.unlinkSync(tmp);
+  } catch (copyError) {
+    try { fs.unlinkSync(tmp); } catch {}
+    copyError.cause = lastError;
+    throw copyError;
+  }
+}
+
 function writeJsonAtomic(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8');
-  fs.renameSync(tmp, filePath);
+  try {
+    replaceAtomicFile(tmp, filePath);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch {}
+    throw error;
+  }
 }
 
 function readJson(filePath) {

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260804-visual-assets-sync-v23';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260804-visual-assets-sync-v23';
-import { confirmDialog } from '../components/dialog.js?v=20260804-visual-assets-sync-v23';
+import { request } from '../api.js?v=20260805-brief-settings-inline-v26';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260805-brief-settings-inline-v26';
+import { confirmDialog } from '../components/dialog.js?v=20260805-brief-settings-inline-v26';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260804-visual-assets-sync-v23';
+  link.href = '/story-ad/reference-understanding.css?v=20260805-brief-settings-inline-v26';
   document.head.appendChild(link);
 }
 
@@ -421,6 +421,13 @@ function renderShell(reference, activeTab, editing = false, options = {}) {
   const synopsis = claimText(bible.full_synopsis || bible.short_synopsis || bible.logline) || '分析已完成，请逐项核对故事、人物、场景和证据。';
   return `<section class="card reference-understanding" data-reference-understanding data-reference-revision="${revision}">
     <div class="card-head reference-understanding-head"><div><h2>参考内容理解报告</h2><p>先核对系统如何理解故事，再将确认版本作为人物、场景、剧情、分镜与导演台的共同权威输入。</p></div><span class="status-tag ${confirmed ? 'is-success' : (ready ? 'is-info' : 'is-danger')}">${confirmed ? `已确认 · V${revision || 1}` : (ready ? `待确认 · V${revision || 1}` : `需补充 · V${revision || 1}`)}</span></div>
+    <footer class="reference-understanding-actions">
+      <div><b>${editing ? `正在修改“${escapeHtml(TAB_DEFINITIONS.find(([id]) => id === activeTab)?.[1] || '')}”` : (confirmed ? '该版本已作为项目权威输入' : (ready ? (options.continueToAssetPlan ? '确认后将建立人物与场景方案并进入资产中心' : '确认前不会创建人物、场景、剧情、分镜或触发付费生成') : '报告尚未达到确认标准'))}</b><small>${editing ? '保存后以你的修改为准；旧确认和受影响的下游结果会失效，但不会调用生成模型。' : (confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? (options.continueToAssetPlan ? '这里只把已识别内容整理成可编辑方案，不生成图片或视频；视觉生成仍需在资产中心另行确认。' : '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。') : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`))}</small></div>
+      ${editing
+        ? '<button class="btn" type="button" data-cancel-reference-edit>取消</button><button class="btn primary" type="button" data-save-reference-edit>保存当前栏目</button>'
+        : `${ready ? '<button class="btn" type="button" data-edit-reference-understanding>修改当前栏目</button>' : ''}${confirmed || !ready ? '' : `<button class="btn primary" type="button" data-confirm-reference-understanding>${options.continueToAssetPlan ? '确认并创建人物与场景方案' : '确认理解结果，作为项目权威输入'}</button>`}`}
+    </footer>
+    <div class="reference-understanding-brief-slot" data-reference-brief-slot></div>
     <div class="reference-understanding-summary">
       <div><small>完整故事摘要</small><p>${escapeHtml(synopsis)}</p></div>
       <dl><div><dt>故事事件</dt><dd>${list(data.story_events).length}</dd></div><div><dt>人物弧光</dt><dd>${list(data.character_arcs).length}</dd></div><div><dt>场景叙事</dt><dd>${list(data.scene_narratives).length}</dd></div><div><dt>待确认</dt><dd>${list(data.unknowns).length}</dd></div></dl>
@@ -428,12 +435,6 @@ function renderShell(reference, activeTab, editing = false, options = {}) {
     ${videoUrl ? `<div class="reference-evidence-player"><video controls preload="metadata" data-reference-video src="${escapeHtml(videoUrl)}"></video><small>点击时间线或证据标签，可跳到对应时间核对画面。</small></div>` : '<div class="reference-evidence-player is-unavailable"><small>当前来源没有可直接播放的视频；证据时间仍会保留在报告中。</small></div>'}
     <div class="reference-understanding-tabs" role="tablist" aria-label="参考理解报告栏目">${TAB_DEFINITIONS.map(([id, label]) => `<button type="button" role="tab" aria-selected="${id === activeTab}" class="${id === activeTab ? 'active' : ''}" data-reference-tab="${id}">${escapeHtml(label)}</button>`).join('')}</div>
     <div class="reference-understanding-panel ${editing ? 'is-editing' : ''}" role="tabpanel" data-reference-panel>${editing ? renderEditor(reference, activeTab) : renderTab(data, activeTab)}</div>
-    <footer class="reference-understanding-actions">
-      <div><b>${editing ? `正在修改“${escapeHtml(TAB_DEFINITIONS.find(([id]) => id === activeTab)?.[1] || '')}”` : (confirmed ? '该版本已作为项目权威输入' : (ready ? (options.continueToAssetPlan ? '确认后将建立人物与场景方案并进入资产中心' : '确认前不会创建人物、场景、剧情、分镜或触发付费生成') : '报告尚未达到确认标准'))}</b><small>${editing ? '保存后以你的修改为准；旧确认和受影响的下游结果会失效，但不会调用生成模型。' : (confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? (options.continueToAssetPlan ? '这里只把已识别内容整理成可编辑方案，不生成图片或视频；视觉生成仍需在资产中心另行确认。' : '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。') : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`))}</small></div>
-      ${editing
-        ? '<button class="btn" type="button" data-cancel-reference-edit>取消</button><button class="btn primary" type="button" data-save-reference-edit>保存当前栏目</button>'
-        : `${ready ? '<button class="btn" type="button" data-edit-reference-understanding>修改当前栏目</button>' : ''}${confirmed || !ready ? '' : `<button class="btn primary" type="button" data-confirm-reference-understanding>${options.continueToAssetPlan ? '确认并创建人物与场景方案' : '确认理解结果，作为项目权威输入'}</button>`}`}
-    </footer>
   </section>`;
 }
 
@@ -452,6 +453,8 @@ export function mountReferenceUnderstanding(host, options = {}) {
       return;
     }
     host.innerHTML = renderShell(currentReference, activeTab, editing, { continueToAssetPlan: typeof options.onConfirmed === 'function' });
+    const briefSlot = host.querySelector('[data-reference-brief-slot]');
+    if (briefSlot && options.briefSettingsNode) briefSlot.appendChild(options.briefSettingsNode);
   };
 
   const click = async event => {

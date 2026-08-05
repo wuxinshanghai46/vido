@@ -55,8 +55,8 @@ assert.match(briefView, /data-brief-settings-values/, '折叠状态必须展示�
 assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
-assert(briefView.indexOf('data-reference-progress-host') < briefView.indexOf('<div class="two-column">'), '参考分析进度必须位于大表单之前，进入页面即可见');
-assert(briefView.indexOf('data-reference-understanding-host') < briefView.indexOf('<div class="two-column">'), '识别后的参考内容必须显示在折叠设置之前');
+assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留可恢复的页面锚点');
+assert.match(briefView, /restoreBriefSettingsLayout/, '没有参考报告时必须把广告目标与启动材料恢复到目标页');
 assert.match(briefView, /briefSettings\.open = !nextReferenceAttached/, '选择或移除参考时必须实时折叠或展开设置');
 assert.match(briefView, /store\.subscribe\([\s\S]*referenceProgress\(nextState\.bundle\?\.reference/, '同一分析状态内的实时进度必须局部更新，不能等待整页重载');
 assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brief-submit\]'\)[\s\S]*syncReferenceAction\(button, nextReference\)/, '分析终态到达时必须同步刷新折叠区内外的主按钮');
