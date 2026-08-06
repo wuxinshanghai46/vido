@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-content-mode-dialog-v69';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-content-mode-dialog-v69';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-auto-subject-dropdown-v71';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-auto-subject-dropdown-v71';
 
 export function createProjectStore() {
   const state = {

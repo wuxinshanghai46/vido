@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

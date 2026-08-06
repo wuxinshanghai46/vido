@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
+import { escapeHtml } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

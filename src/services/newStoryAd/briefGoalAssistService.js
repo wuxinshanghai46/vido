@@ -1,5 +1,6 @@
 const jsonRepair = require('./jsonRepairService');
 const briefAuthority = require('./briefAuthorityService');
+const productAssetResolver = require('./productAssetResolverService');
 
 function cleanText(value = '', max = 1200) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -9,8 +10,14 @@ function isMode(mode = '') {
   return mode === 'brief_goal' || mode === 'goal';
 }
 
-function assertInput(body = {}) {
-  if (cleanText(body.brief || body.content || '', 3000)) return;
+function assertInput(body = {}, context = body) {
+  if (cleanText(body.brief || body.content || '', 3000)) {
+    productAssetResolver.assertCommercialSubject(context, {
+      code: 'ASSIST_AD_SUBJECT_REQUIRED',
+      message: '请在想写的广告内容中写明具体产品、服务或品牌；本次没有调用文本模型',
+    });
+    return;
+  }
   const error = new Error('请先输入想写的内容，AI 才能帮你补充；没有调用文本模型');
   error.code = 'ASSIST_BRIEF_GOAL_EMPTY';
   error.status = 400;

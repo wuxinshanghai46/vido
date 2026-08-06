@@ -3499,7 +3499,7 @@ async function assistBrief(body = {}, user = {}) {
   const isShotSettings = mode === 'shot_settings' || mode === 'shot';
   const isStoryBeat = mode === 'story_beat' || mode === 'beat';
   const isBriefGoal = briefGoalAssist.isMode(mode);
-  if (isBriefGoal) briefGoalAssist.assertInput(body);
+  if (isBriefGoal) briefGoalAssist.assertInput(body, ctx);
   const hasAssistSubjectTarget = !!(body.assist_subject_target || body.assistSubjectTarget);
   const assistSubjectTarget = isPersonSpec ? assistSubjectProfiles.resolveAssistSubjectTarget(body, ctx) : null;
   if (isPersonSpec && hasAssistSubjectTarget && !assistSubjectTarget) { const error = new Error('单人物辅助补齐目标无效；没有调用文本模型'); error.code = 'ASSIST_SUBJECT_TARGET_INVALID'; error.status = 400; throw error; }

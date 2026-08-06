@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-content-mode-dialog-v69';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
-import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v69';
+import { request } from '../api.js?v=20260806-auto-subject-dropdown-v71';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { confirmDialog } from '../components/dialog.js?v=20260806-auto-subject-dropdown-v71';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260806-content-mode-dialog-v69';
+  link.href = '/story-ad/reference-understanding.css?v=20260806-auto-subject-dropdown-v71';
   document.head.appendChild(link);
 }
 

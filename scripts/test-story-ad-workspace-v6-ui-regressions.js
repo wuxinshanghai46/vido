@@ -100,11 +100,11 @@ assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /mode:\s*'brief_goal'/, '广告目标帮写必须使用独立模式，不能提前生成完整剧情结构');
 assert.match(briefView, /AI 只补充目标，不会删除你写的人物、场景、故事或商品事实/, '目标页必须解释 AI 帮写的职责边界');
-assert.match(briefView, /name="content_mode" value="commercial_subject"[\s\S]*name="content_mode" value="narrative_story"/, '目标页必须先让用户明确选择广告或剧情');
+assert.match(briefView, /<select class="select" name="content_mode" required>[\s\S]*<option value="commercial_subject"[\s\S]*<option value="narrative_story"/, '目标页必须使用下拉框让用户明确选择广告或剧情');
 assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '广告/剧情选择不得继续放在内容目标上方');
-assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="product_subject"'), '广告/剧情选择必须进入下方产品或主题设置区');
-assert.equal((briefView.match(/name="content_mode"/g) || []).length, 2, '页面只能有一组广告/剧情 radio');
-assert.equal((briefView.match(/name="product_subject"/g) || []).length, 1, '产品或主题输入只能保留一份');
+assert.equal((briefView.match(/name="content_mode"/g) || []).length, 1, '页面只能有一个内容类型下拉框');
+assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自动识别广告主体后页面不得显示产品或主题输入框');
+assert.match(briefView, /广告主体会从内容目标、AI 帮写或参考视频中自动识别/);
 assert.match(briefView, /content_mode: payload\.content_mode/, 'AI 帮写必须携带用户明确选择的内容类型');
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/, '只有用户亲自选择内容类型后才可创建或生成');
 assert.match(briefView, /if \(store\.state\.bundle\?\.reference\?\.analysis_id\)/, '帮写返回前必须防止覆盖后来添加的参考视频');

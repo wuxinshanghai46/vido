@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-content-mode-dialog-v69';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v69';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-content-mode-dialog-v69';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-content-mode-dialog-v69';
+import { request } from '../api.js?v=20260806-auto-subject-dropdown-v71';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-auto-subject-dropdown-v71';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-auto-subject-dropdown-v71';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-auto-subject-dropdown-v71';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -14,7 +14,7 @@ function formPayload(form) {
     content: brief,
     content_mode: String(data.get('content_mode') || '').trim(),
     content_mode_source: 'user',
-    product_subject: String(data.get('product_subject') || '').trim(),
+    product_subject: '',
     target_duration: Number(data.get('target_duration') || 30) || 30,
     output_ratio: String(data.get('output_ratio') || '9:16'),
     output_size: String(data.get('output_size') || 'standard'),
@@ -138,10 +138,11 @@ export async function mount(host, context) {
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
           <label class="field full"><span class="field-label-with-action"><span>内容目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；生成后仍可修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只补充目标，不会删除你写的人物、场景、故事或商品事实；生成后仍可继续修改。'}</small></label>
-          <fieldset class="field content-mode-field content-mode-subject-field"><legend>内容类型</legend><div class="content-mode-options">
-            <label><input type="radio" name="content_mode" value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'checked' : ''}><span><b>广告</b><small>产品 / 服务 / 品牌</small></span></label>
-            <label><input type="radio" name="content_mode" value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'checked' : ''}><span><b>剧情</b><small>故事 / 人物 / 场景</small></span></label>
-          </div><label class="content-mode-subject-input"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="广告填产品，剧情可留空"></label><small>请亲自选择类型；AI 帮写和后续制作会使用对应方案。</small></fieldset>
+          <label class="field"><span>内容类型</span><select class="select" name="content_mode" required>
+            <option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择</option>
+            <option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
+            <option value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'selected' : ''}>剧情</option>
+          </select><small>广告主体会从内容目标、AI 帮写或参考视频中自动识别；剧情不会创建商品主体。</small></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
           </select></label>
@@ -216,7 +217,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-content-mode-dialog-v69');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-auto-subject-dropdown-v71');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -257,6 +258,7 @@ export async function mount(host, context) {
       if (dirtyFields.has(key) || (key === 'content' && dirtyFields.has('brief')) || (key === 'benchmark_strategy' && [...dirtyFields].some(name => name.startsWith('benchmark_')))) authoritative[key] = current[key];
     });
     if (dirtyFields.has('content_mode')) authoritative.content_mode_source = 'user';
+    if (dirtyFields.has('brief') || dirtyFields.has('content_mode') || authoritative.content_mode === 'narrative_story') authoritative.product_subject = '';
     authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
     return authoritative;
   }
@@ -268,8 +270,7 @@ export async function mount(host, context) {
     const values = {
       project_name: latest.project_name || nextState.bundle?.project?.title || '',
       brief: latest.text || '',
-      product_subject: latest.product_subject || '',
-      content_mode: latest.content_mode || '',
+      content_mode: latest.content_mode_source === 'user' ? (latest.content_mode || '') : '',
       target_duration: String(Number(latest.target_duration || 30) || 30),
       output_ratio: latest.output_ratio || '9:16',
       video_resolution: latest.video_resolution || '1080p',
@@ -345,7 +346,7 @@ export async function mount(host, context) {
           mode: 'brief_goal',
           task_id: createdProjectId || '',
           brief: idea,
-          product_subject: payload.product_subject,
+          product_subject: '',
           content_mode: payload.content_mode,
           content_mode_source: 'user',
           target_duration: payload.target_duration,

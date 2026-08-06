@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
+import { escapeHtml } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
 
 /** 在画布侧栏编辑权威剧情/分镜，不使用图投影中的截断摘要回写。 */
 export function inlineNodeEditor(node = {}, bundle = {}) {

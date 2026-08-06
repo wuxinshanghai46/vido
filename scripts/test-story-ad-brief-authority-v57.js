@@ -36,6 +36,39 @@ const selectedAd = contextBuilder.buildContext({
 });
 assert.equal(selectedAd.content_mode, 'commercial_subject', '显式选择广告必须进入商业主体方案');
 assert.equal(selectedAd.product_subject, '东方香氛');
+const autoSelectedAd = contextBuilder.buildContext({
+  content_mode: 'commercial_subject',
+  content_mode_source: 'user',
+  brief: '为 LibTV 流媒体服务制作一支面向年轻家庭的广告。',
+  product_subject: '',
+});
+assert.equal(autoSelectedAd.product_subject, 'LibTV 流媒体服务', '隐藏广告主体后必须从用户内容自动提取');
+assert.equal(productResolver.isResolvedSubject('面向年轻家庭'), false, '目标受众不得被误识别为广告主体');
+const genericAd = contextBuilder.buildContext({
+  content_mode: 'commercial_subject',
+  content_mode_source: 'user',
+  brief: '广告的核心目标是传达产品。',
+  product_subject: '广告的核心目标是传达产品',
+});
+assert.equal(productResolver.isResolvedSubject(genericAd.product_subject), false, '泛化目标句不得被当成真实广告主体');
+assert.equal(productResolver.inferredSubject({
+  content_mode: 'commercial_subject',
+  content_mode_source: 'user',
+  brief: '制作一支广告。',
+  reference_video_analysis: { source_facts: { product_or_service: '产品' } },
+}), '待明确的展示主体', '参考视频返回的泛化主体也必须被统一拦截');
+assert.throws(
+  () => productResolver.assertCommercialSubject(genericAd),
+  error => error.code === 'COMMERCIAL_SUBJECT_REQUIRED' && /没有调用模型/.test(error.message),
+  '无法识别广告主体时必须在模型调用前阻止',
+);
+assert.throws(
+  () => briefAssist.assertInput(genericAd, genericAd),
+  error => error.code === 'ASSIST_AD_SUBJECT_REQUIRED' && /没有调用文本模型/.test(error.message),
+  'AI 帮写必须在付费文本模型前拦截主体不明确的广告',
+);
+assert.doesNotThrow(() => productResolver.assertCommercialSubject(selectedStory), '纯剧情不得要求广告主体');
+assert.doesNotThrow(() => briefAssist.assertInput(selectedStory, selectedStory), '剧情帮写不得要求广告主体');
 const legacyInferredStory = contextBuilder.buildContext({
   content_mode: 'narrative_story',
   product_presentation: { mode: 'narrative_story', source: 'user_story_brief' },
@@ -110,15 +143,16 @@ assert.match(modalRule, /\.real-person-source-form input:focus/);
 assert.match(modalRule, /\.story-ad-modal-open\{overflow:hidden\}/);
 
 const briefView = read('public/story-ad/views/briefView.js');
-assert.match(briefView, /name="content_mode" value="commercial_subject"/);
-assert.match(briefView, /name="content_mode" value="narrative_story"/);
+assert.match(briefView, /<select class="select" name="content_mode" required>/);
+assert.match(briefView, /<option value="commercial_subject"/);
+assert.match(briefView, /<option value="narrative_story"/);
 assert.match(briefView, /请先选择“广告”或“剧情”，再使用 AI 帮写/);
 assert.match(briefView, /content_mode: payload\.content_mode/);
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/);
 assert.match(briefView, /brief\.content_mode_source === 'user' && brief\.content_mode === 'narrative_story'/);
 assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '内容类型必须移动到内容目标下方');
-assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="product_subject"'), '内容类型必须位于原产品或主题设置区内');
-assert.equal((briefView.match(/name="product_subject"/g) || []).length, 1, '产品或主题输入不得复制');
+assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自动识别广告主体后不得继续显示手工输入框');
+assert.match(briefView, /product_subject:\s*''/, '前端不得把旧主体值重新覆盖自动识别结果');
 assert.match(briefView, /promptDialog\(isStory \? 'AI 帮写剧情内容' : 'AI 帮写广告内容'/);
 assert.match(briefView, /multiline: true/);
 assert.match(briefView, /if \(idea === null\) return;/, '取消帮写弹窗必须在模型请求前退出');
@@ -126,7 +160,7 @@ assert.ok(briefView.indexOf('if (idea === null) return;') < briefView.indexOf("r
 assert.match(briefView, /content_mode: payload\.content_mode/);
 assert.match(briefView, /content_mode_source: 'user'/);
 assert.match(briefView, /latest\.content_mode_source === 'user' \? \(latest\.content_mode \|\| ''\) : ''/, '推断模式不得在订阅刷新后伪装成用户选择');
-assert.match(css, /\.content-mode-options input:checked\+span/);
+assert.doesNotMatch(css, /\.content-mode-options/, '旧双卡片内容类型样式必须删除');
 
 const dialogSource = read('public/story-ad/components/dialog.js');
 assert.match(dialogSource, /options\.multiline \? '<textarea/);

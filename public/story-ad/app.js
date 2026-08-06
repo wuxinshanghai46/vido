@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260806-content-mode-dialog-v69';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-content-mode-dialog-v69';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-content-mode-dialog-v69';
+import { createProjectStore } from './store/projectStore.js?v=20260806-auto-subject-dropdown-v71';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-auto-subject-dropdown-v71';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260806-content-mode-dialog-v69'),
-  assets: () => import('./views/assetCenterView.js?v=20260806-content-mode-dialog-v69'),
-  plot: () => import('./views/plotRoomView.js?v=20260806-content-mode-dialog-v69'),
-  storyboard: () => import('./views/storyboardView.js?v=20260806-content-mode-dialog-v69'),
-  shot: () => import('./views/shotDesignerView.js?v=20260806-content-mode-dialog-v69'),
-  final: () => import('./views/finalView.js?v=20260806-content-mode-dialog-v69'),
-  workflow: () => import('./views/workflowView.js?v=20260806-content-mode-dialog-v69'),
+  brief: () => import('./views/briefView.js?v=20260806-auto-subject-dropdown-v71'),
+  assets: () => import('./views/assetCenterView.js?v=20260806-auto-subject-dropdown-v71'),
+  plot: () => import('./views/plotRoomView.js?v=20260806-auto-subject-dropdown-v71'),
+  storyboard: () => import('./views/storyboardView.js?v=20260806-auto-subject-dropdown-v71'),
+  shot: () => import('./views/shotDesignerView.js?v=20260806-auto-subject-dropdown-v71'),
+  final: () => import('./views/finalView.js?v=20260806-auto-subject-dropdown-v71'),
+  workflow: () => import('./views/workflowView.js?v=20260806-auto-subject-dropdown-v71'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

@@ -69,29 +69,48 @@ function primaryProductAsset(context = {}) {
   return productAssets(context)[0] || null;
 }
 
-const GENERIC_SUBJECTS = new Set(['当前广告主体', '广告主体', '当前产品', '商品主体', '产品主体']);
+const GENERIC_SUBJECTS = new Set(['', '产品', '商品', '品牌', '服务', '当前广告主体', '广告主体', '当前产品', '商品主体', '产品主体', '待明确的展示主体']);
+
+function isResolvedSubject(value = '') {
+  const candidate = text(value, 200);
+  if (GENERIC_SUBJECTS.has(candidate)) return false;
+  if (/^(?:一|1)(?:个|款|支|条|部|段)?$/.test(candidate)) return false;
+  if (/^(?:面向|针对|适合|服务于|用于)(?:人群|用户|客户|消费者|观众|受众|年轻|家庭|职场|儿童|老人|男性|女性)/.test(candidate)) return false;
+  return !/(?:目标|目的|作用|需求|想法|内容).{0,12}(?:产品|商品|品牌|服务)|(?:产品|商品|品牌|服务).{0,12}(?:目标|目的|作用|需求|想法|内容)/.test(candidate);
+}
 
 function inferredSubject(context = {}) {
   if (briefAuthority.contentMode(context) === 'narrative_story') return '';
   const explicit = text(context.product_subject || context.productSubject, 200);
-  if (explicit && !GENERIC_SUBJECTS.has(explicit)) return explicit;
+  if (isResolvedSubject(explicit)) return explicit;
   const sourceFact = text(context.reference_video_analysis?.source_facts?.product_or_service, 200);
-  if (sourceFact) return sourceFact;
+  if (isResolvedSubject(sourceFact)) return sourceFact;
   const brief = text(context.brief || context.content || '', 1000);
   const patterns = [
-    /为([^，。；,.!?！？]{2,40}?)(?:制作|生成|打造)(?:一支|一条|一个)?广告/i,
+    /为([^，。；,.!?！？]{2,40}?)(?:制作|生成|打造)(?:一支|一条|一个)?(?:[^，。；,.!?！？]{0,40}?的)?广告/i,
     /(?:做|制作|生成)(?:一个|一支|一条|一款)?([^，。；,.!?！？]{2,40}?)(?:的)?广告/i,
     /(?:推广|宣传|介绍|展示)(?:我们的|一款|一个)?([^，。；,.!?！？]{2,40})/i,
-    /([^，。；,.!?！？]{2,36}(?:原材料|背景墙|墙面|门窗|机器人|设备|板材|材料|产品|商品|服务))/i,
+    /([^，。；,.!?！？]{2,36}(?:原材料|背景墙|墙面|门窗|机器人|设备|板材|材料))/i,
   ];
   for (const pattern of patterns) {
     const candidate = text(brief.match(pattern)?.[1] || '', 120)
       .replace(/^(?:要|需要|想要|我们的|一个|一款)+/, '')
       .replace(/(?:的)?广告$/, '')
       .trim();
-    if (candidate.length >= 2 && !GENERIC_SUBJECTS.has(candidate)) return candidate;
+    if (candidate.length >= 2 && isResolvedSubject(candidate)) return candidate;
   }
-  return explicit || '待明确的展示主体';
+  return isResolvedSubject(explicit) ? explicit : '待明确的展示主体';
+}
+
+function assertCommercialSubject(context = {}, options = {}) {
+  if (briefAuthority.contentMode(context) === 'narrative_story') return '';
+  const subject = inferredSubject(context);
+  if (isResolvedSubject(subject)) return subject;
+  const error = new Error(options.message || '未从当前内容中识别出明确的产品、服务或品牌；请先写清楚广告主体，本次没有调用模型');
+  error.code = options.code || 'COMMERCIAL_SUBJECT_REQUIRED';
+  error.status = 400;
+  error.retryable = false;
+  throw error;
 }
 
 /** 区分独立商品与依附场景呈现的材料、墙面或空间成果。 */
@@ -164,7 +183,9 @@ function sceneMaterialReferenceImages(context = {}, body = {}) {
 
 module.exports = {
   GENERIC_SUBJECTS,
+  assertCommercialSubject,
   inferredSubject,
+  isResolvedSubject,
   isProductAsset,
   mediaUrl,
   normalizedAssetType,

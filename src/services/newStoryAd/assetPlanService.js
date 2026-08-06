@@ -6,6 +6,7 @@ const outputLanguage = require('./outputLanguageService');
 const stageProgress = require('./stageProgressService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
 const briefAuthority = require('./briefAuthorityService');
+const productAssetResolver = require('./productAssetResolverService');
 const propIdentity = require('./propIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
 const { contextPrompt, cleanText, assertContextConsistent } = require('./contextBuilder');
@@ -558,6 +559,10 @@ async function generate(taskId, options = {}) {
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   assertReferenceReady(ctx.reference_video_analysis);
+  productAssetResolver.assertCommercialSubject(ctx, {
+    code: 'ASSET_PLAN_AD_SUBJECT_REQUIRED',
+    message: '未从内容目标或参考视频中识别出明确的产品、服务或品牌；请补充广告主体后再创建资产方案，本次没有调用模型',
+  });
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   const currentFingerprint = fingerprint(task, ctx);
   const previous = storage.getOutput(taskId, 'asset_plan');
