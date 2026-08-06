@@ -301,6 +301,11 @@ assert.doesNotMatch(projectStore, /async function retryReferenceAnalysis\(\)[\s\
 assert.doesNotMatch(projectStore, /function syncReferencePolling[\s\S]*?bindReferenceAnalysis[\s\S]*?function clearProject/, 'polling must remain read-only because the server owns task projection');
 assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, interruptedAt\)/, 'polling interruption must freeze elapsed time while automatic reconnect continues');
 const referenceReplacementState = read('public/story-ad/store/referenceReplacementState.js');
+const storyAdStyles = read('public/story-ad/styles.css');
+assert.match(storyAdStyles, /@media \(hover: hover\) and \(pointer: fine\)[\s\S]*\.btn:not\(:disabled\):hover[\s\S]*transform: translateY\(-2px\)/, '可点击按钮必须提供明显且仅限精确指针的悬停位移');
+assert.match(storyAdStyles, /\.btn\.primary:not\(:disabled\):hover[\s\S]*box-shadow: 0 10px 26px/, '主操作悬停必须提供高对比阴影和颜色反馈');
+assert.match(storyAdStyles, /\.btn\[aria-busy="true"\][\s\S]*opacity: 1[\s\S]*cursor: progress/, '执行中按钮必须保持突出并明确显示进度指针');
+assert.match(storyAdStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*transform: none/, '明显交互动效必须尊重减少动态效果设置');
 assert.match(referenceReplacementState, /client_pending_reference_\$\{token\}/, '后端返回分析 ID 前必须使用仅限内存的替换占位状态');
 assert.match(referenceReplacementState, /replacement\?\.token === state\.referenceReplacementSeq/, '来源替换状态必须用单调序号阻止乱序覆盖');
 assert.match(referenceReplacementState, /function beginReferenceRetry[\s\S]*phase:\s*'重新识别请求已提交，正在等待服务器受理'/, '重新识别必须立即投影 1% 受理态');
