@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260806-knowledge-runtime-v47';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-knowledge-runtime-v47';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-knowledge-runtime-v47';
+import { createProjectStore } from './store/projectStore.js?v=20260806-knowledge-runtime-v48';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-knowledge-runtime-v48';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-knowledge-runtime-v48';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260806-knowledge-runtime-v47'),
-  assets: () => import('./views/assetCenterView.js?v=20260806-knowledge-runtime-v47'),
-  plot: () => import('./views/plotRoomView.js?v=20260806-knowledge-runtime-v47'),
-  storyboard: () => import('./views/storyboardView.js?v=20260806-knowledge-runtime-v47'),
-  shot: () => import('./views/shotDesignerView.js?v=20260806-knowledge-runtime-v47'),
-  final: () => import('./views/finalView.js?v=20260806-knowledge-runtime-v47'),
-  workflow: () => import('./views/workflowView.js?v=20260806-knowledge-runtime-v47'),
+  brief: () => import('./views/briefView.js?v=20260806-knowledge-runtime-v48'),
+  assets: () => import('./views/assetCenterView.js?v=20260806-knowledge-runtime-v48'),
+  plot: () => import('./views/plotRoomView.js?v=20260806-knowledge-runtime-v48'),
+  storyboard: () => import('./views/storyboardView.js?v=20260806-knowledge-runtime-v48'),
+  shot: () => import('./views/shotDesignerView.js?v=20260806-knowledge-runtime-v48'),
+  final: () => import('./views/finalView.js?v=20260806-knowledge-runtime-v48'),
+  workflow: () => import('./views/workflowView.js?v=20260806-knowledge-runtime-v48'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

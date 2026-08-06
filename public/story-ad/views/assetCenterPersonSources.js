@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-knowledge-runtime-v47';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v47';
-import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v47';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v48';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v48';
+import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v48';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

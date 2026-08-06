@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-knowledge-runtime-v47';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v47';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v48';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v48';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

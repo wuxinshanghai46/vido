@@ -13,6 +13,7 @@ process.env.DB_ENABLED = '0';
 process.env.NEW_STORY_AD_KB_POLICY_CACHE_TTL_MS = '300000';
 
 const compiler = require('../src/services/newStoryAd/knowledgePolicyCompilerService');
+const knowledgeBase = require('../src/services/knowledgeBaseService');
 const root = path.resolve(__dirname, '..');
 
 function runtimeDoc(id, rule) {
@@ -83,6 +84,7 @@ function testBoundedBudget() {
 }
 
 function testIndustryNeutralityAndPerformance() {
+  knowledgeBase.ensureSeeded();
   compiler.clearCache();
   const startupStarted = performance.now();
   const base = compiler.compile({ stage: 'scene_asset', assetType: 'scene', providerId: 'generic', modelId: 'generic-image' });
