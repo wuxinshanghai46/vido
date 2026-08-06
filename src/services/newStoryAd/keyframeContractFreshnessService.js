@@ -36,9 +36,13 @@ function artifactMatchesContract(artifact = {}, current = {}) {
     && artifactFingerprint === String(current.contract_fingerprint || '');
 }
 
-function persist(taskId, contracts = [], { clearDownstream = false, changedIndexes = [] } = {}) {
+function persist(taskId, contracts = [], { clearDownstream = false, changedIndexes = null } = {}) {
   const list = Array.isArray(contracts) ? contracts : [];
-  const changed = new Set((Array.isArray(changedIndexes) ? changedIndexes : []).map(Number));
+  const previousContracts = storage.getOutput(taskId, 'keyframe_contracts');
+  const inferredChangedIndexes = Array.isArray(changedIndexes) ? changedIndexes : list
+    .map((contract, index) => contractMatches(previousContracts?.[index], contract) ? -1 : index)
+    .filter(index => index >= 0);
+  const changed = new Set(inferredChangedIndexes.map(Number));
   storage.saveOutput(taskId, 'keyframe_contracts', list);
   const existing = storage.getOutput(taskId, 'keyframes');
   const frames = Array.isArray(existing) ? existing : [];
@@ -71,8 +75,16 @@ function persist(taskId, contracts = [], { clearDownstream = false, changedIndex
     };
   });
   if (invalidated || metadataUpgraded) storage.saveOutput(taskId, 'keyframes', refreshed);
-  if (clearDownstream || invalidated) {
+  if (clearDownstream) {
     storage.deleteOutput(taskId, 'video_clips');
+    storage.deleteOutput(taskId, 'final_video');
+  } else if (changed.size) {
+    const clips = storage.getOutput(taskId, 'video_clips');
+    if (Array.isArray(clips)) storage.saveOutput(taskId, 'video_clips', clips.map((clip, index) => (
+      changed.has(index) && clip && typeof clip === 'object'
+        ? { ...clip, lineage_outdated: true, lineage_outdated_reason: 'keyframe_contract_changed' }
+        : clip
+    )));
     storage.deleteOutput(taskId, 'final_video');
   }
   return { contracts: list, invalidated, metadata_upgraded: metadataUpgraded };
@@ -80,7 +92,8 @@ function persist(taskId, contracts = [], { clearDownstream = false, changedIndex
 
 /** Compile and compare contracts without changing task state or deleting media. */
 function inspect(taskId, { ctx = {}, shots = [] } = {}) {
-  const current = buildKeyframeContracts(ctx, shots);
+  const knowledgePolicySnapshot = storage.getOutput(taskId, 'knowledge_policy_snapshot') || ctx.knowledge_policy_snapshot || {};
+  const current = buildKeyframeContracts({ ...ctx, knowledge_policy_snapshot: knowledgePolicySnapshot }, shots);
   const stored = storage.getOutput(taskId, 'keyframe_contracts');
   const previous = Array.isArray(stored) ? stored : [];
   const changedIndexes = current
@@ -115,7 +128,7 @@ function compileCurrentTask(taskId) {
   if (!task) return { contracts: [], shots: [], ctx: {} };
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: storage.getOutput(taskId, 'knowledge_policy_snapshot') || {} };
   const storedShots = storage.getOutput(taskId, 'storyboard_table');
   const shots = bindShotsToScenes(Array.isArray(storedShots) ? storedShots : [], ctx.scene_assets);
   return { ctx, shots, contracts: buildKeyframeContracts(ctx, shots) };

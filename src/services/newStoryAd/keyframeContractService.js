@@ -5,6 +5,7 @@ const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const petIdentity = require('./petIdentityContractService');
 const brandEnding = require('./brandEndingService');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -19,6 +20,9 @@ function canonicalContractValue(value, key = '') {
     // was transported. It is not part of the visual scene contract. The
     // stable URL/image identity remains in the surrounding `url` fields.
     'filename', 'provider_used', 'source_url',
+    // QA policy changes require re-review, not paid keyframe regeneration.
+    // Video policy has its own lineage and must not invalidate a keyframe.
+    'knowledge_policy_qa', 'knowledge_policy_video_generation', 'knowledge_policy_video_qa', 'knowledge_policy_trace',
   ]);
   return Object.keys(value).sort().reduce((out, childKey) => {
     if (!ignored.has(childKey)) out[childKey] = canonicalContractValue(value[childKey], childKey);
@@ -59,6 +63,7 @@ function contractFingerprint(contract = {}) {
     },
     visual_contract: contract.visual_contract,
     negative_prompt: contract.negative_prompt,
+    knowledge_policy_generation: contract.knowledge_policy_generation,
   };
   // Use the same semantic canonicalizer as the compiler signature. Older
   // fingerprints included audit timestamps and optional transport metadata,
@@ -72,6 +77,12 @@ function buildKeyframeContracts(ctx, shots) {
   const styleControl = controls.style_control || {};
   const negativeControl = controls.negative_control || {};
   const environmentControl = controls.environment_control || {};
+  const keyframePolicy = knowledgePolicyRuntime.resolveMany([
+    { stage: 'keyframe', assetType: 'shot' },
+    { stage: 'keyframe', assetType: 'person' },
+    { stage: 'keyframe', assetType: 'scene' },
+  ], ctx);
+  const videoPolicy = knowledgePolicyRuntime.resolveMany([{ stage: 'video', assetType: 'shot' }], ctx);
   return (Array.isArray(shots) ? shots : []).map((shot, idx) => {
     const sceneLock = sceneContractForShot(ctx, shot, idx);
     const productPresence = productIdentity.shotProductPresence(ctx, shot, {});
@@ -192,6 +203,29 @@ function buildKeyframeContracts(ctx, shots) {
         'missing required people in multi-person story',
         negativeControl.text || '',
       ],
+      knowledge_policy_generation: {
+        prompt_block: keyframePolicy.prompt_block,
+        negative_constraints: keyframePolicy.negative_constraints,
+        rule_ids: keyframePolicy.rule_ids,
+        generation_fingerprint: keyframePolicy.generation_fingerprint,
+      },
+      knowledge_policy_qa: {
+        qa_checks: keyframePolicy.qa_checks,
+        rule_ids: keyframePolicy.rule_ids,
+        qa_fingerprint: keyframePolicy.qa_fingerprint,
+      },
+      knowledge_policy_video_generation: {
+        prompt_block: videoPolicy.prompt_block,
+        negative_constraints: videoPolicy.negative_constraints,
+        rule_ids: videoPolicy.rule_ids,
+        generation_fingerprint: videoPolicy.generation_fingerprint,
+      },
+      knowledge_policy_video_qa: {
+        qa_checks: videoPolicy.qa_checks,
+        rule_ids: videoPolicy.rule_ids,
+        qa_fingerprint: videoPolicy.qa_fingerprint,
+      },
+      knowledge_policy_trace: knowledgePolicyRuntime.trace(keyframePolicy),
     };
     contract.contract_fingerprint = contractFingerprint(contract);
     contract.contract_revision = 1;

@@ -730,6 +730,7 @@ async function analyzeSceneViews(options = {}) {
       'Return JSON only. Images are ordered master, reverse/side, interaction position, detail, with an optional fifth top-down/axonometric layout reference.',
     ].join('\n'),
     userPrompt: 'Requested scene constraints: ' + JSON.stringify(requested) + '\n'
+      + (options.knowledgePolicyQaBlock ? `${options.knowledgePolicyQaBlock}\n` : '')
       + 'First verify that the generated scene obeys the requested layout, material/light, visual style or photographic medium, interaction space, surface topology/seam policy and negative requirements. Then verify all views belong to one physically coherent scene. '
       + 'When structured_scene_contract is present, verify every declared interaction anchor, movement route, story-state spatial change and prop placement is visibly possible and mapped to the same layout; missing or contradictory structured evidence must fail requirement_qa. '
       + 'The optional fifth layout image is a master-derived near-vertical top-down spatial survey of the same finished location. Use it primarily for topology, coordinates, access points and anchor placement, but also reject it when it depicts an unrelated location, anchor system, material identity or lighting design. '
@@ -1244,6 +1245,7 @@ async function reviewKeyframe(options = {}) {
     ].join('\n'),
     userPrompt: 'Scene contract for this final keyframe: ' + JSON.stringify(sceneContract).slice(0, 10000)
       + '\nStatic shot contract: ' + JSON.stringify(shotContract).slice(0, 5000)
+      + (options.knowledgePolicyQaBlock ? `\n${options.knowledgePolicyQaBlock}` : '')
       + '\nTemporal QA boundary: ignore transition, dissolve, fade, animation and gradual-appearance timing. Do not mention their absence in any failure reason.'
       + '\nReturn one JSON object with pass boolean, status string, '
       + 'scene_consistency_score, anchor_consistency_score, camera_match_score and material_match_score '

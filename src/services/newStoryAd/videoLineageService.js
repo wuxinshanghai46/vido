@@ -69,18 +69,26 @@ function buildShotLineage({
     scene_block_fingerprint: String(sceneBlock?.fingerprint || ''),
     scene_block_members: Array.isArray(sceneBlock?.member_indexes) ? sceneBlock.member_indexes.map(index => index + 1) : [],
     model_route: String(modelRoute || '').toLowerCase(),
+    knowledge_generation_fingerprint: String(contract.knowledge_policy_video_generation?.generation_fingerprint || ''),
   };
-  const payload = {
+  const generationPayload = {
     ...semanticPayload,
     semantic_lineage_fingerprint: revisionService.signature(semanticPayload),
     input_strategy: String(inputStrategy || input_strategy || '').trim().toLowerCase(),
     boundary_repair_fingerprint: String(boundaryRepairFingerprint || boundary_repair_fingerprint || '').trim(),
     transition_policy_version: String(transitionPolicyVersion || transition_policy_version || '').trim(),
-    qa_policy_version: typeof (qaPolicyVersion || qa_policy_version) === 'number'
-      ? Math.max(0, Number(qaPolicyVersion || qa_policy_version) || 0)
-      : String(qaPolicyVersion || qa_policy_version || '').trim(),
   };
-  return { ...payload, fingerprint: revisionService.signature(payload) };
+  const qaPolicy = typeof (qaPolicyVersion || qa_policy_version) === 'number'
+    ? Math.max(0, Number(qaPolicyVersion || qa_policy_version) || 0)
+    : String(qaPolicyVersion || qa_policy_version || '').trim();
+  const knowledgeQaFingerprint = String(contract.knowledge_policy_video_qa?.qa_fingerprint || '');
+  return {
+    ...generationPayload,
+    qa_policy_version: qaPolicy,
+    knowledge_qa_fingerprint: knowledgeQaFingerprint,
+    qa_fingerprint: revisionService.signature({ qa_policy_version: qaPolicy, knowledge_qa_fingerprint: knowledgeQaFingerprint }),
+    fingerprint: revisionService.signature(generationPayload),
+  };
 }
 
 function clipHasUsableFile(clip = {}) {
@@ -114,6 +122,9 @@ function lineageWithoutSceneBlock(lineage = {}) {
     'scene_block_id',
     'scene_block_fingerprint',
     'scene_block_members',
+    'qa_policy_version',
+    'knowledge_qa_fingerprint',
+    'qa_fingerprint',
   ].forEach(key => delete comparable[key]);
   return comparable;
 }
@@ -127,15 +138,18 @@ function baseLineageMatches(clip = {}, expected = {}) {
 
 function producerPolicyMatches(clip = {}, expected = {}) {
   const actual = clip.lineage || {};
-  return ['input_strategy', 'boundary_repair_fingerprint', 'transition_policy_version', 'qa_policy_version']
+  return ['input_strategy', 'boundary_repair_fingerprint', 'transition_policy_version']
     .every(key => String(actual[key] ?? '') === String(expected[key] ?? ''));
 }
 
+function qaPolicyMatches(clip = {}, expected = {}) {
+  const actual = clip.lineage || {};
+  return !!actual.qa_fingerprint && String(actual.qa_fingerprint) === String(expected.qa_fingerprint || '');
+}
+
 function canAdoptSceneBlockTopology(clip = {}, expected = {}) {
-  // A segment cut from a multi-shot provider clip may be adopted as an
-  // independent shot only when it is the first member: that segment was
-  // directly anchored by its own approved keyframe. Later members were prompt
-  // text only and must never be promoted after the topology is split.
+  // The first segment of a multi-shot source is directly anchored by its own
+  // approved keyframe and may be adopted when every other lineage field matches.
   const actualMembers = Array.isArray(clip.scene_block_members) && clip.scene_block_members.length
     ? clip.scene_block_members.map(Number)
     : (Array.isArray(clip.lineage?.scene_block_members) ? clip.lineage.scene_block_members.map(Number) : []);
@@ -159,8 +173,9 @@ function clipHasMediaFile(clip = {}) {
 function reviewableDecision(clip = {}, expected = {}) {
   if (!clipHasUsableFile(clip)) return { reviewable: false, reason: 'missing_or_failed_clip' };
   if (clip.qa?.pass === false) return { reviewable: false, reason: 'qa_rejected' };
-  if (qaApproved(clip)) return { reviewable: false, reason: 'already_reviewed' };
   const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
+  if (actual && actual === expected.fingerprint && !qaPolicyMatches(clip, expected)) return { reviewable: true, reason: 'qa_policy_changed' };
+  if (qaApproved(clip)) return { reviewable: false, reason: 'already_reviewed' };
   if (actual && actual === expected.fingerprint) return { reviewable: true, reason: 'lineage_match_pending_qa' };
   if (actual && canAdoptSceneBlockTopology(clip, expected) && producerPolicyMatches(clip, expected)) return { reviewable: true, adopted: true, reason: 'topology_match_pending_qa' };
   return { reviewable: false, reason: actual ? 'lineage_changed' : 'legacy_lineage_unverified' };
@@ -170,6 +185,7 @@ function reuseDecision(clip = {}, expected = {}, { allowLegacyAdoption = false }
   if (!clipHasUsableFile(clip)) return { reusable: false, reason: 'missing_or_failed_clip' };
   if (!qaApproved(clip)) return { reusable: false, reason: 'qa_not_approved' };
   const actual = clip.lineage_fingerprint || clip.lineage?.fingerprint || '';
+  if (actual && actual === expected.fingerprint && !qaPolicyMatches(clip, expected)) return { reusable: false, reason: 'qa_policy_changed' };
   if (actual && actual === expected.fingerprint) return { reusable: true, reason: 'lineage_match' };
   if (actual && canAdoptSceneBlockTopology(clip, expected) && producerPolicyMatches(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_scene_block_topology_adoption' };
   if (!actual && allowLegacyAdoption && canAdoptLegacyClip(clip, expected)) return { reusable: true, adopted: true, reason: 'safe_legacy_adoption' };
@@ -200,6 +216,7 @@ module.exports = {
   qaApproved,
   baseLineageMatches,
   producerPolicyMatches,
+  qaPolicyMatches,
   canAdoptSceneBlockTopology,
   reviewableDecision,
   reuseDecision,

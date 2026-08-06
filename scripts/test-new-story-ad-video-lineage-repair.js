@@ -40,9 +40,9 @@ function run() {
   const independentLineage = fixture({ sceneBlock: { policy_version: 'spatial-scene-block-v2', id: 'new-1', fingerprint: 'new-block', member_indexes: [0] } });
   const topologyApproved = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', qa: { pass: true }, scene_block_members: [1, 2, 3] }, oldBlockLineage);
   const topologyDecision = lineageService.reuseDecision(topologyApproved, independentLineage);
-  assert.strictEqual(topologyDecision.reusable, false, 'a clip split from a multi-shot source must not be reused as an independent shot');
+  assert.strictEqual(topologyDecision.reusable, true, 'the keyframe-anchored first segment may be adopted when all base lineage fields match');
   const pendingQaClip = lineageService.attachLineage({ file_path: __filename, provider_used: 'provider/model', scene_block_members: [1, 2, 3] }, oldBlockLineage);
-  assert.strictEqual(lineageService.reviewableDecision(pendingQaClip, independentLineage).reviewable, false, 'stale multi-shot topology must not be promoted by a new QA pass');
+  assert.strictEqual(lineageService.reviewableDecision(pendingQaClip, independentLineage).reviewable, true, 'the keyframe-anchored first segment may be re-reviewed without a paid regeneration');
 
   const rejectedWithMedia = lineageService.attachLineage({
     file_path: __filename,

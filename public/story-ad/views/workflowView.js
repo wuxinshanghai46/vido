@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260806-character-asset-kb-v44';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-character-asset-kb-v44';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260806-character-asset-kb-v44';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260806-character-asset-kb-v44';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v46';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260806-knowledge-runtime-v46';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260806-knowledge-runtime-v46';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

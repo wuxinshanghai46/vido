@@ -29,6 +29,7 @@ const ljgWorkflows = require('./seeds/ljg_workflows');
 const luxuryAdIndustry = require('./seeds/luxury_ad_industry');
 const aiVisualCompliance = require('./seeds/ai_visual_compliance');
 const characterAssetCard = require('./seeds/character_asset_card');
+const generationRuntimePolicy = require('./seeds/generation_runtime_policy');
 
 const seedDocs = [
   ...digitalHuman,
@@ -47,6 +48,7 @@ const seedDocs = [
   ...luxuryAdIndustry,
   ...aiVisualCompliance,
   ...characterAssetCard,
+  ...generationRuntimePolicy,
 ];
 
 module.exports = seedDocs;

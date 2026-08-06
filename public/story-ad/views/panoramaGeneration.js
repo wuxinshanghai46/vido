@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-character-asset-kb-v44';
-import { toast } from '../components/ui.js?v=20260806-character-asset-kb-v44';
-import { confirmDialog } from '../components/dialog.js?v=20260806-character-asset-kb-v44';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v46';
+import { toast } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
+import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v46';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

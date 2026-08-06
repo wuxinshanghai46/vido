@@ -16,7 +16,7 @@ const blueprintQuality = require('./blueprintQualityService'), sceneStructuredCo
 const generationSpecCompletion = require('./generationSpecCompletionService');
 const visualAssetProgress = require('./visualAssetProgressService');
 const productAssetResolver = require('./productAssetResolverService');
-const sceneGenerationPolicy = require('./sceneGenerationPolicyService');
+const sceneGenerationPolicy = require('./sceneGenerationPolicyService'), knowledgeRuntime = require('./knowledgePolicyRuntimeService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -550,7 +550,7 @@ function buildSceneRepairPlan(asset = {}) {
   };
 }
 
-function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRole = 'master' } = {}) {
+function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRole = 'master', knowledgePolicy = {} } = {}) {
   const subject = cleanText(ctx.product_subject || sceneConfig.advertised_subject || body.product_subject || '', 240);
   const sceneSpec = body.scene_spec || body.sceneSpec || ctx.scene_spec || {};
   const custom = cleanText(body.description || body.scene_description || body.prompt || '', 1200);
@@ -637,6 +637,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
     `Task-specific material identity contract:\n${materialIdentityContract}`,
     style ? `Visual style direction: ${style}` : '',
+    knowledgeRuntime.promptBlock(knowledgePolicy),
     occupancyContract,
     photographicEvidenceContract,
     negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
@@ -654,7 +655,7 @@ function sceneDescriptionForSpec(sceneSpec = {}, fallback = '') {
   );
 }
 
-function buildLayoutAcquisitionPrompt({ ctx = {}, body = {} } = {}) {
+function buildLayoutAcquisitionPrompt({ ctx = {}, body = {}, knowledgePolicy = {} } = {}) {
   const requested = sceneRequest(ctx, body);
   const topology = requested.surface_topology
     ? shotDesign.surfacePrompt(requested.surface_topology, 'environment')
@@ -669,6 +670,7 @@ function buildLayoutAcquisitionPrompt({ ctx = {}, body = {} } = {}) {
     requested.material_light ? `Appearance identity to preserve from the master: ${requested.material_light}` : '',
     requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '', requested.structured_scene_contract?.has_evidence ? `Map every declared interaction anchor, movement route, story state and prop placement into the same footprint: ${JSON.stringify(requested.structured_scene_contract)}` : '',
     topology ? `Surface construction identity to preserve: ${topology}` : '',
+    knowledgeRuntime.promptBlock(knowledgePolicy),
     requested.negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
     'Output one unoccupied photoreal spatial-survey image with physically coherent geometry, near-parallel vertical projection and realistic task materials. Keep the frame clean, free of readable typography, identifying marks, technical annotations and multi-panel presentation.',
   ].filter(Boolean).join('\n\n').slice(0, 3600);
@@ -827,9 +829,9 @@ function buildDerivedViewPrompt(scenePrompt = '', viewKey = '', options = {}) {
   ].filter(Boolean).join('\n\n');
 }
 
-function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } = {}) {
+function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master', knowledgePolicy = {} } = {}) {
   if (viewKey === 'layout') {
-    return buildLayoutAcquisitionPrompt({ ctx, body }).slice(0, 2200);
+    return buildLayoutAcquisitionPrompt({ ctx, body, knowledgePolicy }).slice(0, 2200);
   }
   const requested = sceneRequest(ctx, body);
   const roleInstruction = {
@@ -858,6 +860,7 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master' } =
     requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
     topology ? `Surface construction: ${topology}` : '',
     requested.style ? `Visual style: ${requested.style}` : '',
+    knowledgeRuntime.promptBlock(knowledgePolicy),
     'The frame is an unoccupied spatial reference containing only the designed location and its intended fixtures. Use one clean camera view free of readable typography, identifying marks and multi-panel presentation.',
   ].filter(Boolean).join('\n\n').slice(0, 2200);
 }
@@ -1021,6 +1024,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     }
   }
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
+  const knowledgePolicy = knowledgeRuntime.resolveTaskMany({ storage, taskId, context: ctx, selectors: [{ stage: 'scene_asset', assetType: 'scene' }] });
   const sceneConfig = target.isolated_scene_config;
   const authoritativeSceneDescription = sceneDescriptionForSpec(target.scene_spec);
   body = {
@@ -1071,8 +1075,8 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     ? ['atlas', ...progressViewKeys]
     : progressViewKeys;
   const progressMode = repairMode ? 'repair' : 'generate';
-  const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract' });
-  const layoutPrompt = buildLayoutAcquisitionPrompt({ ctx, body: promptBody });
+  const scenePrompt = buildSceneSheetPrompt({ ctx, sceneConfig, body: promptBody, outputRole: 'contract', knowledgePolicy });
+  const layoutPrompt = buildLayoutAcquisitionPrompt({ ctx, body: promptBody, knowledgePolicy });
   const prompt = buildDerivedViewPrompt(scenePrompt, 'master', {
     referenceOrder: [],
     repairFeedback,
@@ -1088,7 +1092,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     ? Math.max(0, Number(persistedCheckpoint.candidate_revision) - 1)
     : null;
   const fingerprintPayload = {
-    generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
+    generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION, knowledge_generation_fingerprint: knowledgePolicy.generation_fingerprint,
     scene_id: sceneId,
     requested,
     scene_prompt: scenePrompt,
@@ -1159,7 +1163,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         detail: ['master'],
       },
       generation_id: generationId,
-      prompt_policy_version: 'domestic-positive-contract-v2',
+      prompt_policy_version: 'domestic-positive-contract-v2', knowledge_policy_trace: knowledgeRuntime.trace(knowledgePolicy),
     },
     compatibleFingerprints,
   });
@@ -1264,7 +1268,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       referenceImages: materialReferences,
       requireReferences: materialReferences.length > 0,
       inputFidelity: materialReferences.length > 0 ? 'low' : undefined,
-      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master' }),
+      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'master', knowledgePolicy }),
     }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint)
     : selectedView('master');
   cancellation.throwIfCancelled(taskId);
@@ -1301,7 +1305,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           : [master.url || master.image_url],
         requireReferences: true,
         inputFidelity: 'low',
-        auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout' }),
+        auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout', knowledgePolicy }),
       }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
       if (exactSceneViewDuplicate(layout, [master])) {
         layoutAcquisition = {
@@ -1397,7 +1401,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       // Reverse and interaction views require a real camera relocation. Detail
       // keeps high fidelity because only crop/scale should change.
       inputFidelity: detailView ? 'high' : 'low',
-      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key }),
+      auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: key, knowledgePolicy }),
     }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
     if (exactSceneViewDuplicate(generated, detailView ? [master] : [master, layout])) {
       const duplicateError = new Error(`${sceneViewLabel(key)}与其参考视图文件完全相同，没有形成独立机位或景别`);
@@ -1444,6 +1448,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     requested,
     layoutRequired,
     layoutAcquisition,
+    knowledgePolicyQaBlock: knowledgeRuntime.qaBlock(knowledgePolicy),
   };
   updateSceneGenerationProgress(taskId, {
     mode: progressMode,
@@ -1586,6 +1591,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     },
     provider_used: providerUsed,
     prompt,
+    knowledge_policy_trace: knowledgeRuntime.trace(knowledgePolicy),
     scene_contract: sceneContract,
     cross_view_qa: sceneContract.cross_view_qa,
     requirement_qa: sceneContract.requirement_qa,

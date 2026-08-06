@@ -24,6 +24,8 @@ function withoutComputedFields(lineage = {}) {
     'boundary_repair_fingerprint',
     'transition_policy_version',
     'qa_policy_version',
+    'knowledge_qa_fingerprint',
+    'qa_fingerprint',
   ].forEach(key => delete next[key]);
   return next;
 }
@@ -63,9 +65,14 @@ function rebaseExpectedLineage(expectedLineage = {}, clip = {}) {
       || actual.transition_policy_version
       || expectedLineage.transition_policy_version,
     ),
-    qa_policy_version: expectedLineage.qa_policy_version,
   };
-  return { ...payload, fingerprint: revisionService.signature(payload) };
+  return {
+    ...payload,
+    qa_policy_version: expectedLineage.qa_policy_version,
+    knowledge_qa_fingerprint: expectedLineage.knowledge_qa_fingerprint || '',
+    qa_fingerprint: expectedLineage.qa_fingerprint || '',
+    fingerprint: revisionService.signature(payload),
+  };
 }
 
 function receiptCurrent(clip = {}, status = {}, expectedLineage = {}, previousClip = {}, index = 0) {

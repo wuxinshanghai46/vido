@@ -66,12 +66,23 @@ function getCustomAgent(agentId) {
 function ensureSeeded() {
   const before = db.listKnowledgeDocs().length;
   db.bulkInsertKnowledgeDocs(seedDocs);
+  let runtimePoliciesUpdated = 0;
+  for (const seed of seedDocs) {
+    if (!seed.runtime_policy) continue;
+    const existing = db.getKnowledgeDoc(seed.id);
+    if (!existing) continue;
+    const merged = require('./newStoryAd/knowledgeRuleSchemaService')
+      .mergeVersionedRuntimePolicy(existing.runtime_policy, seed.runtime_policy);
+    if (!merged.changed) continue;
+    db.updateKnowledgeDoc(seed.id, { runtime_policy: merged.policy, runtime_policy_updated_at: new Date().toISOString() });
+    runtimePoliciesUpdated += 1;
+  }
   const after = db.listKnowledgeDocs().length;
   const added = after - before;
   if (added > 0) {
     console.log(`[KB] seed: +${added} new docs (total ${after})`);
   }
-  return { seeded: added > 0, added, total: after };
+  return { seeded: added > 0 || runtimePoliciesUpdated > 0, added, runtime_policies_updated: runtimePoliciesUpdated, total: after };
 }
 
 try { ensureSeeded(); } catch (e) {

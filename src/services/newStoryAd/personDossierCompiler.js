@@ -93,31 +93,33 @@ function personViewPrefix({ taskId = '', assetId = '', kind = 'asset', revision 
   return `person_${safeKind}_r${Math.max(1, Number(revision) || 1)}_${compactAssetToken(taskId, assetId, safeKind)}`;
 }
 
-function categoryPrompt(spec, personPrompt = '') {
+function categoryPrompt(spec, personPrompt = '', knowledgePrompt = '') {
   return [
     'Create one clean production contact sheet for a single reusable commercial actor.',
     `LAYOUT IS MANDATORY: exactly ${spec.columns} columns x ${spec.rows} rows, exactly ${spec.keys.length} equal cells.`,
     `Cell order left-to-right, top-to-bottom: ${spec.keys.join(', ')}.`,
     spec.instruction,
     personPrompt ? `Actor contract: ${personPrompt}` : '',
+    knowledgePrompt,
     'All cells must preserve the exact same face identity, apparent age, body proportions, hairstyle, garments, shoes and accessories.',
     'Use the same plain light-gray casting studio in every cell. No scene, logo, caption, border label or watermark.',
     'Do not merge cells. Do not add extra people. Keep hands and body anatomy realistic.',
   ].filter(Boolean).join('\n');
 }
 
-function nativeMasterPrompt(spec, personPrompt = '') {
+function nativeMasterPrompt(spec, personPrompt = '', knowledgePrompt = '') {
   return [
     'Create one photorealistic commercial casting master image of exactly one reusable actor.',
     spec.instruction,
     personPrompt ? `Actor contract: ${personPrompt}` : '',
+    knowledgePrompt,
     'Preserve the exact identity, apparent age, facial geometry, body proportions, hairstyle, garments, shoes and accessories from the supplied identity anchor.',
     'Neutral light-gray casting studio, soft large-source key light with realistic falloff, physically plausible skin subsurface scattering and natural micro-contrast.',
     'No beauty filter, no plastic skin, no waxy face, no illustration, no CGI look, no grid, no collage, no text, no logo, no watermark and no extra people.',
   ].filter(Boolean).join('\n');
 }
 
-function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt }) {
+function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt, knowledgeGenerationFingerprint = '' }) {
   return {
     taskId,
     assetType: 'person_dossier',
@@ -129,6 +131,7 @@ function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, person
       keys: spec.keys,
       anchor_url: anchorUrl,
       person_prompt: personPrompt,
+      knowledge_generation_fingerprint: knowledgeGenerationFingerprint,
     },
   };
 }
@@ -161,8 +164,12 @@ async function generateCategory({
   onEvent,
   mediaAdapter,
   checkpointService,
+  knowledgePolicy = {},
 }) {
-  const identity = checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt });
+  const identity = checkpointIdentity({
+    taskId, assetId, revision, spec, anchorUrl, personPrompt,
+    knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
+  });
   return checkpointService.runCheckpointedUnit({
     identity,
     load: loadCheckpoint,
@@ -172,7 +179,7 @@ async function generateCategory({
       const atlas = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: 'new_story_ad.person_dossier_atlas',
-        prompt: categoryPrompt(spec, personPrompt),
+        prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,
         referenceImages: anchorUrl ? [anchorUrl] : [],
@@ -214,10 +221,13 @@ async function generateCategory({
 
 async function generateNativeMaster({
   taskId, assetId, revision, anchorUrl, personPrompt, requireReferences, spec,
-  loadCheckpoint, saveCheckpoint, onEvent, mediaAdapter, checkpointService,
+  loadCheckpoint, saveCheckpoint, onEvent, mediaAdapter, checkpointService, knowledgePolicy = {},
 }) {
   const checkpointSpec = { ...spec, keys: [spec.key] };
-  const identity = checkpointIdentity({ taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt });
+  const identity = checkpointIdentity({
+    taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt,
+    knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
+  });
   return checkpointService.runCheckpointedUnit({
     identity,
     load: loadCheckpoint,
@@ -227,7 +237,7 @@ async function generateNativeMaster({
       const image = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: 'new_story_ad.person_dossier_native_master',
-        prompt: nativeMasterPrompt(spec, personPrompt),
+        prompt: nativeMasterPrompt(spec, personPrompt, knowledgePolicy.prompt_block),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }).replace('_atlas_', '_'),
         aspectRatio: spec.aspectRatio,
         referenceImages: anchorUrl ? [anchorUrl] : [],
@@ -266,6 +276,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
     onEvent = null,
     onProgress = null,
     concurrency = Number(process.env.NEW_STORY_AD_PERSON_DOSSIER_CONCURRENCY) || 2,
+    knowledgePolicy = {},
   } = options;
   if (!taskId) throw new Error('compilePersonDossier requires taskId');
   if (requireReferences && !anchorUrl) {
@@ -299,6 +310,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
         onEvent,
         mediaAdapter,
         checkpointService,
+        knowledgePolicy,
       });
       completed += 1;
       if (onProgress) await onProgress({
@@ -337,6 +349,11 @@ async function compilePersonDossier(options = {}, deps = {}) {
       atomic_count: atomicAssets.length,
       checkpoint_hits: generated.filter(item => item.reused).length,
       provider_calls_this_run: generated.filter(item => !item.reused).length,
+    },
+    knowledge_policy_trace: {
+      rule_ids: (knowledgePolicy.rule_ids || []).slice(0, 24),
+      generation_fingerprint: String(knowledgePolicy.generation_fingerprint || ''),
+      qa_fingerprint: String(knowledgePolicy.qa_fingerprint || ''),
     },
   };
 }

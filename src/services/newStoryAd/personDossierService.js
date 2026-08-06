@@ -8,6 +8,9 @@ const jsonRepair = require('./jsonRepairService');
 const personDossierCompiler = require('./personDossierCompiler');
 const generationConcurrency = require('./generationConcurrencyService');
 const dossierComposites = require('./dossierCompositeService');
+const wearableEvidence = require('./wearableEvidencePolicyService');
+const knowledgeRuntime = require('./knowledgePolicyRuntimeService');
+const taskStorage = require('./storageService');
 
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'person-production');
 const activeJobs = new Map();
@@ -294,7 +297,7 @@ function removeBridge(bridge) {
   try { if (bridge?.path && fs.existsSync(bridge.path)) fs.unlinkSync(bridge.path); } catch {}
 }
 
-function outfitPrompt(mode, wardrobe, index) {
+function outfitPrompt(mode, wardrobe, index, knowledgePrompt = '') {
   const modeLine = mode === 'retain_original'
     ? 'Keep the original outfit exactly unchanged.'
     : mode === 'outfit_reference'
@@ -304,12 +307,13 @@ function outfitPrompt(mode, wardrobe, index) {
     'Create a photorealistic full-body front-view commercial actor anchor.',
     'The first reference is the immutable authorized person identity. Preserve face identity, apparent adult age, skin tone, hair identity and body proportions.',
     modeLine,
+    knowledgePrompt,
     'Neutral standing pose, hands visible, plain studio background, accurate garment construction, no text, no collage.',
     `Candidate variation ${index + 1}: vary only styling execution and pose micro-adjustment.`,
   ].join('\n');
 }
 
-async function identityQa({ taskId, sourceUrl, candidateUrl }) {
+async function identityQa({ taskId, sourceUrl, candidateUrl, knowledgePolicy = {} }) {
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return {
       pass: true,
@@ -327,6 +331,7 @@ async function identityQa({ taskId, sourceUrl, candidateUrl }) {
       'Image 1 is the immutable authorized identity source; image 2 is the candidate.',
       'Return strict JSON: pass, source_identity_score, adult_age_consistency_score, wardrobe_instruction_score, reasons.',
       'Pass only when source_identity_score >= 0.86 and adult_age_consistency_score >= 0.84.',
+      knowledgeRuntime.qaBlock(knowledgePolicy),
     ].join('\n'),
     imageUrls: [sourceUrl, candidateUrl],
     maxTokens: 1600,
@@ -336,6 +341,11 @@ async function identityQa({ taskId, sourceUrl, candidateUrl }) {
 
 async function runCandidates(initial, source, outfitSource) {
   let production = initial;
+  const knowledgePolicy = knowledgeRuntime.resolveTaskMany({
+    storage: taskStorage, taskId: production.task_id, context: production,
+    selectors: [{ stage: 'person_dossier', assetType: 'person' }],
+  });
+  const knowledgePrompt = knowledgeRuntime.promptBlock(knowledgePolicy);
   const bridges = [makeBridge(source, 'identity_bridge')];
   if (outfitSource) bridges.push(makeBridge(outfitSource, 'outfit_bridge'));
   try {
@@ -350,7 +360,7 @@ async function runCandidates(initial, source, outfitSource) {
       const image = await mediaAdapter.generateActorReference({
         taskId: production.task_id,
         stage: 'new_story_ad.person_sheet',
-        prompt: outfitPrompt(production.mode, production.wardrobe, index),
+        prompt: outfitPrompt(production.mode, production.wardrobe, index, knowledgePrompt),
         filename: `person_outfit_${index + 1}_${personDossierCompiler.compactAssetToken(production.task_id, 'outfit', index + 1)}`,
         aspectRatio: '3:4',
         referenceImages: bridges.map(item => item.url),
@@ -362,6 +372,7 @@ async function runCandidates(initial, source, outfitSource) {
         taskId: production.task_id,
         sourceUrl: bridges[0].url,
         candidateUrl: image.image_url || image.url,
+        knowledgePolicy,
       });
       candidates.push({
         id: `outfit_candidate_${uuidv4()}`,
@@ -448,6 +459,15 @@ function startCandidates({ taskId, user = {}, sourceId, outfitSourceId = '', mod
       wardrobeText: String(personProfile.wardrobeText || wardrobe || '').slice(0, 1000),
       hairMakeupText: String(personProfile.hairMakeupText || '').slice(0, 1000),
       negativeText: String(personProfile.negativeText || '').slice(0, 1000),
+      accessories: (Array.isArray(personProfile.accessories) ? personProfile.accessories : [])
+        .map(item => String(item?.name || item?.key || item || '').slice(0, 120)).filter(Boolean).slice(0, 24),
+      criticalAccessoryKeys: [
+        ...(Array.isArray(personProfile.criticalAccessoryKeys) ? personProfile.criticalAccessoryKeys : []),
+        ...(Array.isArray(personProfile.critical_accessory_keys) ? personProfile.critical_accessory_keys : []),
+        ...(Array.isArray(personProfile.accessories)
+          ? personProfile.accessories.filter(item => item?.critical === true).map(item => item.key || item.name)
+          : []),
+      ].map(item => String(item || '').slice(0, 120)).filter(Boolean).slice(0, 24),
     } : {},
     candidates: [],
     approved_candidate_id: '',
@@ -500,7 +520,7 @@ function approveCandidate({ taskId, candidateId, user = {} } = {}) {
   });
 }
 
-async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [] } = {}) {
+async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [], knowledgePolicy = {} } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     return {
       pass: true,
@@ -527,6 +547,7 @@ async function dossierQa({ taskId, sourceUrl, anchorUrl, atomicAssets = [] } = {
         'Image 1 is the immutable authorized source, image 2 is the approved outfit anchor, remaining images are derived atomic assets.',
         'Return strict JSON with pass, source_identity_score, cross_view_identity_score, adult_age_consistency_score, body_proportion_score, wardrobe_consistency_score, expression_identity_score, action_physics_score, contact_consistency_score, reasons.',
         'Fail when identity < 0.86, cross-view identity < 0.84, adult age consistency < 0.84, wardrobe < 0.86, or hands/prop contact are physically inconsistent.',
+        knowledgeRuntime.qaBlock(knowledgePolicy),
       ].join('\n'),
       imageUrls: [sourceUrl, anchorUrl, ...batch.map(item => item.image_url)].slice(0, 8),
       maxTokens: 2200,
@@ -563,6 +584,10 @@ async function runDossier(initial) {
   let production = initial;
   let sourceBridge = null;
   try {
+    const knowledgePolicy = knowledgeRuntime.resolveTaskMany({
+      storage: taskStorage, taskId: production.task_id, context: production,
+      selectors: [{ stage: 'person_dossier', assetType: 'person' }],
+    });
     const anchorUrl = production.approved_anchor.image_url;
     const source = readSource(production.user_id, production.source_identity_id);
     if (!source) {
@@ -589,6 +614,10 @@ async function runDossier(initial) {
         'Authorized real-person identity. Preserve the approved outfit anchor exactly.',
       ].filter(Boolean).join('\n'),
       requireReferences: true,
+      knowledgePolicy: {
+        ...knowledgePolicy,
+        prompt_block: knowledgeRuntime.promptBlock(knowledgePolicy),
+      },
       loadCheckpoint: async key => (
         readProduction(production.user_id, production.task_id).dossier_checkpoints?.[key] || null
       ),
@@ -622,6 +651,7 @@ async function runDossier(initial) {
       sourceUrl: sourceBridge.url,
       anchorUrl,
       atomicAssets,
+      knowledgePolicy,
     });
     production = updateJob(readProduction(production.user_id, production.task_id), 'dossier', {
       status: 'running',
@@ -645,7 +675,7 @@ async function runDossier(initial) {
         dossier_checkpoints: { ...(latest.dossier_checkpoints || {}), [key]: value },
       });
     };
-    const accessoryDetails = await dossierComposites.generateWearableDetails({
+    const accessoryEvidence = await wearableEvidence.resolve({
       taskId: production.task_id,
       assetId: production.approved_candidate_id || 'authorized_person',
       anchor: production.approved_anchor,
@@ -655,6 +685,7 @@ async function runDossier(initial) {
       loadCheckpoint: loadDetailCheckpoint,
       saveCheckpoint: saveDetailCheckpoint,
     });
+    const accessoryDetails = accessoryEvidence.items;
     const wardrobeDetails = await dossierComposites.generateWardrobeDetails({
       taskId: production.task_id,
       assetId: production.approved_candidate_id || 'authorized_person',
@@ -688,12 +719,14 @@ async function runDossier(initial) {
         native_masters: compiled.native_masters,
         category_atlases: compiled.category_atlases,
         generation_summary: compiled.generation_summary,
+        knowledge_policy_trace: knowledgeRuntime.trace(knowledgePolicy),
         atomic_assets: atomicAssets,
         body_views: atomicAssets.filter(item => item.kind === 'body'),
         identity_views: atomicAssets.filter(item => item.kind === 'identity'),
         expressions: atomicAssets.filter(item => item.kind === 'expression'),
         base_actions: atomicAssets.filter(item => item.kind === 'action'),
         accessory_details: accessoryDetails,
+        accessory_evidence_trace: accessoryEvidence.trace,
         wardrobe_details: {
           source: 'gpt_image_2_high_resolution_details',
           description: production.wardrobe || (production.mode === 'retain_original' ? '保留原穿搭' : ''),
@@ -836,7 +869,7 @@ function deriveActionContracts(storyboard = {}) {
   }));
 }
 
-function actionTriptychPrompt(contract = {}) {
+function actionTriptychPrompt(contract = {}, knowledgePrompt = '') {
   return [
     'Use the approved authorized person anchor as the immutable identity and outfit reference.',
     'Create a three-panel action continuity reference on a plain background, left-to-right: START, KEY ACTION, END.',
@@ -846,6 +879,7 @@ function actionTriptychPrompt(contract = {}) {
     `Dominant hand: ${contract.dominant_hand}; prop/contact: ${contract.prop_contact}.`,
     `Screen direction: ${contract.screen_direction}; eyeline: ${contract.eyeline}; expression change: ${contract.expression_change}.`,
     `Required scene zone: ${contract.required_scene_zone}; continuity: ${contract.previous_frame_dependency}.`,
+    knowledgePrompt,
     'Preserve face, apparent adult age, body proportions, hairstyle, garments, shoes and accessories exactly.',
     'No labels, no captions, no typography. Leave visual separation between three panels.',
   ].join('\n');
@@ -854,6 +888,11 @@ function actionTriptychPrompt(contract = {}) {
 async function runActionAssets(initial, contracts) {
   let production = initial;
   try {
+    const knowledgePolicy = knowledgeRuntime.resolveTaskMany({
+      storage: taskStorage, taskId: production.task_id, context: production,
+      selectors: [{ stage: 'person_dossier', assetType: 'person' }],
+    });
+    const knowledgePrompt = knowledgeRuntime.promptBlock(knowledgePolicy);
     const revision = Math.max(1, Number(production.versions.action || 1));
     const assets = [];
     for (let index = 0; index < contracts.length; index += 1) {
@@ -867,7 +906,7 @@ async function runActionAssets(initial, contracts) {
       const image = await mediaAdapter.generateActorReference({
         taskId: production.task_id,
         stage: 'new_story_ad.person_sheet',
-        prompt: actionTriptychPrompt(contract),
+        prompt: actionTriptychPrompt(contract, knowledgePrompt),
         filename: `person_action_${contract.shot_index}_r${revision}_${personDossierCompiler.compactAssetToken(production.task_id, production.approved_candidate_id, contract.shot_index)}`,
         aspectRatio: '16:9',
         referenceImages: [production.approved_anchor.image_url],

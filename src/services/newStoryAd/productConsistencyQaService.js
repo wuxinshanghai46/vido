@@ -2,6 +2,7 @@ const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const productIdentity = require('./productIdentityContractService');
 const { cleanText } = require('./contextBuilder');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 
 function score(value) {
   const n = Number(value);
@@ -35,7 +36,7 @@ async function reviewProductKeyframe({
       'The product may come from any lawful industry. Judge only against the current task references and never assume a fixed brand, package, material, shape or scene.',
       'The final image is the generated shot. Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Product/advertised-subject contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, material_usage: shot.material_usage, product_presence: presence })}\n${proofOnly ? 'No visual identity reference is required. Judge whether the generated image visibly proves the advertised subject and the applicable proof_requirements in this shot; missing visible proof is failure. Do not judge unspecified shape, color, package or brand identity.' : 'Judge only identity dimensions visible in this framing. A detail/partial shot must preserve local identity, color and material but does not need to reveal full silhouette or package count. A full/packshot must preserve complete identity, shape, color, material and count.'} Return {"pass":boolean,"proof_pass":boolean,"proof_evidence":string[],"identity_score":0..1,"shape_score":0..1,"color_score":0..1,"material_score":0..1,"count_score":0..1,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
+    userPrompt: `Product/advertised-subject contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, material_usage: shot.material_usage, product_presence: presence })}\n${proofOnly ? 'No visual identity reference is required. Judge whether the generated image visibly proves the advertised subject and the applicable proof_requirements in this shot; missing visible proof is failure. Do not judge unspecified shape, color, package or brand identity.' : 'Judge only identity dimensions visible in this framing. A detail/partial shot must preserve local identity, color and material but does not need to reveal full silhouette or package count. A full/packshot must preserve complete identity, shape, color, material and count.'} ${knowledgePolicyRuntime.qaBlock(shotContract.knowledge_policy_qa || {})} Return {"pass":boolean,"proof_pass":boolean,"proof_evidence":string[],"identity_score":0..1,"shape_score":0..1,"color_score":0..1,"material_score":0..1,"count_score":0..1,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
     maxTokens: 2400,
     timeoutMs,
     maxCandidates,

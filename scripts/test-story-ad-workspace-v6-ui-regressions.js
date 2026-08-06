@@ -8,6 +8,7 @@ const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const timingProjection = require('../src/services/storyAdWorkspace/projectTimingProjectionService');
+const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
 
 function loadBrowserModule(file, exposed, globals = {}) {
   const source = read(file)
@@ -330,7 +331,7 @@ assert.match(referenceDetachService, /brief_source === 'reference_analysis'[\s\S
 assert.match(referenceDetachService, /filter\(item => !projected\(item\)\)/, '解绑只清理由参考投影的草稿，必须保留用户自建材料');
 assert.match(referenceDetachService, /ACTIVE_STATUSES[\s\S]*referenceVideoAnalyses\.cancel/, '移除正在分析的参考时必须停止后台分析');
 assert.match(referenceDetachService, /function buildReanalysisPatch[\s\S]*reference_video_analysis:\s*reference/, '重新识别必须保留当前视频绑定并撤下旧投影');
-const releaseDeploySource = read('scripts/deploy-story-ad-release.js');
+const releaseDeploySource = collectStoryAdReleaseFiles({ root }).join('\n');
 assert.match(releaseDeploySource, /src\/services\/newStoryAd\/referenceDetachService\.js/, '生产发布清单必须包含重新识别使用的项目清理服务');
 
 const newStoryAdRoute = read('src/routes/newStoryAd.js');

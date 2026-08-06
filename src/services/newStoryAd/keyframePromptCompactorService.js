@@ -23,11 +23,12 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     { name: 'continuity', cap: 220, items: 6, match: /shot continuity lock|^Continuity from:|^Entry frame state:|^Exit frame state:|^Action start\/end:|^Screen direction:|^Eyeline:|^Camera axis:|^Camera movement:|^Object state lock:|^Transition:|^Requires previous frame:|Continuity reference from previous accepted keyframe|Previous keyframe prompt summary/i },
     { name: 'product', cap: 200, items: 5, match: /Product visibility|Product presentation|Commercial evidence|Product identity lock|Product shape lock|Product material lock|Product color lock|Product reference images/i },
     { name: 'style', cap: 140, items: 2, match: /^Style:|Visual style direction|Scene direction|Custom scene requirement/i },
+    { name: 'knowledge', cap: 650, items: 10, whole_lines: true, match: /^Knowledge policy|^HARD:|^GUIDANCE:/i },
     { name: 'safety', cap: 220, items: 3, match: /Forbidden:|Negative visual|Semantic fidelity rule|Never infer a different industry|Use a real camera look/i },
     { name: 'other', cap: 40, items: 1, match: /.*/ },
   ];
   const buckets = new Map(categories.map(category => [category.name, []]));
-  const classificationOrder = ['repair', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'pet', 'scene', 'continuity', 'product', 'style', 'other']
+  const classificationOrder = ['repair', 'knowledge', 'safety', 'context', 'subject', 'visual', 'action', 'design', 'actor', 'pet', 'scene', 'continuity', 'product', 'style', 'other']
     .map(name => categories.find(category => category.name === name))
     .filter(Boolean);
   lines.forEach(line => {
@@ -118,6 +119,7 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     if (excerpt.name === 'pet') return /Pet consistency lock:/i.test(excerpt.text);
     if (excerpt.name === 'product') return /Product identity lock:/i.test(excerpt.text);
     if (excerpt.name === 'visual') return /User-edited visual override, highest priority:/i.test(excerpt.text);
+    if (excerpt.name === 'knowledge') return /^Knowledge policy|^HARD:|^GUIDANCE:/i.test(excerpt.text);
     return false;
   };
   const selectedIndexes = new Set();

@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { hashPassword } = require('../utils/crypto');
 const auth = require('../models/authStore');
 const db = require('../models/database');
+const knowledgeRuleSchema = require('../services/newStoryAd/knowledgeRuleSchemaService');
 
 // === 鐢ㄦ埛绠＄悊 ===
 router.get('/users', (req, res) => {
@@ -1802,6 +1803,12 @@ router.get('/knowledgebase/:id', (req, res) => {
 });
 
 // 鏂板缓
+function runtimePolicyFromBody(body = {}) {
+  if (!Object.prototype.hasOwnProperty.call(body, 'runtime_policy')) return undefined;
+  if (body.runtime_policy === null) return null;
+  return knowledgeRuleSchema.normalizeRuntimePolicy(body.runtime_policy);
+}
+
 router.post('/knowledgebase', (req, res) => {
   const b = req.body || {};
   if (!b.collection || !b.title) {
@@ -1810,6 +1817,10 @@ router.post('/knowledgebase', (req, res) => {
   const allowed = ['digital_human', 'drama', 'storyboard', 'atmosphere', 'production', 'engineering'];
   if (!allowed.includes(b.collection)) {
     return res.status(400).json({ success: false, error: 'collection 蹇呴』鏄?' + allowed.join('/') });
+  }
+  let runtimePolicy;
+  try { runtimePolicy = runtimePolicyFromBody(b); } catch (error) {
+    return res.status(error.status || 422).json({ success: false, error: error.message, code: error.code || 'KNOWLEDGE_RUNTIME_POLICY_INVALID' });
   }
   const doc = {
     id: b.id || ('kb_' + uuidv4().slice(0, 8)),
@@ -1825,8 +1836,10 @@ router.post('/knowledgebase', (req, res) => {
     source: b.source || '',
     lang: b.lang || 'zh',
     enabled: b.enabled !== false,
+    runtime_policy: runtimePolicy,
   };
   db.insertKnowledgeDoc(doc);
+  try { require('../services/newStoryAd/knowledgePolicyCompilerService').clearCache(); } catch {}
   res.json({ success: true, data: doc });
 });
 
@@ -1835,12 +1848,18 @@ router.put('/knowledgebase/:id', (req, res) => {
   const existing = db.getKnowledgeDoc(req.params.id);
   if (!existing) return res.status(404).json({ success: false, error: '鏂囨。涓嶅瓨鍦? '});
   const b = req.body || {};
+  let runtimePolicy;
+  try { runtimePolicy = runtimePolicyFromBody(b); } catch (error) {
+    return res.status(error.status || 422).json({ success: false, error: error.message, code: error.code || 'KNOWLEDGE_RUNTIME_POLICY_INVALID' });
+  }
   const fields = {};
   ['collection', 'subcategory', 'title', 'summary', 'content', 'tags', 'keywords',
-   'prompt_snippets', 'applies_to', 'source', 'lang', 'enabled'].forEach(k => {
+   'prompt_snippets', 'applies_to', 'source', 'lang', 'enabled', 'runtime_policy'].forEach(k => {
     if (b[k] !== undefined) fields[k] = b[k];
   });
+  if (runtimePolicy !== undefined) fields.runtime_policy = runtimePolicy;
   db.updateKnowledgeDoc(req.params.id, fields);
+  try { require('../services/newStoryAd/knowledgePolicyCompilerService').clearCache(); } catch {}
   res.json({ success: true, data: db.getKnowledgeDoc(req.params.id) });
 });
 
@@ -1849,6 +1868,7 @@ router.delete('/knowledgebase/:id', (req, res) => {
   const existing = db.getKnowledgeDoc(req.params.id);
   if (!existing) return res.status(404).json({ success: false, error: '鏂囨。涓嶅瓨鍦? '});
   db.deleteKnowledgeDoc(req.params.id);
+  try { require('../services/newStoryAd/knowledgePolicyCompilerService').clearCache(); } catch {}
   res.json({ success: true });
 });
 

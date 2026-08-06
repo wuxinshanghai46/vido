@@ -6,6 +6,8 @@ const PRODUCER_LINEAGE_FIELDS = Object.freeze([
   'boundary_repair_fingerprint',
   'transition_policy_version',
   'qa_policy_version',
+  'knowledge_qa_fingerprint',
+  'qa_fingerprint',
 ]);
 
 const QA_STATE = Object.freeze({
@@ -185,6 +187,12 @@ function classifyVideoArtifact({
   const expectedQaPolicy = text(expectedLineage.qa_policy_version);
   const actualQaPolicy = text(clip.qa_policy_version || clip.qa?.qa_policy_version || actualLineage.qa_policy_version);
   if (expectedQaPolicy && expectedQaPolicy !== actualQaPolicy) {
+    return decision(COMPATIBILITY_STATUS.REVERIFY_REQUIRED, ['QA_POLICY_OLD']);
+  }
+  const expectedQaFingerprint = text(expectedLineage.qa_fingerprint);
+  const actualQaFingerprint = text(actualLineage.qa_fingerprint);
+  if ((actualQaFingerprint && expectedQaFingerprint !== actualQaFingerprint)
+    || (!actualQaFingerprint && text(expectedLineage.knowledge_qa_fingerprint))) {
     return decision(COMPATIBILITY_STATUS.REVERIFY_REQUIRED, ['QA_POLICY_OLD']);
   }
 

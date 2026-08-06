@@ -16,6 +16,8 @@ const personDossierCompiler = require('./personDossierCompiler');
 const dossierComposites = require('./dossierCompositeService');
 const generationSpecCompletion = require('./generationSpecCompletionService');
 const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
+const wearableEvidence = require('./wearableEvidencePolicyService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -804,6 +806,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     if (taskId) storage.saveOutput(taskId, kind, checkpoint);
   };
   save();
+  const personKnowledgePolicy = taskId
+    ? knowledgePolicyRuntime.resolveTaskMany({ storage, taskId, selectors: [{ stage: 'person_dossier', assetType: 'person' }] })
+    : knowledgePolicyRuntime.resolveMany([{ stage: 'person_dossier', assetType: 'person' }]);
   const subjectFailures = [];
   for (let index = 0; index < humans.length; index += 1) {
     if (reusableHumanAsset(checkpoint.humans[index])) {
@@ -835,6 +840,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         });
       },
       concurrency: Math.max(0, Number(options.personDossierConcurrency || 0)) || undefined,
+      knowledgePolicy: personKnowledgePolicy,
     }, {
       mediaAdapter,
     });
@@ -853,7 +859,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       checkpoint.person_dossier_checkpoints[key] = value;
       save();
     };
-    const accessoryDetails = await dossierComposites.generateWearableDetails({
+    const accessoryEvidence = await wearableEvidence.resolve({
       taskId: taskId || options.generationId,
       assetId: actorId,
       atomicAssets: compiled.atomic_assets,
@@ -862,6 +868,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       loadCheckpoint: detailCheckpoint,
       saveCheckpoint: saveDetailCheckpoint,
     }, { mediaAdapter });
+    const accessoryDetails = accessoryEvidence.items;
     const wardrobeDetails = await dossierComposites.generateWardrobeDetails({
       taskId: taskId || options.generationId,
       assetId: actorId,
@@ -900,6 +907,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       expressions: compiled.expressions,
       base_actions: compiled.base_actions,
       accessory_details: accessoryDetails,
+      accessory_evidence_trace: accessoryEvidence.trace,
+      knowledge_policy: knowledgePolicyRuntime.trace(personKnowledgePolicy),
       wardrobe_details: {
         source: 'gpt_image_2_high_resolution_details',
         description: member.wardrobeText || '',

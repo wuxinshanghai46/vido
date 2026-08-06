@@ -8,6 +8,7 @@ const PUBLIC_ROOT = path.join(ROOT, 'public', 'story-ad');
 const CONFIG_PATH = path.join(ROOT, 'config', 'story-ad-release.json');
 const RELEASE_MODULE = path.join(PUBLIC_ROOT, 'release.js');
 const MANIFEST_PATH = path.join(PUBLIC_ROOT, 'release-manifest.json');
+const RUNTIME_MANIFEST_PATH = path.join(ROOT, 'config', 'story-ad-runtime-manifest.json');
 const THREE_SOURCE = path.join(ROOT, 'node_modules', 'three', 'build', 'three.module.min.js');
 const THREE_TARGET = path.join(PUBLIC_ROOT, 'vendor', 'three.module.min.js');
 const THREE_CORE_SOURCE = path.join(ROOT, 'node_modules', 'three', 'build', 'three.core.min.js');
@@ -36,10 +37,11 @@ function main() {
   if (!/^[a-z0-9][a-z0-9._-]{7,80}$/i.test(String(release.build_id || ''))) {
     throw new Error('story-ad build_id 无效');
   }
+  let priorPublicManifest = null;
   if (fs.existsSync(MANIFEST_PATH)) {
-    const prior = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
-    if (prior.build_id === release.build_id) {
-      const changed = (Array.isArray(prior.files) ? prior.files : []).filter(entry => {
+    priorPublicManifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
+    if (priorPublicManifest.build_id === release.build_id) {
+      const changed = (Array.isArray(priorPublicManifest.files) ? priorPublicManifest.files : []).filter(entry => {
         const absolute = path.resolve(ROOT, String(entry.path || ''));
         if (!absolute.startsWith(PUBLIC_ROOT + path.sep) || !fs.existsSync(absolute)) return true;
         const content = fs.readFileSync(absolute);
@@ -77,11 +79,51 @@ function main() {
     schema_version: 1,
     build_id: release.build_id,
     contract_version: release.contract_version,
-    generated_at: new Date().toISOString(),
+    generated_at: priorPublicManifest?.build_id === release.build_id
+      ? priorPublicManifest.generated_at
+      : new Date().toISOString(),
     files,
   };
-  fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  console.log(JSON.stringify({ success: true, build_id: release.build_id, files: files.length }));
+  const manifestBuffer = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
+  const runtimeFiles = [...new Set([
+    ...collectStoryAdReleaseFiles({ root: ROOT, releaseManifest: manifest }),
+    'public/story-ad/release-manifest.json',
+  ])].filter(file => file !== 'config/story-ad-runtime-manifest.json').sort();
+  const runtimeEntries = runtimeFiles.map(file => {
+    const content = file === 'public/story-ad/release-manifest.json'
+      ? manifestBuffer
+      : fs.readFileSync(path.join(ROOT, file));
+    return { path: file, bytes: content.length, sha256: sha256(content) };
+  });
+  let priorRuntime = null;
+  if (fs.existsSync(RUNTIME_MANIFEST_PATH)) {
+    priorRuntime = JSON.parse(fs.readFileSync(RUNTIME_MANIFEST_PATH, 'utf8'));
+    if (priorRuntime.build_id === release.build_id) {
+      const canonical = entries => JSON.stringify((Array.isArray(entries) ? entries : []).map(entry => ({
+        path: String(entry.path || '').replace(/\\/g, '/'), bytes: Number(entry.bytes || 0), sha256: String(entry.sha256 || ''),
+      })).sort((a, b) => a.path.localeCompare(b.path)));
+      if (canonical(priorRuntime.files) !== canonical(runtimeEntries)) {
+        throw new Error(`禁止复用已发布 build_id ${release.build_id} 覆盖不同后端运行时代码；请先生成新的 build_id。`);
+      }
+    }
+  }
+  const runtimeManifest = {
+    schema_version: 1,
+    build_id: release.build_id,
+    contract_version: release.contract_version,
+    generated_at: priorRuntime?.build_id === release.build_id
+      ? priorRuntime.generated_at
+      : new Date().toISOString(),
+    files: runtimeEntries,
+  };
+  const publicTemp = `${MANIFEST_PATH}.${process.pid}.tmp`;
+  const runtimeTemp = `${RUNTIME_MANIFEST_PATH}.${process.pid}.tmp`;
+  fs.writeFileSync(publicTemp, manifestBuffer);
+  fs.writeFileSync(runtimeTemp, `${JSON.stringify(runtimeManifest, null, 2)}\n`, 'utf8');
+  fs.renameSync(publicTemp, MANIFEST_PATH);
+  fs.renameSync(runtimeTemp, RUNTIME_MANIFEST_PATH);
+  console.log(JSON.stringify({ success: true, build_id: release.build_id, files: files.length, runtime_files: runtimeEntries.length }));
 }
 
 main();

@@ -20,6 +20,7 @@ const semanticCut = require('./semanticCutService');
 const videoCore = require('../videoGenerationCore'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const contractFreshness = require('./keyframeContractFreshnessService');
 const boundaryRepair = require('./videoBoundaryRepairService'), boundaryGeneration = require('./videoBoundaryGenerationService'), videoAttemptState = require('./videoAttemptStateService');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const OUTPUT_DIR = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs')), VIDEO_DIR = path.join(OUTPUT_DIR, 'new-story-ad-videos');
 const VIDEO_STAGE = 'new_story_ad.video';
 const VIDEO_MAX_CANDIDATES = Math.max(1, Math.min(5, Number(process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES) || 4));
@@ -312,6 +313,7 @@ function clipPrompt(shot = {}, ctx = {}, contract = {}, previousShot = null, key
       ? 'Use physically plausible motion and camera movement. The explicitly authored effect target is allowed; do not add any other people, objects, text, logos, products or locations.'
       : 'Use physically plausible motion and camera movement. Do not add unrelated people, objects, text, logos, products or locations.',
     repairInstruction ? `QA repair instruction for this attempt:\n${repairInstruction}` : '',
+    knowledgePolicyRuntime.promptBlock(contract.knowledge_policy_video_generation || {}),
   ].filter(Boolean).join('\n');
 }
 

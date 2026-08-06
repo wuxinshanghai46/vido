@@ -15,6 +15,7 @@
       tagsText: arr(doc.tags).join(','),
       keywordsText: arr(doc.keywords).join(','),
       snippetsText: arr(doc.prompt_snippets).join('\n'),
+      runtimePolicyText: doc.runtime_policy ? JSON.stringify(doc.runtime_policy, null, 2) : '',
       applies_to: arr(doc.applies_to)
     };
   }
@@ -24,9 +25,12 @@
     body.tags = csv(editor.tagsText);
     body.keywords = csv(editor.keywordsText);
     body.prompt_snippets = String(editor.snippetsText || '').split('\n').map(item => item.trim()).filter(Boolean);
+    if (String(editor.runtimePolicyText || '').trim()) body.runtime_policy = JSON.parse(editor.runtimePolicyText);
+    else body.runtime_policy = null;
     delete body.tagsText;
     delete body.keywordsText;
     delete body.snippetsText;
+    delete body.runtimePolicyText;
     return body;
   }
 
@@ -265,6 +269,7 @@
                   <div class="form-group"><label>关键词</label><input v-model="editor.keywordsText" /></div>
                 </div>
                 <div class="form-group"><label>提示词片段</label><textarea v-model="editor.snippetsText" rows="4"></textarea></div>
+                <div class="form-group"><label>可执行生成规则（JSON，高级）</label><textarea v-model="editor.runtimePolicyText" rows="8" spellcheck="false" placeholder='{"schema_version":1,"rules":[]}'></textarea><small>仅结构化、已审核的短规则会进入生成运行时；正文不会直接注入图片或视频模型。</small></div>
                 <div class="form-group">
                   <label>适用 Agent</label>
                   <div class="kb-applies">

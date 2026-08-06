@@ -6,6 +6,7 @@ const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const sceneWorld = require('../src/services/storyAdWorkspace/sceneWorldService');
+const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
 
 const transport = modelGateway.classifyError(new Error(
   'upstream connect error or disconnect/reset before headers. reset reason: connection termination',
@@ -70,7 +71,7 @@ const store = read('public/story-ad/store/projectStore.js');
 assert(store.includes('if (data.accepted === false)'), 'duplicate jobs must not be reported as submitted');
 const adapter = read('src/services/newStoryAd/mediaAdapter.js');
 assert(adapter.includes("'new_story_ad.image_provider'"), 'all image calls must share one provider pool');
-const deployRelease = read('scripts/deploy-story-ad-release.js');
+const deployRelease = collectStoryAdReleaseFiles({ root }).map(file => `'${file}'`).join('\n');
 assert(deployRelease.includes("'src/services/newStoryAd/sceneBindingService.js'"), '场景权威合并运行文件必须进入生产发布清单');
 
 console.log(JSON.stringify({

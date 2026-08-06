@@ -50,7 +50,9 @@ function atomicByKindKey(atomicAssets = [], pairs = []) {
 }
 
 function explicitAccessoryDefinitions(profile = {}) {
-  const wardrobe = String(profile.wardrobeText || profile.wardrobe || '')
+  const accessoryText = (Array.isArray(profile.accessories) ? profile.accessories : [])
+    .map(item => item?.name || item?.key || item).filter(Boolean).join(' ');
+  const wardrobe = `${String(profile.wardrobeText || profile.wardrobe || '')} ${accessoryText}`
     .replace(/(?:不佩戴|未佩戴|没有|无)(?:任何)?[^，。；]{0,24}(?=，|。|；|$)/g, '');
   return ACCESSORY_DEFINITIONS.filter(item => item.pattern.test(wardrobe));
 }
@@ -154,7 +156,9 @@ async function generateDetailRows({
 async function generateWearableDetails(options = {}, deps = {}) {
   return generateDetailRows({
     ...options,
-    definitions: explicitAccessoryDefinitions(options.profile || {}),
+    definitions: Array.isArray(options.definitions)
+      ? options.definitions
+      : explicitAccessoryDefinitions(options.profile || {}),
     detailKind: 'wearable_accessory',
   }, deps);
 }
@@ -205,6 +209,7 @@ async function composeWearableDetails({
   anchor = {},
   atomicAssets = [],
   revision = 1,
+  definitions = null,
 } = {}, deps = {}) {
   const mediaAdapter = deps.mediaAdapter || mediaAdapterDefault;
   if (typeof mediaAdapter.assetPathFromName !== 'function' || typeof mediaAdapter.publicAssetUrl !== 'function') return [];
@@ -212,7 +217,7 @@ async function composeWearableDetails({
   const body = byKind('body');
   const identity = byKind('identity');
   const byKey = (rows, key, fallback = 0) => rows.find(item => item?.key === key) || rows[fallback] || null;
-  const specs = [
+  let specs = [
     {
       key: 'ear_accessories', label: '耳部穿戴',
       asset: byKey(identity, 'face_profile', 1) || byKey(identity, 'face_front', 0) || anchor,
@@ -234,6 +239,10 @@ async function composeWearableDetails({
       focus: { x: 0.28, y: 0.72, width: 0.44, height: 0.15 },
     },
   ];
+  if (Array.isArray(definitions)) {
+    const allowed = new Set(definitions.map(item => String(item?.key || item || '')));
+    specs = specs.filter(spec => allowed.has(spec.key));
+  }
   const rows = [];
   for (const spec of specs) {
     const buffer = await detailTile(spec.asset, spec.focus, 640, 480, mediaAdapter);

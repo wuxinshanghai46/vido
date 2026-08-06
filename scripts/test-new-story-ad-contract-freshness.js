@@ -67,7 +67,7 @@ function testSemanticChangeInvalidatesEveryAffectedFrame() {
     current_generation_status: 'accepted',
     qa: { pass: true },
   })));
-  storage.saveOutput(taskId, 'video_clips', [{ video_url: 'https://example.test/old.mp4' }]);
+  storage.saveOutput(taskId, 'video_clips', oldContracts.map((_, index) => ({ video_url: `https://example.test/old-${index + 1}.mp4` })));
   storage.saveOutput(taskId, 'final_video', { video_url: 'https://example.test/final.mp4' });
   storage.saveOutput(taskId, 'context', nextCtx);
 
@@ -75,7 +75,9 @@ function testSemanticChangeInvalidatesEveryAffectedFrame() {
   assert.equal(result.changed_indexes.length, 18, '最大 18 镜时每个语义变化的合同都必须被识别');
   assert.equal(result.invalidated, 18);
   assert(storage.getOutput(taskId, 'keyframes').every(frame => frame.contract_outdated === true));
-  assert.equal(storage.getOutput(taskId, 'video_clips'), null, '合同变化必须清除下游视频复用');
+  const staleClips = storage.getOutput(taskId, 'video_clips');
+  assert.equal(staleClips.length, 18, '合同变化必须保留已付费视频证据');
+  assert(staleClips.every(clip => clip.lineage_outdated === true && clip.lineage_outdated_reason === 'keyframe_contract_changed'), '每个受影响视频必须明确标记为不可复用');
   assert.equal(storage.getOutput(taskId, 'final_video'), null, '合同变化必须清除旧成片复用');
   assert.throws(
     () => freshness.assertCurrent(taskId, 17, oldContracts[17]),
@@ -204,6 +206,8 @@ function testStoryboardEditsInvalidateOnlyChangedFrames() {
       qa: { pass: true, status: 'accepted', evidence: { index } },
     }));
     storage.saveOutput(taskId, 'keyframes', frames);
+    const originalClips = frames.map((_, index) => ({ video_url: `https://example.test/subset-clip-${caseIndex}-${index}.mp4`, qa: { pass: true } }));
+    storage.saveOutput(taskId, 'video_clips', originalClips);
     const persistedFrames = storage.getOutput(taskId, 'keyframes');
 
     const edited = initial.shots.map((shot, index) => (
@@ -211,6 +215,7 @@ function testStoryboardEditsInvalidateOnlyChangedFrames() {
     ));
     const result = service.updateStoryboardTable(taskId, edited, { id: 'regression-user' });
     const stored = storage.getOutput(taskId, 'keyframes');
+    const storedClips = storage.getOutput(taskId, 'video_clips');
 
     assert.deepStrictEqual(result.changed_indexes, changed,
       `case ${caseIndex}: the response must identify exactly the edited frame indexes`);
@@ -223,6 +228,8 @@ function testStoryboardEditsInvalidateOnlyChangedFrames() {
       if (!changed.includes(index)) {
         assert.deepStrictEqual(frame, persistedFrames[index],
           `case ${caseIndex}: unchanged frame ${index} must retain all image and QA evidence`);
+        assert.deepStrictEqual(storedClips[index], originalClips[index],
+          `case ${caseIndex}: unchanged video clip ${index} must remain reusable`);
         return;
       }
       assert.strictEqual(frame.image_url, persistedFrames[index].image_url);
@@ -232,6 +239,9 @@ function testStoryboardEditsInvalidateOnlyChangedFrames() {
       assert.strictEqual(frame.accepted_revision, persistedFrames[index].accepted_revision);
       assert.strictEqual(frame.contract_outdated, true);
       assert.strictEqual(frame.current_generation_status, 'outdated');
+      assert.strictEqual(storedClips[index].video_url, originalClips[index].video_url);
+      assert.strictEqual(storedClips[index].lineage_outdated, true,
+        `case ${caseIndex}: changed video clip ${index} must be blocked from reuse`);
     });
   });
 }

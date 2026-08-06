@@ -540,7 +540,10 @@ async function main() {
   const invalidatedFrame = storage.getOutput(rebuildTask.id, 'keyframes')[0];
   assert.equal(invalidatedFrame.contract_outdated, true);
   assert.equal(invalidatedFrame.current_generation_status, 'outdated');
-  assert.equal(storage.getOutput(rebuildTask.id, 'video_clips'), null);
+  const retainedStaleClip = storage.getOutput(rebuildTask.id, 'video_clips')[0];
+  assert.equal(retainedStaleClip.video_url, 'https://example.test/old.mp4');
+  assert.equal(retainedStaleClip.lineage_outdated, true);
+  assert.equal(retainedStaleClip.lineage_outdated_reason, 'keyframe_contract_changed');
   assert.equal(storage.getOutput(rebuildTask.id, 'final_video'), null);
 
   const deduped = storage.dedupeLatestTasks([

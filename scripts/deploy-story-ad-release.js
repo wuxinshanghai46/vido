@@ -1,7 +1,9 @@
 'use strict';
 
 const crypto = require('crypto');
+const childProcess = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { Client } = require('ssh2');
 const { connectionOptions } = require('./lib/vidoSshAuth');
@@ -12,122 +14,10 @@ const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const release = require('../config/story-ad-release.json');
 const releaseManifest = require('../public/story-ad/release-manifest.json');
-const publicReleaseFiles = releaseManifest.files.map(item => item.path);
-const extraFiles = [
-  'config/story-ad-release.json',
-  'package.json',
-  'package-lock.json',
-  'public/story-ad/release-manifest.json',
-  'src/server.js',
-  'src/routes/newStoryAd.js',
-  'src/routes/newStoryAd/subjectAssetPersistence.js',
-  'src/routes/storyAdWorkspace.js',
-  'src/repositories/contentRecordRepository.js',
-  'src/services/newStoryAd/contextBuilder.js',
-  'src/services/newStoryAd/blueprintService.js',
-  'src/services/newStoryAd/storyboardTableService.js',
-  'src/services/newStoryAd/qualityReviewService.js',
-  'src/services/newStoryAd/composeService.js',
-  'src/services/newStoryAd/finalVideoQaService.js',
-  'src/services/newStoryAd/ttsAdapter.js',
-  'src/services/newStoryAd/jobService.js',
-  'src/services/newStoryAd/mediaAdapter.js',
-  'src/services/newStoryAd/modelGateway.js',
-  'src/services/newStoryAd/providerAdapterRegistry.js',
-  'src/services/newStoryAd/assetPlanService.js',
-  'src/services/newStoryAd/assetGenerationCheckpointService.js',
-  'src/services/newStoryAd/personConsistencyQaService.js',
-  'src/services/newStoryAd/personDossierCompiler.js',
-  'src/services/newStoryAd/personDossierService.js',
-  'src/services/newStoryAd/dossierCompositeService.js',
-  'src/services/newStoryAd/productAssetResolverService.js',
-  'src/services/newStoryAd/productConsistencyQaService.js',
-  'src/services/newStoryAd/productIdentityContractService.js',
-  'src/services/newStoryAd/productionLimitsService.js',
-  'src/services/newStoryAd/keyframeContractService.js',
-  'src/services/newStoryAd/referenceEntityContinuityService.js',
-  'src/services/newStoryAd/referenceEvidenceStrategyService.js',
-  'src/services/newStoryAd/referenceSemanticRecoveryService.js',
-  'src/services/newStoryAd/referenceSemanticContractPromptService.js',
-  'src/services/newStoryAd/referenceSelectionService.js',
-  'src/services/newStoryAd/referenceAnalysisTaskSyncService.js',
-  'src/services/newStoryAd/referenceDetachService.js',
-  'src/services/newStoryAd/referenceUnderstandingEditService.js',
-  'src/services/newStoryAd/referenceUnderstandingService.js',
-  'src/services/newStoryAd/referenceVideoAnalysisService.js',
-  'src/services/newStoryAd/revisionService.js',
-  'src/services/newStoryAd/sceneAssetService.js',
-  'src/services/newStoryAd/sceneBindingService.js',
-  'src/services/newStoryAd/sceneGenerationPolicyService.js',
-  'src/services/newStoryAd/panoramaProjectionService.js',
-  'src/services/newStoryAd/panoramaProjectionWorker.js',
-  'src/services/newStoryAd/scenePanoramaService.js',
-  'src/services/newStoryAd/shotReferencePackService.js',
-  'src/services/newStoryAd/storyAdService.js',
-  'src/services/newStoryAd/storageService.js',
-  'src/services/newStoryAd/subjectAssetBundleService.js',
-  'src/services/newStoryAd/videoAdapter.js',
-  'src/services/newStoryAd/videoFrameQaService.js',
-  'src/services/newStoryAd/videoLineageService.js',
-  'src/services/newStoryAd/visualAssetProgressService.js',
-  'src/services/newStoryAd/visualAssetOrchestrationService.js',
-  'src/services/newStoryAd/visualAssetBillingAuthorizationService.js',
-  'src/services/storyAdReleaseIntegrityService.js',
-  'src/services/modelCapabilityService.js',
-  'src/services/pipelineModelService.js',
-  'src/services/knowledgeBaseSeed.js',
-  'src/services/seeds/character_asset_card.js',
-  'src/services/storyAdWorkspace/directorSceneService.js',
-  'src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js',
-  'src/services/storyAdWorkspace/graphProjectionService.js',
-  'src/services/storyAdWorkspace/projectBundleService.js',
-  'src/services/storyAdWorkspace/projectTimingProjectionService.js',
-  'src/services/storyAdWorkspace/sceneWorldAssetProjectionService.js',
-  'src/services/storyAdWorkspace/sceneWorldService.js',
-  'src/services/storyAdWorkspace/referenceUnderstandingConfirmationService.js',
-  'src/services/storyAdWorkspace/referenceUnderstandingProjectionService.js',
-  'scripts/build-story-ad-release.js',
-  'scripts/check-new-story-ad-dossier-boundaries.js',
-  'scripts/check-story-ad-workspace-v6-boundaries.js',
-  'scripts/test-new-story-ad-keyframe-parallel.js',
-  'scripts/test-new-story-ad-image2-realism.js',
-  'scripts/test-new-story-ad-duration-contract.js',
-  'scripts/test-new-story-ad-longform-compose-contract.js',
-  'scripts/test-new-story-ad-multi-space-cast-recovery.js',
-  'scripts/test-new-story-ad-person-dossier.js',
-  'scripts/test-new-story-ad-panorama.js',
-  'scripts/test-pipeline-capability-audit.js',
-  'scripts/test-new-story-ad-reference-understanding-v6.js',
-  'scripts/test-new-story-ad-reference-entity-continuity.js',
-  'scripts/test-new-story-ad-reference-semantic-recovery.js',
-  'scripts/test-new-story-ad-structured-output.js',
-  'scripts/test-new-story-ad-product-proof-contract.js',
-  'scripts/test-new-story-ad-reference-video-analysis.js',
-  'scripts/test-new-story-ad-spatial-generation-order.js',
-  'scripts/test-reference-evidence-strategy.js',
-  'scripts/test-new-story-ad-reference-video-link.js',
-  'scripts/test-new-story-ad-storage-batch-delete.js',
-  'scripts/test-new-story-ad-reliability.js',
-  'scripts/test-new-story-ad-subject-assets.js',
-  'scripts/test-new-story-ad-visual-asset-failure-recovery.js',
-  'scripts/test-new-story-ad-video-frame-qa.js',
-  'scripts/test-reference-analysis-task-sync.js',
-  'scripts/test-reference-understanding-edit.js',
-  'scripts/test-reference-understanding-edit-persistence.js',
-  'scripts/test-story-ad-director-scene-v1.js',
-  'scripts/test-story-ad-reference-understanding-confirmation.js',
-  'scripts/test-story-ad-reference-confirm-continue.js',
-  'scripts/test-story-ad-reference-understanding-ui.js',
-  'scripts/test-story-ad-release-integrity.js',
-  'scripts/test-story-ad-scene-world-v1.js',
-  'scripts/test-story-ad-visual-assets-sync-v21.js',
-  'scripts/test-story-ad-workflow-director-nodes.js',
-  'scripts/test-story-ad-workspace-v6-ui-regressions.js',
-  'scripts/test-story-ad-workspace-reference-intake.js',
-  'scripts/deploy-story-ad-release.js',
-];
-const files = [...new Set([...publicReleaseFiles, ...extraFiles])].sort();
-
+const runtimeManifest = require('../config/story-ad-runtime-manifest.json');
+const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
+const releaseIntegrity = require('../src/services/storyAdReleaseIntegrityService');
+const files = collectStoryAdReleaseFiles({ root, releaseManifest });
 for (const file of files) {
   if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing release file: ${file}`);
 }
@@ -147,6 +37,12 @@ const localHashes = Object.fromEntries(files.map(file => [
   file,
   crypto.createHash('sha256').update(fs.readFileSync(path.join(root, file))).digest('hex'),
 ]));
+const localRuntimeHash = releaseIntegrity.manifestFingerprint(runtimeManifest);
+releaseIntegrity.assertCurrent({ root, release });
+releaseIntegrity.assertRuntimeCurrent({ root, release });
+const runtimeManifestFiles = new Set((runtimeManifest.files || []).map(item => item.path));
+const uncoveredReleaseFiles = files.filter(file => file !== 'config/story-ad-runtime-manifest.json' && !runtimeManifestFiles.has(file));
+if (uncoveredReleaseFiles.length) throw new Error(`Runtime manifest missing release files: ${uncoveredReleaseFiles.slice(0, 12).join(', ')}`);
 const hashSpec = Buffer.from(JSON.stringify({ files, localHashes }), 'utf8').toString('base64');
 
 function exec(command) {
@@ -170,6 +66,36 @@ function parseLastJson(output) {
     try { return JSON.parse(lines[index]); } catch {}
   }
   throw new Error(`No JSON in remote output: ${lines.slice(-5).join(' | ')}`);
+}
+
+function runLocalReleaseRegression() {
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-story-ad-release-'));
+  try {
+    const result = childProcess.spawnSync(command, ['run', 'platform:upgrade:test'], {
+      cwd: root,
+      env: {
+        ...process.env,
+        OUTPUT_DIR: outputDir,
+        DB_ENABLED: '0',
+        DB_READ_PRIMARY: '0',
+        DB_DUAL_WRITE: '0',
+        DB_JSON_FALLBACK: '1',
+      },
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 30 * 60 * 1000,
+    });
+    if (result.status !== 0) {
+      const detail = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      throw new Error(`Local pre-deploy regression failed:\n${detail.slice(-20000)}`);
+    }
+    const lines = String(result.stdout || '').split(/\r?\n/).filter(line => /passed|通过|real_model_calls/i.test(line));
+    console.log(lines.slice(-40).join('\n'));
+    console.log(`LOCAL_RELEASE_PREFLIGHT=${JSON.stringify({ status: 'passed', runtime_hash: localRuntimeHash, release_files: files.length })}`);
+  } finally {
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  }
 }
 
 async function auditRemoteHashes() {
@@ -203,6 +129,8 @@ async function rollback() {
   ].join(' && '));
 }
 
+runLocalReleaseRegression();
+
 client.on('ready', async () => {
   let sftp;
   try {
@@ -229,6 +157,7 @@ client.on('ready', async () => {
     if (healthBefore.status !== 'ok' || healthBefore.database?.status !== 'ok') {
       throw new Error(`Production preflight unhealthy: ${JSON.stringify(healthBefore)}`);
     }
+    const productionReleaseBefore = parseLastJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
     const quickCheckBefore = await exec('echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite');
     if (quickCheckBefore.trim() !== 'ok') throw new Error(`SQLite quick_check failed: ${quickCheckBefore}`);
 
@@ -259,33 +188,48 @@ client.on('ready', async () => {
     )).join(' && ');
     await exec(jsChecks);
 
-    const publishCommands = files.map(file => {
+    const nonStoryAdPublicFiles = files.filter(file => !file.startsWith('public/story-ad/'));
+    const publishCommands = nonStoryAdPublicFiles.map(file => {
       const target = `${remoteRoot}/${file}`;
       return `mkdir -p ${quote(path.posix.dirname(target))} && cp ${quote(`${stagingDir}/${file}`)} ${quote(`${target}.${token}.tmp`)} && mv -f ${quote(`${target}.${token}.tmp`)} ${quote(target)}`;
     });
-    await exec(publishCommands.join(' && '));
     published = true;
+    await exec([
+      ...publishCommands,
+      `mv ${quote(`${remoteRoot}/public/story-ad`)} ${quote(`${backupDir}/public-story-ad-live`)}`,
+      `mv ${quote(`${stagingDir}/public/story-ad`)} ${quote(`${remoteRoot}/public/story-ad`)}`,
+      'pm2 reload vido --update-env >/dev/null',
+      'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && curl -fsS https://vido.smsend.cn/api/health >/dev/null && exit 0; done; exit 1',
+    ].join(' && '));
 
     const publishedHashAudit = await auditRemoteHashes();
     if (publishedHashAudit.mismatches.length) {
-      throw new Error(`Production pre-test hash mismatch: ${publishedHashAudit.mismatches.join(', ')}`);
+      throw new Error(`Production post-reload hash mismatch: ${publishedHashAudit.mismatches.join(', ')}`);
+    }
+    const productionReleaseAfterReload = parseLastJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
+    if (productionReleaseAfterReload.build_id !== release.build_id
+      || productionReleaseAfterReload.contract_version !== release.contract_version
+      || productionReleaseAfterReload.runtime_hash !== localRuntimeHash) {
+      throw new Error(`Production runtime identity mismatch after reload: ${JSON.stringify(productionReleaseAfterReload)}`);
+    }
+    if (productionReleaseBefore.process_id
+      && String(productionReleaseBefore.process_id) === String(productionReleaseAfterReload.process_id)) {
+      throw new Error(`PM2 process did not reload: ${productionReleaseAfterReload.process_id}`);
     }
 
     const testOutput = await exec([
       `cd ${quote(remoteRoot)}`,
       `mkdir -p ${quote(`${backupDir}/test-outputs`)}`,
-      `env OUTPUT_DIR=${quote(`${backupDir}/test-outputs`)} DB_ENABLED=0 DB_READ_PRIMARY=0 DB_DUAL_WRITE=0 DB_JSON_FALLBACK=1 npm run platform:upgrade:test`,
+      `env OUTPUT_DIR=${quote(`${backupDir}/test-outputs`)} DB_ENABLED=0 DB_READ_PRIMARY=0 DB_DUAL_WRITE=0 DB_JSON_FALLBACK=1 npm run story-ad:knowledge-policy:test`,
+      'npm run story-ad:release:test',
+      'npm run story-ad:v3:boundaries',
+      'npm run story-ad:v6:boundaries',
     ].join(' && '));
 
     const testedHashAudit = await auditRemoteHashes();
     if (testedHashAudit.mismatches.length) {
       throw new Error(`Production post-test hash mismatch: ${testedHashAudit.mismatches.join(', ')}`);
     }
-
-    await exec([
-      'pm2 reload vido --update-env >/dev/null',
-      'for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && curl -fsS https://vido.smsend.cn/api/health >/dev/null && exit 0; done; exit 1',
-    ].join(' && '));
 
     const hashAudit = await auditRemoteHashes();
     if (hashAudit.mismatches.length) throw new Error(`Production post-reload hash mismatch: ${hashAudit.mismatches.join(', ')}`);
@@ -299,7 +243,10 @@ client.on('ready', async () => {
     const publicHealth = parseLastJson(await exec('curl -fsS https://vido.smsend.cn/api/health'));
     const productionRelease = parseLastJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
     const quickCheckAfter = await exec('echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite');
-    if (productionRelease.build_id !== release.build_id || productionRelease.contract_version !== release.contract_version) {
+    if (productionRelease.build_id !== release.build_id
+      || productionRelease.contract_version !== release.contract_version
+      || productionRelease.runtime_hash !== localRuntimeHash
+      || String(productionRelease.process_id) !== String(productionReleaseAfterReload.process_id)) {
       throw new Error(`Production release mismatch: ${JSON.stringify(productionRelease)}`);
     }
     if (healthAfter.status !== 'ok' || publicHealth.status !== 'ok' || healthAfter.database?.status !== 'ok' || quickCheckAfter.trim() !== 'ok') {
@@ -310,6 +257,8 @@ client.on('ready', async () => {
     console.log(`RELEASE=${JSON.stringify({
       build_id: productionRelease.build_id,
       contract_version: productionRelease.contract_version,
+      runtime_hash: productionRelease.runtime_hash,
+      process_id: productionRelease.process_id,
       files: files.length,
       hashAudit,
       activeBefore: activeBefore.active_count,

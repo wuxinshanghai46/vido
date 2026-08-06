@@ -6,6 +6,7 @@ const benchmarkStrategy = require('./benchmarkStrategyService');
 const productAssetResolver = require('./productAssetResolverService');
 const referenceUnderstandingService = require('./referenceUnderstandingService');
 const productionLimits = require('./productionLimitsService');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -344,6 +345,7 @@ function normalizeSceneAssets(input) {
       repair_plan: item.repair_plan && typeof item.repair_plan === 'object' ? item.repair_plan : null,
       repair_history: Array.isArray(item.repair_history) ? item.repair_history.slice(-8) : [],
       provider_used: cleanText(item.provider_used || '', 240),
+      knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),
     };
   }).filter(Boolean);
 }
@@ -539,6 +541,7 @@ function normalizePersonDossierFields(input = {}) {
           atomic_count: Math.max(0, Number(input.generation_summary.atomic_count || 0) || 0),
         }
       : null,
+    knowledge_policy: knowledgePolicyRuntime.trace(input.knowledge_policy || input.knowledge_policy_trace || {}),
   };
 }
 

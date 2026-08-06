@@ -1,6 +1,16 @@
 const { getDbConfig } = require('../db/sqlite');
 const records = require('../repositories/contentRecordRepository');
 
+function insertMissingKnowledgeDocs(rows = [], lookup, write) {
+  let inserted = 0;
+  for (const row of (Array.isArray(rows) ? rows : [])) {
+    if (!row?.id || lookup(String(row.id))) continue;
+    write(row);
+    inserted += 1;
+  }
+  return inserted;
+}
+
 function isSqliteEnabled() {
   const config = getDbConfig();
   return config.enabled && config.type === 'sqlite';
@@ -229,7 +239,11 @@ function adapt(legacy) {
     updateKnowledgeDoc(id, fields) { update('documents', () => legacy.updateKnowledgeDoc(id, fields), id, fields); },
     deleteKnowledgeDoc(id) { remove('documents', () => legacy.deleteKnowledgeDoc(id), id); },
     bulkInsertKnowledgeDocs(rows) {
-      if (isSqliteEnabled()) for (const row of rows) records.upsert('documents', row);
+      if (isSqliteEnabled()) insertMissingKnowledgeDocs(
+        rows,
+        id => records.get('documents', id),
+        row => records.upsert('documents', row),
+      );
       if (shouldWriteLegacy()) legacy.bulkInsertKnowledgeDocs(rows);
     },
 
@@ -263,4 +277,4 @@ function adapt(legacy) {
   };
 }
 
-module.exports = { adapt };
+module.exports = { adapt, insertMissingKnowledgeDocs };

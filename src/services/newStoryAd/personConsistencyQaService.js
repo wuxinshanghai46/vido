@@ -2,6 +2,7 @@ const modelGateway = require('./modelGateway');
 const jsonRepair = require('./jsonRepairService');
 const personIdentity = require('./personIdentityContractService');
 const { cleanText } = require('./contextBuilder');
+const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 
 function score(value) {
   const n = Number(value);
@@ -27,7 +28,7 @@ async function reviewPersonKeyframe({
       stage: 'new_story_ad.person_keyframe_qa',
       imageUrls: [generatedUrl],
       systemPrompt: 'You are a strict no-human visual inspector for a general-purpose commercial video platform. Inspect only the supplied generated image and return strict JSON.',
-      userPrompt: 'This shot has an explicit no-human contract. Reject any visible human face, body, hand, finger, arm, sleeve worn by a person, reflection, silhouette or other human trace. Return {"pass":boolean,"visible_human":boolean,"conflicts":string[],"retry_instruction":string}.',
+      userPrompt: `This shot has an explicit no-human contract. Reject any visible human face, body, hand, finger, arm, sleeve worn by a person, reflection, silhouette or other human trace. ${knowledgePolicyRuntime.qaBlock(shotContract.knowledge_policy_qa || {})} Return {"pass":boolean,"visible_human":boolean,"conflicts":string[],"retry_instruction":string}.`,
       maxTokens: 1200,
       timeoutMs,
       maxCandidates,
@@ -72,7 +73,7 @@ async function reviewPersonKeyframe({
       'The first images are the locked person references and the final image is the generated shot. The task may involve any lawful industry, scene, identity, ethnicity, wardrobe or visual medium. Never impose a fixed character template.',
       'Return strict JSON only.',
     ].join('\n'),
-    userPrompt: `Person contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, person_presence: presence })}\nJudge only visible dimensions: require hand ownership only when a hand/arm is visible, wardrobe only when clothing is visible, identity/age/skin/hair/eyes/teeth when a face is visible, and body proportions when enough body is visible. Inspect for waxy or plastic skin, smeared pores, painted hair, glassy eyes, fused teeth, excessive beauty filtering, and lighting that does not integrate the person with the scene. A required partial person can never be not_applicable. Return {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"hand_owner_score":0..1,"skin_texture_score":0..1,"hair_detail_score":0..1,"ocular_dental_score":0..1,"lighting_integration_score":0..1,"plastic_skin":boolean,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
+    userPrompt: `Person contract: ${JSON.stringify(contract)}\nCurrent shot: ${JSON.stringify({ title: shot.title, visual: shot.visual, action: shot.action, characters: shot.characters, person_presence: presence })}\nJudge only visible dimensions: require hand ownership only when a hand/arm is visible, wardrobe only when clothing is visible, identity/age/skin/hair/eyes/teeth when a face is visible, and body proportions when enough body is visible. Inspect for waxy or plastic skin, smeared pores, painted hair, glassy eyes, fused teeth, excessive beauty filtering, and lighting that does not integrate the person with the scene. A required partial person can never be not_applicable. ${knowledgePolicyRuntime.qaBlock(shotContract.knowledge_policy_qa || {})} Return {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"hand_owner_score":0..1,"skin_texture_score":0..1,"hair_detail_score":0..1,"ocular_dental_score":0..1,"lighting_integration_score":0..1,"plastic_skin":boolean,"conflicts":string[],"mismatch_reasons":string[],"retry_instruction":string}.`,
     maxTokens: 2400,
     timeoutMs,
     maxCandidates,

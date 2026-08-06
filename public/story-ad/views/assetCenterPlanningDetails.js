@@ -1,5 +1,19 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-character-asset-kb-v44';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-character-asset-kb-v44';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-knowledge-runtime-v46';
+
+function knowledgePolicyTrace(item = {}) {
+  const policy = item.knowledge_policy || item.knowledgePolicy || {};
+  const ruleIds = Array.isArray(policy.rule_ids) ? policy.rule_ids : [];
+  const generation = String(policy.generation_fingerprint || policy.prompt_policy_fingerprint || '').trim();
+  const qa = String(policy.qa_fingerprint || policy.qa_policy_fingerprint || '').trim();
+  if (!generation && !qa && !ruleIds.length) return '';
+  const short = value => value ? `${value.slice(0, 12)}…` : '—';
+  return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list">
+    <div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div>
+    <div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div>
+    <div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div>
+  </div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
+}
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
@@ -124,7 +138,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${group === 'people' && !dossier && views.length ? legacyDossierBoard(item, views) : ''}
     ${group === 'scenes' ? sceneDetails(item) : ''}
     ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : mediaSection('完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
-    ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${profileDetails(item, group)}${group === 'people' ? personEditForm(item) : ''}${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}${group === 'people' ? ownedPropDetails(item) : ''}
+    ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${profileDetails(item, group)}${knowledgePolicyTrace(item)}${group === 'people' ? personEditForm(item) : ''}${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}${group === 'people' ? ownedPropDetails(item) : ''}
     <div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div></div>
     ${generatable && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成${group === 'people' ? '完整人物档案' : '动物资产'}</button></footer>` : ''}
     ${group === 'scenes' ? `<footer class="drawer-actions"><span>${sceneGenerated ? `当前已有 ${views.length} 个视角、${cameras.length} 个机位；仅在需要建立新版本时重新生成。` : '生成空间母版、视角和机位图，过程会显示统一进度与耗时。'}</span><button class="btn ${sceneGenerated ? '' : 'primary'}" type="button" data-drawer-generate-scene>${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button></footer>` : ''}

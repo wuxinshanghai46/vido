@@ -1,4 +1,4 @@
-const storyAd = require('../newStoryAd'), productAssetResolver = require('../newStoryAd/productAssetResolverService');
+const storyAd = require('../newStoryAd'), productAssetResolver = require('../newStoryAd/productAssetResolverService'), knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
 const referenceDrafts = require('./referenceDraftProjectionService'), countProjection = require('./projectCountProjectionService');
 const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
@@ -202,7 +202,7 @@ function peopleAssets(context = {}, projectedProps = []) {
       }),
       status: clean(item.person_contract?.status || item.verification_status || context.person_contract?.status || 'draft', 50),
       revision: Number(item.person_revision || item.revision || context.person_contract?.person_revision || 0) || 0,
-      source: clean(item.source || master?.source, 100),
+      source: clean(item.source || master?.source, 100), knowledge_policy: knowledgePolicyRuntime.trace(item.knowledge_policy || item.knowledge_policy_trace || {}),
     };
   });
 }
@@ -345,7 +345,7 @@ function sceneAssets(outputs = {}, context = {}) {
       view_images: views,
       scene_world_assets: projectedWorldAssets,
       status: clean(contract.status || asset.status || (candidateCount ? 'selecting' : (imageUrl ? 'generated' : 'planned')), 50),
-      revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0,
+      revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0, knowledge_policy: knowledgePolicyRuntime.trace(asset.knowledge_policy || asset.knowledge_policy_trace || {}),
       planned: options.planned === true,
       reference_only: options.referenceOnly === true,
       candidate_count: candidateCount,

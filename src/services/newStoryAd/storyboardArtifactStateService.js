@@ -2,13 +2,13 @@ const storage = require('./storageService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService');
 
 /** Persist scoped keyframe freshness and return the browser-authoritative artifact snapshot. */
-function persistAndSnapshot(taskId, contracts = []) {
+function persistAndSnapshot(taskId, contracts = [], { clearDownstream = false } = {}) {
   const previous = storage.getOutput(taskId, 'keyframe_contracts') || [];
   const changedIndexes = contracts
     .map((contract, index) => keyframeContractFreshness.contractMatches(previous[index], contract) ? -1 : index)
     .filter(index => index >= 0);
   keyframeContractFreshness.persist(taskId, contracts, {
-    clearDownstream: changedIndexes.length > 0,
+    clearDownstream: clearDownstream && changedIndexes.length > 0,
     changedIndexes,
   });
   return {

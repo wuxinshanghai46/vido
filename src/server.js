@@ -22,9 +22,15 @@ if (process.env.NODE_ENV === 'production' && process.env.STORY_AD_ALLOW_LEGACY_C
 }
 const STORY_AD_BUILD_ID = storyAdRelease.build_id;
 const STORY_AD_CONTRACT_VERSION = storyAdRelease.contract_version;
+let storyAdReleaseVerification = null;
+let storyAdRuntimeVerification = null;
 if (process.env.STORY_AD_VERIFY_RELEASE !== '0') {
-  storyAdReleaseIntegrity.assertCurrent({ root: path.resolve(__dirname, '..'), release: storyAdRelease });
+  storyAdReleaseVerification = storyAdReleaseIntegrity.assertCurrent({ root: path.resolve(__dirname, '..'), release: storyAdRelease });
+  storyAdRuntimeVerification = storyAdReleaseIntegrity.assertRuntimeCurrent({ root: path.resolve(__dirname, '..'), release: storyAdRelease });
 }
+const storyAdRuntimeManifest = storyAdRuntimeVerification?.manifest || require('../config/story-ad-runtime-manifest.json');
+const STORY_AD_RUNTIME_HASH = storyAdRuntimeVerification?.runtime_hash || storyAdReleaseIntegrity.manifestFingerprint(storyAdRuntimeManifest);
+const STORY_AD_PROCESS_STARTED_AT = new Date().toISOString();
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
 const authStore = require('./models/authStore');
@@ -89,6 +95,7 @@ app.use((req, res, next) => {
   if (!storyAdRequest) return next();
   res.setHeader('X-VIDO-Build', STORY_AD_BUILD_ID);
   res.setHeader('X-VIDO-Contract-Version', STORY_AD_CONTRACT_VERSION);
+  res.setHeader('X-VIDO-Runtime-Hash', STORY_AD_RUNTIME_HASH);
   if (!/\/assets\//.test(String(req.path || ''))) {
     res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   }
@@ -723,6 +730,9 @@ app.get('/api/story-ad/version', (req, res) => {
     success: true,
     build_id: STORY_AD_BUILD_ID,
     contract_version: STORY_AD_CONTRACT_VERSION,
+    runtime_hash: STORY_AD_RUNTIME_HASH,
+    process_id: process.pid,
+    process_started_at: STORY_AD_PROCESS_STARTED_AT,
     legacy_story_ad_ui_enabled: false,
   });
 });

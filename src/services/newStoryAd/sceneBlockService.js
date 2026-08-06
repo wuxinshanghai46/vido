@@ -341,6 +341,7 @@ function compactSceneLock(lock = {}) {
 /** 生成单镜或一镜到底提示词；只有明确批准的一镜到底才使用连续母片语义。 */
 function generationPrompt(block = {}, shots = [], contracts = [], repairInstructions = {}) {
   const firstContract = contracts[block.first_index] || {};
+  const knowledgeRuntime = require('./knowledgePolicyRuntimeService');
   const repairs = block.member_indexes.map(index => repairInstructions[index]).filter(Boolean);
   const promptBeats = (block.beats || []).map(beat => ({
     shot_index: beat.shot_index, start_sec: beat.start_sec, end_sec: beat.end_sec,
@@ -358,7 +359,7 @@ function generationPrompt(block = {}, shots = [], contracts = [], repairInstruct
     'Generate exactly one final edit shot. Do not invent additional shots, split screens, montages or unrequested camera changes.',
     'Use this shot-specific camera, lens, composition, cast blocking and approved keyframe state. The shared scene world defines geometry but does not force a continuous mother clip.',
   ];
-  return [
+  const body = [
     ...instructions,
     'Treat doors, windows, walls, fixed furniture, display structures, dominant materials, lighting direction and spatial anchors as immutable geometry.',
     'The task may represent any lawful industry, environment, person, product or story. Use only this task contract and never substitute a template scene.',
@@ -371,7 +372,13 @@ function generationPrompt(block = {}, shots = [], contracts = [], repairInstruct
     repairs.length ? `QA repair requirements: ${repairs.join('\n')}` : '',
     `${oneTake ? 'Ordered timeline beats' : 'Edit shot contract'}: ${JSON.stringify(promptBeats)}`,
     `Generation unit contract: ${JSON.stringify({ id: block.id, mode: block.generation_mode || 'single_shot', scene_identity: block.scene_identity, duration_sec: block.duration_sec, scene_lock: compactSceneLock(firstContract.scene_lock || {}) })}`,
-  ].filter(Boolean).join('\n').slice(0, 3950);
+  ].filter(Boolean).join('\n');
+  return knowledgeRuntime.composeBoundedPrompt(
+    knowledgeRuntime.promptBlock(firstContract.knowledge_policy_video_generation || {}),
+    body,
+    3950,
+    1200,
+  );
 }
 
 module.exports = {

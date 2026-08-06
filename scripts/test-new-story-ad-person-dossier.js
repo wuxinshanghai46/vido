@@ -114,7 +114,8 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.base_actions.length, 6);
   assert.strictEqual(dossierDone.dossier.accessory_details.length, 1);
   assert.deepStrictEqual(dossierDone.dossier.accessory_details.map(item => item.key), ['shoes']);
-  assert.ok(dossierDone.dossier.accessory_details.every(item => item.kind === 'wearable_accessory' && item.derived_locally === false && item.detail_mode === 'generated_high_resolution' && item.model_call_count === 1));
+  assert.ok(dossierDone.dossier.accessory_details.every(item => item.kind === 'wearable_accessory' && item.derived_locally === true && item.evidence_mode === 'local_crop' && item.model_call_count === 0));
+  assert.strictEqual(dossierDone.dossier.accessory_evidence_trace.model_call_count, 0);
   assert.ok(dossierDone.dossier.accessory_details.every(item => fs.existsSync(mediaAdapter.assetPathFromName(item.filename))));
   assert.strictEqual(dossierDone.dossier.wardrobe_details.items.length, 4);
   assert.deepStrictEqual(dossierDone.dossier.wardrobe_details.items.map(item => item.key), [

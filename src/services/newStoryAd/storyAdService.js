@@ -6,7 +6,7 @@ const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertConte
 const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
-const { buildKeyframeContracts } = require('./keyframeContractService');
+const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
 const diagnostics = require('./diagnosticsService');
 const mediaAdapter = require('./mediaAdapter'), ttsAdapter = require('./ttsAdapter'), ttsReuse = require('./ttsReuseService');
@@ -737,7 +737,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   if (storyboardChanged) {
     const nextRevision = Math.max(1, Number(task.content_revision || 1) || 1) + 1;
     storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
-    ['quality_review', 'tts_audio', 'video_clips', 'video_scene_blocks', 'final_video']
+    ['quality_review', 'tts_audio', 'video_scene_blocks', 'final_video']
       .forEach(kind => storage.deleteOutput(taskId, kind));
     storage.carryManifestRevision(taskId, nextRevision);
     storage.saveSnapshot(taskId, {
@@ -757,9 +757,9 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   });
   storage.deleteOutput(taskId, 'storyboard_checkpoint');
   storage.saveOutput(taskId, 'sound_journey', buildSoundJourney(normalized));
-  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], temporal_evidence_graph: compiled.graph };
+  const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], temporal_evidence_graph: compiled.graph, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const contracts = buildKeyframeContracts(contractCtx, normalized);
-  const artifactState = storyboardArtifactState.persistAndSnapshot(taskId, contracts);
+  const artifactState = storyboardArtifactState.persistAndSnapshot(taskId, contracts, { clearDownstream: current.length !== normalized.length });
   storage.saveStage(taskId, 'storyboard', {
     status: 'done',
     output_summary: `${normalized.length} storyboard shots saved`,
@@ -943,7 +943,7 @@ async function generateStoryboardStage(taskId, options = {}) {
   }
   assertBlueprintUnchanged();
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = compiled.shots;
-  const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph };
+  const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const contracts = buildKeyframeContracts(contractCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);
   if ((storage.getOutput(taskId, 'prop_assets') || []).length) propAssets.refreshPropTimelines(taskId);
@@ -971,7 +971,7 @@ async function buildKeyframeContractStage(taskId) {
   if (!task) throw new Error('任务不存在');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   let shots = storage.getOutput(taskId, 'storyboard_table');
   if (!Array.isArray(shots) || !shots.length) throw new Error('请先生成分镜表');
   shots = bindShotsToScenes(shots, ctx.scene_assets);
@@ -1296,7 +1296,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     // 通用语义忠实约束：防止模型把抽象业务词擅自转成无关行业画面。
     'Semantic fidelity rule: visualize the current task brief, advertised subject, locked scene asset and current shot action literally. Do not replace an abstract business concept with unrelated industry symbols, charts, trading screens, stock-market dashboards, generic finance UI, random data walls or abstract technology panels unless the user brief or the edited shot explicitly asks for that visual category.',
     'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
-    'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.',
+    'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.', knowledgePolicyRuntime.promptBlock(contract.knowledge_policy_generation || {}),
   ];
   const prompt = compactKeyframePrompt(parts);
   return keyframePromptInvariants.assertPrompt(prompt, {
@@ -1330,7 +1330,7 @@ function previewShotPrompts(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  let ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const stored = storage.getOutput(taskId, 'storyboard_table') || [];
   if (!Array.isArray(stored) || !stored.length) throw new Error('当前项目没有可用分镜表，请先生成分镜。');
   const rawIndex = Number(options.shot_index ?? options.shotIndex ?? 0);
@@ -1368,7 +1368,7 @@ async function generateKeyframesStage(taskId, options = {}) {
   if (!task) throw new Error('没有找到对应项目。');
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
-  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
+  const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [], knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   assertVerifiedSceneAssets(ctx.scene_assets);
   personIdentity.assertVerifiedPerson(ctx);
   productIdentity.assertVerifiedProduct(ctx);
@@ -1603,7 +1603,7 @@ async function generateKeyframesStage(taskId, options = {}) {
             status: 'qa_unavailable',
             qa_policy_version: 2,
             contract_fingerprint: contracts[i]?.contract_fingerprint || '',
-            contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
+            contract_compiler_signature: contracts[i]?.contract_compiler_signature || '', knowledge_policy: contracts[i]?.knowledge_policy_trace || null,
             generation_id: generationProgress.generation_id,
             image_latency_ms: imageLatencyMs,
             qa_latency_ms: Date.now() - qaStartedMs,
@@ -1643,7 +1643,7 @@ async function generateKeyframesStage(taskId, options = {}) {
           status: qa.pass ? 'accepted' : 'rejected',
           qa_policy_version: 2,
           contract_fingerprint: contracts[i]?.contract_fingerprint || '',
-          contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
+          contract_compiler_signature: contracts[i]?.contract_compiler_signature || '', knowledge_policy: contracts[i]?.knowledge_policy_trace || null,
           generation_id: generationProgress.generation_id,
           image_latency_ms: imageLatencyMs,
           qa_latency_ms: qaLatencyMs,
@@ -1701,7 +1701,7 @@ async function generateKeyframesStage(taskId, options = {}) {
         current_generation_id: generationProgress.generation_id,
         qa_policy_version: 2,
         contract_fingerprint: contracts[i]?.contract_fingerprint || '',
-        contract_compiler_signature: contracts[i]?.contract_compiler_signature || '',
+        contract_compiler_signature: contracts[i]?.contract_compiler_signature || '', knowledge_policy: contracts[i]?.knowledge_policy_trace || null,
         contract_outdated: false,
         contract_outdated_reason: '',
         accepted_revision: {
@@ -1982,7 +1982,7 @@ async function runKeyframeQaReviews({ taskId, ctx = {}, shot = {}, contract = {}
         layoutReferenceUrl: layoutReference?.url || '',
         generatedUrl: reviewUrl,
         contract: contract?.scene_lock || sceneAsset?.scene_contract || {},
-        shot,
+        shot, knowledgePolicyQaBlock: knowledgePolicyRuntime.qaBlock(contract.knowledge_policy_qa || {}),
         timeoutMs: attempt ? 45000 : 60000,
         maxCandidates: attempt ? 2 : 3,
         stageBudgetMs: attempt ? 90000 : 120000,
@@ -2458,7 +2458,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
       const deterministicTransition = videoBoundaryPolicy.usesDeterministicTransition(planned);
       const crossQa = deterministicTransition
         ? videoBoundaryPolicy.deterministicTransitionQa(previous, current, planned.transition_override || 'dissolve')
-        : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, previousLineageFingerprint: previous.lineage_fingerprint || '', currentLineageFingerprint: current.lineage_fingerprint || '', ctx });
+        : await videoFrameQa.reviewCrossShot({ taskId, previous: previous.qa, current: current.qa, previousShot: generationShots[index - 1] || {}, currentShot: generationShots[index] || {}, previousLineageFingerprint: previous.lineage_fingerprint || '', currentLineageFingerprint: current.lineage_fingerprint || '', ctx, knowledgePolicyQaBlock: knowledgePolicyRuntime.qaBlock(contracts[index]?.knowledge_policy_video_qa || {}) });
       const { code: crossErrorCode, message: crossError } = videoFrameQa.crossShotFailure(crossQa, index);
       clips[index] = {
         ...current,
