@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-action-state-and-retry-label-v42';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { request } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

@@ -307,6 +307,27 @@ function sceneSpecMissingFields(spec = null) {
     .filter(key => !cleanText(spec[key] || '', 1000));
 }
 
+function mergeSubmittedSceneSpecWithAuthority(authoritativeRaw = {}, submittedRaw = {}) {
+  const authoritative = normalizeSceneSpec(authoritativeRaw || {});
+  const submitted = normalizeSceneSpec(submittedRaw || {});
+  if (!sceneSpecMissingFields(submitted).length) return submitted;
+  const merged = {
+    ...authoritative,
+    layoutText: submitted.layoutText || authoritative.layoutText,
+    materialLightText: submitted.materialLightText || authoritative.materialLightText,
+    interactionText: submitted.interactionText || authoritative.interactionText,
+    negativeText: submitted.negativeText || authoritative.negativeText,
+    storyStates: submitted.storyStates?.length ? submitted.storyStates : authoritative.storyStates,
+    interactionAnchors: submitted.interactionAnchors?.length ? submitted.interactionAnchors : authoritative.interactionAnchors,
+    routes: submitted.routes?.length ? submitted.routes : authoritative.routes,
+    cameraPlan: submitted.cameraPlan?.length ? submitted.cameraPlan : authoritative.cameraPlan,
+  };
+  if (submittedRaw.surfaceTopology || submittedRaw.surface_topology) merged.surfaceTopology = submitted.surfaceTopology;
+  if (submittedRaw.sceneExperienceContract || submittedRaw.scene_experience_contract) merged.sceneExperienceContract = submitted.sceneExperienceContract;
+  if (submittedRaw.materialContract || submittedRaw.material_contract) merged.materialContract = submitted.materialContract;
+  return normalizeSceneSpec(merged);
+}
+
 function assertScenePlanContract(sceneConfig = {}) {
   const duplicateSpaceIds = sceneConfig.spaces
     .map(space => space.id)
@@ -419,9 +440,11 @@ function resolveSceneGenerationTarget({ sceneConfig = {}, context = {}, body = {
   const submittedSceneSpec = submittedRawSpec && typeof submittedRawSpec === 'object'
     ? normalizeSceneSpec(submittedRawSpec)
     : null;
-  const sceneSpec = submittedSceneSpec
-    || space?.scene_spec
+  const authoritativeSceneSpec = space?.scene_spec
     || normalizeSceneSpec(context.scene_spec || context.sceneSpec || {});
+  const sceneSpec = submittedSceneSpec
+    ? mergeSubmittedSceneSpecWithAuthority(authoritativeSceneSpec, submittedRawSpec)
+    : authoritativeSceneSpec;
   const missingFields = sceneSpecMissingFields(sceneSpec);
   if (spaces.length && missingFields.length && !allowIncompleteSceneSpec) {
     throw generationTargetError(
@@ -639,6 +662,7 @@ module.exports = {
   normalizeScenePlan,
   resolveSceneGenerationTarget,
   sceneSpecMissingFields,
+  mergeSubmittedSceneSpecWithAuthority,
   assertScenePlanContract,
   resolveSceneMode,
   selectSceneAsset,

@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

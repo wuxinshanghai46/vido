@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-action-state-and-retry-label-v42';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
-import { confirmDialog } from '../components/dialog.js?v=20260806-action-state-and-retry-label-v42';
+import { request } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
+import { confirmDialog } from '../components/dialog.js?v=20260806-scene-spec-authority-merge-v43';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

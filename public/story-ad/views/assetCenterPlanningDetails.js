@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-action-state-and-retry-label-v42';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-scene-spec-authority-merge-v43';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

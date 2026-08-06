@@ -167,7 +167,12 @@ function testSceneCameraProjection() {
   storage.saveOutput(taskId, 'context', context);
   storage.saveOutput(taskId, 'scene_config', {
     scene_mode: 'single',
-    spaces: [{ id: 'scene-room', name: '测试空间' }],
+    spaces: [{ id: 'scene-room', name: '测试空间', scene_spec: {
+      layoutText: '入口、主体区和背景形成连续空间边界',
+      materialLightText: '暖灰石材与拉丝金属，左侧窗光配合顶部柔光',
+      interactionText: '人物从入口走向主体展示区',
+      negativeText: '禁止改变空间边界和主要材质',
+    } }],
   });
   storage.saveOutput(taskId, 'scene_assets', [{
     id: 'scene-room',
@@ -189,6 +194,10 @@ function testSceneCameraProjection() {
 
   const bundle = bundles.buildProjectBundle(taskId, { sections: 'assets', user });
   const scene = bundle.assets.scenes[0];
+  assert.equal(scene.scene_spec.materialLightText, '暖灰石材与拉丝金属，左侧窗光配合顶部柔光', '项目投影必须保留服务端规范 materialLightText');
+  assert.equal(scene.scene_spec.layoutText, '入口、主体区和背景形成连续空间边界');
+  assert.equal(scene.scene_spec.materials, scene.scene_spec.materialLightText, '兼容展示字段不得丢失组合材质光线合同');
+  assert.equal(scene.scene_spec.light, scene.scene_spec.materialLightText, '兼容展示字段不得丢失组合材质光线合同');
   assert.equal(scene.cameras.length, 4);
   assert.equal(scene.cameras[0].image_url, '/master.png');
   assert.equal(scene.cameras[1].image_url, '/reverse.png', '缺少显式图片时必须按稳定 view_id 回退');

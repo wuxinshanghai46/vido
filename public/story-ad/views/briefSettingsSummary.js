@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { escapeHtml } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

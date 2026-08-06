@@ -403,6 +403,35 @@ async function assertMultiSpacePromptsAndRecovery() {
   assert(parkTarget.scene_spec.layoutText.includes('PARK_ONLY_MARKER'));
   assert(homeTarget.scene_spec.layoutText.includes('HOME_ONLY_MARKER'));
 
+  const elevenSpacePlan = sceneBinding.normalizeScenePlan({
+    mode: 'multi',
+    spaces: Array.from({ length: 11 }, (_, index) => ({
+      id: `space_${index + 1}`,
+      name: `Space ${index + 1}`,
+      scene_spec: fullSceneSpec(`AUTHORITY_${index + 1}`, `room ${index + 1}`),
+    })),
+  });
+  const repairedTargets = elevenSpacePlan.spaces.map((space, index) => sceneBinding.resolveSceneGenerationTarget({
+    sceneConfig: elevenSpacePlan,
+    context: { ...baseContext, scene_mode: 'multi', scene_plan: elevenSpacePlan },
+    body: {
+      space_id: space.id,
+      scene_spec: {
+        layout: `客户端编辑布局 ${index + 1}`,
+        materials: '',
+        light: '',
+        interaction: `客户端互动 ${index + 1}`,
+        negative: `客户端限制 ${index + 1}`,
+      },
+    },
+  }));
+  assert.equal(repairedTargets.length, 11, '联合生成必须逐一覆盖 11 个独立场景');
+  repairedTargets.forEach((target, index) => {
+    assert.equal(target.scene_spec.layoutText, `客户端编辑布局 ${index + 1}`);
+    assert(target.scene_spec.materialLightText.includes(`AUTHORITY_${index + 1}`), '旧客户端缺字段时必须按同一 space_id 补回权威材质光线合同');
+    assert(!sceneBinding.sceneSpecMissingFields(target.scene_spec).length, '合并后的每个场景合同必须完整');
+  });
+
   const staleWallSpec = {
     ...parkSpec,
     layoutText: '旧配置：多块展示墙与侧墙共同承载不同材料。',
