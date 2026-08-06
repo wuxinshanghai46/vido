@@ -17,6 +17,7 @@ const visualPolicy = require('../src/services/newStoryAd/visualRealismPolicyServ
 const subjectBundles = require('../src/services/newStoryAd/subjectAssetBundleService');
 const blueprintQuality = require('../src/services/newStoryAd/blueprintQualityService');
 const complianceKb = require('../src/services/seeds/ai_visual_compliance');
+const characterAssetKb = require('../src/services/seeds/character_asset_card');
 
 function testBriefFormatter() {
   const input = String.raw`\n\n**广告主题**：真实家庭日常\n\n**核心故事线**：产品自然进入生活\n\n### 画面风格：真实摄影`;
@@ -185,6 +186,21 @@ function testComplianceKnowledgeBase() {
   assert.doesNotMatch(visualPolicy.image2CompliancePrompt(), /bypass moderation|evade review/i);
 }
 
+function testCharacterAssetCardKnowledgeBase() {
+  const contract = characterAssetKb.find(item => item.id === 'kb_character_asset_card_visual_contract_20260806');
+  const accessory = characterAssetKb.find(item => item.id === 'kb_character_accessory_evidence_fallback_20260806');
+  assert.ok(contract, '人物资产卡视觉合同必须进入种子知识库');
+  assert.ok(accessory, '配件证据降级协议必须进入种子知识库');
+  assert.match(contract.content, /正面、侧面、背面/);
+  assert.match(contract.content, /六种表情/);
+  assert.match(contract.content, /本地排版合成/);
+  assert.match(contract.content, /不要求图片模型在一次调用中/);
+  assert.match(accessory.content, /L1 复用[\s\S]*L2 本地派生[\s\S]*L3 模型增强/);
+  assert.match(accessory.content, /模型调用为 0/);
+  assert.match(accessory.content, /计费未知不得自动重试/);
+  assert.match(accessory.content, /普通(?:造型)?配件失败时标记 evidence_pending/);
+}
+
 function testSceneRightsPreflightScope() {
   const campaignBrief = '结尾画面中屏幕上浮现品牌Logo和广告语，品牌素材将在成片阶段处理。';
   const sceneBody = {
@@ -228,6 +244,7 @@ async function main() {
   testSceneAndKeyframeRealismPolicy();
   testProviderReferencePriority();
   testComplianceKnowledgeBase();
+  testCharacterAssetCardKnowledgeBase();
   testSceneRightsPreflightScope();
   console.log('剧情广告 Image 2 合规、人物/场景真实感与需求布局：全部测试通过');
 }

@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-scene-spec-authority-merge-v43';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-character-asset-kb-v44';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-character-asset-kb-v44';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

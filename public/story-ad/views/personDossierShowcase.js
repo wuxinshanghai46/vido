@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-character-asset-kb-v44';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',

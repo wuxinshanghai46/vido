@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
+import { request } from '../api.js?v=20260806-character-asset-kb-v44';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-character-asset-kb-v44';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-scene-spec-authority-merge-v43';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-character-asset-kb-v44';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-character-asset-kb-v44';
 
 export function createProjectStore() {
   const state = {

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-spec-authority-merge-v43';
+import { request } from '../api.js?v=20260806-character-asset-kb-v44';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-character-asset-kb-v44';
+import { confirmDialog } from '../components/dialog.js?v=20260806-character-asset-kb-v44';
 
 function assetModal(title = '') {
   const backdrop = document.createElement('div');

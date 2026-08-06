@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260806-scene-spec-authority-merge-v43';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-spec-authority-merge-v43';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-spec-authority-merge-v43';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-scene-spec-authority-merge-v43';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-scene-spec-authority-merge-v43';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-scene-spec-authority-merge-v43';
-import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-scene-spec-authority-merge-v43';
+import { request } from '../api.js?v=20260806-character-asset-kb-v44';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-character-asset-kb-v44';
+import { confirmDialog } from '../components/dialog.js?v=20260806-character-asset-kb-v44';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-character-asset-kb-v44';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-character-asset-kb-v44';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-character-asset-kb-v44';
+import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-character-asset-kb-v44';
 
 const GROUPS = [
   ['people', '人物'],
