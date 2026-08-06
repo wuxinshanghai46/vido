@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260805-visual-retry-consent-v40';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260805-visual-retry-consent-v40';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260805-visual-retry-consent-v40';
+import { createProjectStore } from './store/projectStore.js?v=20260806-action-state-and-retry-label-v42';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-action-state-and-retry-label-v42';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260805-visual-retry-consent-v40'),
-  assets: () => import('./views/assetCenterView.js?v=20260805-visual-retry-consent-v40'),
-  plot: () => import('./views/plotRoomView.js?v=20260805-visual-retry-consent-v40'),
-  storyboard: () => import('./views/storyboardView.js?v=20260805-visual-retry-consent-v40'),
-  shot: () => import('./views/shotDesignerView.js?v=20260805-visual-retry-consent-v40'),
-  final: () => import('./views/finalView.js?v=20260805-visual-retry-consent-v40'),
-  workflow: () => import('./views/workflowView.js?v=20260805-visual-retry-consent-v40'),
+  brief: () => import('./views/briefView.js?v=20260806-action-state-and-retry-label-v42'),
+  assets: () => import('./views/assetCenterView.js?v=20260806-action-state-and-retry-label-v42'),
+  plot: () => import('./views/plotRoomView.js?v=20260806-action-state-and-retry-label-v42'),
+  storyboard: () => import('./views/storyboardView.js?v=20260806-action-state-and-retry-label-v42'),
+  shot: () => import('./views/shotDesignerView.js?v=20260806-action-state-and-retry-label-v42'),
+  final: () => import('./views/finalView.js?v=20260806-action-state-and-retry-label-v42'),
+  workflow: () => import('./views/workflowView.js?v=20260806-action-state-and-retry-label-v42'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-visual-retry-consent-v40';
-import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v40';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
+import { request } from '../api.js?v=20260806-action-state-and-retry-label-v42';
+import { confirmDialog } from '../components/dialog.js?v=20260806-action-state-and-retry-label-v42';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -13,7 +13,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
     billingReviewRequired,
     billingReviewSupportId: bundle.generation?.progress?.support_id || '',
     visualActionLabel: billingReviewRequired
-      ? '接受费用风险并继续缺失项'
+      ? '重新生成'
       : (missingSubjectCount && missingSceneCount
         ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）`
         : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全'))),

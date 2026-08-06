@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
+import { escapeHtml } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

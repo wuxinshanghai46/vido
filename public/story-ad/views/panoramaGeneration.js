@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260805-visual-retry-consent-v40';
-import { toast } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
-import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v40';
+import { request } from '../api.js?v=20260806-action-state-and-retry-label-v42';
+import { toast } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { confirmDialog } from '../components/dialog.js?v=20260806-action-state-and-retry-label-v42';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

@@ -29,6 +29,10 @@ assert(mountBody.indexOf('renderSections(assets, total)') < mountBody.indexOf('r
 assert(assetView.includes('data-generate-visual-assets'));
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
+assert(!assetView.includes('<button class="btn primary" type="button" data-build-scenes>'), '场景规划按钮静止时不得伪装成默认下一步');
+assert(assetView.includes("assets.scenes?.length ? '重新建立场景规划' : '建立场景规划'"), '已有场景方案时必须明确显示为重新建立');
+assert(assetView.includes("button.classList.add('primary')"), '场景规划按钮只在执行期间进入强调态');
+assert(assetView.includes("button.classList.remove('primary')"), '场景规划执行结束后必须恢复中性态');
 
 const briefView = read('public/story-ad/views/briefView.js');
 assert.strictEqual((briefView.match(/brief-reference-primary-action/g) || []).length, 1, 'next-step CTA must not be duplicated below the report');
@@ -51,7 +55,9 @@ assert(route.includes('deferPublish: true'));
 assert(route.includes('existingSceneAssets: sceneAssets'));
 assert(route.includes('sceneError.partial_scene_assets = sceneAssets'), 'completed scenes must survive a later scene failure');
 assert(route.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must expose an owned one-time authorization endpoint');
-assert(billingRetryView.includes('接受费用风险并继续缺失项'));
+assert(billingRetryView.includes("? '重新生成'"), '计费未知状态的主按钮必须明确命名为重新生成');
+assert(!billingRetryView.includes('接受费用风险并继续缺失项'), '费用风险说明不能替代重新生成的操作名称');
+assert(assetView.includes('请点击“重新生成”并在确认窗口中完成一次性费用风险授权'), '拦截提示必须指向重新生成按钮和二次确认窗口');
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorization'));
 assert(billingRetryView.includes("progress.billing_state === 'unknown'"), '再次供应商未知后必须继续显示费用风险入口');

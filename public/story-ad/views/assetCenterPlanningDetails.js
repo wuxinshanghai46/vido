@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260805-visual-retry-consent-v40';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-action-state-and-retry-label-v42';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

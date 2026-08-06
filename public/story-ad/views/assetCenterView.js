@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260805-visual-retry-consent-v40';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260805-visual-retry-consent-v40';
-import { confirmDialog } from '../components/dialog.js?v=20260805-visual-retry-consent-v40';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260805-visual-retry-consent-v40';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260805-visual-retry-consent-v40';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260805-visual-retry-consent-v40';
-import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260805-visual-retry-consent-v40';
+import { request } from '../api.js?v=20260806-action-state-and-retry-label-v42';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-action-state-and-retry-label-v42';
+import { confirmDialog } from '../components/dialog.js?v=20260806-action-state-and-retry-label-v42';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-action-state-and-retry-label-v42';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-action-state-and-retry-label-v42';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-action-state-and-retry-label-v42';
+import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-action-state-and-retry-label-v42';
 
 const GROUPS = [
   ['people', '人物'],
@@ -263,7 +263,7 @@ export async function mount(host, context) {
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
-      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn primary" type="button" data-build-scenes>建立场景规划</button></div>
+      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn" type="button" data-build-scenes>${assets.scenes?.length ? '重新建立场景规划' : '建立场景规划'}</button></div>
     </section>
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
@@ -285,7 +285,7 @@ export async function mount(host, context) {
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
     if (billingReviewRequired) {
-      toast('当前人物配饰存在计费未知记录，请使用“接受费用风险并继续缺失项”完成一次性授权。', 'warning');
+      toast('当前人物配饰存在计费未知记录，请点击“重新生成”并在确认窗口中完成一次性费用风险授权。', 'warning');
       return false;
     }
     const intent = target?.subject_id || 'all';
@@ -559,11 +559,15 @@ export async function mount(host, context) {
   host.querySelector('[data-build-scenes]').addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
+      button.classList.add('primary');
       setButtonBusy(button, true, '正在建立…', { elapsed: true });
       await store.runStage('scene-config');
       toast('场景规划已提交，请稍后查看状态。', 'success');
       await context.refreshShell();
-    } catch (error) { toast(error.message, 'danger'); } finally { setButtonBusy(button, false); }
+    } catch (error) { toast(error.message, 'danger'); } finally {
+      setButtonBusy(button, false);
+      button.classList.remove('primary');
+    }
   });
   host.querySelector('[data-confirm-assets]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
