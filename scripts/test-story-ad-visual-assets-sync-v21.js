@@ -58,9 +58,13 @@ assert(route.includes('sceneError.partial_scene_assets = sceneAssets'), 'complet
 assert(route.includes("'/tasks/:id/visual-assets/retry-authorization'"), 'billing-unknown visual recovery must expose an owned one-time authorization endpoint');
 assert(billingRetryView.includes("? '重新生成'"), '计费未知状态的主按钮必须明确命名为重新生成');
 assert(!billingRetryView.includes('接受费用风险并继续缺失项'), '费用风险说明不能替代重新生成的操作名称');
-assert(assetView.includes('请点击“重新生成”并在确认窗口中完成一次性费用风险授权'), '拦截提示必须指向重新生成按钮和二次确认窗口');
+assert(!assetView.includes('当前人物配饰存在计费未知记录'), '单个人物按钮不能再被其它计费未知单元全局拦截');
+assert(assetView.includes("lane: 'subjects'"), '人物按钮必须只核对人物分支的失败单元');
+assert(assetView.includes("lane: 'scenes'"), '场景按钮必须只核对当前场景的失败单元');
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorization'));
+assert(billingRetryView.includes('checkpoint_key: review.review_key'), '计费风险授权必须精确到单个 checkpoint');
+assert(billingRetryView.includes('for (const review of reviews)'), '多个计费未知单元必须逐项确认，不能批量授权');
 assert(billingRetryView.includes("progress.billing_state === 'unknown'"), '再次供应商未知后必须继续显示费用风险入口');
 assert(billingRetryView.includes("subjectLane.billing_state === 'unknown'"), '主体分支未知计费必须继续锁定通用生成入口');
 
@@ -71,6 +75,7 @@ const store = read('public/story-ad/store/projectStore.js');
 assert(store.includes('if (data.accepted === false)'), 'duplicate jobs must not be reported as submitted');
 const adapter = read('src/services/newStoryAd/mediaAdapter.js');
 assert(adapter.includes("'new_story_ad.image_provider'"), 'all image calls must share one provider pool');
+assert(adapter.includes('generationBillingGuard.run'), '同一任务首次计费未知后必须阻止尚未提交的后续图片调用');
 const deployRelease = collectStoryAdReleaseFiles({ root }).map(file => `'${file}'`).join('\n');
 assert(deployRelease.includes("'src/services/newStoryAd/sceneBindingService.js'"), '场景权威合并运行文件必须进入生产发布清单');
 

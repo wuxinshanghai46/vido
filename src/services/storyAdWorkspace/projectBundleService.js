@@ -5,7 +5,7 @@ const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProje
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
-const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService');
+const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
@@ -457,7 +457,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   };
   const projectedProps = propAssets(outputs, context);
   const projectedAssets = {
-    people: peopleAssets(context, projectedProps),
+    people: subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs),
     animals: animalAssets(context),
     products: productAssets(context),
     logos: logoAssets(context),

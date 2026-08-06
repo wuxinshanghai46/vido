@@ -9,6 +9,7 @@ const { loadSettings } = require('../settingsService');
 const deyunaiService = require('../deyunaiService');
 const modelGateway = require('./modelGateway');
 const generationConcurrency = require('./generationConcurrencyService');
+const generationBillingGuard = require('./generationBillingGuardService');
 const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
 const publicReferences = require('./publicReferenceService');
@@ -214,6 +215,14 @@ function isProviderRightsAuditError(error = null) {
 }
 
 function classifyImageGenerationError(error = null) {
+  if (error?.code === 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN') {
+    return {
+      code: error.code,
+      retryable: false,
+      terminal: true,
+      message: error.message,
+    };
+  }
   if (isProviderRightsAuditError(error)) {
     return {
       code: 'PROVIDER_RIGHTS_AUDIT',
@@ -494,6 +503,7 @@ async function generateImage({
     .slice(0, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
+  const effectiveGenerationId = String(generationId || cancellation.current()?.generationId || taskId || '').slice(0, 120);
   if (String(stage || '').startsWith('new_story_ad.')) {
     console.info('[new_story_ad:image_candidates]', JSON.stringify({
       stage,
@@ -539,10 +549,12 @@ async function generateImage({
       // without reference images; the generic OpenAI image client cannot decode
       // those responses reliably.
       if (/deyunai|漫路/i.test(`${config.family} ${config.adapter} ${config.providerId}`)) {
-        const invokeDeyunai = candidatePrompt => generationConcurrency.schedule(
-          'new_story_ad.image_provider',
-          Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
-          () => deyunaiService.generateImage({
+        const invokeDeyunai = candidatePrompt => generationBillingGuard.run(
+          { taskId, generationId: effectiveGenerationId },
+          () => generationConcurrency.schedule(
+            'new_story_ad.image_provider',
+            Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
+            () => deyunaiService.generateImage({
           model: config.modelId,
           prompt: candidatePrompt,
           n: 1,
@@ -556,7 +568,8 @@ async function generateImage({
           onSubmitted,
           onProgress,
             timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
-          }),
+            }),
+          ),
         );
         const governedPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(prompt) : prompt;
         const governedAuditPrompt = String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt;
@@ -614,15 +627,18 @@ async function generateImage({
         config,
         String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt,
       );
-      const response = await generationConcurrency.schedule(
-        'new_story_ad.image_provider',
-        Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
-        () => client.images.generate({
-          model: config.modelId,
-          prompt: genericPrompt,
-          size: sizeFor(config, aspectRatio),
-          n: 1,
-        }, { signal: cancellation.signal() }),
+      const response = await generationBillingGuard.run(
+        { taskId, generationId: effectiveGenerationId },
+        () => generationConcurrency.schedule(
+          'new_story_ad.image_provider',
+          Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
+          () => client.images.generate({
+            model: config.modelId,
+            prompt: genericPrompt,
+            size: sizeFor(config, aspectRatio),
+            n: 1,
+          }, { signal: cancellation.signal() }),
+        ),
       );
       cancellation.throwIfCancelled(taskId);
       const first = Array.isArray(response?.data) ? response.data[0] : null;

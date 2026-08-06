@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-interaction-feedback-v49';
-import { confirmDialog } from '../components/dialog.js?v=20260806-interaction-feedback-v49';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260806-interaction-feedback-v49';
+import { request } from '../api.js?v=20260806-partial-asset-recovery-v52';
+import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v52';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -20,6 +20,45 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
   };
 }
 
+function reviewLabel(review = {}) {
+  if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;
+  return `人物 / 动物的${review.unit || '图片单元'}`;
+}
+
+export async function authorizeBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '' } = {}) {
+  const taskId = bundle?.project?.id || '';
+  if (!taskId) return [];
+  const response = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/billing-reviews`);
+  const reviews = (Array.isArray(response.reviews) ? response.reviews : []).filter(review => {
+    if (review.authorized) return false;
+    if (lane && review.lane !== lane) return false;
+    if (sceneId && review.kind === 'scene' && review.scene_id !== sceneId) return false;
+    if (subjectId && review.kind === 'subject' && review.subject_id && review.subject_id !== subjectId) return false;
+    return true;
+  });
+  for (const review of reviews) {
+    const label = reviewLabel(review);
+    const accepted = await confirmDialog(
+      `${label}上次已经提交给供应商，但没有取得可核对的最终计费结果。只针对这一项重试可能产生一次重复费用；其他已成功图片会继续复用，不会重新提交。`,
+      { title: `逐项核对：${label}`, confirmText: '接受这一项风险并重试' },
+    );
+    if (!accepted) {
+      const error = new Error(`已取消${label}的一次性重试授权，未提交新的模型调用。`);
+      error.code = 'BILLING_REVIEW_CANCELLED';
+      throw error;
+    }
+    await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/retry-authorization`, {
+      method: 'POST',
+      body: {
+        support_id: response.support_id,
+        checkpoint_key: review.review_key,
+        accept_duplicate_charge_risk: true,
+      },
+    });
+  }
+  return reviews;
+}
+
 export function bindCombinedVisualGeneration({
   host, bundle, assets, store, missingSubjectCount, missingSceneCount,
   billingReviewRequired, billingReviewSupportId, subjectGenerationPayload,
@@ -37,7 +76,7 @@ export function bindCombinedVisualGeneration({
     }
     const summary = [missingSubjectCount ? `${missingSubjectCount} 个人物 / 动物` : '', missingSceneCount ? `${missingSceneCount} 个场景` : ''].filter(Boolean).join('和');
     const confirmation = billingReviewRequired
-      ? '上次配饰图片已提交给供应商，但供应商没有返回可查询任务 ID，无法确认是否计费。继续后，该配饰可能再次计费；已有 6 项人物核心资产会复用，只补配饰、宠物和缺失场景。此授权仅允许使用一次，若再次出现计费未知会重新锁定。'
+      ? '当前存在需要逐项核对的计费未知图片。继续后会分别显示每一个具体失败单元，由你逐项确认；没有确认的单元不会提交，已有成功资产会继续复用。'
       : `将同步生成${summary}。人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`;
     if (!await confirmDialog(confirmation, {
       title: billingReviewRequired ? '接受可能重复计费并继续' : '确认同步生成人物与场景',
@@ -45,13 +84,7 @@ export function bindCombinedVisualGeneration({
     })) return;
     try {
       setButtonBusy(button, true, '正在提交同步生成…', { elapsed: true });
-      if (billingReviewRequired) {
-        if (!billingReviewSupportId) throw new Error('缺少本次失败支持编号，请刷新页面后重试。');
-        await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/visual-assets/retry-authorization`, {
-          method: 'POST',
-          body: { support_id: billingReviewSupportId, accept_duplicate_charge_risk: true },
-        });
-      }
+      if (billingReviewRequired) await authorizeBillingReviews({ bundle });
       await store.runStage('visual-assets', {
         ...subjectPayload,
         generate_subjects: missingSubjectCount > 0,

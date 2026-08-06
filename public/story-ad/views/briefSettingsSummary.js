@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-interaction-feedback-v49';
+import { escapeHtml } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

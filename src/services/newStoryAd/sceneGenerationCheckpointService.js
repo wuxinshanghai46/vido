@@ -160,6 +160,50 @@ function hasUnknownBillingRisk(view = {}) {
     || view.error_code === 'PROVIDER_5XX_AMBIGUOUS';
 }
 
+function retryReviewKey(taskId = '', sceneId = '', viewKey = '') {
+  return `${outputKind(sceneId)}#${safePart(viewKey, 40)}`;
+}
+
+function hasRetryAuthorization(view = {}, reviewKey = '') {
+  const authorization = view?.retry_authorization || {};
+  return authorization.accept_duplicate_charge_risk === true
+    && Number(authorization.remaining_uses || 0) > 0
+    && String(authorization.checkpoint_key || '') === String(reviewKey || '');
+}
+
+function authorizeRetry(checkpoint = {}, viewKey = '', authorization = {}) {
+  const view = checkpoint.views?.[viewKey] || {};
+  if (!hasUnknownBillingRisk(view)) {
+    const error = new Error('当前场景视图不存在计费未知状态，不需要重复计费风险授权。');
+    error.code = 'GENERATION_RETRY_AUTHORIZATION_NOT_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
+  if (authorization.acceptDuplicateChargeRisk !== true && authorization.accept_duplicate_charge_risk !== true) {
+    const error = new Error('必须明确接受该场景视图可能重复计费，才能创建一次性重试授权。');
+    error.code = 'GENERATION_DUPLICATE_CHARGE_ACCEPTANCE_REQUIRED';
+    error.status = 400;
+    throw error;
+  }
+  const reviewKey = retryReviewKey(checkpoint.task_id, checkpoint.scene_id, viewKey);
+  checkpoint.views[viewKey] = {
+    ...view,
+    retry_authorization: {
+      id: String(authorization.id || crypto.randomUUID()),
+      checkpoint_key: reviewKey,
+      accept_duplicate_charge_risk: true,
+      accepted_by: String(authorization.acceptedBy || authorization.accepted_by || '').slice(0, 120),
+      support_id: String(authorization.supportId || authorization.support_id || '').slice(0, 120),
+      reason: String(authorization.reason || 'user_explicit_acceptance').slice(0, 240),
+      remaining_uses: 1,
+      accepted_at: nowIso(),
+      consumed_at: '',
+    },
+    updated_at: nowIso(),
+  };
+  return save(checkpoint);
+}
+
 function cleanupUnpublishedFiles(checkpoint = {}) {
   if (!checkpoint || checkpoint.status === 'published') return 0;
   const assetRoot = path.resolve(mediaAdapter.ASSET_DIR);
@@ -210,8 +254,19 @@ function open({
       provider_request_id: String(view.provider_request_id || ''),
       provider_task_id: String(view.provider_task_id || ''),
       failed_at: view.failed_at || '',
+      review_key: retryReviewKey(taskId, sceneId, key),
+      authorized: hasRetryAuthorization(view, retryReviewKey(taskId, sceneId, key)),
     }));
-  if (unknownBillingViews.length && acknowledgeBillingUnknown !== true) {
+  if (unknownBillingViews.length === 1 && acknowledgeBillingUnknown === true && !unknownBillingViews[0].authorized) {
+    authorizeRetry(existing, unknownBillingViews[0].key, {
+      acceptDuplicateChargeRisk: true,
+      acceptedBy: acknowledgedBy,
+      reason: 'legacy_single_scene_explicit_acknowledgement',
+    });
+    unknownBillingViews[0].authorized = true;
+  }
+  const unreviewedBillingViews = unknownBillingViews.filter(view => !view.authorized);
+  if (unreviewedBillingViews.length) {
     const error = new Error(`场景 ${sceneId} 有 ${unknownBillingViews.length} 个图片请求计费状态未知，系统禁止自动重复提交；如确认放弃等待旧结果并接受可能的重复计费，请二次确认后只补失败视图。`);
     error.code = 'SCENE_ASSET_BILLING_UNKNOWN';
     error.status = 409;
@@ -221,31 +276,9 @@ function open({
     error.details = {
       requires_billing_acknowledgement: true,
       scene_id: String(sceneId),
-      failed_views: unknownBillingViews,
+      failed_views: unreviewedBillingViews,
     };
     throw error;
-  }
-  if (unknownBillingViews.length) {
-    const acknowledgedAt = nowIso();
-    unknownBillingViews.forEach(({ key }) => {
-      existing.views[key] = {
-        ...existing.views[key],
-        billing_state: 'accepted_unknown',
-        billing_resolution: 'explicit_user_acknowledgement',
-        billing_acknowledged_at: acknowledgedAt,
-        billing_acknowledged_by: String(acknowledgedBy || 'task_owner').slice(0, 100),
-      };
-    });
-    existing.billing_acknowledgements = [
-      ...(Array.isArray(existing.billing_acknowledgements) ? existing.billing_acknowledgements : []),
-      {
-        resolution: 'explicit_user_acknowledgement',
-        view_keys: unknownBillingViews.map(item => item.key),
-        acknowledged_at: acknowledgedAt,
-        acknowledged_by: String(acknowledgedBy || 'task_owner').slice(0, 100),
-      },
-    ].slice(-20);
-    save(existing);
   }
   const acceptedFingerprints = new Set([
     String(fingerprint || ''),
@@ -335,6 +368,10 @@ function markSucceeded(checkpoint = {}, viewKey = '', view = {}, budget = null) 
 
 function markSubmitting(checkpoint = {}, viewKey = '', event = {}) {
   const existing = checkpoint.views[viewKey] || {};
+  const reviewKey = retryReviewKey(checkpoint.task_id, checkpoint.scene_id, viewKey);
+  const retryAuthorization = hasUnknownBillingRisk(existing) && hasRetryAuthorization(existing, reviewKey)
+    ? { ...existing.retry_authorization, remaining_uses: 0, consumed_at: nowIso() }
+    : existing.retry_authorization;
   checkpoint.views[viewKey] = {
     ...existing,
     key: viewKey,
@@ -345,6 +382,7 @@ function markSubmitting(checkpoint = {}, viewKey = '', event = {}) {
     provider_submission_state: 'submitted_unknown',
     billing_state: 'unknown',
     submitting_at: event.submittedAt || nowIso(),
+    retry_authorization: retryAuthorization || null,
     updated_at: nowIso(),
   };
   return save(checkpoint);
@@ -467,4 +505,8 @@ module.exports = {
   markCancelled,
   markPublished,
   cleanupUnpublishedFiles,
+  hasUnknownBillingRisk,
+  retryReviewKey,
+  hasRetryAuthorization,
+  authorizeRetry,
 };

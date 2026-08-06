@@ -151,7 +151,10 @@ function checkpointKind(taskId, brief, spec, counts, body = {}) {
         })) : []),
     image_model: cleanText(body.image_model || body.imageModel || 'auto', 120),
     regenerate_selected: body.regenerate_selected === true,
-    regenerate_request_key: body.regenerate_selected === true ? cleanText(body.request_key || '', 160) : '',
+    regenerate_request_key: body.regenerate_selected === true
+      && body.resume_partial_checkpoint !== true && body.resumePartialCheckpoint !== true
+      ? cleanText(body.request_key || '', 160)
+      : '',
   })).digest('hex').slice(0, 20);
   return `subject_asset_checkpoint:${cleanText(taskId || 'detached', 80)}:${hash}`;
 }
@@ -183,6 +186,29 @@ function compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) {
     });
     return humansMatch && petsMatch;
   }) || null;
+}
+
+function resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pets) {
+  if (!taskId || typeof storage?.listOutputs !== 'function') return null;
+  const selectedIds = new Set(targets.selected.map(item => cleanText(item.id, 80)).filter(Boolean));
+  return storage.listOutputs(taskId)
+    .filter(row => String(row?.kind || '').startsWith('subject_asset_checkpoint:'))
+    .filter(row => ['running', 'partial', 'failed'].includes(String(row?.payload?.status || '')))
+    .filter(row => Number(row.payload?.counts?.people || 0) === counts.people
+      && Number(row.payload?.counts?.pets || 0) === counts.pets)
+    .sort((left, right) => Date.parse(right.updated_at || right.payload?.updated_at || '') - Date.parse(left.updated_at || left.payload?.updated_at || ''))
+    .map(row => row.payload)
+    .find(payload => {
+      const priorIds = new Set((Array.isArray(payload.targets) ? payload.targets : [])
+        .map(item => cleanText(item?.id, 80)).filter(Boolean));
+      if (selectedIds.size && [...selectedIds].some(id => !priorIds.has(id))) return false;
+      const inputProfiles = payload.input_profiles || {};
+      if (Array.isArray(inputProfiles.humans)
+        && JSON.stringify(inputProfiles.humans) !== JSON.stringify(humans.map(personGenerationProfile))) return false;
+      if (Array.isArray(inputProfiles.pets)
+        && JSON.stringify(inputProfiles.pets) !== JSON.stringify(pets.map(petGenerationProfile))) return false;
+      return Object.keys(payload.person_dossier_checkpoints || {}).length > 0;
+    }) || null;
 }
 
 function humanMemberSpecs(spec = {}, body = {}, count = 1) {
@@ -773,9 +799,13 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   let checkpoint = null;
   let save = () => {};
   try {
-  const forceRegenerate = body.regenerate_selected === true;
+  const resumePartial = body.resume_partial_checkpoint === true || body.resumePartialCheckpoint === true;
+  const forceRegenerate = body.regenerate_selected === true && !resumePartial;
   const previous = taskId
-    ? (storage.getOutput(taskId, kind) || (!forceRegenerate ? compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) : null) || {})
+    ? (storage.getOutput(taskId, kind)
+      || (resumePartial ? resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pets) : null)
+      || (!forceRegenerate ? compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) : null)
+      || {})
     : {};
   const previousHumans = Array.isArray(previous.humans) ? previous.humans : [];
   const previousPets = Array.isArray(previous.pets) ? previous.pets : [];
@@ -783,6 +813,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     schema_version: 2,
     status: 'running',
     counts,
+    input_profiles: { humans: humans.map(personGenerationProfile), pets: pets.map(petGenerationProfile) },
     targets: targets.selected.map(item => ({ kind: item.kind, index: item.index, id: item.id, key: item.key })),
     generated_counts: { people: 0, pets: 0 },
     humans: humans.map((member, index) => {
@@ -798,6 +829,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     subject_board_url: cleanText(previous.subject_board_url || '', 1000),
     person_dossier_checkpoints: previous.person_dossier_checkpoints && typeof previous.person_dossier_checkpoints === 'object'
       ? previous.person_dossier_checkpoints
+      : {},
+    subject_checkpoint_owners: previous.subject_checkpoint_owners && typeof previous.subject_checkpoint_owners === 'object'
+      ? previous.subject_checkpoint_owners
       : {},
     updated_at: new Date().toISOString(),
   };
@@ -829,6 +863,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       loadCheckpoint: async key => checkpoint.person_dossier_checkpoints[key] || null,
       saveCheckpoint: async (key, value) => {
         checkpoint.person_dossier_checkpoints[key] = value;
+        checkpoint.subject_checkpoint_owners[key] = { kind: 'human', subject_id: member.id, index };
         save();
       },
       onProgress: async ({ completed, total, kind, reused }) => {
@@ -857,6 +892,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const detailCheckpoint = async key => checkpoint.person_dossier_checkpoints[key] || null;
     const saveDetailCheckpoint = async (key, value) => {
       checkpoint.person_dossier_checkpoints[key] = value;
+      checkpoint.subject_checkpoint_owners[key] = { kind: 'human', subject_id: member.id, index };
       save();
     };
     const accessoryEvidence = await wearableEvidence.resolve({
@@ -963,6 +999,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       load: async key => checkpoint.person_dossier_checkpoints[key] || null,
       save: async (key, value) => {
         checkpoint.person_dossier_checkpoints[key] = value;
+        checkpoint.subject_checkpoint_owners[key] = { kind: 'pet', subject_id: profile.id, index };
         save();
       },
       execute: async controls => {
@@ -1076,6 +1113,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
+  resumablePartialCheckpoint,
   alignMemberAgeText,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,

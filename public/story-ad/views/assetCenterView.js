@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260806-interaction-feedback-v49';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-interaction-feedback-v49';
-import { confirmDialog } from '../components/dialog.js?v=20260806-interaction-feedback-v49';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-interaction-feedback-v49';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-interaction-feedback-v49';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-interaction-feedback-v49';
-import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-interaction-feedback-v49';
+import { request } from '../api.js?v=20260806-partial-asset-recovery-v52';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
+import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v52';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-partial-asset-recovery-v52';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-partial-asset-recovery-v52';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-partial-asset-recovery-v52';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-partial-asset-recovery-v52';
 
 const GROUPS = [
   ['people', '人物'],
@@ -87,6 +87,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       entry.id && rows.findIndex(candidate => candidate.kind === entry.kind && candidate.id === entry.id && candidate.index === entry.index) === entryIndex
     ));
     payload.regenerate_selected = true;
+    payload.resume_partial_checkpoint = target.partial_checkpoint === true;
     payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
   }
   return payload;
@@ -125,6 +126,7 @@ function assetCard(item, group) {
     item.image_url ? '已有独立素材' : '无独立商品图',
   ] : [];
   const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
+    item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
     item.role,
     views ? `${views} 个视图` : '',
@@ -140,7 +142,7 @@ function assetCard(item, group) {
     <div class="asset-card-preview">
       <div class="asset-card-media">${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
       <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
-        <span>${escapeHtml(personState === 'legacy_views' ? '历史四视图' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认')))}</span>
+        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认'))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
       </button>
@@ -268,7 +270,7 @@ export async function mount(host, context) {
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
-      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${visualActionLabel}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount && !billingReviewRequired ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
+      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${visualActionLabel}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
     </section>` : ''}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
@@ -284,10 +286,6 @@ export async function mount(host, context) {
 
   const generationKeys = new Map();
   const generate = async (target = null, group = '', button = null) => {
-    if (billingReviewRequired) {
-      toast('当前人物配饰存在计费未知记录，请点击“重新生成”并在确认窗口中完成一次性费用风险授权。', 'warning');
-      return false;
-    }
     const intent = target?.subject_id || 'all';
     const requestKey = generationKeys.get(intent) || `${bundle.project.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
     generationKeys.set(intent, requestKey);
@@ -305,6 +303,11 @@ export async function mount(host, context) {
     })) return false;
     try {
       setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
+      await authorizeBillingReviews({
+        bundle,
+        lane: 'subjects',
+        subjectId: target?.subject_id || target?.profile?.id || '',
+      });
       await store.runStage('subject-assets', payload);
       toast(regeneratingCompletePerson ? '人物视觉档案重生成已提交；剧情、文字故事板和场景分配会继续保留。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
       generationKeys.delete(intent);
@@ -341,6 +344,7 @@ export async function mount(host, context) {
     if (!await confirmDialog(prompt, { title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位', confirmText: sceneGenerated ? '确认重新生成' : '确认生成' })) return false;
     try {
       setButtonBusy(button, true, '正在提交场景生成…', { elapsed: true });
+      await authorizeBillingReviews({ bundle, lane: 'scenes', sceneId: item.id });
       await store.runStage('scene-assets', { space_id: item.id, scene_id: item.id, name: item.name, regenerate: sceneGenerated });
       toast(`${sceneGenerated ? '场景与机位重新生成' : '场景与机位生成'}已提交，进度和耗时将在页面顶部显示。`, 'success');
       return true;
