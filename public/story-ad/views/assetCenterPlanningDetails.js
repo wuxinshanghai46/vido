@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-partial-asset-recovery-v52';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-partial-asset-recovery-v53';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-partial-asset-recovery-v53';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

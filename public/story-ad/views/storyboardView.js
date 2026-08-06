@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v52';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
-import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v52';
+import { request } from '../api.js?v=20260806-partial-asset-recovery-v53';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v53';
+import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v53';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

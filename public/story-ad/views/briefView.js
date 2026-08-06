@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v52';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v52';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v52';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-partial-asset-recovery-v52';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-partial-asset-recovery-v52';
+import { request } from '../api.js?v=20260806-partial-asset-recovery-v53';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v53';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v53';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-partial-asset-recovery-v53';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-partial-asset-recovery-v53';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -211,7 +211,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-partial-asset-recovery-v52');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-partial-asset-recovery-v53');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

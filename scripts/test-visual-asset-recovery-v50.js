@@ -130,7 +130,7 @@ function testPartialProjection() {
   const scenes = sceneProjection.projectSceneAssets([
     { kind: 'scene_config', payload: { spaces: [{ id: 'scene-1', name: 'Scene One' }] } },
     { kind: 'scene_asset_checkpoint:scene-1', payload: {
-      scene_id: 'scene-1', status: 'partial', views: {
+      scene_id: 'scene-1', status: 'failed', views: {
         master: { status: 'succeeded', image_url: '/api/new-story-ad/assets/scene-master.png' },
         layout: { status: 'failed', image_url: '/api/new-story-ad/assets/rejected-layout.png', billing_state: 'unknown' },
       },
@@ -138,6 +138,7 @@ function testPartialProjection() {
   ]);
   assert.equal(scenes.length, 1);
   assert.equal(scenes[0].view_images.length, 1);
+  assert.equal(scenes[0].checkpoint_status, 'failed', 'aggregate failure must not hide succeeded paid views');
   assert.match(scenes[0].image_url, /scene-master/);
   assert.ok(!JSON.stringify(scenes[0].view_images).includes('rejected-layout'));
 }

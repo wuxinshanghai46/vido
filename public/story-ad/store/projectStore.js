@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-partial-asset-recovery-v52';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-partial-asset-recovery-v52';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-partial-asset-recovery-v53';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-partial-asset-recovery-v53';
 
 export function createProjectStore() {
   const state = {

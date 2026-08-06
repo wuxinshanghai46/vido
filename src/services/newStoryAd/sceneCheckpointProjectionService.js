@@ -26,7 +26,6 @@ function plannedName(sceneConfig = {}, sceneId = '', spaceId = '') {
 
 function checkpointPreview(row = {}, sceneConfig = {}) {
   const checkpoint = row?.payload && typeof row.payload === 'object' ? row.payload : {};
-  if (!['running', 'partial', 'ready_for_qa'].includes(text(checkpoint.status, 40))) return null;
   const views = VIEW_ORDER.map(key => {
     const source = checkpoint.views?.[key] || {};
     const url = source.status === 'succeeded' ? viewUrl(source) : '';
@@ -38,6 +37,10 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
       image_url: url,
     } : null;
   }).filter(Boolean);
+  // The checkpoint status describes the aggregate attempt. A failed attempt may
+  // still contain paid, succeeded views that must remain visible and reusable.
+  // Trust the per-view success state instead of hiding those views behind the
+  // aggregate status.
   if (!views.length) return null;
   const sceneId = text(checkpoint.scene_id || String(row.kind || '').replace(/^scene_asset_checkpoint:/, ''), 120);
   const spaceId = text(checkpoint.metadata?.space_id || sceneId, 120);
