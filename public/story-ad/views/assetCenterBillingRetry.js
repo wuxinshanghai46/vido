@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-content-mode-dialog-v68';
-import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v68';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v68';
+import { request } from '../api.js?v=20260806-content-mode-dialog-v69';
+import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v69';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};

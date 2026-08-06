@@ -1,11 +1,11 @@
-import { request } from '../api.js?v=20260806-content-mode-dialog-v68';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v68';
-import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v68';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-content-mode-dialog-v68';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-content-mode-dialog-v68';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-content-mode-dialog-v68';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260806-content-mode-dialog-v68';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-content-mode-dialog-v68';
+import { request } from '../api.js?v=20260806-content-mode-dialog-v69';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v69';
+import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v69';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-content-mode-dialog-v69';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-content-mode-dialog-v69';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-content-mode-dialog-v69';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260806-content-mode-dialog-v69';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-content-mode-dialog-v69';
 
 const GROUPS = [
   ['people', '人物'],
