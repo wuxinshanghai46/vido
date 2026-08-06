@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-knowledge-runtime-v46';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
-import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v46';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v47';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v47';
+import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v47';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

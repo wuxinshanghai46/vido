@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-knowledge-runtime-v46';
-import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v46';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v47';
+import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v47';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v47';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};

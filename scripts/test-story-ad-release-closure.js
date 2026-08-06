@@ -52,6 +52,8 @@ function main() {
   ].forEach(file => assert(selected.has(file), `本轮知识运行时文件漏发：${file}`));
   const deploySource = fs.readFileSync(path.join(root, 'scripts/deploy-story-ad-release.js'), 'utf8');
   assert(deploySource.includes("require('./lib/storyAdReleaseFiles')"), '部署脚本必须使用统一发布集合');
+  assert(deploySource.includes("process.env.ComSpec || 'cmd.exe'"), 'Windows 发布前回归必须通过命令解释器启动 npm，避免 spawnSync npm.cmd EINVAL');
+  assert(deploySource.includes('result.error?.stack'), '发布前回归启动失败必须保留底层进程错误');
   assert(!deploySource.includes('const extraFiles = ['), '部署脚本不得保留第二份手工文件清单');
   assert(deploySource.indexOf('runLocalReleaseRegression();') < deploySource.indexOf("client.on('ready'"), '完整回归必须发生在连接生产并发布之前');
   assert(deploySource.includes("mv ${quote(`${stagingDir}/public/story-ad`)}"), '剧情广告静态目录必须整体切换');

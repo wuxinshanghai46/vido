@@ -1,5 +1,5 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-knowledge-runtime-v46';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-knowledge-runtime-v46';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-knowledge-runtime-v47';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-knowledge-runtime-v47';
 
 export function createProjectStore() {
   const state = {

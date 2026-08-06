@@ -69,10 +69,13 @@ function parseLastJson(output) {
 }
 
 function runLocalReleaseRegression() {
-  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const command = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : 'npm';
+  const args = process.platform === 'win32'
+    ? ['/d', '/s', '/c', 'npm run platform:upgrade:test']
+    : ['run', 'platform:upgrade:test'];
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-story-ad-release-'));
   try {
-    const result = childProcess.spawnSync(command, ['run', 'platform:upgrade:test'], {
+    const result = childProcess.spawnSync(command, args, {
       cwd: root,
       env: {
         ...process.env,
@@ -87,7 +90,7 @@ function runLocalReleaseRegression() {
       timeout: 30 * 60 * 1000,
     });
     if (result.status !== 0) {
-      const detail = `${result.stdout || ''}\n${result.stderr || ''}`.trim();
+      const detail = `${result.error?.stack || result.error?.message || ''}\n${result.stdout || ''}\n${result.stderr || ''}`.trim();
       throw new Error(`Local pre-deploy regression failed:\n${detail.slice(-20000)}`);
     }
     const lines = String(result.stdout || '').split(/\r?\n/).filter(line => /passed|通过|real_model_calls/i.test(line));

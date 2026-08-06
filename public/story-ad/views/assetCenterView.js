@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260806-knowledge-runtime-v46';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v46';
-import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v46';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-knowledge-runtime-v46';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-knowledge-runtime-v46';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-knowledge-runtime-v46';
-import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-knowledge-runtime-v46';
+import { request } from '../api.js?v=20260806-knowledge-runtime-v47';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-knowledge-runtime-v47';
+import { confirmDialog } from '../components/dialog.js?v=20260806-knowledge-runtime-v47';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-knowledge-runtime-v47';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-knowledge-runtime-v47';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-knowledge-runtime-v47';
+import { bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-knowledge-runtime-v47';
 
 const GROUPS = [
   ['people', '人物'],
