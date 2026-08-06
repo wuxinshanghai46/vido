@@ -1,3 +1,16 @@
+function sceneProjectionRows(outputs = [], sceneAssetsInvalidation = null) {
+  const rows = Array.isArray(outputs) ? outputs : [];
+  if (!sceneAssetsInvalidation) return rows;
+  const invalidatedAt = Date.parse(sceneAssetsInvalidation.invalidated_at || '');
+  return rows.filter(row => {
+    const kind = String(row?.kind || '');
+    if (kind === 'scene_assets') return false;
+    if (!kind.startsWith('scene_asset_checkpoint:')) return true;
+    const checkpointTime = Date.parse(row.updated_at || row.payload?.updated_at || row.created_at || '');
+    return Number.isFinite(invalidatedAt) && Number.isFinite(checkpointTime) && checkpointTime > invalidatedAt;
+  });
+}
+
 function createTaskViewService(deps = {}) {
   const {
     storage,
@@ -63,12 +76,15 @@ function createTaskViewService(deps = {}) {
     const invalidated = rawBundle.manifest?.invalidated || {};
     const hasCurrentSceneConfig = rawOutputs.some(row => String(row?.kind || '') === 'scene_config')
       && !Object.prototype.hasOwnProperty.call(invalidated, 'scene_config');
-    const sceneAssetsAreCurrent = !Object.prototype.hasOwnProperty.call(invalidated, 'scene_assets');
+    const sceneAssetsInvalidation = Object.prototype.hasOwnProperty.call(invalidated, 'scene_assets')
+      ? invalidated.scene_assets
+      : null;
+    const sceneAssetsAreCurrent = !sceneAssetsInvalidation;
     // Historical checkpoints remain available for audit/recovery, but they
     // must never be promoted back into the current UI after the authoritative
     // scene plan or scene assets were invalidated.
-    const projectedSceneAssets = hasCurrentSceneConfig && sceneAssetsAreCurrent
-      ? sceneCheckpointProjection.projectSceneAssets(rawOutputs)
+    const projectedSceneAssets = hasCurrentSceneConfig
+      ? sceneCheckpointProjection.projectSceneAssets(sceneProjectionRows(rawOutputs, sceneAssetsInvalidation))
       : [];
     const videoShotStatuses = (rawBundle.outputs || [])
       .filter(row => String(row.kind || '').startsWith('video_shot_status_'))
@@ -292,4 +308,4 @@ function createTaskViewService(deps = {}) {
   return { publicTaskBundle, taskSummary, listTaskSummaries };
 }
 
-module.exports = { createTaskViewService };
+module.exports = { createTaskViewService, sceneProjectionRows };

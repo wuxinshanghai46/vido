@@ -8,6 +8,7 @@ const guard = require('../src/services/newStoryAd/generationBillingGuardService'
 const projection = require('../src/services/newStoryAd/subjectCheckpointProjectionService');
 const sceneProjection = require('../src/services/newStoryAd/sceneCheckpointProjectionService');
 const workspaceProjection = require('../src/services/storyAdWorkspace/projectBundleService');
+const { sceneProjectionRows } = require('../src/services/newStoryAd/taskViewService');
 const storage = require('../src/services/newStoryAd/storageService');
 const billing = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
@@ -152,6 +153,17 @@ function testPartialProjection() {
   assert.deepEqual(workspaceScenes[0].completed_view_keys, ['master']);
   assert.deepEqual(workspaceScenes[0].failed_view_keys, ['layout']);
   assert.equal(workspaceScenes[0].view_images.length, 1, 'workspace must keep the succeeded scene view visible');
+
+  const lineageRows = sceneProjectionRows([
+    { kind: 'scene_config', updated_at: '2026-08-05T14:20:00.000Z', payload: { spaces: [{ id: 'scene-1' }] } },
+    { kind: 'scene_assets', updated_at: '2026-08-05T14:00:00.000Z', payload: [{ scene_id: 'scene-1', image_url: '/stale.png' }] },
+    { kind: 'scene_asset_checkpoint:scene-old', updated_at: '2026-08-05T14:10:00.000Z', payload: { scene_id: 'scene-1', status: 'partial', views: { master: { status: 'succeeded', image_url: '/old.png' } } } },
+    { kind: 'scene_asset_checkpoint:scene-fresh', updated_at: '2026-08-06T06:30:00.000Z', payload: { scene_id: 'scene-1', status: 'partial', views: { master: { status: 'succeeded', image_url: '/fresh.png' } } } },
+  ], { invalidated_at: '2026-08-05T14:19:38.722Z' });
+  assert.equal(lineageRows.some(row => row.kind === 'scene_assets'), false, 'invalidated formal scene assets must remain hidden');
+  assert.equal(lineageRows.some(row => row.kind.includes('scene-old')), false, 'checkpoint older than invalidation must remain hidden');
+  assert.equal(lineageRows.some(row => row.kind.includes('scene-fresh')), true, 'fresh checkpoint after invalidation must remain recoverable');
+  assert.match(sceneProjection.projectSceneAssets(lineageRows)[0].image_url, /fresh/);
 }
 
 function testUiScope() {

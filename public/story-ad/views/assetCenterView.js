@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v55';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v55';
-import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v55';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-partial-asset-recovery-v55';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-partial-asset-recovery-v55';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-partial-asset-recovery-v55';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-partial-asset-recovery-v55';
+import { request } from '../api.js?v=20260806-partial-asset-recovery-v56';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v56';
+import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v56';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-partial-asset-recovery-v56';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-partial-asset-recovery-v56';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-partial-asset-recovery-v56';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-partial-asset-recovery-v56';
 
 const GROUPS = [
   ['people', '人物'],
