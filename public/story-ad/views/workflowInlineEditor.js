@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-partial-asset-recovery-v53';
+import { escapeHtml } from '../components/ui.js?v=20260806-partial-asset-recovery-v55';
 
 /** 在画布侧栏编辑权威剧情/分镜，不使用图投影中的截断摘要回写。 */
 export function inlineNodeEditor(node = {}, bundle = {}) {

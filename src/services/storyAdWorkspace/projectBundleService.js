@@ -48,7 +48,6 @@ function petProfile(source = {}, index = 0) {
     appearance: clean(source.appearance || source.description, 600),
   };
 }
-
 function projectedViews(source = {}, fallback = []) {
   const raw = list(source.view_images).length ? list(source.view_images) : list(fallback);
   const labels = { front: '正面', side: '侧面', back: '背面', action: '动作' };
@@ -345,6 +344,7 @@ function sceneAssets(outputs = {}, context = {}) {
       view_images: views,
       scene_world_assets: projectedWorldAssets,
       status: clean(contract.status || asset.status || (candidateCount ? 'selecting' : (imageUrl ? 'generated' : 'planned')), 50),
+      partial_checkpoint: asset.partial_checkpoint === true, checkpoint_status: clean(asset.checkpoint_status, 40), checkpoint_error_code: clean(asset.checkpoint_error_code, 120), completed_view_keys: list(asset.completed_view_keys).slice(0, 8).map(key => clean(key, 40)), failed_view_keys: list(asset.failed_view_keys).slice(0, 8).map(key => clean(key, 40)), billing_review_required: asset.billing_review_required === true, checkpoint_verification: asset.verification && typeof asset.verification === 'object' ? asset.verification : null,
       revision: Number(asset.scene_revision || asset.revision || contract.scene_revision || 0) || 0, knowledge_policy: knowledgePolicyRuntime.trace(asset.knowledge_policy || asset.knowledge_policy_trace || {}),
       planned: options.planned === true,
       reference_only: options.referenceOnly === true,
@@ -597,4 +597,4 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   return bundle;
 }
 
-module.exports = { buildProjectBundle, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, workspaceStage };
+module.exports = { buildProjectBundle, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, sceneAssets, workspaceStage };

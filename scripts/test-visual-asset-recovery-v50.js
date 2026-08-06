@@ -7,6 +7,7 @@ const concurrency = require('../src/services/newStoryAd/generationConcurrencySer
 const guard = require('../src/services/newStoryAd/generationBillingGuardService');
 const projection = require('../src/services/newStoryAd/subjectCheckpointProjectionService');
 const sceneProjection = require('../src/services/newStoryAd/sceneCheckpointProjectionService');
+const workspaceProjection = require('../src/services/storyAdWorkspace/projectBundleService');
 const storage = require('../src/services/newStoryAd/storageService');
 const billing = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
@@ -141,6 +142,16 @@ function testPartialProjection() {
   assert.equal(scenes[0].checkpoint_status, 'failed', 'aggregate failure must not hide succeeded paid views');
   assert.match(scenes[0].image_url, /scene-master/);
   assert.ok(!JSON.stringify(scenes[0].view_images).includes('rejected-layout'));
+
+  const workspaceScenes = workspaceProjection.sceneAssets({
+    scene_config: { spaces: [{ id: 'scene-1', name: 'Scene One' }] },
+    scene_assets: scenes,
+  }, {});
+  assert.equal(workspaceScenes[0].partial_checkpoint, true, 'workspace projection must preserve partial checkpoint state');
+  assert.equal(workspaceScenes[0].checkpoint_status, 'failed');
+  assert.deepEqual(workspaceScenes[0].completed_view_keys, ['master']);
+  assert.deepEqual(workspaceScenes[0].failed_view_keys, ['layout']);
+  assert.equal(workspaceScenes[0].view_images.length, 1, 'workspace must keep the succeeded scene view visible');
 }
 
 function testUiScope() {

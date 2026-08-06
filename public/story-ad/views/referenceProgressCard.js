@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-partial-asset-recovery-v53';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-partial-asset-recovery-v55';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',
