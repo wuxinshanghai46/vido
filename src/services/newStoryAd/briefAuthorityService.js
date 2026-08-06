@@ -39,6 +39,12 @@ function briefHasCommercialSubject(brief = '') {
 }
 
 function contentMode(context = {}) {
+  const selectedMode = text(context.content_mode || context.contentMode, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  const selectedSource = text(context.content_mode_source || context.contentModeSource, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  const hasStoredPresentation = Boolean(context.product_presentation || context.productPresentation);
+  const userSelected = selectedSource === 'user' || (!selectedSource && !hasStoredPresentation);
+  if (userSelected && ['narrative_story', 'story', 'plot'].includes(selectedMode)) return 'narrative_story';
+  if (userSelected && ['commercial_subject', 'commercial_ad', 'advertisement', 'ad'].includes(selectedMode)) return 'commercial_subject';
   const explicitMode = text(context.product_presentation?.mode || context.productPresentation?.mode, 60).toLowerCase().replace(/[\s-]+/g, '_');
   if (explicitSubject(context) || hasProductAsset(context) || explicitReferenceSubject(context)) return 'commercial_subject';
   if (explicitMode === 'narrative_story') return 'narrative_story';

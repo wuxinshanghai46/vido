@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-story-brief-authority-v60';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',

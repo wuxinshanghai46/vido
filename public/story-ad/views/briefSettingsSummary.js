@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-story-brief-authority-v60';
+import { escapeHtml } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
@@ -16,7 +16,7 @@ function durationText(value) {
 export function briefSettingsSummary(bundle = {}) {
   const brief = bundle.brief || {};
   return `<span class="brief-settings-values" data-brief-settings-values>
-    <span class="brief-settings-goal"><small>广告目标</small><strong>${escapeHtml(compactText(brief.text, 150))}</strong></span>
-    <span class="brief-settings-meta"><em>${escapeHtml(compactText(brief.product_subject || '未指定商品 / 主题', 48))}</em><em>${durationText(brief.target_duration)}</em><em>${escapeHtml(brief.output_ratio || '9:16')}</em><em>${escapeHtml(brief.video_resolution || '1080p')}</em></span>
+    <span class="brief-settings-goal"><small>内容目标</small><strong>${escapeHtml(compactText(brief.text, 150))}</strong></span>
+    <span class="brief-settings-meta"><em>${brief.content_mode === 'narrative_story' ? '剧情' : (brief.content_mode === 'commercial_subject' ? '广告' : '未选择类型')}</em><em>${escapeHtml(compactText(brief.product_subject || '未指定商品 / 主题', 48))}</em><em>${durationText(brief.target_duration)}</em><em>${escapeHtml(brief.output_ratio || '9:16')}</em><em>${escapeHtml(brief.video_resolution || '1080p')}</em></span>
   </span>`;
 }

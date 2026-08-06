@@ -22,6 +22,30 @@ assert.equal(context.cast_mode, 'dual', '现代/古代交替默认是双人物�
 assert.equal(context.expected_people, 2, '现代/古代交替必须规划两个独立人物');
 assert.deepEqual(authority.explicitSceneRequirements(sourceBrief), ['竹海']);
 
+const selectedStory = contextBuilder.buildContext({
+  content_mode: 'narrative_story',
+  brief: '宣传产品卖点，但用户已经明确选择剧情模式。',
+  product_subject: '',
+});
+assert.equal(selectedStory.content_mode, 'narrative_story', '显式选择剧情必须高于文本关键词自动判断');
+assert.equal(selectedStory.product_subject, '', '剧情模式且无真实商品时不得制造商品主体');
+const selectedAd = contextBuilder.buildContext({
+  content_mode: 'commercial_subject',
+  brief: '一个女孩在竹海漫步。',
+  product_subject: '东方香氛',
+});
+assert.equal(selectedAd.content_mode, 'commercial_subject', '显式选择广告必须进入商业主体方案');
+assert.equal(selectedAd.product_subject, '东方香氛');
+const legacyInferredStory = contextBuilder.buildContext({
+  content_mode: 'narrative_story',
+  product_presentation: { mode: 'narrative_story', source: 'user_story_brief' },
+  brief: '参考视频完成后识别出商品。',
+  product_subject: '定制家具套装',
+  reference_video_analysis: { source_facts: { product_or_service: '定制家具套装' } },
+});
+assert.equal(legacyInferredStory.content_mode, 'commercial_subject', '旧版本自动推断的剧情值不得压过后来识别出的明确商品证据');
+assert.equal(legacyInferredStory.content_mode_source, 'inferred');
+
 const prompt = contextBuilder.contextPrompt(context);
 assert.match(prompt, /纯剧情 \/ 故事主题/);
 assert.match(prompt, /精确人数：2/);
@@ -72,6 +96,15 @@ assert.doesNotMatch(modalRule, /var\(--(?:panel|field|card|accent)\)/, '弹窗�
 assert.match(modalRule, /background:var\(--surface\)/);
 assert.match(modalRule, /\.real-person-source-form input:focus/);
 assert.match(modalRule, /\.story-ad-modal-open\{overflow:hidden\}/);
+
+const briefView = read('public/story-ad/views/briefView.js');
+assert.match(briefView, /name="content_mode" value="commercial_subject"/);
+assert.match(briefView, /name="content_mode" value="narrative_story"/);
+assert.match(briefView, /请先选择“广告”或“剧情”，再使用 AI 帮写/);
+assert.match(briefView, /content_mode: payload\.content_mode/);
+assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/);
+assert.match(briefView, /brief\.content_mode_source === 'user' && brief\.content_mode === 'narrative_story'/);
+assert.match(css, /\.content-mode-options input:checked\+span/);
 
 const modalSource = read('public/story-ad/views/assetCenterPersonSources.js');
 assert.match(modalSource, /aria-modal/);

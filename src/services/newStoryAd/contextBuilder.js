@@ -995,7 +995,14 @@ function buildContext(body = {}, user = {}) {
   const contextAssets = noHuman || animalOnly
     ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
     : assets;
+  const requestedContentMode = cleanText(body.content_mode || body.contentMode || '', 60);
+  const declaredContentModeSource = cleanText(body.content_mode_source || body.contentModeSource || '', 40);
+  const contentModeSource = declaredContentModeSource === 'user'
+    ? 'user'
+    : (requestedContentMode && !(body.product_presentation || body.productPresentation) ? 'user' : 'inferred');
   const productPresentation = productAssetResolver.productPresentation({
+    content_mode: body.content_mode || body.contentMode,
+    content_mode_source: contentModeSource,
     product_subject: productSubject,
     brief,
     product_asset: body.product_asset || body.productAsset,
@@ -1014,6 +1021,7 @@ function buildContext(body = {}, user = {}) {
     product_subject: productPresentation.subject,
     product_presentation: productPresentation,
     content_mode: productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject',
+    content_mode_source: contentModeSource,
     target_duration: targetDuration,
     duration_source: durationContract.source,
     shot_count: shotCount,

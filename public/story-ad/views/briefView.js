@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-story-brief-authority-v60';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-story-brief-authority-v60';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-story-brief-authority-v60';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-story-brief-authority-v60';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-story-brief-authority-v60';
+import { request } from '../api.js?v=20260806-explicit-content-mode-v63';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-explicit-content-mode-v63';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-explicit-content-mode-v63';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-explicit-content-mode-v63';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -12,6 +12,8 @@ function formPayload(form) {
     project_name: String(data.get('project_name') || '').trim(),
     brief,
     content: brief,
+    content_mode: String(data.get('content_mode') || '').trim(),
+    content_mode_source: 'user',
     product_subject: String(data.get('product_subject') || '').trim(),
     target_duration: Number(data.get('target_duration') || 30) || 30,
     output_ratio: String(data.get('output_ratio') || '9:16'),
@@ -118,7 +120,7 @@ export async function mount(host, context) {
   const referenceStepVisible = referenceAttached && !route.isNew;
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>先说清楚要做什么</h1><p>命名项目后，可以自己填写广告目标，也可以直接添加参考视频并让系统读取内容。</p></div>
+      <div><h1>先说清楚要做什么</h1><p>先选择广告或剧情，再填写内容目标；也可以添加参考视频并让系统读取内容。</p></div>
       ${!route.isNew ? '<span class="status-tag is-neutral">第 1 步 · 目标确认</span>' : ''}
     </section>
     <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
@@ -131,11 +133,15 @@ export async function mount(host, context) {
     <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">
       <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
-        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>广告目标与成片设置</b><small>${referenceAttached ? '已从参考内容填写，可随时展开修改；保存后以你的版本为准' : '请填写广告目标；添加参考视频或链接后将自动折叠'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
+        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>内容类型、目标与成片设置</b><small>${referenceAttached ? '已从参考内容填写，可随时展开修改；保存后以你的版本为准' : '请先选择广告或剧情，再填写内容目标；添加参考视频或链接后将自动折叠'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
-          <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改广告目标不会再自动改名。</small></label>
-          <label class="field full"><span class="field-label-with-action"><span>广告目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="可以自行填写；添加参考视频时也可以留空，识别后仍能继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的广告目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只丰富广告目标，不会提前生成人物、场景、故事、分镜或机位；生成后仍可继续修改。'}</small></label>
+          <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
+          <fieldset class="field full content-mode-field"><legend>内容类型</legend><div class="content-mode-options">
+            <label><input type="radio" name="content_mode" value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'checked' : ''}><span><b>广告</b><small>有产品、服务、品牌或明确转化目标</small></span></label>
+            <label><input type="radio" name="content_mode" value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'checked' : ''}><span><b>剧情</b><small>以故事、人物、关系和场景表达为主</small></span></label>
+          </div><small>请由你亲自选择；AI 帮写、人物场景规划和后续脚本会使用对应方案，系统识别只作建议，不会替你默认选中。</small></fieldset>
+          <label class="field full"><span class="field-label-with-action"><span>内容目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；生成后仍可修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只补充目标，不会删除你写的人物、场景、故事或商品事实；生成后仍可继续修改。'}</small></label>
           <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
@@ -211,7 +217,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-story-brief-authority-v60');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-explicit-content-mode-v63');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -239,6 +245,8 @@ export async function mount(host, context) {
       brief: latest.text || '',
       content: latest.text || '',
       product_subject: latest.product_subject || '',
+      content_mode: latest.content_mode || '',
+      content_mode_source: latest.content_mode_source || '',
       target_duration: Number(latest.target_duration || 30) || 30,
       output_ratio: latest.output_ratio || '9:16',
       output_size: latest.output_size || 'standard',
@@ -249,6 +257,7 @@ export async function mount(host, context) {
     Object.keys(current).forEach(key => {
       if (dirtyFields.has(key) || (key === 'content' && dirtyFields.has('brief')) || (key === 'benchmark_strategy' && [...dirtyFields].some(name => name.startsWith('benchmark_')))) authoritative[key] = current[key];
     });
+    if (dirtyFields.has('content_mode')) authoritative.content_mode_source = 'user';
     authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
     return authoritative;
   }
@@ -261,6 +270,7 @@ export async function mount(host, context) {
       project_name: latest.project_name || nextState.bundle?.project?.title || '',
       brief: latest.text || '',
       product_subject: latest.product_subject || '',
+      content_mode: latest.content_mode || '',
       target_duration: String(Number(latest.target_duration || 30) || 30),
       output_ratio: latest.output_ratio || '9:16',
       video_resolution: latest.video_resolution || '1080p',
@@ -309,6 +319,7 @@ export async function mount(host, context) {
       if (!idea) throw new Error('请先输入一句广告想法，再让 AI 帮你丰富。');
       if (store.state.bundle?.reference?.analysis_id) throw new Error('当前项目已经添加参考视频，请使用视频分析出的广告目标。');
       const payload = safeFormPayload();
+      if (!payload.content_mode || payload.content_mode_source !== 'user') throw new Error('请先选择“广告”或“剧情”，再使用 AI 帮写。');
       setButtonBusy(button, true, 'AI 帮写中…', { elapsed: true });
       const data = await request('/api/new-story-ad/assist', {
         method: 'POST',
@@ -317,6 +328,8 @@ export async function mount(host, context) {
           task_id: createdProjectId || '',
           brief: idea,
           product_subject: payload.product_subject,
+          content_mode: payload.content_mode,
+          content_mode_source: 'user',
           target_duration: payload.target_duration,
           output_ratio: payload.output_ratio,
         },
@@ -340,6 +353,7 @@ export async function mount(host, context) {
     if (createdProjectId) return createdProjectId;
     const payload = safeFormPayload();
     if (!payload.project_name) throw new Error('请先填写项目名称。');
+    if (!payload.content_mode || payload.content_mode_source !== 'user') throw new Error('请先选择“广告”或“剧情”。');
     setButtonBusy(button, true, '正在创建…');
     const project = await store.createProject(payload);
     createdProjectId = project.id;
@@ -360,9 +374,11 @@ export async function mount(host, context) {
             ? '请先核对并确认参考理解报告，再创建人物与场景方案。'
             : '参考视频仍在分析中，请等待完成后再创建方案。'));
       }
+      const payload = safeFormPayload();
+      if (!payload.content_mode || payload.content_mode_source !== 'user') throw new Error('请先选择“广告”或“剧情”。');
       assetPlanTransitioning = true;
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
-      await store.updateRequest(safeFormPayload());
+      await store.updateRequest(payload);
       await store.runStage('scene-config');
       toast('人物与场景方案已提交，正在进入资产中心。视觉图片仍由你在资产中心确认后生成。', 'success');
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
