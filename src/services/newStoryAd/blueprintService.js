@@ -413,7 +413,7 @@ function normalizeBlueprint(blueprint, ctx) {
     ad_phase: inferAdPhase(beat, index, timedBeats.length),
   }));
   return {
-    story_title: bp.story_title || bp.title || `${ctx.product_subject}剧情广告`,
+    story_title: bp.story_title || bp.title || (ctx.product_subject ? `${ctx.product_subject}剧情广告` : '原创故事短片'),
     logline: bp.logline || bp.synopsis || '',
     beat_style: bp.beat_style || 'content_driven_visual_beats',
     visual_requirements: Array.isArray(bp.visual_requirements) ? bp.visual_requirements.map(x => clean(x, 80)).filter(Boolean) : [],
@@ -510,6 +510,7 @@ async function generateBlueprint(ctx, {
   const recommendedCount = profile.recommended;
   const beatLimit = profile.maxReasonable;
   const speechPlan = authoredSpeechPlan(ctx);
+  const narrativeOnly = ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story';
   const systemPrompt = [
     'You are the story blueprint writer for the New Story Ad module.',
     'Return strict JSON only. Do not write markdown or backend explanations.',
@@ -518,11 +519,15 @@ async function generateBlueprint(ctx, {
     'Choose the most suitable open-domain causal arc: conflict_resolution, transformation, demonstration or journey. Do not fabricate a crisis, rejection, illness, failure or other negative state merely to satisfy a dramatic template.',
     'Return narrative_contract version causal-story-v1 with arc_type, setup, trigger, progression, result and beat_refs. The contract must describe only facts supported by this task.',
     'Every beat must include causal_role using setup, trigger, development, evidence, transformation, resolution or brand_closure, plus state_before, state_after, intended_changes and visible_evidence arrays.',
-    'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
+    narrativeOnly
+      ? 'This is a pure narrative/story task. Build visible story progression from character actions, place, time and emotional change. Do not invent a product, brand, selling point, purchase prompt or conversion goal.'
+      : 'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
     'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
     'The spoken track must carry the story, not merely react to visuals. Do not hide motivation, obstacle, evidence, value change or decision only in plot, visual, action or why_next.',
     'Give every beat a distinct dialogue_function such as setup_goal, obstacle, question, discovery, proof, value_shift, decision, resolution or brand_closure. Across the whole film, the heard lines must cover setup/obstacle, development/proof and decision/resolution.',
-    'Every advertisement must have a visible beginning, middle proof and ending: beat 1 is an opening hook or establishing problem/scene; middle beats introduce the actual product, material, service or scene-embedded result and prove it through detail, use, comparison, transformation, assembly or outcome; the final beat resolves the value and closes on a stable result or authorized brand ending. Do not start with an unexplained beauty shot or end immediately after a detail montage.',
+    narrativeOnly
+      ? 'The story must have a visible beginning, development and ending: establish the requested character and place, advance the requested events through observable actions, and resolve the emotional or narrative change. The middle must not be forced into product proof.'
+      : 'Every advertisement must have a visible beginning, middle proof and ending: beat 1 is an opening hook or establishing problem/scene; middle beats introduce the actual product, material, service or scene-embedded result and prove it through detail, use, comparison, transformation, assembly or outcome; the final beat resolves the value and closes on a stable result or authorized brand ending. Do not start with an unexplained beauty shot or end immediately after a detail montage.',
     'For natural Chinese with deliberate pauses, target roughly 2.4-4.8 spoken Chinese characters per second across the full film. A normal 4-6 second beat usually needs about 10-22 meaningful characters; a brand end card may be shorter.',
     'Do not use a generic reaction such as “原来……可以这样做”“就是它了”“太棒了” as the whole line. Each line must add a concrete intention, question, product/material evidence, consequence or decision.',
     'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
@@ -547,7 +552,9 @@ async function generateBlueprint(ctx, {
       : 'Every beat must include spoken_line. If the picture is a silent product, space, UI or proof shot, write a short narrator line instead of leaving it blank.',
     'spoken_line is not a subtitle field. It must contain the final words for dialogue or narrator voice only, without any prefix such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
     'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
-    'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
+    narrativeOnly
+      ? 'Product presentation is disabled for this pure story. Leave product, selling_point and promo_visual empty unless the user explicitly adds a commercial subject later.'
+      : 'When product presentation is enabled, each suitable beat must reserve a visible product/proof/material role according to presence and lock strength.',
     'Never put explicitly forbidden people, objects, carrier forms, styles or wrong products into beats.',
     'Originality and rights are hard production constraints for every industry: create original characters, scenes, plot actions and visual compositions. Never reproduce or closely imitate a film, series, animation, game, advertisement, poster, album cover or protected character.',
     'Never request the style, likeness, face, voice or recognizable identity of a named artist, director, photographer, celebrity, public figure, influencer or third-party character. Do not write face-swap, identity-bypass or review-bypass instructions.',
@@ -694,4 +701,3 @@ module.exports = {
   recommendedBeatCount,
   softBeatLimit,
 };
-

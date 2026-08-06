@@ -6,6 +6,8 @@ function text(value = '', max = 200) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
+const briefAuthority = require('./briefAuthorityService');
+
 function mediaUrl(asset = {}) {
   if (typeof asset === 'string') return text(asset, 1200);
   return text(asset.image_url || asset.imageUrl || asset.url || asset.file_path || '', 1200);
@@ -70,6 +72,7 @@ function primaryProductAsset(context = {}) {
 const GENERIC_SUBJECTS = new Set(['当前广告主体', '广告主体', '当前产品', '商品主体', '产品主体']);
 
 function inferredSubject(context = {}) {
+  if (briefAuthority.contentMode(context) === 'narrative_story') return '';
   const explicit = text(context.product_subject || context.productSubject, 200);
   if (explicit && !GENERIC_SUBJECTS.has(explicit)) return explicit;
   const sourceFact = text(context.reference_video_analysis?.source_facts?.product_or_service, 200);
@@ -96,8 +99,20 @@ function productPresentation(context = {}) {
   const explicit = context.product_presentation || context.productPresentation || {};
   const product = primaryProductAsset(context);
   const subject = inferredSubject(context);
+  if (briefAuthority.contentMode(context) === 'narrative_story') {
+    return {
+      mode: 'narrative_story',
+      label: '纯剧情 / 故事主题',
+      subject: '',
+      standalone_generation_supported: false,
+      scene_linked: false,
+      source: 'user_story_brief',
+      description: '按用户提供的故事、人物关系、地点和事件推进，不强行添加商品、卖点、购买引导或独立商品资产。',
+    };
+  }
   const evidence = text([subject, context.brief, explicit.notes, explicit.description].filter(Boolean).join(' '), 1800);
   let mode = text(explicit.mode || explicit.type, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  if (mode === 'narrative_story') mode = '';
   if (!mode) {
     if (/(?:原材料|板材|钢板|材质|纹理|表面|墙面|背景墙|涂层|面料|饰面)/i.test(evidence)) mode = 'material_surface';
     else if (/(?:展厅|展示墙|展台|样板间|建筑|住宅|空间|场景|门窗|橱柜|家居)/i.test(evidence)) mode = 'scene_embedded_showcase';
@@ -107,6 +122,7 @@ function productPresentation(context = {}) {
   }
   const standalone = mode === 'standalone_product';
   const labels = {
+    narrative_story: '纯剧情 / 故事主题',
     standalone_product: '独立商品',
     material_surface: '场景中的材料 / 表面成果',
     scene_embedded_showcase: '场景中的展示成果',

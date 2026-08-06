@@ -1,17 +1,33 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v56';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v56';
-import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v56';
+import { request } from '../api.js?v=20260806-story-brief-authority-v60';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-story-brief-authority-v60';
+import { confirmDialog } from '../components/dialog.js?v=20260806-story-brief-authority-v60';
 
 function assetModal(title = '') {
+  const previouslyFocused = document.activeElement;
   const backdrop = document.createElement('div');
   backdrop.className = 'drawer-backdrop asset-modal-backdrop';
   const panel = document.createElement('section');
   panel.className = 'asset-source-modal';
-  panel.innerHTML = `<header><h2>${escapeHtml(title)}</h2><button class="icon-btn" type="button" data-close>×</button></header><div class="asset-source-modal-body" data-body></div>`;
-  const close = () => { backdrop.remove(); panel.remove(); };
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
+  panel.setAttribute('aria-labelledby', 'asset-source-modal-title');
+  panel.tabIndex = -1;
+  panel.innerHTML = `<header><h2 id="asset-source-modal-title">${escapeHtml(title)}</h2><button class="icon-btn" type="button" data-close aria-label="关闭弹窗">×</button></header><div class="asset-source-modal-body" data-body></div>`;
+  const onKeydown = (event) => {
+    if (event.key === 'Escape') close();
+  };
+  const close = () => {
+    document.removeEventListener('keydown', onKeydown);
+    document.body.classList.remove('story-ad-modal-open');
+    backdrop.remove(); panel.remove();
+    previouslyFocused?.focus?.();
+  };
   backdrop.addEventListener('click', close);
   panel.querySelector('[data-close]').addEventListener('click', close);
+  document.body.classList.add('story-ad-modal-open');
+  document.addEventListener('keydown', onKeydown);
   document.body.append(backdrop, panel);
+  panel.focus();
   return { panel, body: panel.querySelector('[data-body]'), close };
 }
 

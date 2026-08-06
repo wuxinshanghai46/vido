@@ -4,6 +4,7 @@ const subjectProfileText = require('./subjectProfileTextService');
 const referenceEvidenceText = require('./referenceEvidenceTextService');
 const benchmarkStrategy = require('./benchmarkStrategyService');
 const productAssetResolver = require('./productAssetResolverService');
+const briefAuthority = require('./briefAuthorityService');
 const referenceUnderstandingService = require('./referenceUnderstandingService');
 const productionLimits = require('./productionLimitsService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
@@ -253,6 +254,8 @@ function inferCastMode({ castMode = '', characters = [], brief = '' } = {}) {
   if (/dual|双人|两人/i.test(explicit)) return 'dual';
   if (/single|单人|一人/i.test(explicit)) return 'single';
   const text = `${brief} ${characters.map(c => `${c.name}${c.role}`).join(' ')}`;
+  const eraCast = briefAuthority.eraCastContract(brief);
+  if (eraCast) return eraCast.cast_mode;
   if (/无人|无人物|不出现人|不要人物|只拍产品|只拍空间|纯产品|纯空间/.test(text)) return 'no_human';
   const hasPet = /动物|宠物|萌宠|猫|狗|犬|金毛|柯基|萨摩耶|拉布拉多/.test(text);
   const hasHuman = characters.length > 0
@@ -779,6 +782,8 @@ function inferVisibleTextPolicy(body = {}, brief = '') {
 
 function inferExpectedPeopleCount(brief = '', characters = []) {
   if (Array.isArray(characters) && characters.length) return Math.min(12, characters.length);
+  const eraCast = briefAuthority.eraCastContract(brief);
+  if (eraCast) return eraCast.count;
   const text = cleanText(brief, 1200);
   const arabic = text.match(/(?:一家|家庭|共|有)?\s*(\d{1,2})\s*(?:口|人|位)(?:家庭成员|家人|人物|真人|演员)?/);
   if (arabic) return Math.max(1, Math.min(12, Number(arabic[1]) || 0));
@@ -990,6 +995,14 @@ function buildContext(body = {}, user = {}) {
   const contextAssets = noHuman || animalOnly
     ? assets.filter(asset => !/(?:person|character|actor)/i.test(asset.type || ''))
     : assets;
+  const productPresentation = productAssetResolver.productPresentation({
+    product_subject: productSubject,
+    brief,
+    product_asset: body.product_asset || body.productAsset,
+    assets,
+    product_presentation: body.product_presentation || body.productPresentation,
+    reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
+  });
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -998,15 +1011,9 @@ function buildContext(body = {}, user = {}) {
     brief_source: ['user', 'reference_analysis', 'system'].includes(cleanText(body.brief_source || body.briefSource || '', 40))
       ? cleanText(body.brief_source || body.briefSource, 40)
       : '',
-    product_subject: productAssetResolver.inferredSubject({ product_subject: productSubject || inferSubjectFromBrief(brief), brief, reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis }),
-    product_presentation: productAssetResolver.productPresentation({
-      product_subject: productSubject || inferSubjectFromBrief(brief),
-      brief,
-      product_asset: body.product_asset || body.productAsset,
-      assets,
-      product_presentation: body.product_presentation || body.productPresentation,
-      reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
-    }),
+    product_subject: productPresentation.subject,
+    product_presentation: productPresentation,
+    content_mode: productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject',
     target_duration: targetDuration,
     duration_source: durationContract.source,
     shot_count: shotCount,
@@ -1224,13 +1231,19 @@ function referenceVideoAnalysisPrompt(reference = null) {
 function contextPrompt(ctx) {
   return [
     `广告需求：${ctx.brief}`,
-    `广告主体：${ctx.product_subject}`,
+    ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story'
+      ? '内容类型：纯剧情 / 故事主题。不得凭空添加商品、品牌、卖点、购买引导或销售转化；以原始故事事实为最高权威。'
+      : `广告主体：${ctx.product_subject}`,
     ctx.product_presentation ? `主体展示方式：${ctx.product_presentation.label || ctx.product_presentation.mode}；${ctx.product_presentation.description || ''}` : '',
     `目标时长：${ctx.target_duration} 秒`,
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
     `人物/主体模式：${ctx.cast_mode}`,
     ctx.expected_people ? `精确人数：${ctx.expected_people}（必须保持，不得用默认群体数量替代）` : '',
+    briefAuthority.eraCastContract(ctx.brief)?.rule || '',
+    briefAuthority.explicitSceneRequirements(ctx.brief).length
+      ? `明确场景硬约束：${briefAuthority.explicitSceneRequirements(ctx.brief).join('、')}。这些地点必须出现在场景计划中，禁止替换成书房、办公室或其它未要求空间。`
+      : '',
     ctx.expected_animals ? `精确宠物/动物数量：${ctx.expected_animals}（与人物数量独立计数，人物不得替代宠物，宠物不得替代人物）` : '',
     `剧情呈现方式：${ctx.production_mode || 'auto'}（${productionModeDescription(ctx.production_mode)}）。该设置直接约束剧本叙事方式，但不得覆盖已确认人物、主体或场景。`,
     `剧情生成设置：${ctx.story_setup_confirmed === true ? '已在人物与场景形象确认后完成' : '尚未确认'}`,

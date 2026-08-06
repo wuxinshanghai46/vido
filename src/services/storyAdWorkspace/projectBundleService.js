@@ -232,7 +232,7 @@ function animalAssets(context = {}) {
 function productAssets(context = {}) {
   const product = productAssetResolver.primaryProductAsset(context);
   const presentation = productAssetResolver.productPresentation(context);
-  if (!product && !clean(presentation.subject)) return [];
+  if (presentation.mode === 'narrative_story' || (!product && !clean(presentation.subject))) return [];
   return [{
     id: clean(product?.id || product?.asset_id || 'product-primary', 120),
     kind: presentation.scene_linked ? 'showcase_subject' : 'product',

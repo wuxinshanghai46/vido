@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v56';
-import { confirmDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v56';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v56';
+import { request } from '../api.js?v=20260806-story-brief-authority-v60';
+import { confirmDialog } from '../components/dialog.js?v=20260806-story-brief-authority-v60';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-story-brief-authority-v60';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};

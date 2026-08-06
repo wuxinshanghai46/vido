@@ -3652,7 +3652,7 @@ ${outputSchema}`;
     systemPrompt,
     userPrompt,
     maxTokens: 3000,
-    validateText: isBriefGoal ? briefGoalAssist.validateRaw : (assistSubjectTarget ? raw => {
+    validateText: isBriefGoal ? raw => briefGoalAssist.validateRaw(raw, ctx) : (assistSubjectTarget ? raw => {
       try {
         const draft = jsonRepair.parseJson(raw, 'object');
         return assistSubjectProfiles.modelDraftQuality(

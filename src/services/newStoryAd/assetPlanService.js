@@ -5,6 +5,7 @@ const jsonRepair = require('./jsonRepairService');
 const outputLanguage = require('./outputLanguageService');
 const stageProgress = require('./stageProgressService');
 const visualRealismPolicy = require('./visualRealismPolicyService');
+const briefAuthority = require('./briefAuthorityService');
 const propIdentity = require('./propIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
 const { contextPrompt, cleanText, assertContextConsistent } = require('./contextBuilder');
@@ -605,6 +606,9 @@ async function generate(taskId, options = {}) {
       '你是剧情广告统一资产规划 agent，只输出 JSON 对象。',
       '一次完成原创人物、独立道具、物理场景和故事种子的规划，不得把同一需求拆成多次模型理解。',
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
+      '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
+      '现代与古代交替、交错、双线或对照且没有明确“同一人物/穿越/换装/一人分饰”时，必须规划为两个独立人物，分别绑定各自时代身份，禁止合并成同一人。',
+      '纯剧情 / 故事主题任务不得创建 advertised_product 道具，不得补写商品、品牌、卖点、购买或销售转化。',
       '每个独立物理空间必须有稳定 ID 和完整 scene_spec。',
       visualRealismPolicy.sceneSpecRealismRuleZh(),
     ].join('\n');
@@ -642,6 +646,7 @@ async function generate(taskId, options = {}) {
       context: ctx,
     });
     plan = normalizePlan(language.payload, ctx);
+    briefAuthority.assertPlanAuthority(plan, ctx);
     modelMeta = {
       source: 'unified_model_plan',
       model_call_count: 1,

@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-partial-asset-recovery-v56';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-partial-asset-recovery-v56';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-partial-asset-recovery-v56';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-partial-asset-recovery-v56';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-partial-asset-recovery-v56';
+import { request } from '../api.js?v=20260806-story-brief-authority-v60';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-story-brief-authority-v60';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-story-brief-authority-v60';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-story-brief-authority-v60';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-story-brief-authority-v60';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -211,7 +211,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-partial-asset-recovery-v56');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-story-brief-authority-v60');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -328,7 +328,7 @@ export async function mount(host, context) {
       if (!assisted) throw new Error('AI 没有返回可用的广告目标，请保留当前想法后重试。');
       textarea.value = assisted;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      toast('AI 已丰富广告目标；确认或修改后再进行资产创建。', 'success');
+      toast('AI 已在原始内容后补充传播目标；人物、场景和故事原文均已保留。', 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {
