@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-scene-card-knowledge-v65';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-scene-card-knowledge-v65';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-scene-card-knowledge-v65';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-scene-card-knowledge-v65';
+import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-scene-dossier-card-v67';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-scene-dossier-card-v67';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -217,7 +217,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-scene-card-knowledge-v65');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-scene-dossier-card-v67');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

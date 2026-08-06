@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-scene-card-knowledge-v65';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-card-knowledge-v65';
+import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { confirmDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260806-scene-card-knowledge-v65';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-scene-card-knowledge-v65';
+import { createProjectStore } from './store/projectStore.js?v=20260806-scene-dossier-card-v67';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-scene-dossier-card-v67';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-scene-dossier-card-v67';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260806-scene-card-knowledge-v65'),
-  assets: () => import('./views/assetCenterView.js?v=20260806-scene-card-knowledge-v65'),
-  plot: () => import('./views/plotRoomView.js?v=20260806-scene-card-knowledge-v65'),
-  storyboard: () => import('./views/storyboardView.js?v=20260806-scene-card-knowledge-v65'),
-  shot: () => import('./views/shotDesignerView.js?v=20260806-scene-card-knowledge-v65'),
-  final: () => import('./views/finalView.js?v=20260806-scene-card-knowledge-v65'),
-  workflow: () => import('./views/workflowView.js?v=20260806-scene-card-knowledge-v65'),
+  brief: () => import('./views/briefView.js?v=20260806-scene-dossier-card-v67'),
+  assets: () => import('./views/assetCenterView.js?v=20260806-scene-dossier-card-v67'),
+  plot: () => import('./views/plotRoomView.js?v=20260806-scene-dossier-card-v67'),
+  storyboard: () => import('./views/storyboardView.js?v=20260806-scene-dossier-card-v67'),
+  shot: () => import('./views/shotDesignerView.js?v=20260806-scene-dossier-card-v67'),
+  final: () => import('./views/finalView.js?v=20260806-scene-dossier-card-v67'),
+  workflow: () => import('./views/workflowView.js?v=20260806-scene-dossier-card-v67'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

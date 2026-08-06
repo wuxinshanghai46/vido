@@ -1,4 +1,4 @@
-import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260806-scene-card-knowledge-v65';
+import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260806-scene-dossier-card-v67';
 
 export { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION };
 const TOKEN_KEYS = ['vido_token', 'token'];
@@ -194,6 +194,7 @@ export async function request(path, options = {}) {
       versionError.code = 'CLIENT_BUILD_EXPIRED';
       throw versionError;
     }
+    if (response.ok && options.responseType === 'blob') return response.blob();
     const text = await response.text();
     let data = {};
     try { data = text ? JSON.parse(text) : {}; } catch {}

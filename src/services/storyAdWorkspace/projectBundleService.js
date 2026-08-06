@@ -5,7 +5,7 @@ const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProje
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
-const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
+const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
@@ -284,7 +284,6 @@ function sceneAssets(outputs = {}, context = {}) {
   const findById = (rows, id, consumed) => rows.findIndex((item, index) => !consumed.has(index) && keyOf(item, index) === id);
   const shots = list(outputs.storyboard_table);
   const routes = list(plan.routes || plan.scene_routes || plan.transitions);
-
   const projectScene = (space = {}, asset = {}, reference = {}, index = 0, options = {}) => {
     const id = rawKeyOf(space) || rawKeyOf(asset) || rawKeyOf(reference) || `scene-${index + 1}`;
     const contract = asset.scene_contract && typeof asset.scene_contract === 'object' ? asset.scene_contract : {};
@@ -384,6 +383,7 @@ function sceneAssets(outputs = {}, context = {}) {
       cameras,
       routes: relevantRoutes,
       shot_refs: shotRefs,
+      scene_card: projectSceneDossier({ contract, asset, spec, imageUrl, clean, list }),
       qa: {
         full_space_lock: contract.full_space_lock === true,
         space_lock_status: clean(contract.space_lock_status, 80),

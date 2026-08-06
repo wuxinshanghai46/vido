@@ -1,10 +1,11 @@
-import { request } from '../api.js?v=20260806-scene-card-knowledge-v65';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-card-knowledge-v65';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-scene-card-knowledge-v65';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-scene-card-knowledge-v65';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-scene-card-knowledge-v65';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-scene-card-knowledge-v65';
+import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { confirmDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-scene-dossier-card-v67';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-scene-dossier-card-v67';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-scene-dossier-card-v67';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260806-scene-dossier-card-v67';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-scene-dossier-card-v67';
 
 const GROUPS = [
   ['people', '人物'],
@@ -140,7 +141,7 @@ function assetCard(item, group) {
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
-      <div class="asset-card-media">${mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
+      <div class="asset-card-media">${group === 'scenes' ? renderSceneCoverCard(item) : mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
       <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认'))))}</span>
         <b>${escapeHtml(item.name)}</b>
@@ -148,7 +149,7 @@ function assetCard(item, group) {
       </button>
     </div>
     <div class="asset-card-actions">
-      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '空间与机位' : '完整视图')}`}</button>
+      <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
       ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">生成${group === 'people' ? '完整人物档案' : '该动物资产'}</button>` : ''}
       ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
@@ -481,7 +482,7 @@ export async function mount(host, context) {
   const showAsset = button => {
     const group = button.dataset.assetGroup;
     const item = (assets[group] || []).find(asset => String(asset.id) === button.dataset.assetId);
-    if (item) openDrawer(item, group, { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products') });
+    if (item) openDrawer(item, group, { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products'), returnFocus: button });
   };
   host.querySelectorAll('[data-asset-id]').forEach(button => button.addEventListener('click', () => showAsset(button)));
   host.querySelectorAll('[data-generate-asset]').forEach(button => button.addEventListener('click', event => {
@@ -506,7 +507,7 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-edit-scene-world]').forEach(button => button.addEventListener('click', event => {
     event.stopPropagation();
     const item = (assets.scenes || []).find(asset => String(asset.id) === button.dataset.editSceneWorld);
-    if (item) openDrawer(item, 'scenes', { onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp });
+    if (item) openDrawer(item, 'scenes', { onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, returnFocus: button });
   }));
   host.querySelectorAll('[data-sync-person-provider]').forEach(button => button.addEventListener('click', async event => {
     event.stopPropagation();
@@ -555,7 +556,7 @@ export async function mount(host, context) {
   host.querySelector('[data-generate-product-main]').addEventListener('click', event => {
     const item = (assets.products || [])[0] || null;
     if (item && !item.presentation?.standalone_generation_supported) {
-      openDrawer(item, 'products', { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products') });
+      openDrawer(item, 'products', { onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products'), returnFocus: event.currentTarget });
       return;
     }
     generateProduct(item, event.currentTarget);

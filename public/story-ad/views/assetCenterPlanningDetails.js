@@ -1,5 +1,6 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-scene-card-knowledge-v65';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-scene-dossier-card-v67';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260806-scene-dossier-card-v67';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
@@ -101,6 +102,7 @@ export function sceneDetails(item = {}) {
   const cameraPlan = mergeCameraPlan(item, savedCameraPlan);
   const cameraGallery = item.cameras?.length ? `<section class="scene-director-views"><div class="drawer-section-head"><h3>对应机位画面</h3><span>${item.cameras.length}</span></div><div class="scene-camera-list">${item.cameras.map(cameraWithImage).map((camera, index) => `<article class="scene-camera-card ${camera.image_url ? 'has-image' : 'is-missing-image'}"><div class="scene-camera-media">${camera.image_url ? mediaPreview(camera, { label: `${index + 1}. ${item.name} ${camera.label || camera.id}`, width: 960, symbol: '机位图', zoomable: true, zoomGroup: `scene-director-${item.id || 'current'}` }) : '<div class="scene-camera-missing"><span>该机位图未生成</span></div>'}</div><div class="scene-camera-copy"><header><b>${index + 1}. ${escapeHtml(camera.label || camera.id)}</b><span>${escapeHtml(camera.view_id || camera.id || '')}</span></header><p>${escapeHtml([camera.role, camera.framing, camera.lens, camera.height].filter(Boolean).join(' · ') || '参数未提供')}</p><small>${escapeHtml([camera.orientation, camera.visible_evidence].filter(Boolean).join('；') || '方向与可见证据未提供')}</small></div></article>`).join('')}</div></section>` : '';
   return `<div class="scene-detail-stack">
+    ${renderSceneDossierCard(item)}
     ${(item.description || item.story_purpose) ? `<section class="drawer-profile"><h3>场景用途</h3>${item.description ? `<div><span>空间描述</span><p>${escapeHtml(item.description)}</p></div>` : ''}${item.story_purpose ? `<div><span>剧情用途</span><p>${escapeHtml(item.story_purpose)}</p></div>` : ''}</section>` : ''}
     ${cameraPlanMap(item, cameraPlan)}
     ${cameraGallery}
@@ -121,7 +123,7 @@ export function sceneEditForm(item = {}) {
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct } = handlers;
+  const { onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -144,9 +146,19 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${group === 'scenes' ? `<footer class="drawer-actions"><span>${sceneGenerated ? `当前已有 ${views.length} 个视角、${cameras.length} 个机位；仅在需要建立新版本时重新生成。` : '生成空间母版、视角和机位图，过程会显示统一进度与耗时。'}</span><button class="btn ${sceneGenerated ? '' : 'primary'}" type="button" data-drawer-generate-scene>${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button></footer>` : ''}
     ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>展示主体可以上传实物/材料参考，也可以先由 AI 生成一张参考图；后续场景和分镜会把它作为主体锁定素材。</span><div><button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn primary" type="button" data-drawer-generate-product>${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button></div></footer>` : ''}
     ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
-  const close = () => { backdrop.remove(); drawer.remove(); };
+  let closed = false;
+  const onKeydown = event => { if (event.key === 'Escape') close(); };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    document.removeEventListener('keydown', onKeydown);
+    backdrop.remove();
+    drawer.remove();
+    returnFocus?.focus?.();
+  };
   backdrop.addEventListener('click', close);
   drawer.querySelector('[data-close-drawer]').addEventListener('click', close);
+  document.addEventListener('keydown', onKeydown);
   const bindSubmit = (selector, callback) => drawer.querySelector(selector)?.addEventListener('submit', async event => {
     event.preventDefault();
     const button = event.currentTarget.querySelector('button[type="submit"]');
@@ -171,4 +183,6 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   });
   document.body.append(backdrop, drawer);
   bindMediaLightbox(drawer);
+  if (group === 'scenes') bindSceneDossierCard(drawer, item);
+  drawer.querySelector('[data-close-drawer]')?.focus();
 }

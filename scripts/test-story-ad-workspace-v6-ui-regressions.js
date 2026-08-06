@@ -364,10 +364,21 @@ const assetModule = loadBrowserModule(
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
   { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
+const sceneDossierModule = loadBrowserModule(
+  'public/story-ad/views/sceneDossierCard.js',
+  ['renderSceneDossierCard'],
+  { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
+);
 const planningModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanningDetails.js',
   ['sceneDetails'],
-  { escapeHtml, mediaPreview, bindMediaLightbox() {}, personDossierShowcase() { return ''; } },
+  {
+    escapeHtml,
+    mediaPreview,
+    bindMediaLightbox() {},
+    personDossierShowcase() { return ''; },
+    renderSceneDossierCard: sceneDossierModule.renderSceneDossierCard,
+  },
 );
 const dossierModule = loadBrowserModule(
   'public/story-ad/views/personDossierShowcase.js',
@@ -443,6 +454,7 @@ assert.match(sceneWithCameraImage, /src="\/camera-a\.png"/);
 assert.match(sceneWithCameraImage, /该机位图未生成/);
 assert.match(sceneWithCameraImage, /scene-camera-card has-image/);
 assert.match(sceneWithCameraImage, /scene-camera-card is-missing-image/);
+assert.match(sceneWithCameraImage, /data-scene-dossier=/, '场景详情回归夹具必须覆盖完整场景档案渲染');
 
 const generateFunction = assets.slice(assets.indexOf('const generate = async'), assets.indexOf("host.querySelectorAll('[data-asset-filter]"));
 assert(generateFunction.indexOf('confirmDialog') >= 0, '人物生成必须包含显式确认');

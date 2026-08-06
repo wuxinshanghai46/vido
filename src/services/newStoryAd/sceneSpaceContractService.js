@@ -451,16 +451,16 @@ function normalizeContract(input = {}, options = {}) {
     requested_interaction_contract: requested.interaction_contract || input.requested_interaction_contract || {},
     requested_story_states: Array.isArray(requested.structured_scene_contract?.story_states)
       ? requested.structured_scene_contract.story_states
-      : [],
+      : (Array.isArray(input.requested_story_states) ? input.requested_story_states : []),
     requested_interaction_anchors: Array.isArray(requested.structured_scene_contract?.interaction_anchors)
       ? requested.structured_scene_contract.interaction_anchors
-      : [],
+      : (Array.isArray(input.requested_interaction_anchors) ? input.requested_interaction_anchors : []),
     requested_routes: Array.isArray(requested.structured_scene_contract?.routes)
       ? requested.structured_scene_contract.routes
-      : [],
+      : (Array.isArray(input.requested_routes) ? input.requested_routes : []),
     requested_prop_placements: Array.isArray(requested.structured_scene_contract?.prop_placements)
       ? requested.structured_scene_contract.prop_placements
-      : [],
+      : (Array.isArray(input.requested_prop_placements) ? input.requested_prop_placements : []),
     observed_summary: cleanText(input.observed_summary || input.summary || '', 1200),
     anchors: normalizeAnchors(input.anchors || input.spatial_anchors || []),
     zones: normalizeZones(input.zones || input.spatial_zones || []),

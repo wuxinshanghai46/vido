@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-scene-card-knowledge-v65';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-card-knowledge-v65';
+import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { confirmDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260806-scene-card-knowledge-v65';
+  link.href = '/story-ad/reference-understanding.css?v=20260806-scene-dossier-card-v67';
   document.head.appendChild(link);
 }
 
