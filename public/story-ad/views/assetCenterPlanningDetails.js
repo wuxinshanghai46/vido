@@ -1,5 +1,5 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-explicit-content-mode-v63';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-reproducible-handoff-v64';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

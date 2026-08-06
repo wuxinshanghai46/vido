@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260806-explicit-content-mode-v63';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260806-explicit-content-mode-v63';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260806-explicit-content-mode-v63';
+import { request } from '../api.js?v=20260806-reproducible-handoff-v64';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260806-reproducible-handoff-v64';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260806-reproducible-handoff-v64';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-explicit-content-mode-v63';
-import { toast } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
-import { confirmDialog } from '../components/dialog.js?v=20260806-explicit-content-mode-v63';
+import { request } from '../api.js?v=20260806-reproducible-handoff-v64';
+import { toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { confirmDialog } from '../components/dialog.js?v=20260806-reproducible-handoff-v64';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

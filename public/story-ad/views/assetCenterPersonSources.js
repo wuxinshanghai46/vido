@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-explicit-content-mode-v63';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
-import { confirmDialog } from '../components/dialog.js?v=20260806-explicit-content-mode-v63';
+import { request } from '../api.js?v=20260806-reproducible-handoff-v64';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { confirmDialog } from '../components/dialog.js?v=20260806-reproducible-handoff-v64';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

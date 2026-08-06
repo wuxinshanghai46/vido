@@ -1,10 +1,10 @@
-import { request } from '../api.js?v=20260806-explicit-content-mode-v63';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-explicit-content-mode-v63';
-import { confirmDialog } from '../components/dialog.js?v=20260806-explicit-content-mode-v63';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-explicit-content-mode-v63';
-import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-explicit-content-mode-v63';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-explicit-content-mode-v63';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-explicit-content-mode-v63';
+import { request } from '../api.js?v=20260806-reproducible-handoff-v64';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { confirmDialog } from '../components/dialog.js?v=20260806-reproducible-handoff-v64';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260806-reproducible-handoff-v64';
+import { openAssetDrawer } from './assetCenterPlanningDetails.js?v=20260806-reproducible-handoff-v64';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260806-reproducible-handoff-v64';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260806-reproducible-handoff-v64';
 
 const GROUPS = [
   ['people', '人物'],
