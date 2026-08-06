@@ -11,7 +11,7 @@ function isMode(mode = '') {
 
 function assertInput(body = {}) {
   if (cleanText(body.brief || body.content || '', 3000)) return;
-  const error = new Error('请先输入一句广告想法，AI 才能帮你丰富目标；没有调用文本模型');
+  const error = new Error('请先输入想写的内容，AI 才能帮你补充；没有调用文本模型');
   error.code = 'ASSIST_BRIEF_GOAL_EMPTY';
   error.status = 400;
   throw error;
@@ -21,7 +21,7 @@ function normalize(value = '', fallback = '') {
   const text = cleanText(value || fallback);
   const chineseCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
   if (chineseCount < 40) {
-    const error = new Error('AI 返回的广告目标过于简略，请保留当前想法后重试');
+    const error = new Error('AI 返回的内容过于简略，请保留当前输入后重试');
     error.code = 'ASSIST_BRIEF_GOAL_INCOMPLETE';
     error.status = 422;
     error.retryable = true;
@@ -50,13 +50,37 @@ function validateRaw(raw = '', source = {}) {
   }
 }
 
-function systemRule() {
-  return '当 mode 是 brief_goal 时，只扩写“广告目标”这一项，并以一段“传播目标补充”返回；不得改写、摘要、替换或删除用户原文。用户原文中的人物数量、人物关系、时代、地点、动作、故事类型和是否存在商品都是不可变事实。如果产品或主题字段为空且原文没有明确商品、品牌或服务，必须按纯故事主题表达，禁止添加产品、商品、购买、卖点、品牌或销售转化。禁止提前编写完整故事、人物设定、场景清单、脚本、分镜、机位或执行步骤。';
+function isNarrative(source = {}) {
+  return briefAuthority.contentMode(source) === 'narrative_story';
 }
 
-function outputSchema() {
+function modePrompt(source = {}) {
+  return isNarrative(source)
+    ? 'brief_goal 剧情表达目标帮写：围绕人物、关系、地点、事件、情绪和主题补充表达方向'
+    : 'brief_goal 广告传播目标帮写：围绕产品或服务、目标人群、核心价值、可信依据和期望行动补充传播方向';
+}
+
+function assistantRole(source = {}) {
+  return `你是剧情广告模块的${isNarrative(source) ? '剧情表达' : '广告传播'}目标整理助手。只输出 JSON 对象，不要 markdown。`;
+}
+function taskRule() {
+  return '你的任务是按用户亲自选择的内容类型补充目标；不得把剧情变广告，也不得把广告改成无商业主体的故事。';
+}
+
+function systemRule(source = {}) {
+  const shared = '不得改写、摘要、替换或删除用户原文。用户原文中的人物数量、人物关系、时代、地点、动作、内容类型和是否存在商品都是不可变事实。禁止提前编写完整故事、人物设定、场景清单、脚本、分镜、机位或执行步骤。';
+  if (isNarrative(source)) {
+    return `当 mode 是 brief_goal 时，当前是用户明确选择的纯剧情任务，只扩写“剧情表达目标”，并以一段“剧情表达补充”返回；围绕人物、关系、地点、事件、情绪和主题说明故事想让观众理解或感受到什么。${shared} 禁止添加产品、商品、服务、购买、卖点、品牌、营销、传播或销售转化。`;
+  }
+  return `当 mode 是 brief_goal 时，当前是用户明确选择的广告任务，只扩写“广告传播目标”，并以一段“广告目标补充”返回；围绕已确认的产品或服务、目标人群、核心价值、可信依据和期望行动补充，不得编造功效、价格、资质或品牌事实。${shared}`;
+}
+
+function outputSchema(source = {}) {
+  const description = isNarrative(source)
+    ? '只包含剧情表达补充的中文段落，100-260 字；围绕人物、关系、地点、事件、情绪和主题；不得复述、改写或省略用户原文；不得添加商品、品牌、卖点、购买、营销、传播或转化'
+    : '只包含广告目标补充的中文段落，100-260 字；围绕产品或服务、目标人群、核心价值、可信依据和期望行动；不得复述、改写或省略用户原文；不得编造功效、价格、资质或品牌事实';
   return `{
-  "goal_addition": "只包含传播目标补充的中文段落，100-260 字；不得复述、改写或省略用户原文；纯故事任务不得添加商品、品牌、卖点、购买或转化"
+  "goal_addition": "${description}"
 }`;
 }
 
@@ -70,7 +94,7 @@ function buildResponse({ parsed = {}, context = {}, mode = 'brief_goal', modelRe
     throw error;
   }
   return {
-    brief: source ? `${source}\n\n【传播目标补充】${addition}` : addition,
+    brief: source ? `${source}\n\n【${isNarrative(context) ? '剧情表达补充' : '广告目标补充'}】${addition}` : addition,
     original_brief: source,
     goal_addition: addition,
     mode,
@@ -82,4 +106,4 @@ function buildResponse({ parsed = {}, context = {}, mode = 'brief_goal', modelRe
   };
 }
 
-module.exports = { isMode, assertInput, validateRaw, systemRule, outputSchema, buildResponse, normalize, hasCommercialDrift };
+module.exports = { isMode, assertInput, validateRaw, systemRule, outputSchema, buildResponse, normalize, hasCommercialDrift, isNarrative, modePrompt, assistantRole, taskRule };

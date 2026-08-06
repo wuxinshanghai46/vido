@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-scene-dossier-card-v67';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-scene-dossier-card-v67';
+import { request } from '../api.js?v=20260806-content-mode-dialog-v68';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v68';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v68';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260806-content-mode-dialog-v68';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260806-content-mode-dialog-v68';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -137,12 +137,11 @@ export async function mount(host, context) {
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
-          <fieldset class="field full content-mode-field"><legend>内容类型</legend><div class="content-mode-options">
-            <label><input type="radio" name="content_mode" value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'checked' : ''}><span><b>广告</b><small>有产品、服务、品牌或明确转化目标</small></span></label>
-            <label><input type="radio" name="content_mode" value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'checked' : ''}><span><b>剧情</b><small>以故事、人物、关系和场景表达为主</small></span></label>
-          </div><small>请由你亲自选择；AI 帮写、人物场景规划和后续脚本会使用对应方案，系统识别只作建议，不会替你默认选中。</small></fieldset>
           <label class="field full"><span class="field-label-with-action"><span>内容目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；生成后仍可修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只补充目标，不会删除你写的人物、场景、故事或商品事实；生成后仍可继续修改。'}</small></label>
-          <label class="field"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="没有商品也可以留空"></label>
+          <fieldset class="field content-mode-field content-mode-subject-field"><legend>内容类型</legend><div class="content-mode-options">
+            <label><input type="radio" name="content_mode" value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'checked' : ''}><span><b>广告</b><small>产品 / 服务 / 品牌</small></span></label>
+            <label><input type="radio" name="content_mode" value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'checked' : ''}><span><b>剧情</b><small>故事 / 人物 / 场景</small></span></label>
+          </div><label class="content-mode-subject-input"><span>产品或主题</span><input class="input" name="product_subject" value="${escapeHtml(brief.product_subject || '')}" placeholder="广告填产品，剧情可留空"></label><small>请亲自选择类型；AI 帮写和后续制作会使用对应方案。</small></fieldset>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
           </select></label>
@@ -217,7 +216,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260806-scene-dossier-card-v67');
+    const module = await import('./referenceUnderstandingView.js?v=20260806-content-mode-dialog-v68');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -245,7 +244,7 @@ export async function mount(host, context) {
       brief: latest.text || '',
       content: latest.text || '',
       product_subject: latest.product_subject || '',
-      content_mode: latest.content_mode || '',
+      content_mode: latest.content_mode_source === 'user' ? (latest.content_mode || '') : '',
       content_mode_source: latest.content_mode_source || '',
       target_duration: Number(latest.target_duration || 30) || 30,
       output_ratio: latest.output_ratio || '9:16',
@@ -314,12 +313,31 @@ export async function mount(host, context) {
   host.querySelector('[data-ai-brief]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     const textarea = form.elements.namedItem('brief');
-    const idea = String(textarea?.value || '').trim();
     try {
-      if (!idea) throw new Error('请先输入一句广告想法，再让 AI 帮你丰富。');
       if (store.state.bundle?.reference?.analysis_id) throw new Error('当前项目已经添加参考视频，请使用视频分析出的广告目标。');
       const payload = safeFormPayload();
       if (!payload.content_mode || payload.content_mode_source !== 'user') throw new Error('请先选择“广告”或“剧情”，再使用 AI 帮写。');
+      const isStory = payload.content_mode === 'narrative_story';
+      const idea = await promptDialog(isStory ? 'AI 帮写剧情内容' : 'AI 帮写广告内容', {
+        message: isStory
+          ? '写下人物、关系、地点、事件或想表达的主题，AI 会按剧情方向补充，不会加入商品卖点。'
+          : '写下产品或服务、目标人群、核心价值和希望观众采取的行动，AI 会按广告方向补充。',
+        inputLabel: isStory ? '你想写的剧情内容' : '你想写的广告内容',
+        placeholder: isStory
+          ? '例如：一对多年未见的姐妹在故乡竹海重逢，故事表达和解与重新出发。'
+          : '例如：为东方香氛制作广告，面向年轻职场女性，突出自然气味与放松体验。',
+        value: String(textarea?.value || '').trim(),
+        confirmText: '生成内容',
+        cancelText: '取消',
+        requiredMessage: isStory ? '请先输入想写的剧情内容。' : '请先输入想写的广告内容。',
+        multiline: true,
+        rows: 6,
+        maxLength: 3000,
+      });
+      if (idea === null) return;
+      const currentPayload = safeFormPayload();
+      if (currentPayload.content_mode !== payload.content_mode || currentPayload.content_mode_source !== 'user') throw new Error('内容类型已变化，请重新点击 AI 帮写。');
+      const targetSnapshot = String(textarea?.value || '');
       setButtonBusy(button, true, 'AI 帮写中…', { elapsed: true });
       const data = await request('/api/new-story-ad/assist', {
         method: 'POST',
@@ -336,12 +354,12 @@ export async function mount(host, context) {
         timeoutMs: 120000,
       });
       if (store.state.bundle?.reference?.analysis_id) throw new Error('AI 帮写期间已添加参考视频，本次结果没有覆盖视频分析内容。');
-      if (String(textarea?.value || '').trim() !== idea) throw new Error('你在 AI 帮写期间修改了广告目标，本次结果没有覆盖你的新内容。');
+      if (String(textarea?.value || '') !== targetSnapshot) throw new Error('你在 AI 帮写期间修改了内容目标，本次结果没有覆盖你的新内容。');
       const assisted = String(data.brief || '').trim();
-      if (!assisted) throw new Error('AI 没有返回可用的广告目标，请保留当前想法后重试。');
+      if (!assisted) throw new Error(`AI 没有返回可用的${isStory ? '剧情内容' : '广告目标'}，请保留当前输入后重试。`);
       textarea.value = assisted;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      toast('AI 已在原始内容后补充传播目标；人物、场景和故事原文均已保留。', 'success');
+      toast(isStory ? 'AI 已补充剧情表达目标，原始人物、关系和场景事实均已保留。' : 'AI 已补充广告传播目标，原始产品与业务事实均已保留。', 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {

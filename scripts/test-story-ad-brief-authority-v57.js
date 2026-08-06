@@ -76,8 +76,20 @@ assert.equal(briefAssist.validateRaw(raw, context), true);
 const assisted = briefAssist.buildResponse({ parsed: { goal_addition: addition }, context });
 assert.equal(assisted.original_brief, sourceBrief);
 assert(assisted.brief.startsWith(sourceBrief), 'AI 帮写结果必须逐字保留原始内容');
-assert.match(assisted.brief, /【传播目标补充】/);
+assert.match(assisted.brief, /【剧情表达补充】/);
+assert.match(briefAssist.systemRule(context), /纯剧情任务/);
+assert.match(briefAssist.systemRule(context), /人物、关系、地点、事件、情绪和主题/);
+assert.doesNotMatch(briefAssist.modePrompt(context), /广告传播目标/);
+assert.match(briefAssist.outputSchema(context), /不得添加商品、品牌、卖点、购买、营销、传播或转化/);
 assert.equal(briefAssist.validateRaw(JSON.stringify({ goal_addition: '突出产品卖点并提升购买意愿，推动用户下单转化，强化品牌认知与销售结果，形成稳定的商品传播闭环和消费决策。' }), context), false, '纯故事不得被 AI 补成商品广告');
+
+const commercialAddition = '面向注重日常情绪体验的年轻职场人群，围绕东方香氛的自然气味与放松体验建立清晰认知，以真实使用时刻支撑核心价值，引导观众进一步了解产品并形成可信的品牌记忆。';
+assert.match(briefAssist.systemRule(selectedAd), /广告任务/);
+assert.match(briefAssist.modePrompt(selectedAd), /广告传播目标帮写/);
+assert.match(briefAssist.outputSchema(selectedAd), /不得编造功效、价格、资质或品牌事实/);
+const assistedAd = briefAssist.buildResponse({ parsed: { goal_addition: commercialAddition }, context: selectedAd });
+assert.match(assistedAd.brief, /【广告目标补充】/);
+assert.doesNotMatch(assistedAd.brief, /【剧情表达补充】/);
 
 const goodPlan = {
   cast_profiles: [{ id: 'modern', name: '现代女孩' }, { id: 'ancient', name: '古代女孩' }],
@@ -104,7 +116,22 @@ assert.match(briefView, /请先选择“广告”或“剧情”，再使用 AI 
 assert.match(briefView, /content_mode: payload\.content_mode/);
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/);
 assert.match(briefView, /brief\.content_mode_source === 'user' && brief\.content_mode === 'narrative_story'/);
+assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '内容类型必须移动到内容目标下方');
+assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="product_subject"'), '内容类型必须位于原产品或主题设置区内');
+assert.equal((briefView.match(/name="product_subject"/g) || []).length, 1, '产品或主题输入不得复制');
+assert.match(briefView, /promptDialog\(isStory \? 'AI 帮写剧情内容' : 'AI 帮写广告内容'/);
+assert.match(briefView, /multiline: true/);
+assert.match(briefView, /if \(idea === null\) return;/, '取消帮写弹窗必须在模型请求前退出');
+assert.ok(briefView.indexOf('if (idea === null) return;') < briefView.indexOf("request('/api/new-story-ad/assist'"), '取消分支必须早于付费模型请求');
+assert.match(briefView, /content_mode: payload\.content_mode/);
+assert.match(briefView, /content_mode_source: 'user'/);
+assert.match(briefView, /latest\.content_mode_source === 'user' \? \(latest\.content_mode \|\| ''\) : ''/, '推断模式不得在订阅刷新后伪装成用户选择');
 assert.match(css, /\.content-mode-options input:checked\+span/);
+
+const dialogSource = read('public/story-ad/components/dialog.js');
+assert.match(dialogSource, /options\.multiline \? '<textarea/);
+assert.match(dialogSource, /event\.ctrlKey \|\| event\.metaKey/);
+assert.match(dialogSource, /textarea:not\(\[disabled\]\)/, '多行输入必须纳入焦点循环');
 
 const modalSource = read('public/story-ad/views/assetCenterPersonSources.js');
 assert.match(modalSource, /aria-modal/);

@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260806-scene-dossier-card-v67';
+import { request } from '../api.js?v=20260806-content-mode-dialog-v68';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260806-content-mode-dialog-v68';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

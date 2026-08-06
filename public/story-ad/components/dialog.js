@@ -16,7 +16,7 @@ function openDialog(options = {}) {
         <div class="platform-dialog-content">
           <h2 id="platformDialogTitle"></h2>
           <p data-dialog-message></p>
-          ${options.input ? `<label class="field"><span></span><input class="input" data-dialog-input></label><small class="platform-dialog-error" data-dialog-error></small>` : ''}
+          ${options.input ? `<label class="field"><span></span>${options.multiline ? '<textarea class="textarea" data-dialog-input></textarea>' : '<input class="input" data-dialog-input>'}</label><small class="platform-dialog-error" data-dialog-error></small>` : ''}
         </div>
         <footer>
           <button class="btn" type="button" data-dialog-cancel></button>
@@ -35,6 +35,8 @@ function openDialog(options = {}) {
     if (input) {
       input.value = options.value || '';
       input.placeholder = options.placeholder || '';
+      if (options.maxLength) input.maxLength = Number(options.maxLength);
+      if (options.multiline) input.rows = Number(options.rows || 6);
       backdrop.querySelector('.field span').textContent = options.inputLabel || '输入内容';
     }
 
@@ -61,12 +63,14 @@ function openDialog(options = {}) {
     };
     const onKeydown = event => {
       if (event.key === 'Escape') finish(null);
-      if (event.key === 'Enter' && input && !event.shiftKey) {
+      const submitWithEnter = !options.multiline && event.key === 'Enter' && input && !event.shiftKey;
+      const submitMultiline = options.multiline && event.key === 'Enter' && input && (event.ctrlKey || event.metaKey);
+      if (submitWithEnter || submitMultiline) {
         event.preventDefault();
         submitDialog();
       }
       if (event.key === 'Tab') {
-        const focusable = [...panel.querySelectorAll('button:not([disabled]), input:not([disabled])')];
+        const focusable = [...panel.querySelectorAll('button:not([disabled]), input:not([disabled]), textarea:not([disabled])')];
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }

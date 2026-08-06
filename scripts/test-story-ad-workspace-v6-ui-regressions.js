@@ -101,10 +101,14 @@ assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必�
 assert.match(briefView, /mode:\s*'brief_goal'/, '广告目标帮写必须使用独立模式，不能提前生成完整剧情结构');
 assert.match(briefView, /AI 只补充目标，不会删除你写的人物、场景、故事或商品事实/, '目标页必须解释 AI 帮写的职责边界');
 assert.match(briefView, /name="content_mode" value="commercial_subject"[\s\S]*name="content_mode" value="narrative_story"/, '目标页必须先让用户明确选择广告或剧情');
+assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '广告/剧情选择不得继续放在内容目标上方');
+assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="product_subject"'), '广告/剧情选择必须进入下方产品或主题设置区');
+assert.equal((briefView.match(/name="content_mode"/g) || []).length, 2, '页面只能有一组广告/剧情 radio');
+assert.equal((briefView.match(/name="product_subject"/g) || []).length, 1, '产品或主题输入只能保留一份');
 assert.match(briefView, /content_mode: payload\.content_mode/, 'AI 帮写必须携带用户明确选择的内容类型');
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/, '只有用户亲自选择内容类型后才可创建或生成');
 assert.match(briefView, /if \(store\.state\.bundle\?\.reference\?\.analysis_id\)/, '帮写返回前必须防止覆盖后来添加的参考视频');
-assert.match(briefView, /trim\(\) !== idea/, '帮写返回前必须防止覆盖用户等待期间的新编辑');
+assert.match(briefView, /!== targetSnapshot/, '帮写返回前必须防止覆盖用户等待期间的新编辑');
 assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得继续出现');
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');

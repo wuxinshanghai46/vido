@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260806-scene-dossier-card-v67';
-import { confirmDialog } from '../components/dialog.js?v=20260806-scene-dossier-card-v67';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-dossier-card-v67';
+import { request } from '../api.js?v=20260806-content-mode-dialog-v68';
+import { confirmDialog } from '../components/dialog.js?v=20260806-content-mode-dialog-v68';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260806-content-mode-dialog-v68';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};

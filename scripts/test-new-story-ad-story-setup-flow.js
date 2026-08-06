@@ -275,12 +275,21 @@ assert.throws(
     modelGateway.generateText = async options => {
       briefGoalModelCalls += 1;
       assert.strictEqual(options.stage, 'new_story_ad.assist');
-      assert(options.systemPrompt.includes('只扩写“广告目标”这一项'));
-      assert(options.userPrompt.includes('brief_goal 只丰富广告目标'));
-      assert(options.userPrompt.includes('年轻人的便携咖啡广告'));
+      const isStoryGoal = options.userPrompt.includes('brief_goal 剧情表达目标帮写');
+      if (isStoryGoal) {
+        assert(options.systemPrompt.includes('纯剧情任务'));
+        assert(options.systemPrompt.includes('不得把剧情变广告'));
+        assert(options.userPrompt.includes('姐妹在故乡竹海重逢'));
+      } else {
+        assert(options.systemPrompt.includes('广告任务'));
+        assert(options.userPrompt.includes('brief_goal 广告传播目标帮写'));
+        assert(options.userPrompt.includes('年轻人的便携咖啡广告'));
+      }
       assert.doesNotMatch(options.userPrompt, /mode 是 brief_goal 时[^\n]*完整故事/);
       const text = JSON.stringify({
-        brief: '为注重效率与品质的年轻上班族推广一款便携咖啡产品，重点传达随时获得稳定口感与清醒状态的产品价值，让观众记住它适合通勤、工作间隙和临时出行，并建立方便、可靠且有品质感的品牌认知，最终产生主动了解或购买的意愿。',
+        goal_addition: isStoryGoal
+          ? '面向重视亲情与故乡记忆的观众，通过姐妹多年后在竹海重逢的情绪变化，呈现隔阂被看见、旧伤被理解和关系重新连接的过程，让观众感受到和解并非遗忘过去，而是愿意共同走向新的生活。'
+          : '为注重效率与品质的年轻上班族推广一款便携咖啡产品，重点传达随时获得稳定口感与清醒状态的产品价值，让观众记住它适合通勤、工作间隙和临时出行，并建立方便、可靠且有品质感的品牌认知，最终产生主动了解或购买的意愿。',
       });
       assert.strictEqual(await options.validateText(text), true);
       return { text, used_model: 'fixture-brief-goal', fallback_used: false, failed_models: [] };
@@ -293,14 +302,26 @@ assert.throws(
     }, { id: 'test-user' });
     assert.match(goalResponse.brief, /年轻上班族/);
     assert.match(goalResponse.brief, /品牌认知/);
+    assert.match(goalResponse.brief, /【广告目标补充】/);
     assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'characters'), false, '目标帮写不得提前输出人物');
     assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'shot_count'), false, '目标帮写不得提前输出分镜数量');
     assert.equal(briefGoalModelCalls, 1);
+    const storyGoalResponse = await storyAdService.assistBrief({
+      mode: 'brief_goal',
+      brief: '一对多年未见的姐妹在故乡竹海重逢，故事表达和解与重新出发。',
+      product_subject: '',
+      content_mode: 'narrative_story',
+      content_mode_source: 'user',
+      target_duration: 60,
+    }, { id: 'test-user' });
+    assert.match(storyGoalResponse.brief, /【剧情表达补充】/);
+    assert.doesNotMatch(storyGoalResponse.brief, /产品|商品|品牌|购买|转化/);
+    assert.equal(briefGoalModelCalls, 2);
     await assert.rejects(
       storyAdService.assistBrief({ mode: 'brief_goal', brief: '' }, { id: 'test-user' }),
       error => error.code === 'ASSIST_BRIEF_GOAL_EMPTY' && /没有调用文本模型/.test(error.message),
     );
-    assert.equal(briefGoalModelCalls, 1, '空想法必须在模型调用前阻断');
+    assert.equal(briefGoalModelCalls, 2, '空想法必须在模型调用前阻断');
   } finally {
     modelGateway.generateText = originalGenerateText;
   }

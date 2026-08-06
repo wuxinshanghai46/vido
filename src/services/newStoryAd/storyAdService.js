@@ -3517,8 +3517,8 @@ async function assistBrief(body = {}, user = {}) {
   const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
   if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
   const systemPrompt = [
-    '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
-    '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
+    isBriefGoal ? briefGoalAssist.assistantRole(ctx) : '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
+    isBriefGoal ? briefGoalAssist.taskRule(ctx) : '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
     '当 mode 是 style_control 时，只补写画面风格方向，不要写剧本、分镜、卖点或执行步骤。',
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
@@ -3534,13 +3534,13 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
     storyBeatAssist.systemRule(),
-    briefGoalAssist.systemRule(),
-    '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
-    'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
-    'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
+    briefGoalAssist.systemRule(ctx),
+    isBriefGoal ? 'brief_goal 只返回 goal_addition，不返回完整需求、剧本或分镜。' : '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
+    isBriefGoal ? 'goal_addition 必须是给普通用户直接阅读的纯文本，不使用 Markdown 或字面量反斜杠换行。' : 'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
+    isBriefGoal ? '' : 'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
   ].join('\n');
   const outputSchema = isBriefGoal
-    ? briefGoalAssist.outputSchema()
+    ? briefGoalAssist.outputSchema(ctx)
     : isCreativeDirection
     ? assistCreativeDirection.outputSchema()
     : isStyleControl
@@ -3639,7 +3639,7 @@ async function assistBrief(body = {}, user = {}) {
   } : null;
   const storyAssistContext = isStoryBeat ? storyBeatAssist.buildContext(body) : null;
   const userPrompt = `${contextPrompt(ctx)}
-模式：${isBriefGoal ? 'brief_goal 只丰富广告目标' : isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+模式：${isBriefGoal ? briefGoalAssist.modePrompt(ctx) : isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 ${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；这些字段属于空白、参考创作方向或系统默认描述，必须改写为可直接生成人物资产的具体设定。其余字段均为用户或业务事实权威，必须原样保留；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
   ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
