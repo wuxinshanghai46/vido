@@ -57,6 +57,7 @@ const extraFiles = [
   'src/services/newStoryAd/referenceVideoAnalysisService.js',
   'src/services/newStoryAd/revisionService.js',
   'src/services/newStoryAd/sceneAssetService.js',
+  'src/services/newStoryAd/sceneBindingService.js',
   'src/services/newStoryAd/sceneGenerationPolicyService.js',
   'src/services/newStoryAd/panoramaProjectionService.js',
   'src/services/newStoryAd/panoramaProjectionWorker.js',
