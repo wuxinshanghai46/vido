@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-reproducible-handoff-v64';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { request } from '../api.js?v=20260806-scene-card-knowledge-v65';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

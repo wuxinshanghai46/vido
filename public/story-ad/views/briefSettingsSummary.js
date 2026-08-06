@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { escapeHtml } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

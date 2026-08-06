@@ -1,6 +1,6 @@
-import { createProjectStore } from './store/projectStore.js?v=20260806-reproducible-handoff-v64';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-reproducible-handoff-v64';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-reproducible-handoff-v64';
+import { createProjectStore } from './store/projectStore.js?v=20260806-scene-card-knowledge-v65';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-scene-card-knowledge-v65';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-scene-card-knowledge-v65';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +18,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260806-reproducible-handoff-v64'),
-  assets: () => import('./views/assetCenterView.js?v=20260806-reproducible-handoff-v64'),
-  plot: () => import('./views/plotRoomView.js?v=20260806-reproducible-handoff-v64'),
-  storyboard: () => import('./views/storyboardView.js?v=20260806-reproducible-handoff-v64'),
-  shot: () => import('./views/shotDesignerView.js?v=20260806-reproducible-handoff-v64'),
-  final: () => import('./views/finalView.js?v=20260806-reproducible-handoff-v64'),
-  workflow: () => import('./views/workflowView.js?v=20260806-reproducible-handoff-v64'),
+  brief: () => import('./views/briefView.js?v=20260806-scene-card-knowledge-v65'),
+  assets: () => import('./views/assetCenterView.js?v=20260806-scene-card-knowledge-v65'),
+  plot: () => import('./views/plotRoomView.js?v=20260806-scene-card-knowledge-v65'),
+  storyboard: () => import('./views/storyboardView.js?v=20260806-scene-card-knowledge-v65'),
+  shot: () => import('./views/shotDesignerView.js?v=20260806-scene-card-knowledge-v65'),
+  final: () => import('./views/finalView.js?v=20260806-scene-card-knowledge-v65'),
+  workflow: () => import('./views/workflowView.js?v=20260806-scene-card-knowledge-v65'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

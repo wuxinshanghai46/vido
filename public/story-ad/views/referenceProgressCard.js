@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

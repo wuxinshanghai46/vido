@@ -57,6 +57,15 @@ function testSchema() {
   throwsInvalid({ schema_version: 1, rules: [rule(), rule()] }, /规则版本重复/);
   const seeded = require('../src/services/seeds/generation_runtime_policy');
   seeded.forEach(doc => schema.normalizeRuntimePolicy(doc.runtime_policy));
+  const sceneCardPolicy = compiler.compile(
+    { stage: 'scene_asset', assetType: 'scene', taskId: 'scene-card-regression' },
+    { docs: seeded },
+  );
+  assert(sceneCardPolicy.rule_ids.includes('scene-task-facts-only@2'), '场景生成必须使用多尺度场景卡 v2 规则');
+  assert(sceneCardPolicy.prompt_block.includes('overview silhouette and boundaries'), '场景生成提示必须包含总览到细节的尺度梯度');
+  assert(sceneCardPolicy.prompt_block.includes('palette anchor'), '场景生成提示必须锁定跨视图色彩锚点');
+  assert(sceneCardPolicy.qa_checks.some(item => item.includes('same physical scene')), '场景 QA 必须核对各尺度属于同一物理空间');
+  assert(!sceneCardPolicy.rule_ids.includes('scene-task-facts-only@1'), '同一冲突域只允许最新场景规则生效');
 }
 
 function testLifecycleAndConflictIsolation() {

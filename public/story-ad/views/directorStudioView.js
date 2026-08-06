@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260806-reproducible-handoff-v64';
-import { request, uploadAsset } from '../api.js?v=20260806-reproducible-handoff-v64';
-import { escapeHtml, toast } from '../components/ui.js?v=20260806-reproducible-handoff-v64';
+import * as THREE from '../vendor/three.module.min.js?v=20260806-scene-card-knowledge-v65';
+import { request, uploadAsset } from '../api.js?v=20260806-scene-card-knowledge-v65';
+import { escapeHtml, toast } from '../components/ui.js?v=20260806-scene-card-knowledge-v65';
 
 const VERSION = '20260803-photoreal-director-v8';
 
