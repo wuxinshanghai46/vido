@@ -1,4 +1,10 @@
 {
-  "build_id": "20260806-auto-subject-dropdown-v71",
-  "contract_version": "reference-director-v4"
+  "build_id": "20260810-platform-release-migration-v126",
+  "contract_version": "story-scene-platform-v6",
+  "node_runtime": {
+    "version": "v20.20.2",
+    "platform": "linux-x64-glibc-217",
+    "url": "https://unofficial-builds.nodejs.org/download/release/v20.20.2/node-v20.20.2-linux-x64-glibc-217.tar.xz",
+    "sha256": "bb8a5273607ebe712a27bb4f8870fb1257d09993b8d0812a4178a3feaa2effa4"
+  }
 }

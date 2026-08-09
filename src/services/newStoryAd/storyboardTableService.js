@@ -7,6 +7,7 @@ const shotDesign = require('./shotDesignService');
 const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const brandEnding = require('./brandEndingService');
 const productionLimits = require('./productionLimitsService');
+const storyBeatShotCoverage = require('./storyBeatShotCoverageService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -199,6 +200,7 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
     scene_id: clampText(shot.scene_id || shot.sceneId || shot.scene_asset_id || shot.sceneAssetId || '', 120),
     scene_asset_id: clampText(shot.scene_asset_id || shot.sceneAssetId || shot.scene_id || shot.sceneId || '', 120),
     scene_name: clampText(shot.scene_name || shot.sceneName || '', 120),
+    look_id: clampText(shot.look_id || shot.lookId || '', 100),
     scene_view: clampText(shot.scene_view || shot.sceneView || '', 40),
     scene_zone: clampText(shot.scene_zone || shot.sceneZone || shot.zone || '', 160),
     scene_zone_id: clampText(shot.scene_zone_id || shot.zone_id || (Array.isArray(shot.zone_ids) ? shot.zone_ids[0] : '') || '', 100),
@@ -317,46 +319,81 @@ function storyboardBlueprintDigest(blueprint = {}) {
   return { ...global, beat_count: Array.isArray(beats) ? beats.length : 0 };
 }
 
-function plannedBeats(blueprint, ctx) {
+function coverageSourceBeats(blueprint = {}, fallbackBrief = '') {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
-  const base = beats.length ? beats : [{ beat_index: 1, role: 'story', plot: ctx.brief, spoken_line: '' }];
+  const base = beats.length ? beats : [{ beat_index: 1, role: 'story', plot: fallbackBrief, spoken_line: '' }];
+  return base.map((beat, index) => {
+    const sourceId = beat.source_story_beat_id || beat.story_beat_id || beat.beat_id || beat.id || `story_beat_${index + 1}`;
+    return {
+      ...beat,
+      source_story_beat_id: sourceId,
+      story_beat_id: `${sourceId}:source:${index + 1}`,
+      plot: beat.plot || beat.summary || fallbackBrief,
+    };
+  });
+}
+
+function storyboardCoveragePlan(blueprint, ctx) {
+  const base = coverageSourceBeats(blueprint, ctx.brief);
   const target = Math.max(
     productionLimits.shotCount(ctx.shot_count),
     productionLimits.requiredStoryboardShotCount(ctx.target_duration, base.length),
   );
-
-  if (base.length === target) return base.map((beat, index) => ({ ...beat, beat_index: index + 1 }));
-  const allocations = Array.from({ length: base.length }, (_, sourceIndex) => {
-    const start = Math.ceil((sourceIndex * target) / base.length);
-    const end = Math.ceil(((sourceIndex + 1) * target) / base.length);
-    return Math.max(1, end - start);
+  return storyBeatShotCoverage.planCoverage({
+    beats: base,
+    target_shots: target,
+    target_duration: productionLimits.targetDuration(ctx.target_duration),
+    max_shot_duration: productionLimits.MAX_SHOT_DURATION,
+    // Coverage is a narrative split, not a request to multiply paid shots for
+    // every wording fragment. The existing duration/shot budget remains the
+    // upper authority while each unit can carry several compatible facts.
+    max_obligations_per_unit: 12,
   });
-  return Array.from({ length: target }, (_, index) => {
-    const sourceIndex = Math.min(base.length - 1, Math.floor((index * base.length) / target));
-    const source = base[sourceIndex];
-    const groupStart = Math.ceil((sourceIndex * target) / base.length);
-    const segmentIndex = index - groupStart + 1;
-    const segmentCount = allocations[sourceIndex];
+}
+
+function beatsFromCoveragePlan(blueprint, plan) {
+  const beats = coverageSourceBeats(blueprint, blueprint.brief || '');
+  const sourceById = new Map(beats.map((beat, index) => [
+    String(beat.story_beat_id),
+    { beat, sourceIndex: index },
+  ]));
+  return storyBeatShotCoverage.coverageUnits(plan).map((unit, index) => {
+    const sourceEntry = sourceById.get(String(unit.story_beat_id)) || { beat: beats[0], sourceIndex: 0 };
+    const source = sourceEntry.beat;
+    const segmentIndex = Number(unit.segment_index || 1);
+    const segmentCount = Number(unit.segment_count || 1);
     const phase = segmentCount === 1 ? 'complete' : (segmentIndex === 1 ? 'entry' : (segmentIndex === segmentCount ? 'exit' : 'progress'));
     return {
       ...source,
       beat_index: index + 1,
-      source_beat_index: Number(source.beat_index || sourceIndex + 1),
+      source_beat_index: Number(source.beat_index || sourceEntry.sourceIndex + 1),
+      story_beat_id: unit.story_beat_id,
+      coverage_id: unit.coverage_id,
+      shot_coverage: unit,
+      visible_evidence: unit.required_evidence,
+      state_before: unit.entry_state,
+      state_after: unit.exit_state,
+      intended_changes: unit.intended_changes,
+      invariants: unit.invariants,
       long_form_segment: {
-        sequence_id: `sequence_${Number(source.beat_index || sourceIndex + 1)}`,
+        sequence_id: `sequence_${unit.story_beat_id}`,
         index: segmentIndex,
         total: segmentCount,
         phase,
-        duration_budget_sec: productionLimits.MAX_SHOT_DURATION,
-        entry_state: segmentIndex === 1 ? (source.state_before || []) : [],
-        exit_state: segmentIndex === segmentCount ? (source.state_after || []) : [],
-        proof_requirements: source.visible_evidence || source.visual_proof || [],
-        instruction: `这是同一章节的第 ${segmentIndex}/${segmentCount} 个连续镜头；只推进本段可见状态，不重复前段动作，不提前完成后段结果。`,
+        duration_budget_sec: unit.duration_budget_sec,
+        entry_state: unit.entry_state,
+        exit_state: unit.exit_state,
+        proof_requirements: unit.required_evidence,
+        instruction: `${unit.narrative_instruction}；只推进本覆盖单元的可见状态，不重复前段动作，不提前完成后段结果。`,
       },
-      spoken_line: segmentIndex === 1 ? source.spoken_line : '',
+      spoken_line: unit.spoken_line,
       why_next: segmentIndex === segmentCount ? source.why_next : '',
     };
   });
+}
+
+function plannedBeats(blueprint, ctx) {
+  return beatsFromCoveragePlan(blueprint, storyboardCoveragePlan(blueprint, ctx));
 }
 
 function alignShotsToBeats(rows, beats) {
@@ -397,7 +434,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
   if (!beats.length) return { shots: [], model_meta: null };
   const systemPrompt = [
     'You repair a New Story Ad storyboard by generating only missing shots. Return a JSON array only.',
-    'Return exactly one shot for every supplied missing beat, in the same order, with index equal to beat_index.',
+    'Return exactly one shot for every supplied missing narrative coverage unit, in the same order, with index equal to beat_index.',
     'All user-visible text must be natural Simplified Chinese. Technical enum values and IDs stay unchanged.',
     'Do not invent a new person, product, industry, scene or plot. Use only the supplied context, blueprint and scene assets.',
     'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers, speech_mode and continuity fields.',
@@ -408,6 +445,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Never emit replacement characters, mojibake, placeholder text, or runs of question marks.',
     'Default speech_mode to offscreen_voiceover so visible people do not speak. Use on_camera_dialogue only when the user explicitly requests a visible person to speak; never infer it from an industry, profession or the mere presence of a person.',
     'If scene assets exist, use only their scene_id, scene_revision, camera_id, zone_ids and anchor_ids.',
+    'When a cast profile has multiple look_profiles, every shot containing that person must set look_id to one declared look ID whose scene_ids include the selected scene_id, unless the story explicitly changes look inside that scene.',
   ].join('\n');
   const userPrompt = `${contextPrompt(ctx)}
 
@@ -415,7 +453,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, transition_duration_sec, transition_match_anchor, requires_previous_frame, audio_bridge, audio_bridge_duration_sec, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, transition_duration_sec, transition_match_anchor, requires_previous_frame, audio_bridge, audio_bridge_duration_sec, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -445,7 +483,8 @@ Return exactly ${beats.length} shots. Required fields: index, title, role, durat
 }
 
 async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShots = [], onCheckpoint = null } = {}) {
-  const beats = plannedBeats(blueprint, ctx);
+  const coveragePlan = storyboardCoveragePlan(blueprint, ctx);
+  const beats = beatsFromCoveragePlan(blueprint, coveragePlan);
   const expectedIndexes = new Set(beats.map((beat, index) => Number(beat?.beat_index || index + 1)));
   const resumedByIndex = new Map((Array.isArray(resumeShots) ? resumeShots : [])
     .map(shot => [Number(shot?.index || shot?.shot_index || 0), shot])
@@ -462,6 +501,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       shots: all.slice().sort((a, b) => Number(a?.index || 0) - Number(b?.index || 0)),
       completed_indexes: [...new Set(all.map(shot => Number(shot?.index || shot?.shot_index || 0)).filter(Boolean))].sort((a, b) => a - b),
       expected_total: beats.length,
+      coverage_plan: coveragePlan,
     });
   };
 
@@ -472,7 +512,9 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'You are the storyboard table writer for New Story Ad. Return a JSON array only.',
       'All user-visible text values must be natural Simplified Chinese, including shot title, role, purpose, visuals, actions, voiceover/dialogue, character names/actions, material notes, scene descriptions and transition/continuity explanations. JSON keys and technical enum values stay unchanged. Brand/product/API/UI names may remain in their original spelling.',
       'Do not force fixed segments, fixed template, or fixed shot count. Shots must follow the user story content.',
-      'Each input beat must produce one corresponding shot.',
+      'Each supplied narrative coverage unit must produce one corresponding shot. One source story beat may intentionally have multiple coverage units; preserve coverage_id and advance only that unit.',
+      'Choose each shot by narrative function and visible state change. Establishing, entrance, environment interaction, action, reaction, dialogue tension, suspense observation, memory and transition are open examples, never a required checklist or industry template.',
+      'Use wide views when spatial orientation is the evidence, closer views when emotion or detail is the evidence, and motivated camera movement only when it reveals or follows a change. Preserve the established action axis, screen direction and eyeline unless the shot explicitly re-establishes them.',
       'When long_form_segment is present, all beats with the same sequence_id are one macro chapter. Give every segment a distinct visible action/state progression, close the supplied entry/exit states, satisfy proof_requirements, and never repeat the same plot, framing or action as padding.',
       'Do not force every shot into a fixed story_visual + promo_visual pair.',
       'For each shot, choose the visual layers required by the user brief and blueprint: story, character, product, material, space, UI, proof, comparison, emotion, brand, offer, process, result, or other.',
@@ -494,6 +536,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'When product presentation is enabled, mark product/proof/material/brand layers in visual_layers whenever the shot is commercially suitable.',
       'Do not output shots that violate negative requirements.',
       'If scene assets exist, scene_id must be selected from the current task scene assets only.',
+      'When a visible character has multiple look_profiles, set look_id on every shot to one declared look ID. Prefer the look whose scene_ids contains the shot scene_id; change it only when the approved story explicitly changes wardrobe state.',
       'scene_zone_id and zone_ids are stable machine bindings from the selected scene contract. Never translate, rename or invent them.',
       'scene_zone_label_zh is the user-facing Simplified Chinese label for the selected zone. It may explain the binding but must not replace or change scene_zone_id/zone_ids.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
@@ -547,6 +590,7 @@ Return JSON array for current beats only. Fields:
   "material_usage": "materials/evidence used",
   "keyframe_notes": "subject, proof and composition to lock for keyframe",
   "scene_id": "must match one current task scene_id when scene assets exist",
+  "look_id": "must match one current character look_profiles ID when that character has multiple looks",
   "scene_revision": "must match the selected current task scene revision",
   "scene_view": "stable open view ID from the selected current-task scene asset",
   "camera_id": "camera id from the selected scene contract",
@@ -647,7 +691,7 @@ Return JSON array for current beats only. Fields:
       `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`,
     ),
   });
-  return { shots, model_meta: meta };
+  return { shots, model_meta: meta, coverage_plan: coveragePlan };
 }
 
 function issueShotIndexes(issue = '', total = 0) {
@@ -688,7 +732,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '', o
     'Remove replacement characters, mojibake, placeholders and runs of question marks from every user-visible field.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',
     'Preserve and enforce Advanced production controls from context: scene direction, product presentation, style direction and negative requirements.',
-    'Preserve scene_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
+    'Preserve scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone_id, zone_ids, anchor_ids and transition_reason whenever they are valid for the current task scene assets and character looks. scene_zone_label_zh may be repaired into Simplified Chinese without changing those IDs.',
     'Preserve and repair adjacent-shot entry/exit state, action start/end, screen direction, eyeline, camera axis, camera movement, object state, transition type and audio bridge.',
     'Preserve and repair temporal_state. It is an open-vocabulary contract: only intended_changes may change; invariants and evidence_requirements must remain task-specific and must never be replaced by an industry template.',
   ].join('\n');
@@ -743,6 +787,8 @@ module.exports = {
   alignShotsToBeats,
   missingBeatIndexes,
   plannedBeats,
+  storyboardCoveragePlan,
+  beatsFromCoveragePlan,
   storyboardBeatChunks,
   storyboardBlueprintDigest,
 };

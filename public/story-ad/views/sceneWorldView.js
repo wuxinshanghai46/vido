@@ -1,5 +1,7 @@
-import { request } from '../api.js?v=20260806-auto-subject-dropdown-v71';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { request } from '../api.js?v=20260810-platform-release-migration-v126';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260810-platform-release-migration-v126';
+import { promptDialog } from '../components/dialog.js?v=20260810-platform-release-migration-v126';
+import { list, worldById } from './sceneWorldData.js?v=20260810-platform-release-migration-v126';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -14,14 +16,6 @@ const CAPABILITY_LABELS = {
   supports_transition_portal: '跨场景入口',
   supports_state_variants: '状态变化',
 };
-
-function list(value) {
-  return Array.isArray(value) ? value.filter(Boolean) : [];
-}
-
-function worldById(bundle, id) {
-  return list(bundle.scene_worlds).find(world => String(world.id) === String(id));
-}
 
 function photoNodes(world = {}) {
   const seen = new Set();
@@ -79,6 +73,9 @@ function worldCards(bundle = {}) {
   return `<div class="scene-world-card-grid">${worlds.map(world => {
     const panoramaReady = photoNodes(world).some(node => node.is_panorama);
     const panoramaStatus = panoramaReady ? 'ready' : String(world.experience?.panorama_status || world.experience?.status || 'not_started');
+    const selectedExperience = {
+      photo_views: '多视角图片', panorama_360: '360原地环视（3DoF）', director_3d: '3D导演预演', spatial_3d: '真实6DoF空间',
+    }[world.experience?.requested_mode || world.experience?.current_mode] || '尚未选择空间模式';
     return `<article class="scene-world-card" data-scene-world-card="${escapeHtml(world.id)}">
     <div class="scene-world-card-visual">
       ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
@@ -89,11 +86,12 @@ function worldCards(bundle = {}) {
       <div class="scene-world-capabilities">${capabilityChips(world)}</div>
       <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '3DoF原地环视', spatial_3d: '6DoF可移动空间', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
       <span class="scene-panorama-status is-${escapeHtml(panoramaStatus)}" data-panorama-status="${escapeHtml(world.id)}">${panoramaReady ? '全景已就绪 · 3DoF' : '尚未生成360全景'}</span>
+      <span class="scene-panorama-status">当前选择：${escapeHtml(selectedExperience)}</span>
     </div>
     <div class="scene-world-card-actions">
       <button class="btn small primary" type="button" data-enter-scene-world="${escapeHtml(world.id)}">进入场景</button>
       <button class="btn small" type="button" data-edit-scene-world="${escapeHtml(world.id)}">编辑场景设定</button>
-      <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">规划360 / 3D</button>
+      <button class="btn small" type="button" data-plan-scene-experience="${escapeHtml(world.id)}">选择360 / 3D模式</button><button class="btn small" type="button" data-enter-scene-world="${escapeHtml(world.id)}">打开3D导演预演（免供应商）</button>
       <button class="btn small ${panoramaReady ? '' : 'primary'}" type="button" data-generate-panorama="${escapeHtml(world.id)}">${panoramaReady ? '重新生成360全景' : '生成360全景'}</button>
       <button class="btn small" type="button" data-scene-world-tab-target="matrix">人物×场景</button>
       <button class="btn small" type="button" data-scene-world-tab-target="transitions">查看衔接</button>
@@ -361,7 +359,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260806-auto-subject-dropdown-v71');
+      const module = await import('./panoramaViewer.js?v=20260810-platform-release-migration-v126');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -439,7 +437,7 @@ async function openSceneWorldStudio(bundle, world) {
       <button type="button" data-world-mode="spatial" ${world.capabilities?.supports_spatial_model ? '' : 'disabled title="当前没有深度、几何或空间模型"'}>可移动空间（6DoF）</button>
       <button type="button" data-world-mode="structure">结构 / 路线</button>
       <button type="button" data-world-mode="blocking">人物站位</button>
-      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>6DoF导演台</button>
+      <button type="button" data-world-mode="camera">机位与镜头</button><button type="button" data-open-director-studio>3D导演预演</button>
     </nav>
     <div class="scene-world-studio-layout">
       <aside><h3>真实图片视角</h3><div class="scene-world-observation-list">${realPhotoNodes.length ? realPhotoNodes.map((node, index) => `<button type="button" data-focus-observation="${escapeHtml(node.id)}"><b>${escapeHtml(node.name || `视角 ${index + 1}`)}</b><small>${escapeHtml(node.view_key === 'layout' ? '俯视布局与路线参考' : node.is_panorama ? '可360度环视的全景观察点' : '现有真实场景图片')}</small></button>`).join('') : '<small>当前场景还没有真实图片。</small>'}</div><h3>空间区域</h3><div class="scene-world-zone-list">${list(world.zones).map(zone => `<button type="button" data-focus-zone="${escapeHtml(zone.id)}"><b>${escapeHtml(zone.name)}</b><small>${escapeHtml(zone.purpose || '场景区域')}</small></button>`).join('')}</div><h3>场景入口</h3><div class="scene-world-portal-list">${list(world.portals).length ? list(world.portals).map(portal => `<button type="button" data-open-world="${escapeHtml(portal.to_world_id)}">${escapeHtml(portal.label)}</button>`).join('') : '<small>当前没有跨场景入口</small>'}</div></aside>
@@ -462,7 +460,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260806-auto-subject-dropdown-v71');
+      const module = await import('./directorStudioView.js?v=20260810-platform-release-migration-v126');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
@@ -495,7 +493,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   let panoramaActionModule;
   root.querySelectorAll('[data-generate-panorama]').forEach(button => button.addEventListener('click', async () => {
     try {
-      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260806-auto-subject-dropdown-v71');
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260810-platform-release-migration-v126');
       const module = await panoramaActionModule;
       await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
     } catch (error) { toast(error.message || '全景生成操作没有加载完成', 'danger'); }
@@ -524,7 +522,7 @@ function openSceneExperiencePlanner(bundle, world) {
   const current = world.experience || {};
   const overlay = document.createElement('div');
   overlay.className = 'scene-experience-planner';
-  overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前内容选择需要的空间体验；普通图片不会被冒充为360或6DoF空间。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视（3DoF）</option><option value="spatial_3d">可移动空间（6DoF）</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="说明希望查看的区域、镜头方向，以及是否需要摄像机或人物真实位移。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>3DoF / 6DoF 边界</b><p>3DoF需要经质检的2:1全景观察点，只能原地转向；6DoF还需要深度、几何、可移动区域和遮挡验证。保存规划不会调用模型，付费生成会再次明确确认。</p></div></div><footer><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
+  overlay.innerHTML = `<form><header><div><small>场景空间能力</small><h2>${escapeHtml(world.name)}</h2><p>按当前故事选择空间体验；结构化3D导演预演可立即使用，真实6DoF需要额外空间模型。</p></div><button type="button" data-close>×</button></header><div class="scene-experience-form"><label><span>目标体验</span><select name="requested_mode"><option value="photo_views">多视角图片</option><option value="panorama_360">360原地环视（3DoF）</option><option value="director_3d">3D导演预演（结构化）</option><option value="spatial_3d">真实可移动空间（6DoF，需供应商）</option></select></label><label><span>场景来源</span><select name="source_mode"><option value="existing_assets">沿用现有图片</option><option value="ai_concept">AI概念空间</option><option value="real_capture">真实场地拍摄/扫描</option></select></label><label><span>观察点数量</span><input name="observation_point_target" type="number" min="1" max="30" value="${Number(current.observation_point_target || 1)}"></label><label class="full"><span>进入路线和希望查看的区域</span><textarea name="route_brief" rows="4" placeholder="说明希望查看的区域、镜头方向，以及是否需要摄像机或人物真实位移。">${escapeHtml(current.route_brief || '')}</textarea></label><div class="scene-experience-warning"><b>能力边界</b><p>3D导演预演使用可旋转结构、区域、人物站位和镜头路线，不调用图像模型；3DoF只能原地转向；真实6DoF还需要深度、几何、碰撞与遮挡验证，当前未配置重建供应商。</p></div></div><footer><button class="btn" type="button" data-ai-assist-experience>AI 完善规划</button><button class="btn" type="button" data-close>取消</button><button class="btn primary" type="submit">保存空间规划</button></footer></form>`;
   document.body.appendChild(overlay);
   document.body.classList.add('modal-open');
   const form = overlay.querySelector('form');
@@ -533,6 +531,40 @@ function openSceneExperiencePlanner(bundle, world) {
   const close = () => { overlay.remove(); document.body.classList.remove('modal-open'); };
   overlay.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close));
   overlay.addEventListener('click', event => { if (event.target === overlay) close(); });
+  form.querySelector('[data-ai-assist-experience]')?.addEventListener('click', async event => {
+    const instruction = await promptDialog('AI 完善360 / 3D规划', {
+      inputLabel: '你希望观众怎么看这个场景',
+      placeholder: '例如：先从门口看全景，再跟随人物走到柜台，最后环绕展示核心区域',
+      multiline: true, rows: 4, maxLength: 800, confirmText: '完善规划',
+    });
+    if (!instruction) return;
+    const button = event.currentTarget;
+    button.disabled = true;
+    const oldText = button.textContent;
+    button.textContent = 'AI 正在完善…';
+    try {
+      const data = await request('/api/new-story-ad/assist', { method: 'POST', timeoutMs: 120000, body: {
+        task_id: bundle.project.id,
+        mode: 'scene_experience',
+        brief: bundle.brief?.text || '',
+        content_mode: bundle.brief?.content_mode || bundle.project?.request?.content_mode,
+        target_scene: world,
+        scene_experience: {
+          requested_mode: form.elements.requested_mode.value,
+          source_mode: form.elements.source_mode.value,
+          observation_point_target: Number(form.elements.observation_point_target.value) || 1,
+          route_brief: form.elements.route_brief.value.trim(),
+        },
+        user_instruction: instruction,
+      } });
+      const plan = data.experience_plan || {};
+      if (plan.requested_mode) form.elements.requested_mode.value = plan.requested_mode;
+      if (plan.source_mode) form.elements.source_mode.value = plan.source_mode;
+      if (plan.observation_point_target) form.elements.observation_point_target.value = plan.observation_point_target;
+      if (plan.route_brief) form.elements.route_brief.value = plan.route_brief;
+      toast('AI 已结合当前故事、场景区域和能力边界完善规划，请确认后保存。', 'success');
+    } catch (error) { toast(error.message, 'danger'); } finally { button.disabled = false; button.textContent = oldText; }
+  });
   form.addEventListener('submit', async event => {
     event.preventDefault();
     const submit = form.querySelector('[type="submit"]');
@@ -549,8 +581,9 @@ function openSceneExperiencePlanner(bundle, world) {
       } });
       if (result.world) Object.assign(world, result.world);
       if (result.manifest) bundle.production_manifest = result.manifest;
-      toast('空间规划已保存。需要新增全景或3D素材时，系统会按该规划生成或接收上传素材。', 'success');
+      toast(requestedMode === 'director_3d' ? '3D导演预演规划已保存，正在打开结构化3D工作台。' : '空间规划已保存。需要新增全景或真实6DoF素材时，系统会按该规划生成或接收上传素材。', 'success');
       close();
+      if (requestedMode === 'director_3d') openSceneWorldStudio(bundle, world);
     } catch (error) { toast(error.message, 'danger'); submit.disabled = false; }
   });
 }

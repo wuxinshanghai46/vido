@@ -35,6 +35,7 @@ async function main() {
   const storage = makeStorage();
   let personProviderCalls = 0;
   let detailProviderCalls = 0;
+  let isolatedAccessoryCalls = 0;
   let petProviderCalls = 0;
   const fakeMedia = {
     ASSET_DIR: '',
@@ -49,6 +50,12 @@ async function main() {
       return { image_url: `/person-unit-${personProviderCalls}.png`, filename: `person-unit-${personProviderCalls}.png`, provider_used: 'mock/image' };
     },
     async generateImage(input) {
+      if (input.stage === 'new_story_ad.person_dossier_wearable_accessory') {
+        isolatedAccessoryCalls += 1;
+        await input.onSubmitting?.({});
+        await input.onSubmitted?.({ providerRequestId: `accessory-request-${isolatedAccessoryCalls}` });
+        return { image_url: '/isolated-watch.png', filename: 'isolated-watch.png', provider_used: 'mock/image' };
+      }
       if (input.stage === 'new_story_ad.person_dossier_wardrobe_detail') {
         detailProviderCalls += 1;
         await input.onSubmitting?.({});
@@ -97,6 +104,7 @@ async function main() {
     error => error.code === 'PROVIDER_5XX_AMBIGUOUS' && error.billingState === 'unknown',
   );
   assert.strictEqual(personProviderCalls, 6, 'all core person dossier units should finish before the accessory failure');
+  assert.strictEqual(isolatedAccessoryCalls, 2, 'the declared watch and completed footwear must each be generated once as isolated catalog objects before wardrobe details');
   assert.strictEqual(detailProviderCalls, 1, 'the ambiguous paid wardrobe detail unit is submitted once');
   assert.strictEqual(petProviderCalls, 1, 'pet generation must continue after the independent person unit fails');
 
@@ -108,6 +116,10 @@ async function main() {
     .find(row => row?.unit === 'wardrobe_detail:outfit_silhouette');
   assert.strictEqual(detailCheckpoint.status, 'submitted_unknown');
   assert.strictEqual(detailCheckpoint.billing_state, 'unknown');
+  const accessoryCheckpoint = Object.values(subjectCheckpoint.person_dossier_checkpoints)
+    .find(row => row?.unit === 'wearable_accessory:wrist_wearables');
+  assert.strictEqual(accessoryCheckpoint.status, 'completed');
+  assert.strictEqual(accessoryCheckpoint.billing_state, 'confirmed');
 
   await assert.rejects(
     subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps),
@@ -115,6 +127,7 @@ async function main() {
   );
   assert.strictEqual(personProviderCalls, 6, 'core person checkpoints must be reused');
   assert.strictEqual(detailProviderCalls, 1, 'billing-unknown detail must never be resubmitted automatically');
+  assert.strictEqual(isolatedAccessoryCalls, 2, 'completed isolated accessories must be reused after a later wardrobe failure');
   assert.strictEqual(petProviderCalls, 1, 'completed pet checkpoint must be reused');
 
   const latestRow = storage.listOutputs('visual-recovery-task')
@@ -139,6 +152,7 @@ async function main() {
     error => error.code === 'PROVIDER_5XX_AMBIGUOUS' && error.billingState === 'unknown',
   );
   assert.strictEqual(detailProviderCalls, 2, 'explicit acceptance grants exactly one additional detail submission');
+  assert.strictEqual(isolatedAccessoryCalls, 2, 'authorized wardrobe retry must not regenerate completed accessory objects');
   assert.strictEqual(petProviderCalls, 1, 'authorized accessory retry must still reuse the completed pet');
   await assert.rejects(
     subjectAssets.generateSubjectBundle({ taskId: 'visual-recovery-task', body, personDossierConcurrency: 1 }, deps),

@@ -20,7 +20,7 @@ function openDialog(options = {}) {
         </div>
         <footer>
           <button class="btn" type="button" data-dialog-cancel></button>
-          <button class="btn primary" type="button" data-dialog-confirm></button>
+          <button class="btn primary ${options.danger ? 'danger' : ''}" type="button" data-dialog-confirm></button>
         </footer>
       </section>`;
 

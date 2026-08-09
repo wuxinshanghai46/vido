@@ -1,4 +1,5 @@
 const storage = require('./storageService');
+const assetPlanPublication = require('./assetPlanPublicationService');
 const { assertContextConsistent, cleanText } = require('./contextBuilder');
 const { generateBlueprint } = require('./blueprintService');
 const blueprintProgress = require('./blueprintProgressService');
@@ -49,7 +50,7 @@ async function generateBlueprintStage(taskId, options = {}, {
   if (typeof versionedBlueprint !== 'function') throw new Error('剧本版本服务未初始化');
   const generationId = cleanText(options.generationId || options.generation_id || task.active_generation_id || '', 100);
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
-  const assetPlan = storage.getOutput(taskId, 'asset_plan') || {};
+  const assetPlan = assetPlanPublication.currentPlan(taskId) || {};
   const inputFingerprint = cleanText(
     options.inputFingerprint || options.input_fingerprint
       || blueprintInputFingerprint(task, { ...ctx, asset_plan_fingerprint: assetPlan.fingerprint || '' }),

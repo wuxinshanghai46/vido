@@ -2,6 +2,8 @@ const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
 const videoCore = require('../videoGenerationCore');
+const releaseBundle = require('../storyAdReleaseBundleService');
+const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -81,8 +83,43 @@ function withSupportId(message = '', supportId = '') {
   return `支持编号：${supportId}。${text}`.trim();
 }
 
+function deadlineRecoveryState(taskId = '', stage = '') {
+  if (String(stage) !== 'scene_config') return null;
+  const task = storage.getTask(taskId) || {};
+  const checkpoint = storage.getOutput(taskId, 'asset_plan_draft_checkpoint');
+  if (!assetPlanCheckpointLineage.compatibility(task, checkpoint, { requireReusable: true }).reusable) return null;
+  const validSections = Array.isArray(checkpoint.valid_sections) ? checkpoint.valid_sections.filter(Boolean) : [];
+  const missingSections = Array.isArray(checkpoint.missing_sections) ? checkpoint.missing_sections.filter(Boolean) : [];
+  if (!validSections.length || !missingSections.length) return null;
+  const labels = { cast_profiles: '人物', prop_plan: '道具', story_seed: '故事规划', scene_plan: '场景规划' };
+  const validLabels = validSections.map(key => labels[key] || key);
+  const missingLabels = missingSections.map(key => labels[key] || key);
+  return {
+    valid_sections: validSections,
+    missing_sections: missingSections,
+    message: `场景配置生成达到安全执行时限；已保留${validLabels.join('、')}，下次将只继续生成缺失的${missingLabels.join('、')}，不会重复生成已完成区段`,
+    output_summary: `已保存${validLabels.join('、')}；待继续${missingLabels.join('、')}`,
+  };
+}
+
 function sanitizedFailureDetails(error = null) {
-  const details = Array.isArray(error?.details) ? error.details : [];
+  const structured = error?.details && !Array.isArray(error.details) && typeof error.details === 'object'
+    ? [
+        ...(error.details.incomplete_spaces || []).map(item => ({
+          code: 'SCENE_SPEC_INCOMPLETE',
+          title: String(item?.space_id || 'unknown_space'),
+          message: `missing_fields=${(item?.missing_fields || []).join(',')}`,
+          status: 'invalid',
+        })),
+        ...(error.details.duplicate_space_ids || []).map(id => ({
+          code: 'SCENE_SPACE_ID_DUPLICATE', title: String(id), message: 'duplicate_space_id', status: 'invalid',
+        })),
+        ...(!Number(error.details.space_count || 0) ? [{
+          code: 'SCENE_SPACE_MISSING', title: 'scene_plan', message: 'space_count=0', status: 'invalid',
+        }] : []),
+      ]
+    : [];
+  const details = Array.isArray(error?.details) ? error.details : structured;
   return details.slice(0, 50).map(item => ({
     shot_number: Number(item?.shot_number || 0) || 0,
     title: String(item?.title || '').slice(0, 120),
@@ -125,6 +162,7 @@ function publicJob(job = {}) {
     snapshot_id: job.snapshotId || '',
     content_revision: Number(job.expectedContentRevision || 0) || 0,
     input_fingerprint: job.inputFingerprint || '',
+    release_bundle_id: job.releaseBundleId || '',
   };
 }
 
@@ -289,6 +327,7 @@ function queueStage({
 
   const id = uuidv4();
   const queuedAt = new Date().toISOString();
+  const queuedRelease = releaseBundle.identity();
   const job = {
     id,
     taskId: String(taskId),
@@ -308,6 +347,8 @@ function queueStage({
     failureSceneId: String(failureContext.scene_id || failureContext.sceneId || '').trim().slice(0, 120),
     failureSceneName: String(failureContext.scene_name || failureContext.sceneName || '').trim().slice(0, 120),
     deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
+    releaseBundleId: queuedRelease.bundle_id,
+    releaseEnvelope: queuedRelease,
   };
   runningJobs.set(key, job);
   storage.updateTask(taskId, {
@@ -335,6 +376,8 @@ function queueStage({
       content_revision: expectedRevision,
       input_fingerprint: job.inputFingerprint,
       idempotency_key: job.idempotencyKey,
+      deadline_ms: job.deadlineMs,
+      release_bundle_id: job.releaseBundleId,
     },
   });
 
@@ -356,6 +399,12 @@ function queueStage({
     }
     try {
     const beforeRun = storage.getTask(taskId);
+    if (releaseBundle.identity().bundle_id !== job.releaseBundleId) {
+      const error = new Error('任务排队期间运行版本已经变化，旧版本任务已停止');
+      error.code = 'STALE_RELEASE_EPOCH';
+      error.status = 409;
+      throw error;
+    }
     if (Number(beforeRun?.content_revision || 1) !== expectedRevision
       || (job.snapshotId && String(beforeRun?.current_snapshot_id || '') !== job.snapshotId)) {
       const error = new Error('任务在排队期间已经更新，旧生成任务已作废');
@@ -377,7 +426,7 @@ function queueStage({
     storage.saveStage(taskId, stage, {
       status: 'running',
       started_at: job.startedAt,
-      diagnostics: { generation_id: id },
+      diagnostics: { generation_id: id, deadline_ms: job.deadlineMs },
     });
       await execute({
         generationId: id,
@@ -386,9 +435,16 @@ function queueStage({
         snapshotId: job.snapshotId,
         expectedContentRevision: expectedRevision,
         inputFingerprint: job.inputFingerprint,
+        releaseBundleId: job.releaseBundleId,
       });
       cancellation.throwIfCancelled(taskId);
       const afterExecute = storage.getTask(taskId);
+      if (releaseBundle.identity().bundle_id !== job.releaseBundleId) {
+        const error = new Error('生成完成时运行版本已经变化，旧版本结果不会发布');
+        error.code = 'STALE_RELEASE_EPOCH';
+        error.status = 409;
+        throw error;
+      }
       if (Number(afterExecute?.content_revision || 1) !== expectedRevision
         || (job.snapshotId && String(afterExecute?.current_snapshot_id || '') !== job.snapshotId)) {
         const error = new Error('生成完成时任务内容已经更新，旧结果不会发布');
@@ -424,11 +480,14 @@ function queueStage({
         return;
       }
       const failure = classifyFailure(error);
+      const recoveryState = error?.code === 'STAGE_DEADLINE_EXCEEDED'
+        ? deadlineRecoveryState(taskId, stage)
+        : null;
       job.status = 'failed';
       job.finishedAt = new Date().toISOString();
       job.errorCode = failure.code;
       job.supportId = id;
-      job.error = withSupportId(failure.message, id).slice(0, 1000);
+      job.error = withSupportId(recoveryState?.message || failure.message, id).slice(0, 1000);
       job.retryable = failure.retryable;
       const failureDetails = sanitizedFailureDetails(error);
       const failureBillingState = String(error?.billingState || error?.billing_state || '').trim().slice(0, 40);
@@ -459,13 +518,20 @@ function queueStage({
           status: 'failed',
           started_at: job.startedAt,
           finished_at: job.finishedAt,
-          output_summary: error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果',
+          output_summary: recoveryState?.output_summary
+            || (error?.partial_results_saved === true ? '部分生成失败；成功资产与检查点已保存' : '执行失败，未保存可用结果'),
           error: job.error,
           diagnostics: {
             generation_id: id,
             support_id: id,
             error_code: failure.code,
             retryable: failure.retryable,
+            deadline_ms: job.deadlineMs,
+            ...(recoveryState ? {
+              partial_results_saved: true,
+              valid_sections: recoveryState.valid_sections,
+              missing_sections: recoveryState.missing_sections,
+            } : {}),
             ...(failureSceneId ? { scene_id: failureSceneId } : {}),
             ...(failureSceneName ? { scene_name: failureSceneName } : {}),
             ...(failureDetails.length ? { failure_details: failureDetails } : {}),
@@ -496,11 +562,12 @@ function queueStage({
       // overwrite outputs because its cancellation context remains marked.
       if (error?.code !== 'STAGE_DEADLINE_EXCEEDED') return;
       const failure = classifyFailure(error);
+      const recoveryState = deadlineRecoveryState(taskId, stage);
       job.status = 'failed';
       job.finishedAt = new Date().toISOString();
       job.errorCode = failure.code;
       job.supportId = id;
-      job.error = withSupportId(failure.message, id).slice(0, 1000);
+      job.error = withSupportId(recoveryState?.message || failure.message, id).slice(0, 1000);
       job.retryable = true;
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') !== id) return;
@@ -516,9 +583,20 @@ function queueStage({
         status: 'failed',
         started_at: job.startedAt,
         finished_at: job.finishedAt,
-        output_summary: '执行超时，未保存可用结果',
+        output_summary: recoveryState?.output_summary || '执行超时，未保存可用结果',
         error: job.error,
-        diagnostics: { generation_id: id, support_id: id, error_code: failure.code, retryable: true },
+        diagnostics: {
+          generation_id: id,
+          support_id: id,
+          error_code: failure.code,
+          retryable: true,
+          deadline_ms: job.deadlineMs,
+          ...(recoveryState ? {
+            partial_results_saved: true,
+            valid_sections: recoveryState.valid_sections,
+            missing_sections: recoveryState.missing_sections,
+          } : {}),
+        },
       }, { systemFinalization: true });
       storage.updateTask(taskId, {
         status: 'failed',
@@ -544,7 +622,9 @@ module.exports = {
   stageBudgetMs,
   getJob,
   publicJob,
+  sanitizedFailureDetails,
   terminalGenerationProgress,
+  deadlineRecoveryState,
   queueStage,
   reconcileInterruptedJobs,
 };

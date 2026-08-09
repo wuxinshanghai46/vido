@@ -41,8 +41,8 @@ function testPinnedSnapshotDoesNotDrift() {
   assert.strictEqual(laterSelector.prompt_block, '', 'a pinned legacy snapshot must not read a newer live selector');
 }
 
-async function testWearablesAreLocalFirst() {
-  const definitions = [{ key: 'ring', label: 'Ring' }, { key: 'watch', label: 'Watch' }];
+async function testWearablesUseIsolatedCatalogEvidence() {
+  const definitions = [{ key: 'hair_makeup', label: 'Hair and makeup' }, { key: 'ring', label: 'Ring' }, { key: 'watch', label: 'Watch' }];
   let generatedDefinitions = [];
   const composites = {
     explicitAccessoryDefinitions: () => definitions,
@@ -53,12 +53,14 @@ async function testWearablesAreLocalFirst() {
     },
   };
   const ordinary = await wearableEvidence.resolve({ assetId: 'p1', profile: {} }, { composites });
-  assert.strictEqual(ordinary.trace.model_call_count, 0);
-  assert.strictEqual(generatedDefinitions.length, 0, 'ordinary accessories must not call the model');
+  assert.strictEqual(ordinary.trace.model_call_count, 2);
+  assert.deepStrictEqual(generatedDefinitions.map(item => item.key), ['ring', 'watch'], 'wearable objects must become isolated catalog images');
+  assert.strictEqual(ordinary.items.find(item => item.key === 'hair_makeup').evidence_mode, 'local_crop');
+  assert.strictEqual(ordinary.items.find(item => item.key === 'ring').evidence_mode, 'isolated_catalog_generation');
   const critical = await wearableEvidence.resolve({ assetId: 'p1', profile: { criticalAccessoryKeys: ['ring'] } }, { composites });
-  assert.deepStrictEqual(generatedDefinitions.map(item => item.key), ['ring']);
-  assert.strictEqual(critical.trace.model_call_count, 1, 'only the explicitly critical accessory may use one enhancement call');
-  assert.strictEqual(critical.items.find(item => item.key === 'watch').evidence_mode, 'local_crop');
+  assert.deepStrictEqual(generatedDefinitions.map(item => item.key), ['ring', 'watch']);
+  assert.strictEqual(critical.trace.model_call_count, 2, 'critical metadata must not make other declared objects fall back to body crops');
+  assert.strictEqual(critical.items.find(item => item.key === 'watch').evidence_mode, 'isolated_catalog_generation');
 }
 
 function testKeyframePromptKeepsCompletePolicy() {
@@ -160,7 +162,7 @@ function testAdminProjectionAndAutomaticPersonWiring() {
 
 async function main() {
   testPinnedSnapshotDoesNotDrift();
-  await testWearablesAreLocalFirst();
+  await testWearablesUseIsolatedCatalogEvidence();
   testKeyframePromptKeepsCompletePolicy();
   testSceneAndVideoPromptsConsumeBoundedPolicy();
   testLongSceneBlockKeepsVideoPolicy();

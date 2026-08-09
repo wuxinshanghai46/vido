@@ -11,8 +11,19 @@ const propIdentity = require('./propIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
 const { contextPrompt, cleanText, assertContextConsistent } = require('./contextBuilder');
 const { normalizeScenePlan, assertScenePlanContract } = require('./sceneBindingService');
+const assetPlanSceneContracts = require('./assetPlanSceneContractService');
+const personLooks = require('./personLookProfileService');
+const wardrobeStyleKnowledge = require('./wardrobeStyleKnowledgeService');
+const contentSkill = require('./contentSkillService');
+const storySceneCoverage = require('./storySceneCoverageService');
+const storyFactsPrompt = require('./storyFactsPromptService');
+const assetPlanPublication = require('./assetPlanPublicationService');
+const checkpointLineage = require('./assetPlanCheckpointLineageService');
+const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 4;
+const ASSET_PLAN_PROJECTION_VERSION = 11;
+const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
+const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -32,7 +43,11 @@ function fingerprint(task = {}, ctx = {}) {
     : ctx.cast_profiles;
   return crypto.createHash('sha256').update(JSON.stringify(canonical({
     version: ASSET_PLAN_PROJECTION_VERSION,
-    brief: ctx.brief,
+    content_mode: contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode),
+    story_scene_contract_version: Number(ctx.story_scene_contract_version || 0) || 0,
+    // 页面渲染可能把换行折叠为空格；资产规划指纹必须按语义文本计算，
+    // 否则用户未修改内容也会使检查点失配并重复调用主规划模型。
+    brief: cleanText(ctx.brief, 5000),
     product_subject: ctx.product_subject,
     advertised_subject_contract: ctx.advertised_subject_contract
       || (referenceIsValid(ctx.reference_video_analysis)
@@ -226,26 +241,40 @@ function projectReferencePlan(ctx = {}) {
 }
 
 function normalizePlan(source = {}, ctx = {}) {
-  const scenePlan = normalizeScenePlan(source.scene_plan || source.scenePlan || source.scene_config || source.sceneConfig || {});
+  const rawScenePlan = source.scene_plan || source.scenePlan || source.scene_config || source.sceneConfig || {};
+  const scenePlan = normalizeScenePlan(assetPlanSceneContracts.closeAssetPlanSceneContracts(rawScenePlan, {
+    content_mode: ctx.content_mode || ctx.product_presentation?.mode,
+  }));
   assertScenePlanContract(scenePlan);
   const castProfiles = Array.isArray(source.cast_profiles || source.castProfiles)
     ? (source.cast_profiles || source.castProfiles).slice(0, 12)
     : (ctx.cast_profiles || []);
+  const existingProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
   return {
-    cast_profiles: castProfiles.map((profile, index) => ({
-      ...profile,
+    cast_profiles: castProfiles.map((profile, index) => {
+      const existing = existingProfiles.find(item => cleanText(item?.id || '', 100)
+        && cleanText(item?.id || '', 100) === cleanText(profile?.id || '', 100))
+        || existingProfiles.find(item => cleanText(item?.displayName || item?.name || '', 120)
+          && cleanText(item?.displayName || item?.name || '', 120) === cleanText(profile?.displayName || profile?.name || '', 120));
+      const generatedLooks = personLooks.normalizeLookProfiles(profile);
+      const existingLooks = existing ? personLooks.normalizeLookProfiles(existing) : [];
+      const preservedLooks = existingLooks.length > generatedLooks.length ? existingLooks : generatedLooks;
+      const withLooks = personLooks.normalizeProfileLooks({ ...profile, look_profiles: preservedLooks });
+      return ({
+      ...withLooks,
       id: cleanText(profile.id || `cast_${index + 1}`, 100),
       displayName: cleanText(profile.displayName || profile.name || `人物${index + 1}`, 120),
       name: cleanText(profile.name || profile.displayName || `人物${index + 1}`, 120),
       roleName: cleanText(profile.roleName || profile.role || '', 160),
       appearanceText: cleanText(profile.appearanceText || profile.appearance || '', 800),
-      wardrobeText: cleanText(profile.wardrobeText || profile.wardrobe || '', 600),
+      wardrobeText: cleanText(withLooks.wardrobeText || '', 1200),
       hairMakeupText: cleanText(
         profile.hairMakeupText || profile.hair_makeup || '自然真实的发型与妆容，严格匹配人物外貌、年龄和职业气质',
         400,
       ),
       negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
-    })),
+      look_profiles: withLooks.look_profiles,
+    }); }),
     pet_profiles: Array.isArray(source.pet_profiles || source.petProfiles)
       ? (source.pet_profiles || source.petProfiles).slice(0, 12)
       : (ctx.pet_profiles || []),
@@ -361,6 +390,7 @@ async function projectReferenceIntake(taskId, options = {}) {
       age: primaryCast.age || primaryCast.age_range || 'match_brief',
       appearanceText: primaryCast.appearanceText || '',
       wardrobeText: primaryCast.wardrobeText || '',
+      look_profiles: primaryCast.look_profiles || [],
       negativeText: primaryCast.negativeText || '',
     } : projectionContext.person_spec,
     pet_contract: projectedPets && petProfiles.length ? {
@@ -403,15 +433,589 @@ async function projectReferenceIntake(taskId, options = {}) {
   };
 }
 
-function complete(plan = null) {
+function complete(plan = null, ctx = {}) {
   return Boolean(
     plan
-    && Array.isArray(plan.cast_profiles)
-    && Array.isArray(plan.prop_plan)
-    && plan.story_seed
-    && Array.isArray(plan.scene_plan?.spaces)
-    && plan.scene_plan.spaces.length,
+    && missingAssetPlanSections(plan, ctx).length === 0
+    && storySceneCoverage.coverageIssues(plan, ctx).length === 0,
   );
+}
+
+function rawScenePlan(source = {}) {
+  return source?.scene_plan || source?.scenePlan || source?.scene_config || source?.sceneConfig || {};
+}
+
+function hasPhysicalSpaces(source = {}) {
+  return Array.isArray(rawScenePlan(source)?.spaces) && rawScenePlan(source).spaces.length > 0;
+}
+
+function sourceSection(source = {}, snakeKey = '', camelKey = '') {
+  if (Object.prototype.hasOwnProperty.call(source || {}, snakeKey)) return source[snakeKey];
+  if (camelKey && Object.prototype.hasOwnProperty.call(source || {}, camelKey)) return source[camelKey];
+  return undefined;
+}
+
+function recoverySectionValidators(ctx = {}) {
+  return {
+    story_seed: (storySeed) => {
+      if (!Object.values(storySeed || {}).some(value => cleanText(value, 300))) return ['empty'];
+      return storySceneCoverage.storySeedIssues(storySeed, ctx);
+    },
+    scene_plan: (_scenePlan, source) => {
+      if (!hasPhysicalSpaces(source)) return ['spaces_missing'];
+      return storySceneCoverage.required(ctx) ? storySceneCoverage.coverageIssues(source, ctx) : [];
+    },
+  };
+}
+
+function validStorySeedSection(source = {}, ctx = {}) {
+  return sectionRecovery.sectionDiagnostics(source, ctx, recoverySectionValidators(ctx)).story_seed.valid;
+}
+
+function validScenePlanSection(source = {}, ctx = {}) {
+  return sectionRecovery.sectionDiagnostics(source, ctx, recoverySectionValidators(ctx)).scene_plan.valid;
+}
+
+function validAssetPlanSections(source = {}, ctx = {}) {
+  return sectionRecovery.validSections(source, ctx, recoverySectionValidators(ctx));
+}
+
+function missingAssetPlanSections(source = {}, ctx = {}) {
+  return sectionRecovery.missingSections(source, ctx, recoverySectionValidators(ctx));
+}
+
+function reusableDraftPayload(source = {}, ctx = {}) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return false;
+  return validAssetPlanSections(source, ctx).length > 0
+    && missingAssetPlanSections(source, ctx).length > 0;
+}
+
+function narrativeSubjectMarker(value = '') {
+  const marker = cleanText(value, 300).toLowerCase().replace(/[｜|／]/g, '/');
+  return /^(?:纯剧情|故事主题|纯剧情\s*\/\s*故事主题|故事\/剧情主题|非广告|无广告主体|不适用|none|n\/?a)$/iu.test(marker);
+}
+
+function rawContentModeViolations(source = {}, ctx = {}) {
+  const mode = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode);
+  const scenePlan = rawScenePlan(source);
+  const props = Array.isArray(sourceSection(source, 'prop_plan', 'propPlan'))
+    ? sourceSection(source, 'prop_plan', 'propPlan')
+    : [];
+  const storySeed = sourceSection(source, 'story_seed', 'storySeed') || {};
+  const advertisedSubject = cleanText(scenePlan?.advertised_subject || '', 300);
+  const contractSubject = cleanText(source?.advertised_subject_contract?.subject || '', 300);
+  const storySubject = cleanText(storySeed?.advertised_subject || '', 300);
+  const proofRequirements = Array.isArray(storySeed?.product_proof_requirements)
+    ? storySeed.product_proof_requirements.filter(Boolean)
+    : [];
+  if (mode === 'narrative_story') {
+    return [
+      advertisedSubject && !narrativeSubjectMarker(advertisedSubject) ? 'scene_plan.advertised_subject' : '',
+      props.some(item => String(item?.type || '').toLowerCase() === 'advertised_product') ? 'prop_plan.advertised_product' : '',
+      contractSubject && !narrativeSubjectMarker(contractSubject) ? 'advertised_subject_contract.subject' : '',
+      storySubject && !narrativeSubjectMarker(storySubject) ? 'story_seed.advertised_subject' : '',
+      proofRequirements.length ? 'story_seed.product_proof_requirements' : '',
+    ].filter(Boolean);
+  }
+  const hasSceneSection = Object.keys(scenePlan || {}).length > 0;
+  const hasPhysicalScene = Array.isArray(scenePlan?.spaces) && scenePlan.spaces.length > 0;
+  return hasSceneSection && hasPhysicalScene && !advertisedSubject
+    ? ['scene_plan.advertised_subject_missing']
+    : [];
+}
+
+function normalizeContentModeMarkers(plan = {}, ctx = {}) {
+  const mode = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode);
+  if (mode !== 'narrative_story') return plan;
+  const scenePlan = plan.scene_plan && typeof plan.scene_plan === 'object' ? { ...plan.scene_plan } : {};
+  if (narrativeSubjectMarker(scenePlan.advertised_subject)) scenePlan.advertised_subject = '';
+  const storySeed = plan.story_seed && typeof plan.story_seed === 'object' ? { ...plan.story_seed } : {};
+  if (narrativeSubjectMarker(storySeed.advertised_subject)) storySeed.advertised_subject = '';
+  const subjectContract = plan.advertised_subject_contract && typeof plan.advertised_subject_contract === 'object'
+    ? { ...plan.advertised_subject_contract }
+    : plan.advertised_subject_contract;
+  if (subjectContract && narrativeSubjectMarker(subjectContract.subject)) subjectContract.subject = '';
+  return { ...plan, scene_plan: scenePlan, story_seed: storySeed, advertised_subject_contract: subjectContract };
+}
+
+function assertGeneratedContentMode(source = {}, ctx = {}, stage = 'asset_plan') {
+  const violations = rawContentModeViolations(source, ctx);
+  if (!violations.length) return source;
+  const error = new Error(`${stage} 返回内容违反当前内容模式：${violations.join('、')}`);
+  error.code = 'PROVIDER_RESPONSE_INVALID';
+  error.retryable = true;
+  error.content_mode_violations = violations;
+  throw error;
+}
+
+function assertContentModeIsolation(plan = {}, ctx = {}) {
+  const mode = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode);
+  const normalized = normalizeContentModeMarkers(plan, ctx);
+  const violations = rawContentModeViolations(normalized, ctx);
+  if (violations.length) {
+    if (mode === 'narrative_story') {
+      const error = new Error('纯剧情资产规划包含商业广告结构，已阻止保存以避免剧情与广告串用');
+      error.code = 'ASSET_PLAN_CONTENT_MODE_CROSSTALK';
+      error.status = 422;
+      error.retryable = true;
+      error.content_mode_violations = violations;
+      throw error;
+    }
+    const error = new Error('商业广告资产规划缺少明确广告主体，已阻止保存以避免被纯剧情规则覆盖');
+    error.code = 'ASSET_PLAN_CONTENT_MODE_CROSSTALK';
+    error.status = 422;
+    error.retryable = true;
+    error.content_mode_violations = violations;
+    throw error;
+  }
+  return normalized;
+}
+
+function sectionPatchValidators(ctx = {}, basePayload = {}) {
+  const validators = recoverySectionValidators(ctx);
+  return {
+    story_seed: (value) => validators.story_seed(value, { ...basePayload, story_seed: value }),
+    scene_plan: (value) => validators.scene_plan(value, { ...basePayload, scene_plan: value }),
+  };
+}
+
+function sectionPatchOutput(section = '', contentMode = 'commercial_subject', ctx = {}) {
+  if (section === 'cast_profiles') {
+    return [{
+      id: 'stable_cast_id', name: '人物名称', role: '剧情或广告职责', appearanceText: '外貌',
+      wardrobeText: '服装', look_profiles: [],
+    }];
+  }
+  if (section === 'prop_plan') {
+    return contentMode === 'narrative_story'
+      ? [{ id: 'stable_prop_id', name: '剧情道具', type: 'wearable_accessory/story_prop/fixed_scene_object', description: '身份、材质、比例和使用方式' }]
+      : (sectionRecovery.standaloneProductRequired({}, ctx)
+        ? [{ id: 'stable_product_id', name: '明确广告主体', type: 'advertised_product', description: '身份、材质、比例、使用方式和主体证据' }]
+        : []);
+  }
+  if (section === 'scene_plan') {
+    return {
+      business_boundary: '业务边界', advertised_subject: contentMode === 'narrative_story' ? '' : '明确广告主体',
+      cast_mode: 'single/dual/multi/no_human/animal/human_pet/auto', scene_mode: 'single/multi',
+      spaces: [{
+        id: 'stable_space_id', name: '中文空间名', description: '该物理空间', story_purpose: '剧情或广告作用',
+        scene_spec: {
+          layoutText: '布局、出入口和固定结构', materialLightText: '材质、色彩和光线',
+          interactionText: '动作区、锚点与路线', negativeText: '禁止出现内容',
+          storyStates: [], interactionAnchors: [], routes: [], propPlacements: [],
+        },
+      }],
+      asset_strategy: [], story_strategy: [], forbidden: [], suggested_shot_count: 5,
+    };
+  }
+  return contentMode === 'narrative_story' ? {
+    logline: '梗概', opening: '', development: '', turning_point: '', resolution: '',
+    plot_beats: [{
+      id: 'stable_beat_id', phase: 'opening/development/turning_point/resolution/transition',
+      era: '时间层', time_anchor: '时间位置', location: '地点', production_state: '可见环境状态',
+      production_relation: { era: 'same/continuous/changed', time: 'same/continuous/changed', location: 'same/continuous/changed', environment: 'same/continuous/changed' },
+      summary: '可见动作', cause: '原因', consequence: '结果',
+    }],
+  } : { logline: '广告故事梗概', opening: '', development: '', turning_point: '', resolution: '' };
+}
+
+async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, section = '', options = {}) {
+  const contentMode = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode);
+  const generationId = cleanText(options.generation_id || options.generationId || '', 160);
+  const fingerprintValue = cleanText(options.fingerprint || '', 160);
+  const checkpoint = storage.getOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
+  const authority = sectionRecovery.checkpointCompatibility(storage.getTask(taskId) || {}, checkpoint, {
+    ...options,
+    ctx,
+    fingerprint: fingerprintValue,
+  });
+  if (!authority.compatible) {
+    const error = new Error(`资产规划区段恢复检查点已过期：${authority.issues.join('、')}`);
+    error.code = 'ASSET_PLAN_CHECKPOINT_CAS_FAILED';
+    error.status = 409;
+    error.retryable = false;
+    error.cas_issues = authority.issues;
+    throw error;
+  }
+  const validators = sectionPatchValidators(ctx, payload);
+  const validBefore = validAssetPlanSections(payload, ctx);
+  const result = await modelGateway.generateText({
+    taskId,
+    stage: 'new_story_ad.asset_plan_section_patch',
+    systemPrompt: [
+      '你是资产规划精确区段修复 agent，只能输出 required_missing_sections 中唯一指定的区段。',
+      '输出根对象必须且只能包含 required_missing_sections 与 section_patch。',
+      'section_patch 必须且只能包含 section 与 value；不得返回、改写或复述其他区段。',
+      '用户原文和 existing_valid_sections 是事实权威，不得新造题材、行业、人物、商品、地点或关系。',
+      contentSkill.promptBlock(contentMode),
+      section === 'story_seed' || section === 'scene_plan' ? storySceneCoverage.promptBlock(ctx) : '',
+      contentMode === 'narrative_story'
+        ? '纯剧情允许显式 prop_plan: [] 表示没有独立道具；禁止 advertised_product、商品、品牌和销售转化。'
+        : (sectionRecovery.standaloneProductRequired(payload, ctx)
+          ? '当前权威合同要求独立产品资产：prop_plan 必须包含 type=advertised_product 的主体证据，不能用空数组绕过。'
+          : '商业主体合同必须保留；服务、应用、材质表面等非独立道具主体允许显式 prop_plan: []，不得为了凑道具虚构实体商品。'),
+    ].filter(Boolean).join('\n'),
+    userPrompt: JSON.stringify({
+      brief: ctx.brief || '',
+      content_mode: contentMode,
+      required_missing_sections: [section],
+      existing_valid_sections: validBefore,
+      existing_payload: payload,
+      advertised_subject: contentMode === 'commercial_subject'
+        ? cleanText(ctx.product_subject || ctx.product_presentation?.subject || '', 300)
+        : '',
+      required_output: {
+        required_missing_sections: [section],
+        section_patch: { section, value: sectionPatchOutput(section, contentMode, ctx) },
+      },
+    }),
+    maxTokens: section === 'scene_plan' || section === 'story_seed' ? 4800 : 2800,
+    temperature: 0.1,
+    structuredOutput: { mode: 'json_object', name: 'asset_plan_section_patch' },
+    validateText: (_text, meta = {}) => {
+      const candidate = meta.parsed_json || {};
+      const merged = sectionRecovery.mergeSectionPatch(payload, candidate, section, ctx, validators);
+      assertGeneratedContentMode(merged, ctx, 'asset_plan_section_patch');
+      sectionRecovery.assertRequiredSectionsCandidate(merged, [section], ctx, sectionPatchValidators(ctx, merged));
+      return true;
+    },
+  });
+  const parsed = await jsonRepair.parseOrRepair({
+    raw: result.text,
+    expected: 'object',
+    modelGateway,
+    taskId,
+    stage: 'new_story_ad.json_repair',
+  });
+  const value = sectionRecovery.validateSectionPatch(parsed, section, ctx, validators);
+  const language = await outputLanguage.ensureChineseOutput({
+    payload: { [section]: value },
+    kind: 'scene_config',
+    taskId,
+    context: ctx,
+  });
+  const repairedValue = sectionRecovery.sectionValue(language.payload || {}, section);
+  const repairedPatch = {
+    required_missing_sections: [section],
+    section_patch: { section, value: repairedValue },
+  };
+  const merged = sectionRecovery.mergeSectionPatch(payload, repairedPatch, section, ctx, sectionPatchValidators(ctx, payload));
+  assertGeneratedContentMode(merged, ctx, 'asset_plan_section_patch_language');
+  sectionRecovery.assertRequiredSectionsCandidate(merged, [section], ctx, sectionPatchValidators(ctx, merged));
+  const validAfter = validAssetPlanSections(merged, ctx);
+  const lost = validBefore.filter(item => !validAfter.includes(item));
+  if (lost.length) {
+    const error = new Error(`资产规划区段补丁覆盖了已有有效区段：${lost.join('、')}`);
+    error.code = 'ASSET_PLAN_SECTION_PATCH_OVERWRITE';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  }
+  const saved = sectionRecovery.saveCheckpointAtomic(
+    taskId,
+    ASSET_PLAN_DRAFT_CHECKPOINT_KIND,
+    merged,
+    ctx,
+    {
+      ...options,
+      generation_id: generationId,
+      fingerprint: fingerprintValue,
+      status: 'asset_plan_section_recovered',
+      validators: recoverySectionValidators(ctx),
+      extra: {
+        last_recovered_section: section,
+        last_used_model: result.used_model,
+        last_language_repaired: language.repaired === true,
+      },
+    },
+  );
+  return {
+    payload: saved.payload,
+    section,
+    model_meta: {
+      used_model: result.used_model,
+      fallback_used: result.fallback_used,
+      failed_models: result.failed_models || [],
+      language_repaired: language.repaired === true,
+    },
+  };
+}
+
+async function recoverAssetPlanSections(taskId, ctx = {}, partialPayload = {}, options = {}) {
+  const requested = Array.isArray(options.required_sections) ? options.required_sections : null;
+  let payload = { ...partialPayload };
+  const recoveredSections = [];
+  const modelMetas = [];
+  sectionRecovery.saveCheckpointAtomic(
+    taskId,
+    ASSET_PLAN_DRAFT_CHECKPOINT_KIND,
+    payload,
+    ctx,
+    {
+      ...options,
+      status: 'asset_plan_sections_recovery_ready',
+      validators: recoverySectionValidators(ctx),
+      allow_generation_handoff: true,
+      replace_incompatible: options.replace_incompatible === true,
+    },
+  );
+  while (true) {
+    const remaining = missingAssetPlanSections(payload, ctx)
+      .filter(section => !requested || requested.includes(section));
+    if (!remaining.length) break;
+    const section = remaining[0];
+    stageProgress.update(taskId, {
+      stage: 'scene_config', phase: `asset_plan_section_patch:${section}`, completed: recoveredSections.length, total: recoveredSections.length + remaining.length,
+      generationId: cleanText(options.generation_id || options.generationId || '', 160),
+      message: `正在只补齐 ${section}；已持久化区段不会重复生成`,
+    });
+    const recovered = await recoverAssetPlanSectionPatch(taskId, ctx, payload, section, options);
+    payload = recovered.payload;
+    recoveredSections.push(section);
+    modelMetas.push(recovered.model_meta);
+  }
+  const stillMissing = missingAssetPlanSections(payload, ctx)
+    .filter(section => !requested || requested.includes(section));
+  if (stillMissing.length) {
+    const error = new Error(`资产规划缺失区段恢复不完整：${stillMissing.join('、')}`);
+    error.code = 'ASSET_PLAN_SECTION_RECOVERY_INCOMPLETE';
+    error.status = 502;
+    error.retryable = true;
+    throw error;
+  }
+  storage.saveOutput(taskId, ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND, {
+    ...checkpointLineage.checkpointFields(storage.getTask(taskId) || {}, {
+      generation_id: sectionRecovery.resolveGenerationId(storage.getTask(taskId) || {}, options),
+    }),
+    status: 'complete',
+    contract_version: sectionRecovery.CONTRACT_VERSION,
+    fingerprint: options.fingerprint || '',
+    content_mode: contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode),
+    recovered_sections: recoveredSections,
+    remaining_missing_sections: missingAssetPlanSections(payload, ctx),
+    used_models: modelMetas.map(item => item.used_model).filter(Boolean),
+    created_at: new Date().toISOString(),
+  }, { content_revision: Number(storage.getTask(taskId)?.content_revision || 1) || 1 });
+  return {
+    payload,
+    recovered_sections: recoveredSections,
+    model_meta: {
+      used_model: modelMetas.map(item => item.used_model).filter(Boolean).join(' -> '),
+      model_call_count: modelMetas.length,
+      fallback_used: modelMetas.some(item => item.fallback_used === true),
+      failed_models: modelMetas.flatMap(item => item.failed_models || []),
+      language_repaired: modelMetas.some(item => item.language_repaired === true),
+    },
+  };
+}
+
+function saveNarrativeDraftCheckpoint(taskId, ctx = {}, payload = {}, options = {}, status = 'narrative_recovery_partial') {
+  return sectionRecovery.saveCheckpointAtomic(
+    taskId,
+    ASSET_PLAN_DRAFT_CHECKPOINT_KIND,
+    payload,
+    ctx,
+    {
+      ...options,
+      status,
+      validators: recoverySectionValidators(ctx),
+      allow_generation_handoff: true,
+      replace_incompatible: options.replace_incompatible === true,
+      extra: {
+        content_skill: contentSkill.snapshot('narrative_story'),
+        unified_model_meta: options.unified_model_meta || options.unifiedModelMeta || null,
+      },
+    },
+  );
+}
+
+async function parseChineseRecoveryResult(taskId, ctx, result, kind) {
+  const parsed = await jsonRepair.parseOrRepair({
+    raw: result.text,
+    expected: 'object',
+    modelGateway,
+    taskId,
+    stage: 'new_story_ad.json_repair',
+  });
+  return outputLanguage.ensureChineseOutput({ payload: parsed, kind, taskId, context: ctx });
+}
+
+async function recoverNarrativeStoryDevelopment(taskId, ctx = {}, partialPayload = {}, options = {}) {
+  stageProgress.update(taskId, {
+    stage: 'scene_config', phase: 'story_facts', completed: 0, total: 3,
+    generationId: cleanText(options.generation_id || options.generationId || '', 80),
+    message: '正在生成故事因果、关系发展与结构化制作变化事实；尚未产出合格区段',
+  });
+  const minimumBeats = storySceneCoverage.expectedBeatCount(ctx);
+  const validateStoryFacts = (_text, meta = {}) => {
+    const candidate = storySceneCoverage.compileAssetPlan({
+      ...partialPayload,
+      story_seed: meta.parsed_json?.story_seed || meta.parsed_json?.storySeed || {},
+    });
+    assertGeneratedContentMode(candidate, ctx, 'story_facts');
+    const issues = storySceneCoverage.storySeedIssues(candidate.story_seed, ctx);
+    if (issues.length) {
+      const error = new Error(`剧情事实未覆盖完整因果链：${issues.join('；')}`);
+      error.code = 'ASSET_PLAN_STORY_SCENE_COVERAGE_INCOMPLETE';
+      error.retryable = true;
+      error.story_scene_coverage_issues = issues;
+      throw error;
+    }
+    return true;
+  };
+  let result;
+  try {
+    result = await modelGateway.generateText({
+    taskId,
+    stage: 'new_story_ad.story_facts',
+    systemPrompt: storyFactsPrompt.developmentSystemPrompt(ctx),
+    userPrompt: JSON.stringify(storyFactsPrompt.developmentUserPayload(ctx, partialPayload, minimumBeats)),
+    maxTokens: 5200,
+    temperature: 0.35,
+    structuredOutput: { mode: 'json_object', name: 'narrative_story_development' },
+      validateText: validateStoryFacts,
+    });
+  } catch (error) {
+    const repairableCode = ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(String(error?.code || ''));
+    if (!repairableCode) throw error;
+    const baseSeed = error?.candidate_parsed_json?.story_seed || error?.candidate_parsed_json?.storySeed || {};
+    const baseBeats = Array.isArray(baseSeed?.plot_beats || baseSeed?.plotBeats) ? (baseSeed.plot_beats || baseSeed.plotBeats) : [];
+    const diagnosticIssues = error?.failed_models?.[0]?.response_diagnostics?.issues;
+    const issues = Array.isArray(diagnosticIssues) && diagnosticIssues.length
+      ? diagnosticIssues
+      : String(error?.failed_models?.[0]?.message || error?.message || '').split(',').filter(Boolean);
+    const repairScope = storySceneCoverage.buildStorySeedRepairScope(baseSeed, issues, minimumBeats);
+    if (storyFactsPrompt.shouldUseCompactRetry(baseBeats, repairScope, minimumBeats)) {
+      result = await modelGateway.generateText({
+        taskId,
+        stage: 'new_story_ad.story_facts_compact_retry',
+        systemPrompt: storyFactsPrompt.compactRetrySystemPrompt(ctx),
+        userPrompt: JSON.stringify(storyFactsPrompt.compactRetryUserPayload(
+          ctx,
+          partialPayload,
+          minimumBeats,
+          baseBeats,
+          issues,
+        )),
+        maxTokens: 4200,
+        temperature: 0.1,
+        maxCandidates: 3,
+        structuredOutput: { mode: 'json_object', name: 'narrative_story_facts_compact_retry' },
+        validateText: validateStoryFacts,
+      });
+    } else {
+    if (!cleanText(error?.candidate_text || '', 24000)) throw error;
+    let repairedSeed = null;
+    const repairResult = await modelGateway.generateText({
+      taskId,
+      stage: 'new_story_ad.story_facts_repair',
+      systemPrompt: storyFactsPrompt.repairSystemPrompt(ctx),
+      userPrompt: JSON.stringify(storyFactsPrompt.repairUserPayload(
+        ctx,
+        minimumBeats,
+        issues,
+        repairScope,
+      )),
+      maxTokens: 3200,
+      temperature: 0.1,
+      maxCandidates: 3,
+      structuredOutput: { mode: 'json_object', name: 'narrative_story_facts_patch' },
+      validateText: (_text, meta = {}) => {
+        repairedSeed = storySceneCoverage.mergeStorySeedPatch(baseSeed, meta.parsed_json || {}, { repair_scope: repairScope });
+        return validateStoryFacts('', { parsed_json: { story_seed: repairedSeed } });
+      },
+    });
+    result = {
+      ...repairResult,
+      text: JSON.stringify({ story_seed: repairedSeed }),
+      parsed_json: { story_seed: repairedSeed },
+      repair_patch: repairResult.parsed_json || null,
+    };
+    }
+  }
+  const language = await parseChineseRecoveryResult(taskId, ctx, result, 'story_seed');
+  const storySeed = storySceneCoverage.compileStorySeed(language.payload?.story_seed || language.payload?.storySeed || {});
+  const issues = storySceneCoverage.storySeedIssues(storySeed, ctx);
+  if (issues.length) storySceneCoverage.assertCoverage({ story_seed: storySeed, scene_plan: { spaces: [] } }, ctx);
+  return { story_seed: storySeed, result, language };
+}
+
+async function recoverNarrativeSceneCoverage(taskId, ctx = {}, partialPayload = {}, options = {}) {
+  stageProgress.update(taskId, {
+    stage: 'scene_config', phase: 'topology_compilation', completed: 1, total: 3,
+    generationId: cleanText(options.generation_id || options.generationId || '', 80),
+    message: '故事事实已保存，平台正在确定性编译场次拓扑；此阶段不调用模型',
+  });
+  const scenePlan = storySceneCoverage.compileScenePlan(partialPayload.story_seed || {}, partialPayload.scene_plan || {});
+  storySceneCoverage.assertCoverage({ ...partialPayload, scene_plan: scenePlan }, ctx);
+  return {
+    scene_plan: scenePlan,
+    result: { used_model: '', fallback_used: false, failed_models: [] },
+    language: { repaired: false },
+    deterministic: true,
+  };
+}
+
+async function recoverMissingAssetPlanSections(taskId, ctx = {}, partialPayload = {}, options = {}) {
+  if (contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode) !== 'narrative_story'
+    || !storySceneCoverage.required(ctx)) {
+    return recoverAssetPlanSections(taskId, ctx, partialPayload, options);
+  }
+
+  let payload = { ...partialPayload };
+  const recoveredSections = [];
+  const modelMetas = [];
+  const identityMissing = missingAssetPlanSections(payload, ctx).filter(section => ['cast_profiles', 'prop_plan'].includes(section));
+  if (identityMissing.length) {
+    const identity = await recoverAssetPlanSections(taskId, ctx, payload, { ...options, required_sections: identityMissing });
+    payload = identity.payload;
+    recoveredSections.push(...identity.recovered_sections);
+    if (identity.model_meta) modelMetas.push(identity.model_meta);
+    saveNarrativeDraftCheckpoint(taskId, ctx, payload, options, 'narrative_identity_recovered');
+  }
+  if (!validStorySeedSection(payload, ctx)) {
+    const story = await recoverNarrativeStoryDevelopment(taskId, ctx, payload, options);
+    payload = { ...payload, story_seed: story.story_seed };
+    recoveredSections.push('story_seed');
+    modelMetas.push({
+      used_model: story.result.used_model, fallback_used: story.result.fallback_used,
+      failed_models: story.result.failed_models || [], language_repaired: story.language.repaired,
+    });
+    saveNarrativeDraftCheckpoint(taskId, ctx, payload, options, 'narrative_story_locked');
+  }
+  if (!validScenePlanSection(payload, ctx)) {
+    const scenes = await recoverNarrativeSceneCoverage(taskId, ctx, payload, options);
+    payload = { ...payload, scene_plan: scenes.scene_plan };
+    recoveredSections.push('scene_plan');
+    if (!scenes.deterministic) modelMetas.push({
+      used_model: scenes.result.used_model, fallback_used: scenes.result.fallback_used,
+      failed_models: scenes.result.failed_models || [], language_repaired: scenes.language.repaired,
+    });
+    saveNarrativeDraftCheckpoint(taskId, ctx, payload, options, 'narrative_scene_coverage_complete');
+  }
+  storySceneCoverage.assertCoverage(payload, ctx);
+  const remainingMissing = missingAssetPlanSections(payload, ctx);
+  if (remainingMissing.length) {
+    const error = new Error(`剧情资产规划分阶段恢复仍不完整：${remainingMissing.join('、')}`);
+    error.code = 'ASSET_PLAN_SECTION_RECOVERY_INCOMPLETE';
+    error.retryable = true;
+    throw error;
+  }
+  storage.saveOutput(taskId, ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND, {
+    status: 'complete', content_mode: 'narrative_story', recovered_sections: recoveredSections,
+    used_models: modelMetas.map(item => item.used_model).filter(Boolean), created_at: new Date().toISOString(),
+  });
+  return {
+    payload,
+    recovered_sections: [...new Set(recoveredSections)],
+    model_meta: {
+      used_model: modelMetas.map(item => item.used_model).filter(Boolean).join(' -> '),
+      model_call_count: modelMetas.length,
+      fallback_used: modelMetas.some(item => item.fallback_used === true),
+      failed_models: modelMetas.flatMap(item => item.failed_models || []),
+      language_repaired: modelMetas.some(item => item.language_repaired === true),
+    },
+  };
 }
 
 function propDrafts(plan = {}, existing = []) {
@@ -467,7 +1071,8 @@ function attachFixedPropsToScenes(plan = {}) {
 
 function persist(taskId, ctx, rawPlan, meta) {
   const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx));
-  const nextPlan = { ...plan, ...meta };
+  const activePlan = assetPlanPublication.publish(taskId, plan, meta);
+  const nextPlan = { ...activePlan, ...meta };
   const props = propDrafts(plan, ctx.prop_assets);
   const castFingerprint = crypto.createHash('sha256')
     .update(JSON.stringify(canonical(plan.cast_profiles || [])))
@@ -488,6 +1093,7 @@ function persist(taskId, ctx, rawPlan, meta) {
     age: primaryCast.age || primaryCast.age_range || 'match_brief',
     appearanceText: primaryCast.appearanceText || '',
     wardrobeText: primaryCast.wardrobeText || '',
+    look_profiles: primaryCast.look_profiles || [],
     hairMakeupText: primaryCast.hairMakeupText || '',
     negativeText: primaryCast.negativeText || '',
   };
@@ -512,13 +1118,14 @@ function persist(taskId, ctx, rawPlan, meta) {
   storage.saveOutput(taskId, 'scene_config', plan.scene_plan);
   storage.saveOutput(taskId, 'prop_assets', props);
   storage.saveOutput(taskId, 'context', nextContext);
+  storage.updateTask(taskId, checkpointLineage.currentPlanningTaskPatch(), { systemFinalization: true });
   return nextPlan;
 }
 
 function syncPrevious(taskId) {
   const task = storage.getTask(taskId);
   const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
-  const previous = storage.getOutput(taskId, 'asset_plan');
+  const previous = assetPlanPublication.currentPlan(taskId);
   if (!task || !complete(previous)) {
     const error = new Error('No complete asset plan is available for safe context synchronization');
     error.code = 'ASSET_PLAN_SYNC_SOURCE_REQUIRED';
@@ -557,7 +1164,13 @@ function syncPrevious(taskId) {
 async function generate(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
-  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const forceSceneCoverageReplan = options.replan_scene_coverage === true || options.replanSceneCoverage === true;
+  let ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  if (forceSceneCoverageReplan && contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode) === 'narrative_story') {
+    ctx = { ...ctx, story_scene_contract_version: storySceneCoverage.CONTRACT_VERSION };
+    storage.updateTask(taskId, { request: { ...(task.request || {}), story_scene_contract_version: storySceneCoverage.CONTRACT_VERSION } });
+    storage.saveOutput(taskId, 'context', ctx, { content_revision: task.content_revision });
+  }
   assertReferenceReady(ctx.reference_video_analysis);
   productAssetResolver.assertCommercialSubject(ctx, {
     code: 'ASSET_PLAN_AD_SUBJECT_REQUIRED',
@@ -565,8 +1178,8 @@ async function generate(taskId, options = {}) {
   });
   const generationId = cleanText(options.generation_id || options.generationId || '', 80);
   const currentFingerprint = fingerprint(task, ctx);
-  const previous = storage.getOutput(taskId, 'asset_plan');
-  if (previous?.fingerprint === currentFingerprint && complete(previous)) {
+  const previous = assetPlanPublication.currentPlan(taskId);
+  if (!forceSceneCoverageReplan && previous?.fingerprint === currentFingerprint && complete(previous, ctx)) {
     persist(taskId, ctx, previous, {
       fingerprint: previous.fingerprint,
       source: previous.source,
@@ -607,59 +1220,187 @@ async function generate(taskId, options = {}) {
     plan = normalizePlan(projectReferencePlan(ctx), ctx);
     modelMeta = { source: 'reference_analysis_projection', model_call_count: 0 };
   } else {
+    const currentContentMode = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode);
     const systemPrompt = [
-      '你是剧情广告统一资产规划 agent，只输出 JSON 对象。',
+      currentContentMode === 'narrative_story'
+        ? '你是纯剧情统一资产规划 agent，只输出 JSON 对象；本任务不是广告。'
+        : '你是商业广告统一资产规划 agent，只输出 JSON 对象。',
       '一次完成原创人物、独立道具、物理场景和故事种子的规划，不得把同一需求拆成多次模型理解。',
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
       '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
-      '现代与古代交替、交错、双线或对照且没有明确“同一人物/穿越/换装/一人分饰”时，必须规划为两个独立人物，分别绑定各自时代身份，禁止合并成同一人。',
-      '纯剧情 / 故事主题任务不得创建 advertised_product 道具，不得补写商品、品牌、卖点、购买或销售转化。',
+      '并行或对照叙事中的人物身份必须按用户原文判断：明确为不同人物时禁止合并；明确为同一人物跨时间层、换装或跨故事状态时只保留一个身份。不得根据题材示例自行假定人物关系。',
+      '同一人物在不同时间层、职业状态、身份状态或明确换装状态下，每套可见服装与妆造必须拆成独立 look_profiles，并用 scene_ids 绑定适用空间。严禁把多套造型合并进一个 wardrobeText。',
+      wardrobeStyleKnowledge.promptBlock({ brief: ctx.brief, productSubject: ctx.product_subject, extra: JSON.stringify(ctx.cast_profiles || []).slice(0, 6000) }),
+      currentContentMode === 'narrative_story'
+        ? '本任务是纯剧情：scene_plan.advertised_subject 必须为 JSON 空字符串，禁止 advertised_product、商品、品牌、卖点、购买引导和销售转化。'
+        : '本任务是商业广告：必须保留明确广告主体和可核对的主体证据，不得套用纯剧情空主体结构。',
+      storySceneCoverage.promptBlock(ctx),
       '每个独立物理空间必须有稳定 ID 和完整 scene_spec。',
       visualRealismPolicy.sceneSpecRealismRuleZh(),
     ].join('\n');
     const userPrompt = `${contextPrompt(ctx)}
 
+输出顺序硬要求：必须先输出 story_seed.plot_beats，再输出 cast_profiles、prop_plan。纯剧情模式只输出结构化故事事实，场景拓扑由平台编译；即使输出额度接近上限，也不得省略 plot_beats。
+
 输出严格 JSON：
 {
-  "cast_profiles": [{"id":"稳定人物ID","name":"人物名称","role":"剧情职责","appearanceText":"原创外貌与气质","wardrobeText":"原创服装","performanceText":"表演与动作","continuityText":"跨镜一致性","negativeText":"禁止项"}],
-  "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"advertised_product/wearable_accessory/story_prop/fixed_scene_object","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
+  "story_seed":${currentContentMode === 'narrative_story'
+    ? '{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":"","plot_beats":[{"id":"稳定节拍ID","phase":"opening/development/turning_point/resolution/transition","era":"来自输入的时间层/时期","time_anchor":"明确时间位置","location":"具体地点","production_state":"该节拍可见环境状态","production_relation":{"era":"same/continuous/changed","time":"same/continuous/changed","location":"same/continuous/changed","environment":"same/continuous/changed"},"production_requirements":{"layout":"布局事实","material_light":"材质光线事实","interaction":"动作区和路线事实","negative":"禁止内容"},"scene_change_reason":"关系说明","summary":"可见剧情动作","cause":"发生原因","consequence":"造成结果"}]}'
+    : '{"logline":"广告故事梗概","opening":"","development":"","turning_point":"","resolution":""}'},
+  "cast_profiles": [{"id":"稳定人物ID","name":"人物名称","role":"剧情职责","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
+  "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"${currentContentMode === 'narrative_story' ? 'wearable_accessory/story_prop/fixed_scene_object' : 'advertised_product/wearable_accessory/story_prop/fixed_scene_object'}","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
   "scene_plan": {
-    "business_boundary":"业务边界","advertised_subject":"广告主体","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",
+    "business_boundary":"业务边界","advertised_subject":"${currentContentMode === 'narrative_story' ? '' : '明确广告主体'}","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",
     "spaces":[{"id":"稳定空间ID","name":"中文空间名","description":"仅描述该独立空间","story_purpose":"剧情作用","scene_spec":{"layoutText":"布局、出入口和固定结构","materialLightText":"材质、色彩和光线","interactionText":"动作区、锚点与路线","negativeText":"禁止出现内容","storyStates":[],"interactionAnchors":[],"routes":[],"propPlacements":[],"sceneExperienceContract":{"required_authority":"panorama_3dof或geometry_6dof","representation":"physical或digital或abstract","extent":"enclosed或open或stage或screen","rotation_required":true,"translation_required":false,"actor_blocking_required":false,"camera_path_required":false,"metric_scale_required":false}}}],
     "asset_strategy":[],"story_strategy":[],"forbidden":[],"suggested_shot_count":5
-  },
-  "story_seed":{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":""}
+  }
 }`;
-    const result = await modelGateway.generateText({
-      taskId,
-      stage: 'new_story_ad.asset_plan',
-      systemPrompt,
-      userPrompt,
-      maxTokens: 4600,
+    const persistedDraft = storage.getOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
+    const replanDraft = forceSceneCoverageReplan && previous ? {
+      ...checkpointLineage.checkpointFields(task),
+      status: 'story_scene_coverage_replan',
+      fingerprint: currentFingerprint,
+      content_mode: currentContentMode,
+      reusable: true,
+      payload: {
+        cast_profiles: previous.cast_profiles || [],
+        pet_profiles: previous.pet_profiles || [],
+        prop_plan: previous.prop_plan || [],
+        advertised_subject_contract: previous.advertised_subject_contract || ctx.advertised_subject_contract || null,
+        scene_plan: { spaces: [] },
+        story_seed: currentContentMode === 'narrative_story' ? {} : (previous.story_seed || {}),
+      },
+      unified_model_meta: previous.model_meta || null,
+      created_at: new Date().toISOString(),
+    } : null;
+    const rawStoredDraft = replanDraft || persistedDraft;
+    const storedDraftCompatibility = checkpointLineage.compatibility(task, rawStoredDraft, {
+      fingerprint: currentFingerprint,
+      contentMode: currentContentMode,
+      requireReusable: true,
     });
-    const draft = await jsonRepair.parseOrRepair({
-      raw: result.text,
-      expected: 'object',
-      modelGateway,
-      taskId,
-      stage: 'new_story_ad.json_repair',
-    });
-    const language = await outputLanguage.ensureChineseOutput({
-      payload: draft,
-      kind: 'asset_plan',
-      taskId,
-      context: ctx,
-    });
-    plan = normalizePlan(language.payload, ctx);
+    const storedDraft = storedDraftCompatibility.reusable ? rawStoredDraft : null;
+    let payload;
+    let unifiedMeta = null;
+    let unifiedModelCallCount = 0;
+    let reusedDraft = false;
+    if (storedDraft?.fingerprint === currentFingerprint
+      && storedDraft?.content_mode === currentContentMode
+      && reusableDraftPayload(storedDraft.payload, ctx)
+      && missingAssetPlanSections(storedDraft.payload, ctx).length > 0) {
+      payload = storedDraft.payload;
+      reusedDraft = true;
+    } else {
+      const result = await modelGateway.generateText({
+        taskId,
+        stage: 'new_story_ad.asset_plan',
+        systemPrompt,
+        userPrompt,
+        maxTokens: 6200,
+        temperature: 0.2,
+        structuredOutput: { mode: 'json_object', name: 'unified_asset_plan' },
+        validateText: (_text, meta = {}) => {
+          assertGeneratedContentMode(meta.parsed_json || {}, ctx, 'asset_plan');
+          return true;
+        },
+      });
+      unifiedModelCallCount = 1;
+      const draft = await jsonRepair.parseOrRepair({
+        raw: result.text,
+        expected: 'object',
+        modelGateway,
+        taskId,
+        stage: 'new_story_ad.json_repair',
+      });
+      const language = await outputLanguage.ensureChineseOutput({
+        payload: draft,
+        kind: 'asset_plan',
+        taskId,
+        context: ctx,
+      });
+      assertGeneratedContentMode(language.payload, ctx, 'asset_plan_language');
+      payload = language.payload;
+      unifiedMeta = {
+        used_model: result.used_model,
+        fallback_used: result.fallback_used,
+        failed_models: result.failed_models || [],
+        language_repaired: language.repaired,
+        language_assessment: language.assessment,
+      };
+    }
+    if (currentContentMode === 'narrative_story'
+      && Array.isArray(payload?.story_seed?.plot_beats || payload?.storySeed?.plotBeats)
+      && (payload.story_seed?.plot_beats || payload.storySeed?.plotBeats).length
+      && !validScenePlanSection(payload, ctx)) {
+      payload = storySceneCoverage.compileAssetPlan(payload);
+    }
+    let recoveryMeta = null;
+    let recoveredSections = [];
+    const missingSections = missingAssetPlanSections(payload, ctx);
+    if (missingSections.length) {
+      sectionRecovery.saveCheckpointAtomic(
+        taskId,
+        ASSET_PLAN_DRAFT_CHECKPOINT_KIND,
+        payload,
+        ctx,
+        {
+          ...options,
+          generation_id: generationId,
+          fingerprint: currentFingerprint,
+          status: 'asset_plan_sections_missing',
+          validators: recoverySectionValidators(ctx),
+          allow_generation_handoff: true,
+          replace_incompatible: !storedDraft,
+          extra: {
+            content_skill: contentSkill.snapshot(currentContentMode),
+            unified_model_meta: unifiedMeta || storedDraft?.unified_model_meta || null,
+          },
+        },
+      );
+      try {
+        const recovered = await recoverMissingAssetPlanSections(taskId, ctx, payload, {
+          ...options,
+          fingerprint: currentFingerprint,
+        });
+        payload = recovered.payload;
+        recoveredSections = recovered.recovered_sections || [];
+        recoveryMeta = recovered.model_meta;
+      } catch (error) {
+        const latestDraft = storage.getOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
+        const latestPayload = latestDraft?.payload || payload;
+        storage.saveOutput(taskId, ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND, {
+          ...checkpointLineage.checkpointFields(task, { generation_id: generationId }),
+          status: 'failed',
+          contract_version: sectionRecovery.CONTRACT_VERSION,
+          fingerprint: currentFingerprint,
+          content_mode: currentContentMode,
+          valid_sections: validAssetPlanSections(latestPayload, ctx),
+          missing_sections: missingAssetPlanSections(latestPayload, ctx),
+          error_code: cleanText(error?.code || 'ASSET_PLAN_SECTIONS_RECOVERY_FAILED', 100),
+          error: cleanText(error?.message || error, 800),
+          created_at: new Date().toISOString(),
+        }, { content_revision: Number(task.content_revision || 1) || 1 });
+        throw error;
+      }
+    }
+    storySceneCoverage.assertCoverage(payload, ctx);
+    plan = assertContentModeIsolation(normalizePlan(payload, ctx), ctx);
     briefAuthority.assertPlanAuthority(plan, ctx);
+    storage.deleteOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
     modelMeta = {
-      source: 'unified_model_plan',
-      model_call_count: 1,
-      used_model: result.used_model,
-      fallback_used: result.fallback_used,
-      failed_models: result.failed_models,
-      language_repaired: language.repaired,
-      language_assessment: language.assessment,
+      source: recoveryMeta ? 'unified_model_plan_with_missing_sections_recovery' : 'unified_model_plan',
+      model_call_count: unifiedModelCallCount + Number(recoveryMeta?.model_call_count || (recoveryMeta ? 1 : 0)),
+      used_model: recoveryMeta?.used_model || unifiedMeta?.used_model || storedDraft?.unified_model_meta?.used_model || '',
+      fallback_used: recoveryMeta?.fallback_used === true || unifiedMeta?.fallback_used === true,
+      failed_models: [...(unifiedMeta?.failed_models || []), ...(recoveryMeta?.failed_models || [])],
+      language_repaired: unifiedMeta?.language_repaired === true || recoveryMeta?.language_repaired === true,
+      language_assessment: unifiedMeta?.language_assessment || null,
+      draft_checkpoint_reused: reusedDraft,
+      scene_recovery_used: Boolean(recoveryMeta),
+      missing_sections_recovery_used: Boolean(recoveryMeta),
+      recovered_sections: recoveredSections,
+      content_mode: currentContentMode,
+      content_skill: contentSkill.snapshot(currentContentMode),
     };
   }
 
@@ -705,6 +1446,14 @@ module.exports = {
   referenceProjectionFingerprint,
   normalizePlan,
   complete,
+  validAssetPlanSections,
+  missingAssetPlanSections,
+  reusableDraftPayload,
+  narrativeSubjectMarker,
+  rawContentModeViolations,
+  normalizeContentModeMarkers,
+  assertGeneratedContentMode,
+  assertContentModeIsolation,
   syncPrevious,
   generate,
 };

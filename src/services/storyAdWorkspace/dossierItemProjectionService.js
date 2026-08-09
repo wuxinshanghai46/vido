@@ -31,8 +31,11 @@ function projectedDossierItems(source = []) {
       image_url: mediaUrl(item),
     }),
     detail_mode: clean(item.detail_mode, 80),
+    evidence_mode: clean(item.evidence_mode, 80),
+    evidence_status: clean(item.evidence_status, 40),
     resolution: clean(item.resolution, 40),
     derived_locally: item.derived_locally === true,
+    model_call_count: Math.max(0, Number(item.model_call_count || 0) || 0),
   })).filter(item => item.image_url);
 }
 

@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-platform-release-migration-v126';
 
 export const SCENE_VIEW_ORDER = Object.freeze(['master', 'reverse', 'interaction', 'detail', 'layout']);
 export const SCENE_VIEW_LABELS = Object.freeze({
@@ -37,8 +37,8 @@ export function normalizeSceneDossier(item = {}) {
   return { views, completed, total: SCENE_VIEW_ORDER.length, failed, state };
 }
 
-function statusText(state = '') {
-  return ({ locked: '已通过并锁定', partial: '部分完成', conflict: '一致性异常', missing: '尚未生成' })[state] || '状态待确认';
+function statusText(state = '', completed = 0) {
+  return ({ locked: '已通过并锁定', partial: completed > 0 ? '基础场景已保存，增强待续' : '部分完成', conflict: '一致性异常', missing: '尚未生成' })[state] || '状态待确认';
 }
 
 function viewSlot(item, dossier, key, options = {}) {
@@ -89,7 +89,7 @@ export function renderSceneCoverCard(item = {}) {
     <div class="scene-cover-visual">${master?.image_url
       ? mediaPreview(master, { label: `${item.name || '场景'} · 主视总览`, width: 960, symbol: '场景主视', zoomable: true, zoomGroup: `scene-cover-${item.id || 'current'}` })
       : '<div class="scene-dossier-missing" role="status"><span>待生成主视图</span></div>'}
-      <span class="scene-cover-state">${escapeHtml(statusText(dossier.state))} · ${dossier.completed}/${dossier.total}</span>
+      <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · ${dossier.completed}/${dossier.total}</span>
     </div>
     <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : (dossier.failed.has(key) ? 'failed' : 'missing')}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
   </div>`;
@@ -106,7 +106,7 @@ export function renderSceneDossierCard(item = {}) {
   const qa = qaRows(item);
   const titleId = `scene-dossier-title-${text(item.id || 'current').replace(/[^a-z0-9_-]/ig, '-')}`;
   return `<section class="scene-dossier is-${dossier.state}" data-scene-dossier="${escapeHtml(item.id || '')}" aria-labelledby="${escapeHtml(titleId)}">
-    <header class="scene-dossier-head"><div><small>完整场景档案卡 · 版本 ${escapeHtml(item.revision || 1)}</small><h2 id="${escapeHtml(titleId)}">${escapeHtml(item.name || '未命名场景')}</h2><p>${escapeHtml(item.story_purpose || item.description || '当前场景尚未填写剧情用途')}</p></div><div><span class="scene-dossier-status">${escapeHtml(statusText(dossier.state))} · ${dossier.completed}/${dossier.total}</span><button class="btn small" type="button" data-export-scene-dossier>导出高清 PNG</button></div></header>
+    <header class="scene-dossier-head"><div><small>完整场景档案卡 · 版本 ${escapeHtml(item.revision || 1)}</small><h2 id="${escapeHtml(titleId)}">${escapeHtml(item.name || '未命名场景')}</h2><p>${escapeHtml(item.story_purpose || item.description || '当前场景尚未填写剧情用途')}</p></div><div><span class="scene-dossier-status">${escapeHtml(statusText(dossier.state, dossier.completed))} · ${dossier.completed}/${dossier.total}</span><button class="btn small" type="button" data-export-scene-dossier>导出高清 PNG</button></div></header>
     <div class="scene-dossier-hero">${viewSlot(item, dossier, 'master', { width: 1800 })}</div>
     <div class="scene-dossier-evidence-grid">${['reverse', 'interaction', 'detail'].map(key => viewSlot(item, dossier, key, { width: 960 })).join('')}</div>
     <div class="scene-dossier-lower"><div class="scene-dossier-layout">${viewSlot(item, dossier, 'layout', { width: 1400 })}</div><div class="scene-dossier-contract"><h3>场景视觉合同</h3><dl><div><dt>空间布局</dt><dd>${escapeHtml(spec.layout || spec.layoutText || '待补齐')}</dd></div><div><dt>材质与表面</dt><dd>${escapeHtml(spec.materials || spec.materialLightText || '待补齐')}</dd></div><div><dt>天气 / 时间 / 灯光</dt><dd>${escapeHtml([spec.weather, spec.time, spec.light].filter(Boolean).join(' · ') || '待补齐')}</dd></div><div><dt>互动与路线</dt><dd>${escapeHtml(spec.interaction || spec.interactionText || '待补齐')}</dd></div><div class="is-negative"><dt>禁止出现</dt><dd>${escapeHtml(spec.negative || spec.negativeText || '没有额外禁止项')}</dd></div></dl></div></div>
@@ -122,7 +122,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260806-auto-subject-dropdown-v71');
+      const exporter = await import('./sceneDossierExport.js?v=20260810-platform-release-migration-v126');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

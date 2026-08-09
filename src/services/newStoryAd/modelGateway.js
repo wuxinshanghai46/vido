@@ -13,6 +13,11 @@ const VISION_MAX_CANDIDATES = Math.max(1, Math.min(6, Number(process.env.NEW_STO
 const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env.NEW_STORY_AD_TEXT_STAGE_BUDGET_MS) || 120000));
 const REFERENCE_SYNTHESIS_STAGE = 'new_story_ad.reference_video_synthesis';
 const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
+const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
+  'new_story_ad.story_facts_compact_retry',
+  'new_story_ad.story_facts_repair',
+  'new_story_ad.asset_plan_section_patch',
+]);
 
 const FALLBACKS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 800, enabled: true },
@@ -23,6 +28,11 @@ const FALLBACKS = [
 
 const STAGE_FALLBACKS = {
   'new_story_ad.asset_plan': FALLBACKS,
+  'new_story_ad.asset_plan_scene_recovery': FALLBACKS,
+  'new_story_ad.asset_plan_missing_sections_recovery': FALLBACKS,
+  'new_story_ad.asset_plan_section_patch': FALLBACKS,
+  'new_story_ad.asset_plan_story_development': FALLBACKS,
+  'new_story_ad.asset_plan_scene_coverage_recovery': FALLBACKS,
   'new_story_ad.scene_config': FALLBACKS,
   'new_story_ad.blueprint': FALLBACKS,
   'new_story_ad.storyboard_table': FALLBACKS,
@@ -38,6 +48,26 @@ const STAGE_FALLBACKS = {
   'new_story_ad.storyboard_language_repair': FALLBACKS,
   'new_story_ad.assist': FALLBACKS,
 };
+
+const STAGE_ROUTE_INHERITANCE = Object.freeze({
+  'new_story_ad.asset_plan': 'new_story_ad.scene_config',
+  'new_story_ad.asset_plan_scene_recovery': 'new_story_ad.scene_config',
+  'new_story_ad.asset_plan_missing_sections_recovery': 'new_story_ad.scene_config',
+  'new_story_ad.asset_plan_story_development': 'new_story_ad.scene_config',
+  'new_story_ad.asset_plan_scene_coverage_recovery': 'new_story_ad.scene_config',
+  'new_story_ad.blueprint_language_repair': 'new_story_ad.blueprint',
+  'new_story_ad.blueprint_structure_repair': 'new_story_ad.blueprint',
+  'new_story_ad.blueprint_polish': 'new_story_ad.blueprint',
+  'new_story_ad.storyboard_language_repair': 'new_story_ad.storyboard_table',
+});
+
+function routeStage(stage = '') {
+  const normalized = String(stage || '').trim();
+  // Every registered model-calling stage is independently configurable in
+  // 模型调用管理. Inheritance remains only for unknown legacy stage IDs.
+  if (pipeline.getStageMeta(normalized)) return normalized;
+  return STAGE_ROUTE_INHERITANCE[normalized] || normalized;
+}
 
 function modelKey(model) {
   const providerId = String(model?.provider_id || '').toLowerCase();
@@ -280,19 +310,16 @@ function uniqueModels(models) {
 }
 
 function candidatesForStage(stage) {
-  const inheritedStage = stage === 'new_story_ad.asset_plan'
-    ? 'new_story_ad.scene_config'
-    : ([
-    'new_story_ad.blueprint_language_repair',
-    'new_story_ad.blueprint_structure_repair',
-    'new_story_ad.blueprint_polish',
-  ].includes(stage)
-    ? 'new_story_ad.blueprint'
-    : (stage === 'new_story_ad.storyboard_language_repair' ? 'new_story_ad.storyboard_table' : stage));
-  const configured = pipeline.pickAllEnabled(inheritedStage);
+  const inheritedStage = routeStage(stage);
+  const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
+    ? pipeline.pickAllEnabledWithDefault(inheritedStage)
+    : pipeline.pickAllEnabled(inheritedStage);
+  const strictManaged = pipeline.isStrictPipelineManagedStage
+    ? pipeline.isStrictPipelineManagedStage(stage)
+    : String(stage || '').startsWith('new_story_ad.');
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
-  const configuredOrSettings = configured.length ? configured : settingsStoryCandidates();
-  const ranked = uniqueModels([...configuredOrSettings, ...defaults])
+  const configuredOrSettings = strictManaged ? configured : (configured.length ? configured : settingsStoryCandidates());
+  const ranked = uniqueModels(strictManaged ? configuredOrSettings : [...configuredOrSettings, ...defaults])
     .map((m, i) => ({ ...m, fallback_rank: i + 1 }))
     .filter(m => isConfiguredAndUsable(m).ok)
     .filter(m => !healthState(m).circuit_open)
@@ -308,7 +335,10 @@ function candidatesForVisionStage(stage) {
   const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
     ? pipeline.pickAllEnabledWithDefault(stage)
     : pipeline.pickAllEnabled(stage);
-  const pool = configured.length ? configured : settingsVisionCandidates();
+  const strictManaged = pipeline.isStrictPipelineManagedStage
+    ? pipeline.isStrictPipelineManagedStage(stage)
+    : String(stage || '').startsWith('new_story_ad.');
+  const pool = strictManaged ? configured : (configured.length ? configured : settingsVisionCandidates());
   const ranked = uniqueModels(pool)
     .map((model, index) => ({ ...model, fallback_rank: index + 1 }))
     .filter(model => isConfiguredAndUsable(model, 'vision').ok)
@@ -324,8 +354,11 @@ function visionAvailability(stage) {
   const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
     ? pipeline.pickAllEnabledWithDefault(stage)
     : pipeline.pickAllEnabled(stage);
-  const source = configured.length ? 'stage_route' : 'settings_fallback';
-  const pool = uniqueModels(configured.length ? configured : settingsVisionCandidates());
+  const strictManaged = pipeline.isStrictPipelineManagedStage
+    ? pipeline.isStrictPipelineManagedStage(stage)
+    : String(stage || '').startsWith('new_story_ad.');
+  const source = strictManaged ? 'model_call_management' : (configured.length ? 'stage_route' : 'settings_fallback');
+  const pool = uniqueModels(strictManaged ? configured : (configured.length ? configured : settingsVisionCandidates()));
   const models = pool.map((model) => {
     const configuredState = isConfiguredAndUsable(model, 'vision');
     const health = configuredState.ok ? healthState(model) : {};
@@ -453,6 +486,40 @@ function parseStructuredJson(text = '', request = null, adapterMeta = null) {
   }
 }
 
+async function runSemanticValidation(validateText, text, meta = {}, stage = '') {
+  if (typeof validateText !== 'function') return true;
+  try {
+    const validation = await validateText(text, meta);
+    if (validation !== false) return true;
+    const error = new Error(`${stage} 模型返回内容未通过业务语义校验`);
+    error.code = 'PROVIDER_RESPONSE_INVALID';
+    error.retryable = true;
+    throw error;
+  } catch (error) {
+    if (['PROVIDER_RESPONSE_INVALID', 'USER_CANCELLED'].includes(String(error?.code || ''))) throw error;
+    const rawIssues = (error?.story_scene_coverage_issues || error?.content_mode_violations || [])
+      .map(issue => String(issue || '').slice(0, 500))
+      .filter(Boolean);
+    const prioritizedIssues = [
+      ...rawIssues.filter(issue => !/\.plot_beats\[\d+\]/.test(issue)),
+      ...rawIssues.filter(issue => /\.plot_beats\[\d+\]/.test(issue)),
+    ].filter((issue, index, rows) => rows.indexOf(issue) === index);
+    const invalid = new Error(String(error?.message || `${stage} 模型返回内容未通过业务语义校验`));
+    invalid.code = 'PROVIDER_RESPONSE_INVALID';
+    invalid.retryable = true;
+    invalid.validation_code = String(error?.code || 'BUSINESS_SEMANTIC_VALIDATION_FAILED');
+    invalid.response_diagnostics = {
+      kind: 'business_semantic_validation',
+      validation_code: invalid.validation_code,
+      issues: prioritizedIssues.slice(0, 100),
+      issue_count: rawIssues.length,
+      issues_truncated: prioritizedIssues.length > 100,
+      response_length: String(text || '').length,
+    };
+    throw invalid;
+  }
+}
+
 async function generateText({
   taskId = '',
   stage,
@@ -470,6 +537,13 @@ async function generateText({
   _generateText = null,
 } = {}) {
   if (!stage) throw new Error('剧情广告模型调用缺少阶段标识。');
+  if (String(stage).startsWith('new_story_ad.') && !pipeline.getStageMeta(stage)) {
+    const error = new Error(`${stage} 尚未登记到模型调用管理，已在调用供应商前停止`);
+    error.code = 'MODEL_STAGE_NOT_REGISTERED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
     const text = mockResponse(stage, userPrompt);
     const structured = parseStructuredJson(text, structuredOutput, { applied_mode: 'mock', native: false, degraded: false });
@@ -491,6 +565,8 @@ async function generateText({
     throw error;
   }
   const failed = [];
+  let lastCandidateText = '';
+  let lastCandidateParsedJson = null;
   const stageStarted = Date.now();
   const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || TEXT_MAX_CANDIDATES)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
@@ -498,6 +574,8 @@ async function generateText({
     if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
     const model = attemptCandidates[i];
     const start = Date.now();
+    let candidateText = '';
+    let candidateParsed = null;
     try {
       const result = await (typeof _generateText === 'function' ? _generateText : providerAdapters.generateText)({
         model: { ...model, _stageId: stage },
@@ -513,22 +591,18 @@ async function generateText({
       });
       cancellation.throwIfCancelled(taskId);
       const text = result.text;
+      candidateText = text;
+      lastCandidateText = text;
       const structured = parseStructuredJson(text, structuredOutput, result.structured_output);
-      if (typeof validateText === 'function') {
-        const validation = await validateText(text, {
-          model,
-          result,
-          parsed_json: structured.parsed,
-          structured_output: result.structured_output || null,
-          candidate_index: i,
-        });
-        if (validation === false) {
-          const invalid = new Error(`${stage} 文本模型返回的内容未通过业务语义校验`);
-          invalid.code = 'PROVIDER_RESPONSE_INVALID';
-          invalid.retryable = true;
-          throw invalid;
-        }
-      }
+      candidateParsed = structured.parsed;
+      lastCandidateParsedJson = structured.parsed;
+      await runSemanticValidation(validateText, text, {
+        model,
+        result,
+        parsed_json: structured.parsed,
+        structured_output: result.structured_output || null,
+        candidate_index: i,
+      }, stage);
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
       storage.saveModelCall({
@@ -565,6 +639,10 @@ async function generateText({
         message: String(err.message || err).slice(0, 300),
         response_diagnostics: err.response_diagnostics || null,
       });
+      if (candidateText) {
+        err.candidate_text = candidateText;
+        err.candidate_parsed_json = candidateParsed;
+      }
       recordHealth(model, { ok: false, error: err, latencyMs: latency });
       storage.saveModelCall({
         task_id: taskId,
@@ -582,7 +660,10 @@ async function generateText({
         latency_ms: latency,
         fallback_rank: i + 1,
       });
-      if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)) break;
+      if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT']
+        .includes(classified.code)) break;
+      if (['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(classified.code)
+        && !MANAGED_RECOVERY_FALLBACK_STAGES.has(String(stage || ''))) break;
       if (!classified.retryable && i >= attemptCandidates.length - 1) break;
     }
   }
@@ -599,12 +680,19 @@ async function generateText({
     + `（全部可用候选 ${candidates.length} 个）；`
     + failed.map(x => `${x.provider_id}/${x.model_id}:${x.code}`).join('；'),
   );
-  err.code = retryable ? 'MODEL_ATTEMPTS_EXHAUSTED' : (failed[0]?.code || 'MODEL_UNAVAILABLE');
+  const directedRepairCode = failed.length === 1 && ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(failed[0]?.code)
+    ? failed[0].code
+    : '';
+  err.code = directedRepairCode || (retryable ? 'MODEL_ATTEMPTS_EXHAUSTED' : (failed[0]?.code || 'MODEL_UNAVAILABLE'));
   err.retryable = retryable;
   err.attempted_count = failed.length;
   err.candidate_count = attemptCandidates.length;
   err.available_candidate_count = candidates.length;
   err.failed_models = failed;
+  if (failed.length === 1 && lastCandidateText) {
+    err.candidate_text = lastCandidateText;
+    err.candidate_parsed_json = lastCandidateParsedJson;
+  }
   throw err;
 }
 
@@ -623,6 +711,13 @@ async function generateVision({
   _candidateModels = null,
   _generateText = null,
 } = {}) {
+  if (String(stage).startsWith('new_story_ad.') && !pipeline.getStageMeta(stage)) {
+    const error = new Error(`${stage} 尚未登记到模型调用管理，已在调用供应商前停止`);
+    error.code = 'MODEL_STAGE_NOT_REGISTERED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
   const referenceDiagnostics = publicReferences.normalizeVisionReferences(imageUrls, { max: 8 });
   const urls = referenceDiagnostics.urls;
   const suppliedEmbeddedUrls = (Array.isArray(imageDataUrls) ? imageDataUrls : [])
@@ -736,19 +831,11 @@ async function generateVision({
         signal: cancellation.signal(),
       });
       cancellation.throwIfCancelled(taskId);
-      if (typeof validateText === 'function') {
-        const validation = await validateText(result.text, {
-          model,
-          result,
-          candidate_index: i,
-        });
-        if (validation === false) {
-          const invalid = new Error(`${stage} 视觉模型返回的内容未通过业务语义校验`);
-          invalid.code = 'PROVIDER_RESPONSE_INVALID';
-          invalid.retryable = true;
-          throw invalid;
-        }
-      }
+      await runSemanticValidation(validateText, result.text, {
+        model,
+        result,
+        candidate_index: i,
+      }, stage);
       const latency = Date.now() - start;
       recordHealth(model, { ok: true, latencyMs: latency });
       storage.saveModelCall({
@@ -872,6 +959,8 @@ module.exports = {
   diversifyVisionCandidates,
   preferReferenceVisionCandidates,
   preferReliableTextCandidates,
+  routeStage,
+  STAGE_ROUTE_INHERITANCE,
   generateText,
   generateVision,
   visionAttemptTimeoutForBudget,

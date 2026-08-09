@@ -15,6 +15,7 @@ const service = require('../src/services/newStoryAd');
 const storage = require('../src/services/newStoryAd/storageService');
 const jobService = require('../src/services/newStoryAd/jobService');
 const mediaPipeline = require('../src/services/newStoryAd/mediaPipelineService');
+const generationPermit = require('../src/services/newStoryAd/generationPermitService');
 
 const DANGEROUS_KEYS = paidExecutionPolicy.EXTERNAL_BOOLEAN_CONTROLS;
 const FORBIDDEN_HTTP_CASES = [
@@ -133,6 +134,8 @@ async function testHttpIngress() {
     getTask: storage.getTask,
     queueStage: jobService.queueStage,
     runMediaPipeline: mediaPipeline.runMediaPipeline,
+    issuePermit: generationPermit.issue,
+    consumePermit: generationPermit.consume,
   };
   let queued = null;
   let videoOptions = null;
@@ -149,6 +152,8 @@ async function testHttpIngress() {
       return { accepted: true, duplicate: false, job: { id: `job-${entry.stage}` } };
     };
     mediaPipeline.runMediaPipeline = async ({ options }) => { mediaOptions = options; return {}; };
+    generationPermit.issue = (taskId, stage) => ({ permit_id: `permit-${taskId}-${stage}`, task_id: taskId, stage });
+    generationPermit.consume = (_taskId, issued) => ({ ...issued, status: 'consumed' });
 
     delete require.cache[require.resolve('../src/routes/newStoryAd')];
     const router = require('../src/routes/newStoryAd');
@@ -200,6 +205,8 @@ async function testHttpIngress() {
     storage.getTask = originals.getTask;
     jobService.queueStage = originals.queueStage;
     mediaPipeline.runMediaPipeline = originals.runMediaPipeline;
+    generationPermit.issue = originals.issuePermit;
+    generationPermit.consume = originals.consumePermit;
   }
 }
 

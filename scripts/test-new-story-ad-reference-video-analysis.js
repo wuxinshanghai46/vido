@@ -671,7 +671,7 @@ async function main() {
     'webang-maas/gemini-2.5-flash',
   ], 'reference video analysis must use only its explicit VLM route');
   const routedAvailability = modelGateway.visionAvailability('new_story_ad.reference_video_vision');
-  assert.strictEqual(routedAvailability.source, 'stage_route');
+  assert.strictEqual(routedAvailability.source, 'model_call_management');
   assert.strictEqual(routedAvailability.available_count, 3);
   assert.ok(!routedAvailability.models.some(item => item.provider_id === 'openai'));
   assert.strictEqual(modelGateway.classifyError(new Error('401 该令牌已过期')).code, 'AUTH_CONFIG');

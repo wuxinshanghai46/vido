@@ -74,17 +74,55 @@ const PIPELINE_SCHEMA = {
   { id: 'new_story_ad.reference_video_synthesis', name: '0.1 参考证据语义总编', type: 'story', desc: '综合全部证据帧，区分广告产品与环境，并按独立物理空间整理人物、场景和剧情' },
   { id: 'new_story_ad.asset_plan', name: '1 统一资产计划', type: 'story', desc: '一次规划人物、道具、场景和故事种子；默认继承场景配置文本路由' },
   { id: 'new_story_ad.scene_config', name: '1 场景配置', type: 'story', desc: '把任务需求整理成独立上下文、主体、人物、素材和禁止项，不继承旧任务' },
+    { id: 'new_story_ad.story_facts', name: '1.1 纯剧情事实深化', type: 'story', desc: '只生成剧情因果和结构化制作变化事实；场景键与拓扑由平台确定性编译' },
+    { id: 'new_story_ad.story_facts_compact_retry', name: '1.2 剧情事实紧凑重试', type: 'story', desc: '仅在首轮为空或 JSON 截断且没有可修复基线时，紧凑重试一次完整剧情事实' },
+    { id: 'new_story_ad.story_facts_repair', name: '1.3 剧情事实定向修复', type: 'story', desc: '只补齐缺失或不确定的剧情事实字段，不重跑已合格故事' },
+    { id: 'new_story_ad.asset_plan_missing_sections_recovery', name: '1.3 资产计划缺失区段恢复', type: 'story', desc: '只恢复人物、道具或故事事实等缺失区段，不覆盖已合格检查点' },
+    { id: 'new_story_ad.asset_plan_section_patch', name: '1.3.1 资产计划精确区段补丁', type: 'story', desc: '一次只补一个经合同确认缺失的区段；显式空数组、内容模式和检查点代际均在合并前校验' },
+    { id: 'new_story_ad.asset_plan_scene_recovery', name: '1.4 旧场景区段恢复（兼容）', type: 'story', desc: '兼容历史任务的场景区段恢复；新纯剧情拓扑不再调用模型' },
+    { id: 'new_story_ad.asset_plan_story_development', name: '1.5 旧故事深化（兼容）', type: 'story', desc: '历史调用记录兼容；新任务使用纯剧情事实深化阶段' },
+    { id: 'new_story_ad.asset_plan_scene_coverage_recovery', name: '1.6 旧场景覆盖恢复（停用）', type: 'story', desc: '只用于历史审计；新流程由平台确定性编译且不调用模型' },
     { id: 'new_story_ad.blueprint', name: '2 剧情蓝图', type: 'story', desc: '生成角色、剧情 beat、可见证据和商业叙事结构' },
+    { id: 'new_story_ad.blueprint_structure_repair', name: '2.1 剧情蓝图结构修复', type: 'story', desc: '只修复蓝图节拍数量和结构字段' },
+    { id: 'new_story_ad.blueprint_language_repair', name: '2.2 剧情蓝图语言修复', type: 'story', desc: '只修复非中文或语言不一致字段' },
+    { id: 'new_story_ad.blueprint_polish', name: '2.3 剧情蓝图质量修订', type: 'story', desc: '根据质量问题定向修订蓝图' },
     { id: 'new_story_ad.storyboard_table', name: '3 分镜表', type: 'story', desc: '把剧情蓝图拆成逐镜可执行分镜表，包含画面、动作、对白、旁白和时长' },
+    { id: 'new_story_ad.storyboard_fill_missing', name: '3.0 分镜缺失镜头补齐', type: 'story', desc: '只补齐缺失剧情节拍对应的镜头' },
     { id: 'new_story_ad.storyboard_rewrite', name: '3.1 分镜表重写', type: 'story', desc: '根据商用 QA 的可改写问题重写分镜表，不改变任务边界' },
+    { id: 'new_story_ad.storyboard_language_repair', name: '3.1.1 分镜语言修复', type: 'story', desc: '只修复分镜中的语言字段' },
+    { id: 'new_story_ad.scene_config_language_repair', name: '1.7 场景配置语言修复', type: 'story', desc: '只修复场景配置中的语言字段' },
     { id: 'new_story_ad.qa', name: '3.2 商用 QA', type: 'story', desc: '检查剧情边界、角色一致性、镜头可拍性和广告主体可见证据' },
     { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
     { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
+    { id: 'new_story_ad.person_dossier_atlas', name: '人物档案分类图集', type: 'image', desc: '生成人物档案中的分类视觉图集' },
+    { id: 'new_story_ad.person_dossier_native_master', name: '人物档案原生主视图', type: 'image', desc: '生成人物档案的独立主视图资产' },
+    { id: 'new_story_ad.person_dossier_wearable_accessory', name: '人物可穿戴配件细节', type: 'image', desc: '生成人物档案中的可穿戴配件细节图' },
+    { id: 'new_story_ad.person_dossier_wardrobe_detail', name: '人物服装细节', type: 'image', desc: '生成人物档案中的服装材质与款式细节图' },
+    { id: 'new_story_ad.pet_dossier', name: '动物档案图集', type: 'image', desc: '生成动物主体的可复用身份图集' },
+    { id: 'new_story_ad.prop_dossier_atlas', name: '道具档案图集', type: 'image', desc: '生成故事道具的可复用视觉图集' },
+    { id: 'new_story_ad.product_asset', name: '商品主体资产', type: 'image', desc: '生成商业主体或商品的权威参考资产' },
     { id: 'new_story_ad.storyboard_sketch', name: '剧情广告分镜线稿', type: 'image', desc: '在文字分镜之后批量生成构图线稿，供镜头设计确认' },
-    { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产', type: 'image', desc: '生成任务内可复用的空间五视图，锁定场景布局、材质和光线一致性' },
+    { id: 'new_story_ad.scene_asset', name: '场景五视图 / 空间资产（兼容）', type: 'image', desc: '历史场景图片调用兼容入口；新任务按母图、主视角和增强视图分别路由' },
+    { id: 'new_story_ad.scene_extension_atlas', name: '场景空间母图', type: 'image', desc: '生成可渐进派生主视角与空间增强视图的统一母图，不直接伪造360全景' },
+    { id: 'new_story_ad.scene_extension_master', name: '场景基础主视角', type: 'image', desc: '生成场景基础可用主视角；成功后独立保存，不受后续增强视图失败影响' },
+    { id: 'new_story_ad.scene_extension_layout', name: '场景俯视布局增强', type: 'image', desc: '在基础主视角之上渐进补充俯视布局与可行动区域' },
+    { id: 'new_story_ad.scene_extension_reverse', name: '场景反向/侧向增强', type: 'image', desc: '在同一物理空间内补充反向或侧向机位' },
+    { id: 'new_story_ad.scene_extension_interaction', name: '场景互动位增强', type: 'image', desc: '补充人物、动物、商品或道具可交互的空间机位' },
+    { id: 'new_story_ad.scene_extension_detail', name: '场景材质细节增强', type: 'image', desc: '补充同一空间的材质与局部细节证据' },
     { id: 'new_story_ad.scene_panorama', name: '场景360全景', type: 'image', desc: '从权威场景主视图扩展无缝2:1经纬全景，作为跨方向镜头的同一空间来源' },
     { id: 'new_story_ad.scene_panorama_qa', name: '场景360全景质检', type: 'vlm', desc: '检查原图保真、空间结构、环形接缝和本地机位投影一致性' },
+    { id: 'new_story_ad.person_consistency_qa', name: '人物身份一致性质检', type: 'vlm', desc: '检查人物参考与候选资产身份一致性' },
+    { id: 'new_story_ad.person_dossier_qa', name: '人物档案质检', type: 'vlm', desc: '检查人物档案视图和设定一致性' },
+    { id: 'new_story_ad.person_keyframe_qa', name: '人物关键帧质检', type: 'vlm', desc: '检查关键帧中的人物身份与造型一致性' },
+    { id: 'new_story_ad.pet_consistency_qa', name: '动物一致性质检', type: 'vlm', desc: '检查动物参考与生成画面一致性' },
+    { id: 'new_story_ad.product_consistency_qa', name: '商品一致性质检', type: 'vlm', desc: '检查商品资产一致性' },
+    { id: 'new_story_ad.product_keyframe_qa', name: '商品关键帧质检', type: 'vlm', desc: '检查关键帧中的商品证据一致性' },
+    { id: 'new_story_ad.scene_vision', name: '场景视觉理解', type: 'vlm', desc: '读取场景视觉证据并形成结构化描述' },
+    { id: 'new_story_ad.scene_consistency_qa', name: '场景一致性质检', type: 'vlm', desc: '检查场景资产与当前场景合同一致性' },
+    { id: 'new_story_ad.scene_camera_qa', name: '场景机位质检', type: 'vlm', desc: '检查机位图是否属于同一物理空间' },
+    { id: 'new_story_ad.video_frame_qa', name: '视频帧质检', type: 'vlm', desc: '检查视频关键帧与镜头合同一致性' },
+    { id: 'new_story_ad.cross_shot_visual_qa', name: '跨镜头连续性质检', type: 'vlm', desc: '检查相邻镜头人物、场景、动作和道具连续性' },
     { id: 'new_story_ad.scene_depth', name: '场景深度估计（可选6DoF）', type: 'image', desc: '仅在用户明确需要镜头平移或真实走位时估计深度，不用于3DoF原地环视' },
     { id: 'new_story_ad.scene_spatial_reconstruction', name: '场景空间重建（可选6DoF）', type: 'image', desc: '由全景、深度和多观察点建立可移动空间；没有几何证据时保持不可用' },
     { id: 'new_story_ad.scene_spatial_qa', name: '场景空间质检（可选6DoF）', type: 'vlm', desc: '检查几何、遮挡、导航网格与机位路径；未通过时不会开放平移和人物走位' },
@@ -141,7 +179,20 @@ const NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS = [
 ];
 const NEW_STORY_AD_IMAGE_STAGE_IDS = new Set([
   'new_story_ad.person_sheet',
+  'new_story_ad.person_dossier_atlas',
+  'new_story_ad.person_dossier_native_master',
+  'new_story_ad.person_dossier_wearable_accessory',
+  'new_story_ad.person_dossier_wardrobe_detail',
+  'new_story_ad.pet_dossier',
+  'new_story_ad.prop_dossier_atlas',
+  'new_story_ad.product_asset',
   'new_story_ad.scene_asset',
+  'new_story_ad.scene_extension_atlas',
+  'new_story_ad.scene_extension_master',
+  'new_story_ad.scene_extension_layout',
+  'new_story_ad.scene_extension_reverse',
+  'new_story_ad.scene_extension_interaction',
+  'new_story_ad.scene_extension_detail',
   'new_story_ad.scene_panorama',
   'new_story_ad.keyframe',
   'new_story_ad.storyboard_sketch',
@@ -377,6 +428,9 @@ const STAGE_DEFAULTS = {
   // 新剧情广告
   'new_story_ad.reference_video_vision': NEW_STORY_AD_REFERENCE_VISION_DEFAULTS,
   'new_story_ad.reference_video_synthesis': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.story_facts': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.story_facts_compact_retry': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.story_facts_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.person_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.person_dossier_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.product_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
@@ -385,15 +439,45 @@ const STAGE_DEFAULTS = {
   'new_story_ad.scene_panorama_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.scene_spatial_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.asset_plan': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.asset_plan_missing_sections_recovery': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.asset_plan_section_patch': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.asset_plan_scene_recovery': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.asset_plan_story_development': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.asset_plan_scene_coverage_recovery': [],
   'new_story_ad.scene_config': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.scene_config_language_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.blueprint': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.blueprint_structure_repair': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.blueprint_language_repair': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.blueprint_polish': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.storyboard_table': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.storyboard_fill_missing': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.storyboard_rewrite': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.storyboard_language_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.qa': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.json_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.assist': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.person_keyframe_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.pet_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.product_keyframe_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.scene_camera_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.video_frame_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
+  'new_story_ad.cross_shot_visual_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.person_sheet': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.person_dossier_atlas': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.person_dossier_native_master': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.person_dossier_wearable_accessory': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.person_dossier_wardrobe_detail': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.pet_dossier': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.prop_dossier_atlas': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.product_asset': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.scene_asset': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_atlas': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_master': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_layout': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_reverse': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_interaction': NEW_STORY_AD_IMAGE_DEFAULTS,
+  'new_story_ad.scene_extension_detail': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.scene_panorama': NEW_STORY_AD_IMAGE_DEFAULTS,
   'new_story_ad.scene_depth': [],
   'new_story_ad.scene_spatial_reconstruction': [],
@@ -541,6 +625,11 @@ function listSchema() { return PIPELINE_SCHEMA; }
 
 function getStageConfig(stageId) {
   return loadConfig().stages[stageId] || [];
+}
+
+function hasStageConfig(stageId) {
+  const stages = loadConfig().stages || {};
+  return Object.prototype.hasOwnProperty.call(stages, stageId);
 }
 
 function getStageMeta(stageId) {
@@ -857,7 +946,8 @@ function pickModel(stageId) {
 }
 
 function pickModelWithDefault(stageId) {
-  return pickModel(stageId) || (getStageDefaults(stageId).find(m => m.enabled) || null);
+  if (hasStageConfig(stageId)) return pickModel(stageId);
+  return getStageDefaults(stageId).find(m => m.enabled) || null;
 }
 
 /** 拿到该 stage 的所有 enabled 模型（按优先级） — 用于 fallback 链 */
@@ -866,8 +956,8 @@ function pickAllEnabled(stageId) {
 }
 
 function pickAllEnabledWithDefault(stageId) {
-  const configured = pickAllEnabled(stageId);
-  return configured.length ? configured : getStageDefaults(stageId).filter(m => m.enabled);
+  if (hasStageConfig(stageId)) return pickAllEnabled(stageId);
+  return getStageDefaults(stageId).filter(m => m.enabled);
 }
 
 function isVlmCapableModel(provider, model) {
@@ -938,6 +1028,7 @@ module.exports = {
   listDefaults,
   getStageDefaults,
   getStageMeta,
+  isStrictPipelineManagedStage,
   isNewStoryAdImageStage,
   isStageModelAllowed,
   filterStageModels,
@@ -946,6 +1037,7 @@ module.exports = {
   loadConfig,
   saveConfig,
   getStageConfig,
+  hasStageConfig,
   setStageConfig,
   setStageConfigAsync,
   validateStageModel,
@@ -957,4 +1049,3 @@ module.exports = {
   listAvailableModels,
   listAvailableModelsForStage,
 };
-

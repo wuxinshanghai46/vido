@@ -51,10 +51,10 @@ function requestDelete(baseUrl, taskId, userId) {
   });
 }
 
-function createFixture(taskId, ownerId) {
+function createFixture(taskId, ownerId, brief = '通用剧情广告任务删除测试') {
   const created = service.createTask({
     task_id: taskId,
-    brief: '通用剧情广告任务删除测试',
+    brief,
     product_subject: '通用主体',
     cast_mode: 'no_human',
   }, { id: ownerId, role: 'user' });
@@ -84,6 +84,16 @@ async function main() {
   try {
     const taskId = 'delete-owned-task';
     createFixture(taskId, 'owner-a');
+    const ownedFile = path.join(tempDir, 'new-story-ad-assets', 'owned-delete.png');
+    const sharedFile = path.join(tempDir, 'new-story-ad-assets', 'shared-keep.png');
+    const outsideFile = path.join(os.tmpdir(), `vido-delete-outside-${process.pid}.png`);
+    fs.mkdirSync(path.dirname(ownedFile), { recursive: true });
+    fs.writeFileSync(ownedFile, 'owned');
+    fs.writeFileSync(sharedFile, 'shared');
+    fs.writeFileSync(outsideFile, 'outside');
+    storage.saveOutput(taskId, 'deletion_files', { owned: { file_path: ownedFile }, shared: { file_path: sharedFile }, outside: { file_path: outsideFile } });
+    createFixture('delete-shared-owner', 'owner-a', '共享文件保留测试');
+    storage.saveOutput('delete-shared-owner', 'shared_file', { file_path: sharedFile });
 
     assert.equal(service.listTaskSummaries({ userId: 'owner-a' }).tasks.some(task => task.id === taskId), true);
     assert.equal(service.listTaskSummaries({ userId: 'owner-b' }).tasks.some(task => task.id === taskId), false);
@@ -100,6 +110,11 @@ async function main() {
     assert.equal(deleted.status, 200);
     assert.equal(deletedBody.success, true);
     assert.equal(deletedBody.deleted, true);
+    assert.equal(deletedBody.cleanup.deleted_files, 1);
+    assert.equal(deletedBody.cleanup.preserved_shared_files, 1);
+    assert.equal(fs.existsSync(ownedFile), false, 'task-owned output file must be removed');
+    assert.equal(fs.existsSync(sharedFile), true, 'file referenced by another task must be preserved');
+    assert.equal(fs.existsSync(outsideFile), true, 'file outside OUTPUT_DIR must never be removed');
     assert.equal(storage.getTask(taskId), null);
     for (const key of ['stages', 'outputs', 'model_calls', 'reviews']) {
       assert.equal(storage.readDb()[key].some(row => String(row.task_id) === taskId), false, `${key} must be deleted`);
@@ -137,6 +152,9 @@ async function main() {
     await waitUntil(() => jobs.getJob(runningTaskId)?.status === 'cancelled');
     assert.equal(storage.getTask(runningTaskId), null);
     assert.equal(storage.getOutput(runningTaskId, 'late_output'), null);
+
+    storage.deleteTask('delete-shared-owner');
+    fs.rmSync(outsideFile, { force: true });
 
     console.log('new story ad persistent task deletion: ok');
   } finally {

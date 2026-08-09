@@ -47,9 +47,10 @@ assert.deepStrictEqual(projectedSemanticTiming.semantic_contract_progress.missin
 assert.equal(projectedSemanticTiming.semantic_contract_progress.contracts.cast.failures[0], 'character_semantics_incomplete');
 
 const assets = read('public/story-ad/views/assetCenterView.js');
+const assetDossierSections = read('public/story-ad/views/assetCenterDossierSections.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
-assert.match(assets, /reference-dossier-board/);
-assert.match(assets, /参考档案预览/);
+assert.match(assetDossierSections, /reference-dossier-board/);
+assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
@@ -363,10 +364,20 @@ assert.match(appWorkflowSource, /if \(step\?\.enabled === false\)[\s\S]*请先�
 assert.match(appWorkflowSource, /if \(!route\.isNew && routeStep\?\.enabled === false\)/, '直接输入后续页面地址时也必须执行同一门禁');
 assert.match(appWorkflowSource, /state\.completed \? '✓' : number/, '完成的环节必须提供明确完成标记');
 
+const personLookModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterPersonLooks.js',
+  ['renderPersonLookEditors', 'collectPersonLookValues', 'bindPersonLookForm'],
+  { escapeHtml },
+);
+const assetDossierModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterDossierSections.js',
+  ['mediaSection', 'legacyDossierBoard'],
+  { escapeHtml, mediaPreview },
+);
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
-  { escapeHtml, mediaPreview, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
+  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const sceneDossierModule = loadBrowserModule(
   'public/story-ad/views/sceneDossierCard.js',
@@ -382,6 +393,7 @@ const planningModule = loadBrowserModule(
     bindMediaLightbox() {},
     personDossierShowcase() { return ''; },
     renderSceneDossierCard: sceneDossierModule.renderSceneDossierCard,
+    bindPersonLookForm: personLookModule.bindPersonLookForm,
   },
 );
 const dossierModule = loadBrowserModule(
@@ -410,7 +422,10 @@ assert.match(legacyCard, /历史四视图/);
 assert.match(legacyCard, /生成完整人物档案/);
 assert.match(legacyCard, /data-generate-asset="legacy-person"/);
 
-const completePerson = { ...legacyPerson, dossier_sheet: { image_url: '/dossier.png' } };
+const legacyDossierPerson = { ...legacyPerson, dossier_sheet: { image_url: '/legacy-dossier.png' } };
+assert.equal(assetModule.personAssetState(legacyDossierPerson), 'upgrade_required', '旧档案图没有独立证据合同版本时必须进入升级队列');
+assert.equal(assetModule.subjectNeedsGeneration(legacyDossierPerson, 'human'), true, '旧档案必须进入批量升级目标');
+const completePerson = { ...legacyPerson, visual_asset_contract_version: 2, dossier_sheet: { image_url: '/dossier.png' } };
 assert.equal(assetModule.personAssetState(completePerson), 'complete_dossier');
 const completeCard = assetModule.assetCard(completePerson, 'people');
 assert.match(completeCard, /完整档案/);
@@ -425,6 +440,20 @@ assert.match(personEdit, /年龄约28岁/);
 const personProfileDetails = assetModule.profileDetails(readableProfile, 'people');
 assert.doesNotMatch(personProfileDetails, /年龄范围|match_brief/);
 assert.match(personProfileDetails, /外貌、气质与年龄/);
+const multiLookProfile = { ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
+  { id: 'ancient', name: '古代造型', scene_names: ['竹海庭院'], wardrobeText: '淡青宋式长衫' },
+  { id: 'modern', name: '现代造型', scene_names: ['金属展厅'], wardrobeText: '米白亚麻衬衫与长裤' },
+] } };
+const multiLookEdit = assetModule.personEditForm(multiLookProfile);
+assert.match(multiLookEdit, /2 套/);
+assert.match(multiLookEdit, /古代造型/);
+assert.match(multiLookEdit, /现代造型/);
+const collectedLooks = personLookModule.collectPersonLookValues({
+  look_0_id: 'ancient', look_0_name: '古代造型', look_0_scene_ids: 'garden', look_0_wardrobeText: '淡青宋式长衫',
+  look_1_id: 'modern', look_1_name: '现代造型', look_1_scene_ids: 'hall', look_1_wardrobeText: '米白亚麻衬衫与长裤',
+}, multiLookProfile.profile);
+assert.equal(collectedLooks.look_profiles.length, 2);
+assert.equal(collectedLooks.wardrobeText, '淡青宋式长衫');
 const dossierDetails = dossierModule.personDossierShowcase(readableProfile);
 assert.doesNotMatch(dossierDetails, /match_brief/, '人物档案风格关键词不得泄漏内部年龄占位值');
 

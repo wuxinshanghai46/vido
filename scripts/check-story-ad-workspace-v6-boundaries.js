@@ -96,13 +96,15 @@ function main() {
   const initialBytes = INITIAL_FILES.reduce((sum, file) => sum + sourceBytes(path.join(ROOT, file)), 0);
   const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
   const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
+  const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails)/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorldView/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const featureLazyJsBytes = featureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const panoramaLazyJsBytes = panoramaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const sceneWorldLazyJsBytes = sceneWorldLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -110,6 +112,7 @@ function main() {
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
   const coreJsGzip = gzipBytes(coreJsFiles);
   const lazyJsGzip = gzipBytes(lazyJsFiles);
+  const assetEditorLazyJsGzip = gzipBytes(assetEditorLazyJsFiles);
   const featureLazyJsGzip = gzipBytes(featureLazyJsFiles);
   const panoramaLazyJsGzip = gzipBytes(panoramaLazyJsFiles);
   const sceneWorldLazyJsGzip = gzipBytes(sceneWorldLazyJsFiles);
@@ -135,6 +138,9 @@ function main() {
   assert(dossierLazyJsGzip <= 9 * 1024, `场景档案按需模块 gzip ${dossierLazyJsGzip} bytes 超过 9 KiB`);
   assert(lazyJsBytes <= 780 * 1024, `3D导演台懒加载 JS ${lazyJsBytes} bytes 超过 780 KiB`);
   assert(lazyJsGzip <= 200 * 1024, `3D导演台懒加载 gzip ${lazyJsGzip} bytes 超过 200 KiB`);
+
+  assert(assetEditorLazyJsBytes <= 40 * 1024, `asset editor lazy modules ${assetEditorLazyJsBytes} bytes exceed 40 KiB`);
+  assert(assetEditorLazyJsGzip <= 12 * 1024, `asset editor lazy modules gzip ${assetEditorLazyJsGzip} bytes exceed 12 KiB`);
 
   const workflow = read(path.join(ROOT, 'public/story-ad/views/workflowView.js'));
   assert(workflow.includes("addEventListener('pointermove'"), '画布必须支持指针平移');

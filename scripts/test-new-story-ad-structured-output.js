@@ -163,7 +163,8 @@ async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
       }),
     }),
     (error) => {
-      assert.equal(error.code, 'MODEL_ATTEMPTS_EXHAUSTED');
+      assert.equal(error.code, 'PROVIDER_RESPONSE_INVALID');
+      assert.equal(error.candidate_text, 'This is not JSON.', '语义/结构失败必须保留候选供单次定向修复，不得盲切三个模型');
       assert.equal(error.failed_models.length, 1);
       assert.equal(error.failed_models[0].code, 'PROVIDER_RESPONSE_INVALID');
       assert.equal(error.failed_models[0].response_diagnostics.kind, 'structured_output_response');

@@ -156,6 +156,54 @@ function testIndustryNeutralityAndPerformance() {
   return p95;
 }
 
+function testCinematicPlanningKnowledge() {
+  const seeded = require('../src/services/seeds/generation_runtime_policy');
+  const expectedDocs = [
+    'kb_runtime_scene_progressive_expansion_v1',
+    'kb_runtime_shot_narrative_function_v1',
+    'kb_runtime_axis_eyeline_continuity_v1',
+    'kb_runtime_core_enhancement_decoupling_v1',
+  ];
+  const byId = new Map(seeded.map(doc => [doc.id, doc]));
+  expectedDocs.forEach(id => assert(byId.has(id), `缺少通用影视知识 ${id}`));
+
+  const searchable = expectedDocs.map(id => {
+    const doc = byId.get(id);
+    return [doc.title, doc.summary, ...(doc.tags || []), ...(doc.keywords || [])].join(' ');
+  }).join(' ');
+  ['场景渐进扩展', '镜头叙事功能', '轴线', '视线匹配', '核心增强解耦'].forEach(term => {
+    assert(searchable.includes(term), `知识检索元数据缺少 ${term}`);
+  });
+
+  const serialized = JSON.stringify(expectedDocs.map(id => byId.get(id))).toLowerCase();
+  ['retail', 'finance', 'healthcare', 'manufacturing', 'specific product', 'specific location'].forEach(term => {
+    assert(!serialized.includes(term), `通用影视知识不得写死行业或任务：${term}`);
+  });
+
+  const scene = compiler.compile(
+    { stage: 'scene_asset', assetType: 'scene', taskId: 'cinematic-scene' },
+    { docs: seeded },
+  );
+  assert(scene.rule_ids.includes('scene-progressive-evidence-expansion@1'));
+  assert(scene.rule_ids.includes('core-before-enhancement@1'));
+  assert(scene.prompt_block.includes('stable scene skeleton'));
+  assert(scene.prompt_block.includes('before enhancement'));
+
+  for (const stage of ['keyframe', 'video']) {
+    const shot = compiler.compile(
+      { stage, assetType: 'shot', taskId: `cinematic-${stage}` },
+      { docs: seeded },
+    );
+    assert(shot.rule_ids.includes('shot-visible-narrative-function@1'));
+    assert(shot.rule_ids.includes('shot-axis-eyeline-continuity@1'));
+    assert(shot.rule_ids.includes('core-before-enhancement@1'));
+    assert(shot.prompt_block.includes('primary narrative function'));
+    assert(shot.prompt_block.includes('eyeline target'));
+    assert(shot.prompt_block.includes('before enhancement'));
+    assert(shot.prompt_block.length <= 950, `${stage} 通用影视策略超过提示预算`);
+  }
+}
+
 function testPinnedSnapshotDoesNotDrift() {
   const memory = new Map();
   const storage = {
@@ -219,6 +267,7 @@ function run() {
   testQaOnlyAndFingerprints();
   testCanaryAndBudgets();
   const p95 = testIndustryNeutralityAndPerformance();
+  testCinematicPlanningKnowledge();
   testPinnedSnapshotDoesNotDrift();
   testSeedMergeAndMissingInsert();
   testAdminPersistenceBoundary();
@@ -231,6 +280,7 @@ function run() {
     compile_p95_ms: Number(p95.toFixed(3)),
     pinned_snapshot_drift: 0,
     seed_existing_overwrites: 0,
+    cinematic_planning_rules: 4,
   }, null, 2));
 }
 

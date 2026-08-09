@@ -18,8 +18,8 @@ assert.equal(context.content_mode, 'narrative_story', '无明确商品的故事�
 assert.equal(context.product_subject, '', '纯剧情不得伪造商品主体');
 assert.equal(context.product_presentation.mode, 'narrative_story');
 assert.equal(context.product_presentation.standalone_generation_supported, false);
-assert.equal(context.cast_mode, 'dual', '现代/古代交替默认是双人物模式');
-assert.equal(context.expected_people, 2, '现代/古代交替必须规划两个独立人物');
+assert.equal(context.cast_mode, 'dual', '用户明确两个时间层各有一位人物时必须保留双人物模式');
+assert.equal(context.expected_people, 2, '显式人物数量证据必须规划两个独立人物');
 assert.deepEqual(authority.explicitSceneRequirements(sourceBrief), ['竹海']);
 
 const selectedStory = contextBuilder.buildContext({
@@ -87,6 +87,8 @@ assert.doesNotMatch(prompt, /广告主体：待明确/);
 
 const samePerson = contextBuilder.buildContext({ brief: '同一个女孩穿越，在现代和古代交替出现，并在竹海中漫步。' });
 assert.notEqual(samePerson.cast_mode, 'dual', '用户明确同一人物时不得强拆为两人');
+const ambiguousParallel = contextBuilder.buildContext({ brief: '两个时间层交替推进，在同一条河流旁呈现不同阶段的变化。' });
+assert.notEqual(ambiguousParallel.cast_mode, 'dual', '只有并行结构但没有人物数量证据时不得擅自写死双人物');
 
 const commercial = contextBuilder.buildContext({ brief: '不锈钢原材料厂家要通过成品展示墙介绍材料纹理。' });
 assert.equal(commercial.content_mode, 'commercial_subject', '明确厂家和材料的任务仍应按商业主体处理');

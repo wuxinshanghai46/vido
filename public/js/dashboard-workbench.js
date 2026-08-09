@@ -3,9 +3,7 @@
 
   const state = {
     unfinished: [],
-    unfinishedCount: 0,
     videos: [],
-    showAllTasks: false,
     videoFilter: 'all',
     videoLimit: 8
   };
@@ -60,7 +58,7 @@
         <button class="wb-new-button" id="wb-open-creator">＋ 新建作品</button>
       </div>
       <section class="wb-resume-section">
-        <div class="wb-section-head"><div><h2>继续制作</h2><p id="wb-unfinished-count">正在读取未完成任务</p></div><button class="wb-text-button" id="wb-toggle-tasks" hidden></button></div>
+        <div class="wb-section-head"><div><h2>当前任务</h2><p id="wb-unfinished-count">正在读取当前任务</p></div></div>
         <div class="wb-resume-list" id="wb-unfinished"><div class="wb-empty">正在加载任务…</div></div>
       </section>
       <section class="wb-video-section">
@@ -104,13 +102,12 @@
   function renderUnfinished() {
     const target = document.getElementById('wb-unfinished');
     const count = document.getElementById('wb-unfinished-count');
-    const toggle = document.getElementById('wb-toggle-tasks');
-    if (!target || !count || !toggle) return;
-    count.textContent = state.unfinishedCount ? `你有 ${state.unfinishedCount} 个尚未完成的任务` : '当前没有未完成任务';
-    const rows = state.showAllTasks ? state.unfinished : state.unfinished.slice(0, 3);
+    if (!target || !count) return;
+    const rows = state.unfinished.slice(0, 3);
+    count.textContent = rows.length
+      ? '按最近更新时间显示 3 个任务'
+      : '当前没有未完成任务';
     target.innerHTML = rows.length ? rows.map(taskCard).join('') : '<div class="wb-empty wb-empty-resume"><b>所有任务都已完成</b><span>可以新建作品，开始下一次创作。</span><button id="wb-empty-create">新建作品</button></div>';
-    toggle.hidden = state.unfinished.length <= 3;
-    toggle.textContent = state.showAllTasks ? '收起' : `查看全部未完成（${state.unfinishedCount}）→`;
     const emptyCreate = document.getElementById('wb-empty-create');
     if (emptyCreate) emptyCreate.onclick = openCreator;
   }
@@ -223,7 +220,6 @@
   function bind() {
     const page = document.getElementById('page-dashboard');
     document.getElementById('wb-open-creator').onclick = openCreator;
-    document.getElementById('wb-toggle-tasks').onclick = () => { state.showAllTasks = !state.showAllTasks; renderUnfinished(); };
     document.getElementById('wb-more-videos').onclick = () => { state.videoLimit += 8; renderVideos(); };
     page.onclick = event => {
       const resume = event.target.closest('[data-resume]');
@@ -249,7 +245,6 @@
     if (!result?.success) return showLoadError();
     document.getElementById('wb-user-name').textContent = currentName();
     state.unfinished = (result.unfinished_tasks || result.continue_tasks || []).filter(task => canUse(task.module));
-    state.unfinishedCount = Number(result.unfinished_count ?? state.unfinished.length) || state.unfinished.length;
     state.videos = (result.videos || []).filter(video => canUse(video.module));
     renderUnfinished();
     renderVideos();

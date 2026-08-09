@@ -299,7 +299,7 @@ body.story-dialog-open { overflow: hidden; }
 .table-toolbar .btn { margin-left: auto; }
 .project-row {
   display: grid;
-  grid-template-columns: 150px minmax(260px, 1.8fr) 150px 70px 120px 78px;
+  grid-template-columns: 150px minmax(260px, 1.8fr) 150px 70px 120px 154px;
   gap: 14px;
   align-items: center;
   min-height: 76px;
@@ -312,6 +312,13 @@ body.story-dialog-open { overflow: hidden; }
 .project-copy b, .project-copy small { display: block; }
 .project-copy small { margin-top: 6px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-row time { color: var(--muted); font-size: 13px; }
+.project-actions { display: flex; gap: 8px; align-items: center; }
+.btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
+.btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+.brief-form .form-grid { align-items: start; }
+.brief-form .field:not(.full) { grid-template-rows: 18px 42px auto; align-content: start; }
+.brief-form .field:not(.full) > .select { height: 42px; }
+.assist-form-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .status-tag {
   justify-self: start;
   min-width: 92px;
@@ -350,5 +357,5 @@ body.story-dialog-open { overflow: hidden; }
 @media (max-width: 1250px) {
   .center-shell { width: calc(100% - 28px); }
   .center-layout { grid-template-columns: 205px 1fr; }
-  .project-row { grid-template-columns: 125px minmax(230px, 1fr) 120px 52px 100px 72px; gap: 9px; }
+  .project-row { grid-template-columns: 125px minmax(230px, 1fr) 120px 52px 100px 142px; gap: 9px; }
 }

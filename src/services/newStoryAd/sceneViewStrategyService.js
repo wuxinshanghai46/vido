@@ -30,12 +30,16 @@ function resolveSceneViewStrategy(options = {}) {
   const requiredViews = Array.isArray(options.requiredViews) ? options.requiredViews.filter(Boolean) : [];
   const uploadedViewCount = Math.max(0, Number(options.uploadedViewCount) || 0);
   const videoAcquisitionEnabled = options.videoAcquisitionEnabled === true;
+  const qualityTier = String(options.qualityTier || '').trim().toLowerCase();
+  const resolution = String(options.resolution || '').trim().toLowerCase();
+  const finalQuality = qualityTier === 'final' || qualityTier === 'high'
+    || resolution === '4k' || resolution === '2160p';
   let selected = requested;
   let fallbackReason = '';
 
   if (requested === 'auto') {
     if (uploadedViewCount >= Math.max(2, requiredViews.length || 2)) selected = 'uploaded_views';
-    else selected = 'atlas_2x2';
+    else selected = finalQuality ? 'image_derived' : 'atlas_2x2';
   }
 
   if (!STRATEGIES.includes(selected)) {
@@ -54,6 +58,9 @@ function resolveSceneViewStrategy(options = {}) {
     required_views: requiredViews,
     uploaded_view_count: uploadedViewCount,
     video_acquisition_enabled: videoAcquisitionEnabled,
+    quality_tier: qualityTier,
+    resolution,
+    native_view_quality: selected === 'image_derived',
   };
 }
 

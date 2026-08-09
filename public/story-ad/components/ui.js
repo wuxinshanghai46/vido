@@ -151,7 +151,7 @@ export function generationProgressPanel(bundle = {}) {
   }).join('')}</div>` : '';
   if (view.failed) {
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
-      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>已产出 ${view.completed}/${view.total} ${escapeHtml(view.unitLabel)} · ${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
+      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>流程已停止 · ${escapeHtml(view.liveText)}。只有已持久化并通过当前合同的区段才会被保留。</span></div><span class="status-tag is-danger">已停止</span></div>
       ${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div>
     </section>`;
   }
@@ -279,6 +279,11 @@ export function preloadLightboxUrl(url = '', createImage = () => new Image()) {
     candidate.onerror = () => reject(new Error('图片加载失败'));
     candidate.src = url;
   });
+}
+
+export function lightboxPanDelta(pointerDelta = 0, scale = 1) {
+  const zoom = Math.max(1, Number(scale) || 1);
+  return (Number(pointerDelta) || 0) * Math.min(3, 1 + (zoom - 1) * 0.35);
 }
 
 export function bindMediaLightbox(scope = document) {
@@ -422,8 +427,9 @@ export function bindMediaLightbox(scope = document) {
     });
     image.addEventListener('pointermove', event => {
       if (!drag || drag.id !== event.pointerId) return;
-      translateX = drag.tx + event.clientX - drag.x;
-      translateY = drag.ty + event.clientY - drag.y;
+      event.preventDefault();
+      translateX = drag.tx + lightboxPanDelta(event.clientX - drag.x, scale);
+      translateY = drag.ty + lightboxPanDelta(event.clientY - drag.y, scale);
       applyTransform();
     });
     image.addEventListener('pointerup', () => { drag = null; });

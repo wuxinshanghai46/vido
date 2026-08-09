@@ -7,6 +7,7 @@ const ffmpegPath = require('ffmpeg-static');
 const sharp = require('sharp');
 
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const pipelineModels = require('../src/services/pipelineModelService');
 const { checkpointMatches } = require('../src/services/newStoryAd/blueprintLifecycleService');
 const { buildContext } = require('../src/services/newStoryAd/contextBuilder');
 const { normalizeBrandOverlay, applyBrandOverlay } = require('../src/services/newStoryAd/composeService');
@@ -35,7 +36,10 @@ async function main() {
     .map(item => `${item.provider_id}/${item.model_id}`);
   const repairCandidates = modelGateway.candidatesForStage('new_story_ad.blueprint_structure_repair')
     .map(item => `${item.provider_id}/${item.model_id}`);
-  assert.deepStrictEqual(repairCandidates.slice(0, blueprintCandidates.length), blueprintCandidates);
+  assert(blueprintCandidates.length > 0);
+  assert(repairCandidates.length > 0);
+  assert(pipelineModels.getStageMeta('new_story_ad.blueprint_structure_repair'));
+  assert.strictEqual(modelGateway.routeStage('new_story_ad.blueprint_structure_repair'), 'new_story_ad.blueprint_structure_repair', '新增修复流程必须在模型调用管理中独立可切换');
 
   const task = { content_revision: 7, active_input_fingerprint: 'fp-same' };
   const checkpoint = {

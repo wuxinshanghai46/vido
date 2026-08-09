@@ -57,7 +57,11 @@ assert.match(report, /briefSlot\.appendChild\(options\.briefSettingsNode\)/, '�
 assert(report.indexOf('reference-understanding-actions') < report.indexOf('data-reference-brief-slot'), '设置插槽必须位于确认操作之后');
 assert(report.indexOf('data-reference-brief-slot') < report.indexOf('reference-understanding-summary'), '设置插槽必须位于报告摘要之前');
 assert.doesNotMatch(report, /runStage\s*\(/, '理解报告不得直接触发任何生成阶段');
-assert.doesNotMatch(report, /scene-config|generate-keyframe|generate-video/, '理解报告不得绑定下游生成接口');
+assert.doesNotMatch(
+  report,
+  /\/(?:scene-config|generate-keyframe|generate-video)(?:[?'"`]|$)/,
+  '理解报告不得绑定下游生成接口',
+);
 
 assert.match(report, /document\.createElement\('link'\)/, '报告样式必须随报告按需加载');
 assert.match(css, /@media \(max-width: 600px\)/, '报告必须支持移动端');

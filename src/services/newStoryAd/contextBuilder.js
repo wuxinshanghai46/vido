@@ -8,6 +8,8 @@ const briefAuthority = require('./briefAuthorityService');
 const referenceUnderstandingService = require('./referenceUnderstandingService');
 const productionLimits = require('./productionLimitsService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
+const contentSkill = require('./contentSkillService');
+const personLooks = require('./personLookProfileService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -489,6 +491,13 @@ function normalizePersonDossierItem(item = {}, index = 0) {
     url: cleanText(item?.url || item?.image_url || '', 1000),
     filename: cleanText(item?.filename || '', 220),
     provider_used: cleanText(item?.provider_used || '', 160),
+    detail_mode: cleanText(item?.detail_mode || '', 80),
+    evidence_mode: cleanText(item?.evidence_mode || '', 80),
+    evidence_status: cleanText(item?.evidence_status || '', 40),
+    resolution: cleanText(item?.resolution || '', 40),
+    source_asset_id: cleanText(item?.source_asset_id || '', 120),
+    derived_locally: item?.derived_locally === true,
+    model_call_count: Math.max(0, Number(item?.model_call_count || 0) || 0),
   };
 }
 
@@ -507,12 +516,21 @@ function normalizePersonDossierFields(input = {}) {
         composition: cleanText(input.dossier_sheet.composition || '', 80),
         model_generated_text: input.dossier_sheet.model_generated_text === true,
         atomic_count: Math.max(0, Number(input.dossier_sheet.atomic_count || 0) || 0),
+        layout: cleanText(input.dossier_sheet.layout || '', 100),
+        width: Math.max(0, Number(input.dossier_sheet.width || 0) || 0),
+        height: Math.max(0, Number(input.dossier_sheet.height || 0) || 0),
+        sections: Array.isArray(input.dossier_sheet.sections)
+          ? input.dossier_sheet.sections.map(value => cleanText(value, 80)).filter(Boolean).slice(0, 24)
+          : [],
+        isolated_accessory_count: Math.max(0, Number(input.dossier_sheet.isolated_accessory_count || 0) || 0),
+        detail_crop_count: Math.max(0, Number(input.dossier_sheet.detail_crop_count || 0) || 0),
       }
     : null;
   return {
     cover_image_url: cleanText(input.cover_image_url || sheet?.image_url || '', 1000),
     dossier_sheet: sheet,
     dossier_schema_version: Math.max(0, Number(input.dossier_schema_version || 0) || 0),
+    visual_asset_contract_version: Math.max(0, Number(input.visual_asset_contract_version || 0) || 0),
     quality_status: cleanText(input.quality_status || (input.native_masters?.face?.image_url && input.native_masters?.body?.image_url ? 'native_masters_ready' : 'legacy_view_only'), 50),
     native_masters: Object.fromEntries(['face', 'body'].map(key => [key, normalizePersonDossierItem(input.native_masters?.[key] || {})])
       .filter(([, item]) => item.image_url || item.url)),
@@ -534,6 +552,30 @@ function normalizePersonDossierFields(input = {}) {
     expressions: normalizePersonDossierRows(input.expressions),
     base_actions: normalizePersonDossierRows(input.base_actions),
     accessory_details: normalizePersonDossierRows(input.accessory_details || input.accessoryDetails),
+    look_assets: (Array.isArray(input.look_assets) ? input.look_assets : []).map((look, index) => ({
+      id: cleanText(look?.id || `look_${index + 1}`, 100),
+      name: cleanText(look?.name || `造型 ${index + 1}`, 120),
+      story_state: cleanText(look?.story_state || '', 160),
+      scene_ids: Array.isArray(look?.scene_ids) ? look.scene_ids.map(value => cleanText(value, 120)).filter(Boolean).slice(0, 24) : [],
+      scene_names: Array.isArray(look?.scene_names) ? look.scene_names.map(value => cleanText(value, 160)).filter(Boolean).slice(0, 24) : [],
+      wardrobeText: cleanText(look?.wardrobeText || '', 1200),
+      hairMakeupText: cleanText(look?.hairMakeupText || '', 600),
+      negativeText: cleanText(look?.negativeText || '', 800),
+      style_family: cleanText(look?.style_family || '', 80),
+      style_richness: cleanText(look?.style_richness || 'auto', 40),
+      image_url: cleanText(look?.image_url || '', 1000),
+      cover_image_url: cleanText(look?.cover_image_url || look?.dossier_sheet?.image_url || '', 1000),
+      visual_asset_contract_version: Math.max(0, Number(look?.visual_asset_contract_version || 0) || 0),
+      dossier_sheet: look?.dossier_sheet?.image_url ? {
+        image_url: cleanText(look.dossier_sheet.image_url, 1000),
+        layout: cleanText(look.dossier_sheet.layout || '', 100),
+        width: Math.max(0, Number(look.dossier_sheet.width || 0) || 0),
+        height: Math.max(0, Number(look.dossier_sheet.height || 0) || 0),
+      } : null,
+      body_views: normalizePersonDossierRows(look?.body_views),
+      wardrobe_details: normalizePersonDossierRows(look?.wardrobe_details),
+      accessory_details: normalizePersonDossierRows(look?.accessory_details),
+    })).filter(look => look.image_url || look.dossier_sheet?.image_url).slice(0, 12),
     generation_summary: input.generation_summary && typeof input.generation_summary === 'object'
       ? {
           planned_provider_calls: Math.max(0, Number(input.generation_summary.planned_provider_calls || 0) || 0),
@@ -614,7 +656,8 @@ function normalizeCastProfiles(input) {
   const raw = Array.isArray(input) ? input : [];
   return raw.map((profile, idx) => {
     if (!profile || typeof profile !== 'object') return null;
-    const resolved = subjectProfileText.profileTexts(profile);
+    const withLooks = personLooks.normalizeProfileLooks(profile);
+    const resolved = subjectProfileText.profileTexts(withLooks);
     return {
       id: cleanText(profile.id || `cast_${idx + 1}`, 80),
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
@@ -635,6 +678,7 @@ function normalizeCastProfiles(input) {
         image_url: cleanText(view?.image_url || view?.url || '', 1000),
       })).filter(view => view.url || view.image_url).slice(0, 4) : [],
       person_contract: profile.person_contract && typeof profile.person_contract === 'object' ? profile.person_contract : null,
+      look_profiles: withLooks.look_profiles,
       ...resolved,
       appearance: {
         ...(profile.appearance && typeof profile.appearance === 'object' ? profile.appearance : {}),
@@ -1010,6 +1054,7 @@ function buildContext(body = {}, user = {}) {
     product_presentation: body.product_presentation || body.productPresentation,
     reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
   });
+  const contentMode = productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject';
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -1020,8 +1065,10 @@ function buildContext(body = {}, user = {}) {
       : '',
     product_subject: productPresentation.subject,
     product_presentation: productPresentation,
-    content_mode: productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject',
+    content_mode: contentMode,
     content_mode_source: contentModeSource,
+    content_skill: contentSkill.snapshot(contentMode),
+    story_scene_contract_version: contentMode === 'narrative_story' ? 5 : 0,
     target_duration: targetDuration,
     duration_source: durationContract.source,
     shot_count: shotCount,
@@ -1237,9 +1284,11 @@ function referenceVideoAnalysisPrompt(reference = null) {
 }
 
 function contextPrompt(ctx) {
+  const narrativeMode = ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story';
   return [
-    `广告需求：${ctx.brief}`,
-    ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story'
+    contentSkill.promptBlock(ctx.content_mode),
+    `${narrativeMode ? '剧情内容目标' : '广告需求'}：${ctx.brief}`,
+    narrativeMode
       ? '内容类型：纯剧情 / 故事主题。不得凭空添加商品、品牌、卖点、购买引导或销售转化；以原始故事事实为最高权威。'
       : `广告主体：${ctx.product_subject}`,
     ctx.product_presentation ? `主体展示方式：${ctx.product_presentation.label || ctx.product_presentation.mode}；${ctx.product_presentation.description || ''}` : '',

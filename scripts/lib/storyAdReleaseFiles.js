@@ -5,36 +5,50 @@ const path = require('path');
 
 const BASE_FILES = [
   'config/story-ad-release.json',
-  'config/story-ad-runtime-manifest.json',
   'package.json',
   'package-lock.json',
-  'public/story-ad/release-manifest.json',
+  'public/index.html',
+  'public/js/dashboard-workbench.js',
   'public/js/admin-vue-knowledgebase.js',
   'src/server.js',
   'src/routes/admin.js',
+  'src/routes/dashboard.js',
   'src/routes/newStoryAd.js',
   'src/routes/storyAdWorkspace.js',
   'scripts/build-story-ad-release.js',
   'scripts/check-new-story-ad-active-tasks.js',
   'scripts/deploy-story-ad-release.js',
+  'scripts/deploy-story-ad-immutable-release.js',
+  'scripts/manage-story-ad-release-control.js',
+  'scripts/migrate-story-ad-platform-v111.js',
+  'scripts/migrate-story-ad-v120-checkpoints.js',
+  'scripts/test-story-ad-v120-checkpoint-migration-v121.js',
+  'scripts/audit-story-ad-model-management.js',
+  'scripts/test-story-ad-platform-v111-real-model-contract.js',
+  'scripts/story-ad-pm2-release.js',
+  'scripts/repair-new-story-ad-person-looks.js',
   'scripts/lib/storyAdReleaseFiles.js',
   'scripts/run-with-pm2-env.js',
 ];
 
 const RUNTIME_DIRECTORIES = [
-  'src/routes/newStoryAd',
-  'src/services/newStoryAd',
-  'src/services/storyAdWorkspace',
-  'src/services/videoGenerationCore',
-  'src/services/seeds',
+  // A production process must run from one complete application closure. The
+  // former story-ad-only list allowed shared routes, dynamic modules and global
+  // browser dependencies to remain on an older release.
+  'src',
+  'public',
+  'config',
 ];
 const REMOTE_TEST_SCRIPTS = [
   'story-ad:knowledge-policy:test',
+  'story-ad:v100:test',
+  'story-ad:v101:test',
+  'story-ad:v102:test',
   'story-ad:release:test',
   'story-ad:v3:boundaries',
   'story-ad:v6:boundaries',
 ];
-const OPAQUE_RELEASE_ROOTS = new Set(['src/server.js', 'src/routes/admin.js']);
+const OPAQUE_RELEASE_ROOTS = new Set();
 
 function relative(root, file) {
   return path.relative(root, file).replace(/\\/g, '/');
@@ -107,18 +121,22 @@ function collectStoryAdReleaseFiles({ root, releaseManifest } = {}) {
   const workspace = path.resolve(root || path.join(__dirname, '../..'));
   const manifest = releaseManifest || require(path.join(workspace, 'public/story-ad/release-manifest.json'));
   const publicFiles = (Array.isArray(manifest.files) ? manifest.files : []).map(item => item.path);
+  const runtimeExtensions = /\.(?:js|mjs|cjs|json|html?|css|svg|png|jpe?g|webp|gif|ico|otf|ttf|woff2?)$/i;
   const runtimeFiles = RUNTIME_DIRECTORIES.flatMap(directory => walk(workspace, directory))
-    .filter(file => /\.(?:js|json)$/i.test(file));
+    .filter(file => runtimeExtensions.test(file));
   const testFiles = packageTestFiles(workspace);
   const initial = [...new Set([...BASE_FILES, ...publicFiles, ...runtimeFiles, ...testFiles])];
   const closed = dependencyClosure(workspace, initial);
-  return [...closed].filter(file => fs.existsSync(path.join(workspace, file))).sort();
+  const missing = [...closed].filter(file => !fs.existsSync(path.join(workspace, file)));
+  if (missing.length) throw new Error(`Release closure references missing files: ${missing.slice(0, 20).join(', ')}`);
+  return [...closed].sort();
 }
 
 module.exports = {
   BASE_FILES,
   RUNTIME_DIRECTORIES,
   REMOTE_TEST_SCRIPTS,
+  OPAQUE_RELEASE_ROOTS,
   collectStoryAdReleaseFiles,
   dependencyClosure,
   packageTestFiles,

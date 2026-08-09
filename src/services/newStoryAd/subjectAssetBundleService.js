@@ -18,10 +18,12 @@ const generationSpecCompletion = require('./generationSpecCompletionService');
 const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const wearableEvidence = require('./wearableEvidencePolicyService');
+const personLooks = require('./personLookProfileService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
 const activeBundleTasks = new Set();
+const PERSON_VISUAL_ASSET_CONTRACT_VERSION = 2;
 const activePersonVerificationTasks = new Set();
 const PERSON_AGE_LABELS = {
   infant_0_1: '0-1 year old infant',
@@ -52,6 +54,38 @@ function alignMemberAgeText(text = '', age = '') {
     .replace(/^[\s，、；:：的]+|[\s，、；]+$/g, '')
     .replace(/[，、；]{2,}/g, '，');
   return cleanText(`${label}，${cleaned || '外貌、体态、肤质和表情符合该年龄阶段'}`, 800);
+}
+
+function inferMemberAge(source = {}, spec = {}) {
+  const declared = cleanText(source.age || source.ageRange || source.appearance?.ageRange || spec.age || '', 40);
+  if (declared && declared !== 'match_brief') return { age: declared, inferred: false };
+  const evidence = [
+    source.displayName, source.name, source.roleName, source.role,
+    source.appearanceText, source.appearance, source.hairMakeupText,
+  ].filter(Boolean).join(' ');
+  const numeric = evidence.match(/(?:年龄|年约|约|看起来)?\s*(\d{1,2})\s*岁/);
+  if (numeric) {
+    const years = Number(numeric[1]);
+    if (years <= 17) return { age: 'teen_13_17', inferred: true };
+    if (years <= 25) return { age: 'young_adult_17_25', inferred: true };
+    if (years <= 32) return { age: 'young_adult', inferred: true };
+    if (years <= 40) return { age: 'adult_30_40', inferred: true };
+    if (years <= 55) return { age: 'middle_40_55', inferred: true };
+    return { age: 'senior_55_plus', inferred: true };
+  }
+  if (/少女|少年|闺秀|公子|年轻|青年|少侠|女主|男主|初恋|恋人/.test(evidence)) {
+    return { age: 'young_adult_17_25', inferred: true };
+  }
+  return { age: 'match_brief', inferred: false };
+}
+
+function historicalYouthStyling(member = {}) {
+  if (member.age !== 'young_adult_17_25' || member.age_inferred !== true) return '';
+  const evidence = [member.roleName, member.appearanceText, member.wardrobeText, member.hairMakeupText].filter(Boolean).join(' ');
+  const historical = /古代|古装|汉服|襦裙|唐制|宋制|明制|民国|武侠|仙侠|朝代/.test(evidence);
+  const feminine = /女|姑娘|少女|闺秀|小姐|公主|侠女|佳人/.test(evidence);
+  if (!historical || !feminine) return '';
+  return 'Youth styling lock: present a 17-25-year-old unmarried romantic heroine. Retain visibly long hair below the shoulders or down the back, using half-up or lightly gathered crown styling with age-appropriate ornaments. Do not turn the hair into a mature fully coiled married or ceremonial updo unless the user explicitly requires it.';
 }
 
 function boundedCount(value, fallback, max) {
@@ -89,7 +123,8 @@ function resolveCounts(spec = {}, body = {}) {
 }
 
 function personGenerationProfile(source = {}) {
-  const resolved = subjectProfileText.profileTexts(source);
+  const withLooks = personLooks.normalizeProfileLooks(source, { ensure: true });
+  const resolved = subjectProfileText.profileTexts(withLooks);
   return {
     id: cleanText(source.id || source.cast_id || source.castId || '', 80),
     displayName: cleanText(source.displayName || source.name || '', 120),
@@ -99,6 +134,7 @@ function personGenerationProfile(source = {}) {
     wardrobeText: cleanText(resolved.wardrobeText || '', 600),
     hairMakeupText: cleanText(resolved.hairMakeupText || '', 500),
     negativeText: cleanText(resolved.negativeText || '', 600),
+    look_profiles: withLooks.look_profiles,
   };
 }
 
@@ -215,20 +251,23 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
   return supplied.slice(0, count).map((source, index) => {
     const role = cleanText(source.roleName || source.role || '', 120);
-    const resolved = subjectProfileText.profileTexts(source);
-    const age = cleanText(
-      source.age || source.ageRange || source.appearance?.ageRange || (count === 1 ? spec.age : '') || 'match_brief',
-      40,
-    );
+    const withLooks = personLooks.normalizeProfileLooks(source, { ensure: true });
+    const primary = personLooks.primaryLook(withLooks, { ensure: true });
+    const resolved = subjectProfileText.profileTexts(personLooks.profileWithLook(withLooks, primary));
+    const ageResolution = inferMemberAge(source, count === 1 ? spec : {});
+    const age = ageResolution.age;
     return {
-      ...source,
+      ...withLooks,
       id: cleanText(source.id || source.cast_id || source.castId || '', 80),
       member_index: index + 1,
       displayName: cleanText(source.displayName || source.name || '', 120),
       roleName: role,
       age,
+      age_inferred: ageResolution.inferred,
       ...resolved,
       appearanceText: alignMemberAgeText(resolved.appearanceText, age),
+      look_profiles: withLooks.look_profiles,
+      style_richness: primary?.style_richness || 'auto',
     };
   });
 }
@@ -433,6 +472,23 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
         missing_fields: missing,
       });
     }
+    const looks = personLooks.normalizeLookProfiles(member, { ensure: true });
+    const incompleteLooks = looks.filter(look => !cleanText(look.wardrobeText || '', 20));
+    if (incompleteLooks.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个人物存在未完成的造型：${incompleteLooks.map(look => look.name || look.id).join('、')}`, {
+        subject_type: 'human', member_index: index + 1,
+        missing_look_ids: incompleteLooks.map(look => look.id),
+      });
+    }
+    const unboundLooks = looks.length > 1
+      ? looks.filter(look => !look.scene_ids.length && !cleanText(look.story_state || '', 20))
+      : [];
+    if (unboundLooks.length) {
+      throw subjectProfilesError(`第 ${index + 1} 个人物的多套造型缺少适用场景或剧情状态：${unboundLooks.map(look => look.name || look.id).join('、')}`, {
+        subject_type: 'human', member_index: index + 1,
+        unbound_look_ids: unboundLooks.map(look => look.id),
+      });
+    }
     const text = [member.roleName, member.appearanceText, member.wardrobeText, member.hairMakeupText, member.negativeText].join('\n');
     const otherNames = humans
       .filter((_, otherIndex) => otherIndex !== index)
@@ -476,6 +532,11 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
 }
 
 function humanPrompt(member, count) {
+  const richnessRules = {
+    restrained: 'Styling richness lock: restrained and understated. Use period-correct construction and complete accessories, but keep ornament density low and materials sober.',
+    refined: 'Styling richness lock: refined and elegant. Use period-correct layered construction, premium believable textiles, controlled embroidery and a coherent set of shoes and accessories.',
+    ornate_luxurious: 'Styling richness lock: ornate and luxurious. Use period-correct layered construction, premium silk/brocade or other supported high-value textiles, clearly readable embroidery or metal-thread craftsmanship, and a coherent hierarchy of hair ornaments, earrings, waist ornaments, footwear and other declared accessories. Richness must look expensive and intentional, never like random costume piling or generic cosplay.',
+  };
   return [
     'Create one production-ready photorealistic actor identity for a complete 20-item dossier.',
     'This identity will be rendered into separate body, face, expression and action contact sheets.',
@@ -489,7 +550,12 @@ function humanPrompt(member, count) {
       : 'Age lock: use only the age explicitly supported by this member profile and campaign relationship.',
     member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
     member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
+    richnessRules[member.style_richness] || '',
     member.hairMakeupText ? `Locked hair/makeup: ${member.hairMakeupText}.` : '',
+    historicalYouthStyling(member),
+    /古代|古装|汉服|襦裙|唐制|宋制|明制|民国|武侠|仙侠|朝代/.test([member.roleName, member.wardrobeText].join(' '))
+      ? 'Historical wardrobe finish: preserve period-appropriate layered construction, tailored silhouette, fabric weave, embroidery scale, footwear, hair ornaments and restrained accessories as separate readable details; avoid a plain one-layer costume or generic studio cosplay.'
+      : '',
     member.negativeText ? `Negative continuity rules: ${member.negativeText}.` : '',
   ].filter(Boolean).join('\n');
 }
@@ -751,7 +817,10 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   const humans = humanMemberSpecs(spec, body, counts.people);
   const pets = petMemberSpecs(spec, body, counts.pets);
   const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
-  const totalUnits = Math.max(1, humans.length * 5 + pets.length * 2 + 1);
+  const humanLookUnits = humans.reduce((sum, member) => (
+    sum + Math.max(1, personLooks.normalizeLookProfiles(member, { ensure: true }).length) * 5
+  ), 0);
+  const totalUnits = Math.max(1, humanLookUnits + pets.length * 2 + 1);
   let processedUnits = 0;
   const report = async (phase, message, detail = {}) => {
     if (!onProgress) return;
@@ -924,6 +993,87 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       wardrobeDetails,
       accessoryDetails,
     }, { mediaAdapter });
+    const declaredLooks = personLooks.normalizeLookProfiles(member, { ensure: true });
+    const lookAssets = [{
+      ...declaredLooks[0],
+      image_url: compiled.native_masters?.body?.image_url || bodyFront?.image_url || '',
+      cover_image_url: dossierSheet.image_url,
+      dossier_sheet: dossierSheet,
+      native_masters: compiled.native_masters,
+      category_atlases: compiled.category_atlases,
+      atomic_assets: compiled.atomic_assets,
+      body_views: compiled.body_views,
+      wardrobe_details: wardrobeDetails,
+      accessory_details: accessoryDetails,
+      generation_summary: compiled.generation_summary,
+      visual_asset_contract_version: PERSON_VISUAL_ASSET_CONTRACT_VERSION,
+    }];
+    for (const look of declaredLooks.slice(1)) {
+      cancellation.throwIfCancelled();
+      const variantProfile = personLooks.profileWithLook(member, look);
+      const lookAssetId = `${actorId}_${crypto.createHash('sha256').update(look.id).digest('hex').slice(0, 10)}`;
+      const variantCompiled = await personDossierCompiler.compilePersonDossier({
+        taskId: taskId || options.generationId,
+        assetId: lookAssetId,
+        revision: 1,
+        anchorUrl: compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || '',
+        personPrompt: humanPrompt(variantProfile, humans.length),
+        requireReferences: true,
+        loadCheckpoint: detailCheckpoint,
+        saveCheckpoint: saveDetailCheckpoint,
+        onProgress: async ({ completed, total, kind, reused }) => {
+          processedUnits += 1;
+          await report('person_look_dossier', `${reused ? '复用' : '生成'}人物 ${index + 1} 的“${look.name}”造型 ${completed}/${total}`, {
+            subject_index: index + 1, subject_kind: 'human', look_id: look.id, unit_kind: kind,
+          });
+        },
+        concurrency: Math.max(0, Number(options.personDossierConcurrency || 0)) || undefined,
+        knowledgePolicy: personKnowledgePolicy,
+      }, { mediaAdapter });
+      const variantAccessoryEvidence = await wearableEvidence.resolve({
+        taskId: taskId || options.generationId, assetId: lookAssetId,
+        atomicAssets: variantCompiled.atomic_assets, revision: 1, profile: variantProfile,
+        loadCheckpoint: detailCheckpoint, saveCheckpoint: saveDetailCheckpoint,
+      }, { mediaAdapter });
+      const variantWardrobeDetails = await dossierComposites.generateWardrobeDetails({
+        taskId: taskId || options.generationId, assetId: lookAssetId,
+        atomicAssets: variantCompiled.atomic_assets, revision: 1, profile: variantProfile,
+        loadCheckpoint: detailCheckpoint, saveCheckpoint: saveDetailCheckpoint,
+      }, { mediaAdapter });
+      const variantSheet = await dossierComposites.composePersonDossier({
+        taskId: taskId || options.generationId, assetId: lookAssetId,
+        atomicAssets: variantCompiled.atomic_assets, revision: 1,
+        title: `${member.displayName || '人物'} · ${look.name}`,
+        profile: variantProfile, wardrobeDetails: variantWardrobeDetails,
+        accessoryDetails: variantAccessoryEvidence.items,
+      }, { mediaAdapter });
+      const variantContract = await personIdentity.verifyPersonAsset({
+        taskId: taskId || options.generationId,
+        asset: {
+          actor_id: `${actorId}:${look.id}`,
+          view_images: variantCompiled.body_views.map(view => ({ ...view, url: view.image_url || view.url })),
+          native_masters: variantCompiled.native_masters,
+          atomic_assets: variantCompiled.atomic_assets,
+        },
+        spec: variantProfile,
+        revision: 1,
+      });
+      lookAssets.push({
+        ...look,
+        image_url: variantCompiled.native_masters?.body?.image_url || variantCompiled.body_views?.[0]?.image_url || '',
+        cover_image_url: variantSheet.image_url,
+        dossier_sheet: variantSheet,
+        native_masters: variantCompiled.native_masters,
+        category_atlases: variantCompiled.category_atlases,
+        atomic_assets: variantCompiled.atomic_assets,
+        body_views: variantCompiled.body_views,
+        wardrobe_details: variantWardrobeDetails,
+        accessory_details: variantAccessoryEvidence.items,
+        generation_summary: variantCompiled.generation_summary,
+        visual_asset_contract_version: PERSON_VISUAL_ASSET_CONTRACT_VERSION,
+        person_contract: variantContract,
+      });
+    }
     cancellation.throwIfCancelled();
     const asset = {
       id: `actor_asset_${actorId}`, actor_asset_id: `actor_asset_${actorId}`, actor_id: actorId,
@@ -951,7 +1101,9 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         items: wardrobeDetails,
         model_call_count: wardrobeDetails.reduce((sum, item) => sum + Number(item.model_call_count || 0), 0),
       },
+      look_assets: lookAssets,
       generation_summary: compiled.generation_summary,
+      visual_asset_contract_version: PERSON_VISUAL_ASSET_CONTRACT_VERSION,
       subject_profile: member,
     };
     asset.person_contract = await personIdentity.verifyPersonAsset({ taskId: taskId || options.generationId, asset, spec: member, revision: 1 });
@@ -1114,9 +1266,10 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
   resumablePartialCheckpoint,
-  alignMemberAgeText,
+  alignMemberAgeText, inferMemberAge, historicalYouthStyling,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,
   aggregatePersonContract, aggregatePetContract, reverifyPersonBundle,
   buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle,
+  PERSON_VISUAL_ASSET_CONTRACT_VERSION,
 };

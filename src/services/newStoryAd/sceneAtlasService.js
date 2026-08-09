@@ -68,13 +68,18 @@ async function splitSceneAtlas({ source = {}, taskId = '', sceneId = '', revisio
   const parentAssetId = `space_atlas_${shortHash(`${taskId}:${sceneId}:${revision}:${parentSha256}`, 20)}`;
   let views;
   try {
+    const metadata = await require('sharp')(parentPath).metadata();
+    const nativeTileWidth = Math.max(1, Math.floor((Number(metadata.width) || 1536) / 2));
+    const nativeTileHeight = Math.max(1, Math.floor((Number(metadata.height) || 1024) / 2));
+    const outputWidth = Math.min(1024, nativeTileWidth);
+    const outputHeight = Math.min(576, nativeTileHeight, Math.round(outputWidth * 9 / 16));
     views = await mediaAdapter.splitReferenceSheet({
       source: { ...source, filePath: parentPath },
       filenamePrefix: `scene_atlas_${shortHash(taskId, 10)}_${shortHash(sceneId, 10)}_r${Math.max(1, Number(revision) || 1)}`,
       filenameSuffix: parentSha256.slice(0, 12),
       viewKeys: ATLAS_VIEW_KEYS,
-      outputWidth: 1024,
-      outputHeight: 576,
+      outputWidth,
+      outputHeight,
       fit: 'cover',
       background: { r: 5, g: 7, b: 11, alpha: 1 },
     });

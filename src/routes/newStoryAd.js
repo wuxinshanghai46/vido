@@ -30,6 +30,7 @@ const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAna
 const referenceAnalysisTaskSync = require('../services/newStoryAd/referenceAnalysisTaskSyncService');
 const referenceDetach = require('../services/newStoryAd/referenceDetachService');
 const assetPlanService = require('../services/newStoryAd/assetPlanService');
+const generationPermit = require('../services/newStoryAd/generationPermitService');
 const personDossiers = require('../services/newStoryAd/personDossierService'), propAssetService = require('../services/newStoryAd/propAssetService'), registerPropRoutes = require('./newStoryAd/propRoutes');
 const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
 const personProviderAssets = require('../services/newStoryAd/personProviderAssetLifecycleService');
@@ -136,10 +137,17 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
   const deadlineMs = typeof options.deadlineMs === 'function'
     ? options.deadlineMs(task)
     : options.deadlineMs;
+  const idempotencyKey = String(body.idempotency_key || body.idempotencyKey || `${task.id}:${stage}:r${expectedContentRevision || task.content_revision || 1}`);
+  const permit = generationPermit.issue(task.id, stage, { idempotencyKey });
   const queued = jobService.queueStage({
     taskId: task.id,
     stage,
-    execute,
+    execute: permit
+      ? (job => {
+        generationPermit.consume(task.id, permit);
+        return execute({ ...job, generationPermit: permit });
+      })
+      : execute,
     deadlineMs,
     failureContext: typeof options.failureContext === 'function'
       ? options.failureContext(task)
@@ -147,7 +155,7 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     expectedContentRevision: expectedContentRevision || task.content_revision || 1,
     snapshotId,
     inputFingerprint,
-    idempotencyKey: String(body.idempotency_key || body.idempotencyKey || `${task.id}:${stage}:r${expectedContentRevision || task.content_revision || 1}`),
+    idempotencyKey,
   });
   return res.status(202).json({
     success: true,
@@ -1095,8 +1103,8 @@ router.delete('/tasks/:id', asyncRoute(async (req, res) => {
   const cancelled = jobService.cancelJob(task.id, {
     cancelledBy: user.id || user.userId || user.username || '',
   });
-  const deleted = storage.deleteTask(task.id);
-  if (!deleted) {
+  const deletion = require('../services/newStoryAd/taskDeletionService').deleteTaskPermanently(storage, task.id);
+  if (!deletion.deleted) {
     const err = new Error('任务不存在或已被删除');
     err.status = 404;
     err.code = 'TASK_NOT_FOUND';
@@ -1107,6 +1115,11 @@ router.delete('/tasks/:id', asyncRoute(async (req, res) => {
     deleted: true,
     task_id: task.id,
     cancelled_running_job: cancelled.cancelled === true,
+    cleanup: {
+      deleted_files: deletion.deleted_files,
+      preserved_shared_files: deletion.preserved_shared_files,
+      failed_files: deletion.failed_files,
+    },
   });
 }));
 
@@ -1542,12 +1555,17 @@ router.post('/generations/:generationId/cancel', asyncRoute(async (req, res) => 
 
 router.post('/tasks/:id/scene-assets', asyncRoute(async (req, res) => {
   const body = req.body || {};
-  return queueTaskStage(req, res, 'scene_asset', job => sceneAssetService.generateSceneAsset(req.params.id, {
-    ...body,
-    generation_id: job.generationId,
-  }, {
-    generationId: job.generationId,
-  }), {
+  return queueTaskStage(req, res, 'scene_asset', job => (
+    body.repair_existing === true || body.repairExisting === true
+      ? sceneAssetService.repairSceneAsset(req.params.id, body.space_id || body.scene_id, {
+          ...body,
+          generation_id: job.generationId,
+        }, { generationId: job.generationId })
+      : sceneAssetService.generateSceneAsset(req.params.id, {
+          ...body,
+          generation_id: job.generationId,
+        }, { generationId: job.generationId })
+  ), {
     failureContext: {
       scene_id: body.space_id || body.spaceId || body.scene_id || body.sceneId || '',
       scene_name: body.name || body.scene_name || body.sceneName || '',
@@ -1615,14 +1633,20 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
         });
         let result;
         try {
-          result = await sceneAssetService.generateSceneAsset(taskId, {
-            ...target,
-            generation_id: job.generationId,
-          }, {
+          const runOptions = {
             generationId: job.generationId,
             deferPublish: true,
             existingSceneAssets: sceneAssets,
-          });
+          };
+          result = target.repair_existing
+            ? await sceneAssetService.repairSceneAsset(taskId, target.scene_id, {
+                ...target,
+                generation_id: job.generationId,
+              }, runOptions)
+            : await sceneAssetService.generateSceneAsset(taskId, {
+                ...target,
+                generation_id: job.generationId,
+              }, runOptions);
         } catch (sceneError) {
           sceneError.partial_scene_assets = sceneAssets;
           sceneError.partial_scene_spec = latestSceneSpec;
@@ -1694,27 +1718,12 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, res) => {
+  taskForReq(req);
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   const body = req.body || {};
-  const plan = body.model_call_plan && typeof body.model_call_plan === 'object' ? body.model_call_plan : {};
   const expected = scenePanoramaService.planForScene(req.params.id, req.params.sceneId);
-  const expectedPlan = expected.model_call_plan;
-  const planConfirmed = body.cost_confirmation === true
-    && body.plan_fingerprint === expected.plan_fingerprint
-    && Number(plan.panorama_generation) === expectedPlan.panorama_generation
-    && Number(plan.panorama_qa) === expectedPlan.panorama_qa
-    && Number(plan.local_projection) === expectedPlan.local_projection
-    && Number(plan.depth) === expectedPlan.depth
-    && Number(plan.spatial_reconstruction) === expectedPlan.spatial_reconstruction;
-  if (!planConfirmed) {
-    const error = new Error('开始 360 场景前必须读取并确认服务端最新调用计划；计划变化时不会继续调用模型');
-    error.code = 'PANORAMA_COST_CONFIRMATION_REQUIRED';
-    error.status = 400;
-    error.retryable = false;
-    error.current_plan = expected;
-    throw error;
-  }
+  scenePanoramaService.assertConfirmedPlan(body, expected);
   req.body = {
     ...body,
     idempotency_key: `${req.params.id}:scene_panorama:${req.params.sceneId}:${expected.source_fingerprint}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
@@ -1879,7 +1888,13 @@ router.get('/tasks/:id/diagnostics', asyncRoute(async (req, res) => {
 }));
 
 router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
-  return queueTaskStage(req, res, 'scene_config', job => service.generateSceneConfig(req.params.id, { generation_id: job.generationId }));
+  const replanSceneCoverage = req.body?.replan_scene_coverage === true || req.body?.replanSceneCoverage === true;
+  return queueTaskStage(req, res, 'scene_config', job => service.generateSceneConfig(req.params.id, {
+    generation_id: job.generationId,
+    replan_scene_coverage: replanSceneCoverage,
+  }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, {
+    replan_scene_coverage: replanSceneCoverage,
+  }) });
 }));
 
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
@@ -1952,6 +1967,10 @@ router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/manual-accept',
 
 router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncRoute(async (req, res) => {
   taskForReq(req);
+  const permit = generationPermit.issue(req.params.id, 'keyframes', {
+    idempotencyKey: `${req.params.id}:keyframe-review:${req.params.index}:${req.params.candidateId}`,
+  });
+  generationPermit.consume(req.params.id, permit);
   const result = await service.retryKeyframeCandidateQa(req.params.id, req.params.index, req.params.candidateId);
   res.json({ success: true, task_id: req.params.id, ...result });
 }));

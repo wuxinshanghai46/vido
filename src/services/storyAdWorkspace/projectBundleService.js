@@ -4,7 +4,7 @@ const timingProjection = require('./projectTimingProjectionService'), workflowNa
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
-const { projectedDossierItems } = require('./dossierItemProjectionService'), { normalizeAppearanceAgeText } = require('./personTextProjectionService');
+const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -24,20 +24,6 @@ function mediaUrl(value = {}) {
     1200,
   );
 }
-/** 将持久化人物档案压缩成生成服务可直接复用的标准结构。 */
-function personProfile(source = {}, index = 0) {
-  return {
-    id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
-    displayName: clean(source.displayName || source.display_name || source.name, 120),
-    roleName: clean(source.roleName || source.role_name || source.role, 120),
-    age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
-    appearanceText: normalizeAppearanceAgeText(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description),
-    wardrobeText: clean(source.wardrobeText || source.wardrobe?.userPrompt || source.wardrobe?.description || source.outfit, 600),
-    hairMakeupText: clean(source.hairMakeupText || source.hairMakeup?.userPrompt || source.hairMakeup?.description || source.hair_style, 500),
-    negativeText: clean(source.negativeText || source.negative, 600),
-  };
-}
-
 /** 将宠物档案压缩成生成服务可直接复用的标准结构。 */
 function petProfile(source = {}, index = 0) {
   return {
@@ -160,7 +146,7 @@ function peopleAssets(context = {}, projectedProps = []) {
   });
   return rows.slice(0, MAX_MEDIA_ITEMS).map(({ profile, asset: item, index }) => {
     // 当前任务人物档案是用户可编辑的权威输入；生成资产里的 subject_profile 只能补缺，不能覆盖后续编辑。
-    const canonical = personProfile({ ...(item.subject_profile || {}), ...profile }, index);
+    const canonical = personLookProjection.personProfile({ ...(item.subject_profile || {}), ...profile }, index);
     const views = projectedViews(item);
     const dossierUrl = mediaUrl(item.dossier_sheet || {});
     const coverUrl = clean(item.cover_image_url, 1200) || dossierUrl || mediaUrl(item) || views[0]?.image_url || '';
@@ -179,6 +165,7 @@ function peopleAssets(context = {}, projectedProps = []) {
         width: Math.max(0, Number(item.dossier_sheet?.width || 0) || 0), height: Math.max(0, Number(item.dossier_sheet?.height || 0) || 0),
         layout: clean(item.dossier_sheet?.layout, 100), sections: list(item.dossier_sheet?.sections).map(value => clean(value, 80)).filter(Boolean),
       } : null,
+      visual_asset_contract_version: Math.max(0, Number(item.visual_asset_contract_version || 0) || 0),
       quality_status: clean(item.quality_status || (item.native_masters?.face?.image_url && item.native_masters?.body?.image_url ? 'native_masters_ready' : 'legacy_view_only'), 50),
       native_masters: Object.fromEntries(['face', 'body'].map(key => [key, item.native_masters?.[key]])
         .filter(([, value]) => mediaUrl(value))
@@ -191,6 +178,7 @@ function peopleAssets(context = {}, projectedProps = []) {
       base_actions: projectedDossierItems(item.base_actions),
       accessory_details: projectedDossierItems(item.accessory_details || item.dossier?.accessory_details),
       wardrobe_details: projectedDossierItems(item.wardrobe_detail_items || item.wardrobe_details?.items || item.dossier?.wardrobe_details?.items),
+      look_assets: personLookProjection.lookAssets(item.look_assets, canonical.id),
       profile: canonical,
       provider_asset_id: clean(item.deyunai_asset_id || item.provider_asset_id, 160),
       provider_asset_status: clean(item.deyunai_asset_status || item.provider_asset_status, 40),
@@ -373,6 +361,12 @@ function sceneAssets(outputs = {}, context = {}) {
         subject_action: clean(camera.subject_action || camera.action || camera.performance, 260), focus: clean(camera.focus || camera.focus_target || camera.focus_plan, 220),
         continuity: clean(camera.continuity || camera.transition || camera.axis_rule, 260), stabilization: clean(camera.stabilization || camera.stabilizer || camera.rig_note, 180),
         notes: clean(camera.notes || camera.purpose, 260),
+        position: Array.isArray(camera.normalized_position || camera.position)
+          ? (camera.normalized_position || camera.position).slice(0, 3).map(Number)
+          : [],
+        look_at: Array.isArray(camera.look_at || camera.lookAt)
+          ? (camera.look_at || camera.lookAt).slice(0, 3).map(Number)
+          : [],
         ...projectShootingRules(camera, cameraIndex, list(spec.cameraPlan || spec.camera_plan || space.camera_plan)[cameraIndex - 1] || {}),
       })),
       layout: {

@@ -28,7 +28,10 @@ function wardrobeFilename(key, taskId, assetId, revision) {
 }
 
 const ACCESSORY_DEFINITIONS = [
+  { key: 'hair_makeup', label: '发型与妆面', pattern: /发型|发髻|束发|盘发|长发|短发|妆面|妆容|淡妆|裸妆|hair|makeup/i, referenceKinds: [['identity', 'face_front'], ['identity', 'face_profile']] },
+  { key: 'hair_accessories', label: '发饰', pattern: /发饰|发冠|发簪|玉簪|木簪|步摇|珠花|发带|抹额|钗|冠|hairpin|hair ornament|headpiece/i, referenceKinds: [['identity', 'face_profile'], ['identity', 'face_front']] },
   { key: 'ear_accessories', label: '耳饰', pattern: /耳环|耳饰|耳钉|耳坠|耳夹|earrings?/i, referenceKinds: [['identity', 'face_profile'], ['identity', 'face_front']] },
+  { key: 'waist_accessories', label: '腰带 / 腰佩', pattern: /腰带|玉带|腰封|腰佩|玉佩|香囊|革带|belt|waist pendant|sachet/i, referenceKinds: [['body', 'front'], ['body', 'three_quarter']] },
   { key: 'neck_accessories', label: '项链 / 颈部配饰', pattern: /项链|颈链|吊坠|领针|胸针|necklace|pendant|brooch/i, referenceKinds: [['identity', 'face_front'], ['body', 'front']] },
   { key: 'wrist_wearables', label: '腕表 / 手链 / 手部配饰', pattern: /手表|腕表|手链|手镯|戒指|watch|bracelet|bangle|ring/i, referenceKinds: [['body', 'three_quarter'], ['body', 'front']] },
   { key: 'shoes', label: '鞋履', pattern: /鞋|靴|凉鞋|高跟|shoes?|sneakers?|boots?|heels?|sandals?/i, referenceKinds: [['body', 'front'], ['body', 'three_quarter']] },
@@ -52,7 +55,15 @@ function atomicByKindKey(atomicAssets = [], pairs = []) {
 function explicitAccessoryDefinitions(profile = {}) {
   const accessoryText = (Array.isArray(profile.accessories) ? profile.accessories : [])
     .map(item => item?.name || item?.key || item).filter(Boolean).join(' ');
-  const wardrobe = `${String(profile.wardrobeText || profile.wardrobe || '')} ${accessoryText}`
+  const contract = profile.wardrobe_contract || profile.wardrobeContract
+    || profile.look_profiles?.find?.(look => look?.id === profile.active_look_id)?.wardrobe_contract
+    || profile.look_profiles?.[0]?.wardrobe_contract || {};
+  const contractAccessories = (contract.accessories?.items || []).flatMap(item => [item?.type, item?.position, item?.material, item?.evidence]).filter(Boolean).join(' ');
+  const contractHairMakeup = contract.hair_makeup || contract.hairMakeup || {};
+  const hairContractText = typeof contractHairMakeup === 'string'
+    ? contractHairMakeup
+    : [contractHairMakeup.description, contractHairMakeup.hairstyle, ...(contractHairMakeup.hair_accessories || []), contractHairMakeup.makeup, contractHairMakeup.evidence].filter(Boolean).join(' ');
+  const wardrobe = `${String(profile.wardrobeText || profile.wardrobe || '')} ${String(profile.hairMakeupText || profile.hairMakeup || '')} ${accessoryText} ${contractAccessories} ${hairContractText}`
     .replace(/(?:不佩戴|未佩戴|没有|无)(?:任何)?[^，。；]{0,24}(?=，|。|；|$)/g, '');
   return ACCESSORY_DEFINITIONS.filter(item => item.pattern.test(wardrobe));
 }
@@ -84,13 +95,23 @@ async function generateDetailRows({
     }
     const reference = atomicByKindKey(atomicAssets, spec.referenceKinds);
     if (!reference?.image_url) throw new Error(`人物高清细节 ${spec.label} 缺少可追溯参考图`);
+    const wardrobeInstructions = {
+      outfit_silhouette: '把整套锁定服装拆成外层、内搭、下装或连体主件、腰部配件和鞋履的独立白底陈列，单品之间留出清晰间距，像专业造型清单，不出现人物。',
+      neckline_cut: '只展示锁定服装的上装或外层主件，使用白底平铺或隐形人台陈列，完整保留领口、肩线、袖型和门襟，不出现人物。',
+      fabric_drape: '只展示锁定服装的面料、刺绣、织纹和滚边样片，形成四格以内的真实材质细节板，不出现人物。',
+      hem_and_footwear: '把锁定造型的下装、裙摆或袍摆与鞋履分别独立陈列，物件互不遮挡，不出现人物。',
+    };
     const detailInstruction = detailKind === 'wearable_accessory'
-      ? `只展示人物设定中真实存在的“${spec.label}”单品，像专业服装造型档案的独立物件拆解图；完整呈现物件外形、材质、结构和佩戴方向，不出现人物头像、半身或全身，不凭空增加其它首饰。`
-      : `制作“${spec.label}”高清服装造型证据图；这是专门重拍的商业服装细节照片，不是从全身照放大的截图。保留同一套服装的颜色、材质、结构和鞋履，清楚呈现剪裁、纹理、垂坠与真实细节。`;
+      ? `只展示人物设定中真实存在的“${spec.label}”独立物件，使用纯净暖白背景和产品目录式陈列；完整呈现外形、材质、结构和佩戴方向，不出现人物头像、身体、手、衣服，不凭空增加其它首饰。`
+      : (wardrobeInstructions[spec.key] || `制作“${spec.label}”独立服装单品证据图，不出现人物。`);
+    const contract = profile.wardrobe_contract || profile.wardrobeContract || {};
+    const structuredAccessories = (contract.accessories?.items || []).map(item => [item?.type, item?.position, item?.material].filter(Boolean).join('/')).filter(Boolean).join('；');
     const prompt = [
-      '商业影视人物造型档案，真实摄影，高清产品级细节，干净中性背景。',
+      '商业影视人物造型档案，真实摄影，高清产品目录质感，纯净暖白背景，柔和自然阴影。',
       detailInstruction,
       `人物服装与配饰设定：${String(profile.wardrobeText || profile.wardrobe || '').trim()}`,
+      `人物发型与妆造设定：${String(profile.hairMakeupText || profile.hairMakeup || '').trim()}`,
+      structuredAccessories ? `结构化配饰清单：${structuredAccessories}` : '',
       '严格依据参考图，不改变服装款式和配色，不加入文字、标签、水印、拼贴边框或人物档案排版。',
     ].filter(Boolean).join('\n');
     const checkpointed = await checkpointService.runCheckpointedUnit({
@@ -106,6 +127,8 @@ async function generateDetailRows({
           detail_key: spec.key,
           reference_image: reference.image_url,
           wardrobe: String(profile.wardrobeText || profile.wardrobe || '').trim(),
+          hair_makeup: String(profile.hairMakeupText || profile.hairMakeup || '').trim(),
+          structured_accessories: structuredAccessories,
         },
       },
       load: loadCheckpoint,
@@ -200,8 +223,8 @@ async function detailTile(asset, focus, width, height, mediaAdapter) {
 }
 
 /**
- * 配饰是可穿戴物，不是人物头像。这里从已经完成的人物原子图本地裁切
- * 耳部、颈部、腕部和鞋履的实际穿戴证据，不再增加图片模型调用。
+ * 这里只承担人物自身的可见妆发证据裁切。发饰、耳饰、腰佩、腕饰和鞋履
+ * 等可穿戴物由 wearableEvidencePolicy 进入独立白底物件生成，不能再用身体局部裁切冒充清单。
  */
 async function composeWearableDetails({
   taskId,
@@ -219,9 +242,24 @@ async function composeWearableDetails({
   const byKey = (rows, key, fallback = 0) => rows.find(item => item?.key === key) || rows[fallback] || null;
   let specs = [
     {
+      key: 'hair_makeup', label: '发型与妆面',
+      asset: byKey(identity, 'face_front', 0) || byKey(identity, 'face_profile', 1) || anchor,
+      focus: { x: 0.22, y: 0.02, width: 0.56, height: 0.62 },
+    },
+    {
+      key: 'hair_accessories', label: '发饰',
+      asset: byKey(identity, 'face_profile', 1) || byKey(identity, 'face_front', 0) || anchor,
+      focus: { x: 0.20, y: 0.00, width: 0.60, height: 0.42 },
+    },
+    {
       key: 'ear_accessories', label: '耳部穿戴',
       asset: byKey(identity, 'face_profile', 1) || byKey(identity, 'face_front', 0) || anchor,
       focus: { x: 0.34, y: 0.16, width: 0.34, height: 0.38 },
+    },
+    {
+      key: 'waist_accessories', label: '腰带 / 腰佩',
+      asset: byKey(body, 'front', 0) || byKey(body, 'three_quarter', 1) || anchor,
+      focus: { x: 0.18, y: 0.36, width: 0.64, height: 0.28 },
     },
     {
       key: 'neck_accessories', label: '颈部穿戴与领口',
@@ -425,19 +463,33 @@ async function composePersonDossier({
   const keywordRows = ([profile.roleName, profile.appearanceText, profile.wardrobeText].filter(Boolean).join('，') || '身份一致，自然真实，服装一致，动作可复用')
     .split(/[，。；、·/]/).map(value => compact(value, 16)).filter(value => value.length >= 2).slice(0, 6);
   const keywordSvg = keywordRows.map((line, index) => `<rect x="1470" y="${1200 + index * 43}" width="265" height="31" rx="15" fill="#eeeaf1"/><text x="1602" y="${1222 + index * 43}" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="14" fill="#625b70">${xml(line)}</text>`).join('');
+  const tileLabels = (assets, slots) => assets.slice(0, slots.length).map((asset, index) => {
+    const slot = slots[index];
+    const label = xml(compact(asset.label || asset.key || '造型单品', 12));
+    return `<rect x="${slot.left + 5}" y="${slot.top + slot.height - 28}" width="${slot.width - 10}" height="23" rx="11" fill="#fffaf7" fill-opacity="0.92"/><text x="${slot.left + slot.width / 2}" y="${slot.top + slot.height - 11}" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="12" fill="#765f75">${label}</text>`;
+  }).join('');
+  const wardrobeLabelSvg = tileLabels(wardrobeDetails, wardrobeSlots);
+  const accessoryLabelSvg = tileLabels(accessoryDetails, accessorySlots);
+  const detailAssets = [...wardrobeDetails.filter(item => item.key !== 'outfit_silhouette'), ...accessoryDetails];
+  const detailLabelSvg = tileLabels(detailAssets, detailSlots);
   const labelSvg = Buffer.from(
     `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#fbf8f1"/>
-      <rect x="32" y="28" width="1736" height="188" rx="28" fill="#fffdf9" stroke="#d8cfc2" stroke-width="2" stroke-dasharray="8 6"/>
-      <text x="70" y="85" font-family="Microsoft YaHei,Arial" font-size="18" letter-spacing="4" fill="#9a8a7b">CHARACTER PRODUCTION DOSSIER</text>
-      <text x="70" y="145" font-family="Microsoft YaHei,Arial" font-size="48" font-weight="700" fill="#34374a">人物制作档案 · ${safeTitle}</text>
-      <text x="70" y="187" font-family="Microsoft YaHei,Arial" font-size="20" fill="#776f68">${safeRole} · 身份一致 · 服装一致 · 动作可复用 · R${revision}</text>
-      <rect x="40" y="250" width="330" height="850" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="390" y="250" width="880" height="850" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="1290" y="250" width="470" height="850" rx="22" fill="#fffdf9" stroke="#d8cfc2"/>
-      <text x="62" y="295" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#656177">基本信息</text><text x="412" y="295" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#656177">形象展示</text><text x="1312" y="295" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#656177">表情记录</text>
-      <rect x="40" y="1120" width="400" height="390" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="460" y="1120" width="350" height="390" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="830" y="1120" width="600" height="390" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="1450" y="1120" width="310" height="390" rx="22" fill="#fffdf9" stroke="#d8cfc2"/>
-      <text x="60" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">穿搭分析</text><text x="480" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">配饰与妆造</text><text x="850" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">细节展示</text><text x="1470" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">风格关键词</text>
-      <rect x="40" y="1530" width="1720" height="550" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><text x="60" y="1575" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#656177">动作档案</text><text x="1740" y="1575" text-anchor="end" font-family="Microsoft YaHei,Arial" font-size="15" fill="#8d8278">补充参考版缺少的动作类，用于视频人物一致性与剧情动作参考</text>
-      <rect x="40" y="2100" width="560" height="260" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="620" y="2100" width="700" height="260" rx="22" fill="#fffdf9" stroke="#d8cfc2"/><rect x="1340" y="2100" width="420" height="260" rx="22" fill="#fffdf9" stroke="#d8cfc2"/>
+      <defs><linearGradient id="paper" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffdf9"/><stop offset="0.55" stop-color="#fff9f5"/><stop offset="1" stop-color="#f8f1f4"/></linearGradient><filter id="softShadow" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#8d6f86" flood-opacity="0.10"/></filter></defs>
+      <rect width="100%" height="100%" fill="url(#paper)"/>
+      <rect x="14" y="14" width="1772" height="2372" rx="38" fill="none" stroke="#cdbac8" stroke-width="3"/>
+      <rect x="25" y="25" width="1750" height="2350" rx="31" fill="none" stroke="#eadfe6" stroke-width="2" stroke-dasharray="5 5"/>
+      <g fill="none" stroke="#b89ab1" stroke-width="3" opacity="0.62"><path d="M48 175 C75 120 102 98 145 65 C110 115 105 150 118 205"/><path d="M68 132 C45 112 43 86 63 64 C86 87 86 111 68 132Z"/><path d="M112 98 C99 70 110 47 137 38 C147 69 138 88 112 98Z"/><path d="M1752 175 C1725 120 1698 98 1655 65 C1690 115 1695 150 1682 205"/><path d="M1732 132 C1755 112 1757 86 1737 64 C1714 87 1714 111 1732 132Z"/><path d="M1688 98 C1701 70 1690 47 1663 38 C1653 69 1662 88 1688 98Z"/></g>
+      <g fill="#d9c1d1" opacity="0.7"><circle cx="151" cy="55" r="6"/><circle cx="1649" cy="55" r="6"/><circle cx="94" cy="181" r="5"/><circle cx="1706" cy="181" r="5"/></g>
+      <rect x="32" y="28" width="1736" height="188" rx="28" fill="#fffdfb" fill-opacity="0.88" stroke="#d8c7d2" stroke-width="2" filter="url(#softShadow)"/>
+      <text x="900" y="74" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="17" letter-spacing="6" fill="#a18a9b">CHARACTER STYLE ARCHIVE</text>
+      <text x="900" y="142" text-anchor="middle" font-family="KaiTi,Microsoft YaHei,Arial" font-size="52" font-weight="700" fill="#6f5b72">人物轻雅档案 · ${safeTitle}</text>
+      <text x="900" y="187" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="19" fill="#927f8c">${safeRole}　·　身份一致　·　造型锁定　·　动作可复用　·　R${revision}</text>
+      <rect x="40" y="250" width="330" height="850" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="390" y="250" width="880" height="850" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="1290" y="250" width="470" height="850" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/>
+      <rect x="55" y="267" width="122" height="38" rx="8" fill="#b997b0"/><text x="116" y="293" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#fffafc">基本信息</text><text x="412" y="295" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#756276">✦ 形象展示</text><text x="1312" y="295" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#756276">✦ 表情记录</text>
+      <rect x="40" y="1120" width="400" height="390" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="460" y="1120" width="350" height="390" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="830" y="1120" width="600" height="390" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="1450" y="1120" width="310" height="390" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/>
+      <text x="60" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#756276">✦ 穿搭单品</text><text x="480" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#756276">✦ 配饰清单</text><text x="850" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#756276">✦ 工艺细节</text><text x="1470" y="1160" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#756276">配色灵感</text>
+      <rect x="40" y="1530" width="1720" height="550" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><text x="60" y="1575" font-family="Microsoft YaHei,Arial" font-size="22" font-weight="700" fill="#756276">✦ 动作档案</text><text x="1740" y="1575" text-anchor="end" font-family="Microsoft YaHei,Arial" font-size="15" fill="#9b8795">动作证据独立保留，用于人物一致性与剧情表演参考</text>
+      <rect x="40" y="2100" width="560" height="260" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="620" y="2100" width="700" height="260" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/><rect x="1340" y="2100" width="420" height="260" rx="22" fill="#fffdfb" stroke="#d9cbd4" filter="url(#softShadow)"/>
       <text x="65" y="2145" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">角色介绍</text>${textLines([profile.roleName, profile.appearanceText].filter(Boolean).join('。') || '以已确认的人物设定为准', 65, 2185, 24, 5, 16, '#665f59')}
       <text x="645" y="2145" font-family="Microsoft YaHei,Arial" font-size="20" font-weight="700" fill="#656177">使用约束</text>${textLines(profile.negativeText || '保持人物身份、五官、发型、服装和体态一致', 645, 2185, 31, 5, 16, '#665f59')}
       <text x="1550" y="2180" text-anchor="middle" font-family="Microsoft YaHei,Arial" font-size="16" fill="#9a8a7b">角色签名</text><text x="1550" y="2260" text-anchor="middle" font-family="KaiTi,Microsoft YaHei,Arial" font-size="42" fill="#34374a">${safeSignature}</text>
@@ -446,6 +498,9 @@ async function composePersonDossier({
       ${actionSvg}
       ${expressionSvg}
       ${keywordSvg}
+      ${wardrobeLabelSvg}
+      ${accessoryLabelSvg}
+      ${detailLabelSvg}
     </svg>`,
   );
   const filename = compositeFilename('dossier', taskId, assetId, revision);
@@ -457,15 +512,17 @@ async function composePersonDossier({
     composition: 'local_sharp',
     model_generated_text: false,
     atomic_count: atomicAssets.length,
-    layout: 'reference_character_dossier_v4',
+    layout: 'elegant_character_archive_v5',
     width,
     height,
     sections: ['basic_info', 'turnaround', 'expressions', 'wardrobe', 'accessories', 'details', 'keywords', 'actions', 'role_intro', 'usage_constraints'],
     generated_wardrobe_count: wardrobeTileCount,
     generated_accessory_count: accessoryTileCount,
+    isolated_accessory_count: accessoryDetails.filter(item => item.evidence_mode === 'isolated_catalog_generation').length,
     generated_detail_count: detailTileCount,
-    detail_crop_count: 0,
-    detail_crop_source: 'none_generated_assets_only',
+    detail_crop_count: accessoryDetails.filter(item => item.evidence_mode === 'local_crop').length,
+    detail_crop_source: 'hair_makeup_only; wearable_objects_generated_as_isolated_catalog',
+    visual_theme: 'elegant_double_border_botanical_archive',
   };
 }
 

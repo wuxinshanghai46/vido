@@ -6,6 +6,7 @@ const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const petIdentity = require('./petIdentityContractService');
 const brandEnding = require('./brandEndingService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
+const personLooks = require('./personLookProfileService');
 
 function canonicalContractValue(value, key = '') {
   if (Array.isArray(value)) return value.map(item => canonicalContractValue(item));
@@ -158,6 +159,10 @@ function buildKeyframeContracts(ctx, shots) {
         dialogue_lines: shot.dialogue_lines || [],
         person_asset: ctx.person_asset || null,
         cast_profiles: ctx.cast_profiles || [],
+        look_locks: (ctx.cast_profiles || []).map(profile => {
+          const look = personLooks.lookForShot(profile, shot);
+          return look ? { cast_id: profile.id || '', look_id: look.id, look_name: look.name, scene_ids: look.scene_ids, wardrobeText: look.wardrobeText, hairMakeupText: look.hairMakeupText, negativeText: look.negativeText } : null;
+        }).filter(Boolean),
         real_person_locked: ctx.person_context?.real_person_locked === true,
         production_usable_actor: ctx.person_context?.production_usable_actor === true,
         person_contract: ctx.person_contract || ctx.person_asset?.person_contract || null,

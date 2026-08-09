@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-platform-release-migration-v126';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',
@@ -57,7 +57,9 @@ export function personDossierShowcase(item = {}) {
   const detailViews = [byKey(identity, 'face_front', 0), byKey(identity, 'face_profile', 2), byKey(identity, 'hair_back', 3), byKey(body, 'three_quarter', 1)].filter(Boolean);
   const accessories = generatedAccessories;
   const chips = keywords(profile);
-  const dossier = item.dossier_sheet?.image_url && item.dossier_sheet?.layout === 'reference_character_dossier_v4'
+  const dossier = item.dossier_sheet?.image_url
+    && item.dossier_sheet?.layout === 'elegant_character_archive_v5'
+    && Number(item.visual_asset_contract_version || 0) >= 2
     ? item.dossier_sheet
     : null;
   return `<section class="character-dossier-showcase" aria-label="${escapeHtml(displayName)}完整人物档案">

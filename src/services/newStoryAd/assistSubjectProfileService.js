@@ -1,6 +1,7 @@
 const { cleanText } = require('./contextBuilder');
 const petIdentity = require('./petIdentityContractService');
 const subjectProfileText = require('./subjectProfileTextService');
+const personLooks = require('./personLookProfileService');
 
 function resolveAssistSubjectTarget(body = {}, context = {}) {
   const raw = body.assist_subject_target || body.assistSubjectTarget;
@@ -40,6 +41,45 @@ function contextIsReferenceOwned(body = {}) {
     && source.manual_override !== true;
 }
 
+function outputSchema() {
+  return JSON.stringify({
+    person_spec: {
+      castMode: 'auto/single/dual/group/no_human/animal/human_pet',
+      gender: 'auto/male/female/mixed/all_male/all_female',
+      age: 'match_brief/young_adult_17_25/young_adult/adult_30_40/middle_40_55/senior_55_plus',
+      origin: 'match_brief/east_asian_cn/southeast_asian/white_european/black_african/middle_eastern/south_asian/latino/mixed_global',
+      roleName: '人物身份或职业', displayName: '正式人物姓名，可留空',
+      expectedPeople: '需要人物时填写 1-12 的精确整数；无人物或纯宠物模式填写 0',
+      appearanceText: '脸型、体型、年龄感、商业真实感、气质、表情可信度，80-160 字',
+      wardrobeText: '首个造型的兼容字段，只描述一套固定服装', hairMakeupText: '发型与妆容，50-120 字',
+      negativeText: '人物、服装、肤质与表情禁止项，分号分隔',
+      expectedAnimals: '动物/宠物主体或人物+宠物模式填写 1-8 的整数，其它模式留空',
+      petType: '宠物类型或品种', petDescription: '跨镜头稳定的宠物识别特征',
+    },
+    cast_profiles: [{
+      id: '稳定且唯一的 cast ID', displayName: '人物姓名或关系称呼', roleName: '独立身份、年龄关系或职责',
+      appearanceText: '只描述该人物的年龄、脸型、体型、气质和可识别外貌', wardrobeText: '首个造型兼容字段',
+      look_profiles: [{
+        id: '稳定且唯一的造型ID', name: '用户可理解的造型名称', story_state: '时代或剧情状态',
+        scene_ids: ['适用场景ID'], scene_names: ['适用场景名称'], wardrobeText: '该造型固定服装鞋履配饰',
+        hairMakeupText: '该造型固定发型妆容', negativeText: '该造型禁止项', continuityText: '该造型内部与同状态镜头的一致性',
+        style_family: 'chinese_historical/xianxia_wuxia/republican_china/modern_contemporary/international_style/task_defined',
+        style_richness: 'auto/restrained/refined/ornate_luxurious；选择 ornate_luxurious 时必须具体落实为符合时代和身份的分层服装、面料工艺、鞋履、发饰和首饰，不得只输出抽象的华丽二字',
+        wardrobe_contract: {
+          garment_system: { mode: 'one_piece/top_bottom/layered', items: [{ slot: 'upper/lower/one_piece/ensemble/outerwear', type: '具体单品', evidence: '自然语言证据' }] },
+          footwear: { type: '鞋履类型', color: '颜色', material: '材质', evidence: '证据' },
+          accessories: { mode: 'specified/none', items: [{ type: '配饰', position: '佩戴位置', material: '材质', evidence: '证据' }], evidence: '证据' },
+          palette: { colors: ['主色', '辅色'], evidence: '证据' }, materials: [{ name: '面料或材质', used_for: '使用位置', evidence: '证据' }],
+          negative_constraints: ['当前造型禁止项'], knowledge_doc_ids: ['实际使用的知识条目ID'],
+        },
+      }],
+      hairMakeupText: '帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴；首个造型兼容字段',
+      negativeText: '人物全局禁止项；禁止四视图之间增减、更换、变色或移动服装、鞋、帽子、眼镜、发饰和首饰',
+    }],
+    pet_profiles: [{ id: '稳定且唯一的 pet ID', name: '宠物名字', type: '物种或品种', breed: '细分品种', appearance: '稳定识别特征' }],
+  }, null, 2);
+}
+
 function modelDraftQuality(parsed = {}, target = null, replaceableFields = []) {
   if (!target?.kind) return { valid: true, issues: [], details: {} };
   const profiles = Array.isArray(parsed.cast_profiles || parsed.castProfiles)
@@ -76,8 +116,10 @@ function normalizeCastProfiles(parsed = {}, context = {}, target = null) {
       || '',
       40,
     );
+    const canonical = subjectProfileText.canonicalProfile(profile || {}, { age: profileAge });
+    const withLooks = personLooks.normalizeProfileLooks({ ...profile, ...canonical });
     return {
-    ...subjectProfileText.canonicalProfile(profile || {}, { age: profileAge }),
+    ...withLooks,
     id: cleanText(profile?.id || `cast_${index + 1}`, 80),
     displayName: cleanText(profile?.displayName || profile?.name || '', 120),
     name: cleanText(profile?.displayName || profile?.name || '', 120),
@@ -157,6 +199,7 @@ function buildResponse({
 }
 
 module.exports = {
+  outputSchema,
   normalizeCastProfiles,
   normalizePetProfiles,
   resolveAssistSubjectTarget,

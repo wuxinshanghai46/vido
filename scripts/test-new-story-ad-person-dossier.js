@@ -11,10 +11,16 @@ process.env.NEW_STORY_AD_MOCK_IMAGE = '1';
 
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const calls = [];
+const detailCalls = [];
 const originalGenerate = mediaAdapter.generateActorReference;
+const originalGenerateImage = mediaAdapter.generateImage;
 mediaAdapter.generateActorReference = async options => {
   calls.push(options);
   return originalGenerate(options);
+};
+mediaAdapter.generateImage = async options => {
+  detailCalls.push(options);
+  return originalGenerateImage(options);
 };
 const originalRenameSync = fs.renameSync;
 let simulatedWindowsRenameLock = false;
@@ -114,8 +120,12 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.base_actions.length, 6);
   assert.strictEqual(dossierDone.dossier.accessory_details.length, 1);
   assert.deepStrictEqual(dossierDone.dossier.accessory_details.map(item => item.key), ['shoes']);
-  assert.ok(dossierDone.dossier.accessory_details.every(item => item.kind === 'wearable_accessory' && item.derived_locally === true && item.evidence_mode === 'local_crop' && item.model_call_count === 0));
-  assert.strictEqual(dossierDone.dossier.accessory_evidence_trace.model_call_count, 0);
+  assert.ok(dossierDone.dossier.accessory_details.every(item => item.kind === 'wearable_accessory' && item.derived_locally === false && item.evidence_mode === 'isolated_catalog_generation' && item.model_call_count === 1));
+  assert.strictEqual(dossierDone.dossier.accessory_evidence_trace.model_call_count, 1);
+  const isolatedAccessoryCalls = detailCalls.filter(call => call.stage === 'new_story_ad.person_dossier_wearable_accessory');
+  assert.strictEqual(isolatedAccessoryCalls.length, 1);
+  assert.match(isolatedAccessoryCalls[0].prompt, /独立物件/);
+  assert.match(isolatedAccessoryCalls[0].prompt, /不出现人物头像、身体、手、衣服/);
   assert.ok(dossierDone.dossier.accessory_details.every(item => fs.existsSync(mediaAdapter.assetPathFromName(item.filename))));
   assert.strictEqual(dossierDone.dossier.wardrobe_details.items.length, 4);
   assert.deepStrictEqual(dossierDone.dossier.wardrobe_details.items.map(item => item.key), [
@@ -134,7 +144,8 @@ async function main() {
   assert.strictEqual(dossierDone.dossier.generation_summary.native_master_count, 2);
   assert.strictEqual(dossierDone.dossier.sheet.composition, 'local_sharp');
   assert.strictEqual(dossierDone.dossier.sheet.model_generated_text, false);
-  assert.strictEqual(dossierDone.dossier.sheet.layout, 'reference_character_dossier_v4');
+  assert.strictEqual(dossierDone.dossier.sheet.layout, 'elegant_character_archive_v5');
+  assert.strictEqual(dossierDone.dossier.sheet.visual_theme, 'elegant_double_border_botanical_archive');
   assert.strictEqual(dossierDone.dossier.sheet.width, 1800);
   assert.strictEqual(dossierDone.dossier.sheet.height, 2400);
   assert.deepStrictEqual(dossierDone.dossier.sheet.sections, [
@@ -142,9 +153,10 @@ async function main() {
     'details', 'keywords', 'actions', 'role_intro', 'usage_constraints',
   ]);
   assert.strictEqual(dossierDone.dossier.sheet.detail_crop_count, 0);
-  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_source, 'none_generated_assets_only');
+  assert.strictEqual(dossierDone.dossier.sheet.detail_crop_source, 'hair_makeup_only; wearable_objects_generated_as_isolated_catalog');
   assert.strictEqual(dossierDone.dossier.sheet.generated_wardrobe_count, 4);
   assert.strictEqual(dossierDone.dossier.sheet.generated_accessory_count, 1);
+  assert.strictEqual(dossierDone.dossier.sheet.isolated_accessory_count, 1);
   assert.ok(dossierDone.dossier.sheet.generated_detail_count >= 3);
   assert.strictEqual(dossierDone.dossier.reference_board.composition, 'local_sharp_reference_compiler');
   assert.strictEqual(dossierDone.dossier.reference_board.provider_reference_slot_cost, 1);
@@ -245,6 +257,7 @@ main()
   })
   .finally(() => {
     mediaAdapter.generateActorReference = originalGenerate;
+    mediaAdapter.generateImage = originalGenerateImage;
     const resolved = path.resolve(tempRoot);
     if (process.env.KEEP_PERSON_DOSSIER_FIXTURE === '1') console.log(`PERSON_DOSSIER_FIXTURE=${resolved}`);
     else if (resolved.startsWith(path.resolve(os.tmpdir()))) fs.rmSync(resolved, { recursive: true, force: true });

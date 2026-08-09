@@ -54,15 +54,15 @@ function contentMode(context = {}) {
 
 function eraCastContract(brief = '') {
   const value = text(brief, 3000);
-  const dualEra = /现代.{0,12}(?:与|和|及|、|\/).{0,8}古代|古代.{0,12}(?:与|和|及|、|\/).{0,8}现代/.test(value);
   const parallel = /交替|交错|交织|双线|对照|平行|两个时空|两条时间线/.test(value);
+  const explicitDistinctPeople = /两个(?:独立)?(?:人物|角色|主角)|两位(?:人物|角色|主角)|分别(?:是|为).{1,20}(?:与|和|、).{1,20}|(?:各|分别各)(?:有|为|是)一位(?:人物|角色|主角|女孩|男孩|女性|男性)|不同(?:人物|角色|主角)/.test(value);
   const samePerson = /同一(?:个)?(?:人|人物|角色)|一个人(?:分别|跨越|穿梭)|一人分饰|换装|穿越|前世今生|跨时空的同一个/.test(value);
-  if (dualEra && parallel && !samePerson) {
+  if (parallel && explicitDistinctPeople && !samePerson) {
     return {
       count: 2,
       cast_mode: 'dual',
       distinct_roles: true,
-      rule: '现代与古代交替叙事默认是两个独立人物；只有明确写同一人物、穿越、换装或一人分饰时才可合并。',
+      rule: '并行或对照叙事中，用户明确声明的两个独立人物必须分别保留；只有明确写同一人物、换装或一人分饰时才可合并。',
     };
   }
   return null;

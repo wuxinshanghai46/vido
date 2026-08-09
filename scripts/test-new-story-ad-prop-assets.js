@@ -162,9 +162,9 @@ function harness() {
       },
     },
   });
-  assert(prompt.includes('Structured scene evidence contract'));
-  assert(prompt.includes('door-route'));
-  assert(prompt.includes('prop_placements'));
+  assert(!prompt.includes('Structured scene evidence contract'), '场景空景图提示词不得重新注入剧情状态合同');
+  assert(prompt.includes('door-route'), '去除剧情叙述时仍应保留可拍摄路线的结构标识');
+  assert(prompt.includes('prop_placements'), '场景固定摆位仍应作为空间结构证据保留');
   const propUi = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/prop-assets.js'), 'utf8');
   assert(propUi.includes('dataset.nsaPropGenerate'));
   assert(propUi.includes("asset.status !== 'planned_not_generated'"));

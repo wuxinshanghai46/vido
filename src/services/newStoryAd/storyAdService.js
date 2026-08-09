@@ -3,8 +3,11 @@ const { v4: uuidv4 } = require('uuid');
 const storage = require('./storageService');
 const modelGateway = require('./modelGateway'), jsonRepair = require('./jsonRepairService'), outputLanguage = require('./outputLanguageService');
 const { buildContext, contextPrompt, cleanText, normalizeCharacters, assertContextConsistent, taskTitle } = require('./contextBuilder');
+const sceneExperienceAssist = require('./sceneExperienceAssistService');
+const assistKnowledgePolicy = require('./assistKnowledgePolicyService');
 const blueprintLifecycle = require('./blueprintLifecycleService');
 const { generateStoryboardTable, rewriteStoryboard } = require('./storyboardTableService');
+const storyboardCoverageLifecycle = require('./storyboardCoverageLifecycleService');
 const { reviewStoryboard } = require('./qualityReviewService'), storyboardContinuityGate = require('./storyboardContinuityGateService');
 const { buildKeyframeContracts } = require('./keyframeContractService'), knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const { withContinuityContracts } = require('./continuityService');
@@ -29,6 +32,7 @@ const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
 const subjectProfileText = require('./subjectProfileTextService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
+const wardrobeStyleKnowledge = require('./wardrobeStyleKnowledgeService');
 const revisionService = require('./revisionService'), sceneAuthority = require('./sceneAuthorityService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService'), productKeyframeQa = require('./productConsistencyQaService');
@@ -47,12 +51,14 @@ const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = re
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
-const { createTaskViewService } = require('./taskViewService');
+const { createTaskViewService } = require('./taskViewService'), assetPlanPublication = require('./assetPlanPublicationService'), releaseBundle = require('../storyAdReleaseBundleService');
 const { createTextStageRecovery } = require('./textStageRecoveryService');
 const brandEnding = require('./brandEndingService');
 const propAssets = require('./propAssetService'), propTimeline = require('./propTimelineService');
 const assetPlan = require('./assetPlanService'), workflowTransition = require('./workflowTransitionContractService'), { blueprintFingerprint } = workflowTransition;
+const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const productionLimits = require('./productionLimitsService');
+const storySceneCoverage = require('./storySceneCoverageService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -144,6 +150,32 @@ function longFormStageBudgetMs(taskId, stage = '') {
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
   return productionLimits.longFormStageBudgetMs(stage, ctx.target_duration, Math.max(ctx.shot_count || 0, (storage.getOutput(taskId, 'storyboard_table') || []).length));
 }
+function sceneConfigStageBudgetMs(taskId, options = {}) {
+  const task = storage.getTask(taskId) || {};
+  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const checkpoint = storage.getOutput(taskId, 'asset_plan_draft_checkpoint') || {};
+  const checkpointCurrent = assetPlanCheckpointLineage.compatibility(task, checkpoint, {
+    fingerprint: assetPlan.fingerprint(task, ctx),
+    contentMode: String(ctx.content_mode || ctx.product_presentation?.mode || ''),
+    requireReusable: true,
+  }).reusable;
+  const valid = new Set(Array.isArray(checkpoint.valid_sections) ? checkpoint.valid_sections : []);
+  const missing = new Set(Array.isArray(checkpoint.missing_sections) ? checkpoint.missing_sections : []);
+  const narrative = String(ctx.content_mode || ctx.product_presentation?.mode || '') === 'narrative_story';
+  const contractCurrent = Number(ctx.story_scene_contract_version || 0) >= storySceneCoverage.CONTRACT_VERSION;
+  const forceReplan = options.replan_scene_coverage === true || options.replanSceneCoverage === true;
+  const storyLocked = narrative
+    && !forceReplan
+    && contractCurrent
+    && checkpointCurrent
+    && valid.has('story_seed')
+    && !missing.has('story_seed');
+  const scenePending = !valid.has('scene_plan') || missing.has('scene_plan');
+  const pendingPhaseCount = narrative
+    ? ((storyLocked ? 0 : 1) + (scenePending ? 1 : 0) || 1)
+    : 2;
+  return productionLimits.sceneConfigStageBudgetMs({ pendingPhaseCount, candidateCount: 3 });
+}
 const isQaInfrastructureError = keyframeFailure.isQaInfrastructureError;
 async function reviewWithInfrastructureRetry(reviewer, attempts = 2) {
   let lastError = null;
@@ -219,6 +251,7 @@ const taskViews = createTaskViewService({
   blueprintFingerprint,
   keyframeCompletion,
   isBeforeOrAtKeyframes,
+  assetPlanPublication,
 });
 function publicTaskBundle(taskId, options = {}) { return taskViews.publicTaskBundle(taskId, options); }
 function taskSummary(task = {}, options = {}) { return taskViews.taskSummary(task, options); }
@@ -238,6 +271,7 @@ function listTaskSummaries({ limit = 50, page = 1, status = '', userId = '' } = 
 function createTask(body = {}, user = {}) {
   const ctx = withAssetContracts(buildContext(body, user));
   const id = cleanText(body.task_id || body.taskId || '', 80) || uuidv4();
+  const releaseIdentity = releaseBundle.identity();
   const task = storage.createTask({
     id,
     title: taskTitle(ctx),
@@ -247,6 +281,9 @@ function createTask(body = {}, user = {}) {
     content_revision: 1,
     latest_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0),
     lineage_enforced: true,
+    required_bundle_id: releaseIdentity.bundle_id,
+    producer_bundle_id: releaseIdentity.bundle_id,
+    release_epoch: releaseIdentity.bundle_id,
   });
   const snapshot = storage.saveSnapshot(id, {
     content_revision: 1,
@@ -833,8 +870,11 @@ async function generateStoryboardStage(taskId, options = {}) {
   const existingMeta = storage.getOutput(taskId, 'storyboard_meta') || {};
   const existingShots = storage.getOutput(taskId, 'storyboard_table') || [];
   const existingContracts = storage.getOutput(taskId, 'keyframe_contracts') || [];
+  const expectedCoveragePlan = storyboardCoverageLifecycle.expectedPlan(blueprint, ctx);
+  const existingCoveragePlan = storage.getOutput(taskId, 'storyboard_coverage_plan') || null;
+  const coverageCurrent = storyboardCoverageLifecycle.cacheCurrent(existingMeta, existingCoveragePlan, expectedCoveragePlan);
   if (existingMeta.status === 'ready' && existingMeta.blueprint_fingerprint === sourceFingerprint
-    && existingShots.length && existingContracts.length === existingShots.length) {
+    && coverageCurrent && existingShots.length && existingContracts.length === existingShots.length) {
     storage.saveStage(taskId, 'storyboard', { status: 'done', output_summary: `${existingShots.length} 个镜头（蓝图未变化，已复用）`, diagnostics: { cache_hit: true, blueprint_fingerprint: sourceFingerprint } });
     stageProgress.update(taskId, { stage: 'storyboard', status: 'done', phase: 'fingerprint_reused', completed: existingShots.length, total: existingShots.length, processed: existingShots.length, percent: 100, generationId, message: '蓝图指纹一致，已复用完整分镜和关键帧合同' });
     return { shots: existingShots, review: storage.getOutput(taskId, 'quality_review') || {}, keyframe_contracts: existingContracts, model_meta: { cache_hit: true } };
@@ -866,28 +906,11 @@ async function generateStoryboardStage(taskId, options = {}) {
     blueprint_fingerprint: sourceFingerprint,
     started_at: startedAt,
   });
-  const saveCheckpoint = async ({ phase = 'running', shots = [], completed_indexes = [], expected_total = 0 } = {}) => {
-    storage.saveOutput(taskId, 'storyboard_checkpoint', {
-      schema_version: 1,
-      status: 'running',
-      phase,
-      blueprint_revision: sourceRevision,
-      blueprint_fingerprint: sourceFingerprint,
-      expected_total: Number(expected_total || blueprint.beats?.length || 0),
-      completed_count: completed_indexes.length || shots.length,
-      completed_indexes,
-      shots,
-      updated_at: new Date().toISOString(),
-    });
-    const processed = Math.min(Number(expected_total || expectedTotal), completed_indexes.length || shots.length);
-    const targetTotal = Math.max(1, Number(expected_total || expectedTotal));
-    const reviewPhase = phase === 'reviewing' || /^rewrite_/.test(phase);
-    const percent = reviewPhase
-      ? (phase === 'reviewing' ? 84 : (phase.startsWith('rewrite_1') ? 90 : 94))
-      : Math.min(80, Math.round((processed / targetTotal) * 80));
-    const progress = stageProgress.update(taskId, { stage: 'storyboard', phase, completed: processed, total: targetTotal, processed, currentIndex: Math.min(targetTotal, processed + 1), percent, generationId, startedAt, message: reviewPhase ? '分镜初稿已生成，正在执行结构与商业一致性审核' : `已生成 ${processed}/${targetTotal} 个分镜` });
-    storage.updateTask(taskId, { generation_progress: { ...progress, target_total: targetTotal } });
-  };
+  const saveCheckpoint = storyboardCoverageLifecycle.checkpointWriter({
+    storage, stageProgress, taskId, blueprint, blueprintRevision: sourceRevision,
+    blueprintFingerprint: sourceFingerprint, expectedPlan: expectedCoveragePlan,
+    expectedTotal, generationId, startedAt,
+  });
   const assertBlueprintUnchanged = () => {
     const current = storage.getOutput(taskId, 'blueprint') || {};
     const currentFingerprint = current.fingerprint || blueprintFingerprint(current);
@@ -903,6 +926,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     onCheckpoint: saveCheckpoint,
   });
   let shots = generated.shots;
+  storage.saveOutput(taskId, 'storyboard_coverage_plan', generated.coverage_plan || expectedCoveragePlan);
   await saveCheckpoint({ phase: 'reviewing', shots, completed_indexes: shots.map(shot => Number(shot.index || 0)), expected_total: shots.length });
   assertBlueprintUnchanged();
   let review = await reviewStoryboard(stageCtx, shots, { taskId });
@@ -929,6 +953,7 @@ async function generateStoryboardStage(taskId, options = {}) {
       source: 'generated',
       blueprint_revision: sourceRevision,
       blueprint_fingerprint: sourceFingerprint,
+      ...storyboardCoverageLifecycle.metadata(generated.coverage_plan, expectedCoveragePlan),
       completed_at: new Date().toISOString(),
     });
     storage.deleteOutput(taskId, 'storyboard_checkpoint');
@@ -952,6 +977,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     source: 'generated',
     blueprint_revision: sourceRevision,
     blueprint_fingerprint: sourceFingerprint,
+    ...storyboardCoverageLifecycle.metadata(generated.coverage_plan, expectedCoveragePlan),
     completed_at: new Date().toISOString(),
   });
   storage.deleteOutput(taskId, 'storyboard_checkpoint');
@@ -3491,13 +3517,11 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
-  const isStyleControl = mode === 'style_control' || mode === 'style';
-  const isNegativeControl = mode === 'negative_control' || mode === 'negative';
+  const isStyleControl = mode === 'style_control' || mode === 'style', isNegativeControl = mode === 'negative_control' || mode === 'negative';
   const isCreativeDirection = mode === 'creative_direction' || mode === 'creative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
-  const isSceneSpec = mode === 'scene_spec' || mode === 'scene';
-  const isShotSettings = mode === 'shot_settings' || mode === 'shot';
-  const isStoryBeat = mode === 'story_beat' || mode === 'beat';
+  const isSceneSpec = mode === 'scene_spec' || mode === 'scene', isSceneExperience = mode === 'scene_experience' || mode === 'experience';
+  const isShotSettings = mode === 'shot_settings' || mode === 'shot', isStoryBeat = mode === 'story_beat' || mode === 'beat';
   const isBriefGoal = briefGoalAssist.isMode(mode);
   if (isBriefGoal) briefGoalAssist.assertInput(body, ctx);
   const hasAssistSubjectTarget = !!(body.assist_subject_target || body.assistSubjectTarget);
@@ -3516,6 +3540,7 @@ async function assistBrief(body = {}, user = {}) {
   const assistSceneTargetId = isSceneSpec ? cleanText(body.target_space_id || body.targetSpaceId || '', 100) : '';
   const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
   if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
+  const taskId = cleanText(body.task_id || body.taskId || '', 80), assistPolicy = assistKnowledgePolicy.resolve({ storage, taskId, context: ctx, person: isPersonSpec, scene: isSceneSpec || isSceneExperience });
   const systemPrompt = [
     isBriefGoal ? briefGoalAssist.assistantRole(ctx) : '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     isBriefGoal ? briefGoalAssist.taskRule(ctx) : '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
@@ -3524,11 +3549,14 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     assistCreativeDirection.systemRule(),
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
+    '同一人物存在换装、跨时代或多个明确故事状态时，人物数量不增加，但必须输出多个 look_profiles，并以 scene_ids 绑定适用场景；每个造型内部固定，禁止把多套造型拼接成一个 wardrobeText。',
+    isPersonSpec ? wardrobeStyleKnowledge.promptBlock({ brief: ctx.brief, extra: JSON.stringify({ person_spec: ctx.person_spec || {}, cast_profiles: ctx.cast_profiles || [] }).slice(0, 8000) }) : '',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。当存在 analysis_quality.valid=true 的参考视频合同且用户未改写广告需求时，scene_spec 必须逐字保留 source_facts.environment，并在布局或材质字段逐字保留 source_facts.product_or_service 或至少一项 source_facts.materials；不得改成书房、办公室或其它无证据空间。缺少这些证据时宁可返回失败，也不能猜场景。',
     'scene_spec 模式必须识别剧情实际发生的每个独立物理空间，并输出 scene_plan.spaces；两个地点不得合并进同一个 layoutText。',
     'scene_spec 必须原样保留用户提供的品牌名、专有材质名和工艺名，并把它们解释成当前任务明确支持的可观察颜色、纹理方向、反射、粗糙度、肌理和尺度；不得替换成通用近似材质。surfaceTopology.user_overrides 只能由前端记录用户亲自修改的高级选项，模型不得新增、猜测或改写该数组。',
+    '当 mode 是 scene_experience 时，只完善当前场景的360或3D导演规划，不改写人物、场景或剧情。director_3d 是本地结构化导演预演，不等于真实6DoF；spatial_3d 必须明确需要深度、几何、可移动区域和遮挡验证。',
     visualRealismPolicy.sceneSpecRealismRuleZh(),
     '“一面墙、一整面墙、完整墙面”只表示主墙数量为 1，不等于无缝或隐藏拼缝；只有用户明确写出“连续、无缝、无接缝、隐藏拼缝”等要求时，才能输出 mode=continuous 或 seam_policy=hidden。当连续完整表面同时出现多个材质/工艺词时，默认合成为一种主导饰面语言；只有用户明确指定区域映射时才允许分区，禁止自动做成样板墙、条带或拼贴。',
     '当 mode 是 shot_settings 时，只优化当前任务的一个镜头设置；结合前后镜保证连续性，不得套用固定行业、场景、角色、墙面、商品或品牌模板。',
@@ -3538,6 +3566,7 @@ async function assistBrief(body = {}, user = {}) {
     isBriefGoal ? 'brief_goal 只返回 goal_addition，不返回完整需求、剧本或分镜。' : '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
     isBriefGoal ? 'goal_addition 必须是给普通用户直接阅读的纯文本，不使用 Markdown 或字面量反斜杠换行。' : 'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
     isBriefGoal ? '' : 'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
+    knowledgePolicyRuntime.promptBlock(assistPolicy || {}),
   ].join('\n');
   const outputSchema = isBriefGoal
     ? briefGoalAssist.outputSchema(ctx)
@@ -3552,38 +3581,9 @@ async function assistBrief(body = {}, user = {}) {
   "text": "用分号分隔的禁止项，例如：不要出现无关人物；避免卡通质感；禁止商品变形"
 }`
       : isPersonSpec
-        ? `{
-  "person_spec": {
-    "castMode": "auto/single/dual/group/no_human/animal/human_pet",
-    "gender": "auto/male/female/mixed/all_male/all_female",
-    "age": "match_brief/young_adult_17_25/young_adult/adult_30_40/middle_40_55/senior_55_plus",
-    "origin": "match_brief/east_asian_cn/southeast_asian/white_european/black_african/middle_eastern/south_asian/latino/mixed_global",
-    "roleName": "人物身份或职业",
-    "displayName": "正式人物姓名，可留空",
-    "expectedPeople": "需要人物时填写 1-12 的精确整数；无人物或纯宠物模式填写 0",
-    "appearanceText": "脸型、体型、年龄感、商业真实感、气质、表情可信度，80-160 字",
-    "wardrobeText": "上衣、下装、鞋、配饰、颜色、材质、与产品/场景的关系，80-160 字",
-    "hairMakeupText": "发型、妆容、眼镜、胡须或其它妆造细节，50-120 字",
-    "negativeText": "不要出现的人物错误、服装错误、肤质错误、表情错误，分号分隔",
-    "expectedAnimals": "动物/宠物主体或人物+宠物模式填写 1-8 的整数，其它模式留空", "petType": "宠物类型或品种，例如金毛犬、英短猫", "petDescription": "毛色、体型、年龄感、面部花纹、项圈和独特识别特征；用于跨镜头保持同一只宠物"
-  },
-  "cast_profiles": [{
-    "id": "稳定且唯一的 cast_1/cast_2 等 ID",
-    "displayName": "该人物正式姓名或关系称呼",
-    "roleName": "该人物在剧情中的独立身份、年龄关系或职责",
-    "appearanceText": "只描述该人物的年龄、脸型、体型、气质和可识别外貌，不得包含其他成员",
-    "wardrobeText": "只描述该人物自己的固定上衣、固定下装或裙装、固定鞋、固定配饰、颜色和材质；必须适用于全部四视图，不得使用条件式、可选式或二选一造型",
-    "hairMakeupText": "只描述该人物自己的固定发型和妆造；明确帽子、眼镜、发带等发饰和首饰始终佩戴或始终不佩戴，全部四视图完全一致",
-    "negativeText": "只适用于该人物的禁止项，并明确禁止四视图之间增减、更换、变色或移动服装、鞋、帽子、眼镜、发饰和首饰"
-  }],
-  "pet_profiles": [{
-    "id": "稳定且唯一的 pet_1/pet_2 等 ID",
-    "name": "宠物名字，可留空",
-    "type": "物种或品种",
-    "breed": "细分品种，可留空",
-    "appearance": "只描述该只宠物自己的毛色、体型、年龄感、花纹、项圈和识别特征"
-  }]
-}`
+        ? assistSubjectProfiles.outputSchema()
+      : isSceneExperience
+        ? sceneExperienceAssist.outputSchema()
       : isSceneSpec
         ? assistScenePlan.outputSchema()
         : isStoryBeat
@@ -3637,17 +3637,18 @@ async function assistBrief(body = {}, user = {}) {
     next_shot: body.shot_assist_context?.next_shot || body.next_shot || null,
     scene_assets: body.shot_assist_context?.scene_assets || body.scene_assets || [],
   } : null;
-  const storyAssistContext = isStoryBeat ? storyBeatAssist.buildContext(body) : null;
+  const storyAssistContext = isStoryBeat ? storyBeatAssist.buildContext(body) : null, currentExperience = body.scene_experience || body.sceneExperience || body.experience_plan || body.experiencePlan || {};
   const userPrompt = `${contextPrompt(ctx)}
-模式：${isBriefGoal ? briefGoalAssist.modePrompt(ctx) : isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
+模式：${isBriefGoal ? briefGoalAssist.modePrompt(ctx) : isCreativeDirection ? 'creative_direction 剧情与表演要求辅写' : isStyleControl ? 'style_control 风格方向帮写' : isNegativeControl ? 'negative_control 禁止项帮写' : isPersonSpec ? 'person_spec 人物设定补齐' : isSceneSpec ? 'scene_spec 场景空间设定补齐' : isSceneExperience ? 'scene_experience 360/3D空间规划补齐' : isShotSettings ? 'shot_settings 当前镜头设置补齐' : isStoryBeat ? 'story_beat 当前情节点帮写' : mode === 'clean' ? 'clean 整理内容' : 'write 帮我写'}
 ${isPersonSpec ? `人物设定中用户已经明确选择的主体模式、人物数量、宠物数量、性别、年龄、地域、身份、姓名和宠物品种是硬约束，必须原样保留；外貌、穿着、发型妆造、宠物识别特征和禁止项必须根据这些选择重新生成。${assistSubjectTarget ? `本次只完善目标人物：${JSON.stringify({ index: assistSubjectTarget.index, id: assistSubjectTarget.id, current_profile: assistSubjectTarget.profile })}。允许生成或重写的字段只有：${assistReplaceableFields.join('、') || '无'}；这些字段属于空白、参考创作方向或系统默认描述，必须改写为可直接生成人物资产的具体设定。其余字段均为用户或业务事实权威，必须原样保留；不得返回或改写其他人物和宠物。` : '人物+宠物模式必须分别描述人物与宠物，不能把两者合并为一个数量。cast_profiles 长度必须等于精确人物数，pet_profiles 长度必须等于精确宠物数；单人、双人、多人、纯宠物、人物加宠物都不得共用一份全局描述。'}${subjectContinuityPolicy.assistRuleZh()}` : ''}
   ${isSceneSpec ? `当前用户场景设定是本次唯一内容权威：${JSON.stringify({ scene_spec: ctx.scene_spec || {}, scene_plan: currentScenePlan }).slice(0, 18000)}。${preserveCurrentSceneFields ? '所有当前非空字段必须原样保留，只允许补齐空字段；不得用模型记忆、旧任务或通用模板重写。' : '本次允许按当前需求重编译目标场景，但仍不得引用旧任务内容。'}` : ''}${assistSceneTargetId ? `本次只允许补齐场景 ${assistSceneTargetId}。必须保留全部场景的数量、顺序和稳定 ID，不得新增、删除、重命名或改写其它场景；可以只返回目标场景一条记录。` : ''}
+${isSceneExperience ? `当前场景与规划：${JSON.stringify({ scene: body.target_scene || body.targetScene || {}, experience: currentExperience }).slice(0, 12000)}。用户补充：${cleanText(body.user_instruction || body.instruction || '', 1000)}。必须结合当前故事、场景用途、区域和人物行动完善，不能套用别的行业或场景。` : ''}
 ${isShotSettings ? `当前镜头上下文：${JSON.stringify(shotAssistContext).slice(0, 18000)}\n只返回当前镜头设置，不要重写其它镜头。已有场景 ID 和人物/商品身份必须保持不变。` : ''}
 ${isStoryBeat ? storyBeatAssist.contextPrompt(storyAssistContext) : ''}
 输出 JSON：
 ${outputSchema}`;
   const result = await modelGateway.generateText({
-    taskId: cleanText(body.task_id || body.taskId || '', 80),
+    taskId,
     stage: 'new_story_ad.assist',
     systemPrompt,
     userPrompt,
@@ -3669,7 +3670,7 @@ ${outputSchema}`;
     raw: result.text,
     expected: 'object',
     modelGateway,
-    taskId: cleanText(body.task_id || body.taskId || '', 80),
+    taskId,
     stage: 'new_story_ad.json_repair',
   });
   if (isCreativeDirection) return assistCreativeDirection.buildResponse({ parsed, context: ctx, mode, modelResult: result });
@@ -3688,22 +3689,16 @@ ${outputSchema}`;
     };
   }
   if (isPersonSpec) {
-    return assistSubjectProfiles.buildResponse({
-      parsed,
-      context: ctx,
-      mode,
-      modelResult: result,
-      enforcePersonSpec: enforceAssistedPersonSpec,
-      target: assistSubjectTarget,
-      replaceableFields: assistReplaceableFields,
-    });
-    const nextCtx = { ...ctx, shot_design_confirmed: false };
-    storage.saveOutput(taskId, 'context', nextCtx);
-    storage.updateTask(taskId, { request: nextCtx });
+    return assistKnowledgePolicy.attach(assistSubjectProfiles.buildResponse({ parsed, context: ctx, mode, modelResult: result,
+      enforcePersonSpec: enforceAssistedPersonSpec, target: assistSubjectTarget, replaceableFields: assistReplaceableFields }), assistPolicy);
   }
   if (isSceneSpec) {
-    return assistScenePlan.buildResponse({ parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId,
-      mode, modelResult: result, preserveCurrentFields: preserveCurrentSceneFields });
+    return assistKnowledgePolicy.attach(assistScenePlan.buildResponse({ parsed, context: ctx, currentPlan: currentScenePlan, targetSpaceId: assistSceneTargetId,
+      mode, modelResult: result, preserveCurrentFields: preserveCurrentSceneFields }), assistPolicy);
+  }
+  if (isSceneExperience) {
+    return sceneExperienceAssist.buildResponse({ parsed, current: currentExperience, mode, modelResult: result,
+      knowledgePolicy: knowledgePolicyRuntime.trace(assistPolicy || {}) });
   }
   if (isShotSettings) {
     const currentShot = shotAssistContext?.current_shot && typeof shotAssistContext.current_shot === 'object'
@@ -3785,6 +3780,7 @@ module.exports = {
   keyframeTargetIndexes,
   keyframeStageBudgetMs,
   longFormStageBudgetMs,
+  sceneConfigStageBudgetMs,
   keyframeSubmissionPreflight,
   isQaInfrastructureError,
   structuredQaFeedback,

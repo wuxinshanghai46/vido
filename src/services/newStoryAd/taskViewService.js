@@ -23,6 +23,7 @@ function createTaskViewService(deps = {}) {
     videoClipStatusRecovery,
     videoBoundaryPolicy,
     mediaResultProjection,
+    assetPlanPublication,
     keyframeFailure,
     blueprintFingerprint,
     keyframeCompletion,
@@ -134,6 +135,8 @@ function createTaskViewService(deps = {}) {
       ? (rawBundle.outputs || [])
       : (rawBundle.outputs || []).filter(row => !String(row.kind || '').startsWith('video_shot_status_')))
       .filter(row => !/^(?:scene|subject)_asset_checkpoint:/.test(String(row.kind || '')))
+      .filter(row => !/^generation_permit:/.test(String(row.kind || '')))
+      .filter(row => String(row.kind || '') !== 'asset_plan_candidate')
       .filter(row => String(row.kind || '') !== 'scene_assets' || (hasCurrentSceneConfig && sceneAssetsAreCurrent))
       .map(row => String(row.kind || '') === 'scene_assets'
         ? { ...row, payload: sceneAssetLifecycle.normalizeSceneAssets(projectedSceneAssets) }
@@ -147,6 +150,13 @@ function createTaskViewService(deps = {}) {
     }
     const bundle = { ...rawBundle, outputs: visibleOutputs };
     const outputs = Object.fromEntries(visibleOutputs.map(x => [x.kind, x.payload]));
+    const activePlanRecord = outputs.asset_plan_active && typeof outputs.asset_plan_active === 'object'
+      ? outputs.asset_plan_active
+      : null;
+    if (activePlanRecord?.plan) outputs.asset_plan = activePlanRecord.plan;
+    outputs.asset_plan_eligibility = assetPlanPublication
+      ? assetPlanPublication.eligibility(taskId, { fingerprint: activePlanRecord?.fingerprint || '' })
+      : { eligible: false, issues: ['asset_plan_publication_service_missing'] };
     outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
     const currentStoryboardStatus = storyboardStatus(bundle, outputs);
     const storyboard = Array.isArray(outputs.storyboard_table) ? outputs.storyboard_table : [];

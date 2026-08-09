@@ -85,6 +85,12 @@ function stageLabel(item) {
   return '等待继续';
 }
 
+function isUnfinishedTask(item = {}) {
+  return item.status_group === 'active'
+    || item.status_group === 'draft'
+    || (item.status_group === 'failed' && (item.retryable || item.module === 'new-story-ad'));
+}
+
 function cleanTitle(value, fallback) {
   const title = String(value || '').replace(/\s+/g, ' ').trim();
   if (!title || /\?{3,}/.test(title)) return fallback;
@@ -217,9 +223,7 @@ function getDashboardData(req) {
 
   rows.forEach(item => { item.stage_label = stageLabel(item); });
   rows.sort((a, b) => validDate(b.updated_at) - validDate(a.updated_at));
-  const unfinished = rows.filter(x =>
-    x.status_group === 'active' || x.status_group === 'draft' || (x.status_group === 'failed' && x.retryable)
-  );
+  const unfinished = rows.filter(isUnfinishedTask);
   const videos = collectVideos({ projects, avatars, i2v, storyAds });
   const counts = { total: rows.length, active: 0, completed: 0, failed: 0, draft: 0 };
   rows.forEach(x => { counts[x.status_group] += 1; });
@@ -258,4 +262,4 @@ router.get('/model-status', (req, res) => {
 });
 
 module.exports = router;
-module.exports._test = { statusGroup, storyAdStep, timeAgo, stageLabel, firstRelativeUrl, collectVideos };
+module.exports._test = { statusGroup, storyAdStep, timeAgo, stageLabel, isUnfinishedTask, firstRelativeUrl, collectVideos };

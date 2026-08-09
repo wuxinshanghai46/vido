@@ -1,10 +1,11 @@
-import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260806-auto-subject-dropdown-v71';
+import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260810-platform-release-migration-v126';
 
 export { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION };
 const TOKEN_KEYS = ['vido_token', 'token'];
 let refreshPromise = null;
 let releaseExpired = false;
 let releaseHeartbeat = null;
+let serverReleaseIdentity = null;
 
 function preserveVisibleDraft() {
   try {
@@ -85,6 +86,19 @@ export async function assertCurrentRelease() {
     error.code = 'CLIENT_BUILD_EXPIRED';
     throw error;
   }
+  if (!release.release_bundle_id || !release.runtime_hash) {
+    const error = new Error('服务器没有返回完整发布身份，已停止写入。');
+    error.code = 'SERVER_RELEASE_IDENTITY_MISSING';
+    throw error;
+  }
+  if (serverReleaseIdentity?.release_bundle_id
+    && serverReleaseIdentity.release_bundle_id !== release.release_bundle_id) {
+    expireAndReload(release.build_id || '');
+    const error = new Error('服务器运行制品已变化，正在刷新页面。');
+    error.code = 'CLIENT_BUILD_EXPIRED';
+    throw error;
+  }
+  serverReleaseIdentity = release;
   try { sessionStorage.removeItem(`story-ad-release-reload:${release.build_id}`); } catch {}
   return release;
 }
@@ -157,9 +171,14 @@ export async function request(path, options = {}) {
     error.status = 426;
     throw error;
   }
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method) && !serverReleaseIdentity?.release_bundle_id) {
+    await assertCurrentRelease();
+  }
   const headers = { ...(options.headers || {}) };
   headers['X-VIDO-Client-Build'] ||= CLIENT_BUILD_ID;
   headers['X-VIDO-Contract-Version'] ||= CLIENT_CONTRACT_VERSION;
+  if (serverReleaseIdentity?.release_bundle_id) headers['X-VIDO-Client-Bundle'] ||= serverReleaseIdentity.release_bundle_id;
+  if (serverReleaseIdentity?.release_control?.epoch) headers['X-VIDO-Release-Epoch'] ||= String(serverReleaseIdentity.release_control.epoch);
   const isForm = options.body instanceof FormData;
   if (!isForm) headers['Content-Type'] ||= 'application/json';
   const token = readToken();
@@ -187,11 +206,19 @@ export async function request(path, options = {}) {
       throw new Error('登录状态已失效，请重新登录。');
     }
     const serverBuild = String(response.headers.get('X-VIDO-Build') || '').trim();
+    const serverBundle = String(response.headers.get('X-VIDO-Release-Bundle') || '').trim();
     if (serverBuild && serverBuild !== CLIENT_BUILD_ID) {
       expireAndReload(serverBuild);
       const versionError = new Error('服务器已经发布新版本。为避免旧页面覆盖新内容，请刷新后继续。');
       versionError.status = 426;
       versionError.code = 'CLIENT_BUILD_EXPIRED';
+      throw versionError;
+    }
+    if (serverBundle && serverReleaseIdentity?.release_bundle_id && serverBundle !== serverReleaseIdentity.release_bundle_id) {
+      expireAndReload(serverBuild || CLIENT_BUILD_ID);
+      const versionError = new Error('服务器运行制品已变化。为避免混用代码，正在刷新页面。');
+      versionError.status = 426;
+      versionError.code = 'CLIENT_RELEASE_BUNDLE_EXPIRED';
       throw versionError;
     }
     if (response.ok && options.responseType === 'blob') return response.blob();

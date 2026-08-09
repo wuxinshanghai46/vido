@@ -4,9 +4,10 @@ const jsonRepair = require('./jsonRepairService');
 const { cleanText } = require('./contextBuilder');
 const publicReferences = require('./publicReferenceService');
 const verification = require('./visualVerificationService');
+const personLooks = require('./personLookProfileService');
 
 const PERSON_VIEW_KEYS = ['front', 'side', 'back', 'action'];
-const THRESHOLDS = Object.freeze({ identity: 0.82, age: 0.8, wardrobe: 0.85, body: 0.75 });
+const THRESHOLDS = Object.freeze({ identity: 0.82, age: 0.8, wardrobe: 0.85, body: 0.75, photographic_realism: 0.82 });
 
 function score(value) {
   const n = Number(value);
@@ -37,6 +38,9 @@ function normalizeQa(input = {}) {
     age_score: score(input.age_score),
     wardrobe_score: score(input.wardrobe_score),
     body_score: score(input.body_score),
+    photographic_realism_score: input.photographic_realism_score == null
+      ? 1
+      : score(input.photographic_realism_score),
     mismatch_reasons: reasons,
     raw_mismatch_reasons: rawReasons,
     checked_at: input.checked_at || new Date().toISOString(),
@@ -47,6 +51,7 @@ function normalizeQa(input = {}) {
     && qa.age_score >= THRESHOLDS.age
     && qa.wardrobe_score >= THRESHOLDS.wardrobe
     && qa.body_score >= THRESHOLDS.body
+    && qa.photographic_realism_score >= THRESHOLDS.photographic_realism
     && qa.mismatch_reasons.length === 0;
   return qa;
 }
@@ -58,6 +63,7 @@ function contractFingerprint(contract = {}) {
     identity: contract.identity,
     appearance: contract.appearance,
     wardrobe: contract.wardrobe,
+    look_profiles: contract.look_profiles,
     reference_views: contract.reference_views,
   };
   return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -69,6 +75,17 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
   const existing = asset.person_contract && typeof asset.person_contract === 'object' ? asset.person_contract : {};
   const existingQa = existing.cross_view_qa || asset.cross_view_qa || {};
   const qa = normalizeQa(existingQa);
+  const activeLook = Array.isArray(spec.look_profiles)
+    ? (spec.look_profiles.find(look => look?.id === spec.active_look_id) || spec.look_profiles[0] || {})
+    : {};
+  const wardrobeContract = spec.wardrobe_contract || activeLook.wardrobe_contract || {};
+  const structuredAccessories = (wardrobeContract.accessories?.items || [])
+    .map(item => cleanText([item?.type, item?.position, item?.material].filter(Boolean).join(' / '), 180))
+    .filter(Boolean);
+  const structuredHairMakeup = wardrobeContract.hair_makeup || wardrobeContract.hairMakeup || {};
+  const hairMakeupDescription = typeof structuredHairMakeup === 'string'
+    ? structuredHairMakeup
+    : (structuredHairMakeup.description || structuredHairMakeup.evidence || '');
   const contract = {
     schema_version: 1,
     person_id: cleanText(asset.actor_id || asset.actor_asset_id || asset.id || options.personId || 'person_asset', 120),
@@ -87,16 +104,24 @@ function buildPersonContract(asset = {}, spec = {}, options = {}) {
       hair_style: cleanText(spec.hairMakeupText || spec.hairMakeup || spec.hair_style || '', 240),
       hair_color: cleanText(spec.hairColor || spec.hair_color || '', 80),
       skin_tone: cleanText(spec.skinTone || spec.skin_tone || '', 80),
-      makeup: cleanText(spec.makeup || '', 160),
+      makeup: cleanText(spec.makeup || structuredHairMakeup.makeup || hairMakeupDescription || '', 240),
+      hair_accessories: Array.isArray(structuredHairMakeup.hair_accessories)
+        ? structuredHairMakeup.hair_accessories.map(value => cleanText(value, 120)).filter(Boolean).slice(0, 12)
+        : [],
     },
     wardrobe: {
       description: cleanText(spec.wardrobeText || spec.wardrobe || spec.outfit || asset.outfit || '', 600),
       top: cleanText(spec.top || '', 160),
       bottom: cleanText(spec.bottom || '', 160),
-      shoes: cleanText(spec.shoes || '', 160),
-      accessories: Array.isArray(spec.accessories) ? spec.accessories.map(value => cleanText(value, 100)).filter(Boolean).slice(0, 12) : [],
-      dominant_colors: Array.isArray(spec.dominant_colors) ? spec.dominant_colors.map(value => cleanText(value, 60)).filter(Boolean).slice(0, 8) : [],
+      shoes: cleanText(spec.shoes || wardrobeContract.footwear?.type || '', 160),
+      accessories: (Array.isArray(spec.accessories) && spec.accessories.length
+        ? spec.accessories.map(value => cleanText(value, 100)).filter(Boolean)
+        : structuredAccessories).slice(0, 12),
+      dominant_colors: (Array.isArray(spec.dominant_colors) && spec.dominant_colors.length
+        ? spec.dominant_colors.map(value => cleanText(value, 60)).filter(Boolean)
+        : (wardrobeContract.palette?.colors || []).map(value => cleanText(value, 60)).filter(Boolean)).slice(0, 8),
     },
+    look_profiles: personLooks.normalizeLookProfiles(spec, { ensure: true }),
     reference_views: Object.fromEntries(PERSON_VIEW_KEYS.map(key => [key, views.find(view => view.key === key)?.url || ''])),
     cross_view_qa: qa,
     verification: existing.verification || verification.pending(),
@@ -149,9 +174,9 @@ async function verifyPersonAsset({ taskId = '', asset = {}, spec = {}, revision 
         'You are a strict cross-view identity inspector for a general-purpose commercial video platform.',
         'The images may depict any lawful person, age group, ethnicity, wardrobe, occupation or visual style requested by the current task. Never assume a fixed country, industry, name or character template.',
         'All mismatch_reasons shown to users must be concise, natural Simplified Chinese. Keep JSON keys and numeric fields unchanged.',
-        'Compare whether all views show the same intended person and the same locked wardrobe/body attributes. Return strict JSON only.',
+        'Compare whether all views show the same intended person and the same locked wardrobe/body attributes. Also reject beauty-filter, plastic/waxy skin, illustration/CGI facial rendering, age-inappropriate styling, flat shadowless faces and implausible light direction. Return strict JSON only.',
       ].join('\n'),
-      userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"mismatch_reasons":string[]}. Reject extra people, inconsistent identity/age/hair/skin/wardrobe/body, watermarks, collage borders or malformed anatomy.`,
+      userPrompt: `Person contract: ${JSON.stringify(contract)}\nReturn {"pass":boolean,"identity_score":0..1,"age_score":0..1,"wardrobe_score":0..1,"body_score":0..1,"photographic_realism_score":0..1,"mismatch_reasons":string[]}. Reject extra people, inconsistent identity/age/hair/skin/wardrobe/body, missing or inconsistent mandatory footwear/accessories/hair accessories/makeup where the corresponding view should visibly show them, beauty-filter or plastic/waxy skin, illustration/CGI facial rendering, flat or physically inconsistent face lighting, watermarks, collage borders or malformed anatomy.`,
       maxTokens: 2200,
     });
       const parsed = await repair.parseOrRepair({ raw: result.text, expected: 'object', modelGateway: gateway, taskId, stage: 'new_story_ad.json_repair' });

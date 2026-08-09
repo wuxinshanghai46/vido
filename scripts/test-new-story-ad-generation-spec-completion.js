@@ -145,6 +145,37 @@ async function main() {
   assert(reusedScene.reused);
   assert.equal(sceneCalls, 1);
 
+  let incompleteSceneCalls = 0;
+  const incompleteModelScene = await completion.completeSceneSpec({
+    taskId: 'completion-scene-semantic-closure', brief: '两人在桃林初见', sceneId: 'peach-grove', sceneName: '桃林初见',
+    sceneSpec: {
+      layoutText: '桃林入口、小径、盛放桃树和远处山景形成前景、中景、背景及连续空间边界',
+      materialLightText: '桃树皮与石板路纹理尺度真实，午后右侧日光为主光，枝叶投影和粗糙反射保持一致',
+      interactionText: '人物在小径上行走并在花开最盛的桃树下拾起手帕',
+      negativeText: '禁止无关人物、文字、水印、结构变形、材质漂移、光向矛盾与不可达区域',
+      storyStates: [], interactionAnchors: [], routes: [],
+    },
+  }, {
+    storage: memoryStorage(), forceModel: true, jsonRepair: fakeRepair(),
+    modelGateway: { async generateText() {
+      incompleteSceneCalls += 1;
+      return { used_model: 'mock/incomplete-scene', text: JSON.stringify({ scene_spec_supplement: {
+        interactionText: '人物在桃树下完成拾取手帕的互动', storyStates: [], interactionAnchors: [], routes: [],
+      } }) };
+    } },
+  });
+  assert.equal(incompleteSceneCalls, 1);
+  assert.match(incompleteModelScene.scene_spec.interactionText, /拾起手帕/);
+  assert.match(incompleteModelScene.scene_spec.interactionText, /主机位/);
+  assert.equal(incompleteModelScene.scene_spec.routes.length, 1);
+  assert.match(incompleteModelScene.scene_spec.routes[0].id, /^route_peach-grove_main$/);
+  const deterministicallyClosed = new Set(incompleteModelScene.scene_spec.auto_completion.deterministic_closed_components);
+  ['interactionAnchors', 'interactionText', 'routes', 'storyStates'].forEach(key => assert(
+    deterministicallyClosed.has(key),
+    `模型补充遗漏 ${key} 时，应基于当前场景事实确定性闭合而不是终止出图链路`,
+  ));
+  assert(!completion.sceneMissingComponents(incompleteModelScene.scene_spec).length);
+
   const subjectSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
   const sceneSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/sceneAssetService.js'), 'utf8');
   assert(sceneSource.includes("body: { ...body, allow_incomplete_scene_spec: true }"), '场景生成必须允许补齐器接收不完整的逐空间合同');
@@ -160,6 +191,7 @@ async function main() {
     scene_model_calls: sceneCalls,
     person_checkpoint_reused: reusedPerson.reused,
     scene_checkpoint_reused: reusedScene.reused,
+    incomplete_scene_semantically_closed: incompleteModelScene.scene_spec.routes.length === 1,
     user_person_text_preserved: person.cast_profiles[0].wardrobeText.startsWith('用户指定的紫色真丝连衣裙'),
     user_scene_text_preserved: scene.scene_spec.layoutText.startsWith('用户指定：'),
   }, null, 2));

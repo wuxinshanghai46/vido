@@ -15,6 +15,10 @@ function manifestFingerprint(manifest = {}) {
     schema_version: Number(manifest.schema_version || 0),
     build_id: String(manifest.build_id || ''),
     contract_version: String(manifest.contract_version || ''),
+    artifact_id: String(manifest.artifact_id || ''),
+    source_snapshot_hash: String(manifest.source_snapshot_hash || ''),
+    lockfile_sha256: String(manifest.lockfile_sha256 || ''),
+    node_version: String(manifest.node_version || ''),
     files,
   }), 'utf8'));
 }

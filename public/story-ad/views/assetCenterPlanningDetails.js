@@ -1,6 +1,7 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260806-auto-subject-dropdown-v71';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260806-auto-subject-dropdown-v71';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260806-auto-subject-dropdown-v71';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-platform-release-migration-v126';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-platform-release-migration-v126';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-platform-release-migration-v126';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-platform-release-migration-v126';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
@@ -119,11 +120,11 @@ export function sceneEditForm(item = {}) {
   const cameras = item.camera_plan?.length ? item.camera_plan : (item.cameras || []);
   const field = (name, label, value, rows = 2) => `<label><span>${label}</span><textarea name="${name}" rows="${rows}">${escapeHtml(value || '')}</textarea></label>`;
   return `<details class="person-edit-panel scene-edit-panel"><summary>修改场景与机位预案</summary><form data-scene-edit><div class="form-grid two"><label><span>场景名称</span><input name="name" value="${escapeHtml(item.name || '')}" required></label><label><span>剧情用途</span><input name="story_purpose" value="${escapeHtml(item.story_purpose || '')}"></label></div>${field('description', '空间描述', item.description, 3)}${field('layout', '空间布局', spec.layout, 3)}${field('materials', '材质、表面与光线', [spec.materials, spec.light].filter(Boolean).join('；'), 3)}${field('interaction', '互动区域 / 人物行走路线', spec.interaction, 3)}${field('negative', '禁止项', spec.negative, 2)}
-    ${cameras.length ? `<fieldset class="camera-plan-editor"><legend>机位动态拍摄动作（路线、速度、焦点等完整细则见上方拍摄方案）</legend>${cameras.map((camera, index) => `<label><span>${index + 1}. ${escapeHtml(camera.label || camera.id || `机位 ${index + 1}`)}</span><textarea name="camera_movement_${index}" rows="2" placeholder="例如：从入口广角缓慢推进至展示墙，人物从画右进入">${escapeHtml(camera.movement || '')}</textarea></label>`).join('')}</fieldset>` : ''}<p class="drawer-section-note">保存场景修改会创建新内容版本；与该场景不兼容的旧场景图和下游镜头会按依赖关系失效，不会继续误用。</p><button class="btn primary" type="submit">保存场景与机位预案</button></form></details>`;
+    ${cameras.length ? `<fieldset class="camera-plan-editor"><legend>机位动态拍摄动作（路线、速度、焦点等完整细则见上方拍摄方案）</legend>${cameras.map((camera, index) => `<label><span>${index + 1}. ${escapeHtml(camera.label || camera.id || `机位 ${index + 1}`)}</span><textarea name="camera_movement_${index}" rows="2" placeholder="例如：从入口广角缓慢推进至展示墙，人物从画右进入">${escapeHtml(camera.movement || '')}</textarea></label>`).join('')}</fieldset>` : ''}<p class="drawer-section-note">保存场景修改会创建新内容版本；与该场景不兼容的旧场景图和下游镜头会按依赖关系失效，不会继续误用。</p><div class="assist-form-actions"><button class="btn" type="button" data-ai-assist-scene>AI 帮写场景设定</button><button class="btn primary" type="submit">保存场景与机位预案</button></div></form></details>`;
 }
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
-  const { onGenerate, onVerifyProduct, onSavePerson, onSaveProduct, onSaveScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
+  const { onGenerate, onVerifyProduct, onSavePerson, onAssistPerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
   const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
@@ -168,8 +169,11 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   drawer.querySelector('[data-drawer-generate]')?.addEventListener('click', async event => { if (await onGenerate?.(item, group, event.currentTarget) === true) close(); });
   drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => { if (await onVerifyProduct?.(item, event.currentTarget) === true) close(); });
   bindSubmit('[data-person-edit]', onSavePerson);
+  bindPersonLookForm(drawer.querySelector('[data-person-edit]'));
   bindSubmit('[data-product-edit]', onSaveProduct);
   bindSubmit('[data-scene-edit]', onSaveScene);
+  drawer.querySelector('[data-ai-assist-person]')?.addEventListener('click', event => onAssistPerson?.(item, drawer.querySelector('[data-person-edit]'), event.currentTarget));
+  drawer.querySelector('[data-ai-assist-scene]')?.addEventListener('click', event => onAssistScene?.(item, drawer.querySelector('[data-scene-edit]'), event.currentTarget));
   drawer.querySelector('[data-drawer-generate-scene]')?.addEventListener('click', async event => { if (await onGenerateScene?.(item, event.currentTarget) === true) close(); });
   drawer.querySelector('[data-drawer-generate-product]')?.addEventListener('click', async event => { if (await onGenerateProduct?.(item, event.currentTarget) === true) close(); });
   drawer.querySelector('[data-drawer-upload-product]')?.addEventListener('click', () => { close(); onUploadProduct?.(item); });

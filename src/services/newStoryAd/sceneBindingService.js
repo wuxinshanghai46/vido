@@ -284,6 +284,10 @@ function normalizeScenePlan(input = {}) {
         id,
         space_id: id,
         scene_id: id,
+        production_scene_key: cleanText(space?.production_scene_key || space?.productionSceneKey || '', 100),
+        covered_beat_ids: (Array.isArray(space?.covered_beat_ids || space?.coveredBeatIds)
+          ? (space.covered_beat_ids || space.coveredBeatIds)
+          : []).map(value => cleanText(value, 100)).filter(Boolean).slice(0, 24),
         name: cleanText(space?.name || space?.label || `独立空间 ${index + 1}`, 120),
         description: cleanText(space?.description || space?.layout || '', 500),
         story_purpose: cleanText(space?.story_purpose || space?.purpose || '', 300),

@@ -1,5 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260806-auto-subject-dropdown-v71';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260806-auto-subject-dropdown-v71';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-platform-release-migration-v126';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-platform-release-migration-v126';
+import { loadProjectList } from './projectListStore.js?v=20260810-platform-release-migration-v126';
 
 export function createProjectStore() {
   const state = {
@@ -22,17 +23,7 @@ export function createProjectStore() {
   const set = patch => { Object.assign(state, patch); notify(); };
 
   async function loadProjects(options = {}) {
-    set({ loading: true, error: '' });
-    try {
-      const query = new URLSearchParams({ limit: String(options.limit || 50), page: String(options.page || 1) });
-      if (options.status) query.set('status', options.status);
-      const data = await request(`/api/story-ad/projects?${query}`);
-      set({ projects: data.projects || [], stats: data.stats || {}, loading: false });
-      return data;
-    } catch (error) {
-      set({ loading: false, error: error.message });
-      throw error;
-    }
+    return loadProjectList({ request, set }, options);
   }
 
   async function createProject(payload) {
@@ -45,6 +36,12 @@ export function createProjectStore() {
       set({ saving: false, error: error.message });
       throw error;
     }
+  }
+
+  async function deleteProject(taskId) {
+    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' });
+    await loadProjects();
+    return data;
   }
 
   async function loadBundle(taskId, sections = 'all') {
@@ -576,6 +573,7 @@ export function createProjectStore() {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     loadProjects,
     createProject,
+    deleteProject,
     loadBundle,
     refreshSections,
     updateRequest,

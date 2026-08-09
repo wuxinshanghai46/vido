@@ -17,12 +17,14 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
   const briefInputReady = Boolean(clean(context.project_name || task.title, 120)
     && clean(context.brief || task.brief, 3000)
     && referenceReady);
-  const assetPlanReady = Boolean(
-    outputs.asset_plan
-    && Array.isArray(outputs.asset_plan.cast_profiles)
-    && Array.isArray(outputs.asset_plan.scene_plan?.spaces)
-    && outputs.asset_plan.scene_plan.spaces.length
-  );
+  const planEligibility = outputs.asset_plan_eligibility && typeof outputs.asset_plan_eligibility === 'object'
+    ? outputs.asset_plan_eligibility
+    : { eligible: false, issues: ['active_plan_eligibility_missing'] };
+  const assetPlanReady = planEligibility.eligible === true
+    && Boolean(outputs.asset_plan
+      && Array.isArray(outputs.asset_plan.cast_profiles)
+      && Array.isArray(outputs.asset_plan.scene_plan?.spaces)
+      && outputs.asset_plan.scene_plan.spaces.length);
   const blueprintReady = Boolean(outputs.blueprint && list(outputs.blueprint.beats).length);
   const storyboardReady = list(outputs.storyboard_table).length > 0;
   const keyframesReady = list(outputs.keyframes).length > 0;
@@ -44,6 +46,7 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       keyframes: list(outputs.keyframes).length,
       clips: list(outputs.video_clips).length,
     },
+    asset_plan_eligibility: planEligibility,
     steps: {
       brief: step(true, assetPlanReady, '', 'assets'),
       assets: step(briefInputReady || assetPlanReady, assetSetupComplete, referenceAttached && !referenceReady

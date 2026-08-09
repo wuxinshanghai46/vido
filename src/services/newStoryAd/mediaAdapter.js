@@ -41,17 +41,21 @@ function adapterFamily(provider = {}) {
 }
 
 function imageConfigStage(stage = '') {
-  const stageId = String(stage || '').trim();
-  if (/^new_story_ad\.person_dossier(?:_|$)/.test(stageId)) return 'new_story_ad.person_sheet';
-  if (/^new_story_ad\.prop_dossier(?:_|$)/.test(stageId)) return 'new_story_ad.scene_asset';
-  return stageId;
+  return String(stage || '').trim();
 }
 
 function stageCandidates(stage) {
   const configStage = imageConfigStage(stage);
+  if (configStage.startsWith('new_story_ad.') && !pipeline.getStageMeta(configStage)) {
+    const error = new Error(`${configStage} 尚未登记到模型调用管理，已在图片供应商调用前停止`);
+    error.code = 'MODEL_STAGE_NOT_REGISTERED';
+    error.status = 409;
+    error.retryable = false;
+    throw error;
+  }
   const configured = pipeline.pickAllEnabled(configStage);
   const defaults = (pipeline.getStageDefaults(configStage) || []).filter(x => x.enabled !== false);
-  return configured.length ? configured : defaults;
+  return pipeline.hasStageConfig(configStage) ? configured : defaults;
 }
 
 function modelKey(model = {}) {

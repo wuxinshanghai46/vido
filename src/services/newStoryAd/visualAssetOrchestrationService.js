@@ -48,6 +48,7 @@ function normalizedSceneTargets(body = {}) {
       space_id: String(target?.space_id || target?.scene_id || target?.id || '').trim(),
       name: String(target?.name || `场景 ${index + 1}`).trim(),
       scene_spec: target?.scene_spec && typeof target.scene_spec === 'object' ? target.scene_spec : undefined,
+      repair_existing: target?.repair_existing === true || target?.repairExisting === true,
     }))
     .filter(target => target.scene_id)
     .filter((target, index, rows) => rows.findIndex(row => row.scene_id === target.scene_id) === index)

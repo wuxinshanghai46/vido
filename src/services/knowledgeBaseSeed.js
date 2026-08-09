@@ -30,6 +30,7 @@ const luxuryAdIndustry = require('./seeds/luxury_ad_industry');
 const aiVisualCompliance = require('./seeds/ai_visual_compliance');
 const characterAssetCard = require('./seeds/character_asset_card');
 const generationRuntimePolicy = require('./seeds/generation_runtime_policy');
+const wardrobeSceneStyleKnowledge = require('./seeds/wardrobe_scene_style_knowledge');
 
 const seedDocs = [
   ...digitalHuman,
@@ -49,6 +50,7 @@ const seedDocs = [
   ...aiVisualCompliance,
   ...characterAssetCard,
   ...generationRuntimePolicy,
+  ...wardrobeSceneStyleKnowledge,
 ];
 
 module.exports = seedDocs;

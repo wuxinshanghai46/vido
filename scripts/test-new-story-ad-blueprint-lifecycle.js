@@ -218,7 +218,11 @@ async function main() {
     assert.match(auditFailure.message, /停止继续调用.*品牌\/IP.*公众人物/);
 
     const modelGatewaySource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/modelGateway.js'), 'utf8');
-    assert(modelGatewaySource.includes("'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)) break"));
+    assert(modelGatewaySource.includes("['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT']"), '内容审计与非法输入必须立即停止跨模型重试');
+    assert(modelGatewaySource.includes("'new_story_ad.story_facts_compact_retry'"));
+    assert(modelGatewaySource.includes("'new_story_ad.story_facts_repair'"));
+    assert(modelGatewaySource.includes("'new_story_ad.asset_plan_section_patch'"));
+    assert(modelGatewaySource.includes("&& !MANAGED_RECOVERY_FALLBACK_STAGES.has(String(stage || ''))"), '普通语义无效必须停止盲重试，只有受管恢复阶段可切换候选');
     const stepNavigationSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/step-navigation.js'), 'utf8');
     assert(stepNavigationSource.includes("if (step === 4) return !!state.blueprint;"));
     const generationFlowSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');

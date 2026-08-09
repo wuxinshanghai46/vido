@@ -2,6 +2,7 @@ const storage = require('../newStoryAd/storageService');
 const storyAd = require('../newStoryAd');
 const mediaAdapterDefault = require('../newStoryAd/mediaAdapter');
 const sketchGate = require('./storyboardSketchGateService');
+const knowledgePolicyRuntime = require('../newStoryAd/knowledgePolicyRuntimeService');
 const { v4: uuidv4 } = require('uuid');
 
 const ALLOWED_STATUSES = new Set(['draft', 'confirmed', 'skipped']);
@@ -56,6 +57,9 @@ function normalizeSketches(taskId, sketches = []) {
         composition_notes: clean(item.composition_notes || item.compositionNotes || item.notes, 1200),
         source: clean(item.source || (item.image_url || item.imageUrl ? 'upload' : 'manual'), 60),
         reference_count: Math.max(0, Number(item.reference_count || 0) || 0),
+        story_context_fingerprint: clean(item.story_context_fingerprint || item.storyContextFingerprint, 160),
+        source_content_revision: Math.max(1, Number(item.source_content_revision || item.sourceContentRevision || 1) || 1),
+        knowledge_policy: item.knowledge_policy && typeof item.knowledge_policy === 'object' ? item.knowledge_policy : null,
         updated_at: clean(item.updated_at, 80) || new Date().toISOString(),
       };
     })
@@ -73,6 +77,8 @@ function sketchFingerprint(sketches = []) {
     composition_notes: item.composition_notes,
     source: item.source,
     reference_count: item.reference_count,
+    story_context_fingerprint: item.story_context_fingerprint,
+    source_content_revision: item.source_content_revision,
   })));
 }
 
@@ -211,6 +217,31 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     || sceneViews[0]
     || {};
   const sceneReference = sceneView.image_url || sceneView.url || sceneAsset.image_url || '';
+  const blueprint = storage.getOutput(taskId, 'blueprint') || {};
+  const shotPosition = shots.indexOf(shot);
+  const previousShot = shotPosition > 0 ? shots[shotPosition - 1] : null;
+  const nextShot = shotPosition >= 0 && shotPosition < shots.length - 1 ? shots[shotPosition + 1] : null;
+  const storyContext = {
+    story_title: blueprint.title || '',
+    logline: blueprint.logline || blueprint.story_logline || '',
+    theme: blueprint.theme || '',
+    scene_name: sceneAsset.name || '',
+    scene_story_purpose: sceneAsset.story_purpose || '',
+    current: {
+      purpose: shot.purpose || '', dialogue: shot.dialogue || '', voiceover: shot.voiceover || '',
+      entry_frame_state: shot.entry_frame_state || '', exit_frame_state: shot.exit_frame_state || '',
+      screen_direction: shot.screen_direction || '', camera_axis: shot.camera_axis || '', eyeline: shot.eyeline || '',
+      object_states: shot.object_states || '', transition_reason: shot.transition_reason || '',
+    },
+    previous: previousShot ? { title: previousShot.title || '', action: previousShot.action || '', exit_frame_state: previousShot.exit_frame_state || '', screen_direction: previousShot.screen_direction || '', object_states: previousShot.object_states || '' } : null,
+    next: nextShot ? { title: nextShot.title || '', action: nextShot.action || '', entry_frame_state: nextShot.entry_frame_state || '', screen_direction: nextShot.screen_direction || '', object_states: nextShot.object_states || '' } : null,
+  };
+  const storyContextFingerprint = storage.canonicalFingerprint(storyContext);
+  const sketchKnowledge = knowledgePolicyRuntime.resolveTaskMany({
+    storage, taskId,
+    selectors: [{ stage: 'keyframe', assetType: 'shot' }, { stage: 'keyframe', assetType: 'person' }, { stage: 'keyframe', assetType: 'scene' }],
+    context,
+  });
   const referenceImages = storyAd.keyframeReferenceImages(context, sceneReference, null, shot, contract, sceneAsset);
   const hasBoundAssets = Boolean(sceneId
     || (Array.isArray(shot.characters) && shot.characters.length)
@@ -231,7 +262,9 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     `镜头标题：${clean(shot.title || `镜头 ${numericIndex}`, 160)}`,
     `画面：${clean(shot.visual || shot.visual_description || '', 1200)}`,
     `动作：${clean(shot.action || '', 800)}`,
-    `场景：${clean(shot.scene_zone || shot.scene_id || '', 220)}`,
+    `场景：${clean(sceneAsset.name || shot.scene_zone || shot.scene_id || '', 220)}；剧情用途：${clean(sceneAsset.story_purpose || '', 500)}`,
+    `故事与连续性权威：${clean(JSON.stringify(storyContext), 2600)}`,
+    '线稿必须画出本镜在故事中的动作因果，并承接上一镜退出状态、交给下一镜进入状态；银幕方向、视线、轴线和道具状态不得跳变。',
     referenceImages.length ? '附件参考图是当前任务的人物、商品与场景权威资产；只借鉴其中真实主体和空间关系，不复制档案排版、拼图边框或参考图背景。' : '',
     referenceImages.length ? '人物身份、服装、家具、桌床等道具、空间布局和机位方向必须与附件一致；附件中没有的物件不得自行增加。' : '',
     `镜头设置：${clean([
@@ -242,6 +275,7 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
       shot.subject_position,
       shot.camera_movement,
     ].filter(Boolean).join('；'), 700)}`,
+    knowledgePolicyRuntime.promptBlock(sketchKnowledge),
   ].filter(line => !line.endsWith('：')).join('\n');
   const generated = await mediaAdapter.generateImage({
     taskId,
@@ -267,6 +301,9 @@ async function generateSketch(taskId, shotIndex, options = {}, dependencies = {}
     composition_notes: clean(options.composition_notes || '', 1200),
     source: 'generated',
     reference_count: referenceImages.length,
+    story_context_fingerprint: storyContextFingerprint,
+    source_content_revision: Number(task.content_revision || 1) || 1,
+    knowledge_policy: knowledgePolicyRuntime.trace(sketchKnowledge),
     updated_at: new Date().toISOString(),
   };
   const next = normalizeSketches(taskId, [

@@ -1,6 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260806-auto-subject-dropdown-v71';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260806-auto-subject-dropdown-v71';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260806-auto-subject-dropdown-v71';
+import { createProjectStore } from './store/projectStore.js?v=20260810-platform-release-migration-v126';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-platform-release-migration-v126';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-platform-release-migration-v126';
+import { confirmDialog } from './components/dialog.js?v=20260810-platform-release-migration-v126';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -18,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260806-auto-subject-dropdown-v71'),
-  assets: () => import('./views/assetCenterView.js?v=20260806-auto-subject-dropdown-v71'),
-  plot: () => import('./views/plotRoomView.js?v=20260806-auto-subject-dropdown-v71'),
-  storyboard: () => import('./views/storyboardView.js?v=20260806-auto-subject-dropdown-v71'),
-  shot: () => import('./views/shotDesignerView.js?v=20260806-auto-subject-dropdown-v71'),
-  final: () => import('./views/finalView.js?v=20260806-auto-subject-dropdown-v71'),
-  workflow: () => import('./views/workflowView.js?v=20260806-auto-subject-dropdown-v71'),
+  brief: () => import('./views/briefView.js?v=20260810-platform-release-migration-v126'),
+  assets: () => import('./views/assetCenterView.js?v=20260810-platform-release-migration-v126'),
+  plot: () => import('./views/plotRoomView.js?v=20260810-platform-release-migration-v126'),
+  storyboard: () => import('./views/storyboardView.js?v=20260810-platform-release-migration-v126'),
+  shot: () => import('./views/shotDesignerView.js?v=20260810-platform-release-migration-v126'),
+  final: () => import('./views/finalView.js?v=20260810-platform-release-migration-v126'),
+  workflow: () => import('./views/workflowView.js?v=20260810-platform-release-migration-v126'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -134,7 +135,7 @@ function renderCenter() {
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
-                  <button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button>
+                  <span class="project-actions"><button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button><button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button></span>
                 </div>`;
               }).join('')}
               ${!loading && !visibleProjects.length ? `<div class="table-empty"><b>${projects.length ? '当前分类没有项目' : '还没有剧情广告项目'}</b><span>${projects.length ? '切换左侧分类查看其他项目。' : '点击“开始创作”建立第一个项目。'}</span></div>` : ''}
@@ -284,6 +285,24 @@ document.addEventListener('click', event => {
   }
   if (target.dataset.openProject) {
     navigate(`/story-ad/projects/${encodeURIComponent(target.dataset.openProject)}?view=brief`);
+    return;
+  }
+  if (target.dataset.deleteProject) {
+    const taskId = target.dataset.deleteProject;
+    const title = target.dataset.projectTitle || taskId;
+    (async () => {
+      const confirmed = await confirmDialog(`将彻底删除“${title}”及其任务记录和未被其他项目引用的本地生成文件。此操作无法恢复。`, {
+        title: '彻底删除项目', confirmText: '确认彻底删除', cancelText: '取消', danger: true,
+      });
+      if (!confirmed) return;
+      setButtonBusy(target, true, '删除中…');
+      try {
+        const result = await store.deleteProject(taskId);
+        renderCenter();
+        const files = Number(result.cleanup?.deleted_files || 0);
+        toast(`项目已彻底删除${files ? `，同时清理 ${files} 个专属文件` : ''}。`, 'success');
+      } catch (error) { setButtonBusy(target, false); toast(error.message, 'danger'); }
+    })();
     return;
   }
   if (target.dataset.view) {

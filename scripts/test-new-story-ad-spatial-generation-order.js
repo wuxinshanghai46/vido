@@ -444,18 +444,19 @@ async function main() {
     seedSingleSceneTask(duplicateTaskId, 'exact duplicate layout gate', 'duplicate-room');
     const callsBeforeDuplicateTask = calls.length;
     exactDuplicateFiles = true;
-    await assert.rejects(
-      () => sceneAssets.generateSceneAsset(duplicateTaskId, {
-        scene_id: 'duplicate-room',
-        scene_spec: context.scene_spec,
-        aspect_ratio: '16:9',
-      }),
-      error => error?.code === 'SCENE_VIEW_EXACT_DUPLICATE'
-        && error?.partial_scene_checkpoint === true,
-      '主视角与俯视布局文件完全相同时必须由代码硬拒绝',
-    );
+    const duplicateResult = await sceneAssets.generateSceneAsset(duplicateTaskId, {
+      scene_id: 'duplicate-room',
+      scene_spec: context.scene_spec,
+      aspect_ratio: '16:9',
+    });
     exactDuplicateFiles = false;
     assert.equal(calls.length - callsBeforeDuplicateTask, 3, '重复布局最多尝试两次，且不得继续生成其余派生视图');
+    assert.equal(duplicateResult.base_visual_ready, true, '布局增强失败不得抹掉已经成功的基础主视角');
+    assert.equal(duplicateResult.enhancement_pending, true);
+    assert.equal(duplicateResult.scene_asset.view_count, 1);
+    assert.equal(duplicateResult.scene_asset.view_images[0].key, 'master');
+    assert.equal(duplicateResult.scene_asset.partial_checkpoint, true);
+    assert.equal(storage.getTaskBundle(duplicateTaskId).stages.find(row => row.stage === 'scene_asset')?.status, 'warning');
     const duplicateCheckpoint = storage.getOutput(duplicateTaskId, 'scene_asset_checkpoint:duplicate-room');
     assert.equal(duplicateCheckpoint.status, 'partial');
     assert.equal(duplicateCheckpoint.views.master.status, 'succeeded');
@@ -774,9 +775,9 @@ async function main() {
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.scene_asset'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.keyframe'), 'gpt-image-2');
     assert.equal(mediaAdapter.requiredImageModelForStage('new_story_ad.storyboard_sketch'), 'gpt-image-2');
-    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_sheet');
-    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_sheet');
-    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.scene_asset');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_atlas'), 'new_story_ad.person_dossier_atlas');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.person_dossier_action'), 'new_story_ad.person_dossier_action');
+    assert.equal(mediaAdapter.imageConfigStage('new_story_ad.prop_dossier_atlas'), 'new_story_ad.prop_dossier_atlas');
     assert.equal(mediaAdapter.imageConfigStage('new_story_ad.scene_asset'), 'new_story_ad.scene_asset');
     assert.equal(mediaAdapter.requiredImageModelForStage('unrelated.image'), '');
     const policyCandidates = mediaAdapter.applyImageModelPolicy('new_story_ad.keyframe', [

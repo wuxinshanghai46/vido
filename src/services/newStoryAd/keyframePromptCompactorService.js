@@ -119,7 +119,10 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
     if (excerpt.name === 'pet') return /Pet consistency lock:/i.test(excerpt.text);
     if (excerpt.name === 'product') return /Product identity lock:/i.test(excerpt.text);
     if (excerpt.name === 'visual') return /User-edited visual override, highest priority:/i.test(excerpt.text);
-    if (excerpt.name === 'knowledge') return /^Knowledge policy|^HARD:|^GUIDANCE:/i.test(excerpt.text);
+    // Knowledge is an enhancement layer. It may use remaining prompt budget,
+    // but it must never evict identity, scene, product, surface or semantic
+    // fidelity contracts and make an otherwise valid base generation fail.
+    if (excerpt.name === 'knowledge') return false;
     return false;
   };
   const selectedIndexes = new Set();
@@ -133,7 +136,10 @@ function compactKeyframePrompt(parts = [], maxChars = 2400) {
   };
   // Reserve every generation-critical category before filling optional context.
   // The final output is restored to its natural category order afterwards.
-  for (const excerpt of excerpts.filter(requiredExcerpt)) reserve(excerpt);
+  const requiredPriority = ['safety', 'visual', 'scene', 'actor', 'product', 'pet', 'design'];
+  for (const name of requiredPriority) {
+    for (const excerpt of excerpts.filter(item => item.name === name && requiredExcerpt(item))) reserve(excerpt);
+  }
   for (const excerpt of excerpts) {
     if (selectedIndexes.has(excerpt.index)) continue;
     reserve(excerpt);

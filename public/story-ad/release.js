@@ -1,2 +1,2 @@
-export const CLIENT_BUILD_ID = "20260806-auto-subject-dropdown-v71";
-export const CLIENT_CONTRACT_VERSION = "reference-director-v4";
+export const CLIENT_BUILD_ID = "20260810-platform-release-migration-v126";
+export const CLIENT_CONTRACT_VERSION = "story-scene-platform-v6";

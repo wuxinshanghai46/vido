@@ -33,6 +33,18 @@ function longFormStageBudgetMs(stage = '', duration = 30, existingShotCount = 0)
   return Math.min(12 * 60 * 60 * 1000, Number(budgetsMinutes[stage] || 20) * 60 * 1000);
 }
 
+function sceneConfigStageBudgetMs({ pendingPhaseCount = 2, candidateCount = 3 } = {}) {
+  const phases = Math.max(1, Math.min(3, Math.round(Number(pendingPhaseCount) || 2)));
+  const candidates = Math.max(1, Math.min(4, Math.round(Number(candidateCount) || 3)));
+  // Text providers may consume close to one minute before returning a response
+  // that still needs semantic validation. Budget every pending phase separately
+  // so an earlier fallback cannot starve the next recoverable phase.
+  const perCandidateMs = 70 * 1000;
+  const persistenceAndValidationMs = 30 * 1000;
+  return Math.min(12 * 60 * 1000, Math.max(4 * 60 * 1000,
+    phases * candidates * perCandidateMs + persistenceAndValidationMs));
+}
+
 module.exports = {
   MIN_TARGET_DURATION,
   MAX_TARGET_DURATION,
@@ -43,4 +55,5 @@ module.exports = {
   shotCount,
   requiredStoryboardShotCount,
   longFormStageBudgetMs,
+  sceneConfigStageBudgetMs,
 };

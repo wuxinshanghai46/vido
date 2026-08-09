@@ -48,7 +48,53 @@ function compile(sceneSpec = {}, ctx = {}, body = {}) {
   };
 }
 
+function finitePoint(value) {
+  if (!Array.isArray(value) || value.length < 2) return [];
+  const point = value.slice(0, 3).map(Number);
+  return point.every(Number.isFinite) ? point : [];
+}
+
+// Environment reference images describe an empty reusable location. Story-state prose,
+// cast names and performance directions remain authoritative for storyboard generation,
+// but must never leak into the spatial image prompt and accidentally cast actors.
+function compileSpatialAsset(sceneSpec = {}, ctx = {}, body = {}) {
+  const compiled = compile(sceneSpec, ctx, body);
+  const anchors = compiled.interaction_anchors.map((anchor, index) => ({
+    id: cleanText(anchor.id || `anchor_${index + 1}`, 80),
+    label: cleanText(anchor.label || anchor.zone || `interaction_zone_${index + 1}`, 120),
+    position: finitePoint(anchor.normalized_position || anchor.position || anchor.center),
+    bounds: finitePoint(anchor.normalized_size || anchor.size || anchor.extent),
+  }));
+  const routes = compiled.routes.map((route, index) => ({
+    id: cleanText(route.id || `route_${index + 1}`, 80),
+    from: cleanText(route.from_zone || route.from || '', 120),
+    to: cleanText(route.to_zone || route.to || '', 120),
+    path: Array.isArray(route.path)
+      ? route.path.map(finitePoint).filter(point => point.length).slice(0, 12)
+      : [],
+  }));
+  const propPlacements = compiled.prop_placements
+    .filter(prop => prop.fixed === true || prop.type === 'fixed_scene_object')
+    .map(prop => ({
+      prop_id: cleanText(prop.prop_id || prop.id || '', 100),
+      name: cleanText(prop.name || '', 120),
+      placement: cleanText(prop.placement || '', 220),
+      fixed: true,
+    }));
+  return {
+    interaction_zones: anchors,
+    circulation_routes: routes,
+    fixed_prop_placements: propPlacements,
+    interaction_anchors: anchors,
+    routes,
+    story_states: [],
+    prop_placements: propPlacements,
+    has_evidence: Boolean(anchors.length || routes.length || propPlacements.length),
+  };
+}
+
 module.exports = {
   structuredRows,
   compile,
+  compileSpatialAsset,
 };

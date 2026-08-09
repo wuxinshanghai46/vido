@@ -45,11 +45,27 @@ function main() {
   const missingDependencies = [...closed].filter(file => !selected.has(file));
   assert.deepStrictEqual(missingDependencies, [], `本地依赖闭包漏发：${missingDependencies.slice(0, 12).join(', ')}`);
   [
+    'public/index.html',
+    'public/js/dashboard-workbench.js',
+    'src/routes/dashboard.js',
     'src/services/newStoryAd/knowledgePolicyCompilerService.js',
     'src/services/seeds/generation_runtime_policy.js',
     'scripts/test-new-story-ad-knowledge-policy-performance.js',
     'scripts/test-story-ad-release-closure.js',
+    'config/workflows-builtin/product-ad-copy.json',
+    'src/services/pipelineModelService.js',
+    'src/services/newStoryAd/contentSkillService.js',
+    'src/services/newStoryAd/briefAuthorityService.js',
+    'src/services/newStoryAd/assetPlanCheckpointLineageService.js',
+    'src/services/newStoryAd/assetPlanSectionRecoveryContractService.js',
+    'scripts/audit-story-ad-model-management.js',
+    'scripts/migrate-story-ad-v120-checkpoints.js',
+    'scripts/test-story-ad-v120-checkpoint-migration-v121.js',
   ].forEach(file => assert(selected.has(file), `本轮知识运行时文件漏发：${file}`));
+  assert.equal(runtimeManifest.schema_version, 2, 'runtime manifest schema must remain immutable-release v2');
+  assert.match(String(runtimeManifest.artifact_id || ''), /^[a-f0-9]{64}$/, 'runtime artifact identity is required');
+  assert.match(String(runtimeManifest.source_snapshot_hash || ''), /^[a-f0-9]{64}$/, 'source snapshot identity is required');
+  assert.match(String(runtimeManifest.lockfile_sha256 || ''), /^[a-f0-9]{64}$/, 'lockfile identity is required');
   const deploySource = fs.readFileSync(path.join(root, 'scripts/deploy-story-ad-release.js'), 'utf8');
   assert(deploySource.includes("require('./lib/storyAdReleaseFiles')"), '部署脚本必须使用统一发布集合');
   assert(deploySource.includes("process.env.ComSpec || 'cmd.exe'"), 'Windows 发布前回归必须通过命令解释器启动 npm，避免 spawnSync npm.cmd EINVAL');
@@ -59,6 +75,16 @@ function main() {
   assert(deploySource.includes("mv ${quote(`${stagingDir}/public/story-ad`)}"), '剧情广告静态目录必须整体切换');
   assert(deploySource.indexOf("pm2 reload vido") < deploySource.indexOf("npm run story-ad:knowledge-policy:test"), '发布后必须先 reload 再执行快速生产验收');
   assert(deploySource.includes('productionReleaseAfterReload.runtime_hash !== localRuntimeHash'), '发布后必须核对进程运行时哈希');
+  assert(deploySource.includes('VIDO_DEPLOY_UPLOAD_CONCURRENCY'), '多文件发布必须使用有上限的并发上传，避免串行上传耗尽部署时限');
+  assert(deploySource.includes('uploadedFiles !== files.length'), '发布前必须核对暂存上传文件总数');
+  const immutableDeploySource = fs.readFileSync(path.join(root, 'scripts/deploy-story-ad-immutable-release.js'), 'utf8');
+  assert(immutableDeploySource.includes('migrate-story-ad-v120-checkpoints.js --apply'), 'immutable cutover must run deterministic v120 checkpoint migration');
+  assert(immutableDeploySource.includes('migrate-story-ad-v120-checkpoints.js --rollback'), 'immutable rollback must restore migrated checkpoint lineage');
+  assert(immutableDeploySource.indexOf('const migration = await migrateReleaseState();')
+    > immutableDeploySource.indexOf('const drained = await releaseReadiness(previousTarget);'), 'checkpoint migration must occur only after drain verification');
+  assert(immutableDeploySource.indexOf('const migration = await migrateReleaseState();')
+    < immutableDeploySource.indexOf('/opt/vido/.current-next'), 'checkpoint migration must finish before current symlink cutover');
+  assert(immutableDeploySource.includes('UNSUPPORTED_RELEASE_MIGRATION'), 'unknown source bundles must fail closed instead of mixing versions');
   const buildSource = fs.readFileSync(path.join(root, 'scripts/build-story-ad-release.js'), 'utf8');
   assert(buildSource.includes('禁止复用已发布 build_id') && buildSource.includes('RUNTIME_MANIFEST_PATH'), '构建必须禁止同 build_id 覆盖不同运行时代码');
   console.log(JSON.stringify({ passed: true, release_files: files.length, runtime_directories: RUNTIME_DIRECTORIES.length, package_test_files: packageTestFiles(root).length }));

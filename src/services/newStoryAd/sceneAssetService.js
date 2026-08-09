@@ -17,6 +17,8 @@ const generationSpecCompletion = require('./generationSpecCompletionService');
 const visualAssetProgress = require('./visualAssetProgressService');
 const productAssetResolver = require('./productAssetResolverService');
 const sceneGenerationPolicy = require('./sceneGenerationPolicyService'), knowledgeRuntime = require('./knowledgePolicyRuntimeService');
+const sceneSpecProjection = require('./sceneSpecProjectionService');
+const sceneLayerContract = require('./sceneLayerContractService');
 
 const SCENE_VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
 const REQUIRED_SCENE_VIEW_KEYS = ['layout', ...SCENE_VIEW_KEYS];
@@ -24,6 +26,14 @@ const SCENE_GENERATION_ORDER = ['master', 'layout', 'reverse', 'interaction', 'd
 const SCENE_REPAIR_PLAN_VERSION = 5;
 const SCENE_GENERATION_CONTRACT_VERSION = 7;
 const LAYOUT_APPEARANCE_ROLE = 'master_derived_near_vertical_topdown';
+const SCENE_IMAGE_STAGE_BY_VIEW = Object.freeze({
+  atlas: 'new_story_ad.scene_extension_atlas',
+  master: 'new_story_ad.scene_extension_master',
+  layout: 'new_story_ad.scene_extension_layout',
+  reverse: 'new_story_ad.scene_extension_reverse',
+  interaction: 'new_story_ad.scene_extension_interaction',
+  detail: 'new_story_ad.scene_extension_detail',
+});
 const SCENE_IMAGE_EXTRA_ATTEMPTS = Math.max(0, Math.min(3, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_EXTRA_ATTEMPTS || 2) || 0));
 const SCENE_IMAGE_MAX_ATTEMPTS = 1 + SCENE_IMAGE_EXTRA_ATTEMPTS;
 const SCENE_IMAGE_RETRY_DELAY_MS = Math.max(0, Math.min(5000, Number(process.env.NEW_STORY_AD_SCENE_IMAGE_RETRY_DELAY_MS || 1200) || 0));
@@ -65,6 +75,10 @@ function sceneViewLabel(key = '') {
     layout: '俯视布局',
     atlas: '2×2 空间母图',
   }[key] || key || '场景视角';
+}
+
+function sceneImageStage(key = '') {
+  return SCENE_IMAGE_STAGE_BY_VIEW[String(key || '').trim()] || 'new_story_ad.scene_asset';
 }
 
 function normalizeSceneView(view = {}, index = 0) {
@@ -173,6 +187,7 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     prompt: cleanText(asset.prompt || '', 6000),
     repair_plan: repairPlan,
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
+    scene_layer: asset.scene_layer && typeof asset.scene_layer === 'object' ? asset.scene_layer : null,
     created_at: asset.created_at || new Date().toISOString(),
   };
 }
@@ -556,7 +571,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
   const custom = cleanText(body.description || body.scene_description || body.prompt || '', 1200);
   const layout = cleanText(sceneSpec.layoutText || sceneSpec.layout_text || sceneSpec.layout || '', 800);
   const materialLight = cleanText(sceneSpec.materialLightText || sceneSpec.material_light_text || sceneSpec.material || sceneSpec.light || '', 800);
-  const interaction = cleanText(sceneSpec.interactionText || sceneSpec.interaction_text || sceneSpec.interaction || sceneSpec.camera || '', 600), structuredScene = sceneStructuredContract.compile(sceneSpec, ctx, body);
+  const structuredScene = sceneStructuredContract.compileSpatialAsset(sceneSpec, ctx, body);
   const style = cleanText(ctx.controlled_production?.style_control?.notes || '', 420);
   const negative = cleanText(sceneSpec.negativeText || sceneSpec.negative_text || ctx.controlled_production?.negative_control?.text || body.negative || '', 800);
   const repairFeedback = cleanText(body.repair_feedback || body.repairFeedback || '', 1200);
@@ -633,7 +648,7 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
     custom ? `User scene requirement: ${custom}` : '',
     layout ? `Scene layout requirement: ${layout}` : '',
     materialLight ? `Scene material and lighting requirement: ${materialLight}` : '',
-    interaction ? `Scene interaction and camera position requirement: ${interaction}` : '', structuredScene.has_evidence ? `Structured scene evidence contract:\n${JSON.stringify(structuredScene)}` : '',
+    structuredScene.has_evidence ? `Empty spatial-use contract (zones and routes only; never render the actors or actions that will use them later):\n${JSON.stringify(structuredScene)}` : '',
     surfaceTopologyPrompt ? `Task-specific surface construction contract:\n${surfaceTopologyPrompt}` : '',
     `Task-specific material identity contract:\n${materialIdentityContract}`,
     style ? `Visual style direction: ${style}` : '',
@@ -646,13 +661,6 @@ function buildSceneSheetPrompt({ ctx = {}, sceneConfig = {}, body = {}, outputRo
       ? 'Final look target: a clean photoreal near-vertical top-down spatial survey of the same finished location, with the complete footprint and perimeter visible and free of readable typography, identifying marks or technical annotation.'
       : 'Final look target: real camera photography, authentic commercial location, natural commercial lighting, realistic materials, coherent spatial geometry and consistent perspective.',
   ].filter(Boolean).join('\n\n');
-}
-
-function sceneDescriptionForSpec(sceneSpec = {}, fallback = '') {
-  return cleanText(
-    sceneSpec?.layoutText || sceneSpec?.layout_text || sceneSpec?.layout || fallback || '',
-    1200,
-  );
 }
 
 function buildLayoutAcquisitionPrompt({ ctx = {}, body = {}, knowledgePolicy = {} } = {}) {
@@ -668,7 +676,7 @@ function buildLayoutAcquisitionPrompt({ ctx = {}, body = {}, knowledgePolicy = {
     'Material identity and surface topology are independent constraints: preserve both without turning materials into sample bands, panels or unrelated region boundaries.',
     requested.layout ? `Spatial topology to reveal: ${requested.layout}` : '',
     requested.material_light ? `Appearance identity to preserve from the master: ${requested.material_light}` : '',
-    requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '', requested.structured_scene_contract?.has_evidence ? `Map every declared interaction anchor, movement route, story state and prop placement into the same footprint: ${JSON.stringify(requested.structured_scene_contract)}` : '',
+    requested.interaction ? 'Reserve and visibly locate the task-required empty action/interaction zone and its access route. Do not import any camera height, lens, tracking, close-up, wall-facing or cinematic movement instruction from the commercial shot description.' : '', requested.structured_scene_contract?.has_evidence ? `Map every declared empty interaction zone, circulation route and fixed prop placement into the same footprint: ${JSON.stringify(requested.structured_scene_contract)}` : '',
     topology ? `Surface construction identity to preserve: ${topology}` : '',
     knowledgeRuntime.promptBlock(knowledgePolicy),
     requested.negative ? 'Task-defined scope boundary: include only the location, structures, materials, fixtures and action zones explicitly defined above; exact exclusions remain enforced by local requirement QA.' : '',
@@ -857,7 +865,9 @@ function buildSceneAuditSafePrompt({ ctx = {}, body = {}, viewKey = 'master', kn
     materialEvidenceRule,
     requested.layout ? `Spatial design: ${requested.layout}` : '',
     requested.material_light ? `Materials and lighting: ${requested.material_light}` : '',
-    requested.interaction ? `Camera and interaction zone: ${requested.interaction}` : '',
+    requested.structured_scene_contract?.has_evidence
+      ? `Empty spatial-use contract (zones and routes only; do not render cast or performances): ${JSON.stringify(requested.structured_scene_contract)}`
+      : '',
     topology ? `Surface construction: ${topology}` : '',
     requested.style ? `Visual style: ${requested.style}` : '',
     knowledgeRuntime.promptBlock(knowledgePolicy),
@@ -888,7 +898,9 @@ function sceneRequest(ctx = {}, body = {}) {
     spec.surfaceTopology || spec.surface_topology,
     [layout, materialLight, negative, spec.surfaceTopology?.notes, spec.surface_topology?.notes],
   );
-  const materialReferenceAvailable = sceneMaterialReferenceImages(ctx, body).length > 0, structuredScene = sceneStructuredContract.compile(spec, ctx, body);
+  const materialReferenceAvailable = sceneMaterialReferenceImages(ctx, body).length > 0;
+  const structuredScene = sceneStructuredContract.compile(spec, ctx, body);
+  const spatialScene = sceneStructuredContract.compileSpatialAsset(spec, ctx, body);
   return {
     layout,
     material_light: materialLight,
@@ -903,19 +915,11 @@ function sceneRequest(ctx = {}, body = {}) {
       scene_empty: true,
       required_evidence: ['empty_clearance', 'reachable_target', 'access_route'], interaction_anchors: structuredScene.interaction_anchors, movement_routes: structuredScene.routes, story_states: structuredScene.story_states, prop_placements: structuredScene.prop_placements,
     },
-    structured_scene_contract: structuredScene, material_reference_available: materialReferenceAvailable,
+    structured_scene_contract: spatialScene,
+    narrative_scene_contract: structuredScene,
+    material_reference_available: materialReferenceAvailable,
     style: cleanText(ctx.controlled_production?.style_control?.notes || body.style_summary || '', 800),
     negative,
-  };
-}
-
-function resolvedSceneSpec(spec = {}, requested = {}) {
-  const source = spec && typeof spec === 'object' ? spec : {};
-  const { surface_topology: ignoredSurfaceTopology, material_contract: ignoredMaterialContract, ...rest } = source;
-  return {
-    ...rest,
-    surfaceTopology: requested.surface_topology,
-    materialContract: requested.material_contract, storyStates: requested.structured_scene_contract?.story_states || [], interactionAnchors: requested.structured_scene_contract?.interaction_anchors || [], routes: requested.structured_scene_contract?.routes || [], propPlacements: requested.structured_scene_contract?.prop_placements || [],
   };
 }
 
@@ -951,6 +955,195 @@ function saveSceneAssetsToTask(taskId, sceneAssets = [], options = {}) {
   return normalized;
 }
 
+function baseVisualArtifact(view = {}, role = 'master', lineage = {}) {
+  if (!view || typeof view !== 'object') return null;
+  const imageUrl = cleanText(view.image_url || view.url || '', 1000);
+  if (!imageUrl) return null;
+  const assetHash = cleanText(view.file_sha256 || view.sha256 || sceneViewContentHash(view), 64)
+    || crypto.createHash('sha256').update(JSON.stringify({
+      role,
+      asset_id: view.asset_id || view.id || '',
+      image_url: imageUrl,
+      filename: view.filename || '',
+      provider_used: view.provider_used || '',
+    })).digest('hex');
+  return {
+    asset_id: cleanText(view.asset_id || view.id || view.filename || `${role}_${assetHash.slice(0, 16)}`, 160),
+    asset_hash: assetHash,
+    image_url: imageUrl,
+    lineage: {
+      role,
+      provider_used: cleanText(view.provider_used || '', 160),
+      source_url: cleanText(view.source_url || '', 1000),
+      ...lineage,
+    },
+  };
+}
+
+function publishBaseSceneAsset({
+  taskId, target, body, ctx, existing, previous, master, atlas, revision,
+  checkpoint, requested, prompt, knowledgePolicy, viewStrategy,
+} = {}) {
+  const masterArtifact = baseVisualArtifact(master, 'master', { scene_id: target.scene_id, scene_revision: revision });
+  const atlasArtifact = baseVisualArtifact(atlas, 'atlas', { scene_id: target.scene_id, scene_revision: revision });
+  if (!masterArtifact) return null;
+  const space = target.space || {};
+  const coveredBeatIds = Array.isArray(space.covered_beat_ids) && space.covered_beat_ids.length
+    ? space.covered_beat_ids
+    : [`scene:${target.scene_id}`];
+  const core = sceneLayerContract.publishCore(taskId, {
+    id: target.scene_id,
+    production_scene_key: space.production_scene_key || target.scene_id,
+    narrative_visit_id: space.narrative_visit_id || `visit:${target.scene_id}`,
+    covered_beat_ids: coveredBeatIds,
+    name: space.name || body.name || '任务场景',
+    description: space.description || body.description || '',
+    story_purpose: space.story_purpose || '',
+    scene_spec: target.scene_spec || body.scene_spec || body.sceneSpec || {},
+    topology_hash: target.scene_plan?.topology_hash || target.scene_plan?.compiler_hash || '',
+    base_visual: { master: masterArtifact, atlas: atlasArtifact },
+  });
+  // A failed repair candidate must never replace a previously complete active
+  // scene package. The new base visual remains auditable in the layer store.
+  if (previous && previous.partial_checkpoint !== true) return { core, asset: previous, preserved_previous: true };
+  const masterView = normalizeSceneView({
+    ...master,
+    key: 'master',
+    label: sceneViewLabel('master'),
+    url: master.image_url || master.url,
+    image_url: master.image_url || master.url,
+  }, 0);
+  const missing = SCENE_GENERATION_ORDER.filter(key => key !== 'master'
+    && !sceneCheckpoint.checkpointView(checkpoint, key));
+  const baseAsset = normalizeSceneAsset({
+    id: target.scene_id,
+    scene_id: target.scene_id,
+    space_id: target.space_id,
+    name: space.name || body.name || '任务场景',
+    source: 'new_story_ad_scene_base_visual',
+    scene_revision: revision,
+    lock_strength: body.lock_strength || body.lockStrength || 'standard',
+    layout_summary: body.layout_summary || body.layoutSummary || target.scene_spec?.layoutText || space.description || '',
+    material_summary: body.material_summary || body.materialSummary || target.scene_spec?.materialLightText || '',
+    interaction_summary: body.interaction_summary || body.interactionSummary || target.scene_spec?.interactionText || '',
+    style_summary: ctx.controlled_production?.style_control?.notes || '',
+    negative: body.negative || target.scene_spec?.negativeText || '',
+    surface_topology: requested.surface_topology,
+    material_contract: requested.material_contract,
+    material_reference_available: requested.material_reference_available,
+    image_url: masterView.image_url,
+    view_images: [masterView],
+    view_count: 1,
+    view_strategy: viewStrategy || 'progressive_layers',
+    generation_contract_version: SCENE_GENERATION_CONTRACT_VERSION,
+    partial_checkpoint: true,
+    checkpoint_status: 'base_visual_ready',
+    completed_view_keys: ['master'],
+    failed_view_keys: [],
+    provider_used: masterView.provider_used,
+    prompt,
+    knowledge_policy_trace: knowledgeRuntime.trace(knowledgePolicy),
+    repair_plan: {
+      version: SCENE_REPAIR_PLAN_VERSION,
+      action: 'regenerate_failed_views',
+      view_keys: missing,
+      view_labels: missing.map(sceneViewLabel),
+      count: missing.length,
+      reasons: ['基础主视角已保存；仅继续缺失的空间增强视图'],
+      message: `基础场景已保存；后续只补 ${missing.map(sceneViewLabel).join('、') || '缺失增强项'}。`,
+    },
+    scene_layer: {
+      contract_version: sceneLayerContract.CONTRACT_VERSION,
+      core_revision: core.core_revision,
+      core_fingerprint: core.core_fingerprint,
+      base_visual: core.core.base_visual,
+    },
+  });
+  const sceneAssets = mergeSceneAssets(existing, baseAsset);
+  storage.saveOutput(taskId, 'scene_assets', sceneAssets);
+  const nextCtx = { ...ctx, scene_assets: sceneAssets };
+  storage.saveOutput(taskId, 'context', nextCtx);
+  storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
+  storage.saveStage(taskId, 'scene_asset', {
+    status: 'running',
+    output_summary: '基础场景主视角已安全保存，正在生成可续跑增强视图',
+    diagnostics: {
+      scene_id: target.scene_id,
+      base_visual_hash: masterArtifact.asset_hash,
+      missing_enhancements: missing,
+    },
+  });
+  return { core, asset: baseAsset, scene_assets: sceneAssets, preserved_previous: false };
+}
+
+function finishWithBaseScene({ taskId, target, basePublication, checkpoint, error, progressMode, progressViewKeys } = {}) {
+  const billingUnknown = ['unknown', 'submitted_unknown'].includes(String(error?.billingState || error?.billing_state || '').toLowerCase());
+  if (billingUnknown || error?.code === 'USER_CANCELLED' || error?.cancelled === true) throw error;
+  const stored = normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || []);
+  const index = stored.findIndex(item => String(item.scene_id || item.id) === String(target.scene_id));
+  const completed = SCENE_GENERATION_ORDER.filter(key => !!sceneCheckpoint.checkpointView(checkpoint, key));
+  const failed = [...new Set([
+    ...(Array.isArray(error?.failed_view_keys) ? error.failed_view_keys : []),
+    ...SCENE_GENERATION_ORDER.filter(key => key !== 'master' && !completed.includes(key)),
+  ])];
+  if (index >= 0 && stored[index].partial_checkpoint === true) {
+    stored[index] = normalizeSceneAsset({
+      ...stored[index],
+      partial_checkpoint: true,
+      checkpoint_status: 'enhancement_pending',
+      checkpoint_error_code: error?.code || 'SCENE_ENHANCEMENT_FAILED',
+      completed_view_keys: completed,
+      failed_view_keys: failed,
+      repair_plan: {
+        version: SCENE_REPAIR_PLAN_VERSION,
+        action: 'regenerate_failed_views',
+        view_keys: failed,
+        view_labels: failed.map(sceneViewLabel),
+        count: failed.length,
+        reasons: [cleanText(error?.message || '空间增强视图未完成', 300)],
+        message: `基础场景可用；下次只继续 ${failed.map(sceneViewLabel).join('、')}。`,
+      },
+    });
+    storage.saveOutput(taskId, 'scene_assets', stored);
+    const task = storage.getTask(taskId) || {};
+    const currentCtx = storage.getOutput(taskId, 'context') || task.request || {};
+    const nextCtx = { ...currentCtx, scene_assets: stored };
+    storage.saveOutput(taskId, 'context', nextCtx);
+    storage.updateTask(taskId, { request: nextCtx, retryable: true });
+  }
+  storage.saveStage(taskId, 'scene_asset', {
+    status: 'warning',
+    output_summary: basePublication?.preserved_previous
+      ? '本次增强未完成，上一版已验证场景保持不变'
+      : '基础场景已保存；空间增强未完成，可从缺失项继续',
+    diagnostics: {
+      scene_id: target.scene_id,
+      base_visual_ready: true,
+      completed_view_keys: completed,
+      missing_view_keys: failed,
+      enhancement_error_code: error?.code || 'SCENE_ENHANCEMENT_FAILED',
+    },
+  });
+  updateSceneGenerationProgress(taskId, {
+    mode: progressMode,
+    phase: 'complete',
+    sceneId: target.scene_id,
+    viewKeys: progressViewKeys,
+    verificationState: 'base_visual_ready',
+  });
+  const asset = index >= 0 ? stored[index] : basePublication?.asset;
+  return {
+    scene_asset: asset,
+    scene_assets: stored,
+    base_visual_ready: true,
+    enhancement_pending: true,
+    completed_view_keys: completed,
+    missing_view_keys: failed,
+    preserved_previous: basePublication?.preserved_previous === true,
+    retryable: true,
+  };
+}
+
 async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = storage.getTask(taskId);
@@ -961,15 +1154,17 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   );
   const baseCtx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
   const storedSceneConfig = storage.getOutput(taskId, 'scene_config') || {};
-  const target = sceneBinding.resolveSceneGenerationTarget({
+  let target = sceneBinding.resolveSceneGenerationTarget({
     sceneConfig: storedSceneConfig,
     context: baseCtx,
     body: { ...body, allow_incomplete_scene_spec: true },
   });
+  target = sceneSpecProjection.ensureNarrativeDescription(target);
   const sceneCompletion = await generationSpecCompletion.completeSceneSpec({
     taskId,
     brief: baseCtx.brief || task.request?.brief || '',
     productSubject: baseCtx.product_subject || task.request?.product_subject || '',
+    contentMode: baseCtx.content_mode || baseCtx.product_presentation?.mode,
     sceneId: target.scene_id,
     sceneName: target.space?.name || body.name || '',
     sceneSpec: target.scene_spec,
@@ -982,7 +1177,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     if (targetIndex >= 0) {
       target.scene_plan.spaces[targetIndex] = {
         ...target.scene_plan.spaces[targetIndex],
-        description: sceneDescriptionForSpec(sceneCompletion.scene_spec, target.scene_plan.spaces[targetIndex].description),
+        description: sceneSpecProjection.sceneDescriptionForSpec(sceneCompletion.scene_spec, target.scene_plan.spaces[targetIndex].description),
         scene_spec: sceneCompletion.scene_spec,
       };
     }
@@ -1008,7 +1203,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     if (targetIndex >= 0) {
       target.scene_plan.spaces[targetIndex] = {
         ...target.scene_plan.spaces[targetIndex],
-        description: sceneDescriptionForSpec(target.scene_spec, target.scene_plan.spaces[targetIndex].description),
+        description: sceneSpecProjection.sceneDescriptionForSpec(target.scene_spec, target.scene_plan.spaces[targetIndex].description),
         scene_spec: target.scene_spec,
       };
     }
@@ -1026,7 +1221,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const ctx = { ...baseCtx, scene_spec: target.scene_spec };
   const knowledgePolicy = knowledgeRuntime.resolveTaskMany({ storage, taskId, context: ctx, selectors: [{ stage: 'scene_asset', assetType: 'scene' }] });
   const sceneConfig = target.isolated_scene_config;
-  const authoritativeSceneDescription = sceneDescriptionForSpec(target.scene_spec);
+  const authoritativeSceneDescription = sceneSpecProjection.sceneDescriptionForSpec(target.scene_spec, target.space?.description || '');
   body = {
     ...body,
     scene_id: target.scene_id,
@@ -1061,11 +1256,14 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     requiredViews: requiredViewKeys,
     uploadedViewCount: Array.isArray(body.view_images) ? body.view_images.length : 0,
     videoAcquisitionEnabled: false,
+    qualityTier: body.video_quality || body.videoQuality || ctx.video_quality,
+    resolution: body.video_resolution || body.videoResolution || ctx.video_resolution,
   });
   if (!repairMode
     && runOptions.maintenanceLegacyAcquisition !== true
     && viewAcquisition.selected !== 'uploaded_views'
-    && viewAcquisition.selected !== 'atlas_2x2') {
+    && viewAcquisition.selected !== 'atlas_2x2'
+    && viewAcquisition.selected !== 'image_derived') {
     viewAcquisition.fallback_reason = 'new_scene_contract_v7_requires_atlas';
     viewAcquisition.selected = 'atlas_2x2';
   }
@@ -1198,7 +1396,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       });
       atlasResult = await generateCheckpointedSceneView(taskId, 'atlas', {
         taskId,
-        stage: 'new_story_ad.scene_asset',
+        stage: sceneImageStage('atlas'),
         prompt: sceneAtlas.buildSceneAtlasPrompt(scenePrompt, { repairFeedback }),
         filename: sceneCheckpoint.candidateFilename(checkpoint, 'atlas'),
         aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
@@ -1259,7 +1457,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const master = shouldGenerate('master')
     ? await generateCheckpointedSceneView(taskId, 'master', {
       taskId,
-      stage: 'new_story_ad.scene_asset',
+      stage: sceneImageStage('master'),
       prompt,
       filename: sceneCheckpoint.candidateFilename(checkpoint, 'master'),
       aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
@@ -1280,6 +1478,22 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     image_url: master.image_url || master.url,
     provider_used: master.provider_used,
   }, 0)];
+  const basePublication = publishBaseSceneAsset({
+    taskId,
+    target,
+    body,
+    ctx,
+    existing,
+    previous,
+    master: viewImages[0],
+    atlas: atlasResult,
+    revision,
+    checkpoint,
+    requested,
+    prompt,
+    knowledgePolicy,
+    viewStrategy: viewAcquisition.selected,
+  });
   let layout = selectedView('layout');
   let layoutAcquisition = checkpoint.layout_acquisition || previous?.view_acquisition?.layout_preflight || null;
   if (shouldGenerate('layout')) {
@@ -1289,24 +1503,28 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         if (!reserveExtraAttempt(generationBudget, 'layout_quality_retry')) break;
         sceneCheckpoint.syncRetryBudget(checkpoint, generationBudget);
       }
-      layout = await generateCheckpointedSceneView(taskId, 'layout', {
-        taskId,
-        stage: 'new_story_ad.scene_asset',
-        prompt: buildDerivedViewPrompt(layoutPrompt, 'layout', {
-          referenceOrder: atlasMode ? ['atlas'] : ['master'],
-          repairFeedback: layoutCorrection,
-        }),
-        filename: sceneCheckpoint.candidateFilename(checkpoint, 'layout'),
-        aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
-        resolution: body.resolution || '2K',
-        imageModel: 'gpt-image-2',
-        referenceImages: atlasMode
-          ? [atlasResult.url || atlasResult.image_url]
-          : [master.url || master.image_url],
-        requireReferences: true,
-        inputFidelity: 'low',
-        auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout', knowledgePolicy }),
-      }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+      try {
+        layout = await generateCheckpointedSceneView(taskId, 'layout', {
+          taskId,
+          stage: sceneImageStage('layout'),
+          prompt: buildDerivedViewPrompt(layoutPrompt, 'layout', {
+            referenceOrder: atlasMode ? ['atlas'] : ['master'],
+            repairFeedback: layoutCorrection,
+          }),
+          filename: sceneCheckpoint.candidateFilename(checkpoint, 'layout'),
+          aspectRatio: body.aspect_ratio || body.aspectRatio || '16:9',
+          resolution: body.resolution || '2K',
+          imageModel: 'gpt-image-2',
+          referenceImages: atlasMode
+            ? [atlasResult.url || atlasResult.image_url]
+            : [master.url || master.image_url],
+          requireReferences: true,
+          inputFidelity: 'low',
+          auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout', knowledgePolicy }),
+        }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
+      } catch (error) {
+        return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error, progressMode, progressViewKeys });
+      }
       if (exactSceneViewDuplicate(layout, [master])) {
         layoutAcquisition = {
           pass: false,
@@ -1360,7 +1578,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
         layoutRoleError.partial_scene_checkpoint = true;
         layoutRoleError.completed_view_keys = ['master'];
         layoutRoleError.failed_view_keys = ['layout'];
-        throw layoutRoleError;
+        return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error: layoutRoleError, progressMode, progressViewKeys });
       }
       layoutCorrection = [
         repairFeedback,
@@ -1387,7 +1605,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       : [master.url || master.image_url, layout.url || layout.image_url];
     const generated = await generateCheckpointedSceneView(taskId, key, {
       taskId,
-      stage: 'new_story_ad.scene_asset',
+      stage: sceneImageStage(key),
       prompt: buildDerivedViewPrompt(scenePrompt, key, {
         referenceOrder: detailView ? ['master'] : ['master', 'layout'],
         repairFeedback,
@@ -1429,7 +1647,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     firstError.partial_scene_checkpoint = true;
     firstError.completed_view_keys = progressViewKeys.filter(key => !!sceneCheckpoint.checkpointView(checkpoint, key));
     firstError.failed_view_keys = derivedFailures.map(item => item.key);
-    throw firstError;
+    return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error: firstError, progressMode, progressViewKeys });
   }
   const derivedViews = derivedResults.map(result => result.value);
   cancellation.throwIfCancelled(taskId);
@@ -1603,11 +1821,41 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     repair_plan: repairPlan,
     repair_history: repairHistory,
   });
+  const enhancementCandidate = sceneLayerContract.stageEnhancement(taskId, sceneId, {
+    reference_evidence: {
+      strategy: viewAcquisition.selected,
+      view_artifacts: viewImages.map(view => baseVisualArtifact(view, view.key, {
+        scene_id: sceneId,
+        scene_revision: revision,
+      })).filter(Boolean),
+    },
+    spatial: {
+      full_space_lock: sceneContract.full_space_lock === true,
+      space_lock_status: sceneContract.space_lock_status,
+      layout_contract: sceneContract.layout_contract,
+      spatial_coverage_qa: sceneContract.spatial_coverage_qa,
+    },
+    visual_detail: {
+      photographic_realism_qa: sceneContract.photographic_realism_qa,
+      camera_design_qa: sceneContract.camera_design_qa,
+      cross_view_qa: sceneContract.cross_view_qa,
+    },
+  }, { expected_core_fingerprint: basePublication?.core?.core_fingerprint });
+  const activeEnhancement = sceneLayerContract.activateEnhancement(taskId, sceneId, {
+    candidate_id: enhancementCandidate.candidate_id,
+  });
+  asset.scene_layer = {
+    contract_version: sceneLayerContract.CONTRACT_VERSION,
+    core_revision: basePublication?.core?.core_revision || 0,
+    core_fingerprint: basePublication?.core?.core_fingerprint || '',
+    enhancement_revision: activeEnhancement.enhancement_revision,
+    enhancement_fingerprint: activeEnhancement.enhancement_fingerprint,
+  };
   const sceneAssets = mergeSceneAssets(existing, asset);
   const publishOptions = {
     sceneSpec: target.multi_scene
       ? null
-      : resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
+      : sceneSpecProjection.resolvedSceneSpec(body.scene_spec || body.sceneSpec || ctx.scene_spec || {}, requested),
   };
   if (runOptions.deferPublish !== true) saveSceneAssetsToTask(taskId, sceneAssets, publishOptions);
   if (runOptions.deferPublish !== true) sceneCheckpoint.markPublished(checkpoint, asset);
@@ -1812,4 +2060,4 @@ async function reverifySceneAsset(taskId, sceneId) {
   saveSceneAssetsToTask(taskId, assets);
   return { scene_asset: assets[index], scene_assets: assets };
 }
-module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };
+module.exports = { SCENE_VIEW_KEYS, REQUIRED_SCENE_VIEW_KEYS, SCENE_GENERATION_ORDER, SCENE_IMAGE_STAGE_BY_VIEW, SCENE_IMAGE_MAX_ATTEMPTS, SCENE_IMAGE_EXTRA_ATTEMPTS, SCENE_GENERATION_CONTRACT_VERSION, sceneViewLabel, sceneImageStage, sceneViewContentHash, exactSceneViewDuplicate, assertCompleteUpgradeSceneSpec, assertSceneRightsPreflight, sceneMaterialReferenceImages, buildSceneSheetPrompt, sceneStructuredContract: sceneStructuredContract.compile, sceneDescriptionForSpec: sceneSpecProjection.sceneDescriptionForSpec, buildLayoutAcquisitionPrompt, legacyScenePromptFingerprintText, buildDerivedViewPrompt, buildSceneAuditSafePrompt, sceneVisionThumbnailUrl, needsLayoutView, sceneRequest, buildSceneRepairPlan, sceneGenerationUpgradeRequired, normalizeSceneAssets, localizeSceneViews, localizeSceneAssets, saveSceneAssetsToTask, generateSceneAsset, repairSceneAsset, reverifySceneAsset, _resetSceneImageCircuit: resetSceneImageCircuit };

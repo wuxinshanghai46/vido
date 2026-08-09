@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260806-auto-subject-dropdown-v71';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260806-auto-subject-dropdown-v71';
+import { request } from '../api.js?v=20260810-platform-release-migration-v126';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-platform-release-migration-v126';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

@@ -1,16 +1,26 @@
 const { cleanText } = require('./contextBuilder');
 const propReferences = require('./propReferenceService');
 
-function memberIdentityReference(item = {}) {
-  const nativeFace = item.native_masters?.face || item.nativeMasters?.face;
-  const nativeBody = item.native_masters?.body || item.nativeMasters?.body;
-  const atomic = Array.isArray(item.atomic_assets) ? item.atomic_assets : [];
+function selectedLookAsset(item = {}, shot = {}) {
+  const sceneId = cleanText(shot.scene_id || shot.scene_asset_id || '', 120);
+  const lookId = cleanText(shot.look_id || shot.lookId || '', 100);
+  const rows = Array.isArray(item.look_assets) ? item.look_assets : [];
+  return rows.find(look => lookId && String(look.id || '') === lookId)
+    || rows.find(look => sceneId && Array.isArray(look.scene_ids) && look.scene_ids.includes(sceneId))
+    || (rows.length === 1 ? rows[0] : null);
+}
+
+function memberIdentityReference(item = {}, shot = {}) {
+  const selected = selectedLookAsset(item, shot) || item;
+  const nativeFace = selected.native_masters?.face || selected.nativeMasters?.face;
+  const nativeBody = selected.native_masters?.body || selected.nativeMasters?.body;
+  const atomic = Array.isArray(selected.atomic_assets) ? selected.atomic_assets : [];
   const preferred = atomic.find(asset => asset.kind === 'identity' && asset.key === 'face_front')
     || atomic.find(asset => asset.kind === 'body' && asset.key === 'front');
   return nativeFace?.image_url || nativeFace?.url || nativeBody?.image_url || nativeBody?.url
     || preferred?.image_url || preferred?.url
-    || item.referenceImageUrl || item.image_url || item.url
-    || item.view_images?.[0]?.url || item.view_images?.[0]?.image_url || '';
+    || selected.referenceImageUrl || selected.image_url || selected.url
+    || selected.view_images?.[0]?.url || selected.view_images?.[0]?.image_url || '';
 }
 
 function castReferenceUrls(ctx = {}, shot = {}) {
@@ -28,7 +38,7 @@ function castReferenceUrls(ctx = {}, shot = {}) {
       120,
     ).toLowerCase()))
     : sources;
-  return [...new Set((matching.length ? matching : sources).map(memberIdentityReference).filter(Boolean))];
+  return [...new Set((matching.length ? matching : sources).map(item => memberIdentityReference(item, shot)).filter(Boolean))];
 }
 
 function petReferenceUrls(ctx = {}) {
@@ -42,9 +52,10 @@ function subjectBoardUrl(ctx = {}) {
 }
 
 function shotActionReference(person = {}, shot = {}) {
+  const selected = selectedLookAsset(person, shot) || person;
   const shotIndex = Number(shot.shot_index ?? shot.index ?? shot.order - 1);
-  const views = Array.isArray(person.view_images) ? person.view_images : [];
-  const atomic = Array.isArray(person.atomic_assets) ? person.atomic_assets : [];
+  const views = Array.isArray(selected.view_images) ? selected.view_images : [];
+  const atomic = Array.isArray(selected.atomic_assets) ? selected.atomic_assets : [];
   if (Number.isFinite(shotIndex)) {
     const specific = views.find(view => cleanText(view?.key || view?.view || '', 60) === `action_shot_${shotIndex}`);
     if (specific) return specific.url || specific.image_url || '';
@@ -101,6 +112,7 @@ function keyframeReferenceUrls(ctx = {}, options = {}) {
 
 module.exports = {
   memberIdentityReference,
+  selectedLookAsset,
   castReferenceUrls,
   petReferenceUrls,
   subjectBoardUrl,

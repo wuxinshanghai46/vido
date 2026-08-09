@@ -37,6 +37,14 @@ function main() {
   if (!/^[a-z0-9][a-z0-9._-]{7,80}$/i.test(String(release.build_id || ''))) {
     throw new Error('story-ad build_id 无效');
   }
+  const nodeRuntime = release.node_runtime || {};
+  if (!/^v\d+\.\d+\.\d+$/.test(String(nodeRuntime.version || ''))
+    || !/^https:\/\//.test(String(nodeRuntime.url || ''))
+    || !/^[a-f0-9]{64}$/.test(String(nodeRuntime.sha256 || ''))
+    || !/^[a-z0-9._-]+$/i.test(String(nodeRuntime.platform || ''))) {
+    throw new Error('story-ad node_runtime 缺少固定版本、平台、HTTPS URL 或 SHA256');
+  }
+  const targetNodeMajor = Number(String(nodeRuntime.version).replace(/^v/, '').split('.')[0]);
   let priorPublicManifest = null;
   if (fs.existsSync(MANIFEST_PATH)) {
     priorPublicManifest = JSON.parse(fs.readFileSync(MANIFEST_PATH, 'utf8'));
@@ -96,6 +104,18 @@ function main() {
       : fs.readFileSync(path.join(ROOT, file));
     return { path: file, bytes: content.length, sha256: sha256(content) };
   });
+  const lockfileSha256 = sha256(fs.readFileSync(path.join(ROOT, 'package-lock.json')));
+  const sourceSnapshotHash = sha256(Buffer.from(JSON.stringify(runtimeEntries.map(entry => ({
+    path: entry.path, bytes: entry.bytes, sha256: entry.sha256,
+  })).sort((a, b) => a.path.localeCompare(b.path))), 'utf8'));
+  const artifactId = sha256(Buffer.from(JSON.stringify({
+    build_id: release.build_id,
+    contract_version: release.contract_version,
+    lockfile_sha256: lockfileSha256,
+    source_snapshot_hash: sourceSnapshotHash,
+    node_major: targetNodeMajor,
+    node_runtime_sha256: nodeRuntime.sha256,
+  }), 'utf8'));
   let priorRuntime = null;
   if (fs.existsSync(RUNTIME_MANIFEST_PATH)) {
     priorRuntime = JSON.parse(fs.readFileSync(RUNTIME_MANIFEST_PATH, 'utf8'));
@@ -109,9 +129,14 @@ function main() {
     }
   }
   const runtimeManifest = {
-    schema_version: 1,
+    schema_version: 2,
     build_id: release.build_id,
     contract_version: release.contract_version,
+    artifact_id: artifactId,
+    source_snapshot_hash: sourceSnapshotHash,
+    lockfile_sha256: lockfileSha256,
+    node_version: nodeRuntime.version,
+    node_runtime: nodeRuntime,
     generated_at: priorRuntime?.build_id === release.build_id
       ? priorRuntime.generated_at
       : new Date().toISOString(),

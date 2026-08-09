@@ -47,7 +47,12 @@ async function main() {
   assert.equal(wardrobe.length, 4);
   assert.equal(calls.length, 6);
   assert(calls.every(call => call.stage.startsWith('new_story_ad.person_dossier_') && call.resolution === '2K' && call.requireReferences === true));
-  assert(calls.every(call => /不是从全身照放大的截图|独立物件拆解图/.test(call.prompt)));
+  const wearableCalls = calls.filter(call => call.stage === 'new_story_ad.person_dossier_wearable_accessory');
+  const wardrobeCalls = calls.filter(call => call.stage === 'new_story_ad.person_dossier_wardrobe_detail');
+  assert.equal(wearableCalls.length, 2);
+  assert.equal(wardrobeCalls.length, 4);
+  assert(wearableCalls.every(call => /独立物件/.test(call.prompt) && /不出现人物头像、身体、手、衣服/.test(call.prompt)));
+  assert(wardrobeCalls.every(call => /独立白底陈列|白底平铺|材质细节板|分别独立陈列/.test(call.prompt) && /不出现人物/.test(call.prompt)));
   await composites.generateWearableDetails(common, { mediaAdapter: fakeMedia });
   await composites.generateWardrobeDetails(common, { mediaAdapter: fakeMedia });
   assert.equal(calls.length, 6, '检查点恢复不得重复产生图片调用');
@@ -72,7 +77,7 @@ async function main() {
     project: { status: 'failed', stage: 'storyboard_failed', active_generation_id: '', error: '审核失败' },
     generation: { progress: { stage: 'storyboard', status: 'failed', phase: 'review_failed', completed: 4, total: 4, percent: 100, current_index: 4, message: '审核失败' } },
   });
-  assert.match(failedProgress, /自动审核未通过，生成已经停止/);
+  assert.match(failedProgress, /文字分镜质量审核未通过|自动审核未通过，生成已经停止/);
   assert.match(failedProgress, /已停止/);
   assert.doesNotMatch(failedProgress, /正在生成第 4 镜/);
   assert.doesNotMatch(failedProgress, /project-progress-track/);
@@ -103,13 +108,14 @@ async function main() {
     saveOutput: storage.saveOutput,
   };
   const outputs = {
-    storyboard_table: [1, 2, 3].map(index => ({ shot_index: index, title: `镜头${index}`, visual: `画面${index}`, scene_id: 'scene-a', characters: [{ id: 'actor-a' }] })),
+    storyboard_table: [1, 2, 3].map(index => ({ shot_index: index, title: `镜头${index}`, visual: `画面${index}`, action: `动作${index}`, purpose: `推进故事节点${index}`, scene_id: 'scene-a', characters: [{ id: 'actor-a' }], entry_frame_state: `承接状态${index}`, exit_frame_state: `退出状态${index}`, screen_direction: '从画左向画右', object_states: `道具状态${index}` })),
     storyboard_sketches: [],
     storyboard_meta: { status: 'ready' },
     quality_review: { passed: true, blocking_issues: [], rewrite_issues: [] },
     keyframe_contracts: [1, 2, 3].map(index => ({ shot_index: index, scene_lock: { scene_id: 'scene-a', scene_view: 'master' } })),
-    scene_assets: [{ id: 'scene-a', scene_id: 'scene-a', image_url: '/scene.png', view_images: [{ key: 'master', image_url: '/scene-master.png' }] }],
+    scene_assets: [{ id: 'scene-a', scene_id: 'scene-a', name: '故事发生地', story_purpose: '人物在这里完成冲突与和解', image_url: '/scene.png', view_images: [{ key: 'master', image_url: '/scene-master.png' }] }],
     context: { output_ratio: '16:9', person_asset: { id: 'actor-a', image_url: '/person.png' } },
+    blueprint: { title: '回到故乡', logline: '两位旧友在故事发生地重逢并和解', theme: '和解与重新出发' },
   };
   const batchCalls = [];
   const batchProgressHistory = [];
@@ -139,6 +145,10 @@ async function main() {
     assert(batchCalls.every(call => call.requireReferences === true && call.inputFidelity === 'high'));
     assert(batchCalls.every(call => call.referenceImages.length >= 2));
     assert(batchCalls.every(call => /附件参考图是当前任务.*权威资产/.test(call.prompt)));
+    assert(batchCalls.every(call => /故事与连续性权威/.test(call.prompt)));
+    assert(batchCalls.every(call => /人物在这里完成冲突与和解/.test(call.prompt)));
+    assert(batchCalls[1].prompt.includes('退出状态1') && batchCalls[1].prompt.includes('承接状态3'), '中间镜必须同时包含前后镜连续性');
+    assert(outputs.storyboard_sketches.every(item => item.story_context_fingerprint && item.source_content_revision === 1));
 
     outputs.storyboard_sketches = [];
     outputs.quality_review = { passed: false, blocking_issues: ['人物合同缺失'], rewrite_issues: [] };

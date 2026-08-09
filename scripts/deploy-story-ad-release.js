@@ -1,5 +1,9 @@
 'use strict';
 
+if (process.env.VIDO_ALLOW_LEGACY_IN_PLACE_DEPLOY !== '1') {
+  throw new Error('旧的原地覆盖发布入口已禁用。请使用 npm run story-ad:release:deploy 部署不可变制品。');
+}
+
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const fs = require('fs');
@@ -176,13 +180,21 @@ client.on('ready', async () => {
     const directories = [...new Set(files.map(file => path.posix.dirname(file)).filter(dir => dir !== '.'))];
     await exec(`mkdir -p ${directories.map(dir => quote(`${stagingDir}/${dir}`)).join(' ')}`);
     sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
-    for (const file of files) {
-      await new Promise((resolve, reject) => sftp.fastPut(
-        path.join(root, file),
-        `${stagingDir}/${file}`,
-        error => error ? reject(error) : resolve(),
-      ));
-    }
+    const uploadConcurrency = Math.max(1, Math.min(12, Number(process.env.VIDO_DEPLOY_UPLOAD_CONCURRENCY) || 8));
+    let uploadedFiles = 0;
+    const uploadQueue = files.slice();
+    await Promise.all(Array.from({ length: Math.min(uploadConcurrency, uploadQueue.length) }, async () => {
+      while (uploadQueue.length) {
+        const file = uploadQueue.shift();
+        await new Promise((resolve, reject) => sftp.fastPut(
+          path.join(root, file),
+          `${stagingDir}/${file}`,
+          error => error ? reject(error) : resolve(),
+        ));
+        uploadedFiles += 1;
+      }
+    }));
+    if (uploadedFiles !== files.length) throw new Error(`Staging upload incomplete: ${uploadedFiles}/${files.length}`);
 
     const jsChecks = files.filter(file => file.endsWith('.js')).map(file => (
       file.startsWith('public/story-ad/')

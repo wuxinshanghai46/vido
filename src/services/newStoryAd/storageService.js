@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const sqlite = require('../../db/sqlite');
 const contentRecords = require('../../repositories/contentRecordRepository');
 const cancellation = require('./cancellationContext');
+const releaseBundle = require('../storyAdReleaseBundleService');
 
 const DB_PATH = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'), 'new_story_ad_db.json');
 const HEALTH_PATH = path.resolve(process.env.OUTPUT_DIR || path.join(__dirname, '../../../outputs'), 'new_story_ad_model_health.json');
@@ -229,27 +230,39 @@ function dedupeLatestTasks(rows = []) {
   return [...latest.values()];
 }
 
+function latestTaskRowsById(rows = []) {
+  const latest = new Map();
+  const timestamp = task => Date.parse(task.updated_at || task.created_at || '') || 0;
+  for (const task of rows) {
+    const id = String(task?.id || '');
+    if (!id) continue;
+    const current = latest.get(id);
+    if (!current || timestamp(task) >= timestamp(current)) latest.set(id, task);
+  }
+  return [...latest.values()];
+}
+
 function listTasks({ limit = 50, status = '', userId = '' } = {}) {
   let rows = listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
   if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
-  return dedupeLatestTasks(rows)
+  return latestTaskRowsById(rows)
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')))
-    .slice(0, Math.max(1, Math.min(200, Number(limit) || 50)));
+    .slice(0, Math.max(1, Math.min(5000, Number(limit) || 50)));
 }
 
 function listTaskRows({ status = '', userId = '' } = {}) {
   let rows = listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
   if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
-  return dedupeLatestTasks(rows)
+  return latestTaskRowsById(rows)
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
 }
 
 function deleteTask(taskId) {
   const id = String(taskId || '');
   if (!id || !getTask(id)) return false;
-  for (const key of ['stages', 'outputs', 'model_calls', 'reviews', 'snapshots', 'artifacts', 'generation_runs']) {
+  for (const key of ['assets', 'stages', 'outputs', 'model_calls', 'reviews', 'snapshots', 'artifacts', 'generation_runs']) {
     const related = listRows(key).filter(row => String(row.task_id || '') === id);
     related.forEach(row => removeRow(key, row.id));
   }
@@ -560,6 +573,11 @@ function saveReview(taskId, stage, review) {
 }
 
 function saveModelCall(call) {
+  const task = call.task_id ? getTask(call.task_id) : null;
+  const envelope = releaseBundle.envelope({
+    content_revision: Number(call.content_revision || task?.content_revision || 0) || 0,
+    generation_id: call.generation_id || task?.active_generation_id || '',
+  });
   const row = {
     id: call.id || `${call.task_id || 'task'}:${call.stage || 'stage'}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
     task_id: call.task_id || '',
@@ -584,6 +602,13 @@ function saveModelCall(call) {
     provider_error_code: call.provider_error_code || '',
     latency_ms: call.latency_ms || 0,
     fallback_rank: call.fallback_rank || 0,
+    producer_bundle_id: call.producer_bundle_id || envelope.producer_bundle_id,
+    build_id: call.build_id || envelope.build_id,
+    contract_version: call.contract_version || envelope.contract_version,
+    runtime_hash: call.runtime_hash || envelope.runtime_hash,
+    normalizer_version: call.normalizer_version || envelope.normalizer_version,
+    topology_compiler_version: call.topology_compiler_version || envelope.topology_compiler_version,
+    content_revision: Number(call.content_revision || envelope.content_revision || 0) || 0,
     created_at: nowIso(),
     updated_at: nowIso(),
   };
@@ -624,6 +649,7 @@ module.exports = {
   listTasks,
   listTaskRows,
   dedupeLatestTasks,
+  latestTaskRowsById,
   taskFingerprint,
   deleteTask,
   saveStage,

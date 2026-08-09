@@ -7,6 +7,8 @@ const jwt = require('jsonwebtoken');
 const mediaDelivery = require('./services/mediaDeliveryService');
 const storyAdRelease = require('../config/story-ad-release.json');
 const storyAdReleaseIntegrity = require('./services/storyAdReleaseIntegrityService');
+const storyAdReleaseBundleService = require('./services/storyAdReleaseBundleService');
+const storyAdReleaseControl = require('./services/storyAdReleaseControlService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +32,12 @@ if (process.env.STORY_AD_VERIFY_RELEASE !== '0') {
 }
 const storyAdRuntimeManifest = storyAdRuntimeVerification?.manifest || require('../config/story-ad-runtime-manifest.json');
 const STORY_AD_RUNTIME_HASH = storyAdRuntimeVerification?.runtime_hash || storyAdReleaseIntegrity.manifestFingerprint(storyAdRuntimeManifest);
+if (process.env.STORY_AD_ENFORCE_NODE_RUNTIME === '1'
+  && String(storyAdRuntimeManifest.node_version || '') !== process.version) {
+  throw new Error(`Story Ad Node runtime mismatch: expected ${storyAdRuntimeManifest.node_version}, actual ${process.version}`);
+}
+const STORY_AD_RELEASE_BUNDLE = storyAdReleaseBundleService.identity();
+const STORY_AD_RELEASE_BUNDLE_ID = STORY_AD_RELEASE_BUNDLE.bundle_id;
 const STORY_AD_PROCESS_STARTED_AT = new Date().toISOString();
 
 // 初始化 auth 数据库（首次运行创建默认管理员）
@@ -96,19 +104,38 @@ app.use((req, res, next) => {
   res.setHeader('X-VIDO-Build', STORY_AD_BUILD_ID);
   res.setHeader('X-VIDO-Contract-Version', STORY_AD_CONTRACT_VERSION);
   res.setHeader('X-VIDO-Runtime-Hash', STORY_AD_RUNTIME_HASH);
+  res.setHeader('X-VIDO-Release-Bundle', STORY_AD_RELEASE_BUNDLE_ID);
+  const releaseControl = storyAdReleaseControl.writeEligibility(STORY_AD_RELEASE_BUNDLE_ID);
+  res.setHeader('X-VIDO-Release-Epoch', String(releaseControl.epoch || 0));
   if (!/\/assets\//.test(String(req.path || ''))) {
     res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   }
   if (['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())) return next();
+  if (!releaseControl.allowed) {
+    return res.status(503).json({
+      success: false,
+      code: 'RELEASE_DRAINING',
+      error: '平台正在进行版本原子切换，已暂停新的生成和写入；本次没有调用模型。',
+      release_control: releaseControl,
+    });
+  }
   if (process.env.STORY_AD_ALLOW_LEGACY_CLIENT === '1') return next();
   const clientBuild = String(req.get('X-VIDO-Client-Build') || '').trim();
-  if (clientBuild === STORY_AD_BUILD_ID) return next();
+  const clientBundle = String(req.get('X-VIDO-Client-Bundle') || '').trim();
+  const clientEpoch = Number(req.get('X-VIDO-Release-Epoch') || 0);
+  if (clientBuild === STORY_AD_BUILD_ID
+    && clientBundle === STORY_AD_RELEASE_BUNDLE_ID
+    && clientEpoch === Number(releaseControl.epoch || 0)) return next();
   return res.status(426).json({
     success: false,
     code: 'CLIENT_BUILD_EXPIRED',
     error: '当前剧情广告页面版本已经过期，为避免旧代码覆盖新内容，已停止本次操作。请刷新后继续。',
     expected_build: STORY_AD_BUILD_ID,
     received_build: clientBuild || 'missing',
+    expected_bundle: STORY_AD_RELEASE_BUNDLE_ID,
+    received_bundle: clientBundle || 'missing',
+    expected_epoch: Number(releaseControl.epoch || 0),
+    received_epoch: clientEpoch,
   });
 });
 // 手动解析 cookie（不引入 cookie-parser 依赖）
@@ -731,6 +758,10 @@ app.get('/api/story-ad/version', (req, res) => {
     build_id: STORY_AD_BUILD_ID,
     contract_version: STORY_AD_CONTRACT_VERSION,
     runtime_hash: STORY_AD_RUNTIME_HASH,
+    node_version: process.version,
+    release_bundle_id: STORY_AD_RELEASE_BUNDLE_ID,
+    release_bundle: STORY_AD_RELEASE_BUNDLE,
+    release_control: storyAdReleaseControl.writeEligibility(STORY_AD_RELEASE_BUNDLE_ID),
     process_id: process.pid,
     process_started_at: STORY_AD_PROCESS_STARTED_AT,
     legacy_story_ad_ui_enabled: false,

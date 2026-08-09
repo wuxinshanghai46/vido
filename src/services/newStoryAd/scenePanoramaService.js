@@ -264,6 +264,18 @@ function planForScene(taskId, sceneId) {
   };
 }
 
+function assertConfirmedPlan(body = {}, expected = {}) {
+  const confirmed = body.cost_confirmation === true
+    && clean(body.plan_fingerprint, 200) === clean(expected.plan_fingerprint, 200);
+  if (confirmed) return expected;
+  const error = new Error('开始 360 场景前必须读取并确认服务端最新调用计划；计划变化时不会继续调用模型');
+  error.code = 'PANORAMA_COST_CONFIRMATION_REQUIRED';
+  error.status = 400;
+  error.retryable = false;
+  error.current_plan = expected;
+  throw error;
+}
+
 async function generateScenePanorama(taskId, sceneId, body = {}, runOptions = {}, deps = {}) {
   const { assets, scene } = findScene(taskId, sceneId);
   const source = sourceView(scene);
@@ -437,6 +449,7 @@ module.exports = {
   sourceFingerprint,
   modelCallPlan,
   planForScene,
+  assertConfirmedPlan,
   reviewPanorama,
   generateScenePanorama,
 };

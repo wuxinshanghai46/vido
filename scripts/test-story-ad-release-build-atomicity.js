@@ -8,6 +8,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const sourceRoot = path.resolve(__dirname, '..');
+const { BASE_FILES } = require('./lib/storyAdReleaseFiles');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-release-build-'));
 
 function write(relative, content) {
@@ -33,7 +34,13 @@ function runBuild() {
 try {
   copy('scripts/build-story-ad-release.js');
   copy('scripts/lib/storyAdReleaseFiles.js');
-  write('config/story-ad-release.json', JSON.stringify({ build_id: 'atomic-release-v1', contract_version: 'contract-v1' }));
+  write('config/story-ad-release.json', JSON.stringify({
+    build_id: 'atomic-release-v1', contract_version: 'contract-v1',
+    node_runtime: {
+      version: 'v20.20.2', platform: 'linux-x64-glibc-217',
+      url: 'https://example.invalid/node-runtime.tar.xz', sha256: 'a'.repeat(64),
+    },
+  }));
   write('package.json', JSON.stringify({ name: 'atomic-fixture', scripts: {} }));
   write('package-lock.json', '{}\n');
   write('public/story-ad/index.html', '<script type="module" src="/story-ad/app.js?v=old-release-v0"></script>\n');
@@ -41,6 +48,13 @@ try {
   write('node_modules/three/build/three.module.min.js', 'export const three = true;\n');
   write('node_modules/three/build/three.core.min.js', 'export const core = true;\n');
   write('src/services/newStoryAd/runtime.js', 'module.exports = { version: 1 };\n');
+  BASE_FILES.forEach((relative) => {
+    const target = path.join(root, relative);
+    if (fs.existsSync(target)) return;
+    if (relative.endsWith('.json')) write(relative, '{}\n');
+    else if (relative.endsWith('.html')) write(relative, '<!doctype html>\n');
+    else write(relative, "'use strict';\n");
+  });
 
   const first = runBuild();
   assert.strictEqual(first.status, 0, first.stderr || first.stdout);
