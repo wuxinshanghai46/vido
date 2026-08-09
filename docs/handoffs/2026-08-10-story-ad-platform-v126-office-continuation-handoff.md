@@ -101,7 +101,7 @@ git show --name-status --format= 5837a83076396d0d5d8fdfc95b95ce0e92d35687
 - 主远端：`origin`（Gitee）；`gitee` 与 `origin` 指向同一仓库。
 - GitHub 为同步镜像，不作为生产运行代码权威。
 - 交接时 `origin` 与 `gitee` 已核对到相同最新提交，ahead/behind 均为 `0/0`。
-- GitHub HTTPS 443 连续连接失败，SSH 443 也因本机没有已验证 host key 而未继续；最后成功获取的镜像引用停在 `c6b9d00dc227fb549dddddcd8369a7cddf3c74b3`，因此 GitHub 镜像与主 Git **不一致**。明日必须从 `origin` 拉取，不能从 GitHub 镜像拉取本次交接。
+- GitHub HTTPS 443 连续连接失败；SSH 443 的 Ed25519 主机指纹已与 GitHub 官方公布值核对一致，但本机没有获 GitHub 授权的 SSH 公钥，认证被拒绝。最后成功获取的镜像引用停在 `c6b9d00dc227fb549dddddcd8369a7cddf3c74b3`，因此 GitHub 镜像与主 Git **不一致**。明日必须从 `origin` 拉取，不能从 GitHub 镜像拉取本次交接。
 
 公司电脑执行：
 
