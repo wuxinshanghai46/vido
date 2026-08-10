@@ -13,7 +13,7 @@ const { contextPrompt, cleanText, assertContextConsistent } = require('./context
 const { normalizeScenePlan, assertScenePlanContract } = require('./sceneBindingService');
 const assetPlanSceneContracts = require('./assetPlanSceneContractService');
 const personLooks = require('./personLookProfileService');
-const wardrobeStyleKnowledge = require('./wardrobeStyleKnowledgeService');
+const worldSetting = require('./worldSettingContractService');
 const contentSkill = require('./contentSkillService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const storyFactsPrompt = require('./storyFactsPromptService');
@@ -1229,8 +1229,8 @@ async function generate(taskId, options = {}) {
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
       '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
       '并行或对照叙事中的人物身份必须按用户原文判断：明确为不同人物时禁止合并；明确为同一人物跨时间层、换装或跨故事状态时只保留一个身份。不得根据题材示例自行假定人物关系。',
-      '同一人物在不同时间层、职业状态、身份状态或明确换装状态下，每套可见服装与妆造必须拆成独立 look_profiles，并用 scene_ids 绑定适用空间。严禁把多套造型合并进一个 wardrobeText。',
-      wardrobeStyleKnowledge.promptBlock({ brief: ctx.brief, productSubject: ctx.product_subject, extra: JSON.stringify(ctx.cast_profiles || []).slice(0, 6000) }),
+      '同一人物在不同时间层、职业状态、身份状态或明确换装状态下，每套可见服装与妆造必须拆成独立 look_profiles，并用 scene_ids 绑定适用空间、用 world_profile_id 绑定项目世界设定。严禁把多套造型合并进一个 wardrobeText。',
+      worldSetting.promptBlock(ctx.world_setting),
       currentContentMode === 'narrative_story'
         ? '本任务是纯剧情：scene_plan.advertised_subject 必须为 JSON 空字符串，禁止 advertised_product、商品、品牌、卖点、购买引导和销售转化。'
         : '本任务是商业广告：必须保留明确广告主体和可核对的主体证据，不得套用纯剧情空主体结构。',
@@ -1247,7 +1247,7 @@ async function generate(taskId, options = {}) {
   "story_seed":${currentContentMode === 'narrative_story'
     ? '{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":"","plot_beats":[{"id":"稳定节拍ID","phase":"opening/development/turning_point/resolution/transition","era":"来自输入的时间层/时期","time_anchor":"明确时间位置","location":"具体地点","production_state":"该节拍可见环境状态","production_relation":{"era":"same/continuous/changed","time":"same/continuous/changed","location":"same/continuous/changed","environment":"same/continuous/changed"},"production_requirements":{"layout":"布局事实","material_light":"材质光线事实","interaction":"动作区和路线事实","negative":"禁止内容"},"scene_change_reason":"关系说明","summary":"可见剧情动作","cause":"发生原因","consequence":"造成结果"}]}'
     : '{"logline":"广告故事梗概","opening":"","development":"","turning_point":"","resolution":""}'},
-  "cast_profiles": [{"id":"稳定人物ID","name":"人物名称","role":"剧情职责","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
+  "cast_profiles": [{"id":"稳定人物ID","name":"人物名称","role":"剧情职责","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"world_profile_id":"world_setting中的稳定ID","wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
   "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"${currentContentMode === 'narrative_story' ? 'wearable_accessory/story_prop/fixed_scene_object' : 'advertised_product/wearable_accessory/story_prop/fixed_scene_object'}","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
   "scene_plan": {
     "business_boundary":"业务边界","advertised_subject":"${currentContentMode === 'narrative_story' ? '' : '明确广告主体'}","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",

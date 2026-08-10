@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-scene-config-release-rebase-v131';
-import { loadProjectList } from './projectListStore.js?v=20260810-scene-config-release-rebase-v131';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-world-person-action-contracts-v132';
+import { loadProjectList } from './projectListStore.js?v=20260810-world-person-action-contracts-v132';
 
 export function createProjectStore() {
   const state = {
@@ -114,6 +114,7 @@ export function createProjectStore() {
         asset_setup_confirmed: context.asset_setup_confirmed === true,
         shot_design_confirmed: context.shot_design_confirmed === true,
         creative_direction: context.creative_direction ?? current.brief?.creative_direction,
+        world_setting: context.world_setting ?? current.brief?.world_setting,
       };
     }
     if (data.blueprint) next.story = { ...(current.story || {}), blueprint: data.blueprint, reference_draft: null, status: 'ready' };
@@ -128,7 +129,7 @@ export function createProjectStore() {
     return next;
   }
 
-  async function updateRequest(patch) {
+  async function updateRequest(patch, options = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
     set({ saving: true, error: '' });
@@ -143,7 +144,7 @@ export function createProjectStore() {
       // refreshSections merges into the existing complete bundle.  It updates
       // navigation without dropping story/shots and avoids a large all-section
       // response on every workflow transition.
-      const bundle = await refreshSections('summary');
+      const bundle = await refreshSections(options.refreshSections || 'summary');
       set({ saving: false });
       return bundle;
     } catch (error) {

@@ -32,7 +32,7 @@ const subjectAssetBundle = require('./subjectAssetBundleService');
 const sceneSpace = require('./sceneSpaceContractService'), assistSubjectProfiles = require('./assistSubjectProfileService');
 const subjectProfileText = require('./subjectProfileTextService');
 const subjectContinuityPolicy = require('./subjectContinuityPolicyService');
-const wardrobeStyleKnowledge = require('./wardrobeStyleKnowledgeService');
+const worldSetting = require('./worldSettingContractService');
 const revisionService = require('./revisionService'), sceneAuthority = require('./sceneAuthorityService'), personIdentity = require('./personIdentityContractService'), petIdentity = require('./petIdentityContractService');
 const personAssetLifecycle = require('./personAssetLifecycleService'), productIdentity = require('./productIdentityContractService');
 const personKeyframeQa = require('./personConsistencyQaService'), productKeyframeQa = require('./productConsistencyQaService');
@@ -3550,7 +3550,7 @@ async function assistBrief(body = {}, user = {}) {
     assistCreativeDirection.systemRule(),
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
     '同一人物存在换装、跨时代或多个明确故事状态时，人物数量不增加，但必须输出多个 look_profiles，并以 scene_ids 绑定适用场景；每个造型内部固定，禁止把多套造型拼接成一个 wardrobeText。',
-    isPersonSpec ? wardrobeStyleKnowledge.promptBlock({ brief: ctx.brief, extra: JSON.stringify({ person_spec: ctx.person_spec || {}, cast_profiles: ctx.cast_profiles || [] }).slice(0, 8000) }) : '',
+    isPersonSpec ? worldSetting.promptBlock(ctx.world_setting) : '',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,
     '当 mode 是 scene_spec 时，只补齐场景空间设定字段，必须围绕当前广告需求，不得写死行业、城市、人物或旧任务场景。当存在 analysis_quality.valid=true 的参考视频合同且用户未改写广告需求时，scene_spec 必须逐字保留 source_facts.environment，并在布局或材质字段逐字保留 source_facts.product_or_service 或至少一项 source_facts.materials；不得改成书房、办公室或其它无证据空间。缺少这些证据时宁可返回失败，也不能猜场景。',

@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-scene-config-release-rebase-v131';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-scene-config-release-rebase-v131';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-scene-config-release-rebase-v131';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-world-person-action-contracts-v132';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-world-person-action-contracts-v132';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -20,6 +20,17 @@ function formPayload(form) {
     output_size: String(data.get('output_size') || 'standard'),
     video_resolution: String(data.get('video_resolution') || '1080p'),
     production_mode: String(data.get('production_mode') || 'auto'),
+    world_setting: {
+      status: String(data.get('world_family') || 'auto') === 'auto' ? 'draft' : 'confirmed',
+      authority: { source: 'user', user_confirmed: String(data.get('world_family') || 'auto') !== 'auto' },
+      profiles: [{
+        id: 'world_1',
+        era_family: String(data.get('world_family') || 'auto'),
+        fidelity_mode: String(data.get('world_fidelity') || 'contemporary_realism'),
+        time_period: String(data.get('world_period') || '').trim(),
+        region: String(data.get('world_region') || '').trim(),
+      }],
+    },
     benchmark_strategy: {
       source: 'platform_competitor_learning',
       opening_hook: String(data.get('benchmark_opening_hook') || '').trim(),
@@ -116,6 +127,7 @@ export async function mount(host, context) {
   const brief = bundle.brief || {};
   const referenceAttached = Boolean(bundle.reference?.analysis_id);
   const benchmark = brief.benchmark_strategy || {};
+  const worldProfile = brief.world_setting?.profiles?.[0] || {};
   const referenceAction = referenceActionState(bundle.reference || {});
   const referenceStepVisible = referenceAttached && !route.isNew;
   host.innerHTML = `
@@ -143,6 +155,14 @@ export async function mount(host, context) {
             <option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
             <option value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'selected' : ''}>剧情</option>
           </select><small>广告主体会从内容目标、AI 帮写或参考视频中自动识别；剧情不会创建商品主体。</small></label>
+          <label class="field"><span>世界 / 时代类型</span><select class="select" name="world_family">
+            ${[['auto','根据内容识别'],['chinese_historical','中国古代'],['republican_china','民国'],['xianxia','仙侠'],['wuxia','武侠'],['modern_china','现代中国'],['modern_overseas','海外现代'],['western_historical','西方历史'],['medieval','中世纪'],['future','未来'],['post_apocalyptic','末日'],['cyberpunk','赛博朋克'],['mixed','混合世界'],['custom','自定义']].map(([value,label]) => `<option value="${value}" ${String(worldProfile.era_family || 'auto') === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select><small>这是项目级设定，会同时约束人物造型、场景、道具、分镜和提示词；不按行业写死。</small></label>
+          <label class="field"><span>写实严格度</span><select class="select" name="world_fidelity">
+            ${[['contemporary_realism','现实 / 当代写实'],['historical_realism','史实写实'],['stylized_history','艺术化历史'],['fantasy','幻想规则'],['custom','自定义规则']].map(([value,label]) => `<option value="${value}" ${String(worldProfile.fidelity_mode || 'contemporary_realism') === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select></label>
+          <label class="field"><span>具体时期</span><input class="input" name="world_period" maxlength="160" value="${escapeHtml(worldProfile.time_period || '')}" placeholder="如：北宋中期、1930年代、近未来2045年"></label>
+          <label class="field"><span>国家 / 地区</span><input class="input" name="world_region" maxlength="160" value="${escapeHtml(typeof worldProfile.region === 'string' ? worldProfile.region : '')}" placeholder="海外、西方历史或自定义世界请尽量写明"></label>
           <label class="field"><span>目标时长</span><select class="select" name="target_duration">
             ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
           </select></label>
@@ -217,7 +237,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260810-scene-config-release-rebase-v131');
+    const module = await import('./referenceUnderstandingView.js?v=20260810-world-person-action-contracts-v132');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -253,11 +273,13 @@ export async function mount(host, context) {
       video_resolution: latest.video_resolution || '1080p',
       production_mode: 'auto',
       benchmark_strategy: latest.benchmark_strategy || {},
+      world_setting: latest.world_setting || null,
     };
     Object.keys(current).forEach(key => {
       if (dirtyFields.has(key) || (key === 'content' && dirtyFields.has('brief')) || (key === 'benchmark_strategy' && [...dirtyFields].some(name => name.startsWith('benchmark_')))) authoritative[key] = current[key];
     });
     if (dirtyFields.has('content_mode')) authoritative.content_mode_source = 'user';
+    if (['world_family', 'world_fidelity', 'world_period', 'world_region'].some(name => dirtyFields.has(name))) authoritative.world_setting = current.world_setting;
     if (dirtyFields.has('brief') || dirtyFields.has('content_mode') || authoritative.content_mode === 'narrative_story') authoritative.product_subject = '';
     authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
     return authoritative;
@@ -282,6 +304,10 @@ export async function mount(host, context) {
       benchmark_camera_language: latest.benchmark_strategy?.camera_language || '',
       benchmark_prompt_method: latest.benchmark_strategy?.prompt_method || '',
       benchmark_naturalness_review: latest.benchmark_strategy?.naturalness_review || '',
+      world_family: latest.world_setting?.profiles?.[0]?.era_family || 'auto',
+      world_fidelity: latest.world_setting?.profiles?.[0]?.fidelity_mode || 'contemporary_realism',
+      world_period: latest.world_setting?.profiles?.[0]?.time_period || '',
+      world_region: typeof latest.world_setting?.profiles?.[0]?.region === 'string' ? latest.world_setting.profiles[0].region : '',
     };
     Object.entries(values).forEach(([name, value]) => {
       if (dirtyFields.has(name)) return;

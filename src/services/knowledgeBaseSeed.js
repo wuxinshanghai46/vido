@@ -31,6 +31,7 @@ const aiVisualCompliance = require('./seeds/ai_visual_compliance');
 const characterAssetCard = require('./seeds/character_asset_card');
 const generationRuntimePolicy = require('./seeds/generation_runtime_policy');
 const wardrobeSceneStyleKnowledge = require('./seeds/wardrobe_scene_style_knowledge');
+const storySemanticContracts = require('./seeds/story_semantic_contracts');
 
 const seedDocs = [
   ...digitalHuman,
@@ -51,6 +52,7 @@ const seedDocs = [
   ...characterAssetCard,
   ...generationRuntimePolicy,
   ...wardrobeSceneStyleKnowledge,
+  ...storySemanticContracts,
 ];
 
 module.exports = seedDocs;

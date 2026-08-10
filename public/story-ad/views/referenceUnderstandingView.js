@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
-import { confirmDialog } from '../components/dialog.js?v=20260810-scene-config-release-rebase-v131';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260810-scene-config-release-rebase-v131';
+  link.href = '/story-ad/reference-understanding.css?v=20260810-world-person-action-contracts-v132';
   document.head.appendChild(link);
 }
 

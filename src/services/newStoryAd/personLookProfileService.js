@@ -61,6 +61,8 @@ function normalizeLookProfiles(profile = {}, options = {}) {
       negativeText: clean(look.negativeText || look.negative_text || look.negative || fallbackNegative, 800),
       continuityText: clean(look.continuityText || look.continuity_text || look.continuity || '', 600),
       style_family: clean(look.style_family || look.styleFamily || '', 80),
+      world_profile_id: clean(look.world_profile_id || look.worldProfileId || '', 80),
+      world_revision: Math.max(0, Number(look.world_revision || look.worldRevision || 0) || 0),
       style_richness: normalizeStyleRichness(look.style_richness || look.styleRichness || profile.style_richness || profile.styleRichness),
       wardrobe_contract: look.wardrobe_contract && typeof look.wardrobe_contract === 'object'
         ? JSON.parse(JSON.stringify(look.wardrobe_contract))

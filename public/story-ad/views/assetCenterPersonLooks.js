@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
+import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -62,18 +62,24 @@ export function bindPersonLookForm(form) {
 
 export function collectPersonLookValues(values = {}, profile = {}) {
   const indices = [...new Set(Object.keys(values).map(key => key.match(/^look_(\d+)_/)?.[1]).filter(value => value !== undefined).map(Number))].sort((a, b) => a - b);
-  const looks = indices.map((index, order) => ({
-    id: String(values[`look_${index}_id`] || `${profile.id || 'cast'}_look_${order + 1}`).trim(),
-    name: String(values[`look_${index}_name`] || `造型 ${order + 1}`).trim(),
-    story_state: String(values[`look_${index}_story_state`] || '').trim(),
-    scene_ids: String(values[`look_${index}_scene_ids`] || '').split(',').map(value => value.trim()).filter(Boolean),
-    scene_names: String(values[`look_${index}_scene_names`] || '').split(',').map(value => value.trim()).filter(Boolean),
-    wardrobeText: String(values[`look_${index}_wardrobeText`] || '').trim(),
-    hairMakeupText: String(values[`look_${index}_hairMakeupText`] || '').trim(),
-    negativeText: String(values[`look_${index}_negativeText`] || '').trim(),
-    style_richness: String(values[`look_${index}_style_richness`] || 'auto').trim(),
-    source: 'user_edit',
-  })).filter(look => look.wardrobeText);
+  const existingById = new Map((Array.isArray(profile.look_profiles) ? profile.look_profiles : [])
+    .map(look => [String(look?.id || ''), look]));
+  const looks = indices.map((index, order) => {
+    const id = String(values[`look_${index}_id`] || `${profile.id || 'cast'}_look_${order + 1}`).trim();
+    return {
+      ...(existingById.get(id) || {}),
+      id,
+      name: String(values[`look_${index}_name`] || `造型 ${order + 1}`).trim(),
+      story_state: String(values[`look_${index}_story_state`] || '').trim(),
+      scene_ids: String(values[`look_${index}_scene_ids`] || '').split(',').map(value => value.trim()).filter(Boolean),
+      scene_names: String(values[`look_${index}_scene_names`] || '').split(',').map(value => value.trim()).filter(Boolean),
+      wardrobeText: String(values[`look_${index}_wardrobeText`] || '').trim(),
+      hairMakeupText: String(values[`look_${index}_hairMakeupText`] || '').trim(),
+      negativeText: String(values[`look_${index}_negativeText`] || '').trim(),
+      style_richness: String(values[`look_${index}_style_richness`] || 'auto').trim(),
+      source: 'user_edit',
+    };
+  }).filter(look => look.wardrobeText);
   const base = Object.fromEntries(Object.entries(values).filter(([key]) => !/^look_\d+_/.test(key)));
   return {
     ...base,

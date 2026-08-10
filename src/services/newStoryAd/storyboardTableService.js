@@ -8,6 +8,7 @@ const temporalEvidenceGraph = require('./temporalEvidenceGraphService');
 const brandEnding = require('./brandEndingService');
 const productionLimits = require('./productionLimitsService');
 const storyBeatShotCoverage = require('./storyBeatShotCoverageService');
+const actionSemantics = require('./actionSemanticsService');
 
 const { ensureChineseOutput } = require('./outputLanguageService');
 
@@ -440,6 +441,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers, speech_mode and continuity fields.',
     'For every shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that beat. Never copy one camera template across unrelated beats.',
     'For every shot, write entry_frame_state, exit_frame_state, action_start, action_end and object_states as visible states, even for the first shot.',
+    actionSemantics.promptBlock(),
     'For every shot, write temporal_state with open-vocabulary entity_refs, relation_refs, state_before, state_after, intended_changes, invariants, evidence_requirements and continuity_links. Never choose values from an industry template.',
     'keyframe_notes must contain three explicit task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”. Derive them from this user task; never use a fixed scene, person, product or industry.',
     'Never emit replacement characters, mojibake, placeholder text, or runs of question marks.',
@@ -541,6 +543,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'scene_zone_label_zh is the user-facing Simplified Chinese label for the selected zone. It may explain the binding but must not replace or change scene_zone_id/zone_ids.',
       'Do not invent unrelated spaces. A scene change must have transition_reason.',
       'Every shot, including the first, must describe entry_frame_state, exit_frame_state, action_start, action_end, camera_movement and object_states as visible states. Add screen_direction, eyeline, camera_axis and audio_bridge whenever they are relevant.',
+      actionSemantics.promptBlock(),
       'Set requires_previous_frame=true only when the current image must visually inherit an exact action, pose, object state, eyeline or composition from the immediately previous frame. Ordinary hard cuts with shared verified scene/person anchors must use false so they can generate in parallel.',
       'Choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement independently from the current shot purpose. These are cinematography controls, not fixed story templates; do not copy one camera signature across unrelated beats.',
       'The visual must be production-ready and state the task-relevant subject/product, environment, spatial relationship and proportions, plus material and lighting only where they matter. Do not pad it with irrelevant fixed details.',
@@ -728,6 +731,7 @@ async function rewriteStoryboard(ctx, blueprint, shots, issues, { taskId = '', o
     'For every repaired shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that shot purpose; never copy a fixed camera template.',
     'Write production-ready visual and action fields with task-relevant subject/product, environment, spatial relationship and proportions, plus material and lighting only where relevant.',
     'Write visible entry_frame_state, exit_frame_state, action_start, action_end and object_states for every repaired shot, including shot 1.',
+    actionSemantics.promptBlock(),
     'keyframe_notes must contain exactly three task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”.',
     'Remove replacement characters, mojibake, placeholders and runs of question marks from every user-visible field.',
     'Keep the requested commercial, story, product, proof, brand, UI, space, emotion or comparison dimensions visible as applicable.',

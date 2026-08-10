@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260810-scene-config-release-rebase-v131';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-scene-config-release-rebase-v131';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-scene-config-release-rebase-v131';
-import { confirmDialog } from './components/dialog.js?v=20260810-scene-config-release-rebase-v131';
+import { createProjectStore } from './store/projectStore.js?v=20260810-world-person-action-contracts-v132';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-world-person-action-contracts-v132';
+import { confirmDialog } from './components/dialog.js?v=20260810-world-person-action-contracts-v132';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260810-scene-config-release-rebase-v131'),
-  assets: () => import('./views/assetCenterView.js?v=20260810-scene-config-release-rebase-v131'),
-  plot: () => import('./views/plotRoomView.js?v=20260810-scene-config-release-rebase-v131'),
-  storyboard: () => import('./views/storyboardView.js?v=20260810-scene-config-release-rebase-v131'),
-  shot: () => import('./views/shotDesignerView.js?v=20260810-scene-config-release-rebase-v131'),
-  final: () => import('./views/finalView.js?v=20260810-scene-config-release-rebase-v131'),
-  workflow: () => import('./views/workflowView.js?v=20260810-scene-config-release-rebase-v131'),
+  brief: () => import('./views/briefView.js?v=20260810-world-person-action-contracts-v132'),
+  assets: () => import('./views/assetCenterView.js?v=20260810-world-person-action-contracts-v132'),
+  plot: () => import('./views/plotRoomView.js?v=20260810-world-person-action-contracts-v132'),
+  storyboard: () => import('./views/storyboardView.js?v=20260810-world-person-action-contracts-v132'),
+  shot: () => import('./views/shotDesignerView.js?v=20260810-world-person-action-contracts-v132'),
+  final: () => import('./views/finalView.js?v=20260810-world-person-action-contracts-v132'),
+  workflow: () => import('./views/workflowView.js?v=20260810-world-person-action-contracts-v132'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -216,6 +216,7 @@ async function mountView(route) {
         if (!route.isNew) await store.loadBundle(route.taskId, 'all');
         await renderRoute();
       },
+      refreshCurrentView: async () => mountView(currentRoute()),
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);

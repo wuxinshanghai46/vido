@@ -91,6 +91,8 @@ async function run() {
   };
   assert.equal(references.memberIdentityReference(personAsset, { scene_id: 'modern_hall' }), '/modern.png');
   assert.equal(references.memberIdentityReference(personAsset, { scene_id: 'ancient_garden', look_id: 'lin_ancient' }), '/ancient.png');
+  assert.equal(references.memberIdentityReference(personAsset, { scene_id: 'unknown_scene' }), '', '多造型无匹配时不得静默回落首套');
+  assert.equal(references.memberIdentityReference(personAsset, { scene_id: 'modern_hall', look_id: 'unknown_look' }), '', '显式未知造型不得按场景偷偷改选');
 
   const shots = storyboard.normalizeShots([{ index: 1, duration: 4, visual: '林静走入现代展厅', action: '行走', scene_id: 'modern_hall', look_id: 'lin_modern' }], { target_duration: 4 });
   assert.equal(shots[0].look_id, 'lin_modern', '分镜必须持久化造型绑定');
@@ -101,6 +103,8 @@ async function run() {
   assert.match(frontend, /data-person-look/);
   assert.match(frontend, /collectPersonLookValues/);
   assert.match(drawer, /renderPersonLookEditors/);
+  assert.match(drawer, /look_upgrade_required/);
+  assert.match(drawer, /personLookSummary/);
   console.log('person multi-look regression: 25 assertions passed');
 }
 

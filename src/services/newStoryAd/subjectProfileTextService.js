@@ -156,8 +156,13 @@ function dedupeClauses(value = '', max = 800) {
 
 function alignAgeDescription(value = '', age = '', max = 800) {
   const label = AGE_LABELS[String(age || '')] || '';
-  let cleaned = text(value, Math.max(max * 2, 1200))
-    .replace(AGE_DESCRIPTOR_PATTERN, '')
+  const normalized = text(value, Math.max(max * 2, 1200));
+  let cleaned = normalized.replace(AGE_DESCRIPTOR_PATTERN, '');
+  // A concrete age typed by the user is source truth. Never run the legacy
+  // 1-2 digit cleanup against 100/1000-year-old roles before persistence.
+  const explicitAgePattern = /(?<![\d\u002d\u2013\u2014\u81f3\u5230])\d{1,6}\s*\u5c81/u;
+  if (explicitAgePattern.test(cleaned)) return dedupeClauses(cleaned, max);
+  cleaned = cleaned
     .replace(/(?:年龄(?:约为|为|约)?|约|大约|看起来)?\s*\d{1,2}\s*(?:岁|周岁)(?:左右|上下)?/gu, '')
     .replace(/^[\s，、；:：的]+|[\s，、；]+$/gu, '')
     .replace(/[，、；]{2,}/gu, '，');

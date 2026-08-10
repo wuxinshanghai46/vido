@@ -10,6 +10,7 @@ const productionLimits = require('./productionLimitsService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const contentSkill = require('./contentSkillService');
 const personLooks = require('./personLookProfileService');
+const worldSetting = require('./worldSettingContractService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -663,6 +664,7 @@ function normalizeCastProfiles(input) {
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
       displayName: cleanText(profile.displayName || profile.name || '', 120),
       roleName: cleanText(profile.roleName || profile.role || '', 120),
+      age: cleanText(profile.age || '', 40),
       field_authority: subjectProfileText.profileFieldAuthority(profile),
       user_edited_fields: subjectProfileText.userEditedFields(profile),
       sourceType: cleanText(profile.sourceType || profile.reference_kind || '', 80),
@@ -1055,6 +1057,7 @@ function buildContext(body = {}, user = {}) {
     reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
   });
   const contentMode = productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject';
+  const worldSettingContract = worldSetting.normalize(body.world_setting || body.worldSetting);
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -1068,7 +1071,8 @@ function buildContext(body = {}, user = {}) {
     content_mode: contentMode,
     content_mode_source: contentModeSource,
     content_skill: contentSkill.snapshot(contentMode),
-    story_scene_contract_version: contentMode === 'narrative_story' ? 5 : 0,
+    story_scene_contract_version: contentMode === 'narrative_story' ? 6 : 0,
+    world_setting: worldSettingContract,
     target_duration: targetDuration,
     duration_source: durationContract.source,
     shot_count: shotCount,

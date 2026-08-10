@@ -549,6 +549,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       shot_design_confirmed: context.shot_design_confirmed === true,
       creative_direction: context.creative_direction || null,
       benchmark_strategy: benchmarkStrategy.resolve({ ...context, product_presentation: productAssetResolver.productPresentation(context) }),
+      world_setting: context.world_setting || null,
     };
   }
 

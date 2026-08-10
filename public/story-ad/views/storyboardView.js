@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
-import { confirmDialog } from '../components/dialog.js?v=20260810-scene-config-release-rebase-v131';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -16,9 +16,15 @@ export function friendlyBindings(bundle = {}, shot = {}) {
   const cameraId = shot.camera_id || '';
   const camera = (scene?.cameras || []).find(item => [item.id, item.camera_id].filter(Boolean).includes(cameraId));
   const characterIds = Array.isArray(shot.character_ids) ? shot.character_ids : [];
+  const lookId = String(shot.look_id || '');
+  const lookOwner = (assets.people || []).map(item => item.profile || {}).find(profile => (
+    (profile.look_profiles || []).some(look => String(look.id || '') === lookId)
+  ));
+  const look = (lookOwner?.look_profiles || []).find(item => String(item.id || '') === lookId);
   return [
     sceneId ? { id: sceneId, label: `场景：${scene?.name || shot.scene_name || '已绑定场景'}` } : null,
     cameraId ? { id: cameraId, label: `机位：${camera?.label || camera?.role || '已绑定机位'}` } : null,
+    lookId ? { id: lookId, label: `造型：${lookOwner?.displayName || lookOwner?.name || '人物'} · ${look?.name || '未知造型'}` } : null,
     ...characterIds.map(id => {
       const subject = subjects.find(entry => [entry.item.id, entry.item.asset_id, entry.item.subject_id].filter(Boolean).includes(id));
       return { id, label: `${subject?.label || '主体'}：${subject?.item?.name || subject?.item?.role || '已绑定主体'}` };

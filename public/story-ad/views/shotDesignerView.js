@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
-    ['scene_id', '使用场景'], ['scene_zone', '空间区域'], ['scene_view', '拍摄视角'], ['camera_id', '拍摄机位'],
+    ['scene_id', '使用场景'], ['scene_zone', '空间区域'], ['scene_view', '拍摄视角'], ['camera_id', '拍摄机位'], ['look_id', '人物造型'],
   ]],
   ['画面与镜头', [
     ['shot_size', '景别'], ['camera_angle', '俯仰角'], ['lens_mm', '焦段（mm）', 'number'],
@@ -68,6 +68,10 @@ function dynamicOptions(bundle, shot, name) {
   if (name === 'scene_id') return scenes.map(item => [item.id, item.name || item.description || '未命名场景']);
   if (name === 'scene_zone') return (scene?.zones || []).map(item => [item.id || item.label, item.label || item.purpose || '未命名区域']);
   if (name === 'camera_id') return (scene?.cameras || []).map(item => [item.id || item.view_id, [item.label, item.role].filter(Boolean).join(' · ') || '未命名机位']);
+  if (name === 'look_id') return (bundle?.assets?.people || []).flatMap(item => {
+    const profile = item.profile || {};
+    return (profile.look_profiles || []).map(look => [look.id, `${profile.displayName || profile.name || item.name || '人物'} · ${look.name || look.story_state || look.id}`]);
+  });
   if (name === 'scene_view') {
     const cameraViews = (scene?.cameras || []).map(item => [item.view_id || item.id, item.label || item.role || '场景视角']);
     return [...cameraViews, ...(VALUE_OPTIONS.scene_view || [])];

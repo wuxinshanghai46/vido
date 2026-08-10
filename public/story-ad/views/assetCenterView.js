@@ -1,12 +1,12 @@
-import { request } from '../api.js?v=20260810-scene-config-release-rebase-v131';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v131';
-import { confirmDialog } from '../components/dialog.js?v=20260810-scene-config-release-rebase-v131';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-scene-config-release-rebase-v131';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-scene-config-release-rebase-v131';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-scene-config-release-rebase-v131';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-scene-config-release-rebase-v131';
-import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-scene-config-release-rebase-v131';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-scene-config-release-rebase-v131';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v132';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v132';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v132';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v132';
+import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v132';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v132';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -26,7 +26,13 @@ function hasGeneratedMedia(item = {}) {
 }
 
 function personAssetState(item = {}) {
-  if (item.dossier_sheet?.image_url && Number(item.visual_asset_contract_version || 0) >= 2) return 'complete_dossier';
+  const expectedLooks = Array.isArray(item.profile?.look_profiles) ? item.profile.look_profiles : [];
+  const generatedLookIds = new Set((Array.isArray(item.look_assets) ? item.look_assets : [])
+    .filter(look => look?.dossier_sheet?.image_url || look?.image_url)
+    .map(look => String(look.id || look.look_id || '')));
+  const missingLooks = expectedLooks.filter(look => !generatedLookIds.has(String(look.id || '')));
+  if (item.dossier_sheet?.image_url && Number(item.visual_asset_contract_version || 0) >= 2 && !missingLooks.length) return 'complete_dossier';
+  if (item.dossier_sheet?.image_url && missingLooks.length) return 'look_upgrade_required';
   if (item.dossier_sheet?.image_url) return 'upgrade_required';
   if (Array.isArray(item.view_images) && item.view_images.length) return 'legacy_views';
   return 'missing';
@@ -134,6 +140,10 @@ function generationValidation(payload = {}) {
 function assetCard(item, group) {
   const views = Array.isArray(item.view_images) ? item.view_images.length : 0;
   const personState = group === 'people' ? personAssetState(item) : '';
+  const personLooks = group === 'people' && Array.isArray(item.profile?.look_profiles) ? item.profile.look_profiles : [];
+  const personLookSummary = personLooks.length
+    ? `${personLooks.length}套造型：${personLooks.map(look => look.name || look.story_state || look.id).filter(Boolean).join(' / ')}`
+    : '';
   const sceneDetail = group === 'scenes' ? [
     item.reference_only ? '未绑定场景参考' : '',
     item.zones?.length ? `${item.zones.length} 个区域` : '',
@@ -150,6 +160,8 @@ function assetCard(item, group) {
   const detail = (group === 'scenes' ? sceneDetail : (group === 'products' ? productDetail : [
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
+    personState === 'look_upgrade_required' ? '造型已更新 · 视觉档案待同步' : '',
+    personLookSummary,
     item.role,
     views ? `${views} 个视图` : '',
     item.revision ? `版本 ${item.revision}` : '',
@@ -164,14 +176,14 @@ function assetCard(item, group) {
     <div class="asset-card-preview">
       <div class="asset-card-media">${group === 'scenes' ? renderSceneCoverCard(item) : mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
       <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
-        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? '完整档案' : (item.status || '未确认')))))}</span>
+        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
       </button>
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
-      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">${group === 'people' ? (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案') : '生成该动物资产'}</button>` : ''}
+      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'look_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">${group === 'people' ? (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')) : '生成该动物资产'}</button>` : ''}
       ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
@@ -224,7 +236,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-scene-config-release-rebase-v131');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v132');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -252,7 +264,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-scene-config-release-rebase-v131'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v132'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -366,7 +378,21 @@ export async function mount(host, context) {
     ));
     try {
       setButtonBusy(button, true, '正在保存…', { elapsed: true });
-      await store.updateRequest({ cast_profiles: profiles });
+      const savedBundle = await store.updateRequest(
+        { cast_profiles: profiles },
+        { refreshSections: 'summary,assets' },
+      );
+      const savedProfile = (savedBundle?.assets?.people || [])
+        .map(row => row.profile || {})
+        .find(profile => String(profile.id || '') === String(item.profile?.id || ''));
+      const expectedLookIds = (normalizedValues.look_profiles || []).map(look => String(look.id || ''));
+      const savedLookIds = (savedProfile?.look_profiles || []).map(look => String(look.id || ''));
+      if (!savedProfile
+        || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
+        || expectedLookIds.some(id => !savedLookIds.includes(id))) {
+        throw new Error('人物信息服务器回读不一致，已停止显示保存成功；请勿继续生成。');
+      }
+      await context.refreshCurrentView?.();
       toast('人物信息已保存；下次生成会使用最新设定。', 'success');
       return true;
     } catch (error) { toast(error.message, 'danger'); return false; } finally { setButtonBusy(button, false); }
