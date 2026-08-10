@@ -177,6 +177,50 @@ async function testConcurrentRequestRejectionsDoNotOpenCircuit() {
   assert.equal(modelGateway.healthState(outageModel).circuit_open, true, '真实网络故障仍须进入冷却保护');
 }
 
+async function testPlainRequest400UsesProviderDiagnosticsAndCooldown() {
+  const config = compatibleConfig({ providerId: 'plain-400-provider', modelId: 'plain-400-model' });
+  let captured;
+  await assert.rejects(
+    adapters.callOpenAICompatible(config, 'system', 'user', {
+      _client: clientFrom(async () => {
+        const error = new Error('400 status code (no body)');
+        error.status = 400;
+        throw error;
+      }),
+    }),
+    error => {
+      captured = error;
+      assert.equal(error.response_diagnostics.kind, 'provider_request');
+      assert.equal(error.response_diagnostics.requested_mode, '');
+      return true;
+    },
+  );
+  const model = { provider_id: 'plain-400-provider', model_id: 'plain-400-model' };
+  modelGateway.recordHealth(model, { ok: false, error: captured, latencyMs: 15 });
+  const state = modelGateway.healthState(model);
+  assert.equal(state.last_error_code, 'PROVIDER_REQUEST_REJECTED');
+  assert.equal(state.circuit_open, true, '非结构化请求的 400 必须进入冷却，避免反复选择同一故障通道');
+  assert.equal(Number(state.failure_count || 0), 1);
+}
+
+async function testAssistSemanticFailureContinuesToNextCandidate() {
+  const candidates = [1, 2, 3].map(index => ({ provider_id: `assist-provider-${index}`, model_id: `assist-model-${index}`, priority: index }));
+  let attempts = 0;
+  const result = await modelGateway.generateText({
+    taskId: 'assist-semantic-fallback',
+    stage: 'new_story_ad.assist',
+    systemPrompt: 'Return complete screenplay JSON',
+    userPrompt: 'test',
+    validateText: text => text === 'complete',
+    _candidateModels: candidates,
+    _generateText: async () => ({ text: ++attempts === 3 ? 'complete' : 'incomplete' }),
+  });
+  assert.equal(attempts, 3, 'assist 语义不完整时必须继续使用剩余候选');
+  assert.equal(result.text, 'complete');
+  assert.equal(result.failed_models.length, 2);
+  assert(result.failed_models.every(item => item.code === 'PROVIDER_RESPONSE_INVALID'));
+}
+
 async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
   const candidates = [{ provider_id: 'fake', model_id: 'fake-model', priority: 1, enabled: true }];
   const wrapped = await modelGateway.generateText({
@@ -244,6 +288,8 @@ async function main() {
   await testUnsupported400FallsBackToPrompt();
   await testEmptyBody400FallsBackToPromptAtMaximumInput();
   await testConcurrentRequestRejectionsDoNotOpenCircuit();
+  await testPlainRequest400UsesProviderDiagnosticsAndCooldown();
+  await testAssistSemanticFailureContinuesToNextCandidate();
   await testNonJsonDiagnosticsAndPlainTextCompatibility();
   console.log('new story ad structured output: ok');
 }

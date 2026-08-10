@@ -397,7 +397,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
       if (unsupported && index < plan.modes.length - 1) continue;
       error.response_diagnostics = {
         ...(error.response_diagnostics || {}),
-        kind: 'structured_output_request',
+        kind: plan.request ? 'structured_output_request' : 'provider_request',
         requested_mode: plan.request?.mode || '',
         attempts: structuredAttempts,
       };

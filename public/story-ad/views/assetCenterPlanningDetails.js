@@ -1,7 +1,7 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-psave-v140';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-psave-v140';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-psave-v140';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-psave-v140';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-assist-v143';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-assist-v143';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-assist-v143';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-assist-v143';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

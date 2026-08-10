@@ -246,6 +246,45 @@ function testNoOpRefreshSaveKeepsSceneAuthority() {
   assert.equal(prepared.preflight.scene_count, 2);
 }
 
-testDisplayOnlyFormattingDoesNotBecomeAuthoritative();
-testNoOpRefreshSaveKeepsSceneAuthority();
-console.log('new story ad display format authority: ok');
+async function testBriefGoalPromptOnlyContainsCurrentModeRules() {
+  const gateway = require('../src/services/newStoryAd/modelGateway');
+  const originalGenerateText = gateway.generateText;
+  let captured = null;
+  gateway.generateText = async options => {
+    captured = options;
+    return {
+      text: JSON.stringify({
+        detailed_summary: '两位人物因过去的承诺与当前冲突再次相遇，误解逐步升级为必须面对的选择，打斗推动保护、受伤与真相揭示，最终人物理解彼此并留下克制而完整的情感结局。',
+        participants: [{ name: '主角甲', role: '守护者', description: '承担行动选择并推动冲突解决' }, { name: '主角乙', role: '被守护者与行动者', description: '通过主动选择改变故事结果' }],
+        scenes: [{ name: '古代竹海', time: '古代傍晚', description: '相遇、伏击与离别发生的核心空间' }, { name: '现代城市', time: '现代白天', description: '人物重新相遇并触发记忆的现实空间' }],
+        story_sections: [{ title: '相遇与冲突', content: '人物进入竹海后遭遇伏击，保护动作和主动反应共同推动关系变化。' }, { title: '重逢与选择', content: '千年后的危险呼应过去，人物通过新的选择完成情感确认。' }],
+        closing: '结尾保留人物凝望与时间回响，表达选择、守护和跨越时间的情感。',
+      }),
+      used_model: 'mock/prompt-capture', fallback_used: false, failed_models: [],
+    };
+  };
+  try {
+    await service.assistBrief({
+      mode: 'brief_goal',
+      brief: '古今重逢的双人剧情，需要竹海伏击、明确打斗冲突、现代呼应和最终凝望。'.repeat(80),
+      content_mode: 'narrative_story', content_mode_source: 'user', target_duration: 90, output_ratio: '9:16',
+    }, owner);
+  } finally {
+    gateway.generateText = originalGenerateText;
+  }
+  assert(captured, '必须捕获 brief_goal 模型请求');
+  assert(captured.systemPrompt.length < 1000, `brief_goal 系统提示 ${captured.systemPrompt.length} 字符仍包含无关模式规则`);
+  assert(!captured.systemPrompt.includes('person_spec'));
+  assert(!captured.systemPrompt.includes('scene_spec'));
+  assert(!captured.systemPrompt.includes('shot_settings'));
+  assert.match(captured.systemPrompt, /打斗|冲突|事件|动作/u, '当前内容事实规则必须保留动作与冲突');
+}
+
+async function main() {
+  testDisplayOnlyFormattingDoesNotBecomeAuthoritative();
+  testNoOpRefreshSaveKeepsSceneAuthority();
+  await testBriefGoalPromptOnlyContainsCurrentModeRules();
+  console.log('new story ad display format authority: ok');
+}
+
+main().catch(error => { console.error(error); process.exitCode = 1; });

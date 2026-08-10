@@ -46,7 +46,7 @@ const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecover
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
-const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService');
+const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
@@ -3543,7 +3543,7 @@ async function assistBrief(body = {}, user = {}) {
   const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
   if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
   const taskId = cleanText(body.task_id || body.taskId || '', 80), assistPolicy = assistKnowledgePolicy.resolve({ storage, taskId, context: ctx, person: isPersonSpec, scene: isSceneSpec || isSceneExperience });
-  const systemPrompt = [
+  const broadSystemPrompt = [
     isBriefGoal ? briefGoalAssist.assistantRole(ctx) : '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     isBriefGoal ? briefGoalAssist.taskRule(ctx) : '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',
     '必须保持用户原始业务主体，不得编造未授权行业、人物、宠物、机器人或旧任务内容。',
@@ -3570,6 +3570,7 @@ async function assistBrief(body = {}, user = {}) {
     isBriefGoal ? '' : 'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
     knowledgePolicyRuntime.promptBlock(assistPolicy || {}),
   ].join('\n');
+  const systemPrompt = isBriefGoal ? briefGoalPrompt.systemPrompt(ctx, assistPolicy) : broadSystemPrompt;
   const outputSchema = isBriefGoal
     ? briefGoalAssist.outputSchema(ctx)
     : isCreativeDirection

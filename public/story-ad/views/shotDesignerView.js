@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260810-psave-v140';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-psave-v140';
+import { request } from '../api.js?v=20260810-assist-v143';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-assist-v143';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
