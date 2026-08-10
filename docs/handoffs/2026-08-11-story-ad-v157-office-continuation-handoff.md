@@ -1,8 +1,8 @@
 # VIDO 剧情资产提示修复 v157 · 公司续接交接
 
-> 日期：2026-08-11（Asia/Shanghai）  
-> 分支：`codex/story-ad-v3-upgrade`  
-> 生产：`43.98.167.151` / PM2 `vido`  
+> 日期：2026-08-11（Asia/Shanghai）
+> 分支：`codex/story-ad-v3-upgrade`
+> 生产：`43.98.167.151` / PM2 `vido`
 > 本轮只执行任务与相邻模块的定向验证，没有在家庭电脑运行完整平台回归。
 
 ## 1. 当日目标与用户决策
