@@ -9,6 +9,11 @@
 *.yaml text eol=lf
 *.sh text eol=lf
 
+# Preserve byte-exact v126 production artifact assets across clones.
+public/favicon.svg -text -diff
+public/images/styles/*.svg -text -diff
+src/services/seeds/wardrobe_scene_style_knowledge.js -text -diff
+
 *.png binary
 *.jpg binary
 *.jpeg binary

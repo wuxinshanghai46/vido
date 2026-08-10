@@ -34,6 +34,7 @@ const SOURCE_URLS = [
   'https://mp.weixin.qq.com/s/82FByXzGzo1LiP0JWJ-X7w',
   'https://mp.weixin.qq.com/s/5TIOROeF1PJKBMohvT4tRw',
 ];
+
 const common = {
   collection: 'digital_human',
   applies_to: ['character_consistency', 'prompt_engineer', 'art_director', 'director', 'project_assistant'],
@@ -176,3 +177,4 @@ module.exports = [
     prompt_snippets: ['不要只写电影感；明确角色状态、物理空间、光线方向、机位景别、动作与可见结果，并绑定稳定 scene_id 和 look_id。'],
   },
 ];
+
