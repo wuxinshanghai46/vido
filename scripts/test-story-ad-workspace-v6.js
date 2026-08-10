@@ -207,8 +207,11 @@ async function main() {
   const assetCenterSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterView.js'), 'utf8')
     .replace(/^import\s+.*?;\s*$/gm, '')
     .replace(/\bexport\s+/g, '');
+  const assetPersonStateSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterPersonState.js'), 'utf8')
+    .replace(/^import\s+.*?;\s*$/gm, '')
+    .replace(/\bexport\s+/g, '');
   const assetCenterSandbox = {};
-  vm.runInNewContext(`${assetCenterSource}\nglobalThis.__subjectGenerationPayload = subjectGenerationPayload;`, assetCenterSandbox, {
+  vm.runInNewContext(`${assetPersonStateSource}\n${assetCenterSource}\nglobalThis.__subjectGenerationPayload = subjectGenerationPayload;`, assetCenterSandbox, {
     filename: 'assetCenterView.browser-contract.js',
   });
   const subjectGenerationPayload = assetCenterSandbox.__subjectGenerationPayload;

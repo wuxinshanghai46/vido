@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

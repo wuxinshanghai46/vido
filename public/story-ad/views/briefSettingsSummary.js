@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
