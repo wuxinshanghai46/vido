@@ -374,10 +374,14 @@ const assetDossierModule = loadBrowserModule(
   ['mediaSection', 'legacyDossierBoard'],
   { escapeHtml, mediaPreview },
 );
+const assetPersonStateModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterPersonState.js',
+  ['personAssetState', 'personLookSummary', 'assertSavedPerson'],
+);
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
-  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
+  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const sceneDossierModule = loadBrowserModule(
   'public/story-ad/views/sceneDossierCard.js',

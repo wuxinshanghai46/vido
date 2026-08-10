@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

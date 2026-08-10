@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
-import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v133';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

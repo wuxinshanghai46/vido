@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

@@ -1,12 +1,13 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v132';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v132';
-import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v132';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v132';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v132';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v132';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v132';
-import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v132';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v132';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v133';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v133';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v133';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v133';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v133';
+import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v133';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v133';
+import { assertSavedPerson, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-world-person-action-contracts-v133';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -23,19 +24,6 @@ function groupLabel(group = '') {
 function hasGeneratedMedia(item = {}) {
   return Boolean(item.dossier_sheet?.image_url
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
-}
-
-function personAssetState(item = {}) {
-  const expectedLooks = Array.isArray(item.profile?.look_profiles) ? item.profile.look_profiles : [];
-  const generatedLookIds = new Set((Array.isArray(item.look_assets) ? item.look_assets : [])
-    .filter(look => look?.dossier_sheet?.image_url || look?.image_url)
-    .map(look => String(look.id || look.look_id || '')));
-  const missingLooks = expectedLooks.filter(look => !generatedLookIds.has(String(look.id || '')));
-  if (item.dossier_sheet?.image_url && Number(item.visual_asset_contract_version || 0) >= 2 && !missingLooks.length) return 'complete_dossier';
-  if (item.dossier_sheet?.image_url && missingLooks.length) return 'look_upgrade_required';
-  if (item.dossier_sheet?.image_url) return 'upgrade_required';
-  if (Array.isArray(item.view_images) && item.view_images.length) return 'legacy_views';
-  return 'missing';
 }
 
 function subjectNeedsGeneration(item = {}, kind = '') {
@@ -141,9 +129,7 @@ function assetCard(item, group) {
   const views = Array.isArray(item.view_images) ? item.view_images.length : 0;
   const personState = group === 'people' ? personAssetState(item) : '';
   const personLooks = group === 'people' && Array.isArray(item.profile?.look_profiles) ? item.profile.look_profiles : [];
-  const personLookSummary = personLooks.length
-    ? `${personLooks.length}套造型：${personLooks.map(look => look.name || look.story_state || look.id).filter(Boolean).join(' / ')}`
-    : '';
+  const lookSummary = personLookSummary(personLooks);
   const sceneDetail = group === 'scenes' ? [
     item.reference_only ? '未绑定场景参考' : '',
     item.zones?.length ? `${item.zones.length} 个区域` : '',
@@ -161,7 +147,7 @@ function assetCard(item, group) {
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
     personState === 'look_upgrade_required' ? '造型已更新 · 视觉档案待同步' : '',
-    personLookSummary,
+    lookSummary,
     item.role,
     views ? `${views} 个视图` : '',
     item.revision ? `版本 ${item.revision}` : '',
@@ -236,7 +222,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v132');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v133');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -264,7 +250,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v132'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v133'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -378,20 +364,8 @@ export async function mount(host, context) {
     ));
     try {
       setButtonBusy(button, true, '正在保存…', { elapsed: true });
-      const savedBundle = await store.updateRequest(
-        { cast_profiles: profiles },
-        { refreshSections: 'summary,assets' },
-      );
-      const savedProfile = (savedBundle?.assets?.people || [])
-        .map(row => row.profile || {})
-        .find(profile => String(profile.id || '') === String(item.profile?.id || ''));
-      const expectedLookIds = (normalizedValues.look_profiles || []).map(look => String(look.id || ''));
-      const savedLookIds = (savedProfile?.look_profiles || []).map(look => String(look.id || ''));
-      if (!savedProfile
-        || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
-        || expectedLookIds.some(id => !savedLookIds.includes(id))) {
-        throw new Error('人物信息服务器回读不一致，已停止显示保存成功；请勿继续生成。');
-      }
+      const savedBundle = await store.updateRequest({ cast_profiles: profiles }, { refreshSections: 'summary,assets' });
+      assertSavedPerson(savedBundle, item, normalizedValues);
       await context.refreshCurrentView?.();
       toast('人物信息已保存；下次生成会使用最新设定。', 'success');
       return true;
