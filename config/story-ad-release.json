@@ -1,5 +1,5 @@
 {
-  "build_id": "20260810-platform-release-migration-v126",
+  "build_id": "20260810-assist-provider-resilience-v129",
   "contract_version": "story-scene-platform-v6",
   "node_runtime": {
     "version": "v20.20.2",

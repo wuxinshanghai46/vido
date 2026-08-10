@@ -47,6 +47,7 @@ let cutoverStarted = false;
 let legacyProcessFrozen = false;
 let releaseMigrationMode = 'none';
 let releaseMigrationApplied = false;
+let assistRouteMigrationApplied = false;
 
 integrity.assertCurrent({ root, release });
 integrity.assertRuntimeCurrent({ root, release });
@@ -123,6 +124,11 @@ async function migrateReleaseState() {
     releaseMigrationApplied = true;
     return result;
   }
+  if (previousBuildId === '20260810-platform-release-migration-v126'
+    && previousContractVersion === 'story-scene-platform-v6') {
+    releaseMigrationMode = 'v126_runtime_compatible';
+    return { migration_id: '', task_count: 0, summary: { runtime_compatible: 1 }, model_calls: 0, paid_calls: 0 };
+  }
   if (previousBuildId !== '20260809-platform-cinematic-layers-v120' || previousContractVersion !== 'story-scene-platform-v6') {
     throw new Error(`UNSUPPORTED_RELEASE_MIGRATION: refusing mixed checkpoint transition from ${previousBuildId || 'unknown'} (${previousBundleId}) to ${release.build_id}`);
   }
@@ -135,13 +141,31 @@ async function migrateReleaseState() {
   return result;
 }
 
+async function migrateAssistRoute() {
+  assistRouteMigrationApplied = true;
+  const result = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/migrate-new-story-ad-assist-route-v127.js --apply`));
+  assistRouteMigrationApplied = result.changed === true;
+  return result;
+}
+
+async function rollbackAssistRoute() {
+  if (!assistRouteMigrationApplied) return null;
+  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-new-story-ad-assist-route-v127.js --rollback`));
+}
+
+async function commitAssistRoute() {
+  if (!assistRouteMigrationApplied) return null;
+  return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-new-story-ad-assist-route-v127.js --commit`));
+}
+
 async function rollbackReleaseState() {
   if (!releaseMigrationApplied || releaseMigrationMode !== 'v120_deterministic_checkpoint') return null;
   return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-story-ad-v120-checkpoints.js --rollback --summary-only`));
 }
 
 async function rollback() {
-  if (!cutoverStarted && !releaseMigrationApplied) return;
+  if (!cutoverStarted && !releaseMigrationApplied && !assistRouteMigrationApplied) return;
+  await rollbackAssistRoute();
   await rollbackReleaseState();
   if (!cutoverStarted) return;
   await exec(`ln -sfn ${quote(previousTarget)} /opt/vido/.current-rollback && mv -Tf /opt/vido/.current-rollback ${quote(currentLink)}`);
@@ -245,6 +269,7 @@ client.on('ready', async () => {
     const drained = await releaseReadiness(previousTarget);
     if (Number(drained.active_count) || Number(drained.unknown_billing_count)) throw new Error(`停写后仍有活动任务或未知计费：${JSON.stringify(drained)}`);
     const migration = await migrateReleaseState();
+    const assistRouteMigration = await migrateAssistRoute();
     cutoverStarted = true;
     await exec(`ln -sfn ${quote(releaseDir)} /opt/vido/.current-next && mv -Tf /opt/vido/.current-next ${quote(currentLink)}`);
     await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
@@ -263,6 +288,7 @@ client.on('ready', async () => {
       || Number(after.active_count) || Number(after.unknown_billing_count)) {
       throw new Error(`发布后门禁失败：${JSON.stringify({ version, health, publicHealth, after, quickAfter, activeControl })}`);
     }
+    const assistRouteCommit = await commitAssistRoute();
     console.log(`IMMUTABLE_RELEASE=${JSON.stringify({
       build_id: version.build_id, contract_version: version.contract_version,
       release_bundle_id: version.release_bundle_id, artifact_id: artifactId,
@@ -273,6 +299,8 @@ client.on('ready', async () => {
       legacy_process_frozen: legacyProcessFrozen,
       release_migration_mode: releaseMigrationMode,
       release_migration: migration,
+      assist_route_migration: assistRouteMigration,
+      assist_route_commit: assistRouteCommit,
       public_release_bundle_id: publicVersion.release_bundle_id,
       health: health.status, public_health: publicHealth.status, sqlite_quick_check: quickAfter.trim(),
     })}`);

@@ -184,8 +184,15 @@ function isStructuredOutputUnsupportedError(error, mode = '') {
     error?.response?.data?.error?.message,
     error?.response?.data?.message,
   ].filter(Boolean).join(' ');
-  return /response[_\s-]?format|json[_\s-]?schema|json[_\s-]?object|structured[_\s-]?output/i.test(message)
+  const explicitlyUnsupported = /response[_\s-]?format|json[_\s-]?schema|json[_\s-]?object|structured[_\s-]?output/i.test(message)
     && /not\s+support|unsupported|unknown|unrecognized|invalid|not\s+allowed|does\s+not\s+support/i.test(message);
+  // Some OpenAI-compatible gateways return only `400 status code (no body)`
+  // when response_format is unsupported. The native structured request is the
+  // only difference at this point, so retry the same call once in prompt mode.
+  // If the request itself is invalid, the prompt-mode attempt still fails and
+  // preserves the concrete provider rejection for the caller.
+  const ambiguousEmpty400 = /(?:no|empty)\s+body|body\s+(?:is\s+)?empty/i.test(message);
+  return explicitlyUnsupported || ambiguousEmpty400;
 }
 
 function deyunaiVendorHeader(config = {}) {

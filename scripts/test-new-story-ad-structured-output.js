@@ -129,6 +129,54 @@ async function testUnsupported400FallsBackToPrompt() {
   assert.deepEqual(result.structured_output.attempts.map(item => item.status), ['failed', 'success']);
 }
 
+async function testEmptyBody400FallsBackToPromptAtMaximumInput() {
+  const payloads = [];
+  const config = compatibleConfig({
+    family: 'deyunai-openai-compatible',
+    providerId: 'deyunai',
+    modelId: 'gemini-2.5-pro',
+  });
+  const maximumInput = '古风场景人物动作与服化道约束。'.repeat(1200);
+  const result = await adapters.callOpenAICompatible(config, 'system', maximumInput, {
+    structuredOutput: { mode: 'json_object' },
+    _client: clientFrom(async payload => {
+      payloads.push(payload);
+      if (payload.response_format) {
+        const error = new Error('400 status code (no body)');
+        error.status = 400;
+        throw error;
+      }
+      return completion('{"fallback":true}');
+    }),
+  });
+
+  assert.equal(payloads.length, 2, '空响应体 400 必须只追加一次 prompt-mode 兼容尝试');
+  assert.deepEqual(payloads[0].response_format, { type: 'json_object' });
+  assert.equal(Object.prototype.hasOwnProperty.call(payloads[1], 'response_format'), false);
+  assert.equal(payloads[1].messages[1].content, maximumInput, '最大长度输入不得在兼容降级时截断或改写');
+  assert.equal(result.structured_output.applied_mode, 'prompt');
+  assert.equal(result.structured_output.attempts[0].code, 'STRUCTURED_OUTPUT_UNSUPPORTED');
+}
+
+async function testConcurrentRequestRejectionsDoNotOpenCircuit() {
+  const model = { provider_id: 'deyunai', model_id: 'gemini-2.5-pro' };
+  await Promise.all(Array.from({ length: 24 }, () => Promise.resolve().then(() => {
+    const error = new Error('400 status code (no body)');
+    error.status = 400;
+    error.response_diagnostics = { kind: 'structured_output_request' };
+    modelGateway.recordHealth(model, { ok: false, error, latencyMs: 12 });
+  })));
+  const rejectedState = modelGateway.healthState(model);
+  assert.equal(rejectedState.circuit_open, false, '并发请求型 400 不得熔断健康模型');
+  assert.equal(Number(rejectedState.failure_count || 0), 0, '请求型拒绝不得计入端点故障次数');
+  assert.equal(rejectedState.last_error_code, 'PROVIDER_REQUEST_REJECTED');
+  assert.ok(rejectedState.last_rejected_at);
+
+  const outageModel = { provider_id: 'deyunai', model_id: 'network-outage-model' };
+  modelGateway.recordHealth(outageModel, { ok: false, error: new Error('fetch failed'), latencyMs: 25 });
+  assert.equal(modelGateway.healthState(outageModel).circuit_open, true, '真实网络故障仍须进入冷却保护');
+}
+
 async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
   const candidates = [{ provider_id: 'fake', model_id: 'fake-model', priority: 1, enabled: true }];
   const wrapped = await modelGateway.generateText({
@@ -194,6 +242,8 @@ async function main() {
   await testJsonSchemaPayload();
   await testDeyunGeminiJsonObjectDefault();
   await testUnsupported400FallsBackToPrompt();
+  await testEmptyBody400FallsBackToPromptAtMaximumInput();
+  await testConcurrentRequestRejectionsDoNotOpenCircuit();
   await testNonJsonDiagnosticsAndPlainTextCompatibility();
   console.log('new story ad structured output: ok');
 }

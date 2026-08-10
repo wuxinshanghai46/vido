@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260810-platform-release-migration-v126';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-platform-release-migration-v126';
+import { request } from '../api.js?v=20260810-assist-provider-resilience-v129';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-assist-provider-resilience-v129';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

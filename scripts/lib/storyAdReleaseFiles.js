@@ -22,6 +22,7 @@ const BASE_FILES = [
   'scripts/manage-story-ad-release-control.js',
   'scripts/migrate-story-ad-platform-v111.js',
   'scripts/migrate-story-ad-v120-checkpoints.js',
+  'scripts/migrate-new-story-ad-assist-route-v127.js',
   'scripts/test-story-ad-v120-checkpoint-migration-v121.js',
   'scripts/audit-story-ad-model-management.js',
   'scripts/test-story-ad-platform-v111-real-model-contract.js',

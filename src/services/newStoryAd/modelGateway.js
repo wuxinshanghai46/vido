@@ -259,7 +259,11 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     consecutive_failure_count: 0,
   };
   const classified = ok ? null : classifyError(error);
-  const requestRejected = classified && ['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(classified.code);
+  const requestRejected = classified && (
+    ['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'INVALID_PROVIDER_INPUT'].includes(classified.code)
+    || (classified.code === 'PROVIDER_REQUEST_REJECTED'
+      && error?.response_diagnostics?.kind === 'structured_output_request')
+  );
   if (ok) {
     row.success_count = Number(row.success_count || 0) + 1;
     row.consecutive_failure_count = 0;
@@ -268,7 +272,7 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
     row.last_error_code = '';
     row.last_success_at = new Date().toISOString();
   } else if (requestRejected) {
-    // User/input compliance failures do not mean the model endpoint is
+    // User/input/request-shape failures do not mean the model endpoint is
     // unhealthy and must never open a provider circuit or reorder models.
     row.last_error_code = classified.code;
     row.last_rejected_at = new Date().toISOString();

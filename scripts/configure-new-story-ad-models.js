@@ -55,8 +55,19 @@ function configure() {
     'new_story_ad.storyboard_rewrite',
     'new_story_ad.qa',
     'new_story_ad.json_repair',
-    'new_story_ad.assist',
   ]) setStage(config, stage, textModels);
+
+  // The assist stage is used concurrently by person and scene preflight.
+  // Keep at least two independent providers in its managed fallback chain so
+  // a provider-specific request-format rejection cannot stop both lanes.
+  const assistModels = [
+    { provider_id: 'apismile', model_id: 'gpt-5.5', enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-pro', enabled: true },
+    { provider_id: 'apismile', model_id: 'gemini-2.5-pro', enabled: true },
+    { provider_id: 'deyunai', model_id: 'gpt-4o', enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', enabled: true },
+  ];
+  setStage(config, 'new_story_ad.assist', assistModels);
 
   const imageModels = [
     { provider_id: 'deyunai', model_id: 'gpt-image-2', enabled: true },
@@ -71,6 +82,7 @@ function configure() {
   pipeline.saveConfig(config);
   return {
     text: textModels.map(item => `${item.provider_id}/${item.model_id}`),
+    assist: assistModels.map(item => `${item.provider_id}/${item.model_id}`),
     image: imageModels.map(item => `${item.provider_id}/${item.model_id}`),
     video: config.stages['new_story_ad.video'].filter(item => item.enabled !== false).map(item => `${item.provider_id}/${item.model_id}`),
   };

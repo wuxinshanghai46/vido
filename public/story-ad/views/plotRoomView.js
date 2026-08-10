@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-platform-release-migration-v126';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-platform-release-migration-v126';
-import { confirmDialog } from '../components/dialog.js?v=20260810-platform-release-migration-v126';
+import { request } from '../api.js?v=20260810-assist-provider-resilience-v129';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-assist-provider-resilience-v129';
+import { confirmDialog } from '../components/dialog.js?v=20260810-assist-provider-resilience-v129';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

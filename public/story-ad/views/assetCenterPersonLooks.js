@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-platform-release-migration-v126';
+import { escapeHtml } from '../components/ui.js?v=20260810-assist-provider-resilience-v129';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
