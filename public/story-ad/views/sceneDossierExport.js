@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260810-age-medium-script-v136';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-age-medium-script-v136';
+import { request } from '../api.js?v=20260810-brief-settings-ui-v139';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-brief-settings-ui-v139';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

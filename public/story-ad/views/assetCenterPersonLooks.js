@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-age-medium-script-v136';
+import { escapeHtml } from '../components/ui.js?v=20260810-brief-settings-ui-v139';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

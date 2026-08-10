@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-age-medium-script-v136';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-brief-settings-ui-v139';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];

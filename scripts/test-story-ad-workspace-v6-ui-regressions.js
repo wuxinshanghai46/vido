@@ -56,6 +56,7 @@ assert.match(assetPlanningDetails, /form="personEditForm"/u, '人物抽屉固定
 assert.match(assetPlanningDetails, /保存人物文字设定/u);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefWorldSettings = read('public/story-ad/views/briefWorldSettings.js');
 const referenceProgressSource = read('public/story-ad/views/referenceProgressCard.js');
 assert.match(briefView, /<h2>启动材料<\/h2>/, '目标页必须把材料区明确限定为项目启动输入');
 assert.match(briefView, /\['reference', '参考视频'/);
@@ -103,11 +104,20 @@ assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
 assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜/, '目标页必须解释 AI 帮写的结构与职责边界');
+assert.match(briefView, /brief-config-section full/, '内容与世界观必须使用独立设置分区，不能继续平铺在旧表单网格');
+assert.match(briefView, /brief-config-grid/, '世界观设置必须使用自适应网格');
+assert.match(briefView, /brief-output-grid/, '时长、画幅和分辨率必须组成统一成片规格分区');
+assert.match(briefWorldSettings, /具体时期 <em>可自动识别<\/em>/, '具体时期必须明确提示留空可自动识别');
+assert.match(briefWorldSettings, /国家 \/ 地区 <em>可自动识别<\/em>/, '国家地区必须明确提示留空可自动识别');
+const briefStyles = read('public/story-ad/styles.css');
+assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto 42px auto;/, '设置字段标题不得继续使用固定 18px 高度');
+assert.match(briefStyles, /\.brief-config-section \{[^}]*grid-column: 1 \/ -1;/, '两个设置分区必须各自占满主表单宽度，不能被挤在同一行');
+assert.match(briefStyles, /@media \(max-width: 760px\)[\s\S]*\.brief-config-grid, \.brief-output-grid \{ grid-template-columns: 1fr;/, '世界观与成片规格在窄屏必须切换为单列');
 assert.match(briefView, /<select class="select" name="content_mode" required>[\s\S]*<option value="commercial_subject"[\s\S]*<option value="narrative_story"/, '目标页必须使用下拉框让用户明确选择广告或剧情');
 assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '广告/剧情选择不得继续放在内容目标上方');
 assert.equal((briefView.match(/name="content_mode"/g) || []).length, 1, '页面只能有一个内容类型下拉框');
 assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自动识别广告主体后页面不得显示产品或主题输入框');
-assert.match(briefView, /广告主体会从内容目标、AI 帮写或参考视频中自动识别/);
+assert.match(briefView, /广告识别商品或服务主体；剧情不创建商品主体/);
 assert.match(briefView, /content_mode: payload\.content_mode/, 'AI 帮写必须携带用户明确选择的内容类型');
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/, '只有用户亲自选择内容类型后才可创建或生成');
 assert.match(briefView, /if \(store\.state\.bundle\?\.reference\?\.analysis_id\)/, '帮写返回前必须防止覆盖后来添加的参考视频');

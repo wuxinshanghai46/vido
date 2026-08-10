@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-age-medium-script-v136';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-age-medium-script-v136';
-import { confirmDialog } from '../components/dialog.js?v=20260810-age-medium-script-v136';
+import { request } from '../api.js?v=20260810-brief-settings-ui-v139';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-brief-settings-ui-v139';
+import { confirmDialog } from '../components/dialog.js?v=20260810-brief-settings-ui-v139';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

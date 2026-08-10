@@ -316,8 +316,29 @@ body.story-dialog-open { overflow: hidden; }
 .btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
 .brief-form .form-grid { align-items: start; }
-.brief-form .field:not(.full) { grid-template-rows: 18px 42px auto; align-content: start; }
+.brief-form .field:not(.full) { grid-template-rows: auto 42px auto; align-content: start; min-width: 0; }
 .brief-form .field:not(.full) > .select { height: 42px; }
+.brief-config-section { display: grid; grid-column: 1 / -1; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface-2) 62%, transparent); }
+.brief-config-heading { display: flex; align-items: flex-start; gap: 11px; }
+.brief-config-heading > span:last-child { min-width: 0; }
+.brief-config-heading b, .brief-config-heading small { display: block; }
+.brief-config-heading b { color: var(--text); font-size: 15px; }
+.brief-config-heading small { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.brief-config-index { display: grid; place-items: center; width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid color-mix(in srgb, var(--mint) 48%, var(--line)); border-radius: 9px; color: var(--mint); background: color-mix(in srgb, var(--mint) 10%, var(--surface)); font-size: 10px; font-weight: 800; }
+.brief-config-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.brief-setting-tile { min-width: 0; padding: 13px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 11px; background: var(--surface); }
+.brief-setting-tile > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; color: var(--text); font-weight: 700; }
+.brief-setting-tile > span em { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; color: var(--info); background: color-mix(in srgb, var(--info) 10%, transparent); font-size: 9px; font-style: normal; font-weight: 700; }
+.brief-setting-tile > small { overflow-wrap: anywhere; }
+.brief-output-section { padding-bottom: 16px; }
+.brief-output-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.brief-output-field { min-width: 0; padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 11px; background: var(--surface); }
+.brief-output-field > span { color: var(--text); font-weight: 700; }
+.brief-output-field > small { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .brief-config-grid, .brief-output-grid { grid-template-columns: 1fr; }
+  .brief-config-section { padding: 14px; }
+}
 .assist-form-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 .status-tag {
   justify-self: start;

@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260810-age-medium-script-v136';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-age-medium-script-v136';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-age-medium-script-v136';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-age-medium-script-v136';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-age-medium-script-v136';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-age-medium-script-v136';
+import { request } from '../api.js?v=20260810-brief-settings-ui-v139';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-brief-settings-ui-v139';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-brief-settings-ui-v139';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-brief-settings-ui-v139';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-brief-settings-ui-v139';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-brief-settings-ui-v139';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -141,21 +141,25 @@ export async function mount(host, context) {
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
           <label class="field full"><span class="field-label-with-action"><span>内容目标 / 剧本需求</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea brief-screenplay-input" name="brief" rows="12" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；AI 帮写后会按详细概述、出场人物、主要场景、剧情段落和结尾分段显示，仍可继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : '剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜。'}</small></label>
-          <label class="field"><span>内容类型</span><select class="select" name="content_mode" required>
-            <option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择</option>
-            <option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
-            <option value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'selected' : ''}>剧情</option>
-          </select><small>广告主体会从内容目标、AI 帮写或参考视频中自动识别；剧情不会创建商品主体。</small></label>
-          ${worldSettingFields(worldProfile, escapeHtml)}
-          <label class="field"><span>目标时长</span><select class="select" name="target_duration">
-            ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
-          </select></label>
-          <label class="field"><span>画面比例</span><select class="select" name="output_ratio">
-            ${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}
-          </select></label>
-          <label class="field"><span>视频分辨率</span><select class="select" name="video_resolution">
-            ${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}
-          </select></label>
+<section class="brief-config-section full" aria-labelledby="brief-world-settings-title">
+<header class="brief-config-heading"><span class="brief-config-index">01</span><span><b id="brief-world-settings-title">内容与世界观</b><small>题材、时代与画面形态；时期、地区留空可识别。</small></span></header>
+<div class="brief-config-grid">
+<label class="field brief-setting-tile"><span>内容类型</span><select class="select" name="content_mode" required>
+<option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择</option>
+<option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
+<option value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'selected' : ''}>剧情</option>
+</select><small>广告识别商品或服务主体；剧情不创建商品主体。</small></label>
+${worldSettingFields(worldProfile, escapeHtml)}
+</div></section>
+<section class="brief-config-section brief-output-section full" aria-labelledby="brief-output-settings-title">
+<header class="brief-config-heading"><span class="brief-config-index">02</span><span><b id="brief-output-settings-title">成片规格</b><small>时长、画幅与清晰度。</small></span></header>
+<div class="brief-output-grid">
+<label class="field brief-output-field"><span>目标时长</span><select class="select" name="target_duration">
+${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option value="${value}" ${Number(brief.target_duration || 30) === value ? 'selected' : ''}>${({ 60: '1 分钟', 90: '1 分 30 秒', 120: '2 分钟', 180: '3 分钟', 240: '4 分钟', 300: '5 分钟', 360: '6 分钟', 480: '8 分钟', 600: '10 分钟' })[value] || `${value} 秒`}</option>`).join('')}
+</select><small>决定节奏与建议镜头量</small></label>
+<label class="field brief-output-field"><span>画面比例</span><select class="select" name="output_ratio">${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>竖屏、横屏或方形</small></label>
+<label class="field brief-output-field"><span>视频分辨率</span><select class="select" name="video_resolution">${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>最终导出清晰度</small></label>
+</div></section>
           <input type="hidden" name="benchmark_opening_hook" value="${escapeHtml(benchmark.opening_hook || '')}">
           <input type="hidden" name="benchmark_subject_introduction" value="${escapeHtml(benchmark.subject_introduction || '')}">
           <input type="hidden" name="benchmark_proof_sequence" value="${escapeHtml(benchmark.proof_sequence || '')}">
@@ -177,7 +181,6 @@ export async function mount(host, context) {
     </div>
     <div data-reference-understanding-host></div>
     ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
-
   const form = host.querySelector('[data-brief-form]');
   const briefSettingsAnchor = host.querySelector('[data-brief-settings-anchor]');
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
@@ -221,7 +224,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260810-age-medium-script-v136');
+    const module = await import('./referenceUnderstandingView.js?v=20260810-brief-settings-ui-v139');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
