@@ -8,16 +8,21 @@ const world = require('../src/services/newStoryAd/worldSettingContractService');
 const action = require('../src/services/newStoryAd/actionSemanticsService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const seeds = require('../src/services/knowledgeBaseSeed');
+const subjects = require('../src/services/newStoryAd/subjectAssetBundleService');
+const dossier = require('../src/services/newStoryAd/personDossierCompiler');
+const scenes = require('../src/services/newStoryAd/sceneAssetService');
+const revisions = require('../src/services/newStoryAd/revisionService');
 
 const root = path.resolve(__dirname, '..');
 const explicit = world.normalize({
   status: 'confirmed', profiles: [{
     id: 'ancient_world', era_family: 'chinese_historical', time_period: '北宋中期',
-    region: '江南', fidelity_mode: 'historical_realism', forbidden_elements: ['现代汽车'],
+    region: '江南', fidelity_mode: 'historical_realism', visual_medium: 'anime_2d', forbidden_elements: ['现代汽车'],
   }],
 });
 assert.equal(explicit.status, 'confirmed');
 assert.equal(explicit.profiles[0].fidelity_mode, 'historical_realism');
+assert.equal(explicit.profiles[0].visual_medium, 'anime_2d');
 assert.match(explicit.fingerprint, /^[a-f0-9]{64}$/);
 assert(world.promptBlock(explicit).length < 900, 'world prompt projection must stay compact');
 
@@ -37,6 +42,26 @@ const ctx = contextBuilder.buildContext({
 assert.equal(ctx.story_scene_contract_version, 6);
 assert.equal(ctx.world_setting.profiles[0].id, 'ancient_world');
 assert.equal(ctx.cast_profiles[0].look_profiles[0].world_profile_id, 'ancient_world');
+assert.equal(ctx.cast_profiles[0].visual_medium, 'anime_2d');
+const member = subjects.humanMemberSpecs({}, ctx, 1)[0];
+assert.equal(member.visual_medium, 'anime_2d');
+assert.match(subjects.humanPrompt(member, 1), /original 2D anime\/cel animation/u);
+assert.doesNotMatch(subjects.humanPrompt(member, 1), /production-ready photorealistic actor/u);
+assert.match(dossier.nativeMasterPrompt(dossier.NATIVE_MASTER_SPECS[0], 'character', '', 'cinematic_3d'), /cinematic 3D animation/u);
+const scenePrompt = scenes.buildSceneSheetPrompt({ ctx, outputRole: 'master' });
+assert.match(scenePrompt, /original 2D anime\/cel animation/u);
+assert.doesNotMatch(scenePrompt, /must be a real on-location photograph/u);
+const changedMediumContext = contextBuilder.buildContext({ ...ctx,
+  world_setting: { ...explicit, profiles: [{ ...explicit.profiles[0], visual_medium: 'cinematic_3d' }] },
+});
+assert.equal(changedMediumContext.cast_profiles[0].visual_medium, 'cinematic_3d', '项目画面形态变更必须覆盖旧的项目派生人物形态');
+const mediumChangedDomains = revisions.changeDomains(ctx, changedMediumContext);
+assert(mediumChangedDomains.includes('source'), '项目级世界/画面合同必须进入内容修订域并失效旧下游输出');
+assert(mediumChangedDomains.includes('person'), '画面形态变更必须让旧人物视觉档案进入失效链路');
+const pet = subjects.petMemberSpecs({}, { world_setting: explicit, pet_profiles: [{ id: 'pet_1', name: '雪团', type: '猫' }] }, 1)[0];
+assert.equal(pet.visual_medium, 'anime_2d');
+assert.match(subjects.petPrompt(pet, 1), /original 2D anime\/cel animation/u);
+assert.doesNotMatch(subjects.petPrompt(pet, 1), /photorealistic animal identity/u);
 
 const mechanics = action.normalizeAction({ action_id: 'turn', action_start: '背对镜头', kinetic_chain: ['头部先转', '肩髋跟随'], weight_shift: '重心移向右脚', action_end: '面对镜头' });
 assert.equal(mechanics.kinetic_chain.length, 2);

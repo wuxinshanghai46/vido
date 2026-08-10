@@ -106,25 +106,45 @@ const referenceProduct = productResolver.productPresentation({
 assert.notEqual(referenceProduct.mode, 'narrative_story', '后续识别出的明确商品必须覆盖旧的自动纯剧情推断');
 
 const addition = '面向喜爱东方自然美学与时间叙事的观众，强化跨时代人物关系与竹海意境带来的情绪记忆，让观众理解故事关于选择、延续与自我回应的主题，并愿意继续关注完整情节。';
-const raw = JSON.stringify({ goal_addition: addition });
+const storyDraft = {
+  detailed_summary: '现代女孩在竹海中发现古代女孩留下的信物，循着不同年代的生活痕迹理解一段未完成的选择。两条时间线通过同一片竹海相互回应，最终让现代女孩决定正视自己的困境并迈出新的一步。',
+  participants: [{ name: '现代女孩', role: '当代行动者', description: '通过追寻信物理解前人的选择。' }, { name: '古代女孩', role: '历史线人物', description: '以留下的痕迹回应后来的陌生人。' }],
+  scenes: [{ name: '竹海步道', time: '现代与古代交错', description: '同一空间承接两条时间线。' }],
+  story_sections: [{ title: '发现', content: '现代女孩在竹海发现信物，并对其来历产生疑问。' }, { title: '回应', content: '古代线揭示信物背后的选择，现代女孩获得面对现实的勇气。' }],
+  closing: addition,
+};
+const raw = JSON.stringify(storyDraft);
 assert.equal(briefAssist.validateRaw(raw, context), true);
-const assisted = briefAssist.buildResponse({ parsed: { goal_addition: addition }, context });
+const assisted = briefAssist.buildResponse({ parsed: storyDraft, context });
 assert.equal(assisted.original_brief, sourceBrief);
-assert(assisted.brief.startsWith(sourceBrief), 'AI 帮写结果必须逐字保留原始内容');
-assert.match(assisted.brief, /【剧情表达补充】/);
+assert.match(assisted.brief, new RegExp(sourceBrief), 'AI 帮写结果必须逐字保留原始内容');
+assert.match(assisted.brief, /【详细剧情描述】/);
+assert.match(assisted.brief, /【出场人物】/);
+assert.match(assisted.brief, /【主要场景】/);
+assert.match(assisted.brief, /【剧情段落】/);
+assert.equal(assisted.screenplay_structure_version, 2);
 assert.match(briefAssist.systemRule(context), /纯剧情任务/);
-assert.match(briefAssist.systemRule(context), /人物、关系、地点、事件、情绪和主题/);
+assert.match(briefAssist.systemRule(context), /人物、场景和剧情段落必须服务于人物关系、事件、情绪与主题/);
 assert.doesNotMatch(briefAssist.modePrompt(context), /广告传播目标/);
-assert.match(briefAssist.outputSchema(context), /不得添加商品、品牌、卖点、购买、营销、传播或转化/);
-assert.equal(briefAssist.validateRaw(JSON.stringify({ goal_addition: '突出产品卖点并提升购买意愿，推动用户下单转化，强化品牌认知与销售结果，形成稳定的商品传播闭环和消费决策。' }), context), false, '纯故事不得被 AI 补成商品广告');
+assert.match(briefAssist.outputSchema(context), /详细剧情描述/);
+assert.equal(briefAssist.validateRaw(JSON.stringify({ ...storyDraft, closing: '突出产品卖点并提升购买意愿，推动用户下单转化，强化品牌认知与销售结果，形成稳定的商品传播闭环和消费决策。' }), context), false, '纯故事不得被 AI 补成商品广告');
 
 const commercialAddition = '面向注重日常情绪体验的年轻职场人群，围绕东方香氛的自然气味与放松体验建立清晰认知，以真实使用时刻支撑核心价值，引导观众进一步了解产品并形成可信的品牌记忆。';
 assert.match(briefAssist.systemRule(selectedAd), /广告任务/);
-assert.match(briefAssist.modePrompt(selectedAd), /广告传播目标帮写/);
-assert.match(briefAssist.outputSchema(selectedAd), /不得编造功效、价格、资质或品牌事实/);
-const assistedAd = briefAssist.buildResponse({ parsed: { goal_addition: commercialAddition }, context: selectedAd });
-assert.match(assistedAd.brief, /【广告目标补充】/);
-assert.doesNotMatch(assistedAd.brief, /【剧情表达补充】/);
+assert.match(briefAssist.modePrompt(selectedAd), /广告剧本帮写/);
+assert.match(briefAssist.systemRule(selectedAd), /不得编造功效、价格、资质、品牌背书或不可验证事实/);
+assert.match(briefAssist.outputSchema(selectedAd), /广告剧情概述/);
+const adDraft = {
+  detailed_summary: '年轻职场人在工作间隙需要从紧张状态中短暂抽离，东方香氛通过真实使用动作和自然气味联想进入日常空间，帮助建立可感知的放松体验，并以继续了解产品完成收束。',
+  participants: [{ name: '年轻职场人', role: '使用者', description: '展示真实的工作间隙与使用过程。' }, { name: '东方香氛', role: '展示主体', description: '通过产品外观和使用动作承接核心价值。' }],
+  scenes: [{ name: '办公室休息区', time: '午后', description: '承载使用前后的情绪变化。' }],
+  story_sections: [{ title: '需求', content: '年轻职场人在连续工作后进入休息区，建立短暂放松的真实需求。' }, { title: '体验', content: '她使用东方香氛并回到稳定状态，产品通过可见动作自然出现。' }],
+  closing: commercialAddition,
+};
+const assistedAd = briefAssist.buildResponse({ parsed: adDraft, context: selectedAd });
+assert.match(assistedAd.brief, /【广告剧情概述】/);
+assert.match(assistedAd.brief, /【出场人物 \/ 展示主体】/);
+assert.doesNotMatch(assistedAd.brief, /【详细剧情描述】/);
 
 const goodPlan = {
   cast_profiles: [{ id: 'modern', name: '现代女孩' }, { id: 'ancient', name: '古代女孩' }],

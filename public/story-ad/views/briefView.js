@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v135';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v135';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-world-person-action-contracts-v135';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-world-person-action-contracts-v135';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-world-person-action-contracts-v135';
+import { request } from '../api.js?v=20260810-age-medium-script-v136';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-age-medium-script-v136';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-age-medium-script-v136';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-age-medium-script-v136';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-age-medium-script-v136';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-age-medium-script-v136';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -140,7 +140,7 @@ export async function mount(host, context) {
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
-          <label class="field full"><span class="field-label-with-action"><span>内容目标</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea" name="brief" rows="7" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；生成后仍可修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : 'AI 只补充目标，不会删除你写的人物、场景、故事或商品事实；生成后仍可继续修改。'}</small></label>
+          <label class="field full"><span class="field-label-with-action"><span>内容目标 / 剧本需求</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea brief-screenplay-input" name="brief" rows="12" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；AI 帮写后会按详细概述、出场人物、主要场景、剧情段落和结尾分段显示，仍可继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : '剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜。'}</small></label>
           <label class="field"><span>内容类型</span><select class="select" name="content_mode" required>
             <option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择</option>
             <option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
@@ -221,7 +221,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260810-world-person-action-contracts-v135');
+    const module = await import('./referenceUnderstandingView.js?v=20260810-age-medium-script-v136');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -263,7 +263,7 @@ export async function mount(host, context) {
       if (dirtyFields.has(key) || (key === 'content' && dirtyFields.has('brief')) || (key === 'benchmark_strategy' && [...dirtyFields].some(name => name.startsWith('benchmark_')))) authoritative[key] = current[key];
     });
     if (dirtyFields.has('content_mode')) authoritative.content_mode_source = 'user';
-    if (['world_family', 'world_fidelity', 'world_period', 'world_region'].some(name => dirtyFields.has(name))) authoritative.world_setting = current.world_setting;
+    if (['world_family', 'world_fidelity', 'visual_medium', 'world_period', 'world_region'].some(name => dirtyFields.has(name))) authoritative.world_setting = current.world_setting;
     if (dirtyFields.has('brief') || dirtyFields.has('content_mode') || authoritative.content_mode === 'narrative_story') authoritative.product_subject = '';
     authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
     return authoritative;
@@ -290,6 +290,7 @@ export async function mount(host, context) {
       benchmark_naturalness_review: latest.benchmark_strategy?.naturalness_review || '',
       world_family: latest.world_setting?.profiles?.[0]?.era_family || 'auto',
       world_fidelity: latest.world_setting?.profiles?.[0]?.fidelity_mode || 'contemporary_realism',
+      visual_medium: latest.world_setting?.profiles?.[0]?.visual_medium || 'auto',
       world_period: latest.world_setting?.profiles?.[0]?.time_period || '',
       world_region: typeof latest.world_setting?.profiles?.[0]?.region === 'string' ? latest.world_setting.profiles[0].region : '',
     };
@@ -331,8 +332,8 @@ export async function mount(host, context) {
       const isStory = payload.content_mode === 'narrative_story';
       const idea = await promptDialog(isStory ? 'AI 帮写剧情内容' : 'AI 帮写广告内容', {
         message: isStory
-          ? '写下人物、关系、地点、事件或想表达的主题，AI 会按剧情方向补充，不会加入商品卖点。'
-          : '写下产品或服务、目标人群、核心价值和希望观众采取的行动，AI 会按广告方向补充。',
+          ? '写下人物、关系、地点、事件或想表达的主题，AI 会整理成详细剧情、出场人物、主要场景、剧情段落和结尾，不会加入商品卖点。'
+          : '写下产品或服务、目标人群、核心价值和希望观众采取的行动，AI 会整理成广告剧情、出场人物或展示主体、主要场景、广告段落和传播收束。',
         inputLabel: isStory ? '你想写的剧情内容' : '你想写的广告内容',
         placeholder: isStory
           ? '例如：一对多年未见的姐妹在故乡竹海重逢，故事表达和解与重新出发。'
@@ -370,7 +371,7 @@ export async function mount(host, context) {
       if (!assisted) throw new Error(`AI 没有返回可用的${isStory ? '剧情内容' : '广告目标'}，请保留当前输入后重试。`);
       textarea.value = assisted;
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      toast(isStory ? 'AI 已补充剧情表达目标，原始人物、关系和场景事实均已保留。' : 'AI 已补充广告传播目标，原始产品与业务事实均已保留。', 'success');
+      toast(isStory ? 'AI 已按剧本结构整理剧情，原始人物、关系和场景事实均已保留。' : 'AI 已按剧本结构整理广告，原始产品与业务事实均已保留。', 'success');
     } catch (error) {
       toast(error.message, 'danger');
     } finally {

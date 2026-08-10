@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v135';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
-import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v135';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v135';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v135';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v135';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v135';
-import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v135';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v135';
-import { assertSavedPerson, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-world-person-action-contracts-v135';
+import { request } from '../api.js?v=20260810-age-medium-script-v136';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-age-medium-script-v136';
+import { confirmDialog } from '../components/dialog.js?v=20260810-age-medium-script-v136';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-age-medium-script-v136';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-age-medium-script-v136';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-age-medium-script-v136';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-age-medium-script-v136';
+import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-age-medium-script-v136';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-age-medium-script-v136';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-age-medium-script-v136';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -16,16 +16,13 @@ const GROUPS = [
   ['scenes', '场景与机位'],
 ];
 const GENERATABLE = new Set(['people', 'animals']);
-
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
-
 function hasGeneratedMedia(item = {}) {
   return Boolean(item.dossier_sheet?.image_url
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
 }
-
 function subjectNeedsGeneration(item = {}, kind = '') {
   return kind === 'human'
     ? personAssetState(item) !== 'complete_dossier'
@@ -147,6 +144,8 @@ function assetCard(item, group) {
     item.partial_checkpoint ? `已保留 ${item.completed_checkpoint_units || 0} 个成功单元 · 档案待补齐` : '',
     personState === 'legacy_views' ? '仅历史四视图 · 尚未生成完整档案' : '',
     personState === 'look_upgrade_required' ? '造型已更新 · 视觉档案待同步' : '',
+    personState === 'profile_upgrade_required' ? '人物文字设定已更新 · 档案待同步' : '',
+    personState === 'medium_upgrade_required' ? '画面形态已更新 · 人物档案待同步' : '',
     lookSummary,
     item.role,
     views ? `${views} 个视图` : '',
@@ -162,14 +161,14 @@ function assetCard(item, group) {
     <div class="asset-card-preview">
       <div class="asset-card-media">${group === 'scenes' ? renderSceneCoverCard(item) : mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
       <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
-        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))}</span>
+        <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
       </button>
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
-      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'look_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">${group === 'people' ? (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')) : '生成该动物资产'}</button>` : ''}
+      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'profile_upgrade_required' || personState === 'look_upgrade_required' || personState === 'medium_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">${group === 'people' ? (personState === 'medium_upgrade_required' ? '同步最新画面形态' : (personState === 'profile_upgrade_required' ? '同步最新人物设定' : (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')))) : '生成该动物资产'}</button>` : ''}
       ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
@@ -184,7 +183,8 @@ function profileDetails(item = {}, group = '') {
   const looks = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
   const rows = group === 'people' ? [
     ['身份 / 关系', profile.roleName || item.role],
-    ['外貌、气质与年龄', profile.appearanceText],
+    ['年龄', personAgeDisplay(profile)],
+    ['外貌与气质', profile.appearanceText],
     ...(looks.length ? looks.map((look, index) => [`造型 ${index + 1} · ${look.name || '未命名'}`, `${(look.scene_names || look.scene_ids || []).join('、') || '未限定场景'}｜${look.wardrobeText || ''}`]) : [['服装 / 鞋 / 配饰', profile.wardrobeText]]),
     ['发型 / 妆造', profile.hairMakeupText],
     ['禁止项', profile.negativeText],
@@ -212,17 +212,18 @@ function personEditForm(item = {}) {
   const field = (name, label, value, textarea = false) => `<label><span>${label}</span>${textarea
     ? `<textarea name="${name}" rows="3">${escapeHtml(value || '')}</textarea>`
     : `<input name="${name}" value="${escapeHtml(value || '')}">`}</label>`;
-  return `<details class="person-edit-panel"><summary>修改人物信息</summary><form data-person-edit>
+  return `<details class="person-edit-panel" open><summary>修改人物信息</summary><form id="personEditForm" data-person-edit>
     <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}</div>
-    ${field('appearanceText', '外貌、气质与年龄（请在正文写明实际年龄）', profile.appearanceText, true)}
+    <label><span>年龄（确切年龄或年龄区间）</span><input name="age" value="${escapeHtml(personAgeDisplay(profile))}" placeholder="如：22岁、18~25岁、实际年龄1000岁"><small>填写后作为生成硬约束；支持 ~、～、-、—、–、至、到，保存时统一为“22岁”或“18~25岁”。留空则根据剧本和人物关系自动分析。</small></label><input type="hidden" name="age_source" value="user">
+    ${field('appearanceText', '外貌与气质（年龄请填写在上方独立字段）', profile.appearanceText, true)}
     ${renderPersonLookEditors(profile)}<p class="form-hint">每套造型会独立补齐服装组成、鞋履、配饰、配色和面料；不会再把跨时代或换装状态合并。</p>
     ${field('negativeText', '禁止项', profile.negativeText, true)}
-    <div class="assist-form-actions"><button class="btn" type="button" data-ai-assist-person>AI 帮写人物设定</button><button class="btn primary" type="submit">保存人物信息</button></div>
+    <div class="assist-form-actions"><button class="btn" type="button" data-ai-assist-person>AI 帮写人物设定</button><button class="btn primary" type="submit">保存人物文字设定</button></div>
   </form></details>`;
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v135');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-age-medium-script-v136');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -250,7 +251,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v135'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-age-medium-script-v136'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

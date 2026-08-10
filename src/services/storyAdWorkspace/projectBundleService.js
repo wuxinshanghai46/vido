@@ -166,6 +166,10 @@ function peopleAssets(context = {}, projectedProps = []) {
         layout: clean(item.dossier_sheet?.layout, 100), sections: list(item.dossier_sheet?.sections).map(value => clean(value, 80)).filter(Boolean),
       } : null,
       visual_asset_contract_version: Math.max(0, Number(item.visual_asset_contract_version || 0) || 0),
+      visual_medium: clean(item.visual_medium || item.subject_profile?.visual_medium || '', 40),
+      generated_profile: item.subject_profile && typeof item.subject_profile === 'object'
+        ? personLookProjection.personProfile(item.subject_profile, index)
+        : null,
       quality_status: clean(item.quality_status || (item.native_masters?.face?.image_url && item.native_masters?.body?.image_url ? 'native_masters_ready' : 'legacy_view_only'), 50),
       native_masters: Object.fromEntries(['face', 'body'].map(key => [key, item.native_masters?.[key]])
         .filter(([, value]) => mediaUrl(value))

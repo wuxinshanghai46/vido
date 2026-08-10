@@ -4,6 +4,7 @@ const path = require('path');
 
 const mediaAdapter = require('./mediaAdapter');
 const { cleanText } = require('./contextBuilder');
+const worldSetting = require('./worldSettingContractService');
 
 const SPACE_ASSET_SCHEMA_VERSION = 7;
 const ATLAS_VIEW_KEYS = Object.freeze(['master', 'reverse', 'interaction', 'detail']);
@@ -37,11 +38,13 @@ function sourceFilePath(source = {}) {
 
 function buildSceneAtlasPrompt(scenePrompt = '', options = {}) {
   const repairFeedback = cleanText(options.repairFeedback || '', 1200);
+  const visualMedium = cleanText(options.visualMedium || 'auto', 40);
   return [
+    worldSetting.visualMediumPrompt(visualMedium, '2-by-2 scene perspective atlas'),
     'Create one canonical 2-by-2 perspective atlas of ONE AND THE SAME physical location.',
     'The four equal panels must be, in reading order: top-left MASTER ESTABLISHING view; top-right TRUE REVERSE OR SIDE view with a substantial camera relocation; bottom-left PRACTICAL INTERACTION-POSITION view showing the empty action zone and route; bottom-right CLOSE MATERIAL / CONSTRUCTION DETAIL view.',
     'All four panels must preserve identical fixed geometry, openings, boundaries, anchor positions, materials, colour family, object design and lighting direction. Only camera position, framing and scale may change.',
-    'Use a thin neutral gutter between panels. Keep each panel as an unoccupied clean 16:9 photograph containing only task-defined spatial content, free of readable typography, identifying marks and additional inset imagery after local cropping.',
+    `Use a thin neutral gutter between panels. Keep each panel as an unoccupied clean 16:9 ${visualMedium} view containing only task-defined spatial content, free of readable typography, identifying marks and additional inset imagery after local cropping.`,
     'The result is a spatial identity asset, not four independent scene concepts. Do not redesign, restyle or substitute the location between panels.',
     repairFeedback
       ? `Mandatory correction: ${repairFeedback}. Rebuild the complete atlas so every perspective shares the corrected physical identity.`

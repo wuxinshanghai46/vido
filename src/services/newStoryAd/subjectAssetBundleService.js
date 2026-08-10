@@ -19,6 +19,8 @@ const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const wearableEvidence = require('./wearableEvidencePolicyService');
 const personLooks = require('./personLookProfileService');
+const personAgeContract = require('./personAgeContractService');
+const worldSetting = require('./worldSettingContractService');
 
 const HUMAN_VIEW_KEYS = ['front', 'side', 'back', 'action'];
 const activeBundleKinds = new Set();
@@ -57,7 +59,7 @@ function alignMemberAgeText(text = '', age = '') {
 }
 
 function inferMemberAge(source = {}, spec = {}) {
-  const declared = cleanText(source.age || source.ageRange || source.appearance?.ageRange || spec.age || '', 40);
+  const declared = cleanText(source.age_contract?.value || source.age || source.ageRange || source.appearance?.ageRange || spec.age || '', 80);
   if (declared && declared !== 'match_brief') return { age: declared, inferred: false };
   const evidence = [
     source.displayName, source.name, source.roleName, source.role,
@@ -249,6 +251,7 @@ function resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pe
 
 function humanMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
+  const projectVisualMedium = worldSetting.primaryVisualMedium(body.world_setting);
   return supplied.slice(0, count).map((source, index) => {
     const role = cleanText(source.roleName || source.role || '', 120);
     const withLooks = personLooks.normalizeProfileLooks(source, { ensure: true });
@@ -263,6 +266,8 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
       displayName: cleanText(source.displayName || source.name || '', 120),
       roleName: role,
       age,
+      age_contract: personAgeContract.normalize(source.age_contract || age),
+      visual_medium: cleanText(source.visual_medium || projectVisualMedium || 'auto', 40),
       age_inferred: ageResolution.inferred,
       ...resolved,
       appearanceText: alignMemberAgeText(resolved.appearanceText, age),
@@ -274,6 +279,7 @@ function humanMemberSpecs(spec = {}, body = {}, count = 1) {
 
 function petMemberSpecs(spec = {}, body = {}, count = 1) {
   const supplied = Array.isArray(body.pet_profiles) ? body.pet_profiles : [];
+  const projectVisualMedium = worldSetting.primaryVisualMedium(body.world_setting);
   return supplied.slice(0, count).map((source, index) => {
     return {
       id: cleanText(source.id || source.pet_id || source.petId || '', 80),
@@ -281,6 +287,7 @@ function petMemberSpecs(spec = {}, body = {}, count = 1) {
       type: cleanText(source.type || source.species || '', 120),
       breed: cleanText(source.breed || '', 160),
       appearance: cleanText(source.appearance || source.description || '', 600),
+      visual_medium: cleanText(source.visual_medium || projectVisualMedium || 'auto', 40),
       member_index: index + 1,
     };
   });
@@ -537,17 +544,18 @@ function humanPrompt(member, count) {
     refined: 'Styling richness lock: refined and elegant. Use period-correct layered construction, premium believable textiles, controlled embroidery and a coherent set of shoes and accessories.',
     ornate_luxurious: 'Styling richness lock: ornate and luxurious. Use period-correct layered construction, premium silk/brocade or other supported high-value textiles, clearly readable embroidery or metal-thread craftsmanship, and a coherent hierarchy of hair ornaments, earrings, waist ornaments, footwear and other declared accessories. Richness must look expensive and intentional, never like random costume piling or generic cosplay.',
   };
+  const medium = member.visual_medium || 'auto';
+  const liveAction = medium === 'live_action';
   return [
-    'Create one production-ready photorealistic actor identity for a complete 20-item dossier.',
+    'Create one production-ready reusable character identity for a complete 20-item dossier.',
+    worldSetting.visualMediumPrompt(medium, 'character identity dossier'),
     'This identity will be rendered into separate body, face, expression and action contact sheets.',
     subjectContinuityPolicy.generationRuleEn(),
-    'Use a real neutral casting studio with even soft light, subtle floor contact and natural tonal falloff; no text, watermark, other person or collage border inside cells.',
-    visualRealism.identitySheetRealismPrompt(),
+    'Use a neutral character-design studio presentation appropriate to the selected medium, with even readable lighting, clear floor contact and no text, watermark, other person or collage border inside cells.',
+    liveAction ? visualRealism.identitySheetRealismPrompt() : '',
     count > 1 ? `This is cast member ${member.member_index} of ${count}. Create a clearly unique identity; never clone or resemble another cast member.` : '',
     `Name/role: ${member.displayName}; ${member.roleName}.`,
-    member.age && member.age !== 'match_brief'
-      ? `Age lock: ${PERSON_AGE_LABELS[member.age] || member.age}. This is a hard constraint; ignore any stale conflicting age phrase.`
-      : 'Age lock: use only the age explicitly supported by this member profile and campaign relationship.',
+    personAgeContract.promptLock(member.age_contract || member.age),
     member.appearanceText ? `Appearance: ${member.appearanceText}.` : '',
     member.wardrobeText ? `Locked wardrobe: ${member.wardrobeText}.` : '',
     richnessRules[member.style_richness] || '',
@@ -562,7 +570,8 @@ function humanPrompt(member, count) {
 
 function petPrompt(profile, count) {
   return [
-    'Generate one production-ready photorealistic animal identity sheet as an exact 2x2 grid.',
+    'Generate one production-ready reusable animal identity sheet as an exact 2x2 grid.',
+    worldSetting.visualMediumPrompt(profile.visual_medium || 'auto', 'animal identity sheet'),
     'The same single animal appears in all four cells: front full-body, side full-body, back full-body, and natural action full-body.',
     'Neutral seamless studio, even soft light, no human, no other animal, no text, no watermark.',
     'Preserve the exact species, breed traits, coat color and pattern, face markings, eye color, body proportions, tail, ears and collar/accessories across all views.',
@@ -928,6 +937,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       assetId: actorId,
       revision: 1,
       personPrompt: humanPrompt(member, humans.length),
+      visualMedium: member.visual_medium,
       requireReferences: false,
       loadCheckpoint: async key => checkpoint.person_dossier_checkpoints[key] || null,
       saveCheckpoint: async (key, value) => {
@@ -1018,6 +1028,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
         revision: 1,
         anchorUrl: compiled.native_masters?.face?.image_url || compiled.identity_views?.[0]?.image_url || '',
         personPrompt: humanPrompt(variantProfile, humans.length),
+        visualMedium: member.visual_medium,
         requireReferences: true,
         loadCheckpoint: detailCheckpoint,
         saveCheckpoint: saveDetailCheckpoint,
@@ -1078,7 +1089,8 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const asset = {
       id: `actor_asset_${actorId}`, actor_asset_id: `actor_asset_${actorId}`, actor_id: actorId,
       name: member.displayName, cast_role: member.roleName, cast_member_index: index + 1,
-      source: 'new_story_ad_person_dossier', reference_kind: 'synthetic_realistic_actor', is_ai_generated: true,
+      source: 'new_story_ad_person_dossier', reference_kind: member.visual_medium === 'live_action' ? 'synthetic_realistic_actor' : 'synthetic_character', is_ai_generated: true,
+      visual_medium: member.visual_medium || 'auto',
       image_url: compiled.native_masters?.body?.image_url || views[0]?.url || '', extra_image_urls: views.slice(1).map(view => view.url).filter(Boolean),
       view_images: views, view_count: views.length, description: humanPrompt(member, humans.length),
       cover_image_url: dossierSheet.image_url,
@@ -1178,6 +1190,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
     const asset = {
       id: `pet_asset_${petId}`, pet_asset_id: `pet_asset_${petId}`, pet_id: petId, name: profile.name,
       type: profile.type, breed: profile.breed, source: 'new_story_ad_pet_sheet',
+      visual_medium: profile.visual_medium || 'auto',
       image_url: views[0]?.url || '', extra_image_urls: views.slice(1).map(view => view.url).filter(Boolean),
       view_images: views, view_count: views.length, description: profile.appearance,
     };

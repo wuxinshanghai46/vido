@@ -34,6 +34,7 @@ function contextFor(brief = 'Create one reusable physical space identity.') {
     brief,
     product_subject: 'current task subject',
     scene_spec: sceneSpec,
+    world_setting: { profiles: [{ id: 'world_live_action', era_family: 'modern_china', visual_medium: 'live_action' }] },
   };
 }
 

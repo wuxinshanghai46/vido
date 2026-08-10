@@ -275,21 +275,47 @@ assert.throws(
     modelGateway.generateText = async options => {
       briefGoalModelCalls += 1;
       assert.strictEqual(options.stage, 'new_story_ad.assist');
-      const isStoryGoal = options.userPrompt.includes('brief_goal 剧情表达目标帮写');
+      const isStoryGoal = options.userPrompt.includes('brief_goal 剧情剧本帮写');
       if (isStoryGoal) {
         assert(options.systemPrompt.includes('纯剧情任务'));
         assert(options.systemPrompt.includes('不得把剧情变广告'));
         assert(options.userPrompt.includes('姐妹在故乡竹海重逢'));
       } else {
         assert(options.systemPrompt.includes('广告任务'));
-        assert(options.userPrompt.includes('brief_goal 广告传播目标帮写'));
+        assert(options.userPrompt.includes('brief_goal 广告剧本帮写'));
         assert(options.userPrompt.includes('年轻人的便携咖啡广告'));
       }
-      assert.doesNotMatch(options.userPrompt, /mode 是 brief_goal 时[^\n]*完整故事/);
-      const text = JSON.stringify({
-        goal_addition: isStoryGoal
-          ? '面向重视亲情与故乡记忆的观众，通过姐妹多年后在竹海重逢的情绪变化，呈现隔阂被看见、旧伤被理解和关系重新连接的过程，让观众感受到和解并非遗忘过去，而是愿意共同走向新的生活。'
-          : '为注重效率与品质的年轻上班族推广一款便携咖啡产品，重点传达随时获得稳定口感与清醒状态的产品价值，让观众记住它适合通勤、工作间隙和临时出行，并建立方便、可靠且有品质感的品牌认知，最终产生主动了解或购买的意愿。',
+      assert(options.systemPrompt.includes('详细概述、出场人物或展示主体、主要场景、剧情段落与结尾'));
+      const text = JSON.stringify(isStoryGoal ? {
+        detailed_summary: '多年未见的姐妹回到故乡竹海，在共同整理旧屋与重走儿时小径的过程中，被迫面对当年分别时没有说出口的误解。两人从克制试探到坦白旧伤，最终理解彼此当年的选择，并决定以新的关系重新出发。',
+        participants: [
+          { name: '姐姐', role: '离乡多年的姐姐', description: '希望完成旧屋交接，表面冷静，内心仍期待妹妹理解自己的离开。' },
+          { name: '妹妹', role: '留守故乡的妹妹', description: '对姐姐的离开怀有怨意，却保存着两人童年的共同物件。' },
+        ],
+        scenes: [
+          { name: '故乡竹海小径', time: '傍晚', description: '承载童年记忆，也是姐妹从沉默走向交流的主要空间。' },
+          { name: '山间旧屋', time: '入夜', description: '旧物触发真相，两人在这里完成正面沟通。' },
+        ],
+        story_sections: [
+          { title: '重逢与隔阂', content: '姐姐回到旧屋，妹妹以礼貌而疏离的方式迎接，两人因一件旧物产生第一次情绪碰撞。' },
+          { title: '真相与和解', content: '姐妹沿竹海小径回忆往事，在旧屋说清当年的选择，承认彼此的伤害并约定重新建立联系。' },
+        ],
+        closing: '和解不是遗忘过去，而是看见彼此的处境后，仍愿意共同走向新的生活。',
+      } : {
+        detailed_summary: '一位年轻上班族在通勤与临时会议之间需要快速获得一杯稳定口感的咖啡。便携咖啡通过随身携带、快速冲泡和真实使用情境被自然展示，最后以工作状态恢复和从容出发完成广告收束。',
+        participants: [
+          { name: '年轻上班族', role: '核心使用者', description: '在通勤和工作间隙展示真实使用需求与体验。' },
+          { name: '便携咖啡', role: '广告展示主体', description: '通过包装、冲泡和饮用过程展示便携与稳定口感。' },
+        ],
+        scenes: [
+          { name: '通勤车厢', time: '清晨', description: '建立赶时间的真实需求。' },
+          { name: '办公室休息区', time: '上午', description: '完成冲泡、饮用与状态变化的可见展示。' },
+        ],
+        story_sections: [
+          { title: '需求出现', content: '上班族匆忙通勤并接到临时会议通知，表现需要快速整理状态的真实处境。' },
+          { title: '产品展示与收束', content: '她在办公室快速冲泡便携咖啡，通过包装、冲泡和饮用动作展示产品，并从容进入会议。' },
+        ],
+        closing: '建立便携、可靠且有品质感的产品认知，引导观众进一步了解或购买。',
       });
       assert.strictEqual(await options.validateText(text), true);
       return { text, used_model: 'fixture-brief-goal', fallback_used: false, failed_models: [] };
@@ -301,8 +327,12 @@ assert.throws(
       target_duration: 30,
     }, { id: 'test-user' });
     assert.match(goalResponse.brief, /年轻上班族/);
-    assert.match(goalResponse.brief, /品牌认知/);
-    assert.match(goalResponse.brief, /【广告目标补充】/);
+    assert.match(goalResponse.brief, /产品认知/);
+    assert.match(goalResponse.brief, /【广告剧情概述】/);
+    assert.match(goalResponse.brief, /【出场人物 \/ 展示主体】/);
+    assert.match(goalResponse.brief, /【主要场景】/);
+    assert.match(goalResponse.brief, /【广告剧情段落】/);
+    assert.equal(goalResponse.screenplay_structure_version, 2);
     assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'characters'), false, '目标帮写不得提前输出人物');
     assert.equal(Object.prototype.hasOwnProperty.call(goalResponse, 'shot_count'), false, '目标帮写不得提前输出分镜数量');
     assert.equal(briefGoalModelCalls, 1);
@@ -314,7 +344,9 @@ assert.throws(
       content_mode_source: 'user',
       target_duration: 60,
     }, { id: 'test-user' });
-    assert.match(storyGoalResponse.brief, /【剧情表达补充】/);
+    assert.match(storyGoalResponse.brief, /【详细剧情描述】/);
+    assert.match(storyGoalResponse.brief, /【出场人物】/);
+    assert.match(storyGoalResponse.brief, /【剧情段落】/);
     assert.doesNotMatch(storyGoalResponse.brief, /产品|商品|品牌|购买|转化/);
     assert.equal(briefGoalModelCalls, 2);
     await assert.rejects(

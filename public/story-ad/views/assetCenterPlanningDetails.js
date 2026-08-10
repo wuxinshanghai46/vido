@@ -1,7 +1,7 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-world-person-action-contracts-v135';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v135';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v135';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-age-medium-script-v136';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-age-medium-script-v136';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-age-medium-script-v136';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-age-medium-script-v136';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
@@ -143,7 +143,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
     ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : mediaSection('完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
     ${group === 'people' ? dossierDetails(item) : ''}${group === 'products' ? productDetails(item) : ''}${profileDetails(item, group)}${knowledgePolicyTrace(item)}${group === 'people' ? personEditForm(item) : ''}${group === 'products' ? productEditForm(item) : ''}${group === 'scenes' ? sceneEditForm(item) : ''}${group === 'people' ? ownedPropDetails(item) : ''}
     <div class="meta-list">${metadata.map(([label, value]) => `<div class="meta-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`).join('')}</div></div>
-    ${generatable && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成${group === 'people' ? '完整人物档案' : '动物资产'}</button></footer>` : ''}
+    ${group === 'people' ? `<footer class="drawer-actions person-drawer-actions"><span>先保存文字设定；生成档案是另一步，生成前仍会确认并提示模型调用。</span><div><button class="btn" type="submit" form="personEditForm">保存人物文字设定</button><button class="btn primary" type="button" data-drawer-generate>${dossier ? '按最新设定重生成人物档案' : '生成完整人物档案'}</button></div></footer>` : (generatable && !dossier ? `<footer class="drawer-actions"><span>${views.length ? '可保留旧四视图，并生成新版完整档案。' : '生成前会再次展示确认，不会自动调用模型。'}</span><button class="btn primary" type="button" data-drawer-generate>生成动物资产</button></footer>` : '')}
     ${group === 'scenes' ? `<footer class="drawer-actions"><span>${sceneGenerated ? `当前已有 ${views.length} 个视角、${cameras.length} 个机位；仅在需要建立新版本时重新生成。` : '生成空间母版、视角和机位图，过程会显示统一进度与耗时。'}</span><button class="btn ${sceneGenerated ? '' : 'primary'}" type="button" data-drawer-generate-scene>${sceneGenerated ? '重新生成场景与机位' : '生成场景与机位'}</button></footer>` : ''}
     ${group === 'products' ? `<footer class="drawer-actions product-reference-actions"><span>展示主体可以上传实物/材料参考，也可以先由 AI 生成一张参考图；后续场景和分镜会把它作为主体锁定素材。</span><div><button class="btn" type="button" data-drawer-upload-product>${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn primary" type="button" data-drawer-generate-product>${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button></div></footer>` : ''}
     ${group === 'products' && item.image_url && item.status !== 'verified' ? '<footer class="drawer-actions"><span>关键帧使用商品图前，需要先完成外观、形状、颜色和材质一致性验证。</span><button class="btn primary" type="button" data-drawer-verify-product>验证商品素材</button></footer>' : ''}`;
@@ -162,7 +162,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   document.addEventListener('keydown', onKeydown);
   const bindSubmit = (selector, callback) => drawer.querySelector(selector)?.addEventListener('submit', async event => {
     event.preventDefault();
-    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const button = event.submitter || event.currentTarget.querySelector('button[type="submit"]');
     const saved = await callback?.(item, Object.fromEntries(new FormData(event.currentTarget).entries()), button);
     if (saved === true) close();
   });

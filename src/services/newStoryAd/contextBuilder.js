@@ -11,6 +11,7 @@ const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const contentSkill = require('./contentSkillService');
 const personLooks = require('./personLookProfileService');
 const worldSetting = require('./worldSettingContractService');
+const personAgeContract = require('./personAgeContractService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -659,12 +660,17 @@ function normalizeCastProfiles(input) {
     if (!profile || typeof profile !== 'object') return null;
     const withLooks = personLooks.normalizeProfileLooks(profile);
     const resolved = subjectProfileText.profileTexts(withLooks);
+    const normalizedAge = personAgeContract.normalize(profile.age_contract || profile.age || '', {
+      strict: profile.age_source === 'user', source: profile.age_source || profile.age_contract?.source || 'profile',
+    });
     return {
       id: cleanText(profile.id || `cast_${idx + 1}`, 80),
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
       displayName: cleanText(profile.displayName || profile.name || '', 120),
       roleName: cleanText(profile.roleName || profile.role || '', 120),
-      age: cleanText(profile.age || '', 40),
+      age: normalizedAge.value,
+      age_contract: normalizedAge,
+      age_source: cleanText(profile.age_source || normalizedAge.source || '', 40),
       field_authority: subjectProfileText.profileFieldAuthority(profile),
       user_edited_fields: subjectProfileText.userEditedFields(profile),
       sourceType: cleanText(profile.sourceType || profile.reference_kind || '', 80),
@@ -1058,6 +1064,12 @@ function buildContext(body = {}, user = {}) {
   });
   const contentMode = productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject';
   const worldSettingContract = worldSetting.normalize(body.world_setting || body.worldSetting);
+  const visualMedium = worldSetting.primaryVisualMedium(worldSettingContract);
+  const mediumBoundCastProfiles = castProfiles.map(profile => ({
+    ...profile,
+    visual_medium: cleanText(profile.visual_medium_source === 'user' ? profile.visual_medium : visualMedium, 40),
+    visual_medium_source: profile.visual_medium_source === 'user' ? 'user' : 'project',
+  }));
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -1140,7 +1152,7 @@ function buildContext(body = {}, user = {}) {
       voice: Math.max(1, Number(body.revisions.voice || 1) || 1),
       compose: Math.max(1, Number(body.revisions.compose || 1) || 1),
     } : { source: 1, scene: 1, person: 1, product: 1, creative: 1, voice: 1, compose: 1 },
-    cast_profiles: noHuman || animalOnly ? [] : castProfiles,
+    cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
     person_context: noHuman || animalOnly ? {
       source: noHuman ? 'no_human_mode' : 'animal_only_mode',
       spec_source: personSpecSource,

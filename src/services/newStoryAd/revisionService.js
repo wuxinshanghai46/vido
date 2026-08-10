@@ -19,6 +19,7 @@ function domainSlices(ctx = {}) {
   return {
     source: {
       brief: ctx.brief,
+      world_setting: ctx.world_setting,
       target_duration: ctx.target_duration,
       shot_count: ctx.shot_count,
       output_ratio: ctx.output_ratio,

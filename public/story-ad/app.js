@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260810-world-person-action-contracts-v135';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-world-person-action-contracts-v135';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-world-person-action-contracts-v135';
-import { confirmDialog } from './components/dialog.js?v=20260810-world-person-action-contracts-v135';
+import { createProjectStore } from './store/projectStore.js?v=20260810-age-medium-script-v136';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-age-medium-script-v136';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-age-medium-script-v136';
+import { confirmDialog } from './components/dialog.js?v=20260810-age-medium-script-v136';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260810-world-person-action-contracts-v135'),
-  assets: () => import('./views/assetCenterView.js?v=20260810-world-person-action-contracts-v135'),
-  plot: () => import('./views/plotRoomView.js?v=20260810-world-person-action-contracts-v135'),
-  storyboard: () => import('./views/storyboardView.js?v=20260810-world-person-action-contracts-v135'),
-  shot: () => import('./views/shotDesignerView.js?v=20260810-world-person-action-contracts-v135'),
-  final: () => import('./views/finalView.js?v=20260810-world-person-action-contracts-v135'),
-  workflow: () => import('./views/workflowView.js?v=20260810-world-person-action-contracts-v135'),
+  brief: () => import('./views/briefView.js?v=20260810-age-medium-script-v136'),
+  assets: () => import('./views/assetCenterView.js?v=20260810-age-medium-script-v136'),
+  plot: () => import('./views/plotRoomView.js?v=20260810-age-medium-script-v136'),
+  storyboard: () => import('./views/storyboardView.js?v=20260810-age-medium-script-v136'),
+  shot: () => import('./views/shotDesignerView.js?v=20260810-age-medium-script-v136'),
+  final: () => import('./views/finalView.js?v=20260810-age-medium-script-v136'),
+  workflow: () => import('./views/workflowView.js?v=20260810-age-medium-script-v136'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

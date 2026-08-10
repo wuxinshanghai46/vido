@@ -3,8 +3,9 @@ const { v4: uuidv4 } = require('uuid');
 const mediaAdapterDefault = require('./mediaAdapter');
 const checkpointServiceDefault = require('./assetGenerationCheckpointService');
 const concurrencyDefault = require('./generationConcurrencyService');
+const worldSetting = require('./worldSettingContractService');
 
-const PERSON_DOSSIER_SCHEMA_VERSION = 4;
+const PERSON_DOSSIER_SCHEMA_VERSION = 5;
 const BODY_VIEWS = ['front', 'three_quarter', 'side', 'back'];
 const IDENTITY_VIEWS = ['face_front', 'face_three_quarter', 'face_profile', 'hair_back'];
 const EXPRESSIONS = ['neutral', 'natural_smile', 'focused', 'doubtful', 'surprised', 'relaxed_approved'];
@@ -66,13 +67,13 @@ const NATIVE_MASTER_SPECS = [
     kind: 'face_master',
     key: 'face',
     aspectRatio: '1:1',
-    instruction: 'One native-resolution head-and-shoulders identity portrait, eye-level, neutral expression, both eyes tack sharp, individual skin pores and fine facial hair visible.',
+    instruction: 'One native-resolution head-and-shoulders identity portrait, eye-level, neutral expression, both eyes clearly resolved, with medium-appropriate facial surface, line and hair detail visible.',
   },
   {
     kind: 'body_master',
     key: 'body',
     aspectRatio: '3:4',
-    instruction: 'One native-resolution full-body casting portrait from head to complete shoes, natural weight distribution, anatomically correct hands, garment weave and footwear construction visible.',
+    instruction: 'One native-resolution full-body character portrait from head to complete shoes, natural weight distribution, coherent hands, garment construction and footwear design visible.',
   },
 ];
 
@@ -93,9 +94,10 @@ function personViewPrefix({ taskId = '', assetId = '', kind = 'asset', revision 
   return `person_${safeKind}_r${Math.max(1, Number(revision) || 1)}_${compactAssetToken(taskId, assetId, safeKind)}`;
 }
 
-function categoryPrompt(spec, personPrompt = '', knowledgePrompt = '') {
+function categoryPrompt(spec, personPrompt = '', knowledgePrompt = '', visualMedium = 'auto') {
   return [
-    'Create one clean production contact sheet for a single reusable commercial actor.',
+    'Create one clean production contact sheet for a single reusable original character.',
+    worldSetting.visualMediumPrompt(visualMedium, `${spec.kind} contact sheet`),
     `LAYOUT IS MANDATORY: exactly ${spec.columns} columns x ${spec.rows} rows, exactly ${spec.keys.length} equal cells.`,
     `Cell order left-to-right, top-to-bottom: ${spec.keys.join(', ')}.`,
     spec.instruction,
@@ -107,19 +109,22 @@ function categoryPrompt(spec, personPrompt = '', knowledgePrompt = '') {
   ].filter(Boolean).join('\n');
 }
 
-function nativeMasterPrompt(spec, personPrompt = '', knowledgePrompt = '') {
+function nativeMasterPrompt(spec, personPrompt = '', knowledgePrompt = '', visualMedium = 'auto') {
+  const liveAction = visualMedium === 'live_action';
   return [
-    'Create one photorealistic commercial casting master image of exactly one reusable actor.',
+    'Create one native-resolution master image of exactly one reusable original character.',
+    worldSetting.visualMediumPrompt(visualMedium, `${spec.kind} master`),
     spec.instruction,
     personPrompt ? `Actor contract: ${personPrompt}` : '',
     knowledgePrompt,
     'Preserve the exact identity, apparent age, facial geometry, body proportions, hairstyle, garments, shoes and accessories from the supplied identity anchor.',
-    'Neutral light-gray casting studio, soft large-source key light with realistic falloff, physically plausible skin subsurface scattering and natural micro-contrast.',
-    'No beauty filter, no plastic skin, no waxy face, no illustration, no CGI look, no grid, no collage, no text, no logo, no watermark and no extra people.',
+    'Neutral light-gray character-design studio, clear medium-appropriate lighting and stable material or line treatment.',
+    liveAction ? 'No beauty filter, plastic skin or waxy face.' : 'Do not drift into photoreal live action or another undeclared rendering medium.',
+    'No grid, collage, text, logo, watermark or extra people.',
   ].filter(Boolean).join('\n');
 }
 
-function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt, knowledgeGenerationFingerprint = '' }) {
+function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium = 'auto', knowledgeGenerationFingerprint = '' }) {
   return {
     taskId,
     assetType: 'person_dossier',
@@ -131,6 +136,7 @@ function checkpointIdentity({ taskId, assetId, revision, spec, anchorUrl, person
       keys: spec.keys,
       anchor_url: anchorUrl,
       person_prompt: personPrompt,
+      visual_medium: visualMedium,
       knowledge_generation_fingerprint: knowledgeGenerationFingerprint,
     },
   };
@@ -157,6 +163,7 @@ async function generateCategory({
   revision,
   anchorUrl,
   personPrompt,
+  visualMedium,
   requireReferences,
   spec,
   loadCheckpoint,
@@ -167,7 +174,7 @@ async function generateCategory({
   knowledgePolicy = {},
 }) {
   const identity = checkpointIdentity({
-    taskId, assetId, revision, spec, anchorUrl, personPrompt,
+    taskId, assetId, revision, spec, anchorUrl, personPrompt, visualMedium,
     knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
   });
   return checkpointService.runCheckpointedUnit({
@@ -179,7 +186,7 @@ async function generateCategory({
       const atlas = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: 'new_story_ad.person_dossier_atlas',
-        prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block),
+        prompt: categoryPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }),
         aspectRatio: spec.aspectRatio,
         referenceImages: anchorUrl ? [anchorUrl] : [],
@@ -220,12 +227,12 @@ async function generateCategory({
 }
 
 async function generateNativeMaster({
-  taskId, assetId, revision, anchorUrl, personPrompt, requireReferences, spec,
+  taskId, assetId, revision, anchorUrl, personPrompt, visualMedium, requireReferences, spec,
   loadCheckpoint, saveCheckpoint, onEvent, mediaAdapter, checkpointService, knowledgePolicy = {},
 }) {
   const checkpointSpec = { ...spec, keys: [spec.key] };
   const identity = checkpointIdentity({
-    taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt,
+    taskId, assetId, revision, spec: checkpointSpec, anchorUrl, personPrompt, visualMedium,
     knowledgeGenerationFingerprint: knowledgePolicy.generation_fingerprint,
   });
   return checkpointService.runCheckpointedUnit({
@@ -237,7 +244,7 @@ async function generateNativeMaster({
       const image = controls.providerResult || await mediaAdapter.generateActorReference({
         taskId,
         stage: 'new_story_ad.person_dossier_native_master',
-        prompt: nativeMasterPrompt(spec, personPrompt, knowledgePolicy.prompt_block),
+        prompt: nativeMasterPrompt(spec, personPrompt, knowledgePolicy.prompt_block, visualMedium),
         filename: personAtlasFilename({ taskId, assetId, kind: spec.kind, revision }).replace('_atlas_', '_'),
         aspectRatio: spec.aspectRatio,
         referenceImages: anchorUrl ? [anchorUrl] : [],
@@ -270,6 +277,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
     revision = 1,
     anchorUrl = '',
     personPrompt = '',
+    visualMedium = 'auto',
     requireReferences = Boolean(anchorUrl),
     loadCheckpoint = async () => null,
     saveCheckpoint = async () => {},
@@ -303,6 +311,7 @@ async function compilePersonDossier(options = {}, deps = {}) {
         revision,
         anchorUrl,
         personPrompt,
+        visualMedium,
         requireReferences,
         spec: unit.spec,
         loadCheckpoint,

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-world-person-action-contracts-v135';
+import { escapeHtml } from '../components/ui.js?v=20260810-age-medium-script-v136';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -81,6 +81,11 @@ export function collectPersonLookValues(values = {}, profile = {}) {
     };
   }).filter(look => look.wardrobeText);
   const base = Object.fromEntries(Object.entries(values).filter(([key]) => !/^look_\d+_/.test(key)));
+  const ageInput = String(base.age || '').trim();
+  const range = ageInput.match(/^(?:年龄|实际年龄|外观年龄)?\s*(\d{1,7})\s*(?:~|～|-|—|–|至|到)\s*(\d{1,7})\s*(?:岁|周岁)?$/u);
+  const exact = ageInput.match(/^(?:年龄|实际年龄)?\s*(\d{1,7})\s*(?:岁|周岁)?$/u);
+  if (range) base.age = `${Number(range[1])}~${Number(range[2])}岁`;
+  else if (exact) base.age = `${Number(exact[1])}岁`;
   return {
     ...base,
     look_profiles: looks,

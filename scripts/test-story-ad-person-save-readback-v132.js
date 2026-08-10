@@ -33,12 +33,12 @@ const updated = storyAd.updateTaskRequest(id, {
     ],
   }],
 }, owner);
-assert.equal(updated.context.cast_profiles[0].age, '1000');
+assert.equal(updated.context.cast_profiles[0].age, '1000岁');
 assert.match(updated.context.cast_profiles[0].appearanceText, /1000岁/u);
 
 const bundle = workspace.buildProjectBundle(id, { sections: 'summary,assets', user: owner });
 const profile = bundle.assets.people[0].profile;
-assert.equal(profile.age, '1000');
+assert.equal(profile.age, '1000岁');
 assert.match(profile.appearanceText, /1000岁/u);
 assert.deepEqual(profile.look_profiles.map(look => look.id), ['ancient', 'modern']);
 assert.equal(profile.look_profiles[0].wardrobe_contract.schema_version, 2);

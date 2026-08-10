@@ -80,7 +80,7 @@ function run() {
   assert(assetPlan.includes("stage: 'new_story_ad.asset_plan'"), '无参考任务必须走单次统一资产计划');
   assert(assetPlan.includes("source: 'reference_analysis_projection'"), '有效参考分析必须确定性投影');
   assert(assetPlan.includes('previous?.fingerprint === currentFingerprint'), '资产计划必须按输入指纹复用');
-  assert(modelGateway.includes("stage === 'new_story_ad.asset_plan'") && modelGateway.includes("? 'new_story_ad.scene_config'"), '统一资产计划必须继承已验证的场景配置文本路由');
+  assert(modelGateway.includes("'new_story_ad.asset_plan': 'new_story_ad.scene_config'") && modelGateway.includes('STAGE_ROUTE_INHERITANCE'), '统一资产计划必须继承已验证的场景配置文本路由');
 
   const personUi = read('public/js/new-story-ad/subject-assets-ui.js');
   const dossierUi = read('public/js/new-story-ad/person-dossier-ui.js');

@@ -1267,11 +1267,13 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   ].filter(Boolean).join('\n');
   const productReferenceText = productPromptContract.reference_text;
   const productProofText = productPromptContract.proof_text;
+  const visualMedium = worldSetting.primaryVisualMedium(ctx.world_setting);
+  const liveActionMedium = visualMedium === 'live_action';
   const parts = [
-    'Photorealistic live-action commercial storyboard keyframe.',
-    `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}`,
-    shotNeedsPerson ? `Actor photorealism lock: ${visualRealismPolicy.compactPersonRealismPrompt()}` : '',
-    shotNeedsPerson ? `Actor compliance lock: ${visualRealismPolicy.compactImage2CompliancePrompt()}` : '',
+    worldSetting.visualMediumPrompt(visualMedium, 'storyboard keyframe'),
+    liveActionMedium ? `Scene photorealism lock: ${visualRealismPolicy.compactSceneRealismPrompt()}` : '',
+    liveActionMedium && shotNeedsPerson ? `Actor photorealism lock: ${visualRealismPolicy.compactPersonRealismPrompt()}` : '',
+    liveActionMedium && shotNeedsPerson ? `Actor compliance lock: ${visualRealismPolicy.compactImage2CompliancePrompt()}` : '',
     `Campaign brief: ${campaignBriefText}`,
     `Advertised subject: ${advertisedSubjectText}`,
     `Shot ${index + 1}: ${cleanText(shot.title || '', 120)}`,
@@ -1322,7 +1324,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
     // 通用语义忠实约束：防止模型把抽象业务词擅自转成无关行业画面。
     'Semantic fidelity rule: visualize the current task brief, advertised subject, locked scene asset and current shot action literally. Do not replace an abstract business concept with unrelated industry symbols, charts, trading screens, stock-market dashboards, generic finance UI, random data walls or abstract technology panels unless the user brief or the edited shot explicitly asks for that visual category.',
     'If the task mentions software, data, platform, token, efficiency, service or any other abstract concept, ground it in the user-described product/service usage, real objects, people, workflow, interface, environment or scene asset from this task. Never infer a different industry, business case, venue, carrier form or visual metaphor on your own.',
-    'Use a real camera look, natural light, realistic skin and materials, no cartoon, no anime, no 3D render, no poster text, no watermark.', knowledgePolicyRuntime.promptBlock(contract.knowledge_policy_generation || {}),
+    worldSetting.visualMediumPrompt(visualMedium, 'final rendered frame; no poster text or watermark'), knowledgePolicyRuntime.promptBlock(contract.knowledge_policy_generation || {}),
   ];
   const prompt = compactKeyframePrompt(parts);
   return keyframePromptInvariants.assertPrompt(prompt, {
@@ -3563,8 +3565,8 @@ async function assistBrief(body = {}, user = {}) {
     'shot_settings 必须尊重用户补充和已有台词/卖点，不得编造功效、价格、资质或未经授权的画面元素；不确定的高级项使用 auto/none。',
     storyBeatAssist.systemRule(),
     briefGoalAssist.systemRule(ctx),
-    isBriefGoal ? 'brief_goal 只返回 goal_addition，不返回完整需求、剧本或分镜。' : '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
-    isBriefGoal ? 'goal_addition 必须是给普通用户直接阅读的纯文本，不使用 Markdown 或字面量反斜杠换行。' : 'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
+    isBriefGoal ? 'brief_goal 必须返回详细概述、出场人物或展示主体、主要场景、剧情段落与结尾；只到剧本层，不得提前输出分镜、镜号、机位或生成提示词。' : '如果是“write”，请补成完整广告需求；如果是“clean”，请只整理和补齐缺失字段，不改变用户核心意思。',
+    isBriefGoal ? '各结构字段必须是给普通用户直接阅读的纯文本，不使用 Markdown 标题符号或字面量反斜杠换行；服务端会统一排成中文剧本格式。' : 'brief 必须是给普通用户直接阅读的纯文本：禁止 Markdown 星号/标题符号，禁止输出字面量 \\n、\\r 或 \\t。',
     isBriefGoal ? '' : 'brief 每个板块单独成段，统一使用“【广告主题】内容”“【核心故事线】内容”“【人物设定】内容”“【场景设定】内容”“【核心卖点】内容”“【画面风格】内容”等中文方括号标题；段落之间使用真实换行。',
     knowledgePolicyRuntime.promptBlock(assistPolicy || {}),
   ].join('\n');

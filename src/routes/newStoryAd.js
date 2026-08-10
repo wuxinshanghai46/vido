@@ -1,28 +1,17 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const express = require('express'), fs = require('fs'), path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const router = express.Router();
 const sharedDigitalHumanRouter = require('./digitalHuman');
-const service = require('../services/newStoryAd');
-const storage = require('../services/newStoryAd/storageService');
-const modelGateway = require('../services/newStoryAd/modelGateway');
-const mediaAdapter = require('../services/newStoryAd/mediaAdapter');
-const ttsAdapter = require('../services/newStoryAd/ttsAdapter');
-const videoAdapter = require('../services/newStoryAd/videoAdapter');
-const composeService = require('../services/newStoryAd/composeService');
-const sceneAssetService = require('../services/newStoryAd/sceneAssetService');
-const scenePanoramaService = require('../services/newStoryAd/scenePanoramaService');
-const jobService = require('../services/newStoryAd/jobService');
-const mediaPipeline = require('../services/newStoryAd/mediaPipelineService');
-const videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnitProjection');
-const cancellation = require('../services/newStoryAd/cancellationContext');
-const taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
-const personIdentity = require('../services/newStoryAd/personIdentityContractService');
-const productAssetGeneration = require('../services/newStoryAd/productAssetGenerationService');
-const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService');
-const personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
+const service = require('../services/newStoryAd'), storage = require('../services/newStoryAd/storageService');
+const modelGateway = require('../services/newStoryAd/modelGateway'), mediaAdapter = require('../services/newStoryAd/mediaAdapter');
+const ttsAdapter = require('../services/newStoryAd/ttsAdapter'), videoAdapter = require('../services/newStoryAd/videoAdapter');
+const composeService = require('../services/newStoryAd/composeService'), sceneAssetService = require('../services/newStoryAd/sceneAssetService');
+const scenePanoramaService = require('../services/newStoryAd/scenePanoramaService'), jobService = require('../services/newStoryAd/jobService');
+const mediaPipeline = require('../services/newStoryAd/mediaPipelineService'), videoGenerationUnits = require('../services/newStoryAd/videoGenerationUnitProjection');
+const cancellation = require('../services/newStoryAd/cancellationContext'), taskProgressProjection = require('../services/newStoryAd/taskProgressProjectionService');
+const personIdentity = require('../services/newStoryAd/personIdentityContractService'), productAssetGeneration = require('../services/newStoryAd/productAssetGenerationService');
+const subjectAssets = require('../services/newStoryAd/subjectAssetBundleService'), personAssetLifecycle = require('../services/newStoryAd/personAssetLifecycleService');
 const visualAssetProgress = require('../services/newStoryAd/visualAssetProgressService');
 const visualAssetOrchestration = require('../services/newStoryAd/visualAssetOrchestrationService');
 const visualAssetBillingAuthorization = require('../services/newStoryAd/visualAssetBillingAuthorizationService');
@@ -40,11 +29,9 @@ const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPo
 const visualRealismPolicy = require('../services/newStoryAd/visualRealismPolicyService');
 const videoCore = require('../services/videoGenerationCore');
 const db = require('../models/database');
-
 function userFromReq(req) {
   return req.user || req.auth || {};
 }
-
 /** 统一捕获剧情广告接口异常，并保证所有用户可见错误均为中文。 */
 function asyncRoute(fn) {
   return async (req, res) => {
@@ -74,7 +61,6 @@ function asyncRoute(fn) {
     }
   };
 }
-
 function forwardSharedOpenMusic(targetPath) {
   return (req, res, next) => {
     const originalUrl = req.url;
@@ -94,7 +80,6 @@ function forwardSharedOpenMusic(targetPath) {
 // 避免再次依赖已下线的旧剧情广告入口。
 router.get('/music/search', forwardSharedOpenMusic('/luxury-ad/open-music/search'));
 router.post('/music/import', forwardSharedOpenMusic('/luxury-ad/open-music/import'));
-
 function taskForReq(req) {
   return service.assertTaskOwner(req.params.id, userFromReq(req));
 }

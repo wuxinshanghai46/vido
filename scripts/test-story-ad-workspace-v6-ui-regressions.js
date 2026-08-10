@@ -52,6 +52,8 @@ const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDeta
 assert.match(assetDossierSections, /reference-dossier-board/);
 assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
+assert.match(assetPlanningDetails, /form="personEditForm"/u, '人物抽屉固定操作栏必须始终提供文字保存入口');
+assert.match(assetPlanningDetails, /保存人物文字设定/u);
 
 const briefView = read('public/story-ad/views/briefView.js');
 const referenceProgressSource = read('public/story-ad/views/referenceProgressCard.js');
@@ -99,8 +101,8 @@ assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名�
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
 assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
-assert.match(briefView, /mode:\s*'brief_goal'/, '广告目标帮写必须使用独立模式，不能提前生成完整剧情结构');
-assert.match(briefView, /AI 只补充目标，不会删除你写的人物、场景、故事或商品事实/, '目标页必须解释 AI 帮写的职责边界');
+assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
+assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜/, '目标页必须解释 AI 帮写的结构与职责边界');
 assert.match(briefView, /<select class="select" name="content_mode" required>[\s\S]*<option value="commercial_subject"[\s\S]*<option value="narrative_story"/, '目标页必须使用下拉框让用户明确选择广告或剧情');
 assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '广告/剧情选择不得继续放在内容目标上方');
 assert.equal((briefView.match(/name="content_mode"/g) || []).length, 1, '页面只能有一个内容类型下拉框');
@@ -376,7 +378,7 @@ const assetDossierModule = loadBrowserModule(
 );
 const assetPersonStateModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonState.js',
-  ['personAssetState', 'personLookSummary', 'assertSavedPerson'],
+  ['personAgeDisplay', 'personAssetState', 'personLookSummary', 'assertSavedPerson'],
 );
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
@@ -431,6 +433,10 @@ assert.equal(assetModule.personAssetState(legacyDossierPerson), 'upgrade_require
 assert.equal(assetModule.subjectNeedsGeneration(legacyDossierPerson, 'human'), true, '旧档案必须进入批量升级目标');
 const completePerson = { ...legacyPerson, visual_asset_contract_version: 2, dossier_sheet: { image_url: '/dossier.png' } };
 assert.equal(assetModule.personAssetState(completePerson), 'complete_dossier');
+const generatedProfile = { displayName: '凌光', roleName: '男主角', age: '18岁', age_contract: { value: '18岁' }, appearanceText: '面容清俊', negativeText: '', look_profiles: [] };
+assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, visual_medium: 'live_action' }, generated_profile: generatedProfile }), 'complete_dossier');
+assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, age: '18~25岁', age_contract: { value: '18~25岁' }, visual_medium: 'live_action' }, generated_profile: generatedProfile }), 'profile_upgrade_required', '年龄区间更新后旧人物档案必须失效');
+assert.equal(assetModule.personAssetState({ ...completePerson, visual_medium: 'live_action', profile: { ...generatedProfile, visual_medium: 'anime_2d' }, generated_profile: generatedProfile }), 'medium_upgrade_required', '项目画面形态更新后旧真人档案必须失效');
 const completeCard = assetModule.assetCard(completePerson, 'people');
 assert.match(completeCard, /完整档案/);
 assert.match(completeCard, /重生成完整人物档案/);
@@ -438,12 +444,14 @@ assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
 assert.match(completeCard, /data-generate-asset="legacy-person"/);
 const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性' } };
 const personEdit = assetModule.personEditForm(readableProfile);
-assert.doesNotMatch(personEdit, /name="age"|年龄范围|match_brief/, '人物编辑区不得再暴露内部年龄枚举或重复年龄字段');
-assert.match(personEdit, /外貌、气质与年龄（请在正文写明实际年龄）/);
+assert.match(personEdit, /name="age"/u, '人物编辑区必须提供确切年龄或区间的独立权威字段');
+assert.doesNotMatch(personEdit, /value="match_brief"/u, '人物编辑区不得暴露内部年龄枚举');
+assert.match(personEdit, /确切年龄或年龄区间/u);
+assert.match(personEdit, /外貌与气质（年龄请填写在上方独立字段）/u);
 assert.match(personEdit, /年龄约28岁/);
 const personProfileDetails = assetModule.profileDetails(readableProfile, 'people');
 assert.doesNotMatch(personProfileDetails, /年龄范围|match_brief/);
-assert.match(personProfileDetails, /外貌、气质与年龄/);
+assert.match(personProfileDetails, /外貌与气质/);
 const multiLookProfile = { ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
   { id: 'ancient', name: '古代造型', scene_names: ['竹海庭院'], wardrobeText: '淡青宋式长衫' },
   { id: 'modern', name: '现代造型', scene_names: ['金属展厅'], wardrobeText: '米白亚麻衬衫与长裤' },
@@ -571,6 +579,8 @@ assert.match(finalView, /<details class="card generation-section generation-deta
 assert.doesNotMatch(finalView, /mediaPreview\(finalVideo/);
 
 const workspaceCss = read('public/story-ad/workspace.css');
+assert.match(workspaceCss, /\.drawer\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/s, '抽屉必须只滚动正文，底部操作栏不得遮挡表单');
+assert.match(workspaceCss, /\.drawer-content\s*\{[^}]*overflow-y:\s*auto;/s);
 const referenceProgressCss = read('public/story-ad/reference-progress.css');
 const platformCss = read('public/story-ad/styles.css');
 const storyAdPage = read('public/story-ad/index.html');
