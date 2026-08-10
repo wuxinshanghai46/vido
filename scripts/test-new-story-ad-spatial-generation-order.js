@@ -84,6 +84,13 @@ async function main() {
   const context = {
     brief: 'Lock one reusable commercial interior before storyboard generation.',
     product_subject: 'current task subject',
+    world_setting: {
+      profiles: [{
+        id: 'world_live_action',
+        era_family: 'modern_china',
+        visual_medium: 'live_action',
+      }],
+    },
     scene_spec: {
       layoutText: 'One complete room with a main wall, entrance, sofa, table and empty interaction zone.',
       materialLightText: 'Continuous metal feature wall with warm grazing light and realistic stone floor.',
@@ -332,11 +339,12 @@ async function main() {
     assert.match(calls[0].filename, /_master_/);
     assert.deepEqual(calls[0].referenceImages || [], []);
     assert.equal(calls[0].imageModel, 'gpt-image-2');
-    assert.match(calls[0].prompt, /MASTER ESTABLISHING PHOTOGRAPH/i);
+    assert.match(calls[0].prompt, /MASTER ESTABLISHING VIEW/i);
+    assert.match(calls[0].prompt, /Visual medium: photoreal live action/i);
     assert.match(calls[0].prompt, /real on-location photograph/i);
     assert.match(calls[0].prompt, /must not resemble an architectural visualization/i);
     assert.doesNotMatch(calls[0].prompt, /geometry-only spatial blueprint/i);
-    assert.match(calls[0].auditSafePrompt, /root master establishing photograph/i);
+    assert.match(calls[0].auditSafePrompt, /root master establishing view/i);
     assert.ok(calls[0].auditSafePrompt.length <= 2200);
 
     assert.match(calls[1].filename, /_layout_/);
@@ -351,7 +359,7 @@ async function main() {
     assert.doesNotMatch(calls[1].prompt, /Scene interaction and camera position requirement/i);
     assert.ok(calls[1].prompt.length <= 6200, 'layout role prompt must remain compact enough for Image2 to prioritize camera acquisition');
     assert.match(calls[1].prompt, /Reference image 1 is the master establishing view/i);
-    assert.match(calls[1].prompt, /same location|exact physical location/i);
+    assert.match(calls[1].prompt, /same location|exact(?: physical)? location/i);
     assert.match(calls[1].prompt, /remove the ceiling.*low cutaway perimeter boundaries/i);
     assert.match(calls[1].prompt, /Material identity and surface topology are independent constraints/i);
     assert.match(calls[1].auditSafePrompt, /near-vertical top-down whole-space layout/i);

@@ -114,8 +114,9 @@ function testPersonFullBodyAndRealismPolicy() {
 }
 
 function testSceneAndKeyframeRealismPolicy() {
+  const world_setting = { profiles: [{ id: 'world_live_action', era_family: 'modern_china', visual_medium: 'live_action' }] };
   const scenePrompt = sceneAssets.buildSceneSheetPrompt({
-    ctx: { brief: '真实商业空间', cast_mode: 'no_human' },
+    ctx: { brief: '真实商业空间', cast_mode: 'no_human', world_setting },
   });
   assert.match(scenePrompt, /physically used and photographed/i);
   assert.match(scenePrompt, /task-relevant traces/i);
@@ -125,6 +126,7 @@ function testSceneAndKeyframeRealismPolicy() {
     brief: '成年人在真实办公室使用产品',
     product_subject: '办公服务',
     cast_mode: 'single',
+    world_setting,
     person_asset: { id: 'actor-001', name: '测试演员' },
   }, {
     title: '自然交流',
@@ -145,6 +147,7 @@ function testIdentitySheetRealismPolicy() {
     member_index: 1,
     displayName: '林悦',
     roleName: '年轻母亲',
+    visual_medium: 'live_action',
     appearanceText: '约30岁，真实自然面部比例',
     wardrobeText: '米白色棉质短袖',
     hairMakeupText: '低马尾与自然碎发',

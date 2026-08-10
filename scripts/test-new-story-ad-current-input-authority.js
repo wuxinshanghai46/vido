@@ -45,8 +45,8 @@ async function main() {
     1,
   );
   const personPrompt = subjectAssets.humanPrompt(members[0], 1);
-  assert.match(personPrompt, /Age lock: 40-55 year old adult/);
-  assert.match(personPrompt, /hard constraint/);
+  assert.match(personPrompt, /Age-range lock: 40~55岁/);
+  assert.match(personPrompt, /Preserve one stable apparent maturity inside this interval/);
   assert.doesNotMatch(personPrompt, /约30岁/);
 
   const currentScene = {
