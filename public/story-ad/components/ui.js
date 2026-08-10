@@ -89,7 +89,7 @@ const GENERATION_STAGE_LABELS = {
 };
 
 const GENERATION_UNIT_LABELS = {
-  subject_assets: '项资产', visual_assets: '项资产', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
+  subject_assets: '项资产', visual_assets: '个本批目标', person_provider_sync: '个人物', product_asset: '项商品', prop_asset: '项道具', scene_asset: '张场景图', blueprint: '个步骤', storyboard: '个分镜',
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
@@ -152,7 +152,7 @@ export function generationProgressPanel(bundle = {}) {
   if (view.failed) {
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
-      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div></details>
+      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.stage === 'visual_assets' ? '<button class="btn small" type="button" data-view="assets">处理缺失项</button>' : ''}</div></details>
     </section>`;
   }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">

@@ -37,6 +37,15 @@ function petProfile(index, overrides = {}) {
   };
 }
 
+assert.doesNotThrow(() => subjectAssets.assertCompleteSubjectProfiles(
+  { mode: 'dual', people: 2, pets: 0 },
+  [
+    castProfile(1, { displayName: '沈砚辞', roleName: '云知月跨越千年的恋人' }),
+    castProfile(2, { displayName: '云知月', roleName: '沈砚辞守望千年的恋人' }),
+  ],
+  [],
+), 'relationship text may name another cast member without being mistaken for visual-profile contamination');
+
 assert.strictEqual(
   typeof personAssetLifecycle.latestSubjectCheckpointRow,
   'function',
@@ -508,6 +517,9 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(projectedPartialScenes[0].view_statuses.interaction.state, 'billing_review', 'submitted unknown view must remain a billing-review state');
   assert.strictEqual(projectedPartialScenes[0].view_statuses.detail.state, 'pending', 'billing-guarded unsubmitted view must remain pending instead of looking failed');
   assert.strictEqual(projectedPartialScenes[0].view_statuses.detail.submission_state, 'not_submitted');
+  assert.strictEqual(projectedPartialScenes[0].repair_plan.action, 'regenerate_failed_views');
+  assert.deepStrictEqual(projectedPartialScenes[0].repair_plan.view_keys, ['interaction', 'detail']);
+  assert.strictEqual(projectedPartialScenes[0].repair_plan.requires_billing_review, true);
 
   const multiSceneCheckpointProjection = sceneCheckpointProjection.projectSceneAssets([
     {

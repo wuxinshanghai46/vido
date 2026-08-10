@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260810-ui-v147';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-ui-v147';
-import { confirmDialog } from '../components/dialog.js?v=20260810-ui-v147';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-ui-v147';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-ui-v147';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-ui-v147';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-ui-v147';
-import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-ui-v147';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-ui-v147';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-ui-v147';
+import { request } from '../api.js?v=20260810-a-v153';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-a-v153';
+import { confirmDialog } from '../components/dialog.js?v=20260810-a-v153';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-a-v153';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-a-v153';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-a-v153';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-a-v153';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260810-a-v153';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-a-v153';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-a-v153';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -126,6 +126,7 @@ function assetCard(item, group) {
   const views = Array.isArray(item.view_images) ? item.view_images.length : 0;
   const personState = group === 'people' ? personAssetState(item) : '';
   const personLooks = group === 'people' && Array.isArray(item.profile?.look_profiles) ? item.profile.look_profiles : [];
+  const personLookTiles = group === 'people' ? renderPersonLookTiles(item) : '';
   const lookSummary = personLookSummary(personLooks);
   const sceneDetail = group === 'scenes' ? [
     item.reference_only ? '未绑定场景参考' : '',
@@ -164,7 +165,7 @@ function assetCard(item, group) {
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
-      </button>
+      </button>${personLookTiles}
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
@@ -205,8 +206,6 @@ function dossierDetails(item = {}) {
   ].join('');
   return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
-
-
 function personEditForm(item = {}) {
   const profile = item.profile || {};
   const field = (name, label, value, textarea = false) => `<label><span>${label}</span>${textarea
@@ -223,7 +222,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-ui-v147');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-a-v153');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -251,7 +250,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-ui-v147'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-a-v153'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

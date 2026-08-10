@@ -6,13 +6,24 @@ function updateSubjectProgress(taskId, generationId, update = {}) {
   const task = storage.getTask(taskId);
   if (!task) return null;
   if (task.generation_progress?.stage === 'visual_assets') {
+    const previous = task.generation_progress?.lanes?.subjects || {};
+    const subjectCompleted = ['checkpoint_reused', 'person_verification', 'pet_verification'].includes(String(update.phase || ''))
+      ? Math.max(Number(previous.completed || 0), Number(update.subject_index || 0))
+      : Number(previous.completed || 0);
+    const completed = update.status === 'completed' ? Number(previous.total || 0) : subjectCompleted;
+    const workTotal = Math.max(0, Number(update.total || previous.work_total || 0));
+    const workCompleted = Math.max(0, Math.min(workTotal || 1, Number(update.processed ?? update.completed ?? previous.work_completed ?? 0) || 0));
     return visualAssetProgress.updateLane(taskId, 'subjects', {
       status: update.status || 'running',
       phase: update.phase || 'generation',
       message: update.message || '正在生成人物与动物档案',
-      total: Math.max(1, Number(update.total || 1)),
-      completed: Math.max(0, Number(update.processed ?? update.completed ?? 0)),
-      percent: Number(update.percent),
+      total: Math.max(0, Number(previous.total || 0)),
+      completed,
+      work_total: workTotal,
+      work_completed: workCompleted,
+      work_percent: Number.isFinite(Number(update.percent))
+        ? Math.max(0, Math.min(100, Number(update.percent)))
+        : (workTotal ? Math.round((workCompleted / workTotal) * 100) : 0),
     });
   }
   const previous = task.generation_progress?.stage === 'subject_assets' ? task.generation_progress : {};

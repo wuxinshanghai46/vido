@@ -32,6 +32,7 @@ function initialize(taskId, generationId, plan = {}) {
       required: plan.subjectsRequired === true,
       status: plan.subjectsRequired === true ? 'queued' : 'not_required',
       total: Math.max(0, Number(plan.subjectTotal || 0)), completed: 0, percent: 0,
+      work_total: 0, work_completed: 0,
       message: plan.subjectsRequired === true ? '人物与动物等待生成' : '当前项目不需要生成人物或动物',
     },
     scenes: {

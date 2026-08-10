@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-ui-v147';
-import { confirmDialog } from '../components/dialog.js?v=20260810-ui-v147';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260810-ui-v147';
+import { request } from '../api.js?v=20260810-a-v153';
+import { confirmDialog } from '../components/dialog.js?v=20260810-a-v153';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260810-a-v153';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -13,7 +13,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
     billingReviewRequired,
     billingReviewSupportId: bundle.generation?.progress?.support_id || '',
     visualActionLabel: billingReviewRequired
-      ? '重新生成'
+      ? '核对并继续'
       : (missingSubjectCount && missingSceneCount
         ? `同时生成人物与场景（${missingSubjectCount} + ${missingSceneCount}）`
         : (missingSubjectCount ? `生成人物 / 动物（${missingSubjectCount}）` : (missingSceneCount ? `生成场景（${missingSceneCount}）` : '人物与场景视觉已齐全'))),

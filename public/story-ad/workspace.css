@@ -253,7 +253,7 @@
 .asset-card-copy b { font-size: 15px; line-height: 1.35; }
 .asset-card-copy small { min-height: 36px; margin-top: 6px; color: var(--muted); line-height: 1.5; }
 .asset-card-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 11px 13px 13px; border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent); }
-.asset-card-actions .complete-dossier-action { box-shadow: 0 7px 18px color-mix(in srgb, var(--mint) 26%, transparent); }
+.asset-card-actions .complete-dossier-action { box-shadow: 0 7px 18px color-mix(in srgb, var(--mint) 26%, transparent); }.person-look-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:0 13px 13px}.person-look-tile{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:center;padding:8px;border:1px solid color-mix(in srgb,var(--mint) 35%,var(--line));border-radius:10px;background:var(--surface-2)}.person-look-tile>span{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:var(--surface-3);color:var(--mint);font-weight:900}.person-look-tile p,.person-look-tile b,.person-look-tile small{display:block;min-width:0;margin:0}.person-look-tile b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.person-look-tile small{margin-top:3px;color:var(--muted);font-size:10px}
 .asset-missing-strip { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; padding: 10px 13px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); background: var(--surface-2); }
 .asset-missing-strip b { color: var(--text); font-weight: 650; }
 .asset-missing-strip small { margin-left: auto; }

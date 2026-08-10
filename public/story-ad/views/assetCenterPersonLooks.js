@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-ui-v147';
+import { escapeHtml } from '../components/ui.js?v=20260810-a-v153';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -32,6 +32,11 @@ function lookEditor(look = {}, index = 0) {
 
 export function renderPersonLookEditors(profile = {}) {
   return `<section class="person-look-editor" data-person-look-editor><div class="drawer-section-head"><div><h3>人物造型</h3><p>同一人物共用脸型和身份；每套服装按场景独立锁定。</p></div><span>${rows(profile).length} 套</span></div><div data-person-look-list>${rows(profile).map(lookEditor).join('')}</div><button class="btn small" type="button" data-add-person-look>添加造型</button></section>`;
+}
+
+export function renderPersonLookTiles(item = {}) {
+  const looks = item.profile?.look_profiles || [];
+  return looks.length > 1 ? `<div class="person-look-tiles">${looks.map((look, index) => `<section class="person-look-tile"><span>${index + 1}</span><p><b>${escapeHtml(look.name || `造型 ${index + 1}`)}</b><small>${escapeHtml(look.story_state || '独立造型')}</small></p></section>`).join('')}</div>` : '';
 }
 
 function reindex(container) {

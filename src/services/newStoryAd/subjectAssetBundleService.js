@@ -496,7 +496,9 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
         unbound_look_ids: unboundLooks.map(look => look.id),
       });
     }
-    const text = [member.roleName, member.appearanceText, member.wardrobeText, member.hairMakeupText, member.negativeText].join('\n');
+    // Relationship/role copy may legitimately name another cast member. Only
+    // visual identity fields can prove that another member leaked into this dossier.
+    const text = [member.appearanceText, member.wardrobeText, member.hairMakeupText].join('\n');
     const otherNames = humans
       .filter((_, otherIndex) => otherIndex !== index)
       .map(item => cleanText(item.displayName || '', 120))

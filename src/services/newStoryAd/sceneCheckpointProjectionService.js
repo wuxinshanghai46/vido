@@ -68,6 +68,7 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
   const unknownBilling = failed.some(([, view]) => view?.billing_state === 'unknown'
     || view?.provider_submission_state === 'submitted_unknown'
     || view?.error_code === 'PROVIDER_5XX_AMBIGUOUS');
+  const repairKeys = VIEW_ORDER.filter(key => failedKeys.includes(key));
   return {
     id: sceneId,
     scene_id: sceneId,
@@ -85,6 +86,17 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
     failed_view_keys: failedKeys,
     view_statuses: viewStatuses,
     billing_review_required: unknownBilling,
+    repair_plan: {
+      version: 2,
+      action: 'regenerate_failed_views',
+      view_keys: repairKeys,
+      view_labels: repairKeys.map(key => VIEW_LABELS[key] || key),
+      count: repairKeys.length,
+      requires_billing_review: unknownBilling,
+      message: unknownBilling
+        ? '先逐项核对已提交但计费未知的视图，再只继续失败或尚未提交的视图。'
+        : '只继续失败或尚未提交的视图，已成功图片保持不变。',
+    },
     verification: {
       state: 'partial',
       message: unknownBilling

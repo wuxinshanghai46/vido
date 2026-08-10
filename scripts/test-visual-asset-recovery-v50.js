@@ -155,6 +155,8 @@ function testPartialProjection() {
   assert.deepEqual(workspaceScenes[0].failed_view_keys, ['layout', 'detail']);
   assert.equal(workspaceScenes[0].view_statuses.layout.state, 'billing_review', 'workspace must preserve submitted-unknown billing review state');
   assert.equal(workspaceScenes[0].view_statuses.detail.state, 'pending', 'workspace must preserve safely blocked unsubmitted state');
+  assert.equal(workspaceScenes[0].repair_plan.action, 'regenerate_failed_views', 'workspace must expose a safe resume action guarded by per-unit billing review');
+  assert.deepEqual(workspaceScenes[0].repair_plan.view_keys, ['detail', 'layout']);
   assert.equal(workspaceScenes[0].view_images.length, 1, 'workspace must keep the succeeded scene view visible');
 
   const lineageRows = sceneProjectionRows([

@@ -2,6 +2,7 @@ const assert = require('assert');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
 const mediaAdapter = require('../src/services/newStoryAd/mediaAdapter');
 const visualAssetProgress = require('../src/services/newStoryAd/visualAssetProgressService');
+const visualAssetOrchestration = require('../src/services/newStoryAd/visualAssetOrchestrationService');
 const projectStorage = require('../src/services/newStoryAd/storageService');
 const checkpointService = require('../src/services/newStoryAd/assetGenerationCheckpointService');
 const billingAuthorization = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
@@ -184,6 +185,18 @@ async function main() {
     assert.strictEqual(progressTask.generation_progress.lanes.subjects.status, 'failed');
     assert.strictEqual(progressTask.generation_progress.lanes.scenes.status, 'failed');
     assert.strictEqual(progressTask.generation_progress.completed, 6);
+
+    progressTask = { id: 'progress-task' };
+    visualAssetProgress.initialize('progress-task', 'stable-denominator-generation', {
+      subjectsRequired: true, subjectTotal: 2, scenesRequired: true, sceneTotal: 8,
+    });
+    visualAssetOrchestration.updateSubjectProgress('progress-task', 'stable-denominator-generation', {
+      phase: 'person_dossier', subject_index: 1, total: 21, processed: 7,
+    });
+    assert.strictEqual(progressTask.generation_progress.total, 10, 'public denominator must stay at two subjects plus eight scenes');
+    assert.strictEqual(progressTask.generation_progress.lanes.subjects.total, 2, 'internal dossier work must not replace logical subject count');
+    assert.strictEqual(progressTask.generation_progress.lanes.subjects.work_total, 21, 'internal work total remains available as secondary diagnostics');
+    assert.strictEqual(progressTask.generation_progress.lanes.subjects.work_completed, 7);
   } finally {
     projectStorage.getTask = originalGetTask;
     projectStorage.updateTask = originalUpdateTask;

@@ -378,7 +378,7 @@ assert.match(appWorkflowSource, /state\.completed \? '✓' : number/, '完成的
 
 const personLookModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonLooks.js',
-  ['renderPersonLookEditors', 'collectPersonLookValues', 'bindPersonLookForm'],
+  ['renderPersonLookEditors', 'renderPersonLookTiles', 'collectPersonLookValues', 'bindPersonLookForm'],
   { escapeHtml },
 );
 const assetDossierModule = loadBrowserModule(
@@ -470,6 +470,9 @@ const multiLookEdit = assetModule.personEditForm(multiLookProfile);
 assert.match(multiLookEdit, /2 套/);
 assert.match(multiLookEdit, /古代造型/);
 assert.match(multiLookEdit, /现代造型/);
+assert.match(assetModule.assetCard(multiLookProfile, 'people'), /person-look-tiles/);
+assert.match(assetModule.assetCard(multiLookProfile, 'people'), /古代造型/);
+assert.match(assetModule.assetCard(multiLookProfile, 'people'), /现代造型/);
 const collectedLooks = personLookModule.collectPersonLookValues({
   look_0_id: 'ancient', look_0_name: '古代造型', look_0_scene_ids: 'garden', look_0_wardrobeText: '淡青宋式长衫',
   look_1_id: 'modern', look_1_name: '现代造型', look_1_scene_ids: 'hall', look_1_wardrobeText: '米白亚麻衬衫与长裤',
