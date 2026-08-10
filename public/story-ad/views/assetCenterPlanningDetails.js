@@ -1,7 +1,7 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-world-person-action-contracts-v133';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v133';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v133';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260810-world-person-action-contracts-v134';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v134';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v134';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

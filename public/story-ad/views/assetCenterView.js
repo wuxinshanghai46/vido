@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
-import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v133';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v133';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v133';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v133';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v133';
-import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v133';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v133';
-import { assertSavedPerson, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-world-person-action-contracts-v133';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v134';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-world-person-action-contracts-v134';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-world-person-action-contracts-v134';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v134';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-world-person-action-contracts-v134';
+import { collectPersonLookValues, renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260810-world-person-action-contracts-v134';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-world-person-action-contracts-v134';
+import { assertSavedPerson, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-world-person-action-contracts-v134';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -222,7 +222,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v133');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-world-person-action-contracts-v134');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -250,7 +250,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v133'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-world-person-action-contracts-v134'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

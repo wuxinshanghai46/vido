@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v133';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260810-world-person-action-contracts-v134';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

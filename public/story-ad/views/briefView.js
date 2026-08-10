@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v133';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-world-person-action-contracts-v133';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-world-person-action-contracts-v133';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-world-person-action-contracts-v133';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v134';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-world-person-action-contracts-v134';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260810-world-person-action-contracts-v134';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-world-person-action-contracts-v134';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -221,7 +221,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260810-world-person-action-contracts-v133');
+    const module = await import('./referenceUnderstandingView.js?v=20260810-world-person-action-contracts-v134');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

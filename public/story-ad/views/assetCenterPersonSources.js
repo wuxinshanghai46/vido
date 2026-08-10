@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
-import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v133';
+import { request } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
+import { confirmDialog } from '../components/dialog.js?v=20260810-world-person-action-contracts-v134';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

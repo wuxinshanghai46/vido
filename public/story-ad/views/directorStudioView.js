@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260810-world-person-action-contracts-v133';
-import { request, uploadAsset } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { escapeHtml, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v133';
+import * as THREE from '../vendor/three.module.min.js?v=20260810-world-person-action-contracts-v134';
+import { request, uploadAsset } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { escapeHtml, toast } from '../components/ui.js?v=20260810-world-person-action-contracts-v134';
 
 const VERSION = '20260803-photoreal-director-v8';
 

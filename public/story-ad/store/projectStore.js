@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-world-person-action-contracts-v133';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-world-person-action-contracts-v133';
-import { loadProjectList } from './projectListStore.js?v=20260810-world-person-action-contracts-v133';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-world-person-action-contracts-v134';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-world-person-action-contracts-v134';
+import { loadProjectList } from './projectListStore.js?v=20260810-world-person-action-contracts-v134';
 
 export function createProjectStore() {
   const state = {

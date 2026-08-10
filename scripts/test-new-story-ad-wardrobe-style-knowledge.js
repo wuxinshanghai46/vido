@@ -130,8 +130,12 @@ async function run() {
   const root = path.resolve(__dirname, '..');
   const assistSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storyAdService.js'), 'utf8');
   const plannerSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/assetPlanService.js'), 'utf8');
-  assert.match(assistSource, /wardrobeStyleKnowledge\.promptBlock/, '人物 AI 帮写必须调用风格知识选择器');
-  assert.match(plannerSource, /wardrobeStyleKnowledge\.promptBlock/, '统一资产规划必须调用风格知识选择器');
+  const completionSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/generationSpecCompletionService.js'), 'utf8');
+  assert.doesNotMatch(assistSource, /wardrobeStyleKnowledge\.promptBlock/, '人物 AI 帮写不得继续注入重复 wardrobe 长提示块');
+  assert.doesNotMatch(plannerSource, /wardrobeStyleKnowledge\.promptBlock/, '统一资产规划不得继续注入重复 wardrobe 长提示块');
+  assert.match(assistSource, /worldSetting\.promptBlock/, '人物 AI 帮写必须使用项目级世界设定合同');
+  assert.match(plannerSource, /worldSetting\.promptBlock/, '统一资产规划必须使用项目级世界设定合同');
+  assert.match(completionSource, /wardrobeKnowledge\.promptBlock/, '仅缺项补齐阶段保留紧凑服装知识选择器');
   assert.match(plannerSource, /wardrobe_contract/, '资产规划输出必须携带结构化服装合同');
 
   console.log(JSON.stringify({
