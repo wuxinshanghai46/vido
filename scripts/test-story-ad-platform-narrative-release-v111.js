@@ -299,7 +299,7 @@ async function main() {
   const navigation = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/workflowNavigationService.js'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
   assert.match(assetView, /planEligibility\.eligible === true/);
-  assert.match(assetView, /paidAssetDisabled/);
+  assert.match(assetView, /contractDisabled/);
   assert.match(navigation, /asset_plan_eligibility/);
   assert.doesNotMatch(ui, /已产出\s*\$\{completed\}/);
 
