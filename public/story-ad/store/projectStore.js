@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-a-v154';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-a-v154';
-import { loadProjectList } from './projectListStore.js?v=20260810-a-v154';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260811-ui-v156';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260811-ui-v156';
+import { loadProjectList } from './projectListStore.js?v=20260811-ui-v156';
 
 export function createProjectStore() {
   const state = {

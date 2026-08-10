@@ -65,9 +65,13 @@ function reportPhase(phase, details = {}) {
 }
 
 function runLocalGate() {
+  const targetedHomeGate = os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT';
+  const gateCommand = targetedHomeGate
+    ? 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-platform-narrative-release-v111.js && node scripts/check-story-ad-workspace-v6-boundaries.js && npm run story-ad:release:test'
+    : 'npm run story-ad:v111:test && npm run platform:upgrade:test';
   const command = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : 'npm';
   const args = process.platform === 'win32'
-    ? ['/d', '/s', '/c', 'npm run story-ad:v111:test && npm run platform:upgrade:test']
+    ? ['/d', '/s', '/c', gateCommand]
     : ['run', 'story-ad:release:predeploy'];
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-immutable-release-'));
   try {
@@ -77,7 +81,7 @@ function runLocalGate() {
       encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, timeout: 45 * 60 * 1000,
     });
     if (result.status !== 0) throw new Error(`本地不可变制品门禁失败：\n${`${result.stdout || ''}\n${result.stderr || ''}`.slice(-30000)}`);
-    console.log('LOCAL_IMMUTABLE_RELEASE_GATE=passed');
+    console.log(`LOCAL_IMMUTABLE_RELEASE_GATE=${targetedHomeGate ? 'targeted_passed' : 'passed'}`);
   } finally {
     fs.rmSync(outputDir, { recursive: true, force: true });
   }

@@ -418,6 +418,12 @@ const dossierModule = loadBrowserModule(
   { escapeHtml, mediaPreview },
 );
 assert.match(assets, /data-confirm-assets/);
+assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜测为合同缺失；必需项只由版本合同判定');
+assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
+assert.match(assets, /content_mode === 'narrative_story' \? '人物、动物与场景'/, '纯剧情方案确认不得要求核对商品');
+assert.match(assets, /版本合同未通过/, '合同失败只显示合同结论');
+assert.doesNotMatch(assets, /付费生成已锁定/, '不得向用户暴露内部付费熔断措辞');
+assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, '不得向用户暴露 Active Plan 内部术语');
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=plot/, '资产方案确认后必须进入剧情室');
 assert.match(assets, /asset-visual-next-step/, '进入资产中心后必须明确展示人物与场景视觉生成的下一步');

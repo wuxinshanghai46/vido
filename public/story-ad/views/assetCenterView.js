@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260810-a-v154';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-a-v154';
-import { confirmDialog } from '../components/dialog.js?v=20260810-a-v154';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-a-v154';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-a-v154';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-a-v154';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-a-v154';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260810-a-v154';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-a-v154';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-a-v154';
+import { request } from '../api.js?v=20260811-ui-v156';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v156';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v156';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v156';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v156';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260811-ui-v156';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v156';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v156';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v156';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v156';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -222,40 +222,38 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-a-v154');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v156');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
   });
 }
 
-function renderSections(assets = {}, total = 0) {
+function renderSections(assets = {}, total = 0, brief = {}) {
   if (!total) return `<div class="asset-total-empty">${emptyState({
-    title: '当前项目还没有可用资产',
-    body: '先完善人物或动物档案，也可以上传已有的商品、LOGO、场景和道具参考。',
+    title: '当前项目还没有可用资产', body: brief.content_mode === 'narrative_story' ? '先完善剧情所需的人物、动物或场景。' : '先完善人物或动物档案，也可以上传已有的商品、LOGO、场景和道具参考。',
     action: '添加人物', actionId: 'people',
   })}</div>`;
-  const missing = GROUPS.filter(([key]) => !(assets[key] || []).length).map(([, label]) => label);
-  return `${missing.length ? `<div class="asset-missing-strip"><span>尚未建立</span><b>${missing.map(escapeHtml).join('、')}</b><small>可通过上方分类进入后添加</small></div>` : ''}
-    ${GROUPS.map(([key, label]) => {
+  return GROUPS.map(([key, label]) => {
       const rows = assets[key] || [];
       return `<section class="asset-section" data-asset-section="${key}" ${rows.length ? '' : 'hidden'}>
         <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span><button class="btn small" type="button" data-add-asset="${key}">+ 添加${escapeHtml(label)}</button></div>
         <div data-section-body>${rows.length ? `<div class="asset-grid">${rows.map(item => assetCard(item, key)).join('')}</div>` : emptyState({ title: `尚未建立${label}`, body: '可以上传已有参考，或先完善该主体档案。', action: `添加${label}`, actionId: key })}</div>
       </section>`;
-    }).join('')}`;
+    }).join('');
 }
 
 export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-a-v154'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v156'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
   const assetPlanReady = planEligibility.eligible === true;
-  const paidAssetDisabled = assetPlanReady ? '' : 'disabled title="当前没有通过本版本合同的 Active Plan"';
+  const contractDisabled = assetPlanReady ? '' : 'disabled title="当前方案尚未通过本版本合同"';
+  const assetScopeLabel = bundle.brief?.content_mode === 'narrative_story' ? '人物、动物与场景' : '人物、动物、商品与场景';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
   const missingSceneCount = (assets.scenes || []).filter(sceneNeedsGeneration).length;
@@ -263,19 +261,19 @@ export async function mount(host, context) {
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
-      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects ${paidAssetDisabled}>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main ${paidAssetDisabled}>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn" type="button" data-build-scenes>${assets.scenes?.length ? '重新建立场景规划' : '建立场景规划'}</button></div>
+      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person>上传真人素材</button><button class="btn" type="button" data-generate-subjects ${contractDisabled}>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main ${contractDisabled}>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button><button class="btn" type="button" data-build-scenes>${assets.scenes?.length ? '重新建立场景规划' : '建立场景规划'}</button></div>
     </section>
     <div class="guide">点击人物卡查看完整人物档案、四视图、设定和版本。生成操作只会在确认后提交。</div>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
       <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-visual-assets ${(missingSubjectCount || missingSceneCount) ? '' : 'disabled'}>${visualActionLabel}</button><button class="btn" type="button" data-generate-missing-subjects ${missingSubjectCount ? '' : 'disabled'}>仅生成人物 / 动物</button><button class="btn" type="button" data-show-pending-scenes ${missingSceneCount ? '' : 'disabled'}>查看 / 单独生成场景</button></div>
-    </section>` : `<section class="card asset-visual-next-step is-blocked" role="alert"><div><span class="status-tag is-danger">付费生成已锁定</span><h2>当前方案尚未通过本版本合同</h2><p>旧计划、失败计划或版本不一致的计划只能查看，不能提交人物、场景、图片或视频模型调用。请先完成当前版本的故事事实与场次规划。</p></div></section>`}
+    </section>` : `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag is-danger">版本合同未通过</span><h2>当前方案尚未通过本版本合同</h2><p>请先完成当前版本的故事事实与场次规划，再重新建立资产方案。</p></div></section>`}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
-    <div data-asset-sections>${renderSections(assets, total)}</div>
+    <div data-asset-sections>${renderSections(assets, total, bundle.brief || {})}</div>
     ${renderSceneWorldWorkspace(bundle)}
     <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
-      <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? '请核对人物、动物、商品与场景是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。' : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
+      <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? `请核对${assetScopeLabel}是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。` : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
       <button class="btn primary" type="button" data-confirm-assets ${assetPlanReady ? '' : 'disabled'}>确认资产方案，进入剧情室</button>
     </section>`;
 
@@ -480,7 +478,6 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-asset-filter]').forEach(button => button.addEventListener('click', () => {
     const filter = button.dataset.assetFilter;
     host.querySelectorAll('[data-asset-filter]').forEach(item => item.classList.toggle('active', item === button));
-    host.querySelector('.asset-missing-strip')?.toggleAttribute('hidden', filter !== 'all');
     host.querySelectorAll('[data-asset-section]').forEach(section => {
       const rows = assets[section.dataset.assetSection] || [];
       section.hidden = filter === 'all' ? !rows.length : section.dataset.assetSection !== filter;
