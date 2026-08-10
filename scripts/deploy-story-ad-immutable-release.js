@@ -129,16 +129,21 @@ async function migrateReleaseState() {
     releaseMigrationMode = 'v126_runtime_compatible';
     return { migration_id: '', task_count: 0, summary: { runtime_compatible: 1 }, model_calls: 0, paid_calls: 0 };
   }
-  if (previousBuildId !== '20260809-platform-cinematic-layers-v120' || previousContractVersion !== 'story-scene-platform-v6') {
-    throw new Error(`UNSUPPORTED_RELEASE_MIGRATION: refusing mixed checkpoint transition from ${previousBuildId || 'unknown'} (${previousBundleId}) to ${release.build_id}`);
+  if (previousBuildId === '20260809-platform-cinematic-layers-v120'
+    && previousContractVersion === 'story-scene-platform-v6') {
+    releaseMigrationMode = 'v120_deterministic_checkpoint';
+    // Mark the attempt before the command so a mid-write failure still triggers
+    // the backup-driven rollback path.
+    releaseMigrationApplied = true;
+    const result = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/migrate-story-ad-v120-checkpoints.js --apply --summary-only --source-build ${quote(previousBuildId)} --source-bundle ${quote(previousBundleId)}`));
+    if (Number(result.blocked_count || 0)) throw new Error(`V120_MIGRATION_BLOCKED: ${JSON.stringify(result)}`);
+    return result;
   }
-  releaseMigrationMode = 'v120_deterministic_checkpoint';
-  // Mark the attempt before the command so a mid-write failure still triggers
-  // the backup-driven rollback path.
-  releaseMigrationApplied = true;
-  const result = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/migrate-story-ad-v120-checkpoints.js --apply --summary-only --source-build ${quote(previousBuildId)} --source-bundle ${quote(previousBundleId)}`));
-  if (Number(result.blocked_count || 0)) throw new Error(`V120_MIGRATION_BLOCKED: ${JSON.stringify(result)}`);
-  return result;
+  if (previousContractVersion === release.contract_version) {
+    releaseMigrationMode = 'same_contract_runtime_compatible';
+    return { migration_id: '', task_count: 0, summary: { runtime_compatible: 1 }, model_calls: 0, paid_calls: 0 };
+  }
+  throw new Error(`UNSUPPORTED_RELEASE_MIGRATION: refusing mixed checkpoint transition from ${previousBuildId || 'unknown'} (${previousBundleId}) to ${release.build_id}`);
 }
 
 async function migrateAssistRoute() {

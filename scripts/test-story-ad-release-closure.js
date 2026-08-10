@@ -85,6 +85,8 @@ function main() {
   assert(immutableDeploySource.indexOf('const migration = await migrateReleaseState();')
     < immutableDeploySource.indexOf('/opt/vido/.current-next'), 'checkpoint migration must finish before current symlink cutover');
   assert(immutableDeploySource.includes('UNSUPPORTED_RELEASE_MIGRATION'), 'unknown source bundles must fail closed instead of mixing versions');
+  assert(immutableDeploySource.includes("releaseMigrationMode = 'same_contract_runtime_compatible'"), 'same-contract releases must remain deployable after v126/v129');
+  assert(immutableDeploySource.indexOf("previousBuildId === '20260809-platform-cinematic-layers-v120'") < immutableDeploySource.indexOf("previousContractVersion === release.contract_version"), 'v120 deterministic migration must run before generic same-contract compatibility');
   const buildSource = fs.readFileSync(path.join(root, 'scripts/build-story-ad-release.js'), 'utf8');
   assert(buildSource.includes('禁止复用已发布 build_id') && buildSource.includes('RUNTIME_MANIFEST_PATH'), '构建必须禁止同 build_id 覆盖不同运行时代码');
   console.log(JSON.stringify({ passed: true, release_files: files.length, runtime_directories: RUNTIME_DIRECTORIES.length, package_test_files: packageTestFiles(root).length }));
