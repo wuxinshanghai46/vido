@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260810-assist-provider-resilience-v129';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-assist-provider-resilience-v129';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-assist-provider-resilience-v129';
-import { confirmDialog } from './components/dialog.js?v=20260810-assist-provider-resilience-v129';
+import { createProjectStore } from './store/projectStore.js?v=20260810-scene-config-release-rebase-v130';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-scene-config-release-rebase-v130';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-scene-config-release-rebase-v130';
+import { confirmDialog } from './components/dialog.js?v=20260810-scene-config-release-rebase-v130';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260810-assist-provider-resilience-v129'),
-  assets: () => import('./views/assetCenterView.js?v=20260810-assist-provider-resilience-v129'),
-  plot: () => import('./views/plotRoomView.js?v=20260810-assist-provider-resilience-v129'),
-  storyboard: () => import('./views/storyboardView.js?v=20260810-assist-provider-resilience-v129'),
-  shot: () => import('./views/shotDesignerView.js?v=20260810-assist-provider-resilience-v129'),
-  final: () => import('./views/finalView.js?v=20260810-assist-provider-resilience-v129'),
-  workflow: () => import('./views/workflowView.js?v=20260810-assist-provider-resilience-v129'),
+  brief: () => import('./views/briefView.js?v=20260810-scene-config-release-rebase-v130'),
+  assets: () => import('./views/assetCenterView.js?v=20260810-scene-config-release-rebase-v130'),
+  plot: () => import('./views/plotRoomView.js?v=20260810-scene-config-release-rebase-v130'),
+  storyboard: () => import('./views/storyboardView.js?v=20260810-scene-config-release-rebase-v130'),
+  shot: () => import('./views/shotDesignerView.js?v=20260810-scene-config-release-rebase-v130'),
+  final: () => import('./views/finalView.js?v=20260810-scene-config-release-rebase-v130'),
+  workflow: () => import('./views/workflowView.js?v=20260810-scene-config-release-rebase-v130'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

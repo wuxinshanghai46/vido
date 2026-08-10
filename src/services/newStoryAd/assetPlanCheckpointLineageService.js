@@ -52,4 +52,23 @@ function currentPlanningTaskPatch() {
   };
 }
 
-module.exports = { legacyTask, envelope, checkpointFields, compatibility, currentPlanningTaskPatch };
+// A scene-plan run is a fresh, explicitly queued planning transaction. Bind
+// the task to that transaction's release before the first checkpoint CAS; the
+// stricter job release/snapshot/revision guards still reject stale workers.
+// Do not clear legacy planning flags here: those are only cleared after a
+// complete plan has been persisted by currentPlanningTaskPatch().
+function queuedPlanningTaskPatch(stage = '', bundleId = '') {
+  if (clean(stage) !== 'scene_config') return {};
+  const currentBundleId = releaseBundle.identity().bundle_id;
+  if (clean(bundleId) !== currentBundleId) return {};
+  return { required_bundle_id: currentBundleId };
+}
+
+module.exports = {
+  legacyTask,
+  envelope,
+  checkpointFields,
+  compatibility,
+  currentPlanningTaskPatch,
+  queuedPlanningTaskPatch,
+};

@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260810-assist-provider-resilience-v129';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260810-scene-config-release-rebase-v130';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

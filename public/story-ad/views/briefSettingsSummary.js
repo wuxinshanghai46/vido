@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-assist-provider-resilience-v129';
+import { escapeHtml } from '../components/ui.js?v=20260810-scene-config-release-rebase-v130';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

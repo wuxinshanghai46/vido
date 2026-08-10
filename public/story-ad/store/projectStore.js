@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-assist-provider-resilience-v129';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-assist-provider-resilience-v129';
-import { loadProjectList } from './projectListStore.js?v=20260810-assist-provider-resilience-v129';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260810-scene-config-release-rebase-v130';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260810-scene-config-release-rebase-v130';
+import { loadProjectList } from './projectListStore.js?v=20260810-scene-config-release-rebase-v130';
 
 export function createProjectStore() {
   const state = {

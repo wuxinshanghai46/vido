@@ -1,8 +1,8 @@
-import { request } from '../api.js?v=20260810-assist-provider-resilience-v129';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-assist-provider-resilience-v129';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-assist-provider-resilience-v129';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-assist-provider-resilience-v129';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-assist-provider-resilience-v129';
+import { request } from '../api.js?v=20260810-scene-config-release-rebase-v130';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260810-scene-config-release-rebase-v130';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260810-scene-config-release-rebase-v130';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260810-scene-config-release-rebase-v130';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260810-scene-config-release-rebase-v130';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -217,7 +217,7 @@ export async function mount(host, context) {
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260810-assist-provider-resilience-v129');
+    const module = await import('./referenceUnderstandingView.js?v=20260810-scene-config-release-rebase-v130');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

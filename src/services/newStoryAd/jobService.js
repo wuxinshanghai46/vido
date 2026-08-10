@@ -366,6 +366,7 @@ function queueStage({
     active_snapshot_id: job.snapshotId,
     active_content_revision: expectedRevision,
     active_input_fingerprint: job.inputFingerprint,
+    ...assetPlanCheckpointLineage.queuedPlanningTaskPatch(stage, job.releaseBundleId),
   });
   storage.saveStage(taskId, stage, {
     status: 'queued',
