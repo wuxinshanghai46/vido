@@ -151,8 +151,8 @@ export function generationProgressPanel(bundle = {}) {
   }).join('')}</div>` : '';
   if (view.failed) {
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
-      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>流程已停止 · ${escapeHtml(view.liveText)}。只有已持久化并通过当前合同的区段才会被保留。</span></div><span class="status-tag is-danger">已停止</span></div>
-      ${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div>
+      <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
+      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small></div></details>
     </section>`;
   }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">

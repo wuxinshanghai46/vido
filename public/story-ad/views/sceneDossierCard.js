@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-assist-v143';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-ui-v146';
 
 export const SCENE_VIEW_ORDER = Object.freeze(['master', 'reverse', 'interaction', 'detail', 'layout']);
 export const SCENE_VIEW_LABELS = Object.freeze({
@@ -31,10 +31,16 @@ export function normalizeSceneDossier(item = {}) {
   }));
   const completed = SCENE_VIEW_ORDER.filter(key => views[key]?.image_url).length;
   const failed = new Set(list(item.failed_view_keys).map(key => text(key).toLowerCase()));
+  const viewStatuses = Object.fromEntries(SCENE_VIEW_ORDER.map(key => {
+    if (views[key]?.image_url) return [key, { state: 'complete' }];
+    const source = item.view_statuses?.[key] || {};
+    const declared = text(source.state).toLowerCase().replaceAll('_', '-');
+    return [key, { ...source, state: declared || (failed.has(key) ? 'failed' : 'missing') }];
+  }));
   const qa = item.qa || {};
   const conflict = qa.full_space_lock === false || qa.cross_view_pass === false || qa.spatial_pass === false;
   const state = conflict ? 'conflict' : (completed === SCENE_VIEW_ORDER.length && qa.full_space_lock === true ? 'locked' : (completed ? 'partial' : 'missing'));
-  return { views, completed, total: SCENE_VIEW_ORDER.length, failed, state };
+  return { views, completed, total: SCENE_VIEW_ORDER.length, failed, viewStatuses, state };
 }
 
 function statusText(state = '', completed = 0) {
@@ -43,14 +49,19 @@ function statusText(state = '', completed = 0) {
 
 function viewSlot(item, dossier, key, options = {}) {
   const view = dossier.views[key];
-  const failed = dossier.failed.has(key);
-  const state = view?.image_url ? 'complete' : (failed ? 'failed' : 'missing');
+  const state = view?.image_url ? 'complete' : (dossier.viewStatuses[key]?.state || (dossier.failed.has(key) ? 'failed' : 'missing'));
+  const copy = {
+    failed: ['生成失败', '生成失败，未作为资产展示'],
+    'billing-review': ['待核对', '已提交，计费与结果待核对'],
+    pending: ['待继续', '尚未提交，可在核对后继续'],
+    missing: ['待补齐', '没有使用其他视图冒充'],
+  }[state] || ['待补齐', '没有使用其他视图冒充'];
   const label = SCENE_VIEW_LABELS[key];
   return `<figure class="scene-dossier-view is-${key} is-${state}" data-scene-view="${key}">
     <div>${view?.image_url
       ? mediaPreview(view, { label: `${item.name || '场景'} · ${label}`, width: options.width || 1200, symbol: label, zoomable: true, zoomGroup: `scene-dossier-${item.id || 'current'}` })
-      : `<div class="scene-dossier-missing" role="status"><span>${failed ? '生成失败' : '待补齐'}</span><small>${escapeHtml(label)}</small></div>`}</div>
-    <figcaption><b>${escapeHtml(label)}</b><span>${view?.image_url ? '真实资产已就绪' : (failed ? '失败结果未作为资产展示' : '没有使用其他视图冒充')}</span></figcaption>
+      : `<div class="scene-dossier-missing" role="status"><span>${copy[0]}</span><small>${escapeHtml(label)}</small></div>`}</div>
+    <figcaption><b>${escapeHtml(label)}</b><span>${view?.image_url ? '真实资产已就绪' : copy[1]}</span></figcaption>
   </figure>`;
 }
 
@@ -91,7 +102,7 @@ export function renderSceneCoverCard(item = {}) {
       : '<div class="scene-dossier-missing" role="status"><span>待生成主视图</span></div>'}
       <span class="scene-cover-state">${escapeHtml(statusText(dossier.state, dossier.completed))} · ${dossier.completed}/${dossier.total}</span>
     </div>
-    <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : (dossier.failed.has(key) ? 'failed' : 'missing')}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
+    <div class="scene-cover-slots" aria-label="五类场景证据完整度">${SCENE_VIEW_ORDER.map(key => `<span class="is-${dossier.views[key]?.image_url ? 'complete' : dossier.viewStatuses[key]?.state || 'missing'}"><i aria-hidden="true"></i>${escapeHtml(SCENE_VIEW_LABELS[key])}</span>`).join('')}</div>
   </div>`;
 }
 
@@ -122,7 +133,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260810-assist-v143');
+      const exporter = await import('./sceneDossierExport.js?v=20260810-ui-v146');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

@@ -478,6 +478,13 @@ function harness({ cancelAt = 0 } = {}) {
             status: 'failed',
             error_code: 'PROVIDER_5XX_AMBIGUOUS',
             billing_state: 'unknown',
+            provider_submission_state: 'submitted_unknown',
+          },
+          detail: {
+            status: 'failed',
+            error_code: 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN',
+            billing_state: 'not_submitted',
+            provider_submission_state: 'not_submitted',
           },
         },
       },
@@ -496,8 +503,11 @@ function harness({ cancelAt = 0 } = {}) {
   ]);
   assert.strictEqual(projectedPartialScenes.length, 1, 'only assets and checkpoints owned by the authoritative scene plan may be publicly projected');
   assert.strictEqual(projectedPartialScenes[0].name, '城市公园草坪');
-  assert.strictEqual(projectedPartialScenes[0].view_images.length, 4, 'every successful partial scene view must remain visible');
+  assert.strictEqual(projectedPartialScenes[0].view_images.length, 3, 'every successful partial scene view must remain visible');
   assert.strictEqual(projectedPartialScenes[0].billing_review_required, true, 'ambiguous provider billing must remain explicit and must not auto-retry');
+  assert.strictEqual(projectedPartialScenes[0].view_statuses.interaction.state, 'billing_review', 'submitted unknown view must remain a billing-review state');
+  assert.strictEqual(projectedPartialScenes[0].view_statuses.detail.state, 'pending', 'billing-guarded unsubmitted view must remain pending instead of looking failed');
+  assert.strictEqual(projectedPartialScenes[0].view_statuses.detail.submission_state, 'not_submitted');
 
   const multiSceneCheckpointProjection = sceneCheckpointProjection.projectSceneAssets([
     {

@@ -134,7 +134,8 @@ function testPartialProjection() {
     { kind: 'scene_asset_checkpoint:scene-1', payload: {
       scene_id: 'scene-1', status: 'failed', views: {
         master: { status: 'succeeded', image_url: '/api/new-story-ad/assets/scene-master.png' },
-        layout: { status: 'failed', image_url: '/api/new-story-ad/assets/rejected-layout.png', billing_state: 'unknown' },
+        layout: { status: 'failed', image_url: '/api/new-story-ad/assets/rejected-layout.png', billing_state: 'unknown', provider_submission_state: 'submitted_unknown' },
+        detail: { status: 'failed', billing_state: 'not_submitted', provider_submission_state: 'not_submitted', error_code: 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN' },
       },
     } },
   ]);
@@ -151,7 +152,9 @@ function testPartialProjection() {
   assert.equal(workspaceScenes[0].partial_checkpoint, true, 'workspace projection must preserve partial checkpoint state');
   assert.equal(workspaceScenes[0].checkpoint_status, 'failed');
   assert.deepEqual(workspaceScenes[0].completed_view_keys, ['master']);
-  assert.deepEqual(workspaceScenes[0].failed_view_keys, ['layout']);
+  assert.deepEqual(workspaceScenes[0].failed_view_keys, ['layout', 'detail']);
+  assert.equal(workspaceScenes[0].view_statuses.layout.state, 'billing_review', 'workspace must preserve submitted-unknown billing review state');
+  assert.equal(workspaceScenes[0].view_statuses.detail.state, 'pending', 'workspace must preserve safely blocked unsubmitted state');
   assert.equal(workspaceScenes[0].view_images.length, 1, 'workspace must keep the succeeded scene view visible');
 
   const lineageRows = sceneProjectionRows([

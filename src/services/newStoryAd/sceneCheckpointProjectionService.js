@@ -46,6 +46,25 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
   const spaceId = text(checkpoint.metadata?.space_id || sceneId, 120);
   const failed = Object.entries(checkpoint.views || {}).filter(([, view]) => view?.status === 'failed');
   const failedKeys = failed.map(([key]) => key);
+  const viewStatuses = Object.fromEntries(Object.entries(checkpoint.views || {}).map(([key, view = {}]) => {
+    const billingState = text(view.billing_state, 40);
+    const submissionState = text(view.provider_submission_state || view.submission_state, 60);
+    const errorCode = text(view.error_code, 120);
+    let state = view.status === 'succeeded' ? 'complete' : 'missing';
+    if (view.status === 'failed') {
+      if (billingState === 'unknown' || submissionState === 'submitted_unknown' || errorCode === 'PROVIDER_5XX_AMBIGUOUS') state = 'billing_review';
+      else if (billingState === 'not_submitted' || submissionState === 'not_submitted' || errorCode === 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN') state = 'pending';
+      else state = 'failed';
+    }
+    return [key, {
+      state,
+      status: text(view.status, 40),
+      error_code: errorCode,
+      billing_state: billingState,
+      submission_state: submissionState,
+      message: text(view.error || view.message, 220),
+    }];
+  }));
   const unknownBilling = failed.some(([, view]) => view?.billing_state === 'unknown'
     || view?.provider_submission_state === 'submitted_unknown'
     || view?.error_code === 'PROVIDER_5XX_AMBIGUOUS');
@@ -64,6 +83,7 @@ function checkpointPreview(row = {}, sceneConfig = {}) {
     checkpoint_error_code: text(checkpoint.last_error_code || failed[0]?.[1]?.error_code || '', 120),
     completed_view_keys: views.map(view => view.key),
     failed_view_keys: failedKeys,
+    view_statuses: viewStatuses,
     billing_review_required: unknownBilling,
     verification: {
       state: 'partial',

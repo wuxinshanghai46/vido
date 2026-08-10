@@ -397,7 +397,7 @@ const assetModule = loadBrowserModule(
 );
 const sceneDossierModule = loadBrowserModule(
   'public/story-ad/views/sceneDossierCard.js',
-  ['renderSceneDossierCard'],
+  ['normalizeSceneDossier', 'renderSceneDossierCard'],
   { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
 );
 const planningModule = loadBrowserModule(
@@ -684,6 +684,26 @@ assert.match(progressPanel, /已耗时 \d+分\d{2}秒/);
 assert.match(progressPanel, /已完成 2\/6/);
 assert.match(progressPanel, /正在生成第 3、4 镜/);
 assert.match(progressPanel, /data-cancel-generation/);
+const failedBillingPanel = sandbox.__generationProgressPanel({
+  project: { status: 'failed', stage: 'visual_assets_failed', error: '计费状态未知' },
+  generation: { progress: { stage: 'visual_assets', status: 'failed', billing_state: 'unknown', message: '供应商结果与计费待核对' } },
+});
+assert.match(failedBillingPanel, /project-progress-details/);
+assert.match(failedBillingPanel, /<summary>/);
+assert.doesNotMatch(failedBillingPanel, /<details[^>]*\sopen(?:\s|>)/, '失败详情刷新后必须默认折叠，不能持续挤压工作区');
+const sceneFailureCard = sceneDossierModule.renderSceneDossierCard({
+  id: 'scene-state-test', name: '状态测试场景',
+  view_images: [{ key: 'master', image_url: '/master.png' }],
+  failed_view_keys: ['interaction', 'detail'],
+  view_statuses: {
+    interaction: { state: 'billing_review', billing_state: 'unknown', submission_state: 'submitted_unknown' },
+    detail: { state: 'pending', billing_state: 'not_submitted', submission_state: 'not_submitted' },
+  },
+});
+assert.match(sceneFailureCard, /is-billing-review/);
+assert.match(sceneFailureCard, /计费与结果待核对/);
+assert.match(sceneFailureCard, /is-pending/);
+assert.match(sceneFailureCard, /尚未提交，可在核对后继续/);
 const busyButton = {
   dataset: {}, textContent: '生成人物', disabled: false,
   setAttribute() {}, removeAttribute() {},

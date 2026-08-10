@@ -7,6 +7,7 @@ const {
   RUNTIME_DIRECTORIES,
   collectStoryAdReleaseFiles,
   dependencyClosure,
+  isRuntimeReleaseFile,
   packageTestFiles,
 } = require('./lib/storyAdReleaseFiles');
 
@@ -33,10 +34,24 @@ function main() {
   files.forEach(file => assert(fs.existsSync(path.join(root, file)), `发布文件不存在：${file}`));
   (manifest.files || []).forEach(entry => assert(selected.has(entry.path), `静态发布清单未进入发布集合：${entry.path}`));
   for (const directory of RUNTIME_DIRECTORIES) {
-    for (const file of walk(directory).filter(value => /\.(?:js|json)$/i.test(value))) {
+    for (const file of walk(directory).filter(value => /\.(?:js|json)$/i.test(value) && isRuntimeReleaseFile(value))) {
       assert(selected.has(file), `剧情广告运行时模块漏发：${file}`);
     }
   }
+  [
+    'src/outputs/platform_tasks.json',
+    'public/dashboard-clean-demo.htm',
+    'public/dashboard-clean-demo.html',
+    'public/recovery-backups/example.js',
+    'src/routes/recovery-backups/example.js',
+  ].forEach(file => {
+    assert(!selected.has(file), `发布集合不得包含本地数据、演示页或恢复备份：${file}`);
+    assert(!runtimeSelected.has(file), `运行时清单不得包含本地数据、演示页或恢复备份：${file}`);
+  });
+  assert(isRuntimeReleaseFile('src/server.js'), '真实运行模块必须保留');
+  assert(isRuntimeReleaseFile('public/story-ad/index.html'), '剧情广告静态入口必须保留');
+  const attributes = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8');
+  assert(attributes.includes('*.htm text eol=lf'), 'Windows fresh clone 必须固定 .htm 为 LF，避免运行清单哈希漂移');
   packageTestFiles(root).forEach(file => assert(selected.has(file), `生产回归脚本漏发：${file}`));
   files.filter(file => file !== 'config/story-ad-runtime-manifest.json').forEach(file => {
     assert(runtimeSelected.has(file), `运行时哈希清单漏发：${file}`);

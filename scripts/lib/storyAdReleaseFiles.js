@@ -50,6 +50,16 @@ const REMOTE_TEST_SCRIPTS = [
   'story-ad:v6:boundaries',
 ];
 const OPAQUE_RELEASE_ROOTS = new Set();
+const NON_RUNTIME_PATHS = [
+  /^src\/outputs(?:\/|$)/i,
+  /(?:^|\/)recovery-backups(?:\/|$)/i,
+  /^public\/dashboard-clean-demo\.html?$/i,
+];
+
+function isRuntimeReleaseFile(file = '') {
+  const normalized = String(file || '').replace(/\\/g, '/');
+  return Boolean(normalized) && !NON_RUNTIME_PATHS.some(pattern => pattern.test(normalized));
+}
 
 function relative(root, file) {
   return path.relative(root, file).replace(/\\/g, '/');
@@ -124,7 +134,7 @@ function collectStoryAdReleaseFiles({ root, releaseManifest } = {}) {
   const publicFiles = (Array.isArray(manifest.files) ? manifest.files : []).map(item => item.path);
   const runtimeExtensions = /\.(?:js|mjs|cjs|json|html?|css|svg|png|jpe?g|webp|gif|ico|otf|ttf|woff2?)$/i;
   const runtimeFiles = RUNTIME_DIRECTORIES.flatMap(directory => walk(workspace, directory))
-    .filter(file => runtimeExtensions.test(file));
+    .filter(file => runtimeExtensions.test(file) && isRuntimeReleaseFile(file));
   const testFiles = packageTestFiles(workspace);
   const initial = [...new Set([...BASE_FILES, ...publicFiles, ...runtimeFiles, ...testFiles])];
   const closed = dependencyClosure(workspace, initial);
@@ -138,8 +148,10 @@ module.exports = {
   RUNTIME_DIRECTORIES,
   REMOTE_TEST_SCRIPTS,
   OPAQUE_RELEASE_ROOTS,
+  NON_RUNTIME_PATHS,
   collectStoryAdReleaseFiles,
   dependencyClosure,
+  isRuntimeReleaseFile,
   packageTestFiles,
   resolveLocalModule,
 };
