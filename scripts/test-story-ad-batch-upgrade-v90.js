@@ -37,8 +37,9 @@ assert.equal(targets.length, 2);
 assert.equal(targets[0].repair_existing, true);
 assert.equal(targets[1].repair_existing, false);
 
+const assetPersonState = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonState.js'), 'utf8');
 const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
-assert.match(assetView, /visual_asset_contract_version \|\| 0\) >= 2/);
+assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
 assert.match(assetView, /升级独立穿搭 \/ 配饰档案/);
 assert.match(assetView, /repair_existing: repairing/);
