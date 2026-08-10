@@ -15,7 +15,7 @@
    - 数据库只读健康状态；
    - 活动生成任务数量；
    - 是否发生模型、媒体调用或业务写入。
-6. 如果本轮包含生产代码并已授权上线，执行备份、原子发布、完整回归、失败回滚和发布后只读审计。
+6. 如果本轮包含生产代码并已授权上线，执行备份、原子发布、失败回滚和发布后只读审计；测试范围遵循当前电脑规则，`LAPTOP-LDFOL0GT` 只跑相关模块定向验证，不跑全平台回归。
 7. 交接文件必须写入 `docs/handoffs/YYYY-MM-DD-<topic>-handoff.md` 并纳入 Git。
 8. 交接完成后再次核对本地、目标 Git 远端与生产运行代码；不一致时必须列出精确差异，不能声称三方一致。
 
@@ -84,7 +84,8 @@ git fetch --all --prune
 git switch codex/story-ad-v3-upgrade
 git pull --ff-only origin codex/story-ad-v3-upgrade
 npm install
-npm run platform:upgrade:test
+# 随后按当前任务选择真实存在的相关模块测试命令
+# LAPTOP-LDFOL0GT 禁止默认运行 platform:upgrade:test
 node src/server.js
 ssh -o BatchMode=yes vido-prod
 ```
