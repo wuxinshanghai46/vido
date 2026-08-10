@@ -12,6 +12,10 @@ assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希
 assert(!source.includes('specBase64'), '禁止把完整发布清单嵌入 shell 参数');
 assert(!source.includes("Buffer.from('${specBase64}'"), '禁止恢复超长 node -e 参数路径');
 
+assert(source.includes('VIDO_IMMUTABLE_UPLOAD_CONCURRENCY'), 'immutable deploy must allow lower SFTP concurrency');
+assert(source.includes('Math.min(uploadConcurrency, queue.length)'), 'immutable deploy must not use fixed high upload concurrency');
+assert(source.includes("reportPhase('artifact_upload'"), 'immutable deploy must report the phase of a transport interruption');
+
 const parseJsonStart = source.indexOf('function parseJson(output) {');
 const parseJsonEnd = source.indexOf('\n}\n', parseJsonStart) + 2;
 assert(parseJsonStart >= 0 && parseJsonEnd > parseJsonStart, '部署器必须保留独立 JSON 解析函数');
@@ -27,4 +31,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 7, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true }));
+console.log(JSON.stringify({ passed: true, checks: 10, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true }));

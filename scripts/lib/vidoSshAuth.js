@@ -11,9 +11,11 @@ function connectionOptions({
   port = Number(process.env.VIDO_DEPLOY_PORT || 22),
   username = process.env.VIDO_DEPLOY_USER || 'root',
   readyTimeout = 25000,
+  keepaliveInterval = Number(process.env.VIDO_DEPLOY_KEEPALIVE_INTERVAL || 15000),
+  keepaliveCountMax = Number(process.env.VIDO_DEPLOY_KEEPALIVE_COUNT_MAX || 6),
 } = {}) {
   const password = String(process.env.VIDO_DEPLOY_PASSWORD || '');
-  if (password) return { host, port, username, password, readyTimeout };
+  if (password) return { host, port, username, password, readyTimeout, keepaliveInterval, keepaliveCountMax };
   const privateKeyPath = process.env.VIDO_DEPLOY_KEY
     || path.join(os.homedir(), '.ssh', 'id_ed25519');
   if (!fs.existsSync(privateKeyPath)) {
@@ -25,6 +27,8 @@ function connectionOptions({
     username,
     privateKey: fs.readFileSync(privateKeyPath),
     readyTimeout,
+    keepaliveInterval,
+    keepaliveCountMax,
   };
 }
 

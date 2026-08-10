@@ -35,6 +35,9 @@ const lockDir = `/opt/vido/deploy-locks/story-ad-${artifactId}`;
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const files = collectStoryAdReleaseFiles({ root, releaseManifest: publicManifest });
+const uploadConcurrency = Math.max(1, Math.min(8, Number(
+  process.env.VIDO_IMMUTABLE_UPLOAD_CONCURRENCY || process.env.VIDO_DEPLOY_UPLOAD_CONCURRENCY,
+) || 3));
 const client = new Client();
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const candidateName = `vido-candidate-${artifactId.slice(0, 12)}`;
@@ -56,6 +59,10 @@ const localHashes = Object.fromEntries(files.map(file => [
 ]));
 const auditSpec = Buffer.from(JSON.stringify({ files, hashes: localHashes }), 'utf8');
 const remoteAuditSpecPath = `${lockDir}/release-audit.json`;
+
+function reportPhase(phase, details = {}) {
+  console.log(`IMMUTABLE_RELEASE_PHASE=${JSON.stringify({ phase, ...details })}`);
+}
 
 function runLocalGate() {
   const command = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : 'npm';
@@ -191,8 +198,10 @@ runLocalGate();
 client.on('ready', async () => {
   let sftp;
   try {
+    reportPhase('connected', { files: files.length, upload_concurrency: uploadConcurrency });
     await exec(`mkdir -p /opt/vido/releases /opt/vido/deploy-locks /opt/vido/dependencies /opt/vido/runtimes && mkdir ${quote(lockDir)}`);
     sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
+    reportPhase('audit_upload');
     await new Promise((resolve, reject) => sftp.writeFile(remoteAuditSpecPath, auditSpec, error => error ? reject(error) : resolve()));
     previousTarget = (await exec(`if test -e ${quote(currentLink)}; then readlink -f ${quote(currentLink)}; else printf %s /opt/vido/app; fi`)).trim() || '/opt/vido/app';
     const preVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
@@ -211,17 +220,19 @@ client.on('ready', async () => {
 
     const exists = (await exec(`test -d ${quote(releaseDir)} && echo yes || echo no`)).trim() === 'yes';
     if (!exists) {
+      reportPhase('artifact_upload', { files: files.length, upload_concurrency: uploadConcurrency });
       await exec(`mkdir -p ${quote(stagingDir)}`);
       const directories = [...new Set(files.map(file => path.posix.dirname(file)).filter(dir => dir !== '.'))];
       await exec(`mkdir -p ${directories.map(dir => quote(`${stagingDir}/${dir}`)).join(' ')}`);
       const queue = files.slice();
-      await Promise.all(Array.from({ length: Math.min(10, queue.length) }, async () => {
+      await Promise.all(Array.from({ length: Math.min(uploadConcurrency, queue.length) }, async () => {
         while (queue.length) {
           const file = queue.shift();
           await new Promise((resolve, reject) => sftp.fastPut(path.join(root, file), `${stagingDir}/${file}`, error => error ? reject(error) : resolve()));
         }
       }));
       const audit = await remoteHashAudit(stagingDir);
+      reportPhase('artifact_verified', { checked: audit.checked });
       if (audit.mismatches.length) throw new Error(`上传制品哈希不一致：${audit.mismatches.slice(0, 20).join(', ')}`);
       const runtimeExists = (await exec(`test -x ${quote(nodeRuntimeBin)} && echo yes || echo no`)).trim() === 'yes';
       if (!runtimeExists) {
@@ -257,6 +268,7 @@ client.on('ready', async () => {
     }
     const finalAudit = await remoteHashAudit(releaseDir);
     if (finalAudit.mismatches.length) throw new Error(`不可变 release 哈希不一致：${finalAudit.mismatches.slice(0, 20).join(', ')}`);
+    reportPhase('candidate_start');
     await exec(`cd ${quote(releaseDir)} && node scripts/story-ad-pm2-release.js --mode candidate --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
     await exec('for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; curl -fsS http://127.0.0.1:4601/api/health >/dev/null && exit 0; done; exit 1');
     const candidateVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4601/api/story-ad/version'));
@@ -276,6 +288,7 @@ client.on('ready', async () => {
     const migration = await migrateReleaseState();
     const assistRouteMigration = await migrateAssistRoute();
     cutoverStarted = true;
+    reportPhase('cutover');
     await exec(`ln -sfn ${quote(releaseDir)} /opt/vido/.current-next && mv -Tf /opt/vido/.current-next ${quote(currentLink)}`);
     await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
     await exec('for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && exit 0; done; exit 1');
@@ -294,6 +307,7 @@ client.on('ready', async () => {
       throw new Error(`发布后门禁失败：${JSON.stringify({ version, health, publicHealth, after, quickAfter, activeControl })}`);
     }
     const assistRouteCommit = await commitAssistRoute();
+    reportPhase('verified', { build_id: version.build_id, artifact_id: artifactId });
     console.log(`IMMUTABLE_RELEASE=${JSON.stringify({
       build_id: version.build_id, contract_version: version.contract_version,
       release_bundle_id: version.release_bundle_id, artifact_id: artifactId,
