@@ -197,6 +197,17 @@ async function main() {
     assert.strictEqual(progressTask.generation_progress.lanes.subjects.total, 2, 'internal dossier work must not replace logical subject count');
     assert.strictEqual(progressTask.generation_progress.lanes.subjects.work_total, 21, 'internal work total remains available as secondary diagnostics');
     assert.strictEqual(progressTask.generation_progress.lanes.subjects.work_completed, 7);
+    visualAssetProgress.updateSceneUnit('progress-task', {
+      scene_id: 'scene_001', target_total: 5, processed: 1, status: 'running',
+    });
+    assert.strictEqual(progressTask.generation_progress.completed, 0, 'one of five scene views must not become 0.2 completed business targets');
+    assert.strictEqual(Number.isInteger(progressTask.generation_progress.completed), true, 'public completed target count must always be an integer');
+    assert.strictEqual(progressTask.generation_progress.lanes.scenes.completed, 0, 'a scene only counts after the full scene unit completes');
+    assert.deepStrictEqual(
+      progressTask.generation_progress.lanes.scenes.current_view_progress,
+      { completed: 1, total: 5 },
+      'internal per-view progress remains available without leaking into the public target count',
+    );
   } finally {
     projectStorage.getTask = originalGetTask;
     projectStorage.updateTask = originalUpdateTask;

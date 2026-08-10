@@ -687,6 +687,12 @@ assert.match(progressPanel, /已耗时 \d+分\d{2}秒/);
 assert.match(progressPanel, /已完成 2\/6/);
 assert.match(progressPanel, /正在生成第 3、4 镜/);
 assert.match(progressPanel, /data-cancel-generation/);
+const legacyFractionalVisualAssetPanel = sandbox.__generationProgressPanel({
+  project: { active_generation_id: 'gen-legacy-fraction' },
+  generation: { progress: { stage: 'visual_assets', status: 'running', completed: 0.2, total: 10, percent: 2 } },
+});
+assert.match(legacyFractionalVisualAssetPanel, /0\/10/, 'legacy fractional visual-asset progress must render as an integer count');
+assert.doesNotMatch(legacyFractionalVisualAssetPanel, /0\.2/, 'fractional business target counts are not allowed in the UI');
 const failedBillingPanel = sandbox.__generationProgressPanel({
   project: { status: 'failed', stage: 'visual_assets_failed', error: '计费状态未知' },
   generation: { progress: { stage: 'visual_assets', status: 'failed', billing_state: 'unknown', message: '供应商结果与计费待核对' } },

@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260810-a-v153';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-a-v153';
-import { confirmDialog } from '../components/dialog.js?v=20260810-a-v153';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-a-v153';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-a-v153';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-a-v153';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-a-v153';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260810-a-v153';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-a-v153';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-a-v153';
+import { request } from '../api.js?v=20260810-a-v154';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260810-a-v154';
+import { confirmDialog } from '../components/dialog.js?v=20260810-a-v154';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260810-a-v154';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260810-a-v154';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260810-a-v154';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260810-a-v154';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260810-a-v154';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260810-a-v154';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260810-a-v154';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -222,7 +222,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-a-v153');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260810-a-v154');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -250,7 +250,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-a-v153'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260810-a-v154'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

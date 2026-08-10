@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260810-a-v153';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-a-v153';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-a-v153';
-import { confirmDialog } from './components/dialog.js?v=20260810-a-v153';
+import { createProjectStore } from './store/projectStore.js?v=20260810-a-v154';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260810-a-v154';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260810-a-v154';
+import { confirmDialog } from './components/dialog.js?v=20260810-a-v154';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260810-a-v153'),
-  assets: () => import('./views/assetCenterView.js?v=20260810-a-v153'),
-  plot: () => import('./views/plotRoomView.js?v=20260810-a-v153'),
-  storyboard: () => import('./views/storyboardView.js?v=20260810-a-v153'),
-  shot: () => import('./views/shotDesignerView.js?v=20260810-a-v153'),
-  final: () => import('./views/finalView.js?v=20260810-a-v153'),
-  workflow: () => import('./views/workflowView.js?v=20260810-a-v153'),
+  brief: () => import('./views/briefView.js?v=20260810-a-v154'),
+  assets: () => import('./views/assetCenterView.js?v=20260810-a-v154'),
+  plot: () => import('./views/plotRoomView.js?v=20260810-a-v154'),
+  storyboard: () => import('./views/storyboardView.js?v=20260810-a-v154'),
+  shot: () => import('./views/shotDesignerView.js?v=20260810-a-v154'),
+  final: () => import('./views/finalView.js?v=20260810-a-v154'),
+  workflow: () => import('./views/workflowView.js?v=20260810-a-v154'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

@@ -101,8 +101,8 @@ export function generationProgressView(bundle = {}) {
   const failed = ['failed', 'blocked'].includes(status) || Boolean(project.error && !active);
   if (!active && !failed) return null;
   const stage = String(progress.stage || project.active_stage || project.stage || 'full').toLowerCase();
-  const total = Math.max(1, Number(progress.target_total || progress.total || 1) || 1);
-  const completed = Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0));
+  const total = Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
+  const completed = Math.floor(Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0)));
   const percent = Math.max(0, Math.min(100, Number.isFinite(Number(progress.percent))
     ? Math.round(Number(progress.percent))
     : Math.round((completed / total) * 100)));
@@ -144,8 +144,8 @@ export function generationProgressPanel(bundle = {}) {
     ['subjects', '人物 / 动物'], ['scenes', '场景'],
   ].map(([key, label]) => {
     const lane = view.lanes[key] || {};
-    const total = Math.max(0, Number(lane.total || 0));
-    const completed = Math.max(0, Math.min(total || 1, Number(lane.completed || 0)));
+    const total = Math.max(0, Math.floor(Number(lane.total || 0)));
+    const completed = Math.floor(Math.max(0, Math.min(total || 1, Number(lane.completed || 0))));
     const status = lane.required === false ? '不需要' : (lane.status === 'completed' ? '已完成' : (lane.status === 'failed' ? '需处理' : `${Math.floor(completed)}/${total}`));
     return `<div><span><b>${label}</b><small>${escapeHtml(lane.message || '')}</small></span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('')}</div>` : '';

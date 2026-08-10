@@ -4,6 +4,10 @@ function clamp(value, min = 0, max = 100) {
   return Math.max(min, Math.min(max, Number(value) || 0));
 }
 
+function wholeCount(value, min = 0, max = Number.MAX_SAFE_INTEGER) {
+  return Math.floor(clamp(value, min, max));
+}
+
 function current(taskId) {
   const task = storage.getTask(taskId);
   const progress = task?.generation_progress;
@@ -13,8 +17,11 @@ function current(taskId) {
 function aggregate(progress = {}) {
   const lanes = progress.lanes || {};
   const active = Object.values(lanes).filter(lane => lane?.required !== false);
-  const total = active.reduce((sum, lane) => sum + Math.max(1, Number(lane.total || 1)), 0) || 1;
-  const completed = active.reduce((sum, lane) => sum + clamp(lane.completed, 0, Math.max(1, Number(lane.total || 1))), 0);
+  const total = active.reduce((sum, lane) => sum + Math.max(1, wholeCount(lane.total || 1)), 0) || 1;
+  const completed = active.reduce((sum, lane) => {
+    const laneTotal = Math.max(1, wholeCount(lane.total || 1));
+    return sum + wholeCount(lane.completed, 0, laneTotal);
+  }, 0);
   return {
     ...progress,
     total,
@@ -31,14 +38,14 @@ function initialize(taskId, generationId, plan = {}) {
     subjects: {
       required: plan.subjectsRequired === true,
       status: plan.subjectsRequired === true ? 'queued' : 'not_required',
-      total: Math.max(0, Number(plan.subjectTotal || 0)), completed: 0, percent: 0,
+      total: wholeCount(plan.subjectTotal || 0), completed: 0, percent: 0,
       work_total: 0, work_completed: 0,
       message: plan.subjectsRequired === true ? '人物与动物等待生成' : '当前项目不需要生成人物或动物',
     },
     scenes: {
       required: plan.scenesRequired === true,
       status: plan.scenesRequired === true ? 'queued' : 'not_required',
-      total: Math.max(0, Number(plan.sceneTotal || 0)), completed: 0, percent: 0,
+      total: wholeCount(plan.sceneTotal || 0), completed: 0, percent: 0,
       message: plan.scenesRequired === true ? '场景等待生成' : '当前没有待生成场景',
       completed_scenes: 0,
     },
@@ -56,8 +63,8 @@ function updateLane(taskId, laneName, patch = {}) {
   const state = current(taskId);
   if (!state) return null;
   const previous = state.progress.lanes?.[laneName] || {};
-  const total = Math.max(0, Number(patch.total ?? previous.total ?? 0));
-  const completed = clamp(patch.completed ?? patch.processed ?? previous.completed, 0, Math.max(1, total));
+  const total = wholeCount(patch.total ?? previous.total ?? 0);
+  const completed = wholeCount(patch.completed ?? patch.processed ?? previous.completed, 0, Math.max(1, total));
   const lane = {
     ...previous, ...patch, total, completed,
     percent: Number.isFinite(Number(patch.percent)) ? clamp(patch.percent) : (total ? clamp(Math.round((completed / total) * 100)) : 100),
@@ -72,13 +79,13 @@ function updateSceneUnit(taskId, sceneProgress = {}) {
   const state = current(taskId);
   if (!state) return null;
   const lane = state.progress.lanes?.scenes || {};
-  const totalScenes = Math.max(1, Number(lane.total || 1));
-  const completedScenes = Math.max(0, Number(lane.completed_scenes || 0));
-  const viewTotal = Math.max(1, Number(sceneProgress.target_total || 1));
-  const viewCompleted = clamp(sceneProgress.processed || 0, 0, viewTotal);
+  const totalScenes = Math.max(1, wholeCount(lane.total || 1));
+  const completedScenes = wholeCount(lane.completed_scenes || 0, 0, totalScenes);
+  const viewTotal = Math.max(1, wholeCount(sceneProgress.target_total || 1));
+  const viewCompleted = wholeCount(sceneProgress.processed || 0, 0, viewTotal);
   return updateLane(taskId, 'scenes', {
     status: sceneProgress.status === 'failed' ? 'failed' : 'running',
-    completed: Math.min(totalScenes, completedScenes + (viewCompleted / viewTotal)),
+    completed: completedScenes,
     current_scene_id: sceneProgress.scene_id || lane.current_scene_id || '',
     current_view_progress: { completed: viewCompleted, total: viewTotal },
     message: sceneProgress.message || `正在生成场景 ${completedScenes + 1}/${totalScenes}`,
