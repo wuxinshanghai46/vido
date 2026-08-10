@@ -1,2 +1,2 @@
-export const CLIENT_BUILD_ID = "20260810-brief-settings-ui-v139";
+export const CLIENT_BUILD_ID = "20260810-psave-v140";
 export const CLIENT_CONTRACT_VERSION = "story-scene-platform-v6";

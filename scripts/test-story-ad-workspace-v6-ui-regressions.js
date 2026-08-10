@@ -476,6 +476,18 @@ const collectedLooks = personLookModule.collectPersonLookValues({
 }, multiLookProfile.profile);
 assert.equal(collectedLooks.look_profiles.length, 2);
 assert.equal(collectedLooks.wardrobeText, '淡青宋式长衫');
+assert.equal(collectedLooks.age, 'match_brief', '年龄留空必须按服务器规范保存为按剧情分析，避免回读误报不一致');
+assert.match(multiLookEdit, /适用场景 \/ 剧情状态/u);
+const sameSceneAcrossEras = assetModule.personEditForm({ ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
+  { id: 'ancient-bamboo', name: '古代造型', story_state: '古代', scene_names: ['千年竹海'], wardrobeText: '古代长衫' },
+  { id: 'modern-bamboo', name: '现代造型', story_state: '现代', scene_names: ['千年竹海'], wardrobeText: '现代衬衫' },
+] } });
+assert.match(sameSceneAcrossEras, /古代 · 千年竹海/u, '同一空间跨时代时必须显示古代剧情状态');
+assert.match(sameSceneAcrossEras, /现代 · 千年竹海/u, '同一空间跨时代时必须显示现代剧情状态');
+assert.doesNotThrow(() => assetPersonStateModule.assertSavedPerson({ assets: { people: [{ profile: {
+  id: readableProfile.profile.id, age: 'match_brief', appearanceText: readableProfile.profile.appearanceText,
+  look_profiles: collectedLooks.look_profiles,
+} }] } }, readableProfile, { ...collectedLooks, age: '', appearanceText: readableProfile.profile.appearanceText }), '空年龄与服务器 match_brief 必须视为同一自动分析语义');
 const dossierDetails = dossierModule.personDossierShowcase(readableProfile);
 assert.doesNotMatch(dossierDetails, /match_brief/, '人物档案风格关键词不得泄漏内部年龄占位值');
 

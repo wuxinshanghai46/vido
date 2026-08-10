@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260810-brief-settings-ui-v139';
+import { escapeHtml } from '../components/ui.js?v=20260810-psave-v140';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -11,6 +11,8 @@ function rows(profile = {}) {
 
 function lookEditor(look = {}, index = 0) {
   const scenes = Array.isArray(look.scene_names) && look.scene_names.length ? look.scene_names : (look.scene_ids || []);
+  const storyState = String(look.story_state || '').trim();
+  const sceneLabels = scenes.map(scene => storyState && !String(scene).includes(storyState) ? `${storyState} · ${scene}` : scene);
   const richness = String(look.style_richness || 'auto');
   const richnessOption = (value, label) => `<option value="${value}" ${richness === value ? 'selected' : ''}>${label}</option>`;
   return `<fieldset class="person-look-card" data-person-look data-look-index="${index}">
@@ -20,7 +22,7 @@ function lookEditor(look = {}, index = 0) {
     <input type="hidden" name="look_${index}_scene_names" value="${escapeHtml((look.scene_names || []).join(','))}">
     <div class="form-grid two"><label><span>造型名称</span><input name="look_${index}_name" value="${escapeHtml(look.name || '')}" required></label><label><span>时代 / 剧情状态</span><input name="look_${index}_story_state" value="${escapeHtml(look.story_state || '')}"></label></div>
     <label><span>华丽程度（AI 帮写和图片生成都会遵守）</span><select name="look_${index}_style_richness">${richnessOption('auto', '根据人物与剧情自动判断')}${richnessOption('restrained', '朴素克制')}${richnessOption('refined', '精致雅致')}${richnessOption('ornate_luxurious', '华丽华贵')}</select></label>
-    <p class="person-look-scenes"><span>适用场景</span><b>${escapeHtml(scenes.join('、') || '未限定场景')}</b></p>
+    <p class="person-look-scenes"><span>适用场景 / 剧情状态</span><b>${escapeHtml(sceneLabels.join('、') || storyState || '未限定场景，将按剧情分析')}</b></p>
     <label><span>服装 / 鞋 / 配饰</span><textarea name="look_${index}_wardrobeText" rows="3" required>${escapeHtml(look.wardrobeText || '')}</textarea></label>
     <label><span>该造型发型 / 妆造</span><textarea name="look_${index}_hairMakeupText" rows="2">${escapeHtml(look.hairMakeupText || '')}</textarea></label>
     <label><span>该造型禁止项</span><textarea name="look_${index}_negativeText" rows="2">${escapeHtml(look.negativeText || '')}</textarea></label>
@@ -86,6 +88,7 @@ export function collectPersonLookValues(values = {}, profile = {}) {
   const exact = ageInput.match(/^(?:年龄|实际年龄)?\s*(\d{1,7})\s*(?:岁|周岁)?$/u);
   if (range) base.age = `${Number(range[1])}~${Number(range[2])}岁`;
   else if (exact) base.age = `${Number(exact[1])}岁`;
+  else if (!ageInput) base.age = 'match_brief';
   return {
     ...base,
     look_profiles: looks,

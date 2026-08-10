@@ -49,8 +49,9 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
     .find(profile => String(profile.id || '') === String(item.profile?.id || ''));
   const expectedLookIds = (normalizedValues.look_profiles || []).map(look => String(look.id || ''));
   const savedLookIds = (savedProfile?.look_profiles || []).map(look => String(look.id || ''));
+  const canonicalAge = value => String(value || '').trim() || 'match_brief';
   if (!savedProfile
-    || String(savedProfile.age || '') !== String(normalizedValues.age || '')
+    || canonicalAge(savedProfile.age) !== canonicalAge(normalizedValues.age)
     || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
     || expectedLookIds.some(id => !savedLookIds.includes(id))) {
     throw new Error('人物信息服务器回读不一致，已停止显示保存成功；请勿继续生成。');
