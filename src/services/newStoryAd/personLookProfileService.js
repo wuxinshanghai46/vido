@@ -118,6 +118,58 @@ function normalizeProfileLooks(profile = {}, options = {}) {
   };
 }
 
+function eraIdentity(look = {}) {
+  const value = clean([
+    look.story_state, look.storyState, look.era, look.name,
+    look.world_profile_id, look.worldProfileId,
+  ].filter(Boolean).join(' '), 500);
+  if (/(?:现代|当代|今世|今生|都市|modern|contemporary)/i.test(value)) return { key: 'modern', label: '现代' };
+  if (/(?:古代|古时|古装|前世|上古|远古|古风|秦|汉|唐|宋|元|明|清|ancient|historical)/i.test(value)) return { key: 'ancient', label: '古代' };
+  return null;
+}
+
+function stripEraSuffix(value = '') {
+  return clean(value, 120).replace(/[（(](?:古代|现代|当代|今世|今生|前世|古时|古装)[）)]$/u, '').trim();
+}
+
+function splitCrossEraProfiles(profiles = []) {
+  return list(profiles).flatMap((profile, profileIndex) => {
+    const looks = normalizeLookProfiles(profile);
+    const classified = looks.map(look => ({ look, era: eraIdentity(look) }));
+    const eraKeys = new Set(classified.map(item => item.era?.key).filter(Boolean));
+    if (looks.length < 2 || eraKeys.size < 2 || classified.some(item => !item.era)) {
+      return [{ ...normalizeProfileLooks(profile), source_identity_id: clean(profile.source_identity_id || profile.id || `cast_${profileIndex + 1}`, 100) }];
+    }
+    const sourceId = clean(profile.source_identity_id || profile.id || `cast_${profileIndex + 1}`, 80);
+    const baseName = stripEraSuffix(profile.displayName || profile.name || `人物${profileIndex + 1}`);
+    const groups = new Map();
+    classified.forEach(({ look, era }) => {
+      if (!groups.has(era.key)) groups.set(era.key, { era, looks: [] });
+      groups.get(era.key).looks.push(look);
+    });
+    return [...groups.values()].map(({ era, looks: eraLooks }) => {
+      const id = `${sourceId}_${era.key}`.slice(0, 100);
+      const name = `${baseName}（${era.label}）`;
+      const normalized = normalizeProfileLooks({
+        ...profile,
+        id,
+        name,
+        displayName: name,
+        look_profiles: eraLooks.map((look, index) => ({ ...look, id: stableLookId(id, look.id, index) })),
+      });
+      return {
+        ...normalized,
+        id,
+        name,
+        displayName: name,
+        source_identity_id: sourceId,
+        era_identity: era.key,
+        era_label: era.label,
+      };
+    });
+  });
+}
+
 module.exports = {
   normalizeLookProfiles,
   normalizeProfileLooks,
@@ -127,4 +179,6 @@ module.exports = {
   lookForShot,
   stableLookId,
   normalizeStyleRichness,
+  eraIdentity,
+  splitCrossEraProfiles,
 };

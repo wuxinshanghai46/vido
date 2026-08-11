@@ -3551,7 +3551,7 @@ async function assistBrief(body = {}, user = {}) {
     '当 mode 是 negative_control 时，只整理画面禁止项，每条都必须是明确不能出现的内容。',
     assistCreativeDirection.systemRule(),
     '当 mode 是 person_spec 时，按当前主体模式补齐设定字段。人物模式必须包含外貌、穿着、发型妆造和人物禁止项；动物或人物+宠物模式还必须包含独立宠物数量、类型/品种和跨镜头识别特征。',
-    '同一人物存在换装、跨时代或多个明确故事状态时，人物数量不增加，但必须输出多个 look_profiles，并以 scene_ids 绑定适用场景；每个造型内部固定，禁止把多套造型拼接成一个 wardrobeText。',
+    '同一时代内的换装可保留为多个 look_profiles；同一姓名同时存在古代与现代、前世与今生等跨时代状态时，必须拆成独立人物档案，并分别命名为“人名（古代）”“人名（现代）”，人物数量随拆分结果增加。',
     isPersonSpec ? worldSetting.promptBlock(ctx.world_setting) : '',
     assistSubjectTarget ? 'person_spec 单人物辅助模式只能输出目标人物的一条 cast_profiles 记录，pet_profiles 必须为空；不得重写或评价其他人物与宠物。' : 'person_spec 模式还必须按精确人数输出 cast_profiles，并按精确宠物数量输出 pet_profiles。每个数组成员只能描述一个主体；禁止复制同一套外貌、服装、发型或宠物特征给不同成员。',
     `person_spec 四视图固定状态规则：${subjectContinuityPolicy.assistRuleZh()}`,

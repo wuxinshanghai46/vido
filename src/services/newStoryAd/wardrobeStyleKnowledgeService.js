@@ -94,7 +94,7 @@ function promptBlock(input = {}, options = {}) {
   const lines = [
     '人物造型知识合同：先判断每个 look 的时代、地域、身份、性别呈现和场合，再选择同一套装束体系；用户事实始终优先。',
     '每个造型必须形成可检查闭环：服装制式（完整连体，或上装+下装，或成套分层体系）、鞋袜、配饰/明确无配饰、主辅色、材质纹样、发型妆容、禁止项。',
-    '同一人物跨时代或换装必须拆成独立 look_profiles；不得把古代与现代、民国与现代、不同国家或不同时代的装束揉成一套。',
+    '同一时代内换装必须拆成独立 look_profiles；不得把古代与现代、前世与今生等跨时代状态揉在一起，必须进一步拆成独立人物档案并显示为“人名（时代）”。',
     ...selected.families.map(family => `${family.label}：${family.instruction}`),
   ];
   return lines.join('\n');

@@ -429,6 +429,10 @@ assert.match(assets, /版本合同未通过/, '合同失败只显示合同结论
 assert.match(assets, /版本合同未通过 · 步骤 1/, '合同失败必须显示恢复步骤顺序');
 assert.match(assets, /先更新当前版本的场景规划/, '合同失败必须给出唯一明确的第一步');
 assert.match(assets, /成功图片保留/, '更新规划前必须说明成功资产不会丢失');
+assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
+assert.match(assets, /正在更新场景规划/, '场景规划运行中必须显示进行中而不是高亮可选按钮');
+assert.match(assets, /data-build-scenes \$\{generationDisabled\}/, '场景规划运行中必须禁用重复提交入口');
+assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
 assert.match(assets, /步骤 2：合同通过后核对计费，再继续缺失图片/, '计费未知必须明确为合同恢复后的第二步');
 const blockedVisualFailure = {
   project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },

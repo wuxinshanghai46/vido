@@ -798,6 +798,16 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   let body = options.body || {};
   const brief = cleanText(body.brief || body.content || '', 4000);
   const taskId = cleanText(options.taskId || body.task_id || '', 120);
+  const suppliedCast = Array.isArray(body.cast_profiles) ? body.cast_profiles : [];
+  const eraSeparatedCast = personLooks.splitCrossEraProfiles(suppliedCast);
+  if (eraSeparatedCast.length !== suppliedCast.length) {
+    const error = new Error('检测到同名人物同时包含古代与现代造型；请先更新场景规划，将其拆分为“人名（古代）”和“人名（现代）”后再生成。');
+    error.code = 'PERSON_CROSS_ERA_REPLAN_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.before_paid_call = true;
+    throw error;
+  }
   const completion = await generationSpecCompletion.completePersonProfiles({
     taskId,
     brief,

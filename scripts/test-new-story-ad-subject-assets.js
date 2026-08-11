@@ -341,19 +341,19 @@ function harness({ cancelAt = 0 } = {}) {
   const multiLookBatch = harness();
   const multiLookProfile = castProfile(1, {
     displayName: 'Lin Jing',
-    roleName: 'time traveler',
-    wardrobeText: 'pale cyan Song-style robe, white cloth shoes and a wooden hairpin',
-    hairMakeupText: 'black hair pinned with a wooden hairpin',
+    roleName: 'modern curator',
+    wardrobeText: 'navy tailored suit, white shirt and black leather shoes',
+    hairMakeupText: 'neat shoulder-length black hair and light makeup',
     look_profiles: [
       {
-        id: 'lin_jing_ancient', name: 'Ancient look', story_state: 'ancient era',
-        scene_ids: ['ancient_garden'],
-        wardrobeText: 'pale cyan Song-style robe, white cloth shoes and a wooden hairpin',
-        hairMakeupText: 'black hair pinned with a wooden hairpin',
+        id: 'lin_jing_formal', name: 'Formal look', story_state: 'modern formal event',
+        scene_ids: ['modern_office'],
+        wardrobeText: 'navy tailored suit, white shirt and black leather shoes',
+        hairMakeupText: 'neat shoulder-length black hair and light makeup',
       },
       {
-        id: 'lin_jing_modern', name: 'Modern look', story_state: 'modern era',
-        scene_ids: ['modern_hall'],
+        id: 'lin_jing_casual', name: 'Casual look', story_state: 'modern casual event',
+        scene_ids: ['modern_gallery'],
         wardrobeText: 'off-white linen shirt, straight trousers, leather mules and a silver bracelet',
         hairMakeupText: 'natural shoulder-length black hair and light makeup',
       },
@@ -362,23 +362,23 @@ function harness({ cancelAt = 0 } = {}) {
   const multiLookBundle = await subjectAssets.generateSubjectBundle({
     taskId: 'task_multi_look_assets',
     body: {
-      brief: 'The same woman crosses from an ancient garden into a modern exhibition hall.',
+      brief: 'The same modern curator changes clothes between an office and a gallery.',
       cast_mode: 'single', expected_people: 1,
       person_spec: { castMode: 'single', expectedPeople: 1 },
       cast_profiles: [multiLookProfile],
     },
   }, multiLookBatch.deps);
-  assert.strictEqual(multiLookBatch.submissions(), 12, 'two looks for one identity must create two isolated six-call dossiers');
-  assert.strictEqual(multiLookBundle.cast_assets.length, 1, 'multiple looks must not increase the character count');
+  assert.strictEqual(multiLookBatch.submissions(), 12, 'two same-era looks for one identity must create two isolated six-call dossiers');
+  assert.strictEqual(multiLookBundle.cast_assets.length, 1, 'same-era multiple looks must not increase the character count');
   assert.strictEqual(multiLookBundle.cast_assets[0].look_assets.length, 2, 'both declared looks must be persisted as independent assets');
   assert.deepStrictEqual(
     multiLookBundle.cast_assets[0].look_assets.map(look => look.id),
-    ['lin_jing_ancient', 'lin_jing_modern'],
+    ['lin_jing_formal', 'lin_jing_casual'],
   );
-  assert(multiLookBatch.prompts.slice(0, 6).every(prompt => prompt.includes('Song-style robe') && !prompt.includes('linen shirt')),
-    'the ancient dossier must never receive modern wardrobe text');
-  assert(multiLookBatch.prompts.slice(6, 12).every(prompt => prompt.includes('linen shirt') && !prompt.includes('Song-style robe')),
-    'the modern dossier must never receive ancient wardrobe text');
+  assert(multiLookBatch.prompts.slice(0, 6).every(prompt => prompt.includes('tailored suit') && !prompt.includes('linen shirt')),
+    'the formal dossier must never receive casual wardrobe text');
+  assert(multiLookBatch.prompts.slice(6, 12).every(prompt => prompt.includes('linen shirt') && !prompt.includes('tailored suit')),
+    'the casual dossier must never receive formal wardrobe text');
   assert.notStrictEqual(
     subjectAssets.checkpointKind(
       'task_multi_look_fingerprint', 'brief', { castMode: 'single', expectedPeople: 1 },
@@ -390,7 +390,7 @@ function harness({ cancelAt = 0 } = {}) {
         cast_profiles: [{
           ...multiLookProfile,
           look_profiles: multiLookProfile.look_profiles.map(look => (
-            look.id === 'lin_jing_modern' ? { ...look, wardrobeText: 'black modern suit' } : look
+            look.id === 'lin_jing_casual' ? { ...look, wardrobeText: 'black modern suit' } : look
           )),
         }],
       },

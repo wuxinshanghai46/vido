@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v159';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v168';
 
 export const SCENE_VIEW_ORDER = Object.freeze(['master', 'reverse', 'interaction', 'detail', 'layout']);
 export const SCENE_VIEW_LABELS = Object.freeze({
@@ -133,7 +133,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260811-ui-v159');
+      const exporter = await import('./sceneDossierExport.js?v=20260811-ui-v168');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

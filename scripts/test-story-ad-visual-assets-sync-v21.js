@@ -32,7 +32,8 @@ assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
 assert(assetView.includes('先更新当前版本的场景规划'), '合同失效时必须给出唯一的第一步');
 assert(assetView.includes('步骤 2：合同通过后核对计费，再继续缺失图片'), '计费未知恢复必须明确排在合同更新之后');
-assert(assetView.includes('data-build-scenes>更新场景规划'), '场景规划入口必须放在当前恢复步骤内');
+assert(assetView.includes('data-build-scenes ${generationDisabled}'), '场景规划运行中必须禁用重复提交入口');
+assert(assetView.includes("generationActive ? '正在更新场景规划' : '更新场景规划'"), '场景规划按钮必须区分运行中与空闲状态');
 assert(assetView.includes("host.querySelector('[data-build-scenes]')?.addEventListener"), '合同通过后不得保留无关的重规划按钮');
 
 const briefView = read('public/story-ad/views/briefView.js');

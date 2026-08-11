@@ -95,7 +95,8 @@ function planAuthorityIssues(plan = {}, context = {}) {
   const issues = [];
   const expectedPeople = Math.max(0, Number(context.expected_people || 0) || 0);
   const cast = Array.isArray(plan.cast_profiles) ? plan.cast_profiles : [];
-  if (expectedPeople > 0 && cast.length !== expectedPeople) {
+  const authorityCastCount = new Set(cast.map(item => text(item?.source_identity_id || item?.id, 120)).filter(Boolean)).size;
+  if (expectedPeople > 0 && cast.length !== expectedPeople && authorityCastCount !== expectedPeople) {
     issues.push(`人物数量应为 ${expectedPeople}，模型返回 ${cast.length}`);
   }
   const requiredPlaces = explicitSceneRequirements(context.brief);

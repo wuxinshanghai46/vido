@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260811-ui-v159';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v159';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v159';
+import { request } from '../api.js?v=20260811-ui-v168';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v168';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v168';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};

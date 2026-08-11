@@ -242,7 +242,7 @@ function projectReferencePlan(ctx = {}) {
 
 function normalizePlan(source = {}, ctx = {}) {
   const rawScenePlan = source.scene_plan || source.scenePlan || source.scene_config || source.sceneConfig || {};
-  const scenePlan = normalizeScenePlan(assetPlanSceneContracts.closeAssetPlanSceneContracts(rawScenePlan, {
+  let scenePlan = normalizeScenePlan(assetPlanSceneContracts.closeAssetPlanSceneContracts(rawScenePlan, {
     content_mode: ctx.content_mode || ctx.product_presentation?.mode,
   }));
   assertScenePlanContract(scenePlan);
@@ -250,8 +250,7 @@ function normalizePlan(source = {}, ctx = {}) {
     ? (source.cast_profiles || source.castProfiles).slice(0, 12)
     : (ctx.cast_profiles || []);
   const existingProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
-  return {
-    cast_profiles: castProfiles.map((profile, index) => {
+  const normalizedCastProfiles = castProfiles.map((profile, index) => {
       const existing = existingProfiles.find(item => cleanText(item?.id || '', 100)
         && cleanText(item?.id || '', 100) === cleanText(profile?.id || '', 100))
         || existingProfiles.find(item => cleanText(item?.displayName || item?.name || '', 120)
@@ -274,7 +273,17 @@ function normalizePlan(source = {}, ctx = {}) {
       ),
       negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
       look_profiles: withLooks.look_profiles,
-    }); }),
+    }); });
+  const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(normalizedCastProfiles);
+  if (eraSeparatedCastProfiles.length !== normalizedCastProfiles.length) {
+    scenePlan = {
+      ...scenePlan,
+      cast_mode: eraSeparatedCastProfiles.length === 0 ? 'no_human'
+        : (eraSeparatedCastProfiles.length === 1 ? 'single' : (eraSeparatedCastProfiles.length === 2 ? 'dual' : 'multi')),
+    };
+  }
+  return {
+    cast_profiles: eraSeparatedCastProfiles,
     pet_profiles: Array.isArray(source.pet_profiles || source.petProfiles)
       ? (source.pet_profiles || source.petProfiles).slice(0, 12)
       : (ctx.pet_profiles || []),
@@ -841,6 +850,7 @@ async function parseChineseRecoveryResult(taskId, ctx, result, kind) {
 }
 
 async function recoverNarrativeStoryDevelopment(taskId, ctx = {}, partialPayload = {}, options = {}) {
+  const storyFactsStageBudgetMs = 285000;
   stageProgress.update(taskId, {
     stage: 'scene_config', phase: 'story_facts', completed: 0, total: 3,
     generationId: cleanText(options.generation_id || options.generationId || '', 80),
@@ -872,11 +882,15 @@ async function recoverNarrativeStoryDevelopment(taskId, ctx = {}, partialPayload
     userPrompt: JSON.stringify(storyFactsPrompt.developmentUserPayload(ctx, partialPayload, minimumBeats)),
     maxTokens: 5200,
     temperature: 0.35,
+    stageBudgetMs: storyFactsStageBudgetMs,
     structuredOutput: { mode: 'json_object', name: 'narrative_story_development' },
       validateText: validateStoryFacts,
     });
   } catch (error) {
-    const repairableCode = ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(String(error?.code || ''));
+    const repairableCode = ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(String(error?.code || ''))
+      || (Array.isArray(error?.failed_models)
+        && error.failed_models.some(item => ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(String(item?.code || '')))
+        && cleanText(error?.candidate_text || '', 24000));
     if (!repairableCode) throw error;
     const baseSeed = error?.candidate_parsed_json?.story_seed || error?.candidate_parsed_json?.storySeed || {};
     const baseBeats = Array.isArray(baseSeed?.plot_beats || baseSeed?.plotBeats) ? (baseSeed.plot_beats || baseSeed.plotBeats) : [];
@@ -900,6 +914,7 @@ async function recoverNarrativeStoryDevelopment(taskId, ctx = {}, partialPayload
         maxTokens: 4200,
         temperature: 0.1,
         maxCandidates: 3,
+        stageBudgetMs: storyFactsStageBudgetMs,
         structuredOutput: { mode: 'json_object', name: 'narrative_story_facts_compact_retry' },
         validateText: validateStoryFacts,
       });
@@ -919,6 +934,7 @@ async function recoverNarrativeStoryDevelopment(taskId, ctx = {}, partialPayload
       maxTokens: 3200,
       temperature: 0.1,
       maxCandidates: 3,
+      stageBudgetMs: storyFactsStageBudgetMs,
       structuredOutput: { mode: 'json_object', name: 'narrative_story_facts_patch' },
       validateText: (_text, meta = {}) => {
         repairedSeed = storySceneCoverage.mergeStorySeedPatch(baseSeed, meta.parsed_json || {}, { repair_scope: repairScope });
@@ -1228,8 +1244,8 @@ async function generate(taskId, options = {}) {
       '一次完成原创人物、独立道具、物理场景和故事种子的规划，不得把同一需求拆成多次模型理解。',
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
       '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
-      '并行或对照叙事中的人物身份必须按用户原文判断：明确为不同人物时禁止合并；明确为同一人物跨时间层、换装或跨故事状态时只保留一个身份。不得根据题材示例自行假定人物关系。',
-      '同一人物在不同时间层、职业状态、身份状态或明确换装状态下，每套可见服装与妆造必须拆成独立 look_profiles，并用 scene_ids 绑定适用空间、用 world_profile_id 绑定项目世界设定。严禁把多套造型合并进一个 wardrobeText。',
+      '并行或对照叙事中的人物身份必须按用户原文判断：明确为不同人物时禁止合并；同一姓名同时存在古代与现代时，必须保留可识别的时代状态，平台会拆成“人名（古代）”与“人名（现代）”两个独立人物资产。不得根据题材示例自行假定人物关系。',
+      '同一时代内的普通换装可使用多个 look_profiles；古代与现代、前世与今生等跨时代状态不得作为同一人物资产的两套造型交付，必须由平台拆成独立人物档案。',
       worldSetting.promptBlock(ctx.world_setting),
       currentContentMode === 'narrative_story'
         ? '本任务是纯剧情：scene_plan.advertised_subject 必须为 JSON 空字符串，禁止 advertised_product、商品、品牌、卖点、购买引导和销售转化。'

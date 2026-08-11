@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260811-ui-v159';
+import { escapeHtml } from '../components/ui.js?v=20260811-ui-v168';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -31,7 +31,7 @@ function lookEditor(look = {}, index = 0) {
 }
 
 export function renderPersonLookEditors(profile = {}) {
-  return `<section class="person-look-editor" data-person-look-editor><div class="drawer-section-head"><div><h3>人物造型</h3><p>同一人物共用脸型和身份；每套服装按场景独立锁定。</p></div><span>${rows(profile).length} 套</span></div><div data-person-look-list>${rows(profile).map(lookEditor).join('')}</div><button class="btn small" type="button" data-add-person-look>添加造型</button></section>`;
+  return `<section class="person-look-editor" data-person-look-editor><div class="drawer-section-head"><div><h3>人物造型</h3><p>同一时代可有多套造型；古今人物分别建档。</p></div><span>${rows(profile).length} 套</span></div><div data-person-look-list>${rows(profile).map(lookEditor).join('')}</div><button class="btn small" type="button" data-add-person-look>添加造型</button></section>`;
 }
 
 export function renderPersonLookTiles(item = {}) {

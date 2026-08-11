@@ -15,6 +15,7 @@ const REFERENCE_SYNTHESIS_STAGE = 'new_story_ad.reference_video_synthesis';
 const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
   'new_story_ad.assist',
+  'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
   'new_story_ad.story_facts_repair',
   'new_story_ad.asset_plan_section_patch',
@@ -694,7 +695,7 @@ async function generateText({
   err.candidate_count = attemptCandidates.length;
   err.available_candidate_count = candidates.length;
   err.failed_models = failed;
-  if (failed.length === 1 && lastCandidateText) {
+  if (lastCandidateText) {
     err.candidate_text = lastCandidateText;
     err.candidate_parsed_json = lastCandidateParsedJson;
   }

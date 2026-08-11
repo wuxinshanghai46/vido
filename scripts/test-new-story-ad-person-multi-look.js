@@ -24,6 +24,10 @@ async function run() {
   assert.equal(normalized.wardrobeText, profile.look_profiles[0].wardrobeText, '标量兼容字段只能投影首个造型，不能拼接多套造型');
   assert.equal(personLooks.lookForScene(normalized, 'modern_hall').id, 'lin_modern');
   assert.equal(personLooks.lookForShot(normalized, { scene_id: 'ancient_garden', look_id: 'lin_ancient' }).id, 'lin_ancient');
+  const eraSeparated = personLooks.splitCrossEraProfiles([profile]);
+  assert.equal(eraSeparated.length, 2, '古代与现代必须拆成两个独立人物档案');
+  assert.deepEqual(eraSeparated.map(item => item.displayName), ['林静（古代）', '林静（现代）']);
+  assert(eraSeparated.every(item => item.look_profiles.length === 1));
 
   const legacy = personLooks.normalizeProfileLooks({ id: 'legacy', wardrobeText: '一套固定服装' });
   assert.equal(legacy.look_profiles.length, 1, '历史单造型任务应无损投影为一个默认造型');
@@ -38,19 +42,21 @@ async function run() {
       ],
     },
   });
-  assert.equal(plan.cast_profiles.length, 1, '造型数量不得增加人物数量');
-  assert.equal(plan.cast_profiles[0].look_profiles.length, 2, '资产规划归一化不得压扁多造型');
+  assert.equal(plan.cast_profiles.length, 2, '跨时代状态必须增加为独立人物档案');
+  assert.deepEqual(plan.cast_profiles.map(item => item.displayName), ['林静（古代）', '林静（现代）']);
+  assert(plan.cast_profiles.every(item => item.look_profiles.length === 1), '拆分后每个时代人物只保留本时代造型');
+  assert.equal(plan.scene_plan.cast_mode, 'dual');
 
   const nonCollapsingPlan = assetPlan.normalizePlan({
     cast_profiles: [{ ...profile, look_profiles: [profile.look_profiles[0]] }],
     scene_plan: plan.scene_plan,
   }, { cast_profiles: [profile] });
-  assert.equal(nonCollapsingPlan.cast_profiles[0].look_profiles.length, 2,
-    'a later planner response must not collapse an already approved multi-look profile');
+  assert.equal(nonCollapsingPlan.cast_profiles.length, 2,
+    'a later planner response must preserve and split an already approved cross-era profile');
 
   const unboundProfile = {
     ...profile,
-    look_profiles: profile.look_profiles.map(look => ({ ...look, scene_ids: [], story_state: '' })),
+    look_profiles: profile.look_profiles.map((look, index) => ({ ...look, name: `同时代换装 ${index + 1}`, scene_ids: [], story_state: '' })),
   };
   await assert.rejects(
     subjects.generateSubjectBundle({
@@ -66,6 +72,18 @@ async function run() {
     }),
     error => Array.isArray(error?.unbound_look_ids) && error.unbound_look_ids.length === 2,
     'multi-look generation must stop before paid calls when look-to-scene or story-state binding is missing',
+  );
+
+  await assert.rejects(
+    subjects.generateSubjectBundle({
+      taskId: 'cross-era-paid-call-guard',
+      body: { brief: '古今双线', cast_mode: 'single', expected_people: 1, cast_profiles: [profile] },
+    }, {
+      mediaAdapter: {},
+      storage: { getOutput: () => null, saveOutput: () => {}, listOutputs: () => [] },
+    }),
+    error => error?.code === 'PERSON_CROSS_ERA_REPLAN_REQUIRED' && error?.before_paid_call === true,
+    '跨时代合并档案必须在任何付费生成前停止并要求重规划',
   );
 
   const saved = new Map();
