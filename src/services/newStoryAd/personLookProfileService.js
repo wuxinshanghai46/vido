@@ -146,7 +146,9 @@ function identityContinuity(profile = {}, brief = '') {
   if (/(?:本人穿越|穿越者|活过千年|活到现代|长生不老|容颜不老|沉睡.*苏醒|冰封.*苏醒|同一身份|same person|time travel|immortal)/i.test(profileEvidence)) return 'same_person';
   const baseName = stripEraSuffix(profile.displayName || profile.name || '');
   const sourceEvidence = clean(brief, 6000);
-  if (baseName && new RegExp(`${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.{0,32}(?:转世|轮回|投胎|再世|来生|后世化身)`).test(sourceEvidence)) return 'reincarnation';
+  const escapedName = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (baseName && new RegExp(`${escapedName}.{0,120}(?:本人穿越|活过千年|活到现代|长生不老|容颜不老|同一身份|亲自来到现代)`).test(sourceEvidence)) return 'same_person';
+  if (baseName && new RegExp(`(?:${escapedName}(?:的)?(?:转世|轮回|后世化身)|(?:转世后|转世后的|轮回后的|来生的)${escapedName})`).test(sourceEvidence)) return 'reincarnation';
   return 'unspecified';
 }
 

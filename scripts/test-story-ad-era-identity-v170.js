@@ -53,6 +53,11 @@ function run() {
     look_profiles: [female.look_profiles[0], { ...female.look_profiles[1], character_name: '顾念', name_source: 'planner_generated' }],
   }], { brief });
   assert.equal(namedFemale[1].displayName, '顾念（现代）', '方案阶段生成的现代姓名必须高于兼容回退名');
+  const productionLikeMale = personLooks.splitCrossEraProfiles([{
+    ...male,
+    role: '男主，古代侠客，云知月的恋人，千年守望者',
+  }], { brief: '沈砚辞因旧日奇缘活过千年，现代来到竹海，遇见云知月的转世。' });
+  assert.equal(productionLikeMale[1].displayName, '沈砚辞（现代）', '他人转世词不得误伤活到现代的本人');
 
   storage.createTask({
     id: 'era-migration-task', status: 'scene_config_failed', stage: 'scene_config_failed', brief,
@@ -89,7 +94,7 @@ function run() {
 
   storage.createTask({ id: 'active-era-task', status: 'running', stage: 'scene_config', brief, request: { brief } });
   assert.throws(() => migration.preview('active-era-task'), error => error.code === 'ERA_IDENTITY_MIGRATION_ACTIVE_TASK_BLOCKED');
-  console.log(JSON.stringify({ passed: true, checks: 22, cards: split.length, identities: contract.count, model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 23, cards: split.length, identities: contract.count, model_calls: 0 }));
 }
 
 try { run(); } finally { fs.rmSync(outputDir, { recursive: true, force: true }); }
