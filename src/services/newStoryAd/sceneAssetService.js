@@ -1319,7 +1319,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
     provider_used: layout?.provider_used || '',
   }, REQUIRED_SCENE_VIEW_KEYS.indexOf('layout'));
   cancellation.throwIfCancelled(taskId);
-  const derivedResults = await Promise.allSettled(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
+  const generateDerivedView = async (key, index) => {
     if (!shouldGenerate(key)) return normalizeSceneView(selectedView(key), index + 1);
     const detailView = key === 'detail';
     if (!detailView && !(layout?.url || layout?.image_url)) {
@@ -1365,7 +1365,19 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
       image_url: generated.image_url || generated.url,
       provider_used: generated.provider_used,
     }, index + 1);
-  }));
+  };
+  // Submit dependent paid views in authority order. A provider-level billing
+  // ambiguity opens the shared model circuit before the next unit is selected,
+  // so other users and later scenes fail fast without creating more unknown
+  // charges. Successful units remain independently checkpointed.
+  const derivedResults = [];
+  for (const [index, key] of SCENE_VIEW_KEYS.slice(1).entries()) {
+    try {
+      derivedResults.push({ status: 'fulfilled', value: await generateDerivedView(key, index) });
+    } catch (reason) {
+      derivedResults.push({ status: 'rejected', reason });
+    }
+  }
   const derivedFailures = derivedResults
     .map((result, index) => ({ result, key: SCENE_VIEW_KEYS.slice(1)[index] }))
     .filter(item => item.result.status === 'rejected');

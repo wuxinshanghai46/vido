@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260811-ui-v183';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v183';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v183';
+import { request } from '../api.js?v=20260811-ui-v184';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v184';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v184';
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">

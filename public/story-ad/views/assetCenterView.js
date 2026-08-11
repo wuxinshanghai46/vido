@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260811-ui-v183';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v183';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v183';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v183';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v183';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260811-ui-v183';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v183';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v183';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v183';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v183';
+import { request } from '../api.js?v=20260811-ui-v184';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v184';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v184';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v184';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v184';
+import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260811-ui-v184';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v184';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v184';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v184';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v184';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -36,6 +36,21 @@ function sceneNeedsGeneration(item = {}) {
     || (Array.isArray(item.cameras) && item.cameras.some(camera => camera?.image_url)));
   const repairKeys = Array.isArray(item.repair_plan?.view_keys) ? item.repair_plan.view_keys.filter(Boolean) : [];
   return !hasAnyMedia || (item.repair_plan?.action === 'regenerate_failed_views' && repairKeys.length > 0);
+}
+
+function assetCardMedia(item = {}, group = '') {
+  if (group === 'scenes') return renderSceneCoverCard(item);
+  if (group === 'people') {
+    const dossier = item.dossier_sheet?.image_url ? item.dossier_sheet : {};
+    return mediaPreview(dossier, {
+      label: `${item.name || '人物'}完整人物档案`,
+      width: 720,
+      symbol: item.partial_checkpoint ? '完整档案待补齐' : '完整人物档案',
+      zoomable: Boolean(dossier.image_url),
+      zoomGroup: 'asset-people-dossiers',
+    });
+  }
+  return mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` });
 }
 
 function profileList(bundle = {}, key = '') {
@@ -160,7 +175,7 @@ function assetCard(item, group) {
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
-      <div class="asset-card-media">${group === 'scenes' ? renderSceneCoverCard(item) : mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` })}</div>
+      <div class="asset-card-media">${assetCardMedia(item, group)}</div>
       <button class="asset-card-copy" type="button" data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}" aria-label="查看${escapeHtml(item.name)}完整详情">
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
@@ -222,7 +237,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v183');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v184');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -247,7 +262,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v183'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v184'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

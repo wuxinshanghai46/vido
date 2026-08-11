@@ -691,8 +691,11 @@ async function generateImage({
       const classified = classifyImageGenerationError(err);
       const providerDiagnostics = providerErrorDiagnostics(err);
       const billingUnknown = err.billingState === 'unknown' || err.billing_state === 'unknown';
-      if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT', 'PROVIDER_5XX_AMBIGUOUS'].includes(classified.code)) {
-        modelGateway.recordHealth(model, { ok: false, error: err, latencyMs: Date.now() - startedAt });
+      if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT'].includes(classified.code)) {
+        const healthError = classified.code === 'PROVIDER_5XX_AMBIGUOUS'
+          ? Object.assign(new Error(classified.message || err.message), { code: 'PROVIDER_5XX' })
+          : err;
+        modelGateway.recordHealth(model, { ok: false, error: healthError, latencyMs: Date.now() - startedAt });
       }
       storage.saveModelCall({
         task_id: taskId,

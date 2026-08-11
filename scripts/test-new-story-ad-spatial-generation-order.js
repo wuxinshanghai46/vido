@@ -335,7 +335,7 @@ async function main() {
     assert.deepEqual(sceneAssets.REQUIRED_SCENE_VIEW_KEYS, requiredViewKeys);
     assert.deepEqual(sceneAssets.SCENE_GENERATION_ORDER, ['master', 'layout', 'reverse', 'interaction', 'detail']);
     assert.equal(calls.length, 5, 'one generation call per required asset, with no service-level retry');
-    assert.equal(peakImageCalls, 3, 'reverse, interaction and detail must run in parallel after master and overview are ready');
+    assert.equal(peakImageCalls, 1, 'paid scene views must be submitted in authority order so one ambiguous provider failure can stop later submissions');
     assert.match(calls[0].filename, /_master_/);
     assert.deepEqual(calls[0].referenceImages || [], []);
     assert.equal(calls[0].imageModel, 'gpt-image-2');

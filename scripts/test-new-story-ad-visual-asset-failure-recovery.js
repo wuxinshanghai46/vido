@@ -6,6 +6,7 @@ const visualAssetOrchestration = require('../src/services/newStoryAd/visualAsset
 const projectStorage = require('../src/services/newStoryAd/storageService');
 const checkpointService = require('../src/services/newStoryAd/assetGenerationCheckpointService');
 const billingAuthorization = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
+const modelGateway = require('../src/services/newStoryAd/modelGateway');
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -32,6 +33,32 @@ async function main() {
     'PROVIDER_5XX_AMBIGUOUS',
     'HTTP 500 must not fall through to UNKNOWN',
   );
+
+  const originalReadHealth = projectStorage.readHealth;
+  const originalWriteHealth = projectStorage.writeHealth;
+  let providerHealth = {};
+  try {
+    projectStorage.readHealth = () => clone(providerHealth);
+    projectStorage.writeHealth = next => { providerHealth = clone(next); };
+    const providerModel = { provider_id: 'provider-a', model_id: 'gpt-image-2' };
+    modelGateway.recordHealth(providerModel, {
+      ok: false,
+      error: Object.assign(new Error('ambiguous upstream 500'), { code: 'PROVIDER_5XX' }),
+      latencyMs: 149000,
+    });
+    const health = modelGateway.healthState(providerModel);
+    assert.strictEqual(health.circuit_open, true, 'ambiguous 5xx must open a shared provider/model circuit');
+    assert.ok(health.cooldown_remaining_ms > 0 && health.cooldown_remaining_ms <= 5 * 60 * 1000);
+    modelGateway.recordHealth(providerModel, { ok: true, latencyMs: 1000 });
+    assert.strictEqual(
+      modelGateway.healthState(providerModel).circuit_open,
+      true,
+      'an overlapping success must not clear an ambiguity cooldown opened for other users',
+    );
+  } finally {
+    projectStorage.readHealth = originalReadHealth;
+    projectStorage.writeHealth = originalWriteHealth;
+  }
 
   const storage = makeStorage();
   let personProviderCalls = 0;
@@ -185,6 +212,18 @@ async function main() {
     assert.strictEqual(progressTask.generation_progress.lanes.subjects.status, 'failed');
     assert.strictEqual(progressTask.generation_progress.lanes.scenes.status, 'failed');
     assert.strictEqual(progressTask.generation_progress.completed, 6);
+
+    progressTask = { id: 'progress-task' };
+    visualAssetProgress.initialize('progress-task', 'historical-billing-generation', {
+      subjectsRequired: true, subjectTotal: 1, scenesRequired: false, sceneTotal: 0,
+    });
+    visualAssetOrchestration.markRejectedLanes(
+      'progress-task',
+      { status: 'rejected', reason: Object.assign(new Error('old provider response'), { code: 'GENERATION_BILLING_STATE_UNKNOWN' }) },
+      { status: 'fulfilled', value: null },
+    );
+    assert.strictEqual(progressTask.generation_progress.lanes.subjects.billing_state, 'unknown');
+    assert.match(progressTask.generation_progress.lanes.subjects.message, /本轮没有重复提交该单元/);
 
     progressTask = { id: 'progress-task' };
     visualAssetProgress.initialize('progress-task', 'stable-denominator-generation', {

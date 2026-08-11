@@ -267,11 +267,14 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
       && error?.response_diagnostics?.kind === 'structured_output_request')
   );
   if (ok) {
+    const stickyCooldownUntil = row.sticky_cooldown_until ? new Date(row.sticky_cooldown_until).getTime() : 0;
+    const stickyCooldownActive = Number.isFinite(stickyCooldownUntil) && stickyCooldownUntil > Date.now();
     row.success_count = Number(row.success_count || 0) + 1;
     row.consecutive_failure_count = 0;
-    row.cooldown_until = '';
+    row.cooldown_until = stickyCooldownActive ? row.sticky_cooldown_until : '';
+    if (!stickyCooldownActive) row.sticky_cooldown_until = '';
     row.blocked_until_config_change = false;
-    row.last_error_code = '';
+    if (!stickyCooldownActive) row.last_error_code = '';
     row.last_success_at = new Date().toISOString();
   } else if (requestRejected) {
     // User/input/request-shape failures do not mean the model endpoint is
@@ -291,8 +294,9 @@ function recordHealth(model, { ok, error = null, latencyMs = 0 } = {}) {
       row.cooldown_until = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     } else if (code === 'PROVIDER_REQUEST_REJECTED') {
       row.cooldown_until = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    } else if (/TIMEOUT|RATE_LIMIT|NETWORK/.test(code)) {
+    } else if (/TIMEOUT|RATE_LIMIT|NETWORK|PROVIDER_5XX/.test(code)) {
       row.cooldown_until = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      if (code === 'PROVIDER_5XX') row.sticky_cooldown_until = row.cooldown_until;
     }
   }
   if (latencyMs) {

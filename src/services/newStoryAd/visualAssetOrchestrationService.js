@@ -67,12 +67,16 @@ function normalizedSceneTargets(body = {}) {
 }
 
 function laneFailure(reason, fallbackCode, fallbackMessage) {
+  const errorCode = reason?.code || fallbackCode;
+  const priorBillingUnknown = errorCode === 'GENERATION_BILLING_STATE_UNKNOWN';
   return {
     status: 'failed',
     phase: 'partial_failed',
-    error_code: reason?.code || fallbackCode,
-    billing_state: reason?.billingState || reason?.billing_state || '',
-    message: String(reason?.message || fallbackMessage).slice(0, 500),
+    error_code: errorCode,
+    billing_state: reason?.billingState || reason?.billing_state || (priorBillingUnknown ? 'unknown' : ''),
+    message: String(priorBillingUnknown
+      ? '该分支存在先前已提交但计费待核对的单元；本轮没有重复提交该单元，成功子资产继续保留。'
+      : (reason?.message || fallbackMessage)).slice(0, 500),
   };
 }
 
