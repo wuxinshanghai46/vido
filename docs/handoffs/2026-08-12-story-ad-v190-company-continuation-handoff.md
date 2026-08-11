@@ -1,0 +1,169 @@
+# VIDO 剧情广告 v190 公司电脑续接交接
+
+> 生成时间：2026-08-12（Asia/Shanghai）
+> 目标分支：`codex/story-ad-v3-upgrade`
+> 生产主机：`43.98.167.151`
+> 目标任务：`3f14e285-67d7-4656-9bec-6bff7af7ec84`（星月神话故事）
+
+## 1. 当日目标与用户决策
+
+本轮目标是解决剧情广告视觉资产恢复中的三个通用问题，并为公司电脑继续验收留出可核对入口：
+
+1. 同一恢复操作只做一次计费风险确认，不再逐单元连续弹出多个确认框。
+2. 区分“图片模型没有配置”与“供应商超时/5XX 后断路器临时冷却”，避免把冷却误报成永久没有通道。
+3. 保留已经成功的人物与场景资产；计费未知单元不自动重复付费提交。
+
+家庭电脑 `LAPTOP-LDFOL0GT` 按用户决定只执行本功能模块的静态、定向、相邻失败/恢复及发布健康检查，不运行全平台回归。
+
+## 2. 修改前后的完整数据流
+
+### 修改前
+
+用户点击继续缺失项 → 前端先显示一次总风险确认 → 后端逐 checkpoint 返回需授权 → 前端再次逐项弹出确认 → 图片供应商超时/5XX → 唯一允许的 `deyunai/gpt-image-2` 进入冷却 → 页面统一显示“没有可用通道” → 用户无法判断是配置缺失还是临时冷却。
+
+### v190 修改后
+
+用户点击继续缺失项 → 前端收集本次操作的全部计费未知 checkpoint → 只显示一次汇总确认（单元数、最多重复费用次数、前三项摘要）→ 用户确认后，后台仍逐 checkpoint 写入精确的一次性授权 → 成功 checkpoint 继续复用 → 仅处理缺失单元。
+
+图片候选选择变为：读取已配置 `gpt-image-2` → 检查供应商/模型断路器 → 若在冷却则返回 `IMAGE_CIRCUIT_OPEN`、剩余等待时间并明确“本次未发起图片调用” → 若确实没有可执行配置才返回 `NEW_STORY_AD_IMAGE2_UNAVAILABLE`。未知计费单元仍不自动重投。
+
+持久化与展示路径：供应商调用 → `model_calls` 与人物/场景 checkpoint → 任务 generation progress → 项目 bundle/API → 资产中心失败摘要与恢复入口。
+
+## 3. 代码和文件变更
+
+生产运行代码提交：`41c26770163c51d30d90f511d83583b78ec92f28`。
+
+主要文件：
+
+- `public/story-ad/views/assetCenterBillingReviewDialog.js`：新增按需加载的单次汇总确认弹窗。
+- `public/story-ad/views/assetCenterBillingRetry.js`：移除逐单元弹窗循环，保留逐 checkpoint 一次性授权。
+- `public/story-ad/views/assetCenterView.js`：人物、场景与合并恢复入口统一使用单次确认。
+- `src/services/newStoryAd/mediaAdapter.js`：区分断路器冷却与真实配置缺失，返回冷却时间和零调用事实。
+- 相关定向回归脚本：视觉同步、失败恢复、空间生成顺序、工作区 UI 与不可变发布边界。
+
+本交接文件提交后，远端最新 HEAD 会比生产运行提交多一个纯文档提交；运行代码仍以 `41c26770…` 对应的发布清单为准。
+
+## 4. 生产运行身份与三方核对
+
+### Git
+
+- 分支：`codex/story-ad-v3-upgrade`
+- 交接前本地 HEAD：`41c26770163c51d30d90f511d83583b78ec92f28`
+- 本地与 `origin`：`ahead/behind = 0/0`
+- 本地与 `gitee`：`ahead/behind = 0/0`
+- `origin`、`gitee` 远端分支均为 `41c26770163c51d30d90f511d83583b78ec92f28`
+- GitHub 镜像：本次网络连接被重置，无法核对；不得把 GitHub 镜像写成已一致。
+- 工作树跟踪文件相对 HEAD 无差异；5个历史未跟踪文档继续保留，未纳入本次交接。
+
+### 生产不可变发布
+
+- build：`20260811-ui-v190`
+- artifact / current release：`d51781d19f1912a95758405d2a50465d4adf8dbb0e2bfcee66952be9f8de359e`
+- source snapshot：`543df5f7ef953bf117a755487801cfbd922bf86fff571ddd426351b5b1823656`
+- lockfile：`550c8c8d9faa2afcb3c5771eed70fadd7fe5d1a992348f2c7d0b0ebb12f91197`
+- `config/story-ad-release.json` SHA-256：`cc8769a5c57992af80d3654cd0dceea9c991b91df11b1f390d26cf8f7c6effe4`
+- runtime manifest SHA-256：`20f357f2340518e1c12ae3290a22ccb183ffbe811f86b98f9d27a78e03c5aaca`
+- public manifest SHA-256：`8276d45c5b7a5559b5299b9f33af775efa761f558faa7b6b4501cc486326a2b3`
+- 本地与生产 runtime manifest 声明的 649 个运行文件均为 `0 missing / 0 mismatch`。
+
+| 核对对象 | 结论 | 依据 |
+|---|---|---|
+| 本地 ↔ origin/Gitee | 一致 | 交接前 HEAD 相同，ahead/behind `0/0` |
+| 本地运行代码 ↔ 生产 | 一致 | 三份元数据哈希一致；649/649 逐文件校验通过 |
+| Git 最新 HEAD ↔ 生产 | 交接推送后仅差纯文档提交 | 生产运行代码仍对应 `41c26770…`，无需为 MD 重新部署 |
+| GitHub 镜像 | 未确认 | 网络连接重置/无法连接 443 |
+
+## 5. 生产任务最终快照
+
+交接核对期间用户刚触发的视觉资产批次已等待到终态后才封存：
+
+- generation/support ID：`e84ea197-e604-4091-96ae-07020a51fc1e`
+- 最终状态：`failed / visual_assets_failed`
+- 活动 generation：空；全局活动任务：`0`
+- 目标任务模型调用：从核对前 `187` 增至最终 `197`
+- 本轮新增调用共 10 次：
+  - 文本/辅助调用 3 次成功（场景规划补齐、故事事实、assist）。
+  - 人物分类图 4 次成功。
+  - 人物完整主图 2 次成功。
+  - 人物配饰 1 次在约 149 秒后返回 `500/image2O100IFR`，状态为 `submitted_unknown / billing unknown`，系统停止自动付费重试。
+- 场景 lane：投影结果 12/12，当前提示 `SCENE_REVERIFY_ONLY`，只需再次验证，不应付费重生成。
+- 人物 lane：4个人物目标，内部工作单元完成 6/21；因人物配饰 500 停止，成功子资产已保留。
+- 全局历史未知计费：`57`；活动任务中的未知计费：`0`。
+- Active Plan 已绑定当前 v190 bundle，但仍有 `active_plan_input_fingerprint_mismatch`；明天不得绕过该合同直接启动新的付费生成。
+- 最新进度还记录 `SCENE_SPACE_MISSING / space_count=0`，需与输入指纹不一致一起先做只读根因核对。
+
+## 6. 实际执行的验证
+
+### v190 修改与发布验证
+
+- 修改文件 `node --check`：通过。
+- `test-story-ad-visual-assets-sync-v21`：通过。
+- `test-new-story-ad-visual-asset-failure-recovery`：通过。
+- `test-new-story-ad-spatial-generation-order`：通过，图片并发峰值为 1。
+- `test-story-ad-workspace-v6-ui-regressions`：通过。
+- workspace boundary：通过，核心 JS `337293` bytes，未超 330 KiB 预算；新增弹窗模块按需加载。
+- `npm run story-ad:release:test`：通过。
+- 重复构建：制品哈希稳定。
+- 未执行全平台、v2、v3、v6 完整回归：这是家庭电脑范围规则，不是遗漏。
+
+### 交接只读生产验证
+
+- PM2 `vido`：`online`，restart `0`，Node `v20.20.2`，cwd/script 指向当前 artifact release。
+- 内网 `http://127.0.0.1:4600/api/health`：HTTP 200 / `status=ok`。
+- 公网 `https://vido.smsend.cn/api/health`：HTTP 200 / `status=ok`。
+- SQLite `PRAGMA quick_check`：`ok`。
+- 本地与生产 649 个 manifest 文件：双方均 `0 missing / 0 mismatch`。
+- 任务等待到终态；最终活动任务 `0`，模型调用固定在 `197` 后再生成本文档。
+- 交接核对本身没有触发模型、媒体或付费调用。
+
+## 7. 未执行项、剩余风险与费用边界
+
+- 未执行 GitHub 镜像核对：当前网络无法连接 GitHub；公司网络恢复后再 `git ls-remote github`。
+- 未运行家庭电脑禁止的全平台回归；已完成本功能模块定向门禁。
+- 未再次点击“继续缺失图片”“再次生成”或任何付费入口。
+- 最新人物配饰 500 没有可用 provider request/task ID，无法自动核账；在供应商提供可查询 ID、确认未计费或幂等重放合同前，不得盲目重投该单元。
+- 供应商通道当前可以重新被识别，但未来仍可能再次超时/5XX；“可识别”不等于供应商稳定。
+- Active Plan 输入指纹不一致与 `space_count=0` 尚未闭环，属于明天继续调查的首要阻塞。
+- 5个历史未跟踪文档属于既有工作区内容，未清理、未覆盖、未提交。
+
+## 8. 公司电脑续接命令
+
+先确认公司电脑没有未提交工作：
+
+```powershell
+cd D:\VIDO
+git status --short
+git fetch --all --prune
+git switch codex/story-ad-v3-upgrade
+git pull --ff-only origin codex/story-ad-v3-upgrade
+npm install
+node src/server.js
+```
+
+本地服务：`http://localhost:3007`
+
+生产只读连接：
+
+```powershell
+ssh -o BatchMode=yes vido-prod
+```
+
+如果公司电脑 SSH 公钥尚未授权，按 `docs/handoffs/HANDOFF_PROTOCOL.md` 生成独立 ed25519 密钥并由已授权电脑添加公钥；禁止通过 Git 复制私钥。
+
+## 9. 明天继续的明确顺序
+
+1. 拉取后核对 `git status`、分支、HEAD 与 origin ahead/behind。
+2. 只读核对生产活动任务仍为 0、目标模型调用仍为 197；如果数值变化，先查明是否有人继续操作。
+3. 复现并追踪 `active_plan_input_fingerprint_mismatch` 的完整数据流：当前任务输入指纹 → Active Plan 发布指纹 → generation preflight 指纹，不要只改末端提示。
+4. 同时核对 `SCENE_SPACE_MISSING / space_count=0` 最早产生位置，以及为什么最新进度只投影 12 个场景。
+5. 核对最新人物 checkpoint，确认4张分类图和2张完整主图均复用；将失败配饰保持为未知计费冻结状态。
+6. 仅运行涉及 Active Plan、场景空间、人像 checkpoint 和失败恢复的定向测试；验证通过并完成生产只读核对前，不让用户继续付费生成。
+7. 合同恢复后，场景先使用“再次验证”路径，禁止对12个已有场景付费重生成；人物只处理明确缺失且非未知计费的单元。
+
+## 10. 拉取后的快速验收标准
+
+- origin/Gitee 与本地 HEAD 一致，工作树没有意外改动。
+- 生产 build 仍为 `20260811-ui-v190`，三份 manifest SHA 与本文一致。
+- PM2、内外网健康、SQLite 均正常。
+- 活动任务为 0；没有未经用户操作产生的新模型调用。
+- 不把已成功的人物/场景图片重新提交，不对 `submitted_unknown` 单元自动重复付费。
