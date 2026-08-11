@@ -1,4 +1,27 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v184';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v186';
+
+export function assetCardMedia(item = {}, group = '') {
+  if (group === 'scenes') return renderSceneCoverCard(item);
+  if (group === 'people') {
+    const dossier = item.dossier_sheet?.image_url ? item.dossier_sheet : {};
+    return mediaPreview(dossier, {
+      label: `${item.name || '人物'}完整人物档案`, width: 720,
+      symbol: item.partial_checkpoint ? '完整档案待补齐' : '完整人物档案',
+      zoomable: Boolean(dossier.image_url), zoomGroup: 'asset-people-dossiers',
+    });
+  }
+  const labels = { animals: '动物', products: '商品 / 展示主体', logos: 'LOGO' };
+  return mediaPreview(item, { label: item.name, width: 720, symbol: labels[group] || '资产', zoomable: true, zoomGroup: `asset-${group}` });
+}
+
+export function sceneNeedsGeneration(item = {}) {
+  const hasAnyMedia = Boolean(item.layout?.image_url
+    || item.scene_master?.image_url
+    || (Array.isArray(item.view_images) && item.view_images.some(view => view?.image_url))
+    || (Array.isArray(item.cameras) && item.cameras.some(camera => camera?.image_url)));
+  const repairKeys = Array.isArray(item.repair_plan?.view_keys) ? item.repair_plan.view_keys.filter(Boolean) : [];
+  return !hasAnyMedia || (item.repair_plan?.action === 'regenerate_failed_views' && repairKeys.length > 0);
+}
 
 export const SCENE_VIEW_ORDER = Object.freeze(['master', 'reverse', 'interaction', 'detail', 'layout']);
 export const SCENE_VIEW_LABELS = Object.freeze({
@@ -133,7 +156,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260811-ui-v184');
+      const exporter = await import('./sceneDossierExport.js?v=20260811-ui-v186');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

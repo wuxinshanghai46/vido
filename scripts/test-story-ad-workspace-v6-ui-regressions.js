@@ -49,15 +49,16 @@ assert.equal(projectedSemanticTiming.semantic_contract_progress.contracts.cast.f
 const assets = read('public/story-ad/views/assetCenterView.js');
 const personDossierShowcase = read('public/story-ad/views/personDossierShowcase.js');
 const assetDossierSections = read('public/story-ad/views/assetCenterDossierSections.js');
+const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 assert.match(assetDossierSections, /reference-dossier-board/);
 assert.match(assetDossierSections, /参考档案预览/);
 assert.match(assetPlanningDetails, /查看原始四视图/);
 assert.match(assetPlanningDetails, /form="personEditForm"/u, '人物抽屉固定操作栏必须始终提供文字保存入口');
 assert.match(assetPlanningDetails, /保存人物文字设定/u);
-assert.match(assets, /function assetCardMedia/);
-assert.match(assets, /const dossier = item\.dossier_sheet\?\.image_url \? item\.dossier_sheet : \{\}/, '人物主卡必须优先使用单张完整档案整图');
-assert.match(assets, /完整档案待补齐/, '人物整图缺失时不得把分类拼图冒充最终主卡');
+assert.match(sceneDossierCard, /function assetCardMedia/);
+assert.match(sceneDossierCard, /const dossier = item\.dossier_sheet\?\.image_url \? item\.dossier_sheet : \{\}/, '人物主卡必须优先使用单张完整档案整图');
+assert.match(sceneDossierCard, /完整档案待补齐/, '人物整图缺失时不得把分类拼图冒充最终主卡');
 assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
@@ -396,19 +397,19 @@ const assetPersonStateModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPersonState.js',
   ['personAgeDisplay', 'personAssetState', 'personLookSummary', 'assertSavedPerson'],
 );
+const sceneDossierModule = loadBrowserModule(
+  'public/story-ad/views/sceneDossierCard.js',
+  ['assetCardMedia', 'sceneNeedsGeneration', 'normalizeSceneDossier', 'renderSceneDossierCard'],
+  { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
+);
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
-  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
+  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, ...sceneDossierModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
   ['generationProgressPanel'],
-);
-const sceneDossierModule = loadBrowserModule(
-  'public/story-ad/views/sceneDossierCard.js',
-  ['normalizeSceneDossier', 'renderSceneDossierCard'],
-  { escapeHtml, mediaPreview, setButtonBusy() {}, toast() {} },
 );
 const planningModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanningDetails.js',

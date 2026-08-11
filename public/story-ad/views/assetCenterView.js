@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260811-ui-v184';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v184';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v184';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v184';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v184';
-import { renderSceneCoverCard } from './sceneDossierCard.js?v=20260811-ui-v184';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v184';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v184';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v184';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v184';
+import { request } from '../api.js?v=20260811-ui-v186';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v186';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v186';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v186';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v186';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v186';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v186';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v186';
+import { assetCardMedia, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260811-ui-v186';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v186';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -27,30 +27,6 @@ function subjectNeedsGeneration(item = {}, kind = '') {
   return kind === 'human'
     ? personAssetState(item) !== 'complete_dossier'
     : !hasGeneratedMedia(item);
-}
-
-function sceneNeedsGeneration(item = {}) {
-  const hasAnyMedia = Boolean(item.layout?.image_url
-    || item.scene_master?.image_url
-    || (Array.isArray(item.view_images) && item.view_images.some(view => view?.image_url))
-    || (Array.isArray(item.cameras) && item.cameras.some(camera => camera?.image_url)));
-  const repairKeys = Array.isArray(item.repair_plan?.view_keys) ? item.repair_plan.view_keys.filter(Boolean) : [];
-  return !hasAnyMedia || (item.repair_plan?.action === 'regenerate_failed_views' && repairKeys.length > 0);
-}
-
-function assetCardMedia(item = {}, group = '') {
-  if (group === 'scenes') return renderSceneCoverCard(item);
-  if (group === 'people') {
-    const dossier = item.dossier_sheet?.image_url ? item.dossier_sheet : {};
-    return mediaPreview(dossier, {
-      label: `${item.name || '人物'}完整人物档案`,
-      width: 720,
-      symbol: item.partial_checkpoint ? '完整档案待补齐' : '完整人物档案',
-      zoomable: Boolean(dossier.image_url),
-      zoomGroup: 'asset-people-dossiers',
-    });
-  }
-  return mediaPreview(item, { label: item.name, width: 720, symbol: groupLabel(group), zoomable: true, zoomGroup: `asset-${group}` });
 }
 
 function profileList(bundle = {}, key = '') {
@@ -237,7 +213,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v184');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v186');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -262,7 +238,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v184'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v186'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

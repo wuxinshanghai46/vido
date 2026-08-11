@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260811-ui-v184';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v184';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v184';
+import { request } from '../api.js?v=20260811-ui-v186';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v186';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v186';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
