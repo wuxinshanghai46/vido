@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260811-ui-v157';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260811-ui-v157';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260811-ui-v157';
-import { confirmDialog } from './components/dialog.js?v=20260811-ui-v157';
+import { createProjectStore } from './store/projectStore.js?v=20260811-ui-v159';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260811-ui-v159';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260811-ui-v159';
+import { confirmDialog } from './components/dialog.js?v=20260811-ui-v159';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260811-ui-v157'),
-  assets: () => import('./views/assetCenterView.js?v=20260811-ui-v157'),
-  plot: () => import('./views/plotRoomView.js?v=20260811-ui-v157'),
-  storyboard: () => import('./views/storyboardView.js?v=20260811-ui-v157'),
-  shot: () => import('./views/shotDesignerView.js?v=20260811-ui-v157'),
-  final: () => import('./views/finalView.js?v=20260811-ui-v157'),
-  workflow: () => import('./views/workflowView.js?v=20260811-ui-v157'),
+  brief: () => import('./views/briefView.js?v=20260811-ui-v159'),
+  assets: () => import('./views/assetCenterView.js?v=20260811-ui-v159'),
+  plot: () => import('./views/plotRoomView.js?v=20260811-ui-v159'),
+  storyboard: () => import('./views/storyboardView.js?v=20260811-ui-v159'),
+  shot: () => import('./views/shotDesignerView.js?v=20260811-ui-v159'),
+  final: () => import('./views/finalView.js?v=20260811-ui-v159'),
+  workflow: () => import('./views/workflowView.js?v=20260811-ui-v159'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -182,7 +182,7 @@ function renderProjectShell(route) {
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">
-        <div id="projectProgressHost" class="project-progress-host">${generationProgressPanel(bundle || {})}</div>
+        <div id="projectProgressHost" class="project-progress-host">${generationProgressPanel(bundle || {}, route.view)}</div>
         <div id="viewHost" class="view-host"><div class="view-loading">正在加载工作区…</div></div>
       </main>
     </div>`;
@@ -350,7 +350,7 @@ window.addEventListener('beforeunload', () => {
 });
 store.subscribe(state => {
   const host = document.querySelector('#projectProgressHost');
-  if (host) host.innerHTML = generationProgressPanel(state.bundle || {});
+  if (host) host.innerHTML = generationProgressPanel(state.bundle || {}, currentRoute().view);
   if (state.generationCompletionSeq > observedGenerationCompletionSeq && currentRoute().page === 'project') {
     window.setTimeout(() => mountView(currentRoute()).catch(showFatal), 0);
   }

@@ -30,10 +30,10 @@ assert(mountBody.indexOf('renderSections(assets, total)') < mountBody.indexOf('r
 assert(assetView.includes('data-generate-visual-assets'));
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
-assert(!assetView.includes('<button class="btn primary" type="button" data-build-scenes>'), '场景规划按钮静止时不得伪装成默认下一步');
-assert(assetView.includes("assets.scenes?.length ? '重新建立场景规划' : '建立场景规划'"), '已有场景方案时必须明确显示为重新建立');
-assert(assetView.includes("button.classList.add('primary')"), '场景规划按钮只在执行期间进入强调态');
-assert(assetView.includes("button.classList.remove('primary')"), '场景规划执行结束后必须恢复中性态');
+assert(assetView.includes('先更新当前版本的场景规划'), '合同失效时必须给出唯一的第一步');
+assert(assetView.includes('步骤 2：合同通过后核对计费，再继续缺失图片'), '计费未知恢复必须明确排在合同更新之后');
+assert(assetView.includes('data-build-scenes>更新场景规划'), '场景规划入口必须放在当前恢复步骤内');
+assert(assetView.includes("host.querySelector('[data-build-scenes]')?.addEventListener"), '合同通过后不得保留无关的重规划按钮');
 
 const briefView = read('public/story-ad/views/briefView.js');
 assert.strictEqual((briefView.match(/brief-reference-primary-action/g) || []).length, 1, 'next-step CTA must not be duplicated below the report');
@@ -47,6 +47,9 @@ assert(ui.includes('生成中断（计费待核对）'));
 assert(ui.includes('内容审核未通过'));
 assert(!ui.includes('`${view.stageLabel}审核未通过`'), 'generic failures must not be mislabeled as audit failures');
 assert(ui.includes('generation-lanes'));
+assert(!ui.includes('>处理缺失项</button>'), '视觉失败面板不得再提供含义不明的通用按钮');
+assert(ui.includes("前往资产中心${ready ? '继续缺失图片' : '更新场景规划'}"), '不在资产中心时必须明确导航到合同修复入口');
+assert(ui.includes("currentView !== 'assets'"), '已在资产中心时不得重复显示无效跳转');
 
 const route = read('src/routes/newStoryAd.js');
 assert(route.includes("queueTaskStage(req, res, 'visual_assets'"));

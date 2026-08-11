@@ -137,9 +137,12 @@ export function generationProgressView(bundle = {}) {
   };
 }
 
-export function generationProgressPanel(bundle = {}) {
+export function generationProgressPanel(bundle = {}, currentView = '') {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  const ready=bundle.navigation?.asset_plan_eligibility?.eligible === true;
+  const recovery=view.stage === 'visual_assets' && currentView !== 'assets'
+    ? `<button class="btn small" data-view="assets">前往资产中心${ready ? '继续缺失图片' : '更新场景规划'}</button>`:'';
   const laneRows = view.lanes ? `<div class="generation-lanes">${[
     ['subjects', '人物 / 动物'], ['scenes', '场景'],
   ].map(([key, label]) => {
@@ -152,7 +155,7 @@ export function generationProgressPanel(bundle = {}) {
   if (view.failed) {
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
-      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${view.stage === 'visual_assets' ? '<button class="btn small" type="button" data-view="assets">处理缺失项</button>' : ''}</div></details>
+      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${recovery}</div></details>
     </section>`;
   }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">

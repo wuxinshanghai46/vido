@@ -395,6 +395,10 @@ const assetModule = loadBrowserModule(
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
   { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
+const uiModule = loadBrowserModule(
+  'public/story-ad/components/ui.js',
+  ['generationProgressPanel'],
+);
 const sceneDossierModule = loadBrowserModule(
   'public/story-ad/views/sceneDossierCard.js',
   ['normalizeSceneDossier', 'renderSceneDossierCard'],
@@ -422,6 +426,19 @@ assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜�
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
 assert.match(assets, /content_mode === 'narrative_story' \? '人物、动物与场景'/, '纯剧情方案确认不得要求核对商品');
 assert.match(assets, /版本合同未通过/, '合同失败只显示合同结论');
+assert.match(assets, /版本合同未通过 · 步骤 1/, '合同失败必须显示恢复步骤顺序');
+assert.match(assets, /先更新当前版本的场景规划/, '合同失败必须给出唯一明确的第一步');
+assert.match(assets, /成功图片保留/, '更新规划前必须说明成功资产不会丢失');
+assert.match(assets, /步骤 2：合同通过后核对计费，再继续缺失图片/, '计费未知必须明确为合同恢复后的第二步');
+const blockedVisualFailure = {
+  project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },
+  navigation: { asset_plan_eligibility: { eligible: false } },
+  generation: { progress: { stage: 'visual_assets', status: 'failed', billing_state: 'unknown', lanes: {} } },
+};
+const outsideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'brief');
+assert.match(outsideAssetsRecovery, /前往资产中心更新场景规划/, '资产中心外必须只导航到第一步');
+const insideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'assets');
+assert.doesNotMatch(insideAssetsRecovery, /data-view="assets"/, '已在资产中心时不得重复显示无效跳转');
 assert.doesNotMatch(assets, /付费生成已锁定/, '不得向用户暴露内部付费熔断措辞');
 assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, '不得向用户暴露 Active Plan 内部术语');
 assert.match(assets, /asset_setup_confirmed:\s*true/);
