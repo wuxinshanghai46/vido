@@ -119,6 +119,12 @@ async function releaseReadiness(appRoot) {
   return parseJson(await exec(`cd ${quote(appRoot)} && node scripts/run-with-pm2-env.js vido node scripts/check-new-story-ad-active-tasks.js`));
 }
 
+function blockingUnknownBilling(readiness = {}) {
+  return Number(readiness.active_unknown_billing_count
+    ?? readiness.unknown_billing_count
+    ?? 0);
+}
+
 async function setReleaseControl(state, bundleId = '') {
   const command = `cd ${quote(releaseDir)} && node ${quote(`${previousTarget}/scripts/run-with-pm2-env.js`)} vido node scripts/manage-story-ad-release-control.js --state ${quote(state)}${bundleId ? ` --bundle ${quote(bundleId)}` : ''}`;
   return parseJson(await exec(command));
@@ -218,7 +224,7 @@ client.on('ready', async () => {
       previousNodeRuntimeBin = `/opt/vido/runtimes/node-${previousRuntimeVersion}-${previousRuntimePlatform}/bin/node`;
     }
     const before = await releaseReadiness(previousTarget);
-    if (Number(before.active_count) || Number(before.unknown_billing_count)) throw new Error(`发布前仍有活动任务或未知计费：${JSON.stringify(before)}`);
+    if (Number(before.active_count) || blockingUnknownBilling(before)) throw new Error(`发布前仍有活动任务或当前生成未知计费：${JSON.stringify(before)}`);
     const quickBefore = await exec("echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite");
     if (quickBefore.trim() !== 'ok') throw new Error(`发布前数据库 quick_check 失败：${quickBefore}`);
 
@@ -288,7 +294,7 @@ client.on('ready', async () => {
     }
     await setReleaseControl('draining', preVersion.release_bundle_id || '');
     const drained = await releaseReadiness(previousTarget);
-    if (Number(drained.active_count) || Number(drained.unknown_billing_count)) throw new Error(`停写后仍有活动任务或未知计费：${JSON.stringify(drained)}`);
+    if (Number(drained.active_count) || blockingUnknownBilling(drained)) throw new Error(`停写后仍有活动任务或当前生成未知计费：${JSON.stringify(drained)}`);
     const migration = await migrateReleaseState();
     const assistRouteMigration = await migrateAssistRoute();
     cutoverStarted = true;
@@ -307,7 +313,7 @@ client.on('ready', async () => {
       || version.node_version !== nodeRuntime.version || version.release_control?.allowed !== true
       || publicVersion.release_bundle_id !== releaseBundleId || publicVersion.build_id !== release.build_id
       || health.status !== 'ok' || publicHealth.status !== 'ok' || quickAfter.trim() !== 'ok'
-      || Number(after.active_count) || Number(after.unknown_billing_count)) {
+      || Number(after.active_count) || blockingUnknownBilling(after)) {
       throw new Error(`发布后门禁失败：${JSON.stringify({ version, health, publicHealth, after, quickAfter, activeControl })}`);
     }
     const assistRouteCommit = await commitAssistRoute();
@@ -319,6 +325,8 @@ client.on('ready', async () => {
       release_dir: releaseDir, previous_target: previousTarget, files: files.length,
       active_before: before.active_count, active_after: after.active_count,
       unknown_billing_before: before.unknown_billing_count, unknown_billing_after: after.unknown_billing_count,
+      active_unknown_billing_before: blockingUnknownBilling(before),
+      active_unknown_billing_after: blockingUnknownBilling(after),
       legacy_process_frozen: legacyProcessFrozen,
       release_migration_mode: releaseMigrationMode,
       release_migration: migration,

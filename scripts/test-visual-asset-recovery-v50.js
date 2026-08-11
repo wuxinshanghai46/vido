@@ -17,6 +17,9 @@ const readiness = require('./check-new-story-ad-active-tasks');
 assert.equal(readiness.isUnknownBilling({ billing_state: 'unknown', provider_submission_state: 'submitted_unknown' }), true,
   'readiness must block submitted_unknown billing records');
 assert.equal(readiness.isUnknownBilling({ billing_state: 'confirmed', provider_submission_state: 'completed' }), false);
+const deploySource = fs.readFileSync(path.join(root, 'scripts/deploy-story-ad-immutable-release.js'), 'utf8');
+assert(deploySource.includes('blockingUnknownBilling'), 'deployment must distinguish historical unresolved billing from an active generation blocker');
+assert(deploySource.includes('active_unknown_billing_count'), 'deployment reporting must preserve the current-generation billing blocker count');
 
 function ambiguousError() {
   const error = new Error('provider 500');

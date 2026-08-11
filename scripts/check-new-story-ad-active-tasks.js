@@ -7,22 +7,27 @@ function isUnknownBilling(call = {}) {
 }
 
 function main() {
-  const active = storage.listTasks({ limit: 1000 })
+  const activeTasks = storage.listTasks({ limit: 1000 })
     .filter(task => task.active_generation_id)
-    .map(task => ({
+  const active = activeTasks.map(task => ({
       id: task.id,
+      generation_id: task.active_generation_id,
       stage: task.active_stage || task.stage || '',
     }));
   const unknownBilling = (storage.readDb().model_calls || [])
     .filter(isUnknownBilling)
     .map(call => ({ id: call.id, task_id: call.task_id, stage: call.stage, provider_task_id: call.provider_task_id || '' }));
+  const activeTaskIds = new Set(activeTasks.map(task => String(task.id || '')));
+  const activeUnknownBilling = unknownBilling.filter(call => activeTaskIds.has(String(call.task_id || '')));
   console.log(JSON.stringify({
     active_count: active.length,
     active,
     unknown_billing_count: unknownBilling.length,
     unknown_billing: unknownBilling.slice(0, 50),
+    active_unknown_billing_count: activeUnknownBilling.length,
+    active_unknown_billing: activeUnknownBilling.slice(0, 50),
   }));
-  if (active.length || unknownBilling.length) process.exitCode = 1;
+  if (active.length || activeUnknownBilling.length) process.exitCode = 1;
 }
 
 if (require.main === module) main();
