@@ -26,7 +26,7 @@ function context(id) {
     brief: '古代恋人在祭台生死分别，千年后男主在曾经相遇的竹海遇见女主转世，两人静静相望。',
     content_mode: 'narrative_story',
     product_presentation: { mode: 'narrative_story', subject: '', standalone_generation_supported: false },
-    expected_people: 2,
+    expected_people: 3,
     cast_mode: 'dual',
     target_duration: 90,
     shot_count: 12,
@@ -47,7 +47,8 @@ function incompleteUnifiedPayload() {
   return {
     cast_profiles: [
       { id: 'male_lead', name: '男主', role: '跨越千年的等待者', appearanceText: '清俊沉静', wardrobeText: '华丽古装', look_profiles: [] },
-      { id: 'female_lead', name: '女主', role: '古代恋人与现代转世', appearanceText: '清秀年轻', wardrobeText: '古代华服', look_profiles: [] },
+      { id: 'female_lead_ancient', name: '云知月', role: '古代恋人', appearanceText: '清秀年轻', wardrobeText: '古代华服', look_profiles: [] },
+      { id: 'female_lead_modern', name: '林知月', role: '女主的现代转世，独立身份', identity_continuity: 'reincarnation', appearanceText: '清秀年轻', wardrobeText: '现代服装', look_profiles: [] },
     ],
     prop_plan: [],
     story_seed: {

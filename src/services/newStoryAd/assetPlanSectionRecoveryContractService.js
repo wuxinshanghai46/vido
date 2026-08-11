@@ -5,6 +5,7 @@ const storage = require('./storageService');
 const cancellation = require('./cancellationContext');
 const contentSkill = require('./contentSkillService');
 const releaseBundle = require('../storyAdReleaseBundleService');
+const personCountContract = require('./personCountContractService');
 
 const CONTRACT_VERSION = 'asset-plan-section-recovery-v2';
 const SECTIONS = Object.freeze(['cast_profiles', 'prop_plan', 'scene_plan', 'story_seed']);
@@ -51,7 +52,7 @@ function mode(ctx = {}) {
 
 function expectedCastRule(ctx = {}) {
   const castMode = clean(ctx.cast_mode, 40).toLowerCase();
-  const explicit = Math.max(0, Number(ctx.expected_people || 0) || 0);
+  const explicit = personCountContract.contract(ctx).planning_cast_count;
   if (['no_human', 'animal'].includes(castMode)) return { kind: 'exact', count: 0 };
   if (explicit > 0) return { kind: 'exact', count: explicit };
   if (castMode === 'single' || castMode === 'human_pet') return { kind: 'exact', count: 1 };

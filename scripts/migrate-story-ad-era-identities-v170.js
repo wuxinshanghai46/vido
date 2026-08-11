@@ -4,6 +4,7 @@
 const crypto = require('crypto');
 const storage = require('../src/services/newStoryAd/storageService');
 const personLooks = require('../src/services/newStoryAd/personLookProfileService');
+const personCountContract = require('../src/services/newStoryAd/personCountContractService');
 
 function modeForCount(count = 0) {
   if (!count) return 'no_human';
@@ -16,12 +17,20 @@ function fingerprint(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value || [])).digest('hex');
 }
 
-function migratePlan(plan = {}, profiles = [], castMode = 'auto') {
+function migratePlan(plan = {}, profiles = [], castMode = 'auto', narrativeProfiles = []) {
   if (!plan || typeof plan !== 'object') return plan;
   const scenePlan = plan.scene_plan && typeof plan.scene_plan === 'object'
     ? { ...plan.scene_plan, cast_mode: castMode }
     : plan.scene_plan;
-  return { ...plan, cast_profiles: profiles, ...(scenePlan ? { scene_plan: scenePlan } : {}) };
+  return {
+    ...plan,
+    cast_profiles: profiles,
+    narrative_cast_profiles: narrativeProfiles,
+    narrative_identity_count: narrativeProfiles.length,
+    planning_cast_count: narrativeProfiles.length,
+    visual_asset_count: profiles.length,
+    ...(scenePlan ? { scene_plan: scenePlan } : {}),
+  };
 }
 
 function preview(taskId = '') {
@@ -35,13 +44,15 @@ function preview(taskId = '') {
   const context = storage.getOutput(taskId, 'context') || task.request || {};
   const before = Array.isArray(context.cast_profiles) ? context.cast_profiles : [];
   const after = personLooks.splitCrossEraProfiles(before, { brief: context.brief || task.brief || '' });
+  const narrative = personCountContract.narrativeProfiles(after, { brief: context.brief || task.brief || '' });
   return {
     task,
     context,
     before,
     after,
+    narrative,
     changed: fingerprint(before) !== fingerprint(after),
-    cast_mode: modeForCount(after.length),
+    cast_mode: modeForCount(narrative.length),
     before_names: before.map(item => item.displayName || item.name || item.id),
     after_names: after.map(item => item.displayName || item.name || item.id),
     retained_checkpoint_subject_ids: after.filter(item => item.era_identity === 'ancient')
@@ -54,7 +65,7 @@ function preview(taskId = '') {
 function apply(taskId = '') {
   const report = preview(taskId);
   if (!report.changed) return { ...report, applied: false, reason: 'already_migrated' };
-  const { task, context, before, after, cast_mode: castMode } = report;
+  const { task, context, before, after, narrative, cast_mode: castMode } = report;
   const backupKind = 'era_identity_migration_backup_v170';
   if (!storage.getOutput(taskId, backupKind)) {
     storage.saveOutput(taskId, backupKind, {
@@ -72,7 +83,11 @@ function apply(taskId = '') {
   const nextContext = {
     ...context,
     cast_profiles: after,
+    narrative_cast_profiles: narrative,
     cast_mode: castMode,
+    narrative_identity_count: narrative.length,
+    planning_cast_count: narrative.length,
+    visual_asset_count: after.length,
     expected_people: after.length,
     asset_setup_confirmed: false,
     shot_design_confirmed: false,
@@ -82,6 +97,9 @@ function apply(taskId = '') {
       ...(context.person_spec || {}),
       castMode,
       expectedPeople: after.length,
+      narrativeIdentityCount: narrative.length,
+      planningCastCount: narrative.length,
+      visualAssetCount: after.length,
       displayName: primary.displayName || primary.name || '',
       roleName: primary.roleName || primary.role || '',
       appearanceText: primary.appearanceText || '',
@@ -93,7 +111,7 @@ function apply(taskId = '') {
   };
   ['asset_plan', 'asset_plan_active', 'asset_plan_candidate'].forEach(kind => {
     const plan = storage.getOutput(taskId, kind);
-    if (plan) storage.saveOutput(taskId, kind, migratePlan(plan, after, castMode));
+    if (plan) storage.saveOutput(taskId, kind, migratePlan(plan, after, castMode, narrative));
   });
   const sceneConfig = storage.getOutput(taskId, 'scene_config');
   if (sceneConfig) storage.saveOutput(taskId, 'scene_config', { ...sceneConfig, cast_mode: castMode });

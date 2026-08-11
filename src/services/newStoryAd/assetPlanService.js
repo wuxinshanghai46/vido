@@ -13,6 +13,7 @@ const { contextPrompt, cleanText, assertContextConsistent } = require('./context
 const { normalizeScenePlan, assertScenePlanContract } = require('./sceneBindingService');
 const assetPlanSceneContracts = require('./assetPlanSceneContractService');
 const personLooks = require('./personLookProfileService');
+const personCountContract = require('./personCountContractService');
 const worldSetting = require('./worldSettingContractService');
 const contentSkill = require('./contentSkillService');
 const storySceneCoverage = require('./storySceneCoverageService');
@@ -21,7 +22,7 @@ const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 11;
+const ASSET_PLAN_PROJECTION_VERSION = 12;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
 const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
 
@@ -55,6 +56,8 @@ function fingerprint(task = {}, ctx = {}) {
         : null),
     reference_analysis: ctx.reference_video_analysis || null,
     cast_profiles: castProfiles,
+    planning_cast_count: personCountContract.contract(ctx).planning_cast_count,
+    visual_asset_count: personCountContract.contract(ctx).visual_asset_count,
     pet_profiles: ctx.pet_profiles,
     person_revision: ctx.person_contract?.person_revision || ctx.revisions?.person || 0,
     product_revision: ctx.product_contract?.product_revision || ctx.revisions?.product || 0,
@@ -274,7 +277,8 @@ function normalizePlan(source = {}, ctx = {}) {
       negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
       look_profiles: withLooks.look_profiles,
     }); });
-  const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(normalizedCastProfiles, { brief: ctx.brief || '' });
+  const narrativeCastProfiles = personCountContract.narrativeProfiles(normalizedCastProfiles, { brief: ctx.brief || '' });
+  const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(narrativeCastProfiles, { brief: ctx.brief || '' });
   if (eraSeparatedCastProfiles.length !== normalizedCastProfiles.length) {
     scenePlan = {
       ...scenePlan,
@@ -284,6 +288,7 @@ function normalizePlan(source = {}, ctx = {}) {
   }
   return {
     cast_profiles: eraSeparatedCastProfiles,
+    narrative_cast_profiles: narrativeCastProfiles,
     pet_profiles: Array.isArray(source.pet_profiles || source.petProfiles)
       ? (source.pet_profiles || source.petProfiles).slice(0, 12)
       : (ctx.pet_profiles || []),
@@ -366,6 +371,13 @@ async function projectReferenceIntake(taskId, options = {}) {
   const projectedPeople = castProfiles === plan.cast_profiles;
   const projectedPets = petProfiles === plan.pet_profiles;
   const primaryCast = castProfiles[0] || {};
+  const personCounts = personCountContract.contract({
+    ...projectionContext,
+    cast_profiles: castProfiles,
+    narrative_cast_profiles: projectedPeople ? plan.narrative_cast_profiles : projectionContext.narrative_cast_profiles,
+    planning_cast_count: projectedPeople ? plan.narrative_cast_profiles.length : projectionContext.planning_cast_count,
+    visual_asset_count: castProfiles.length,
+  });
   const referenceBrief = cleanText(
     reference.generated_brief
       || reference.summary
@@ -385,15 +397,22 @@ async function projectReferenceIntake(taskId, options = {}) {
     brief: keepUserBrief ? cleanText(projectionContext.brief, 3000) : referenceBrief,
     brief_source: keepUserBrief ? 'user' : 'reference_analysis',
     cast_profiles: castProfiles,
+    narrative_cast_profiles: personCounts.narrative_profiles,
     pet_profiles: petProfiles,
     cast_mode: projectedPeople && projectedPets ? plan.scene_plan.cast_mode : projectionContext.cast_mode,
     expected_people: castProfiles.length,
+    narrative_identity_count: personCounts.narrative_identity_count,
+    planning_cast_count: personCounts.planning_cast_count,
+    visual_asset_count: personCounts.visual_asset_count,
     expected_animals: petProfiles.length,
     story_seed: storySeed,
     person_spec: projectedPeople ? {
       ...(projectionContext.person_spec || {}),
       castMode: plan.scene_plan.cast_mode,
       expectedPeople: castProfiles.length,
+      narrativeIdentityCount: personCounts.narrative_identity_count,
+      planningCastCount: personCounts.planning_cast_count,
+      visualAssetCount: personCounts.visual_asset_count,
       displayName: primaryCast.displayName || primaryCast.name || '',
       roleName: primaryCast.roleName || primaryCast.role || '',
       age: primaryCast.age || primaryCast.age_range || 'match_brief',
@@ -657,6 +676,9 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
       'section_patch 必须且只能包含 section 与 value；不得返回、改写或复述其他区段。',
       '用户原文和 existing_valid_sections 是事实权威，不得新造题材、行业、人物、商品、地点或关系。',
       contentSkill.promptBlock(contentMode),
+      section === 'cast_profiles'
+        ? `cast_profiles must contain exactly ${personCountContract.contract(ctx).planning_cast_count} narrative identities. Count identities, not era-specific visual asset cards. A reincarnation is a separate named identity; the same living or time-travelling person across eras is one identity with multiple look_profiles.`
+        : '',
       section === 'story_seed' || section === 'scene_plan' ? storySceneCoverage.promptBlock(ctx) : '',
       contentMode === 'narrative_story'
         ? '纯剧情允许显式 prop_plan: [] 表示没有独立道具；禁止 advertised_product、商品、品牌和销售转化。'
@@ -668,6 +690,11 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
       brief: ctx.brief || '',
       content_mode: contentMode,
       required_missing_sections: [section],
+      person_count_contract: {
+        narrative_identity_count: personCountContract.contract(ctx).planning_cast_count,
+        visual_asset_count: personCountContract.contract(ctx).visual_asset_count,
+        cast_profiles_semantics: 'narrative identities; era-specific visual cards are projected after validation',
+      },
       existing_valid_sections: validBefore,
       existing_payload: payload,
       advertised_subject: contentMode === 'commercial_subject'
@@ -1094,6 +1121,14 @@ function persist(taskId, ctx, rawPlan, meta) {
     .update(JSON.stringify(canonical(plan.cast_profiles || [])))
     .digest('hex');
   const primaryCast = plan.cast_profiles[0] || {};
+  const personCounts = personCountContract.contract({
+    ...ctx,
+    cast_profiles: plan.cast_profiles,
+    narrative_cast_profiles: plan.narrative_cast_profiles,
+    planning_cast_count: plan.narrative_cast_profiles.length,
+    narrative_identity_count: plan.narrative_cast_profiles.length,
+    visual_asset_count: plan.cast_profiles.length,
+  });
   const projectedProductContract = plan.advertised_subject_contract
     ? productIdentity.buildProductContract({
         ...ctx,
@@ -1104,6 +1139,9 @@ function persist(taskId, ctx, rawPlan, meta) {
     ...(ctx.person_spec || {}),
     castMode: plan.scene_plan.cast_mode || ctx.cast_mode || 'auto',
     expectedPeople: plan.scene_plan.cast_mode === 'no_human' ? 0 : plan.cast_profiles.length,
+    narrativeIdentityCount: personCounts.narrative_identity_count,
+    planningCastCount: personCounts.planning_cast_count,
+    visualAssetCount: personCounts.visual_asset_count,
     displayName: primaryCast.displayName || primaryCast.name || '',
     roleName: primaryCast.roleName || primaryCast.role || '',
     age: primaryCast.age || primaryCast.age_range || 'match_brief',
@@ -1116,9 +1154,13 @@ function persist(taskId, ctx, rawPlan, meta) {
   const nextContext = assertContextConsistent({
     ...ctx,
     cast_profiles: plan.cast_profiles,
+    narrative_cast_profiles: plan.narrative_cast_profiles,
     pet_profiles: plan.pet_profiles,
     cast_mode: plan.scene_plan.cast_mode || ctx.cast_mode,
     expected_people: plan.scene_plan.cast_mode === 'no_human' ? 0 : plan.cast_profiles.length,
+    narrative_identity_count: personCounts.narrative_identity_count,
+    planning_cast_count: personCounts.planning_cast_count,
+    visual_asset_count: personCounts.visual_asset_count,
     prop_plan: plan.prop_plan,
     prop_assets: props,
     story_seed: plan.story_seed,
@@ -1247,6 +1289,7 @@ async function generate(taskId, options = {}) {
       '先识别跨时代人物关系，再建立人物方案：只有原文明确“本人穿越、两人共同穿越、长生者本人活到现代、同一身份来到未来”时，identity_continuity 才能写 same_person，古今姓名保持不变；“转世、轮回、投胎、来生、后世化身”必须写 reincarnation，视为新的独立人物身份，禁止沿用前世姓名。',
       '转世人物必须在对应现代 look_profile.character_name 写出自己的正式姓名；原文没有提供时也必须生成一个符合现代背景的正式姓名，并将 name_source 写为 planner_generated，不能写“转世女主、现代女子、云知月（现代）”等占位名或沿用前世姓名。',
       '同一时代内的普通换装可使用多个 look_profiles；古代与现代、前世与今生等跨时代状态不得作为同一人物资产的两套造型交付，必须由平台拆成独立人物档案。',
+      `cast_profiles 必须严格输出 ${personCountContract.contract(ctx).planning_cast_count} 个剧情身份，而不是 ${personCountContract.contract(ctx).visual_asset_count} 张分时代素材卡。同一本人跨时代只占一个剧情身份并保留多个 look_profiles；转世必须单列为新身份和新姓名。平台会在规划通过后再投影为分时代素材卡。`,
       worldSetting.promptBlock(ctx.world_setting),
       currentContentMode === 'narrative_story'
         ? '本任务是纯剧情：scene_plan.advertised_subject 必须为 JSON 空字符串，禁止 advertised_product、商品、品牌、卖点、购买引导和销售转化。'

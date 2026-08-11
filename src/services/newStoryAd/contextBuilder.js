@@ -5,6 +5,7 @@ const referenceEvidenceText = require('./referenceEvidenceTextService');
 const benchmarkStrategy = require('./benchmarkStrategyService');
 const productAssetResolver = require('./productAssetResolverService');
 const briefAuthority = require('./briefAuthorityService');
+const personCountContract = require('./personCountContractService');
 const referenceUnderstandingService = require('./referenceUnderstandingService');
 const productionLimits = require('./productionLimitsService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
@@ -1077,6 +1078,17 @@ function buildContext(body = {}, user = {}) {
     visual_medium: cleanText(profile.visual_medium_source === 'user' ? profile.visual_medium : visualMedium, 40),
     visual_medium_source: profile.visual_medium_source === 'user' ? 'user' : 'project',
   }));
+  const personCounts = personCountContract.contract({
+    ...body,
+    brief,
+    cast_mode: castMode,
+    expected_people: expectedPeople,
+    cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
+    // cast_profiles is the current editable authority. Never resurrect a
+    // detached or replaced person from a stale derived narrative projection.
+    narrative_cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
+  });
+  const contextCastProfiles = noHuman || animalOnly ? [] : personCounts.visual_profiles;
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -1120,7 +1132,12 @@ function buildContext(body = {}, user = {}) {
       style: subtitleStyle,
     },
     cast_mode: castMode,
-    expected_people: expectedPeople,
+    // Legacy expected_people remains the number of independently generated
+    // visual cards. Planning uses the explicit narrative count below.
+    expected_people: personCounts.visual_asset_count,
+    narrative_identity_count: personCounts.narrative_identity_count,
+    planning_cast_count: personCounts.planning_cast_count,
+    visual_asset_count: personCounts.visual_asset_count,
     expected_animals: expectedAnimals,
     characters: noHuman || animalOnly ? [] : characters,
     pet_profiles: normalizedPetProfiles,
@@ -1160,7 +1177,8 @@ function buildContext(body = {}, user = {}) {
       voice: Math.max(1, Number(body.revisions.voice || 1) || 1),
       compose: Math.max(1, Number(body.revisions.compose || 1) || 1),
     } : { source: 1, scene: 1, person: 1, product: 1, creative: 1, voice: 1, compose: 1 },
-    cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
+    cast_profiles: contextCastProfiles,
+    narrative_cast_profiles: personCounts.narrative_profiles,
     person_context: noHuman || animalOnly ? {
       source: noHuman ? 'no_human_mode' : 'animal_only_mode',
       spec_source: personSpecSource,
@@ -1309,6 +1327,7 @@ function referenceVideoAnalysisPrompt(reference = null) {
 
 function contextPrompt(ctx) {
   const narrativeMode = ctx.content_mode === 'narrative_story' || ctx.product_presentation?.mode === 'narrative_story';
+  const personCounts = personCountContract.contract(ctx);
   return [
     contentSkill.promptBlock(ctx.content_mode),
     `${narrativeMode ? '剧情内容目标' : '广告需求'}：${ctx.brief}`,
@@ -1320,7 +1339,14 @@ function contextPrompt(ctx) {
     `镜头数量：${ctx.shot_count ? `用户指定 ${ctx.shot_count} 镜` : '由用户剧情内容决定'}`,
     `画面比例：${ctx.output_ratio}`,
     `人物/主体模式：${ctx.cast_mode}`,
-    ctx.expected_people ? `精确人数：${ctx.expected_people}（必须保持，不得用默认群体数量替代）` : '',
+    personCounts.planning_cast_count
+      ? (personCounts.visual_asset_count === personCounts.planning_cast_count
+        ? `精确人数：${personCounts.planning_cast_count}（必须保持，不得用默认群体数量替代）`
+        : `剧情身份精确数量：${personCounts.planning_cast_count}（规划 cast_profiles 必须按独立剧情身份计数）`)
+      : '',
+    personCounts.visual_asset_count && personCounts.visual_asset_count !== personCounts.planning_cast_count
+      ? `分时代视觉资产数量：${personCounts.visual_asset_count}。这是人物素材卡数量，不是同场人数，也不得为了凑够素材卡数量而虚构剧情身份；同一人跨时代可共享身份，转世必须是独立姓名和独立身份。`
+      : '',
     briefAuthority.eraCastContract(ctx.brief)?.rule || '',
     briefAuthority.explicitSceneRequirements(ctx.brief).length
       ? `明确场景硬约束：${briefAuthority.explicitSceneRequirements(ctx.brief).join('、')}。这些地点必须出现在场景计划中，禁止替换成书房、办公室或其它未要求空间。`

@@ -17,6 +17,11 @@ const projection = require('../src/services/newStoryAd/subjectCheckpointProjecti
 const personProjection = require('../src/services/storyAdWorkspace/personLookProjectionService');
 const storage = require('../src/services/newStoryAd/storageService');
 const migration = require('./migrate-story-ad-era-identities-v170');
+const countMigration = require('./migrate-story-ad-person-count-contract-v174');
+const sectionRecovery = require('../src/services/newStoryAd/assetPlanSectionRecoveryContractService');
+const assetPlan = require('../src/services/newStoryAd/assetPlanService');
+const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
+const personCountContract = require('../src/services/newStoryAd/personCountContractService');
 
 const brief = '男女主古代相爱，男主活过千年亲自来到现代，随后遇见女主的转世。';
 const male = {
@@ -35,6 +40,10 @@ const female = {
 };
 
 function run() {
+  assert.equal(personCountContract.contract({ cast_mode: 'multi', expected_people: 4 }).planning_cast_count, 4,
+    'ordinary explicit people count must remain authoritative when no era cards exist');
+  assert.equal(personCountContract.contract({ cast_mode: 'no_human', expected_people: 4 }).planning_cast_count, 0,
+    'no-human contract must override legacy counts');
   const contract = authority.eraCastContract(brief);
   assert.equal(contract.count, 3, '男主本人延续 + 古代女主 + 现代转世应是三个叙事身份');
   assert.match(contract.rule, /转世.*独立.*姓名/);
@@ -48,6 +57,19 @@ function run() {
   ]);
   assert.equal(split[0].source_identity_id, split[1].source_identity_id, '本人穿越的古今档案必须共享身份来源');
   assert.notEqual(split[2].source_identity_id, split[3].source_identity_id, '转世必须是新的身份来源');
+  const newlyBuiltContext = contextBuilder.buildContext({
+    brief,
+    content_mode: 'narrative_story',
+    content_mode_source: 'user',
+    product_presentation: { mode: 'narrative_story' },
+    cast_mode: 'dual',
+    expected_people: 2,
+    cast_profiles: [male, female],
+  });
+  assert.equal(newlyBuiltContext.narrative_identity_count, 3, 'new users must receive the split count contract during intake');
+  assert.equal(newlyBuiltContext.planning_cast_count, 3);
+  assert.equal(newlyBuiltContext.visual_asset_count, 4);
+  assert.equal(newlyBuiltContext.cast_profiles.length, 4);
 
   const namedFemale = personLooks.splitCrossEraProfiles([{
     ...female,
@@ -71,9 +93,59 @@ function run() {
   const migrated = storage.getOutput('era-migration-task', 'context');
   assert.equal(migrated.cast_profiles.length, 4);
   assert.equal(migrated.expected_people, 4);
+  assert.equal(migrated.narrative_cast_profiles.length, 3);
+  assert.equal(migrated.narrative_identity_count, 3);
+  assert.equal(migrated.planning_cast_count, 3);
+  assert.equal(migrated.visual_asset_count, 4);
   assert.equal(migrated.cast_mode, 'multi');
+  assert.deepEqual(sectionRecovery.expectedCastRule(migrated), { kind: 'exact', count: 3 });
+  assert.doesNotThrow(() => sectionRecovery.assertRequiredSectionsCandidate({
+    cast_profiles: migrated.narrative_cast_profiles,
+  }, ['cast_profiles'], migrated));
+  assert.throws(() => sectionRecovery.assertRequiredSectionsCandidate({
+    cast_profiles: migrated.cast_profiles,
+  }, ['cast_profiles'], migrated), /cast_profiles_count_mismatch:4\/3/);
+  const planningPrompt = contextBuilder.contextPrompt({
+    ...migrated,
+    content_mode: 'narrative_story', product_presentation: { mode: 'narrative_story' },
+    characters: [], assets: [], forbidden: [], brand_overlay: {}, creative_direction: {}, controlled_production: {},
+  });
+  assert.match(planningPrompt, /剧情身份精确数量：3/);
+  assert.match(planningPrompt, /分时代视觉资产数量：4/);
+  const normalizedPlan = assetPlan.normalizePlan({
+    cast_profiles: migrated.narrative_cast_profiles,
+    prop_plan: [],
+    story_seed: { logline: '跨时代重逢' },
+    scene_plan: {
+      advertised_subject: '', cast_mode: 'multi', scene_mode: 'single',
+      spaces: [{
+        id: 'ancient-courtyard', name: '古代庭院', description: '古代庭院', story_purpose: '古代相识',
+        scene_spec: { layoutText: '庭院', materialLightText: '月光', interactionText: '人物相见', negativeText: '现代物件' },
+      }],
+    },
+  }, { ...migrated, content_mode: 'narrative_story' });
+  assert.equal(normalizedPlan.narrative_cast_profiles.length, 3);
+  assert.equal(normalizedPlan.cast_profiles.length, 4);
   assert(storage.getOutput('era-migration-task', 'era_identity_migration_backup_v170'), '迁移前必须保留可恢复备份');
   assert.equal(migration.apply('era-migration-task').applied, false, '迁移必须幂等');
+
+  storage.createTask({
+    id: 'already-visual-migrated-task', status: 'scene_config_failed', stage: 'scene_config_failed', brief,
+    request: { brief, cast_profiles: split, expected_people: 4, cast_mode: 'multi' },
+  });
+  storage.saveOutput('already-visual-migrated-task', 'context', {
+    brief, cast_profiles: split, expected_people: 4, cast_mode: 'multi',
+  });
+  storage.saveOutput('already-visual-migrated-task', 'asset_plan_active', {
+    cast_profiles: split, scene_plan: { cast_mode: 'multi', spaces: [] },
+  });
+  const countReport = countMigration.apply('already-visual-migrated-task');
+  assert.equal(countReport.applied, true);
+  const countMigrated = storage.getOutput('already-visual-migrated-task', 'context');
+  assert.equal(countMigrated.planning_cast_count, 3);
+  assert.equal(countMigrated.visual_asset_count, 4);
+  assert.equal(countMigrated.expected_people, 4);
+  assert.equal(countMigration.apply('already-visual-migrated-task').applied, false, 'count contract migration must be idempotent');
 
   const checkpoint = {
     status: 'failed', updated_at: new Date().toISOString(),
@@ -96,7 +168,7 @@ function run() {
 
   storage.createTask({ id: 'active-era-task', status: 'running', stage: 'scene_config', brief, request: { brief } });
   assert.throws(() => migration.preview('active-era-task'), error => error.code === 'ERA_IDENTITY_MIGRATION_ACTIVE_TASK_BLOCKED');
-  console.log(JSON.stringify({ passed: true, checks: 24, cards: split.length, identities: contract.count, model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 48, cards: split.length, identities: contract.count, model_calls: 0 }));
 }
 
 try { run(); } finally { fs.rmSync(outputDir, { recursive: true, force: true }); }
