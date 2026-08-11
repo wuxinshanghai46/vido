@@ -383,9 +383,7 @@ function sceneAssets(outputs = {}, context = {}) {
       shot_refs: shotRefs,
       scene_card: projectSceneDossier({ contract, asset, spec, imageUrl, clean, list }),
       qa: {
-        full_space_lock: contract.full_space_lock === true
-          ? true
-          : (contract.full_space_lock === false ? false : null),
+        full_space_lock: contract.full_space_lock === true ? true : (contract.full_space_lock === false ? false : null),
         space_lock_status: clean(contract.space_lock_status, 80),
         requirement_pass: contract.requirement_qa?.pass,
         cross_view_pass: contract.cross_view_qa?.pass,
