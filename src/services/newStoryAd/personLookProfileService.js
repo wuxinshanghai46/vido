@@ -52,6 +52,8 @@ function normalizeLookProfiles(profile = {}, options = {}) {
     return {
       id,
       name: clean(look.name || look.label || look.story_state || `造型 ${index + 1}`, 120),
+      character_name: clean(look.character_name || look.characterName || look.identity_name || look.identityName || '', 120),
+      name_source: clean(look.name_source || look.nameSource || '', 80),
       story_state: clean(look.story_state || look.storyState || look.era || '', 160),
       scene_ids: [...new Set(sceneIds)].slice(0, 24),
       scene_names: list(look.scene_names || look.sceneNames)
@@ -132,7 +134,34 @@ function stripEraSuffix(value = '') {
   return clean(value, 120).replace(/[（(](?:古代|现代|当代|今世|今生|前世|古时|古装)[）)]$/u, '').trim();
 }
 
-function splitCrossEraProfiles(profiles = []) {
+function identityContinuity(profile = {}, brief = '') {
+  const explicit = clean(profile.identity_continuity || profile.identityContinuity || profile.identity_relationship || profile.identityRelationship, 80).toLowerCase();
+  if (['reincarnation', 'rebirth', 'distinct_reincarnation'].includes(explicit)) return 'reincarnation';
+  if (['same_person', 'time_travel', 'immortal_same_person'].includes(explicit)) return 'same_person';
+  const profileEvidence = clean([
+    profile.role, profile.roleName, profile.relationship, profile.relationshipText,
+    profile.appearanceText, profile.continuityText,
+  ].filter(Boolean).join(' '), 1600);
+  if (/(?:转世|轮回|投胎|再世|来生|后世化身|前世的(?:转世|后世)|reincarnation|rebirth)/i.test(profileEvidence)) return 'reincarnation';
+  if (/(?:本人穿越|穿越者|活过千年|活到现代|长生不老|容颜不老|沉睡.*苏醒|冰封.*苏醒|同一身份|same person|time travel|immortal)/i.test(profileEvidence)) return 'same_person';
+  const baseName = stripEraSuffix(profile.displayName || profile.name || '');
+  const sourceEvidence = clean(brief, 6000);
+  if (baseName && new RegExp(`${baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.{0,32}(?:转世|轮回|投胎|再世|来生|后世化身)`).test(sourceEvidence)) return 'reincarnation';
+  return 'unspecified';
+}
+
+function fallbackReincarnationName(baseName = '', profile = {}) {
+  const original = stripEraSuffix(baseName) || '现代女主';
+  const explicit = clean(profile.reincarnation_name || profile.reincarnationName || profile.modern_name || profile.modernName, 120);
+  if (explicit && stripEraSuffix(explicit) !== original) return stripEraSuffix(explicit);
+  const surnames = ['林', '苏', '顾', '许', '陆', '沈', '江', '程', '叶', '温'];
+  const currentSurname = original.slice(0, 1);
+  const surname = surnames.find(item => item !== currentSurname) || '林';
+  const given = original.length >= 2 && original.length <= 4 ? original.slice(1) : '清月';
+  return `${surname}${given}`;
+}
+
+function splitCrossEraProfiles(profiles = [], options = {}) {
   return list(profiles).flatMap((profile, profileIndex) => {
     const looks = normalizeLookProfiles(profile);
     const classified = looks.map(look => ({ look, era: eraIdentity(look) }));
@@ -142,14 +171,19 @@ function splitCrossEraProfiles(profiles = []) {
     }
     const sourceId = clean(profile.source_identity_id || profile.id || `cast_${profileIndex + 1}`, 80);
     const baseName = stripEraSuffix(profile.displayName || profile.name || `人物${profileIndex + 1}`);
+    const continuity = identityContinuity(profile, options.brief || '');
     const groups = new Map();
     classified.forEach(({ look, era }) => {
       if (!groups.has(era.key)) groups.set(era.key, { era, looks: [] });
       groups.get(era.key).looks.push(look);
     });
     return [...groups.values()].map(({ era, looks: eraLooks }) => {
-      const id = `${sourceId}_${era.key}`.slice(0, 100);
-      const name = `${baseName}（${era.label}）`;
+      const lookName = clean(eraLooks.find(look => look.character_name)?.character_name, 120);
+      const identityName = continuity === 'reincarnation' && era.key === 'modern'
+        ? (lookName && stripEraSuffix(lookName) !== baseName ? stripEraSuffix(lookName) : fallbackReincarnationName(baseName, profile))
+        : baseName;
+      const id = `${sourceId}_${continuity === 'reincarnation' && era.key === 'modern' ? 'reincarnation_' : ''}${era.key}`.slice(0, 100);
+      const name = `${identityName}（${era.label}）`;
       const normalized = normalizeProfileLooks({
         ...profile,
         id,
@@ -163,6 +197,11 @@ function splitCrossEraProfiles(profiles = []) {
         name,
         displayName: name,
         source_identity_id: sourceId,
+        lineage_identity_id: sourceId,
+        ...(continuity === 'reincarnation' && era.key === 'modern' ? { source_identity_id: id } : {}),
+        identity_name: identityName,
+        identity_continuity: continuity,
+        name_source: lookName ? 'planner_era_character_name' : (continuity === 'reincarnation' && era.key === 'modern' ? 'deterministic_reincarnation_fallback' : 'source_identity_name'),
         era_identity: era.key,
         era_label: era.label,
       };
@@ -180,5 +219,7 @@ module.exports = {
   stableLookId,
   normalizeStyleRichness,
   eraIdentity,
+  identityContinuity,
+  fallbackReincarnationName,
   splitCrossEraProfiles,
 };

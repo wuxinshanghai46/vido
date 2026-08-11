@@ -274,7 +274,7 @@ function normalizePlan(source = {}, ctx = {}) {
       negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
       look_profiles: withLooks.look_profiles,
     }); });
-  const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(normalizedCastProfiles);
+  const eraSeparatedCastProfiles = personLooks.splitCrossEraProfiles(normalizedCastProfiles, { brief: ctx.brief || '' });
   if (eraSeparatedCastProfiles.length !== normalizedCastProfiles.length) {
     scenePlan = {
       ...scenePlan,
@@ -1244,7 +1244,8 @@ async function generate(taskId, options = {}) {
       '一次完成原创人物、独立道具、物理场景和故事种子的规划，不得把同一需求拆成多次模型理解。',
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
       '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
-      '并行或对照叙事中的人物身份必须按用户原文判断：明确为不同人物时禁止合并；同一姓名同时存在古代与现代时，必须保留可识别的时代状态，平台会拆成“人名（古代）”与“人名（现代）”两个独立人物资产。不得根据题材示例自行假定人物关系。',
+      '先识别跨时代人物关系，再建立人物方案：只有原文明确“本人穿越、两人共同穿越、长生者本人活到现代、同一身份来到未来”时，identity_continuity 才能写 same_person，古今姓名保持不变；“转世、轮回、投胎、来生、后世化身”必须写 reincarnation，视为新的独立人物身份，禁止沿用前世姓名。',
+      '转世人物必须在对应现代 look_profile.character_name 写出自己的正式姓名；原文没有提供时也必须生成一个符合现代背景的正式姓名，并将 name_source 写为 planner_generated，不能写“转世女主、现代女子、云知月（现代）”等占位名或沿用前世姓名。',
       '同一时代内的普通换装可使用多个 look_profiles；古代与现代、前世与今生等跨时代状态不得作为同一人物资产的两套造型交付，必须由平台拆成独立人物档案。',
       worldSetting.promptBlock(ctx.world_setting),
       currentContentMode === 'narrative_story'

@@ -76,7 +76,12 @@ function mergePeople(people = [], outputs = {}) {
   const previews = projectCheckpoint(checkpoint, profiles);
   return people.map((item, index) => {
     if (item.dossier_sheet?.image_url) return item;
-    const preview = previews.find(row => row.subject_id === item.subject_id || row.subject_id === item.profile?.id)
+    const directPreview = previews.find(row => row.subject_id === item.subject_id || row.subject_id === item.profile?.id);
+    const lineageId = clean(item.profile?.lineage_identity_id || item.profile?.source_identity_id, 120);
+    const retainedLineagePreview = item.profile?.era_identity === 'ancient' && lineageId
+      ? previews.find(row => row.subject_id === lineageId)
+      : null;
+    const preview = directPreview || retainedLineagePreview
       || (previews.length === 1 && index === 0 ? previews[0] : null);
     if (!preview) return item;
     return {

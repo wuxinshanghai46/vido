@@ -1,2 +1,2 @@
-export const CLIENT_BUILD_ID = "20260811-ui-v169";
+export const CLIENT_BUILD_ID = "20260811-ui-v170";
 export const CLIENT_CONTRACT_VERSION = "story-scene-platform-v6";

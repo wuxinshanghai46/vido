@@ -1,9 +1,9 @@
-import { request } from '../api.js?v=20260811-ui-v169';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v169';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260811-ui-v169';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260811-ui-v169';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260811-ui-v169';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260811-ui-v169';
+import { request } from '../api.js?v=20260811-ui-v170';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v170';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260811-ui-v170';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260811-ui-v170';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260811-ui-v170';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260811-ui-v170';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -224,7 +224,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260811-ui-v169');
+    const module = await import('./referenceUnderstandingView.js?v=20260811-ui-v170');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
