@@ -20,8 +20,9 @@
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
-      include_voiceover: !!state.voiceId,
-      auto_tts: !!state.voiceId,
+      voice_assignments: state.voiceAssignments || { narrator: state.voiceId || '', speakers: {} },
+      include_voiceover: !!state.voiceId || Object.keys(state.voiceAssignments?.speakers || {}).length > 0,
+      auto_tts: !!state.voiceId || Object.keys(state.voiceAssignments?.speakers || {}).length > 0,
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
       bgm_profile: state.bgmProfile || 'auto',
@@ -726,4 +727,3 @@
     STAGE_LABELS,
   };
 })();
-

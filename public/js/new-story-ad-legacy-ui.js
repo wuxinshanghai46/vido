@@ -90,7 +90,7 @@
     bgmAsset: null,
     bgmProfile: 'auto',
     voiceId: '',
-    voiceName: '',
+    voiceName: '', voiceAssignments: { narrator: '', speakers: {} },
     voiceList: [],
     voiceGenderFilter: 'all',
     voiceLoading: false,
@@ -1024,7 +1024,7 @@
       ...window.NewStoryAdStorySetup.payload(state),
       voice_id: voiceId,
       voice_name: state.voiceName || '',
-      include_voiceover: !!voiceId,
+      voice_assignments: state.voiceAssignments || { narrator: voiceId, speakers: {} }, include_voiceover: !!voiceId || Object.keys(state.voiceAssignments?.speakers || {}).length > 0,
       subtitle: state.subtitleEnabled,
       subtitle_style: state.subtitleStyle || 'popup',
       subtitle_config: {
@@ -1569,7 +1569,7 @@
     if (voiceCurrent) {
       const selectedVoice = (state.voiceList || []).find(v => String(v.id || '') === String(state.voiceId || ''));
       const name = state.voiceName || selectedVoice?.name || (state.voiceId ? state.voiceId : '无配音');
-      const provider = selectedVoice?.provider || selectedVoice?.providerId || (state.voiceId ? '已选择，可用于旁白合成' : '选填 · 将直接生成无旁白视频');
+      const roleVoiceCount = Object.keys(state.voiceAssignments?.speakers || {}).length, providerBase = selectedVoice?.provider || selectedVoice?.providerId || (state.voiceId ? '已选择，可用于旁白合成' : '旁白未设置'), provider = roleVoiceCount ? `${providerBase} · 已绑定 ${roleVoiceCount} 个角色音色` : providerBase;
       voiceCurrent.innerHTML = `<div class="dh-voice-opt-icon">TV</div>
         <div class="dh-voice-opt-body">
           <div class="dh-voice-opt-name">${escapeHtml(name)}</div>
@@ -1840,6 +1840,7 @@
     window.NewStoryAdStorySetup?.hydrate(state, request);
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
+    state.voiceAssignments = request.voice_assignments || request.voiceAssignments || state.voiceAssignments || { narrator: state.voiceId, speakers: {} }; state.voiceAssignments.narrator ||= state.voiceId || '';
     state.subtitleEnabled = request.subtitle !== false;
     state.subtitleStyle = request.subtitle_style || request.subtitleStyle || state.subtitleStyle || 'popup';
     const subtitleConfig = request.subtitle_config || request.subtitleConfig || {};
@@ -3935,7 +3936,7 @@
     return {
       voice_id: state.voiceId || '',
       voice_name: state.voiceName || '',
-      include_voiceover: !!state.voiceId,
+      voice_assignments: state.voiceAssignments || { narrator: state.voiceId || '', speakers: {} }, include_voiceover: !!state.voiceId || Object.keys(state.voiceAssignments?.speakers || {}).length > 0,
       auto_tts: !!state.voiceId,
       voice_volume: state.voiceVolume,
       bgm_volume: state.bgmVolume,
@@ -4859,6 +4860,7 @@
       const changed = id !== String(state.voiceId || '');
       state.voiceId = id;
       state.voiceName = voice.name || id || '';
+      state.voiceAssignments ||= { narrator: '', speakers: {} }; state.voiceAssignments.narrator = id;
       if (changed) {
         markMediaDirty('voice'); state.ttsAudio = null;
         state.videoClips = [];
@@ -4892,7 +4894,7 @@
       toast(err.message || '音色列表加载失败，无配音模式仍可使用', 'error');
     });
   }
-
+  const openNsaRoleVoiceModal = () => window.NewStoryAdRoleVoiceUI.open({ state, loadVoices: loadNsaVoices, toast, ensureModal: ensureNsaModal, hideModal: hideNsaModal, showModal: showNsaModal, escapeHtml, voiceDisplay, normalizeText, markMediaDirty, renderAll, scheduleAutoSave });
   function musicSearchText() {
     return normalizeText([
       within('#dhNsaAdText')?.value || '',
@@ -4901,7 +4903,6 @@
       state.bgmProfile || '',
     ].filter(Boolean).join(' '), 600);
   }
-
   function stopNsaMusicPreview(except = null) {
     if (nsaMusicPreviewAudio && nsaMusicPreviewAudio !== except) {
       try {
@@ -4911,7 +4912,6 @@
     }
     if (!except || nsaMusicPreviewAudio !== except) nsaMusicPreviewAudio = except;
   }
-
   function renderNsaMusicModal(results = [], note = '', query = '', meta = {}) {
     stopNsaMusicPreview();
     const modal = ensureNsaModal('dhNsaMusicLibraryModal', '公开曲库');
@@ -6119,6 +6119,7 @@
         dhNsaAdGenerateSceneSheet: () => generateSceneSheet(btn, false),
         dhNsaAdAddSceneSheet: () => window.NewStoryAdSceneAssets?.addDraft?.({ state, renderAll, toast, onChanged: () => { markSourceDirty('scene'); scheduleAutoSave('scene_plan_add'); } }),
         dhNsaAdVoiceOpen: () => openNsaVoiceModal(),
+        dhNsaAdRoleVoiceOpen: () => openNsaRoleVoiceModal(),
         dhNsaAdMusicLibrary: () => openNsaMusicLibrary(),
         dhNsaAdBgmUpload: () => within('#dhNsaAdBgmFile')?.click(),
         dhNsaAdBgmClear: () => {

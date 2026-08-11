@@ -14,6 +14,106 @@ if (!fs.existsSync(voicesDir)) fs.mkdirSync(voicesDir, { recursive: true });
 
 const voiceUpload = multer({ dest: voicesDir, limits: { fileSize: 50 * 1024 * 1024 } });
 
+// GET /api/workbench/voice-packs - 已授权参考音色库（分页、搜索、分类）
+router.get('/voice-packs', (req, res) => {
+  try {
+    const { listVoicePacks } = require('../services/voicePackService');
+    res.json({ success: true, ...listVoicePacks(req.query || {}) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// GET /api/workbench/voice-packs/:id/audio - 试听授权参考音色
+router.get('/voice-packs/:id/audio', (req, res) => {
+  const { resolveVoicePackAudio } = require('../services/voicePackService');
+  const resolved = resolveVoicePackAudio(req.params.id);
+  if (!resolved) return res.status(404).json({ success: false, error: '参考音色不存在' });
+  res.setHeader('Content-Type', 'audio/mpeg');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  fs.createReadStream(resolved.file).pipe(res);
+});
+
+// POST /api/workbench/voice-packs/:id/clone - 单个参考音色转为真正可生成的 TTS 音色
+// 必须由用户明确确认授权和供应商调用；禁止批量隐式训练、禁止同一用户重复提交。
+router.post('/voice-packs/:id/clone', async (req, res) => {
+  try {
+    if (req.body?.confirm_authorized_use !== true || req.body?.confirm_provider_charge !== true) {
+      return res.status(400).json({ success: false, error: '需要确认授权使用和本次供应商克隆调用' });
+    }
+    const { resolveVoicePackAudio } = require('../services/voicePackService');
+    const resolved = resolveVoicePackAudio(req.params.id);
+    if (!resolved) return res.status(404).json({ success: false, error: '参考音色不存在' });
+    if (resolved.voice.rights_status !== 'user_confirmed_licensed') {
+      return res.status(403).json({ success: false, error: '该参考音色没有有效授权标记' });
+    }
+    if (!resolved.voice.clonable) {
+      return res.status(400).json({ success: false, error: '该样本不满足 10-180 秒克隆时长要求，只能试听' });
+    }
+
+    const userId = req.user?.id || null;
+    const existing = db.listVoices(userId).find(v => v.source_voice_pack_id === resolved.voice.id);
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: `该音色已经提交过克隆（状态：${existing.status || 'unknown'}），为避免重复计费不能再次提交`,
+        existing_voice_id: existing.id,
+        status: existing.status || 'unknown',
+      });
+    }
+
+    const aliyun = require('../services/aliyunVoiceService');
+    if (!aliyun.hasKey()) {
+      return res.status(400).json({ success: false, error: '当前未配置可用的阿里 CosyVoice 克隆服务' });
+    }
+
+    const voiceId = 'custom_' + uuidv4().slice(0, 8);
+    const filename = `voice_${voiceId}.mp3`;
+    const destPath = path.join(voicesDir, filename);
+    fs.copyFileSync(resolved.file, destPath);
+    db.insertVoice({
+      id: voiceId,
+      name: resolved.voice.name,
+      gender: resolved.voice.gender === 'neutral' ? 'female' : resolved.voice.gender,
+      filename,
+      file_path: destPath,
+      user_id: userId,
+      source_voice_pack_id: resolved.voice.id,
+      source_rights_status: resolved.voice.rights_status,
+      clone_provider: 'aliyun-tts',
+      status: 'submitting',
+    });
+
+    try {
+      const jimengAssetsDir = path.join(__dirname, '../../outputs/jimeng-assets');
+      fs.mkdirSync(jimengAssetsDir, { recursive: true });
+      const pubName = `vc_${voiceId}.mp3`;
+      fs.copyFileSync(destPath, path.join(jimengAssetsDir, pubName));
+      const base = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+      const audioUrl = `${base}/public/jimeng-assets/${pubName}`;
+      const enroll = await aliyun.enrollVoice(audioUrl, { voicePrefix: 'vidopack', languageHint: 'zh' });
+      db.updateVoice(voiceId, {
+        aliyun_voice_id: enroll.voice_id,
+        aliyun_task_id: enroll.task_id || enroll.voice_id,
+        aliyun_target_model: enroll.target_model,
+        status: 'ready',
+      });
+      return res.json({
+        success: true,
+        voice_id: voiceId,
+        aliyun_voice_id: enroll.voice_id,
+        status: 'ready',
+        name: resolved.voice.name,
+      });
+    } catch (err) {
+      db.updateVoice(voiceId, { status: 'aliyun_failed', last_error: err.message });
+      return res.status(502).json({ success: false, error: err.message, voice_id: voiceId, status: 'aliyun_failed' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // GET /api/workbench/clone-engines - 返回当前可用的声音克隆引擎列表（已配 key 且测试通过）
 router.get('/clone-engines', (req, res) => {
   const { loadSettings } = require('../services/settingsService');

@@ -1,4 +1,4 @@
-import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260811-ui-v168';
+import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260811-ui-v169';
 
 export { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION };
 const TOKEN_KEYS = ['vido_token', 'token'];

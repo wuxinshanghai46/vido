@@ -839,7 +839,10 @@
                       <small>配音（选填）</small>
                       <b>旁白声音，可留空</b>
                     </div>
-                    <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdVoiceOpen">选择配音</button>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdVoiceOpen">选择旁白音色</button>
+                      <button class="dh-btn dh-btn-ghost dh-btn-sm" type="button" id="dhNsaAdRoleVoiceOpen">设置角色音色</button>
+                    </div>
                   </div>
                   <div class="dh-space-voice-current" id="dhNsaAdVoiceCurrent">
                     <div class="dh-voice-opt-icon">TV</div>
@@ -2509,6 +2512,7 @@ B: ...
           <!-- Tab 切换：克隆声音 / 我克隆的声音 -->
           <div id="dhVcTabs" style="display:flex;gap:6px;padding:4px;background:var(--dh-bg-soft,#141519);border:1px solid var(--dh-border,#2A2D34);border-radius:999px;width:fit-content;margin-bottom:20px">
             <button id="dhVcTabClone" type="button" onclick="window._dhSwitchVcTab('clone')" style="padding:8px 18px;border-radius:999px;border:0;cursor:pointer;font-size:13px;background:linear-gradient(135deg,#21FFF3,#FFF600);color:#0D0E12;font-weight:700">🎤 克隆声音</button>
+            <button id="dhVcTabLibrary" type="button" onclick="window._dhSwitchVcTab('library')" style="padding:8px 18px;border-radius:999px;border:0;cursor:pointer;font-size:13px;background:transparent;color:var(--dh-text-muted)">🎧 授权音色库 <span id="dhVcLibraryCount" style="opacity:0.7">0</span></button>
             <button id="dhVcTabList" type="button" onclick="window._dhSwitchVcTab('list')" style="padding:8px 18px;border-radius:999px;border:0;cursor:pointer;font-size:13px;background:transparent;color:var(--dh-text-muted)">📚 我克隆的声音 <span id="dhVcTabCount" style="opacity:0.7">0</span></button>
           </div>
 
@@ -2573,6 +2577,23 @@ B: ...
             </div>
           </div>
           </div><!-- /#dhVcPaneClone -->
+
+          <!-- ━━ Tab: 授权音色素材库（试听后按需克隆） ━━ -->
+          <div id="dhVcPaneLibrary" class="dh-vc-pane" style="display:none">
+            <div style="padding:14px 16px;border:1px solid rgba(33,255,243,.35);background:rgba(33,255,243,.06);border-radius:12px;margin-bottom:14px;line-height:1.7;font-size:13px">
+              <b style="color:var(--dh-primary)">先试听，再克隆，最后用于 TTS</b><br>
+              这里播放的是授权参考录音。点击“克隆并加入我的声音”会执行一次真实 CosyVoice 训练；训练成功后才会出现在剧情旁白、角色对白和数字人配音的可选音色中。
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+              <input id="dhVcLibrarySearch" class="dh-input" style="max-width:360px" placeholder="搜索音色名称、年龄、情绪或场景">
+              <select id="dhVcLibraryCategory" class="dh-input" style="max-width:260px"><option value="">全部分类</option></select>
+              <span id="dhVcLibrarySummary" style="font-size:12px;color:var(--dh-text-muted)"></span>
+            </div>
+            <div id="dhVcLibraryList" class="dh-voice-clone-list">
+              <div class="dh-empty"><div class="dh-empty-icon">⏳</div><div class="dh-empty-text">正在加载授权音色库</div></div>
+            </div>
+            <div id="dhVcLibraryPager" style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:18px"></div>
+          </div>
 
           <!-- ━━ Tab: 我克隆的声音（列表） ━━ -->
           <div id="dhVcPaneList" class="dh-vc-pane" style="display:none">
@@ -2818,4 +2839,3 @@ B: ...
   <script src="/js/digital-human.js?v=20260728-disable-legacy-entry-v53"></script>
 </body>
 </html>
-

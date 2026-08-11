@@ -80,6 +80,7 @@
       '#dhNsaAdClean',
       '#dhNsaAdSample',
       '#dhNsaAdVoiceOpen',
+      '#dhNsaAdRoleVoiceOpen',
       '#dhNsaAdBgmUpload',
       '#dhNsaAdSubtitleStyleBtn',
       '#dhNsaAdProductDrop',

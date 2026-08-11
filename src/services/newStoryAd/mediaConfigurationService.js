@@ -13,6 +13,21 @@ function finiteNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function normalizeVoiceAssignments(value = {}, fallbackVoiceId = '') {
+  const source = value && typeof value === 'object' ? value : {};
+  const rawSpeakers = source.speakers && typeof source.speakers === 'object' ? source.speakers : {};
+  const speakers = {};
+  Object.entries(rawSpeakers).slice(0, 30).forEach(([speaker, voiceId]) => {
+    const safeSpeaker = clean(speaker, 100);
+    const safeVoice = clean(voiceId, 120);
+    if (safeSpeaker && safeVoice) speakers[safeSpeaker] = safeVoice;
+  });
+  return {
+    narrator: clean(source.narrator || source.narrator_voice_id || fallbackVoiceId, 120),
+    speakers,
+  };
+}
+
 /**
  * 在任何配音或视频调用前保存用户确认的媒体选项，保证失败后刷新页面仍能恢复。
  */
@@ -23,13 +38,14 @@ function persistMediaConfiguration(taskId = '', options = {}, storage = defaultS
   const voiceSpecified = hasOwn(options, 'voice_id') || hasOwn(options, 'voiceId');
   const voiceNameSpecified = hasOwn(options, 'voice_name') || hasOwn(options, 'voiceName');
   const bgmSpecified = hasOwn(options, 'bgm_asset') || hasOwn(options, 'bgmAsset');
+  const assignmentsSpecified = hasOwn(options, 'voice_assignments') || hasOwn(options, 'voiceAssignments');
   const subtitleSpecified = hasOwn(options, 'subtitle');
   const voiceId = voiceSpecified
     ? clean(options.voice_id ?? options.voiceId ?? '', 120)
     : clean(current.voice_id || current.voiceId || '', 120);
   const includeVoiceover = voiceId
     ? (hasOwn(options, 'include_voiceover') ? options.include_voiceover !== false : current.include_voiceover !== false)
-    : false;
+    : assignmentsSpecified || Object.keys(current.voice_assignments?.speakers || {}).length > 0;
   const subtitleEnabled = subtitleSpecified ? options.subtitle !== false : current.subtitle !== false;
   const rawSubtitle = options.subtitle_config || options.subtitleConfig || current.subtitle_config || current.subtitleConfig || {};
   const next = {
@@ -38,6 +54,10 @@ function persistMediaConfiguration(taskId = '', options = {}, storage = defaultS
     voice_name: voiceNameSpecified
       ? clean(options.voice_name ?? options.voiceName ?? '', 120)
       : clean(current.voice_name || current.voiceName || '', 120),
+    voice_assignments: normalizeVoiceAssignments(
+      assignmentsSpecified ? (options.voice_assignments ?? options.voiceAssignments) : current.voice_assignments,
+      voiceId,
+    ),
     include_voiceover: includeVoiceover,
     voice_volume: finiteNumber(options.voice_volume ?? options.voiceVolume ?? current.voice_volume ?? current.voiceVolume, 1),
     bgm_volume: finiteNumber(options.bgm_volume ?? options.bgmVolume ?? current.bgm_volume ?? current.bgmVolume, 0.16),

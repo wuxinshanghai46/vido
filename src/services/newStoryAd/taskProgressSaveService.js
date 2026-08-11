@@ -23,10 +23,12 @@ function mediaInvalidatedOutputs(previous = {}, next = {}, { savingProgress = fa
   const requested = String(mediaChangeScope || '').trim().toLowerCase();
   const voiceChanged = JSON.stringify({
     voice_id: previous.voice_id || '',
+    voice_assignments: previous.voice_assignments || {},
     include_voiceover: previous.include_voiceover !== false && !!previous.voice_id,
     voice_volume: Number(previous.voice_volume ?? 1),
   }) !== JSON.stringify({
     voice_id: next.voice_id || '',
+    voice_assignments: next.voice_assignments || {},
     include_voiceover: next.include_voiceover !== false && !!next.voice_id,
     voice_volume: Number(next.voice_volume ?? 1),
   });
@@ -54,7 +56,7 @@ function mediaInvalidatedOutputs(previous = {}, next = {}, { savingProgress = fa
 function preserveUnconfirmedMediaSettings(previous = {}, next = {}, { savingProgress = false, mediaChangeScope = '' } = {}) {
   if (!savingProgress) return next;
   const requested = String(mediaChangeScope || '').trim().toLowerCase();
-  const voiceKeys = ['voice_id', 'voice_name', 'include_voiceover', 'voice_volume'];
+  const voiceKeys = ['voice_id', 'voice_name', 'voice_assignments', 'include_voiceover', 'voice_volume'];
   const composeKeys = ['bgm_asset', 'bgm_volume', 'bgm_profile', 'subtitle', 'subtitle_style', 'subtitle_config'];
   const preservedKeys = requested === 'voice' ? [] : (requested === 'compose' ? voiceKeys : [...voiceKeys, ...composeKeys]);
   return preservedKeys.reduce((result, key) => (

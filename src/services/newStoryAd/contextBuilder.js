@@ -1036,9 +1036,16 @@ function buildContext(body = {}, user = {}) {
     ? (petProfiles.length ? petProfiles : [{ id: 'pet_1', name: '', type: '按广告需求判断', breed: '', appearance: '', reference_images: [] }])
     : [];
   const voiceId = cleanText(body.voice_id || body.voiceId || '', 120);
+  const rawVoiceAssignments = body.voice_assignments || body.voiceAssignments || {};
+  const voiceAssignments = {
+    narrator: cleanText(rawVoiceAssignments.narrator || rawVoiceAssignments.narrator_voice_id || voiceId, 120),
+    speakers: Object.fromEntries(Object.entries(rawVoiceAssignments.speakers || {}).slice(0, 30)
+      .map(([speaker, assignedVoice]) => [cleanText(speaker, 100), cleanText(assignedVoice, 120)])
+      .filter(([speaker, assignedVoice]) => speaker && assignedVoice)),
+  };
   const includeVoiceover = body.include_voiceover === false || body.includeVoiceover === false
     ? false
-    : !!voiceId;
+    : !!voiceId || Object.keys(voiceAssignments.speakers).length > 0;
   const rawSubtitleConfig = body.subtitle_config || body.subtitleConfig || {};
   const subtitleEnabled = body.subtitle !== false && rawSubtitleConfig.show !== false;
   const subtitleStyle = cleanText(body.subtitle_style || body.subtitleStyle || rawSubtitleConfig.style || 'popup', 60);
@@ -1098,6 +1105,7 @@ function buildContext(body = {}, user = {}) {
     shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true,
     voice_id: voiceId,
     voice_name: cleanText(body.voice_name || body.voiceName || '', 120),
+    voice_assignments: voiceAssignments,
     include_voiceover: includeVoiceover,
     voice_volume: Math.max(0, Math.min(1.5, Number(body.voice_volume ?? body.voiceVolume ?? 1) || 1)),
     bgm_volume: Math.max(0, Math.min(1, Number(body.bgm_volume ?? body.bgmVolume ?? 0.16) || 0)),

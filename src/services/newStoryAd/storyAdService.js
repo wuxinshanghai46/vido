@@ -59,6 +59,7 @@ const assetPlan = require('./assetPlanService'), workflowTransition = require('.
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const productionLimits = require('./productionLimitsService');
 const storySceneCoverage = require('./storySceneCoverageService');
+const voicePlan = require('./voicePlanService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -2170,18 +2171,6 @@ function resolveTtsVoiceId(options = {}, ctx = {}, existingTtsAudio = {}) {
   );
 }
 
-function voiceoverEnabled(options = {}, ctx = {}, voiceId = '') {
-  const requested = Object.prototype.hasOwnProperty.call(options, 'include_voiceover')
-    ? options.include_voiceover
-    : options.includeVoiceover;
-  if (requested !== undefined) return requested !== false && !!voiceId;
-  const stored = Object.prototype.hasOwnProperty.call(ctx, 'include_voiceover')
-    ? ctx.include_voiceover
-    : ctx.includeVoiceover;
-  if (stored !== undefined) return stored !== false && !!voiceId;
-  return !!voiceId;
-}
-
 function silentTtsOutput(reason = 'voiceover_disabled') {
   return {
     tracks: [],
@@ -2205,7 +2194,8 @@ async function generateTtsStage(taskId, options = {}) {
   videoSubmissionGate.validateBeforeProvider({ storage, taskId, validate: () => assertVideoInputsReady({ ctx, shots, keyframes, contracts }) });
   const existingTtsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const voiceId = resolveTtsVoiceId(options, ctx, existingTtsAudio);
-  const includeVoiceover = voiceoverEnabled(options, ctx, voiceId);
+  const voiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, existingTtsAudio, voiceId);
+  const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
   storage.updateTask(taskId, { status: 'running', stage: 'tts' });
   storage.saveStage(taskId, 'tts', { status: 'running', input_summary: `${shots.length} shot voice tracks` });
   if (!includeVoiceover) {
@@ -2219,13 +2209,13 @@ async function generateTtsStage(taskId, options = {}) {
     storage.updateTask(taskId, { status: 'done', stage: 'tts_ready' });
     return { tts_audio, skipped: true };
   }
-  const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
+  const reusedTts = ttsReuse.reuseExistingVoiceover({ storage, taskId, ttsAudio: existingTtsAudio, shots, voiceId, voiceAssignments, force: options.force_regenerate_tts === true || options.forceRegenerateTts === true }); if (reusedTts) return reusedTts;
   const tts_audio = await ttsAdapter.generateVoiceover({
-    taskId, shots, voiceId,
+    taskId, shots, voiceId, voiceAssignments,
     speed: options.speed || ctx.tts_speed || 1,
     allowSilentFallback: options.allow_silent_fallback === true || options.allowSilentFallback === true,
     existingTracks: (options.force_regenerate_tts === true || options.forceRegenerateTts === true) ? [] : (existingTtsAudio?.tracks || []),
-    onCheckpoint: tracks => storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() }),
+    onCheckpoint: tracks => storage.saveOutput(taskId, 'tts_audio', { tracks, voice_id: voiceId, voice_assignments: voiceAssignments, provider_used: tracks.find(track => track?.provider_used)?.provider_used || '', warnings: tracks.map(track => track?.warning).filter(Boolean), status: tracks.every(Boolean) ? 'ready' : 'running', updated_at: new Date().toISOString() }),
   });
   storage.saveOutput(taskId, 'tts_audio', tts_audio);
   storage.saveStage(taskId, 'tts', {
@@ -2399,10 +2389,11 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const visualOnly = options.visual_only === true || options.visualOnly === true;
   const selectedVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
   const voiceId = visualOnly ? '' : selectedVoiceId;
-  const includeVoiceover = !visualOnly && voiceoverEnabled(options, ctx, voiceId);
+  const voiceAssignments = visualOnly ? {} : voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio || {}, voiceId);
+  const includeVoiceover = !visualOnly && voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
   const persistedCtx = {
     ...ctx,
-    ...(visualOnly ? {} : { voice_id: voiceId, include_voiceover: includeVoiceover }),
+    ...(visualOnly ? {} : { voice_id: voiceId, voice_assignments: voiceAssignments, include_voiceover: includeVoiceover }),
     output_ratio: options.aspect_ratio || options.aspectRatio || ctx.output_ratio || '9:16',
     video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
   };
@@ -2412,7 +2403,7 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   };
   storage.saveOutput(taskId, 'context', persistedCtx);
   const autoTtsEnabled = includeVoiceover && options.auto_tts !== false && options.autoTts !== false;
-  const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId);
+  const ttsNeedsRefresh = includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId, voiceAssignments);
   if (visualOnly) {
     ttsAudio = silentTtsOutput('visual_only_storyboard_video');
   } else if (!includeVoiceover) {
@@ -3266,8 +3257,9 @@ async function composeStage(taskId, options = {}) {
   stageProgress.update(taskId, { stage: 'compose', phase: 'audio_preparing', completed: 0, total: 3, generationId: composeGenerationId, startedAt: composeStartedAt, message: '正在检查配音、音乐和字幕配置' });
   let ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
   const composeVoiceId = resolveTtsVoiceId(options, ctx, ttsAudio);
-  const includeVoiceover = voiceoverEnabled(options, ctx, composeVoiceId);
-  if (includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, composeVoiceId)) {
+  const composeVoiceAssignments = voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio, composeVoiceId);
+  const includeVoiceover = voicePlan.voiceoverEnabled(options, ctx, composeVoiceId, composeVoiceAssignments);
+  if (includeVoiceover && !ttsAdapter.voiceoverReady(ttsAudio, shots, composeVoiceId, composeVoiceAssignments)) {
     const generatedTts = await generateTtsStage(taskId, options);
     ttsAudio = generatedTts.tts_audio;
     ctx = storage.getOutput(taskId, 'context') || ctx;

@@ -1325,6 +1325,9 @@ function getAvailableVoices() {
     const db = require('../models/database');
     const customVoices = db.listVoices();
     for (const v of customVoices) {
+      // 参考素材、训练中和失败记录只能在声音克隆页查看，不能进入 TTS 选择器。
+      // 只有拿到真实 CosyVoice voice_id 的音色才具备“选择后可生成”的语义。
+      if (!v.aliyun_voice_id || v.status !== 'ready') continue;
       voices.unshift({
         id: v.id,
         name: v.name,
@@ -1334,7 +1337,9 @@ function getAvailableVoices() {
         lang: 'zh',
         tag: '自定义',
         custom: true,
-        filePath: v.file_path
+        filePath: v.file_path,
+        sourceVoicePackId: v.source_voice_pack_id || null,
+        ttsReady: true,
       });
     }
   } catch {}

@@ -1,7 +1,7 @@
 const ttsAdapter = require('./ttsAdapter');
 
-function reuseExistingVoiceover({ storage, taskId = '', ttsAudio = {}, shots = [], voiceId = '', force = false } = {}) {
-  if (force || !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId)) return null;
+function reuseExistingVoiceover({ storage, taskId = '', ttsAudio = {}, shots = [], voiceId = '', voiceAssignments = {}, force = false } = {}) {
+  if (force || !ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId, voiceAssignments)) return null;
   storage.saveStage(taskId, 'tts', {
     status: 'done',
     output_summary: `${ttsAudio.tracks.length} existing audio tracks reused`,

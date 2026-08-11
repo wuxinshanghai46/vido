@@ -241,7 +241,11 @@
     // 图片→视频 promote 的活跃任务（avatarId → pollTimer/taskId）
     promoting: {},
     // 声音克隆
-    voiceClone: { file: null, name: '', gender: 'female', list: [] },
+    voiceClone: {
+      file: null, name: '', gender: 'female', list: [],
+      library: [], libraryPage: 1, libraryPages: 1, libraryTotal: 0,
+      libraryCategories: [], libraryLoading: false,
+    },
     activeTab: 'step1',
     activeTaskType: 'digital_human',
     activeTaskStatus: 'pending',
@@ -2461,21 +2465,27 @@
     renderMyAvatars();
   };
 
-  // Tab 切换 — 声音克隆（克隆 / 列表）
+  // Tab 切换 — 声音克隆（上传 / 授权素材库 / 已克隆列表）
   window._dhSwitchVcTab = function(key) {
     const paneClone = document.getElementById('dhVcPaneClone');
+    const paneLibrary = document.getElementById('dhVcPaneLibrary');
     const paneList = document.getElementById('dhVcPaneList');
     const tabClone = document.getElementById('dhVcTabClone');
+    const tabLibrary = document.getElementById('dhVcTabLibrary');
     const tabList = document.getElementById('dhVcTabList');
-    if (!paneClone || !paneList) return;
+    if (!paneClone || !paneLibrary || !paneList) return;
     const isList = key === 'list';
-    paneClone.style.display = isList ? 'none' : '';
+    const isLibrary = key === 'library';
+    paneClone.style.display = isList || isLibrary ? 'none' : '';
+    paneLibrary.style.display = isLibrary ? '' : 'none';
     paneList.style.display = isList ? '' : 'none';
     const activeStyle = 'background:linear-gradient(135deg,#21FFF3,#FFF600);color:#0D0E12;font-weight:700';
     const idleStyle = 'background:transparent;color:var(--dh-text-muted)';
     const baseStyle = 'padding:8px 18px;border-radius:999px;border:0;cursor:pointer;font-size:13px';
-    if (tabClone) tabClone.style.cssText = baseStyle + ';' + (isList ? idleStyle : activeStyle);
+    if (tabClone) tabClone.style.cssText = baseStyle + ';' + (!isList && !isLibrary ? activeStyle : idleStyle);
+    if (tabLibrary) tabLibrary.style.cssText = baseStyle + ';' + (isLibrary ? activeStyle : idleStyle);
     if (tabList) tabList.style.cssText = baseStyle + ';' + (isList ? activeStyle : idleStyle);
+    if (isLibrary) loadVoicePackLibrary();
   };
 
   // 图片 → 视频 promote（持久化 task_id 到 portrait，刷新页面也能恢复）
@@ -17773,6 +17783,98 @@
     }
   }
 
+  async function loadVoicePackLibrary(page = state.voiceClone.libraryPage || 1) {
+    if (state.voiceClone.libraryLoading) return;
+    state.voiceClone.libraryLoading = true;
+    const host = $('#dhVcLibraryList');
+    if (host) host.innerHTML = '<div class="dh-empty"><div class="dh-empty-icon">⏳</div><div class="dh-empty-text">正在加载授权音色库</div></div>';
+    try {
+      const q = $('#dhVcLibrarySearch')?.value?.trim() || '';
+      const category = $('#dhVcLibraryCategory')?.value || '';
+      const params = new URLSearchParams({ page: String(page), limit: '24' });
+      if (q) params.set('q', q);
+      if (category) params.set('category', category);
+      const r = await fetch('/api/workbench/voice-packs?' + params, { headers: { Authorization: 'Bearer ' + state.token } });
+      const data = await r.json();
+      if (!data?.success) throw new Error(data?.error || '加载失败');
+      state.voiceClone.library = data.voices || [];
+      state.voiceClone.libraryPage = data.page || 1;
+      state.voiceClone.libraryPages = data.pages || 1;
+      state.voiceClone.libraryTotal = data.total || 0;
+      state.voiceClone.libraryCategories = data.categories || [];
+      const count = $('#dhVcLibraryCount');
+      if (count) count.textContent = data.summary?.imported_unique ?? data.total ?? 0;
+      const summary = $('#dhVcLibrarySummary');
+      if (summary) summary.textContent = `共 ${data.total || 0} 个匹配音色 · ${data.summary?.clonable_files || 0} 个满足克隆时长`;
+      const select = $('#dhVcLibraryCategory');
+      if (select && select.options.length <= 1) {
+        select.innerHTML = '<option value="">全部分类</option>' + state.voiceClone.libraryCategories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+      }
+      renderVoicePackLibrary();
+    } catch (err) {
+      if (host) host.innerHTML = `<div class="dh-empty"><div class="dh-empty-icon">⚠️</div><div class="dh-empty-text">音色库加载失败</div><div class="dh-empty-sub">${escapeHtml(err.message)}</div></div>`;
+    } finally {
+      state.voiceClone.libraryLoading = false;
+    }
+  }
+
+  function renderVoicePackLibrary() {
+    const host = $('#dhVcLibraryList');
+    if (!host) return;
+    const list = state.voiceClone.library || [];
+    if (!list.length) {
+      host.innerHTML = '<div class="dh-empty"><div class="dh-empty-icon">🔎</div><div class="dh-empty-text">没有匹配的授权音色</div></div>';
+    } else {
+      host.innerHTML = list.map(v => {
+        const gender = v.gender === 'male' ? '男声' : v.gender === 'female' ? '女声' : v.gender === 'child' ? '童声' : '未标注';
+        return `<div class="dh-vc-card" data-voice-pack-card="${v.id}">
+          <div class="dh-vc-head"><div class="dh-vc-name">🎧 ${escapeHtml(v.name)}</div><div class="dh-vc-status ${v.clonable ? 'ok' : 'pending'}">${v.clonable ? '可克隆' : '仅试听'}</div></div>
+          <div class="dh-vc-provider">${escapeHtml(gender)} · ${escapeHtml(v.category || '未分类')} · ${Number(v.duration || 0).toFixed(1)} 秒</div>
+          <audio controls preload="none" src="/api/workbench/voice-packs/${encodeURIComponent(v.id)}/audio?token=${encodeURIComponent(state.token || '')}" style="width:100%;margin-top:10px"></audio>
+          <div class="dh-vc-actions" style="margin-top:10px">
+            <button data-voice-pack-clone="${v.id}" ${v.clonable ? '' : 'disabled title="样本短于 10 秒，不能提交克隆"'} style="${v.clonable ? 'background:var(--dh-gradient);color:#0D0E12;border:0;font-weight:700' : ''}">${v.clonable ? '克隆并加入我的声音' : '时长不足，仅可试听'}</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+    const pager = $('#dhVcLibraryPager');
+    if (pager) {
+      const page = state.voiceClone.libraryPage;
+      const pages = state.voiceClone.libraryPages;
+      pager.innerHTML = `<button class="dh-btn dh-btn-ghost" data-voice-pack-page="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button><span style="font-size:12px;color:var(--dh-text-muted)">第 ${page} / ${pages} 页</span><button class="dh-btn dh-btn-ghost" data-voice-pack-page="${page + 1}" ${page >= pages ? 'disabled' : ''}>下一页</button>`;
+    }
+  }
+
+  async function cloneVoicePack(id) {
+    const voice = state.voiceClone.library.find(v => v.id === id);
+    if (!voice) return toast('找不到该参考音色', 'error');
+    const ok = await DhConfirm({
+      title: '克隆并加入我的声音',
+      message: `将「${escapeHtml(voice.name)}」克隆为可生成 TTS 的音色？`,
+      detail: '你已确认该素材具有合法授权。本操作会执行一次真实 CosyVoice 克隆调用；成功后可用于剧情旁白、角色对白和数字人口播。同一音色不会重复提交。',
+      confirmText: '确认克隆一次',
+      type: 'primary',
+    });
+    if (!ok) return;
+    const button = document.querySelector(`[data-voice-pack-clone="${id}"]`);
+    if (button) { button.disabled = true; button.textContent = '正在克隆…'; }
+    try {
+      const r = await fetch(`/api/workbench/voice-packs/${encodeURIComponent(id)}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
+        body: JSON.stringify({ confirm_authorized_use: true, confirm_provider_charge: true }),
+      });
+      const data = await r.json();
+      if (!data?.success) throw new Error(data?.error || '克隆失败');
+      toast(`✅「${voice.name}」已加入我的声音，可用于 TTS`, 'success');
+      await loadVoiceClones();
+      window._dhSwitchVcTab('list');
+    } catch (err) {
+      toast('克隆失败：' + err.message, 'error');
+      if (button) { button.disabled = false; button.textContent = '克隆并加入我的声音'; }
+    }
+  }
+
   async function loadVoiceClones({ skipImmediateRefresh = false } = {}) {
     try {
       const r = await fetch('/api/workbench/voices', { headers: { Authorization: 'Bearer ' + state.token } });
@@ -19297,6 +19399,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (vcEditBtn) { editVoiceClone(vcEditBtn.dataset.vcEdit); return; }
     const vcRecloneAliyun = closest('[data-vc-reclone-aliyun]');
     if (vcRecloneAliyun) { recloneWithAliyun(vcRecloneAliyun.dataset.vcRecloneAliyun); return; }
+    const voicePackClone = closest('[data-voice-pack-clone]');
+    if (voicePackClone) { cloneVoicePack(voicePackClone.dataset.voicePackClone); return; }
+    const voicePackPage = closest('[data-voice-pack-page]');
+    if (voicePackPage && !voicePackPage.disabled) { loadVoicePackLibrary(Number(voicePackPage.dataset.voicePackPage || 1)); return; }
 
     // 双人定制主持人
     const customHostBtn = closest('[data-custom-host]');
@@ -19556,6 +19662,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
     if (e.target.id === 'dhS3Text') updateS3Meta();
     if (e.target.id === 'dhDualScript') updateDualCount();
     if (e.target.id === 'dhVoiceSearch') renderVoices();
+    if (e.target.id === 'dhVcLibrarySearch') {
+      clearTimeout(loadVoicePackLibrary._searchTimer);
+      loadVoicePackLibrary._searchTimer = setTimeout(() => loadVoicePackLibrary(1), 250);
+    }
     if (e.target.dataset?.vcSpeed) {
       const id = e.target.dataset.vcSpeed;
       const label = document.querySelector(`[data-vc-speed-label="${id}"]`);
@@ -19568,6 +19678,10 @@ const gChip = closest('[data-gender]'); if (gChip) { selectGender(gChip.dataset.
   }, true);
 
   document.addEventListener('change', async (e) => {
+    if (e.target.id === 'dhVcLibraryCategory') {
+      loadVoicePackLibrary(1);
+      return;
+    }
     if (e.target.matches?.('[data-lux-control-product-enabled]')) {
       if (luxuryAdStepIsLocked(1)) return toast(luxuryAdLockedStepMessage(1), 'error');
       const ctrl = luxuryControlledProduction();

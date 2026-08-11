@@ -35,6 +35,7 @@
     "platform:loading:test": "node scripts/test-media-delivery.js && node scripts/test-platform-loading-optimization.js && npm run platform:navigation:test",
     "platform:capability:audit": "node scripts/audit-pipeline-capabilities.js",
     "platform:capability:test": "node scripts/test-pipeline-stage-selection.js && node scripts/test-pipeline-capability-audit.js",
+    "voice-pack:test": "node scripts/test-authorized-voice-pack-library.js && node scripts/test-new-story-ad-multi-voice-tts.js",
     "platform:upgrade:test": "npm run platform:loading:test && npm run platform:capability:test && npm run video-canvas:test && npm run story-ad:v2:test && npm run story-ad:v6:test",
     "story-ad:v3:boundaries": "node scripts/check-new-story-ad-v3-boundaries.js",
     "story-ad:dossier:boundaries": "node scripts/check-new-story-ad-dossier-boundaries.js",

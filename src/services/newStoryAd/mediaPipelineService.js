@@ -5,14 +5,14 @@ const mediaConfiguration = require('./mediaConfigurationService');
 /**
  * 判断当前配音是否已经与分镜和音色完全一致，避免重复生成可复用的 TTS。
  */
-function voiceoverPlanIsReady(taskId = '', voiceId = '', storage = defaultStorage, ttsAdapter = defaultTtsAdapter) {
-  if (!voiceId) return true;
+function voiceoverPlanIsReady(taskId = '', voiceId = '', voiceAssignments = {}, storage = defaultStorage, ttsAdapter = defaultTtsAdapter) {
+  if (!voiceId && !Object.keys(voiceAssignments?.speakers || {}).length) return true;
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table'))
     ? storage.getOutput(taskId, 'storyboard_table')
     : [];
   const ttsAudio = storage.getOutput(taskId, 'tts_audio') || {};
-  if (typeof ttsAdapter.voiceoverReady === 'function') return ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId);
-  return ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId);
+  if (typeof ttsAdapter.voiceoverReady === 'function') return ttsAdapter.voiceoverReady(ttsAudio, shots, voiceId, voiceAssignments);
+  return ttsAdapter.voiceoverPlanMatches(ttsAudio, shots, voiceId, voiceAssignments);
 }
 
 /**
@@ -33,10 +33,11 @@ async function runMediaPipeline({
     generation_id: generationId,
     voice_id: context.voice_id || '',
     voice_name: context.voice_name || '',
+    voice_assignments: context.voice_assignments || {},
     include_voiceover: context.include_voiceover === true,
     bgm_asset: context.bgm_asset || null,
   };
-  if (payload.include_voiceover && !voiceoverPlanIsReady(taskId, payload.voice_id, storage, ttsAdapter)) {
+  if (payload.include_voiceover && !voiceoverPlanIsReady(taskId, payload.voice_id, payload.voice_assignments, storage, ttsAdapter)) {
     await service.generateTtsStage(taskId, payload);
   }
   const videoResult = await service.generateVideoStage(taskId, {

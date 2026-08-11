@@ -25,6 +25,7 @@
     '/js/new-story-ad/keyframes.js',
     '/js/new-story-ad/uploads.js',
     '/js/new-story-ad/story-setup.js',
+    '/js/new-story-ad/role-voice-ui.js',
     '/js/new-story-ad/person-reference-inheritance.js',
     '/js/new-story-ad/reference-video-analysis.js',
     '/js/new-story-ad/brand-overlay.js',

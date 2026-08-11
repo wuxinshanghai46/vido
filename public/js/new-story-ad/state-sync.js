@@ -648,6 +648,8 @@
     window.NewStoryAdStorySetup?.hydrate(state, request);
     state.voiceId = request.voice_id || request.voiceId || state.voiceId || '';
     state.voiceName = request.voice_name || request.voiceName || state.voiceName || '';
+    state.voiceAssignments = request.voice_assignments || request.voiceAssignments || state.voiceAssignments || { narrator: state.voiceId, speakers: {} };
+    state.voiceAssignments.narrator = state.voiceAssignments.narrator || state.voiceId || '';
     state.subtitleEnabled = request.subtitle !== false;
     state.subtitleStyle = request.subtitle_style || request.subtitleStyle || state.subtitleStyle || 'popup';
     const subtitleConfig = request.subtitle_config || request.subtitleConfig || {};

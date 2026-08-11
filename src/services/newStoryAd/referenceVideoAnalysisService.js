@@ -77,9 +77,21 @@ function uploadSessionPath(userId, sessionId) {
 
 function writeJsonAtomic(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf8');
-  fs.renameSync(tmp, filePath);
+  let lastError = null;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      fs.renameSync(tmp, filePath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error?.code)) break;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(100, 5 * (attempt + 1)));
+    }
+  }
+  try { fs.unlinkSync(tmp); } catch {}
+  throw lastError;
 }
 
 function readRecord(userId, analysisId) {

@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
+const ffmpegPath = require('ffmpeg-static');
 const ttsService = require('../ttsService');
 const cancellation = require('./cancellationContext');
 
@@ -79,16 +81,59 @@ function shotSpeechText(shot = {}) {
   }).join(' ');
 }
 
-function voiceoverPlanMatches(ttsAudio = {}, shots = [], voiceId = '') {
+function normalizeVoiceAssignments(value = {}, fallbackVoiceId = '') {
+  const source = value && typeof value === 'object' ? value : {};
+  const speakers = {};
+  Object.entries(source.speakers || {}).slice(0, 30).forEach(([speaker, voice]) => {
+    const safeSpeaker = normalizeSpeechSegment(speaker);
+    const safeVoice = normalizeSpeechSegment(voice);
+    if (safeSpeaker && safeVoice) speakers[safeSpeaker] = safeVoice;
+  });
+  return {
+    narrator: normalizeSpeechSegment(source.narrator || source.narrator_voice_id || fallbackVoiceId),
+    speakers,
+  };
+}
+
+function shotSpeechUnits(shot = {}, fallbackVoiceId = '', voiceAssignments = {}) {
+  const mode = speechMode(shot);
+  if (mode === 'silent') return [];
+  const assignments = normalizeVoiceAssignments(voiceAssignments, fallbackVoiceId);
+  if (mode !== 'on_camera_dialogue') {
+    const text = shotSpeechText(shot);
+    return text ? [{ speaker: '旁白', text, voice_id: assignments.narrator || fallbackVoiceId, kind: 'narration' }] : [];
+  }
+  const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
+  const units = dialogue.map(line => {
+    const speaker = normalizeSpeechSegment(line?.speaker || '');
+    const text = normalizeSpeechSegment(line?.line || line?.text || '');
+    return { speaker, text, voice_id: assignments.speakers[speaker] || line?.voice_id || fallbackVoiceId, kind: 'dialogue' };
+  }).filter(unit => unit.text);
+  if (units.length) return units;
+  const text = shotSpeechText(shot);
+  const speaker = normalizeSpeechSegment(shot.speaker || shot.characters?.[0]?.name || '');
+  return text ? [{ speaker, text, voice_id: assignments.speakers[speaker] || fallbackVoiceId, kind: 'dialogue' }] : [];
+}
+
+function voiceSignature(shot = {}, fallbackVoiceId = '', voiceAssignments = {}) {
+  return shotSpeechUnits(shot, fallbackVoiceId, voiceAssignments)
+    .map(unit => `${unit.speaker}:${unit.voice_id}:${unit.text}`)
+    .join('|');
+}
+
+function voiceoverPlanMatches(ttsAudio = {}, shots = [], voiceId = '', voiceAssignments = {}) {
   const tracks = Array.isArray(ttsAudio?.tracks) ? ttsAudio.tracks : [];
   const shotList = Array.isArray(shots) ? shots : [];
   if (tracks.length !== shotList.length) return false;
   const expectedVoiceId = normalizeSpeechSegment(voiceId);
   const storedVoiceId = normalizeSpeechSegment(ttsAudio?.voice_id || ttsAudio?.voiceId || '');
   if (expectedVoiceId && storedVoiceId !== expectedVoiceId) return false;
-  return shotList.every((shot, index) => (
-    normalizeSpeechSegment(tracks[index]?.text) === shotSpeechText(shot)
-  ));
+  const multiVoice = Object.keys(voiceAssignments?.speakers || {}).length > 0;
+  return shotList.every((shot, index) => {
+    const storedSignature = String(tracks[index]?.voice_signature || '');
+    return normalizeSpeechSegment(tracks[index]?.text) === shotSpeechUnits(shot, voiceId, voiceAssignments).map(unit => unit.text).join(' ')
+      && ((!multiVoice && !storedSignature) || storedSignature === voiceSignature(shot, voiceId, voiceAssignments));
+  });
 }
 
 function voiceoverFilesReady(ttsAudio = {}) {
@@ -110,8 +155,8 @@ function trackFileReady(track = {}) {
   }
 }
 
-function voiceoverReady(ttsAudio = {}, shots = [], voiceId = '') {
-  return voiceoverPlanMatches(ttsAudio, shots, voiceId) && voiceoverFilesReady(ttsAudio);
+function voiceoverReady(ttsAudio = {}, shots = [], voiceId = '', voiceAssignments = {}) {
+  return voiceoverPlanMatches(ttsAudio, shots, voiceId, voiceAssignments) && voiceoverFilesReady(ttsAudio);
 }
 
 function wavHeader({ sampleRate, channels, bitsPerSample, dataBytes }) {
@@ -165,11 +210,15 @@ async function generateShotAudio({
   shot = {},
   index = 0,
   voiceId = '',
+  voiceAssignments = {},
   speed = 1,
   allowSilentFallback = false,
 } = {}) {
+  ensureDir(AUDIO_DIR);
   const mode = speechMode(shot);
-  const text = shotSpeechText(shot);
+  const units = shotSpeechUnits(shot, voiceId, voiceAssignments);
+  const text = units.map(unit => unit.text).join(' ');
+  const signature = voiceSignature(shot, voiceId, voiceAssignments);
   const base = safeBase(`nsa_${taskId || 'task'}_${String(index + 1).padStart(2, '0')}_${Date.now()}`);
   const estimatedDuration = clamp(shot.duration_sec || shot.duration || Math.ceil(Math.max(1, text.length) / 5), 1.2, 10, 3);
   if (mode === 'silent') {
@@ -182,6 +231,8 @@ async function generateShotAudio({
       duration_sec: estimatedDuration,
       provider_used: 'local/silent-shot',
       speech_mode: 'silent',
+      voice_signature: signature,
+      speech_units: [],
     });
   }
   if (!text) throw new Error(`第 ${index + 1} 镜没有可生成的旁白或台词`);
@@ -196,18 +247,38 @@ async function generateShotAudio({
       provider_used: 'mock/new-story-ad-tts',
       warning: 'test-only silent timing audio',
       speech_mode: mode,
+      voice_signature: signature,
+      speech_units: units,
     });
   }
-  if (!voiceId) throw new Error('未选择配音音色，不能生成真实配音');
+  if (units.some(unit => !unit.voice_id)) {
+    const missing = units.filter(unit => !unit.voice_id).map(unit => unit.speaker || '未标注角色');
+    throw new Error(`以下说话人未选择配音音色：${[...new Set(missing)].join('、')}`);
+  }
 
   const outBase = path.join(AUDIO_DIR, `${base}.mp3`);
   try {
     cancellation.throwIfCancelled(taskId);
-    const actual = await ttsService.generateSpeech(text, outBase, {
-      speed: clamp(speed, 0.5, 1.8, 1),
-      voiceId,
-      signal: cancellation.signal(),
-    });
+    const generatedUnits = [];
+    for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
+      const unit = units[unitIndex];
+      const unitBase = units.length === 1 ? outBase : path.join(AUDIO_DIR, `${base}_unit_${unitIndex + 1}.mp3`);
+      const actualUnit = await ttsService.generateSpeech(unit.text, unitBase, {
+        speed: clamp(speed, 0.5, 1.8, 1),
+        voiceId: unit.voice_id,
+        signal: cancellation.signal(),
+      });
+      if (!actualUnit || !fs.existsSync(actualUnit)) throw new Error(`说话人 ${unit.speaker || unitIndex + 1} 的音色 ${unit.voice_id} 未生成有效文件`);
+      generatedUnits.push({ ...unit, file_path: actualUnit });
+    }
+    let actual = generatedUnits[0]?.file_path || '';
+    if (generatedUnits.length > 1) {
+      const args = generatedUnits.flatMap(unit => ['-i', unit.file_path]);
+      const inputs = generatedUnits.map((_, i) => `[${i}:a]`).join('');
+      args.push('-filter_complex', `${inputs}concat=n=${generatedUnits.length}:v=0:a=1[outa]`, '-map', '[outa]', '-ac', '1', '-ar', '24000', '-b:a', '128k', '-y', outBase);
+      execFileSync(ffmpegPath, args, { timeout: 120000, stdio: 'pipe' });
+      actual = outBase;
+    }
     cancellation.throwIfCancelled(taskId);
     if (!actual || !fs.existsSync(actual)) throw new Error(`所选音色 ${voiceId} 未生成有效配音文件`);
     return publicResult(actual, {
@@ -215,8 +286,10 @@ async function generateShotAudio({
       index: index + 1,
       text,
       duration_sec: estimatedDuration,
-      provider_used: `${ttsService.voiceProviderForId(voiceId) || 'shared-tts'}/${voiceId}`,
+      provider_used: [...new Set(units.map(unit => `${ttsService.voiceProviderForId(unit.voice_id) || 'shared-tts'}/${unit.voice_id}`))].join(','),
       speech_mode: mode,
+      voice_signature: signature,
+      speech_units: units,
     });
   } catch (err) {
     if (err?.code === 'USER_CANCELLED' || err?.cancelled === true) throw err;
@@ -231,6 +304,8 @@ async function generateShotAudio({
       provider_used: 'local/silent-audio-fallback',
       speech_mode: mode,
       warning: String(err.message || err).slice(0, 500),
+      voice_signature: signature,
+      speech_units: units,
     });
   }
 }
@@ -239,6 +314,7 @@ async function generateVoiceover({
   taskId = '',
   shots = [],
   voiceId = '',
+  voiceAssignments = {},
   speed = 1,
   allowSilentFallback = false,
   existingTracks = [],
@@ -250,7 +326,8 @@ async function generateVoiceover({
   const tracks = Array.from({ length: list.length }, (_, index) => {
     const track = previous[index];
     return trackFileReady(track)
-      && normalizeSpeechSegment(track?.text) === shotSpeechText(list[index])
+      && normalizeSpeechSegment(track?.text) === shotSpeechUnits(list[index], voiceId, voiceAssignments).map(unit => unit.text).join(' ')
+      && String(track?.voice_signature || '') === voiceSignature(list[index], voiceId, voiceAssignments)
       ? track
       : null;
   });
@@ -264,6 +341,7 @@ async function generateVoiceover({
       shot: list[index],
       index,
       voiceId,
+      voiceAssignments,
       speed,
       allowSilentFallback,
     })));
@@ -274,6 +352,7 @@ async function generateVoiceover({
   return {
     tracks,
     voice_id: voiceId,
+    voice_assignments: normalizeVoiceAssignments(voiceAssignments, voiceId),
     provider_used: tracks.find(x => x.provider_used)?.provider_used || '',
     warnings: tracks.map(x => x.warning).filter(Boolean),
   };
@@ -285,6 +364,8 @@ module.exports = {
   publicAudioUrl,
   speechMode,
   shotSpeechText,
+  shotSpeechUnits,
+  voiceSignature,
   voiceoverPlanMatches,
   voiceoverFilesReady,
   voiceoverReady,
