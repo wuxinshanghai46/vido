@@ -96,7 +96,7 @@ function main() {
   const initialBytes = INITIAL_FILES.reduce((sum, file) => sum + sourceBytes(path.join(ROOT, file)), 0);
   const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
   const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
-  const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails)/.test(file));
+  const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails|assetCenterBillingReviewDialog)/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorldView/.test(file));

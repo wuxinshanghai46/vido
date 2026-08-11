@@ -80,6 +80,22 @@ function availableImageCandidates(stage) {
     });
 }
 
+function imageCandidateAvailability(candidatePool = [], limit = IMAGE_MAX_CANDIDATES) {
+  const rows = (Array.isArray(candidatePool) ? candidatePool : []).map(model => ({
+    model,
+    health: modelGateway.healthState(model),
+  }));
+  const available = rows.filter(row => !row.health.circuit_open).map(row => row.model).slice(0, limit);
+  const cooldowns = rows.map(row => Number(row.health.cooldown_remaining_ms || 0)).filter(value => value > 0);
+  return {
+    available,
+    configured_count: rows.length,
+    circuit_open_count: rows.filter(row => row.health.circuit_open).length,
+    retry_after_ms: cooldowns.length ? Math.min(...cooldowns) : 0,
+    blocked_until_config_change: rows.length > 0 && rows.every(row => row.health.blocked_until_config_change === true),
+  };
+}
+
 function preferredMatches(model = {}, preferred = '') {
   const raw = String(preferred || '').trim().toLowerCase();
   if (!raw || raw === 'auto') return true;
@@ -502,9 +518,8 @@ async function generateImage({
   const candidatePool = requiredModel
     ? preferredCandidates
     : (preferredCandidates.length ? preferredCandidates : candidates);
-  const filtered = candidatePool
-    .filter(model => !modelGateway.healthState(model).circuit_open)
-    .slice(0, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
+  const availability = imageCandidateAvailability(candidatePool, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
+  const filtered = availability.available;
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
   const errors = [];
   const effectiveGenerationId = String(generationId || cancellation.current()?.generationId || taskId || '').slice(0, 120);
@@ -519,11 +534,17 @@ async function generateImage({
     }));
   }
   if (!filtered.length) {
-    const error = new Error(requiredModel
-      ? `剧情广告图片只允许使用 ${requiredModel}，但当前没有可用通道；已停止生成且不会回退其他图片模型。`
-      : `new_story_ad image models unavailable for ${stage}: no enabled candidate inside the current circuit-breaker window`);
-    error.code = requiredModel ? 'NEW_STORY_AD_IMAGE2_UNAVAILABLE' : 'IMAGE_CIRCUIT_OPEN';
+    const coolingDown = availability.retry_after_ms > 0;
+    const retrySeconds = Math.max(1, Math.ceil(availability.retry_after_ms / 1000));
+    const error = new Error(coolingDown
+      ? `${requiredModel || '图片模型'}刚发生超时或供应商故障，系统已暂停该通道约 ${retrySeconds} 秒以避免连续提交和重复费用；本次没有发起新的图片调用，已成功资产继续保留。`
+      : (requiredModel
+        ? `剧情广告图片只允许使用 ${requiredModel}，但当前配置没有可执行通道；本次没有发起新的图片调用，也不会回退到未经确认的图片模型。`
+        : `new_story_ad image models unavailable for ${stage}: no enabled candidate`));
+    error.code = coolingDown ? 'IMAGE_CIRCUIT_OPEN' : (requiredModel ? 'NEW_STORY_AD_IMAGE2_UNAVAILABLE' : 'IMAGE_MODEL_UNAVAILABLE');
     error.retryable = true;
+    error.retryAfterMs = availability.retry_after_ms;
+    error.modelAvailability = availability;
     throw error;
   }
   for (let candidateIndex = 0; candidateIndex < filtered.length; candidateIndex += 1) {
@@ -810,6 +831,7 @@ module.exports = {
   applyImageModelPolicy,
   invokeWithAuditSafeRetry,
   availableImageCandidates,
+  imageCandidateAvailability,
   generateImage,
   generateActorReference,
   splitActorSheet,

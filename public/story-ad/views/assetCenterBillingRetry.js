@@ -1,6 +1,5 @@
-import { request } from '../api.js?v=20260811-ui-v188';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v188';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v188';
+import { request } from '../api.js?v=20260811-ui-v190';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v190';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -20,37 +19,28 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
   };
 }
 
-function reviewLabel(review = {}) {
-  if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;
-  return `人物 / 动物的${review.unit || '图片单元'}`;
+let billingReviewDialogPromise;
+function billingReviewDialog() {
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260811-ui-v190');
+  return billingReviewDialogPromise;
+}
+export async function loadBillingReviews(options = {}) {
+  return (await billingReviewDialog()).loadBillingReviews(options);
+}
+export async function confirmBillingAwareAction(options = {}) {
+  return (await billingReviewDialog()).confirmBillingAwareAction(options);
 }
 
-export async function authorizeBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '' } = {}) {
+export async function authorizeBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '', reviewBatch = null } = {}) {
   const taskId = bundle?.project?.id || '';
   if (!taskId) return [];
-  const response = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/billing-reviews`);
-  const reviews = (Array.isArray(response.reviews) ? response.reviews : []).filter(review => {
-    if (review.authorized) return false;
-    if (lane && review.lane !== lane) return false;
-    if (sceneId && review.kind === 'scene' && review.scene_id !== sceneId) return false;
-    if (subjectId && review.kind === 'subject' && review.subject_id && review.subject_id !== subjectId) return false;
-    return true;
-  });
+  const prepared = reviewBatch || await loadBillingReviews({ bundle, lane, subjectId, sceneId });
+  const reviews = prepared.reviews || [];
   for (const review of reviews) {
-    const label = reviewLabel(review);
-    const accepted = await confirmDialog(
-      `${label}上次已经提交给供应商，但没有取得可核对的最终计费结果。只针对这一项重试可能产生一次重复费用；其他已成功图片会继续复用，不会重新提交。`,
-      { title: `逐项核对：${label}`, confirmText: '接受这一项风险并重试' },
-    );
-    if (!accepted) {
-      const error = new Error(`已取消${label}的一次性重试授权，未提交新的模型调用。`);
-      error.code = 'BILLING_REVIEW_CANCELLED';
-      throw error;
-    }
     await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/retry-authorization`, {
       method: 'POST',
       body: {
-        support_id: response.support_id,
+        support_id: prepared.support_id,
         checkpoint_key: review.review_key,
         accept_duplicate_charge_risk: true,
       },
@@ -85,15 +75,18 @@ export function bindCombinedVisualGeneration({
         : `草稿质量每个场景使用 1 张 2×2 视角图集和 1 张布局图，最多产生 2 次图片模型调用；切片保持母图原生像素，不会插值放大。当前缺失场景最多 ${missingSceneCount * 2} 次调用。`)
       : '';
     const confirmation = billingReviewRequired
-      ? '当前存在需要逐项核对的计费未知图片。继续后会分别显示每一个具体失败单元，由你逐项确认；没有确认的单元不会提交，已有成功资产会继续复用。'
+      ? '当前存在计费未知图片。本次只继续缺失单元，已有成功资产会继续复用；需要接受的重复计费风险会合并在这一次确认中。'
       : `将同步生成${summary}。${missingSubjectCount ? '人物档案会把穿搭与配饰生成为独立物件图，并按实际单品类别产生对应图片模型调用。' : ''}${sceneCostNotice}人物与场景分别保存进度；任一分支失败不会删除另一分支已完成的资产，再次提交只会继续缺失项。`;
-    if (!await confirmDialog(confirmation, {
+    const confirmationResult = await confirmBillingAwareAction({
+      bundle,
+      message: confirmation,
       title: billingReviewRequired ? '接受可能重复计费并继续' : '确认同步生成人物与场景',
       confirmText: billingReviewRequired ? '我接受风险，继续缺失项' : '开始同步生成',
-    })) return;
+    });
+    if (!confirmationResult.accepted) return;
     try {
       setButtonBusy(button, true, '正在提交同步生成…', { elapsed: true });
-      if (billingReviewRequired) await authorizeBillingReviews({ bundle });
+      if (billingReviewRequired) await authorizeBillingReviews({ bundle, reviewBatch: confirmationResult.reviewBatch });
       await store.runStage('visual-assets', {
         ...subjectPayload,
         generate_subjects: missingSubjectCount > 0,

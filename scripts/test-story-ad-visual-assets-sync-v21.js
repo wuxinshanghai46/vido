@@ -25,6 +25,7 @@ assert.strictEqual(partialManifest.counts.pending_scenes, 1);
 
 const assetView = read('public/story-ad/views/assetCenterView.js');
 const billingRetryView = read('public/story-ad/views/assetCenterBillingRetry.js');
+const billingReviewDialog = read('public/story-ad/views/assetCenterBillingReviewDialog.js');
 const mountBody = assetView.slice(assetView.indexOf('export async function mount'));
 assert(mountBody.indexOf('renderSections(assets, total)') < mountBody.indexOf('renderSceneWorldWorkspace(bundle)'), 'SceneWorld must render below scene assets');
 assert(assetView.includes('data-generate-visual-assets'));
@@ -69,7 +70,12 @@ assert(assetView.includes("lane: 'scenes'"), '场景按钮必须只核对当前�
 assert(billingRetryView.includes('accept_duplicate_charge_risk: true'));
 assert(billingRetryView.includes('/visual-assets/retry-authorization'));
 assert(billingRetryView.includes('checkpoint_key: review.review_key'), '计费风险授权必须精确到单个 checkpoint');
-assert(billingRetryView.includes('for (const review of reviews)'), '多个计费未知单元必须逐项确认，不能批量授权');
+assert.strictEqual((billingReviewDialog.match(/confirmDialog\(/g) || []).length, 1, '一次用户操作只能出现一个计费确认弹窗');
+assert(billingReviewDialog.includes('本次一次确认同时覆盖'), '多个未知计费单元必须合并成一次明确确认');
+assert(billingReviewDialog.includes('最多可能产生'), '批量确认必须展示最大重复费用次数');
+assert(billingRetryView.includes('for (const review of reviews)'), '一次确认后仍必须逐 checkpoint 创建一次性授权');
+assert(!billingReviewDialog.includes('逐项核对：'), '不得再次为每个单元弹出确认框');
+assert(billingRetryView.includes("import('./assetCenterBillingReviewDialog.js"), '计费确认界面必须只在用户点击时按需加载');
 assert(billingRetryView.includes("progress.billing_state === 'unknown'"), '再次供应商未知后必须继续显示费用风险入口');
 assert(billingRetryView.includes("subjectLane.billing_state === 'unknown'"), '主体分支未知计费必须继续锁定通用生成入口');
 
@@ -82,6 +88,8 @@ const adapter = read('src/services/newStoryAd/mediaAdapter.js');
 assert(adapter.includes("'new_story_ad.image_provider'"), 'all image calls must share one provider pool');
 assert(adapter.includes('generationBillingGuard.run'), '计费未知后必须阻止同一图片单元再次提交');
 assert(adapter.includes('unitKey: clientRequestId'), '计费未知必须只冻结精确图片单元，不能拖停整次任务');
+assert(adapter.includes("error.code = coolingDown ? 'IMAGE_CIRCUIT_OPEN'"), '断路器冷却不得再误报为模型配置没有可用通道');
+assert(adapter.includes('本次没有发起新的图片调用'), '断路器提示必须明确当前没有产生新费用');
 const deployRelease = collectStoryAdReleaseFiles({ root }).map(file => `'${file}'`).join('\n');
 assert(deployRelease.includes("'src/services/newStoryAd/sceneBindingService.js'"), '场景权威合并运行文件必须进入生产发布清单');
 

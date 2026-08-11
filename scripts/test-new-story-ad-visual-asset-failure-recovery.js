@@ -55,6 +55,10 @@ async function main() {
       true,
       'an overlapping success must not clear an ambiguity cooldown opened for other users',
     );
+    const availability = mediaAdapter.imageCandidateAvailability([providerModel], 1);
+    assert.strictEqual(availability.available.length, 0, 'an open provider circuit must remove the model from executable candidates');
+    assert.strictEqual(availability.circuit_open_count, 1);
+    assert.ok(availability.retry_after_ms > 0, 'the unavailable-channel response must expose a concrete cooldown');
   } finally {
     projectStorage.readHealth = originalReadHealth;
     projectStorage.writeHealth = originalWriteHealth;

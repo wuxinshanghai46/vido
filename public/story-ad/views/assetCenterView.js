@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260811-ui-v188';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v188';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v188';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v188';
-import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v188';
-import { authorizeBillingReviews, bindCombinedVisualGeneration, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v188';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v188';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v188';
-import { assetCardMedia, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260811-ui-v188';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v188';
+import { request } from '../api.js?v=20260811-ui-v190';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v190';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v190';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260811-ui-v190';
+import { bindSceneWorldWorkspace, renderSceneWorldWorkspace } from './sceneWorldView.js?v=20260811-ui-v190';
+import { authorizeBillingReviews, bindCombinedVisualGeneration, confirmBillingAwareAction, visualGenerationState } from './assetCenterBillingRetry.js?v=20260811-ui-v190';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260811-ui-v190';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260811-ui-v190';
+import { assetCardMedia, sceneNeedsGeneration } from './sceneDossierCard.js?v=20260811-ui-v190';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260811-ui-v190';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -213,7 +213,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v188');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260811-ui-v190');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -238,7 +238,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v188'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260811-ui-v190'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -289,16 +289,22 @@ export async function mount(host, context) {
       ? `将为“${target.name}”重生成4类20项人物视图。保留人物身份和文字规划；完成后需刷新下游视觉资产。`
       : `将生成 ${selected} 个主体；自动补齐缺少的服装、鞋履、配饰、配色和面料，再调用图片模型。`;
     const confirmation = `${lookNotice}${confirmationBase}`;
-    if (!await confirmDialog(confirmation, {
+    const confirmationResult = await confirmBillingAwareAction({
+      bundle,
+      lane: 'subjects',
+      subjectId: target?.subject_id || target?.profile?.id || '',
+      message: confirmation,
       title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产'),
       confirmText: regeneratingCompletePerson ? '确认重生成完整档案' : '确认开始生成',
-    })) return false;
+    });
+    if (!confirmationResult.accepted) return false;
     try {
       setButtonBusy(button, true, regeneratingCompletePerson ? '正在重生成完整档案…' : '正在生成完整档案…', { elapsed: true });
       await authorizeBillingReviews({
         bundle,
         lane: 'subjects',
         subjectId: target?.subject_id || target?.profile?.id || '',
+        reviewBatch: confirmationResult.reviewBatch,
       });
       await store.runStage('subject-assets', payload);
       toast(regeneratingCompletePerson ? '人物视觉档案重生成已提交；剧情、文字故事板和场景分配会继续保留。' : '人物或动物资产生成已提交，页面顶部会持续显示阶段、百分比和耗时。', 'success');
@@ -338,10 +344,15 @@ export async function mount(host, context) {
         ? `“${item.name}”已有成功视图，本次只补齐 ${repairKeys.length} 个未通过的视图（${repairKeys.join('、')}）；其余成功图片会原样保留，不会重复调用。`
         : `“${item.name}”已有空间母版和机位。当前没有可定向补齐的失败视图；继续将完整重建该场景并产生全部视图的模型调用。`)
       : `将先保留用户填写的场景设定并自动补齐布局关系、材质、光线、互动点和行动路线，再生成“${item.name}”的空间母版、场景视角和机位图。`;
-    if (!await confirmDialog(prompt, { title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位', confirmText: sceneGenerated ? '确认重新生成' : '确认生成' })) return false;
+    const confirmationResult = await confirmBillingAwareAction({
+      bundle, lane: 'scenes', sceneId: item.id, message: prompt,
+      title: sceneGenerated ? '重新生成场景与机位' : '生成场景与机位',
+      confirmText: sceneGenerated ? '确认重新生成' : '确认生成',
+    });
+    if (!confirmationResult.accepted) return false;
     try {
       setButtonBusy(button, true, '正在提交场景生成…', { elapsed: true });
-      await authorizeBillingReviews({ bundle, lane: 'scenes', sceneId: item.id });
+      await authorizeBillingReviews({ bundle, lane: 'scenes', sceneId: item.id, reviewBatch: confirmationResult.reviewBatch });
       await store.runStage('scene-assets', { space_id: item.id, scene_id: item.id, name: item.name, regenerate: sceneGenerated, repair_existing: repairing });
       toast(`${sceneGenerated ? '场景与机位重新生成' : '场景与机位生成'}已提交，进度和耗时将在页面顶部显示。`, 'success');
       return true;
