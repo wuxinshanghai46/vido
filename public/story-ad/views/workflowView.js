@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260811-ui-v178';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v178';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260811-ui-v178';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260811-ui-v178';
+import { request } from '../api.js?v=20260811-ui-v179';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260811-ui-v179';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260811-ui-v179';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260811-ui-v179';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;
