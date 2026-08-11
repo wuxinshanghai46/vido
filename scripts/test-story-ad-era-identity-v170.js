@@ -14,6 +14,7 @@ process.env.DB_DUAL_WRITE = '0';
 const authority = require('../src/services/newStoryAd/briefAuthorityService');
 const personLooks = require('../src/services/newStoryAd/personLookProfileService');
 const projection = require('../src/services/newStoryAd/subjectCheckpointProjectionService');
+const personProjection = require('../src/services/storyAdWorkspace/personLookProjectionService');
 const storage = require('../src/services/newStoryAd/storageService');
 const migration = require('./migrate-story-ad-era-identities-v170');
 
@@ -85,7 +86,8 @@ function run() {
       female_body: { subject_id: 'yun_zhiyue', index: 1 },
     },
   };
-  const people = migrated.cast_profiles.map(profile => ({ id: profile.id, subject_id: profile.id, profile }));
+  const people = migrated.cast_profiles.map((profile, index) => ({ id: profile.id, subject_id: profile.id, profile: personProjection.personProfile(profile, index) }));
+  assert.equal(people[2].profile.lineage_identity_id, 'yun_zhiyue', '项目视图不得过滤旧图保留所需的 lineage 字段');
   const projected = projection.mergePeople(people, { 'subject_asset_checkpoint:test': checkpoint });
   assert.equal(projected[0].image_url, '/male-ancient.png');
   assert.equal(projected[2].image_url, '/female-ancient.png');
@@ -94,7 +96,7 @@ function run() {
 
   storage.createTask({ id: 'active-era-task', status: 'running', stage: 'scene_config', brief, request: { brief } });
   assert.throws(() => migration.preview('active-era-task'), error => error.code === 'ERA_IDENTITY_MIGRATION_ACTIVE_TASK_BLOCKED');
-  console.log(JSON.stringify({ passed: true, checks: 23, cards: split.length, identities: contract.count, model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 24, cards: split.length, identities: contract.count, model_calls: 0 }));
 }
 
 try { run(); } finally { fs.rmSync(outputDir, { recursive: true, force: true }); }

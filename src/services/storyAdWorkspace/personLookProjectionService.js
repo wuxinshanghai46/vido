@@ -20,6 +20,13 @@ function personProfile(source = {}, index = 0) {
   return {
     id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
     displayName: clean(source.displayName || source.display_name || source.name, 120),
+    identity_name: clean(source.identity_name || source.identityName || source.displayName || source.name, 120),
+    identity_continuity: clean(source.identity_continuity || source.identityContinuity, 40),
+    era_identity: clean(source.era_identity || source.eraIdentity, 40),
+    era_label: clean(source.era_label || source.eraLabel, 40),
+    source_identity_id: clean(source.source_identity_id || source.sourceIdentityId || source.id, 120),
+    lineage_identity_id: clean(source.lineage_identity_id || source.lineageIdentityId || source.source_identity_id || source.id, 120),
+    name_source: clean(source.name_source || source.nameSource, 80),
     roleName: clean(source.roleName || source.role_name || source.role, 120),
     age: clean(source.age || source.ageRange || source.age_range || 'match_brief', 40),
     appearanceText: normalizeAppearanceAgeText(source.appearanceText || source.appearance?.userPrompt || source.appearance?.description || source.description),

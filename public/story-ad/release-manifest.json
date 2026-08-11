@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "build_id": "20260811-ui-v171",
+  "build_id": "20260811-ui-v172",
   "contract_version": "story-scene-platform-v6",
-  "generated_at": "2026-08-11T06:04:46.188Z",
+  "generated_at": "2026-08-11T06:19:19.726Z",
   "files": [
     {
       "path": "public/story-ad/api.js",
       "bytes": 11298,
-      "sha256": "777604c9212554c41e0536f95e230589dcf193070ef14a3bc679b3fc8cca75d2"
+      "sha256": "fe921302b6980318753ac9a5e63b2c8a367cd44338e81a70f9659f6e683f7eed"
     },
     {
       "path": "public/story-ad/app.js",
       "bytes": 17764,
-      "sha256": "99bd3be192855287bd37e3959ed282cebeb4389df8aae675ec85fb9b7bb0ed7f"
+      "sha256": "dfe142c03bafa13acfc0c418742da284f230504beaca329fcc451a7b49bc2e4b"
     },
     {
       "path": "public/story-ad/components/dialog.js",
@@ -32,7 +32,7 @@
     {
       "path": "public/story-ad/index.html",
       "bytes": 1171,
-      "sha256": "aae7476a7a7235e63fc277b3d7e0474ff0898bab410cf0c7e3ea853ba835d504"
+      "sha256": "c1790a1adeba04c2225d81591949550c6b50a557f5173d9d3e27cbc7fb189e24"
     },
     {
       "path": "public/story-ad/reference-progress.css",
@@ -47,7 +47,7 @@
     {
       "path": "public/story-ad/release.js",
       "bytes": 117,
-      "sha256": "f1f42e1261f0a5624838eeb070e3aea2def0c5f3f38ab0bb6fa7dfd5a540ab86"
+      "sha256": "e2656ecf7f5d8ce619395ba4e6636547018bb047db191b6599f1715a25df9461"
     },
     {
       "path": "public/story-ad/scene-dossier.css",
@@ -62,7 +62,7 @@
     {
       "path": "public/story-ad/store/projectStore.js",
       "bytes": 26934,
-      "sha256": "a193b505e70617a5be96f1c5077b69d81a32854d72eb8ced084e826375b2f15d"
+      "sha256": "b3a940f61d13efcc55813c5674b8959d654ed7bb110f1184e8f0696c9aa72a02"
     },
     {
       "path": "public/story-ad/store/referenceReplacementState.js",
@@ -82,32 +82,32 @@
     {
       "path": "public/story-ad/vendor/three.module.min.js",
       "bytes": 365590,
-      "sha256": "71240f7fca5c4c71f8c1662e103e564db59ffc51613bf7fbbdedff1fa526f33e"
+      "sha256": "b56d4205e50a813f192c762988a3bb8ee27f4cc689919511b4a877f06890b15d"
     },
     {
       "path": "public/story-ad/views/assetCenterAssist.js",
       "bytes": 5370,
-      "sha256": "937063267f84e7fbed05d2c81faf16bb57ef6071306756380f767981cc5daa92"
+      "sha256": "807ca6c5dcb518468acec2defb8593ceb802d008477b930ca294875508b26a72"
     },
     {
       "path": "public/story-ad/views/assetCenterBillingRetry.js",
       "bytes": 6685,
-      "sha256": "47e96fbbab15b723a19281b0bdd81fd1e350f61b621fcbb67dc0138545351926"
+      "sha256": "22e4d5e1a047053ea9d4aad73b88fd1bfc885197cb32b8d18f8a2c757eadc957"
     },
     {
       "path": "public/story-ad/views/assetCenterDossierSections.js",
       "bytes": 2513,
-      "sha256": "b9d36c9874275603a2f7b7617712643f30ba88776d4e0029b21afefaf4bea37a"
+      "sha256": "4c4c76bb9d04a70d2c138222364c6417bb6dd02c1abb21f312c5fee4d9fb259b"
     },
     {
       "path": "public/story-ad/views/assetCenterPersonLooks.js",
       "bytes": 7813,
-      "sha256": "0f653d93eeefeb4781ca70bd0074ff62cf7ec7203c33182d95efc65766b6980a"
+      "sha256": "6ded65027066b1310f190b99c6307aa992e1b642e15cd8c405947ec61933d55b"
     },
     {
       "path": "public/story-ad/views/assetCenterPersonSources.js",
       "bytes": 11315,
-      "sha256": "ea208fb2a5d294278759c56f88c2470bd44396dc2e6ce350b99d74b34cfb33ba"
+      "sha256": "6d9af880ac60048a7e8b5bf1e7797a272dfd8825f2918e60545bf7708983f8cc"
     },
     {
       "path": "public/story-ad/views/assetCenterPersonState.js",
@@ -117,22 +117,22 @@
     {
       "path": "public/story-ad/views/assetCenterPlanningDetails.js",
       "bytes": 25712,
-      "sha256": "7c83757edb494b62814ce65c8e94c79cbb48c6b94fc62f53cd9365bf866a391a"
+      "sha256": "85409cb2e09d87fb9416cb06e17d2db759f7fa21c59a2f9d0d72b372c68ec443"
     },
     {
       "path": "public/story-ad/views/assetCenterView.js",
       "bytes": 43944,
-      "sha256": "e8c837837343ef80d6665176f5611d7ca43fd65f7cdbe388c4ffae5a7c69961a"
+      "sha256": "cdd23b81b7ad2fec2ca214d5499b8eefd991156a214cb070d8eef5efc8c9d941"
     },
     {
       "path": "public/story-ad/views/briefSettingsSummary.js",
       "bytes": 1779,
-      "sha256": "022d5c0fb5c4a0ebd5fbb2a0fd013210c34ce07fce3a2f3ea894d25308c1e98d"
+      "sha256": "49bea191b3684cdcb2a4c73351511a7e6c7414d9390ac008ca95681989630931"
     },
     {
       "path": "public/story-ad/views/briefView.js",
       "bytes": 38494,
-      "sha256": "90c7a8e9b8bfe7a08d456d9e6a5afd0b9be75b948d5c78a3817dff6480cf30f3"
+      "sha256": "80b42495fc3f725f7a0d2eeda59cc5838a52b114b1d51a537df325e7b90f8587"
     },
     {
       "path": "public/story-ad/views/briefWorldSettings.js",
@@ -142,17 +142,17 @@
     {
       "path": "public/story-ad/views/directorStudioView.js",
       "bytes": 19660,
-      "sha256": "b693f5fe94171ef8fb5484a971c0ac0acc2e00a13d91bdaa0d7231c8397b9af8"
+      "sha256": "23691f31fcd72e4455857d9eaabb6a29e5b883a4abc98392bdd3137fea1e45d6"
     },
     {
       "path": "public/story-ad/views/finalView.js",
       "bytes": 9897,
-      "sha256": "4e47d0f1af620565dda4adb15be891a5d57d3dbc749d6a3ac2e6ea153e3519eb"
+      "sha256": "72a9bfa4e622c9a5abb53613947e022ac2687a2e1cc9facbd559fe31802b3d5d"
     },
     {
       "path": "public/story-ad/views/panoramaGeneration.js",
       "bytes": 4605,
-      "sha256": "d8e6a5f7c2719b7641c05ded48f3eded631e69731762ca3f09ec2a3db93497c3"
+      "sha256": "c3745ffe93e45e5425baf66ce00fd1a8e9a8a4661178668902eeca1c8eac3d1e"
     },
     {
       "path": "public/story-ad/views/panoramaViewer.js",
@@ -162,32 +162,32 @@
     {
       "path": "public/story-ad/views/personDossierShowcase.js",
       "bytes": 9468,
-      "sha256": "1fca56595bd549d51ea18dface8a6cccb14cc8b9c92888b5a7d7283486bfc7ae"
+      "sha256": "69aaa9e4b251b6c27813b94e4ed4cf7d56ee5ca179ae1512be7ee727a53bbd23"
     },
     {
       "path": "public/story-ad/views/plotRoomView.js",
       "bytes": 12150,
-      "sha256": "20401b36ab2ef7571a01f526f2c1754790acd312eaee0a46792f263a7f6be2cf"
+      "sha256": "37a7a8211e0b13490229d8383d9da9f2916ce106db0a2f5517736b6ef4abf41d"
     },
     {
       "path": "public/story-ad/views/referenceProgressCard.js",
       "bytes": 8902,
-      "sha256": "6b2de76e9b371f2a715c801e043ac92dfcd9168aa3efc533a6d18678387bc69d"
+      "sha256": "cb02cf1196f08e6dacc18bee4fd053d9b84174adaf9baff9fd2f3b63b3d1d1ac"
     },
     {
       "path": "public/story-ad/views/referenceUnderstandingView.js",
       "bytes": 34925,
-      "sha256": "7ccf32894233bd0ff2bb0e81f35ce5f1550744a5a03144eb78f1ec9d46b801af"
+      "sha256": "9fd78d6febf70e87957d63c0cbb892ced45206a0d1249061e4f979de11274d2c"
     },
     {
       "path": "public/story-ad/views/sceneDossierCard.js",
       "bytes": 11208,
-      "sha256": "dc7b919de5c680ac851954b8968792069810a7fa767081dbbc53966b365acd39"
+      "sha256": "a8d9dfb400df617f457123599be95efe3b255f46f7e7c6c359c5b7329b9cc85a"
     },
     {
       "path": "public/story-ad/views/sceneDossierExport.js",
       "bytes": 8473,
-      "sha256": "5619eec2ca1972c23b18d13f80cea2aaad35f293a739614dd26b91b22f946454"
+      "sha256": "e8a7553485e9c2c23b0da7d19290821a4e6f08fb268c2c68e7ce0d9f8dca3796"
     },
     {
       "path": "public/story-ad/views/sceneWorldData.js",
@@ -197,32 +197,32 @@
     {
       "path": "public/story-ad/views/sceneWorldView.js",
       "bytes": 43052,
-      "sha256": "cc5414b8b9e0fa924d683e96ad694f6909587838f346d3096feff8243128d0e2"
+      "sha256": "34042613db4535e86a0e5fe4bb4587ca7dcad503dd17f2c04445a3d880461cf7"
     },
     {
       "path": "public/story-ad/views/shotDesignerView.js",
       "bytes": 24590,
-      "sha256": "ecd27fd9050efcef15ce96355cf2aefdf52eb9ecf85d812c3904a8273137e143"
+      "sha256": "8797bdf9f93dbd9a1cab87648661dda517b1ae80413b4fe4acaf1f8fd145f629"
     },
     {
       "path": "public/story-ad/views/storyboardView.js",
       "bytes": 27272,
-      "sha256": "3eb2bd3d7549d4bf2a4009adf5b06b010bffa7288931b149425fe8969b044732"
+      "sha256": "35e175d2601b8a10b6df9216fc75ebc79c87736961a7187b63479e305afd1eae"
     },
     {
       "path": "public/story-ad/views/workflowDirectorNodes.js",
       "bytes": 21281,
-      "sha256": "79bb377f4196954f90128e0f188bdb24110bd17227c28219d9893ebbaf91770f"
+      "sha256": "b2c7ee7577423ab93da0bddd25fdc611fd1517d9b145264968144b4a5601f1fb"
     },
     {
       "path": "public/story-ad/views/workflowInlineEditor.js",
       "bytes": 5848,
-      "sha256": "6ac50a5cd9c21aa6531914d26f3d9b75e53869e2b5293cc43e60046bc319639a"
+      "sha256": "69e5ceffb8aa6b045159acb53d6403a5f7750dbe67fbd1901530239219667391"
     },
     {
       "path": "public/story-ad/views/workflowView.js",
       "bytes": 29191,
-      "sha256": "9da96624975c2e752a8cd8900351dfc7e7827b20963dc6e0bebad22c9b1d5d17"
+      "sha256": "7e28ec2dde7d6ab5fdfa1c119783182adefee69a59142c24736dfecfe1f8bf0b"
     },
     {
       "path": "public/story-ad/workflow-director.css",
