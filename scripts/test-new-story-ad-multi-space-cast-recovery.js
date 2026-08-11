@@ -551,19 +551,20 @@ async function assertMultiSpacePromptsAndRecovery() {
       error => error?.code === 'PROVIDER_5XX_AMBIGUOUS'
         && error?.partial_scene_checkpoint === true,
     );
-    assert.strictEqual(calls.length - unknownStart, 2, 'unknown layout failure must stop after master and layout');
+    assert.strictEqual(calls.length - unknownStart, 3, 'unknown layout must still allow the independent master-only detail unit to complete');
     const partial = storage.getOutput(unknownTask, sceneCheckpoint.outputKind('space_park'));
     assert.strictEqual(partial.scene_id, 'space_park');
     assert.strictEqual(partial.views.master.status, 'succeeded');
     assert.strictEqual(partial.views.layout.status, 'failed');
     assert.strictEqual(partial.views.layout.billing_state, 'unknown');
+    assert.strictEqual(partial.views.detail.status, 'succeeded');
 
     await assert.rejects(
       () => sceneAssets.generateSceneAsset(unknownTask, { space_id: 'space_park' }),
       error => error?.code === 'SCENE_ASSET_BILLING_UNKNOWN'
         && error?.details?.requires_billing_acknowledgement === true,
     );
-    assert.strictEqual(calls.length - unknownStart, 2, 'unacknowledged unknown billing must make zero new supplier calls');
+    assert.strictEqual(calls.length - unknownStart, 3, 'unacknowledged unknown billing must make zero new supplier calls');
 
     const legacyUnknownTask = 'multi-space-legacy-layout-unknown';
     storage.createTask({ id: legacyUnknownTask, title: legacyUnknownTask, request: baseContext });

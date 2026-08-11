@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260811-ui-v179';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260811-ui-v179';
-import { promptDialog } from '../components/dialog.js?v=20260811-ui-v179';
-import { list, worldById } from './sceneWorldData.js?v=20260811-ui-v179';
+import { request } from '../api.js?v=20260811-ui-v180';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260811-ui-v180';
+import { promptDialog } from '../components/dialog.js?v=20260811-ui-v180';
+import { list, worldById } from './sceneWorldData.js?v=20260811-ui-v180';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -140,7 +140,7 @@ export function renderSceneWorldWorkspace(bundle = {}) {
   return `<section class="scene-world-workspace" data-scene-world-workspace>
     <header>
       <div><small>SCENEWORLD · 通用场景生产</small><h2>生产清单与场景世界</h2><p>人物档案保持独立；这里负责人物与场景分配、动态观察点、机位以及跨场景衔接。</p></div>
-      <div><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
+      <div><button class="btn primary" type="button" data-generate-all-panoramas>统一生成全部360全景</button><button class="btn" type="button" data-scene-world-tab-target="matrix">人物×场景</button><button class="btn" type="button" data-scene-world-tab-target="transitions">场景衔接</button></div>
     </header>
     ${partial}<div class="scene-world-tabs">
       <button class="active" type="button" data-scene-world-tab="overview">生产清单</button>
@@ -359,7 +359,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260811-ui-v179');
+      const module = await import('./panoramaViewer.js?v=20260811-ui-v180');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -460,7 +460,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260811-ui-v179');
+      const module = await import('./directorStudioView.js?v=20260811-ui-v180');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
@@ -491,9 +491,16 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
     if (world) openSceneExperiencePlanner(bundle, world);
   }));
   let panoramaActionModule;
+  root.querySelector('[data-generate-all-panoramas]')?.addEventListener('click', async event => {
+    try {
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260811-ui-v180');
+      const module = await panoramaActionModule;
+      await module.runPanoramaBatchGeneration({ root, bundle, store, button: event.currentTarget });
+    } catch (error) { toast(error.message || '统一360全景操作没有加载完成', 'danger'); }
+  });
   root.querySelectorAll('[data-generate-panorama]').forEach(button => button.addEventListener('click', async () => {
     try {
-      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260811-ui-v179');
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260811-ui-v180');
       const module = await panoramaActionModule;
       await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
     } catch (error) { toast(error.message || '全景生成操作没有加载完成', 'danger'); }

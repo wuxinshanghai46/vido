@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260811-ui-v179';
-import { toast } from '../components/ui.js?v=20260811-ui-v179';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v179';
+import { request } from '../api.js?v=20260811-ui-v180';
+import { toast } from '../components/ui.js?v=20260811-ui-v180';
+import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v180';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
@@ -76,6 +76,50 @@ export async function runPanoramaGeneration({ root, bundle, store, worldId } = {
   } catch (error) {
     statuses.forEach(item => { item.className = 'scene-panorama-status is-failed'; item.textContent = '提交失败 · 可使用同一请求安全重试'; });
     buttons.forEach(item => { item.disabled = false; item.textContent = '重试生成360全景'; });
+    toast(error.message, 'danger');
+  }
+}
+
+export async function runPanoramaBatchGeneration({ root, bundle, store, button } = {}) {
+  let plan;
+  try {
+    plan = await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/scene-assets/panoramas/plan`, {
+      method: 'GET',
+      timeoutMs: 30000,
+    });
+  } catch (error) {
+    return toast(`无法取得统一360调用计划：${error.message}`, 'danger');
+  }
+  if (!Number(plan.scene_count || 0)) return toast('当前没有可生成360全景的场景主视图。', 'warning');
+  const calls = plan.model_call_plan || {};
+  const blocked = Number(plan.blocked_count || 0);
+  const approved = await confirmDialog(
+    `将统一处理 ${Number(plan.scene_count || 0)} 个场景：全景生成 ${Number(calls.panorama_generation || 0)} 次、全景质检 ${Number(calls.panorama_qa || 0)} 次；本地机位投影不调用模型。${blocked ? `其中 ${blocked} 个计费状态未决场景会被系统跳过并保留待核账，不会重复付费。` : ''} 单个场景失败不会中断其他场景。`,
+    { title: '确认统一生成全部360全景', confirmText: '确认批量生成并质检' },
+  );
+  if (!approved) return;
+  if (button) { button.disabled = true; button.textContent = '统一360任务提交中…'; }
+  try {
+    await request(`/api/new-story-ad/tasks/${encodeURIComponent(bundle.project.id)}/scene-assets/panoramas`, {
+      method: 'POST',
+      body: {
+        cost_confirmation: true,
+        plan_fingerprint: plan.plan_fingerprint,
+        model_call_plan: calls,
+        requested_mode: 'panorama_360',
+      },
+      timeoutMs: 120000,
+    });
+    root.querySelectorAll('[data-panorama-status]').forEach(item => {
+      if (!item.classList.contains('is-ready')) {
+        item.className = 'scene-panorama-status is-queued';
+        item.textContent = '统一360任务已提交 · 后台逐场景处理';
+      }
+    });
+    store?.syncProgressPolling?.(true);
+    toast('统一360任务已提交；系统会逐场景保存并继续，单个失败不会要求整批重来。', 'success');
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = '统一生成全部360全景'; }
     toast(error.message, 'danger');
   }
 }

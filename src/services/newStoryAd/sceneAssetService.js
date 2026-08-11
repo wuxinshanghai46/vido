@@ -185,12 +185,19 @@ function normalizeSceneAsset(asset = {}, index = 0) {
     checkpoint_error_code: cleanText(asset.checkpoint_error_code || '', 120),
     completed_view_keys: Array.isArray(asset.completed_view_keys) ? asset.completed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
     failed_view_keys: Array.isArray(asset.failed_view_keys) ? asset.failed_view_keys.map(value => cleanText(value, 40)).filter(Boolean) : [],
+    view_statuses: asset.view_statuses && typeof asset.view_statuses === 'object'
+      ? Object.fromEntries(Object.entries(asset.view_statuses).map(([key, value]) => [
+          cleanText(key, 40),
+          value && typeof value === 'object' ? { ...value } : value,
+        ]))
+      : {},
     billing_review_required: asset.billing_review_required === true,
     provider_used: cleanText(asset.provider_used || '', 240),
     prompt: cleanText(asset.prompt || '', 6000),
     repair_plan: repairPlan,
     repair_history: Array.isArray(asset.repair_history) ? asset.repair_history.slice(-8) : [],
     scene_layer: asset.scene_layer && typeof asset.scene_layer === 'object' ? asset.scene_layer : null,
+    scene_authority_fingerprint: cleanText(asset.scene_authority_fingerprint || asset.sceneAuthorityFingerprint || '', 100),
     created_at: asset.created_at || new Date().toISOString(),
   };
 }
@@ -700,7 +707,16 @@ function publishBaseSceneAsset({
   });
   // A failed repair candidate must never replace a previously complete active
   // scene package. The new base visual remains auditable in the layer store.
-  if (previous && previous.partial_checkpoint !== true) return { core, asset: previous, preserved_previous: true };
+  const previousCoreFingerprint = cleanText(previous?.scene_layer?.core_fingerprint || previous?.scene_authority_fingerprint || '', 100);
+  const currentCoreFingerprint = cleanText(core?.core_fingerprint || '', 100);
+  const legacyAuthorityMatches = !previousCoreFingerprint
+    && cleanText(previous?.name || '', 120) === cleanText(space.name || body.name || '', 120)
+    && cleanText(previous?.layout_summary || '', 1000) === cleanText(body.layout_summary || body.layoutSummary || target.scene_spec?.layoutText || space.description || '', 1000);
+  const sameAuthority = !!currentCoreFingerprint
+    && (previousCoreFingerprint === currentCoreFingerprint || legacyAuthorityMatches);
+  if (previous && previous.partial_checkpoint !== true && sameAuthority) {
+    return { core, asset: previous, preserved_previous: true };
+  }
   const masterView = normalizeSceneView({
     ...master,
     key: 'master',
@@ -753,6 +769,7 @@ function publishBaseSceneAsset({
       core_fingerprint: core.core_fingerprint,
       base_visual: core.core.base_visual,
     },
+    scene_authority_fingerprint: currentCoreFingerprint,
   });
   const sceneAssets = mergeSceneAssets(existing, baseAsset);
   storage.saveOutput(taskId, 'scene_assets', sceneAssets);
@@ -1193,6 +1210,7 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   });
   let layout = selectedView('layout');
   let layoutAcquisition = checkpoint.layout_acquisition || previous?.view_acquisition?.layout_preflight || null;
+  let layoutFailure = null;
   if (shouldGenerate('layout')) {
     let layoutCorrection = repairFeedback;
     for (let qualityAttempt = 1; qualityAttempt <= 2; qualityAttempt += 1) {
@@ -1221,7 +1239,13 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
           auditSafePrompt: buildSceneAuditSafePrompt({ ctx, body: promptBody, viewKey: 'layout', knowledgePolicy }),
         }, { mode: progressMode, viewKeys: progressViewKeys }, generationBudget, checkpoint);
       } catch (error) {
-        return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error, progressMode, progressViewKeys });
+        const billingUnknown = ['unknown', 'submitted_unknown']
+          .includes(String(error?.billingState || error?.billing_state || '').toLowerCase());
+        if (!billingUnknown) {
+          return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error, progressMode, progressViewKeys });
+        }
+        layoutFailure = error;
+        break;
       }
       if (exactSceneViewDuplicate(layout, [master])) {
         layoutAcquisition = {
@@ -1290,14 +1314,21 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const layoutView = normalizeSceneView({
     key: 'layout',
     label: sceneViewLabel('layout'),
-    url: layout.url || layout.image_url,
-    image_url: layout.image_url || layout.url,
-    provider_used: layout.provider_used,
+    url: layout?.url || layout?.image_url || '',
+    image_url: layout?.image_url || layout?.url || '',
+    provider_used: layout?.provider_used || '',
   }, REQUIRED_SCENE_VIEW_KEYS.indexOf('layout'));
   cancellation.throwIfCancelled(taskId);
   const derivedResults = await Promise.allSettled(SCENE_VIEW_KEYS.slice(1).map(async (key, index) => {
     if (!shouldGenerate(key)) return normalizeSceneView(selectedView(key), index + 1);
     const detailView = key === 'detail';
+    if (!detailView && !(layout?.url || layout?.image_url)) {
+      const dependencyError = new Error(`${sceneViewLabel(key)}等待布局视图核账后继续，当前未提交供应商`);
+      dependencyError.code = 'SCENE_LAYOUT_REQUIRED';
+      dependencyError.billingState = 'not_submitted';
+      dependencyError.providerSubmissionState = 'not_submitted';
+      throw dependencyError;
+    }
     const referenceImages = detailView
       ? [master.url || master.image_url]
       : [master.url || master.image_url, layout.url || layout.image_url];
@@ -1338,14 +1369,15 @@ async function generateSceneAsset(taskId, body = {}, runOptions = {}) {
   const derivedFailures = derivedResults
     .map((result, index) => ({ result, key: SCENE_VIEW_KEYS.slice(1)[index] }))
     .filter(item => item.result.status === 'rejected');
-  if (derivedFailures.length) {
-    const firstError = derivedFailures[0].result.reason instanceof Error
-      ? derivedFailures[0].result.reason
-      : new Error(String(derivedFailures[0].result.reason || '场景派生视图生成失败'));
+  if (derivedFailures.length || layoutFailure) {
+    const firstDerivedFailure = derivedFailures[0]?.result?.reason;
+    const firstError = layoutFailure || (firstDerivedFailure instanceof Error
+      ? firstDerivedFailure
+      : new Error(String(firstDerivedFailure || '场景派生视图生成失败')));
     sceneCheckpoint.markPartial(checkpoint, firstError);
     firstError.partial_scene_checkpoint = true;
     firstError.completed_view_keys = progressViewKeys.filter(key => !!sceneCheckpoint.checkpointView(checkpoint, key));
-    firstError.failed_view_keys = derivedFailures.map(item => item.key);
+    firstError.failed_view_keys = [...new Set([...(layoutFailure ? ['layout'] : []), ...derivedFailures.map(item => item.key)])];
     return finishWithBaseScene({ taskId, target, basePublication, checkpoint, error: firstError, progressMode, progressViewKeys });
   }
   const derivedViews = derivedResults.map(result => result.value);

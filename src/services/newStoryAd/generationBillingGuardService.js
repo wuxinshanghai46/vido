@@ -9,10 +9,11 @@ function clean(value = '', max = 160) {
   return String(value || '').trim().slice(0, max);
 }
 
-function scopeKey({ taskId = '', generationId = '' } = {}) {
+function scopeKey({ taskId = '', generationId = '', unitKey = '' } = {}) {
   const task = clean(taskId, 120) || 'detached';
   const generation = clean(generationId, 120) || task;
-  return `${task}:${generation}`;
+  const unit = clean(unitKey, 240) || generation;
+  return `${task}:${generation}:${crypto.createHash('sha256').update(unit).digest('hex').slice(0, 20)}`;
 }
 
 function poolName(scope = '') {
@@ -52,10 +53,10 @@ function stoppedError(state = {}) {
   return error;
 }
 
-async function run({ taskId = '', generationId = '' } = {}, invoke) {
+async function run({ taskId = '', generationId = '', unitKey = '' } = {}, invoke) {
   if (typeof invoke !== 'function') throw new Error('generation billing guard requires an invoke function');
   prune();
-  const scope = scopeKey({ taskId, generationId });
+  const scope = scopeKey({ taskId, generationId, unitKey });
   return generationConcurrency.schedule(poolName(scope), 1, async () => {
     const current = guards.get(scope);
     if (current?.tripped) throw stoppedError(current);

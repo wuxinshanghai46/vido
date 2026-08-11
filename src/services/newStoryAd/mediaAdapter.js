@@ -554,7 +554,7 @@ async function generateImage({
       // those responses reliably.
       if (/deyunai|漫路/i.test(`${config.family} ${config.adapter} ${config.providerId}`)) {
         const invokeDeyunai = candidatePrompt => generationBillingGuard.run(
-          { taskId, generationId: effectiveGenerationId },
+          { taskId, generationId: effectiveGenerationId, unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}` },
           () => generationConcurrency.schedule(
             'new_story_ad.image_provider',
             Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
@@ -632,7 +632,7 @@ async function generateImage({
         String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt,
       );
       const response = await generationBillingGuard.run(
-        { taskId, generationId: effectiveGenerationId },
+        { taskId, generationId: effectiveGenerationId, unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}` },
         () => generationConcurrency.schedule(
           'new_story_ad.image_provider',
           Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,

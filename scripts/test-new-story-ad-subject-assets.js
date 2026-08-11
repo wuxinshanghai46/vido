@@ -46,6 +46,29 @@ assert.doesNotThrow(() => subjectAssets.assertCompleteSubjectProfiles(
   [],
 ), 'relationship text may name another cast member without being mistaken for visual-profile contamination');
 
+const relationshipProfiles = [
+  castProfile(1, {
+    displayName: '沈砚辞',
+    roleName: '云知月的恋人',
+    appearanceText: '外表清俊沉稳，身形挺拔；云知月死后，眉宇间长期沉淀着愧疚、孤独与思念。',
+  }),
+  castProfile(2, {
+    displayName: '云知月',
+    appearanceText: '圆润鹅蛋脸，杏眼清澈，鼻梁纤秀，肤色白皙，神态温柔坚定。',
+  }),
+];
+assert.doesNotThrow(
+  () => subjectAssets.assertCompleteSubjectProfiles({ mode: 'dual', people: 2, pets: 0 }, relationshipProfiles, []),
+  'a legal relationship/emotion sentence in appearance must not be treated as copied visual identity',
+);
+const copiedVisualProfiles = relationshipProfiles.map(profile => ({ ...profile }));
+copiedVisualProfiles[0].appearanceText = `沈砚辞沿用了云知月的完整视觉档案：${copiedVisualProfiles[1].appearanceText}`;
+assert.throws(
+  () => subjectAssets.assertCompleteSubjectProfiles({ mode: 'dual', people: 2, pets: 0 }, copiedVisualProfiles, []),
+  error => error?.code === 'SUBJECT_PROFILES_REQUIRED' && error?.mixed_member_names?.includes('云知月'),
+  'substantial copied visual identity must still be rejected before supplier work',
+);
+
 assert.strictEqual(
   typeof personAssetLifecycle.latestSubjectCheckpointRow,
   'function',

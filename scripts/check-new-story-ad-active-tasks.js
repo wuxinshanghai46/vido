@@ -1,5 +1,11 @@
 const storage = require('../src/services/newStoryAd/storageService');
 
+function isUnknownBilling(call = {}) {
+  return String(call.billing_state || '').toLowerCase() === 'unknown'
+    && ['submitted', 'submitted_unknown', 'accepted', 'polling', 'running']
+      .includes(String(call.provider_submission_state || '').toLowerCase());
+}
+
 function main() {
   const active = storage.listTasks({ limit: 1000 })
     .filter(task => task.active_generation_id)
@@ -8,8 +14,7 @@ function main() {
       stage: task.active_stage || task.stage || '',
     }));
   const unknownBilling = (storage.readDb().model_calls || [])
-    .filter(call => String(call.billing_state || '').toLowerCase() === 'unknown'
-      && ['submitted', 'accepted', 'polling', 'running'].includes(String(call.provider_submission_state || '').toLowerCase()))
+    .filter(isUnknownBilling)
     .map(call => ({ id: call.id, task_id: call.task_id, stage: call.stage, provider_task_id: call.provider_task_id || '' }));
   console.log(JSON.stringify({
     active_count: active.length,
@@ -22,4 +27,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { main };
+module.exports = { isUnknownBilling, main };

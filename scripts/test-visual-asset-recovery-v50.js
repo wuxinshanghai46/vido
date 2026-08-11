@@ -12,6 +12,11 @@ const { sceneProjectionRows } = require('../src/services/newStoryAd/taskViewServ
 const storage = require('../src/services/newStoryAd/storageService');
 const billing = require('../src/services/newStoryAd/visualAssetBillingAuthorizationService');
 const subjectAssets = require('../src/services/newStoryAd/subjectAssetBundleService');
+const readiness = require('./check-new-story-ad-active-tasks');
+
+assert.equal(readiness.isUnknownBilling({ billing_state: 'unknown', provider_submission_state: 'submitted_unknown' }), true,
+  'readiness must block submitted_unknown billing records');
+assert.equal(readiness.isUnknownBilling({ billing_state: 'confirmed', provider_submission_state: 'completed' }), false);
 
 function ambiguousError() {
   const error = new Error('provider 500');
@@ -27,7 +32,7 @@ async function testGenerationIsolation() {
   let sameScopeInvocations = 0;
   let active = 0;
   let peak = 0;
-  const first = guard.run({ taskId: 'task-a', generationId: 'gen-a' }, async () => {
+  const first = guard.run({ taskId: 'task-a', generationId: 'gen-a', unitKey: 'scene-1:layout' }, async () => {
     sameScopeInvocations += 1;
     active += 1;
     peak = Math.max(peak, active);
@@ -35,18 +40,20 @@ async function testGenerationIsolation() {
     active -= 1;
     throw ambiguousError();
   });
-  const queued = guard.run({ taskId: 'task-a', generationId: 'gen-a' }, async () => {
+  const queued = guard.run({ taskId: 'task-a', generationId: 'gen-a', unitKey: 'scene-1:layout' }, async () => {
     sameScopeInvocations += 1;
     return 'must-not-submit';
   });
-  const otherUser = guard.run({ taskId: 'task-b', generationId: 'gen-b' }, async () => 'other-user-ok');
-  const [firstResult, queuedResult, otherResult] = await Promise.allSettled([first, queued, otherUser]);
+  const independentUnit = guard.run({ taskId: 'task-a', generationId: 'gen-a', unitKey: 'scene-2:master' }, async () => 'independent-unit-ok');
+  const otherUser = guard.run({ taskId: 'task-b', generationId: 'gen-b', unitKey: 'scene-1:layout' }, async () => 'other-user-ok');
+  const [firstResult, queuedResult, independentResult, otherResult] = await Promise.allSettled([first, queued, independentUnit, otherUser]);
   assert.equal(firstResult.status, 'rejected');
   assert.equal(queuedResult.status, 'rejected');
   assert.equal(queuedResult.reason.code, 'GENERATION_STOPPED_AFTER_BILLING_UNKNOWN');
   assert.equal(queuedResult.reason.providerSubmissionState, 'not_submitted');
   assert.equal(sameScopeInvocations, 1, 'same-generation queued provider call must not be invoked');
   assert.equal(peak, 1, 'same generation must have at most one paid image call active');
+  assert.equal(independentResult.value, 'independent-unit-ok', 'an ambiguous unit must not block an independent unit in the same generation');
   assert.equal(otherResult.value, 'other-user-ok', 'another task/user must remain isolated');
 }
 

@@ -167,6 +167,45 @@ function personGenerationSpec(spec = {}) {
   };
 }
 
+function normalizedVisualText(value = '', excludedName = '') {
+  const escaped = String(excludedName || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return cleanText(value || '', 1200)
+    .replace(escaped ? new RegExp(escaped, 'g') : /$^/, '')
+    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .toLowerCase();
+}
+
+function bigrams(value = '') {
+  const chars = [...value];
+  const result = new Set();
+  for (let index = 0; index < chars.length - 1; index += 1) result.add(`${chars[index]}${chars[index + 1]}`);
+  return result;
+}
+
+function visualFieldCopied(targetValue = '', sourceValue = '', sourceName = '') {
+  const target = normalizedVisualText(targetValue, sourceName);
+  const source = normalizedVisualText(sourceValue, sourceName);
+  if (target.length < 16 || source.length < 16) return false;
+  if (source.length >= 20 && target.includes(source)) return true;
+  const targetPairs = bigrams(target);
+  const sourcePairs = bigrams(source);
+  let overlap = 0;
+  sourcePairs.forEach(pair => { if (targetPairs.has(pair)) overlap += 1; });
+  const dice = (2 * overlap) / Math.max(1, targetPairs.size + sourcePairs.size);
+  return dice >= 0.72;
+}
+
+function leakedVisualMembers(member = {}, humans = [], index = 0) {
+  return humans.filter((_, otherIndex) => otherIndex !== index).filter(other => {
+    const otherName = cleanText(other.displayName || '', 120);
+    const targetText = [member.appearanceText, member.wardrobeText, member.hairMakeupText].join('\n');
+    if (otherName.length < 2 || !targetText.includes(otherName)) return false;
+    return visualFieldCopied(member.appearanceText, other.appearanceText, otherName)
+      || visualFieldCopied(member.wardrobeText, other.wardrobeText, otherName)
+      || visualFieldCopied(member.hairMakeupText, other.hairMakeupText, otherName);
+  });
+}
+
 function checkpointKind(taskId, brief, spec, counts, body = {}) {
   const hash = crypto.createHash('sha256').update(JSON.stringify({
     fingerprint_version: 3,
@@ -498,11 +537,8 @@ function assertCompleteSubjectProfiles(counts = {}, humans = [], pets = []) {
     }
     // Relationship/role copy may legitimately name another cast member. Only
     // visual identity fields can prove that another member leaked into this dossier.
-    const text = [member.appearanceText, member.wardrobeText, member.hairMakeupText].join('\n');
-    const otherNames = humans
-      .filter((_, otherIndex) => otherIndex !== index)
-      .map(item => cleanText(item.displayName || '', 120))
-      .filter(name => name.length >= 2 && text.includes(name));
+    const otherNames = leakedVisualMembers(member, humans, index)
+      .map(item => cleanText(item.displayName || '', 120));
     if (otherNames.length) {
       throw subjectProfilesError(`第 ${index + 1} 个人物档案混入了其他成员：${otherNames.join('、')}`, {
         subject_type: 'human',
@@ -1294,6 +1330,7 @@ module.exports = {
   alignMemberAgeText, inferMemberAge, historicalYouthStyling,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,
+  leakedVisualMembers, visualFieldCopied,
   aggregatePersonContract, aggregatePetContract, reverifyPersonBundle,
   buildSubjectBoard, hasLocalSubjectBoard, generateSubjectBundle,
   PERSON_VISUAL_ASSET_CONTRACT_VERSION,

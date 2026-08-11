@@ -1566,6 +1566,13 @@ router.get('/tasks/:id/scene-assets/:sceneId/panorama/plan', asyncRoute(async (r
   res.json({ success: true, task_id: req.params.id, scene_id: req.params.sceneId, ...plan });
 }));
 
+router.get('/tasks/:id/scene-assets/panoramas/plan', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  res.json({ success: true, ...scenePanoramaService.planForTask(req.params.id) });
+}));
+
 router.post('/tasks/:id/visual-assets/retry-authorization', asyncRoute(async (req, res) => {
   taskForReq(req);
   const user = userFromReq(req);
@@ -1609,6 +1616,7 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
     const sceneLane = (async () => {
       let sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseContext.scene_assets || [];
       let latestSceneSpec = null;
+      const sceneFailures = [];
       for (let index = 0; index < sceneTargets.length; index += 1) {
         const target = sceneTargets[index];
         visualAssetProgress.updateLane(taskId, 'scenes', {
@@ -1633,9 +1641,21 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
                 generation_id: job.generationId,
               }, runOptions);
         } catch (sceneError) {
-          sceneError.partial_scene_assets = sceneAssets;
-          sceneError.partial_scene_spec = latestSceneSpec;
-          throw sceneError;
+          // A billing-ambiguous view freezes only that exact paid unit. Reload
+          // the base/checkpoint projection persisted by the scene service and
+          // continue with independent scenes instead of aborting the batch.
+          sceneAssets = storage.getOutput(taskId, 'scene_assets') || sceneAssets;
+          sceneFailures.push({
+            scene_id: target.scene_id,
+            scene_name: target.name,
+            error: sceneError,
+          });
+          visualAssetProgress.updateLane(taskId, 'scenes', {
+            status: 'running', completed_scenes: index + 1, completed: index + 1,
+            percent: Math.round(((index + 1) / sceneTargets.length) * 100),
+            message: `场景 ${index + 1}/${sceneTargets.length} 已保存可用资产；失败单元已隔离，继续后续场景`,
+          });
+          continue;
         }
         sceneAssets = result.scene_assets || sceneAssets;
         latestSceneSpec = result.scene_spec || latestSceneSpec;
@@ -1644,6 +1664,21 @@ router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
           completed_scenes: index + 1, completed: index + 1, percent: Math.round(((index + 1) / sceneTargets.length) * 100),
           message: `已完成场景 ${index + 1}/${sceneTargets.length}`,
         });
+      }
+      if (sceneFailures.length) {
+        const primary = sceneFailures.find(item => item.error?.billingState === 'unknown'
+          || item.error?.billing_state === 'unknown'
+          || item.error?.code === 'PROVIDER_5XX_AMBIGUOUS') || sceneFailures[0];
+        const error = primary.error instanceof Error ? primary.error : new Error('部分场景资产未完成');
+        error.partial_scene_assets = sceneAssets;
+        error.partial_scene_spec = latestSceneSpec;
+        error.scene_failures = sceneFailures.map(item => ({
+          scene_id: item.scene_id,
+          scene_name: item.scene_name,
+          error_code: item.error?.code || 'SCENE_ASSET_GENERATION_FAILED',
+          billing_state: item.error?.billingState || item.error?.billing_state || '',
+        }));
+        throw error;
       }
       return { scene_assets: sceneAssets, scene_spec: latestSceneSpec };
     })();
@@ -1725,6 +1760,24 @@ router.post('/tasks/:id/scene-assets/:sceneId/panorama', asyncRoute(async (req, 
       scene_name: body.scene_name || body.sceneName || '',
     },
   });
+}));
+
+router.post('/tasks/:id/scene-assets/panoramas', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  const body = req.body || {};
+  const expected = scenePanoramaService.planForTask(req.params.id);
+  scenePanoramaService.assertConfirmedTaskPlan(body, expected);
+  req.body = {
+    ...body,
+    idempotency_key: `${req.params.id}:scene_panorama_batch:${expected.plan_fingerprint}:v${scenePanoramaService.PANORAMA_CONTRACT_VERSION}`,
+  };
+  return queueTaskStage(req, res, 'scene_panorama_batch', job => scenePanoramaService.generateTaskPanoramas(
+    req.params.id,
+    { ...body, generation_id: job.generationId },
+    { generationId: job.generationId },
+  ), { deadlineMs: 45 * 60 * 1000 });
 }));
 
 router.post('/tasks/:id/product-assets', asyncRoute(async (req, res) => {

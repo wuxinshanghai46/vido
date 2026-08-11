@@ -33,6 +33,7 @@ const jobService = require('../src/services/newStoryAd/jobService');
 
 const TASK_ID = 'panorama-contract-regression';
 const JOB_TASK_ID = 'panorama-job-concurrency-regression';
+const BATCH_TASK_ID = 'panorama-batch-regression';
 const SCENE_ID = 'neutral-scene';
 const FORBIDDEN_INDUSTRY_SENTINELS = [
   'STEEL_FACTORY_ONLY_TOKEN',
@@ -516,6 +517,72 @@ async function testTwentyConcurrentJobSubmissions() {
   assert.equal(jobService.getJob(JOB_TASK_ID)?.status, 'succeeded');
 }
 
+async function testProjectedBatchContinuation(candidate) {
+  storage.createTask({ id: BATCH_TASK_ID, title: 'Panorama batch regression', brief: 'batch', request: {}, content_revision: 1, status: 'draft' });
+  storage.saveOutput(BATCH_TASK_ID, 'scene_config', {
+    spaces: ['batch-scene-1', 'batch-scene-2', 'batch-scene-3'].map(id => ({ id, space_id: id, name: id })),
+  });
+  sceneAssets.saveSceneAssetsToTask(BATCH_TASK_ID, [neutralScene('batch-scene-1', candidate)]);
+  for (const sceneId of ['batch-scene-2', 'batch-scene-3']) {
+    storage.saveOutput(BATCH_TASK_ID, `scene_asset_checkpoint:${sceneId}`, {
+      scene_id: sceneId,
+      space_id: sceneId,
+      status: 'partial',
+      views: { master: { status: 'succeeded', image_url: candidate.image_url, provider_submission_state: 'completed', billing_state: 'confirmed' } },
+    });
+  }
+  const plan = scenePanorama.planForTask(BATCH_TASK_ID);
+  assert.equal(plan.scene_count, 3, 'batch planning must include checkpoint-projected scenes, not only formal scene_assets');
+  let scene2Submissions = 0;
+  let otherSubmissions = 0;
+  const deps = {
+    imageGenerator: async options => {
+      if (options.filename.includes('batch-scene-2')) {
+        scene2Submissions += 1;
+        await options.onSubmitting?.({ clientRequestId: options.clientRequestId, providerSubmissionState: 'submitting' });
+        const error = new Error('ambiguous provider 500');
+        error.code = 'PROVIDER_5XX_AMBIGUOUS';
+        error.billingState = 'unknown';
+        throw error;
+      }
+      otherSubmissions += 1;
+      return candidate;
+    },
+    reviewPanorama: async () => ({
+      pass: true, source_fidelity_score: 0.98, geometry_consistency_score: 0.98,
+      wraparound_consistency_score: 0.98, projection_consistency_score: 0.98, mismatch_reasons: [],
+    }),
+  };
+  const first = await scenePanorama.generateTaskPanoramas(BATCH_TASK_ID, {
+    cost_confirmation: true,
+    plan_fingerprint: plan.plan_fingerprint,
+  }, { generationId: 'batch-generation-1' }, deps);
+  assert.equal(first.status, 'partial_failed');
+  assert.equal(first.completed_count, 2, 'a single 500 must not stop later independent panorama scenes');
+  assert.equal(first.failed_count, 1);
+  assert.equal(scene2Submissions, 1);
+  assert.equal(otherSubmissions, 2);
+  const resumePlan = scenePanorama.planForTask(BATCH_TASK_ID);
+  assert.equal(resumePlan.blocked_count, 1, 'the exact ambiguous panorama unit must remain frozen for billing review');
+  const second = await scenePanorama.generateTaskPanoramas(BATCH_TASK_ID, {
+    cost_confirmation: true,
+    plan_fingerprint: resumePlan.plan_fingerprint,
+  }, { generationId: 'batch-generation-2' }, deps);
+  assert.equal(second.completed_count, 2, 'verified panoramas must be reused during batch resume');
+  assert.equal(scene2Submissions, 1, 'batch resume must not resubmit the billing-ambiguous scene');
+  assert.equal(otherSubmissions, 2, 'batch resume must not regenerate already verified scenes');
+}
+
+function testBatchUiContract() {
+  const worldView = fs.readFileSync(path.join(root, 'public/story-ad/views/sceneWorldView.js'), 'utf8');
+  const action = fs.readFileSync(path.join(root, 'public/story-ad/views/panoramaGeneration.js'), 'utf8');
+  assert(worldView.includes('data-generate-all-panoramas'));
+  assert(worldView.includes('runPanoramaBatchGeneration'));
+  assert(action.includes('/scene-assets/panoramas/plan'));
+  assert(action.includes('/scene-assets/panoramas'));
+  assert(action.includes('单个场景失败不会中断其他场景'));
+}
+
 async function main() {
   const candidate = await createSyntheticGrid('panorama-contract-grid.png');
   const brokenCandidate = await createSyntheticGrid('panorama-broken-seam-grid.png', 512, 256, { brokenSeam: true });
@@ -530,6 +597,8 @@ async function main() {
   testProjectionAndShotReference(generated);
   await testKeyframeQaPanoramaReference(generated);
   await testTwentyConcurrentJobSubmissions();
+  await testProjectedBatchContinuation(candidate);
+  testBatchUiContract();
   console.log(JSON.stringify({
     success: true,
     panorama_dimensions: [projection.normalized.width, projection.normalized.height],
@@ -549,6 +618,8 @@ async function main() {
     source_change_invalidated_old_authority: true,
     provider_and_qa_paid_states_blocked: true,
     twenty_concurrent_jobs_one_accepted: true,
+    projected_batch_scenes: 3,
+    batch_500_continues_and_exact_unit_stays_blocked: true,
     forbidden_industry_sentinels: FORBIDDEN_INDUSTRY_SENTINELS.length,
   }, null, 2));
 }
@@ -559,5 +630,6 @@ main().catch(error => {
 }).finally(() => {
   try { storage.deleteTask(TASK_ID); } catch {}
   try { storage.deleteTask(JOB_TASK_ID); } catch {}
+  try { storage.deleteTask(BATCH_TASK_ID); } catch {}
   fs.rmSync(outputDir, { recursive: true, force: true });
 });

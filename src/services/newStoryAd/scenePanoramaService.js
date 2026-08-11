@@ -5,6 +5,8 @@ const modelGateway = require('./modelGateway');
 const cancellation = require('./cancellationContext');
 const sceneAssets = require('./sceneAssetService');
 const projection = require('./panoramaProjectionService');
+const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
+const { sceneProjectionRows } = require('./taskViewService');
 
 const PANORAMA_CONTRACT_VERSION = 1;
 const CHECKPOINT_OUTPUT_KIND = 'scene_panorama_checkpoints';
@@ -82,7 +84,10 @@ function sourceFingerprint(scene = {}, source = {}) {
 }
 
 function storedAssets(taskId) {
-  return sceneAssets.normalizeSceneAssets(storage.getOutput(taskId, 'scene_assets') || []);
+  const outputs = storage.listOutputs(taskId);
+  const invalidation = storage.getManifest(taskId)?.invalidated?.scene_assets || null;
+  const projected = sceneCheckpointProjection.projectSceneAssets(sceneProjectionRows(outputs, invalidation));
+  return sceneAssets.normalizeSceneAssets(projected);
 }
 
 function findScene(taskId, sceneId) {
@@ -261,6 +266,102 @@ function planForScene(taskId, sceneId) {
     existing_panorama_id: clean(existing?.id, 160),
     checkpoint_updated_at: clean(checkpoint.updated_at, 80),
     pricing_status: 'provider_billing_not_configured',
+  };
+}
+
+function planForTask(taskId) {
+  const assets = storedAssets(taskId);
+  const scenes = [];
+  const unavailable = [];
+  for (const scene of assets) {
+    const sceneId = clean(scene.scene_id || scene.id, 120);
+    if (!sceneId) continue;
+    try {
+      scenes.push(planForScene(taskId, sceneId));
+    } catch (error) {
+      unavailable.push({ scene_id: sceneId, error_code: error?.code || 'PANORAMA_PLAN_FAILED' });
+    }
+  }
+  const basis = {
+    contract_version: PANORAMA_CONTRACT_VERSION,
+    task_id: clean(taskId, 120),
+    scene_plans: scenes.map(plan => ({
+      scene_id: plan.scene_id,
+      plan_fingerprint: plan.plan_fingerprint,
+      operation: plan.operation,
+    })),
+  };
+  const totalModelCallPlan = scenes.reduce((total, plan) => ({
+    panorama_generation: total.panorama_generation + Number(plan.model_call_plan?.panorama_generation || 0),
+    panorama_qa: total.panorama_qa + Number(plan.model_call_plan?.panorama_qa || 0),
+    local_projection: 0,
+    depth: 0,
+    spatial_reconstruction: 0,
+    mode: 'panorama_3dof',
+  }), modelCallPlan({ panorama_generation: 0, panorama_qa: 0 }));
+  return {
+    ...basis,
+    plan_fingerprint: fingerprint(basis),
+    scenes,
+    unavailable,
+    scene_count: scenes.length,
+    blocked_count: scenes.filter(plan => plan.blocked).length,
+    model_call_plan: totalModelCallPlan,
+    paid_call_count: totalModelCallPlan.panorama_generation + totalModelCallPlan.panorama_qa,
+    pricing_status: 'provider_billing_not_configured',
+  };
+}
+
+function assertConfirmedTaskPlan(body = {}, expected = {}) {
+  const confirmed = body.cost_confirmation === true
+    && clean(body.plan_fingerprint, 200) === clean(expected.plan_fingerprint, 200);
+  if (confirmed) return expected;
+  const error = new Error('开始统一生成360全景前必须读取并确认服务端最新批量调用计划');
+  error.code = 'PANORAMA_BATCH_COST_CONFIRMATION_REQUIRED';
+  error.status = 400;
+  error.retryable = false;
+  error.current_plan = expected;
+  throw error;
+}
+
+async function generateTaskPanoramas(taskId, body = {}, runOptions = {}, deps = {}) {
+  const expected = planForTask(taskId);
+  assertConfirmedTaskPlan(body, expected);
+  const results = [];
+  const failures = [];
+  for (let index = 0; index < expected.scenes.length; index += 1) {
+    const plan = expected.scenes[index];
+    if (plan.blocked) {
+      failures.push({ scene_id: plan.scene_id, error_code: 'PANORAMA_BILLING_REVIEW_REQUIRED', billing_review_required: true });
+      continue;
+    }
+    try {
+      results.push(await generateScenePanorama(taskId, plan.scene_id, {
+        ...body,
+        plan_fingerprint: plan.plan_fingerprint,
+        cost_confirmation: true,
+      }, {
+        ...runOptions,
+        generationId: `${clean(runOptions.generationId || body.generation_id || `panorama-batch-${Date.now()}`, 90)}:${index + 1}`,
+      }, deps));
+    } catch (error) {
+      failures.push({
+        scene_id: plan.scene_id,
+        error_code: error?.code || 'PANORAMA_GENERATION_FAILED',
+        billing_state: error?.billingState || error?.billing_state || '',
+        billing_review_required: error?.billing_review_required === true,
+      });
+    }
+  }
+  return {
+    status: failures.length ? 'partial_failed' : 'completed',
+    scene_count: expected.scenes.length,
+    completed_count: results.length,
+    failed_count: failures.length,
+    results,
+    failures,
+    unavailable: expected.unavailable,
+    model_call_plan: expected.model_call_plan,
   };
 }
 
@@ -449,7 +550,10 @@ module.exports = {
   sourceFingerprint,
   modelCallPlan,
   planForScene,
+  planForTask,
   assertConfirmedPlan,
+  assertConfirmedTaskPlan,
   reviewPanorama,
   generateScenePanorama,
+  generateTaskPanoramas,
 };
