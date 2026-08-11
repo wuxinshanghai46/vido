@@ -1367,7 +1367,12 @@ async function generate(taskId, options = {}) {
           status: 'asset_plan_sections_missing',
           validators: recoverySectionValidators(ctx),
           allow_generation_handoff: true,
-          replace_incompatible: !storedDraft,
+          // An explicit replan draft is synthesized from the current published
+          // people/props and current release envelope. It is not the persisted
+          // checkpoint we are about to CAS against. Permit replacement only
+          // for this explicit transaction; saveCheckpointAtomic still verifies
+          // the live task bundle, content revision and generation before write.
+          replace_incompatible: Boolean(replanDraft) || !storedDraft,
           extra: {
             content_skill: contentSkill.snapshot(currentContentMode),
             unified_model_meta: unifiedMeta || storedDraft?.unified_model_meta || null,

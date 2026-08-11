@@ -19,6 +19,7 @@ const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const coverage = require('../src/services/newStoryAd/storySceneCoverageService');
 const publication = require('../src/services/newStoryAd/assetPlanPublicationService');
 const storyFactsPrompt = require('../src/services/newStoryAd/storyFactsPromptService');
+const sectionRecovery = require('../src/services/newStoryAd/assetPlanSectionRecoveryContractService');
 
 const originalGenerateText = modelGateway.generateText;
 const originalEnsureChineseOutput = outputLanguage.ensureChineseOutput;
@@ -189,10 +190,27 @@ const familyStory = genericStory({
     fingerprint: assetPlan.fingerprint(storage.getTask(taskId), narrative),
     source: 'current_bundle_pre_replan',
   });
+  storage.saveOutput(taskId, 'asset_plan_draft_checkpoint', {
+    contract_version: sectionRecovery.CONTRACT_VERSION,
+    release_envelope: { producer_bundle_id: 'a'.repeat(64) },
+    content_revision: 1,
+    status: 'asset_plan_sections_missing',
+    fingerprint: 'stale-input-fingerprint',
+    content_mode: 'narrative_story',
+    generation_id: 'stale-generation-before-era-migration',
+    reusable: true,
+    payload: {
+      cast_profiles: currentPlan.cast_profiles,
+      prop_plan: currentPlan.prop_plan,
+      story_seed: {},
+      scene_plan: { spaces: [] },
+    },
+  });
 
   let unifiedCalls = 0;
   let storyCalls = 0;
   let sceneCalls = 0;
+  let refreshedCheckpointObserved = false;
   modelGateway.generateText = async (options = {}) => {
     if (options.stage === 'new_story_ad.asset_plan') {
       unifiedCalls += 1;
@@ -200,6 +218,12 @@ const familyStory = genericStory({
     }
     if (options.stage === 'new_story_ad.story_facts') {
       storyCalls += 1;
+      const refreshedCheckpoint = storage.getOutput(taskId, 'asset_plan_draft_checkpoint');
+      assert(refreshedCheckpoint, '故事事实调用前必须已原子保存当前事务检查点');
+      assert.notEqual(refreshedCheckpoint.release_envelope?.producer_bundle_id, 'a'.repeat(64), '显式重新规划必须原子替换旧 bundle 检查点');
+      assert.notEqual(refreshedCheckpoint.fingerprint, 'stale-input-fingerprint', '显式重新规划必须替换旧输入指纹');
+      assert.notEqual(refreshedCheckpoint.generation_id, 'stale-generation-before-era-migration', '显式重新规划必须绑定当前 generation');
+      refreshedCheckpointObserved = true;
       const payload = { story_seed: storySeed() };
       await options.validateText(JSON.stringify(payload), { parsed_json: payload });
       return { text: JSON.stringify(payload), used_model: 'mock/story', fallback_used: false, failed_models: [] };
@@ -221,6 +245,7 @@ const familyStory = genericStory({
   assert.equal(storyCalls, 1, '当前 bundle 只调用一次故事事实模型');
   assert.equal(sceneCalls, 0, '场景拓扑必须由平台确定性编译，不能回落旧场景模型');
   assert.equal(coverage.coverageIssues(stored, storage.getOutput(taskId, 'context')).length, 0);
+  assert.equal(refreshedCheckpointObserved, true);
 
   modelGateway.generateText = originalGenerateText;
   let semanticError;
@@ -314,6 +339,7 @@ const familyStory = genericStory({
     story_calls: storyCalls,
     scene_calls_including_retry: sceneCalls,
     unified_calls: unifiedCalls,
+    stale_checkpoint_cas_replaced: true,
     checkpoint_resume_preserved_story: true,
     semantic_errors_classified_as_response_invalid: true,
     managed_recovery_candidate_fallback: true,
