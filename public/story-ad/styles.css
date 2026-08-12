@@ -316,8 +316,13 @@ body.story-dialog-open { overflow: hidden; }
 .btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
 .brief-form .form-grid { align-items: start; }
-.brief-form .field:not(.full) { grid-template-rows: auto 42px auto; align-content: start; min-width: 0; }
-.brief-form .field:not(.full) > .select { height: 42px; }
+.brief-form .field:not(.full) { grid-template-rows: auto minmax(48px, auto) auto; align-content: start; min-width: 0; }
+.brief-form .field:not(.full) > .select {
+  height: 48px;
+  min-height: 48px;
+  padding-block: 8px;
+  line-height: 1.5;
+}
 .brief-config-section { display: grid; grid-column: 1 / -1; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface-2) 62%, transparent); }
 .brief-config-heading { display: flex; align-items: flex-start; gap: 11px; }
 .brief-config-heading > span:last-child { min-width: 0; }

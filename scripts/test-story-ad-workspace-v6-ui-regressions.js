@@ -118,7 +118,8 @@ assert.match(briefView, /brief-output-grid/, '时长、画幅和分辨率必须�
 assert.match(briefWorldSettings, /具体时期 <em>根据剧本同步显示<\/em>/, '具体时期必须明确显示将与剧本识别同步');
 assert.match(briefWorldSettings, /国家 \/ 地区 <em>可自动识别<\/em>/, '国家地区必须明确提示留空可自动识别');
 const briefStyles = read('public/story-ad/styles.css');
-assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto 42px auto;/, '设置字段标题不得继续使用固定 18px 高度');
+assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto minmax\(48px, auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
+assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) > \.select \{[\s\S]*height: 48px;[\s\S]*padding-block: 8px;[\s\S]*line-height: 1\.5;/, '目标页下拉框必须显式避免中文文字下缘裁切');
 assert.match(briefStyles, /\.brief-config-section \{[^}]*grid-column: 1 \/ -1;/, '两个设置分区必须各自占满主表单宽度，不能被挤在同一行');
 assert.match(briefStyles, /@media \(max-width: 760px\)[\s\S]*\.brief-config-grid, \.brief-output-grid \{ grid-template-columns: 1fr;/, '世界观与成片规格在窄屏必须切换为单列');
 assert.match(briefView, /<select class="select" name="content_mode" required>[\s\S]*<option value="commercial_subject"[\s\S]*<option value="narrative_story"/, '目标页必须使用下拉框让用户明确选择广告或剧情');
