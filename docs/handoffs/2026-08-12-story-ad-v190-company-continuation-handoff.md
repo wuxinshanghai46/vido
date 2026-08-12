@@ -190,3 +190,34 @@ ssh -o BatchMode=yes vido-prod
 - Brief authority、详细线稿批次、工作台 UI、场景修复、场景卡、发布完整性均通过。
 - 标准不可变发布器的完整本地门禁通过；未执行生产 PM2、内网健康、SQLite quick_check、活动任务命令行核对，原因是 SSH 私钥缺失。
 - 未执行真实 Image 2 生成：避免对未知计费单元重复付费。修复尚未上线，用户暂不可在生产重试。
+
+## 12. 2026-08-12 公司电脑最终更新（v196，已部署生产）
+
+### SSH 缺失提示的真实根因
+- 本机并非缺少生产私钥；实际私钥为 `C:\Users\User\.ssh\id_ed25519_vido_prod`，旧统一认证代码只检查 `id_ed25519`，因此误报缺失。
+- 生产 SSH 实际端口为 `2222`。22 端口会在密钥认证前主动关闭；同一把生产专用密钥在 2222 上认证成功。
+- 不可变发布器内部还显式写死 `port: 22`，覆盖了统一认证模块的默认值。该覆盖已移除，并新增回归测试锁定 2222 与环境变量覆盖能力。
+
+### 新 GPT Image 2 供应商
+- 新增供应商标识 `smscrw`，API 基址 `https://ai.smscrw.cn/v1`，模型 `gpt-image-2`。API Key 仅保存在本地与生产受保护设置中，未写入 Git、日志或本交接文件。
+- 用户提供的 chat completions 示例不适用于图片模型，真实探针返回“不支持该操作”。正确路由为：文生图 `/images/generations`，参考图编辑 `/images/edits`。
+- 真实协议进一步确认：请求体必须带 `model: gpt-image-2`；该供应商不支持 `input_fidelity`，因此按供应商能力删除该字段；参考图最多 6 张。
+- 18 个剧情广告图片阶段均设置为：第一候选 `smscrw/gpt-image-2`，第二候选 `deyunai/gpt-image-2`。生产只读候选解析已确认顺序正确。
+
+### 最终 Git 与生产身份
+- 功能/供应商提交：`b395a98`。
+- SSH 端口与发布器修复提交：`0ee3034`、`2791071`。
+- 交接文档提交前代码 HEAD：`2791071be1ae219ca3d6216cf124b069b6653c47`；本地与 origin ahead/behind 为 `0/0`。
+- 最终 build：`20260812-ui-v196`。
+- artifact：`d149807ce9f92acbdf0ce9f3ec71139895b2b79fba410d8cc0d4207603c7dbfc`。
+- runtime hash：`0c882a22da41c7413a2e1eddf06077a9e4d90c758c4d8c4bf40756e99e888d14`。
+- release bundle：`4fdedbd9660429981471d5b4df6de550067521fe9867989474433b75ee4eb6ca`。
+- 本地与生产 build、runtime hash、release bundle 完全一致；发布器逐项校验 650 个文件，`0 mismatch`。
+
+### 实际验证与剩余风险
+- 文生图真实探针：HTTP 200，约 25 秒，返回 1 张 PNG base64。
+- 参考图编辑真实探针：修正字段后 HTTP 200，约 29 秒，返回 1 张 PNG base64。
+- 发布器完整门禁通过；生产 PM2 `vido` online、restart 0，内外网 health 均为 `ok`，SQLite `quick_check=ok`。
+- 发布前后活动任务均为 0；历史 unknown billing 为 59，但 active unknown billing 为 0，本轮未续用任何旧失败单元。
+- 未执行整批业务项目生成，避免额外付费和覆盖现有资产；仅执行上述两次单图协议探针。
+- 用户在对话中直接粘贴过 API Key，应视为已暴露并尽快在供应商后台轮换；轮换后必须同步更新本地和生产受保护设置。
