@@ -8,7 +8,7 @@ const path = require('path');
  */
 function connectionOptions({
   host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151',
-  port = Number(process.env.VIDO_DEPLOY_PORT || 22),
+  port = Number(process.env.VIDO_DEPLOY_PORT || 2222),
   username = process.env.VIDO_DEPLOY_USER || 'root',
   readyTimeout = 25000,
   keepaliveInterval = Number(process.env.VIDO_DEPLOY_KEEPALIVE_INTERVAL || 15000),
