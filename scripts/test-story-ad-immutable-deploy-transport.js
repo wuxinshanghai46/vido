@@ -7,6 +7,10 @@ const vm = require('vm');
 
 const source = fs.readFileSync(path.resolve(__dirname, 'deploy-story-ad-immutable-release.js'), 'utf8');
 
+assert(source.includes("const port = Number(process.env.VIDO_DEPLOY_PORT || 2222)"), 'immutable deploy must default to the production SSH port');
+assert(source.includes('connectionOptions({ host, port, username })'), 'immutable deploy must pass the resolved SSH port');
+assert(!source.includes('connectionOptions({ host, port: 22, username })'), 'immutable deploy must not hard-code the closed port 22');
+
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');
 assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希审计必须从清单文件读取');
 assert(!source.includes('specBase64'), '禁止把完整发布清单嵌入 shell 参数');
@@ -34,4 +38,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 13, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted' }));
+console.log(JSON.stringify({ passed: true, checks: 16, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted' }));

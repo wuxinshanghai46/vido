@@ -33,6 +33,7 @@ const stagingDir = `/opt/vido/releases/.staging-${artifactId}-${process.pid}`;
 const currentLink = '/opt/vido/current';
 const lockDir = `/opt/vido/deploy-locks/story-ad-${artifactId}`;
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
+const port = Number(process.env.VIDO_DEPLOY_PORT || 2222);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
 const files = collectStoryAdReleaseFiles({ root, releaseManifest: publicManifest });
 const uploadConcurrency = Math.max(1, Math.min(8, Number(
@@ -347,4 +348,4 @@ client.on('ready', async () => {
     client.end();
     process.exitCode = 1;
   }
-}).on('error', error => { console.error(error.message || error); process.exitCode = 1; }).connect(connectionOptions({ host, port: 22, username }));
+}).on('error', error => { console.error(error.message || error); process.exitCode = 1; }).connect(connectionOptions({ host, port, username }));
