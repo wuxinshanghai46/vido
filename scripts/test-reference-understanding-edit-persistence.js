@@ -39,7 +39,7 @@ function reference() {
 
 try {
   const owner = { id: 'reference-editor-owner' };
-  const task = storyAd.createTask({ project_name: '参考内容编辑持久化', brief: '用户手填广告目标', brief_source: 'user' }, owner).task;
+  const task = storyAd.createTask({ content_mode: 'commercial_subject', content_mode_source: 'user', project_name: '参考内容编辑持久化', brief: '用户手填广告目标', brief_source: 'user' }, owner).task;
   const base = reference();
   const attached = storyAd.updateTaskRequest(task.id, {
     reference_video_analysis: base,

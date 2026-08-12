@@ -43,7 +43,7 @@ assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
 assert.match(assetView, /升级独立穿搭 \/ 配饰档案/);
 assert.match(assetView, /repair_existing: repairing/);
-assert.match(assetView, /subject_targets = pending\.map/);
+assert.match(assetView, /subject_targets = pending\.slice\(0, 1\)\.map/, 'missing people must be submitted as independent tasks instead of one failure-prone batch');
 
 const personEditor = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonLooks.js'), 'utf8');
 assert.match(personEditor, /华丽程度（AI 帮写和图片生成都会遵守）/);

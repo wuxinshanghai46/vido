@@ -632,7 +632,7 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
     assert.equal(bundle.navigation.steps.plot.completed, true);
     assert.equal(bundle.navigation.steps.storyboard.enabled, true);
-    assert.equal(bundle.navigation.steps.shot.enabled, false);
+    assert.equal(bundle.navigation.steps.final.enabled, false);
     assert.equal(bundle.navigation.current, 'storyboard');
 
     storage.saveOutput(taskId, 'storyboard_table', [{
@@ -648,14 +648,13 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
       exit: '以全景天窗高光收束',
     }]);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.storyboard.completed, true);
-    assert.equal(bundle.navigation.steps.shot.enabled, true);
+    assert.equal(bundle.navigation.steps.storyboard.completed, false);
     assert.equal(bundle.navigation.steps.final.enabled, false);
-    assert.equal(bundle.navigation.current, 'shot');
+    assert.equal(bundle.navigation.current, 'storyboard');
 
     storyAd.updateTaskRequest(taskId, { shot_design_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.shot.completed, true);
+    assert.equal(bundle.navigation.steps.storyboard.completed, true);
     assert.equal(bundle.navigation.steps.final.enabled, true);
     assert.equal(bundle.navigation.current, 'final');
   } finally {

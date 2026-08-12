@@ -87,6 +87,7 @@ function testUiAndExportBoundaries() {
   const card = read('public/story-ad/views/sceneDossierCard.js');
   const exporter = read('public/story-ad/views/sceneDossierExport.js');
   const assetCenter = read('public/story-ad/views/assetCenterView.js');
+  const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
   const details = read('public/story-ad/views/assetCenterPlanningDetails.js');
   const world = read('public/story-ad/views/sceneWorldView.js');
   const api = read('public/story-ad/api.js');
@@ -96,7 +97,7 @@ function testUiAndExportBoundaries() {
   assert(card.includes("['master', 'reverse', 'interaction', 'detail', 'layout']"), '场景档案必须固定五类证据槽位');
   assert(card.includes('usedUrls.has(url)') && card.includes('没有使用其他视图冒充'), '同一图片不得跨槽复用');
   assert(card.includes("import('./sceneDossierExport.js"), '高清导出必须按需加载');
-  assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && assetCenter.includes('renderSceneWorldWorkspace(bundle)'), '摘要卡与原场景世界必须同时存在');
+  assert(assetCenter.includes("group === 'scenes' ? sceneDetail") && sceneWorldPage.includes('renderSceneWorldWorkspace(bundle)'), '场景摘要与场景世界必须同时存在，并由独立场景流程承载');
   assert(details.includes('renderSceneDossierCard(item)') && details.includes('bindSceneDossierCard(drawer, item)'), '完整档案必须在场景抽屉内渲染并绑定');
   assert(details.includes("event.key === 'Escape'") && details.includes('returnFocus?.focus?.()'), '抽屉必须支持 Escape 与焦点恢复');
   assert(api.indexOf("options.responseType === 'blob'") < api.indexOf('const text = await response.text()'), '原图读取必须走受版本保护的 Blob 请求');

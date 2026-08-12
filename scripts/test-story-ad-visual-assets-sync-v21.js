@@ -15,7 +15,9 @@ assert.strictEqual(transport.code, 'TIMEOUT_OR_NETWORK');
 assert.strictEqual(transport.retryable, true);
 
 const plannedBundle = { assets: { scenes: [{ id: 'planned', name: '通用待生成场景', status: 'planned' }] } };
-assert.deepStrictEqual(sceneWorld.buildSceneWorlds(plannedBundle), [], 'planned text must not become a world');
+const plannedWorlds = sceneWorld.buildSceneWorlds(plannedBundle);
+assert.strictEqual(plannedWorlds.length, 1, 'planned scenes must remain visible as preallocated scene-world tasks');
+assert.strictEqual(plannedWorlds[0].visual_authority_ready, false, 'planned scene-world tasks must not impersonate generated visual assets');
 const readyBundle = { assets: { scenes: [{ id: 'ready', name: '已生成场景', image_url: '/assets/ready.png' }] } };
 assert.strictEqual(sceneWorld.buildSceneWorlds(readyBundle).length, 1, 'visual evidence must unlock one world');
 const partialManifest = sceneWorld.productionManifest({ assets: { scenes: [...plannedBundle.assets.scenes, ...readyBundle.assets.scenes] } }, sceneWorld.buildSceneWorlds(readyBundle));
@@ -26,13 +28,15 @@ assert.strictEqual(partialManifest.counts.pending_scenes, 1);
 const assetView = read('public/story-ad/views/assetCenterView.js');
 const billingRetryView = read('public/story-ad/views/assetCenterBillingRetry.js');
 const billingReviewDialog = read('public/story-ad/views/assetCenterBillingReviewDialog.js');
-const mountBody = assetView.slice(assetView.indexOf('export async function mount'));
-assert(mountBody.indexOf('renderSections(assets, total)') < mountBody.indexOf('renderSceneWorldWorkspace(bundle)'), 'SceneWorld must render below scene assets');
-assert(assetView.includes('data-generate-visual-assets'));
+const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
+assert(!assetView.includes('renderSceneWorldWorkspace(bundle)'), 'asset tasks and scene-world workflow must remain separate');
+assert(sceneWorldPage.includes('renderSceneWorldWorkspace(bundle)'), 'the dedicated scene step must own the scene-world workspace');
+assert(!assetView.includes('data-generate-visual-assets'), 'asset center must not expose the old all-subject-and-scene batch action');
+assert(sceneWorldPage.includes('data-generate-base-scene'), 'scene workflow must expose one independent generation action per scene');
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
 assert(assetView.includes('先更新当前版本的场景规划'), '合同失效时必须给出唯一的第一步');
-assert(assetView.includes('步骤 2：合同通过后核对计费，再继续缺失图片'), '计费未知恢复必须明确排在合同更新之后');
+assert(assetView.includes('步骤 2：合同通过后逐个人物核对计费，再继续缺失图片'), '计费未知恢复必须明确排在合同更新之后，并保持人物任务独立');
 assert(assetView.includes('data-build-scenes ${generationDisabled}'), '场景规划运行中必须禁用重复提交入口');
 assert(assetView.includes("generationActive ? '正在更新场景规划' : '更新场景规划'"), '场景规划按钮必须区分运行中与空闲状态');
 assert(assetView.includes("host.querySelector('[data-build-scenes]')?.addEventListener"), '合同通过后不得保留无关的重规划按钮');
@@ -96,7 +100,7 @@ assert(deployRelease.includes("'src/services/newStoryAd/sceneBindingService.js'"
 console.log(JSON.stringify({
   success: true,
   transport_code: transport.code,
-  planned_worlds: 0,
+  planned_worlds: 1,
   ready_worlds: 1,
   joint_lanes: 2,
   duplicate_submission_guard: true,

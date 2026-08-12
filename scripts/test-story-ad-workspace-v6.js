@@ -29,6 +29,8 @@ assert.equal(
 /** 建立不依赖模型的真实任务与真实产物。 */
 function seedProject() {
   const created = storyAd.createTask({
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: '制作一支突出耐用性和便捷操作的剧情广告。',
     product_subject: '测试商品',
     cast_mode: 'single',
@@ -145,6 +147,8 @@ async function main() {
   assert(bundle.navigation.counts.assets >= 3, '已生成或已上传资产必须计入侧栏');
 
   const placeholderTask = storyAd.createTask({
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: '仅创建项目，不生成任何资产。',
     product_subject: '只有文字描述的广告主体',
     cast_mode: 'none',
@@ -173,7 +177,7 @@ async function main() {
     storyboardRevision,
     '未修改内容的再次保存不得因 edited_at 等投影字段制造新版本并阻塞下一环节',
   );
-  const referenceContractTask = storyAd.createTask({ brief: '参考视频镜头合同测试' }, owner).task.id;
+  const referenceContractTask = storyAd.createTask({ content_mode: 'narrative_story', content_mode_source: 'user', brief: '参考视频镜头合同测试' }, owner).task.id;
   storyAd.updateStoryboardTable(referenceContractTask, [{
     title: '参考镜头',
     visual: '一家三口在客厅落地窗前交流。',
@@ -188,7 +192,7 @@ async function main() {
   const referenceContractShot = storage.getOutput(referenceContractTask, 'storyboard_table')[0];
   assert.match(referenceContractShot.entry_frame_state, /^镜头开始：/);
   assert.match(referenceContractShot.exit_frame_state, /^镜头结束：/);
-  const workflowStateTask = storyAd.createTask({ brief: '工作流确认状态测试' }, owner).task.id;
+  const workflowStateTask = storyAd.createTask({ content_mode: 'narrative_story', content_mode_source: 'user', brief: '工作流确认状态测试' }, owner).task.id;
   const assetConfirmation = storyAd.updateTaskRequest(workflowStateTask, {
     asset_setup_confirmed: true,
     base_content_revision: storage.getTask(workflowStateTask).content_revision,
@@ -244,8 +248,7 @@ async function main() {
   const selectedWithMissing = subjectGenerationPayload(missingCompanion, missingCompanion.assets.people[0], 'workspace-missing-companion');
   assert.deepEqual(selectedWithMissing.subject_targets, [
     { kind: 'human', id: 'cast-current', index: 0 },
-    { kind: 'human', id: 'cast-draft-2', index: 1 },
-  ], '逐人物生成必须自动包含其他缺少可复用四视图的主体');
+  ], '逐人物生成必须只提交当前选中人物，其他缺失人物保留为独立任务');
 
   const graph = graphProjection.projectGraph(bundle);
   assert.equal(graph.read_only, true);

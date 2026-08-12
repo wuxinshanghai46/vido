@@ -77,6 +77,8 @@ function completedRecord() {
 async function main() {
   storyAd.createTask({
     task_id: taskId,
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     project_name: 'Reference sync regression',
     brief: '',
     product_subject: genericProduct,
@@ -105,7 +107,7 @@ async function main() {
   assert.equal(firstBundle.reference.status, 'completed', 'first project read must use the authoritative terminal status');
   assert.equal(firstBundle.reference.progress, 100, 'first project read must not replay stale progress');
   assert.equal(firstBundle.reference.analysis_valid, true);
-  assert.equal(firstBundle.brief.text, 'Complete evidence-grounded advertising objective from the reference video.', 'first project read must project the normalized completed objective immediately');
+  assert.equal(firstBundle.brief.text, 'Complete evidence-grounded advertising objective\nfrom the reference video.', 'first project read must project the completed multiline objective immediately');
   assert.equal(firstBundle.brief.product_subject, record.result.source_facts.product_or_service);
   assert.equal(
     Date.parse(firstBundle.reference.completed_at) - Date.parse(firstBundle.reference.started_at),
@@ -124,7 +126,7 @@ async function main() {
   assert.equal(context.reference_video_analysis.status, 'completed');
   assert.equal(context.reference_video_analysis.progress, 100);
   assert.equal(context.reference_video_analysis.reference_understanding.completeness.valid, true, 'V6 understanding must survive the task transport');
-  assert.equal(context.brief, 'Complete evidence-grounded advertising objective from the reference video.', 'full generated brief must be normalized and persisted');
+  assert.equal(context.brief, 'Complete evidence-grounded advertising objective from the reference video.', 'generated reference brief must be normalized when persisted');
   assert.equal(context.brief_source, 'reference_analysis');
   assert.equal(context.product_subject, record.result.source_facts.product_or_service, 'generic subject must be replaced by recognized evidence');
   assert.ok(context.reference_analysis_projection?.fingerprint, 'zero-model asset/story projection must be persisted');
