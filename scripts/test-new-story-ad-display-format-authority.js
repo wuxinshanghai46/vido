@@ -180,6 +180,8 @@ function testNoOpRefreshSaveKeepsSceneAuthority() {
   const flattenedCreative = '【剧情走向】主人和宠物进入客厅 【关键动作】1. 宠物靠近主人 2. 主人轻抚宠物 【结尾】品牌收束';
   const created = service.createTask({
     brief: flattenedBrief,
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     product_subject: '家庭宠物产品',
     cast_mode: 'no_human',
     scene_mode: 'multi',
