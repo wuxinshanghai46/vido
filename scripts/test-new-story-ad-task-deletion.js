@@ -105,13 +105,21 @@ async function main() {
     assert.equal(forbidden.status, 403);
     assert(storage.getTask(taskId), 'unauthorized deletion must keep the task');
 
+    const originalReadDb = storage.readDb;
+    let deletionSnapshotReads = 0;
+    storage.readDb = (...args) => {
+      deletionSnapshotReads += 1;
+      return originalReadDb(...args);
+    };
     const deleted = await requestDelete(baseUrl, taskId, 'owner-a');
+    storage.readDb = originalReadDb;
     const deletedBody = deleted.body;
     assert.equal(deleted.status, 200);
     assert.equal(deletedBody.success, true);
     assert.equal(deletedBody.deleted, true);
     assert.equal(deletedBody.cleanup.deleted_files, 1);
     assert.equal(deletedBody.cleanup.preserved_shared_files, 1);
+    assert.equal(deletionSnapshotReads, 1, 'permanent deletion must reuse one database snapshot');
     assert.equal(fs.existsSync(ownedFile), false, 'task-owned output file must be removed');
     assert.equal(fs.existsSync(sharedFile), true, 'file referenced by another task must be preserved');
     assert.equal(fs.existsSync(outsideFile), true, 'file outside OUTPUT_DIR must never be removed');

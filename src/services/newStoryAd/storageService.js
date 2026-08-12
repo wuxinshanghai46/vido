@@ -259,15 +259,32 @@ function listTaskRows({ status = '', userId = '' } = {}) {
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
 }
 
-function deleteTask(taskId) {
+function withoutTaskRows(db = {}, taskId = '') {
   const id = String(taskId || '');
-  if (!id || !getTask(id)) return false;
-  for (const key of ['assets', 'stages', 'outputs', 'model_calls', 'reviews', 'snapshots', 'artifacts', 'generation_runs']) {
-    const related = listRows(key).filter(row => String(row.task_id || '') === id);
-    related.forEach(row => removeRow(key, row.id));
+  return Object.fromEntries(Object.keys(defaultDb()).map(key => {
+    const rows = Array.isArray(db[key]) ? db[key] : [];
+    if (key === 'tasks' || key === 'manifests') return [key, rows.filter(row => String(row.id || '') !== id)];
+    return [key, rows.filter(row => String(row.task_id || '') !== id)];
+  }));
+}
+
+function deleteTask(taskId, options = {}) {
+  const id = String(taskId || '');
+  const snapshot = options.snapshot && typeof options.snapshot === 'object' ? options.snapshot : readDb();
+  if (!id || !(snapshot.tasks || []).some(row => String(row.id || '') === id)) return false;
+  const next = withoutTaskRows(snapshot, id);
+  if (!useSqlite()) {
+    writeJson(DB_PATH, next);
+    return true;
   }
-  removeRow('manifests', id);
-  removeRow('tasks', id);
+  for (const key of Object.keys(COLLECTIONS)) {
+    const previousIds = new Set((snapshot[key] || []).map(row => String(row.id || '')));
+    const nextIds = new Set((next[key] || []).map(row => String(row.id || '')));
+    contentRecords.removeMany(COLLECTIONS[key], [...previousIds].filter(rowId => !nextIds.has(rowId)));
+  }
+  if (dbConfig().dualWrite) {
+    writeJson(DB_PATH, withoutTaskRows(normalizedJsonDb(), id));
+  }
   return true;
 }
 

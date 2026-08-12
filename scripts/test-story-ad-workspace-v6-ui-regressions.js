@@ -418,7 +418,7 @@ const assetModule = loadBrowserModule(
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
-  ['generationProgressPanel'],
+  ['generationProgressPanel', 'generationProgressView'],
 );
 const planningModule = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanningDetails.js',
@@ -441,22 +441,30 @@ assert.match(assets, /data-confirm-assets/);
 assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜测为合同缺失；必需项只由版本合同判定');
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
 assert.match(assets, /content_mode === 'narrative_story' \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
-assert.match(assets, /版本合同未通过/, '合同失败只显示合同结论');
-assert.match(assets, /版本合同未通过 · 步骤 1/, '合同失败必须显示恢复步骤顺序');
-assert.match(assets, /先更新当前版本的场景规划/, '合同失败必须给出唯一明确的第一步');
-assert.match(assets, /成功图片保留/, '更新规划前必须说明成功资产不会丢失');
+assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
+assert.match(assets, /人物与场景方案需要更新/, '内容或系统版本变化时必须显示用户可理解的方案状态');
+assert.match(assets, /人物与场景方案更新失败/, '规划失败时必须与一般版本更新明确区分');
+assert.match(assets, /已成功的人物和场景资产都会保留/, '更新方案前必须说明成功资产不会丢失');
+assert.match(assets, /只生成文字方案，不生成图片/, '更新方案必须明确不产生图片生成');
 assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
-assert.match(assets, /正在更新场景规划/, '场景规划运行中必须显示进行中而不是高亮可选按钮');
+assert.match(assets, /正在更新人物与场景方案/, '统一资产规划运行中必须显示准确名称和进行中状态');
 assert.match(assets, /data-build-scenes \$\{generationDisabled\}/, '场景规划运行中必须禁用重复提交入口');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
-assert.match(assets, /步骤 2：合同通过后逐个人物核对计费，再继续缺失图片/, '计费未知必须明确为合同恢复后的逐人物第二步');
+assert.match(assets, /方案更新完成后，再逐个人物确认图片生成/, '必须明确方案更新与后续逐人物图片生成的顺序');
 const blockedVisualFailure = {
   project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },
   navigation: { asset_plan_eligibility: { eligible: false } },
   generation: { progress: { stage: 'visual_assets', status: 'failed', billing_state: 'unknown', lanes: {} } },
 };
+const planningFailure = uiModule.generationProgressView({
+  project: { status: 'failed', stage: 'scene_config_failed', error: 'provider failed' },
+  generation: { progress: { stage: 'scene_config', status: 'failed' } },
+});
+assert.equal(planningFailure.failureTitle, '人物与场景方案更新失败');
+assert.match(planningFailure.liveText, /重新更新人物与场景方案/);
+assert.doesNotMatch(planningFailure.liveText + planningFailure.message, /从缺失项继续|场景规划/, '统一方案失败不得错误引导用户继续缺失图片');
 const outsideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'brief');
-assert.match(outsideAssetsRecovery, /前往资产中心更新场景规划/, '资产中心外必须只导航到第一步');
+assert.match(outsideAssetsRecovery, /前往资产中心更新人物与场景方案/, '资产中心外必须使用准确的统一资产方案名称');
 const insideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'assets');
 assert.doesNotMatch(insideAssetsRecovery, /data-view="assets"/, '已在资产中心时不得重复显示无效跳转');
 assert.doesNotMatch(assets, /付费生成已锁定/, '不得向用户暴露内部付费熔断措辞');
@@ -773,6 +781,11 @@ assert.match(storeSource, /progressRevision/, '轮询必须使用独立进度 re
 const appSource = read('public/story-ad/app.js');
 assert.match(appSource, /setInterval\(\(\) => refreshElapsedLabels\(document\), 1000\)/, '页面必须每秒刷新活动任务耗时');
 assert.match(appSource, /已生成 \/ 已上传资产/, '侧栏计数必须说明只统计真实结果');
+assert.match(appSource, /const deletingProjectIds = new Set\(\)/, '项目中心必须维护独立删除状态，避免重复提交');
+assert.match(appSource, /aria-busy="true"/, '整行删除状态必须向用户和辅助技术公开');
+assert.match(appSource, /正在彻底删除/, '删除确认后整行必须立即显示清晰进度');
+assert.match(appSource, /deletingProjectIds\.delete\(String\(taskId\)\)/, '删除成功或失败后必须清理等待状态');
+assert.match(workspaceCss + platformCss, /project-row\.is-deleting/, '删除中的项目行必须有持久视觉状态');
 [
   'public/story-ad/views/assetCenterView.js',
   'public/story-ad/views/plotRoomView.js',

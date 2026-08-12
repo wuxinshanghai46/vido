@@ -76,7 +76,7 @@ const GENERATION_STAGE_LABELS = {
   person_provider_sync: '人物 ID 与 Seedance 同步',
   product_asset: '商品资产',
   prop_asset: '人物随身道具',
-  scene_config: '场景规划',
+  scene_config: '人物与场景方案',
   scene_asset: '场景视图',
   blueprint: '剧情蓝图',
   storyboard: '文字分镜',
@@ -127,20 +127,23 @@ export function generationProgressView(bundle = {}) {
   const failureCode = String(progress.error_code || project.error_code || '').toUpperCase();
   const failureText = String(progress.message || project.error || '');
   const billingUnknown = progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
-  let failureTitle = `${stageLabel}生成失败`;
+  let failureTitle = stage === 'scene_config' ? `${stageLabel}更新失败` : `${stageLabel}生成失败`;
   if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
   else if (progress.phase === 'review_failed' || /(?:QUALITY|QA|REVIEW).*FAILED/.test(failureCode)) failureTitle = `${stageLabel}质量审核未通过`;
   else if (billingUnknown) failureTitle = `${stageLabel}生成中断（计费待核对）`;
   else if (/TIMEOUT|NETWORK|IMAGE_ATTEMPTS_EXHAUSTED/.test(failureCode) || /upstream connect error|connection termination|reset before headers/i.test(failureText)) failureTitle = `${stageLabel}生成中断（模型连接失败）`;
   let liveText = '';
-  if (failed) liveText = billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续';
+  if (failed && stage === 'scene_config') liveText = '已有资产已保留，请重新更新人物与场景方案';
+  else if (failed) liveText = billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续';
   else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
-    message: publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
+    message: failed && stage === 'scene_config'
+      ? '人物与场景方案未更新完成。已有资产不会被覆盖；请进入资产中心重新更新方案。'
+      : publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
     startedAt,
     finishedAt,
@@ -152,7 +155,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
   if (!view) return '';
   const ready=bundle.navigation?.asset_plan_eligibility?.eligible === true;
   const recovery=view.stage === 'visual_assets' && currentView !== 'assets'
-    ? `<button class="btn small" data-view="assets">前往资产中心${ready ? '继续缺失图片' : '更新场景规划'}</button>`:'';
+    ? `<button class="btn small" data-view="assets">前往资产中心${ready ? '继续缺失图片' : '更新人物与场景方案'}</button>`:'';
   const laneRows = view.lanes ? `<div class="generation-lanes">${[
     ['subjects', '人物 / 动物'], ['scenes', '场景'],
   ].map(([key, label]) => {

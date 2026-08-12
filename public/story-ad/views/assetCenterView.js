@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260812-ui-v218';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v218';
-import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v218';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260812-ui-v218';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260812-ui-v218';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260812-ui-v218';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260812-ui-v218';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260812-ui-v218';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260812-ui-v218';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260812-ui-v218';
+import { request } from '../api.js?v=20260813-ui-v221';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v221';
+import { confirmDialog } from '../components/dialog.js?v=20260813-ui-v221';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260813-ui-v221';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v221';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260813-ui-v221';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260813-ui-v221';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260813-ui-v221';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260813-ui-v221';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260813-ui-v221';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -204,7 +204,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260812-ui-v218');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260813-ui-v221');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -229,18 +229,25 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260812-ui-v218'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260813-ui-v221'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
   const assetPlanReady = planEligibility.eligible === true;
+  const planIssues = Array.isArray(planEligibility.issues) ? planEligibility.issues : [];
+  const planUpdateFailed = planIssues.includes('task_current_planning_stage_failed');
+  const planStatusLabel = planUpdateFailed ? '人物与场景方案更新失败' : '人物与场景方案需要更新';
+  const planStatusTitle = planUpdateFailed ? '重新建立当前内容的人物与场景方案' : '更新当前内容的人物与场景方案';
+  const planStatusBody = planUpdateFailed
+    ? '上次方案更新未完成。已成功的人物和场景资产都会保留；重新更新只生成文字方案，不生成图片。'
+    : '项目内容或系统规则已有更新。已有的人物和场景资产都会保留；本步只更新文字方案，不生成图片。';
   const generationActive = !!bundle?.project?.active_generation_id;
   const generationDisabled = generationActive ? 'disabled' : '';
-  const contractDisabled = assetPlanReady ? '' : 'disabled title="当前方案尚未通过本版本合同"';
+  const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物与场景方案"';
   const assetScopeLabel = bundle.brief?.content_mode === 'narrative_story' ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
-  const blockedVisualStepLabel = '步骤 2：合同通过后逐个人物核对计费，再继续缺失图片';
+  const blockedVisualStepLabel = '方案更新完成后，再逐个人物确认图片生成';
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
@@ -249,7 +256,7 @@ export async function mount(host, context) {
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
       <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${generationActive || !missingSubjectCount ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '逐个生成人物 / 动物'}</button></div>
-    </section>` : `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag is-danger">版本合同未通过 · 步骤 1</span><h2>先更新当前版本的场景规划</h2><p>成功图片保留；本步不重新生成图片。</p></div><div class="asset-visual-next-actions"><button class="btn${generationActive ? '' : ' primary'}" type="button" data-build-scenes ${generationDisabled}>${generationActive ? '正在更新场景规划' : '更新场景规划'}</button><button class="btn" type="button" disabled>${blockedVisualStepLabel}</button></div></section>`}
+    </section>` : `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag is-danger">${planStatusLabel}</span><h2>${planStatusTitle}</h2><p>${planStatusBody}</p></div><div class="asset-visual-next-actions"><button class="btn${generationActive ? '' : ' primary'}" type="button" data-build-scenes ${generationDisabled}>${generationActive ? '正在更新人物与场景方案' : (planUpdateFailed ? '重新更新人物与场景方案' : '更新人物与场景方案')}</button><button class="btn" type="button" disabled>${blockedVisualStepLabel}</button></div></section>`}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, bundle.brief || {})}</div>
@@ -553,11 +560,11 @@ export async function mount(host, context) {
   });
   host.querySelector('[data-build-scenes]')?.addEventListener('click', async event => {
     const button = event.currentTarget, replanSceneCoverage = Boolean(assets.scenes?.length);
-    if (replanSceneCoverage && !await confirmDialog('更新当前版本的场次和场景卡；保留已有资产，不重新生成图片。', { title: '更新场景规划', confirmText: '确认更新' })) return;
+    if (replanSceneCoverage && !await confirmDialog('将根据当前内容重新规划人物、道具、场景和故事结构；已有资产会保留，本步不生成图片。', { title: '更新人物与场景方案', confirmText: '确认更新方案' })) return;
     try {
       setButtonBusy(button, true, '正在建立…', { elapsed: true });
       await store.runStage('scene-config', replanSceneCoverage ? { replan_scene_coverage: true } : {});
-      toast('规划更新已提交；合同通过后可继续缺失图片。', 'success');
+      toast('人物与场景方案更新已提交；完成后可继续生成缺失图片。', 'success');
       await context.refreshShell();
     } catch (error) { toast(error.message, 'danger'); } finally {
       setButtonBusy(button, false);

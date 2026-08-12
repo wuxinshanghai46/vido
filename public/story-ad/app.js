@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260812-ui-v218';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260812-ui-v218';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260812-ui-v218';
-import { confirmDialog } from './components/dialog.js?v=20260812-ui-v218';
+import { createProjectStore } from './store/projectStore.js?v=20260813-ui-v221';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260813-ui-v221';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260813-ui-v221';
+import { confirmDialog } from './components/dialog.js?v=20260813-ui-v221';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,16 +19,17 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260812-ui-v218'),
-  assets: () => import('./views/assetCenterView.js?v=20260812-ui-v218'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260812-ui-v218'),
-  plot: () => import('./views/plotRoomView.js?v=20260812-ui-v218'),
-  storyboard: () => import('./views/storyboardView.js?v=20260812-ui-v218'),
-  final: () => import('./views/finalView.js?v=20260812-ui-v218'),
-  workflow: () => import('./views/workflowView.js?v=20260812-ui-v218'),
+  brief: () => import('./views/briefView.js?v=20260813-ui-v221'),
+  assets: () => import('./views/assetCenterView.js?v=20260813-ui-v221'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260813-ui-v221'),
+  plot: () => import('./views/plotRoomView.js?v=20260813-ui-v221'),
+  storyboard: () => import('./views/storyboardView.js?v=20260813-ui-v221'),
+  final: () => import('./views/finalView.js?v=20260813-ui-v221'),
+  workflow: () => import('./views/workflowView.js?v=20260813-ui-v221'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
+const deletingProjectIds = new Set();
 let observedGenerationCompletionSeq = 0;
 setInterval(() => refreshElapsedLabels(document), 1000);
 
@@ -129,13 +130,14 @@ function renderCenter() {
               <div class="project-row project-head" role="row"><span>任务编号</span><span>项目内容</span><span>当前阶段</span><span>镜头</span><span>最近更新</span><span>操作</span></div>
               ${visibleProjects.map(project => {
                 const status = statusView(project);
-                return `<div class="project-row" role="row" data-project-id="${escapeHtml(project.id)}">
+                const deleting = deletingProjectIds.has(String(project.id));
+                return `<div class="project-row${deleting ? ' is-deleting' : ''}" role="row" data-project-id="${escapeHtml(project.id)}" ${deleting ? 'aria-busy="true"' : ''}>
                   <code>${escapeHtml(project.display_id)}</code>
                   <span class="project-copy"><b>${escapeHtml(project.title)}</b><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
-                  <span class="project-actions"><button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button><button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button></span>
+                  ${deleting ? '<span class="project-delete-state" role="status"><i></i>正在彻底删除</span>' : `<span class="project-actions"><button class="btn small" type="button" data-open-project="${escapeHtml(project.id)}">打开</button><button class="btn small danger" type="button" data-delete-project="${escapeHtml(project.id)}" data-project-title="${escapeHtml(project.title)}">删除</button></span>`}
                 </div>`;
               }).join('')}
               ${!loading && !visibleProjects.length ? `<div class="table-empty"><b>${projects.length ? '当前分类没有项目' : '还没有剧情广告项目'}</b><span>${projects.length ? '切换左侧分类查看其他项目。' : '点击“开始创作”建立第一个项目。'}</span></div>` : ''}
@@ -296,13 +298,19 @@ document.addEventListener('click', event => {
         title: '彻底删除项目', confirmText: '确认彻底删除', cancelText: '取消', danger: true,
       });
       if (!confirmed) return;
-      setButtonBusy(target, true, '删除中…');
+      deletingProjectIds.add(String(taskId));
+      renderCenter();
       try {
         const result = await store.deleteProject(taskId);
+        deletingProjectIds.delete(String(taskId));
         renderCenter();
         const files = Number(result.cleanup?.deleted_files || 0);
         toast(`项目已彻底删除${files ? `，同时清理 ${files} 个专属文件` : ''}。`, 'success');
-      } catch (error) { setButtonBusy(target, false); toast(error.message, 'danger'); }
+      } catch (error) {
+        deletingProjectIds.delete(String(taskId));
+        renderCenter();
+        toast(error.message, 'danger');
+      }
     })();
     return;
   }

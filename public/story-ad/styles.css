@@ -313,6 +313,10 @@ body.story-dialog-open { overflow: hidden; }
 .project-copy small { margin-top: 6px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-row time { color: var(--muted); font-size: 13px; }
 .project-actions { display: flex; gap: 8px; align-items: center; }
+.project-row.is-deleting { background: color-mix(in srgb, var(--danger) 5%, var(--surface)); }
+.project-row.is-deleting > :not(.project-delete-state) { opacity: .5; }
+.project-delete-state { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.project-delete-state i { width: 14px; height: 14px; border: 2px solid color-mix(in srgb, var(--danger) 25%, var(--line)); border-top-color: var(--danger); border-radius: 50%; animation: spin .8s linear infinite; }
 .btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
 .brief-form .form-grid { align-items: start; }

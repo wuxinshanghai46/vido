@@ -34,15 +34,19 @@ function taskPayload(storage, taskId) {
     if (!Array.isArray(items)) continue;
     rows[key] = items.filter(row => String(row.task_id || row.id || '') === String(taskId));
   }
-  return { task: storage.getTask(taskId), rows };
+  return { db, task: (db.tasks || []).find(row => String(row.id || '') === String(taskId)) || null, rows };
 }
 
 function deleteTaskPermanently(storage, taskId) {
   const payload = taskPayload(storage, taskId);
-  const candidates = [...new Set(strings(payload).map(toPath).filter(Boolean))];
-  const deleted = storage.deleteTask(taskId);
+  const candidates = [...new Set(strings({ task: payload.task, rows: payload.rows }).map(toPath).filter(Boolean))];
+  const deleted = storage.deleteTask(taskId, { snapshot: payload.db });
   if (!deleted) return { deleted: false, deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
-  const remainingPaths = new Set(strings(storage.readDb()).map(toPath).filter(Boolean));
+  const remainingRows = Object.fromEntries(Object.entries(payload.db).map(([key, rows]) => [
+    key,
+    Array.isArray(rows) ? rows.filter(row => String(row.task_id || row.id || '') !== String(taskId)) : rows,
+  ]));
+  const remainingPaths = new Set(strings(remainingRows).map(toPath).filter(Boolean));
   const result = { deleted: true, deleted_files: 0, preserved_shared_files: 0, failed_files: [] };
   for (const filePath of candidates) {
     if (remainingPaths.has(filePath)) { result.preserved_shared_files += 1; continue; }
