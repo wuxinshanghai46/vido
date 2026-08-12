@@ -33,10 +33,11 @@ assert.throws(() => artifacts.tagBlueprint({ content_mode: 'commercial_subject',
 
 const revisionSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/revisionService.js'), 'utf8');
 const serviceSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/storyAdService.js'), 'utf8');
+const skillSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/contentSkillService.js'), 'utf8');
 const briefSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefView.js'), 'utf8');
 assert.match(revisionSource, /content_mode: ctx\.content_mode/);
-assert.match(serviceSource, /CONTENT_MODE_CHANGE_CONFIRMATION_REQUIRED/);
-assert.match(serviceSource, /content_mode_migration/);
+assert.match(skillSource, /CONTENT_MODE_CHANGE_CONFIRMATION_REQUIRED/);
+assert.match(skillSource, /content_mode_migration/);
 assert.match(briefSource, /content_mode_change_confirmed = true/);
 
 console.log('story-ad content-domain artifacts and explicit mode migration: ok');

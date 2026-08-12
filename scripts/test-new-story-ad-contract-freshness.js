@@ -16,6 +16,8 @@ const { buildKeyframeContracts, contractFingerprint } = require('../src/services
 
 function context(characterName) {
   return {
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: '通用行业合同新鲜度回归',
     product_subject: '通用测试主体',
     cast_mode: 'no_human',
@@ -39,6 +41,8 @@ function shots(count) {
 
 function createStoredTask(id, ctx, storyboard) {
   const taskId = service.createTask({
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: ctx.brief,
     product_subject: ctx.product_subject,
     cast_mode: ctx.cast_mode,

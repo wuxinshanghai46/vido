@@ -82,6 +82,8 @@ async function main() {
   });
   try {
     const context = {
+      content_mode: 'commercial_subject',
+      content_mode_source: 'user',
       request_id: 'blueprint-lifecycle-task',
       brief: '为当前任务主体制作一条完全原创、无第三方品牌和公众人物的剧情广告。',
       original_brief: '原创剧情广告，不使用第三方 IP。',

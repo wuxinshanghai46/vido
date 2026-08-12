@@ -573,6 +573,8 @@ async function main() {
   assert.equal(completeSummary.final_video_url, '/final-summary.mp4');
 
   const freshnessTask = service.createTask({
+    content_mode: 'narrative_story',
+    content_mode_source: 'user',
     brief: '验证剧本与分镜版本一致性',
     product_subject: '用户指定主体',
     cast_mode: 'no_human',

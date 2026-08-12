@@ -33,6 +33,8 @@ async function main() {
   const initialCreativeDirection = '【剧情走向】产品从暗处进入亮处\n\n【关键动作】\n1. 展示产品\n2. 品牌收束';
   const created = service.createTask({
     brief: '制作一个通用产品广告，突出可靠和易用。',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     product_subject: '通用测试产品',
     cast_mode: 'no_human',
     creative_direction: { raw: initialCreativeDirection },
@@ -127,6 +129,8 @@ async function main() {
 
   const conflictTask = service.createTask({
     brief: '制作一个完全无人出镜的纯产品广告。',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     product_subject: '测试产品',
     cast_mode: 'no_human',
     creative_direction: { raw: '一位女主角面对镜头说出台词。' },

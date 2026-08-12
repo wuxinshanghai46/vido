@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260812-ui-v205';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v205';
-import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v205';
+import { request } from '../api.js?v=20260812-ui-v206';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v206';
+import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v206';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -90,7 +90,7 @@ function sketchBatchMarkup(batch = null, total = 0) {
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260812-ui-v205');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260812-ui-v206');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;

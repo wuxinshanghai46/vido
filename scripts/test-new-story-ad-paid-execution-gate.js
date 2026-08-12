@@ -146,7 +146,12 @@ async function testHttpIngress() {
     service.assertVideoPreflightConfirmation = () => ({ fingerprint: 'preflight-current' });
     service.taskSummary = task => task || {};
     service.generateVideoStage = async (_taskId, options) => { videoOptions = options; return {}; };
-    storage.getTask = id => ({ id, status: 'draft', stage: 'video' });
+    storage.getTask = id => ({
+      id,
+      status: 'draft',
+      stage: 'video',
+      request: { content_mode: 'commercial_subject', content_mode_source: 'user' },
+    });
     jobService.queueStage = (entry) => {
       queued = entry;
       return { accepted: true, duplicate: false, job: { id: `job-${entry.stage}` } };

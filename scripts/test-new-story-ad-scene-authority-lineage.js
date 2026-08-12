@@ -83,6 +83,8 @@ function createLockedTask(suffix) {
   ];
   const created = service.createTask({
     task_id: `scene-authority-${suffix}`,
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: '制作一支包含家庭与城市公园两个独立空间的品牌广告',
     product_subject: '测试品牌产品',
     cast_mode: 'no_human',
@@ -271,6 +273,8 @@ function testRealScenePlanChangeInvalidatesOnlyChangedStableScene() {
 function testHistoricalCheckpointCannotBypassPrepareGate() {
   const created = service.createTask({
     task_id: 'scene-authority-missing-current-config',
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
     brief: '制作一支用于验证历史场景不能冒充当前合同的广告',
     product_subject: '测试品牌产品',
     cast_mode: 'no_human',

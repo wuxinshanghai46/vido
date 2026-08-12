@@ -14,6 +14,11 @@ function contract(context = {}) {
   return context.content_domain_contract || contentSkill.snapshot(domain.mode).domain_contract;
 }
 
+function fields(context = {}) {
+  const domain = contentSkill.assertSelected(context);
+  return { content_mode: domain.mode, content_domain_contract: contract(context) };
+}
+
 function assertNoCrosstalk(context = {}, artifact = {}) {
   const domain = contentSkill.assertSelected(context), text = visibleText(artifact);
   const issues = [];
@@ -47,4 +52,4 @@ function tagShots(context = {}, shots = []) {
 
 function promptBlock(context = {}) { return contentSkill.promptBlock(contentSkill.assertSelected(context).mode); }
 
-module.exports = { contract, assertNoCrosstalk, tagBlueprint, tagShots, promptBlock };
+module.exports = { contract, fields, assertNoCrosstalk, tagBlueprint, tagShots, promptBlock };

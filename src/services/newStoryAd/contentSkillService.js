@@ -47,4 +47,30 @@ function promptBlock(value = '') {
   ].join('\n');
 }
 
-module.exports = { SKILL_VERSION, DEFINITIONS, mode, snapshot, promptBlock, assertSelected: contentDomains.assertSelected };
+function applyModeTransition(previousContext = {}, nextContext = {}, request = {}) {
+  const from = String(previousContext.content_mode || '').trim();
+  const to = String(nextContext.content_mode || '').trim();
+  const changed = Boolean(from && to && from !== to);
+  if (changed && request.content_mode_change_confirmed !== true && request.contentModeChangeConfirmed !== true) {
+    const error = new Error('切换广告/剧情类型会使旧剧本、提示词、分镜和下游生成结果失效；请明确确认后再保存。');
+    error.code = 'CONTENT_MODE_CHANGE_CONFIRMATION_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.from_content_mode = from;
+    error.to_content_mode = to;
+    throw error;
+  }
+  if (!changed) return nextContext;
+  return {
+    ...nextContext,
+    content_mode_migration: {
+      from,
+      to,
+      confirmed_at: new Date().toISOString(),
+      retained: ['uploads', 'person_identity', 'scene_raw_assets'],
+      invalidated: ['asset_plan', 'scene_config', 'blueprint', 'storyboard', 'storyboard_sketches', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    },
+  };
+}
+
+module.exports = { SKILL_VERSION, DEFINITIONS, mode, snapshot, promptBlock, applyModeTransition, assertSelected: contentDomains.assertSelected };
