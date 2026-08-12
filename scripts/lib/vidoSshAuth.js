@@ -16,8 +16,10 @@ function connectionOptions({
 } = {}) {
   const password = String(process.env.VIDO_DEPLOY_PASSWORD || '');
   if (password) return { host, port, username, password, readyTimeout, keepaliveInterval, keepaliveCountMax };
+  const sshDir = path.join(os.homedir(), '.ssh');
   const privateKeyPath = process.env.VIDO_DEPLOY_KEY
-    || path.join(os.homedir(), '.ssh', 'id_ed25519');
+    || [path.join(sshDir, 'id_ed25519_vido_prod'), path.join(sshDir, 'id_ed25519')].find(fs.existsSync)
+    || path.join(sshDir, 'id_ed25519_vido_prod');
   if (!fs.existsSync(privateKeyPath)) {
     throw new Error(`SSH private key not found: ${privateKeyPath}`);
   }

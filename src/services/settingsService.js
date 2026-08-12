@@ -245,6 +245,9 @@ const PROVIDER_PRESETS = {
     { id: 'gemini-3.1-flash-image-preview', name: 'Gemini 3.1 Flash Image Preview', type: 'image', use: 'image' },
     { id: 'gpt-image-1', name: 'GPT Image 1', type: 'image', use: 'image' },
   ] },
+  smscrw: { name: 'SMSCRW 图像服务', api_url: 'https://ai.smscrw.cn/v1', defaultModels: [
+    { id: 'gpt-image-2', name: 'GPT Image 2（SMSCRW）', type: 'image', use: 'image' },
+  ] },
   bridgellm: { name: 'BridgeLLM（ApiSmile 兼容）', api_url: 'http://43.98.167.151:3000/v1', defaultModels: [
     { id: 'gpt-image-2', name: 'GPT Image 2', type: 'image', use: 'image', enabled: false },
   ] },
@@ -334,6 +337,21 @@ const PROVIDER_ADAPTER_DEFAULTS = {
         edit_image_field: 'image',
         response_format: false,
         sizes: { portrait: '1024x1792', landscape: '1792x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
+      },
+    },
+  },
+  smscrw: {
+    adapter: 'smscrw',
+    adapter_config: {
+      family: 'openai-compatible',
+      chat: { endpoint: '/chat/completions' },
+      image: {
+        generation_endpoint: '/images/generations',
+        edit_endpoint: '/images/edits',
+        reference_images: true,
+        input_fidelity: false,
+        response_format: false,
+        sizes: { portrait: '1024x1536', landscape: '1536x1024', square: '1024x1024', four_three: '1024x768', three_four: '768x1024' },
       },
     },
   },
@@ -427,6 +445,7 @@ function inferProviderAdapter(provider = {}) {
   if (/test-tk\.iserviceapi\.com\/api\/v1|webang.*maas|微众.*maas/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-maas'];
   if (/test-tk\.iserviceapi\.com\/api|doubao-seedance|webang.*seedance|微众.*seedance/.test(text)) return PROVIDER_ADAPTER_DEFAULTS['webang-seedance'];
   if (/api\.apismile\.ai/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.apismile;
+  if (/ai\.smscrw\.cn\/v1|smscrw/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.smscrw;
   if (/43\.98\.167\.151:3000\/v1|bridgellm/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.bridgellm;
   if (/api\.openai\.com\/v1/.test(text)) return PROVIDER_ADAPTER_DEFAULTS.openai;
   return null;

@@ -67,6 +67,34 @@ assert.match(safePrompt, /Domestic image review contract:/);
 const candidate = mediaAdapter.promptForImageCandidate('古代少女遭遇致命暗器。', { modelId: 'gpt-image-2' });
 assert.match(candidate, /成年女性（明确年龄20岁以上）/);
 
+const smscrwConfig = {
+  baseURL: 'https://ai.smscrw.cn/v1',
+  modelId: 'gpt-image-2',
+  provider: { adapter_config: { image: { generation_endpoint: '/images/generations', edit_endpoint: '/images/edits', input_fidelity: false } } },
+};
+const compatibleGeneration = mediaAdapter.buildOpenAiCompatibleGptImage2Request(smscrwConfig, {
+  prompt: 'original landscape', size: '1536x1024', referenceImages: [],
+});
+assert.equal(compatibleGeneration.endpoint, 'https://ai.smscrw.cn/v1/images/generations');
+assert.deepEqual(Object.keys(compatibleGeneration.body).sort(), ['model', 'n', 'output_format', 'prompt', 'size']);
+assert.equal(compatibleGeneration.body.model, 'gpt-image-2');
+const compatibleEdit = mediaAdapter.buildOpenAiCompatibleGptImage2Request(smscrwConfig, {
+  prompt: 'original adult portrait',
+  referenceImages: Array.from({ length: 8 }, (_, index) => `https://assets.example.com/${index}.jpg`),
+});
+assert.equal(compatibleEdit.endpoint, 'https://ai.smscrw.cn/v1/images/edits');
+assert.equal(compatibleEdit.body.images.length, 6);
+assert.equal(compatibleEdit.body.input_fidelity, undefined);
+assert.deepEqual(mediaAdapter.normalizeCompatibleImageResponse({ data: [{ url: 'https://assets.example.com/out.png' }] }), [{ url: 'https://assets.example.com/out.png' }]);
+
+const settingsService = require('../src/services/settingsService');
+const inferredSmscrw = settingsService.inferProviderAdapter({ id: 'smscrw', api_url: 'https://ai.smscrw.cn/v1' });
+assert.equal(inferredSmscrw.adapter, 'smscrw');
+assert.equal(inferredSmscrw.adapter_config.image.reference_images, true);
+const pipeline = require('../src/services/pipelineModelService');
+const imageDefaults = pipeline.getStageDefaults('new_story_ad.person_sheet');
+assert.deepEqual(imageDefaults.slice(0, 2).map(item => item.provider_id), ['smscrw', 'deyunai']);
+
 console.log(JSON.stringify({
   passed: true,
   hidden_internal_failure_details: true,
@@ -75,4 +103,7 @@ console.log(JSON.stringify({
   image2_generation_fields: Object.keys(generationBody).sort(),
   image2_reference_cap: editBody.images.length,
   domestic_review_rewrite: true,
+  smscrw_generation_endpoint: compatibleGeneration.endpoint,
+  smscrw_edit_endpoint: compatibleEdit.endpoint,
+  smscrw_fallback_chain: imageDefaults.slice(0, 2).map(item => item.provider_id),
 }));

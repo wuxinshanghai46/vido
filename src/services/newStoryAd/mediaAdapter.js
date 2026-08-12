@@ -155,6 +155,63 @@ function supportsReferenceImages(config = {}) {
   return /deyunai|漫路/i.test(family);
 }
 
+function buildOpenAiCompatibleGptImage2Request(config = {}, { prompt = '', size = '1024x1024', referenceImages = [], inputFidelity = 'high' } = {}) {
+  const body = deyunaiService.buildGptImage2RequestBody({ prompt, n: 1, size, referenceImages, inputFidelity });
+  body.model = String(config.modelId || 'gpt-image-2').trim();
+  const imageConfig = config.provider?.adapter_config?.image || {};
+  if (imageConfig.input_fidelity === false) delete body.input_fidelity;
+  const endpointPath = Array.isArray(body.images) && body.images.length
+    ? (imageConfig.edit_endpoint || '/images/edits')
+    : (imageConfig.generation_endpoint || '/images/generations');
+  return {
+    endpoint: `${String(config.baseURL || '').replace(/\/$/, '')}${endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`}`,
+    body,
+  };
+}
+
+function normalizeCompatibleImageResponse(payload = {}) {
+  const rows = Array.isArray(payload?.data) ? payload.data
+    : (Array.isArray(payload?.images) ? payload.images : (Array.isArray(payload?.output) ? payload.output : []));
+  return rows.map(item => typeof item === 'string' ? { url: item } : item).filter(Boolean);
+}
+
+async function notifyGenerationObserver(observer, payload) {
+  if (typeof observer !== 'function') return;
+  await observer(payload);
+}
+
+async function invokeOpenAiCompatibleGptImage2(config = {}, options = {}) {
+  const request = buildOpenAiCompatibleGptImage2Request(config, options);
+  await notifyGenerationObserver(options.onSubmitting, {
+    clientRequestId: options.clientRequestId || '', status: 'submitting', submittedAt: new Date().toISOString(),
+  });
+  const response = await axios.post(request.endpoint, request.body, {
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json',
+      ...(options.clientRequestId ? { 'X-Request-ID': String(options.clientRequestId).slice(0, 100) } : {}),
+    },
+    timeout: options.timeoutMs,
+    validateStatus: () => true,
+    signal: options.signal,
+  });
+  const providerRequestId = String(response.headers?.['x-request-id'] || response.headers?.['request-id'] || response.data?.request_id || '');
+  await notifyGenerationObserver(options.onSubmitted, {
+    clientRequestId: options.clientRequestId || '', providerRequestId,
+    status: response.status >= 400 ? 'rejected' : 'submitted', submittedAt: new Date().toISOString(),
+  });
+  if (response.status >= 400) {
+    const error = new Error(`${config.providerId} GPT Image 2 HTTP ${response.status}: ${JSON.stringify(response.data).slice(0, 300)}`);
+    error.response = response;
+    error.providerRequestId = providerRequestId;
+    if (response.status >= 500) error.billingState = 'unknown';
+    throw error;
+  }
+  const data = normalizeCompatibleImageResponse(response.data);
+  if (!data.length) throw new Error(`${config.providerId} GPT Image 2 未返回图片数据`);
+  return { data, providerRequestId, raw: response.data };
+}
+
 function imagePromptLimit(config = {}) {
   const modelId = String(config.modelId || config.providerModel?.id || '').trim().toLowerCase();
   if (/nano-banana/.test(modelId)) return NANO_BANANA_PROMPT_LIMIT;
@@ -665,23 +722,36 @@ async function generateImage({
         });
         return stablePayload;
       }
-      const client = new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const genericPrompt = promptForImageCandidate(
         String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(prompt) : prompt,
         config,
         String(stage || '').startsWith('new_story_ad.') ? rightsAwareImagePrompt(auditSafePrompt) : auditSafePrompt,
       );
+      const compatibleImage2 = /gpt-image-2/i.test(config.modelId) && /openai-compatible/i.test(config.family);
+      const client = compatibleImage2 ? null : new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await generationBillingGuard.run(
         { taskId, generationId: effectiveGenerationId, unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}` },
         () => generationConcurrency.schedule(
           'new_story_ad.image_provider',
           Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
-          () => client.images.generate({
-            model: config.modelId,
-            prompt: genericPrompt,
-            size: sizeFor(config, aspectRatio),
-            n: 1,
-          }, { signal: cancellation.signal() }),
+          () => compatibleImage2
+            ? invokeOpenAiCompatibleGptImage2(config, {
+              prompt: genericPrompt,
+              size: sizeFor(config, aspectRatio),
+              referenceImages: referenceCapable ? references : [],
+              inputFidelity,
+              signal: cancellation.signal(),
+              clientRequestId,
+              onSubmitting,
+              onSubmitted,
+              timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
+            })
+            : client.images.generate({
+              model: config.modelId,
+              prompt: genericPrompt,
+              size: sizeFor(config, aspectRatio),
+              n: 1,
+            }, { signal: cancellation.signal() }),
         ),
       );
       cancellation.throwIfCancelled(taskId);
@@ -694,8 +764,9 @@ async function generateImage({
           adapter: config.adapter,
           family: config.family,
           remote: true,
-          reference_count: 0,
-          reference_preserving: false,
+          reference_count: references.length,
+          reference_preserving: references.length > 0,
+          provider_request_id: response.providerRequestId || '',
         };
         const stablePayload = await persistImageResult({
           result: payload,
@@ -718,8 +789,9 @@ async function generateImage({
           adapter: config.adapter,
           family: config.family,
           resolution,
-          reference_count: 0,
-          reference_preserving: false,
+          reference_count: references.length,
+          reference_preserving: references.length > 0,
+          provider_request_id: response.providerRequestId || '',
         };
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
         storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
@@ -845,6 +917,8 @@ module.exports = {
   providerErrorDiagnostics,
   rightsAwareImagePrompt,
   domesticGptImage2ReviewPrompt,
+  buildOpenAiCompatibleGptImage2Request,
+  normalizeCompatibleImageResponse,
   promptForImageCandidate,
   imageConfigStage,
   requiredImageModelForStage,
