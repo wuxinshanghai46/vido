@@ -432,6 +432,7 @@ const planningModule = loadBrowserModule(
     bindPersonLookForm: personLookModule.bindPersonLookForm,
   },
 );
+const planningStatusSource = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js');
 const dossierModule = loadBrowserModule(
   'public/story-ad/views/personDossierShowcase.js',
   ['personDossierShowcase'],
@@ -442,15 +443,15 @@ assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜�
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
 assert.match(assets, /content_mode === 'narrative_story' \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
-assert.match(assets, /人物与场景方案需要更新/, '内容或系统版本变化时必须显示用户可理解的方案状态');
-assert.match(assets, /人物与场景方案更新失败/, '规划失败时必须与一般版本更新明确区分');
-assert.match(assets, /已成功的人物和场景资产都会保留/, '更新方案前必须说明成功资产不会丢失');
-assert.match(assets, /只生成文字方案，不生成图片/, '更新方案必须明确不产生图片生成');
+assert.match(planningStatusSource, /人物与场景方案需要更新/, '内容或系统版本变化时必须显示用户可理解的方案状态');
+assert.match(planningStatusSource, /人物与场景方案更新失败/, '规划失败时必须与一般版本更新明确区分');
+assert.match(planningStatusSource, /已成功的人物和场景资产都会保留/, '更新方案前必须说明成功资产不会丢失');
+assert.match(planningStatusSource, /只生成文字方案，不生成图片/, '更新方案必须明确不产生图片生成');
 assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
-assert.match(assets, /正在更新人物与场景方案/, '统一资产规划运行中必须显示准确名称和进行中状态');
-assert.match(assets, /data-build-scenes \$\{generationDisabled\}/, '场景规划运行中必须禁用重复提交入口');
+assert.match(planningStatusSource, /正在更新人物与场景方案/, '统一资产规划运行中必须显示准确名称和进行中状态');
+assert.match(planningStatusSource, /data-build-scenes \$\{generationActive \? 'disabled' : ''\}/, '统一方案运行中必须禁用重复提交入口');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
-assert.match(assets, /方案更新完成后，再逐个人物确认图片生成/, '必须明确方案更新与后续逐人物图片生成的顺序');
+assert.match(planningStatusSource, /方案更新完成后，再逐个人物确认图片生成/, '必须明确方案更新与后续逐人物图片生成的顺序');
 const blockedVisualFailure = {
   project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },
   navigation: { asset_plan_eligibility: { eligible: false } },
@@ -461,7 +462,7 @@ const planningFailure = uiModule.generationProgressView({
   generation: { progress: { stage: 'scene_config', status: 'failed' } },
 });
 assert.equal(planningFailure.failureTitle, '人物与场景方案更新失败');
-assert.match(planningFailure.liveText, /重新更新人物与场景方案/);
+assert.match(planningFailure.liveText, /更新方案/);
 assert.doesNotMatch(planningFailure.liveText + planningFailure.message, /从缺失项继续|场景规划/, '统一方案失败不得错误引导用户继续缺失图片');
 const outsideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'brief');
 assert.match(outsideAssetsRecovery, /前往资产中心更新人物与场景方案/, '资产中心外必须使用准确的统一资产方案名称');

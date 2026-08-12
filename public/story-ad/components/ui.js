@@ -133,7 +133,7 @@ export function generationProgressView(bundle = {}) {
   else if (billingUnknown) failureTitle = `${stageLabel}生成中断（计费待核对）`;
   else if (/TIMEOUT|NETWORK|IMAGE_ATTEMPTS_EXHAUSTED/.test(failureCode) || /upstream connect error|connection termination|reset before headers/i.test(failureText)) failureTitle = `${stageLabel}生成中断（模型连接失败）`;
   let liveText = '';
-  if (failed && stage === 'scene_config') liveText = '已有资产已保留，请重新更新人物与场景方案';
+  if (failed && stage === 'scene_config') liveText = '资产已保留，请更新方案';
   else if (failed) liveText = billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续';
   else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
@@ -142,7 +142,7 @@ export function generationProgressView(bundle = {}) {
     active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
     message: failed && stage === 'scene_config'
-      ? '人物与场景方案未更新完成。已有资产不会被覆盖；请进入资产中心重新更新方案。'
+      ? '方案更新失败，资产已保留。'
       : publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
     startedAt,
