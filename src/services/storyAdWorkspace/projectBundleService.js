@@ -2,9 +2,10 @@ const storyAd = require('../newStoryAd'), productAssetResolver = require('../new
 const referenceDrafts = require('./referenceDraftProjectionService'), countProjection = require('./projectCountProjectionService');
 const timingProjection = require('./projectTimingProjectionService'), workflowNavigation = require('./workflowNavigationService');
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
-const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
+const semantic = require('./productionSemanticLocalizationService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
+const briefProjection = require('./briefProjectionService');
 const sceneLineage = require('../newStoryAd/sceneLineageContractService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
@@ -539,30 +540,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       character_actions: list(analysis.character_actions).slice(0, 24),
       ...referenceUnderstandingProjection.project(taskId, context, analysis),
     };
-    bundle.brief = {
-      project_name: clean(context.project_name || raw.task.title, 120),
-      text: cleanMultiline(context.brief || raw.task.brief, 5000),
-      text_contract: multilineTextContract.metrics(context.brief || raw.task.brief),
-      text_versions: multilineTextContract.versions(context.brief_versions, context.brief || raw.task.brief),
-      product_subject: clean(context.product_subject, 200),
-      product_presentation: productAssetResolver.productPresentation(context), content_mode: clean(context.content_mode || (productAssetResolver.productPresentation(context).mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject'), 40), content_mode_source: clean(context.content_mode_source || '', 40),
-      content_domain_contract: context.content_domain_contract || null,
-      content_mode_migration: context.content_mode_migration || null,
-      target_duration: Number(context.target_duration || context.duration || 0) || 0,
-      output_ratio: clean(context.output_ratio || '9:16', 20),
-      output_size: clean(context.output_size || 'standard', 30),
-      video_resolution: clean(context.video_resolution || '1080p', 30),
-      video_quality: clean(context.video_quality || 'final', 30),
-      cast_mode: clean(context.cast_mode || context.person_spec?.castMode || 'auto', 40),
-      expected_people: Math.max(0, Number(context.expected_people || 0) || 0),
-      expected_animals: Math.max(0, Number(context.expected_animals || 0) || 0),
-      brief_source: clean(context.brief_source, 40),
-      asset_setup_confirmed: context.asset_setup_confirmed === true,
-      shot_design_confirmed: context.shot_design_confirmed === true,
-      creative_direction: context.creative_direction || null,
-      benchmark_strategy: benchmarkStrategy.resolve({ ...context, product_presentation: productAssetResolver.productPresentation(context) }),
-      world_setting: context.world_setting || null,
-    };
+    bundle.brief = briefProjection.project(context, raw.task, clean);
   }
 
   if (include('assets')) {

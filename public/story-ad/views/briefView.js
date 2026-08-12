@@ -1,10 +1,11 @@
-import { request } from '../api.js?v=20260812-ui-v198';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v198';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v198';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v198';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v198';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v198';
-import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v198';
+import { request } from '../api.js?v=20260812-ui-v204';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v204';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v204';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v204';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v204';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v204';
+import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v204';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260812-ui-v204';
 
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
@@ -225,7 +226,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v198');
+    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v204');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -410,16 +411,9 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       }
       const payload = safeFormPayload();
       if (!payload.content_mode || payload.content_mode_source !== 'user') throw new Error('请先选择“广告”或“剧情”。');
-      const savedMode = String(store.state.bundle?.brief?.content_mode || '').trim();
-      if (savedMode && savedMode !== payload.content_mode) {
-        const confirmed = await confirmDialog('切换广告/剧情类型后，旧剧本、领域提示词、分镜、线稿、镜头、声音和成片都会失效；已上传素材、人物身份和场景原始素材会保留。是否继续？', {
-          title: '确认切换内容类型',
-          confirmText: '确认切换并重建',
-          cancelText: '取消',
-        });
-        if (!confirmed) return false;
-        payload.content_mode_change_confirmed = true;
-      }
+      const migration = await confirmContentModeMigration(String(store.state.bundle?.brief?.content_mode || '').trim(), payload.content_mode);
+      if (migration.cancelled) return false;
+      if (migration.confirmed) payload.content_mode_change_confirmed = true;
       assetPlanTransitioning = true;
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
       const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });

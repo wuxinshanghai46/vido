@@ -39,7 +39,7 @@ assert.equal(multiline.assertEquivalent(source, normalized).sha256, before.sha25
 expectCode(() => multiline.assertEquivalent(source, source.replace(/\r?\n/g, ' ')), 'BRIEF_READBACK_MISMATCH');
 
 const view = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefView.js'), 'utf8');
-const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/workspace.css'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/production-v202.css'), 'utf8');
 assert(view.includes('assertBriefReadback(payload.brief'));
 assert(css.includes('.brief-screenplay-input'));
 assert(css.includes('white-space: pre-wrap'));
