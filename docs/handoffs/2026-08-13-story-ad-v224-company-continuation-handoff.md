@@ -1,8 +1,8 @@
 # VIDO 剧情广告 v224 公司续接交接
 
-> 交接时间：2026-08-13（Asia/Shanghai）  
-> 目标分支：`codex/story-ad-v3-upgrade`  
-> 权威远端：`origin` / `gitee`  
+> 交接时间：2026-08-13（Asia/Shanghai）
+> 目标分支：`codex/story-ad-v3-upgrade`
+> 权威远端：`origin` / `gitee`
 > 生产：`43.98.167.151:4600`
 
 ## 1. 当日目标与用户决策
@@ -158,4 +158,3 @@ node src/server.js
 4. 检查 `new_story_ad.story_facts`、`story_facts_compact_retry`、`asset_plan_section_patch` 当前候选路由：网络、限流、计费、结构化 JSON 合同。
 5. 只有候选链路恢复且不会重复付费/覆盖数据时，才重试“星月神话故事”的人物与场景方案。
 6. 方案成功后先确认内容版本 8 的 active plan 已发布，再逐个人物确认图片生成；不要直接重跑已有成功图片。
-
