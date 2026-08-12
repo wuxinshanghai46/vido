@@ -100,7 +100,8 @@ assert.deepStrictEqual(manifest.counts, {
 });
 assert.strictEqual(manifest.character_world_matrix.length, 3);
 const plannedOnly = sceneWorlds.buildSceneWorlds({ assets: { scenes: [scene('planned', '只有方案', '尚未生成图片')] } });
-assert.strictEqual(plannedOnly.length, 0, 'text-only scene plans must not unlock SceneWorld');
+assert.strictEqual(plannedOnly.length, 1, 'text-only scene plans must enter SceneWorld preassignment before paid visual generation');
+assert.strictEqual(plannedOnly[0].visual_authority_ready, false, 'planned scenes must stay visibly pending until visual authority exists');
 assert.strictEqual(manifest.character_world_matrix[0].cells.find(cell => cell.world_id === 'factory').presence, 'confirmed');
 assert.strictEqual(manifest.character_world_matrix[2].cells.find(cell => cell.world_id === 'road').presence, 'confirmed');
 

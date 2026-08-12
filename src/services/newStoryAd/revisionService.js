@@ -18,6 +18,8 @@ function domainSlices(ctx = {}) {
     && typeof ctx.scene_plan === 'object';
   return {
     source: {
+      content_mode: ctx.content_mode,
+      content_mode_source: ctx.content_mode_source,
       brief: ctx.brief,
       world_setting: ctx.world_setting,
       target_duration: ctx.target_duration,

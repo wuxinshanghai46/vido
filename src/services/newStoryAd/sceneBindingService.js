@@ -1,4 +1,5 @@
 const { cleanText, normalizeSceneSpec } = require('./contextBuilder');
+const sceneLineage = require('./sceneLineageContractService');
 
 // 这四个键只用于现有“五视图空间锁”的向后兼容，不再作为业务镜位白名单。
 const VIEW_KEYS = ['master', 'reverse', 'interaction', 'detail'];
@@ -291,6 +292,7 @@ function normalizeScenePlan(input = {}) {
         name: cleanText(space?.name || space?.label || `独立空间 ${index + 1}`, 120),
         description: cleanText(space?.description || space?.layout || '', 500),
         story_purpose: cleanText(space?.story_purpose || space?.purpose || '', 300),
+        place_lineage: sceneLineage.normalize(space || {}, index),
         scene_spec: rawSceneSpec && typeof rawSceneSpec === 'object'
           ? normalizeSceneSpec(rawSceneSpec)
           : null,

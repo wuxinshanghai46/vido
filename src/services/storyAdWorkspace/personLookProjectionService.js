@@ -1,6 +1,7 @@
 const personLooks = require('../newStoryAd/personLookProfileService');
 const { normalizeAppearanceAgeText } = require('./personTextProjectionService');
 const { projectedDossierItems } = require('./dossierItemProjectionService');
+const personEvolution = require('../newStoryAd/personStateEvolutionService');
 
 function clean(value = '', max = 240) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -16,7 +17,8 @@ function mediaUrl(value = {}) {
 }
 
 function personProfile(source = {}, index = 0) {
-  const withLooks = personLooks.normalizeProfileLooks(source);
+  const evolved = personEvolution.normalizeProfile(source, { index });
+  const withLooks = personLooks.normalizeProfileLooks(evolved);
   return {
     id: clean(source.id || source.cast_id || source.castId || `cast_${index + 1}`, 80),
     displayName: clean(source.displayName || source.display_name || source.name, 120),
@@ -34,6 +36,11 @@ function personProfile(source = {}, index = 0) {
     hairMakeupText: clean(withLooks.hairMakeupText || source.hairMakeup?.userPrompt || source.hairMakeup?.description || source.hair_style, 600),
     negativeText: clean(source.negativeText || source.negative, 600),
     look_profiles: withLooks.look_profiles,
+    identity_id: evolved.identity_id,
+    lineage_identity_id: evolved.lineage_identity_id,
+    aging_mode: evolved.aging_mode,
+    apparent_age: evolved.apparent_age,
+    age_states: evolved.age_states,
   };
 }
 

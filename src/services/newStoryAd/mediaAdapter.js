@@ -324,11 +324,17 @@ function classifyImageGenerationError(error = null) {
     || error?.response?.data?.code
     || 0);
   if (classified.code === 'PROVIDER_5XX' || (providerStatus >= 500 && providerStatus < 600)) {
+    const submissionState = String(error?.providerSubmissionState || error?.provider_submission_state || '').toLowerCase();
+    const billingState = String(error?.billingState || error?.billing_state || '').toLowerCase();
+    const safelyNotSubmitted = ['not_submitted', 'submission_rejected', 'request_not_sent'].includes(submissionState)
+      && ['not_billed', 'none', 'confirmed_not_billed'].includes(billingState);
     return {
-      code: 'PROVIDER_5XX_AMBIGUOUS',
-      retryable: false,
-      terminal: true,
-      message: '供应商返回未分类 5xx，内部错误码没有公开定义；目前无法确认是审核拦截还是服务故障，已停止自动付费重试。',
+      code: safelyNotSubmitted ? 'PROVIDER_5XX_NOT_SUBMITTED' : 'PROVIDER_5XX_AMBIGUOUS',
+      retryable: safelyNotSubmitted,
+      terminal: !safelyNotSubmitted,
+      message: safelyNotSubmitted
+        ? '当前图片通道未成功提交且确认未计费，可以安全切换备用图片通道。'
+        : '当前图片任务的提交或计费状态尚未确认，已停止自动切换，避免重复费用。',
     };
   }
   // Preserve the existing provider-fallback behavior for ordinary failures.
@@ -843,18 +849,16 @@ async function generateImage({
   const ignoredPreferred = preferred && preferred !== 'auto' && !preferredCandidates.length
     ? `；ignored preferred=${preferred} because it is not enabled for ${stage}`
     : '';
-  const detail = errors
-    .map(item => {
-      const providerMarker = [item.provider_error_code || item.provider_status, item.provider_reason]
-        .filter(Boolean).join('/');
-      return `${item.model}：${item.message || item.code}${providerMarker ? `（供应商：${providerMarker}）` : ''}`;
-    })
-    .join('；');
-  const error = new Error(`图片生成失败，已尝试 ${errors.length} 个模型并停止继续调用${ignoredPreferred ? `（${ignoredPreferred}）` : ''}${detail ? `：${detail}` : ''}`);
+  const uncertainAttempt = errors.find(item => item.billing_state === 'unknown'
+    || item.provider_submission_state === 'submitted_unknown'
+    || item.code === 'PROVIDER_5XX_AMBIGUOUS');
+  const error = new Error(uncertainAttempt
+    ? '当前图片任务已停止；已生成资产均已保留。提交或计费状态需要管理员核对，确认前不能安全重试。'
+    : `图片生成未完成；已生成资产均已保留。${errors.some(item => item.retryable) ? '可以稍后安全重试。' : '请修改生成要求或联系管理员核对。'}`);
   error.code = errors.some(item => item.retryable) ? 'IMAGE_ATTEMPTS_EXHAUSTED' : (errors[0]?.code || 'IMAGE_MODEL_UNAVAILABLE');
   error.retryable = errors.some(item => item.retryable);
   error.attempts = errors;
-  const uncertain = errors.find(item => item.billing_state === 'unknown');
+  const uncertain = errors.find(item => item.billing_state === 'unknown' || item.provider_submission_state === 'submitted_unknown' || item.code === 'PROVIDER_5XX_AMBIGUOUS');
   if (uncertain) {
     error.billingState = 'unknown';
     error.providerSubmissionState = uncertain.provider_submission_state || 'submitted_unknown';

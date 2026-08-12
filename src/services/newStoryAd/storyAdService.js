@@ -60,6 +60,8 @@ const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService'
 const productionLimits = require('./productionLimitsService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const voicePlan = require('./voicePlanService');
+const contentSkill = require('./contentSkillService');
+const contentDomainArtifacts = require('./contentDomainArtifactService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -149,6 +151,7 @@ function keyframeStageBudgetMs(taskId, options = {}) {
 function longFormStageBudgetMs(taskId, stage = '') {
   const task = storage.getTask(taskId) || {};
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  contentSkill.assertSelected(ctx);
   return productionLimits.longFormStageBudgetMs(stage, ctx.target_duration, Math.max(ctx.shot_count || 0, (storage.getOutput(taskId, 'storyboard_table') || []).length));
 }
 function sceneConfigStageBudgetMs(taskId, options = {}) {
@@ -233,6 +236,8 @@ function versionedBlueprint(blueprint = {}, previous = {}) {
   const changed = !previousFingerprint || fingerprint !== previousFingerprint;
   return {
     ...blueprint,
+    content_mode: blueprint.content_mode || previous.content_mode || '',
+    content_domain_contract: blueprint.content_domain_contract || previous.content_domain_contract || null,
     revision: changed ? Math.max(1, Number(previous.revision || 0) + 1) : Math.max(1, Number(previous.revision || 1)),
     fingerprint,
   };
@@ -343,6 +348,18 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     { ...(previousCtx || {}), ...(normalizedBody || {}), task_id: taskId },
     { ...user, id: ownerId, userId: ownerId },
   );
+  const previousContentMode = String(previousCtx.content_mode || '').trim();
+  const nextContentMode = String(builtCtx.content_mode || '').trim();
+  const contentModeChanged = Boolean(previousContentMode && nextContentMode && previousContentMode !== nextContentMode);
+  if (contentModeChanged && body.content_mode_change_confirmed !== true && body.contentModeChangeConfirmed !== true) {
+    const error = new Error('切换广告/剧情类型会使旧剧本、提示词、分镜和下游生成结果失效；请明确确认后再保存。');
+    error.code = 'CONTENT_MODE_CHANGE_CONFIRMATION_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.from_content_mode = previousContentMode;
+    error.to_content_mode = nextContentMode;
+    throw error;
+  }
   // Completion flags are workflow state, not creative content. Running them
   // through the general context normalizer can manufacture unrelated domain
   // deltas and reset an already completed upstream step. Preserve the exact
@@ -377,6 +394,15 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     builtCtx.person_spec || {},
   );
   let ctx = revisionService.applyRevisions(previousCtx, builtCtx, changedDomains);
+  if (contentModeChanged) {
+    ctx.content_mode_migration = {
+      from: previousContentMode,
+      to: nextContentMode,
+      confirmed_at: new Date().toISOString(),
+      retained: ['uploads', 'person_identity', 'scene_raw_assets'],
+      invalidated: ['asset_plan', 'scene_config', 'blueprint', 'storyboard', 'storyboard_sketches', 'keyframes', 'tts_audio', 'video_clips', 'final_video'],
+    };
+  }
   if (changedDomains.length) {
     ctx.asset_setup_confirmed = body.asset_setup_confirmed === true || body.assetSetupConfirmed === true;
     ctx.shot_design_confirmed = false;
@@ -496,6 +522,7 @@ function prepareGeneration(taskId, body = {}, user = {}) {
     error.retryable = false;
     throw error;
   }
+  contentSkill.assertSelected(ctx);
   assertContextConsistent(ctx);
   const targetStage = cleanText(body.target_stage || body.targetStage || 'blueprint', 60) || 'blueprint';
   storySetup.assertConfirmed(ctx, targetStage);
@@ -658,8 +685,14 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
   const baseCtx = storage.getOutput(taskId, 'context') || task.request || {};
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
-  const normalized = versionedBlueprint(
-    normalizeBlueprintDraft({ ...previous, ...(blueprint || {}) }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`),
+  const domain = contentSkill.assertSelected(ctx);
+  const normalized = versionedBlueprint(contentDomainArtifacts.tagBlueprint(ctx,
+    normalizeBlueprintDraft({
+      ...previous,
+      ...(blueprint || {}),
+      content_mode: domain.mode,
+      content_domain_contract: ctx.content_domain_contract || contentSkill.snapshot(domain.mode).domain_contract,
+    }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`)),
     previous,
   );
   const changed = blueprintFingerprint(previous) !== blueprintFingerprint(normalized);
@@ -763,11 +796,16 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   }
   const current = storage.getOutput(taskId, 'storyboard_table') || [];
   const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const domain = contentSkill.assertSelected(ctx);
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const source = Array.isArray(shots) && shots.length ? shots : current;
-  const normalizedRaw = source
-    .map((shot, index) => normalizeStoryboardShot(shot, index, current[index] || {}))
-    .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title);
+  const normalizedRaw = contentDomainArtifacts.tagShots(ctx, source
+    .map((shot, index) => ({
+      ...normalizeStoryboardShot(shot, index, current[index] || {}),
+      content_mode: domain.mode,
+      content_domain_contract: ctx.content_domain_contract || contentSkill.snapshot(domain.mode).domain_contract,
+    }))
+    .filter(shot => shot.visual || shot.action || shot.voiceover || shot.title));
   const continuityShots = withContinuityContracts(bindShotsToScenes(normalizedRaw, Array.isArray(sceneAssets) ? sceneAssets : []));
   const blueprint = storage.getOutput(taskId, 'blueprint') || {};
   const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx, blueprint, shots: continuityShots }), normalized = compiled.shots;
@@ -816,7 +854,16 @@ async function generateSceneConfig(taskId, options = {}) {
 }
 
 async function generateBlueprintStage(taskId, options = {}) {
-  return blueprintLifecycle.generateBlueprintStage(taskId, options, { versionedBlueprint });
+  const task = storage.getTask(taskId);
+  const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
+  const domain = contentSkill.assertSelected(ctx);
+  return blueprintLifecycle.generateBlueprintStage(taskId, options, {
+    versionedBlueprint: (blueprint, previous) => versionedBlueprint({
+      ...blueprint,
+      content_mode: domain.mode,
+      content_domain_contract: ctx.content_domain_contract || contentSkill.snapshot(domain.mode).domain_contract,
+    }, previous),
+  });
 }
 
 const runTextStageWithRecovery = createTextStageRecovery(storage, cleanText);
@@ -856,6 +903,12 @@ async function generateStoryboardStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
   const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const domain = contentSkill.assertSelected(ctx);
+  const tagShots = rows => (Array.isArray(rows) ? rows : []).map(shot => ({
+    ...shot,
+    content_mode: domain.mode,
+    content_domain_contract: ctx.content_domain_contract || contentSkill.snapshot(domain.mode).domain_contract,
+  }));
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const scenePlan = normalizeScenePlan(storage.getOutput(taskId, 'scene_config') || {});
   assertSceneModeAssets(resolveSceneMode(ctx.scene_mode, scenePlan), sceneAssets, scenePlan.spaces);
@@ -947,7 +1000,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     if (!review.blocking_issues.length && !review.rewrite_issues.length) break;
   }
   if (review.blocking_issues.length) {
-    const failedCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = failedCompiled.shots;
+    const failedCompiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = contentDomainArtifacts.tagShots(ctx, tagShots(failedCompiled.shots));
     storage.saveOutput(taskId, 'storyboard_table', shots);
     storage.saveOutput(taskId, 'storyboard_meta', {
       status: 'failed',
@@ -968,7 +1021,7 @@ async function generateStoryboardStage(taskId, options = {}) {
     throw err;
   }
   assertBlueprintUnchanged();
-  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = compiled.shots;
+  const compiled = temporalEvidenceLifecycle.compileForTask({ storage, taskId, ctx: stageCtx, blueprint, shots }); shots = contentDomainArtifacts.tagShots(ctx, tagShots(compiled.shots));
   const contractCtx = { ...stageCtx, temporal_evidence_graph: compiled.graph, knowledge_policy_snapshot: knowledgePolicyRuntime.pinTaskPolicy(storage, taskId) };
   const contracts = buildKeyframeContracts(contractCtx, shots);
   storage.saveOutput(taskId, 'storyboard_table', shots);

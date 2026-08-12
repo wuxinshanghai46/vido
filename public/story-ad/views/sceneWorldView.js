@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260812-ui-v196';
-import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260812-ui-v196';
-import { promptDialog } from '../components/dialog.js?v=20260812-ui-v196';
-import { list, worldById } from './sceneWorldData.js?v=20260812-ui-v196';
+import { request } from '../api.js?v=20260812-ui-v198';
+import { escapeHtml, mediaPreview, toast } from '../components/ui.js?v=20260812-ui-v198';
+import { promptDialog } from '../components/dialog.js?v=20260812-ui-v198';
+import { list, worldById } from './sceneWorldData.js?v=20260812-ui-v198';
 
 const CAPABILITY_LABELS = {
   supports_photo_views: '真实图片视角',
@@ -76,6 +76,7 @@ function worldCards(bundle = {}) {
     const selectedExperience = {
       photo_views: '多视角图片', panorama_360: '360原地环视（3DoF）', director_3d: '3D导演预演', spatial_3d: '真实6DoF空间',
     }[world.experience?.requested_mode || world.experience?.current_mode] || '尚未选择空间模式';
+    const lineage = world.place_lineage || {};
     return `<article class="scene-world-card" data-scene-world-card="${escapeHtml(world.id)}">
     <div class="scene-world-card-visual">
       ${world.source_asset?.image_url ? mediaPreview(world.source_asset, { label: `${world.name}场景原图`, width: 720, zoomable: true, zoomGroup: 'scene-world-cards' }) : '<div class="scene-world-card-placeholder"></div>'}
@@ -83,6 +84,7 @@ function worldCards(bundle = {}) {
     </div>
     <div class="scene-world-card-body">
       <p>${escapeHtml(world.story_purpose || world.description || '等待补充当前场景的剧情作用')}</p>
+      <div class="scene-place-lineage"><b>地点血缘：${escapeHtml(lineage.place_lineage_id || lineage.place_id || '独立地点')}</b><span>${escapeHtml([lineage.era, lineage.continuity_type, lineage.access_route].filter(Boolean).join(' · '))}</span>${lineage.preserved_anchors?.length ? `<small>保留：${escapeHtml(lineage.preserved_anchors.join('、'))}</small>` : ''}${lineage.rebuilt_elements?.length ? `<small>重建：${escapeHtml(lineage.rebuilt_elements.join('、'))}</small>` : ''}${lineage.forbidden_elements?.length ? `<small>禁止：${escapeHtml(lineage.forbidden_elements.join('、'))}</small>` : ''}</div>
       <div class="scene-world-capabilities">${capabilityChips(world)}</div>
       <small>${world.zones?.length || 0} 个区域 · ${world.observation_nodes?.length || 0} 个观察点 · ${world.cameras?.length || 0} 个机位 · ${escapeHtml({ photo_views: '多视角图片', panorama_360: '3DoF原地环视', spatial_3d: '6DoF可移动空间', structure_proxy: '结构代理' }[world.experience?.current_mode] || '待建立空间')} · 版本 ${world.revision || 1}</small>
       <span class="scene-panorama-status is-${escapeHtml(panoramaStatus)}" data-panorama-status="${escapeHtml(world.id)}">${panoramaReady ? '全景已就绪 · 3DoF' : '尚未生成360全景'}</span>
@@ -109,7 +111,7 @@ function characterWorldMatrix(bundle = {}) {
     <thead><tr><th>人物</th>${worlds.map(world => `<th>${escapeHtml(world.name)}</th>`).join('')}</tr></thead>
     <tbody>${rows.map(row => `<tr><th><b>${escapeHtml(row.name)}</b><small>${escapeHtml(row.wardrobe || '沿用人物档案穿戴版本')}</small></th>${worlds.map(world => {
       const cell = list(row.cells).find(item => item.world_id === world.id) || {};
-      return `<td class="is-${escapeHtml(cell.presence || 'unassigned')}"><b>${escapeHtml(statusLabel(cell))}</b><small>${escapeHtml(cell.reason || '尚未确认人物与场景关系')}</small><select data-world-assignment data-character-id="${escapeHtml(row.character_id)}" data-world-id="${escapeHtml(world.id)}" aria-label="${escapeHtml(`${row.name}在${world.name}的出场状态`)}"><option value="confirmed" ${['confirmed', 'suggested'].includes(cell.presence) ? 'selected' : ''}>出场</option><option value="excluded" ${cell.presence === 'excluded' ? 'selected' : ''}>不出场</option><option value="unassigned" ${cell.presence === 'unassigned' ? 'selected' : ''}>待确认</option></select><input data-world-assignment-role value="${escapeHtml(cell.role || '')}" placeholder="角色、动作或服装说明"></td>`;
+      return `<td class="is-${escapeHtml(cell.presence || 'unassigned')}"><b>${escapeHtml(statusLabel(cell))}</b><small>${escapeHtml(cell.reason || '尚未确认人物与场景关系')}</small><select data-world-assignment data-character-id="${escapeHtml(row.character_id)}" data-world-id="${escapeHtml(world.id)}" aria-label="${escapeHtml(`${row.name}在${world.name}的出场状态`)}"><option value="confirmed" ${['confirmed', 'suggested'].includes(cell.presence) ? 'selected' : ''}>出场</option><option value="excluded" ${cell.presence === 'excluded' ? 'selected' : ''}>不出场</option><option value="unassigned" ${cell.presence === 'unassigned' ? 'selected' : ''}>待确认</option></select><div class="world-assignment-grid"><input data-world-assignment-order type="number" min="0" value="${Number(cell.appearance_order || 0)}" placeholder="出场顺序"><input data-world-assignment-look value="${escapeHtml(cell.look_id || '')}" placeholder="造型 ID"><input data-world-assignment-age value="${escapeHtml(cell.age_state_id || '')}" placeholder="年龄状态 ID"><input data-world-assignment-camera value="${escapeHtml(cell.camera_id || '')}" placeholder="机位 ID"><input data-world-assignment-entry value="${escapeHtml(cell.entry_direction || '')}" placeholder="入场方向"><input data-world-assignment-exit value="${escapeHtml(cell.exit_direction || '')}" placeholder="离场方向"></div><input data-world-assignment-role value="${escapeHtml(cell.role || '')}" placeholder="角色与关键动作"><input data-world-assignment-blocking value="${escapeHtml(cell.blocking || '')}" placeholder="站位与调度"></td>`;
     }).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
 }
@@ -132,11 +134,9 @@ export function renderSceneWorldWorkspace(bundle = {}) {
   const counts = bundle.production_manifest?.counts || {};
   const ready = Number(counts.worlds || 0);
   const planned = Number(counts.planned_scenes || bundle.assets?.scenes?.length || 0);
-  if (!ready) return `<section class="scene-world-locked" data-scene-world-locked>
-    <div><span>场景生成后的下一步</span><h2>场景世界与生产清单</h2><p>${planned ? `当前 ${planned} 个场景仍只有文字方案。先生成场景视觉资产，系统才会建立世界观、人物×场景和镜头衔接。` : '先建立并生成场景视觉资产，系统才会开放世界观与生产清单。'}</p></div>
-    <span class="status-tag is-neutral">等待场景视觉</span>
-  </section>`;
-  const partial = planned > ready ? `<div class="scene-world-partial">已就绪 ${ready}/${planned} 个场景；未生成的场景不会进入世界观和生产清单。</div>` : '';
+  if (!ready) return `<section class="scene-world-locked" data-scene-world-locked><div><span>第 3 步 · 场景世界</span><h2>尚未建立场景文字方案</h2><p>请先返回目标与材料建立人物和场景规划；此处不会要求先生成付费图片。</p></div><span class="status-tag is-neutral">等待文字规划</span></section>`;
+  const visualReady = list(bundle.scene_worlds).filter(world => world.visual_authority_ready).length;
+  const partial = visualReady < planned ? `<div class="scene-world-partial">${planned} 个文字场景均已进入预分配；其中 ${visualReady} 个已有视觉资产。请先确认出场、造型、机位与地点关系，再按场景单独生成。</div>` : '';
   return `<section class="scene-world-workspace" data-scene-world-workspace>
     <header>
       <div><small>SCENEWORLD · 通用场景生产</small><h2>生产清单与场景世界</h2><p>人物档案保持独立；这里负责人物与场景分配、动态观察点、机位以及跨场景衔接。</p></div>
@@ -359,7 +359,7 @@ function initSceneWorldViewer({ overlay, bundle, world }) {
     host.innerHTML = '<div class="scene-world-canvas-loading">正在按需加载3DoF球形全景查看器…</div>';
     if (help) help.textContent = '3DoF原地环视：可改变观看方向与FOV，不支持摄像机前后左右位移';
     try {
-      const module = await import('./panoramaViewer.js?v=20260812-ui-v196');
+      const module = await import('./panoramaViewer.js?v=20260812-ui-v198');
       if (requestToken !== activation) return;
       host.replaceChildren();
       viewer = module.mountPanoramaViewer({ host, source: node.image_url, label: node.name || world.name });
@@ -460,7 +460,7 @@ async function openSceneWorldStudio(bundle, world) {
   disposeViewer = initSceneWorldViewer({ overlay, bundle, world });
   overlay.querySelector('[data-open-director-studio]')?.addEventListener('click', async () => {
     try {
-      const module = await import('./directorStudioView.js?v=20260812-ui-v196');
+      const module = await import('./directorStudioView.js?v=20260812-ui-v198');
       await module.openDirectorStudio({ taskId: bundle.project.id, world });
     } catch (error) { toast(error.message || '导演台加载失败', 'danger'); }
   });
@@ -493,7 +493,7 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
   let panoramaActionModule;
   root.querySelectorAll('[data-generate-panorama], [data-generate-all-panoramas]').forEach(button => button.addEventListener('click', async () => {
     try {
-      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260812-ui-v196');
+      panoramaActionModule ||= import('./panoramaGeneration.js?v=20260812-ui-v198');
       const module = await panoramaActionModule;
       if (button.matches('[data-generate-all-panoramas]')) await module.runPanoramaBatchGeneration({ root, bundle, store, button });
       else await module.runPanoramaGeneration({ root, bundle, store, worldId: button.dataset.generatePanorama });
@@ -506,6 +506,13 @@ export function bindSceneWorldWorkspace(host, bundle = {}, store = null) {
       world_id: select.dataset.worldId,
       presence: select.value,
       role: select.closest('td')?.querySelector('[data-world-assignment-role]')?.value || '',
+      look_id: select.closest('td')?.querySelector('[data-world-assignment-look]')?.value || '',
+      age_state_id: select.closest('td')?.querySelector('[data-world-assignment-age]')?.value || '',
+      appearance_order: Number(select.closest('td')?.querySelector('[data-world-assignment-order]')?.value || 0),
+      camera_id: select.closest('td')?.querySelector('[data-world-assignment-camera]')?.value || '',
+      entry_direction: select.closest('td')?.querySelector('[data-world-assignment-entry]')?.value || '',
+      exit_direction: select.closest('td')?.querySelector('[data-world-assignment-exit]')?.value || '',
+      blocking: select.closest('td')?.querySelector('[data-world-assignment-blocking]')?.value || '',
     }));
     button.disabled = true;
     try {

@@ -62,8 +62,10 @@ function contract(ctx = {}) {
     ? list(ctx.narrative_cast_profiles)
     : list(ctx.cast_profiles);
   const narrative = narrativeProfiles(supplied, { brief: ctx.brief || '' });
-  const visual = personLooks.splitCrossEraProfiles(narrative, { brief: ctx.brief || '' });
   const eraContract = briefAuthority.eraCastContract(ctx.brief || '');
+  const visual = narrative.length === 1 && supplied.length === 1 && !eraContract
+    ? narrative
+    : personLooks.splitCrossEraProfiles(narrative, { brief: ctx.brief || '' });
   const explicitNarrative = positive(ctx.planning_cast_count || ctx.narrative_identity_count);
   const suppliedAsVisualCards = list(ctx.cast_profiles).some(profile => (
     clean(profile.era_identity || profile.eraIdentity, 40)

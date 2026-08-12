@@ -1,4 +1,4 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v196';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v198';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
@@ -53,6 +53,7 @@ export async function mount(host, context) {
   const shots = bundle?.storyboard?.shots || [];
   const keyframes = Array.isArray(generation.keyframes) ? generation.keyframes : [];
   const clips = Array.isArray(generation.clips) ? generation.clips : [];
+  const soundJourney = Array.isArray(generation.sound_journey) ? generation.sound_journey : [];
   const finalVideo = generation.final_video || (bundle?.project?.final_video_url ? {
     video_url: bundle.project.final_video_url,
     status: '已生成',
@@ -62,7 +63,7 @@ export async function mount(host, context) {
   const downloadUrl = finalUrl ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}download=1` : '';
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>生成与成片</h1><p>在同一页查看关键帧、视频片段、审核状态和最终成片。</p></div>
+      <div><h1>镜头、声音与成片</h1><p>第 6 步统一查看正式镜头、场景声、动作音、配音、音乐、视频片段和最终成片。</p></div>
       <div class="view-actions">
         ${keyframes.length ? '<button class="btn" type="button" data-generate-video>生成视频</button>' : '<button class="btn" type="button" data-generate-keyframes>生成关键帧</button>'}
         ${clips.length ? '<button class="btn" type="button" data-generate-tts>生成配音</button><button class="btn primary" type="button" data-compose>合成成片</button>' : ''}
@@ -73,6 +74,10 @@ export async function mount(host, context) {
       <div class="card-head"><div><h2>最终成片</h2><p>${escapeHtml(finalVideo.status || '已生成')} · 播放器保持源视频比例</p></div>${finalUrl ? `<a class="btn primary final-download" href="${escapeHtml(downloadUrl)}" download="${escapeHtml(finalVideo.filename || 'vido-final.mp4')}" aria-label="下载原始成片"><span aria-hidden="true">↓</span><span><b>下载原始成片</b><small>保留原始比例和清晰度</small></span></a>` : ''}</div>
       <div class="final-media">${finalVideoPlayer(finalVideo, posterUrl)}</div>
     </section>` : ''}
+    <section class="card generation-section sound-journey-section">
+      <div class="card-head"><div><h2>场景声音设计</h2><p>${soundJourney.length}/${shots.length || 0} 个镜头已有声音方案；根据场景背景分别匹配，不统一套用。</p></div></div>
+      <div class="card-body">${soundJourney.length ? `<div class="sound-journey-list">${soundJourney.map((item, index) => `<article><b>SH${String(item.shot_index || index + 1).padStart(2, '0')}</b><span>${escapeHtml(item.ambient || '环境底噪待确认')}</span><span>${escapeHtml((item.sfx || []).join('、') || '动作音待确认')}</span><span>${escapeHtml(item.music || '音乐情绪待确认')}</span><span>${escapeHtml(item.transition || '声音桥待确认')}</span></article>`).join('')}</div>` : emptyState({ title: '尚未形成逐镜声音方案', body: '保存第 5 步分镜后，系统会按竹林、雪夜、集市、道路等不同背景建立环境音、动作音、音乐和声音桥。' })}</div>
+    </section>
     <details class="card generation-section generation-details">
       <summary class="card-head"><div><h2>关键帧</h2><p>${keyframes.length}/${shots.length || 0} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
       <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>` : emptyState({

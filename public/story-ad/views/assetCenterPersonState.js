@@ -21,6 +21,14 @@ export function personAssetState(item = {}) {
     displayName: String(profile?.displayName || ''), roleName: String(profile?.roleName || ''),
     age: ageValue(profile), appearanceText: String(profile?.appearanceText || ''),
     negativeText: String(profile?.negativeText || ''), looks: lookSnapshot(profile),
+    identity_id: String(profile?.identity_id || profile?.id || ''),
+    lineage_identity_id: String(profile?.lineage_identity_id || profile?.source_identity_id || profile?.id || ''),
+    identity_continuity: String(profile?.identity_continuity || ''),
+    aging_mode: String(profile?.aging_mode || ''),
+    age_states: (Array.isArray(profile?.age_states) ? profile.age_states : []).map(state => ({
+      id: String(state?.id || ''), apparent_age: String(state?.apparent_age || ''),
+      story_state: String(state?.story_state || ''), scene_ids: (state?.scene_ids || []).map(String),
+    })),
   });
   if (item.dossier_sheet?.image_url && item.generated_profile
     && profileSnapshot(item.generated_profile) !== profileSnapshot(item.profile)) return 'profile_upgrade_required';
@@ -53,7 +61,9 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
   if (!savedProfile
     || canonicalAge(savedProfile.age) !== canonicalAge(normalizedValues.age)
     || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
-    || expectedLookIds.some(id => !savedLookIds.includes(id))) {
+    || expectedLookIds.some(id => !savedLookIds.includes(id))
+    || String(savedProfile.identity_id || savedProfile.id || '') !== String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '')
+    || String(savedProfile.aging_mode || '') !== String(normalizedValues.aging_mode || '')) {
     throw new Error('人物信息服务器回读不一致，已停止显示保存成功；请勿继续生成。');
   }
   return savedProfile;

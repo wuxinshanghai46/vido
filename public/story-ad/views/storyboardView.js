@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260812-ui-v196';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v196';
-import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v196';
+import { request } from '../api.js?v=20260812-ui-v198';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v198';
+import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v198';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -89,6 +89,10 @@ function sketchBatchMarkup(batch = null, total = 0) {
 }
 
 export async function mount(host, context) {
+  if (context.route?.params?.get('stage') === 'shot') {
+    const shotDesigner = await import('./shotDesignerView.js?v=20260812-ui-v198');
+    return shotDesigner.mount(host, context);
+  }
   const { bundle, store } = context;
   const shots = Array.isArray(bundle?.storyboard?.shots) ? bundle.storyboard.shots : [];
   const pageSize = 20;
@@ -192,7 +196,7 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   });
-  host.querySelector('[data-open-shot-design]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=shot`));
+  host.querySelector('[data-open-shot-design]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard&stage=shot`));
   let disposed = false;
   let sketchBatchPollTimer = null;
   let batchFinalizing = false;

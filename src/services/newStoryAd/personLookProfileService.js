@@ -59,6 +59,13 @@ function normalizeLookProfiles(profile = {}, options = {}) {
       scene_names: list(look.scene_names || look.sceneNames)
         .map(value => clean(value, 160)).filter(Boolean).slice(0, 24),
       wardrobeText: clean(look.wardrobeText || look.wardrobe_text || look.wardrobe || look.outfit || fallbackWardrobe, 1200),
+      garments: list(look.garments || look.clothing_items).map(value => clean(value?.name || value, 160)).filter(Boolean).slice(0, 16),
+      footwear: list(look.footwear || look.shoes).map(value => clean(value?.name || value, 160)).filter(Boolean).slice(0, 8),
+      accessories: list(look.accessories || look.accessory_items).map(value => clean(value?.name || value, 160)).filter(Boolean).slice(0, 16),
+      season_weather: clean(look.season_weather || look.seasonWeather, 160),
+      action_suitability: clean(look.action_suitability || look.actionSuitability, 300),
+      age_state_id: clean(look.age_state_id || look.ageStateId, 100),
+      story_state_id: clean(look.story_state_id || look.storyStateId, 100),
       hairMakeupText: clean(look.hairMakeupText || look.hair_makeup_text || look.hairMakeup || fallbackHair, 600),
       negativeText: clean(look.negativeText || look.negative_text || look.negative || fallbackNegative, 800),
       continuityText: clean(look.continuityText || look.continuity_text || look.continuity || '', 600),

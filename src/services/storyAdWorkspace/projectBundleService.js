@@ -4,10 +4,13 @@ const timingProjection = require('./projectTimingProjectionService'), workflowNa
 const { projectSceneCamera, projectShootingRules } = require('./sceneCameraProjectionService');
 const semantic = require('./productionSemanticLocalizationService'), benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const storyboardSketchGate = require('./storyboardSketchGateService'), referenceUnderstandingProjection = require('./referenceUnderstandingProjectionService'), authoritativeReference = require('./authoritativeReferenceProjectionService');
+const multilineTextContract = require('../newStoryAd/multilineTextContractService');
+const sceneLineage = require('../newStoryAd/sceneLineageContractService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
 function clean(value = '', max = 240) { return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max); }
+function cleanMultiline(value = '', max = 5000) { return multilineTextContract.normalize(value, max); }
 function list(value) { return Array.isArray(value) ? value.filter(Boolean) : []; }
 function mediaUrl(value = {}) {
   if (typeof value === 'string') return clean(value, 1200);
@@ -330,6 +333,7 @@ function sceneAssets(outputs = {}, context = {}) {
       name_source: clean(space.name_source || asset.name_source || (space.name ? 'plan' : (asset.name || asset.scene_name ? 'asset' : (reference.name ? 'upload' : 'fallback'))), 40),
       description: clean(space.description || asset.description || spec.description || spec.layoutText, 900),
       story_purpose: clean(space.story_purpose || space.purpose || asset.story_purpose, 500),
+      place_lineage: sceneLineage.normalize({ ...asset, ...space }, index),
       image_url: imageUrl,
       reference_image_url: mediaUrl(reference),
       view_images: views,
@@ -510,7 +514,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       width: Number(analysis.width || analysis.source?.metadata?.width || 0) || 0,
       height: Number(analysis.height || analysis.source?.metadata?.height || 0) || 0,
       error: clean(analysis.error?.message || analysis.error?.code || analysis.error || analysis.error_message, 260),
-      generated_brief: clean(analysis.generated_brief, 2200),
+      generated_brief: cleanMultiline(analysis.generated_brief, 4000),
       source_facts: {
         product_or_service: clean(analysis.source_facts?.product_or_service, 300),
         environment: clean(analysis.source_facts?.environment, 500),
@@ -537,9 +541,13 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     };
     bundle.brief = {
       project_name: clean(context.project_name || raw.task.title, 120),
-      text: clean(context.brief || raw.task.brief, 5000),
+      text: cleanMultiline(context.brief || raw.task.brief, 5000),
+      text_contract: multilineTextContract.metrics(context.brief || raw.task.brief),
+      text_versions: multilineTextContract.versions(context.brief_versions, context.brief || raw.task.brief),
       product_subject: clean(context.product_subject, 200),
       product_presentation: productAssetResolver.productPresentation(context), content_mode: clean(context.content_mode || (productAssetResolver.productPresentation(context).mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject'), 40), content_mode_source: clean(context.content_mode_source || '', 40),
+      content_domain_contract: context.content_domain_contract || null,
+      content_mode_migration: context.content_mode_migration || null,
       target_duration: Number(context.target_duration || context.duration || 0) || 0,
       output_ratio: clean(context.output_ratio || '9:16', 20),
       output_size: clean(context.output_size || 'standard', 30),
@@ -588,6 +596,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       media_result: raw.media_result || outputs.media_result || null,
       keyframe_status: raw.keyframe_status || null,
       video_shot_statuses: list(raw.video_shot_statuses).slice(0, 200),
+      sound_journey: list(outputs.sound_journey).slice(0, 200),
       progress: raw.task.generation_progress || null,
     };
   }
@@ -596,4 +605,4 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   return bundle;
 }
 
-module.exports = { buildProjectBundle, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, sceneAssets, workspaceStage };
+module.exports = { buildProjectBundle, cleanMultiline, displayId, listProjects, projectSceneCamera, projectStats, projectSummary, sceneAssets, workspaceStage };

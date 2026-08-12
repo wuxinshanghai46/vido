@@ -1,31 +1,31 @@
-import { createProjectStore } from './store/projectStore.js?v=20260812-ui-v196';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260812-ui-v196';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260812-ui-v196';
-import { confirmDialog } from './components/dialog.js?v=20260812-ui-v196';
+import { createProjectStore } from './store/projectStore.js?v=20260812-ui-v198';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260812-ui-v198';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260812-ui-v198';
+import { confirmDialog } from './components/dialog.js?v=20260812-ui-v198';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'assets', 'plot', 'storyboard', 'shot', 'final', 'workflow'];
+const VIEW_ORDER = ['brief', 'assets', 'scene', 'plot', 'storyboard', 'final', 'workflow'];
 const VIEW_META = {
   brief: ['1', '目标与材料'],
-  assets: ['2', '资产中心'],
-  plot: ['3', '剧情室'],
-  storyboard: ['4', '分镜台'],
-  shot: ['5', '镜头设计'],
-  final: ['6', '生成与成片'],
+  assets: ['2', '人物资产'],
+  scene: ['3', '场景世界'],
+  plot: ['4', '剧本'],
+  storyboard: ['5', '分镜与线稿'],
+  final: ['6', '镜头、声音与成片'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260812-ui-v196'),
-  assets: () => import('./views/assetCenterView.js?v=20260812-ui-v196'),
-  plot: () => import('./views/plotRoomView.js?v=20260812-ui-v196'),
-  storyboard: () => import('./views/storyboardView.js?v=20260812-ui-v196'),
-  shot: () => import('./views/shotDesignerView.js?v=20260812-ui-v196'),
-  final: () => import('./views/finalView.js?v=20260812-ui-v196'),
-  workflow: () => import('./views/workflowView.js?v=20260812-ui-v196'),
+  brief: () => import('./views/briefView.js?v=20260812-ui-v198'),
+  assets: () => import('./views/assetCenterView.js?v=20260812-ui-v198'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260812-ui-v198'),
+  plot: () => import('./views/plotRoomView.js?v=20260812-ui-v198'),
+  storyboard: () => import('./views/storyboardView.js?v=20260812-ui-v198'),
+  final: () => import('./views/finalView.js?v=20260812-ui-v198'),
+  workflow: () => import('./views/workflowView.js?v=20260812-ui-v198'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

@@ -1,4 +1,5 @@
 const storage = require('../newStoryAd/storageService');
+const sceneLineage = require('../newStoryAd/sceneLineageContractService');
 
 const SCENE_WORLD_SCHEMA_VERSION = 2;
 
@@ -260,6 +261,8 @@ function baseWorld(scene = {}, index = 0) {
     name: clean(scene.name || `场景世界 ${index + 1}`, 120),
     description: clean(scene.description, 900),
     story_purpose: clean(scene.story_purpose, 500),
+    place_lineage: sceneLineage.normalize(scene, index),
+    visual_authority_ready: hasSceneVisualAuthority(scene),
     status: clean(scene.status || 'planned', 50),
     capabilities: inferCapabilities(scene),
     zones,
@@ -309,7 +312,7 @@ function mergeWorld(base, override = {}) {
 }
 
 function buildSceneWorlds(bundle = {}, overrides = {}) {
-  const scenes = list(bundle.assets?.scenes).filter(hasSceneVisualAuthority);
+  const scenes = list(bundle.assets?.scenes);
   const worlds = scenes.map((scene, index) => mergeWorld(baseWorld(scene, index), overrides?.[scene.id]));
   const transitions = routeEdges(bundle, worlds);
   return worlds.map(world => ({
@@ -356,7 +359,13 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
         const characterText = list(shot.characters).map(item => clean(item?.name || item, 120)).join(' ');
         return sameWorld && (!characterText || characterText.includes(person.name) || characterText.includes(person.profile?.displayName));
       });
-      const defaultSuggested = people.length === 1 && worlds.length === 1 && world.capabilities?.supports_character_blocking !== false;
+      const personName = clean(person.name || person.profile?.displayName, 120);
+      const worldEvidence = clean([world.name, world.description, world.story_purpose].join(' '), 1500);
+      const lookMatch = list(person.profile?.look_profiles).find(look => list(look.scene_ids).includes(world.id)
+        || list(look.scene_names).some(name => worldEvidence.includes(clean(name, 120)))
+        || (clean(look.story_state, 120) && worldEvidence.includes(clean(look.story_state, 120))));
+      const plannedMatch = Boolean(personName && worldEvidence.includes(personName)) || Boolean(lookMatch);
+      const defaultSuggested = plannedMatch || (people.length === 1 && worlds.length === 1);
       const explicitPresence = clean(explicit?.presence, 30);
       const presence = explicitPresence || (matched.length ? 'confirmed' : (defaultSuggested ? 'suggested' : 'unassigned'));
       return {
@@ -364,10 +373,16 @@ function characterWorldMatrix(bundle = {}, worlds = [], options = {}) {
         presence,
         shot_count: matched.length,
         role: clean(explicit?.role || matched.map(shot => shot.action || shot.subject_action).filter(Boolean).join('；'), 260),
-        source: explicitPresence ? 'manual' : (matched.length ? shotSource : (defaultSuggested ? 'single_scene_default' : 'none')),
+        look_id: clean(explicit?.look_id || lookMatch?.id, 100),
+        age_state_id: clean(explicit?.age_state_id || lookMatch?.age_state_id || person.profile?.age_states?.[0]?.id, 100),
+        story_state_id: clean(explicit?.story_state_id || lookMatch?.story_state_id, 100),
+        appearance_order: Math.max(0, finite(explicit?.appearance_order, 0)),
+        entry_direction: clean(explicit?.entry_direction, 80), exit_direction: clean(explicit?.exit_direction, 80),
+        blocking: clean(explicit?.blocking, 260), camera_id: clean(explicit?.camera_id || world.cameras?.[0]?.id, 120),
+        source: explicitPresence ? 'manual' : (matched.length ? shotSource : (plannedMatch ? 'content_plan' : (defaultSuggested ? 'single_scene_default' : 'none'))),
         reason: explicitPresence ? '用户已明确设置人物是否在该场景出场'
           : (matched.length ? `${shotSource === 'published_history' ? '来自历史已发布故事板' : '来自当前故事板'} ${matched.length} 个镜头`
-            : (defaultSuggested ? '当前只有一个人物和一个可出场场景，默认建议出场' : '尚未在故事板或人工分配中确认')),
+            : (plannedMatch ? '根据剧情文字、人物造型和场景阶段预先建议' : (defaultSuggested ? '当前只有一个人物和一个场景，默认建议出场' : '尚未在剧情文字或人工分配中确认'))),
       };
     }),
   }));
@@ -455,6 +470,9 @@ function saveAssignments(taskId, assignments = [], options = {}) {
     world_id: clean(item.world_id, 120),
     presence: ['confirmed', 'excluded', 'unassigned'].includes(clean(item.presence, 30)) ? clean(item.presence, 30) : 'unassigned',
     role: clean(item.role, 260),
+    look_id: clean(item.look_id, 100), age_state_id: clean(item.age_state_id, 100), story_state_id: clean(item.story_state_id, 100),
+    appearance_order: Math.max(0, finite(item.appearance_order, 0)), entry_direction: clean(item.entry_direction, 80), exit_direction: clean(item.exit_direction, 80),
+    blocking: clean(item.blocking, 260), camera_id: clean(item.camera_id, 120),
   })).filter(item => item.character_id && item.world_id);
   const payload = {
     schema_version: SCENE_WORLD_SCHEMA_VERSION,

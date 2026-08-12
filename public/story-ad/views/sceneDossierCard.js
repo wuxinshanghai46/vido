@@ -1,13 +1,16 @@
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v196';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v198';
 
 export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
   if (group === 'people') {
-    const dossier = item.dossier_sheet?.image_url ? item.dossier_sheet : {};
-    return mediaPreview(dossier, {
-      label: `${item.name || '人物'}完整人物档案`, width: 720,
-      symbol: item.partial_checkpoint ? '完整档案待补齐' : '完整人物档案',
-      zoomable: Boolean(dossier.image_url), zoomGroup: 'asset-people-dossiers',
+    const portrait = item.native_masters?.face?.image_url ? item.native_masters.face
+      : (item.identity_views || []).find(view => ['face_front', 'front', 'portrait'].includes(String(view.key || view.id || '').toLowerCase()))
+      || (item.body_views || item.view_images || []).find(view => ['front', 'body_front'].includes(String(view.key || view.id || '').toLowerCase()))
+      || (item.dossier_sheet?.image_url ? item.dossier_sheet : {});
+    return mediaPreview(portrait, {
+      label: `${item.name || '人物'}单人物标准人像`, width: 720,
+      symbol: portrait?.image_url ? '人物标准人像' : '人物人像待补齐',
+      zoomable: Boolean(portrait?.image_url), zoomGroup: 'asset-people-portraits',
     });
   }
   const labels = { animals: '动物', products: '商品 / 展示主体', logos: 'LOGO' };
@@ -156,7 +159,7 @@ export function bindSceneDossierCard(scope, item = {}) {
   button.addEventListener('click', async () => {
     try {
       setButtonBusy(button, true, '正在本地合成…', { elapsed: true });
-      const exporter = await import('./sceneDossierExport.js?v=20260812-ui-v196');
+      const exporter = await import('./sceneDossierExport.js?v=20260812-ui-v198');
       const result = await exporter.exportSceneDossierPng(item);
       const palette = scope.querySelector('[data-scene-dossier-palette]');
       if (palette && result.palette?.length) palette.innerHTML = result.palette.map(color => `<i style="--scene-swatch:${escapeHtml(color)}" title="${escapeHtml(color)}"></i>`).join('');

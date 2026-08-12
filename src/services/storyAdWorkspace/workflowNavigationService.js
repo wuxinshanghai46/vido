@@ -51,15 +51,15 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
       brief: step(true, assetPlanReady, '', 'assets'),
       assets: step(briefInputReady || assetPlanReady, assetSetupComplete, referenceAttached && !referenceReady
         ? '请等待参考视频分析成功后再创建资产。'
-        : '请先填写项目名称和广告目标。', 'plot'),
-      plot: step(assetSetupComplete, blueprintReady, '请先在资产中心确认人物、动物、商品和场景方案。', 'storyboard'),
-      storyboard: step(blueprintReady, storyboardReady, '请先在剧情室生成或保存剧情蓝图。', 'shot'),
-      shot: step(storyboardReady, shotDesignComplete, '请先在分镜台生成或保存文字分镜。', 'final'),
+        : '请先填写项目名称和内容目标。', 'scene'),
+      scene: step(assetSetupComplete, assetSetupComplete, '请先在人物资产中确认人物、动物和必要展示主体。', 'plot'),
+      plot: step(assetSetupComplete, blueprintReady, '请先确认人物资产与场景世界的文字规划。', 'storyboard'),
+      storyboard: step(blueprintReady, storyboardReady && shotDesignComplete, '请先在第 4 步生成或保存剧本。', 'final'),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },
   };
-  result.current = ['brief', 'assets', 'plot', 'storyboard', 'shot', 'final']
+  result.current = ['brief', 'assets', 'scene', 'plot', 'storyboard', 'final']
     .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'final';
   return result;
 }

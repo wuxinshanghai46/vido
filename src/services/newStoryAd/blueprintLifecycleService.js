@@ -4,6 +4,7 @@ const { assertContextConsistent, cleanText } = require('./contextBuilder');
 const { generateBlueprint } = require('./blueprintService');
 const blueprintProgress = require('./blueprintProgressService');
 const revisionService = require('./revisionService');
+const contentDomainArtifacts = require('./contentDomainArtifactService');
 
 function checkpointMatches(checkpoint, task, inputFingerprint) {
   if (!checkpoint || checkpoint.reusable !== true || !checkpoint.payload) return false;
@@ -116,7 +117,7 @@ async function generateBlueprintStage(taskId, options = {}, {
     });
     throw error;
   }
-  const blueprint = versionedBlueprint(generated, previous);
+  const blueprint = versionedBlueprint(contentDomainArtifacts.tagBlueprint(ctx, generated), previous);
   if (!Array.isArray(blueprint.beats) || !blueprint.beats.length) {
     const error = new Error('剧本模型没有返回可用镜头，本次结果未保存；请重新生成剧本');
     error.code = 'BLUEPRINT_OUTPUT_EMPTY';

@@ -1,6 +1,14 @@
-import { request } from '../api.js?v=20260812-ui-v196';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v196';
-import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v196';
+import { request } from '../api.js?v=20260812-ui-v198';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v198';
+import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v198';
+
+function domainContractBanner(brief = {}) {
+  const contract = brief.content_domain_contract || {};
+  const narrative = brief.content_mode === 'narrative_story';
+  const objective = contract.objective || (narrative ? '以人物、关系、因果和主题完成剧情' : '围绕商品或服务主体完成传播目标');
+  const forbidden = Array.isArray(contract.forbidden) ? contract.forbidden.slice(0, 4).join('、') : (narrative ? '禁止混入商品卖点、购买号召和品牌落版' : '禁止丢失广告主体与可见传播证据');
+  return `<section class="guide content-domain-banner"><b>${narrative ? '剧情专用规则' : '广告专用规则'}</b><span>${escapeHtml(objective)}</span><small>${escapeHtml(forbidden)}</small></section>`;
+}
 
 function beatEditor(beat = {}, index = 0) {
   return `<article class="beat-row" data-beat-index="${index}">
@@ -77,12 +85,13 @@ export async function mount(host, context) {
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>剧情室</h1><p>剧情蓝图是分镜和镜头的唯一上游；人物、商品和场景都从资产中心引用。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
+      <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情剧本' : '广告脚本'}</h1><p>第 4 步只处理对应内容类型的剧本；人物、展示主体和场景引用已经在上游确认。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
         ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn ${isReferenceDraft ? 'primary' : ''}" type="button" data-save-story>${isReferenceDraft ? '保存参考故事草稿' : '保存剧情'}</button>${!isReferenceDraft ? '<button class="btn" type="button" data-regenerate-story>批量重生成全部剧情</button><button class="btn primary" type="button" data-open-storyboard>进入分镜台</button>' : ''}` : '<button class="btn primary" type="button" data-generate-story>批量生成全部剧情</button>'}
       </div>
     </section>
+    ${domainContractBanner(bundle.brief || {})}
     <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请在本环节修改故事与情节点，保存后再进入分镜。' : '先确认故事因果和品牌目标，再进入分镜。修改剧情会使下游镜头按现有版本规则失效。'}</div>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
     ${blueprint ? `<div class="plot-layout">

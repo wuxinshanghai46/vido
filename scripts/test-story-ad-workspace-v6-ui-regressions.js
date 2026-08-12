@@ -50,6 +50,7 @@ const assets = read('public/story-ad/views/assetCenterView.js');
 const personDossierShowcase = read('public/story-ad/views/personDossierShowcase.js');
 const assetDossierSections = read('public/story-ad/views/assetCenterDossierSections.js');
 const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
+const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
 const assetPlanningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 assert.match(assetDossierSections, /reference-dossier-board/);
 assert.match(assetDossierSections, /参考档案预览/);
@@ -57,8 +58,8 @@ assert.match(assetPlanningDetails, /查看原始四视图/);
 assert.match(assetPlanningDetails, /form="personEditForm"/u, '人物抽屉固定操作栏必须始终提供文字保存入口');
 assert.match(assetPlanningDetails, /保存人物文字设定/u);
 assert.match(sceneDossierCard, /function assetCardMedia/);
-assert.match(sceneDossierCard, /const dossier = item\.dossier_sheet\?\.image_url \? item\.dossier_sheet : \{\}/, '人物主卡必须优先使用单张完整档案整图');
-assert.match(sceneDossierCard, /完整档案待补齐/, '人物整图缺失时不得把分类拼图冒充最终主卡');
+assert.match(sceneDossierCard, /const portrait = item\.native_masters\?\.face\?\.image_url/, '人物主卡必须优先显示单人物标准人像');
+assert.match(sceneDossierCard, /asset-people-portraits/, '人物主卡必须使用独立人像预览组，而不是完整档案拼图');
 assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
@@ -133,7 +134,7 @@ assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
-assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*await store\.updateRequest\(payload\);[\s\S]*await store\.runStage\('scene-config'\);[\s\S]*view=assets/, '目标确认必须按保存最新输入、创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*await store\.runStage\('scene-config'\);[\s\S]*view=assets/, '目标确认必须先处理内容类型迁移，再按保存最新输入、创建资产方案、进入资产中心的顺序执行');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
   escapeHtml,
@@ -405,7 +406,7 @@ const sceneDossierModule = loadBrowserModule(
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
   ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
-  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, ...sceneDossierModule, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
+  { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, ...sceneDossierModule, renderPersonEvolutionSummary() { return ''; }, renderPersonEvolutionEditor() { return ''; }, bindPersonEvolutionForm() {}, collectPersonEvolutionValues() { return {}; }, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
@@ -431,7 +432,7 @@ const dossierModule = loadBrowserModule(
 assert.match(assets, /data-confirm-assets/);
 assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜测为合同缺失；必需项只由版本合同判定');
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
-assert.match(assets, /content_mode === 'narrative_story' \? '人物、动物与场景'/, '纯剧情方案确认不得要求核对商品');
+assert.match(assets, /content_mode === 'narrative_story' \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.match(assets, /版本合同未通过/, '合同失败只显示合同结论');
 assert.match(assets, /版本合同未通过 · 步骤 1/, '合同失败必须显示恢复步骤顺序');
 assert.match(assets, /先更新当前版本的场景规划/, '合同失败必须给出唯一明确的第一步');
@@ -440,7 +441,7 @@ assert.match(assets, /generationActive/, '资产中心必须统一读取当前�
 assert.match(assets, /正在更新场景规划/, '场景规划运行中必须显示进行中而不是高亮可选按钮');
 assert.match(assets, /data-build-scenes \$\{generationDisabled\}/, '场景规划运行中必须禁用重复提交入口');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
-assert.match(assets, /步骤 2：合同通过后核对计费，再继续缺失图片/, '计费未知必须明确为合同恢复后的第二步');
+assert.match(assets, /步骤 2：合同通过后逐个人物核对计费，再继续缺失图片/, '计费未知必须明确为合同恢复后的逐人物第二步');
 const blockedVisualFailure = {
   project: { status: 'failed', error_code: 'GENERATION_BILLING_STATE_UNKNOWN', error: '计费状态尚未确认' },
   navigation: { asset_plan_eligibility: { eligible: false } },
@@ -453,11 +454,12 @@ assert.doesNotMatch(insideAssetsRecovery, /data-view="assets"/, '已在资产中
 assert.doesNotMatch(assets, /付费生成已锁定/, '不得向用户暴露内部付费熔断措辞');
 assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, '不得向用户暴露 Active Plan 内部术语');
 assert.match(assets, /asset_setup_confirmed:\s*true/);
-assert.match(assets, /view=plot/, '资产方案确认后必须进入剧情室');
-assert.match(assets, /asset-visual-next-step/, '进入资产中心后必须明确展示人物与场景视觉生成的下一步');
+assert.match(assets, /view=scene/, '人物资产确认后必须进入独立场景流程');
+assert.match(assets, /asset-visual-next-step/, '进入人物资产步骤后必须明确展示人物视觉生成的下一步');
 assert.match(assets, /不会因刚才确认参考理解而自动付费/, '必须明确区分零调用方案创建与付费视觉生成');
 assert.match(assets, /data-generate-missing-subjects/, '必须提供通用的缺失人物和动物生成入口');
-assert.match(assets, /data-show-pending-scenes/, '必须提供通用的待生成场景入口');
+assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
+assert.match(sceneWorldPage, /data-generate-base-scene/, '独立场景步骤必须提供逐场景生成入口');
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-missing' }), true);
 assert.equal(assetModule.sceneNeedsGeneration({ id: 'scene-ready', layout: { image_url: '/scene.png' } }), false);
 const legacyPerson = {
@@ -540,7 +542,7 @@ const precisePayload = assetModule.subjectGenerationPayload({
     animals: [],
   },
 }, { id: 'selected-legacy', asset_id: 'selected-legacy', subject_id: 'person-selected' }, 'request-1');
-assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected', 'person-missing'], '单人物生成只允许选中人物和真正缺失主体，不得扩大到未选历史四视图');
+assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected'], '单人物生成必须只提交当前选中人物，不得连带任何其他缺失主体');
 assert(!precisePayload.subject_targets.some(item => item.id === 'person-unselected'), '未选历史人物必须原样保留，避免额外付费');
 
 const unverifiedProductCard = assetModule.assetCard({ id: 'product-1', name: '商品图', image_url: '/product.png', status: 'unverified' }, 'products');

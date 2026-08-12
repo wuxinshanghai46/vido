@@ -93,6 +93,16 @@ const GENERATION_UNIT_LABELS = {
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
+export function publicGenerationMessage(value = '', options = {}) {
+  const text = String(value || '').trim();
+  if (!text) return options.fallback || '';
+  if (/计费|billing/i.test(text)) return '生成已暂停，成功资产已保留；计费状态核对完成前不会重复提交。';
+  if (/审核|audit|content.?policy|safety/i.test(text)) return '当前内容未通过生成规则检查，请调整素材或描述后再试。';
+  if (/供应商|provider|model|模型|http\s*5\d\d|support|支持编号|task.?id|request.?id|sk-[a-z0-9]/i.test(text)) return '本次生成未完成，成功资产已保留。请稍后从缺失项继续。';
+  return text.replace(/(?:支持编号|任务编号|请求编号|task.?id|request.?id)\s*[:：]\s*[\w-]+/gi, '').trim()
+    || options.fallback || '本次生成未完成，成功资产已保留。';
+}
+
 export function generationProgressView(bundle = {}) {
   const project = bundle.project || {};
   const progress = bundle.generation?.progress || project.generation_progress || {};
@@ -130,7 +140,7 @@ export function generationProgressView(bundle = {}) {
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
-    message: String(progress.message || project.error || `${stageLabel}正在处理中，请保持页面打开。`),
+    message: publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
     startedAt,
     finishedAt,
@@ -150,7 +160,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
     const total = Math.max(0, Math.floor(Number(lane.total || 0)));
     const completed = Math.floor(Math.max(0, Math.min(total || 1, Number(lane.completed || 0))));
     const status = lane.required === false ? '不需要' : (lane.status === 'completed' ? '已完成' : (lane.status === 'failed' ? '需处理' : `${Math.floor(completed)}/${total}`));
-    return `<div><span><b>${label}</b><small>${escapeHtml(lane.message || '')}</small></span><strong>${escapeHtml(status)}</strong></div>`;
+    return `<div><span><b>${label}</b><small>${escapeHtml(publicGenerationMessage(lane.message || ''))}</small></span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('')}</div>` : '';
   if (view.failed) {
     const retained = laneRows || recovery

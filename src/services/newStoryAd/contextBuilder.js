@@ -13,6 +13,8 @@ const contentSkill = require('./contentSkillService');
 const personLooks = require('./personLookProfileService');
 const worldSetting = require('./worldSettingContractService');
 const personAgeContract = require('./personAgeContractService');
+const personEvolution = require('./personStateEvolutionService');
+const multilineTextContract = require('./multilineTextContractService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -659,7 +661,8 @@ function normalizeCastProfiles(input) {
   const raw = Array.isArray(input) ? input : [];
   return raw.map((profile, idx) => {
     if (!profile || typeof profile !== 'object') return null;
-    const withLooks = personLooks.normalizeProfileLooks(profile);
+    const evolved = personEvolution.normalizeProfile(profile, { index: idx });
+    const withLooks = personLooks.normalizeProfileLooks(evolved);
     const resolved = subjectProfileText.profileTexts(withLooks);
     const normalizedAge = personAgeContract.normalize(profile.age_contract || profile.age || '', {
       strict: profile.age_source === 'user', source: profile.age_source || profile.age_contract?.source || 'profile',
@@ -672,6 +675,13 @@ function normalizeCastProfiles(input) {
       age: normalizedAge.value,
       age_contract: normalizedAge,
       age_source: cleanText(profile.age_source || normalizedAge.source || '', 40),
+      identity_id: evolved.identity_id,
+      lineage_identity_id: evolved.lineage_identity_id,
+      identity_continuity: evolved.identity_continuity,
+      aging_mode: evolved.aging_mode,
+      apparent_age: evolved.apparent_age,
+      apparent_age_contract: evolved.apparent_age_contract,
+      age_states: evolved.age_states,
       field_authority: subjectProfileText.profileFieldAuthority(profile),
       user_edited_fields: subjectProfileText.userEditedFields(profile),
       sourceType: cleanText(profile.sourceType || profile.reference_kind || '', 80),
@@ -943,6 +953,7 @@ function resolveTargetDuration(body = {}, brief = '') {
 
 function buildContext(body = {}, user = {}) {
   const brief = cleanMultilineText(body.brief || body.content || body.requirement || body.prompt, 5000);
+  const briefVersions = multilineTextContract.versions(body.brief_versions || body.briefVersions, brief);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
   const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
   const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);
@@ -1057,6 +1068,11 @@ function buildContext(body = {}, user = {}) {
     : assets;
   const requestedContentMode = cleanText(body.content_mode || body.contentMode || '', 60);
   const declaredContentModeSource = cleanText(body.content_mode_source || body.contentModeSource || '', 40);
+  if (requestedContentMode) contentSkill.mode(requestedContentMode);
+  if (declaredContentModeSource === 'user' && !requestedContentMode) contentSkill.assertSelected({
+    content_mode: '',
+    content_mode_source: 'user',
+  });
   const contentModeSource = declaredContentModeSource === 'user'
     ? 'user'
     : (requestedContentMode && !(body.product_presentation || body.productPresentation) ? 'user' : 'inferred');
@@ -1065,6 +1081,8 @@ function buildContext(body = {}, user = {}) {
     content_mode_source: contentModeSource,
     product_subject: productSubject,
     brief,
+    brief_versions: briefVersions,
+    brief_text_contract: multilineTextContract.metrics(brief),
     product_asset: body.product_asset || body.productAsset,
     assets,
     product_presentation: body.product_presentation || body.productPresentation,
@@ -1102,6 +1120,7 @@ function buildContext(body = {}, user = {}) {
     content_mode: contentMode,
     content_mode_source: contentModeSource,
     content_skill: contentSkill.snapshot(contentMode),
+    content_domain_contract: contentSkill.snapshot(contentMode).domain_contract,
     story_scene_contract_version: contentMode === 'narrative_story' ? 6 : 0,
     world_setting: worldSettingContract,
     target_duration: targetDuration,

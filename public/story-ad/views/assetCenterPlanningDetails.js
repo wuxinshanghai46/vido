@@ -1,7 +1,8 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260812-ui-v196';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260812-ui-v196';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260812-ui-v196';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260812-ui-v196';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260812-ui-v198';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260812-ui-v198';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260812-ui-v198';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260812-ui-v198';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260812-ui-v198';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
@@ -170,6 +171,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   drawer.querySelector('[data-drawer-verify-product]')?.addEventListener('click', async event => { if (await onVerifyProduct?.(item, event.currentTarget) === true) close(); });
   bindSubmit('[data-person-edit]', onSavePerson);
   bindPersonLookForm(drawer.querySelector('[data-person-edit]'));
+  bindPersonEvolutionForm(drawer.querySelector('[data-person-edit]'));
   bindSubmit('[data-product-edit]', onSaveProduct);
   bindSubmit('[data-scene-edit]', onSaveScene);
   drawer.querySelector('[data-ai-assist-person]')?.addEventListener('click', event => onAssistPerson?.(item, drawer.querySelector('[data-person-edit]'), event.currentTarget));

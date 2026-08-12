@@ -1,4 +1,5 @@
-const SKILL_VERSION = '1.0.0';
+const contentDomains = require('./contentDomains');
+const SKILL_VERSION = '2.0.0';
 
 const DEFINITIONS = Object.freeze({
   commercial_subject: Object.freeze({
@@ -16,12 +17,14 @@ const DEFINITIONS = Object.freeze({
 });
 
 function mode(value = '') {
-  return value === 'narrative_story' ? 'narrative_story' : 'commercial_subject';
+  if (!String(value || '').trim()) return 'commercial_subject';
+  return contentDomains.resolve(value).mode;
 }
 
 function snapshot(value = '') {
   const contentMode = mode(value);
   const definition = DEFINITIONS[contentMode];
+  const domain = contentDomains.snapshot(contentMode);
   return {
     id: definition.id,
     version: SKILL_VERSION,
@@ -29,6 +32,7 @@ function snapshot(value = '') {
     label: definition.label,
     objective: definition.objective,
     forbidden: [...definition.forbidden],
+    domain_contract: domain,
     runtime: 'vido_server',
   };
 }
@@ -39,7 +43,8 @@ function promptBlock(value = '') {
     `平台内容 Skill：${skill.label}（${skill.id}@${skill.version}）。`,
     `唯一生成目标：${skill.objective}。`,
     `禁止：${skill.forbidden.join('；')}。`,
+    contentDomains.promptBlock(skill.mode),
   ].join('\n');
 }
 
-module.exports = { SKILL_VERSION, DEFINITIONS, mode, snapshot, promptBlock };
+module.exports = { SKILL_VERSION, DEFINITIONS, mode, snapshot, promptBlock, assertSelected: contentDomains.assertSelected };

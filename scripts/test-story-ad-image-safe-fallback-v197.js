@@ -1,0 +1,12 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const source = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/mediaAdapter.js'), 'utf8');
+assert(source.includes("'not_submitted', 'submission_rejected', 'request_not_sent'"));
+assert(source.includes("'not_billed', 'none', 'confirmed_not_billed'"));
+assert(source.includes("code: safelyNotSubmitted ? 'PROVIDER_5XX_NOT_SUBMITTED' : 'PROVIDER_5XX_AMBIGUOUS'"));
+assert(source.includes('terminal: !safelyNotSubmitted'));
+assert(source.includes('提交或计费状态需要管理员核对'));
+assert(!source.includes('const error = new Error(`图片生成失败，已尝试'));
+console.log('story-ad image safe fallback and public error boundary: ok');

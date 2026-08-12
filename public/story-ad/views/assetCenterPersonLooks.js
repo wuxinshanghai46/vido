@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260812-ui-v196';
+import { escapeHtml } from '../components/ui.js?v=20260812-ui-v198';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -24,6 +24,10 @@ function lookEditor(look = {}, index = 0) {
     <label><span>华丽程度（AI 帮写和图片生成都会遵守）</span><select name="look_${index}_style_richness">${richnessOption('auto', '根据人物与剧情自动判断')}${richnessOption('restrained', '朴素克制')}${richnessOption('refined', '精致雅致')}${richnessOption('ornate_luxurious', '华丽华贵')}</select></label>
     <p class="person-look-scenes"><span>适用场景 / 剧情状态</span><b>${escapeHtml(sceneLabels.join('、') || storyState || '未限定场景，将按剧情分析')}</b></p>
     <label><span>服装 / 鞋 / 配饰</span><textarea name="look_${index}_wardrobeText" rows="3" required>${escapeHtml(look.wardrobeText || '')}</textarea></label>
+    <div class="form-grid two"><label><span>服装单品（用、分隔）</span><input name="look_${index}_garments" value="${escapeHtml((look.garments || []).join('、'))}"></label><label><span>鞋履（用、分隔）</span><input name="look_${index}_footwear" value="${escapeHtml((look.footwear || []).join('、'))}"></label></div>
+    <label><span>独立配饰（用、分隔）</span><input name="look_${index}_accessories" value="${escapeHtml((look.accessories || []).join('、'))}"></label>
+    <div class="form-grid two"><label><span>季节 / 天气</span><input name="look_${index}_season_weather" value="${escapeHtml(look.season_weather || '')}"></label><label><span>动作适用性</span><input name="look_${index}_action_suitability" value="${escapeHtml(look.action_suitability || '')}"></label></div>
+    <div class="form-grid two"><label><span>年龄状态 ID</span><input name="look_${index}_age_state_id" value="${escapeHtml(look.age_state_id || '')}" placeholder="为空时按场景分配"></label><label><span>剧情状态 ID</span><input name="look_${index}_story_state_id" value="${escapeHtml(look.story_state_id || '')}"></label></div>
     <label><span>该造型发型 / 妆造</span><textarea name="look_${index}_hairMakeupText" rows="2">${escapeHtml(look.hairMakeupText || '')}</textarea></label>
     <label><span>该造型禁止项</span><textarea name="look_${index}_negativeText" rows="2">${escapeHtml(look.negativeText || '')}</textarea></label>
     <button class="btn small person-look-remove" type="button" data-remove-person-look>删除该造型</button>
@@ -81,6 +85,13 @@ export function collectPersonLookValues(values = {}, profile = {}) {
       scene_ids: String(values[`look_${index}_scene_ids`] || '').split(',').map(value => value.trim()).filter(Boolean),
       scene_names: String(values[`look_${index}_scene_names`] || '').split(',').map(value => value.trim()).filter(Boolean),
       wardrobeText: String(values[`look_${index}_wardrobeText`] || '').trim(),
+      garments: String(values[`look_${index}_garments`] || '').split(/[、,，]/).map(value => value.trim()).filter(Boolean),
+      footwear: String(values[`look_${index}_footwear`] || '').split(/[、,，]/).map(value => value.trim()).filter(Boolean),
+      accessories: String(values[`look_${index}_accessories`] || '').split(/[、,，]/).map(value => value.trim()).filter(Boolean),
+      season_weather: String(values[`look_${index}_season_weather`] || '').trim(),
+      action_suitability: String(values[`look_${index}_action_suitability`] || '').trim(),
+      age_state_id: String(values[`look_${index}_age_state_id`] || '').trim(),
+      story_state_id: String(values[`look_${index}_story_state_id`] || '').trim(),
       hairMakeupText: String(values[`look_${index}_hairMakeupText`] || '').trim(),
       negativeText: String(values[`look_${index}_negativeText`] || '').trim(),
       style_richness: String(values[`look_${index}_style_richness`] || 'auto').trim(),
