@@ -310,6 +310,9 @@ assert.match(briefView, /referenceRetryPending \|\| button\.disabled/, '确认�
 assert.match(briefView, /referenceRetryPending = true;[\s\S]*setButtonBusy\(button, true, '正在确认…'\)/, '防重入锁必须在打开确认框前立即生效');
 
 const projectStore = read('public/story-ad/store/projectStore.js');
+assert.match(projectStore, /let requestMutationChain = Promise\.resolve\(\);/, '内容保存必须通过单一串行队列避免同一客户端并发版本冲突');
+assert.match(projectStore, /requestMutationChain\.then\(execute, execute\)/, '内容保存队列必须在前一笔结束后才读取最新版本并提交');
+assert.match(projectStore, /content_mode: context\.content_mode/, '保存响应必须立即回写内容类型，不能等待后续刷新修正客户端状态');
 assert.match(projectStore, /function applyMutationResult\(data = \{\}\)/, '所有写接口必须先采用服务端返回的权威版本和规范化内容');
 assert.match(projectStore, /async function updateRequest[\s\S]*applyMutationResult\(data\)[\s\S]*refreshSections\('summary'\)/, '目标或完成状态保存后必须局部合并导航，不能重载大包或丢失下游草稿');
 assert.match(projectStore, /async function saveBlueprint[\s\S]*applyMutationResult\(data\)[\s\S]*refreshSections\('summary'\)/, '保存剧情后必须采用服务端最新内容版本再进入下一环节');
@@ -357,6 +360,7 @@ assert.match(referenceReplacementState, /tasks\/\$\{encodeURIComponent\(taskId\)
 assert.match(referenceReplacementState, /timeoutMs:\s*120000/, '移除参考视频必须等待大体积 JSON 项目的权威提交结果，避免前端超时后重复删除');
 
 const briefViewSource = read('public/story-ad/views/briefView.js');
+assert.match(briefViewSource, /if \(assetPlanTransitioning\) return false;\s*assetPlanTransitioning = true;/, '创建方案防重复锁必须在任何异步确认之前设置');
 assert.match(briefViewSource, /class="material-remove"[\s\S]*data-reference-remove[\s\S]*aria-label="移除参考视频"/, '已连接参考视频旁必须显示无文字的删除符号');
 assert.match(briefViewSource, /data-reference-remove[\s\S]*store\.removeReference\(\)[\s\S]*refreshShell\(\)/, '删除符号必须完成服务端解绑并重新渲染 AI 帮写入口');
 

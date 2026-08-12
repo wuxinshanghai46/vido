@@ -1,12 +1,12 @@
-import { request } from '../api.js?v=20260812-ui-v216';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v216';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v216';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v216';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v216';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260812-ui-v216';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v216';
-import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v216';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260812-ui-v216';
+import { request } from '../api.js?v=20260812-ui-v217';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v217';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v217';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v217';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v217';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260812-ui-v217';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v217';
+import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v217';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260812-ui-v217';
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
   const data = new FormData(form);
@@ -227,7 +227,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v216');
+    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v217');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -397,6 +397,8 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
 
   async function proceedToAssetPlan(button) {
     if (assetPlanTransitioning) return false;
+    assetPlanTransitioning = true;
+    host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在检查并保存…'));
     try {
       const reference = store.state.bundle?.reference || {};
       const status = String(reference.status || '').toLowerCase();
@@ -413,7 +415,6 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       const migration = await confirmContentModeMigration(String(store.state.bundle?.brief?.content_mode || '').trim(), payload.content_mode);
       if (migration.cancelled) return false;
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
-      assetPlanTransitioning = true;
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
       const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
       assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');

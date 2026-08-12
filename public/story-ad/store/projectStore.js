@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260812-ui-v216';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260812-ui-v216';
-import { loadProjectList } from './projectListStore.js?v=20260812-ui-v216';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260812-ui-v217';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260812-ui-v217';
+import { loadProjectList } from './projectListStore.js?v=20260812-ui-v217';
 
 export function createProjectStore() {
   const state = {
@@ -19,13 +19,13 @@ export function createProjectStore() {
     referenceReplacementSeq: 0,
   };
   const listeners = new Set();
+  let requestMutationChain = Promise.resolve();
   const notify = () => listeners.forEach(listener => listener(state));
   const set = patch => { Object.assign(state, patch); notify(); };
 
   async function loadProjects(options = {}) {
     return loadProjectList({ request, set }, options);
   }
-
   async function createProject(payload) {
     set({ saving: true, error: '' });
     try {
@@ -111,6 +111,8 @@ export function createProjectStore() {
         expected_people: context.expected_people ?? current.brief?.expected_people,
         expected_animals: context.expected_animals ?? current.brief?.expected_animals,
         brief_source: context.brief_source ?? current.brief?.brief_source,
+        content_mode: context.content_mode ?? current.brief?.content_mode,
+        content_mode_source: context.content_mode_source ?? current.brief?.content_mode_source,
         asset_setup_confirmed: context.asset_setup_confirmed === true,
         shot_design_confirmed: context.shot_design_confirmed === true,
         creative_direction: context.creative_direction ?? current.brief?.creative_direction,
@@ -128,29 +130,28 @@ export function createProjectStore() {
     set({ bundle: next });
     return next;
   }
-
   async function updateRequest(patch, options = {}) {
-    const taskId = state.bundle?.project?.id;
-    if (!taskId) throw new Error('请先创建项目。');
-    set({ saving: true, error: '' });
-    try {
-      const body = {
-        ...(patch || {}),
-        base_content_revision: state.bundle?.revisions?.content || 1,
-        client_edit_seq: (state.bundle?.revisions?.client_edit_seq || 0) + 1,
-      };
-      const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
-      applyMutationResult(data);
-      // refreshSections merges into the existing complete bundle.  It updates
-      // navigation without dropping story/shots and avoids a large all-section
-      // response on every workflow transition.
-      const bundle = await refreshSections(options.refreshSections || 'summary');
-      set({ saving: false });
-      return bundle;
-    } catch (error) {
-      set({ saving: false, error: error.message });
-      throw error;
-    }
+    const execute = async () => {
+      const taskId = state.bundle?.project?.id;
+      if (!taskId) throw new Error('请先创建项目。');
+      set({ saving: true, error: '' });
+      try {
+        const body = {
+          ...(patch || {}),
+          base_content_revision: state.bundle?.revisions?.content || 1,
+          client_edit_seq: (state.bundle?.revisions?.client_edit_seq || 0) + 1,
+        };
+        const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}`, { method: 'PUT', body, timeoutMs: 120000 });
+        applyMutationResult(data);
+        const bundle = await refreshSections(options.refreshSections || 'summary');
+        set({ saving: false }); return bundle;
+      } catch (error) {
+        set({ saving: false, error: error.message });
+        throw error;
+      }
+    };
+    const queued = requestMutationChain.then(execute, execute);
+    requestMutationChain = queued.catch(() => {}); return queued;
   }
   async function runStage(path, body = {}) {
     const taskId = state.bundle?.project?.id;
