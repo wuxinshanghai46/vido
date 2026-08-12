@@ -99,16 +99,18 @@ function main() {
   const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails|assetCenterBillingReviewDialog)/.test(file));
   const personEvolutionLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonEvolution/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
+  const recognitionLazyJsFiles = allJsFiles.filter(file => /briefNarrativeRecognition/.test(file));
   const briefLazyJsFiles = allJsFiles.filter(file => /(?:briefTextContract|briefContentModeMigration|briefSettingsSummary|briefWorldSettings)/.test(file));
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorld(?:View|Page)/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const personEvolutionLazyJsBytes = personEvolutionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const featureLazyJsBytes = featureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const recognitionLazyJsBytes = recognitionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const briefLazyJsBytes = briefLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const panoramaLazyJsBytes = panoramaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const sceneWorldLazyJsBytes = sceneWorldLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -119,6 +121,7 @@ function main() {
   const assetEditorLazyJsGzip = gzipBytes(assetEditorLazyJsFiles);
   const personEvolutionLazyJsGzip = gzipBytes(personEvolutionLazyJsFiles);
   const featureLazyJsGzip = gzipBytes(featureLazyJsFiles);
+  const recognitionLazyJsGzip = gzipBytes(recognitionLazyJsFiles);
   const briefLazyJsGzip = gzipBytes(briefLazyJsFiles);
   const panoramaLazyJsGzip = gzipBytes(panoramaLazyJsFiles);
   const sceneWorldLazyJsGzip = gzipBytes(sceneWorldLazyJsFiles);
@@ -136,6 +139,8 @@ function main() {
   assert(coreJsGzip <= 105 * 1024, `核心按需模块 gzip ${coreJsGzip} bytes 超过 105 KiB`);
   assert(featureLazyJsBytes <= 60 * 1024, `参考理解与画布导演功能模块 ${featureLazyJsBytes} bytes 超过 60 KiB`);
   assert(featureLazyJsGzip <= 16 * 1024, `参考理解与画布导演功能模块 gzip ${featureLazyJsGzip} bytes 超过 16 KiB`);
+  assert(recognitionLazyJsBytes <= 4 * 1024, `目标页识别预览模块 ${recognitionLazyJsBytes} bytes 超过 4 KiB`);
+  assert(recognitionLazyJsGzip <= 2 * 1024, `目标页识别预览模块 gzip ${recognitionLazyJsGzip} bytes 超过 2 KiB`);
   assert(briefLazyJsBytes <= 10 * 1024, `目标页按需辅助模块 ${briefLazyJsBytes} bytes 超过 10 KiB`);
   assert(briefLazyJsGzip <= 4 * 1024, `目标页按需辅助模块 gzip ${briefLazyJsGzip} bytes 超过 4 KiB`);
   assert(panoramaLazyJsBytes <= 20 * 1024, `360全景按需模块 ${panoramaLazyJsBytes} bytes 超过 20 KiB`);

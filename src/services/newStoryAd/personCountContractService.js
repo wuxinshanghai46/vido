@@ -71,8 +71,11 @@ function contract(ctx = {}) {
     clean(profile.era_identity || profile.eraIdentity, 40)
   ));
   const legacyExpected = positive(ctx.expected_people);
-  const narrativeCount = explicitNarrative
-    || positive(eraContract?.count)
+  // Cross-era identity evidence comes from the current brief. It must replace
+  // stale derived counts saved by an earlier draft (for example two ancient
+  // leads before a reincarnated modern identity was added).
+  const narrativeCount = positive(eraContract?.count)
+    || explicitNarrative
     || (suppliedAsVisualCards ? narrative.length : Math.max(legacyExpected, narrative.length));
   const visualCount = positive(ctx.visual_asset_count) || visual.length || legacyExpected;
   return {

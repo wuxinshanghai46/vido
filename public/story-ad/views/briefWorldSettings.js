@@ -12,11 +12,11 @@ export function worldSettingPayload(data) {
 
 export function worldSettingFields(profile = {}, escapeHtml = value => String(value || '')) {
   const familyOptions = [['auto','根据内容识别'],['chinese_historical','中国古代'],['republican_china','民国'],['xianxia','仙侠'],['wuxia','武侠'],['modern_china','现代中国'],['modern_overseas','海外现代'],['western_historical','西方历史'],['medieval','中世纪'],['future','未来'],['post_apocalyptic','末日'],['cyberpunk','赛博朋克'],['mixed','混合世界'],['custom','自定义']];
-  const fidelityOptions = [['contemporary_realism','现实 / 当代写实'],['historical_realism','史实写实'],['stylized_history','艺术化历史'],['fantasy','幻想规则'],['custom','自定义规则']];
+  const fidelityOptions = [['contemporary_realism','写实规则（按各时代分别约束）'],['historical_realism','史实写实'],['stylized_history','艺术化历史'],['fantasy','幻想规则'],['custom','自定义规则']];
   const mediumOptions = [['auto','根据剧本与参考内容识别'],['live_action','真人 / 实拍'],['cinematic_3d','3D 动画'],['anime_2d','2D 动漫 / 赛璐璐'],['motion_comic','动态漫 / 插画'],['mixed_media','混合媒介'],['custom','自定义画面形态']];
   const options = (rows, current) => rows.map(([value,label]) => `<option value="${value}" ${String(current) === value ? 'selected' : ''}>${label}</option>`).join('');
   return `<label class="field brief-setting-tile"><span>世界 / 时代类型</span><select class="select" name="world_family">${options(familyOptions, profile.era_family || 'auto')}</select><small>统一约束人物、场景、道具与分镜。</small></label>
-<label class="field brief-setting-tile"><span>写实严格度</span><select class="select" name="world_fidelity">${options(fidelityOptions, profile.fidelity_mode || 'contemporary_realism')}</select><small>控制史实、艺术化或幻想规则强度。</small></label>
+<label class="field brief-setting-tile"><span>写实严格度</span><select class="select" name="world_fidelity">${options(fidelityOptions, profile.fidelity_mode || 'contemporary_realism')}</select><small>写实表示真实摄影质感；古代按古代史实、现代按当代事实，不代表只识别现代。</small></label>
 <label class="field brief-setting-tile"><span>画面形态</span><select class="select" name="visual_medium">${options(mediumOptions, profile.visual_medium || 'auto')}</select><small>统一真人、3D、动漫或动态漫呈现。</small></label>
 <label class="field brief-setting-tile"><span>具体时期 <em>可自动识别</em></span><input class="input" name="world_period" maxlength="160" value="${escapeHtml(profile.time_period || '')}" placeholder="如：北宋中期、1930年代、近未来2045年"><small>留空时按剧本和参考分析，不臆造年代。</small></label>
 <label class="field brief-setting-tile"><span>国家 / 地区 <em>可自动识别</em></span><input class="input" name="world_region" maxlength="160" value="${escapeHtml(typeof profile.region === 'string' ? profile.region : '')}" placeholder="如：中国江南、1930年代上海、现代法国"><small>留空时按地点与文化线索识别。</small></label>`;

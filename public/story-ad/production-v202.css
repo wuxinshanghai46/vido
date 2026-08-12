@@ -1,15 +1,22 @@
 .brief-screenplay-input {
   display: block;
   width: 100%;
-  min-height: 18rem;
-  max-height: 32rem;
-  overflow-y: auto;
-  resize: vertical;
+  min-height: 22rem;
+  max-height: none;
+  overflow-y: hidden;
+    resize: vertical;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.75;
 }
+
+.brief-recognition-preview { display: grid; gap: .65rem; padding: .9rem 1rem; border: 1px solid color-mix(in srgb, var(--info, #38bdf8) 42%, var(--line, #23434b)); border-radius: 12px; background: color-mix(in srgb, var(--info, #38bdf8) 7%, var(--surface, #0b2027)); }
+.brief-recognition-preview header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.brief-recognition-preview header b { font-size: .86rem; }
+.brief-recognition-preview header small,.brief-recognition-preview p { color: var(--muted, #8eb0b8); font-size: .75rem; line-height: 1.65; }
+.brief-recognition-preview ul { display: grid; gap: .35rem; margin: 0; padding-left: 1.15rem; }
+.brief-recognition-preview li { font-size: .78rem; line-height: 1.55; }
 
 .person-evolution-editor,
 .person-look-editor { display: grid; gap: 1rem; }

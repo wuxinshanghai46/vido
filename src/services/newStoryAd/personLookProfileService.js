@@ -149,13 +149,13 @@ function identityContinuity(profile = {}, brief = '') {
     profile.role, profile.roleName, profile.relationship, profile.relationshipText,
     profile.appearanceText, profile.continuityText,
   ].filter(Boolean).join(' '), 1600);
-  if (/(?:转世|轮回|投胎|再世|来生|后世化身|前世的(?:转世|后世)|reincarnation|rebirth)/i.test(profileEvidence)) return 'reincarnation';
+  if (/(?:转生|转世|轮回|投胎|再世|来生|后世化身|前世的(?:转生|转世|后世)|reincarnation|rebirth)/i.test(profileEvidence)) return 'reincarnation';
   if (/(?:本人穿越|穿越者|活过千年|活到现代|长生不老|容颜不老|沉睡.*苏醒|冰封.*苏醒|同一身份|same person|time travel|immortal)/i.test(profileEvidence)) return 'same_person';
   const baseName = stripEraSuffix(profile.displayName || profile.name || '');
   const sourceEvidence = clean(brief, 6000);
   const escapedName = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   if (baseName && new RegExp(`${escapedName}.{0,120}(?:本人穿越|活过千年|活到现代|长生不老|容颜不老|同一身份|亲自来到现代)`).test(sourceEvidence)) return 'same_person';
-  if (baseName && new RegExp(`(?:${escapedName}(?:的)?(?:转世|轮回|后世化身)|(?:转世后|转世后的|轮回后的|来生的)${escapedName})`).test(sourceEvidence)) return 'reincarnation';
+  if (baseName && new RegExp(`(?:${escapedName}(?:的)?(?:转生|转世|轮回|后世化身)|(?:转生后|转生后的|转世后|转世后的|轮回后的|来生的)${escapedName})`).test(sourceEvidence)) return 'reincarnation';
   return 'unspecified';
 }
 

@@ -54,7 +54,7 @@ function contentMode(context = {}) {
 
 function eraCastContract(brief = '') {
   const value = text(brief, 3000);
-  const reincarnation = /转世|轮回|投胎|再世|来生|后世化身|前世的(?:转世|后世)/.test(value);
+  const reincarnation = /转生|转世|轮回|投胎|再世|来生|后世化身|前世的(?:转生|转世|后世)/.test(value);
   const explicitTimeTravel = /同一(?:个)?(?:人|人物|角色)|一个人(?:分别|跨越|穿梭)|一人分饰|本人穿越|共同穿越|一起穿越|双双穿越|都穿越|活过千年|活到现代|长生不老|容颜不老|同一身份/.test(value);
   if (reincarnation) {
     const originalPeople = /男女主|男主.*女主|女主.*男主|一对恋人|两位主角/.test(value) ? 2 : 1;
@@ -62,7 +62,7 @@ function eraCastContract(brief = '') {
       count: Math.min(12, originalPeople + 1),
       cast_mode: originalPeople + 1 === 2 ? 'dual' : 'multi',
       distinct_roles: true,
-      rule: '人物关系识别硬约束：转世、轮回、投胎、来生或后世化身是新的独立人物身份，必须拥有独立正式姓名，禁止沿用前世姓名；只有原文明确本人穿越、共同穿越、长生者本人活到现代或同一身份时，才能保持原姓名。',
+      rule: '人物关系识别硬约束：转生、转世、轮回、投胎、来生或后世化身是新的独立人物身份，必须拥有独立正式姓名，禁止沿用前世姓名；只有原文明确本人穿越、共同穿越、长生者本人活到现代或同一身份时，才能保持原姓名。',
     };
   }
   const parallel = /交替|交错|交织|双线|对照|平行|两个时空|两条时间线/.test(value);

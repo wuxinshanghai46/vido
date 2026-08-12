@@ -319,6 +319,27 @@ function uniqueModels(models) {
   });
 }
 
+/**
+ * Keep the configured priority order, but spend the limited attempt budget on
+ * independent providers before trying a second model from the same upstream.
+ * A provider-wide outage must not consume every text attempt.
+ */
+function diversifyTextCandidates(candidates = []) {
+  const firstByProvider = [];
+  const remaining = [];
+  const seen = new Set();
+  (candidates || []).forEach((model) => {
+    const providerId = String(model?.provider_id || '').trim().toLowerCase();
+    if (providerId && !seen.has(providerId)) {
+      seen.add(providerId);
+      firstByProvider.push(model);
+    } else {
+      remaining.push(model);
+    }
+  });
+  return [...firstByProvider, ...remaining];
+}
+
 function candidatesForStage(stage) {
   const inheritedStage = routeStage(stage);
   const configured = typeof pipeline.pickAllEnabledWithDefault === 'function'
@@ -338,7 +359,7 @@ function candidatesForStage(stage) {
       if (priorityDelta) return priorityDelta;
       return getHealthScore(b) - getHealthScore(a);
     });
-  return preferReliableTextCandidates(ranked, stage);
+  return preferReliableTextCandidates(diversifyTextCandidates(ranked), stage);
 }
 
 function candidatesForVisionStage(stage) {
@@ -967,6 +988,7 @@ module.exports = {
   candidatesForVisionStage,
   visionAvailability,
   diversifyVisionCandidates,
+  diversifyTextCandidates,
   preferReferenceVisionCandidates,
   preferReliableTextCandidates,
   routeStage,
