@@ -19,11 +19,6 @@ export function narrativeRecognition(value = '') {
   return { mixed: ancient && modern, ancient, modern, samePerson, reincarnation, concrete: lines.length > 0 && (ancient || modern || samePerson || reincarnation), lines };
 }
 
-export function narrativeRecognitionPreview(value = '', escapeHtml = input => String(input || '')) {
-  const result = narrativeRecognition(value);
-  return `<header><b>提交前内容核对</b><small>防止时代、人物身份或场景漏建；本步骤不调用模型、不产生费用</small></header><ul>${result.lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`;
-}
-
 function updateWorldFieldHints(form, result) {
   const family = form?.elements?.namedItem('world_family');
   const period = form?.elements?.namedItem('world_period');
@@ -40,15 +35,13 @@ function updateWorldFieldHints(form, result) {
   if (mediumAuto) mediumAuto.textContent = '待识别：原文未指定真人、3D或动漫';
 }
 
-export function bindNarrativeRecognitionLayout({ form, host, escapeHtml }) {
+export function bindNarrativeRecognitionLayout({ form }) {
   const screenplayInput = form?.elements?.namedItem('brief');
-  const preview = host?.querySelector('[data-brief-recognition-preview]');
   const sync = () => {
     if (!screenplayInput) return;
     screenplayInput.style.height = 'auto';
     screenplayInput.style.height = `${Math.max(352, screenplayInput.scrollHeight + 2)}px`;
     const result = narrativeRecognition(screenplayInput.value || '');
-    if (preview) preview.innerHTML = narrativeRecognitionPreview(screenplayInput.value || '', escapeHtml);
     updateWorldFieldHints(form, result);
   };
   sync();

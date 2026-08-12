@@ -44,6 +44,8 @@ assert.equal(screenshotPreview.reincarnation, true);
 
 const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/production-v202.css'), 'utf8');
 assert.match(css, /\.brief-screenplay-input\s*\{[\s\S]*max-height:\s*none;[\s\S]*overflow-y:\s*hidden;/);
-assert.match(css, /\.brief-recognition-preview/);
+assert.doesNotMatch(css, /\.brief-recognition-preview/, '后台识别结果不得以技术核对卡片暴露给普通用户');
+const briefView = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/briefView.js'), 'utf8');
+assert.doesNotMatch(briefView, /data-brief-recognition-preview|提交前内容核对/, '目标页不得显示后台识别与校验实现说明');
 
 console.log('story-ad v208 cross-era recognition, provider diversity and continuous form: ok');

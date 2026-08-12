@@ -1,12 +1,12 @@
-import { request } from '../api.js?v=20260812-ui-v215';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v215';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v215';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v215';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v215';
-import { bindNarrativeRecognitionLayout, narrativeRecognitionPreview } from './briefNarrativeRecognition.js?v=20260812-ui-v215';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v215';
-import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v215';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260812-ui-v215';
+import { request } from '../api.js?v=20260812-ui-v216';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260812-ui-v216';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260812-ui-v216';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260812-ui-v216';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260812-ui-v216';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260812-ui-v216';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260812-ui-v216';
+import { assertBriefReadback } from './briefTextContract.js?v=20260812-ui-v216';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260812-ui-v216';
 const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
 function formPayload(form) {
   const data = new FormData(form);
@@ -143,7 +143,6 @@ export async function mount(host, context) {
           <div class="card-body form-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
           <label class="field full"><span class="field-label-with-action"><span>内容目标 / 剧本需求</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea brief-screenplay-input" name="brief" rows="12" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；AI 帮写后会按详细概述、出场人物、主要场景、剧情段落和结尾分段显示，仍可继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : '剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜。'}</small></label>
-          <div class="brief-recognition-preview full" data-brief-recognition-preview>${narrativeRecognitionPreview(brief.text || '', escapeHtml)}</div>
 <section class="brief-config-section full" aria-labelledby="brief-world-settings-title">
 <header class="brief-config-heading"><span class="brief-config-index">01</span><span><b id="brief-world-settings-title">内容与世界观</b><small>题材、时代与画面形态；时期、地区留空可识别。</small></span></header>
 <div class="brief-config-grid">
@@ -193,7 +192,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     && briefSettingsAnchor.appendChild(briefSettingsLayout);
   let createdProjectId = route.isNew ? '' : bundle.project?.id;
   const dirtyFields = new Set();
-  const syncScreenplayLayout = bindNarrativeRecognitionLayout({ form, host, escapeHtml });
+  const syncScreenplayLayout = bindNarrativeRecognitionLayout({ form });
   const understandingHost = host.querySelector('[data-reference-understanding-host]');
   let understandingController = null;
   let understandingLoadSequence = 0;
@@ -228,7 +227,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v215');
+    const module = await import('./referenceUnderstandingView.js?v=20260812-ui-v216');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
