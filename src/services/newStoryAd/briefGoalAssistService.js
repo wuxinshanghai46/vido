@@ -175,7 +175,6 @@ function buildResponse({ parsed = {}, context = {}, mode = 'brief_goal', modelRe
   }
   const story = isNarrative(context);
   const blocks = [
-    `【${story ? '原始创作需求' : '原始广告需求'}】\n${source}`,
     `【${story ? '详细剧情描述' : '广告剧情概述'}】\n${draft.summary}`,
     `【${story ? '出场人物' : '出场人物 / 展示主体'}】\n${renderParticipants(draft.participants)}`,
     `【主要场景】\n${renderScenes(draft.scenes)}`,

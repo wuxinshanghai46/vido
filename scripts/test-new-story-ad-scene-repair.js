@@ -251,8 +251,11 @@ async function main() {
   assert.match(auditSafePrompt, /remove the ceiling.*low cutaway perimeter boundaries/i);
   assert.doesNotMatch(auditSafePrompt, /arms|hands|legs|body|silhouette|fingerprints/i);
   const gptPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt);
-  assert.equal(gptPrompt, 'normal provider prompt');
-  assert.equal(mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt, true), auditSafePrompt);
+  assert.match(gptPrompt, /^normal provider prompt/);
+  assert.match(gptPrompt, /Domestic image review contract:/);
+  const governedAuditPrompt = mediaAdapter.promptForImageCandidate('normal provider prompt', { modelId: 'gpt-image-2' }, auditSafePrompt, true);
+  assert.match(governedAuditPrompt, new RegExp(auditSafePrompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(governedAuditPrompt, /Domestic image review contract:/);
   let auditAttempts = 0;
   const auditRetryResult = await mediaAdapter.invokeWithAuditSafeRetry(async candidatePrompt => {
     auditAttempts += 1;

@@ -117,7 +117,7 @@ const raw = JSON.stringify(storyDraft);
 assert.equal(briefAssist.validateRaw(raw, context), true);
 const assisted = briefAssist.buildResponse({ parsed: storyDraft, context });
 assert.equal(assisted.original_brief, sourceBrief);
-assert.match(assisted.brief, new RegExp(sourceBrief), 'AI 帮写结果必须逐字保留原始内容');
+assert.doesNotMatch(assisted.brief, /【原始创作需求】/, '原始输入必须单独保留，不得重复塞入用户可编辑的扩写正文');
 assert.match(assisted.brief, /【详细剧情描述】/);
 assert.match(assisted.brief, /【出场人物】/);
 assert.match(assisted.brief, /【主要场景】/);

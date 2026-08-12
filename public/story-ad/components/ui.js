@@ -153,9 +153,12 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
     return `<div><span><b>${label}</b><small>${escapeHtml(lane.message || '')}</small></span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('')}</div>` : '';
   if (view.failed) {
+    const retained = laneRows || recovery
+      ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${laneRows}${recovery ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`
+      : '';
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
-      <details class="project-progress-details"><summary>查看失败详情与已保留区段</summary>${laneRows}<div class="project-progress-foot"><small>${escapeHtml(view.message)}</small>${recovery}</div></details>
+      ${retained}
     </section>`;
   }
   return `<section class="project-generation-progress ${view.failed ? 'is-failed' : ''}" role="status" aria-live="polite">

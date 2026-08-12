@@ -289,6 +289,22 @@ function rightsAwareImagePrompt(prompt = '') {
   return source.includes('Originality requirement:') ? source : `${source}\n\n${safety}`.trim();
 }
 
+function domesticGptImage2ReviewPrompt(prompt = '') {
+  let source = String(prompt || '').trim();
+  if (!source) return '';
+  const replacements = [
+    [/少女/g, '成年女性（明确年龄20岁以上）'],
+    [/少年/g, '成年男性（明确年龄20岁以上）'],
+    [/(?:鲜血|血迹|血泊|血腥|喷血|染血|肢解|断肢)/g, '非血腥的戏剧性氛围'],
+    [/(?:致命暗器|穿透身体|刺穿身体|开膛破肚)/g, '非血腥的突发危机'],
+    [/\b(?:gore|bloody|bloodstain|blood pool|dismemberment)\b/gi, 'non-graphic dramatic atmosphere'],
+    [/\b(?:deadly projectile|pierces? (?:the )?body)\b/gi, 'non-graphic sudden danger'],
+  ];
+  replacements.forEach(([pattern, replacement]) => { source = source.replace(pattern, replacement); });
+  const reviewContract = 'Domestic image review contract: if people appear, depict only clearly identifiable adults aged 20 or older in natural poses. Keep all action non-graphic, with no visible blood, wounds, self-harm or weapon impact. Use only original generic visual design; do not reproduce celebrity likenesses, copyrighted characters, brand logos, readable marks, watermarks or CAPTCHA-like text.';
+  return source.includes('Domestic image review contract:') ? source : `${source}\n\n${reviewContract}`.trim();
+}
+
 function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '', forceAuditSafe = false) {
   const limit = imagePromptLimit(config);
   const primary = String(prompt || '').trim();
@@ -296,7 +312,10 @@ function promptForImageCandidate(prompt = '', config = {}, auditSafePrompt = '',
   const source = forceAuditSafe && alternative
     ? alternative
     : (primary.length > limit && alternative ? alternative : primary);
-  return compactImagePrompt(source, limit);
+  const governed = /gpt-image-2/i.test(String(config.modelId || config.model_id || ''))
+    ? domesticGptImage2ReviewPrompt(source)
+    : source;
+  return compactImagePrompt(governed, limit);
 }
 
 async function invokeWithAuditSafeRetry(invoke, candidatePrompt = '', retryPrompt = '', onAudit = null) {
@@ -825,6 +844,7 @@ module.exports = {
   classifyImageGenerationError,
   providerErrorDiagnostics,
   rightsAwareImagePrompt,
+  domesticGptImage2ReviewPrompt,
   promptForImageCandidate,
   imageConfigStage,
   requiredImageModelForStage,

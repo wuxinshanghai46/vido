@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260811-ui-v190';
-import { toast } from '../components/ui.js?v=20260811-ui-v190';
-import { confirmDialog } from '../components/dialog.js?v=20260811-ui-v190';
+import { request } from '../api.js?v=20260812-ui-v191';
+import { toast } from '../components/ui.js?v=20260812-ui-v191';
+import { confirmDialog } from '../components/dialog.js?v=20260812-ui-v191';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
@@ -28,16 +28,12 @@ export async function runPanoramaGeneration({ root, bundle, store, worldId } = {
   if (plan.blocked) {
     return toast('上次供应商提交或QA状态仍未核对，系统已阻止重复付费。请先完成计费状态恢复。', 'danger');
   }
-  const calls = plan.model_call_plan || {};
   const operationText = plan.operation === 'reuse'
-    ? '已有同来源的已验证全景，本次复用，模型调用0次。'
+    ? '已有同来源的可用全景，将直接复用。'
     : plan.operation === 'reverify'
-      ? '复用已生成候选，仅重新质检：生成0次、全景质检1次。'
-      : `全景生成${Number(calls.panorama_generation || 0)}次、全景质检${Number(calls.panorama_qa || 0)}次。`;
-  const pricingText = plan.pricing_status === 'provider_billing_not_configured'
-    ? '当前供应商金额计费未配置，本页只确认调用次数。'
-    : '';
-  const approved = await confirmDialog(`将以当前场景图为权威来源：${operationText} 本地机位投影0次模型调用，深度0次、空间重建0次。${pricingText} 产出为3DoF原地环视，不是6DoF自由移动空间。`, {
+      ? '将复用已有全景并重新检查质量。'
+      : '将基于当前场景图生成360全景并完成质量检查。';
+  const approved = await confirmDialog(operationText, {
     title: `确认生成「${world.name || '当前场景'}」360全景`,
     confirmText: '确认生成并质检',
   });
@@ -61,7 +57,7 @@ export async function runPanoramaGeneration({ root, bundle, store, worldId } = {
         requested_mode: 'panorama_360',
         cost_confirmation: true,
         plan_fingerprint: plan.plan_fingerprint,
-        model_call_plan: calls,
+        model_call_plan: plan.model_call_plan || {},
       },
       timeoutMs: 120000,
     });
@@ -91,10 +87,9 @@ export async function runPanoramaBatchGeneration({ root, bundle, store, button }
     return toast(`无法取得统一360调用计划：${error.message}`, 'danger');
   }
   if (!Number(plan.scene_count || 0)) return toast('当前没有可生成360全景的场景主视图。', 'warning');
-  const calls = plan.model_call_plan || {};
   const blocked = Number(plan.blocked_count || 0);
   const approved = await confirmDialog(
-    `将统一处理 ${Number(plan.scene_count || 0)} 个场景：全景生成 ${Number(calls.panorama_generation || 0)} 次、全景质检 ${Number(calls.panorama_qa || 0)} 次；本地机位投影不调用模型。${blocked ? `其中 ${blocked} 个计费状态未决场景会被系统跳过并保留待核账，不会重复付费。` : ''} 单个场景失败不会中断其他场景。`,
+    `将为 ${Number(plan.scene_count || 0)} 个场景生成或复用360全景，并逐一完成质量检查。${blocked ? `其中 ${blocked} 个待核对场景会先跳过，已有结果不会被覆盖。` : ''} 单个场景失败不会影响其他场景。`,
     { title: '确认统一生成全部360全景', confirmText: '确认批量生成并质检' },
   );
   if (!approved) return;
@@ -105,7 +100,7 @@ export async function runPanoramaBatchGeneration({ root, bundle, store, button }
       body: {
         cost_confirmation: true,
         plan_fingerprint: plan.plan_fingerprint,
-        model_call_plan: calls,
+        model_call_plan: plan.model_call_plan || {},
         requested_mode: 'panorama_360',
       },
       timeoutMs: 120000,

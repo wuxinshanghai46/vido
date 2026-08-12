@@ -537,7 +537,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     };
     bundle.brief = {
       project_name: clean(context.project_name || raw.task.title, 120),
-      text: clean(context.brief || raw.task.brief, 3000),
+      text: clean(context.brief || raw.task.brief, 5000),
       product_subject: clean(context.product_subject, 200),
       product_presentation: productAssetResolver.productPresentation(context), content_mode: clean(context.content_mode || (productAssetResolver.productPresentation(context).mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject'), 40), content_mode_source: clean(context.content_mode_source || '', 40),
       target_duration: Number(context.target_duration || context.duration || 0) || 0,

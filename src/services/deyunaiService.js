@@ -874,9 +874,31 @@ function assertGptImage2BodyContract(body) {
   }))) {
     throw new Error('gpt-image-2 images 必须是公网 http(s) URL；当前企业 edits 解析器要求 { image_url } 数组');
   }
+  if (Array.isArray(body.images) && body.images.length > 6) {
+    throw new Error('gpt-image-2 单次参考图不得超过 6 张');
+  }
   if (body.output_compression !== undefined && !/^(webp|jpeg)$/i.test(String(body.output_format || ''))) {
     throw new Error('gpt-image-2 output_compression 只允许在 output_format 为 webp 或 jpeg 时发送');
   }
+}
+
+function buildGptImage2RequestBody({ prompt = '', n = 1, size = '1024x1024', referenceImages = [], inputFidelity = 'high' } = {}) {
+  const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
+  const refs = publicHttpImageRefs(referenceImages).slice(0, 6);
+  if (rawRefCount > 0 && refs.length === 0) throw new Error('漫路图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
+  const body = {
+    prompt: String(prompt || '').trim(),
+    n: normalizeGptImage2N(n),
+    output_format: 'png',
+    size: normalizeGptImage2Size(size),
+  };
+  if (!body.prompt) throw new Error('gpt-image-2 prompt 不能为空');
+  if (refs.length) {
+    body.images = refs.map(normalizeGptImage2Reference).filter(Boolean).map(image_url => ({ image_url }));
+    body.input_fidelity = String(inputFidelity || 'high').trim().toLowerCase() === 'low' ? 'low' : 'high';
+  }
+  assertGptImage2BodyContract(body);
+  return body;
 }
 
 function summarizeGptImage2Request(endpoint, body = {}) {
@@ -983,29 +1005,8 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
   let _ok = false; let _err = null; let _taskId = null; let _providerRequestId = ''; let _submissionStarted = false;
   try {
     if (isGptImage2Model(model)) {
-      const rawRefCount = (Array.isArray(referenceImages) ? referenceImages : []).filter(Boolean).length;
-      const refs = publicHttpImageRefs(referenceImages).slice(0, 14);
-      if (rawRefCount > 0 && refs.length === 0) throw new Error('漫路图片参考必须是公网 http(s) URL，不支持 base64、blob 或本地文件路径');
-      const body = {
-        prompt,
-        background: 'auto',
-        n: normalizeGptImage2N(n),
-        output_format: 'png',
-        quality: 'auto',
-        size: normalizeGptImage2Size(size),
-        stream: true,
-        partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES,
-      };
-      const isEdit = refs.length > 0;
-      if (isEdit) {
-        body.images = refs
-          .map(normalizeGptImage2Reference)
-          .filter(Boolean)
-          .map(image_url => ({ image_url }));
-        const fidelity = String(inputFidelity || 'high').trim().toLowerCase();
-        body.input_fidelity = fidelity === 'low' ? 'low' : 'high';
-      }
-      assertGptImage2BodyContract(body);
+      const body = buildGptImage2RequestBody({ prompt, n, size, referenceImages, inputFidelity });
+      const isEdit = Array.isArray(body.images) && body.images.length > 0;
       const endpoint = isEdit ? '/images/edits' : '/images/generations';
       const requestSummary = summarizeGptImage2Request(endpoint, body);
       await notifyGenerationObserver(onSubmitting, {
@@ -1054,7 +1055,7 @@ async function generateImage({ model, prompt, n = 1, size = '1024x1024', aspectR
         throw err;
       }
       _ok = true;
-      return { urls, taskId: _taskId, providerRequestId: _providerRequestId, raw: submitRes.data, stream: !!streamText, partial_images: GPT_IMAGE2_STREAM_PARTIAL_IMAGES };
+      return { urls, taskId: _taskId, providerRequestId: _providerRequestId, raw: submitRes.data, stream: !!streamText, partial_images: 0 };
     }
 
     const body = { model, prompt, n, size };
@@ -1273,6 +1274,9 @@ module.exports = {
   parseSseDataPayloads,
   streamPayloadSnapshot,
   extractCompletedImageUrlsFromStreamText,
+  assertGptImage2BodyContract,
+  buildGptImage2RequestBody,
+  summarizeGptImage2Request,
   chat,
   generateImage,
   generateVideo,
