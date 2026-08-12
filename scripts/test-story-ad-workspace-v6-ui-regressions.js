@@ -115,7 +115,7 @@ assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；�
 assert.match(briefView, /brief-config-section full/, '内容与世界观必须使用独立设置分区，不能继续平铺在旧表单网格');
 assert.match(briefView, /brief-config-grid/, '世界观设置必须使用自适应网格');
 assert.match(briefView, /brief-output-grid/, '时长、画幅和分辨率必须组成统一成片规格分区');
-assert.match(briefWorldSettings, /具体时期 <em>可自动识别<\/em>/, '具体时期必须明确提示留空可自动识别');
+assert.match(briefWorldSettings, /具体时期 <em>根据剧本同步显示<\/em>/, '具体时期必须明确显示将与剧本识别同步');
 assert.match(briefWorldSettings, /国家 \/ 地区 <em>可自动识别<\/em>/, '国家地区必须明确提示留空可自动识别');
 const briefStyles = read('public/story-ad/styles.css');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto 42px auto;/, '设置字段标题不得继续使用固定 18px 高度');

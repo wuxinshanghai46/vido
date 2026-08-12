@@ -36,6 +36,11 @@ assert.equal(preview.samePerson, true);
 assert.equal(preview.reincarnation, true);
 assert(preview.lines.some(line => line.includes('稳定人物身份 ID')));
 assert(preview.lines.some(line => line.includes('新的独立身份')));
+const screenshotBrief = '故事发生在一个横跨古今的爱情世界里。沈星河独自活过千年，直到现代遇见苏月的转生女孩。';
+const screenshotPreview = sandbox.tested.narrativeRecognition(screenshotBrief);
+assert.equal(screenshotPreview.mixed, true, '“横跨古今”必须明确识别为古代＋现代混合世界');
+assert.equal(screenshotPreview.samePerson, true);
+assert.equal(screenshotPreview.reincarnation, true);
 
 const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/production-v202.css'), 'utf8');
 assert.match(css, /\.brief-screenplay-input\s*\{[\s\S]*max-height:\s*none;[\s\S]*overflow-y:\s*hidden;/);

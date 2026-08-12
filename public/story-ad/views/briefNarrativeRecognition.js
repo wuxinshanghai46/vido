@@ -4,7 +4,8 @@ function compact(value = '', max = 5000) {
 
 export function narrativeRecognition(value = '') {
   const text = compact(value);
-  const ancient = /古代|古装|前世|王朝|朝代|江湖|雪山围杀|泛舟|街市/.test(text);
+  const crossEra = /古今|跨越千年|千年后|从古代到现代|前世今生/.test(text);
+  const ancient = crossEra || /古代|古装|古时|前世|王朝|朝代|江湖|雪山围杀|泛舟|街市/.test(text);
   const modern = /现代|当代|千年后|活到现代|回到现代|现代都市/.test(text);
   const samePerson = /活过千年|活到现代|长生不老|本人穿越|同一身份/.test(text);
   const reincarnation = /转生|转世|轮回|投胎|来生|后世化身/.test(text);
@@ -14,13 +15,29 @@ export function narrativeRecognition(value = '') {
   else if (modern) lines.push('世界：包含现代时期；后续将按现代场景与服饰规则规划。');
   if (samePerson) lines.push('同一人物跨时代：保持稳定人物身份 ID，并分别建立古代与现代年龄状态、造型和适用场景。');
   if (reincarnation) lines.push('转生人物：与前世建立转生血缘，但作为新的独立身份和现代姓名，不能直接复用前世人物脸与姓名。');
-  if (!lines.length) lines.push('当前没有足够的明确时代或身份变化事实；系统会在资产规划时识别，并把结果展示给你确认。');
-  return { mixed: ancient && modern, ancient, modern, samePerson, reincarnation, lines };
+  if (!lines.length) lines.push('尚未识别到明确时代或身份变化。请在剧本中直接写明“古代 / 现代 / 穿越 / 转生”等事实，避免提交后漏建人物或场景。');
+  return { mixed: ancient && modern, ancient, modern, samePerson, reincarnation, concrete: lines.length > 0 && (ancient || modern || samePerson || reincarnation), lines };
 }
 
 export function narrativeRecognitionPreview(value = '', escapeHtml = input => String(input || '')) {
   const result = narrativeRecognition(value);
-  return `<header><b>生成前识别预览</b><small>依据当前剧本文字，提交后仍需通过结构化合同校验</small></header><ul>${result.lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`;
+  return `<header><b>提交前内容核对</b><small>防止时代、人物身份或场景漏建；本步骤不调用模型、不产生费用</small></header><ul>${result.lines.map(line => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`;
+}
+
+function updateWorldFieldHints(form, result) {
+  const family = form?.elements?.namedItem('world_family');
+  const period = form?.elements?.namedItem('world_period');
+  const medium = form?.elements?.namedItem('visual_medium');
+  const familyAuto = family?.querySelector('option[value="auto"]');
+  const mediumAuto = medium?.querySelector('option[value="auto"]');
+  const familyLabel = result.mixed ? '已识别：混合古今（古代＋现代）'
+    : (result.ancient ? '已识别：古代世界' : (result.modern ? '已识别：现代世界' : '待识别：请在剧本中写明时代'));
+  if (familyAuto) familyAuto.textContent = familyLabel;
+  if (family?.value === 'auto') family.title = familyLabel;
+  if (period && !period.value) period.placeholder = result.mixed
+    ? '已识别：古代＋现代；具体朝代未写明'
+    : (result.ancient ? '已识别古代；具体朝代未写明' : (result.modern ? '已识别现代；具体年份未写明' : '请填写或在剧本中写明具体时期'));
+  if (mediumAuto) mediumAuto.textContent = '待识别：原文未指定真人、3D或动漫';
 }
 
 export function bindNarrativeRecognitionLayout({ form, host, escapeHtml }) {
@@ -30,7 +47,9 @@ export function bindNarrativeRecognitionLayout({ form, host, escapeHtml }) {
     if (!screenplayInput) return;
     screenplayInput.style.height = 'auto';
     screenplayInput.style.height = `${Math.max(352, screenplayInput.scrollHeight + 2)}px`;
+    const result = narrativeRecognition(screenplayInput.value || '');
     if (preview) preview.innerHTML = narrativeRecognitionPreview(screenplayInput.value || '', escapeHtml);
+    updateWorldFieldHints(form, result);
   };
   sync();
   return sync;
