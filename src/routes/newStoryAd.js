@@ -748,7 +748,7 @@ function assertReferenceReplacementAllowed(taskId, user) {
 
 /** 在接口返回前先把新分析 ID 绑定当前任务，避免页面延迟时继续显示旧视频。 */
 function bindInitialReferenceTask(taskId, analysis, user) {
-  if (!taskId || !analysis?.id) return false;
+  if (!taskId || !analysis?.id) return null;
   const current = storage.getOutput(taskId, 'context') || storage.getTask(taskId)?.request || {};
   const previous = current.reference_video_analysis || {};
   const previousCreatedAt = Date.parse(previous.created_at || '') || 0;
@@ -756,12 +756,11 @@ function bindInitialReferenceTask(taskId, analysis, user) {
   if (previous.analysis_id && previous.analysis_id !== analysis.id
     && previousCreatedAt && nextCreatedAt && previousCreatedAt > nextCreatedAt) {
     try { referenceVideoAnalyses.cancel(analysis.id, user); } catch {}
-    return false;
+    return null;
   }
-  service.updateTaskRequest(taskId, {
+  return service.updateTaskRequest(taskId, {
     reference_video_analysis: referenceVideoAnalyses.taskRecord(analysis),
   }, user);
-  return true;
 }
 
 router.post('/reference-video-links', asyncRoute(async (req, res) => {
@@ -772,8 +771,8 @@ router.post('/reference-video-links', asyncRoute(async (req, res) => {
     body: req.body || {},
     user,
   });
-  const taskBound = bindInitialReferenceTask(taskId, analysis, user);
-  return res.status(202).json({ success: true, analysis, task_bound: taskBound });
+  const taskMutation = bindInitialReferenceTask(taskId, analysis, user);
+  return res.status(202).json({ success: true, analysis, task_bound: Boolean(taskMutation), task_mutation: taskMutation });
 }));
 
 router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async (req, res) => {
@@ -793,8 +792,8 @@ router.post('/reference-video-analyses', uploadReferenceVideo, asyncRoute(async 
       body: req.body || {},
       user,
     });
-    const taskBound = bindInitialReferenceTask(taskId, analysis, user);
-    return res.status(201).json({ success: true, analysis, task_bound: taskBound });
+    const taskMutation = bindInitialReferenceTask(taskId, analysis, user);
+    return res.status(201).json({ success: true, analysis, task_bound: Boolean(taskMutation), task_mutation: taskMutation });
   } catch (error) {
     try { if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); } catch {}
     throw error;

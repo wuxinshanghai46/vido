@@ -20,12 +20,14 @@ async function main() {
   let serverRevision = 1;
   let serverMode = 'story';
   const putBodies = [];
+  const referencePutBodies = [];
   const firstPutStarted = deferred();
   const releaseFirstPut = deferred();
 
   const request = async (url, options = {}) => {
     if (options.method === 'PUT') {
       putBodies.push({ ...options.body });
+      if (url.includes('/tasks/task-v218')) referencePutBodies.push({ ...options.body });
       if (putBodies.length === 1) {
         firstPutStarted.resolve();
         await releaseFirstPut.promise;
@@ -51,6 +53,9 @@ async function main() {
           brief: { text: '', content_mode: serverMode, content_mode_source: 'user_selected' },
         },
       };
+    }
+    if (url.includes('/start') && options.method === 'POST') {
+      return { analysis: { id: 'analysis-v218', status: 'running', progress: 2 } };
     }
     throw new Error(`Unexpected request: ${options.method || 'GET'} ${url}`);
   };
@@ -88,6 +93,35 @@ async function main() {
   assert.deepEqual(putBodies.map(body => body.base_content_revision), [1, 2], '串行保存必须逐笔采用上一笔返回的新版本');
   assert.equal(store.state.bundle.revisions.content, 3, '客户端最终版本必须与两次服务端提交一致');
   assert.equal(store.state.bundle.brief.content_mode, 'commercial_subject', '广告类型必须立即回写到客户端权威状态');
+
+  serverRevision = 1;
+  serverMode = 'commercial_subject';
+  sandbox.beginReferenceReplacement = () => ({ sequence: 1 });
+  sandbox.replacementCurrent = () => true;
+  sandbox.uploadReferenceVideo = async () => {
+    serverRevision = 2;
+    return {
+      analysis: { id: 'analysis-v218', status: 'uploaded', progress: 0 },
+      task_bound: true,
+      task_mutation: {
+        task: { id: 'task-v218', content_revision: 2 },
+        content_revision: 2,
+        context: { brief: '', content_mode: 'commercial_subject', content_mode_source: 'user' },
+      },
+    };
+  };
+  const uploadStore = sandbox.__createProjectStore();
+  uploadStore.state.bundle = {
+    project: { id: 'task-v218' },
+    revisions: { content: 1, client_edit_seq: 0 },
+    brief: { text: '', content_mode: 'commercial_subject', content_mode_source: 'user' },
+    reference: {},
+  };
+  await uploadStore.uploadReference({ name: 'reference.mp4' });
+  uploadStore.stopReferencePolling();
+  assert.equal(referencePutBodies[0].base_content_revision, 2, '参考视频绑定后的下一笔保存必须使用回执中的版本 2');
+  assert.equal(uploadStore.state.bundle.revisions.content, 3, '参考视频启动状态同步后页面必须采用最新版本 3');
+  assert.equal(uploadStore.state.bundle.brief.content_mode, 'commercial_subject', '参考视频绑定不得改变广告内容域');
   console.log('story-ad v217 content save serialization regression passed');
 }
 

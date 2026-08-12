@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260812-ui-v217';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260812-ui-v217';
-import { loadProjectList } from './projectListStore.js?v=20260812-ui-v217';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260812-ui-v218';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260812-ui-v218';
+import { loadProjectList } from './projectListStore.js?v=20260812-ui-v218';
 
 export function createProjectStore() {
   const state = {
@@ -210,10 +210,7 @@ export function createProjectStore() {
     return data;
   }
 
-  async function upload(file, role) {
-    return uploadAsset(file, role);
-  }
-
+  async function upload(file, role) { return uploadAsset(file, role); }
   async function attachMaterial(role, asset, options = {}) {
     const taskId = state.bundle?.project?.id;
     if (!taskId) throw new Error('请先创建项目。');
@@ -231,6 +228,7 @@ export function createProjectStore() {
     try {
       const created = await uploadReferenceVideo(file, taskId);
       if (!replacementCurrent(state, replacement)) return created.analysis || {};
+      if (created.task_mutation) applyMutationResult(created.task_mutation);
       let analysis = created.analysis || {};
       applyReferenceLiveState(analysis);
       if (!created.task_bound) await bindReferenceAnalysis(analysis);
@@ -264,6 +262,7 @@ export function createProjectStore() {
         timeoutMs: 120000,
       });
       if (!replacementCurrent(state, replacement)) return data.analysis;
+      if (data.task_mutation) applyMutationResult(data.task_mutation);
       applyReferenceLiveState(data.analysis || {});
       if (!data.task_bound) await bindReferenceAnalysis(data.analysis || {});
       if (taskId) {

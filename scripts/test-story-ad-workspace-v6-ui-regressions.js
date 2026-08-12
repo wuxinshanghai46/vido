@@ -329,6 +329,8 @@ assert.match(projectStore, /async function addReferenceLink[\s\S]*beginReference
 assert.match(projectStore, /async function uploadReference[\s\S]*beginReferenceReplacement\(state, set, stopReferencePolling[\s\S]*uploadReferenceVideo/, '更换本地视频也必须立即显示新任务状态');
 assert.match(projectStore, /if \(!replacementCurrent\(state, replacement\)\) return data\.analysis/, '迟到的新建链接响应不得抢回已经再次更换的来源');
 assert.match(projectStore, /if \(!data\.task_bound\) await bindReferenceAnalysis/, '服务端已绑定的新来源不得由浏览器重复写入一次');
+assert.match(projectStore, /created\.task_mutation[\s\S]*applyMutationResult\(created\.task_mutation\)/, '本地参考视频绑定后必须立即采用服务端返回的内容版本');
+assert.match(projectStore, /data\.task_mutation[\s\S]*applyMutationResult\(data\.task_mutation\)/, '参考链接绑定后必须立即采用服务端返回的内容版本');
 assert.doesNotMatch(projectStore, /async function retryReferenceAnalysis\(\)[\s\S]*?await bindReferenceAnalysis[\s\S]*?function referenceTaskRecord/, 'reanalysis acknowledgement must not trigger a duplicate browser binding');
 assert.doesNotMatch(projectStore, /function syncReferencePolling[\s\S]*?bindReferenceAnalysis[\s\S]*?function clearProject/, 'polling must remain read-only because the server owns task projection');
 assert.match(projectStore, /referenceSyncInterrupted\(currentReference, error, interruptedAt\)/, 'polling interruption must freeze elapsed time while automatic reconnect continues');
@@ -375,7 +377,8 @@ assert.match(releaseDeploySource, /src\/services\/newStoryAd\/referenceDetachSer
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
 assert.match(newStoryAdRoute, /analysis\.task_sync\?\.status !== 'synced'/, '已经由服务端同步成功的终态轮询必须保持只读');
 assert.match(newStoryAdRoute, /function bindInitialReferenceTask[\s\S]*referenceVideoAnalyses\.taskRecord/, '参考来源创建后必须在接口返回前绑定当前任务');
-assert.match(newStoryAdRoute, /reference-video-links[\s\S]*task_bound:\s*taskBound/, '链接创建接口必须明确返回服务端绑定结果');
+assert.match(newStoryAdRoute, /reference-video-links[\s\S]*task_bound:\s*Boolean\(taskMutation\)/, '链接创建接口必须明确返回服务端绑定结果');
+assert.match(newStoryAdRoute, /task_bound:\s*Boolean\(taskMutation\),\s*task_mutation:\s*taskMutation/, '参考来源接口必须返回完整任务变更回执，不能只返回布尔绑定状态');
 
 const referenceAnalysisService = read('src/services/newStoryAd/referenceVideoAnalysisService.js');
 assert.match(referenceAnalysisService, /task_id:\s*requestedTaskId\(body\)/, '参考分析记录必须保存所属任务 ID');

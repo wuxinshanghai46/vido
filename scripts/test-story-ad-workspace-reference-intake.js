@@ -108,7 +108,7 @@ function completedReference(overrides = {}) {
   };
 }
 
-function createTask() {
+function createTask(overrides = {}) {
   return storyAd.createTask({
     project_name: '参考视频自动投影测试',
     brief: '根据参考视频制作智能宠物饮水机剧情广告',
@@ -116,6 +116,9 @@ function createTask() {
     cast_mode: 'human_pet',
     expected_people: 1,
     expected_animals: 1,
+    content_mode: 'commercial_subject',
+    content_mode_source: 'user',
+    ...overrides,
   }, user).task.id;
 }
 
@@ -289,6 +292,8 @@ async function testLinkCreationBindsNewReferenceBeforeResponse() {
     });
     assert.equal(response.status, 202);
     assert.equal(response.payload.task_bound, true);
+    assert.equal(response.payload.task_mutation.content_revision, 2, '参考来源绑定回执必须携带服务端最新内容版本');
+    assert.equal(response.payload.task_mutation.context.content_mode, 'commercial_subject', '广告参考来源绑定不得改变广告内容域');
     const context = storage.getOutput(taskId, 'context');
     assert.equal(context.reference_video_analysis.analysis_id, 'ref_video_new_link_binding_test');
     assert.equal(context.reference_video_analysis.status, 'importing');
@@ -297,6 +302,49 @@ async function testLinkCreationBindsNewReferenceBeforeResponse() {
     assert.equal(context.shot_design_confirmed, false, '更换参考来源必须使旧镜头确认失效');
     assert.equal(storage.getOutput(taskId, 'blueprint'), null, '旧参考剧情不得跨来源保留');
     assert.equal(storage.getOutput(taskId, 'storyboard_table'), null, '旧参考分镜不得跨来源保留');
+  } finally {
+    referenceVideoAnalyses.createFromUrl = originalCreateFromUrl;
+    await new Promise(resolve => server.close(resolve));
+  }
+}
+
+async function testStoryLinkBindingPreservesContentDomain() {
+  const taskId = createTask({
+    project_name: '纯剧情参考视频',
+    brief: '两位朋友在海边重逢并解开心结。',
+    product_subject: '',
+    content_mode: 'narrative_story',
+  });
+  const originalCreateFromUrl = referenceVideoAnalyses.createFromUrl;
+  referenceVideoAnalyses.createFromUrl = async ({ body }) => ({
+    id: 'ref_video_story_link_binding_test',
+    task_id: body.task_id,
+    status: 'importing',
+    progress: 3,
+    phase: '正在检查视频链接',
+    created_at: '2026-08-12T16:00:00.000Z',
+    updated_at: '2026-08-12T16:00:00.000Z',
+    source: { input_type: 'url', original_name: 'story.example.com', metadata: {} },
+    result: null,
+    error: null,
+  });
+  const app = express();
+  app.use(express.json({ limit: '5mb' }));
+  app.use((req, res, next) => { req.user = user; next(); });
+  app.use('/api/new-story-ad', newStoryAdRouter);
+  const server = await new Promise(resolve => {
+    const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+  });
+  try {
+    const response = await postJson(`http://127.0.0.1:${server.address().port}/api/new-story-ad/reference-video-links`, {
+      url: 'https://story.example.com/reference.mp4',
+      task_id: taskId,
+      rights_confirmed: 'true',
+    });
+    assert.equal(response.status, 202);
+    assert.equal(response.payload.task_mutation.content_revision, 2);
+    assert.equal(response.payload.task_mutation.context.content_mode, 'narrative_story', '剧情参考来源绑定不得切换到广告内容域');
+    assert.equal(response.payload.task_mutation.context.product_subject, '', '剧情参考来源绑定不得生成广告主体');
   } finally {
     referenceVideoAnalyses.createFromUrl = originalCreateFromUrl;
     await new Promise(resolve => server.close(resolve));
@@ -669,6 +717,7 @@ async function main() {
   await testShortProjectNameAndBriefGate();
   await testTaskPutAwaitsProjection();
   await testLinkCreationBindsNewReferenceBeforeResponse();
+  await testStoryLinkBindingPreservesContentDomain();
   await testProjectReferenceRemoval();
   await testInvalidCompletedReferenceReanalysisRoute();
   await testManualAuthorityAndReferenceReplacement();
