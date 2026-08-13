@@ -9,6 +9,7 @@ const path = require('path');
 const { Client } = require('ssh2');
 const { connectionOptions } = require('./lib/vidoSshAuth');
 const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
+const deployOptions = require('./lib/immutableDeployOptions');
 const integrity = require('../src/services/storyAdReleaseIntegrityService');
 const releaseBundle = require('../src/services/storyAdReleaseBundleService');
 
@@ -46,7 +47,8 @@ const files = collectStoryAdReleaseFiles({ root, releaseManifest: publicManifest
 const uploadConcurrency = Math.max(1, Math.min(8, Number(
   process.env.VIDO_IMMUTABLE_UPLOAD_CONCURRENCY || process.env.VIDO_DEPLOY_UPLOAD_CONCURRENCY,
 ) || 3));
-const candidateOnly = process.env.VIDO_IMMUTABLE_CANDIDATE_ONLY === '1';
+deployOptions.assertKnownDeployArgs();
+const candidateOnly = deployOptions.candidateOnlyRequested();
 const baseReleaseDir = String(process.env.VIDO_IMMUTABLE_BASE_RELEASE || '').trim();
 if (baseReleaseDir && !/^\/opt\/vido\/releases\/[a-f0-9]{64}$/.test(baseReleaseDir)) {
   throw new Error('VIDO_IMMUTABLE_BASE_RELEASE must identify an immutable release directory');
@@ -60,6 +62,7 @@ let previousBuildId = '';
 let previousContractVersion = '';
 let previousNodeRuntimeBin = '';
 let cutoverStarted = false;
+let releaseControlDrained = false;
 let legacyProcessFrozen = false;
 let releaseMigrationMode = 'none';
 let releaseMigrationApplied = false;
@@ -191,7 +194,7 @@ async function createSystemicBackup() {
   await exec([
     `mkdir -p ${quote(systemicBackupDir)}`,
     `sqlite3 /data/vido/db/vido.sqlite ${quote(`.backup '${systemicBackupDir}/vido.sqlite.before-systemic'`)}`,
-    `echo PRAGMA quick_check | sqlite3 ${quote(`${systemicBackupDir}/vido.sqlite.before-systemic`)} | grep -Fx ok`,
+    `echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 ${quote(`${systemicBackupDir}/vido.sqlite.before-systemic`)} | grep -Fx ok`,
     `if test -f ${quote(legacyJson)}; then cp -a ${quote(legacyJson)} ${quote(`${systemicBackupDir}/new_story_ad_db.json.before-systemic`)} && touch ${quote(`${systemicBackupDir}/legacy-json-existed`)}; else touch ${quote(`${systemicBackupDir}/legacy-json-missing`)}; fi`,
   ].join(' && '));
   systemicBackupCreated = true;
@@ -230,7 +233,7 @@ async function restoreSystemicBackup() {
   const legacyJson = `${previousTarget}/outputs/new_story_ad_db.json`;
   await exec([
     `cp -a ${quote(`${systemicBackupDir}/vido.sqlite.before-systemic`)} /data/vido/db/vido.sqlite.restore`,
-    `echo PRAGMA quick_check | sqlite3 /data/vido/db/vido.sqlite.restore | grep -Fx ok`,
+    `echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite.restore | grep -Fx ok`,
     'mv -f /data/vido/db/vido.sqlite.restore /data/vido/db/vido.sqlite',
     'rm -f /data/vido/db/vido.sqlite-wal /data/vido/db/vido.sqlite-shm',
     `if test -f ${quote(`${systemicBackupDir}/legacy-json-existed`)}; then cp -a ${quote(`${systemicBackupDir}/new_story_ad_db.json.before-systemic`)} ${quote(legacyJson)}; elif test -f ${quote(`${systemicBackupDir}/legacy-json-missing`)}; then rm -f ${quote(legacyJson)}; fi`,
@@ -258,13 +261,20 @@ async function rollback() {
   if (!cutoverStarted && !releaseMigrationApplied && !assistRouteMigrationApplied) return;
   await rollbackAssistRoute();
   await rollbackReleaseState();
-  await restoreSystemicBackup();
-  if (!cutoverStarted) return;
-  await exec(`ln -sfn ${quote(previousTarget)} /opt/vido/.current-rollback && mv -Tf /opt/vido/.current-rollback ${quote(currentLink)}`);
-  await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(previousTarget)} --build ${quote(previousBuildId || release.build_id)} --candidate ${quote(candidateName)}${previousNodeRuntimeBin ? ` --node ${quote(previousNodeRuntimeBin)}` : ''}`);
-  await exec(previousBundleId
-    ? `cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state active --bundle ${quote(previousBundleId)}`
-    : `cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state rollback`);
+  const restored = await restoreSystemicBackup();
+  const restartPreviousRuntime = cutoverStarted || legacyProcessFrozen || restored?.restored === true;
+  if (cutoverStarted) {
+    await exec(`ln -sfn ${quote(previousTarget)} /opt/vido/.current-rollback && mv -Tf /opt/vido/.current-rollback ${quote(currentLink)}`);
+  }
+  if (restartPreviousRuntime) {
+    await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(previousTarget)} --build ${quote(previousBuildId || release.build_id)} --candidate ${quote(candidateName)}${previousNodeRuntimeBin ? ` --node ${quote(previousNodeRuntimeBin)}` : ''}`);
+  }
+  if (releaseControlDrained) {
+    await exec(previousBundleId
+      ? `cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state active --bundle ${quote(previousBundleId)}`
+      : `cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/manage-story-ad-release-control.js --state rollback`);
+  }
+  if (!restartPreviousRuntime && !releaseControlDrained) return;
   await exec('curl -fsS http://127.0.0.1:4600/api/health >/dev/null');
   const restoredVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
   if ((previousBundleId && restoredVersion.release_bundle_id !== previousBundleId)
@@ -405,19 +415,19 @@ client.on('ready', async () => {
     }
 
     if (!previousBundleId) {
-      cutoverStarted = true;
       await exec('pm2 stop vido >/dev/null');
       legacyProcessFrozen = true;
     }
     await setReleaseControl('draining', preVersion.release_bundle_id || '');
+    releaseControlDrained = true;
     const drained = await releaseReadiness(previousTarget);
     if (Number(drained.active_count) || blockingUnknownBilling(drained)) throw new Error(`停写后仍有活动任务或当前生成未知计费：${JSON.stringify(drained)}`);
-    cutoverStarted = true;
     const systemicBackup = await createSystemicBackup();
     const migration = await migrateReleaseState();
     const systemicMigration = await migrateSystemicState();
     const assistRouteMigration = await migrateAssistRoute();
     reportPhase('cutover');
+    cutoverStarted = true;
     await exec(`ln -sfn ${quote(releaseDir)} /opt/vido/.current-next && mv -Tf /opt/vido/.current-next ${quote(currentLink)}`);
     await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
     await exec('for i in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; curl -fsS http://127.0.0.1:4600/api/health >/dev/null && exit 0; done; exit 1');

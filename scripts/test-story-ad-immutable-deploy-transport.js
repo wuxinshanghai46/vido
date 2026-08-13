@@ -15,8 +15,18 @@ assert(source.includes('migrate-new-story-ad-systemic-state.js --commit'), 'immu
 assert(source.indexOf('createSystemicBackup();') < source.indexOf('migrateSystemicState();'), 'backup must precede systemic migration');
 assert(source.indexOf('migrateSystemicState();') < source.indexOf("reportPhase('cutover')"), 'systemic migration must pass before cutover');
 assert(source.includes('restoreSystemicBackup();'), 'deployment rollback must restore the pre-migration database backup');
-assert(source.includes("VIDO_IMMUTABLE_CANDIDATE_ONLY === '1'"), 'immutable deploy must support server-side candidate verification without cutover');
+assert(source.includes('deployOptions.candidateOnlyRequested()'), 'immutable deploy must support explicit candidate-only verification without cutover');
+const deployOptions = require('./lib/immutableDeployOptions');
+assert.strictEqual(deployOptions.candidateOnlyRequested(['--candidate-only'], {}), true, '--candidate-only 必须真实启用只读候选模式');
+assert.strictEqual(deployOptions.candidateOnlyRequested([], { VIDO_IMMUTABLE_CANDIDATE_ONLY: '1' }), true, '环境变量候选模式必须继续兼容');
+assert.strictEqual(deployOptions.candidateOnlyRequested([], {}), false, '未授权候选模式不得自行启用');
+assert.throws(() => deployOptions.assertKnownDeployArgs(['--candidate-onyl']), /未知不可变部署参数/, '拼错的部署参数必须失败，禁止静默进入切流');
 assert(source.indexOf('if (candidateOnly)') < source.indexOf("setReleaseControl('draining'"), 'candidate-only mode must exit before draining, migration, or cutover');
+assert(source.includes('releaseControlDrained = true'), '发布器必须单独记录停写状态');
+assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');
+assert(source.indexOf('cutoverStarted = true') > source.indexOf("reportPhase('cutover')"), '切流标志只能在备份和迁移通过后设置');
+assert(source.includes('cutoverStarted || legacyProcessFrozen || restored?.restored === true'), '旧生产进程若在切流前冻结，回滚必须仍可恢复');
+assert(!source.includes('echo PRAGMA quick_check'), 'SQLite quick_check 必须保留分号，禁止 shell echo 截断 SQL');
 assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration must pass a post-write audit before cutover');
 assert(source.includes('VIDO_IMMUTABLE_BASE_RELEASE') && source.includes('fs.linkSync(source,destination)'), 'immutable deployment must reuse only manifest-listed files from a verified base release');
 assert(source.includes('const queue = stagedAudit.mismatches.slice()'), 'immutable deployment must upload only hash mismatches after safe reuse');
@@ -56,4 +66,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 18, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted', canonical_shared_outputs: true }));
+console.log(JSON.stringify({ passed: true, checks: 24, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted', canonical_shared_outputs: true, cli_candidate_only: true, unknown_flag_rejected: true, sqlite_quick_check_preserved: true }));
