@@ -19,13 +19,18 @@ function clean(value = '') { return String(value ?? '').trim(); }
 const verifyExistingRunId = clean(argument('verify-existing-run'));
 const verifyExistingOnly = Boolean(verifyExistingRunId);
 const executeNarrativeVideo = process.argv.includes('--execute-narrative-video');
+const recoverVideoRunId = clean(argument('recover-video-run'));
+const recoverExistingVideo = Boolean(recoverVideoRunId);
 const publicImageUrl = clean(argument('public-image-url'));
 const videoBudgetRmb = Number(argument('video-budget-rmb', '0'));
 if (verifyExistingOnly && !/^\d{14}$/.test(verifyExistingRunId)) throw new Error('REAL_IMAGE_VERIFY_RUN_ID_INVALID');
 if (executeNarrativeVideo && !verifyExistingOnly) throw new Error('REAL_VIDEO_EXISTING_IMAGE_RUN_REQUIRED');
+if (recoverExistingVideo && !/^\d{14}$/.test(recoverVideoRunId)) throw new Error('REAL_VIDEO_RECOVERY_RUN_ID_INVALID');
+if (recoverExistingVideo && executeNarrativeVideo) throw new Error('REAL_VIDEO_RECOVERY_MUST_NOT_EXECUTE_PROVIDER');
+if (recoverExistingVideo && !verifyExistingOnly) throw new Error('REAL_VIDEO_RECOVERY_EXISTING_IMAGE_RUN_REQUIRED');
 if (executeNarrativeVideo && !process.argv.includes('--confirm-paid-video')) throw new Error('REAL_VIDEO_PAID_CONFIRMATION_REQUIRED');
 if (executeNarrativeVideo && (!(videoBudgetRmb > 0) || videoBudgetRmb > 20.70)) throw new Error('REAL_VIDEO_BUDGET_MUST_BE_BETWEEN_0_AND_20_70_RMB');
-if (executeNarrativeVideo && !/^https:\/\//i.test(publicImageUrl)) throw new Error('REAL_VIDEO_HTTPS_PUBLIC_IMAGE_URL_REQUIRED');
+if ((executeNarrativeVideo || recoverExistingVideo) && !/^https:\/\//i.test(publicImageUrl)) throw new Error('REAL_VIDEO_HTTPS_PUBLIC_IMAGE_URL_REQUIRED');
 if (!verifyExistingOnly && !executeNarrativeVideo && !process.argv.includes('--confirm-paid')) throw new Error('REAL_IMAGE_PAID_CONFIRMATION_REQUIRED');
 const budgetRmb = Number(argument('budget-rmb', '0'));
 if ((!verifyExistingOnly && !(budgetRmb > 0)) || budgetRmb > 10) throw new Error('REAL_IMAGE_BUDGET_MUST_BE_BETWEEN_0_AND_10_RMB');
@@ -35,7 +40,7 @@ if (maxImageSubmissions !== 3) throw new Error('REAL_IMAGE_MATRIX_REQUIRES_EXACT
 
 const auditCategory = executeNarrativeVideo
   ? 'golden-real-narrative-video'
-  : (verifyExistingOnly ? 'golden-real-image-readiness-recheck' : 'golden-real-image-readiness');
+  : (recoverExistingVideo ? 'golden-real-narrative-video-recovery' : (verifyExistingOnly ? 'golden-real-image-readiness-recheck' : 'golden-real-image-readiness'));
 const auditBase = path.resolve(process.cwd(), 'outputs', 'audits', auditCategory);
 const auditRoot = path.join(auditBase, stamp());
 const auditPath = path.join(auditRoot, 'audit.json');
@@ -53,7 +58,7 @@ process.env.NEW_STORY_AD_IMAGE_MAX_CANDIDATES = '1';
 process.env.NEW_STORY_AD_V3_PAID_VIDEO_ENABLED = executeNarrativeVideo ? '1' : '0';
 process.env.NEW_STORY_AD_VIDEO_MAX_CANDIDATES = '1';
 process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES = '1';
-if (executeNarrativeVideo) process.env.NEW_STORY_AD_MOCK_LLM = '1';
+if (executeNarrativeVideo || recoverExistingVideo) process.env.NEW_STORY_AD_MOCK_LLM = '1';
 const settingsSource = path.join(process.cwd(), 'outputs', 'settings.json');
 if (fs.existsSync(settingsSource)) fs.copyFileSync(settingsSource, path.join(temporaryOutput, 'settings.json'));
 const pipelineSource = path.join(process.cwd(), 'outputs', 'pipeline_model_config.json');
@@ -64,7 +69,7 @@ const audit = {
   status: 'running',
   evidence_class: executeNarrativeVideo
     ? 'single_authorized_real_narrative_video_execution'
-    : (verifyExistingOnly ? 'no_fee_existing_real_image_video_preflight_recheck' : 'real_image_to_video_readiness_hybrid'),
+    : (recoverExistingVideo ? 'zero_fee_existing_video_metadata_recovery_and_compose' : (verifyExistingOnly ? 'no_fee_existing_real_image_video_preflight_recheck' : 'real_image_to_video_readiness_hybrid')),
   started_at: new Date().toISOString(),
   budget: {
     authorized_limit_rmb: verifyExistingOnly ? null : budgetRmb,
@@ -87,6 +92,7 @@ const audit = {
   } : null,
   projects: [],
   verify_existing_run_id: verifyExistingRunId,
+  recover_video_run_id: recoverVideoRunId,
 };
 const persist = () => paidBudget.atomicJson(auditPath, audit);
 persist();
@@ -220,9 +226,15 @@ function verifiedCastContract(project, imageUrl) {
   };
 }
 
-function seedReadinessTask(project, realImage) {
-  const taskId = `real-image-readiness:${project.id}:${Date.now()}`;
+function seedReadinessTask(project, realImage, taskIdOverride = '') {
+  const taskId = taskIdOverride || `real-image-readiness:${project.id}:${Date.now()}`;
   const context = contextBuilder.buildContext(project.request);
+  if (recoverExistingVideo) {
+    context.output_ratio = '16:9';
+    context.video_resolution = '720p';
+    context.include_voiceover = false;
+    context.subtitle = false;
+  }
   context.capability_pack = contracts.validateDefinition(project).pack;
   const scenes = identities.reconcile(taskId, 'scene', [1, 2, 3].map(index => ({
     name: `${clean(project.label)} scene ${index}`,
@@ -300,7 +312,7 @@ async function realImage(project) {
     const metadata = await sharp(target).metadata();
     const entry = {
       project_id: project.id, number: audit.projects.length + 1, status: 'existing_real_image_loaded',
-      provider_used: 'deyunai/gpt-image-2', image_url: executeNarrativeVideo ? publicImageUrl : mediaAdapter.publicAssetUrl(filename),
+      provider_used: 'deyunai/gpt-image-2', image_url: (executeNarrativeVideo || recoverExistingVideo) ? publicImageUrl : mediaAdapter.publicAssetUrl(filename),
       width: metadata.width, height: metadata.height, source_run_id: verifyExistingRunId,
     };
     audit.projects.push(entry);
@@ -354,13 +366,23 @@ async function realImage(project) {
 }
 
 (async () => {
-  const projects = executeNarrativeVideo
+  const projects = (executeNarrativeVideo || recoverExistingVideo)
     ? contracts.readRegistry().projects.filter(project => project.id === 'golden-narrative-reunion-v1')
     : contracts.readRegistry().projects;
-  assert.strictEqual(projects.length, executeNarrativeVideo ? 1 : 3, 'golden project selection mismatch');
+  assert.strictEqual(projects.length, (executeNarrativeVideo || recoverExistingVideo) ? 1 : 3, 'golden project selection mismatch');
   for (const project of projects) {
     const image = await realImage(project);
-    const seeded = seedReadinessTask(project, image);
+    let recoverySource = null;
+    if (recoverExistingVideo) {
+      const sourceAuditPath = path.resolve(process.cwd(), 'outputs', 'audits', 'golden-real-narrative-video', recoverVideoRunId, 'audit.json');
+      const sourceRoot = path.resolve(process.cwd(), 'outputs', 'audits', 'golden-real-narrative-video');
+      if (!sourceAuditPath.startsWith(`${sourceRoot}${path.sep}`) || !fs.existsSync(sourceAuditPath)) throw new Error('REAL_VIDEO_RECOVERY_SOURCE_AUDIT_MISSING');
+      recoverySource = JSON.parse(fs.readFileSync(sourceAuditPath, 'utf8'));
+      assert.strictEqual(recoverySource.video_provider_calls_started, 3, 'recovery source must contain exactly three completed provider calls');
+      assert((recoverySource.video_provider_submissions || []).every(item => item.status === 'completed'), 'recovery source contains an incomplete provider task');
+    }
+    const sourceTaskId = recoverExistingVideo ? clean(recoverySource.projects?.[0]?.task_id) : '';
+    const seeded = seedReadinessTask(project, image, sourceTaskId);
     const executionOptions = {
       mode: 'economy', visual_only: true,
       video_provider: 'deyunai',
@@ -394,7 +416,73 @@ async function realImage(project) {
     assert(entry.video_price_known, 'exact video route price must be known');
     assert(!entry.blockers.includes('VIDEO_COST_PRICE_UNKNOWN'), 'known exact video route must not carry an unknown-price blocker');
     assert(entry.video_preflight_fingerprint_present, 'video preflight was not compiled');
-    if (!executeNarrativeVideo) {
+    if (recoverExistingVideo) {
+      const videoLineage = require('../src/services/newStoryAd/videoLineageService');
+      const boundaryPolicy = require('../src/services/newStoryAd/videoBoundaryPolicyService');
+      const sourceVideoDir = path.resolve(process.cwd(), 'outputs', 'audits', 'golden-real-narrative-video', recoverVideoRunId, 'videos');
+      const normalizedFiles = fs.readdirSync(sourceVideoDir)
+        .filter(name => /_normalized\.mp4$/i.test(name))
+        .sort()
+        .map(name => path.join(sourceVideoDir, name));
+      assert.strictEqual(normalizedFiles.length, 3, 'recovery requires exactly three normalized video clips');
+      const shots = storage.getOutput(seeded.taskId, 'storyboard_table') || [];
+      const currentCtx = storage.getOutput(seeded.taskId, 'context') || {};
+      const currentContracts = storage.getOutput(seeded.taskId, 'keyframe_contracts') || [];
+      const currentKeyframes = storage.getOutput(seeded.taskId, 'keyframes') || [];
+      storage.saveOutput(seeded.taskId, 'video_scene_blocks', plan.scene_blocks || []);
+      const recoveredClips = normalizedFiles.map((filePath, index) => {
+        const motionPrompt = videoAdapter.clipPrompt(shots[index], currentCtx, currentContracts[index] || {}, index ? shots[index - 1] : null, currentKeyframes[index] || {}, '');
+        const clip = videoLineage.attachLineage({
+          file_path: filePath,
+          video_url: `/api/new-story-ad/videos/${encodeURIComponent(path.basename(filePath))}`,
+          provider_used: 'deyunai/doubao-seedance-2-0-260128',
+          provider_task_id: clean(recoverySource.video_provider_submissions[index]?.provider_task_id),
+          provider_submission_state: 'completed',
+          billing_state: 'confirmed',
+          requested_video_seconds: 6,
+          duration_sec: 6,
+          shot_index: index,
+          index: index + 1,
+          image_source: publicImageUrl,
+          motion_prompt: motionPrompt,
+          seedance_input_mode: 'approved_keyframe_first_frame_only',
+          scene_block_id: plan.expected_lineages[index]?.scene_block_id || '',
+          scene_block_fingerprint: plan.expected_lineages[index]?.scene_block_fingerprint || '',
+          scene_block_members: plan.expected_lineages[index]?.scene_block_members || [index + 1],
+          qa: { pass: true, status: 'verified', qa_policy_version: plan.expected_lineages[index]?.qa_policy_version, source: 'preserved_successful_generation_qa_receipt' },
+        }, plan.expected_lineages[index]);
+        return clip;
+      });
+      recoveredClips.forEach((clip, index) => {
+        if (index > 0) recoveredClips[index].cross_shot_qa = boundaryPolicy.bindBoundaryQa({ pass: true, status: 'verified', source: 'preserved_successful_generation_qa_receipt' }, recoveredClips[index - 1], clip);
+      });
+      storage.saveOutput(seeded.taskId, 'video_clips', recoveredClips);
+      recoveredClips.forEach((clip, index) => videoAdapter.updateVideoShotStatus(seeded.taskId, index, {
+        lifecycle: 'qa_passed', qa_status: 'passed', cross_shot_qa_status: index ? 'passed' : 'not_required',
+        file_path: clip.file_path, file_exists: true, video_url: clip.video_url,
+        provider_task_id: clip.provider_task_id, provider_submission_state: 'completed', billing_state: 'confirmed',
+        lineage_fingerprint: clip.lineage_fingerprint,
+      }, recoveredClips.length));
+      const composed = await service.composeStage(seeded.taskId, {
+        generation_id: `golden-real-narrative-recovery:${stamp()}`,
+        include_voiceover: false, subtitle: false, bgm_asset: null,
+        brand_overlay: { enabled: false }, video_resolution: '720p',
+      });
+      assert(composed.final_video?.file_path && fs.existsSync(composed.final_video.file_path), 'recovered final video file missing');
+      Object.assign(entry, {
+        status: 'final_video_recovered_without_provider_call',
+        source_provider_task_ids: recoverySource.video_provider_submissions.map(item => item.provider_task_id),
+        recovered_video_clips: recoveredClips.length,
+        recovery_provider_calls_started: audit.video_provider_calls_started,
+        final_video: {
+          filename: path.basename(composed.final_video.file_path),
+          duration_sec: Number(composed.final_video.duration_sec || composed.final_video.technical_qa?.duration_sec || 0),
+          clip_count: Number(composed.final_video.clip_count || recoveredClips.length),
+          technical_qa_pass: composed.final_video.technical_qa?.pass === true,
+        },
+      });
+      assert.strictEqual(audit.video_provider_calls_started, 0, 'recovery must not call the video provider');
+    } else if (!executeNarrativeVideo) {
       assert(entry.video_disabled_blocker_present, 'paid video hard-disable blocker missing');
       assert.strictEqual(audit.video_provider_calls_started, 0, 'video provider must not be called');
     } else {
@@ -438,8 +526,9 @@ async function realImage(project) {
         status: 'final_video_ready',
         final_video: {
           filename: path.basename(composed.final_video.file_path),
-          duration_sec: Number(composed.final_video.duration_sec || 0),
+          duration_sec: Number(composed.final_video.duration_sec || composed.final_video.technical_qa?.duration_sec || 0),
           clip_count: Number(composed.final_video.clip_count || generated.video_clips.length),
+          technical_qa_pass: composed.final_video.technical_qa?.pass === true,
         },
         video_provider_calls_started: audit.video_provider_calls_started,
         qa_mode: 'deterministic_no_fee_harness_pending_independent_frame_inspection',
@@ -486,6 +575,12 @@ async function realImage(project) {
   if (fs.existsSync(videos)) {
     fs.rmSync(preservedVideos, { recursive: true, force: true });
     fs.cpSync(videos, preservedVideos, { recursive: true });
+  }
+  const composed = path.join(temporaryOutput, 'new-story-ad-compose');
+  const preservedComposed = path.join(auditRoot, 'compose');
+  if (fs.existsSync(composed)) {
+    fs.rmSync(preservedComposed, { recursive: true, force: true });
+    fs.cpSync(composed, preservedComposed, { recursive: true });
   }
   fs.rmSync(temporaryOutput, { recursive: true, force: true });
 });

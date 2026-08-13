@@ -2201,11 +2201,23 @@ async function generateTtsStage(taskId, options = {}) {
 }
 
 /** 编译通用执行方案、人民币成本上限和零自动重试的视频预检。 */
+function projectVideoOutputContext(storedCtx = {}, options = {}) {
+  return {
+    ...storedCtx,
+    output_ratio: options.aspect_ratio || options.aspectRatio || storedCtx.output_ratio || '9:16',
+    video_resolution: options.video_resolution || options.videoResolution || storedCtx.video_resolution || '1080p',
+  };
+}
+
 function buildVideoPreflightPlan(taskId, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new videoCore.chineseError.VideoGenerationError('TASK_NOT_FOUND', '', { status: 404 });
   const shots = Array.isArray(storage.getOutput(taskId, 'storyboard_table')) ? storage.getOutput(taskId, 'storyboard_table') : [];
-  const ctx = storage.getOutput(taskId, 'context') || task.request || {};
+  const storedCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  // Preflight and execution must bind the same output context. Deferring the
+  // requested resolution until after authorization invalidates every freshly
+  // generated lineage during compose and can invite an unnecessary paid redo.
+  const ctx = projectVideoOutputContext(storedCtx, options);
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || ctx.scene_assets || [];
   const contractCtx = { ...ctx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const contracts = keyframeContractFreshness.inspect(taskId, { ctx: contractCtx, shots }).contracts;
@@ -2371,10 +2383,8 @@ async function generateVideoStage(taskId, options = {}) { options = paidExecutio
   const voiceAssignments = visualOnly ? {} : voicePlan.resolveVoiceAssignments(options, ctx, ttsAudio || {}, voiceId);
   const includeVoiceover = !visualOnly && voicePlan.voiceoverEnabled(options, ctx, voiceId, voiceAssignments);
   const persistedCtx = {
-    ...ctx,
+    ...projectVideoOutputContext(ctx, options),
     ...(visualOnly ? {} : { voice_id: voiceId, voice_assignments: voiceAssignments, include_voiceover: includeVoiceover }),
-    output_ratio: options.aspect_ratio || options.aspectRatio || ctx.output_ratio || '9:16',
-    video_resolution: options.video_resolution || options.videoResolution || ctx.video_resolution || '1080p',
   };
   ctx = {
     ...persistedCtx,
@@ -3726,6 +3736,7 @@ module.exports = {
   generateKeyframesStage,
   resolveTtsVoiceId,
   generateTtsStage,
+  projectVideoOutputContext,
   buildVideoPreflightPlan,
   assertVideoPreflightConfirmation,
   publicVideoPreflight: videoPreflight.publicVideoPreflight,

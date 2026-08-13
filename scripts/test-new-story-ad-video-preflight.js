@@ -1,5 +1,6 @@
 const assert = require('assert');
 const preflight = require('../src/services/newStoryAd/videoPreflightService');
+const storyService = require('../src/services/newStoryAd/storyAdService');
 
 const sceneId = 'scene-current';
 const contract = () => ({
@@ -34,6 +35,14 @@ const clips = [
   { ...media(5), qa: { pass: true } },
 ];
 const statuses = [{}, {}, {}, {}, { error_code: 'PROVIDER_BILLING' }, {}];
+
+const projectedOutput = storyService.projectVideoOutputContext(
+  { output_ratio: '16:9', video_resolution: '1080p', video_quality: 'final' },
+  { video_resolution: '720p' },
+);
+assert.strictEqual(projectedOutput.output_ratio, '16:9');
+assert.strictEqual(projectedOutput.video_resolution, '720p');
+assert.strictEqual(projectedOutput.video_quality, 'final');
 
 const economy = preflight.buildVideoPreflight({
   taskId: 'preflight-task', shots, keyframes, contracts, clips, statuses, mode: 'economy', providerRoute: 'deyunai/seedance',
