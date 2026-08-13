@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-sr9-v14';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr9-v14';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr9-v14';
-import { confirmDialog } from './components/dialog.js?v=20260814-sr9-v14';
+import { createProjectStore } from './store/projectStore.js?v=20260814-sr9-v15';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr9-v15';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr9-v15';
+import { confirmDialog } from './components/dialog.js?v=20260814-sr9-v15';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-sr9-v14'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-sr9-v14'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr9-v14'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-sr9-v14'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-sr9-v14'),
-  final: () => import('./views/finalView.js?v=20260814-sr9-v14'),
-  workflow: () => import('./views/workflowView.js?v=20260814-sr9-v14'),
+  brief: () => import('./views/briefView.js?v=20260814-sr9-v15'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-sr9-v15'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr9-v15'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-sr9-v15'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-sr9-v15'),
+  final: () => import('./views/finalView.js?v=20260814-sr9-v15'),
+  workflow: () => import('./views/workflowView.js?v=20260814-sr9-v15'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
