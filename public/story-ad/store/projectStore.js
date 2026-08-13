@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260814-sr9-v12';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260814-sr9-v12';
-import { loadProjectList } from './projectListStore.js?v=20260814-sr9-v12';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260814-sr9-v13';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260814-sr9-v13';
+import { loadProjectList } from './projectListStore.js?v=20260814-sr9-v13';
 
 export function createProjectStore() {
   const state = {
@@ -59,7 +59,7 @@ export function createProjectStore() {
       throw error;
     }
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260814-sr9-v12'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260814-sr9-v13'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
