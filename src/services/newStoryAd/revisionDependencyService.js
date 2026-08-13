@@ -1,13 +1,18 @@
 'use strict';
 
 const DEFAULT_DEPENDENCIES = Object.freeze({
+  // Candidate and legacy planning projections are draft state. They must not
+  // invalidate the published production chain until an Active Plan is written.
+  planning: [],
   brief: [],
-  subjects: ['brief'],
-  scenes: ['brief', 'subjects'],
+  plan: ['brief'],
+  subjects: ['brief', 'plan'],
+  scenes: ['brief', 'plan', 'subjects'],
   blueprint: ['brief', 'subjects', 'scenes'],
   storyboard: ['blueprint', 'subjects', 'scenes'],
+  keyframes: ['storyboard', 'subjects', 'scenes'],
   audio: ['storyboard'],
-  video: ['storyboard', 'subjects', 'scenes'],
+  video: ['storyboard', 'keyframes', 'subjects', 'scenes'],
   compose: ['audio', 'video', 'storyboard'],
 });
 

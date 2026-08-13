@@ -18,9 +18,15 @@ assert.strictEqual(second.items[0].identity_revision, 2, '内容变化只增加�
 assert.strictEqual(second.duplicate_semantic_keys.length, 0);
 
 const shotImpact = dependencies.affectedDomains(['storyboard']);
-assert.deepStrictEqual(shotImpact.invalidated.sort(), ['audio', 'compose', 'video']);
+assert.deepStrictEqual(shotImpact.invalidated.sort(), ['audio', 'compose', 'keyframes', 'video']);
 assert(!shotImpact.invalidated.includes('subjects'));
 assert(!shotImpact.invalidated.includes('scenes'));
+const candidateImpact = dependencies.affectedDomains(['planning']);
+assert.deepStrictEqual(candidateImpact.invalidated, [], '候选方案变化不得失效已发布生产链');
+const activePlanImpact = dependencies.affectedDomains(['plan']);
+assert(activePlanImpact.invalidated.includes('subjects'));
+assert(activePlanImpact.invalidated.includes('keyframes'));
+assert(activePlanImpact.invalidated.includes('compose'));
 const sceneImpact = dependencies.affectedDomains(['scenes']);
 assert(sceneImpact.invalidated.includes('storyboard'));
 assert(sceneImpact.invalidated.includes('compose'));

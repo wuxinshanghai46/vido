@@ -5,7 +5,7 @@ const identities = require('./permanentIdentityService');
 const dependencyService = require('./revisionDependencyService');
 
 const DOMAIN_KEYS = Object.freeze([
-  'brief', 'subjects', 'scenes', 'blueprint', 'storyboard', 'audio', 'video', 'compose',
+  'planning', 'brief', 'plan', 'subjects', 'scenes', 'blueprint', 'storyboard', 'keyframes', 'audio', 'video', 'compose',
 ]);
 
 const DEPENDENCIES = dependencyService.DEFAULT_DEPENDENCIES;
@@ -18,6 +18,10 @@ function domainPayloads(task = {}, outputs = []) {
   const byKind = Object.fromEntries((Array.isArray(outputs) ? outputs : []).map(row => [String(row.kind || ''), row.payload]));
   const context = byKind.context || task.request || {};
   return {
+    planning: {
+      legacy_projection: byKind.asset_plan || null,
+      candidate: byKind.asset_plan_candidate || null,
+    },
     brief: {
       brief: clean(context.brief || task.brief),
       brief_source: clean(context.brief_source || 'user') || 'user',
@@ -26,6 +30,7 @@ function domainPayloads(task = {}, outputs = []) {
       output_ratio: clean(context.output_ratio),
       context,
     },
+    plan: byKind.asset_plan_active || null,
     subjects: {
       people: context.cast_profiles || context.people || [],
       pets: context.pet_profiles || context.pets || [],
@@ -41,6 +46,12 @@ function domainPayloads(task = {}, outputs = []) {
     },
     blueprint: byKind.blueprint || null,
     storyboard: byKind.storyboard_table || [],
+    keyframes: {
+      contracts: byKind.keyframe_contracts || null,
+      frames: byKind.keyframes || null,
+      provider_audit: byKind.keyframe_provider_audit || null,
+      quality_review: byKind.quality_review || null,
+    },
     audio: {
       tts_audio: byKind.tts_audio || null,
       sound_journey: byKind.sound_journey || null,
@@ -97,11 +108,14 @@ function buildShadowWork(task = {}, outputs = []) {
     },
     invalidated_domains: [],
     authority: {
+      planning: 'work',
       brief: clean(payloads.brief?.brief_source || 'user') || 'user',
+      plan: 'work',
       subjects: 'work',
       scenes: 'work',
       blueprint: 'work',
       storyboard: 'work',
+      keyframes: 'work',
     },
     last_command_id: 'shadow_create',
     last_command_at: now(),
@@ -230,7 +244,10 @@ function syncShadowSafely(taskId, options = {}) {
 }
 
 const OUTPUT_DOMAIN_MAP = Object.freeze({
+  asset_plan: ['planning', 'legacy_projection'],
+  asset_plan_candidate: ['planning', 'candidate'],
   context: ['brief', 'context'],
+  asset_plan_active: ['plan', 'value'],
   person_contract: ['subjects', 'person_contract'],
   subject_assets: ['subjects', 'subject_assets'],
   prop_assets: ['subjects', 'props'],
@@ -239,6 +256,10 @@ const OUTPUT_DOMAIN_MAP = Object.freeze({
   scene_assets: ['scenes', 'assets'],
   blueprint: ['blueprint', 'value'],
   storyboard_table: ['storyboard', 'value'],
+  keyframe_contracts: ['keyframes', 'contracts'],
+  keyframes: ['keyframes', 'frames'],
+  keyframe_provider_audit: ['keyframes', 'provider_audit'],
+  quality_review: ['keyframes', 'quality_review'],
   tts_audio: ['audio', 'tts_audio'],
   sound_journey: ['audio', 'sound_journey'],
   video_clips: ['video', 'value'],
@@ -277,6 +298,7 @@ function writeAuthoritativeOutput(taskId, kind, payload, { commandId = '' } = {}
   const fingerprint = payloadFingerprint(nextDomain);
   if (work.domain_fingerprints?.[domain] === fingerprint) return work;
   const impact = dependencyService.affectedDomains([domain], work.dependency_graph || DEPENDENCIES);
+  const commandInvalidatedDomains = domain === 'planning' ? [] : impact.invalidated;
   const aggregateVersion = Number(work.aggregate_version || 0) + 1;
   const nextRevisions = { ...zeroRevisions(), ...(work.domain_revisions || {}), [domain]: Number(work.domain_revisions?.[domain] || 0) + 1 };
   const next = storage.updateWork(taskId, {
@@ -284,7 +306,7 @@ function writeAuthoritativeOutput(taskId, kind, payload, { commandId = '' } = {}
     domain_payloads: { ...(work.domain_payloads || {}), [domain]: nextDomain },
     domain_fingerprints: { ...(work.domain_fingerprints || {}), [domain]: fingerprint },
     domain_revisions: nextRevisions,
-    invalidated_domains: impact.invalidated,
+    invalidated_domains: domain === 'planning' ? (work.invalidated_domains || []) : commandInvalidatedDomains,
     last_command_id: clean(commandId || `authoritative:${kind}:${fingerprint.slice(0, 20)}`),
     last_command_at: now(),
   }, { expected_version: work.aggregate_version });
@@ -294,7 +316,7 @@ function writeAuthoritativeOutput(taskId, kind, payload, { commandId = '' } = {}
     type: 'work.authoritative_output_written',
     output_kind: String(kind),
     changed_domains: [domain],
-    invalidated_domains: impact.invalidated,
+    invalidated_domains: commandInvalidatedDomains,
     domain_revisions: { [domain]: nextRevisions[domain] },
     occurred_at: now(),
   });

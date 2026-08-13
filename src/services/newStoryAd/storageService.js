@@ -507,7 +507,7 @@ function carryManifestRevision(taskId, contentRevision) {
   return carried;
 }
 
-function saveOutput(taskId, kind, payload, options = {}) {
+function saveOutputInternal(taskId, kind, payload, options = {}) {
   cancellation.throwIfCancelled(taskId);
   const task = getTask(taskId);
   const generation = cancellation.current();
@@ -551,12 +551,7 @@ function saveOutput(taskId, kind, payload, options = {}) {
     publishArtifact(taskId, kind, artifact, { content_revision: expectedRevision || currentRevision });
   }
   if (options.skip_work_sync !== true && !authoritativeMapped) {
-    const domainByKind = {
-      context: 'brief', person_contract: 'subjects', subject_assets: 'subjects', prop_assets: 'subjects', product_asset: 'subjects',
-      scene_config: 'scenes', scene_assets: 'scenes', blueprint: 'blueprint', storyboard_table: 'storyboard',
-      tts_audio: 'audio', sound_journey: 'audio', video_clips: 'video', final_video: 'compose',
-    };
-    const domain = domainByKind[String(kind || '')];
+    const domain = works.outputDomain(kind)?.[0];
     if (domain) {
       // Lazy import avoids storage -> aggregate -> storage initialization cycles.
       works.syncShadowSafely(taskId, {
@@ -566,6 +561,10 @@ function saveOutput(taskId, kind, payload, options = {}) {
     }
   }
   return saved;
+}
+
+function saveOutput(taskId, kind, payload, options = {}) {
+  return withWriteBatch(() => saveOutputInternal(taskId, kind, payload, options));
 }
 
 function getOutput(taskId, kind) {
@@ -592,7 +591,7 @@ function getOutput(taskId, kind) {
   return getRow('outputs', `${taskId}:${kind}`)?.payload ?? null;
 }
 
-function deleteOutputs(taskId, kinds = []) {
+function deleteOutputsInternal(taskId, kinds = []) {
   const uniqueKinds = [...new Set((Array.isArray(kinds) ? kinds : [kinds]).map(String).filter(Boolean))];
   if (!uniqueKinds.length) return [];
   const works = require('./workAggregateService');
@@ -636,6 +635,10 @@ function deleteOutputs(taskId, kinds = []) {
   return authoritativeDeletion.authoritative
     ? [...new Set([...uniqueKinds, ...authoritativeDeletion.deleted])]
     : uniqueKinds;
+}
+
+function deleteOutputs(taskId, kinds = []) {
+  return withWriteBatch(() => deleteOutputsInternal(taskId, kinds));
 }
 
 function deleteOutput(taskId, kind) {

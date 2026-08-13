@@ -33,6 +33,44 @@ try {
     false,
     'Work 接管后不得保留 context 旧核心输出行',
   );
+
+  const beforeCandidate = storage.getWork(created.task.id);
+  const originalWriteFileSync = fs.writeFileSync;
+  let physicalDbWrites = 0;
+  fs.writeFileSync = function measuredWrite(filePath, ...args) {
+    if (String(filePath).startsWith(`${storage.DB_PATH}.`) && String(filePath).endsWith('.tmp')) physicalDbWrites += 1;
+    return originalWriteFileSync.call(fs, filePath, ...args);
+  };
+  try {
+    storage.saveOutput(created.task.id, 'asset_plan_candidate', { status: 'candidate', candidate_id: 'candidate-1' });
+  } finally {
+    fs.writeFileSync = originalWriteFileSync;
+  }
+  assert.strictEqual(physicalDbWrites, 1, '一个权威输出命令在 JSON 模式下必须合并为一次原子整库写入');
+  const afterCandidate = storage.getWork(created.task.id);
+  assert.deepStrictEqual(storage.getOutput(created.task.id, 'asset_plan_candidate'), { status: 'candidate', candidate_id: 'candidate-1' });
+  assert.deepStrictEqual(afterCandidate.invalidated_domains, beforeCandidate.invalidated_domains, '候选方案不得失效已发布生产链');
+  const candidateEvent = storage.listWorkEvents(created.task.id).at(-1);
+  assert.deepStrictEqual(candidateEvent.invalidated_domains, [], '候选方案事件不得冒充本次失效了生产域');
+  storage.saveOutput(created.task.id, 'asset_plan_active', { plan_id: 'candidate-1', plan: { status: 'active' } });
+  assert.strictEqual(storage.getOutput(created.task.id, 'asset_plan_active').plan.status, 'active');
+
+  storage.saveOutput(created.task.id, 'keyframe_contracts', [{ shot_index: 1, contract_fingerprint: 'contract-1' }]);
+  storage.saveOutput(created.task.id, 'keyframes', [{ shot_index: 1, image_url: '/frame-1.png' }]);
+  storage.saveOutput(created.task.id, 'keyframe_provider_audit', { entries: [{ shot_index: 1, ok: true }] });
+  storage.saveOutput(created.task.id, 'quality_review', { passed: true });
+  assert.strictEqual(storage.getOutput(created.task.id, 'keyframes')[0].image_url, '/frame-1.png');
+  assert.strictEqual(storage.getOutput(created.task.id, 'keyframe_contracts')[0].contract_fingerprint, 'contract-1');
+  assert.strictEqual(
+    storage.readDb().outputs.some(row => [
+      'asset_plan_candidate', 'asset_plan_active', 'keyframe_contracts', 'keyframes', 'keyframe_provider_audit', 'quality_review',
+    ].includes(row.kind)),
+    false,
+    'Active Plan 与关键帧核心状态不得回落旧 outputs 双写',
+  );
+  storage.deleteOutput(created.task.id, 'keyframes');
+  assert.strictEqual(storage.getOutput(created.task.id, 'keyframes'), null);
+  assert.strictEqual(storage.getOutput(created.task.id, 'keyframe_contracts')[0].contract_fingerprint, 'contract-1', '删除关键帧不得误删同域合同');
   const events = storage.listWorkEvents(created.task.id);
   assert(events.some(event => event.type === 'work.authority_promoted'));
 
@@ -51,6 +89,9 @@ try {
     legacy_context_rows: 0,
     legacy_video_rows: 0,
     authority_event_present: true,
+    active_plan_authoritative: true,
+    keyframes_authoritative: true,
+    physical_db_writes_per_command: physicalDbWrites,
   }));
 } finally {
   fs.rmSync(outputDir, { recursive: true, force: true });
