@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE_FILES = [
+  '.gitattributes',
   'config/story-ad-release.json',
   'package.json',
   'package-lock.json',
