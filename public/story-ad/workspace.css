@@ -172,8 +172,7 @@
 .choice.active { background: var(--mint-2); border-color: var(--mint); }
 .choice b, .choice small { display: block; }
 .choice small { color: var(--muted); margin-top: 6px; }
-.material-list { display: grid; gap: 9px; }
-.material-list[hidden] { display: none; }
+.material-list { display: grid; gap: 9px; } .material-list[hidden] { display: none; }
 .material-row {
   min-height: 58px;
   display: grid;
