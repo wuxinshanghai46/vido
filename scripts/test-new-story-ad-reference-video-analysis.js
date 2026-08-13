@@ -21,6 +21,34 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const referenceAnalysisTaskSync = require('../src/services/newStoryAd/referenceAnalysisTaskSyncService');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
 const assetPlanService = require('../src/services/newStoryAd/assetPlanService');
+const narrativeAnimalPlan = assetPlanService.normalizePlan({
+  cast_profiles: [],
+  pet_profiles: [{ id: 'pet_1', name: '', type: '按广告需求判断', appearance: '' }],
+  prop_plan: [
+    { id: 'prop_cat', name: '橘猫', type: 'story_prop', description: '一只浑身湿透的小橘猫，毛色和体型必须稳定', states: ['wet', 'wrapped'] },
+    { id: 'prop_towel', name: '干毛巾', type: 'story_prop', description: '用于擦干橘猫' },
+  ],
+  scene_plan: {
+    scene_mode: 'single',
+    spaces: [{
+      id: 'space_rain_store',
+      name: '雨夜便利店门口',
+      scene_spec: {
+        layoutText: '便利店门口雨棚、玻璃门和人行道形成唯一连续空间',
+        materialLightText: '湿润地面反射暖色店灯与冷色雨夜环境光',
+        interactionText: '人物在雨棚下用毛巾擦干橘猫',
+        negativeText: '禁止改变店门、雨棚和人行道的相对位置',
+      },
+    }],
+  },
+}, {
+  content_mode: 'narrative_story', expected_animals: 1,
+  pet_profiles: [{ id: 'pet_1', name: '', type: '按广告需求判断', appearance: '' }],
+});
+assert.equal(narrativeAnimalPlan.pet_profiles[0].name, '橘猫', '剧情动物必须从明确的动物道具事实投影为可生成宠物档案');
+assert.equal(narrativeAnimalPlan.pet_profiles[0].type, '猫');
+assert.match(narrativeAnimalPlan.pet_profiles[0].appearance, /湿透|橘猫/);
+assert.deepStrictEqual(narrativeAnimalPlan.prop_plan.map(item => item.id), ['prop_towel'], '动物进入宠物资产后不得在道具中重复一份');
 assert.throws(
   () => assetPlanService.assertReferenceReady({
     analysis_id: 'ref_failed_current',
@@ -1854,7 +1882,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 199,
+    checks: 203,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

@@ -22,7 +22,7 @@ const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 12;
+const ASSET_PLAN_PROJECTION_VERSION = 13;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
 const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
 
@@ -110,6 +110,66 @@ function uniquePrompts(items = [], prefix = 'reference_subject') {
     used.add(key);
     return true;
   });
+}
+
+function narrativeAnimalProp(item = {}) {
+  const type = cleanText(item.type || '', 80).toLowerCase();
+  if (!['story_prop', 'animal', 'pet', 'animal_character', 'pet_character'].includes(type)) return false;
+  const animalPattern = /动物|宠物|萌宠|橘猫|猫咪|小猫|猫|犬|小狗|狗|金毛|柯基|萨摩耶|拉布拉多|马|兔|鸟|鹦鹉|仓鼠/u;
+  const name = cleanText(item.name || '', 240);
+  if (type === 'story_prop') return animalPattern.test(name);
+  const text = cleanText(`${name} ${item.description || ''}`, 1200);
+  return animalPattern.test(text);
+}
+
+function animalSpecies(item = {}) {
+  const text = cleanText(`${item.name || ''} ${item.description || ''}`, 1200);
+  const match = text.match(/橘猫|猫咪|小猫|猫|金毛|柯基|萨摩耶|拉布拉多|犬|小狗|狗|马|兔|鹦鹉|鸟|仓鼠/u);
+  if (!match) return '动物';
+  if (/猫/u.test(match[0])) return '猫';
+  if (/金毛|柯基|萨摩耶|拉布拉多|犬|狗/u.test(match[0])) return '狗';
+  return match[0];
+}
+
+function placeholderPet(profile = {}) {
+  const type = cleanText(profile.type || profile.species || '', 120);
+  return !cleanText(profile.name || profile.displayName, 120)
+    && !cleanText(profile.breed || profile.appearance || profile.description, 800)
+    && (!type || type === '按广告需求判断' || type === 'animal');
+}
+
+function reconcileNarrativeAnimals(petProfiles = [], propPlan = [], ctx = {}) {
+  const pets = Array.isArray(petProfiles) ? petProfiles.slice(0, 12) : [];
+  const props = Array.isArray(propPlan) ? propPlan.slice(0, 24) : [];
+  const expected = Math.max(0, Number(ctx.expected_animals || ctx.pet_contract?.expected_animals || pets.length) || 0);
+  if (contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode) !== 'narrative_story' || expected < 1) {
+    return { pet_profiles: pets, prop_plan: props };
+  }
+  const animalProps = props.filter(narrativeAnimalProp);
+  if (!animalProps.length || (pets.length && !pets.every(placeholderPet))) {
+    return { pet_profiles: pets, prop_plan: props };
+  }
+  const derived = animalProps.slice(0, expected).map((item, index) => ({
+    id: cleanText(pets[index]?.id || pets[index]?.pet_id || `pet_${index + 1}`, 100),
+    pet_id: cleanText(pets[index]?.pet_id || pets[index]?.id || `pet_${index + 1}`, 100),
+    name: cleanText(item.name || `动物 ${index + 1}`, 120),
+    type: animalSpecies(item),
+    species: animalSpecies(item),
+    breed: '',
+    appearance: cleanText(item.description || item.name || '', 800),
+    behaviorText: cleanText(Array.isArray(item.states) ? item.states.join('；') : '', 500),
+    continuityText: cleanText(item.description || '', 600),
+    negativeText: '禁止改变物种、毛色、体型和稳定识别特征，禁止在同一画面复制额外动物',
+    reference_images: [],
+    source: 'narrative_prop_projection',
+    status: 'draft',
+  }));
+  return {
+    pet_profiles: derived,
+    // A narrative animal is a persistent visual subject, not a second copy in
+    // the prop inventory. Keep towels, umbrellas and other real props only.
+    prop_plan: props.filter(item => !animalProps.includes(item)),
+  };
 }
 
 function advertisedSubjectContract(ctx = {}, reference = {}) {
@@ -286,15 +346,20 @@ function normalizePlan(source = {}, ctx = {}) {
         : (eraSeparatedCastProfiles.length === 1 ? 'single' : (eraSeparatedCastProfiles.length === 2 ? 'dual' : 'multi')),
     };
   }
+  const reconciledAnimals = reconcileNarrativeAnimals(
+    Array.isArray(source.pet_profiles || source.petProfiles)
+      ? (source.pet_profiles || source.petProfiles)
+      : (ctx.pet_profiles || []),
+    Array.isArray(source.prop_plan || source.propPlan)
+      ? (source.prop_plan || source.propPlan)
+      : [],
+    ctx,
+  );
   return {
     cast_profiles: eraSeparatedCastProfiles,
     narrative_cast_profiles: narrativeCastProfiles,
-    pet_profiles: Array.isArray(source.pet_profiles || source.petProfiles)
-      ? (source.pet_profiles || source.petProfiles).slice(0, 12)
-      : (ctx.pet_profiles || []),
-    prop_plan: Array.isArray(source.prop_plan || source.propPlan)
-      ? (source.prop_plan || source.propPlan).slice(0, 24)
-      : [],
+    pet_profiles: reconciledAnimals.pet_profiles,
+    prop_plan: reconciledAnimals.prop_plan,
     advertised_subject_contract: source.advertised_subject_contract && typeof source.advertised_subject_contract === 'object'
       ? source.advertised_subject_contract
       : (ctx.advertised_subject_contract || null),
