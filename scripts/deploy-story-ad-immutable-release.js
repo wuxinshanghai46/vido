@@ -66,7 +66,8 @@ function reportPhase(phase, details = {}) {
 }
 
 function runLocalGate() {
-  const targetedHomeGate = os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT';
+  const targetedHomeGate = process.env.VIDO_DEPLOY_TARGETED_GATE === '1'
+    || os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT';
   const gateCommand = targetedHomeGate
     ? 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-platform-narrative-release-v111.js && node scripts/check-story-ad-workspace-v6-boundaries.js && npm run story-ad:release:test'
     : 'npm run story-ad:v111:test && npm run platform:upgrade:test';

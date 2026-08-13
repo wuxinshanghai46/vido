@@ -22,6 +22,7 @@ assert(source.includes("reportPhase('artifact_upload'"), 'immutable deploy must 
 assert(source.includes("os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT'"), '家庭电脑必须自动选择定向发布门禁');
 assert(source.includes('test-story-ad-workspace-v6-ui-regressions.js'), '家庭电脑定向发布门禁必须覆盖本次工作台 UI');
 assert(source.includes("targetedHomeGate ? 'targeted_passed' : 'passed'"), '发布输出必须区分定向门禁与完整门禁');
+assert(source.includes("process.env.VIDO_DEPLOY_TARGETED_GATE === '1'"), '非标准主机名环境必须支持显式启用定向门禁');
 
 const parseJsonStart = source.indexOf('function parseJson(output) {');
 const parseJsonEnd = source.indexOf('\n}\n', parseJsonStart) + 2;
