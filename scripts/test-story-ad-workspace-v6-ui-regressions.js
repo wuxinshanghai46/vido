@@ -602,6 +602,11 @@ const resumePayload = assetModule.subjectGenerationPayload({
 }, null, 'resume-request');
 assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到部分成功检查点时必须进入只补缺失项模式');
 assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
+const sceneWorldPageSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/sceneWorldPage.js'), 'utf8');
+assert.match(sceneWorldPageSource, /request_key:\s*requestKey/, '单场景生成必须每次提交独立请求键，不得把同版本的不同场景误判为重复任务');
+const newStoryAdRouteSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
+assert.match(newStoryAdRouteSource, /body\.request_key\s*\|\|\s*body\.requestKey/, '排队幂等键必须承接界面 request_key');
+assert.match(newStoryAdRouteSource, /body\.scene_id\s*\|\|\s*body\.sceneId\s*\|\|\s*body\.space_id/, '没有 request_key 时也必须把场景身份纳入幂等键');
 
 const unverifiedProductCard = assetModule.assetCard({ id: 'product-1', name: '商品图', image_url: '/product.png', status: 'unverified' }, 'products');
 assert.match(unverifiedProductCard, /data-verify-product="product-1"/);

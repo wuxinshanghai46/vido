@@ -1,6 +1,6 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260813-ui-v249';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v249';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v249';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260813-ui-v250';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v250';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v250';
 
 function sceneGenerationQueue(bundle = {}) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
@@ -36,7 +36,8 @@ export async function mount(host, context) {
     try {
       setButtonBusy(button, true, '正在提交单个场景…', { elapsed: true });
       await authorizeBillingReviews({ bundle, lane: 'scenes', sceneId: id, reviewBatch: confirmation.reviewBatch });
-      await store.runStage('scene-assets', { space_id: id, scene_id: id, name: scene.name, regenerate: generated });
+      const requestKey = `${bundle.project.id}:scene:${id}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+      await store.runStage('scene-assets', { space_id: id, scene_id: id, name: scene.name, regenerate: generated, request_key: requestKey });
       toast('单个场景已提交，其他场景没有调用模型。', 'success');
     } catch (error) {
       toast(error.message, 'danger');

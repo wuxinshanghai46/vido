@@ -122,7 +122,19 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
   const deadlineMs = typeof options.deadlineMs === 'function'
     ? options.deadlineMs(task)
     : options.deadlineMs;
-  const idempotencyKey = String(body.idempotency_key || body.idempotencyKey || `${task.id}:${stage}:r${expectedContentRevision || task.content_revision || 1}`);
+  const requestKey = String(body.request_key || body.requestKey || '').trim().slice(0, 180);
+  const semanticTarget = String(
+    body.scene_id || body.sceneId || body.space_id || body.spaceId
+    || body.shot_id || body.shotId || body.shot_index || body.shotIndex || '',
+  ).trim().slice(0, 120);
+  const defaultIdempotencyKey = [
+    task.id,
+    stage,
+    semanticTarget ? `target:${semanticTarget}` : '',
+    `r${expectedContentRevision || task.content_revision || 1}`,
+  ].filter(Boolean).join(':');
+  const idempotencyKey = String(body.idempotency_key || body.idempotencyKey
+    || (requestKey ? `${task.id}:${stage}:request:${requestKey}` : defaultIdempotencyKey));
   const permit = generationPermit.issue(task.id, stage, { idempotencyKey });
   const queued = jobService.queueStage({
     taskId: task.id,
