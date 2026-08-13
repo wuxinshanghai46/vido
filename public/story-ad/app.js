@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260813-ui-v228';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260813-ui-v228';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260813-ui-v228';
-import { confirmDialog } from './components/dialog.js?v=20260813-ui-v228';
+import { createProjectStore } from './store/projectStore.js?v=20260813-ui-v229';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260813-ui-v229';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260813-ui-v229';
+import { confirmDialog } from './components/dialog.js?v=20260813-ui-v229';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260813-ui-v228'),
-  assets: () => import('./views/assetCenterView.js?v=20260813-ui-v228'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260813-ui-v228'),
-  plot: () => import('./views/plotRoomView.js?v=20260813-ui-v228'),
-  storyboard: () => import('./views/storyboardView.js?v=20260813-ui-v228'),
-  final: () => import('./views/finalView.js?v=20260813-ui-v228'),
-  workflow: () => import('./views/workflowView.js?v=20260813-ui-v228'),
+  brief: () => import('./views/briefView.js?v=20260813-ui-v229'),
+  assets: () => import('./views/assetCenterView.js?v=20260813-ui-v229'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260813-ui-v229'),
+  plot: () => import('./views/plotRoomView.js?v=20260813-ui-v229'),
+  storyboard: () => import('./views/storyboardView.js?v=20260813-ui-v229'),
+  final: () => import('./views/finalView.js?v=20260813-ui-v229'),
+  workflow: () => import('./views/workflowView.js?v=20260813-ui-v229'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';

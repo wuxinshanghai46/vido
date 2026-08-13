@@ -64,15 +64,16 @@ assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefMaterials = read('public/story-ad/views/briefMaterials.js');
 const briefWorldSettings = read('public/story-ad/views/briefWorldSettings.js');
 const referenceProgressSource = read('public/story-ad/views/referenceProgressCard.js');
 assert.match(briefView, /<h2>参考材料<\/h2>/, '目标页必须把辅助识别输入明确归入参考材料');
-assert.match(briefView, /\['reference', '参考视频'/);
-assert.match(briefView, /\['product', '商品 \/ 服务主体参考'/);
-assert.doesNotMatch(briefView, /\['person', '人物 \/ 宠物'/, '人物和宠物只能在资产中心管理');
-assert.doesNotMatch(briefView, /\['scene', '场景 \/ 空间'/, '场景和空间只能在资产中心管理');
-assert.doesNotMatch(briefView, /\['logo', '品牌标识'/, '品牌标识只能在资产中心管理');
-assert.doesNotMatch(briefView, /\['script', '脚本 \/ 分镜'/, '脚本与分镜不得继续混在启动材料中');
+assert.match(briefMaterials, /\['reference', '参考视频'/);
+assert.match(briefMaterials, /\['product', '商品 \/ 服务主体参考'/);
+assert.doesNotMatch(briefMaterials, /\['person', '人物 \/ 宠物'/, '人物和宠物只能在资产中心管理');
+assert.doesNotMatch(briefMaterials, /\['scene', '场景 \/ 空间'/, '场景和空间只能在资产中心管理');
+assert.doesNotMatch(briefMaterials, /\['logo', '品牌标识'/, '品牌标识只能在资产中心管理');
+assert.doesNotMatch(briefMaterials, /\['script', '脚本 \/ 分镜'/, '脚本与分镜不得继续混在启动材料中');
 assert.match(briefView, /基础信息在左侧先确认；人物、场景和 LOGO 到资产中心分别建立/);
 assert.doesNotMatch(briefView, /name="project_name"[^>]*minlength=/, '项目名称不得再设置任意最少字数');
 assert.doesNotMatch(briefView, /name="brief"[^>]*(?:required|minlength=)/, '广告目标不得阻断仅参考视频的创建入口');
@@ -368,7 +369,7 @@ assert.match(referenceReplacementState, /timeoutMs:\s*120000/, '移除参考视�
 
 const briefViewSource = read('public/story-ad/views/briefView.js');
 assert.match(briefViewSource, /if \(assetPlanTransitioning\) return false;\s*assetPlanTransitioning = true;/, '创建方案防重复锁必须在任何异步确认之前设置');
-assert.match(briefViewSource, /class="material-remove"[\s\S]*data-reference-remove[\s\S]*aria-label="移除参考视频"/, '已连接参考视频旁必须显示无文字的删除符号');
+assert.match(briefMaterials, /class="material-remove"[\s\S]*data-reference-remove[\s\S]*aria-label="移除参考视频"/, '已连接参考视频旁必须显示无文字的删除符号');
 assert.match(briefViewSource, /data-reference-remove[\s\S]*store\.removeReference\(\)[\s\S]*refreshShell\(\)/, '删除符号必须完成服务端解绑并重新渲染 AI 帮写入口');
 
 const referenceDetachService = read('src/services/newStoryAd/referenceDetachService.js');

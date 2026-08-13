@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260813-ui-v228';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v228';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v228';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v228';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v228';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v228';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v228';
-import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v228';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v228';
-const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接，系统会识别可见人物、场景、动作与广告主体'], ['product', '商品 / 服务主体参考', '上传商品或服务主体图片；视频未清楚展示时用于确认广告主体']];
+import { request } from '../api.js?v=20260813-ui-v229';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v229';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v229';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v229';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v229';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v229';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v229';
+import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v229';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v229';
+import { BRIEF_MATERIALS, renderBriefMaterialRows } from './briefMaterials.js?v=20260813-ui-v229';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -37,29 +37,6 @@ function formPayload(form) {
       user_edited: true,
     },
   };
-}
-function materialRows(bundle, isNew) {
-  const reference = bundle?.reference || {};
-  const assets = bundle?.assets || {};
-  const ready = {
-    reference: !!(reference.analysis_id || reference.filename || reference.url),
-    product: !!assets.products?.some(item => item.image_url
-      || item.dossier_sheet?.image_url
-      || (Array.isArray(item.view_images) && item.view_images.some(view => view.image_url))),
-    person: !!(assets.people?.length || assets.animals?.length),
-    scene: !!(assets.scenes?.length || bundle?.materials?.roles?.includes('scene_reference')),
-    logo: !!assets.logos?.length,
-    script: !!bundle?.story?.blueprint,
-  };
-  return MATERIALS.map(([id, label, hint]) => `
-    <div class="material-row ${ready[id] ? 'is-ready' : ''}" data-material-row="${id}">
-      <span><b>${escapeHtml(label)}</b><small>${ready[id] ? (id === 'reference' ? '已用于本次识别，可在左侧查看理解报告' : '已作为当前项目的补充材料') : escapeHtml(hint)}</small></span>
-      <span class="material-actions">
-        ${id === 'reference' ? '<button class="btn" type="button" data-reference-link>粘贴链接</button>' : ''}
-        <button class="btn" type="button" data-material-upload="${id}">${isNew ? '创建并添加' : (ready[id] ? '更换' : '添加')}</button>
-        ${id === 'reference' && ready[id] && !reference.client_pending ? '<button class="material-remove" type="button" data-reference-remove aria-label="移除参考视频" title="移除参考视频">×</button>' : ''}
-      </span>
-    </div>`).join('');
 }
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
@@ -177,7 +154,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       <aside class="brief-side-column">
         <section class="card">
           <div class="card-head"><div><h2>参考材料</h2><p>这里放用于理解内容的参考视频和商品 / 服务主体图片。基础信息在左侧先确认；人物、场景和 LOGO 到资产中心分别建立。</p></div></div>
-          <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
+          <div class="card-body material-list">${renderBriefMaterialRows(bundle, route.isNew)}</div>
         </section>
         <section class="card brief-ai-recognition" aria-labelledby="brief-world-settings-title">
           <div class="card-head"><div><h2 id="brief-world-settings-title">AI 识别信息</h2><p>系统可根据内容目标和参考材料识别以下信息；识别结果会显示在这里，你也可以手动修改。</p></div></div>
@@ -187,7 +164,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     </div>
     </div>
     <div data-reference-understanding-host></div>
-    ${MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : (id === 'script' ? 'accept=".txt,.md,text/plain,text/markdown"' : 'accept="image/png,image/jpeg,image/webp"')}>`).join('')}`;
+    ${BRIEF_MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : 'accept="image/png,image/jpeg,image/webp"'}>`).join('')}`;
   const form = host.querySelector('[data-brief-form]');
   const briefSettingsAnchor = host.querySelector('[data-brief-settings-anchor]');
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
@@ -232,7 +209,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v228');
+    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v229');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
