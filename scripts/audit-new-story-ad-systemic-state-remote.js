@@ -6,7 +6,9 @@ const { connectionOptions } = require('./lib/vidoSshAuth');
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const port = Number(process.env.VIDO_DEPLOY_PORT || 2222);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
-const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/app';
+// Immutable releases run from /opt/vido/current. Auditing /opt/vido/app after
+// cutover reads the retired tree and its JSON fallback instead of production.
+const remoteRoot = process.env.VIDO_REMOTE_ROOT || '/opt/vido/current';
 
 function remoteAuditSource() {
   return String.raw`
@@ -39,7 +41,7 @@ console.log(JSON.stringify(report));
 function shellQuote(value) { return `'${String(value).replace(/'/g, `'"'"'`)}'`; }
 function buildRemoteCommand() {
   const encoded = Buffer.from(remoteAuditSource(), 'utf8').toString('base64');
-  return `cd ${shellQuote(remoteRoot)} && node -e ${shellQuote(`eval(Buffer.from('${encoded}','base64').toString('utf8'))`)}`;
+  return `cd ${shellQuote(remoteRoot)} && node scripts/run-with-pm2-env.js vido node -e ${shellQuote(`eval(Buffer.from('${encoded}','base64').toString('utf8'))`)}`;
 }
 
 function main() {
