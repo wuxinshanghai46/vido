@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "contract_version": "story-ad-golden-v1",
+  "projects": [
+    {
+      "id": "golden-commercial-car-v1",
+      "label": "红色电动跑车广告",
+      "request": {
+        "brief": "为用户确认的赤焰 E9 红色双门纯电跑车制作广告。两位朋友从城市展厅出发，分别在滨江道路、充电站和夜景天台体验车辆；参考视频只提供花朵绽放的节奏和转场灵感，绝不能把花朵改成广告主体。成片必须展示整车红色外观、充电动作、后备箱空间和品牌授权结尾。",
+        "brief_source": "user",
+        "content_mode": "commercial_subject",
+        "content_mode_source": "user",
+        "content_form": "commercial_live_action",
+        "production_mode": "narrative_live_action",
+        "industry_profile": "consumer_goods",
+        "product_subject": "赤焰 E9 红色双门纯电跑车",
+        "characters": [
+          { "id": "driver-lin", "name": "林澈", "role": "驾驶者" },
+          { "id": "friend-su", "name": "苏禾", "role": "同行朋友" }
+        ],
+        "cast_mode": "dual",
+        "expected_people": 2,
+        "reference_video_analysis": {
+          "summary": "花朵绽放参考视频，仅复用由静到动、近景到全景的节奏和柔和叠化转场。",
+          "subject": "花朵",
+          "reuse_scope": ["rhythm", "transition"],
+          "forbidden_scope": ["subject", "product", "brand", "story_fact"]
+        },
+        "brand_overlay": {
+          "enabled": true,
+          "authorization_confirmed": true,
+          "asset": { "id": "golden-brand-logo", "file_url": "/golden-assets/chiyan-e9-logo.png" },
+          "position": "bottom-right",
+          "end_duration_sec": 2
+        },
+        "target_duration": 15,
+        "output_ratio": "9:16"
+      },
+      "expected": {
+        "story_structure": "commercial_problem_proof_action",
+        "scene_prototype": "physical_evidence_space",
+        "required_final_proofs": ["advertised_subject", "value_proof", "authorized_brand_or_natural_ending"],
+        "required_facts": ["赤焰 E9", "红色双门纯电跑车", "充电", "后备箱"],
+        "reference_forbidden_subjects": ["花朵", "鲜花"],
+        "expected_people": 2,
+        "expected_animals": 0,
+        "min_scene_count": 3,
+        "replan_cycles": 3,
+        "allowed_model_variance": ["镜头措辞", "景别组合", "不改变事实的节奏微调"],
+        "ui_assertions": ["项目可从当前阶段继续", "用户原始需求可见且不可被模型覆盖", "三轮重规划均保留稳定主体与场景身份"],
+        "media_assertions": ["每个镜头均有审核通过的关键帧", "每个镜头均被审核通过的视频片段覆盖", "最终视频包含音频且技术质检通过"],
+        "forbidden_terms": ["百分百", "行业第一", "提升十倍"]
+      }
+    },
+    {
+      "id": "golden-narrative-reunion-v1",
+      "label": "真人重逢剧情",
+      "request": {
+        "brief": "两位多年未见的朋友林澈和苏禾带着一只橘猫阿橘在旧车站重逢。林澈必须在列车到站前决定是否说出当年的误会；故事依次造访候车厅、旧站台和雨夜出口，苏禾中途换上雨衣。橘猫是独立动物角色，不能被当作普通道具。结尾体现关系状态变化，不加入销售转化。",
+        "brief_source": "user",
+        "content_mode": "narrative_story",
+        "content_mode_source": "user",
+        "content_form": "narrative_live_action",
+        "production_mode": "narrative_live_action",
+        "industry_profile": "generic",
+        "characters": [
+          { "id": "story-lin", "name": "林澈", "role": "旧友" },
+          { "id": "story-su", "name": "苏禾", "role": "旧友" }
+        ],
+        "pet_profiles": [{ "id": "pet-orange-cat", "name": "阿橘", "species": "cat", "appearance": "橘色短毛猫" }],
+        "expected_people": 2,
+        "expected_animals": 1,
+        "cast_mode": "human_pet",
+        "target_duration": 20,
+        "output_ratio": "16:9"
+      },
+      "expected": {
+        "story_structure": "causal_character_arc",
+        "scene_prototype": "causal_story_world",
+        "required_final_proofs": ["causal_chain", "character_state_change", "resolved_or_intentional_ending"],
+        "required_facts": ["林澈", "苏禾", "阿橘", "旧车站", "雨衣"],
+        "expected_people": 2,
+        "expected_animals": 1,
+        "min_scene_count": 3,
+        "replan_cycles": 3,
+        "allowed_model_variance": ["对白措辞", "镜头景别", "不改变因果链的表演细节"],
+        "ui_assertions": ["项目可从当前阶段继续", "两人一猫分别显示为独立主体", "三轮重规划均保留稳定主体与场景身份"],
+        "media_assertions": ["人物与猫的关键帧身份一致", "剧情镜头均被视频片段覆盖", "最终视频音画时序和技术质检通过"],
+        "forbidden_terms": ["立即购买", "限时优惠", "扫码下单"]
+      }
+    },
+    {
+      "id": "golden-comic-homecoming-v1",
+      "label": "漫剧归家剧情",
+      "request": {
+        "brief": "原创少年角色在被洪水切断的纸灯城寻找回家路线，通过发现灯塔暗号、选择救助同伴并共同点亮回城信标完成因果闭环；保持角色服装、发色和画风一致。",
+        "brief_source": "user",
+        "content_mode": "narrative_story",
+        "content_mode_source": "user",
+        "content_form": "comic_narrative",
+        "production_mode": "comic_narrative",
+        "industry_profile": "generic",
+        "characters": [
+          { "id": "comic-boy", "name": "灯野", "role": "寻找归途的原创少年" }
+        ],
+        "cast_mode": "single",
+        "target_duration": 20,
+        "output_ratio": "9:16"
+      },
+      "expected": {
+        "story_structure": "panel_causal_arc",
+        "scene_prototype": "stylized_story_world",
+        "required_final_proofs": ["panel_readability", "character_identity", "causal_chain", "audio_visual_timing"],
+        "required_facts": ["原创少年", "纸灯城", "灯塔暗号", "同伴", "回城信标"],
+        "expected_people": 1,
+        "expected_animals": 0,
+        "min_scene_count": 3,
+        "replan_cycles": 3,
+        "allowed_model_variance": ["分镜构图", "对白措辞", "不改变因果链的风格化动作"],
+        "ui_assertions": ["项目可从当前阶段继续", "原创少年作为独立主体显示", "三轮重规划均保留稳定主体与场景身份"],
+        "media_assertions": ["角色服装发色和画风跨镜头一致", "分镜均被视频片段覆盖", "最终视频音画时序和技术质检通过"],
+        "forbidden_terms": ["立即购买", "真人实拍", "写实摄影"]
+      }
+    }
+  ]
+}
