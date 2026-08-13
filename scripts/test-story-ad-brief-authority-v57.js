@@ -172,7 +172,9 @@ assert.match(briefView, /请先选择“广告”或“剧情”，再使用 AI 
 assert.match(briefView, /content_mode: payload\.content_mode/);
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/);
 assert.match(briefView, /brief\.content_mode_source === 'user' && brief\.content_mode === 'narrative_story'/);
-assert.ok(briefView.indexOf('name="brief"') < briefView.indexOf('name="content_mode"'), '内容类型必须移动到内容目标下方');
+assert.ok(briefView.indexOf('name="project_name"') < briefView.indexOf('name="content_mode"'), '内容类型必须位于项目名称下方');
+assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="brief"'), '必须先选择内容类型，再填写内容目标');
+assert.ok(briefView.indexOf('<h2>参考材料</h2>') < briefView.indexOf('class="card brief-ai-recognition"'), '右侧必须先显示参考材料，再显示 AI 识别信息');
 assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自动识别广告主体后不得继续显示手工输入框');
 assert.match(briefView, /product_subject:\s*''/, '前端不得把旧主体值重新覆盖自动识别结果');
 assert.match(briefView, /promptDialog\(isStory \? 'AI 帮写剧情内容' : 'AI 帮写广告内容'/);
