@@ -672,6 +672,10 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
     storage.updateTask(taskId, { content_revision: nextRevision, current_snapshot_id: '' });
     revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
     storage.carryManifestRevision(taskId, nextRevision);
+    assetPlanPublication.carryForward(taskId, {
+      contentRevision: nextRevision,
+      reason: 'manual_blueprint_edit_preserves_upstream_plan',
+    });
     const snapshot = storage.saveSnapshot(taskId, {
       content_revision: nextRevision,
       status: 'manual_blueprint_edit',

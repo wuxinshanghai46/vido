@@ -92,6 +92,40 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
   return activePlan;
 }
 
+function carryForward(taskId, { contentRevision = 0, reason = '' } = {}) {
+  const task = storage.getTask(taskId);
+  const active = activeRecord(taskId);
+  const plan = active?.plan;
+  if (!task || !plan) return null;
+  const nextContentRevision = Math.max(1, Number(contentRevision || task.content_revision || 1) || 1);
+  const blockingIssues = planIssues({
+    task: { ...task, content_revision: Number(plan.content_revision || 1) || 1 },
+    context: storage.getOutput(taskId, 'context') || task.request || {},
+    plan,
+    fingerprint: active.fingerprint || plan.fingerprint || '',
+  }).filter(issue => issue !== 'active_plan_content_revision_mismatch');
+  if (blockingIssues.length) return null;
+  const carriedAt = new Date().toISOString();
+  const activeRevision = Math.max(1, Number(active.active_revision || plan.active_revision || 0) + 1);
+  const carriedPlan = {
+    ...plan,
+    content_revision: nextContentRevision,
+    active_revision: activeRevision,
+    carried_from_content_revision: Number(plan.content_revision || 1) || 1,
+    carried_forward_at: carriedAt,
+    carried_forward_reason: String(reason || ''),
+  };
+  storage.saveOutput(taskId, ACTIVE_KIND, {
+    ...active,
+    active_revision: activeRevision,
+    content_revision: nextContentRevision,
+    plan: carriedPlan,
+    carried_forward_at: carriedAt,
+    carried_forward_reason: String(reason || ''),
+  }, { content_revision: nextContentRevision });
+  return carriedPlan;
+}
+
 function eligibility(taskId, { fingerprint = '' } = {}) {
   const task = storage.getTask(taskId) || {};
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -121,5 +155,6 @@ module.exports = {
   activeRecord,
   planIssues,
   publish,
+  carryForward,
   eligibility,
 };

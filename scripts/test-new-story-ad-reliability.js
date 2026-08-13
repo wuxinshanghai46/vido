@@ -605,6 +605,33 @@ async function main() {
   assert.equal(freshBundle.storyboard_status.ready, true);
   assert.equal(freshBundle.storyboard_status.blueprint_revision, firstBlueprint.revision);
 
+  const planCarryTask = service.createTask({
+    content_mode: 'advertisement',
+    content_mode_source: 'user',
+    brief: '验证保存正式剧情不会破坏上游资产方案',
+    product_subject: '测试商品',
+    cast_mode: 'no_human',
+  }, owner).task;
+  storage.saveOutput(planCarryTask.id, 'context', {
+    content_mode: 'advertisement',
+    brief: '验证保存正式剧情不会破坏上游资产方案',
+    product_subject: '测试商品',
+    cast_mode: 'no_human',
+  });
+  const planPublication = require('../src/services/newStoryAd/assetPlanPublicationService');
+  planPublication.publish(planCarryTask.id, { cast_profiles: [], scene_plan: { spaces: [] } }, {
+    fingerprint: 'unchanged-upstream-input',
+    source: 'reliability_test',
+  });
+  service.updateBlueprint(planCarryTask.id, {
+    story_title: '正式广告剧情',
+    beats: [{ title: '开场', visual: '商品进入画面', action: '完成展示' }],
+  }, owner);
+  const carriedPlan = planPublication.activeRecord(planCarryTask.id);
+  assert.equal(carriedPlan.content_revision, storage.getTask(planCarryTask.id).content_revision);
+  assert.equal(carriedPlan.plan.content_revision, storage.getTask(planCarryTask.id).content_revision);
+  assert.equal(planPublication.eligibility(planCarryTask.id, { fingerprint: 'unchanged-upstream-input' }).eligible, true);
+
   let resumedCheckpoint = null;
   const resumedStoryboard = await storyboardTable.generateStoryboardTable({
     brief: '通用断点恢复测试',
