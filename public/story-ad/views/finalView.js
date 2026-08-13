@@ -1,4 +1,5 @@
 import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260813-sr5-v1';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260813-sr7-v1';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
@@ -83,7 +84,7 @@ export async function mount(host, context) {
     </section>
     <details class="card generation-section generation-details">
       <summary class="card-head"><div><h2>关键帧</h2><p>已加载 ${keyframes.length}/${keyframeTotal} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
-      <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${mediaCatalog.keyframes?.has_more ? '<div class="form-actions"><button class="btn" type="button" data-load-more-media="keyframes">继续加载关键帧</button></div>' : ''}` : emptyState({
+      <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${moreMediaButton(mediaCatalog.keyframes, 'keyframes', '继续加载关键帧')}` : emptyState({
         title: '还没有关键帧',
         body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成文字分镜和镜头设计。',
         action: shots.length ? '生成关键帧' : '返回分镜台',
@@ -92,7 +93,7 @@ export async function mount(host, context) {
     </details>
     <section class="card generation-section">
       <div class="card-head"><div><h2>视频片段</h2><p>已加载 ${clips.length}/${clipTotal}</p></div></div>
-      <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${mediaCatalog.clips?.has_more ? '<div class="form-actions"><button class="btn" type="button" data-load-more-media="clips">继续加载视频片段</button></div>' : ''}` : emptyState({
+      <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${moreMediaButton(mediaCatalog.clips, 'clips', '继续加载视频片段')}` : emptyState({
         title: '还没有视频片段',
         body: keyframes.length ? '先通过视频预检，再提交付费视频生成。' : '关键帧准备完成后才能进入视频生成。',
       })}</div>
@@ -115,17 +116,7 @@ export async function mount(host, context) {
   host.querySelector('[data-empty-action="back-storyboard"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
   host.querySelector('[data-generate-tts]')?.addEventListener('click', event => run(event.currentTarget, 'tts', '正在提交…', '配音任务已提交。'));
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在提交…', '成片合成任务已提交。'));
-  host.querySelectorAll('[data-load-more-media]').forEach(button => button.addEventListener('click', async event => {
-    const target = event.currentTarget;
-    try {
-      setButtonBusy(target, true, '正在加载…');
-      await store.loadMoreMedia(target.dataset.loadMoreMedia, 24);
-      await context.refreshCurrentView();
-    } catch (error) {
-      toast(error.message, 'danger');
-      setButtonBusy(target, false);
-    }
-  }));
+  bindMoreMedia(host, context);
 
   host.querySelector('[data-generate-video]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

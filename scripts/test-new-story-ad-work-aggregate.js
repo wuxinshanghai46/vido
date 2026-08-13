@@ -25,13 +25,13 @@ try {
 
   storage.updateTask('work-1', { content_revision: 2, request: { brief: '修改需求', brief_source: 'user' } });
   storage.saveOutput('work-1', 'context', { brief: '修改需求', brief_source: 'user', scene_assets: [] }, { content_revision: 2 });
-  const updated = works.syncFromTask('work-1', { domains: ['brief'], commandId: 'brief-save-1', expectedVersion: 1 });
+  const updated = storage.getWork('work-1');
   assert.strictEqual(updated.aggregate_version, 2);
   assert.strictEqual(updated.domain_revisions.brief, created.domain_revisions.brief + 1);
   assert.strictEqual(updated.domain_revisions.scenes, created.domain_revisions.scenes);
   assert(updated.invalidated_domains.includes('compose'));
   assert(!updated.invalidated_domains.includes('brief'));
-  assert.strictEqual(works.syncFromTask('work-1', { domains: ['brief'], commandId: 'brief-save-1' }).aggregate_version, 2, '幂等命令不得增加版本');
+  assert.strictEqual(works.syncFromTask('work-1', { domains: ['brief'], commandId: 'brief-save-1' }).aggregate_version, 2, '已由最早写入同步的数据不得重复增加版本');
   assert.throws(
     () => works.syncFromTask('work-1', { domains: ['storyboard'], commandId: 'stale', expectedVersion: 1 }),
     error => error.code === 'WORK_VERSION_CONFLICT',
@@ -39,11 +39,12 @@ try {
   assert.deepStrictEqual(works.compareWithTask('work-1').issues, []);
   assert.strictEqual(storage.listWorkEvents('work-1').length, 2);
   storage.updateTask('work-1', { content_revision: 3, request: { brief: '第三版需求', brief_source: 'user' } });
-  storage.saveOutput('work-1', 'context', { brief: '第三版需求', brief_source: 'user', scene_assets: [] }, { content_revision: 3 });
   const originalUpdate = storage.updateWork;
   storage.updateWork = () => { throw Object.assign(new Error('shadow unavailable'), { code: 'SHADOW_DOWN' }); };
-  const safeFailure = works.syncShadowSafely('work-1', { domains: ['brief'], commandId: 'safe-failure' });
+  storage.saveOutput('work-1', 'context', { brief: '第三版需求', brief_source: 'user', scene_assets: [] }, { content_revision: 3 });
   storage.updateWork = originalUpdate;
+  const safeFailure = works.compareWithTask('work-1');
+  assert.strictEqual(safeFailure.ok, false, '影子同步失败必须保留可审计差异而不得伪装为一致');
   assert.strictEqual(safeFailure.ok, false, '影子同步失败必须显式记录但不得推翻旧权威写入');
   const shadowStage = storage.getTaskBundle('work-1').stages.find(stage => stage.stage === 'work_shadow_sync');
   assert.strictEqual(shadowStage.status, 'failed');

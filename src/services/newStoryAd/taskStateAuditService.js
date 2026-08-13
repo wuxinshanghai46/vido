@@ -108,6 +108,8 @@ function auditSnapshot(db = {}) {
       manifest_count: manifests.length,
       work_count: works.length,
       work_event_count: workEvents.length,
+      authoritative_work_count: works.filter(work => text(work.mode) === 'authoritative').length,
+      shadow_work_count: works.filter(work => text(work.mode) !== 'authoritative').length,
       task_without_work_count: tasks.filter(task => !works.some(work => text(work.id || work.task_id) === text(task.id))).length,
       active_generation_count: taskAudits.reduce((sum, task) => sum + task.active_generation_count, 0),
       unknown_billing_count: taskAudits.reduce((sum, task) => sum + task.unknown_billing_count, 0),

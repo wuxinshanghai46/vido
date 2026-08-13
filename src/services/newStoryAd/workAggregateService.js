@@ -24,12 +24,16 @@ function domainPayloads(task = {}, outputs = []) {
       content_mode: clean(context.content_mode),
       target_duration: Number(context.target_duration || 0) || 0,
       output_ratio: clean(context.output_ratio),
+      context,
     },
     subjects: {
       people: context.cast_profiles || context.people || [],
       pets: context.pet_profiles || context.pets || [],
       product: context.product_contract || context.product_subject || null,
       props: byKind.prop_assets || context.prop_assets || [],
+      person_contract: byKind.person_contract || null,
+      subject_assets: byKind.subject_assets || null,
+      product_asset: byKind.product_asset || null,
     },
     scenes: {
       plan: byKind.scene_config || context.scene_plan || null,
@@ -37,7 +41,10 @@ function domainPayloads(task = {}, outputs = []) {
     },
     blueprint: byKind.blueprint || null,
     storyboard: byKind.storyboard_table || [],
-    audio: byKind.tts_audio || null,
+    audio: {
+      tts_audio: byKind.tts_audio || null,
+      sound_journey: byKind.sound_journey || null,
+    },
     video: byKind.video_clips || [],
     compose: byKind.final_video || null,
   };
@@ -51,7 +58,7 @@ function initialRevisions(payloads = {}) {
   const revisions = zeroRevisions();
   DOMAIN_KEYS.forEach(key => {
     const value = payloads[key];
-    const present = Array.isArray(value) ? value.length > 0 : Boolean(value && (typeof value !== 'object' || Object.keys(value).length));
+    const present = Array.isArray(value) ? value.length > 0 : Boolean(value && (typeof value !== 'object' || Object.values(value).some(item => item !== null && item !== undefined && (!Array.isArray(item) || item.length))));
     revisions[key] = present ? 1 : 0;
   });
   return revisions;
@@ -222,6 +229,108 @@ function syncShadowSafely(taskId, options = {}) {
   }
 }
 
+const OUTPUT_DOMAIN_MAP = Object.freeze({
+  context: ['brief', 'context'],
+  person_contract: ['subjects', 'person_contract'],
+  subject_assets: ['subjects', 'subject_assets'],
+  prop_assets: ['subjects', 'props'],
+  product_asset: ['subjects', 'product_asset'],
+  scene_config: ['scenes', 'plan'],
+  scene_assets: ['scenes', 'assets'],
+  blueprint: ['blueprint', 'value'],
+  storyboard_table: ['storyboard', 'value'],
+  tts_audio: ['audio', 'tts_audio'],
+  sound_journey: ['audio', 'sound_journey'],
+  video_clips: ['video', 'value'],
+  final_video: ['compose', 'value'],
+});
+
+function outputDomain(kind = '') { return OUTPUT_DOMAIN_MAP[String(kind || '')] || null; }
+
+function outputFromWork(work = {}, kind = '') {
+  const mapping = outputDomain(kind);
+  if (!mapping) return undefined;
+  const [domain, field] = mapping;
+  const payload = work.domain_payloads?.[domain];
+  if (field === 'value') return payload;
+  return payload?.[field];
+}
+
+function authoritativeOutput(taskId, kind = '') {
+  const work = storage.getWork(taskId);
+  if (!work || work.mode !== 'authoritative') return { authoritative: false, value: undefined };
+  const mapping = outputDomain(kind);
+  if (!mapping) return { authoritative: false, value: undefined };
+  return { authoritative: true, value: outputFromWork(work, kind) ?? null };
+}
+
+function writeAuthoritativeOutput(taskId, kind, payload, { commandId = '' } = {}) {
+  const work = storage.getWork(taskId);
+  if (!work || work.mode !== 'authoritative') return null;
+  const mapping = outputDomain(kind);
+  if (!mapping) return work;
+  const [domain, field] = mapping;
+  const currentDomain = work.domain_payloads?.[domain];
+  const nextDomain = field === 'value'
+    ? payload
+    : { ...(currentDomain && typeof currentDomain === 'object' ? currentDomain : {}), [field]: payload };
+  const fingerprint = payloadFingerprint(nextDomain);
+  if (work.domain_fingerprints?.[domain] === fingerprint) return work;
+  const impact = dependencyService.affectedDomains([domain], work.dependency_graph || DEPENDENCIES);
+  const aggregateVersion = Number(work.aggregate_version || 0) + 1;
+  const nextRevisions = { ...zeroRevisions(), ...(work.domain_revisions || {}), [domain]: Number(work.domain_revisions?.[domain] || 0) + 1 };
+  const next = storage.updateWork(taskId, {
+    aggregate_version: aggregateVersion,
+    domain_payloads: { ...(work.domain_payloads || {}), [domain]: nextDomain },
+    domain_fingerprints: { ...(work.domain_fingerprints || {}), [domain]: fingerprint },
+    domain_revisions: nextRevisions,
+    invalidated_domains: impact.invalidated,
+    last_command_id: clean(commandId || `authoritative:${kind}:${fingerprint.slice(0, 20)}`),
+    last_command_at: now(),
+  }, { expected_version: work.aggregate_version });
+  storage.appendWorkEvent(taskId, {
+    aggregate_version: aggregateVersion,
+    command_id: next.last_command_id,
+    type: 'work.authoritative_output_written',
+    output_kind: String(kind),
+    changed_domains: [domain],
+    invalidated_domains: impact.invalidated,
+    domain_revisions: { [domain]: nextRevisions[domain] },
+    occurred_at: now(),
+  });
+  return next;
+}
+
+function promoteToAuthoritative(taskId) {
+  const comparison = compareWithTask(taskId);
+  if (!comparison.comparable || !comparison.ok) {
+    const error = new Error(`Work 与旧输出尚未一致，禁止切换权威读取：${comparison.issues.join(', ')}`);
+    error.code = 'WORK_AUTHORITY_PARITY_REQUIRED';
+    error.status = 409;
+    error.retryable = false;
+    error.issues = comparison.issues;
+    throw error;
+  }
+  const work = storage.getWork(taskId);
+  if (work.mode === 'authoritative') return work;
+  const aggregateVersion = Number(work.aggregate_version || 0) + 1;
+  const next = storage.updateWork(taskId, {
+    mode: 'authoritative',
+    aggregate_version: aggregateVersion,
+    authority_promoted_at: now(),
+    last_command_id: `authority_promoted:v${aggregateVersion}`,
+    last_command_at: now(),
+  }, { expected_version: work.aggregate_version });
+  storage.appendWorkEvent(taskId, {
+    aggregate_version: aggregateVersion,
+    command_id: next.last_command_id,
+    type: 'work.authority_promoted',
+    changed_domains: [],
+    occurred_at: now(),
+  });
+  return next;
+}
+
 module.exports = {
   DEPENDENCIES,
   DOMAIN_KEYS,
@@ -233,4 +342,10 @@ module.exports = {
   payloadFingerprint,
   syncFromTask,
   syncShadowSafely,
+  OUTPUT_DOMAIN_MAP,
+  outputDomain,
+  outputFromWork,
+  authoritativeOutput,
+  writeAuthoritativeOutput,
+  promoteToAuthoritative,
 };

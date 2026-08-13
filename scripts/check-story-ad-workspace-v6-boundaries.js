@@ -106,7 +106,8 @@ function main() {
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorld(?:View|Page)/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file));
+  const mediaLazyJsFiles = allJsFiles.filter(file => /(?:finalView|mediaCatalogStore|finalMediaPagination)/.test(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -119,6 +120,7 @@ function main() {
   const panoramaLazyJsBytes = panoramaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const sceneWorldLazyJsBytes = sceneWorldLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dossierLazyJsBytes = dossierLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const mediaLazyJsBytes = mediaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
   const coreJsGzip = gzipBytes(coreJsFiles);
   const lazyJsGzip = gzipBytes(lazyJsFiles);
@@ -132,6 +134,7 @@ function main() {
   const panoramaLazyJsGzip = gzipBytes(panoramaLazyJsFiles);
   const sceneWorldLazyJsGzip = gzipBytes(sceneWorldLazyJsFiles);
   const dossierLazyJsGzip = gzipBytes(dossierLazyJsFiles);
+  const mediaLazyJsGzip = gzipBytes(mediaLazyJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
   // Keep the initial 100 KiB gate strict; the total source budget includes the
@@ -159,6 +162,8 @@ function main() {
   assert(sceneWorldLazyJsGzip <= 15 * 1024, `场景世界按需模块 gzip ${sceneWorldLazyJsGzip} bytes 超过 15 KiB`);
   assert(dossierLazyJsBytes <= 24 * 1024, `场景档案按需模块 ${dossierLazyJsBytes} bytes 超过 24 KiB`);
   assert(dossierLazyJsGzip <= 9 * 1024, `场景档案按需模块 gzip ${dossierLazyJsGzip} bytes 超过 9 KiB`);
+  assert(mediaLazyJsBytes <= 16 * 1024, `最终成片与媒体分页按需模块 ${mediaLazyJsBytes} bytes 超过 16 KiB`);
+  assert(mediaLazyJsGzip <= 6 * 1024, `最终成片与媒体分页按需模块 gzip ${mediaLazyJsGzip} bytes 超过 6 KiB`);
   assert(lazyJsBytes <= 780 * 1024, `3D导演台懒加载 JS ${lazyJsBytes} bytes 超过 780 KiB`);
   assert(lazyJsGzip <= 200 * 1024, `3D导演台懒加载 gzip ${lazyJsGzip} bytes 超过 200 KiB`);
 

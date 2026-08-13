@@ -497,8 +497,18 @@ function saveOutput(taskId, kind, payload, options = {}) {
   if (expectedRevision && expectedRevision !== currentRevision) {
     throw staleGenerationError(taskId, expectedRevision, currentRevision);
   }
+  const works = require('./workAggregateService');
+  const currentWork = getWork(taskId);
+  const authoritativeMapped = currentWork?.mode === 'authoritative' && works.outputDomain(kind);
+  if (authoritativeMapped) {
+    works.writeAuthoritativeOutput(taskId, kind, payload, {
+      commandId: `output:${String(kind)}:${canonicalFingerprint(payload).slice(0, 20)}`,
+    });
+  }
   const id = `${taskId}:${kind}`;
-  const saved = writeRow('outputs', mergedRow('outputs', id, { task_id: taskId, kind, payload }));
+  const saved = authoritativeMapped
+    ? { id, task_id: taskId, kind, payload, authority: 'work', updated_at: nowIso() }
+    : writeRow('outputs', mergedRow('outputs', id, { task_id: taskId, kind, payload }));
   if (task?.lineage_enforced === true) {
     const snapshotId = String(
       options.snapshot_id
@@ -516,10 +526,27 @@ function saveOutput(taskId, kind, payload, options = {}) {
     });
     publishArtifact(taskId, kind, artifact, { content_revision: expectedRevision || currentRevision });
   }
+  if (options.skip_work_sync !== true && !authoritativeMapped) {
+    const domainByKind = {
+      context: 'brief', person_contract: 'subjects', subject_assets: 'subjects', prop_assets: 'subjects', product_asset: 'subjects',
+      scene_config: 'scenes', scene_assets: 'scenes', blueprint: 'blueprint', storyboard_table: 'storyboard',
+      tts_audio: 'audio', sound_journey: 'audio', video_clips: 'video', final_video: 'compose',
+    };
+    const domain = domainByKind[String(kind || '')];
+    if (domain) {
+      // Lazy import avoids storage -> aggregate -> storage initialization cycles.
+      works.syncShadowSafely(taskId, {
+        domains: [domain],
+        commandId: `output:${String(kind)}:${canonicalFingerprint(payload).slice(0, 20)}`,
+      });
+    }
+  }
   return saved;
 }
 
 function getOutput(taskId, kind) {
+  const authoritative = require('./workAggregateService').authoritativeOutput(taskId, kind);
+  if (authoritative.authoritative) return authoritative.value;
   const task = getTask(taskId);
   if (task?.lineage_enforced === true) {
     const generation = cancellation.current();
@@ -585,8 +612,59 @@ function deleteOutput(taskId, kind) {
   deleteOutputs(taskId, [kind]);
 }
 
+function pruneLegacyOutputRows(taskId, kinds = []) {
+  const uniqueKinds = new Set((Array.isArray(kinds) ? kinds : [kinds]).map(String).filter(Boolean));
+  if (!uniqueKinds.size) return 0;
+  const ids = [...uniqueKinds].map(kind => `${taskId}:${kind}`);
+  let removed = 0;
+  if (useSqlite()) {
+    ensureDbSeeded();
+    const existing = ids.filter(id => getRow('outputs', id));
+    contentRecords.removeMany(COLLECTIONS.outputs, existing);
+    removed = existing.length;
+    if (dbConfig().dualWrite) {
+      const idSet = new Set(existing);
+      mutateJson('outputs', list => {
+        for (let index = list.length - 1; index >= 0; index -= 1) {
+          if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
+        }
+      });
+    }
+    return removed;
+  }
+  const idSet = new Set(ids);
+  mutateJson('outputs', list => {
+    for (let index = list.length - 1; index >= 0; index -= 1) {
+      if (idSet.has(String(list[index]?.id || ''))) {
+        list.splice(index, 1);
+        removed += 1;
+      }
+    }
+  });
+  return removed;
+}
+
 function listOutputs(taskId) {
-  return listRows('outputs', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId));
+  const legacy = listRows('outputs', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId));
+  const work = getWork(taskId);
+  if (!work || work.mode !== 'authoritative') return legacy;
+  const works = require('./workAggregateService');
+  const mappedKinds = Object.keys(works.OUTPUT_DOMAIN_MAP);
+  const projected = mappedKinds.map(kind => {
+    const value = works.outputFromWork(work, kind);
+    if (value === undefined || value === null) return null;
+    return {
+      id: `${taskId}:${kind}`,
+      task_id: String(taskId),
+      kind,
+      payload: value,
+      authority: 'work',
+      created_at: work.created_at || '',
+      updated_at: work.updated_at || '',
+    };
+  }).filter(Boolean);
+  const mapped = new Set(mappedKinds);
+  return [...legacy.filter(row => !mapped.has(String(row.kind || ''))), ...projected];
 }
 
 function createWork(work = {}) {
@@ -790,6 +868,7 @@ module.exports = {
   getOutput,
   deleteOutput,
   deleteOutputs,
+  pruneLegacyOutputRows,
   listOutputs,
   createWork,
   getWork,
