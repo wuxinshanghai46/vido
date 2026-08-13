@@ -24,6 +24,9 @@ assert(source.includes('test-story-ad-workspace-v6-ui-regressions.js'), '家庭�
 assert(source.includes("targetedHomeGate ? 'targeted_passed' : 'passed'"), '发布输出必须区分定向门禁与完整门禁');
 assert(source.includes("process.env.VIDO_DEPLOY_TARGETED_GATE === '1'"), '非标准主机名环境必须支持显式启用定向门禁');
 
+assert(source.includes('readlink -f ${quote(`${previousTarget}/outputs`)}'), 'shared outputs must resolve to the canonical directory instead of chaining release symlinks');
+assert(source.includes('if test ! -e ${quote(`${stagingDir}/outputs`)} && test -e'), 'shared outputs link must only be created when the source exists and the destination is absent');
+
 const parseJsonStart = source.indexOf('function parseJson(output) {');
 const parseJsonEnd = source.indexOf('\n}\n', parseJsonStart) + 2;
 assert(parseJsonStart >= 0 && parseJsonEnd > parseJsonStart, '部署器必须保留独立 JSON 解析函数');
@@ -39,4 +42,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 16, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted' }));
+console.log(JSON.stringify({ passed: true, checks: 18, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted', canonical_shared_outputs: true }));

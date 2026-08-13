@@ -273,8 +273,8 @@ client.on('ready', async () => {
       }
       await exec([
         `test ! -e ${quote(`${stagingDir}/node_modules`)} && ln -s ${quote(`${dependencyDir}/node_modules`)} ${quote(`${stagingDir}/node_modules`)}`,
-        `test ! -e ${quote(`${stagingDir}/.env`)} && test ! -e ${quote(`${previousTarget}/.env`)} || ln -s ${quote(`${previousTarget}/.env`)} ${quote(`${stagingDir}/.env`)}`,
-        `test ! -e ${quote(`${stagingDir}/outputs`)} && test ! -e ${quote(`${previousTarget}/outputs`)} || ln -s ${quote(`${previousTarget}/outputs`)} ${quote(`${stagingDir}/outputs`)}`,
+        `if test ! -e ${quote(`${stagingDir}/.env`)} && test -e ${quote(`${previousTarget}/.env`)}; then ln -s "$(readlink -f ${quote(`${previousTarget}/.env`)})" ${quote(`${stagingDir}/.env`)}; fi`,
+        `if test ! -e ${quote(`${stagingDir}/outputs`)} && test -e ${quote(`${previousTarget}/outputs`)}; then ln -s "$(readlink -f ${quote(`${previousTarget}/outputs`)})" ${quote(`${stagingDir}/outputs`)}; fi`,
         `mv ${quote(stagingDir)} ${quote(releaseDir)}`,
       ].join(' && '));
     }
