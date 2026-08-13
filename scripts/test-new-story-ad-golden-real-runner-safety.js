@@ -20,15 +20,16 @@ assert.match(source, /actual_provider_charge_rmb: null/);
 assert.match(source, /assertBudget\(1\)/);
 assert.match(source, /gatewayCallsStarted \+ 1/);
 assert.match(source, /modelGateway\.generateText = async/);
-assert.match(source, /walkAuditFiles\(auditBase\)/);
-assert.match(source, /priorReservedRmb \+ \(gatewayCallsStarted \+ 1\)/);
-assert.match(source, /fs\.openSync\(budgetLockPath, 'wx'\)/);
+assert.match(source, /paidBudget\.ledgerSummary/);
+assert.match(source, /paidBudget\.assertWithinBudget/);
+assert.match(source, /paidBudget\.acquire/);
 assert.doesNotMatch(source, /generateKeyframesStage|generateVideoStage|composeStage/);
 const isolatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-golden-budget-test-'));
 try {
   const priorRoot = path.join(isolatedRoot, 'outputs', 'audits', 'golden-real-text', 'prior');
   fs.mkdirSync(priorRoot, { recursive: true });
   fs.writeFileSync(path.join(priorRoot, 'audit.json'), JSON.stringify({
+    evidence_class: 'real_candidate_release_text_only',
     status: 'failed',
     run_model_calls_started: 10,
     run_reserved_rmb: 10,
@@ -50,15 +51,13 @@ try {
   assert.match(`${escaped.stdout}${escaped.stderr}`, /REAL_GOLDEN_AUDIT_DIR_MUST_STAY_IN_GLOBAL_LEDGER/);
   assert.strictEqual(fs.existsSync(outsideAudit), false);
 
-  fs.writeFileSync(path.join(priorRoot, 'audit.json'), JSON.stringify({ run_reserved_rmb: 0 }), 'utf8');
-  const lockPath = path.join(isolatedRoot, 'outputs', 'audits', 'golden-real-text', '.paid-run.lock');
-  fs.writeFileSync(lockPath, JSON.stringify({ pid: 999999, acquired_at: 'test' }), 'utf8');
-  const concurrent = spawnSync(process.execPath, [script, '--confirm-paid', '--budget-rmb=10'], {
-    cwd: isolatedRoot,
-    encoding: 'utf8',
-  });
+  fs.writeFileSync(path.join(priorRoot, 'audit.json'), JSON.stringify({ evidence_class: 'real_candidate_release_text_only', run_reserved_rmb: 0 }), 'utf8');
+  const lockPath = path.join(isolatedRoot, 'outputs', 'audits', '.golden-paid-run.lock');
+  fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+  fs.writeFileSync(lockPath, JSON.stringify({ pid: process.pid, acquired_at: 'test' }), 'utf8');
+  const concurrent = spawnSync(process.execPath, [script, '--confirm-paid', '--budget-rmb=10'], { cwd: isolatedRoot, encoding: 'utf8' });
   assert.notStrictEqual(concurrent.status, 0);
-  assert.match(`${concurrent.stdout}${concurrent.stderr}`, /REAL_GOLDEN_PAID_RUN_ALREADY_ACTIVE_OR_REQUIRES_RECONCILIATION/);
+  assert.match(`${concurrent.stdout}${concurrent.stderr}`, /REAL_GOLDEN_PAID_RUN_ALREADY_ACTIVE/);
 } finally {
   fs.rmSync(isolatedRoot, { recursive: true, force: true });
 }

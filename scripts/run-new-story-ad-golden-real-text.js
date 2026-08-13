@@ -4,6 +4,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const paidBudget = require('./lib/goldenPaidBudget');
 
 function argument(name, fallback = '') {
   const prefix = `--${name}=`;
@@ -14,14 +15,6 @@ function stamp() { return new Date().toISOString().replace(/[-:.TZ]/g, '').slice
 function rows(value) { return Array.isArray(value) ? value : []; }
 function clean(value = '') { return String(value ?? '').trim(); }
 function persist(file, value) { fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
-function walkAuditFiles(directory) {
-  if (!fs.existsSync(directory)) return [];
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
-    const target = path.join(directory, entry.name);
-    return entry.isDirectory() ? walkAuditFiles(target) : (entry.name === 'audit.json' ? [target] : []);
-  });
-}
-
 if (!process.argv.includes('--confirm-paid')) throw new Error('REAL_GOLDEN_PAID_CONFIRMATION_REQUIRED');
 const budgetRmb = Number(argument('budget-rmb', '0'));
 if (!(budgetRmb > 0) || budgetRmb > 10) throw new Error('REAL_GOLDEN_BUDGET_MUST_BE_BETWEEN_0_AND_10_RMB');
@@ -33,32 +26,13 @@ const auditRelative = path.relative(auditBase, auditRoot);
 if (auditRelative.startsWith('..') || path.isAbsolute(auditRelative)) {
   throw new Error('REAL_GOLDEN_AUDIT_DIR_MUST_STAY_IN_GLOBAL_LEDGER');
 }
-const priorAudits = walkAuditFiles(auditBase).map(file => {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
-}).filter(Boolean);
-const priorReservedRmb = priorAudits.reduce((sum, item) => {
-  const value = Number(item.run_reserved_rmb ?? item.conservative_reserved_rmb ?? 0);
-  return sum + (Number.isFinite(value) && value > 0 ? value : 0);
-}, 0);
+const ledger = paidBudget.ledgerSummary({ excludeAuditPath: path.join(auditRoot, 'audit.json') });
+const priorAudits = ledger.entries.map(entry => entry.audit);
+const priorReservedRmb = ledger.reserved_rmb;
 if (priorReservedRmb >= budgetRmb) throw new Error('REAL_GOLDEN_GLOBAL_BUDGET_EXHAUSTED');
-const budgetLockPath = path.join(auditBase, '.paid-run.lock');
 fs.mkdirSync(auditBase, { recursive: true });
-let budgetLockFd;
-try {
-  budgetLockFd = fs.openSync(budgetLockPath, 'wx');
-  fs.writeFileSync(budgetLockFd, `${JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() })}\n`, 'utf8');
-} catch (error) {
-  if (error?.code === 'EEXIST') throw new Error('REAL_GOLDEN_PAID_RUN_ALREADY_ACTIVE_OR_REQUIRES_RECONCILIATION');
-  throw error;
-}
-function releaseBudgetLock() {
-  if (budgetLockFd !== undefined) {
-    try { fs.closeSync(budgetLockFd); } catch {}
-    budgetLockFd = undefined;
-  }
-  try { fs.unlinkSync(budgetLockPath); } catch {}
-}
-process.once('exit', releaseBudgetLock);
+const budgetLock = paidBudget.acquire({ auditPath: path.join(auditRoot, 'audit.json') });
+const releaseBudgetLock = budgetLock.release;
 const temporaryOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-golden-real-text-'));
 fs.mkdirSync(auditRoot, { recursive: true });
 process.env.OUTPUT_DIR = temporaryOutput;
@@ -69,6 +43,8 @@ process.env.DB_JSON_FALLBACK = '1';
 process.env.NEW_STORY_AD_TEXT_MAX_CANDIDATES = '1';
 const settingsSource = path.join(process.cwd(), 'outputs', 'settings.json');
 if (fs.existsSync(settingsSource)) fs.copyFileSync(settingsSource, path.join(temporaryOutput, 'settings.json'));
+const pipelineSource = path.join(process.cwd(), 'outputs', 'pipeline_model_config.json');
+if (fs.existsSync(pipelineSource)) fs.copyFileSync(pipelineSource, path.join(temporaryOutput, 'pipeline_model_config.json'));
 
 const contracts = require('../src/services/newStoryAd/goldenProjectContractService');
 const storage = require('../src/services/newStoryAd/storageService');
@@ -114,8 +90,12 @@ const service = require('../src/services/newStoryAd');
 const works = require('../src/services/newStoryAd/workAggregateService');
 
 function assertBudget(additionalCalls = 1) {
-  const reserved = priorReservedRmb + (gatewayCallsStarted + additionalCalls) * reservePerTextCallRmb;
-  if (reserved > budgetRmb) throw Object.assign(new Error('REAL_GOLDEN_BUDGET_EXHAUSTED'), { code: 'REAL_GOLDEN_BUDGET_EXHAUSTED' });
+  paidBudget.assertWithinBudget({
+    authorizedLimitRmb: budgetRmb,
+    priorReservedRmb,
+    runReservedRmb: gatewayCallsStarted * reservePerTextCallRmb,
+    nextReserveRmb: additionalCalls * reservePerTextCallRmb,
+  });
 }
 function modelCalls(taskId) { return storage.getTaskBundle(taskId, { diagnostics: true }).model_calls; }
 function subjectCounts(context = {}) {

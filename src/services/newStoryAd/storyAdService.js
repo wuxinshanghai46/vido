@@ -2214,9 +2214,11 @@ function buildVideoPreflightPlan(taskId, options = {}) {
   const statuses = videoAdapter.listVideoShotStatuses(taskId, shots.length);
   const clips = videoClipStatusRecovery.recover(storedClips, statuses);
   let pinnedModel = null;
+  let pinnedModelError = null;
   try {
     pinnedModel = videoAdapter.resolvePinnedVideoModel(options, clips);
-  } catch {
+  } catch (error) {
+    pinnedModelError = error;
     pinnedModel = videoAdapter.videoCandidates(options, { includeCircuitOpen: true })[0] || null;
   }
   const providerRoute = pinnedModel ? `${String(pinnedModel.provider_id || '').toLowerCase()}/${String(pinnedModel.model_id || '').toLowerCase()}` : '';
@@ -2241,6 +2243,13 @@ function buildVideoPreflightPlan(taskId, options = {}) {
     compatibilityReport = nextReport;
   }
   plan.compatibility_report = compatibilityReport; plan.expected_lineages = expectedLineages; videoPrivacyRetryPolicy.applyPrivacyRetryBlockers({ plan, statuses, expectedLineages });
+  if (!pinnedModel && pinnedModelError) {
+    plan.blockers.push({
+      code: pinnedModelError.code || 'VIDEO_MODEL_CONFIG_REQUIRED',
+      message: cleanText(pinnedModelError.message || '指定的视频模型路由不可用，已在供应商提交前停止。', 500),
+    });
+    plan.status = plan.zero_cost_action_count > 0 ? 'partial_ready' : 'blocked';
+  }
   if (appliedCompatibilityFingerprint !== (compatibilityReport?.fingerprint || '')) { plan.blockers.push({ code: 'VIDEO_ARTIFACT_PLAN_UNSTABLE', message: '视频产物兼容方案未能稳定收敛，已在供应商提交前停止。' }); plan.status = 'blocked'; }
   const authorizedExecutionPlan = {
     ...executionPlan,
@@ -2270,7 +2279,7 @@ function buildVideoPreflightPlan(taskId, options = {}) {
       message: `检测到 ${executionPlan.summary.high_risk_unit_count} 个高复杂度生成单元，付费提交前必须确认动画预演和镜头拆分。`,
     });
   }
-  if (plan.paid_unit_count > 0 && !costPlan.price_known) {
+  if (plan.paid_unit_count > 0 && pinnedModel && !costPlan.price_known) {
     plan.blockers.push({
       code: 'VIDEO_COST_PRICE_UNKNOWN',
       message: '当前视频模型没有可信的人民币计费单价，已停止付费生成。请先由管理员补充价格配置。',

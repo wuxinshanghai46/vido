@@ -72,6 +72,29 @@ function applyImageModelPolicy(stage = '', candidates = []) {
   return requiredModel ? list.filter(model => preferredMatches(model, requiredModel)) : list;
 }
 
+function selectImageCandidates(stage = '', requested = 'auto', candidates = []) {
+  const policyCandidates = applyImageModelPolicy(stage, candidates);
+  const requiredModel = requiredImageModelForStage(stage);
+  const requestedValue = String(requested || '').trim();
+  const explicit = requestedValue && requestedValue.toLowerCase() !== 'auto';
+  const preferred = explicit ? requestedValue : requiredModel;
+  const preferredCandidates = preferred
+    ? policyCandidates.filter(model => preferredMatches(model, preferred))
+    : policyCandidates;
+  const exactRouteRequested = explicit && requestedValue.includes('/');
+  return {
+    requiredModel,
+    requested: requestedValue,
+    preferred,
+    preferredCandidates,
+    candidates: policyCandidates,
+    candidatePool: exactRouteRequested
+      ? preferredCandidates
+      : (preferredCandidates.length ? preferredCandidates : policyCandidates),
+    exactRouteRequested,
+  };
+}
+
 function availableImageCandidates(stage) {
   return applyImageModelPolicy(stage, stageCandidates(stage))
     .filter(model => !modelGateway.healthState(model).circuit_open)
@@ -590,16 +613,9 @@ async function generateImage({
   timeoutMs = Number(process.env.NEW_STORY_AD_IMAGE_TIMEOUT_MS) || (5 * 60 * 1000),
 } = {}) {
   if (process.env.NEW_STORY_AD_MOCK_IMAGE === '1') return writeMockSvg(filename || `${stage}_${Date.now()}`, prompt);
-  const candidates = applyImageModelPolicy(stage, stageCandidates(stage));
   const requestedPreferred = String(imageModel || '').trim();
-  const requiredModel = requiredImageModelForStage(stage);
-  const preferred = requiredModel || requestedPreferred;
-  const preferredCandidates = preferred && preferred !== 'auto'
-    ? candidates.filter(m => preferredMatches(m, preferred))
-    : candidates;
-  const candidatePool = requiredModel
-    ? preferredCandidates
-    : (preferredCandidates.length ? preferredCandidates : candidates);
+  const selection = selectImageCandidates(stage, requestedPreferred, stageCandidates(stage));
+  const { candidates, requiredModel, preferred, preferredCandidates, candidatePool, exactRouteRequested } = selection;
   const availability = imageCandidateAvailability(candidatePool, singleAttempt ? 1 : IMAGE_MAX_CANDIDATES);
   const filtered = availability.available;
   const candidateSummary = candidates.map(modelKey).filter(Boolean).join(', ');
@@ -612,6 +628,7 @@ async function generateImage({
       enforced_image_model: requiredModel || '',
       image_model: preferred || 'auto',
       preferred_matched: preferredCandidates.map(modelKey).filter(Boolean),
+      exact_route_requested: exactRouteRequested,
       candidates: candidates.map(modelKey).filter(Boolean),
     }));
   }
@@ -764,12 +781,22 @@ async function generateImage({
               onSubmitted,
               timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
             })
-            : client.images.generate({
-              model: config.modelId,
-              prompt: genericPrompt,
-              size: sizeFor(config, aspectRatio),
-              n: 1,
-            }, { signal: cancellation.signal() }),
+            : (async () => {
+              await notifyGenerationObserver(onSubmitting, {
+                clientRequestId, status: 'submitting', submittedAt: new Date().toISOString(),
+              });
+              const generated = await client.images.generate({
+                model: config.modelId,
+                prompt: genericPrompt,
+                size: sizeFor(config, aspectRatio),
+                n: 1,
+              }, { signal: cancellation.signal() });
+              await notifyGenerationObserver(onSubmitted, {
+                clientRequestId, providerRequestId: String(generated?._request_id || ''),
+                status: 'completed', submittedAt: new Date().toISOString(),
+              });
+              return generated;
+            })(),
         ),
       );
       cancellation.throwIfCancelled(taskId);
@@ -939,6 +966,7 @@ module.exports = {
   imageConfigStage,
   requiredImageModelForStage,
   applyImageModelPolicy,
+  selectImageCandidates,
   invokeWithAuditSafeRetry,
   availableImageCandidates,
   imageCandidateAvailability,
