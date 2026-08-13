@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260813-ui-v239';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v239';
-import { confirmDialog } from '../components/dialog.js?v=20260813-ui-v239';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260813-ui-v239';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v239';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260813-ui-v239';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260813-ui-v239';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260813-ui-v239';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260813-ui-v239';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260813-ui-v239';
-import { assetPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260813-ui-v239';
+import { request } from '../api.js?v=20260813-ui-v240';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v240';
+import { confirmDialog } from '../components/dialog.js?v=20260813-ui-v240';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260813-ui-v240';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v240';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260813-ui-v240';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260813-ui-v240';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260813-ui-v240';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260813-ui-v240';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260813-ui-v240';
+import { assetPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260813-ui-v240';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -61,7 +61,18 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       id: target.subject_id || target.profile?.id || '',
       index,
     };
-    payload.subject_targets = selected.id ? [selected] : [];
+    const pending = [
+      ...people.map((item, pendingIndex) => ({ item, kind: 'human', index: pendingIndex })),
+      ...animals.map((item, pendingIndex) => ({ item, kind: 'pet', index: pendingIndex })),
+    ].filter(entry => entry.kind === 'human'
+      ? subjectNeedsGeneration(entry.item, 'human')
+      : subjectNeedsGeneration(entry.item, 'pet'));
+    payload.subject_targets = [selected, ...pending.map(entry => ({
+      kind: entry.kind,
+      id: entry.item.subject_id || entry.item.profile?.id || '',
+      index: entry.index,
+    }))].filter((entry, entryIndex, entries) => entry.id
+      && entries.findIndex(candidate => candidate.kind === entry.kind && candidate.id === entry.id) === entryIndex);
     payload.regenerate_selected = true;
     payload.resume_partial_checkpoint = target.partial_checkpoint === true;
     payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
@@ -73,7 +84,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       ? subjectNeedsGeneration(entry.item, 'human')
       : subjectNeedsGeneration(entry.item, 'pet'));
     if (pending.length) {
-      payload.subject_targets = pending.slice(0, 1).map(entry => ({
+      payload.subject_targets = pending.map(entry => ({
         kind: entry.kind,
         id: entry.item.subject_id || entry.item.profile?.id || '',
         index: entry.index,
@@ -205,7 +216,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260813-ui-v239');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260813-ui-v240');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -230,7 +241,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260813-ui-v239'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260813-ui-v240'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -248,7 +259,7 @@ export async function mount(host, context) {
     </section>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
-      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${generationActive || !missingSubjectCount ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '逐个生成人物 / 动物'}</button></div>
+      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${generationActive || !missingSubjectCount ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '生成全部缺失人物 / 动物'}</button></div>
     </section>` : assetPlanBlockedView(planEligibility, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
@@ -269,7 +280,7 @@ export async function mount(host, context) {
     const validation = generationValidation(payload);
     if (validation) { toast(validation, 'warning'); return false; }
     const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
-    const regeneratingCompletePerson = group === 'people' && personAssetState(target || {}) === 'complete_dossier';
+    const regeneratingCompletePerson = selected === 1 && group === 'people' && personAssetState(target || {}) === 'complete_dossier';
     const lookCount = payload.cast_profiles.reduce((sum, profile) => sum + Math.max(1, profile.look_profiles?.length || 0), 0);
     const lookNotice = lookCount > payload.expected_people ? `当前 ${payload.expected_people} 个人物共包含 ${lookCount} 套造型；每套造型会分别生成独立档案并产生相应模型调用。\n\n` : '';
     const confirmationBase = regeneratingCompletePerson
@@ -281,7 +292,7 @@ export async function mount(host, context) {
       lane: 'subjects',
       subjectId: target?.subject_id || target?.profile?.id || '',
       message: confirmation,
-      title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产'),
+      title: regeneratingCompletePerson ? `重生成${target.name}的完整人物档案` : (selected > 1 ? '生成缺失人物 / 动物资产' : (target ? `生成${target.name}的完整资产` : '生成人物 / 动物资产')),
       confirmText: regeneratingCompletePerson ? '确认重生成完整档案' : '确认开始生成',
     });
     if (!confirmationResult.accepted) return false;

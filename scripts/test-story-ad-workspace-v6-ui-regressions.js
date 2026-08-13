@@ -117,6 +117,8 @@ assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名�
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
 assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
+assert.match(briefView, /brief_source:\s*'user'/, '新建项目时必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
+assert.match(assets, /生成全部缺失人物 \/ 动物/, '主体批量入口必须如实说明会生成全部缺失主体，不得误写为逐个生成');
 assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
 assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜/, '目标页必须解释 AI 帮写的结构与职责边界');
 assert.match(briefView, /brief-config-section full/, '基础信息必须使用独立设置分区，不能继续平铺在旧表单网格');
@@ -577,8 +579,7 @@ const precisePayload = assetModule.subjectGenerationPayload({
     animals: [],
   },
 }, { id: 'selected-legacy', asset_id: 'selected-legacy', subject_id: 'person-selected' }, 'request-1');
-assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected'], '单人物生成必须只提交当前选中人物，不得连带任何其他缺失主体');
-assert(!precisePayload.subject_targets.some(item => item.id === 'person-unselected'), '未选历史人物必须原样保留，避免额外付费');
+assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected', 'person-unselected', 'person-missing'], '首次生成必须明确提交同批全部缺失主体，界面确认数量必须与后端完整资产合同一致');
 
 const unverifiedProductCard = assetModule.assetCard({ id: 'product-1', name: '商品图', image_url: '/product.png', status: 'unverified' }, 'products');
 assert.match(unverifiedProductCard, /data-verify-product="product-1"/);
@@ -739,6 +740,7 @@ assert.match(workflowCss, /\.graph-node \.node-media-summary\s*\{[^}]*-webkit-li
 assert.match(workflowCss, /\.node-readable-section > p\s*\{[^}]*white-space:\s*pre-wrap/s);
 
 const uiSource = read('public/story-ad/components/ui.js').replace(/\bexport\s+/g, '');
+assert.match(uiSource, /SUBJECT_REUSE_ASSET_MISSING[\s\S]*生成全部缺失人物 \/ 动物/, '主体缺失复用资产时必须在界面显示可执行解决方式');
 const sandbox = {};
 vm.runInNewContext(`${uiSource}\nglobalThis.__mediaPreview = mediaPreview; globalThis.__generationProgressPanel = generationProgressPanel; globalThis.__formatElapsedText = formatElapsedText; globalThis.__elapsedMilliseconds = elapsedMilliseconds; globalThis.__setButtonBusy = setButtonBusy;`, sandbox, { filename: 'story-ad-ui-contract.js' });
 assert.equal(sandbox.__formatElapsedText(65000), '1分05秒');
