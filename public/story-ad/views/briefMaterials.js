@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260813-sr9-v7';
+import { escapeHtml } from '../components/ui.js?v=20260814-sr9-v8';
 
 export const BRIEF_MATERIALS = [
   ['reference', '参考视频', '上传视频或粘贴公开链接，系统会识别可见人物、场景、动作与广告主体'],
