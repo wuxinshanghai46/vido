@@ -24,6 +24,22 @@ assert.equal(commercial.content_mode, 'commercial_subject');
 assert.match(commercial.prompt_pack, /commercial/);
 assert.notEqual(commercial.prompt_pack, narrative.prompt_pack);
 
+const abbreviatedCommercial = artifacts.tagBlueprint({
+  content_mode: 'commercial_subject',
+  content_mode_source: 'user',
+  product_subject: '高性能红色电动跑车',
+}, {
+  beats: [{ visual: '红色电动跑车驶入雨后街道，车身稳定通过弯道。' }],
+});
+assert.equal(abbreviatedCommercial.content_mode, 'commercial_subject');
+assert.throws(() => artifacts.tagBlueprint({
+  content_mode: 'commercial_subject',
+  content_mode_source: 'user',
+  product_subject: '高性能红色电动跑车',
+}, {
+  beats: [{ visual: '红色的花朵在清晨缓慢绽放。' }],
+}), error => error?.code === 'CONTENT_DOMAIN_QA_FAILED');
+
 assert.throws(() => artifacts.tagBlueprint(narrativeContext, {
   beats: [{ plot: '立即购买并下单。' }],
 }), error => error?.code === 'CONTENT_DOMAIN_QA_FAILED');
