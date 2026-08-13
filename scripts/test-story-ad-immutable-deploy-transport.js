@@ -18,6 +18,8 @@ assert(source.includes('restoreSystemicBackup();'), 'deployment rollback must re
 assert(source.includes("VIDO_IMMUTABLE_CANDIDATE_ONLY === '1'"), 'immutable deploy must support server-side candidate verification without cutover');
 assert(source.indexOf('if (candidateOnly)') < source.indexOf("setReleaseControl('draining'"), 'candidate-only mode must exit before draining, migration, or cutover');
 assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration must pass a post-write audit before cutover');
+assert(source.includes('VIDO_IMMUTABLE_BASE_RELEASE') && source.includes('fs.linkSync(source,destination)'), 'immutable deployment must reuse only manifest-listed files from a verified base release');
+assert(source.includes('const queue = stagedAudit.mismatches.slice()'), 'immutable deployment must upload only hash mismatches after safe reuse');
 
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');
 assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希审计必须从清单文件读取');

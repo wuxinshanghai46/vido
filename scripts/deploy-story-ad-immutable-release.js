@@ -47,6 +47,10 @@ const uploadConcurrency = Math.max(1, Math.min(8, Number(
   process.env.VIDO_IMMUTABLE_UPLOAD_CONCURRENCY || process.env.VIDO_DEPLOY_UPLOAD_CONCURRENCY,
 ) || 3));
 const candidateOnly = process.env.VIDO_IMMUTABLE_CANDIDATE_ONLY === '1';
+const baseReleaseDir = String(process.env.VIDO_IMMUTABLE_BASE_RELEASE || '').trim();
+if (baseReleaseDir && !/^\/opt\/vido\/releases\/[a-f0-9]{64}$/.test(baseReleaseDir)) {
+  throw new Error('VIDO_IMMUTABLE_BASE_RELEASE must identify an immutable release directory');
+}
 const client = new Client();
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const candidateName = `vido-candidate-${artifactId.slice(0, 12)}`;
@@ -298,9 +302,28 @@ client.on('ready', async () => {
     if (!exists) {
       reportPhase('artifact_upload', { files: files.length, upload_concurrency: uploadConcurrency });
       await exec(`mkdir -p ${quote(stagingDir)}`);
+      if (baseReleaseDir) {
+        const baseExists = (await exec(`test -d ${quote(baseReleaseDir)} && echo yes || echo no`)).trim() === 'yes';
+        if (!baseExists) throw new Error(`IMMUTABLE_BASE_RELEASE_MISSING: ${baseReleaseDir}`);
+        await exec(`node -e ${quote(`
+          const fs=require('fs'),path=require('path');
+          const spec=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
+          const base=process.argv[2],target=process.argv[3];
+          let reused=0;
+          for(const file of spec.files){
+            const source=path.join(base,file),destination=path.join(target,file);
+            if(!fs.existsSync(source)) continue;
+            fs.mkdirSync(path.dirname(destination),{recursive:true});
+            fs.linkSync(source,destination); reused+=1;
+          }
+          console.log(JSON.stringify({reused}));
+        `)} ${quote(remoteAuditSpecPath)} ${quote(baseReleaseDir)} ${quote(stagingDir)}`);
+      }
       const directories = [...new Set(files.map(file => path.posix.dirname(file)).filter(dir => dir !== '.'))];
       await exec(`mkdir -p ${directories.map(dir => quote(`${stagingDir}/${dir}`)).join(' ')}`);
-      const queue = files.slice();
+      const stagedAudit = await remoteHashAudit(stagingDir);
+      const queue = stagedAudit.mismatches.slice();
+      reportPhase('artifact_delta', { reused: files.length - queue.length, upload: queue.length });
       await Promise.all(Array.from({ length: Math.min(uploadConcurrency, queue.length) }, async () => {
         while (queue.length) {
           const file = queue.shift();
