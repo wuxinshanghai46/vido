@@ -73,6 +73,10 @@ const NON_RUNTIME_PATHS = [
   /^src\/outputs(?:\/|$)/i,
   /(?:^|\/)recovery-backups(?:\/|$)/i,
   /^public\/dashboard-clean-demo\.html?$/i,
+  // Kept in Git temporarily for migration regressions, but the server returns
+  // 410 for this URL and the current workspace must never ship the 6,399-line
+  // retired client as executable production content.
+  /^public\/js\/new-story-ad-legacy-ui\.js$/i,
 ];
 
 function isRuntimeReleaseFile(file = '') {

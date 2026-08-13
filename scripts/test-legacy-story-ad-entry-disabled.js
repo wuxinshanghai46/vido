@@ -9,6 +9,7 @@ const html = read('public/digital-human.html');
 const ui = read('public/js/digital-human.js');
 const css = read('public/css/digital-human.css');
 const server = read('src/server.js');
+const releaseFiles = require('./lib/storyAdReleaseFiles');
 
 assert(!html.includes('data-tab="luxury-ad"'), '左侧导航不得保留旧剧情广告 DOM 入口');
 assert(!html.includes('data-task-type="luxury_ad"'), '任务中心不得保留旧剧情广告筛选入口');
@@ -26,6 +27,7 @@ assert(server.includes("['luxury-ad', 'luxury_ad', 'new-story-ad', 'new_story_ad
 assert(server.includes("? `/story-ad/projects/${encodeURIComponent(taskId)}"), '旧任务深链必须保留任务 ID 并进入独立新版工作台');
 assert(server.includes("app.get(['/luxury-ad', '/luxury-ad.html']"), '旧独立页面地址必须重定向到当前剧情广告');
 assert(server.includes("code: 'LEGACY_STORY_AD_DISABLED'"), '旧剧情广告 API 必须继续返回永久下线错误');
+assert.strictEqual(releaseFiles.isRuntimeReleaseFile('public/js/new-story-ad-legacy-ui.js'), false, '旧客户端源码不得进入生产运行闭包');
 
 const firstInlineScript = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
 assert(firstInlineScript, '页面必须保留首屏路由脚本');

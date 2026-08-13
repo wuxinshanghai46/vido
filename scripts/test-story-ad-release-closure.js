@@ -51,12 +51,15 @@ function main() {
     'public/dashboard-clean-demo.html',
     'public/recovery-backups/example.js',
     'src/routes/recovery-backups/example.js',
+    'public/js/new-story-ad-legacy-ui.js',
   ].forEach(file => {
     assert(!selected.has(file), `发布集合不得包含本地数据、演示页或恢复备份：${file}`);
     assert(!runtimeSelected.has(file), `运行时清单不得包含本地数据、演示页或恢复备份：${file}`);
   });
   assert(isRuntimeReleaseFile('src/server.js'), '真实运行模块必须保留');
   assert(isRuntimeReleaseFile('public/story-ad/index.html'), '剧情广告静态入口必须保留');
+  assert(!isRuntimeReleaseFile('public/js/new-story-ad-legacy-ui.js'), '已停用旧剧情广告客户端不得进入生产运行闭包');
+  assert(!selected.has('public/js/new-story-ad-legacy-ui.js'), '410 旧客户端源码不得被打入不可变制品');
   const attributes = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8');
   assert(attributes.includes('*.htm text eol=lf'), 'Windows fresh clone 必须固定 .htm 为 LF，避免运行清单哈希漂移');
   packageTestFiles(root).forEach(file => assert(selected.has(file), `生产回归脚本漏发：${file}`));
