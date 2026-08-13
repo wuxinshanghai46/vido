@@ -1367,7 +1367,8 @@ async function main() {
       stageBudgetMs: 300000,
       _candidateModels: [
         { provider_id: 'timeout-provider', model_id: 'slow-primary' },
-        { provider_id: 'backup-provider', model_id: 'fast-secondary' },
+        { provider_id: 'invalid-provider', model_id: 'malformed-secondary' },
+        { provider_id: 'backup-provider', model_id: 'fast-tertiary' },
       ],
       _generateText: async ({ model }) => {
         synthesisBudgetAttempts.push(`${model.provider_id}/${model.model_id}`);
@@ -1378,15 +1379,27 @@ async function main() {
           error.retryable = true;
           throw error;
         }
+        if (model.provider_id === 'invalid-provider') {
+          synthesisBudgetClock += 1000;
+          return { text: '{"semantic":"incomplete"}', adapter: 'test' };
+        }
         synthesisBudgetClock += 1000;
         return { text: '{"ok":true}', adapter: 'test' };
+      },
+      validateText: (_text, meta) => {
+        if (meta.model.provider_id !== 'invalid-provider') return true;
+        const error = new Error('simulated semantic contract validation failure');
+        error.code = 'PROVIDER_RESPONSE_INVALID';
+        error.retryable = true;
+        throw error;
       },
     });
     assert.deepStrictEqual(synthesisBudgetAttempts, [
       'timeout-provider/slow-primary',
-      'backup-provider/fast-secondary',
-    ], '首个语义模型耗尽120秒后必须继续尝试备用模型');
-    assert.strictEqual(synthesisBudgetResult.used_model, 'backup-provider/fast-secondary');
+      'invalid-provider/malformed-secondary',
+      'backup-provider/fast-tertiary',
+    ], '语义阶段必须在超时和结构无效后依次切换到下一候选');
+    assert.strictEqual(synthesisBudgetResult.used_model, 'backup-provider/fast-tertiary');
   } finally {
     Date.now = originalNow;
     process.env.NEW_STORY_AD_MOCK_LLM = synthesisBudgetMockFlag;

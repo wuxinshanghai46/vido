@@ -14,6 +14,7 @@ const TEXT_STAGE_BUDGET_MS = Math.max(15000, Math.min(300000, Number(process.env
 const REFERENCE_SYNTHESIS_STAGE = 'new_story_ad.reference_video_synthesis';
 const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
+  REFERENCE_SYNTHESIS_STAGE,
   'new_story_ad.assist',
   'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
