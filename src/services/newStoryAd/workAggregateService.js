@@ -301,6 +301,60 @@ function writeAuthoritativeOutput(taskId, kind, payload, { commandId = '' } = {}
   return next;
 }
 
+function deleteAuthoritativeOutputs(taskId, kinds = [], { commandId = '' } = {}) {
+  const work = storage.getWork(taskId);
+  if (!work || work.mode !== 'authoritative') return { authoritative: false, deleted: [], work };
+  const requested = [...new Set((Array.isArray(kinds) ? kinds : [kinds]).map(clean).filter(Boolean))];
+  const mappings = requested.map(kind => ({ kind, mapping: outputDomain(kind) })).filter(item => item.mapping);
+  if (!mappings.length) return { authoritative: true, deleted: [], work };
+  const nextPayloads = { ...(work.domain_payloads || {}) };
+  const nextFingerprints = { ...(work.domain_fingerprints || {}) };
+  const nextRevisions = { ...zeroRevisions(), ...(work.domain_revisions || {}) };
+  const changedDomains = new Set();
+  const deleted = [];
+  mappings.forEach(({ kind, mapping: [domain, field] }) => {
+    const currentDomain = nextPayloads[domain];
+    if (field === 'value') {
+      if (currentDomain === null || currentDomain === undefined) return;
+      nextPayloads[domain] = null;
+    } else {
+      if (!currentDomain || typeof currentDomain !== 'object' || currentDomain[field] === null || currentDomain[field] === undefined) return;
+      nextPayloads[domain] = { ...currentDomain, [field]: null };
+    }
+    deleted.push(kind);
+    changedDomains.add(domain);
+  });
+  if (!deleted.length) return { authoritative: true, deleted: [], work };
+  changedDomains.forEach(domain => {
+    nextFingerprints[domain] = payloadFingerprint(nextPayloads[domain]);
+    nextRevisions[domain] = Number(nextRevisions[domain] || 0) + 1;
+  });
+  const changed = [...changedDomains];
+  const impact = dependencyService.affectedDomains(changed, work.dependency_graph || DEPENDENCIES);
+  const aggregateVersion = Number(work.aggregate_version || 0) + 1;
+  const fingerprint = payloadFingerprint(deleted);
+  const next = storage.updateWork(taskId, {
+    aggregate_version: aggregateVersion,
+    domain_payloads: nextPayloads,
+    domain_fingerprints: nextFingerprints,
+    domain_revisions: nextRevisions,
+    invalidated_domains: [...new Set([...(work.invalidated_domains || []), ...changed, ...impact.invalidated])],
+    last_command_id: clean(commandId || `authoritative:delete:${fingerprint.slice(0, 20)}`),
+    last_command_at: now(),
+  }, { expected_version: work.aggregate_version });
+  storage.appendWorkEvent(taskId, {
+    aggregate_version: aggregateVersion,
+    command_id: next.last_command_id,
+    type: 'work.authoritative_outputs_deleted',
+    output_kinds: deleted,
+    changed_domains: changed,
+    invalidated_domains: impact.invalidated,
+    domain_revisions: Object.fromEntries(changed.map(domain => [domain, nextRevisions[domain]])),
+    occurred_at: now(),
+  });
+  return { authoritative: true, deleted, work: next };
+}
+
 function promoteToAuthoritative(taskId) {
   const comparison = compareWithTask(taskId);
   if (!comparison.comparable || !comparison.ok) {
@@ -331,6 +385,14 @@ function promoteToAuthoritative(taskId) {
   return next;
 }
 
+function initializeAuthoritativeWork(taskId) {
+  ensureShadowWork(taskId);
+  syncFromTask(taskId, { domains: DOMAIN_KEYS, commandId: 'task_create_authoritative_sync' });
+  const promoted = promoteToAuthoritative(taskId);
+  storage.pruneLegacyOutputRows(taskId, Object.keys(OUTPUT_DOMAIN_MAP));
+  return promoted;
+}
+
 module.exports = {
   DEPENDENCIES,
   DOMAIN_KEYS,
@@ -347,5 +409,7 @@ module.exports = {
   outputFromWork,
   authoritativeOutput,
   writeAuthoritativeOutput,
+  deleteAuthoritativeOutputs,
   promoteToAuthoritative,
+  initializeAuthoritativeWork,
 };

@@ -38,18 +38,49 @@ try {
   );
   assert.deepStrictEqual(works.compareWithTask('work-1').issues, []);
   assert.strictEqual(storage.listWorkEvents('work-1').length, 2);
-  storage.updateTask('work-1', { content_revision: 3, request: { brief: '第三版需求', brief_source: 'user' } });
+
+  storage.saveOutput('work-1', 'tts_audio', { tracks: [{ id: 'voice-1' }] }, { content_revision: 2 });
+  storage.saveOutput('work-1', 'sound_journey', { cues: [{ id: 'rain' }] }, { content_revision: 2 });
+  storage.saveOutput('work-1', 'video_clips', [{ id: 'clip-1' }], { content_revision: 2 });
+  storage.saveOutput('work-1', 'final_video', { filename: 'final.mp4' }, { content_revision: 2 });
+  works.promoteToAuthoritative('work-1');
+  storage.pruneLegacyOutputRows('work-1', Object.keys(works.OUTPUT_DOMAIN_MAP));
+  assert.deepStrictEqual(storage.getOutput('work-1', 'video_clips'), [{ id: 'clip-1' }]);
+  assert.deepStrictEqual(storage.getOutput('work-1', 'final_video'), { filename: 'final.mp4' });
+  const beforeDeleteWork = storage.getWork('work-1');
+  storage.deleteOutputs('work-1', ['video_clips', 'final_video', 'tts_audio']);
+  assert.strictEqual(storage.getOutput('work-1', 'video_clips'), null);
+  assert.strictEqual(storage.getOutput('work-1', 'final_video'), null);
+  assert.strictEqual(storage.getOutput('work-1', 'tts_audio'), null);
+  assert.deepStrictEqual(storage.getOutput('work-1', 'sound_journey'), { cues: [{ id: 'rain' }] }, '删除配音不得误删同一 audio 域的声音旅程');
+  const deletedWork = storage.getWork('work-1');
+  assert.strictEqual(deletedWork.domain_revisions.video, beforeDeleteWork.domain_revisions.video + 1);
+  assert.strictEqual(deletedWork.domain_revisions.compose, beforeDeleteWork.domain_revisions.compose + 1);
+  assert.strictEqual(deletedWork.domain_revisions.audio, beforeDeleteWork.domain_revisions.audio + 1);
+  assert(deletedWork.invalidated_domains.includes('compose'));
+  assert.strictEqual(storage.listWorkEvents('work-1').at(-1).type, 'work.authoritative_outputs_deleted');
+  const deleteVersion = deletedWork.aggregate_version;
+  storage.deleteOutputs('work-1', ['video_clips', 'final_video', 'tts_audio']);
+  assert.strictEqual(storage.getWork('work-1').aggregate_version, deleteVersion, '重复删除必须幂等');
+
+  storage.createTask({
+    id: 'work-shadow-failure', brief: '影子故障前', user_id: 'user-1', content_revision: 1, lineage_enforced: true,
+    request: { brief: '影子故障前', brief_source: 'user', target_duration: 30, output_ratio: '9:16' },
+  });
+  storage.saveOutput('work-shadow-failure', 'context', { brief: '影子故障前', brief_source: 'user', scene_assets: [] });
+  works.ensureShadowWork('work-shadow-failure');
+  storage.updateTask('work-shadow-failure', { content_revision: 2, request: { brief: '影子故障后', brief_source: 'user' } });
   const originalUpdate = storage.updateWork;
   storage.updateWork = () => { throw Object.assign(new Error('shadow unavailable'), { code: 'SHADOW_DOWN' }); };
-  storage.saveOutput('work-1', 'context', { brief: '第三版需求', brief_source: 'user', scene_assets: [] }, { content_revision: 3 });
+  storage.saveOutput('work-shadow-failure', 'context', { brief: '影子故障后', brief_source: 'user', scene_assets: [] }, { content_revision: 2 });
   storage.updateWork = originalUpdate;
-  const safeFailure = works.compareWithTask('work-1');
+  const safeFailure = works.compareWithTask('work-shadow-failure');
   assert.strictEqual(safeFailure.ok, false, '影子同步失败必须保留可审计差异而不得伪装为一致');
   assert.strictEqual(safeFailure.ok, false, '影子同步失败必须显式记录但不得推翻旧权威写入');
-  const shadowStage = storage.getTaskBundle('work-1').stages.find(stage => stage.stage === 'work_shadow_sync');
+  const shadowStage = storage.getTaskBundle('work-shadow-failure').stages.find(stage => stage.stage === 'work_shadow_sync');
   assert.strictEqual(shadowStage.status, 'failed');
   assert.strictEqual(shadowStage.diagnostics.model_calls_started, 0);
-  console.log(JSON.stringify({ passed: true, aggregate_version: updated.aggregate_version, brief_revision: updated.domain_revisions.brief, idempotent: true, stale_write_blocked: true, precise_invalidation: true, shadow_failure_isolated: true }));
+  console.log(JSON.stringify({ passed: true, aggregate_version: updated.aggregate_version, brief_revision: updated.domain_revisions.brief, idempotent: true, stale_write_blocked: true, precise_invalidation: true, authoritative_delete_verified: true, composite_domain_preserved: true, shadow_failure_isolated: true }));
 } finally {
   fs.rmSync(outputDir, { recursive: true, force: true });
 }

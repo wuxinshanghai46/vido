@@ -58,6 +58,7 @@ const productionLimits = require('./productionLimitsService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const voicePlan = require('./voicePlanService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
+const workAggregate = require('./workAggregateService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -250,6 +251,7 @@ function createTask(body = {}, user = {}) {
     snapshot_id: snapshot.id,
     input_fingerprint: snapshot.input_fingerprint,
   });
+  workAggregate.initializeAuthoritativeWork(id);
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
   return { task: storage.getTask(id), context: ctx, content_revision: 1, acknowledged_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0) };
 }

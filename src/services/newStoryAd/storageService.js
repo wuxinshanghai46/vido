@@ -595,6 +595,10 @@ function getOutput(taskId, kind) {
 function deleteOutputs(taskId, kinds = []) {
   const uniqueKinds = [...new Set((Array.isArray(kinds) ? kinds : [kinds]).map(String).filter(Boolean))];
   if (!uniqueKinds.length) return [];
+  const works = require('./workAggregateService');
+  const authoritativeDeletion = works.deleteAuthoritativeOutputs(taskId, uniqueKinds, {
+    commandId: `outputs:delete:${canonicalFingerprint(uniqueKinds).slice(0, 20)}`,
+  });
   const ids = uniqueKinds.map(kind => `${taskId}:${kind}`);
   if (useSqlite()) {
     ensureDbSeeded();
@@ -629,7 +633,9 @@ function deleteOutputs(taskId, kinds = []) {
     });
     saveManifest(taskId, { content_revision: Number(task.content_revision || 1) || 1, artifacts, invalidated });
   }
-  return uniqueKinds;
+  return authoritativeDeletion.authoritative
+    ? [...new Set([...uniqueKinds, ...authoritativeDeletion.deleted])]
+    : uniqueKinds;
 }
 
 function deleteOutput(taskId, kind) {
