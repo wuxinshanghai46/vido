@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-sr9-v9';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr9-v9';
-import { confirmDialog } from '../components/dialog.js?v=20260814-sr9-v9';
+import { request } from '../api.js?v=20260814-sr9-v10';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr9-v10';
+import { confirmDialog } from '../components/dialog.js?v=20260814-sr9-v10';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
