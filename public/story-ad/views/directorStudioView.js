@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260813-sr9-v5';
-import { request, uploadAsset } from '../api.js?v=20260813-sr9-v5';
-import { escapeHtml, toast } from '../components/ui.js?v=20260813-sr9-v5';
+import * as THREE from '../vendor/three.module.min.js?v=20260813-sr9-v6';
+import { request, uploadAsset } from '../api.js?v=20260813-sr9-v6';
+import { escapeHtml, toast } from '../components/ui.js?v=20260813-sr9-v6';
 
 const VERSION = '20260803-photoreal-director-v8';
 
