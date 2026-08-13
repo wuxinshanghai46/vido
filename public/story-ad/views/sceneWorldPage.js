@@ -1,6 +1,6 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260813-sr9-v2';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-sr9-v2';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-sr9-v2';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260813-sr9-v4';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-sr9-v4';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-sr9-v4';
 
 function sceneGenerationQueue(bundle = {}) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
