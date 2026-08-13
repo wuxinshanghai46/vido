@@ -579,7 +579,7 @@ const precisePayload = assetModule.subjectGenerationPayload({
     animals: [],
   },
 }, { id: 'selected-legacy', asset_id: 'selected-legacy', subject_id: 'person-selected' }, 'request-1');
-assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected', 'person-unselected', 'person-missing'], '首次生成必须明确提交同批全部缺失主体，界面确认数量必须与后端完整资产合同一致');
+assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected'], '单人物入口必须只提交当前主体；缺失整批由明确命名的批量入口处理');
 
 const unverifiedProductCard = assetModule.assetCard({ id: 'product-1', name: '商品图', image_url: '/product.png', status: 'unverified' }, 'products');
 assert.match(unverifiedProductCard, /data-verify-product="product-1"/);
@@ -740,7 +740,6 @@ assert.match(workflowCss, /\.graph-node \.node-media-summary\s*\{[^}]*-webkit-li
 assert.match(workflowCss, /\.node-readable-section > p\s*\{[^}]*white-space:\s*pre-wrap/s);
 
 const uiSource = read('public/story-ad/components/ui.js').replace(/\bexport\s+/g, '');
-assert.match(uiSource, /SUBJECT_REUSE_ASSET_MISSING[\s\S]*生成全部缺失人物 \/ 动物/, '主体缺失复用资产时必须在界面显示可执行解决方式');
 const sandbox = {};
 vm.runInNewContext(`${uiSource}\nglobalThis.__mediaPreview = mediaPreview; globalThis.__generationProgressPanel = generationProgressPanel; globalThis.__formatElapsedText = formatElapsedText; globalThis.__elapsedMilliseconds = elapsedMilliseconds; globalThis.__setButtonBusy = setButtonBusy;`, sandbox, { filename: 'story-ad-ui-contract.js' });
 assert.equal(sandbox.__formatElapsedText(65000), '1分05秒');

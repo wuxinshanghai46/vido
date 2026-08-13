@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260813-ui-v240';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v240';
-import { confirmDialog } from '../components/dialog.js?v=20260813-ui-v240';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260813-ui-v240';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v240';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260813-ui-v240';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260813-ui-v240';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260813-ui-v240';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260813-ui-v240';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260813-ui-v240';
-import { assetPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260813-ui-v240';
+import { request } from '../api.js?v=20260813-ui-v243';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v243';
+import { confirmDialog } from '../components/dialog.js?v=20260813-ui-v243';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260813-ui-v243';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260813-ui-v243';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260813-ui-v243';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260813-ui-v243';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260813-ui-v243';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260813-ui-v243';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260813-ui-v243';
+import { assetPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260813-ui-v243';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -61,18 +61,7 @@ export function subjectGenerationPayload(bundle = {}, target = null, requestKey 
       id: target.subject_id || target.profile?.id || '',
       index,
     };
-    const pending = [
-      ...people.map((item, pendingIndex) => ({ item, kind: 'human', index: pendingIndex })),
-      ...animals.map((item, pendingIndex) => ({ item, kind: 'pet', index: pendingIndex })),
-    ].filter(entry => entry.kind === 'human'
-      ? subjectNeedsGeneration(entry.item, 'human')
-      : subjectNeedsGeneration(entry.item, 'pet'));
-    payload.subject_targets = [selected, ...pending.map(entry => ({
-      kind: entry.kind,
-      id: entry.item.subject_id || entry.item.profile?.id || '',
-      index: entry.index,
-    }))].filter((entry, entryIndex, entries) => entry.id
-      && entries.findIndex(candidate => candidate.kind === entry.kind && candidate.id === entry.id) === entryIndex);
+    payload.subject_targets = selected.id ? [selected] : [];
     payload.regenerate_selected = true;
     payload.resume_partial_checkpoint = target.partial_checkpoint === true;
     payload.person_change_kind = target.kind === 'animal' ? 'semantic' : 'visual_dossier';
@@ -216,7 +205,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260813-ui-v240');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260813-ui-v243');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -241,7 +230,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260813-ui-v240'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260813-ui-v243'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

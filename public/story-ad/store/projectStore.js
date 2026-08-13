@@ -1,6 +1,6 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260813-ui-v240';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260813-ui-v240';
-import { loadProjectList } from './projectListStore.js?v=20260813-ui-v240';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260813-ui-v243';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260813-ui-v243';
+import { loadProjectList } from './projectListStore.js?v=20260813-ui-v243';
 
 export function createProjectStore() {
   const state = {
@@ -400,9 +400,6 @@ export function createProjectStore() {
     const record = referenceTaskRecord(analysis);
     const currentBrief = state.bundle?.brief || {};
     const completedAndValid = record.status === 'completed' && record.analysis_quality?.valid === true;
-    // The generated brief is the complete, evidence-grounded hand-off.  A
-    // one-line logline is useful for cards, but must never replace the full
-    // story understanding at the first workflow step.
     const derivedBrief = String(record.generated_brief || record.summary || record.story_outline?.logline || '').trim();
     const derivedProduct = String(record.source_facts?.product_or_service || '').trim();
     const currentBriefText = String(currentBrief.text || '').trim();

@@ -254,8 +254,7 @@ async function main() {
   const selectedWithMissing = subjectGenerationPayload(missingCompanion, missingCompanion.assets.people[0], 'workspace-missing-companion');
   assert.deepEqual(selectedWithMissing.subject_targets, [
     { kind: 'human', id: 'cast-current', index: 0 },
-    { kind: 'human', id: 'cast-draft-2', index: 1 },
-  ], '首次生成某个人物时必须把没有可复用四视图的同批主体一起明确提交，避免前后端资产合同冲突');
+  ], '单人物入口只提交当前主体；首次整批生成必须使用“生成全部缺失人物 / 动物”入口');
 
   const graph = graphProjection.projectGraph(bundle);
   assert.equal(graph.read_only, true);
