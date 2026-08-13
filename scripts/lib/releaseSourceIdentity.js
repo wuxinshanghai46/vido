@@ -56,15 +56,20 @@ function resolveReleaseSourceIdentity({ root = path.resolve(__dirname, '../..'),
   const dirty = git(root, [
     'status', '--porcelain', '--untracked-files=all', '--',
     'src', 'public', 'config', 'scripts', 'package.json', 'package-lock.json',
-    ':(exclude)config/story-ad-runtime-manifest.json',
-    ':(exclude)public/story-ad/release-manifest.json',
   ]);
   const trusted = trustedGeneratedPaths(root);
+  // These manifests are deterministic build outputs and were historically
+  // excluded by a newer Git pathspec. Filter them after status parsing so old
+  // Git versions do not need to understand that syntax.
+  const generatedManifests = new Set([
+    'config/story-ad-runtime-manifest.json',
+    'public/story-ad/release-manifest.json',
+  ]);
   const dirtyLines = dirty ? dirty.split(/\r?\n/).filter(Boolean) : [];
   const unsafeDirty = dirtyLines.filter(line => {
     const match = line.match(/^\s?(?:[A-Z?!]{1,2})\s+(.+)$/);
     const relative = String(match?.[1] || line).replace(/^"|"$/g, '').replace(/\\/g, '/');
-    return !trusted.has(relative);
+    return !generatedManifests.has(relative) && !trusted.has(relative);
   });
   if (unsafeDirty.length) {
     const files = unsafeDirty.slice(0, 12).join(', ');

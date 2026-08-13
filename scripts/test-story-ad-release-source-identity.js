@@ -9,6 +9,7 @@ const sourceIdentity = require('./lib/releaseSourceIdentity');
 const sourceIdentityCode = fs.readFileSync(path.join(__dirname, 'lib', 'releaseSourceIdentity.js'), 'utf8');
 assert.match(sourceIdentityCode, /symbolic-ref', '--short', 'HEAD/);
 assert.doesNotMatch(sourceIdentityCode, /branch', '--show-current/);
+assert.doesNotMatch(sourceIdentityCode, /:\(exclude\)/);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-source-identity-'));
 function git(args) {
@@ -23,6 +24,10 @@ try {
   git(['config', 'user.name', 'VIDO Release Test']);
   fs.mkdirSync(path.join(root, 'src'), { recursive: true });
   fs.writeFileSync(path.join(root, 'src', 'app.js'), 'module.exports = 1;\n');
+  fs.mkdirSync(path.join(root, 'config'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'public', 'story-ad'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'config', 'story-ad-runtime-manifest.json'), '{}\n');
+  fs.writeFileSync(path.join(root, 'public', 'story-ad', 'release-manifest.json'), '{}\n');
   git(['add', 'src/app.js']);
   git(['commit', '-qm', 'fixture']);
   const local = sourceIdentity.resolveReleaseSourceIdentity({ root, requireRemoteSync: false });
@@ -30,6 +35,7 @@ try {
   assert.match(local.source_tree, /^[a-f0-9]{40}$/);
   assert.strictEqual(local.tracked_worktree_clean, true);
   assert.strictEqual(local.remote_sync_verified, false);
+  assert.strictEqual(local.tracked_worktree_clean, true, 'deterministic generated manifests must not make a clean source build fail');
   assert.throws(
     () => sourceIdentity.resolveReleaseSourceIdentity({ root, requireRemoteSync: true }),
     /尚未设置远端跟踪/,
