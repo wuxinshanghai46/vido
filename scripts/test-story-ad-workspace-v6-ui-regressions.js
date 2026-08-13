@@ -580,6 +580,22 @@ const precisePayload = assetModule.subjectGenerationPayload({
   },
 }, { id: 'selected-legacy', asset_id: 'selected-legacy', subject_id: 'person-selected' }, 'request-1');
 assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected'], '单人物入口必须只提交当前主体；缺失整批由明确命名的批量入口处理');
+const replannedPayload = assetModule.subjectGenerationPayload({
+  project: { id: 'replanned-subject-task' }, brief: { text: '方案更新后同步人物' },
+  assets: {
+    people: [
+      { ...legacyPerson, subject_id: 'retained-old-person', profile: { id: 'current-person' } },
+      { ...legacyPerson, subject_id: 'retained-old-companion', profile: { id: 'current-companion' } },
+    ],
+    animals: [{ subject_id: 'retained-old-pet', profile: { id: 'current-pet' }, view_images: [] }],
+  },
+}, null, 'replanned-request');
+assert.deepEqual(Array.from(replannedPayload.subject_targets, item => item.id), ['current-person', 'current-companion', 'current-pet'], '方案更新后批量生成必须使用本次提交的当前档案 ID，不得沿用保留资产的旧 subject_id');
+const replannedSinglePayload = assetModule.subjectGenerationPayload({
+  project: { id: 'replanned-single-task' }, brief: { text: '方案更新后单人同步' },
+  assets: { people: [{ ...legacyPerson, subject_id: 'retained-old-person', profile: { id: 'current-person' } }], animals: [] },
+}, { ...legacyPerson, subject_id: 'retained-old-person', profile: { id: 'current-person' } }, 'replanned-single-request');
+assert.deepEqual(Array.from(replannedSinglePayload.subject_targets, item => item.id), ['current-person'], '方案更新后单人同步也必须与本次 cast_profiles 的 ID 一致');
 const resumePayload = assetModule.subjectGenerationPayload({
   project: { id: 'resume-partial-task' }, brief: { text: '继续缺失人物' },
   assets: { people: [{ ...legacyPerson, subject_id: 'partial-person', profile: { id: 'partial-person' }, partial_checkpoint: true }], animals: [] },
