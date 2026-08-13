@@ -657,7 +657,13 @@ async function generateImage({
       // those responses reliably.
       if (/deyunai|漫路/i.test(`${config.family} ${config.adapter} ${config.providerId}`)) {
         const invokeDeyunai = candidatePrompt => generationBillingGuard.run(
-          { taskId, generationId: effectiveGenerationId, unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}` },
+          {
+            taskId,
+            generationId: effectiveGenerationId,
+            unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}`,
+            providerId: config.providerId,
+            failureClass: 'paid_image_generation',
+          },
           () => generationConcurrency.schedule(
             'new_story_ad.image_provider',
             Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,
@@ -736,7 +742,13 @@ async function generateImage({
       const compatibleImage2 = /gpt-image-2/i.test(config.modelId) && /openai-compatible/i.test(config.family);
       const client = compatibleImage2 ? null : new OpenAI({ apiKey: config.apiKey, baseURL: config.baseURL || undefined });
       const response = await generationBillingGuard.run(
-        { taskId, generationId: effectiveGenerationId, unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}` },
+        {
+          taskId,
+          generationId: effectiveGenerationId,
+          unitKey: clientRequestId || `${stage}:${shotIndex}:${filename}`,
+          providerId: config.providerId,
+          failureClass: 'paid_image_generation',
+        },
         () => generationConcurrency.schedule(
           'new_story_ad.image_provider',
           Number(process.env.NEW_STORY_AD_IMAGE_PROVIDER_CONCURRENCY) || 2,

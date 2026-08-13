@@ -4,6 +4,7 @@ const cancellation = require('./cancellationContext');
 const videoCore = require('../videoGenerationCore');
 const releaseBundle = require('../storyAdReleaseBundleService');
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
+const generationUnits = require('./generationUnitService');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -163,7 +164,68 @@ function publicJob(job = {}) {
     content_revision: Number(job.expectedContentRevision || 0) || 0,
     input_fingerprint: job.inputFingerprint || '',
     release_bundle_id: job.releaseBundleId || '',
+    generation_unit_id: job.generationUnitId || '',
   };
+}
+
+function unitForJob(job = {}) {
+  return job.generationUnitId ? storage.getGenerationRun(job.generationUnitId) : null;
+}
+
+function transitionJobUnit(job = {}, nextState = '', patch = {}, options = {}) {
+  const current = unitForJob(job);
+  if (!current || current.state === nextState) return current;
+  return generationUnits.transition(current.id, nextState, patch, {
+    expected_version: current.unit_version,
+    reason: options.reason || `job_${nextState}`,
+  });
+}
+
+function failJobUnit(job = {}, error = null, failure = {}) {
+  const current = unitForJob(job);
+  if (!current || generationUnits.TERMINAL_STATES.has(current.state)) return current;
+  const billingState = String(error?.billingState || error?.billing_state || '').trim().toLowerCase();
+  const submitted = !!(error?.providerTaskId || error?.provider_task_id
+    || ['submitted', 'submitted_unknown', 'running'].includes(String(error?.providerSubmissionState || error?.provider_submission_state || '').toLowerCase()));
+  if (billingState === 'unknown') {
+    return generationUnits.transition(current.id, 'billing_unknown', {
+      billing_state: 'unknown',
+      provider_submission_state: String(error?.providerSubmissionState || error?.provider_submission_state || (submitted ? 'submitted_unknown' : 'unknown')),
+      provider_task_id: String(error?.providerTaskId || error?.provider_task_id || ''),
+      error_code: String(failure.code || error?.code || '').slice(0, 160),
+      error_message: String(error?.message || error || '').slice(0, 1000),
+    }, { expected_version: current.unit_version, reason: 'job_billing_unknown' });
+  }
+  return generationUnits.transition(current.id, failure.retryable === true ? 'failed_retryable' : 'failed_terminal', {
+    billing_state: billingState || 'not_submitted',
+    provider_submission_state: submitted ? 'submitted' : 'not_submitted',
+    provider_task_id: String(error?.providerTaskId || error?.provider_task_id || ''),
+    error_code: String(failure.code || error?.code || '').slice(0, 160),
+    error_message: String(error?.message || error || '').slice(0, 1000),
+  }, { expected_version: current.unit_version, reason: 'job_failed' });
+}
+
+function interruptPersistedGenerationUnit(task = {}, reason = '') {
+  const generationId = String(task.active_generation_id || '');
+  const candidate = storage.listGenerationRuns({ work_id: task.id })
+    .filter(unit => ['queued', 'running'].includes(unit.state))
+    .sort((left, right) => String(right.updated_at || '').localeCompare(String(left.updated_at || '')))
+    .find(unit => !generationId || String(unit.orchestration_job_id || '') === generationId);
+  if (!candidate) return null;
+  if (candidate.billing_state === 'unknown' || candidate.provider_task_id) {
+    return generationUnits.transition(candidate.id, 'billing_unknown', {
+      billing_state: 'unknown',
+      provider_submission_state: candidate.provider_submission_state || 'submitted_unknown',
+      error_code: 'WORKER_INTERRUPTED_PROVIDER_SUBMITTED',
+      error_message: String(reason || '工作进程中断且供应商提交状态待核对').slice(0, 1000),
+    }, { expected_version: candidate.unit_version, reason: 'worker_interrupted_provider_submitted' });
+  }
+  return generationUnits.transition(candidate.id, 'failed_retryable', {
+    billing_state: 'not_submitted',
+    provider_submission_state: 'not_submitted',
+    error_code: 'WORKER_INTERRUPTED',
+    error_message: String(reason || '工作进程中断，供应商尚未提交').slice(0, 1000),
+  }, { expected_version: candidate.unit_version, reason: 'worker_interrupted_before_provider_submission' });
 }
 
 function getJob(taskId, stage) {
@@ -194,6 +256,7 @@ function reconcileInterruptedJobs({ now = Date.now() } = {}) {
     const updatedAt = Date.parse(task.generation_started_at || task.updated_at || task.created_at || 0) || 0;
     const stale = !updatedAt || now - updatedAt >= ORPHAN_GRACE_MS;
     if (task.active_generation_id && stale) {
+      interruptPersistedGenerationUnit(task);
       storage.saveStage(task.id, task.active_stage || stage || 'generation', {
         status: 'failed',
         error: '后台工作进程已重启，任务已停止并释放，可安全重试',
@@ -208,6 +271,7 @@ function reconcileInterruptedJobs({ now = Date.now() } = {}) {
         storage.updateTask(task.id, { status: 'done', active_stage: '', active_generation_id: '', error: '', error_code: '', retryable: false });
         result.normalized += 1;
       } else if (stale && (/_queued$|_running$/.test(stage) || EXECUTING_STAGES.has(stage))) {
+        interruptPersistedGenerationUnit(task);
         storage.updateTask(task.id, interruptedPatch(task));
         result.interrupted += 1;
       }
@@ -239,6 +303,10 @@ function cancelJob(taskId, { generationId = '', cancelledBy = '' } = {}) {
   job.errorCode = 'USER_CANCELLED';
   job.error = '用户已取消当前生成';
   job.retryable = true;
+  transitionJobUnit(job, 'cancelled', {
+    billing_state: 'not_submitted',
+    provider_submission_state: 'not_submitted',
+  }, { reason: 'user_cancelled' });
   storage.saveStage(taskId, job.stage, {
     status: 'cancelled',
     started_at: job.startedAt || job.queuedAt,
@@ -328,6 +396,48 @@ function queueStage({
   const id = uuidv4();
   const queuedAt = new Date().toISOString();
   const queuedRelease = releaseBundle.identity();
+  const unitClaim = generationUnits.claim({
+    work_id: String(taskId),
+    domain: String(stage),
+    target_permanent_id: `${String(taskId)}:${String(stage)}`,
+    operation: `run_${String(stage)}`,
+    input_fingerprint: String(inputFingerprint || sealedSnapshot?.input_fingerprint || idempotencyKey || `${taskId}:${stage}:r${expectedRevision}`),
+    spec_revision: expectedRevision,
+    provider_id: 'internal-orchestrator',
+    model_id: queuedRelease.bundle_id,
+  }, { explicit_user_retry: true });
+  if (!unitClaim.claimed) {
+    const prior = unitClaim.unit || {};
+    return {
+      accepted: false,
+      duplicate: true,
+      job: publicJob({
+        id: prior.orchestration_job_id || prior.id,
+        taskId,
+        stage,
+        status: prior.state === 'succeeded' ? 'succeeded' : prior.state,
+        queuedAt: prior.created_at,
+        startedAt: prior.started_at,
+        finishedAt: prior.finished_at,
+        errorCode: prior.error_code,
+        error: prior.error_message,
+        retryable: prior.state === 'failed_retryable',
+        expectedContentRevision: expectedRevision,
+        snapshotId: resolvedSnapshotId,
+        inputFingerprint: prior.input_fingerprint,
+        releaseBundleId: queuedRelease.bundle_id,
+        generationUnitId: prior.id,
+      }),
+    };
+  }
+  const queuedUnit = generationUnits.transition(unitClaim.unit.id, 'queued', {
+    orchestration_job_id: id,
+    snapshot_id: resolvedSnapshotId,
+    release_bundle_id: queuedRelease.bundle_id,
+    billing_state: 'not_submitted',
+    provider_submission_state: 'not_applicable',
+    queued_at: queuedAt,
+  }, { expected_version: unitClaim.unit.unit_version, reason: 'job_queued' });
   const job = {
     id,
     taskId: String(taskId),
@@ -349,6 +459,7 @@ function queueStage({
     deadlineMs: Math.max(5000, Number(deadlineMs) || stageBudgetMs(stage)),
     releaseBundleId: queuedRelease.bundle_id,
     releaseEnvelope: queuedRelease,
+    generationUnitId: queuedUnit.id,
   };
   runningJobs.set(key, job);
   storage.updateTask(taskId, {
@@ -415,6 +526,11 @@ function queueStage({
     }
     job.status = 'running';
     job.startedAt = new Date().toISOString();
+    transitionJobUnit(job, 'running', {
+      billing_state: 'not_submitted',
+      provider_submission_state: 'not_applicable',
+      started_at: job.startedAt,
+    }, { reason: 'job_started' });
     storage.updateTask(taskId, {
       status: 'running',
       stage,
@@ -455,6 +571,11 @@ function queueStage({
       }
       job.status = 'succeeded';
       job.finishedAt = new Date().toISOString();
+      transitionJobUnit(job, 'succeeded', {
+        billing_state: 'not_submitted',
+        provider_submission_state: 'not_applicable',
+        finished_at: job.finishedAt,
+      }, { reason: 'job_succeeded' });
       const current = storage.getTask(taskId);
       if (String(current?.active_generation_id || '') === id) {
         const stageUnchanged = String(current?.stage || '') === String(stage);
@@ -478,9 +599,15 @@ function queueStage({
         job.errorCode = 'USER_CANCELLED';
         job.error = '用户已取消当前生成';
         job.retryable = true;
+        transitionJobUnit(job, 'cancelled', {
+          billing_state: 'not_submitted',
+          provider_submission_state: 'not_applicable',
+          finished_at: job.finishedAt,
+        }, { reason: 'job_cancelled' });
         return;
       }
       const failure = classifyFailure(error);
+      failJobUnit(job, error, failure);
       const recoveryState = error?.code === 'STAGE_DEADLINE_EXCEEDED'
         ? deadlineRecoveryState(taskId, stage)
         : null;
@@ -563,6 +690,7 @@ function queueStage({
       // overwrite outputs because its cancellation context remains marked.
       if (error?.code !== 'STAGE_DEADLINE_EXCEEDED') return;
       const failure = classifyFailure(error);
+      failJobUnit(job, error, failure);
       const recoveryState = deadlineRecoveryState(taskId, stage);
       job.status = 'failed';
       job.finishedAt = new Date().toISOString();

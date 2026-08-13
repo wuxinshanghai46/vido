@@ -21,6 +21,7 @@ const COLLECTIONS = {
   artifacts: 'new_story_ad_artifacts',
   manifests: 'new_story_ad_manifests',
   generation_runs: 'new_story_ad_generation_runs',
+  provider_circuits: 'new_story_ad_provider_circuits',
   works: 'new_story_ad_works',
   work_events: 'new_story_ad_work_events',
 };
@@ -43,6 +44,7 @@ function defaultDb() {
     artifacts: [],
     manifests: [],
     generation_runs: [],
+    provider_circuits: [],
     works: [],
     work_events: [],
   };
@@ -639,6 +641,64 @@ function listWorkEvents(workId) {
     .sort((left, right) => Number(left.aggregate_version || 0) - Number(right.aggregate_version || 0));
 }
 
+function createGenerationRun(run = {}) {
+  const id = String(run.id || '').trim();
+  if (!id) throw new Error('Generation run ID 不能为空');
+  if (getRow('generation_runs', id)) {
+    const error = new Error(`Generation run ${id} 已存在`);
+    error.code = 'GENERATION_UNIT_EXISTS';
+    error.status = 409;
+    throw error;
+  }
+  return writeRow('generation_runs', mergedRow('generation_runs', id, {
+    ...run,
+    id,
+    task_id: String(run.task_id || run.work_id || ''),
+    work_id: String(run.work_id || run.task_id || ''),
+  }));
+}
+
+function getGenerationRun(id) {
+  return getRow('generation_runs', String(id || ''));
+}
+
+function listGenerationRuns(filters = {}) {
+  const workId = String(filters.work_id || filters.task_id || '').trim();
+  return listRows('generation_runs', workId ? { project_id: workId } : {})
+    .filter(row => !workId || String(row.work_id || row.task_id) === workId)
+    .filter(row => !filters.state || String(row.state) === String(filters.state))
+    .filter(row => !filters.target_permanent_id
+      || String(row.target_permanent_id) === String(filters.target_permanent_id));
+}
+
+function updateGenerationRun(id, patch = {}, options = {}) {
+  const current = getGenerationRun(id);
+  if (!current) return null;
+  const expected = options.expected_version;
+  if (expected !== undefined && Number(expected) !== Number(current.unit_version || 0)) {
+    const error = new Error(`Generation unit 已更新为版本 ${Number(current.unit_version || 0)}，版本 ${Number(expected || 0)} 不能覆盖最新状态`);
+    error.code = 'GENERATION_UNIT_VERSION_CONFLICT';
+    error.status = 409;
+    error.retryable = false;
+    error.expected_version = Number(expected || 0);
+    error.actual_version = Number(current.unit_version || 0);
+    throw error;
+  }
+  return writeRow('generation_runs', mergedRow('generation_runs', String(id), patch));
+}
+
+function getProviderCircuit(id) {
+  return getRow('provider_circuits', String(id || ''));
+}
+
+function saveProviderCircuit(id, patch = {}) {
+  return writeRow('provider_circuits', mergedRow('provider_circuits', String(id), patch));
+}
+
+function listProviderCircuits() {
+  return listRows('provider_circuits');
+}
+
 function saveReview(taskId, stage, review) {
   cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${stage}`;
@@ -736,6 +796,13 @@ module.exports = {
   updateWork,
   appendWorkEvent,
   listWorkEvents,
+  createGenerationRun,
+  getGenerationRun,
+  listGenerationRuns,
+  updateGenerationRun,
+  getProviderCircuit,
+  saveProviderCircuit,
+  listProviderCircuits,
   canonicalFingerprint,
   getManifest,
   saveManifest,

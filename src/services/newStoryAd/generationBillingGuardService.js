@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const generationConcurrency = require('./generationConcurrencyService');
+const providerCircuits = require('./providerCircuitBreakerService');
 
 const guards = new Map();
 const GUARD_TTL_MS = 60 * 60 * 1000;
@@ -53,15 +54,18 @@ function stoppedError(state = {}) {
   return error;
 }
 
-async function run({ taskId = '', generationId = '', unitKey = '' } = {}, invoke) {
+async function run({ taskId = '', generationId = '', unitKey = '', providerId = '', failureClass = 'paid_generation' } = {}, invoke) {
   if (typeof invoke !== 'function') throw new Error('generation billing guard requires an invoke function');
   prune();
   const scope = scopeKey({ taskId, generationId, unitKey });
   return generationConcurrency.schedule(poolName(scope), 1, async () => {
     const current = guards.get(scope);
     if (current?.tripped) throw stoppedError(current);
+    if (providerId) providerCircuits.assertAvailable(providerId, failureClass);
     try {
-      return await invoke();
+      const result = await invoke();
+      if (providerId) providerCircuits.recordSuccess(providerId, failureClass);
+      return result;
     } catch (error) {
       if (isAmbiguousProviderFailure(error)) {
         guards.set(scope, {
@@ -69,6 +73,13 @@ async function run({ taskId = '', generationId = '', unitKey = '' } = {}, invoke
           error_code: clean(error?.code || 'PROVIDER_5XX_AMBIGUOUS', 120),
           updated_at: Date.now(),
         });
+        if (providerId) {
+          providerCircuits.recordFailure({
+            provider_id: providerId,
+            failure_class: failureClass,
+            error_code: clean(error?.code || 'PROVIDER_5XX_AMBIGUOUS', 120),
+          });
+        }
       }
       throw error;
     }

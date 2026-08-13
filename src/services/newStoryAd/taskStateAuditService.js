@@ -62,8 +62,10 @@ function auditSnapshot(db = {}) {
     const publishedArtifactIds = Object.values(manifest?.artifacts || {}).map(text).filter(Boolean);
     const missingPublishedArtifacts = publishedArtifactIds.filter(id => !artifactIds.has(id));
     const duplicateScenes = duplicateKeys(sceneRows(taskOutputs), semanticSceneKey);
-    const activeGenerations = generations.filter(run => text(run.task_id) === taskId
-      && RUNNING_STATES.has(text(run.status).toLowerCase()));
+    const taskGenerations = generations.filter(run => text(run.task_id || run.work_id) === taskId);
+    const activeGenerations = taskGenerations.filter(run => RUNNING_STATES.has(text(run.state || run.status).toLowerCase()));
+    const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
+      || text(run.billing_state).toLowerCase() === 'unknown');
     const unknownBilling = modelCalls.filter(call => text(call.task_id) === taskId && isUnknownBilling(call));
     const issues = [];
     if (task.lineage_enforced !== true) issues.push('lineage_not_enforced');
@@ -72,7 +74,7 @@ function auditSnapshot(db = {}) {
     if (duplicateScenes.length) issues.push('duplicate_scene_identity');
     if (Number(task.content_revision || 1) > 1 && !manifest) issues.push('global_revision_without_dependency_manifest');
     if (activeGenerations.length > 1) issues.push('multiple_active_generation_runs');
-    if (unknownBilling.length) issues.push('unknown_billing_requires_review');
+    if (unknownBilling.length || unknownBillingUnits.length) issues.push('unknown_billing_requires_review');
     return {
       task_id: taskId,
       content_revision: Math.max(1, Number(task.content_revision || 1) || 1),
@@ -82,7 +84,9 @@ function auditSnapshot(db = {}) {
       missing_published_artifact_ids: missingPublishedArtifacts,
       duplicate_scene_keys: duplicateScenes,
       active_generation_count: activeGenerations.length,
-      unknown_billing_count: unknownBilling.length,
+      unknown_billing_count: unknownBilling.length + unknownBillingUnits.length,
+      generation_unit_count: taskGenerations.length,
+      billing_unknown_unit_count: unknownBillingUnits.length,
       issues,
     };
   });
