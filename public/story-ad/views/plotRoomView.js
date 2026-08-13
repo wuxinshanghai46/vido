@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-sr9-v11';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr9-v11';
-import { confirmDialog } from '../components/dialog.js?v=20260814-sr9-v11';
+import { request } from '../api.js?v=20260814-sr9-v12';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr9-v12';
+import { confirmDialog } from '../components/dialog.js?v=20260814-sr9-v12';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
