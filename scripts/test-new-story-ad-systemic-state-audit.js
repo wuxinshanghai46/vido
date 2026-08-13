@@ -30,7 +30,7 @@ const report = audit.auditSnapshot({
 assert.strictEqual(report.read_only, true);
 assert.strictEqual(report.summary.task_count, 2);
 assert.strictEqual(report.summary.lineage_enforced_count, 1);
-assert.strictEqual(report.summary.unknown_billing_count, 2);
+assert.strictEqual(report.summary.unknown_billing_count, 1);
 assert.deepStrictEqual(report.orphan_output_task_ids, ['orphan']);
 const legacy = report.tasks.find(task => task.task_id === 'legacy');
 assert(legacy.issues.includes('lineage_not_enforced'));
@@ -39,5 +39,7 @@ assert(legacy.issues.includes('duplicate_scene_identity'));
 assert(legacy.issues.includes('global_revision_without_dependency_manifest'));
 assert(legacy.issues.includes('multiple_active_generation_runs'));
 assert.strictEqual(report.tasks.find(task => task.task_id === 'healthy').billing_unknown_unit_count, 1);
-assert(legacy.issues.includes('unknown_billing_requires_review'));
+assert(legacy.issues.includes('active_unknown_billing'));
+assert(legacy.issues.includes('unknown_billing_unquarantined'));
+assert(report.tasks.find(task => task.task_id === 'healthy').warnings.includes('unknown_billing_requires_review'));
 console.log(JSON.stringify({ passed: true, tasks: report.summary.task_count, issue_types: Object.keys(report.summary.issue_counts).length }));

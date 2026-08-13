@@ -66,15 +66,21 @@ function auditSnapshot(db = {}) {
     const activeGenerations = taskGenerations.filter(run => RUNNING_STATES.has(text(run.state || run.status).toLowerCase()));
     const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
       || text(run.billing_state).toLowerCase() === 'unknown');
-    const unknownBilling = modelCalls.filter(call => text(call.task_id) === taskId && isUnknownBilling(call));
+    const allUnknownBilling = modelCalls.filter(call => text(call.task_id) === taskId && text(call.billing_state).toLowerCase() === 'unknown');
+    const activeUnknownBilling = allUnknownBilling.filter(isUnknownBilling);
+    const quarantinedCallIds = new Set(unknownBillingUnits.map(run => text(run.legacy_model_call_id)).filter(Boolean));
+    const unquarantinedUnknownBilling = allUnknownBilling.filter(call => !quarantinedCallIds.has(text(call.id)));
     const issues = [];
+    const warnings = [];
     if (task.lineage_enforced !== true) issues.push('lineage_not_enforced');
     if (!manifest && taskOutputs.length) issues.push('outputs_without_manifest');
     if (missingPublishedArtifacts.length) issues.push('manifest_references_missing_artifact');
     if (duplicateScenes.length) issues.push('duplicate_scene_identity');
     if (Number(task.content_revision || 1) > 1 && !manifest) issues.push('global_revision_without_dependency_manifest');
     if (activeGenerations.length > 1) issues.push('multiple_active_generation_runs');
-    if (unknownBilling.length || unknownBillingUnits.length) issues.push('unknown_billing_requires_review');
+    if (activeUnknownBilling.length) issues.push('active_unknown_billing');
+    if (unquarantinedUnknownBilling.length) issues.push('unknown_billing_unquarantined');
+    if (unknownBillingUnits.length) warnings.push('unknown_billing_requires_review');
     return {
       task_id: taskId,
       content_revision: Math.max(1, Number(task.content_revision || 1) || 1),
@@ -84,17 +90,22 @@ function auditSnapshot(db = {}) {
       missing_published_artifact_ids: missingPublishedArtifacts,
       duplicate_scene_keys: duplicateScenes,
       active_generation_count: activeGenerations.length,
-      unknown_billing_count: unknownBilling.length + unknownBillingUnits.length,
+      unknown_billing_count: allUnknownBilling.length,
+      active_unknown_billing_count: activeUnknownBilling.length,
+      unquarantined_unknown_billing_count: unquarantinedUnknownBilling.length,
       generation_unit_count: taskGenerations.length,
       billing_unknown_unit_count: unknownBillingUnits.length,
       issues,
+      warnings,
     };
   });
 
   const knownTaskIds = new Set(tasks.map(task => text(task.id)).filter(Boolean));
   const orphanOutputTaskIds = [...outputTaskIds].filter(taskId => !knownTaskIds.has(taskId)).sort();
   const issueCounts = {};
+  const warningCounts = {};
   taskAudits.forEach(task => task.issues.forEach(issue => { issueCounts[issue] = (issueCounts[issue] || 0) + 1; }));
+  taskAudits.forEach(task => task.warnings.forEach(warning => { warningCounts[warning] = (warningCounts[warning] || 0) + 1; }));
   if (orphanOutputTaskIds.length) issueCounts.orphan_outputs = orphanOutputTaskIds.length;
   return {
     schema_version: 1,
@@ -102,6 +113,7 @@ function auditSnapshot(db = {}) {
     summary: {
       task_count: tasks.length,
       task_with_issue_count: taskAudits.filter(task => task.issues.length).length,
+      task_with_warning_count: taskAudits.filter(task => task.warnings.length).length,
       lineage_enforced_count: taskAudits.filter(task => task.lineage_enforced).length,
       output_count: outputs.length,
       artifact_count: artifacts.length,
@@ -113,7 +125,10 @@ function auditSnapshot(db = {}) {
       task_without_work_count: tasks.filter(task => !works.some(work => text(work.id || work.task_id) === text(task.id))).length,
       active_generation_count: taskAudits.reduce((sum, task) => sum + task.active_generation_count, 0),
       unknown_billing_count: taskAudits.reduce((sum, task) => sum + task.unknown_billing_count, 0),
+      billing_unknown_unit_count: taskAudits.reduce((sum, task) => sum + task.billing_unknown_unit_count, 0),
+      unquarantined_unknown_billing_count: taskAudits.reduce((sum, task) => sum + task.unquarantined_unknown_billing_count, 0),
       issue_counts: issueCounts,
+      warning_counts: warningCounts,
     },
     orphan_output_task_ids: orphanOutputTaskIds,
     tasks: taskAudits,

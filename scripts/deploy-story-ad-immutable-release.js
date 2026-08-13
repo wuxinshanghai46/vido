@@ -213,6 +213,7 @@ async function migrateSystemicState() {
   if (Number(audit.summary?.task_without_work_count || 0) !== 0
     || Number(audit.summary?.shadow_work_count || 0) !== 0
     || Number(audit.summary?.task_with_issue_count || 0) !== 0
+    || Number(audit.summary?.unquarantined_unknown_billing_count || 0) !== 0
     || Number(audit.summary?.active_generation_count || 0) !== 0) {
     throw new Error(`SYSTEMIC_MIGRATION_AUDIT_FAILED: ${JSON.stringify(audit.summary || audit)}`);
   }
