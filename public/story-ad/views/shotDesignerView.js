@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260813-ui-v232';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v232';
+import { request } from '../api.js?v=20260813-ui-v233';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v233';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

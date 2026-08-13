@@ -1,13 +1,14 @@
-import { request } from '../api.js?v=20260813-ui-v232';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v232';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v232';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v232';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v232';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v232';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v232';
-import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v232';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v232';
-import { BRIEF_MATERIALS, renderBriefMaterialRows } from './briefMaterials.js?v=20260813-ui-v232';
+import { request } from '../api.js?v=20260813-ui-v233';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v233';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v233';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v233';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v233';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v233';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v233';
+import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v233';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v233';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260813-ui-v233';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260813-ui-v233';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -152,13 +153,15 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       </details>
       </div>
       <aside class="brief-side-column">
-        <section class="card">
-          <div class="card-head"><div><h2>参考材料</h2><p>这里放用于理解内容的参考视频和商品 / 服务主体图片。基础信息在左侧先确认；人物、场景和 LOGO 到资产中心分别建立。</p></div></div>
-          <div class="card-body material-list">${renderBriefMaterialRows(bundle, route.isNew)}</div>
-        </section>
-        <section class="card brief-ai-recognition" aria-labelledby="brief-world-settings-title">
-          <div class="card-head"><div><h2 id="brief-world-settings-title">AI 识别信息</h2><p>系统可根据内容目标和参考材料识别以下信息；识别结果会显示在这里，你也可以手动修改。</p></div></div>
-          <div class="card-body brief-side-world-grid">${worldSettingFields(worldProfile, escapeHtml, { formId: 'storyAdBriefForm' })}</div>
+        <section class="card brief-advanced-config">
+          <div class="card-head"><div><h2>高级配置</h2><p>按需添加参考材料并确认 AI 识别信息；不使用参考材料也可以直接创建项目。</p></div></div>
+          <div class="card-body brief-advanced-config-body">
+            ${renderAdvancedReferenceControls(bundle, route.isNew)}
+            <section class="brief-ai-recognition" aria-labelledby="brief-world-settings-title">
+              <div class="brief-advanced-section-head"><h3 id="brief-world-settings-title">AI 识别信息</h3><p>系统可根据内容目标和参考材料识别以下信息；识别结果会显示在这里，你也可以手动修改。</p></div>
+              <div class="brief-side-world-grid">${worldSettingFields(worldProfile, escapeHtml, { formId: 'storyAdBriefForm' })}</div>
+            </section>
+          </div>
         </section>
       </aside>
     </div>
@@ -166,6 +169,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     <div data-reference-understanding-host></div>
     ${BRIEF_MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : 'accept="image/png,image/jpeg,image/webp"'}>`).join('')}`;
   const form = host.querySelector('[data-brief-form]');
+  bindAdvancedReferenceControls(host);
   const briefSettingsAnchor = host.querySelector('[data-brief-settings-anchor]');
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
   const restoreBriefSettingsLayout = () => briefSettingsAnchor
@@ -209,7 +213,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v232');
+    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v233');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

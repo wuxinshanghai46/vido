@@ -342,6 +342,13 @@ body.story-dialog-open { overflow: hidden; }
 .brief-basic-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
 .brief-content-mode-field { width: 100%; }
 .brief-side-column { display: grid; gap: 16px; min-width: 0; }
+.brief-advanced-config-body { display: grid; gap: 18px; }
+.advanced-reference-choice { display: grid; gap: 8px; }
+.advanced-reference-choice > span { color: var(--text); font-weight: 700; }
+.advanced-reference-choice > small { color: var(--muted); font-size: 11px; line-height: 1.55; }
+.brief-advanced-section-head { padding-top: 16px; border-top: 1px solid var(--line); }
+.brief-advanced-section-head h3 { color: var(--text); font-size: 15px; }
+.brief-advanced-section-head p { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .brief-side-world-grid { display: grid; gap: 10px; }
 .brief-side-world-grid .field { display: grid; grid-template-rows: auto minmax(48px, auto) auto; gap: 8px; align-content: start; min-width: 0; }
 .brief-side-world-grid .select { height: 48px; min-height: 48px; padding-block: 8px; line-height: 1.5; }
