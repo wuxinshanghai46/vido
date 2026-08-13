@@ -9,6 +9,7 @@ const { spawnSync } = require('child_process');
 
 const sourceRoot = path.resolve(__dirname, '..');
 const { BASE_FILES } = require('./lib/storyAdReleaseFiles');
+const { trustedGeneratedPaths } = require('./lib/releaseSourceIdentity');
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-release-build-'));
 
 function write(relative, content) {
@@ -27,13 +28,21 @@ function digest(relative) {
 
 function runBuild() {
   return spawnSync(process.execPath, ['scripts/build-story-ad-release.js'], {
-    cwd: root, encoding: 'utf8', timeout: 30000,
+    cwd: root,
+    env: { ...process.env, VIDO_RELEASE_REQUIRE_REMOTE_SYNC: '0' },
+    encoding: 'utf8', timeout: 30000,
   });
+}
+
+function git(args) {
+  const result = spawnSync('git', args, { cwd: root, encoding: 'utf8', timeout: 15000 });
+  assert.strictEqual(result.status, 0, result.stderr || result.stdout);
 }
 
 try {
   copy('scripts/build-story-ad-release.js');
   copy('scripts/lib/storyAdReleaseFiles.js');
+  copy('scripts/lib/releaseSourceIdentity.js');
   write('config/story-ad-release.json', JSON.stringify({
     build_id: 'atomic-release-v1', contract_version: 'contract-v1',
     node_runtime: {
@@ -55,6 +64,11 @@ try {
     else if (relative.endsWith('.html')) write(relative, '<!doctype html>\n');
     else write(relative, "'use strict';\n");
   });
+  git(['init', '-q']);
+  git(['config', 'user.email', 'release-build-test@vido.invalid']);
+  git(['config', 'user.name', 'VIDO Release Build Test']);
+  git(['add', '.']);
+  git(['commit', '-qm', 'fixture']);
 
   const first = runBuild();
   assert.strictEqual(first.status, 0, first.stderr || first.stdout);
@@ -62,6 +76,7 @@ try {
   const runtimeHash = digest('config/story-ad-runtime-manifest.json');
   const firstRuntime = JSON.parse(fs.readFileSync(path.join(root, 'config/story-ad-runtime-manifest.json'), 'utf8'));
   assert(firstRuntime.files.some(entry => entry.path === 'src/services/newStoryAd/runtime.js'));
+  assert(trustedGeneratedPaths(root).has('public/story-ad/index.html'), '首次构建产物必须信任自身清单中的静态版本化文件');
 
   const second = runBuild();
   assert.strictEqual(second.status, 0, second.stderr || second.stdout);
@@ -69,6 +84,8 @@ try {
   assert.strictEqual(digest('config/story-ad-runtime-manifest.json'), runtimeHash, '相同代码重复构建必须保持运行时清单不变');
 
   write('src/services/newStoryAd/runtime.js', 'module.exports = { version: 2 };\n');
+  git(['add', 'src/services/newStoryAd/runtime.js']);
+  git(['commit', '-qm', 'runtime change']);
   const rejected = runBuild();
   assert.notStrictEqual(rejected.status, 0, '同 build_id 修改运行时代码必须被拒绝');
   assert.match(`${rejected.stdout}\n${rejected.stderr}`, /禁止复用已发布 build_id/);

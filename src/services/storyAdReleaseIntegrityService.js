@@ -17,6 +17,11 @@ function manifestFingerprint(manifest = {}) {
     contract_version: String(manifest.contract_version || ''),
     artifact_id: String(manifest.artifact_id || ''),
     source_snapshot_hash: String(manifest.source_snapshot_hash || ''),
+    source_revision: String(manifest.source_revision || ''),
+    source_tree: String(manifest.source_tree || ''),
+    source_ref: String(manifest.source_ref || ''),
+    upstream_ref: String(manifest.upstream_ref || ''),
+    remote_sync_verified: manifest.remote_sync_verified === true,
     lockfile_sha256: String(manifest.lockfile_sha256 || ''),
     node_version: String(manifest.node_version || ''),
     files,
@@ -67,6 +72,13 @@ function verifyRuntime({ root = path.resolve(__dirname, '../..'), manifestPath =
   const errors = [];
   if (manifest.build_id !== release.build_id) errors.push(`build_id ${manifest.build_id || 'missing'} != ${release.build_id || 'missing'}`);
   if (manifest.contract_version !== release.contract_version) errors.push(`contract_version ${manifest.contract_version || 'missing'} != ${release.contract_version || 'missing'}`);
+  if (Number(manifest.schema_version || 0) >= 3) {
+    if (!/^[a-f0-9]{40}$/.test(String(manifest.source_revision || ''))) errors.push('runtime manifest source_revision invalid');
+    if (!/^[a-f0-9]{40}$/.test(String(manifest.source_tree || ''))) errors.push('runtime manifest source_tree invalid');
+    if (!String(manifest.source_ref || '').trim()) errors.push('runtime manifest source_ref missing');
+    if (!String(manifest.upstream_ref || '').trim()) errors.push('runtime manifest upstream_ref missing');
+    if (manifest.remote_sync_verified !== true) errors.push('runtime manifest remote sync not verified');
+  }
   const files = Array.isArray(manifest.files) ? manifest.files : [];
   if (!files.length) errors.push('runtime manifest contains no files');
   const workspace = path.resolve(root);

@@ -13,6 +13,7 @@ const THREE_SOURCE = path.join(ROOT, 'node_modules', 'three', 'build', 'three.mo
 const THREE_TARGET = path.join(PUBLIC_ROOT, 'vendor', 'three.module.min.js');
 const THREE_CORE_SOURCE = path.join(ROOT, 'node_modules', 'three', 'build', 'three.core.min.js');
 const THREE_CORE_TARGET = path.join(PUBLIC_ROOT, 'vendor', 'three.core.min.js');
+const { resolveReleaseSourceIdentity } = require('./lib/releaseSourceIdentity');
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
@@ -33,6 +34,10 @@ function sha256(buffer) {
 }
 
 function main() {
+  const sourceIdentity = resolveReleaseSourceIdentity({
+    root: ROOT,
+    requireRemoteSync: process.env.VIDO_RELEASE_REQUIRE_REMOTE_SYNC !== '0',
+  });
   const release = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   if (!/^[a-z0-9][a-z0-9._-]{7,80}$/i.test(String(release.build_id || ''))) {
     throw new Error('story-ad build_id 无效');
@@ -115,6 +120,8 @@ function main() {
     source_snapshot_hash: sourceSnapshotHash,
     node_major: targetNodeMajor,
     node_runtime_sha256: nodeRuntime.sha256,
+    source_revision: sourceIdentity.source_revision,
+    source_tree: sourceIdentity.source_tree,
   }), 'utf8'));
   let priorRuntime = null;
   if (fs.existsSync(RUNTIME_MANIFEST_PATH)) {
@@ -129,11 +136,16 @@ function main() {
     }
   }
   const runtimeManifest = {
-    schema_version: 2,
+    schema_version: 3,
     build_id: release.build_id,
     contract_version: release.contract_version,
     artifact_id: artifactId,
     source_snapshot_hash: sourceSnapshotHash,
+    source_revision: sourceIdentity.source_revision,
+    source_tree: sourceIdentity.source_tree,
+    source_ref: sourceIdentity.source_ref,
+    upstream_ref: sourceIdentity.upstream_ref,
+    remote_sync_verified: sourceIdentity.remote_sync_verified,
     lockfile_sha256: lockfileSha256,
     node_version: nodeRuntime.version,
     node_runtime: nodeRuntime,
@@ -148,7 +160,15 @@ function main() {
   fs.writeFileSync(runtimeTemp, `${JSON.stringify(runtimeManifest, null, 2)}\n`, 'utf8');
   fs.renameSync(publicTemp, MANIFEST_PATH);
   fs.renameSync(runtimeTemp, RUNTIME_MANIFEST_PATH);
-  console.log(JSON.stringify({ success: true, build_id: release.build_id, files: files.length, runtime_files: runtimeEntries.length }));
+  console.log(JSON.stringify({
+    success: true,
+    build_id: release.build_id,
+    files: files.length,
+    runtime_files: runtimeEntries.length,
+    source_revision: sourceIdentity.source_revision,
+    source_ref: sourceIdentity.source_ref,
+    upstream_ref: sourceIdentity.upstream_ref,
+  }));
 }
 
 main();

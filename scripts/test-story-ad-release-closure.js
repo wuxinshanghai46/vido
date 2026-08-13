@@ -77,7 +77,10 @@ function main() {
     'scripts/migrate-story-ad-v120-checkpoints.js',
     'scripts/test-story-ad-v120-checkpoint-migration-v121.js',
   ].forEach(file => assert(selected.has(file), `本轮知识运行时文件漏发：${file}`));
-  assert.equal(runtimeManifest.schema_version, 2, 'runtime manifest schema must remain immutable-release v2');
+  assert.equal(runtimeManifest.schema_version, 3, 'runtime manifest schema must include source identity v3');
+  assert.match(String(runtimeManifest.source_revision || ''), /^[a-f0-9]{40}$/, 'runtime manifest source revision is required');
+  assert.match(String(runtimeManifest.source_tree || ''), /^[a-f0-9]{40}$/, 'runtime manifest source tree is required');
+  assert.equal(runtimeManifest.remote_sync_verified, true, 'runtime manifest must prove source remote sync');
   assert.match(String(runtimeManifest.artifact_id || ''), /^[a-f0-9]{64}$/, 'runtime artifact identity is required');
   assert.match(String(runtimeManifest.source_snapshot_hash || ''), /^[a-f0-9]{64}$/, 'source snapshot identity is required');
   assert.match(String(runtimeManifest.lockfile_sha256 || ''), /^[a-f0-9]{64}$/, 'lockfile identity is required');

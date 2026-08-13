@@ -23,6 +23,10 @@ assert(source.includes("os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT'"), '�
 assert(source.includes('test-story-ad-workspace-v6-ui-regressions.js'), '家庭电脑定向发布门禁必须覆盖本次工作台 UI');
 assert(source.includes("targetedHomeGate ? 'targeted_passed' : 'passed'"), '发布输出必须区分定向门禁与完整门禁');
 assert(source.includes("process.env.VIDO_DEPLOY_TARGETED_GATE === '1'"), '非标准主机名环境必须支持显式启用定向门禁');
+assert(source.includes("runtimeManifest.schema_version || 0) < 3"), '不可变部署必须拒绝没有源码身份的旧清单');
+assert(source.includes("candidateVersion.release_bundle?.source_revision !== runtimeManifest.source_revision"), '候选进程必须核对源码提交身份');
+assert(source.includes("version.release_bundle?.source_tree !== runtimeManifest.source_tree"), '切换后进程必须核对源码树身份');
+assert(source.includes("remote_sync_verified !== true"), '部署必须要求源码已与远端同步');
 
 assert(source.includes('readlink -f ${quote(`${previousTarget}/outputs`)}'), 'shared outputs must resolve to the canonical directory instead of chaining release symlinks');
 assert(source.includes('if test ! -e ${quote(`${stagingDir}/outputs`)} && test -e'), 'shared outputs link must only be created when the source exists and the destination is absent');

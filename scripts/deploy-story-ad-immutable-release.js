@@ -19,6 +19,12 @@ const runtimeManifest = require('../config/story-ad-runtime-manifest.json');
 const artifactId = String(runtimeManifest.artifact_id || '');
 const releaseBundleId = releaseBundle.identity().bundle_id;
 if (!/^[a-f0-9]{64}$/.test(artifactId)) throw new Error('发布清单缺少有效 artifact_id，请先执行 story-ad:release:build');
+if (Number(runtimeManifest.schema_version || 0) < 3
+  || !/^[a-f0-9]{40}$/.test(String(runtimeManifest.source_revision || ''))
+  || !/^[a-f0-9]{40}$/.test(String(runtimeManifest.source_tree || ''))
+  || runtimeManifest.remote_sync_verified !== true) {
+  throw new Error('发布清单缺少已同步远端的源码提交身份，拒绝部署无法证明的新旧代码');
+}
 const nodeRuntime = runtimeManifest.node_runtime || {};
 if (!/^v\d+\.\d+\.\d+$/.test(String(nodeRuntime.version || ''))
   || !/^[a-z0-9._-]+$/i.test(String(nodeRuntime.platform || ''))
@@ -287,7 +293,13 @@ client.on('ready', async () => {
     if (candidateVersion.release_bundle_id !== releaseBundleId) {
       throw new Error(`CANDIDATE_RELEASE_BUNDLE_MISMATCH: expected ${releaseBundleId}, received ${candidateVersion.release_bundle_id || 'missing'}`);
     }
-    if (candidateVersion.release_bundle?.artifact_id !== artifactId || candidateVersion.node_version !== nodeRuntime.version) throw new Error(`候选进程制品或 Node 身份错误：${JSON.stringify(candidateVersion)}`);
+    if (candidateVersion.release_bundle?.artifact_id !== artifactId
+      || candidateVersion.release_bundle?.source_revision !== runtimeManifest.source_revision
+      || candidateVersion.release_bundle?.source_tree !== runtimeManifest.source_tree
+      || candidateVersion.release_bundle?.remote_sync_verified !== true
+      || candidateVersion.node_version !== nodeRuntime.version) {
+      throw new Error(`候选进程制品、源码或 Node 身份错误：${JSON.stringify(candidateVersion)}`);
+    }
 
     if (!previousBundleId) {
       cutoverStarted = true;
@@ -311,7 +323,11 @@ client.on('ready', async () => {
     const publicVersion = parseJson(await exec('curl -fsS https://vido.smsend.cn/api/story-ad/version'));
     const after = await releaseReadiness(releaseDir);
     const quickAfter = await exec("echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite");
-    if (version.release_bundle?.artifact_id !== artifactId || version.release_bundle_id !== releaseBundleId
+    if (version.release_bundle?.artifact_id !== artifactId
+      || version.release_bundle?.source_revision !== runtimeManifest.source_revision
+      || version.release_bundle?.source_tree !== runtimeManifest.source_tree
+      || version.release_bundle?.remote_sync_verified !== true
+      || version.release_bundle_id !== releaseBundleId
       || version.node_version !== nodeRuntime.version || version.release_control?.allowed !== true
       || publicVersion.release_bundle_id !== releaseBundleId || publicVersion.build_id !== release.build_id
       || health.status !== 'ok' || publicHealth.status !== 'ok' || quickAfter.trim() !== 'ok'
@@ -323,6 +339,10 @@ client.on('ready', async () => {
     console.log(`IMMUTABLE_RELEASE=${JSON.stringify({
       build_id: version.build_id, contract_version: version.contract_version,
       release_bundle_id: version.release_bundle_id, artifact_id: artifactId,
+      source_revision: version.release_bundle.source_revision,
+      source_tree: version.release_bundle.source_tree,
+      source_ref: version.release_bundle.source_ref,
+      upstream_ref: version.release_bundle.upstream_ref,
       runtime_hash: version.runtime_hash, process_id: version.process_id,
       release_dir: releaseDir, previous_target: previousTarget, files: files.length,
       active_before: before.active_count, active_after: after.active_count,
