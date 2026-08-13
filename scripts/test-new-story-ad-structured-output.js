@@ -221,10 +221,10 @@ async function testAssistSemanticFailureContinuesToNextCandidate() {
   assert(result.failed_models.every(item => item.code === 'PROVIDER_RESPONSE_INVALID'));
 }
 
-async function testStoryFactsMixedFailureContinuesToThirdCandidate() {
+async function testStoryFactsTimeoutStopsBeforeFallback() {
   const candidates = [1, 2, 3].map(index => ({ provider_id: `story-provider-${index}`, model_id: `story-model-${index}`, priority: index }));
   let attempts = 0;
-  const result = await modelGateway.generateText({
+  await assert.rejects(() => modelGateway.generateText({
     taskId: 'story-facts-mixed-fallback',
     stage: 'new_story_ad.story_facts',
     systemPrompt: 'Return story facts JSON',
@@ -235,13 +235,10 @@ async function testStoryFactsMixedFailureContinuesToThirdCandidate() {
     _generateText: async () => {
       attempts += 1;
       if (attempts === 1) { const error = new Error('network timeout'); error.code = 'TIMEOUT_OR_NETWORK'; throw error; }
-      if (attempts === 2) return { text: 'invalid json' };
       return { text: '{"story_seed":{"plot_beats":[]}}' };
     },
-  });
-  assert.equal(attempts, 3, 'story_facts 网络超时后遇到结构错误仍必须尝试第三候选');
-  assert.equal(result.failed_models.length, 2);
-  assert.deepEqual(result.failed_models.map(item => item.code), ['TIMEOUT_OR_NETWORK', 'PROVIDER_RESPONSE_INVALID']);
+  }), error => error.billing_state === 'unknown' && error.provider_submission_state === 'submitted_unknown');
+  assert.equal(attempts, 1, '文本请求超时后禁止自动切换候选，以免供应商已接单时重复付费');
 }
 
 async function testNonJsonDiagnosticsAndPlainTextCompatibility() {
@@ -313,7 +310,7 @@ async function main() {
   await testConcurrentRequestRejectionsDoNotOpenCircuit();
   await testPlainRequest400UsesProviderDiagnosticsAndCooldown();
   await testAssistSemanticFailureContinuesToNextCandidate();
-  await testStoryFactsMixedFailureContinuesToThirdCandidate();
+  await testStoryFactsTimeoutStopsBeforeFallback();
   await testNonJsonDiagnosticsAndPlainTextCompatibility();
   console.log('new story ad structured output: ok');
 }

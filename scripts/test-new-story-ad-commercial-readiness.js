@@ -51,11 +51,18 @@ async function main() {
       userPrompt: 'generic',
       maxCandidates: 2,
       stageBudgetMs: 30000,
+      _candidateModels: [
+        { provider_id: 'billing-test-a', model_id: 'text-a', enabled: true },
+        { provider_id: 'billing-test-b', model_id: 'text-b', enabled: true },
+      ],
     }),
-    error => error.code === 'MODEL_ATTEMPTS_EXHAUSTED' && error.attempted_count === 2,
+    error => error.code === 'MODEL_ATTEMPTS_EXHAUSTED'
+      && error.attempted_count === 1
+      && error.billing_state === 'unknown'
+      && error.provider_submission_state === 'submitted_unknown',
   );
   providerAdapters.generateText = originalGenerateText;
-  assert.equal(textAttempts, 2);
+  assert.equal(textAttempts, 1);
 
   const owner = { id: 'commercial-owner', role: 'user' };
   const orphan = storage.createTask({ id: 'commercial-orphan', title: 'generic task', user_id: owner.id, status: 'running', stage: 'video' });

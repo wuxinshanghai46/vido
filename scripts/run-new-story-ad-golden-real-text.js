@@ -17,7 +17,7 @@ function persist(file, value) { fs.writeFileSync(file, `${JSON.stringify(value, 
 
 if (!process.argv.includes('--confirm-paid')) throw new Error('REAL_GOLDEN_PAID_CONFIRMATION_REQUIRED');
 const budgetRmb = Number(argument('budget-rmb', '0'));
-if (!(budgetRmb > 0) || budgetRmb > 50) throw new Error('REAL_GOLDEN_BUDGET_MUST_BE_BETWEEN_0_AND_50_RMB');
+if (!(budgetRmb > 0) || budgetRmb > 10) throw new Error('REAL_GOLDEN_BUDGET_MUST_BE_BETWEEN_0_AND_10_RMB');
 const reservePerTextCallRmb = 1;
 const requestedProject = clean(argument('project'));
 const auditRoot = path.resolve(argument('audit-dir', path.join(process.cwd(), 'outputs', 'audits', 'golden-real-text', stamp())));

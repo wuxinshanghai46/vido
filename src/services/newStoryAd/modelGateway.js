@@ -485,6 +485,24 @@ function classifyError(error) {
   return { code: 'UNKNOWN', retryable: false };
 }
 
+function textCallBillingEvidence(error, classified = {}, responseReceived = false) {
+  const explicitBilling = String(error?.billingState || error?.billing_state || '').trim().toLowerCase();
+  const explicitSubmission = String(error?.providerSubmissionState || error?.provider_submission_state || '').trim().toLowerCase();
+  if (explicitBilling || explicitSubmission) {
+    return {
+      billing_state: explicitBilling || (explicitSubmission === 'not_submitted' ? 'not_billed' : 'unknown'),
+      provider_submission_state: explicitSubmission || (explicitBilling === 'unknown' ? 'submitted_unknown' : 'completed'),
+    };
+  }
+  if (responseReceived || ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(classified.code)) {
+    return { billing_state: 'confirmed', provider_submission_state: 'completed' };
+  }
+  if (['TIMEOUT_OR_NETWORK', 'PROVIDER_5XX'].includes(classified.code)) {
+    return { billing_state: 'unknown', provider_submission_state: 'submitted_unknown' };
+  }
+  return { billing_state: 'not_billed', provider_submission_state: 'submission_rejected' };
+}
+
 function parseStructuredJson(text = '', request = null, adapterMeta = null) {
   const normalized = providerAdapters.normalizeStructuredOutput(request);
   if (!normalized) return { parsed: null, diagnostics: null };
@@ -645,6 +663,8 @@ async function generateText({
         adapter: result.adapter || '',
         family: result.family || '',
         status: 'success',
+        provider_submission_state: 'completed',
+        billing_state: 'confirmed',
         latency_ms: latency,
         fallback_rank: i + 1,
         provider_reason: result.structured_output
@@ -664,12 +684,14 @@ async function generateText({
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const latency = Date.now() - start;
       const classified = classifyError(err);
+      const billingEvidence = textCallBillingEvidence(err, classified, Boolean(candidateText));
       failed.push({
         provider_id: model.provider_id,
         model_id: model.model_id,
         code: classified.code,
         message: String(err.message || err).slice(0, 300),
         response_diagnostics: err.response_diagnostics || null,
+        ...billingEvidence,
       });
       if (candidateText) {
         err.candidate_text = candidateText;
@@ -691,7 +713,9 @@ async function generateText({
           : '',
         latency_ms: latency,
         fallback_rank: i + 1,
+        ...billingEvidence,
       });
+      if (billingEvidence.billing_state === 'unknown') break;
       if (['INPUT_PERSON_PRIVACY', 'INPUT_SENSITIVE_CONTENT', 'PROVIDER_CONTENT_AUDIT', 'INVALID_PROVIDER_INPUT']
         .includes(classified.code)) break;
       if (['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'PROVIDER_EMPTY_RESPONSE'].includes(classified.code)
@@ -721,6 +745,13 @@ async function generateText({
   err.candidate_count = attemptCandidates.length;
   err.available_candidate_count = candidates.length;
   err.failed_models = failed;
+  const unknownBilling = failed.find(item => item.billing_state === 'unknown');
+  if (unknownBilling) {
+    err.billingState = 'unknown';
+    err.billing_state = 'unknown';
+    err.providerSubmissionState = unknownBilling.provider_submission_state || 'submitted_unknown';
+    err.provider_submission_state = err.providerSubmissionState;
+  }
   if (lastCandidateText) {
     err.candidate_text = lastCandidateText;
     err.candidate_parsed_json = lastCandidateParsedJson;
@@ -999,6 +1030,7 @@ module.exports = {
   visionAttemptTimeoutForBudget,
   parseStructuredJson,
   classifyError,
+  textCallBillingEvidence,
   isConfiguredAndUsable,
   recordHealth,
   getHealthScore,
