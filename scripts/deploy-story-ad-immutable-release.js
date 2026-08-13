@@ -46,6 +46,7 @@ const files = collectStoryAdReleaseFiles({ root, releaseManifest: publicManifest
 const uploadConcurrency = Math.max(1, Math.min(8, Number(
   process.env.VIDO_IMMUTABLE_UPLOAD_CONCURRENCY || process.env.VIDO_DEPLOY_UPLOAD_CONCURRENCY,
 ) || 3));
+const candidateOnly = process.env.VIDO_IMMUTABLE_CANDIDATE_ONLY === '1';
 const client = new Client();
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const candidateName = `vido-candidate-${artifactId.slice(0, 12)}`;
@@ -208,7 +209,14 @@ async function migrateSystemicState() {
     || Number(applied.remaining?.non_authoritative_works || 0) !== 0) {
     throw new Error(`SYSTEMIC_MIGRATION_FAILED: ${JSON.stringify(applied)}`);
   }
-  return { dry_run: dryRun, applied };
+  const audit = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/audit-new-story-ad-systemic-state.js`));
+  if (Number(audit.summary?.task_without_work_count || 0) !== 0
+    || Number(audit.summary?.shadow_work_count || 0) !== 0
+    || Number(audit.summary?.task_with_issue_count || 0) !== 0
+    || Number(audit.summary?.active_generation_count || 0) !== 0) {
+    throw new Error(`SYSTEMIC_MIGRATION_AUDIT_FAILED: ${JSON.stringify(audit.summary || audit)}`);
+  }
+  return { dry_run: dryRun, applied, audit: audit.summary };
 }
 
 async function restoreSystemicBackup() {
@@ -348,6 +356,28 @@ client.on('ready', async () => {
       || candidateVersion.release_bundle?.remote_sync_verified !== true
       || candidateVersion.node_version !== nodeRuntime.version) {
       throw new Error(`候选进程制品、源码或 Node 身份错误：${JSON.stringify(candidateVersion)}`);
+    }
+    if (candidateOnly) {
+      const candidateReadiness = await releaseReadiness(releaseDir);
+      if (Number(candidateReadiness.active_count) || blockingUnknownBilling(candidateReadiness)) {
+        throw new Error(`候选只读灰度发现活动任务或当前未知计费：${JSON.stringify(candidateReadiness)}`);
+      }
+      reportPhase('candidate_verified', { build_id: candidateVersion.build_id, artifact_id: artifactId, write_allowed: candidateVersion.release_control?.allowed === true });
+      console.log(`IMMUTABLE_CANDIDATE=${JSON.stringify({
+        build_id: candidateVersion.build_id,
+        release_bundle_id: candidateVersion.release_bundle_id,
+        artifact_id: artifactId,
+        source_revision: candidateVersion.release_bundle.source_revision,
+        source_tree: candidateVersion.release_bundle.source_tree,
+        remote_sync_verified: candidateVersion.release_bundle.remote_sync_verified,
+        write_allowed: candidateVersion.release_control?.allowed === true,
+        release_dir: releaseDir,
+        process_id: candidateVersion.process_id,
+      })}`);
+      if (sftp) sftp.end();
+      await exec(`rm -f ${quote(remoteAuditSpecPath)} && rmdir ${quote(lockDir)}`);
+      client.end();
+      return;
     }
 
     if (!previousBundleId) {

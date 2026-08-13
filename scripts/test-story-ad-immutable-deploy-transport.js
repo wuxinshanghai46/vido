@@ -15,6 +15,9 @@ assert(source.includes('migrate-new-story-ad-systemic-state.js --commit'), 'immu
 assert(source.indexOf('createSystemicBackup();') < source.indexOf('migrateSystemicState();'), 'backup must precede systemic migration');
 assert(source.indexOf('migrateSystemicState();') < source.indexOf("reportPhase('cutover')"), 'systemic migration must pass before cutover');
 assert(source.includes('restoreSystemicBackup();'), 'deployment rollback must restore the pre-migration database backup');
+assert(source.includes("VIDO_IMMUTABLE_CANDIDATE_ONLY === '1'"), 'immutable deploy must support server-side candidate verification without cutover');
+assert(source.indexOf('if (candidateOnly)') < source.indexOf("setReleaseControl('draining'"), 'candidate-only mode must exit before draining, migration, or cutover');
+assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration must pass a post-write audit before cutover');
 
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');
 assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希审计必须从清单文件读取');
