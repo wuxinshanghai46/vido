@@ -126,6 +126,8 @@ assert.match(briefWorldSettings, /具体时期 <em>根据内容同步<\/em>/, '�
 assert.match(briefWorldSettings, /国家 \/ 地区 <em>AI 可识别<\/em>/, '国家地区必须明确提示可由 AI 识别');
 assert.match(briefWorldSettings, /formOwner = settings\.formId/, '移动到右侧的字段必须通过 form owner 参与保存');
 const briefStyles = read('public/story-ad/styles.css');
+const workspaceStyles = read('public/story-ad/workspace.css');
+assert.match(workspaceStyles, /\.material-list\[hidden\] \{ display: none; \}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto minmax\(48px, auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) > \.select \{[\s\S]*height: 48px;[\s\S]*padding-block: 8px;[\s\S]*line-height: 1\.5;/, '目标页下拉框必须显式避免中文文字下缘裁切');
 assert.match(briefStyles, /\.brief-config-section \{[^}]*grid-column: 1 \/ -1;/, '两个设置分区必须各自占满主表单宽度，不能被挤在同一行');

@@ -1,4 +1,4 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v233';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v234';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
