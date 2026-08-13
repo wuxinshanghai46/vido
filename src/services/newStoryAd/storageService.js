@@ -27,6 +27,9 @@ const COLLECTIONS = {
 };
 
 let dbSeedChecked = false;
+let jsonBatchDepth = 0;
+let jsonBatchDb = null;
+let jsonBatchDirty = false;
 
 function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -76,9 +79,29 @@ function writeJson(filePath, data) {
 }
 
 function normalizedJsonDb() {
+  if (jsonBatchDb) return jsonBatchDb;
   const db = readJson(DB_PATH, defaultDb());
   const base = defaultDb();
   return Object.fromEntries(Object.keys(base).map(key => [key, Array.isArray(db[key]) ? db[key] : []]));
+}
+
+function withWriteBatch(callback) {
+  if (useSqlite() || jsonBatchDepth > 0) return callback();
+  jsonBatchDb = normalizedJsonDb();
+  jsonBatchDepth = 1;
+  jsonBatchDirty = false;
+  try {
+    const result = callback();
+    if (result && typeof result.then === 'function') {
+      throw new Error('JSON_WRITE_BATCH_REQUIRES_SYNCHRONOUS_CALLBACK');
+    }
+    if (jsonBatchDirty) writeJson(DB_PATH, jsonBatchDb);
+    return result;
+  } finally {
+    jsonBatchDepth = 0;
+    jsonBatchDb = null;
+    jsonBatchDirty = false;
+  }
 }
 
 function dbConfig() {
@@ -115,7 +138,8 @@ function getRow(key, id) {
 function mutateJson(key, updater) {
   const db = normalizedJsonDb();
   const result = updater(db[key], db);
-  writeJson(DB_PATH, db);
+  if (jsonBatchDepth > 0) jsonBatchDirty = true;
+  else writeJson(DB_PATH, db);
   return result;
 }
 
@@ -895,6 +919,7 @@ module.exports = {
   carryManifestRevision,
   saveReview,
   saveModelCall,
+  withWriteBatch,
   getTaskBundle,
   readHealth,
   writeHealth,

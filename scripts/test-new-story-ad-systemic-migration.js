@@ -32,6 +32,14 @@ try {
   assert.strictEqual(dry.tasks_to_enable_lineage.includes('legacy-one'), true);
   assert.strictEqual(dry.unknown_billing_to_quarantine.length, 1);
 
+  const beforeRollbackBytes = fs.readFileSync(storage.DB_PATH);
+  assert.throws(() => storage.withWriteBatch(() => {
+    storage.updateTask('legacy-one', { brief: 'must rollback' });
+    throw new Error('EXPECTED_BATCH_ROLLBACK');
+  }), /EXPECTED_BATCH_ROLLBACK/);
+  const afterRollbackBytes = fs.readFileSync(storage.DB_PATH);
+  assert.strictEqual(Buffer.compare(beforeRollbackBytes, afterRollbackBytes), 0, 'failed batch must not persist partial migration state');
+
   const first = migration.apply();
   assert.strictEqual(first.ok, true);
   assert.strictEqual(first.model_calls_started, 0);
@@ -69,6 +77,7 @@ try {
   console.log(JSON.stringify({
     passed: true,
     dry_run_read_only: true,
+    failed_batch_rollback: true,
     idempotent_migration: true,
     lineage_enabled: first.lineage_enabled,
     billing_quarantined: first.billing_quarantined,

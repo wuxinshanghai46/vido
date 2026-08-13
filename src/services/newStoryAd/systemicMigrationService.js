@@ -66,7 +66,10 @@ function quarantineUnknownBilling(call = {}, storage = defaultStorage) {
   return { created: true, unit };
 }
 
-function apply({ storage = defaultStorage, enableLineage = true, promoteAuthority = true } = {}) {
+function apply({ storage = defaultStorage, enableLineage = true, promoteAuthority = true, batched = false } = {}) {
+  if (!batched && typeof storage.withWriteBatch === 'function') {
+    return storage.withWriteBatch(() => apply({ storage, enableLineage, promoteAuthority, batched: true }));
+  }
   const before = plan(storage.readDb());
   const result = {
     schema_version: 1,

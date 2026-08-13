@@ -13,6 +13,7 @@ const diagnostics = require('./diagnosticsService'), mediaAdapter = require('./m
 const keyframeParallel = require('./keyframeParallelScheduler'), keyframeFailure = require('./keyframeFailureService');
 const keyframeTarget = require('./keyframeTargetService');
 const keyframeSubmissions = require('./keyframeSubmissionService');
+const keyframeFrameState = require('./keyframeFrameStateService');
 const keyframeContractFreshness = require('./keyframeContractFreshnessService'), storyboardArtifactState = require('./storyboardArtifactStateService');
 const videoSubmissionGate = require('./videoSubmissionGateService'), videoFailureRecovery = require('./videoFailureRecoveryService'), videoPrivacyRetryPolicy = require('./videoPrivacyRetryPolicyService');
 const videoEvidencePreflight = require('./videoEvidencePreflightService');
@@ -44,7 +45,8 @@ const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), ass
 const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
-const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService'), mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
+const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
+const mediaResultProjection = require('./mediaResultProjectionService'), paidExecutionPolicy = require('./paidVideoExecutionPolicyService');
 const { compactPublicTaskBundle } = require('./taskBundleProjection'), temporalEvidenceLifecycle = require('./temporalEvidenceLifecycleService'), videoCore = require('../videoGenerationCore');
 const { createTaskViewService } = require('./taskViewService'), assetPlanPublication = require('./assetPlanPublicationService'), releaseBundle = require('../storyAdReleaseBundleService');
 const { createTextStageRecovery } = require('./textStageRecoveryService');
@@ -73,56 +75,11 @@ function withAssetContracts(ctx = {}) {
   next.product_contract = next.product_contract || productIdentity.buildProductContract(next, { revision: next.revisions?.product || 1 });
   return next;
 }
-function keyframeImageUrl(frame = {}) {
-  const value = frame && typeof frame === 'object' ? frame : {};
-  return String(value.image_url || value.imageUrl || value.url || '').trim();
-}
-function localKeyframeAssetExists(url = '') {
-  const clean = String(url || '').split('?')[0];
-  // Historical frames may still use a provider URL. Keep them available for a
-  // scoped retry; all newly generated frames are persisted locally below.
-  if (!clean.startsWith('/api/new-story-ad/assets/')) return /^https?:\/\//i.test(clean);
-  const filename = decodeURIComponent(clean.split('/').pop() || '');
-  const filePath = mediaAdapter.assetPathFromName(filename);
-  return !!(filePath && fs.existsSync(filePath));
-}
-function isCompleteKeyframe(frame = {}) {
-  const url = keyframeImageUrl(frame);
-  return !!(url && !frame.error && !frame.error_code && localKeyframeAssetExists(url));
-}
-function hasUsablePreviousKeyframe(frame = {}) {
-  const url = keyframeImageUrl(frame);
-  return !!(url && localKeyframeAssetExists(url) && frame.qa?.pass === true);
-}
-function keyframeCompletion(keyframes = [], shots = []) {
-  const total = Math.max(
-    Array.isArray(shots) ? shots.length : 0,
-    Array.isArray(keyframes) ? keyframes.length : 0,
-  );
-  const indexes = Array.from({ length: total }).map((_, index) => index);
-  const completed = indexes.filter(index => isCompleteKeyframe(keyframes[index])).length;
-  const failed = indexes.filter(index => keyframes[index]?.error && !isCompleteKeyframe(keyframes[index])).length;
-  const missing_indexes = indexes.filter(index => !isCompleteKeyframe(keyframes[index]));
-  const retained_previous = indexes.filter(index => isCompleteKeyframe(keyframes[index]) && !!keyframes[index]?.regeneration_error).length;
-  const fresh_pass = indexes.filter(index => isCompleteKeyframe(keyframes[index])
-    && !keyframes[index]?.regeneration_error
-    && !['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(keyframes[index]?.current_generation_status || ''))
-    && keyframes[index]?.contract_outdated !== true
-    && Number(keyframes[index]?.qa_policy_version || 0) >= 2
-    && keyframes[index]?.qa?.pass === true).length;
-  const outdated = indexes.filter(index => isCompleteKeyframe(keyframes[index])
-    && !keyframes[index]?.regeneration_error
-    && (Number(keyframes[index]?.qa_policy_version || 0) < 2
-      || keyframes[index]?.contract_outdated === true
-      || String(keyframes[index]?.current_generation_status || '') === 'outdated')).length;
-  const needs_regeneration = indexes.filter(index => !isCompleteKeyframe(keyframes[index])
-    || !!keyframes[index]?.regeneration_error
-    || Number(keyframes[index]?.qa_policy_version || 0) < 2
-    || keyframes[index]?.contract_outdated === true
-    || ['pending', 'generating', 'retrying_serial', 'outdated'].includes(String(keyframes[index]?.current_generation_status || ''))
-    || keyframes[index]?.qa?.pass !== true).length;
-  return { total, completed, fresh_pass, outdated, retained_previous, latest_failed: retained_previous + failed, needs_regeneration, missing: Math.max(0, total - completed), failed, missing_indexes };
-}
+const keyframeImageUrl = keyframeFrameState.imageUrl;
+const localKeyframeAssetExists = keyframeFrameState.localAssetExists;
+const isCompleteKeyframe = keyframeFrameState.isComplete;
+const hasUsablePreviousKeyframe = keyframeFrameState.hasUsablePrevious;
+const keyframeCompletion = keyframeFrameState.completion;
 function keyframeTargetIndexes(shots = [], existing = [], options = {}) {
   return keyframeTarget.select(shots, existing, options, {
     hasImage: frame => {
