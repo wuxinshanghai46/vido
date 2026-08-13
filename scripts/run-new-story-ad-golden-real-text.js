@@ -14,13 +14,51 @@ function stamp() { return new Date().toISOString().replace(/[-:.TZ]/g, '').slice
 function rows(value) { return Array.isArray(value) ? value : []; }
 function clean(value = '') { return String(value ?? '').trim(); }
 function persist(file, value) { fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); }
+function walkAuditFiles(directory) {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const target = path.join(directory, entry.name);
+    return entry.isDirectory() ? walkAuditFiles(target) : (entry.name === 'audit.json' ? [target] : []);
+  });
+}
 
 if (!process.argv.includes('--confirm-paid')) throw new Error('REAL_GOLDEN_PAID_CONFIRMATION_REQUIRED');
 const budgetRmb = Number(argument('budget-rmb', '0'));
 if (!(budgetRmb > 0) || budgetRmb > 10) throw new Error('REAL_GOLDEN_BUDGET_MUST_BE_BETWEEN_0_AND_10_RMB');
 const reservePerTextCallRmb = 1;
 const requestedProject = clean(argument('project'));
+const auditBase = path.resolve(process.cwd(), 'outputs', 'audits', 'golden-real-text');
 const auditRoot = path.resolve(argument('audit-dir', path.join(process.cwd(), 'outputs', 'audits', 'golden-real-text', stamp())));
+const auditRelative = path.relative(auditBase, auditRoot);
+if (auditRelative.startsWith('..') || path.isAbsolute(auditRelative)) {
+  throw new Error('REAL_GOLDEN_AUDIT_DIR_MUST_STAY_IN_GLOBAL_LEDGER');
+}
+const priorAudits = walkAuditFiles(auditBase).map(file => {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; }
+}).filter(Boolean);
+const priorReservedRmb = priorAudits.reduce((sum, item) => {
+  const value = Number(item.run_reserved_rmb ?? item.conservative_reserved_rmb ?? 0);
+  return sum + (Number.isFinite(value) && value > 0 ? value : 0);
+}, 0);
+if (priorReservedRmb >= budgetRmb) throw new Error('REAL_GOLDEN_GLOBAL_BUDGET_EXHAUSTED');
+const budgetLockPath = path.join(auditBase, '.paid-run.lock');
+fs.mkdirSync(auditBase, { recursive: true });
+let budgetLockFd;
+try {
+  budgetLockFd = fs.openSync(budgetLockPath, 'wx');
+  fs.writeFileSync(budgetLockFd, `${JSON.stringify({ pid: process.pid, acquired_at: new Date().toISOString() })}\n`, 'utf8');
+} catch (error) {
+  if (error?.code === 'EEXIST') throw new Error('REAL_GOLDEN_PAID_RUN_ALREADY_ACTIVE_OR_REQUIRES_RECONCILIATION');
+  throw error;
+}
+function releaseBudgetLock() {
+  if (budgetLockFd !== undefined) {
+    try { fs.closeSync(budgetLockFd); } catch {}
+    budgetLockFd = undefined;
+  }
+  try { fs.unlinkSync(budgetLockPath); } catch {}
+}
+process.once('exit', releaseBudgetLock);
 const temporaryOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-golden-real-text-'));
 fs.mkdirSync(auditRoot, { recursive: true });
 process.env.OUTPUT_DIR = temporaryOutput;
@@ -44,12 +82,16 @@ const audit = {
   budget: {
     authorized_limit_rmb: budgetRmb,
     conservative_reserve_per_text_call_rmb: reservePerTextCallRmb,
+    prior_reserved_rmb: priorReservedRmb,
+    remaining_before_run_rmb: budgetRmb - priorReservedRmb,
     actual_provider_charge_rmb: null,
     actual_charge_note: '供应商响应与本地调用账本未提供可核对的人民币实扣字段，不把保守预留冒充实付。',
   },
   projects: [],
   total_model_calls_started: 0,
-  conservative_reserved_rmb: 0,
+  run_model_calls_started: 0,
+  run_reserved_rmb: 0,
+  conservative_reserved_rmb: priorReservedRmb,
 };
 persist(auditPath, audit);
 
@@ -57,12 +99,14 @@ const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const originalGenerateText = modelGateway.generateText;
 let gatewayCallsStarted = 0;
 modelGateway.generateText = async options => {
-  if ((gatewayCallsStarted + 1) * reservePerTextCallRmb > budgetRmb) {
+  if (priorReservedRmb + (gatewayCallsStarted + 1) * reservePerTextCallRmb > budgetRmb) {
     throw Object.assign(new Error('REAL_GOLDEN_BUDGET_EXHAUSTED'), { code: 'REAL_GOLDEN_BUDGET_EXHAUSTED' });
   }
   gatewayCallsStarted += 1;
-  audit.total_model_calls_started = gatewayCallsStarted;
-  audit.conservative_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
+  audit.run_model_calls_started = gatewayCallsStarted;
+  audit.run_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
+  audit.total_model_calls_started = priorAudits.reduce((sum, item) => sum + Number(item.run_model_calls_started ?? item.total_model_calls_started ?? 0), 0) + gatewayCallsStarted;
+  audit.conservative_reserved_rmb = priorReservedRmb + audit.run_reserved_rmb;
   persist(auditPath, audit);
   return originalGenerateText(options);
 };
@@ -70,7 +114,7 @@ const service = require('../src/services/newStoryAd');
 const works = require('../src/services/newStoryAd/workAggregateService');
 
 function assertBudget(additionalCalls = 1) {
-  const reserved = (audit.total_model_calls_started + additionalCalls) * reservePerTextCallRmb;
+  const reserved = priorReservedRmb + (gatewayCallsStarted + additionalCalls) * reservePerTextCallRmb;
   if (reserved > budgetRmb) throw Object.assign(new Error('REAL_GOLDEN_BUDGET_EXHAUSTED'), { code: 'REAL_GOLDEN_BUDGET_EXHAUSTED' });
 }
 function modelCalls(taskId) { return storage.getTaskBundle(taskId, { diagnostics: true }).model_calls; }
@@ -160,11 +204,15 @@ async function runProject(project) {
   }));
 })().catch(error => {
   audit.status = error.code === 'REAL_GOLDEN_BUDGET_EXHAUSTED' ? 'stopped_budget' : 'failed';
-  audit.total_model_calls_started = gatewayCallsStarted;
-  audit.conservative_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
+  audit.run_model_calls_started = gatewayCallsStarted;
+  audit.run_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
+  audit.conservative_reserved_rmb = priorReservedRmb + audit.run_reserved_rmb;
   audit.finished_at = new Date().toISOString();
   audit.error = { code: clean(error.code || 'ERROR'), message: clean(error.message || error).slice(0, 1000) };
   persist(auditPath, audit);
   console.error(JSON.stringify({ passed: false, ...audit.error, total_model_calls_started: audit.total_model_calls_started, conservative_reserved_rmb: audit.conservative_reserved_rmb, audit_path: auditPath }));
   process.exitCode = 1;
-}).finally(() => fs.rmSync(temporaryOutput, { recursive: true, force: true }));
+}).finally(() => {
+  fs.rmSync(temporaryOutput, { recursive: true, force: true });
+  releaseBudgetLock();
+});
