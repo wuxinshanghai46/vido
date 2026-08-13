@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-sr9-v8';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr9-v8';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr9-v8';
-import { confirmDialog } from './components/dialog.js?v=20260814-sr9-v8';
+import { createProjectStore } from './store/projectStore.js?v=20260814-sr9-v9';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr9-v9';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr9-v9';
+import { confirmDialog } from './components/dialog.js?v=20260814-sr9-v9';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-sr9-v8'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-sr9-v8'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr9-v8'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-sr9-v8'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-sr9-v8'),
-  final: () => import('./views/finalView.js?v=20260814-sr9-v8'),
-  workflow: () => import('./views/workflowView.js?v=20260814-sr9-v8'),
+  brief: () => import('./views/briefView.js?v=20260814-sr9-v9'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-sr9-v9'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr9-v9'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-sr9-v9'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-sr9-v9'),
+  final: () => import('./views/finalView.js?v=20260814-sr9-v9'),
+  workflow: () => import('./views/workflowView.js?v=20260814-sr9-v9'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
