@@ -34,14 +34,12 @@ if (fs.existsSync(settingsSource)) fs.copyFileSync(settingsSource, path.join(tem
 
 const contracts = require('../src/services/newStoryAd/goldenProjectContractService');
 const storage = require('../src/services/newStoryAd/storageService');
-const service = require('../src/services/newStoryAd');
-const works = require('../src/services/newStoryAd/workAggregateService');
 
 const auditPath = path.join(auditRoot, 'audit.json');
 const audit = {
   schema_version: 1,
   status: 'running',
-  evidence_class: 'real_production_route_text_only',
+  evidence_class: 'real_candidate_release_text_only',
   started_at: new Date().toISOString(),
   budget: {
     authorized_limit_rmb: budgetRmb,
@@ -54,6 +52,22 @@ const audit = {
   conservative_reserved_rmb: 0,
 };
 persist(auditPath, audit);
+
+const modelGateway = require('../src/services/newStoryAd/modelGateway');
+const originalGenerateText = modelGateway.generateText;
+let gatewayCallsStarted = 0;
+modelGateway.generateText = async options => {
+  if ((gatewayCallsStarted + 1) * reservePerTextCallRmb > budgetRmb) {
+    throw Object.assign(new Error('REAL_GOLDEN_BUDGET_EXHAUSTED'), { code: 'REAL_GOLDEN_BUDGET_EXHAUSTED' });
+  }
+  gatewayCallsStarted += 1;
+  audit.total_model_calls_started = gatewayCallsStarted;
+  audit.conservative_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
+  persist(auditPath, audit);
+  return originalGenerateText(options);
+};
+const service = require('../src/services/newStoryAd');
+const works = require('../src/services/newStoryAd/workAggregateService');
 
 function assertBudget(additionalCalls = 1) {
   const reserved = (audit.total_model_calls_started + additionalCalls) * reservePerTextCallRmb;
@@ -113,8 +127,6 @@ async function runProject(project) {
     await execute();
     const after = modelCalls(created.task.id).length;
     const callsStarted = after - before;
-    audit.total_model_calls_started += callsStarted;
-    audit.conservative_reserved_rmb = audit.total_model_calls_started * reservePerTextCallRmb;
     entry.stages.push({ stage: name, status: 'passed', latency_ms: Date.now() - started, model_calls_started: callsStarted });
     persist(auditPath, audit);
   }
@@ -148,6 +160,8 @@ async function runProject(project) {
   }));
 })().catch(error => {
   audit.status = error.code === 'REAL_GOLDEN_BUDGET_EXHAUSTED' ? 'stopped_budget' : 'failed';
+  audit.total_model_calls_started = gatewayCallsStarted;
+  audit.conservative_reserved_rmb = gatewayCallsStarted * reservePerTextCallRmb;
   audit.finished_at = new Date().toISOString();
   audit.error = { code: clean(error.code || 'ERROR'), message: clean(error.message || error).slice(0, 1000) };
   persist(auditPath, audit);

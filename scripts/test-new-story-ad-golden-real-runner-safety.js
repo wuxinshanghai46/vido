@@ -17,5 +17,7 @@ assert.match(`${oversized.stdout}${oversized.stderr}`, /REAL_GOLDEN_BUDGET_MUST_
 assert.match(source, /NEW_STORY_AD_TEXT_MAX_CANDIDATES = '1'/);
 assert.match(source, /actual_provider_charge_rmb: null/);
 assert.match(source, /assertBudget\(1\)/);
+assert.match(source, /gatewayCallsStarted \+ 1/);
+assert.match(source, /modelGateway\.generateText = async/);
 assert.doesNotMatch(source, /generateKeyframesStage|generateVideoStage|composeStage/);
 console.log(JSON.stringify({ passed: true, explicit_paid_confirmation: true, hard_budget_cap_rmb: 50, one_candidate_per_text_stage: true, no_media_calls: true, unknown_actual_charge_not_fabricated: true }));
