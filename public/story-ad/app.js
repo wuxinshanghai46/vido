@@ -27,6 +27,16 @@ const VIEW_MODULES = {
   final: () => import('./views/finalView.js?v=20260813-sr5-v1'),
   workflow: () => import('./views/workflowView.js?v=20260813-sr5-v1'),
 };
+const VIEW_SECTIONS = Object.freeze({
+  brief: 'summary,reference,assets',
+  assets: 'summary,assets',
+  scene: 'summary,assets,shots',
+  plot: 'summary,assets,story',
+  storyboard: 'summary,assets,story,shots',
+  final: 'summary,shots,media',
+  workflow: 'summary,reference,assets,story,shots,media',
+});
+function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SECTIONS.brief; }
 let activeViewCleanup = null;
 let centerFilter = '';
 const deletingProjectIds = new Set();
@@ -225,7 +235,7 @@ async function mountView(route) {
       navigate,
       toast,
       refreshShell: async () => {
-        if (!route.isNew) await store.loadBundle(route.taskId, 'all');
+        if (!route.isNew) await store.loadBundle(route.taskId, sectionsForView(route.view));
         await renderRoute();
       },
       refreshCurrentView: async () => mountView(currentRoute()),
@@ -256,7 +266,7 @@ async function renderRoute() {
   if (route.isNew && store.state.bundle) store.clearProject();
   if (!route.isNew && store.state.bundle?.project?.id !== route.taskId) {
     app.innerHTML = '<div class="app-loading"><div class="loading-mark">剧</div><div><b>正在读取项目</b><span>只加载当前项目的统一数据包…</span></div></div>';
-    await store.loadBundle(route.taskId, 'all');
+    await store.loadBundle(route.taskId, sectionsForView(route.view));
   }
   const routeStep = store.state.bundle?.navigation?.steps?.[route.view];
   if (!route.isNew && routeStep?.enabled === false) {

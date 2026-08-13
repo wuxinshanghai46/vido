@@ -7,6 +7,7 @@ const storyboardSketchGate = require('./storyboardSketchGateService'), reference
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
 const briefProjection = require('./briefProjectionService');
 const sceneLineage = require('../newStoryAd/sceneLineageContractService');
+const mediaCatalog = require('../newStoryAd/mediaCatalogService');
 const { projectedDossierItems } = require('./dossierItemProjectionService'), personLookProjection = require('./personLookProjectionService');
 const { projectSceneWorldAssets } = require('./sceneWorldAssetProjectionService'), { projectSceneDossier } = require('./sceneDossierProjectionService'), subjectCheckpointProjection = require('../newStoryAd/subjectCheckpointProjectionService');
 const MAX_MEDIA_ITEMS = 120;
@@ -490,6 +491,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       client_edit_seq: Math.max(0, Number(raw.task.latest_client_edit_seq || 0) || 0),
       snapshot_id: clean(raw.task.current_snapshot_id, 120),
     },
+    loaded_sections: requested.size ? [...requested] : ['all'],
   };
   const uploadedMaterials = list(context.assets).slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
     id: clean(item.id || item.asset_id || `material-${index + 1}`, 120),
@@ -569,15 +571,23 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   }
 
   if (include('media')) {
+    const keyframeCatalog = mediaCatalog.page(outputs, { kind: 'keyframes', offset: 0, limit: mediaCatalog.DEFAULT_LIMIT });
+    const clipCatalog = mediaCatalog.page(outputs, { kind: 'clips', offset: 0, limit: mediaCatalog.DEFAULT_LIMIT });
+    const audioCatalog = mediaCatalog.page(outputs, { kind: 'audio', offset: 0, limit: mediaCatalog.DEFAULT_LIMIT });
     bundle.generation = {
-      keyframes: list(outputs.keyframes).slice(0, 200),
-      clips: list(outputs.video_clips).slice(0, 200),
+      keyframes: keyframeCatalog.items,
+      clips: clipCatalog.items,
       final_video: outputs.final_video || null,
       media_result: raw.media_result || outputs.media_result || null,
       keyframe_status: raw.keyframe_status || null,
       video_shot_statuses: list(raw.video_shot_statuses).slice(0, 200),
-      sound_journey: list(outputs.sound_journey).slice(0, 200),
+      sound_journey: audioCatalog.items,
       progress: raw.task.generation_progress || null,
+      media_catalog: {
+        keyframes: keyframeCatalog,
+        clips: clipCatalog,
+        audio: audioCatalog,
+      },
     };
   }
 

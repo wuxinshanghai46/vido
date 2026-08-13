@@ -11,6 +11,8 @@ const referenceUnderstandingConfirmations = require('../services/storyAdWorkspac
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const referenceUnderstandingEdits = require('../services/newStoryAd/referenceUnderstandingEditService');
 const videoCore = require('../services/videoGenerationCore');
+const storage = require('../services/newStoryAd/storageService');
+const mediaCatalog = require('../services/newStoryAd/mediaCatalogService');
 
 const router = express.Router();
 
@@ -125,6 +127,20 @@ router.get('/projects/:taskId/bundle', asyncRoute(async (req, res) => {
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
   res.setHeader('Vary', 'Authorization');
   res.json({ success: true, bundle });
+}));
+
+router.get('/projects/:taskId/media', asyncRoute(async (req, res) => {
+  projectForRequest(req);
+  const outputRows = storage.listOutputs(req.params.taskId);
+  const outputs = Object.fromEntries(outputRows.map(row => [row.kind, row.payload]));
+  const catalog = mediaCatalog.page(outputs, {
+    kind: req.query.kind,
+    offset: req.query.offset,
+    limit: req.query.limit,
+  });
+  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+  res.setHeader('Vary', 'Authorization');
+  res.json({ success: true, task_id: req.params.taskId, catalog });
 }));
 
 router.get('/projects/:taskId/graph', asyncRoute(async (req, res) => {

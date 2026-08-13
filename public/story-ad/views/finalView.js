@@ -61,6 +61,9 @@ export async function mount(host, context) {
   const finalUrl = finalVideoUrl(finalVideo || {});
   const posterUrl = finalVideo?.poster_url || finalVideo?.thumbnail_url || keyframes.find(item => item.thumbnail_url || item.image_url || item.imageUrl)?.thumbnail_url || keyframes.find(item => item.image_url || item.imageUrl)?.image_url || keyframes.find(item => item.imageUrl)?.imageUrl || '';
   const downloadUrl = finalUrl ? `${finalUrl}${finalUrl.includes('?') ? '&' : '?'}download=1` : '';
+  const mediaCatalog = generation.media_catalog || {};
+  const keyframeTotal = Number(mediaCatalog.keyframes?.total || keyframes.length);
+  const clipTotal = Number(mediaCatalog.clips?.total || clips.length);
   host.innerHTML = `
     <section class="view-head">
       <div><h1>镜头、声音与成片</h1><p>第 6 步统一查看正式镜头、场景声、动作音、配音、音乐、视频片段和最终成片。</p></div>
@@ -79,8 +82,8 @@ export async function mount(host, context) {
       <div class="card-body">${soundJourney.length ? `<div class="sound-journey-list">${soundJourney.map((item, index) => `<article><b>SH${String(item.shot_index || index + 1).padStart(2, '0')}</b><span>${escapeHtml(item.ambient || '环境底噪待确认')}</span><span>${escapeHtml((item.sfx || []).join('、') || '动作音待确认')}</span><span>${escapeHtml(item.music || '音乐情绪待确认')}</span><span>${escapeHtml(item.transition || '声音桥待确认')}</span></article>`).join('')}</div>` : emptyState({ title: '尚未形成逐镜声音方案', body: '保存第 5 步分镜后，系统会按竹林、雪夜、集市、道路等不同背景建立环境音、动作音、音乐和声音桥。' })}</div>
     </section>
     <details class="card generation-section generation-details">
-      <summary class="card-head"><div><h2>关键帧</h2><p>${keyframes.length}/${shots.length || 0} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
-      <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>` : emptyState({
+      <summary class="card-head"><div><h2>关键帧</h2><p>已加载 ${keyframes.length}/${keyframeTotal} · 默认收起，点击展开</p></div><span class="details-chevron" aria-hidden="true">⌄</span></summary>
+      <div class="card-body">${keyframes.length ? `<div class="generation-grid">${keyframes.map((item, index) => mediaCard(item, index, '关键帧')).join('')}</div>${mediaCatalog.keyframes?.has_more ? '<div class="form-actions"><button class="btn" type="button" data-load-more-media="keyframes">继续加载关键帧</button></div>' : ''}` : emptyState({
         title: '还没有关键帧',
         body: shots.length ? '确认镜头设计后，按当前分镜生成关键帧。' : '先完成文字分镜和镜头设计。',
         action: shots.length ? '生成关键帧' : '返回分镜台',
@@ -88,8 +91,8 @@ export async function mount(host, context) {
       })}</div>
     </details>
     <section class="card generation-section">
-      <div class="card-head"><div><h2>视频片段</h2><p>${clips.length}/${shots.length || 0}</p></div></div>
-      <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>` : emptyState({
+      <div class="card-head"><div><h2>视频片段</h2><p>已加载 ${clips.length}/${clipTotal}</p></div></div>
+      <div class="card-body">${clips.length ? `<div class="generation-grid">${clips.map((item, index) => mediaCard(item, index, '视频')).join('')}</div>${mediaCatalog.clips?.has_more ? '<div class="form-actions"><button class="btn" type="button" data-load-more-media="clips">继续加载视频片段</button></div>' : ''}` : emptyState({
         title: '还没有视频片段',
         body: keyframes.length ? '先通过视频预检，再提交付费视频生成。' : '关键帧准备完成后才能进入视频生成。',
       })}</div>
@@ -112,6 +115,17 @@ export async function mount(host, context) {
   host.querySelector('[data-empty-action="back-storyboard"]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
   host.querySelector('[data-generate-tts]')?.addEventListener('click', event => run(event.currentTarget, 'tts', '正在提交…', '配音任务已提交。'));
   host.querySelector('[data-compose]')?.addEventListener('click', event => run(event.currentTarget, 'compose', '正在提交…', '成片合成任务已提交。'));
+  host.querySelectorAll('[data-load-more-media]').forEach(button => button.addEventListener('click', async event => {
+    const target = event.currentTarget;
+    try {
+      setButtonBusy(target, true, '正在加载…');
+      await store.loadMoreMedia(target.dataset.loadMoreMedia, 24);
+      await context.refreshCurrentView();
+    } catch (error) {
+      toast(error.message, 'danger');
+      setButtonBusy(target, false);
+    }
+  }));
 
   host.querySelector('[data-generate-video]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

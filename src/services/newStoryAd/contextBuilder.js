@@ -10,6 +10,7 @@ const referenceUnderstandingService = require('./referenceUnderstandingService')
 const productionLimits = require('./productionLimitsService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const contentSkill = require('./contentSkillService');
+const capabilityPacks = require('./capabilityPackService');
 const personLooks = require('./personLookProfileService');
 const worldSetting = require('./worldSettingContractService');
 const personAgeContract = require('./personAgeContractService');
@@ -773,9 +774,12 @@ function normalizeProductionMode(value = '') {
     service: 'service_app_story',
     app: 'service_app_story',
     software: 'service_app_story',
+    comic: 'comic_narrative',
+    animation: 'comic_narrative',
+    motion_comic: 'comic_narrative',
   };
   const normalized = aliases[raw] || raw;
-  return ['auto', 'narrative_live_action', 'product_story', 'service_app_story'].includes(normalized) ? normalized : 'auto';
+  return ['auto', 'narrative_live_action', 'product_story', 'service_app_story', 'comic_narrative'].includes(normalized) ? normalized : 'auto';
 }
 
 function productionModeDescription(value = '') {
@@ -784,6 +788,7 @@ function productionModeDescription(value = '') {
     narrative_live_action: '真人剧情演绎，以已确认人物的动作、表情和对白推动故事',
     product_story: '无人产品故事或产品演示，以主体状态、使用过程和可见证据推动故事',
     service_app_story: '服务、SaaS 或应用场景叙事，以用户问题、使用过程和结果变化推动故事',
+    comic_narrative: '漫剧/动画叙事，以稳定角色身份、清晰分格、镜头可读性和声画节奏推动故事',
   }[normalizeProductionMode(value)] || '按当前任务判断';
 }
 
@@ -1107,6 +1112,12 @@ function buildContext(body = {}, user = {}) {
     narrative_cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
   });
   const contextCastProfiles = noHuman || animalOnly ? [] : personCounts.visual_profiles;
+  const capabilityPack = capabilityPacks.resolve({
+    content_mode: contentMode,
+    content_form: body.content_form || body.contentForm,
+    production_mode: body.production_mode || body.productionMode,
+    industry_profile: body.industry_profile || body.industryProfile || body.industry,
+  });
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),
@@ -1121,6 +1132,9 @@ function buildContext(body = {}, user = {}) {
     content_mode_source: contentModeSource,
     content_skill: contentSkill.snapshot(contentMode),
     content_domain_contract: contentSkill.snapshot(contentMode).domain_contract,
+    content_form: capabilityPack.content_form_id,
+    industry_profile: capabilityPack.industry_profile_id,
+    capability_pack: capabilityPack,
     story_scene_contract_version: contentMode === 'narrative_story' ? 6 : 0,
     world_setting: worldSettingContract,
     target_duration: targetDuration,
@@ -1349,6 +1363,7 @@ function contextPrompt(ctx) {
   const personCounts = personCountContract.contract(ctx);
   return [
     contentSkill.promptBlock(ctx.content_mode),
+    capabilityPacks.promptBlock(ctx),
     `${narrativeMode ? '剧情内容目标' : '广告需求'}：${ctx.brief}`,
     narrativeMode
       ? '内容类型：纯剧情 / 故事主题。不得凭空添加商品、品牌、卖点、购买引导或销售转化；以原始故事事实为最高权威。'

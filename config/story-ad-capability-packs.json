@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "content_forms": {
+    "commercial_live_action": { "label": "真人/实拍广告", "content_mode": "commercial_subject", "production_mode": "narrative_live_action", "story_structure": "commercial_problem_proof_action", "scene_prototype": "physical_evidence_space", "required_final_proofs": ["advertised_subject", "value_proof", "authorized_brand_or_natural_ending"] },
+    "narrative_live_action": { "label": "真人/实拍剧情", "content_mode": "narrative_story", "production_mode": "narrative_live_action", "story_structure": "causal_character_arc", "scene_prototype": "causal_story_world", "required_final_proofs": ["causal_chain", "character_state_change", "resolved_or_intentional_ending"] },
+    "comic_narrative": { "label": "漫剧/动画剧情", "content_mode": "narrative_story", "production_mode": "comic_narrative", "story_structure": "panel_causal_arc", "scene_prototype": "stylized_story_world", "required_final_proofs": ["panel_readability", "character_identity", "causal_chain", "audio_visual_timing"] }
+  },
+  "story_structures": {
+    "commercial_problem_proof_action": { "beats": ["audience_need", "subject_entry", "visible_proof", "result", "action_or_natural_ending"], "forbidden": ["unsupported_claim", "unrelated_character_conflict", "fabricated_brand_fact"] },
+    "causal_character_arc": { "beats": ["world_and_goal", "inciting_event", "escalation", "choice_or_climax", "state_change_and_ending"], "forbidden": ["sales_conversion", "unmotivated_location_change", "character_identity_swap"] },
+    "panel_causal_arc": { "beats": ["panel_world_and_goal", "panel_inciting_event", "panel_escalation", "panel_climax", "panel_resolution"], "forbidden": ["unreadable_panel_density", "style_identity_drift", "speech_bubble_timing_mismatch"] }
+  },
+  "scene_prototypes": {
+    "physical_evidence_space": { "required_fields": ["layout", "material_light", "interaction", "evidence_zone", "negative"], "supports": ["indoor", "outdoor", "retail", "service", "industrial", "abstract_stage"] },
+    "causal_story_world": { "required_fields": ["layout", "story_state", "interaction", "routes", "continuity_anchor", "negative"], "supports": ["single_location", "multi_location", "multi_era", "realistic", "fantasy"] },
+    "stylized_story_world": { "required_fields": ["layout", "panel_axis", "visual_medium", "interaction", "continuity_anchor", "negative"], "supports": ["2d", "3d", "cel_shaded", "motion_comic", "mixed_media"] }
+  },
+  "industry_profiles": {
+    "generic": { "label": "通用行业", "evidence_types": ["user_fact", "confirmed_asset", "visible_result"], "claim_policy": "user_confirmed_only", "scene_hints": [] },
+    "consumer_goods": { "label": "消费品", "evidence_types": ["product_identity", "material_or_usage", "visible_result"], "claim_policy": "user_confirmed_only", "scene_hints": ["usage_space", "detail_proof_space"] },
+    "local_service": { "label": "本地生活/服务", "evidence_types": ["service_action", "service_environment", "customer_result"], "claim_policy": "user_confirmed_only", "scene_hints": ["service_space", "customer_journey"] },
+    "technology": { "label": "科技/软件", "evidence_types": ["workflow_before_after", "interface_or_process", "measurable_result_if_confirmed"], "claim_policy": "user_confirmed_only", "scene_hints": ["work_context", "screen_or_process_evidence"] }
+  }
+}
