@@ -32,12 +32,17 @@ async function main() {
   assert.ok(flushSource.includes('persistAutoSaveChanges({ ensureFullDraft: true })'));
   assert.ok(!/persistAutoSaveChanges\(\{ ensureFullDraft: true \}\);[\s\S]{0,300}saveCurrentTaskProgress/.test(flushSource));
 
-  const blueprintCandidates = modelGateway.candidatesForStage('new_story_ad.blueprint')
+  // This is a release-contract test, so verify the managed route definitions
+  // without requiring a live API key on the machine running the gate. Runtime
+  // candidates intentionally become empty when no configured credential is
+  // usable; treating that safe state as a release failure made this test depend
+  // on mutable workstation settings instead of the code under test.
+  const blueprintDefaults = pipelineModels.getStageDefaults('new_story_ad.blueprint')
     .map(item => `${item.provider_id}/${item.model_id}`);
-  const repairCandidates = modelGateway.candidatesForStage('new_story_ad.blueprint_structure_repair')
+  const repairDefaults = pipelineModels.getStageDefaults('new_story_ad.blueprint_structure_repair')
     .map(item => `${item.provider_id}/${item.model_id}`);
-  assert(blueprintCandidates.length > 0);
-  assert(repairCandidates.length > 0);
+  assert(blueprintDefaults.length > 0);
+  assert(repairDefaults.length > 0);
   assert(pipelineModels.getStageMeta('new_story_ad.blueprint_structure_repair'));
   assert.strictEqual(modelGateway.routeStage('new_story_ad.blueprint_structure_repair'), 'new_story_ad.blueprint_structure_repair', '新增修复流程必须在模型调用管理中独立可切换');
 
