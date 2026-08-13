@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-sr12-v19';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr12-v19';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr12-v19';
-import { confirmDialog } from './components/dialog.js?v=20260814-sr12-v19';
+import { createProjectStore } from './store/projectStore.js?v=20260814-sr13-v20';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr13-v20';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr13-v20';
+import { confirmDialog } from './components/dialog.js?v=20260814-sr13-v20';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-sr12-v19'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-sr12-v19'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr12-v19'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-sr12-v19'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-sr12-v19'),
-  final: () => import('./views/finalView.js?v=20260814-sr12-v19'),
-  workflow: () => import('./views/workflowView.js?v=20260814-sr12-v19'),
+  brief: () => import('./views/briefView.js?v=20260814-sr13-v20'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-sr13-v20'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr13-v20'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-sr13-v20'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-sr13-v20'),
+  final: () => import('./views/finalView.js?v=20260814-sr13-v20'),
+  workflow: () => import('./views/workflowView.js?v=20260814-sr13-v20'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
