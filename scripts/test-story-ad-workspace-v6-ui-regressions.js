@@ -580,6 +580,12 @@ const precisePayload = assetModule.subjectGenerationPayload({
   },
 }, { id: 'selected-legacy', asset_id: 'selected-legacy', subject_id: 'person-selected' }, 'request-1');
 assert.deepEqual(Array.from(precisePayload.subject_targets, item => item.id), ['person-selected'], '单人物入口必须只提交当前主体；缺失整批由明确命名的批量入口处理');
+const resumePayload = assetModule.subjectGenerationPayload({
+  project: { id: 'resume-partial-task' }, brief: { text: '继续缺失人物' },
+  assets: { people: [{ ...legacyPerson, subject_id: 'partial-person', profile: { id: 'partial-person' }, partial_checkpoint: true }], animals: [] },
+}, null, 'resume-request');
+assert.equal(resumePayload.resume_partial_checkpoint, true, '批量入口遇到部分成功检查点时必须进入只补缺失项模式');
+assert.equal(resumePayload.regenerate_selected, false, '恢复部分检查点不得误标为重新生成并重复付费');
 
 const unverifiedProductCard = assetModule.assetCard({ id: 'product-1', name: '商品图', image_url: '/product.png', status: 'unverified' }, 'products');
 assert.match(unverifiedProductCard, /data-verify-product="product-1"/);

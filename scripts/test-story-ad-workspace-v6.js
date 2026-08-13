@@ -16,9 +16,20 @@ const { normalizeAppearanceAgeText } = require('../src/services/storyAdWorkspace
 const graphProjection = require('../src/services/storyAdWorkspace/graphProjectionService');
 const graphLayouts = require('../src/services/storyAdWorkspace/graphLayoutService');
 const sketches = require('../src/services/storyAdWorkspace/storyboardSketchService');
+const productAssets = require('../src/services/newStoryAd/productAssetResolverService');
 
 const owner = { id: 'workspace-owner', role: 'user' };
 const otherUser = { id: 'workspace-other', role: 'user' };
+
+assert.equal(productAssets.productPresentation({
+  content_mode: 'commercial_subject',
+  brief: '红色金属漆高性能跑车在雨后道路完成加速与过弯',
+  product_subject: '高性能红色电动跑车',
+  product_presentation: { mode: 'material_surface', source: 'brief_semantics', description: '旧的场景材料推断' },
+}).mode, 'standalone_product', '用户明确写明跑车后必须重算旧的语义推断，金属漆不得把整车误判为表面材料');
+assert.equal(productAssets.productPresentation({
+  content_mode: 'commercial_subject', brief: '展示304不锈钢墙面板材纹理', product_subject: '304不锈钢墙板',
+}).mode, 'material_surface', '真实板材仍应保持场景材料模式');
 
 assert.equal(
   normalizeAppearanceAgeText('年龄约28-，东方古典气质的现代女性'),

@@ -131,9 +131,11 @@ function productPresentation(context = {}) {
   }
   const evidence = text([subject, context.brief, explicit.notes, explicit.description].filter(Boolean).join(' '), 1800);
   let mode = text(explicit.mode || explicit.type, 60).toLowerCase().replace(/[\s-]+/g, '_');
+  if (text(explicit.source, 80) === 'brief_semantics') mode = '';
   if (mode === 'narrative_story') mode = '';
   if (!mode) {
-    if (/(?:原材料|板材|钢板|材质|纹理|表面|墙面|背景墙|涂层|面料|饰面)/i.test(evidence)) mode = 'material_surface';
+    if (/(?:跑车|汽车|轿车|越野车|SUV|车辆|摩托车)/i.test(subject)) mode = 'standalone_product';
+    else if (/(?:原材料|板材|钢板|材质|纹理|表面|墙面|背景墙|涂层|面料|饰面)/i.test(evidence)) mode = 'material_surface';
     else if (/(?:展厅|展示墙|展台|样板间|建筑|住宅|空间|场景|门窗|橱柜|家居)/i.test(evidence)) mode = 'scene_embedded_showcase';
     else if (/(?:机器人|机器|设备|装置|包装|瓶|盒|车辆|家具|家电|商品|实体产品)/i.test(evidence)) mode = 'standalone_product';
     else if (/(?:软件|平台|应用|app|小程序|系统|服务)/i.test(evidence)) mode = 'service_or_digital';
