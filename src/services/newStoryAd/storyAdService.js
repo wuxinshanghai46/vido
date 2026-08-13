@@ -56,6 +56,7 @@ const productionLimits = require('./productionLimitsService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const voicePlan = require('./voicePlanService');
 const contentSkill = require('./contentSkillService'), contentDomainArtifacts = require('./contentDomainArtifactService');
+const workAggregate = require('./workAggregateService');
 /** 读取剧情广告兼容灰度开关；关闭时仍允许查看历史项目，但禁止新的付费视频提交。 */
 function storyAdV3RuntimePolicy(env = process.env) {
   const enabled = !['0', 'false', 'off', 'disabled'].includes(String(env.NEW_STORY_AD_V3_ENABLED ?? '1').trim().toLowerCase());
@@ -294,6 +295,7 @@ function createTask(body = {}, user = {}) {
     input_fingerprint: snapshot.input_fingerprint,
   });
   storage.saveStage(id, 'created', { status: 'done', output_summary: '任务已创建' });
+  workAggregate.syncShadowSafely(id, { domains: workAggregate.DOMAIN_KEYS, commandId: 'task_created' });
   return { task: storage.getTask(id), context: ctx, content_revision: 1, acknowledged_client_edit_seq: Math.max(0, Number(body.client_edit_seq || body.clientEditSeq || 0) || 0) };
 }
 function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
@@ -447,6 +449,10 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     storage.saveOutput(taskId, 'scene_config', explicitScenePlan);
   }
   storage.saveStage(taskId, 'saved', { status: 'done', output_summary: '任务进度已保存' });
+  workAggregate.syncShadowSafely(taskId, {
+    domains: changedDomains.map(domain => ({ person: 'subjects', product: 'subjects', source: 'brief', scene: 'scenes', story: 'blueprint' }[domain] || domain)),
+    commandId: `task_request:r${patch.content_revision}:e${patch.latest_client_edit_seq}`,
+  });
   return {
     task: storage.getTask(taskId) || updated,
     context: ctx,
@@ -698,6 +704,7 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
     },
   });
   storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done', error: '', error_code: '', retryable: false });
+  workAggregate.syncShadowSafely(taskId, { domains: ['blueprint'], commandId: `blueprint:${normalized.fingerprint || blueprintFingerprint(normalized)}` });
   return normalized;
 }
 
@@ -816,6 +823,7 @@ function updateStoryboardTable(taskId, shots = [], user = {}, options = {}) {
   });
   storage.saveStage(taskId, 'keyframe_contract', { status: 'done', output_summary: `${contracts.length} keyframe contracts rebuilt` });
   storage.updateTask(taskId, { status: 'done', stage: 'keyframe_contract_ready', error: '', error_code: '', retryable: false });
+  workAggregate.syncShadowSafely(taskId, { domains: ['storyboard'], commandId: `storyboard:${workflowTransition.storyboardFingerprint(normalized)}` });
   return { shots: normalized, keyframe_contracts: contracts, ...artifactState };
 }
 

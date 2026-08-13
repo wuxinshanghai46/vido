@@ -49,6 +49,8 @@ function auditSnapshot(db = {}) {
   const artifacts = rows(db.artifacts);
   const modelCalls = rows(db.model_calls);
   const generations = rows(db.generation_runs);
+  const works = rows(db.works);
+  const workEvents = rows(db.work_events);
   const outputTaskIds = new Set(outputs.map(row => text(row.task_id)).filter(Boolean));
   const manifestByTask = new Map(manifests.map(row => [text(row.task_id || row.id), row]));
   const artifactIds = new Set(artifacts.map(row => text(row.id)).filter(Boolean));
@@ -100,6 +102,9 @@ function auditSnapshot(db = {}) {
       output_count: outputs.length,
       artifact_count: artifacts.length,
       manifest_count: manifests.length,
+      work_count: works.length,
+      work_event_count: workEvents.length,
+      task_without_work_count: tasks.filter(task => !works.some(work => text(work.id || work.task_id) === text(task.id))).length,
       active_generation_count: taskAudits.reduce((sum, task) => sum + task.active_generation_count, 0),
       unknown_billing_count: taskAudits.reduce((sum, task) => sum + task.unknown_billing_count, 0),
       issue_counts: issueCounts,

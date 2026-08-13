@@ -21,6 +21,8 @@ const COLLECTIONS = {
   artifacts: 'new_story_ad_artifacts',
   manifests: 'new_story_ad_manifests',
   generation_runs: 'new_story_ad_generation_runs',
+  works: 'new_story_ad_works',
+  work_events: 'new_story_ad_work_events',
 };
 
 let dbSeedChecked = false;
@@ -41,6 +43,8 @@ function defaultDb() {
     artifacts: [],
     manifests: [],
     generation_runs: [],
+    works: [],
+    work_events: [],
   };
 }
 
@@ -583,6 +587,58 @@ function listOutputs(taskId) {
   return listRows('outputs', { project_id: String(taskId) }).filter(row => String(row.task_id) === String(taskId));
 }
 
+function createWork(work = {}) {
+  const id = String(work.id || work.task_id || '');
+  if (!id) throw new Error('Work ID 不能为空');
+  if (getRow('works', id)) throw new Error('Work 已存在');
+  return writeRow('works', mergedRow('works', id, {
+    ...work,
+    id,
+    task_id: String(work.task_id || id),
+  }));
+}
+
+function getWork(id) {
+  return getRow('works', String(id || ''));
+}
+
+function updateWork(id, patch = {}, options = {}) {
+  const current = getWork(id);
+  if (!current) return null;
+  const expected = options.expected_version;
+  if (expected !== undefined && Number(expected) !== Number(current.aggregate_version || 0)) {
+    const error = new Error(`Work 已更新为版本 ${Number(current.aggregate_version || 0)}，版本 ${Number(expected || 0)} 不能覆盖最新状态`);
+    error.code = 'WORK_VERSION_CONFLICT';
+    error.status = 409;
+    error.retryable = false;
+    error.expected_version = Number(expected || 0);
+    error.actual_version = Number(current.aggregate_version || 0);
+    throw error;
+  }
+  return writeRow('works', mergedRow('works', String(id), patch));
+}
+
+function appendWorkEvent(workId, event = {}) {
+  const aggregateVersion = Math.max(1, Number(event.aggregate_version || 1) || 1);
+  const commandId = String(event.command_id || event.commandId || '').trim();
+  const id = String(event.id || `${workId}:v${aggregateVersion}:${commandId || canonicalFingerprint(event).slice(0, 16)}`);
+  const existing = getRow('work_events', id);
+  if (existing) return existing;
+  return writeRow('work_events', mergedRow('work_events', id, {
+    ...event,
+    id,
+    work_id: String(workId),
+    task_id: String(event.task_id || workId),
+    aggregate_version: aggregateVersion,
+  }));
+}
+
+function listWorkEvents(workId) {
+  return listRows('work_events', { project_id: String(workId) })
+    .filter(row => String(row.work_id || row.task_id) === String(workId))
+    .sort((left, right) => Number(left.aggregate_version || 0) - Number(right.aggregate_version || 0));
+}
+
 function saveReview(taskId, stage, review) {
   cancellation.throwIfCancelled(taskId);
   const id = `${taskId}:${stage}`;
@@ -675,6 +731,11 @@ module.exports = {
   deleteOutput,
   deleteOutputs,
   listOutputs,
+  createWork,
+  getWork,
+  updateWork,
+  appendWorkEvent,
+  listWorkEvents,
   canonicalFingerprint,
   getManifest,
   saveManifest,
