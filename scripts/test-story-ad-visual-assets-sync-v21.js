@@ -26,6 +26,7 @@ assert.strictEqual(partialManifest.counts.planned_scenes, 2);
 assert.strictEqual(partialManifest.counts.pending_scenes, 1);
 
 const assetView = read('public/story-ad/views/assetCenterView.js');
+const planningStatusView = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js');
 const billingRetryView = read('public/story-ad/views/assetCenterBillingRetry.js');
 const billingReviewDialog = read('public/story-ad/views/assetCenterBillingReviewDialog.js');
 const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
@@ -35,10 +36,11 @@ assert(!assetView.includes('data-generate-visual-assets'), 'asset center must no
 assert(sceneWorldPage.includes('data-generate-base-scene'), 'scene workflow must expose one independent generation action per scene');
 assert(billingRetryView.includes("store.runStage('visual-assets'"));
 assert(billingRetryView.includes('同时生成人物与场景'));
-assert(assetView.includes('先更新当前版本的场景规划'), '合同失效时必须给出唯一的第一步');
-assert(assetView.includes('步骤 2：合同通过后逐个人物核对计费，再继续缺失图片'), '计费未知恢复必须明确排在合同更新之后，并保持人物任务独立');
-assert(assetView.includes('data-build-scenes ${generationDisabled}'), '场景规划运行中必须禁用重复提交入口');
-assert(assetView.includes("generationActive ? '正在更新场景规划' : '更新场景规划'"), '场景规划按钮必须区分运行中与空闲状态');
+assert(planningStatusView.includes('更新当前内容的人物与场景方案'), '合同失效时必须给出唯一的第一步');
+assert(planningStatusView.includes('方案更新完成后，再逐个人物确认图片生成'), '计费未知恢复必须明确排在合同更新之后，并保持人物任务独立');
+assert.strictEqual((planningStatusView.match(/data-build-scenes/g) || []).length, 1, '合同失效提示只能提供一个可执行的方案更新入口');
+assert(planningStatusView.includes("data-build-scenes ${generationActive ? 'disabled' : ''}"), '场景规划运行中必须禁用重复提交入口');
+assert(planningStatusView.includes("generationActive ? '正在更新人物与场景方案'"), '场景规划按钮必须区分运行中与空闲状态');
 assert(assetView.includes("host.querySelector('[data-build-scenes]')?.addEventListener"), '合同通过后不得保留无关的重规划按钮');
 
 const briefView = read('public/story-ad/views/briefView.js');
@@ -54,7 +56,7 @@ assert(ui.includes('内容审核未通过'));
 assert(!ui.includes('`${view.stageLabel}审核未通过`'), 'generic failures must not be mislabeled as audit failures');
 assert(ui.includes('generation-lanes'));
 assert(!ui.includes('>处理缺失项</button>'), '视觉失败面板不得再提供含义不明的通用按钮');
-assert(ui.includes("前往资产中心${ready ? '继续缺失图片' : '更新场景规划'}"), '不在资产中心时必须明确导航到合同修复入口');
+assert(ui.includes("前往资产中心${ready ? '继续缺失图片' : '更新人物与场景方案'}"), '不在资产中心时必须明确导航到合同修复入口');
 assert(ui.includes("currentView !== 'assets'"), '已在资产中心时不得重复显示无效跳转');
 
 const route = read('src/routes/newStoryAd.js');
