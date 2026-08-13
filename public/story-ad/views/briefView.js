@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260813-ui-v235';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v235';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v235';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v235';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v235';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v235';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v235';
-import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v235';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v235';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260813-ui-v235';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260813-ui-v235';
+import { request } from '../api.js?v=20260813-ui-v236';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v236';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v236';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v236';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v236';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v236';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v236';
+import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v236';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v236';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260813-ui-v236';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260813-ui-v236';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -213,7 +213,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v235');
+    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v236');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

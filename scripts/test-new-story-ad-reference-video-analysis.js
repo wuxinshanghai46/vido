@@ -1350,6 +1350,47 @@ async function main() {
   const originalGenerateVision = modelGateway.generateVision;
   const originalGenerateText = modelGateway.generateText;
   const originalVisionCandidates = modelGateway.candidatesForVisionStage;
+  const originalNow = Date.now;
+  const synthesisBudgetMockFlag = process.env.NEW_STORY_AD_MOCK_LLM;
+  let synthesisBudgetClock = 0;
+  const synthesisBudgetAttempts = [];
+  Date.now = () => synthesisBudgetClock;
+  process.env.NEW_STORY_AD_MOCK_LLM = '0';
+  try {
+    const synthesisBudgetResult = await originalGenerateText({
+      taskId: 'reference-synthesis-budget-fallback',
+      stage: 'new_story_ad.reference_video_synthesis',
+      systemPrompt: 'test',
+      userPrompt: 'test',
+      timeoutMs: 120000,
+      maxCandidates: 3,
+      stageBudgetMs: 300000,
+      _candidateModels: [
+        { provider_id: 'timeout-provider', model_id: 'slow-primary' },
+        { provider_id: 'backup-provider', model_id: 'fast-secondary' },
+      ],
+      _generateText: async ({ model }) => {
+        synthesisBudgetAttempts.push(`${model.provider_id}/${model.model_id}`);
+        if (model.provider_id === 'timeout-provider') {
+          synthesisBudgetClock += 120000;
+          const error = new Error('simulated 120 second provider timeout');
+          error.code = 'TIMEOUT_OR_NETWORK';
+          error.retryable = true;
+          throw error;
+        }
+        synthesisBudgetClock += 1000;
+        return { text: '{"ok":true}', adapter: 'test' };
+      },
+    });
+    assert.deepStrictEqual(synthesisBudgetAttempts, [
+      'timeout-provider/slow-primary',
+      'backup-provider/fast-secondary',
+    ], '首个语义模型耗尽120秒后必须继续尝试备用模型');
+    assert.strictEqual(synthesisBudgetResult.used_model, 'backup-provider/fast-secondary');
+  } finally {
+    Date.now = originalNow;
+    process.env.NEW_STORY_AD_MOCK_LLM = synthesisBudgetMockFlag;
+  }
   const visualBatchSizes = [];
   let activeVisualBatches = 0;
   let peakVisualBatches = 0;
@@ -1479,6 +1520,11 @@ async function main() {
       assert.ok(!options.userPrompt.includes('"scene_prompts"'));
       assert.ok(!options.userPrompt.includes('"shot_breakdown"'));
       assert.ok(!options.userPrompt.includes('"camera_intents"'));
+      assert.strictEqual(options.maxCandidates, 3, '语义总编必须保留三个候选模型');
+      assert.ok(
+        options.stageBudgetMs >= options.timeoutMs * 2,
+        '语义总编阶段预算必须允许首个模型超时后继续切换候选',
+      );
       const { plot_beats: _omittedPlotBeats, ...partialSemanticContract } = semanticContract;
       const text = JSON.stringify(partialSemanticContract);
       await options.validateText(text);
@@ -1795,7 +1841,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 198,
+    checks: 199,
     evidence_frames: completed.result.evidence_frames.length,
     camera_intents: completed.result.camera_intents.length,
     scene_mappings: mapping.mappings.length,

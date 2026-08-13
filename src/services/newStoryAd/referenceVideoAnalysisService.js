@@ -2677,6 +2677,14 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     maxTokens: 6000,
     temperature: 0.1,
     timeoutMs: 120000,
+    // The default text-stage budget is also 120s. When the first provider
+    // times out it consumes that entire budget, so the gateway advertises
+    // three candidates but exits before candidate two. Reference synthesis
+    // is resumable and already reuses completed visual evidence, therefore
+    // give its three text candidates a stage budget that can actually reach
+    // the configured fallbacks.
+    maxCandidates: 3,
+    stageBudgetMs: 300000,
     validateText: async (text, meta = {}) => {
       let mergedCandidate = null;
       try {
