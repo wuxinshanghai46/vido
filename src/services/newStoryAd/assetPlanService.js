@@ -1424,6 +1424,9 @@ async function generate(taskId, options = {}) {
         userPrompt,
         maxTokens: 6200,
         temperature: 0.2,
+        timeoutMs: 90000,
+        maxCandidates: 3,
+        stageBudgetMs: 300000,
         structuredOutput: { mode: 'json_object', name: 'unified_asset_plan' },
         validateText: (_text, meta = {}) => {
           assertGeneratedContentMode(meta.parsed_json || {}, ctx, 'asset_plan');

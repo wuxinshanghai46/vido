@@ -48,8 +48,10 @@ function createTask(id, context) {
 
 (async () => {
   let modelCalls = 0;
-  modelGateway.generateText = async () => {
+  const modelRequests = [];
+  modelGateway.generateText = async options => {
     modelCalls += 1;
+    modelRequests.push(options);
     return {
       text: JSON.stringify({
         cast_profiles: [{
@@ -191,6 +193,9 @@ function createTask(id, context) {
   assert.strictEqual(modelCalls, 2, '用户目标与参考素材同时存在时必须按用户目标规划，参考内容不得零模型覆盖用户场景');
   assert.notStrictEqual(storage.getOutput('asset-plan-user-brief-reference', 'asset_plan').source, 'reference_analysis_projection');
   assert.strictEqual(storage.getOutput('asset-plan-user-brief-reference', 'context').brief, userBriefWithReference.brief);
+  assert.strictEqual(modelRequests.at(-1).maxCandidates, 3);
+  assert.strictEqual(modelRequests.at(-1).timeoutMs, 90000);
+  assert.strictEqual(modelRequests.at(-1).stageBudgetMs, 300000, 'asset planning must leave enough stage budget to try all three bounded candidates');
 
   console.log(JSON.stringify({
     passed: true,
