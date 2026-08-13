@@ -1055,3 +1055,12 @@ VIDO 不应抄贝社区首页或无限画布的外观，应先补齐 LibTV 背�
 - 迁移后审计：任务 31、lineage 31、Work 31、Work event 62、manifest 31、artifact 1394、活动生成 0、孤立输出任务 0、未隔离未知计费 0；11 个任务仅保留“历史未知计费待人工复核”警告，不阻塞运行。
 - 正式切换后的独立审计最初误报 Work 为 0。根因是远程审计脚本仍在已退役的 `/opt/vido/app` 加载旧模块，而不可变发布权威目录已经是 `/opt/vido/current`；同时审计必须继承 PM2 的数据库环境。该探针已改为从 `/opt/vido/current` 经 `run-with-pm2-env.js` 执行，并新增回归，重新审计得到 Work 31、event 62。
 - 因审计探针修复也属于代码，为满足本地、Git、生产完全一致，不把 V21 作为最终终态；最终构建号提升为 `20260814-sr14-v22`，提交、构建、候选和正式发布结果在本节后续记录补齐。V22 迁移必须幂等：不得重复创建 Work、重复隔离计费或再次删除已清理的旧输出。
+
+### V22 最终发布结果
+
+- 审计修复源提交：`0d0320668b40dbff8c6f86bc80a28056c173536d`；构建冻结提交：`0df817947940ef07a36475ea906b7c2aa90c1522`。构建前源提交已与 origin/Gitee 同步，构建后冻结提交也已推送，ahead/behind `0/0`。
+- 最终生产、本地统一 build：`20260814-sr14-v22`；artifact：`84234a3086f29e8fba655a40b6159d845342f4030717a59a95f74329a3c3dbc6`；release bundle：`3fbcc818fa489c81c7044c5a3e688d4f01836e0fea0082becfa0e56e1dab4da5`；runtime hash：`3b41f87d52c41b37b06ce6aaf5bd47927cfa796e1f8ae472169edcb672504a2a`。
+- V22 上传并逐项核对 710 个运行文件；生产 `/opt/vido/current` 指向 V22 不可变 release，PM2 `vido` online，restart 0，unstable restart 0，候选进程已删除；旧 6,399 行客户端文件在生产 release 中不存在。
+- V22 第二次迁移证明幂等：dry-run 待创建 Work 0、待补 lineage 0、待隔离计费 0；commit 后 Work 新建 0、lineage 补齐 0、计费隔离 0、权威提升 0、旧输出清理 0，数据库权威状态保持不变，模型调用 0、付费调用 0。
+- 最终独立核对：本地 3007 与公网 build、artifact、runtime hash、source revision 全部一致；公网/内网 health `ok`，数据库 `ok`，SQLite `quick_check=ok`；生产审计 Work 31、event 62、lineage 31、活动生成 0、活动未知计费 0、孤立输出任务 0。
+- 本机未执行全平台/跨版本完整回归，原因是 `LAPTOP-LDFOL0GT` 硬门禁；不可变发布器真实执行了现行工作区 UI、三内容形态平台、边界、release/systemic 等相关定向门禁。最终真实视频边界仍按用户决定：本轮不新增视频供应商调用，用户自行处理视频成片；本轮新增费用 0 元。
