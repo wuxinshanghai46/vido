@@ -24,7 +24,7 @@
 | 本地受 Git 跟踪代码 | `codex/story-ad-v3-upgrade` / `20260813-ui-v252` | 写文档前 HEAD `9b4e198e6d87690fc082b4cbc953fa7777d38ff8`；V252 制品 ID `7cb26ac46a015f53c5bdedd0c287f322419e33f6ef62ab9c5a3fa88776bef11c`；运行清单 666 文件 | 与 Gitee `0/0` | V252 是回家续接基线 |
 | Gitee `origin` | `origin/codex/story-ad-v3-upgrade` | 写文档前为 `9b4e198e6d87690fc082b4cbc953fa7777d38ff8` | 与本地提交一致 | 已包含 V252 修复和详细生产问题报告 |
 | GitHub 镜像 | 未配置 remote | 无可核对凭据 | 未核对 | 不能宣称 GitHub 已同步 |
-| 生产 `/opt/vido/app` | `20260813-ui-v251` | 当前 release 目录制品 `088dd666400847482b9f4c77ca225f16c97232e060373ead8e709dcfd0f981e3`；运行清单 666 文件、差异 0 | PM2 在线、内外网健康 | 生产是完整且自洽的 V251，不是 V252 |
+| 生产 PM2 实际运行目录 | `20260813-ui-v251` | PM2 `exec cwd` 为 `/opt/vido/releases/088dd666400847482b9f4c77ca225f16c97232e060373ead8e709dcfd0f981e3`；运行清单 666 文件、差异 0 | PM2 在线、内外网健康 | 生产是完整且自洽的 V251，不是 V252 |
 
 ### 2.1 为什么不以生产反向覆盖
 
@@ -35,7 +35,9 @@ Gitee V252 → 家庭电脑本地
 生产 V251 → 保持不动，等待问题修复与重新授权发布
 ```
 
-生产并没有半套 V252 文件：其 V251 运行清单 666 个文件逐项 SHA-256 差异为 0。V252 发布曾启动，但用户要求停止测试后，发布进程已终止，未切换生产软链接。
+生产并没有半套 V252 文件：其 V251 运行清单 666 个文件逐项 SHA-256 差异为 0。V252 发布曾启动，但用户要求停止测试后，发布进程已终止，PM2 未切换到 V252 release。
+
+注意：`/opt/vido/app` 当前是普通基础目录，其中的旧 `config/story-ad-release.json` 不是生产运行版本凭据。生产权威凭据是 PM2 的 `exec cwd`、该不可变 release 内的 `config/story-ad-release.json` / `public/story-ad/release-manifest.json`，以及线上实际返回的 `/story-ad/release-manifest.json`；三者本次均为 V251。
 
 ### 2.2 工作树边界
 
@@ -247,7 +249,7 @@ node src/server.js
 2. 本地与 Gitee：写文档前 HEAD `9b4e198e...`，`ahead/behind=0/0`。
 3. 本地构建：`20260813-ui-v252`，运行清单 666 文件，制品 ID `7cb26ac4...`。
 4. 本地服务：`http://127.0.0.1:3007/api/health` 返回 HTTP 200、`status=ok`。
-5. 生产版本：`20260813-ui-v251`，当前制品 `088dd666...`。
+5. 生产版本：PM2 `exec cwd`、运行 release 配置、静态清单和线上静态响应均为 `20260813-ui-v251`，当前制品 `088dd666...`。
 6. 生产文件：按运行清单核对 666 项，SHA-256 mismatch 0。
 7. PM2：`vido` online，restart 0，unstable restart 0。
 8. 生产内网健康：`127.0.0.1:4600/api/health` 返回 `status=ok`。
@@ -255,7 +257,7 @@ node src/server.js
 10. SQLite：启用且 `PRAGMA quick_check=ok`。
 11. 活动任务：`active_count=0`，活动未知计费任务 0；历史未知计费记录 60，不代表当前正在计费。
 12. 停止后写入核对：`2026-08-13T09:42:00Z` 之后未查到新增内容记录分组。
-13. V252 部署停止核对：本地发布相关进程已终止，生产软链接仍指向 V251。
+13. V252 部署停止核对：本地发布相关进程已终止，PM2 仍运行 V251 release，未切换到 V252。
 
 ### 未执行
 
