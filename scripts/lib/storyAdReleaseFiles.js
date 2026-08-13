@@ -25,6 +25,7 @@ const BASE_FILES = [
   'scripts/test-new-story-ad-work-aggregate.js',
   'scripts/test-new-story-ad-permanent-identity-dependency.js',
   'scripts/validate-new-story-ad-golden-project.js',
+  'scripts/run-new-story-ad-golden-real-text.js',
   'scripts/test-new-story-ad-systemic-migration.js',
   'scripts/test-new-story-ad-systemic-remote-audit.js',
   'scripts/test-story-ad-release-source-identity.js',
