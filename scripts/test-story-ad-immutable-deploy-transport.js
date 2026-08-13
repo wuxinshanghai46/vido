@@ -10,6 +10,11 @@ const source = fs.readFileSync(path.resolve(__dirname, 'deploy-story-ad-immutabl
 assert(source.includes("const port = Number(process.env.VIDO_DEPLOY_PORT || 2222)"), 'immutable deploy must default to the production SSH port');
 assert(source.includes('connectionOptions({ host, port, username })'), 'immutable deploy must pass the resolved SSH port');
 assert(!source.includes('connectionOptions({ host, port: 22, username })'), 'immutable deploy must not hard-code the closed port 22');
+assert(source.includes(".backup '") && source.includes('vido.sqlite.before-systemic'), 'systemic migration must create a consistent SQLite backup');
+assert(source.includes('migrate-new-story-ad-systemic-state.js --commit'), 'immutable deploy must apply the Work/lineage/billing migration before cutover');
+assert(source.indexOf('createSystemicBackup();') < source.indexOf('migrateSystemicState();'), 'backup must precede systemic migration');
+assert(source.indexOf('migrateSystemicState();') < source.indexOf("reportPhase('cutover')"), 'systemic migration must pass before cutover');
+assert(source.includes('restoreSystemicBackup();'), 'deployment rollback must restore the pre-migration database backup');
 
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');
 assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希审计必须从清单文件读取');

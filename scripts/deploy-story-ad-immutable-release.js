@@ -38,6 +38,7 @@ const nodeRuntimeBin = `${nodeRuntimeDir}/bin/node`;
 const stagingDir = `/opt/vido/releases/.staging-${artifactId}-${process.pid}`;
 const currentLink = '/opt/vido/current';
 const lockDir = `/opt/vido/deploy-locks/story-ad-${artifactId}`;
+const systemicBackupDir = `/opt/vido/backups/story-ad-systemic-${artifactId}`;
 const host = process.env.VIDO_DEPLOY_HOST || '43.98.167.151';
 const port = Number(process.env.VIDO_DEPLOY_PORT || 2222);
 const username = process.env.VIDO_DEPLOY_USER || 'root';
@@ -58,6 +59,8 @@ let legacyProcessFrozen = false;
 let releaseMigrationMode = 'none';
 let releaseMigrationApplied = false;
 let assistRouteMigrationApplied = false;
+let systemicBackupCreated = false;
+let systemicMigrationApplied = false;
 
 integrity.assertCurrent({ root, release });
 integrity.assertRuntimeCurrent({ root, release });
@@ -178,6 +181,51 @@ async function migrateAssistRoute() {
   return result;
 }
 
+async function createSystemicBackup() {
+  const legacyJson = `${previousTarget}/outputs/new_story_ad_db.json`;
+  await exec([
+    `mkdir -p ${quote(systemicBackupDir)}`,
+    `sqlite3 /data/vido/db/vido.sqlite ${quote(`.backup '${systemicBackupDir}/vido.sqlite.before-systemic'`)}`,
+    `echo PRAGMA quick_check | sqlite3 ${quote(`${systemicBackupDir}/vido.sqlite.before-systemic`)} | grep -Fx ok`,
+    `if test -f ${quote(legacyJson)}; then cp -a ${quote(legacyJson)} ${quote(`${systemicBackupDir}/new_story_ad_db.json.before-systemic`)} && touch ${quote(`${systemicBackupDir}/legacy-json-existed`)}; else touch ${quote(`${systemicBackupDir}/legacy-json-missing`)}; fi`,
+  ].join(' && '));
+  systemicBackupCreated = true;
+  return { backup_dir: systemicBackupDir, sqlite_quick_check: 'ok' };
+}
+
+async function migrateSystemicState() {
+  const runner = `${previousTarget}/scripts/run-with-pm2-env.js`;
+  const dryRun = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/migrate-new-story-ad-systemic-state.js`));
+  if (dryRun.read_only !== true || Number(dryRun.model_calls_started || 0) !== 0) {
+    throw new Error(`SYSTEMIC_MIGRATION_DRY_RUN_INVALID: ${JSON.stringify(dryRun)}`);
+  }
+  systemicMigrationApplied = true;
+  const applied = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/migrate-new-story-ad-systemic-state.js --commit`));
+  if (applied.ok !== true || Number(applied.model_calls_started || 0) !== 0
+    || Number(applied.remaining?.tasks_without_work || 0) !== 0
+    || Number(applied.remaining?.tasks_without_lineage || 0) !== 0
+    || Number(applied.remaining?.unknown_billing_without_quarantine || 0) !== 0
+    || Number(applied.remaining?.non_authoritative_works || 0) !== 0) {
+    throw new Error(`SYSTEMIC_MIGRATION_FAILED: ${JSON.stringify(applied)}`);
+  }
+  return { dry_run: dryRun, applied };
+}
+
+async function restoreSystemicBackup() {
+  if (!systemicBackupCreated) return null;
+  await exec(`pm2 stop vido >/dev/null 2>&1 || true; pm2 stop ${quote(candidateName)} >/dev/null 2>&1 || true`);
+  const legacyJson = `${previousTarget}/outputs/new_story_ad_db.json`;
+  await exec([
+    `cp -a ${quote(`${systemicBackupDir}/vido.sqlite.before-systemic`)} /data/vido/db/vido.sqlite.restore`,
+    `echo PRAGMA quick_check | sqlite3 /data/vido/db/vido.sqlite.restore | grep -Fx ok`,
+    'mv -f /data/vido/db/vido.sqlite.restore /data/vido/db/vido.sqlite',
+    'rm -f /data/vido/db/vido.sqlite-wal /data/vido/db/vido.sqlite-shm',
+    `if test -f ${quote(`${systemicBackupDir}/legacy-json-existed`)}; then cp -a ${quote(`${systemicBackupDir}/new_story_ad_db.json.before-systemic`)} ${quote(legacyJson)}; elif test -f ${quote(`${systemicBackupDir}/legacy-json-missing`)}; then rm -f ${quote(legacyJson)}; fi`,
+  ].join(' && '));
+  systemicMigrationApplied = false;
+  return { restored: true, backup_dir: systemicBackupDir };
+}
+
 async function rollbackAssistRoute() {
   if (!assistRouteMigrationApplied) return null;
   return parseJson(await exec(`cd ${quote(releaseDir)} && node scripts/run-with-pm2-env.js vido node scripts/migrate-new-story-ad-assist-route-v127.js --rollback`));
@@ -197,6 +245,7 @@ async function rollback() {
   if (!cutoverStarted && !releaseMigrationApplied && !assistRouteMigrationApplied) return;
   await rollbackAssistRoute();
   await rollbackReleaseState();
+  await restoreSystemicBackup();
   if (!cutoverStarted) return;
   await exec(`ln -sfn ${quote(previousTarget)} /opt/vido/.current-rollback && mv -Tf /opt/vido/.current-rollback ${quote(currentLink)}`);
   await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(previousTarget)} --build ${quote(previousBuildId || release.build_id)} --candidate ${quote(candidateName)}${previousNodeRuntimeBin ? ` --node ${quote(previousNodeRuntimeBin)}` : ''}`);
@@ -309,9 +358,11 @@ client.on('ready', async () => {
     await setReleaseControl('draining', preVersion.release_bundle_id || '');
     const drained = await releaseReadiness(previousTarget);
     if (Number(drained.active_count) || blockingUnknownBilling(drained)) throw new Error(`停写后仍有活动任务或当前生成未知计费：${JSON.stringify(drained)}`);
-    const migration = await migrateReleaseState();
-    const assistRouteMigration = await migrateAssistRoute();
     cutoverStarted = true;
+    const systemicBackup = await createSystemicBackup();
+    const migration = await migrateReleaseState();
+    const systemicMigration = await migrateSystemicState();
+    const assistRouteMigration = await migrateAssistRoute();
     reportPhase('cutover');
     await exec(`ln -sfn ${quote(releaseDir)} /opt/vido/.current-next && mv -Tf /opt/vido/.current-next ${quote(currentLink)}`);
     await exec(`node ${quote(`${releaseDir}/scripts/story-ad-pm2-release.js`)} --mode cutover --release ${quote(releaseDir)} --build ${quote(release.build_id)} --candidate ${quote(candidateName)} --node ${quote(nodeRuntimeBin)}`);
@@ -352,6 +403,8 @@ client.on('ready', async () => {
       legacy_process_frozen: legacyProcessFrozen,
       release_migration_mode: releaseMigrationMode,
       release_migration: migration,
+      systemic_backup: systemicBackup,
+      systemic_migration: systemicMigration,
       assist_route_migration: assistRouteMigration,
       assist_route_commit: assistRouteCommit,
       public_release_bundle_id: publicVersion.release_bundle_id,
