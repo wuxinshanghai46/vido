@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-sr9-v16';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr9-v16';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr9-v16';
-import { confirmDialog } from './components/dialog.js?v=20260814-sr9-v16';
+import { createProjectStore } from './store/projectStore.js?v=20260814-sr10-v17';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr10-v17';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr10-v17';
+import { confirmDialog } from './components/dialog.js?v=20260814-sr10-v17';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-sr9-v16'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-sr9-v16'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr9-v16'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-sr9-v16'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-sr9-v16'),
-  final: () => import('./views/finalView.js?v=20260814-sr9-v16'),
-  workflow: () => import('./views/workflowView.js?v=20260814-sr9-v16'),
+  brief: () => import('./views/briefView.js?v=20260814-sr10-v17'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-sr10-v17'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr10-v17'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-sr10-v17'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-sr10-v17'),
+  final: () => import('./views/finalView.js?v=20260814-sr10-v17'),
+  workflow: () => import('./views/workflowView.js?v=20260814-sr10-v17'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
