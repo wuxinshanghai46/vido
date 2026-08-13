@@ -3,16 +3,6 @@
 const contentSkill = require('./contentSkillService');
 
 function clean(value = '', max = 4000) { return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max); }
-function hasSubjectEvidence(subject = '', text = '') {
-  const target = clean(subject, 200).replace(/[\s\p{P}\p{S}]+/gu, '');
-  const visible = clean(text, 20000).replace(/[\s\p{P}\p{S}]+/gu, '');
-  if (!target || !visible) return false;
-  if (visible.includes(target)) return true;
-  const grams = [...new Set(Array.from({ length: Math.max(0, target.length - 1) }, (_, index) => target.slice(index, index + 2))
-    .filter(gram => /[\p{Script=Han}A-Za-z0-9]{2}/u.test(gram)))];
-  const matched = grams.filter(gram => visible.includes(gram)).length;
-  return matched >= (target.length >= 6 ? 2 : 1);
-}
 function visibleText(value = {}) {
   const beats = Array.isArray(value.beats) ? value.beats : [];
   const shots = Array.isArray(value.shots) ? value.shots : (Array.isArray(value) ? value : []);
@@ -36,7 +26,7 @@ function assertNoCrosstalk(context = {}, artifact = {}) {
   if (domain.mode === 'commercial_subject') {
     const subject = clean(context.product_subject, 200);
     if (!subject) issues.push('广告产物缺少明确商品或服务主体');
-    if (subject && text && !hasSubjectEvidence(subject, text) && !/(商品|产品|服务|主体|材料|方案)/.test(text)) issues.push('广告产物没有呈现广告主体或主体证据');
+    if (subject && text && !text.includes(subject) && !/(商品|产品|服务|主体|材料|方案)/.test(text)) issues.push('广告产物没有呈现广告主体或主体证据');
   }
   if (issues.length) {
     const error = new Error(`内容类型质量门禁未通过：${issues.join('；')}`);
@@ -62,4 +52,4 @@ function tagShots(context = {}, shots = []) {
 
 function promptBlock(context = {}) { return contentSkill.promptBlock(contentSkill.assertSelected(context).mode); }
 
-module.exports = { contract, fields, hasSubjectEvidence, assertNoCrosstalk, tagBlueprint, tagShots, promptBlock };
+module.exports = { contract, fields, assertNoCrosstalk, tagBlueprint, tagShots, promptBlock };
