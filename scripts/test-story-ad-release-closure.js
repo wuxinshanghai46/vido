@@ -31,6 +31,9 @@ function main() {
   const selected = new Set(files);
   const runtimeSelected = new Set((runtimeManifest.files || []).map(item => item.path));
   assert(files.length > 100, `剧情广告发布集合异常偏小：${files.length}`);
+  assert(selected.has('scripts/migrate-new-story-ad-systemic-state.js'), '发布闭包必须包含切流时调用的系统迁移入口');
+  assert(selected.has('scripts/audit-new-story-ad-systemic-state.js'), '发布闭包必须包含迁移后审计入口');
+  assert(selected.has('src/services/newStoryAd/systemicMigrationService.js'), '发布闭包必须包含系统迁移依赖');
   files.forEach(file => assert(fs.existsSync(path.join(root, file)), `发布文件不存在：${file}`));
   (manifest.files || []).forEach(entry => assert(selected.has(entry.path), `静态发布清单未进入发布集合：${entry.path}`));
   for (const directory of RUNTIME_DIRECTORIES) {
