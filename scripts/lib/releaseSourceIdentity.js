@@ -50,7 +50,9 @@ function trustedGeneratedPaths(root) {
 function resolveReleaseSourceIdentity({ root = path.resolve(__dirname, '../..'), requireRemoteSync = true } = {}) {
   const sourceRevision = git(root, ['rev-parse', 'HEAD']);
   const sourceTree = git(root, ['rev-parse', 'HEAD^{tree}']);
-  const sourceRef = git(root, ['branch', '--show-current']);
+  // Compatible with older production Git versions; unlike rev-parse this also
+  // fails closed when the repository is on a detached HEAD.
+  const sourceRef = git(root, ['symbolic-ref', '--short', 'HEAD']);
   const dirty = git(root, [
     'status', '--porcelain', '--untracked-files=all', '--',
     'src', 'public', 'config', 'scripts', 'package.json', 'package-lock.json',

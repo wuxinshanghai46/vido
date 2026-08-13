@@ -61,6 +61,7 @@ const REMOTE_TEST_SCRIPTS = [
   'story-ad:v101:test',
   'story-ad:v102:test',
   'story-ad:release:test',
+  'story-ad:systemic:test',
   'story-ad:v3:boundaries',
   'story-ad:v6:boundaries',
 ];

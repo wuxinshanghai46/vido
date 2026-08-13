@@ -57,6 +57,9 @@ function main() {
   const attributes = fs.readFileSync(path.join(root, '.gitattributes'), 'utf8');
   assert(attributes.includes('*.htm text eol=lf'), 'Windows fresh clone 必须固定 .htm 为 LF，避免运行清单哈希漂移');
   packageTestFiles(root).forEach(file => assert(selected.has(file), `生产回归脚本漏发：${file}`));
+  packageTestFiles(root, ['story-ad:systemic:test']).forEach(file => {
+    assert(selected.has(file), `系统性整改回归脚本漏发：${file}`);
+  });
   files.filter(file => file !== 'config/story-ad-runtime-manifest.json').forEach(file => {
     assert(runtimeSelected.has(file), `运行时哈希清单漏发：${file}`);
   });

@@ -6,6 +6,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const sourceIdentity = require('./lib/releaseSourceIdentity');
+const sourceIdentityCode = fs.readFileSync(path.join(__dirname, 'lib', 'releaseSourceIdentity.js'), 'utf8');
+assert.match(sourceIdentityCode, /symbolic-ref', '--short', 'HEAD/);
+assert.doesNotMatch(sourceIdentityCode, /branch', '--show-current/);
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-source-identity-'));
 function git(args) {
