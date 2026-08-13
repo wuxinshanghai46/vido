@@ -114,6 +114,63 @@ async function generateDetailRows({
       structuredAccessories ? `结构化配饰清单：${structuredAccessories}` : '',
       '严格依据参考图，不改变服装款式和配色，不加入文字、标签、水印、拼贴边框或人物档案排版。',
     ].filter(Boolean).join('\n');
+    const localWardrobeFallback = async modelCallCount => {
+      if (detailKind !== 'wardrobe_detail') return null;
+      const crop = {
+        outfit_silhouette: { x: 0.24, y: 0.12, width: 0.52, height: 0.75, outputWidth: 520, outputHeight: 720 },
+        neckline_cut: { x: 0.29, y: 0.20, width: 0.42, height: 0.24, outputWidth: 640, outputHeight: 480 },
+        fabric_drape: { x: 0.30, y: 0.40, width: 0.40, height: 0.30, outputWidth: 640, outputHeight: 480 },
+        hem_and_footwear: { x: 0.27, y: 0.65, width: 0.46, height: 0.22, outputWidth: 640, outputHeight: 480 },
+      }[spec.key];
+      if (!crop) return null;
+      const buffer = await detailTile(reference, crop, crop.outputWidth, crop.outputHeight, mediaAdapter);
+      if (!buffer) return null;
+      const filename = wardrobeFilename(spec.key, taskId, assetId, revision);
+      const outputPath = mediaAdapter.assetPathFromName(filename);
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      await fs.promises.writeFile(outputPath, buffer);
+      return {
+        id: `${assetId}_${spec.key}_r${Math.max(1, Number(revision) || 1)}`,
+        key: spec.key,
+        kind: detailKind,
+        label: spec.label,
+        filename,
+        image_url: mediaAdapter.publicAssetUrl(filename),
+        source_asset_id: reference.id || reference.asset_id || reference.key || '',
+        derived_locally: true,
+        detail_mode: 'local_reference_crop_after_provider_audit',
+        resolution: `${crop.outputWidth}x${crop.outputHeight}`,
+        provider_used: 'local/sharp',
+        model_call_count: modelCallCount,
+        recovery_reason: 'PROVIDER_CONTENT_AUDIT',
+      };
+    };
+    if (cached?.error?.code === 'PROVIDER_CONTENT_AUDIT') {
+      const recovered = await localWardrobeFallback(0);
+      if (recovered) {
+        await saveCheckpoint(checkpointKey, checkpointService.normalizeCheckpoint({
+          ...cached,
+          status: 'completed',
+          provider_submission_state: 'completed',
+          billing_state: 'confirmed',
+          provider_result: recovered,
+          result: recovered,
+          error: null,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, {
+          key: checkpointKey,
+          taskId,
+          assetType: 'person_detail',
+          assetId,
+          unit: `${detailKind}:${spec.key}`,
+          revision,
+        }));
+        rows.push(recovered);
+        await onProgress({ completed: index + 1, total: definitions.length, key: spec.key, reused: true, locally_recovered: true });
+        continue;
+      }
+    }
     const checkpointed = await checkpointService.runCheckpointedUnit({
       identity: {
         key: checkpointKey,
@@ -134,23 +191,34 @@ async function generateDetailRows({
       load: loadCheckpoint,
       save: saveCheckpoint,
       execute: async controls => {
-        const generated = controls.providerResult || await mediaAdapter.generateImage({
-          taskId,
-          stage: `new_story_ad.person_dossier_${detailKind}`,
-          prompt,
-          auditSafePrompt: prompt,
-          filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
-          aspectRatio: spec.aspectRatio || '4:3',
-          resolution: '2K',
-          imageModel: 'gpt-image-2',
-          referenceImages: [reference.image_url],
-          requireReferences: true,
-          inputFidelity: 'high',
-          singleAttempt: true,
-          clientRequestId: checkpointKey,
-          onSubmitting: controls.onSubmitting,
-          onSubmitted: controls.onSubmitted,
-        });
+        let generated = controls.providerResult;
+        if (!generated) {
+          try {
+            generated = await mediaAdapter.generateImage({
+              taskId,
+              stage: `new_story_ad.person_dossier_${detailKind}`,
+              prompt,
+              auditSafePrompt: prompt,
+              filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
+              aspectRatio: spec.aspectRatio || '4:3',
+              resolution: '2K',
+              imageModel: 'gpt-image-2',
+              referenceImages: [reference.image_url],
+              requireReferences: true,
+              inputFidelity: 'high',
+              singleAttempt: true,
+              clientRequestId: checkpointKey,
+              onSubmitting: controls.onSubmitting,
+              onSubmitted: controls.onSubmitted,
+            });
+          } catch (error) {
+            if (error?.code === 'PROVIDER_CONTENT_AUDIT') {
+              const recovered = await localWardrobeFallback(1);
+              if (recovered) return recovered;
+            }
+            throw error;
+          }
+        }
         if (!controls.providerResult) await controls.onProviderResult(generated);
         return {
           id: `${assetId}_${spec.key}_r${Math.max(1, Number(revision) || 1)}`,
@@ -189,7 +257,7 @@ async function generateWearableDetails(options = {}, deps = {}) {
 async function generateWardrobeDetails(options = {}, deps = {}) {
   return generateDetailRows({
     ...options,
-    definitions: WARDROBE_DEFINITIONS,
+    definitions: Array.isArray(options.definitions) ? options.definitions : WARDROBE_DEFINITIONS,
     detailKind: 'wardrobe_detail',
   }, deps);
 }

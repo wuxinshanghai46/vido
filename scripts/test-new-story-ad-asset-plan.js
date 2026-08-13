@@ -179,11 +179,25 @@ function createTask(id, context) {
   assert.strictEqual(storage.getOutput('asset-plan-reference', 'asset_plan').source, 'reference_analysis_projection');
   assert.strictEqual(storage.getOutput('asset-plan-reference', 'asset_plan').model_meta.model_call_count, 0);
 
+  const userBriefWithReference = baseContext({
+    ...reference,
+    request_id: 'asset-plan-user-brief-reference-test',
+    brief_source: 'user',
+    brief: '用户明确要求以红色跑车为唯一广告主体，花朵参考只用于节奏，不得成为场景或商品。',
+    product_subject: '高性能红色电动跑车',
+  });
+  createTask('asset-plan-user-brief-reference', userBriefWithReference);
+  await assetPlan.generate('asset-plan-user-brief-reference');
+  assert.strictEqual(modelCalls, 2, '用户目标与参考素材同时存在时必须按用户目标规划，参考内容不得零模型覆盖用户场景');
+  assert.notStrictEqual(storage.getOutput('asset-plan-user-brief-reference', 'asset_plan').source, 'reference_analysis_projection');
+  assert.strictEqual(storage.getOutput('asset-plan-user-brief-reference', 'context').brief, userBriefWithReference.brief);
+
   console.log(JSON.stringify({
     passed: true,
     no_reference_model_calls: 1,
     unchanged_fingerprint_additional_calls: 0,
     valid_reference_model_calls: 0,
+    authoritative_user_brief_reference_model_calls: 1,
     projected_cast_count: storage.getOutput('asset-plan-reference', 'asset_plan').cast_profiles.length,
     projected_prop_count: storage.getOutput('asset-plan-reference', 'asset_plan').prop_plan.length,
     projected_scene_count: projected.spaces.length,

@@ -1339,7 +1339,8 @@ async function generate(taskId, options = {}) {
 
   let plan;
   let modelMeta;
-  if (referenceIsValid(ctx.reference_video_analysis)) {
+  const authoritativeUserBrief = ctx.brief_source === 'user' && cleanText(ctx.brief, 3000);
+  if (referenceIsValid(ctx.reference_video_analysis) && !authoritativeUserBrief) {
     plan = normalizePlan(projectReferencePlan(ctx), ctx);
     modelMeta = { source: 'reference_analysis_projection', model_call_count: 0 };
   } else {
