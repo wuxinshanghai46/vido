@@ -452,15 +452,12 @@ function testScenePlanFrontendAndCodeSize() {
   assert.strictEqual(draft.draft, true);
   assert.strictEqual(controls.get('[data-nsa-scene-spec="layoutText"]').value, '');
 
-  const legacySource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert.match(legacySource, /dhNsaAdAddSceneSheet:\s*\(\)\s*=>\s*window\.NewStoryAdSceneAssets\?\.addDraft\?/);
-  assert.doesNotMatch(legacySource, /dhNsaAdAddSceneSheet:\s*\(\)\s*=>\s*generateSceneSheet/);
-  assert.match(legacySource, /scene_plan:\s*currentPlan/, '场景重编译必须把完整权威计划提交给后端');
-  assert.match(legacySource, /target_space_id:\s*targetSpaceId/, '场景重编译必须显式提交当前选中的稳定空间 ID');
-  assert.match(legacySource, /selectPlanSpaceById\?\.\(state,\s*sceneId\)/, '场景卡片升级入口必须按稳定空间 ID 同步计划选择');
+  const sceneAssetsSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/scene-assets.js'), 'utf8');
+  const currentAssistSource = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/assetCenterAssist.js'), 'utf8');
+  assert.match(sceneAssetsSource, /function addDraft\(/);
+  assert.match(currentAssistSource, /scene_plan:\s*sourcePlan/);
+  assert.match(currentAssistSource, /target_space_id:\s*item\.id/);
 
-  const legacyLines = legacySource.split(/\r?\n/).length;
-  assert(legacyLines <= 6400, `旧剧情广告 UI 不得继续膨胀：当前 ${legacyLines} 行`);
   const galleryBytes = Buffer.byteLength(
     fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-assets-ui.js'), 'utf8').replace(/\r\n/g, '\n'),
     'utf8',

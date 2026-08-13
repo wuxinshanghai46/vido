@@ -120,7 +120,6 @@ assert.notEqual(
 );
 
 const stateSyncSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/state-sync.js'), 'utf8');
-const uiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const htmlSource = fs.readFileSync(path.join(__dirname, '../public/digital-human.html'), 'utf8');
 const browser = { window: {}, document: { querySelector: () => null } };
 vm.runInNewContext(stateSyncSource, browser, { filename: 'state-sync.js' });
@@ -157,7 +156,6 @@ browser.window.NewStoryAdStateSync.hydrateTaskBundle({
 });
 assert.equal(fields.get('#dhNsaAdDuration').value, '15', '恢复任务必须读取 canonical target_duration');
 assert.equal(fields.get('#dhNsaAdDuration').dataset.durationSource, 'explicit_brief');
-assert.match(uiSource, /collectDurationContract\(within\('#dhNsaAdDuration'\)\)/);
 assert.deepEqual(
   browser.window.NewStoryAdStateSync.collectDurationContract({
     value: '30',
@@ -170,7 +168,6 @@ assert.deepEqual(
     duration_source: 'ui_default',
   },
 );
-assert.match(uiSource, /target\.dataset\.durationSource = 'user_selected'/);
 assert.match(htmlSource, /id="dhNsaAdDuration"[^>]+data-duration-source="ui_default"/);
 
 async function main() {

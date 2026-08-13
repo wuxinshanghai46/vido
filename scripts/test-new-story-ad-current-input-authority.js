@@ -94,9 +94,10 @@ async function main() {
   assert.deepStrictEqual(invoked, [0]);
   assert.strictEqual(schedule.results.filter(item => item.error_code === 'KEYFRAME_BATCH_CIRCUIT_OPEN').length, 2);
 
-  const legacySource = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert.match(legacySource, /preserve_current_scene_fields:\s*!replaceExisting/);
-  assert.match(legacySource, /applyPersonSpecAuthority/);
+  const sceneAssistSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterAssist.js'), 'utf8');
+  const subjectUiSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
+  assert.match(sceneAssistSource, /preserve_current_scene_fields:\s*false/);
+  assert.match(subjectUiSource, /applyPersonSpecAuthority/);
   console.log(JSON.stringify({
     status: 'PASS',
     age_authority: true,

@@ -172,9 +172,9 @@ function testProviderReferencePriority() {
     },
   });
   assert.equal(url, '/outputs/person/front-full.png');
-  const payloadSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert.match(payloadSource, /deyunai_asset_id:/);
-  assert.match(payloadSource, /deyunai_asset_group_type:/);
+  const providerSource = fs.readFileSync(path.join(__dirname, '../src/services/newStoryAd/deyunaiPersonAssetService.js'), 'utf8');
+  assert.match(providerSource, /deyunai_asset_id:/);
+  assert.match(providerSource, /deyunai_asset_group_type:/);
 }
 
 function testComplianceKnowledgeBase() {

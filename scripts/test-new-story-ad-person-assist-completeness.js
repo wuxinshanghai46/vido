@@ -80,24 +80,13 @@ function testRepeatedAgeDescriptionIsCollapsedIdempotently() {
 
 /** 验证前端使用逐字段合并，而不是把部分响应直接当成完整结果。 */
 function testFrontendCompletenessGuardIsWired() {
-  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/subject-profile-assist.js'), 'utf8');
   const progressSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/assist-progress.js'), 'utf8');
-  const confirmationSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/auto-save-confirmation.js'), 'utf8');
-  assert.match(source, /function completePersonSpecSuggestion\(/);
-  assert.match(source, /const completedSuggestion = completePersonSpecSuggestion\(suggestion, current, fallback\)/);
-  assert.match(source, /applyPersonSpecSuggestion\(completedSuggestion\)/);
-  assert.match(source, /function completeSceneSpecSuggestion\(/);
-  assert.match(source, /const nextSpec = completeSceneSpecSuggestion\(suggestion, currentSpec, fallbackSpec\)/);
-  assert.match(source, /label: '正在补齐全部人物设置…',\s*timeoutMs: 120000,/);
-  assert.match(source, /channel: 'person_assist'/);
-  assert.match(source, /channel: 'scene_assist'/);
-  assert.match(source, /showGlobalProgress: false/);
+  assert.match(source, /mergeHumanProfile/);
+  assert.match(source, /assist_replaceable_fields/);
+  assert.match(source, /assist_subject_target/);
+  assert.match(source, /timeoutMs:\s*120000/);
   assert.match(progressSource, /补齐内容已写入下方本人物字段/);
-  assert.match(source, /percentAlreadyShown \|\| snap\.indeterminate \? ''/);
-  assert.match(source, /refreshProfileValidation\?\.\(/);
-  assert.match(source, /const waitForAutoSave = /);
-  assert.match(confirmationSource, /async function wait\(/);
-  assert.match(source, /await waitForAutoSave\(saveVersion\)/);
 }
 
 /** 回归：单人档案已经被 AI 细化后，旧的全局通用字段不得在重渲染时覆盖它。 */
@@ -185,9 +174,6 @@ function testGeneratedActorAgeConstraintDoesNotDowngrade() {
   assert.equal(ageValue('17-25 years old'), 'young_adult_17_25');
   assert.equal(ageValue('25'), '', '单独的边界数字不能覆盖已锁定年龄段');
 
-  const legacySource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert.match(legacySource, /asset\.person_contract\?\.identity\?\.age_range/);
-  assert.match(legacySource, /personAgeValue\(structuredAge \|\| \(!spec\.age \? asset\.description \|\| '' : ''\)\) \|\| spec\.age/);
 }
 
 /** 回归：按钮重渲染后仍应显示进行中/成功状态，并使用足以覆盖服务端模型等待的超时。 */

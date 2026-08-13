@@ -844,7 +844,6 @@ function harness({ cancelAt = 0 } = {}) {
   assert.deepStrictEqual(boundaryCounts, { mode: 'human_pet', people: 12, pets: 8 }, 'subject counts must enforce the 12-person and 8-pet upper bounds');
 
   const root = path.resolve(__dirname, '..');
-  const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const subjectUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-assets-ui.js'), 'utf8');
   const subjectAssistUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-profile-assist.js'), 'utf8');
   const sceneBinding = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneBindingService.js'), 'utf8');
@@ -857,13 +856,7 @@ function harness({ cancelAt = 0 } = {}) {
   const checkpointPollingSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/subject-checkpoint-polling.js'), 'utf8');
   const bootstrapSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
   const assetLoaderSource = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap-asset-loader.js'), 'utf8');
-  assert(ui.includes("'/api/new-story-ad/subject-assets'"), 'multi-person/pet UI must use the subject bundle endpoint');
-  assert(
-    ui.includes('timeoutMs: 45 * 60 * 1000'),
-    'long-running multi-atlas subject generation must not fall back to the generic 45-second POST timeout',
-  );
-  assert(subjectUi.includes('state.petProfiles') && ui.includes('NewStoryAdSubjectAssetsUI.petProfiles'), 'generated pet references must be preserved in request payloads');
-  assert(ui.includes('cast_profiles: state.castProfiles') && ui.includes('expected_animals: petCount'), 'subject generation payload must submit exact counts and independent profiles');
+  assert(subjectUi.includes('state.petProfiles'), 'generated pet references must be preserved in current subject state');
   assert(sceneBinding.includes('MULTI_SCENE_ASSETS_REQUIRED'), 'multi-scene storyboard must be blocked until independent scene assets exist');
   assert(sceneBinding.includes('assertVerifiedSceneAssets(assets)'), 'storyboard must reject unverified scene assets');
   assert(providerAssets.includes('for (let index = 0; index < cast.length; index += 1)'), 'multi-person video must upload every cast member to the managed person library');
@@ -873,7 +866,7 @@ function harness({ cancelAt = 0 } = {}) {
     taskViewSource.includes('personAssetLifecycle.projectLatestSubjectCheckpoint(visibleOutputs, rawBundle.outputs)'),
     'the task API must expose exactly the latest subject checkpoint so refresh recovery receives the running batch',
   );
-  assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling must load before the legacy UI');
+  assert(bootstrapSource.includes('/js/new-story-ad/subject-checkpoint-polling.js'), 'checkpoint polling module must remain declared');
 
   const subjectUiSandbox = { window: {} };
   vm.createContext(subjectUiSandbox);
@@ -939,9 +932,7 @@ function harness({ cancelAt = 0 } = {}) {
   assert.strictEqual(isolatedAssistState.castProfiles[1]._generationDirty, true);
   assert.strictEqual(isolatedAssistState.castProfiles[0]._generationDirty, undefined);
   assert(subjectUi.includes('data-nsa-subject-assist-index'), 'each human profile must render its own assist action');
-  assert(/scheduleAutoSave\('single_person_assist',\s*\{\s*immediate:\s*true\s*\}\)/.test(ui)
-    && /await waitForAutoSave\(version\)/.test(ui),
-  'single-person assist must autosave after the scoped merge and wait for server confirmation');
+  assert(/assist_subject_target/.test(subjectAssistUi), 'single-person assist must remain scoped to the selected subject');
   assert(!bootstrapSource.includes('/js/new-story-ad/subject-profile-assist.js')
     && bootstrapSource.includes('/js/new-story-ad/bootstrap-asset-loader.js')
     && assetLoaderSource.includes('/js/new-story-ad/subject-profile-assist.js'),

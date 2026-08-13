@@ -704,24 +704,10 @@ async function main() {
   assert(durableFailureHost.innerHTML.includes('PROVIDER_5XX_AMBIGUOUS'));
   assert(durableFailureHost.innerHTML.includes('support-scene-1'), '支持编号不能只存在于瞬时弹窗');
 
-  const legacyUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert(legacyUi.includes("target.closest('[data-nsa-scene-repair]')"));
-  assert(legacyUi.includes('NewStoryAdSceneAssets?.repair'));
-  assert(legacyUi.includes("target.closest('[data-nsa-scene-upgrade]')"));
-  assert(legacyUi.includes('upgradeAndRegenerateScene'));
-  assert(legacyUi.includes('replaceExisting: true'));
-  assert(legacyUi.includes('requireAi: true'));
-  assert(legacyUi.includes('resumableUpgradeProgress'));
-  assert(legacyUi.includes("saveCurrentTaskProgress({ silent: true, render: false })"));
-  assert(legacyUi.includes('沿用上次已保存的空间设定，仅补齐未成功的视图'));
-  assert(legacyUi.includes('没有提交任何图片生成'));
-  assert(legacyUi.includes('syncSceneUpgradeActions'));
-  assert(legacyUi.includes('button.hidden = upgradeRequired'));
-  assert(legacyUi.includes('!allowUpgradeAsset && selectedSceneUpgradeRequired()'));
-  assert(legacyUi.includes('options.upgradePrepared !== true && selectedSceneUpgradeRequired()'));
-
-  const sceneService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
   const sceneUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/scene-assets.js'), 'utf8');
+  assert(sceneUi.includes('data-nsa-scene-repair'));
+  assert(sceneUi.includes('async function repair'));
+  const sceneService = fs.readFileSync(path.join(root, 'src/services/newStoryAd/sceneAssetService.js'), 'utf8');
   assert(sceneUi.includes('const previewIndex = cameraViewIndex;'), '逐机位效果缺失时不得回退打开俯视布局');
   assert(!sceneUi.includes('const previewIndex = cameraViewIndex >= 0 ? cameraViewIndex : layoutIndex;'));
   assert(!sceneService.includes('legacyNeedsLayoutHeuristic'));
@@ -755,7 +741,6 @@ async function main() {
   assert(sceneUi.includes('acknowledge_billing_unknown: true'));
   assert(!sceneUi.includes("error?.code !== 'SCENE_ASSET_BILLING_UNKNOWN'"));
   assert(!sceneUi.includes('检测到上次场景图片计费状态未知'));
-  assert(legacyUi.includes('confirmAction: confirmNsaAction'));
   const taskCenterUi = fs.readFileSync(path.join(root, 'public/js/digital-human.js'), 'utf8');
   const continueHandler = taskCenterUi.slice(
     taskCenterUi.indexOf("const newStoryAdContinue = closest('[data-new-story-ad-continue]')"),
@@ -766,7 +751,6 @@ async function main() {
   const buttonState = fs.readFileSync(path.join(root, 'public/js/new-story-ad/button-state.js'), 'utf8');
   assert(!buttonState.includes("storyboardBtn.classList.toggle('is-next'"));
   assert(css.includes('#dhNsaAdStoryboard:not(:disabled):hover'));
-  assert(legacyUi.includes("NewStoryAdSceneAssets?.syncSpecSelectionState?.(target)"));
   assert(css.includes('.dh-nsa-scene-spec-grid select.dh-input.is-explicit-selection'));
   assert(css.includes('color-scheme: dark'));
   assert(css.includes('.dh-nsa-custom-select-option.is-selected'));
@@ -777,7 +761,6 @@ async function main() {
   assert(sceneUi.includes('new MutationObserver'));
   assert(sceneUi.includes("new-story-ad:restore-finished"));
   assert(sceneUi.includes('positionSpecSelectMenu(control)'));
-  assert(legacyUi.includes('Dynamic script/storyboard/modal selects are created'));
   assert(html.includes('id="dhNsaAdProductionMode"'));
   assert(sceneUi.includes("control.dispatchEvent(new Event('change', { bubbles: true }))"));
   assert(sceneUi.includes('if (control.value === nativeOption.value)'));

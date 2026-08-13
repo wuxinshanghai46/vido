@@ -239,20 +239,15 @@ function testModuleResponsibilityBoundaries() {
 
 function testStep5RenderingPerformanceBoundaries() {
   const root = path.resolve(__dirname, '..');
-  const legacy = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const reviewModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-review.js'), 'utf8');
   const availabilityModule = fs.readFileSync(path.join(root, 'public/js/new-story-ad/video-unit-availability.js'), 'utf8');
-  const renderMedia = legacy.slice(legacy.indexOf('function renderMedia()'), legacy.indexOf('function syncPersonSpecControls'));
+  const finalView = fs.readFileSync(path.join(root, 'public/story-ad/views/finalView.js'), 'utf8');
   assert(reviewModule.split(/\r?\n/).length <= 360, '视频选择、费用与 P0 语义应保持在独立前端模块中');
   assert(availabilityModule.split(/\r?\n/).length <= 140, '生成单元阻断范围计算必须保持为独立小模块');
-  assert(!legacy.includes('const P0_DIMENSIONS = new Set'), '旧主前端不得重复实现 P0 维度合同');
-  assert(!legacy.includes('function selectionSummary('), '旧主前端不得重复实现生成单元费用选择逻辑');
-  assert(renderMedia.includes('preload="metadata"'), 'Step 5 唯一最终成片播放器只预取 metadata');
+  assert(finalView.includes('preload="none"'), '现行成片播放器不得预取视频流');
   assert(reviewModule.includes('data-nsa-review-media=') && reviewModule.includes("video.preload = 'none'"), '母片与成员片段必须折叠后懒创建且默认不预加载');
   assert(reviewModule.includes("image.loading = 'lazy'"), '边界证据图片必须按需懒加载');
-  assert(!/setInterval|fetch\(|api\(/.test(renderMedia), 'Step 5 渲染不能为每个成员镜头建立独立轮询或请求');
-  assert.strictEqual((renderMedia.match(/videoGenerationUnits\(clips\)/g) || []).length, 1, '一次渲染只能投影一次 generation units');
-  assert.strictEqual((renderMedia.match(/<div class="dh-nsa-video-unit-list"/g) || []).length, 1, 'Step 5 只能有一棵生成单元 DOM，不能同时重复逐镜与母片列表');
+  assert(!/setInterval|fetch\(|request\(/.test(finalView), '现行成片渲染不得为每个媒体节点建立独立轮询或请求');
 }
 
 (async () => {

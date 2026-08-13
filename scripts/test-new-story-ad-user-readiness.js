@@ -145,7 +145,6 @@ function verifyPreciseGuidance() {
 }
 
 function verifyWiring() {
-  const legacy = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
   const flow = fs.readFileSync(path.join(root, 'public/js/new-story-ad/generation-flow.js'), 'utf8');
   const cancelable = fs.readFileSync(path.join(root, 'public/js/new-story-ad/cancelable-generation.js'), 'utf8');
   const actors = fs.readFileSync(path.join(root, 'public/js/new-story-ad/actors.js'), 'utf8');
@@ -154,17 +153,8 @@ function verifyWiring() {
   const storage = fs.readFileSync(path.join(root, 'src/services/newStoryAd/storageService.js'), 'utf8');
   const ttsAdapter = fs.readFileSync(path.join(root, 'src/services/newStoryAd/ttsAdapter.js'), 'utf8');
 
-  assert.equal((legacy.match(/\/api\/new-story-ad\/assist/g) || []).length, 0);
   assert.equal((flow.match(/\/api\/new-story-ad\/assist/g) || []).length, 1);
   assert.match(cancelable, /flow\.requestInlineGeneration\(stage, ctx, options\)/);
-  assert.match(legacy, /requestCancelableGeneration\('assist_person_spec'/);
-  assert.match(legacy, /requestCancelableGeneration\('assist_scene_spec'/);
-  assert.match(
-    legacy,
-    /requestCancelableGeneration\('assist_scene_spec',\s*\{[\s\S]*?timeoutMs:\s*150000/,
-    'scene assist must not inherit the generic 45 second POST timeout',
-  );
-  assert.match(legacy, /requestCancelableGeneration\('subject_assets'/);
   assert.match(actors, /data-nsa-cancel-generation/);
   assert.match(scenes, /data-nsa-cancel-generation/);
   assert.match(route, /router\.post\('\/assist'[\s\S]*?cancellation\.run\(/);

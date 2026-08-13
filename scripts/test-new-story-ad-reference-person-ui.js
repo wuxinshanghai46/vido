@@ -14,7 +14,6 @@ const personInheritance = read('public/js/new-story-ad/person-reference-inherita
 const personUi = read('public/js/new-story-ad/real-person-dossier.js');
 const subjectAssist = read('public/js/new-story-ad/subject-profile-assist.js');
 const generationFlow = read('public/js/new-story-ad/generation-flow.js');
-const legacy = read('public/js/new-story-ad-legacy-ui.js');
 const stateSync = read('public/js/new-story-ad/state-sync.js');
 const contextBuilder = read('src/services/newStoryAd/contextBuilder.js');
 const routes = read('src/routes/newStoryAd.js');
@@ -59,8 +58,8 @@ const dossierComposite = read('src/services/newStoryAd/dossierCompositeService.j
 
 const referenceIndex = bootstrap.indexOf('/js/new-story-ad/reference-video-analysis.js');
 const personInheritanceIndex = bootstrap.indexOf('/js/new-story-ad/person-reference-inheritance.js');
-const legacyIndex = bootstrap.indexOf('/js/new-story-ad-legacy-ui.js');
-assert.ok(personInheritanceIndex > 0 && referenceIndex > personInheritanceIndex && legacyIndex > referenceIndex, 'reference-analysis modules must load before legacy UI');
+assert.ok(personInheritanceIndex > 0 && referenceIndex > personInheritanceIndex, 'reference-analysis modules must keep their current dependency order');
+assert.ok(!bootstrap.includes('/js/new-story-ad-legacy-ui.js'), 'current bootstrap must not load the retired client');
 assert.ok(!bootstrap.includes('/js/new-story-ad/real-person-dossier.js') && bootstrap.includes('bootstrap-asset-loader.js')
   && bootstrap.includes('loadAssetModules') && assetLoader.includes('/js/new-story-ad/real-person-dossier.js'),
   'person production studio must be isolated behind the step-2 lazy loader');
@@ -101,7 +100,6 @@ assert.ok(referenceUi.includes('wasExplicitlyRemoved'));
 assert.ok(stateSync.includes('NewStoryAdReferenceVideoAnalysis?.hydrate?.(request.reference_video_analysis || null)'));
 assert.ok(stateSync.includes('request.person_context?.spec_source'));
 assert.ok(contextBuilder.includes('spec_source: personSpecSource'));
-assert.ok(legacy.includes('state.context?.reference_video_analysis'));
 assert.ok(referenceUi.includes('function adoptReferenceAnalysis'));
 assert.ok(referenceUi.includes('function referenceScenePlan'));
 assert.ok(referenceUi.includes("source: 'reference_video_analysis'"));
@@ -109,12 +107,9 @@ assert.ok(referenceUi.includes('referenceScenePlan(result, analysis.id)'));
 assert.ok(referenceUi.includes('function userVisibleReferenceText'));
 assert.ok(referenceUi.includes('function referencePersonProjection'));
 assert.ok(!referenceUi.includes("target.hidden = false;\n      target.replaceChildren();"), 'internal camera mapping must not be exposed in the requirement UI');
-assert.ok(legacy.includes('applyReferencePersonProjection'));
 assert.ok(personInheritance.includes('personConstraintEditorOpen'));
 assert.ok(personInheritance.includes('manualOverride'));
 assert.ok(personInheritance.includes('reference_video_person_projection'));
-assert.ok(legacy.includes('markSourceDirty, scheduleAutoSave'));
-assert.ok(legacy.includes('NewStoryAdReferenceVideoAnalysis?.reset?.({ explicit: true })'));
 assert.ok(!personUi.includes('NewStoryAdReferenceVideoAnalysis'), 'real-person feature must not read reference-video state');
 assert.ok(!referenceUi.includes('RealPerson'), 'reference-video feature must not read real-person state');
 assert.ok(personUi.includes('setModal(true)'), 'real-person studio must open in a modal');
@@ -127,8 +122,6 @@ assert.ok(subjectAssist.includes('subjectAssistStatus'), 'single-person assist m
 assert.ok(subjectAssist.includes('timeoutMs: 120000'), 'single-person assist must wait longer than the backend model timeout');
 assert.ok(generationFlow.includes('timeoutMs: Number(request.timeoutMs) || undefined'), 'inline generation must forward its stage-specific timeout');
 
-assert.ok(legacy.includes('reference_video_analysis'));
-assert.ok(legacy.includes('adoptPersonDossier'));
 assert.ok(routes.includes("router.post('/reference-video-analyses'"));
 assert.ok(routes.includes("router.post('/reference-video-links'"));
 assert.ok(routes.includes("router.post('/reference-video-upload-sessions'"));

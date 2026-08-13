@@ -6,7 +6,6 @@ const vm = require('vm');
 
 const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-store.js'), 'utf8');
 const taskCenterSource = fs.readFileSync(path.join(__dirname, '../public/js/digital-human.js'), 'utf8');
-const legacyUiSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const taskSessionSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/task-session.js'), 'utf8');
 const dashboardSource = fs.readFileSync(path.join(__dirname, '../public/js/dashboard-workbench.js'), 'utf8');
 const bootstrapSource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad/bootstrap.js'), 'utf8');
@@ -110,7 +109,6 @@ assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.get('nsa_
 
 assert(dashboardSource.includes("['new-story-ad', '剧', '剧情广告', '创意、资产、分镜与成片一体制作', '/story-ad/']"));
 assert(!dashboardSource.includes('/digital-human?tab=new-story-ad&nsa_intent=create'));
-assert(legacyUiSource.includes("state.pendingRestoreTaskId = createIntent ? '' : (routeTaskId() || storedTaskId())"));
 assert(taskSessionSource.includes("['nsa_intent', 'nsa_task_id', 'nsa_step']"));
 location.href = 'https://example.test/digital-human?tab=new-story-ad&nsa_intent=create&nsa_task_id=old-task&nsa_step=4';
 location.search = '?tab=new-story-ad&nsa_intent=create&nsa_task_id=old-task&nsa_step=4';
@@ -127,21 +125,6 @@ assert.equal(resetCount, 1, 'create intent must invoke the full session reset ex
 assert.equal(createState.taskSessionEpoch, 8);
 assert.equal(createState.staleBrief, '', 'new session must clear stale form content before task restore');
 assert.equal(new URL(replacedUrl, 'https://example.test').searchParams.has('nsa_task_id'), false);
-assert(legacyUiSource.includes('consumeCreateIntent(state, rememberTaskId, resetForNewSession)'));
-assert(legacyUiSource.includes("showStep(routeStep(), { remember: false })"));
-assert(legacyUiSource.includes("showStep(state.currentStep, { remember: !state.restoringTask })"));
-assert(legacyUiSource.includes("state.pendingRestoreTaskId || routeTaskId() || storedTaskId() || await fallbackLatestTaskId()"));
-const restoreBlock = legacyUiSource.slice(
-  legacyUiSource.indexOf('async function restoreCurrentTask()'),
-  legacyUiSource.indexOf('function resumeActiveGeneration()'),
-);
-assert(!restoreBlock.includes('await recoverPersonAssetFromLibrary(bundle)'));
-const immediateRender = restoreBlock.match(/state\.restoringTask = false;\s*renderAll\(\);/);
-assert(immediateRender);
-assert(immediateRender.index < restoreBlock.indexOf('recoverPersonAssetFromLibrary(bundle).then'));
-assert(legacyUiSource.includes('正在恢复任务 ${String(state.pendingRestoreTaskId'));
-assert(restoreBlock.includes('?compact=1'));
-assert(restoreBlock.includes("new-story-ad:restore-finished"));
 assert(bootstrapSource.includes("const taskId = String(params.get('nsa_task_id')"));
 assert(bootstrapSource.includes("? `/story-ad/projects/${encodeURIComponent(taskId)}"));
 assert(bootstrapSource.includes('location.assign(target)'));

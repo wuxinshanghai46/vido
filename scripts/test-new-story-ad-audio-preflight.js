@@ -192,12 +192,13 @@ function testSilentSelectionNeedsNoSecondAcknowledgement() {
 function testIntegrationMarkers() {
   const root = path.resolve(__dirname, '..');
   const read = file => fs.readFileSync(path.join(root, file), 'utf8');
-  const ui = read('public/js/new-story-ad-legacy-ui.js');
+  const audioSource = read('public/js/new-story-ad/audio-preflight.js');
+  const preflightSource = read('public/js/new-story-ad/video-preflight-ui.js');
   const route = read('src/routes/newStoryAd.js');
   const mediaLoader = read('public/js/new-story-ad/bootstrap-media-loader.js');
-  assert(ui.includes('NewStoryAdAudioPreflight.load'));
-  assert(ui.includes('NewStoryAdAudioPreflight.read'));
-  assert(ui.includes("scheduleAutoSave('video_audio_preflight')"));
+  assert(audioSource.includes('const api = { explicitVoiceGender'));
+  assert(preflightSource.includes('loadAudioPlan'));
+  assert(preflightSource.includes('readAudio(modal, audioPlan)'));
   assert(route.includes('mediaPipeline.runMediaPipeline'));
   assert(!route.slice(route.indexOf("router.post('/tasks/:id/media'"), route.indexOf("router.post('/storyboard'")).includes('service.generateVideoStage'));
   assert(mediaLoader.includes("'/js/new-story-ad/audio-preflight.js'"));

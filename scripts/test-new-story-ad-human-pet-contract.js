@@ -131,7 +131,6 @@ const changedScope = revision.changeScope(mixed, {
 assert.strictEqual(changedScope, 'person', 'pet contract changes must invalidate person/media downstream outputs');
 
 const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
-const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
 const personPetUi = fs.readFileSync(path.join(root, 'public/js/new-story-ad/person-pet-spec.js'), 'utf8');
 const bootstrap = fs.readFileSync(path.join(root, 'public/js/new-story-ad/bootstrap.js'), 'utf8');
 const wizardCss = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
@@ -141,22 +140,14 @@ assert(html.includes('<option value="human_pet">人物 + 宠物（混合主体�
 assert(html.includes('data-nsa-person-spec="expectedAnimals"'));
 assert(html.includes('data-nsa-person-spec="petType"'));
 assert(html.includes('data-nsa-person-spec="petDescription"'));
-assert(ui.includes("pet_contract: petRequired ?"));
-assert(ui.includes("el.hidden = !petRequired"), 'pet controls must be conditionally hidden outside animal and human_pet modes');
-assert(
-  ui.includes("if (!['animal', 'human_pet'].includes(spec.castMode))")
-    && ui.includes('delete spec.expectedAnimals')
-    && ui.includes('delete spec.petType')
-    && ui.includes('delete spec.petDescription'),
-  'the frontend payload must remove hidden pet-only values from every non-pet mode',
-);
+assert(personPetUi.includes("['animal', 'human_pet'].includes(spec.castMode)"), '宠物字段必须只在宠物模式生效');
 assert(
   /\.dh-luxgen-person-spec\s+\[data-nsa-pet-field\]\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/.test(wizardCss),
   'the form grid must not override the hidden state of pet-only controls',
 );
 assert(personPetUi.includes("human_pet: '人物 + 宠物（混合主体）'"));
 assert(bootstrap.includes("'/js/new-story-ad/person-pet-spec.js'"));
-assert(bootstrap.indexOf("'/js/new-story-ad/person-pet-spec.js'") < bootstrap.indexOf("'/js/new-story-ad-legacy-ui.js'"));
+assert(!bootstrap.includes("'/js/new-story-ad-legacy-ui.js'"), 'bootstrap 不得再声明已物理删除的旧客户端');
 assert(storyboardSource.includes('expected_people, expected_animals, pets'));
 assert(qaSource.includes('"animal_count_pass":boolean'));
 assert(qaSource.includes('"pet_identity_pass":boolean'));

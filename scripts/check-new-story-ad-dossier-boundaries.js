@@ -18,7 +18,6 @@ function run() {
     // the real baseline so dossier work cannot grow it while route extraction
     // proceeds independently without hiding unrelated pre-existing debt.
     'src/routes/newStoryAd.js': 2134,
-    'public/js/new-story-ad-legacy-ui.js': 6399,
     'public/js/new-story-ad/bootstrap.js': 180,
   };
   Object.entries(frozenLegacyLimits).forEach(([file, limit]) => {

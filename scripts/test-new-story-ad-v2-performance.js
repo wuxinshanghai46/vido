@@ -95,12 +95,9 @@ function main() {
   assert(waitSource.includes('?compact=1'), '阶段结束必须只获取一次压缩完整快照');
   assert(waitSource.includes('ctx.renderProgress?.()'), '处理中必须局部更新进度');
 
-  const legacySource = read('public/js/new-story-ad-legacy-ui.js');
-  const progressRenderStart = legacySource.indexOf('renderProgress: () =>');
-  const progressRender = legacySource.slice(progressRenderStart, progressRenderStart + 220);
-  assert(progressRender.includes('renderStatus()'));
-  assert.strictEqual(progressRender.includes('renderStoryboard()'), false);
-  assert.strictEqual(progressRender.includes('renderMedia()'), false);
+  const currentStoreSource = read('public/story-ad/store/projectStore.js');
+  assert(currentStoreSource.includes("/progress?since=${encodeURIComponent(since)}"), '现行工作区必须使用轻量增量进度接口');
+  assert(currentStoreSource.includes("refreshSections('summary,assets,story,shots,media')"), '只有终态才刷新工作区完整分区');
   const taskSessionSource = read('public/js/new-story-ad/task-session.js');
   const progressTimerSource = taskSessionSource.slice(
     taskSessionSource.indexOf('function startProgressTimer'),

@@ -74,19 +74,13 @@ function testPreservesCurrentValuesAndRejectsInvalidEnums() {
 
 function testUiContractIsPresent() {
   const root = path.resolve(__dirname, '..');
-  const ui = fs.readFileSync(path.join(root, 'public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  const css = fs.readFileSync(path.join(root, 'public/css/digital-human-wizard.css'), 'utf8');
-  const html = fs.readFileSync(path.join(root, 'public/digital-human.html'), 'utf8');
-
-  assert.match(ui, /data-nsa-shot-ai-run/);
-  assert.match(ui, /AI 帮我设置/);
-  assert.match(ui, /填写后自动保存/);
-  assert.match(ui, /data-nsa-shot-autosave-status/);
-  assert.doesNotMatch(ui, /data-nsa-shot-save/);
-  assert.match(ui, /data-nsa-shot-jump/);
-  assert.match(css, /\.dh-nsa-shot-ai-assist/);
-  assert.match(css, /\.dh-nsa-editor-section-fields/);
-  assert.match(html, /new-story-ad\/bootstrap\.js\?v=20260731-reference-grounding-v2/);
+  const ui = fs.readFileSync(path.join(root, 'public/story-ad/views/shotDesignerView.js'), 'utf8');
+  assert.match(ui, /data-ai-shot/);
+  assert.match(ui, /AI 帮我完善镜头/);
+  assert.match(ui, /data-shot-field="duration"/);
+  assert.match(ui, /data-save-shot/);
+  assert.match(ui, /data-finish-shot-design/);
+  assert.match(ui, /shot_design_confirmed:\s*true/);
 }
 
 testNormalizesGenericShotSettings();

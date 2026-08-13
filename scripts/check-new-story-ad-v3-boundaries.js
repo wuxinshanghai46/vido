@@ -34,7 +34,6 @@ function run() {
     'public/js/new-story-ad/bootstrap.js': 180,
     'src/services/newStoryAd/storyAdService.js': 3800,
     'src/services/newStoryAd/videoAdapter.js': 1350,
-    'public/js/new-story-ad-legacy-ui.js': 6400,
   };
   Object.entries(limits).forEach(([file, limit]) => {
     assert(lines(file) <= limit, `${file} 已超过 ${limit} 行，必须先拆分后继续开发`);

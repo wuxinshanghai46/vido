@@ -31,7 +31,6 @@
     '/js/new-story-ad/brand-overlay.js',
     '/js/new-story-ad/generation-flow.js',
     '/js/new-story-ad/cancelable-generation.js',
-    '/js/new-story-ad-legacy-ui.js',
   ]; let loadPromise = null, mediaLoader = null;
   let assetLoader = null;
   const bootstrapSupport = window.NewStoryAdBootstrapSupport || {};

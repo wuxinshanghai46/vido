@@ -128,9 +128,10 @@ function testRecoveryEntryUsesScopedEconomyMode() {
   assert.strictEqual(videoReview.generationModeForEntry([]), 'quality', 'a first generation must preserve continuous quality planning');
   assert.strictEqual(videoReview.generationModeForEntry([{ video_url: '/existing.mp4', qa: { pass: false } }]), 'economy', 'an existing-video recovery must expose exact per-shot selection');
   assert.strictEqual(videoReview.generationModeForEntry([{ file_path: '/existing.mp4', error_code: 'VIDEO_QA_FAILED' }]), 'economy', 'a failed persisted clip must not be expanded back into an old quality block');
-  const source = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  assert(source.includes('generationModeForEntry?.(state.videoClips)'), 'the main user entry must route recovery tasks through exact economy preflight');
-  assert(source.includes('rememberVideoAuthorization(confirmed, mode)'), 'the confirmed recovery mode must be bound to the submitted authorization');
+  const source = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/finalView.js'), 'utf8');
+  const store = fs.readFileSync(path.join(__dirname, '../public/story-ad/store/projectStore.js'), 'utf8');
+  assert(source.includes("store.videoPreflight('economy')"), 'the current user entry must route recovery tasks through exact economy preflight');
+  assert(store.includes('video_preflight_fingerprint: preflight?.fingerprint'), 'the confirmed preflight fingerprint must be bound to the submitted authorization');
 }
 
 function testCostAcknowledgementsDefaultCheckedWithoutSelectingPaidUnits() {

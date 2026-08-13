@@ -24,13 +24,8 @@ async function main() {
       < runStageSource.indexOf('await flushForGeneration'),
     '点击后必须先显示保存/预检进度，再等待保存完成',
   );
-  const legacySource = fs.readFileSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js'), 'utf8');
-  const flushSource = legacySource.slice(
-    legacySource.indexOf('async function flushForGeneration'),
-    legacySource.indexOf('function generationFlowContext'),
-  );
-  assert.ok(flushSource.includes('persistAutoSaveChanges({ ensureFullDraft: true })'));
-  assert.ok(!/persistAutoSaveChanges\(\{ ensureFullDraft: true \}\);[\s\S]{0,300}saveCurrentTaskProgress/.test(flushSource));
+  assert.ok(runStageSource.includes('await flushForGeneration'));
+  assert.ok(runStageSource.indexOf('await flushForGeneration') < runStageSource.indexOf("if (stage === 'scene')"));
 
   // This is a release-contract test, so verify the managed route definitions
   // without requiring a live API key on the machine running the gate. Runtime

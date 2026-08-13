@@ -28,6 +28,7 @@ assert(server.includes("? `/story-ad/projects/${encodeURIComponent(taskId)}"), '
 assert(server.includes("app.get(['/luxury-ad', '/luxury-ad.html']"), '旧独立页面地址必须重定向到当前剧情广告');
 assert(server.includes("code: 'LEGACY_STORY_AD_DISABLED'"), '旧剧情广告 API 必须继续返回永久下线错误');
 assert.strictEqual(releaseFiles.isRuntimeReleaseFile('public/js/new-story-ad-legacy-ui.js'), false, '旧客户端源码不得进入生产运行闭包');
+assert.strictEqual(fs.existsSync(path.join(__dirname, '../public/js/new-story-ad-legacy-ui.js')), false, '旧客户端源码必须物理删除，不能只靠运行闭包排除');
 
 const firstInlineScript = html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1];
 assert(firstInlineScript, '页面必须保留首屏路由脚本');
