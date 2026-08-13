@@ -1545,16 +1545,16 @@ async function main() {
     const recoveryCandidateLimits = [];
     modelGateway.generateVision = async (options) => {
       const batchIndex = Number(String(options.userPrompt || '').match(/第\s+(\d+)\/2\s+组/)?.[1] || 0);
-      recoveryCalls.push({ round: recoveryRound, batch_index: batchIndex });
+      recoveryCalls.push({ round: recoveryRound, batch_index: batchIndex, frame_count: options.imageUrls.length });
       recoveryCandidateLimits.push(options.maxCandidates);
-      if (recoveryRound === 1 && batchIndex === 2) {
-        const error = new Error('primary provider rate limited before fallback was available');
+      if (batchIndex === 2 && options.imageUrls.length > 1) {
+        const error = new Error('multi-frame provider response omitted required frames');
         error.code = 'VISION_QA_UNAVAILABLE';
         error.retryable = true;
         error.failed_models = [{
-          provider_id: 'zhipu',
-          model_id: 'glm-4.6v-flash',
-          code: 'RATE_LIMIT',
+          provider_id: 'deyunai',
+          model_id: 'gemini-2.5-flash',
+          code: 'PROVIDER_RESPONSE_INVALID',
           response_diagnostics: { response_length: 123, response_sha256: 'test-response-hash' },
         }];
         throw error;
@@ -1569,8 +1569,7 @@ async function main() {
     };
     await assert.rejects(
       service._private.analyzeWithModels(recoveryRecord, recoveryFrames, { status: 'no_audio', text: '' }),
-      error => error.code === 'VISION_QA_UNAVAILABLE'
-        && error.failed_models.some(item => item.code === 'RATE_LIMIT' && item.batch_index === 2),
+      error => error.code === 'VISION_QA_UNAVAILABLE',
     );
     recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
     assert.deepStrictEqual(
@@ -1587,7 +1586,11 @@ async function main() {
       [0],
       'the successful batch must be persisted when its sibling is rate limited',
     );
-    assert.equal(recoveryRecord._visual_evidence_cache.failed_attempts['1'][0].code, 'RATE_LIMIT');
+    assert.ok(
+      recoveryRecord._visual_evidence_cache.failed_attempts['1'],
+      `failed batch diagnostics missing: ${JSON.stringify(recoveryRecord._visual_evidence_cache)}`,
+    );
+    assert.equal(recoveryRecord._visual_evidence_cache.failed_attempts['1'][0].code, 'PROVIDER_RESPONSE_INVALID');
     assert.equal(
       recoveryRecord._visual_evidence_cache.failed_attempts['1'][0].response_diagnostics.response_length,
       123,
@@ -1609,9 +1612,9 @@ async function main() {
     );
     const secondRoundCalls = recoveryCalls.filter(item => item.round === 2);
     assert.deepStrictEqual(
-      secondRoundCalls.map(item => item.batch_index),
-      [2],
-      'retry must execute only the missing evidence batch',
+      secondRoundCalls.map(item => [item.batch_index, item.frame_count]),
+      [[2, 4], [2, 1], [2, 1], [2, 1], [2, 1]],
+      'retry must first retry only the missing batch, then split a repeated structural failure into single-frame recovery calls',
     );
     assert.strictEqual(recovered.visual_evidence_batches.length, 2);
     recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));

@@ -11,9 +11,13 @@ function assetHasResult(item = {}, mediaUrl, list) {
 
 function projectCounts(projectedAssets = {}, mediaUrl, list) {
   const groups = Object.values(projectedAssets).map(items => list(items));
+  const subjectGroups = ['people', 'animals', 'products', 'logos']
+    .map(key => list(projectedAssets[key]));
   const ready = item => assetHasResult(item, mediaUrl, list);
   return {
     assets: groups.flat().filter(ready).length,
+    subject_assets: subjectGroups.reduce((sum, items) => sum + items.length, 0),
+    ready_subject_assets: subjectGroups.flat().filter(ready).length,
     planned_assets: groups.reduce((sum, items) => sum + items.length, 0),
     scenes: list(projectedAssets.scenes).filter(ready).length,
   };

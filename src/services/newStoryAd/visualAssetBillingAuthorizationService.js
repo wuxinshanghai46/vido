@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const storage = require('./storageService');
 const checkpoints = require('./assetGenerationCheckpointService');
 const sceneCheckpoints = require('./sceneGenerationCheckpointService');
@@ -69,6 +70,23 @@ function publicReview(unit = {}) {
   };
 }
 
+function billingReviewSupportId(taskId = '', task = {}, units = []) {
+  const current = clean(task.support_id, 120);
+  if (current) return current;
+  if (!units.length) return '';
+  const fingerprint = units.map(unit => ({
+    review_key: clean(unit.review_key, 260),
+    kind: clean(unit.kind, 40),
+    error_code: clean(unit.checkpoint?.error?.code || unit.checkpoint?.error_code || 'GENERATION_BILLING_STATE_UNKNOWN', 120),
+    provider_submission_state: clean(unit.checkpoint?.provider_submission_state || 'submitted_unknown', 60),
+    billing_state: clean(unit.checkpoint?.billing_state || 'unknown', 40),
+  })).sort((a, b) => a.review_key.localeCompare(b.review_key));
+  const digest = crypto.createHash('sha256')
+    .update(JSON.stringify({ task_id: clean(taskId, 120), units: fingerprint }))
+    .digest('hex').slice(0, 32);
+  return `billing-review-${digest}`;
+}
+
 function listBillingReviews(taskId) {
   const task = storage.getTask(taskId);
   if (!task) {
@@ -77,8 +95,9 @@ function listBillingReviews(taskId) {
     error.status = 404;
     throw error;
   }
-  const reviews = ambiguousUnits(taskId).map(publicReview);
-  return { support_id: clean(task.support_id, 120), review_count: reviews.length, reviews };
+  const units = ambiguousUnits(taskId);
+  const reviews = units.map(publicReview);
+  return { support_id: billingReviewSupportId(taskId, task, units), review_count: reviews.length, reviews };
 }
 
 function authorizeTaskRetry({
@@ -92,15 +111,15 @@ function authorizeTaskRetry({
     const error = new Error('当前任务仍在运行，不能修改计费重试授权。');
     error.code = 'VISUAL_ASSET_RETRY_AUTHORIZATION_ACTIVE_TASK'; error.status = 409; throw error;
   }
-  const expectedSupportId = clean(task.support_id, 120);
-  if (!supportId || supportId !== expectedSupportId) {
-    const error = new Error('支持编号已变化，请刷新页面后重新确认。');
-    error.code = 'VISUAL_ASSET_RETRY_SUPPORT_ID_MISMATCH'; error.status = 409; throw error;
-  }
   const units = ambiguousUnits(taskId);
   if (!units.length) {
     const error = new Error('当前任务没有需要授权的计费未知生成单元。');
     error.code = 'VISUAL_ASSET_BILLING_REVIEW_NOT_REQUIRED'; error.status = 409; throw error;
+  }
+  const expectedSupportId = billingReviewSupportId(taskId, task, units);
+  if (!supportId || supportId !== expectedSupportId) {
+    const error = new Error('计费核对编号已变化，请刷新页面后重新确认。');
+    error.code = 'VISUAL_ASSET_RETRY_SUPPORT_ID_MISMATCH'; error.status = 409; throw error;
   }
   const selected = checkpointKey
     ? units.filter(unit => unit.review_key === checkpointKey)
@@ -139,5 +158,5 @@ function authorizeTaskRetry({
 }
 
 module.exports = {
-  subjectCheckpointRows, sceneCheckpointRows, ambiguousUnits, publicReview, listBillingReviews, authorizeTaskRetry,
+  subjectCheckpointRows, sceneCheckpointRows, ambiguousUnits, publicReview, billingReviewSupportId, listBillingReviews, authorizeTaskRetry,
 };

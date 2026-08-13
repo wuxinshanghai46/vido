@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260813-ui-v224';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260813-ui-v224';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260813-ui-v224';
-import { confirmDialog } from './components/dialog.js?v=20260813-ui-v224';
+import { createProjectStore } from './store/projectStore.js?v=20260813-ui-v228';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260813-ui-v228';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260813-ui-v228';
+import { confirmDialog } from './components/dialog.js?v=20260813-ui-v228';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260813-ui-v224'),
-  assets: () => import('./views/assetCenterView.js?v=20260813-ui-v224'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260813-ui-v224'),
-  plot: () => import('./views/plotRoomView.js?v=20260813-ui-v224'),
-  storyboard: () => import('./views/storyboardView.js?v=20260813-ui-v224'),
-  final: () => import('./views/finalView.js?v=20260813-ui-v224'),
-  workflow: () => import('./views/workflowView.js?v=20260813-ui-v224'),
+  brief: () => import('./views/briefView.js?v=20260813-ui-v228'),
+  assets: () => import('./views/assetCenterView.js?v=20260813-ui-v228'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260813-ui-v228'),
+  plot: () => import('./views/plotRoomView.js?v=20260813-ui-v228'),
+  storyboard: () => import('./views/storyboardView.js?v=20260813-ui-v228'),
+  final: () => import('./views/finalView.js?v=20260813-ui-v228'),
+  workflow: () => import('./views/workflowView.js?v=20260813-ui-v228'),
 };
 let activeViewCleanup = null;
 let centerFilter = '';
@@ -130,10 +130,11 @@ function renderCenter() {
               <div class="project-row project-head" role="row"><span>任务编号</span><span>项目内容</span><span>当前阶段</span><span>镜头</span><span>最近更新</span><span>操作</span></div>
               ${visibleProjects.map(project => {
                 const status = statusView(project);
+                const mode = projectModeView(project);
                 const deleting = deletingProjectIds.has(String(project.id));
                 return `<div class="project-row${deleting ? ' is-deleting' : ''}" role="row" data-project-id="${escapeHtml(project.id)}" ${deleting ? 'aria-busy="true"' : ''}>
                   <code>${escapeHtml(project.display_id)}</code>
-                  <span class="project-copy"><b>${escapeHtml(project.title)}</b><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
+                  <span class="project-copy"><b>${escapeHtml(project.title)}</b><span class="project-mode is-${mode.tone}">${escapeHtml(mode.label)}</span><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
@@ -153,7 +154,8 @@ function projectNavigation(bundle, active) {
   const counts = bundle?.navigation?.counts || {};
   const steps = bundle?.navigation?.steps || {};
   const countFor = view => ({
-    assets: counts.assets,
+    assets: counts.subject_assets ?? counts.assets,
+    scene: counts.scenes,
     storyboard: counts.shots,
     shot: counts.keyframes,
     final: counts.clips,
@@ -168,6 +170,13 @@ function projectNavigation(bundle, active) {
   }).join('');
 }
 
+function projectModeView(project = {}) {
+  const mode = String(project.content_mode || '');
+  if (mode === 'commercial_subject') return { label: '广告', tone: 'commercial' };
+  if (mode === 'narrative_story') return { label: '剧情', tone: 'story' };
+  return { label: '内容类型未选择', tone: 'unset' };
+}
+
 function renderProjectShell(route) {
   const bundle = store.state.bundle;
   const project = bundle?.project || {};
@@ -180,7 +189,8 @@ function renderProjectShell(route) {
         <nav>${projectNavigation(bundle, route.view)}</nav>
         ${!route.isNew ? `<div class="side-divider"></div>
           <div class="side-label">当前项目</div>
-          <div class="side-metric"><b>${Number(counts.assets) || 0}</b><span>已生成 / 已上传资产</span></div>
+          <div class="side-metric"><b>${Number(counts.subject_assets ?? counts.assets) || 0}</b><span>人物 / 动物 / 商品 / LOGO</span></div>
+          <div class="side-metric"><b>${Number(counts.scenes) || 0}</b><span>已有画面的场景</span></div>
           <div class="side-metric"><b>${Number(counts.shots) || 0}</b><span>镜头</span></div>` : ''}
       </aside>
       <main class="workspace-main">

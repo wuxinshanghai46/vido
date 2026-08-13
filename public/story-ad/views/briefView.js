@@ -1,13 +1,13 @@
-import { request } from '../api.js?v=20260813-ui-v224';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v224';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v224';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v224';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v224';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v224';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v224';
-import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v224';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v224';
-const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接'], ['product', '商品 / 主体', '上传商品或服务主体图片']];
+import { request } from '../api.js?v=20260813-ui-v228';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260813-ui-v228';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260813-ui-v228';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260813-ui-v228';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260813-ui-v228';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260813-ui-v228';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260813-ui-v228';
+import { assertBriefReadback } from './briefTextContract.js?v=20260813-ui-v228';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260813-ui-v228';
+const MATERIALS = [['reference', '参考视频', '上传视频或粘贴公开链接，系统会识别可见人物、场景、动作与广告主体'], ['product', '商品 / 服务主体参考', '上传商品或服务主体图片；视频未清楚展示时用于确认广告主体']];
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -138,20 +138,19 @@ export async function mount(host, context) {
     <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">
       <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
-        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>内容类型、目标与成片设置</b><small>${referenceAttached ? '已从参考内容填写，可随时展开修改；保存后以你的版本为准' : '请先选择广告或剧情，再填写内容目标；添加参考视频或链接后将自动折叠'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
+        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>基础信息与成片设置</b><small>${referenceAttached ? '参考材料可辅助识别世界、人物和广告主体；内容类型仍以你的明确选择为准' : '先填写项目名称并选择广告或剧情，再填写内容目标；参考材料放在右侧独立区域'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
+<section class="brief-config-section full" aria-labelledby="brief-basic-settings-title">
+<header class="brief-config-heading"><span class="brief-config-index">01</span><span><b id="brief-basic-settings-title">基础信息</b><small>必须先明确内容类型，再填写目标。内容类型不会由 AI 擅自切换。</small></span></header>
+<div class="brief-basic-grid">
           <label class="field full"><span>项目名称</span><input class="input" name="project_name" required maxlength="120" value="${escapeHtml(brief.project_name || bundle.project?.title || '')}" placeholder="请输入便于识别的项目名称"><small>由你命名，只用于项目识别，不限制最少字数；修改内容目标不会再自动改名。</small></label>
-          <label class="field full"><span class="field-label-with-action"><span>内容目标 / 剧本需求</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea brief-screenplay-input" name="brief" rows="12" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；AI 帮写后会按详细概述、出场人物、主要场景、剧情段落和结尾分段显示，仍可继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : '剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜。'}</small></label>
-<section class="brief-config-section full" aria-labelledby="brief-world-settings-title">
-<header class="brief-config-heading"><span class="brief-config-index">01</span><span><b id="brief-world-settings-title">内容与世界观</b><small>题材、时代与画面形态；时期、地区留空可识别。</small></span></header>
-<div class="brief-config-grid">
-<label class="field brief-setting-tile"><span>内容类型</span><select class="select" name="content_mode" required>
-<option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择</option>
+          <label class="field brief-setting-tile brief-content-mode-field"><span>内容类型 <em>必须选择</em></span><select class="select" name="content_mode" required>
+<option value="" ${brief.content_mode_source !== 'user' ? 'selected' : ''}>请选择广告或剧情</option>
 <option value="commercial_subject" ${brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject' ? 'selected' : ''}>广告</option>
 <option value="narrative_story" ${brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story' ? 'selected' : ''}>剧情</option>
-</select><small>广告识别商品或服务主体；剧情不创建商品主体。</small></label>
-${worldSettingFields(worldProfile, escapeHtml)}
+</select><small>广告会识别商品或服务主体；剧情不创建商品主体。参考视频可以辅助识别内容，但不会替你修改这里的选择。</small></label>
+          <label class="field full"><span class="field-label-with-action"><span>内容目标 / 剧本需求</span>${referenceAttached ? '' : '<button class="btn small ai-action" type="button" data-ai-brief>AI 帮写</button>'}</span><textarea class="textarea brief-screenplay-input" name="brief" rows="12" placeholder="写清楚想表达的产品信息，或故事中的人物、地点和事件；AI 帮写后会按详细概述、出场人物、主要场景、剧情段落和结尾分段显示，仍可继续修改。">${escapeHtml(brief.text || '')}</textarea><small>${referenceAttached ? '这是参考内容提炼出的目标。你可以直接修改，保存后将以你的版本为准。' : '剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜。'}</small></label>
 </div></section>
 <section class="brief-config-section brief-output-section full" aria-labelledby="brief-output-settings-title">
 <header class="brief-config-heading"><span class="brief-config-index">02</span><span><b id="brief-output-settings-title">成片规格</b><small>时长、画幅与清晰度。</small></span></header>
@@ -175,9 +174,15 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
         </form>
       </details>
       </div>
-      <aside class="card">
-        <div class="card-head"><div><h2>启动材料</h2><p>这里只放决定项目起点的参考视频和商品。人物、场景、LOGO 在资产中心添加，故事和分镜到对应环节编辑。</p></div></div>
-        <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
+      <aside class="brief-side-column">
+        <section class="card">
+          <div class="card-head"><div><h2>参考材料</h2><p>这里放用于理解内容的参考视频和商品 / 服务主体图片。基础信息在左侧先确认；人物、场景和 LOGO 到资产中心分别建立。</p></div></div>
+          <div class="card-body material-list">${materialRows(bundle, route.isNew)}</div>
+        </section>
+        <section class="card brief-ai-recognition" aria-labelledby="brief-world-settings-title">
+          <div class="card-head"><div><h2 id="brief-world-settings-title">AI 识别信息</h2><p>系统可根据内容目标和参考材料识别以下信息；识别结果会显示在这里，你也可以手动修改。</p></div></div>
+          <div class="card-body brief-side-world-grid">${worldSettingFields(worldProfile, escapeHtml, { formId: 'storyAdBriefForm' })}</div>
+        </section>
       </aside>
     </div>
     </div>
@@ -227,7 +232,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v224');
+    const module = await import('./referenceUnderstandingView.js?v=20260813-ui-v228');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
@@ -243,8 +248,8 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     });
   }
   syncReferenceUnderstanding(bundle.reference || {}).catch(error => toast(error.message, 'danger'));
-  form.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); if (event.target?.name === 'brief') syncScreenplayLayout(); });
-  form.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
+  briefSettingsLayout.addEventListener('input', event => { if (event.target?.name) dirtyFields.add(event.target.name); if (event.target?.name === 'brief') syncScreenplayLayout(); });
+  briefSettingsLayout.addEventListener('change', event => { if (event.target?.name) dirtyFields.add(event.target.name); });
   function safeFormPayload() { const current = formPayload(form);
     if (route.isNew) return current;
     const latest = store.state.bundle?.brief || {};
@@ -559,7 +564,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       : (reusable
         ? '当前逐帧镜头证据已经通过完整性校验，本次不会重读图片；系统会保留最佳语义候选，只补齐未通过的语义合同，可能产生缺项修复的模型费用。是否继续？'
         : (partialEvidence
-          ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只调用视觉模型读取剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次，可能产生剩余批次的模型费用。是否继续？`
+          ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只处理剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次。若模型再次漏读同批画面，系统会把该批拆成单帧补读，因此实际视觉调用次数可能高于剩余批次数。是否继续？`
           : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉与语义模型，可能产生新的模型费用。是否继续？')));
     let confirmed = false;
     try {

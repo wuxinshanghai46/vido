@@ -82,6 +82,8 @@ function projectSummary(task = {}) {
     display_id: displayId(task),
     title: clean(task.title || task.brief || '未命名剧情广告', 120),
     brief: clean(task.brief, 220),
+    content_mode: clean(task.content_mode, 40),
+    content_mode_source: clean(task.content_mode_source, 40),
     status: clean(task.status || 'draft', 40),
     stage: clean(task.active_stage || task.stage || 'draft', 80),
     workspace: workspaceStage(task, {}),

@@ -275,6 +275,8 @@ function createTaskViewService(deps = {}) {
       stage: task.stage,
       title: task.title,
       brief: cleanText(task.brief || '', 220),
+      content_mode: cleanText(context.content_mode || '', 40),
+      content_mode_source: cleanText(context.content_mode_source || '', 40),
       user_id: task.user_id,
       saved_progress: task.saved_progress === true,
       active_stage: task.active_stage || '',

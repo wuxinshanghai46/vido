@@ -145,6 +145,10 @@ async function main() {
   assert.equal(bundle.assets.animals[0].view_images.length, 4, '旧宠物四视图必须完整投影');
   assert(bundle.assets.products.some(item => item.id === 'product-current'));
   assert(bundle.navigation.counts.assets >= 3, '已生成或已上传资产必须计入侧栏');
+  assert.equal(bundle.navigation.counts.subject_assets, 3, '人物资产步骤只能统计人物、动物、商品与 LOGO，不能混入场景和道具');
+  assert.equal(bundle.navigation.counts.ready_subject_assets, 3, '已就绪主体资产必须使用与资产中心相同的分类口径');
+  assert.equal(bundle.project.content_mode, 'commercial_subject', '项目列表摘要必须携带内容类型');
+  assert.equal(bundle.project.content_mode_source, 'user', '项目列表摘要必须保留内容类型来源');
 
   const placeholderTask = storyAd.createTask({
     content_mode: 'commercial_subject',
@@ -157,6 +161,8 @@ async function main() {
   }, owner).task.id;
   const placeholderBundle = projectBundles.buildProjectBundle(placeholderTask, { sections: 'all', user: owner });
   assert.equal(placeholderBundle.navigation.counts.assets, 0, '只有文字占位不得伪装成已生成资产');
+  assert.equal(placeholderBundle.navigation.counts.subject_assets, 1, '主体总数应保留待生成商品占位，供人物资产步骤显示真实计划数');
+  assert.equal(placeholderBundle.navigation.counts.ready_subject_assets, 0, '只有文字占位不得计入已就绪主体资产');
   assert.ok(placeholderBundle.navigation.counts.planned_assets >= 1, '文字占位仍可保留为后续待生成计划');
   storyAd.updateStoryboardTable(placeholderTask, [{
     title: '无版本漂移镜头',

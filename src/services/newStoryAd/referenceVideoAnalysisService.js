@@ -1623,6 +1623,14 @@ function visualEvidenceCacheKey(record = {}, frames = []) {
   return crypto.createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
 }
 
+function shouldSplitEvidenceBatchRecovery(previousCache = {}, index = 0, batch = [], error = {}) {
+  const priorFailures = previousCache?.failed_attempts?.[index];
+  if (!Array.isArray(priorFailures) || !priorFailures.length || !Array.isArray(batch) || batch.length <= 1) return false;
+  const codes = [error?.code, ...(Array.isArray(error?.failed_models) ? error.failed_models.map(item => item?.code) : [])]
+    .map(value => String(value || '').toUpperCase());
+  return codes.some(code => ['PROVIDER_RESPONSE_INVALID', 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID'].includes(code));
+}
+
 /** 失败重试只在证据帧和全部视觉批次齐全时复用，禁止拿不完整缓存伪装成功。 */
 function hasReusableVisualEvidence(record = {}) {
   const frames = Array.isArray(record.evidence_frames) ? record.evidence_frames : [];
@@ -2851,21 +2859,13 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       },
     });
   };
+  const recoveryCache = cacheMatches ? (record._visual_evidence_cache || {}) : {};
   const settled = await Promise.allSettled(missingIndexes.map(index => generationConcurrency.schedule(
     'new_story_ad.reference_video_vision',
     2,
     async () => {
     const batch = batches[index];
     const timestamps = batch.map(item => Number(item.timestamp_seconds || 0));
-    const frameManifest = batch.map(item => ({
-      frame_id: item.frame_id,
-      timestamp_seconds: Number(item.timestamp_seconds || 0),
-      shot_index: Number(item.shot_index || 0),
-      shot_range: item.shot_range,
-      sample_role: item.sample_role,
-      intents: Array.isArray(item.intents) ? item.intents : evidenceStrategy.routeFrameIntents(item),
-    }));
-    const batchIntents = [...new Set(frameManifest.flatMap(item => item.intents))];
     const intentInstructions = {
       entity: '主体专项：逐一记录人物、动物、广告主体及其进入/离开，不得把多人或多只动物合并。',
       scene: '空间专项：记录可复核的空间锚点、布局与材质，用于跨镜判断同一或不同物理空间。',
@@ -2873,38 +2873,71 @@ async function analyzeWithModels(record, frames, transcript = {}) {
       transition: '转场专项：记录镜头开结状态、主体或空间变化；没有变化时明确写“无可见转场变化”。',
       brand_text: '品牌文字专项：检查商品、包装、界面、标志、字幕和片尾落版；不可见时明确写“无可见文字/标志”。',
     };
-    let validatedPayload = null;
-    let vision;
-    try {
-      vision = await modelGateway.generateVision({
-      taskId: record.id,
-      stage,
-      systemPrompt: '你是广告视频逐帧证据分析员。每张输入图都必须按给定 frame_id 独立返回一条 JSON 证据，不能跳帧、合并或只写批次总结。只描述真实可见内容，不识别人脸身份，不编造画面外事实。必须区分广告产品与建筑、房间、窗帘、家具等环境；动物只有明确可见时才记录。所有描述使用简体中文。',
-      userPrompt: [
-        `这是第 ${index + 1}/${batches.length} 组镜头证据，图片顺序与清单完全一致：${JSON.stringify(frameManifest)}。`,
-        `本批按镜头角色需要完成以下通用证据维度：${batchIntents.join('、')}。${batchIntents.map(intent => intentInstructions[intent]).filter(Boolean).join('')}`,
-        '对每张图分别填写：产品/品牌/型号、可见文字、真实环境、材质、颜色、布局、光线、人物是否出现及真实动作、动物是否明确出现及真实动作、景别、机位角度、可见的运镜线索和画面总结。单项不确定可以写“不确定”，但 summary 必须用至少 12 个简体中文字符概括该帧真实可见内容，不得只写“不确定”，不得用前一张图代替后一张图。',
-        '人物逐帧合同：human_count 必须填写画面可见总人数；people 必须逐人列出屏幕位置、可见外观和动作。无法确认身份关系时 role_hint 留空，不得把多人概括成一个条目。',
-        '动物逐帧合同：animal_role 只能是 narrative_character、companion、product_subject、ambient_wildlife、background 或 uncertain；自然风光中的鸟群/野生动物通常是 ambient_wildlife，不能当宠物。多只动物必须在 animals 中逐只列出可见物种、位置、外观和动作，不得合并。',
-        '每帧必须返回 covered_intents，且只能填写该帧清单要求并已实际检查的维度。只返回单个合法 JSON，不要 Markdown：{"frames":[{"frame_id":"F001","timestamp_seconds":0.3,"covered_intents":["entity","scene","action","transition","brand_text"],"transition":"无可见转场变化","product_or_service":"","visible_text":[],"environment":"","materials":[],"colors":[],"layout":"","lighting":"","human_presence":false,"human_count":0,"people":[],"human_actions":[],"animal_presence":false,"animal_count":0,"animal_role":"","animal_description":"","animals":[],"animal_actions":[],"shot_size":"","angle":"","movement":"","summary":"该帧真实可见内容的简体中文总结"}],"batch_summary":"本批在广告时间线中的作用"}',
-        `frames 必须恰好包含 ${batch.length} 条，frame_id 必须且只能是：${batch.map(item => item.frame_id).join('、')}。`,
-      ].join('\n'),
-      imageUrls: batch.map(item => item.image_url),
-      imageDataUrls: batch.map(frameVisionUrl),
-      maxTokens: 3600,
-      maxCandidates: REFERENCE_VISION_MAX_CANDIDATES,
-      timeoutMs: 120000,
-      stageBudgetMs: REFERENCE_VISION_STAGE_BUDGET_MS,
+    const requestEvidenceBatch = async (targetBatch, singleFrameRecovery = false) => {
+      const frameManifest = targetBatch.map(item => ({
+        frame_id: item.frame_id,
+        timestamp_seconds: Number(item.timestamp_seconds || 0),
+        shot_index: Number(item.shot_index || 0),
+        shot_range: item.shot_range,
+        sample_role: item.sample_role,
+        intents: Array.isArray(item.intents) ? item.intents : evidenceStrategy.routeFrameIntents(item),
+      }));
+      const batchIntents = [...new Set(frameManifest.flatMap(item => item.intents))];
+      let validatedPayload = null;
+      const vision = await modelGateway.generateVision({
+        taskId: record.id,
+        stage,
+        systemPrompt: '你是广告视频逐帧证据分析员。每张输入图都必须按给定 frame_id 独立返回一条 JSON 证据，不能跳帧、合并或只写批次总结。只描述真实可见内容，不识别人脸身份，不编造画面外事实。必须区分广告产品与建筑、房间、窗帘、家具等环境；动物只有明确可见时才记录。所有描述使用简体中文。',
+        userPrompt: [
+          `这是第 ${index + 1}/${batches.length} 组镜头证据${singleFrameRecovery ? '的单帧补读' : ''}，图片顺序与清单完全一致：${JSON.stringify(frameManifest)}。`,
+          `本批按镜头角色需要完成以下通用证据维度：${batchIntents.join('、')}。${batchIntents.map(intent => intentInstructions[intent]).filter(Boolean).join('')}`,
+          '对每张图分别填写：产品/品牌/型号、可见文字、真实环境、材质、颜色、布局、光线、人物是否出现及真实动作、动物是否明确出现及真实动作、景别、机位角度、可见的运镜线索和画面总结。单项不确定可以写“不确定”，但 summary 必须用至少 12 个简体中文字符概括该帧真实可见内容，不得只写“不确定”，不得用前一张图代替后一张图。',
+          '人物逐帧合同：human_count 必须填写画面可见总人数；people 必须逐人列出屏幕位置、可见外观和动作。无法确认身份关系时 role_hint 留空，不得把多人概括成一个条目。',
+          '动物逐帧合同：animal_role 只能是 narrative_character、companion、product_subject、ambient_wildlife、background 或 uncertain；自然风光中的鸟群/野生动物通常是 ambient_wildlife，不能当宠物。多只动物必须在 animals 中逐只列出可见物种、位置、外观和动作，不得合并。',
+          '每帧必须返回 covered_intents，且只能填写该帧清单要求并已实际检查的维度。只返回单个合法 JSON，不要 Markdown：{"frames":[{"frame_id":"F001","timestamp_seconds":0.3,"covered_intents":["entity","scene","action","transition","brand_text"],"transition":"无可见转场变化","product_or_service":"","visible_text":[],"environment":"","materials":[],"colors":[],"layout":"","lighting":"","human_presence":false,"human_count":0,"people":[],"human_actions":[],"animal_presence":false,"animal_count":0,"animal_role":"","animal_description":"","animals":[],"animal_actions":[],"shot_size":"","angle":"","movement":"","summary":"该帧真实可见内容的简体中文总结"}],"batch_summary":"本批在广告时间线中的作用"}',
+          `frames 必须恰好包含 ${targetBatch.length} 条，frame_id 必须且只能是：${targetBatch.map(item => item.frame_id).join('、')}。`,
+        ].join('\n'),
+        imageUrls: targetBatch.map(item => item.image_url),
+        imageDataUrls: targetBatch.map(frameVisionUrl),
+        maxTokens: singleFrameRecovery ? 1800 : 3600,
+        maxCandidates: REFERENCE_VISION_MAX_CANDIDATES,
+        timeoutMs: 120000,
+        stageBudgetMs: REFERENCE_VISION_STAGE_BUDGET_MS,
         validateText: (text) => {
-          validatedPayload = parseVisionEvidencePayload(text, batch);
+          validatedPayload = parseVisionEvidencePayload(text, targetBatch);
           return true;
         },
       });
+      return { vision, payload: validatedPayload || parseVisionEvidencePayload(vision.text, targetBatch) };
+    };
+    let evidenceAttempt;
+    try {
+      evidenceAttempt = await requestEvidenceBatch(batch);
     } catch (error) {
-      persistBatchFailure(index, error);
-      throw error;
+      if (!shouldSplitEvidenceBatchRecovery(recoveryCache, index, batch, error)) {
+        persistBatchFailure(index, error);
+        throw error;
+      }
+      try {
+        const singles = [];
+        for (const frame of batch) singles.push(await requestEvidenceBatch([frame], true));
+        evidenceAttempt = {
+          vision: {
+            text: singles.map(item => item.vision.text).join('\n'),
+            used_model: [...new Set(singles.map(item => item.vision.used_model).filter(Boolean))].join(' + '),
+          },
+          payload: {
+            contract_version: EVIDENCE_CONTRACT_VERSION,
+            frames: singles.flatMap(item => item.payload.frames || []),
+            batch_summary: singles.map(item => item.payload.batch_summary).filter(Boolean).join('；'),
+          },
+        };
+      } catch (singleFrameError) {
+        persistBatchFailure(index, singleFrameError);
+        throw singleFrameError;
+      }
     }
-      const payload = validatedPayload || parseVisionEvidencePayload(vision.text, batch);
+      const { vision, payload } = evidenceAttempt;
       const row = {
         contract_version: EVIDENCE_CONTRACT_VERSION,
         batch_index: index + 1,
@@ -3597,6 +3630,7 @@ module.exports = {
     publicVisionFailure,
     hasReusableVisualEvidence,
     visualEvidenceCacheKey,
+    shouldSplitEvidenceBatchRecovery,
     visualEvidenceField,
     visualEvidenceFacts,
     compileAnalysisFromEvidence,

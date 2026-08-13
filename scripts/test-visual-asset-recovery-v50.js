@@ -120,6 +120,45 @@ function testExactAuthorization() {
   }
 }
 
+function testAuthorizationAfterSupportIdCleared() {
+  const original = {
+    getTask: storage.getTask,
+    listOutputs: storage.listOutputs,
+    saveOutput: storage.saveOutput,
+  };
+  const task = { id: 'task-cleared-support', support_id: '', active_generation_id: '', status: 'done' };
+  const rows = [{
+    kind: 'subject_asset_checkpoint:task-cleared-support:one',
+    payload: {
+      person_dossier_checkpoints: { 'hair-accessory': { ...subjectUnit('hair-accessory'), task_id: task.id, unit: 'wearable_accessory:hair_accessories' } },
+      subject_checkpoint_owners: { 'hair-accessory': { kind: 'human', subject_id: 'person-1', index: 0 } },
+    },
+  }];
+  storage.getTask = id => id === task.id ? task : null;
+  storage.listOutputs = id => id === task.id ? rows : [];
+  storage.saveOutput = (_id, kind, payload) => {
+    const row = rows.find(item => item.kind === kind);
+    if (row) row.payload = payload;
+    return payload;
+  };
+  try {
+    const first = billing.listBillingReviews(task.id);
+    assert.match(first.support_id, /^billing-review-[a-f0-9]{32}$/, 'cleared task support id must be replaced by a stable review-set id');
+    assert.equal(first.review_count, 1);
+    assert.throws(() => billing.authorizeTaskRetry({
+      taskId: task.id, supportId: '', checkpointKey: 'hair-accessory', acceptDuplicateChargeRisk: true,
+    }), error => error.code === 'VISUAL_ASSET_RETRY_SUPPORT_ID_MISMATCH');
+    const authorized = billing.authorizeTaskRetry({
+      taskId: task.id, supportId: first.support_id, checkpointKey: 'hair-accessory', acceptedBy: 'owner', acceptDuplicateChargeRisk: true,
+    });
+    assert.equal(authorized.authorized, true);
+    assert.equal(rows[0].payload.person_dossier_checkpoints['hair-accessory'].retry_authorization.support_id, first.support_id);
+    assert.equal(billing.listBillingReviews(task.id).support_id, first.support_id, 'authorizing one unit must not rotate the current review-set id');
+  } finally {
+    Object.assign(storage, original);
+  }
+}
+
 function testPartialProjection() {
   const completed = index => ({
     key: `unit-${index}`, status: 'completed', provider_submission_state: 'completed', billing_state: 'confirmed',
@@ -216,12 +255,13 @@ function testPartialResumeSelection() {
 async function main() {
   await testGenerationIsolation();
   testExactAuthorization();
+  testAuthorizationAfterSupportIdCleared();
   testPartialProjection();
   testUiScope();
   testPartialResumeSelection();
   console.log(JSON.stringify({
     success: true,
-    checks: 5,
+    checks: 6,
     guarantees: ['same-task-stop-before-submit', 'cross-task-isolation', 'exact-unit-authorization', 'bounded-partial-projection'],
   }));
 }
