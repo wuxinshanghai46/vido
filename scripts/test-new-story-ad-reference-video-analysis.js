@@ -1290,6 +1290,9 @@ async function main() {
     ['proven-text-model', 'unverified-text-model', 'rejected-text-model'],
     'reference synthesis must spend its limited attempt budget on recently proven models first',
   );
+  const modelGatewaySource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/modelGateway.js'), 'utf8');
+  assert.match(modelGatewaySource, /REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS[\s\S]*?provider_id: 'aiapi', model_id: 'deepseek-chat'/,
+    'reference synthesis must retain an independent DeepSeek recovery candidate when the managed route is customized');
   assert.deepStrictEqual(
     modelGateway.classifyError(new Error('400 status code (no body)')),
     { code: 'PROVIDER_REQUEST_REJECTED', retryable: false },
@@ -1445,6 +1448,50 @@ async function main() {
     assert.deepStrictEqual(synthesisBudgetAttempts, ['timeout-provider/slow-primary'], '供应商已接单后超时必须停止候选切换，避免重复计费');
     assert.strictEqual(synthesisBudgetError?.billing_state, 'unknown');
     assert.strictEqual(synthesisBudgetError?.provider_submission_state, 'submitted_unknown');
+
+    synthesisBudgetClock = 0;
+    const deepseekRecoveryAttempts = [];
+    const deepseekRecovery = await originalGenerateText({
+      taskId: 'reference-synthesis-deepseek-recovery',
+      stage: 'new_story_ad.reference_video_synthesis',
+      systemPrompt: 'test',
+      userPrompt: 'test',
+      timeoutMs: 60000,
+      maxCandidates: 5,
+      stageBudgetMs: 300000,
+      _candidateModels: [
+        { provider_id: 'provider-a', model_id: 'empty-primary' },
+        { provider_id: 'provider-b', model_id: 'invalid-secondary' },
+        { provider_id: 'provider-c', model_id: 'invalid-tertiary' },
+        { provider_id: 'aiapi', model_id: 'deepseek-chat' },
+        { provider_id: 'provider-e', model_id: 'unused-fifth' },
+      ],
+      _generateText: async ({ model }) => {
+        deepseekRecoveryAttempts.push(`${model.provider_id}/${model.model_id}`);
+        synthesisBudgetClock += 1000;
+        if (model.model_id === 'empty-primary') {
+          const error = new Error('empty provider response');
+          error.code = 'PROVIDER_EMPTY_RESPONSE';
+          throw error;
+        }
+        if (/invalid-/.test(model.model_id)) return { text: '{"incomplete":true}', adapter: 'test' };
+        return { text: '{"complete":true}', adapter: 'test' };
+      },
+      validateText: (_text, meta) => {
+        if (meta.model.model_id === 'deepseek-chat') return true;
+        const error = new Error('semantic contract invalid');
+        error.code = 'PROVIDER_RESPONSE_INVALID';
+        error.retryable = true;
+        throw error;
+      },
+    });
+    assert.deepStrictEqual(deepseekRecoveryAttempts, [
+      'provider-a/empty-primary',
+      'provider-b/invalid-secondary',
+      'provider-c/invalid-tertiary',
+      'aiapi/deepseek-chat',
+    ], 'one synthesis operation must reach DeepSeek after three independent invalid candidates');
+    assert.strictEqual(deepseekRecovery.used_model, 'aiapi/deepseek-chat');
   } finally {
     Date.now = originalNow;
     process.env.NEW_STORY_AD_MOCK_LLM = synthesisBudgetMockFlag;
@@ -1578,7 +1625,7 @@ async function main() {
       assert.ok(!options.userPrompt.includes('"scene_prompts"'));
       assert.ok(!options.userPrompt.includes('"shot_breakdown"'));
       assert.ok(!options.userPrompt.includes('"camera_intents"'));
-      assert.strictEqual(options.maxCandidates, 3, '语义总编必须保留三个候选模型');
+      assert.strictEqual(options.maxCandidates, 5, '语义总编必须保留五个候选并覆盖独立 DeepSeek 恢复路由');
       assert.ok(
         options.stageBudgetMs >= options.timeoutMs * 2,
         '语义总编阶段预算必须允许首个模型超时后继续切换候选',

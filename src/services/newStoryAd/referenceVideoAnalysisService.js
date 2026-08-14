@@ -2697,9 +2697,9 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
     // times out it consumes that entire budget, so the gateway advertises
     // three candidates but exits before candidate two. Reference synthesis
     // is resumable and already reuses completed visual evidence, therefore
-    // give its three text candidates a stage budget that can actually reach
-    // the configured fallbacks.
-    maxCandidates: 3,
+    // include the independent DeepSeek recovery route even when three managed
+    // providers return empty or contract-invalid output.
+    maxCandidates: 5,
     stageBudgetMs: 300000,
     validateText: async (text, meta = {}) => {
       let mergedCandidate = null;

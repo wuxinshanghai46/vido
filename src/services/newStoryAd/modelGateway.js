@@ -29,6 +29,11 @@ const FALLBACKS = [
   { provider_id: 'openai', model_id: 'gpt-4o-mini', priority: 920, enabled: true },
 ];
 
+const REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS = [
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 850, enabled: true },
+  ...FALLBACKS,
+];
+
 const STAGE_FALLBACKS = {
   'new_story_ad.asset_plan': FALLBACKS,
   'new_story_ad.asset_plan_scene_recovery': FALLBACKS,
@@ -44,7 +49,7 @@ const STAGE_FALLBACKS = {
   'new_story_ad.scene_vision': FALLBACKS,
   'new_story_ad.scene_consistency_qa': FALLBACKS,
   'new_story_ad.reference_video_vision': FALLBACKS,
-  'new_story_ad.reference_video_synthesis': FALLBACKS,
+  'new_story_ad.reference_video_synthesis': REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS,
   'new_story_ad.json_repair': FALLBACKS,
   'new_story_ad.blueprint_language_repair': FALLBACKS,
   'new_story_ad.blueprint_polish': FALLBACKS,
@@ -351,7 +356,10 @@ function candidatesForStage(stage) {
     : String(stage || '').startsWith('new_story_ad.');
   const defaults = STAGE_FALLBACKS[stage] || FALLBACKS;
   const configuredOrSettings = strictManaged ? configured : (configured.length ? configured : settingsStoryCandidates());
-  const ranked = uniqueModels(strictManaged ? configuredOrSettings : [...configuredOrSettings, ...defaults])
+  const managedRecoveryPool = strictManaged && String(stage || '') === REFERENCE_SYNTHESIS_STAGE
+    ? [...configuredOrSettings, ...defaults]
+    : configuredOrSettings;
+  const ranked = uniqueModels(strictManaged ? managedRecoveryPool : [...configuredOrSettings, ...defaults])
     .map((m, i) => ({ ...m, fallback_rank: i + 1 }))
     .filter(m => isConfiguredAndUsable(m).ok)
     .filter(m => !healthState(m).circuit_open)
@@ -618,7 +626,10 @@ async function generateText({
   let lastCandidateText = '';
   let lastCandidateParsedJson = null;
   const stageStarted = Date.now();
-  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(TEXT_MAX_CANDIDATES, Number(maxCandidates) || TEXT_MAX_CANDIDATES)));
+  const stageCandidateCap = String(stage || '') === REFERENCE_SYNTHESIS_STAGE
+    ? Math.max(TEXT_MAX_CANDIDATES, 5)
+    : TEXT_MAX_CANDIDATES;
+  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(stageCandidateCap, Number(maxCandidates) || stageCandidateCap)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
     if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
