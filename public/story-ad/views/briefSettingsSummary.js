@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260815-reference-transition-v59';
+import { escapeHtml } from '../components/ui.js?v=20260815-asset-generation-guidance-v60';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

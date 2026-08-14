@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260815-reference-transition-v59';
+import { confirmDialog } from '../components/dialog.js?v=20260815-asset-generation-guidance-v60';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };
