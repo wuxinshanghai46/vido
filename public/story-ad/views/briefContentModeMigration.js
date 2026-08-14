@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v54';
+import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v55';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

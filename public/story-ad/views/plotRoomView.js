@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-plan-authority-repair-v54';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v54';
-import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v54';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v55';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v55';
+import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v55';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};

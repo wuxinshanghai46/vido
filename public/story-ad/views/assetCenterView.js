@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260814-plan-authority-repair-v54';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v54';
-import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v54';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-plan-authority-repair-v54';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-plan-authority-repair-v54';
-import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v54';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-plan-authority-repair-v54';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260814-plan-authority-repair-v54';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-plan-authority-repair-v54';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-plan-authority-repair-v54';
-import { createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260814-plan-authority-repair-v54';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v55';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v55';
+import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v55';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-plan-authority-repair-v55';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-plan-authority-repair-v55';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v55';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-plan-authority-repair-v55';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260814-plan-authority-repair-v55';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-plan-authority-repair-v55';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-plan-authority-repair-v55';
+import { createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260814-plan-authority-repair-v55';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -192,8 +192,8 @@ function dossierDetails(item = {}) {
   return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-plan-authority-repair-v54');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260814-plan-authority-repair-v54');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-plan-authority-repair-v55');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260814-plan-authority-repair-v55');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -219,7 +219,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-plan-authority-repair-v54'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-plan-authority-repair-v55'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -548,7 +548,7 @@ export async function mount(host, context) {
   host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     await personPlanRequestGuard.run(async (requestKey) => {
-      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260814-plan-authority-repair-v54');
+      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260814-plan-authority-repair-v55');
       return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
         migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
     });
