@@ -1,8 +1,8 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-reference-world-recognition-v50';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-world-recognition-v50';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-world-recognition-v50';
-import { confirmDialog } from './components/dialog.js?v=20260814-reference-world-recognition-v50';
-import { historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260814-reference-world-recognition-v50';
+import { createProjectStore } from './store/projectStore.js?v=20260814-reference-world-recognition-v51';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-world-recognition-v51';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-world-recognition-v51';
+import { confirmDialog } from './components/dialog.js?v=20260814-reference-world-recognition-v51';
+import { historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260814-reference-world-recognition-v51';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -20,13 +20,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-reference-world-recognition-v50'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-reference-world-recognition-v50'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-world-recognition-v50'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-reference-world-recognition-v50'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-world-recognition-v50'),
-  final: () => import('./views/finalView.js?v=20260814-reference-world-recognition-v50'),
-  workflow: () => import('./views/workflowView.js?v=20260814-reference-world-recognition-v50'),
+  brief: () => import('./views/briefView.js?v=20260814-reference-world-recognition-v51'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-reference-world-recognition-v51'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-world-recognition-v51'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-reference-world-recognition-v51'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-world-recognition-v51'),
+  final: () => import('./views/finalView.js?v=20260814-reference-world-recognition-v51'),
+  workflow: () => import('./views/workflowView.js?v=20260814-reference-world-recognition-v51'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
@@ -426,7 +426,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260814-reference-world-recognition-v50');
+  const filters = await import('./projectCenterFilters.js?v=20260814-reference-world-recognition-v51');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

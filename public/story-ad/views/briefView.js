@@ -1,15 +1,15 @@
-import { request } from '../api.js?v=20260814-reference-world-recognition-v50';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v50';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v50';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-reference-world-recognition-v50';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-reference-world-recognition-v50';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-reference-world-recognition-v50';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-reference-world-recognition-v50';
-import { assertBriefReadback } from './briefTextContract.js?v=20260814-reference-world-recognition-v50';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-reference-world-recognition-v50';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-reference-world-recognition-v50';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-reference-world-recognition-v50';
-import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260814-reference-world-recognition-v50';
+import { request } from '../api.js?v=20260814-reference-world-recognition-v51';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v51';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-reference-world-recognition-v51';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-reference-world-recognition-v51';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-reference-world-recognition-v51';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-reference-world-recognition-v51';
+import { assertBriefReadback } from './briefTextContract.js?v=20260814-reference-world-recognition-v51';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-reference-world-recognition-v51';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-reference-world-recognition-v51';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-reference-world-recognition-v51';
+import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260814-reference-world-recognition-v51';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -215,7 +215,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260814-reference-world-recognition-v50');
+    const module = await import('./referenceUnderstandingView.js?v=20260814-reference-world-recognition-v51');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

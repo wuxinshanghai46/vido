@@ -1,8 +1,8 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-world-recognition-v50';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-reference-world-recognition-v50';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-reference-world-recognition-v50';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-reference-world-recognition-v50';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-reference-world-recognition-v50';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-reference-world-recognition-v51';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-reference-world-recognition-v51';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-reference-world-recognition-v51';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-reference-world-recognition-v51';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

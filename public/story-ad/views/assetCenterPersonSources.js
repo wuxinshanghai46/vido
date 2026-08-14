@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-world-recognition-v50';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v50';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v50';
+import { request } from '../api.js?v=20260814-reference-world-recognition-v51';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v51';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

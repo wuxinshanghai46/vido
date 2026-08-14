@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-reference-world-recognition-v50';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
