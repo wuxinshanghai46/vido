@@ -2,6 +2,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const vm = require('vm');
 
@@ -32,7 +33,21 @@ assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration m
 assert(source.includes('VIDO_IMMUTABLE_BASE_RELEASE') && source.includes('fs.linkSync(source,destination)'), 'immutable deployment must reuse only manifest-listed files from a verified base release');
 assert(source.includes('effectiveBaseReleaseDir = previousTarget'), 'immutable deployment must automatically reuse the active immutable release as the verified delta base');
 assert(source.includes('remoteHashAudit(stagingDir)') && source.indexOf('remoteHashAudit(stagingDir)') < source.indexOf("reportPhase('artifact_delta'"), 'reused files must be hash-audited before deciding the upload delta');
+assert(source.includes('sftp.unlink(`${stagingDir}/${file}`') && source.indexOf('sftp.unlink(`${stagingDir}/${file}`') < source.indexOf('sftp.fastPut(path.join(root, file)'), 'changed hard-linked files must be unlinked before upload to preserve the rollback release');
 assert(source.includes('const queue = stagedAudit.mismatches.slice()'), 'immutable deployment must upload only hash mismatches after safe reuse');
+const cowRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-immutable-cow-'));
+try {
+  const rollbackFile = path.join(cowRoot, 'rollback.js');
+  const stagedFile = path.join(cowRoot, 'staged.js');
+  fs.writeFileSync(rollbackFile, 'rollback-content');
+  fs.linkSync(rollbackFile, stagedFile);
+  fs.unlinkSync(stagedFile);
+  fs.writeFileSync(stagedFile, 'new-content');
+  assert.equal(fs.readFileSync(rollbackFile, 'utf8'), 'rollback-content', 'copy-on-write upload must preserve the rollback file');
+  assert.notEqual(fs.statSync(rollbackFile).ino, fs.statSync(stagedFile).ino, 'changed upload must use a new inode');
+} finally {
+  fs.rmSync(cowRoot, { recursive: true, force: true });
+}
 
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');
 assert(source.includes("fs.readFileSync(process.argv[1],'utf8')"), '远端哈希审计必须从清单文件读取');
@@ -74,4 +89,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 28, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'impact_scoped', cached_gate_runner: true, already_active_recovery: true, canonical_shared_outputs: true, cli_candidate_only: true, unknown_flag_rejected: true, sqlite_quick_check_preserved: true }));
+console.log(JSON.stringify({ passed: true, checks: 29, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'impact_scoped', cached_gate_runner: true, already_active_recovery: true, copy_on_write_preserved: true, canonical_shared_outputs: true, cli_candidate_only: true, unknown_flag_rejected: true, sqlite_quick_check_preserved: true }));

@@ -378,6 +378,13 @@ client.on('ready', async () => {
       await Promise.all(Array.from({ length: Math.min(uploadConcurrency, queue.length) }, async () => {
         while (queue.length) {
           const file = queue.shift();
+          // Reused files are hard links to the previous immutable release.
+          // Break the link before fastPut truncates the destination, otherwise
+          // uploading a changed file would silently mutate the rollback image.
+          await new Promise((resolve, reject) => sftp.unlink(`${stagingDir}/${file}`, error => {
+            if (!error || Number(error.code) === 2) resolve();
+            else reject(error);
+          }));
           await new Promise((resolve, reject) => sftp.fastPut(path.join(root, file), `${stagingDir}/${file}`, error => error ? reject(error) : resolve()));
         }
       }));
