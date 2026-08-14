@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v48';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v49';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v48';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260814-reference-asset-autofill-v48';
+import { request } from '../api.js?v=20260814-reference-world-recognition-v49';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260814-reference-world-recognition-v49';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

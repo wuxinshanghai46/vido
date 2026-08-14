@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v48';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v48';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v48';
+import { request } from '../api.js?v=20260814-reference-world-recognition-v49';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v49';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v49';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260814-reference-asset-autofill-v48';
+  link.href = '/story-ad/reference-understanding.css?v=20260814-reference-world-recognition-v49';
   document.head.appendChild(link);
 }
 
