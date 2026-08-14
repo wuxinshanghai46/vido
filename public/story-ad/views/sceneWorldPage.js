@@ -1,7 +1,7 @@
 import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260814-scoped-plans-v24';
-import { confirmDialog, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-scoped-plans-v24';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-scoped-plans-v24';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-scoped-plans-v24';
-import { scenePlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-scoped-plans-v24';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260814-scoped-plans-v24';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
@@ -25,18 +25,7 @@ export async function mount(host, context) {
     ${renderSceneWorldWorkspace(bundle)}
     <section class="step-completion-card ${scenePlanReady ? 'is-ready' : ''}"><div><b>场景规划独立于人物资产</b><span>${scenePlanReady ? '确认文字规划即可进入剧本；场景图片可按场景分别生成，不要求一次补齐全部缺失内容。' : '请先完成场景文字方案更新；人物方案与人物资产不会因此被修改。'}</span></div><button class="btn primary" type="button" data-open-script ${scenePlanReady ? '' : 'disabled'}>进入第 4 步：剧本</button></section>`;
   bindSceneWorldWorkspace(host, bundle, store);
-  host.querySelector('[data-update-scene-plan]')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
-    if (!await confirmDialog('本次只更新场景文字方案，不修改人物身份、人物图片或人物造型。若已有站位绑定无法安全延续，系统会阻止发布。', { title: '更新场景方案', confirmText: '确认更新场景方案' })) return;
-    try {
-      setButtonBusy(button, true, '正在更新场景方案…', { elapsed: true });
-      await store.runStage('scene-plan');
-      toast('场景方案更新已提交；人物方案和人物资产不会被改动。', 'success');
-      await context.refreshShell();
-    } catch (error) { toast(error.message, 'danger'); } finally {
-      setButtonBusy(button, false);
-    }
-  });
+  bindScenePlanUpdate(host, context);
   host.querySelectorAll('[data-generate-base-scene]').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.generateBaseScene;
     const scene = (bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id || '') === id);

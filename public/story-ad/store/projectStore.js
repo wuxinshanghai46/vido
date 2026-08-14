@@ -168,8 +168,7 @@ export function createProjectStore() {
       if (data.accepted === false) { const error = new Error(`项目已有“${data.job?.stage || state.bundle?.project?.active_stage || '当前'}”任务在运行，本次没有重复提交模型调用。`); Object.assign(error, { code: 'GENERATION_ALREADY_RUNNING', active_generation_id: data.job?.generation_id || data.job?.id || '' }); throw error; }
       applyMutationResult(data);
       state.progressRevision = '';
-      if (path === 'scene-config') await refreshSections('summary,assets');
-      else if (['person-plan', 'scene-plan'].includes(path)) await refreshSections('summary,assets');
+      if (path === 'scene-config' || path === 'person-plan' || path === 'scene-plan') await refreshSections('summary,assets');
       set({ saving: false });
       syncProgressPolling(true);
       return data;

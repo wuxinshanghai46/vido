@@ -453,6 +453,7 @@ const planningModule = loadBrowserModule(
   },
 );
 const planningStatusSource = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js');
+const scenePlanningStatusSource = read('public/story-ad/views/scenePlanStatus.js');
 const dossierModule = loadBrowserModule(
   'public/story-ad/views/personDossierShowcase.js',
   ['personDossierShowcase'],
@@ -464,14 +465,15 @@ assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧
 assert.match(assets, /content_mode === 'narrative_story' \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
 assert.match(planningStatusSource, /人物方案/, '人物页必须显示独立的人物方案状态');
-assert.match(planningStatusSource, /场景方案/, '场景页必须显示独立的场景方案状态');
+assert.match(scenePlanningStatusSource, /场景方案/, '场景页必须显示独立的场景方案状态');
 assert.match(planningStatusSource, /不修改场景方案、场景图片和人物在场景中的站位绑定/, '人物方案更新必须明确保护场景与站位绑定');
-assert.match(planningStatusSource, /不修改人物身份、人物图片和人物造型/, '场景方案更新必须明确保护人物资产');
+assert.match(scenePlanningStatusSource, /不修改人物身份、人物图片和人物造型/, '场景方案更新必须明确保护人物资产');
 assert.match(planningStatusSource, /不会生成图片/, '分域方案更新必须明确不产生图片生成');
 assert.match(assets, /generationActive/, '资产中心必须统一读取当前生成状态');
-assert.match(planningStatusSource, /正在更新\$\{noun\}/, '分域资产规划运行中必须显示准确名称和进行中状态');
+assert.match(planningStatusSource, /正在更新人物方案/, '人物方案运行中必须显示准确名称和进行中状态');
+assert.match(scenePlanningStatusSource, /正在更新场景方案/, '场景方案运行中必须显示准确名称和进行中状态');
 assert.match(planningStatusSource, /data-update-person-plan/, '人物方案必须使用独立提交入口');
-assert.match(planningStatusSource, /data-update-scene-plan/, '场景方案必须使用独立提交入口');
+assert.match(scenePlanningStatusSource, /data-update-scene-plan/, '场景方案必须使用独立提交入口');
 assert.match(assets, /data-select-person \$\{generationDisabled\}/, '后台生成运行中不得继续选择或替换人物素材');
 assert.match(planningStatusSource, /文字方案确认后，再单独生成图片/, '必须明确文字方案更新与后续图片生成的顺序');
 const blockedVisualFailure = {
