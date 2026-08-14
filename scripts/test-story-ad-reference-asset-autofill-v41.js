@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const storySceneCoverage = require('../src/services/newStoryAd/storySceneCoverageService');
+const personLookProjection = require('../src/services/storyAdWorkspace/personLookProjectionService');
 
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
@@ -109,6 +110,9 @@ const unknownRegion = assetPlan.projectReferencePlan({
   reference_video_analysis: { ...ctx.reference_video_analysis, analysis_id: 'reference-autofill-unknown-region' },
 });
 assert.ok(unknownRegion.cast_profiles.every(profile => profile.ethnicity === '未指定（原创角色，可修改）'), '地域未知时不得把参考真人族裔伪装成识别事实');
+const projectedUiProfile = personLookProjection.personProfile(unknownRegion.cast_profiles[0], 0);
+assert.equal(projectedUiProfile.ethnicity, '未指定（原创角色，可修改）', '资产工作区投影不得丢失自动补齐的族裔默认值');
+assert.equal(projectedUiProfile.ethnicity_source, 'user_confirmable_default', '资产工作区投影必须保留族裔值的来源，供界面提示用户确认');
 
 const briefView = read('public/story-ad/views/briefView.js');
 const briefTransition = read('public/story-ad/views/briefAssetPlanTransition.js');
