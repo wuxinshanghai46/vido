@@ -105,19 +105,23 @@ const unknownRegion = assetPlan.projectReferencePlan({
 assert.ok(unknownRegion.cast_profiles.every(profile => profile.ethnicity === '未指定（原创角色，可修改）'), '地域未知时不得把参考真人族裔伪装成识别事实');
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefTransition = read('public/story-ad/views/briefAssetPlanTransition.js');
 const appView = read('public/story-ad/app.js');
 const assetCenter = read('public/story-ad/views/assetCenterView.js');
+const personForm = read('public/story-ad/views/assetCenterPersonForm.js');
 const dossier = read('public/story-ad/views/personDossierShowcase.js');
 const historyModeSource = read('public/story-ad/workspaceHistoryMode.js').replace(/\bexport\s+/g, '');
 const historyMode = new Function(`${historyModeSource}; return { historicalStepReadOnly };`)();
-assert.match(briefView, /let planError = null;[\s\S]*view=assets/, '方案创建失败后也必须进入资产中心显示可恢复状态');
+assert.match(briefView, /createAssetPlanAndRefresh[\s\S]*view=assets/, '目标确认必须使用可恢复的资产方案转场');
+assert.match(briefTransition, /let planError = null;[\s\S]*runStage\('scene-config'\)[\s\S]*loadBundle\(taskId, 'summary,assets'\)/, '方案创建失败后必须刷新可恢复状态并进入资产中心');
 assert.match(appView, /historicalStepReadOnly[\s\S]*data-unlock-history-step/, '已进入后续环节的历史步骤必须默认只读并提供显式编辑入口');
 assert.match(appView, /querySelectorAll\('button, input, select, textarea'\)/, '历史步骤中的操作控件必须统一禁用');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'assets' } }, { view: 'brief', taskId: 'task-1' }), true, '从资产步骤返回目标步骤时必须进入只读模式');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'assets' } }, { view: 'assets', taskId: 'task-1' }), false, '当前步骤不得被误锁');
 assert.equal(historyMode.historicalStepReadOnly({ project: { workspace: 'storyboard' }, navigation: { current: 'brief', steps: { storyboard: { completed: true } } } }, { view: 'brief', taskId: 'task-1' }), true, '第一个未完成步骤不得覆盖任务已经到达的真实制作阶段');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'final' } }, { view: 'workflow', taskId: 'task-1' }), false, '工作流总览始终保持可查看');
-assert.match(assetCenter, /name="ethnicity"/, '人物编辑表单必须提供独立原创族裔外貌字段');
+assert.match(assetCenter, /assetCenterPersonForm/, '人物编辑表单必须按需加载，避免扩大核心工作区体积');
+assert.match(personForm, /name="ethnicity"/, '人物编辑表单必须提供独立原创族裔外貌字段');
 assert.match(assetCenter, /\['年龄', personAgeDisplay\(profile\)\]/, '人物详情必须独立显示年龄');
 assert.match(dossier, /fact\('原创族裔外貌设定'/, '完整人物档案必须独立显示原创族裔外貌设定');
 

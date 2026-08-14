@@ -151,7 +151,7 @@ assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
-assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*await store\.runStage\('scene-config'\);[\s\S]*view=assets/, '目标确认必须先处理内容类型迁移，再按保存最新输入、创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*createAssetPlanAndRefresh\(store, createdProjectId\)[\s\S]*view=assets/, '目标确认必须先处理内容类型迁移，再按保存最新输入、创建资产方案、进入资产中心的顺序执行');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
   escapeHtml,
@@ -442,8 +442,13 @@ const sceneDossierModule = loadBrowserModule(
 );
 const assetModule = loadBrowserModule(
   'public/story-ad/views/assetCenterView.js',
-  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'personEditForm', 'profileDetails'],
+  ['assetCard', 'personAssetState', 'subjectNeedsGeneration', 'sceneNeedsGeneration', 'subjectGenerationPayload', 'profileDetails'],
   { escapeHtml, mediaPreview, ...personLookModule, ...assetDossierModule, ...assetPersonStateModule, ...sceneDossierModule, renderPersonEvolutionSummary() { return ''; }, renderPersonEvolutionEditor() { return ''; }, bindPersonEvolutionForm() {}, collectPersonEvolutionValues() { return {}; }, request() { throw new Error('UI render test must not call request'); }, confirmDialog() { return false; } },
+);
+const personFormModule = loadBrowserModule(
+  'public/story-ad/views/assetCenterPersonForm.js',
+  ['personEditForm'],
+  { escapeHtml, ...personLookModule, ...assetPersonStateModule, renderPersonEvolutionEditor() { return ''; } },
 );
 const uiModule = loadBrowserModule(
   'public/story-ad/components/ui.js',
@@ -539,7 +544,7 @@ assert.match(completeCard, /重生成完整人物档案/);
 assert.doesNotMatch(completeCard, /重生成高清服装与配饰档案/);
 assert.match(completeCard, /data-generate-asset="legacy-person"/);
 const readableProfile = { ...completePerson, profile: { displayName: '苏晚', roleName: '美学策展人', age: 'match_brief', appearanceText: '年龄约28岁，东方古典气质的现代女性' } };
-const personEdit = assetModule.personEditForm(readableProfile);
+const personEdit = personFormModule.personEditForm(readableProfile);
 assert.match(personEdit, /name="age"/u, '人物编辑区必须提供确切年龄或区间的独立权威字段');
 assert.doesNotMatch(personEdit, /value="match_brief"/u, '人物编辑区不得暴露内部年龄枚举');
 assert.match(personEdit, /确切年龄或年龄区间/u);
@@ -552,7 +557,7 @@ const multiLookProfile = { ...readableProfile, profile: { ...readableProfile.pro
   { id: 'ancient', name: '古代造型', scene_names: ['竹海庭院'], wardrobeText: '淡青宋式长衫' },
   { id: 'modern', name: '现代造型', scene_names: ['金属展厅'], wardrobeText: '米白亚麻衬衫与长裤' },
 ] } };
-const multiLookEdit = assetModule.personEditForm(multiLookProfile);
+const multiLookEdit = personFormModule.personEditForm(multiLookProfile);
 assert.match(multiLookEdit, /2 套/);
 assert.match(multiLookEdit, /古代造型/);
 assert.match(multiLookEdit, /现代造型/);
@@ -567,7 +572,7 @@ assert.equal(collectedLooks.look_profiles.length, 2);
 assert.equal(collectedLooks.wardrobeText, '淡青宋式长衫');
 assert.equal(collectedLooks.age, 'match_brief', '年龄留空必须按服务器规范保存为按剧情分析，避免回读误报不一致');
 assert.match(multiLookEdit, /适用场景 \/ 剧情状态/u);
-const sameSceneAcrossEras = assetModule.personEditForm({ ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
+const sameSceneAcrossEras = personFormModule.personEditForm({ ...readableProfile, profile: { ...readableProfile.profile, look_profiles: [
   { id: 'ancient-bamboo', name: '古代造型', story_state: '古代', scene_names: ['千年竹海'], wardrobeText: '古代长衫' },
   { id: 'modern-bamboo', name: '现代造型', story_state: '现代', scene_names: ['千年竹海'], wardrobeText: '现代衬衫' },
 ] } });

@@ -3,11 +3,11 @@ import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from 
 import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v42';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-reference-asset-autofill-v42';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-reference-asset-autofill-v42';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v42';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v42';
 import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-reference-asset-autofill-v42';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-asset-autofill-v42';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-asset-autofill-v42';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-asset-autofill-v42';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-asset-autofill-v42';
 import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-asset-autofill-v42';
 const GROUPS = [
   ['people', '人物'],
@@ -191,28 +191,13 @@ function dossierDetails(item = {}) {
   ].join('');
   return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
-function personEditForm(item = {}) {
-  const profile = item.profile || {};
-  const field = (name, label, value, textarea = false) => `<label><span>${label}</span>${textarea
-    ? `<textarea name="${name}" rows="3">${escapeHtml(value || '')}</textarea>`
-    : `<input name="${name}" value="${escapeHtml(value || '')}">`}</label>`;
-  return `<details class="person-edit-panel" open><summary>修改人物信息</summary><form id="personEditForm" data-person-edit>
-    <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}</div>
-    <label><span>年龄（确切年龄或年龄区间）</span><input name="age" value="${escapeHtml(personAgeDisplay(profile))}" placeholder="如：22岁、18~25岁、实际年龄1000岁"><small>填写后作为生成硬约束；支持 ~、～、-、—、–、至、到，保存时统一为“22岁”或“18~25岁”。留空则根据剧本和人物关系自动分析。</small></label><input type="hidden" name="age_source" value="user">
-    <label><span>原创族裔 / 地域外貌设定</span><input name="ethnicity" value="${escapeHtml(profile.ethnicity || profile.ethnic_appearance || '')}" list="personEthnicityOptions" placeholder="如：东亚外貌设计、欧美外貌设计"><datalist id="personEthnicityOptions"><option value="东亚外貌设计"><option value="欧美外貌设计"><option value="南亚外貌设计"><option value="中东外貌设计"><option value="非洲外貌设计"><option value="拉丁裔外貌设计"><option value="多元混合外貌设计"><option value="未指定（原创角色，可修改）"></datalist><small>这是原创角色设计字段，不会把参考真人的族裔当作识别事实；系统会优先按已确认的地域和剧情自动补齐，无法可靠判断时保留可编辑默认值。</small></label><input type="hidden" name="ethnicity_source" value="user">
-    ${field('appearanceText', '外貌与气质（年龄请填写在上方独立字段）', profile.appearanceText, true)}
-    ${renderPersonEvolutionEditor(profile)}
-    ${renderPersonLookEditors(profile)}<p class="form-hint">每套造型会独立补齐服装组成、鞋履、配饰、配色和面料；不会再把跨时代或换装状态合并。</p>
-    ${field('negativeText', '禁止项', profile.negativeText, true)}
-    <div class="assist-form-actions"><button class="btn" type="button" data-ai-assist-person>AI 帮写人物设定</button><button class="btn primary" type="submit">保存人物文字设定</button></div>
-  </form></details>`;
-}
-
-let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
+let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
   planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-reference-asset-autofill-v42');
-  return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260814-reference-asset-autofill-v42');
+  const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
+  return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
-    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
+    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm: personForm.personEditForm,
   });
 }
 

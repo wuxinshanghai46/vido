@@ -97,6 +97,7 @@ function main() {
   const allJsFiles = walk(FRONTEND_ROOT).filter(file => file.endsWith('.js'));
   const lazyJsFiles = allJsFiles.filter(file => /(?:directorStudioView|vendor[\\/])/.test(file));
   const assetEditorLazyJsFiles = allJsFiles.filter(file => /(?:assetCenterAssist|assetCenterPlanningDetails|assetCenterBillingReviewDialog)/.test(file));
+  const personFormLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonForm/.test(file));
   const personEvolutionLazyJsFiles = allJsFiles.filter(file => /assetCenterPersonEvolution/.test(file));
   const featureLazyJsFiles = allJsFiles.filter(file => /(?:referenceUnderstandingView|workflowDirectorNodes)/.test(file));
   const recognitionLazyJsFiles = allJsFiles.filter(file => /briefNarrativeRecognition/.test(file));
@@ -107,10 +108,11 @@ function main() {
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorld(?:View|Page)/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
   const mediaLazyJsFiles = allJsFiles.filter(file => /(?:finalView|mediaCatalogStore|finalMediaPagination)/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const personFormLazyJsBytes = personFormLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const personEvolutionLazyJsBytes = personEvolutionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const featureLazyJsBytes = featureLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const recognitionLazyJsBytes = recognitionLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -125,6 +127,7 @@ function main() {
   const coreJsGzip = gzipBytes(coreJsFiles);
   const lazyJsGzip = gzipBytes(lazyJsFiles);
   const assetEditorLazyJsGzip = gzipBytes(assetEditorLazyJsFiles);
+  const personFormLazyJsGzip = gzipBytes(personFormLazyJsFiles);
   const personEvolutionLazyJsGzip = gzipBytes(personEvolutionLazyJsFiles);
   const featureLazyJsGzip = gzipBytes(featureLazyJsFiles);
   const recognitionLazyJsGzip = gzipBytes(recognitionLazyJsFiles);
@@ -169,6 +172,8 @@ function main() {
 
   assert(assetEditorLazyJsBytes <= 40 * 1024, `asset editor lazy modules ${assetEditorLazyJsBytes} bytes exceed 40 KiB`);
   assert(assetEditorLazyJsGzip <= 12 * 1024, `asset editor lazy modules gzip ${assetEditorLazyJsGzip} bytes exceed 12 KiB`);
+  assert(personFormLazyJsBytes <= 4 * 1024, `person form lazy module ${personFormLazyJsBytes} bytes exceeds 4 KiB`);
+  assert(personFormLazyJsGzip <= 2 * 1024, `person form lazy module gzip ${personFormLazyJsGzip} bytes exceeds 2 KiB`);
   assert(personEvolutionLazyJsBytes <= 8 * 1024, `person evolution lazy module ${personEvolutionLazyJsBytes} bytes exceeds 8 KiB`);
   assert(personEvolutionLazyJsGzip <= 3 * 1024, `person evolution lazy module gzip ${personEvolutionLazyJsGzip} bytes exceeds 3 KiB`);
 

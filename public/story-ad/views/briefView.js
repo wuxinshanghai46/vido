@@ -9,6 +9,7 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260814-reference
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-reference-asset-autofill-v42';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-reference-asset-autofill-v42';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-reference-asset-autofill-v42';
+import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260814-reference-asset-autofill-v42';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -405,17 +406,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
       const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
       assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
-      let planError = null;
-      try {
-        await store.runStage('scene-config');
-      } catch (error) {
-        planError = error;
-      }
-      try {
-        await store.loadBundle(createdProjectId, 'summary,assets');
-      } catch (error) {
-        planError ||= error;
-      }
+      const planError = await createAssetPlanAndRefresh(store, createdProjectId);
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
       if (planError) {
         window.setTimeout(() => toast(`已进入资产中心，但人物与场景方案尚未创建完成：${planError.message}`, 'danger'), 0);
