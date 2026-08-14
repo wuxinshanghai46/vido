@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-reference-world-recognition-v49';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-world-recognition-v50';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
