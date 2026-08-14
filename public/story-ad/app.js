@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-sr14-v22';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-sr14-v22';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-sr14-v22';
-import { confirmDialog } from './components/dialog.js?v=20260814-sr14-v22';
+import { createProjectStore } from './store/projectStore.js?v=20260814-scoped-plans-v23';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-scoped-plans-v23';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-scoped-plans-v23';
+import { confirmDialog } from './components/dialog.js?v=20260814-scoped-plans-v23';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-sr14-v22'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-sr14-v22'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-sr14-v22'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-sr14-v22'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-sr14-v22'),
-  final: () => import('./views/finalView.js?v=20260814-sr14-v22'),
-  workflow: () => import('./views/workflowView.js?v=20260814-sr14-v22'),
+  brief: () => import('./views/briefView.js?v=20260814-scoped-plans-v23'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-scoped-plans-v23'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-scoped-plans-v23'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-scoped-plans-v23'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-scoped-plans-v23'),
+  final: () => import('./views/finalView.js?v=20260814-scoped-plans-v23'),
+  workflow: () => import('./views/workflowView.js?v=20260814-scoped-plans-v23'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
