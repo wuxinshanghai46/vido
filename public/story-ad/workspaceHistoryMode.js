@@ -8,6 +8,13 @@ export function routeProgressIndex(view = '') {
 export function historicalStepReadOnly(bundle = {}, route = {}) {
   if (route.isNew || route.view === 'workflow') return false;
   const routeIndex = routeProgressIndex(route.view);
-  const currentIndex = routeProgressIndex(bundle?.navigation?.current || bundle?.project?.workspace || 'brief');
-  return routeIndex >= 0 && currentIndex > routeIndex;
+  const progressIndexes = [
+    routeProgressIndex(bundle?.project?.workspace || ''),
+    routeProgressIndex(bundle?.navigation?.current || ''),
+    ...Object.entries(bundle?.navigation?.steps || {})
+      .filter(([, state]) => state?.completed === true)
+      .map(([view]) => routeProgressIndex(view)),
+  ].filter(index => index >= 0);
+  const furthestIndex = progressIndexes.length ? Math.max(...progressIndexes) : 0;
+  return routeIndex >= 0 && furthestIndex > routeIndex;
 }

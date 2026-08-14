@@ -115,6 +115,7 @@ assert.match(appView, /historicalStepReadOnly[\s\S]*data-unlock-history-step/, '
 assert.match(appView, /querySelectorAll\('button, input, select, textarea'\)/, '历史步骤中的操作控件必须统一禁用');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'assets' } }, { view: 'brief', taskId: 'task-1' }), true, '从资产步骤返回目标步骤时必须进入只读模式');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'assets' } }, { view: 'assets', taskId: 'task-1' }), false, '当前步骤不得被误锁');
+assert.equal(historyMode.historicalStepReadOnly({ project: { workspace: 'storyboard' }, navigation: { current: 'brief', steps: { storyboard: { completed: true } } } }, { view: 'brief', taskId: 'task-1' }), true, '第一个未完成步骤不得覆盖任务已经到达的真实制作阶段');
 assert.equal(historyMode.historicalStepReadOnly({ navigation: { current: 'final' } }, { view: 'workflow', taskId: 'task-1' }), false, '工作流总览始终保持可查看');
 assert.match(assetCenter, /name="ethnicity"/, '人物编辑表单必须提供独立原创族裔外貌字段');
 assert.match(assetCenter, /\['年龄', personAgeDisplay\(profile\)\]/, '人物详情必须独立显示年龄');
