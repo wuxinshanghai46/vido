@@ -1,4 +1,4 @@
-import { confirmDialog, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v40';
+import { confirmDialog, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v41';
 
 export function scenePlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');
