@@ -19,10 +19,23 @@ const remoteScript = String.raw`
   const rawContext = storage.getOutput(taskId, 'context') || task.request || {};
   const peopleSource = rawContext.person_asset?.cast_assets || (rawContext.person_asset ? [rawContext.person_asset] : []);
   const bundle = bundleService.buildProjectBundle(taskId, { sections: 'assets,shots' });
+  const generationRuns = storage.listGenerationRuns({ work_id: taskId }) || [];
+  const modelCalls = storage.getTaskBundle(taskId, { diagnostics: true }).model_calls || [];
   const url = value => value?.image_url || value?.thumbnail_url || value?.url || '';
   console.log(JSON.stringify({
     found: true,
     task: { status: task.status, stage: task.stage, error_code: task.error_code || '' },
+    navigation: {
+      brief_completed: bundle.navigation?.steps?.brief?.completed === true,
+      asset_plan_eligible: bundle.navigation?.asset_plan_eligibility?.eligible === true,
+      asset_plan_issues: bundle.navigation?.asset_plan_eligibility?.issues || [],
+    },
+    subject_generation: {
+      runs: generationRuns.filter(run => /subject|person|visual/i.test(String(run.domain || run.stage || run.operation || '')))
+        .map(run => ({ id: run.id, state: run.state, created_at: run.created_at || '' })),
+      model_calls: modelCalls.filter(call => /subject|person|visual/i.test(String(call.stage || '')))
+        .map(call => ({ stage: call.stage, status: call.status, created_at: call.created_at || '' })),
+    },
     storyboard: {
       status: bundle.storyboard?.status || null,
       gate: bundle.storyboard?.sketch_gate || null,
@@ -55,7 +68,7 @@ const remoteScript = String.raw`
 const encoded = Buffer.from(remoteScript).toString('base64');
 const client = new Client();
 client.on('ready', () => {
-  client.exec(`cd /opt/vido/app && node -e "eval(Buffer.from('${encoded}','base64').toString())"`, (error, stream) => {
+  client.exec(`cd /opt/vido/current && node -e "eval(Buffer.from('${encoded}','base64').toString())"`, (error, stream) => {
     if (error) throw error;
     stream.on('data', chunk => process.stdout.write(chunk));
     stream.stderr.on('data', chunk => process.stderr.write(chunk));

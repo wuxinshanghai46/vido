@@ -87,7 +87,7 @@ const remoteScript = String.raw`
 const encoded = Buffer.from(remoteScript).toString('base64');
 const client = new Client();
 client.on('ready', () => {
-  client.exec(`cd /opt/vido/app && node -e "eval(Buffer.from('${encoded}','base64').toString())"`, (error, stream) => {
+  client.exec(`cd /opt/vido/current && node -e "eval(Buffer.from('${encoded}','base64').toString())"`, (error, stream) => {
     if (error) throw error;
     stream.on('data', chunk => process.stdout.write(chunk));
     stream.stderr.on('data', chunk => process.stderr.write(chunk));

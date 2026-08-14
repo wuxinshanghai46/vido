@@ -1556,9 +1556,16 @@ function assertScopedPlanIsolation(previous = {}, next = {}, scope = '', overrid
   return true;
 }
 
-function markSceneConfigDone(taskId) {
+function markSceneConfigDone(taskId, generationId = '') {
+  const task = storage.getTask(taskId) || {};
+  const activeGenerationId = cleanText(task.active_generation_id || '', 160);
+  const ownedByJob = Boolean(generationId) && activeGenerationId === cleanText(generationId, 160);
   storage.updateTask(taskId, {
-    status: 'running', stage: 'scene_config_done', error: '', error_code: '', active_generation_id: '', active_stage: '',
+    status: ownedByJob ? 'running' : 'done',
+    stage: 'scene_config_done',
+    error: '',
+    error_code: '',
+    ...(ownedByJob ? {} : { active_generation_id: '', active_stage: '' }),
   });
 }
 
@@ -1716,7 +1723,7 @@ async function generate(taskId, options = {}) {
       generationId,
       message: '输入指纹一致，已复用人物、道具和场景资产计划',
     });
-    markSceneConfigDone(taskId);
+    markSceneConfigDone(taskId, generationId);
     return previous.scene_plan;
   }
 
@@ -1953,7 +1960,7 @@ async function generate(taskId, options = {}) {
     output_summary: '统一资产计划已生成',
     diagnostics: { ...modelMeta, fingerprint: currentFingerprint, cache_hit: false },
   });
-  markSceneConfigDone(taskId);
+  markSceneConfigDone(taskId, generationId);
   stageProgress.update(taskId, {
     stage: 'scene_config',
     status: 'done',
@@ -1985,6 +1992,7 @@ module.exports = {
   assertGeneratedContentMode,
   assertContentModeIsolation,
   assertScopedPlanIsolation,
+  markSceneConfigDone,
   replanPerson,
   replanScene,
   syncPrevious,

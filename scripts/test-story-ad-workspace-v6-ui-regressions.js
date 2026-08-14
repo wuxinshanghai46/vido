@@ -47,6 +47,7 @@ assert.deepStrictEqual(projectedSemanticTiming.semantic_contract_progress.missin
 assert.equal(projectedSemanticTiming.semantic_contract_progress.contracts.cast.failures[0], 'character_semantics_incomplete');
 
 const assets = read('public/story-ad/views/assetCenterView.js');
+const projectStoreSource = read('public/story-ad/store/projectStore.js');
 const personDossierShowcase = read('public/story-ad/views/personDossierShowcase.js');
 const assetDossierSections = read('public/story-ad/views/assetCenterDossierSections.js');
 const sceneDossierCard = read('public/story-ad/views/sceneDossierCard.js');
@@ -96,6 +97,7 @@ assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return rema
 assert.match(briefView, /if \(referenceAttached\) host\.querySelector\('\[data-brief-settings\]'\)\?\.removeAttribute\('open'\)/, '已有参考视频时广告目标设置首次挂载必须默认收起');
 assert.match(briefView, /nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus/, '参考分析状态切换后广告目标设置必须恢复默认收起');
 assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
+assert.match(briefView, /referenceStepVisible && bundle\.navigation\?\.steps\?\.brief\?\.completed !== true/, '已完成并进入后续步骤后不得继续显示第 1 步引导卡');
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
 assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留可恢复的页面锚点');
@@ -118,7 +120,9 @@ assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.
 assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /brief_source:\s*'user'/, '新建项目时必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
-assert.match(assets, /生成全部缺失人物 \/ 动物/, '主体批量入口必须如实说明会生成全部缺失主体，不得误写为逐个生成');
+assert.match(assets, /确认并生成全部缺失人物图片/, '主体批量入口必须明确点击确认后才会提交真实人物图片生成');
+assert.match(assets, /进入资产中心不会自动生成图片/, '资产中心必须明确区分文字方案与付费图片生成');
+assert.match(projectStoreSource, /terminalProgress[\s\S]*!project\.active_generation_id && \(terminalProgress \|\|/, '方案内部完成且活动任务清空时必须刷新资产页，不得被旧 running 状态卡住');
 assert.match(assets, /人物资产已齐全，进入场景世界/, '人物图片已经齐全时，页面顶部必须提供可见的下一步入口');
 assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部与底部的人物确认入口都必须绑定真实点击事件');
 assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
@@ -515,7 +519,7 @@ assert.doesNotMatch(assets, /当前没有通过本版本合同的 Active Plan/, 
 assert.match(assets, /asset_setup_confirmed:\s*true/);
 assert.match(assets, /view=scene/, '人物资产确认后必须进入独立场景流程');
 assert.match(assets, /asset-visual-next-step/, '进入人物资产步骤后必须明确展示人物视觉生成的下一步');
-assert.match(assets, /不会因刚才确认参考理解而自动付费/, '必须明确区分零调用方案创建与付费视觉生成');
+assert.match(assets, /进入资产中心不会自动生成图片/, '必须明确区分零调用方案创建与付费视觉生成');
 assert.match(assets, /data-generate-missing-subjects/, '必须提供通用的缺失人物和动物生成入口');
 assert.doesNotMatch(assets, /data-show-pending-scenes/, '人物资产步骤不得继续混入待生成场景入口');
 assert.match(sceneWorldPage, /data-generate-base-scene/, '独立场景步骤必须提供逐场景生成入口');

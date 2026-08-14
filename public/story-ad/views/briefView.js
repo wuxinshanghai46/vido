@@ -80,11 +80,11 @@ export function referenceActionState(reference = {}) {
 
 export function referenceNextStepDescription(reference = {}) {
   const action = referenceActionState(reference);
-  if (!action.blocked) return '保存你的最新设置，并创建可编辑的人物、道具和场景方案；这里只建立方案，不生成图片或视频。';
+  if (!action.blocked) return '创建可编辑的人物与场景文字方案；不生成图片或视频。';
   const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) return '先核对并确认上方参考理解；确认成功后会自动创建方案并进入资产中心。';
-  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '当前参考识别不可用于后续制作，请按上方提示重新识别或更换参考。';
-  return '参考内容仍在分析，完成并确认理解结果后会自动继续。';
+  if (status === 'completed' && reference.analysis_valid === true) return '先确认参考理解；成功后自动创建方案并进入资产中心。';
+  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
+  return '参考分析中；完成并确认后自动继续。';
 }
 
 export function syncReferenceAction(button, reference = {}) {
@@ -103,17 +103,18 @@ export async function mount(host, context) {
   const worldProfile = brief.world_setting?.profiles?.[0] || {};
   const referenceAction = referenceActionState(bundle.reference || {});
   const referenceStepVisible = referenceAttached && !route.isNew;
+  const showReferenceStepGuidance = referenceStepVisible && bundle.navigation?.steps?.brief?.completed !== true;
   host.innerHTML = `
     <section class="view-head">
       <div><h1>先说清楚要做什么</h1><p>先选择广告或剧情，再填写内容目标；也可以添加参考视频并让系统读取内容。</p></div>
       ${!route.isNew ? '<span class="status-tag is-neutral">第 1 步 · 目标确认</span>' : ''}
     </section>
     <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
-    ${referenceStepVisible && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
+    ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
-    <div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>
+    ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
     <div data-brief-settings-anchor>
     <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">

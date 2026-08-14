@@ -241,9 +241,9 @@ export async function mount(host, context) {
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button><button class="btn" type="button" data-generate-product-main ${generationActive ? generationDisabled : contractDisabled}>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button></div>
     </section>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
-      <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
+      <div><span class="status-tag is-success">文字方案已建立 · 图片未生成</span><h2>生成真实人物图片</h2><p>进入资产中心不会自动生成图片。点击右侧按钮并确认后才调用图片模型；当前有 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。</p></div>
       <div class="asset-visual-next-actions">${missingSubjectCount
-        ? `<button class="btn primary" type="button" data-generate-missing-subjects ${generationActive ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '生成全部缺失人物 / 动物'}</button>`
+        ? `<button class="btn primary" type="button" data-generate-missing-subjects ${generationActive ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '确认并生成全部缺失人物图片'}</button>`
         : `<button class="btn primary" type="button" data-confirm-assets ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
     </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>

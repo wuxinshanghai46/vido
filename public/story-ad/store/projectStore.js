@@ -1,7 +1,6 @@
 import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260815-reference-transition-v59';
 import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260815-reference-transition-v59';
 import { loadProjectList } from './projectListStore.js?v=20260815-reference-transition-v59';
-
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -543,7 +542,8 @@ export function createProjectStore() {
         };
         const bundle = { ...(state.bundle || {}), project, generation };
         set({ bundle, progressRevision: state.progressRevision });
-        if (!project.active_generation_id && !['queued', 'running', 'processing'].includes(String(project.status || '').toLowerCase())) {
+        const terminalProgress = ['done', 'succeeded', 'failed', 'cancelled'].includes(String(project.generation_progress?.status || '').toLowerCase());
+        if (!project.active_generation_id && (terminalProgress || !['queued', 'running', 'processing'].includes(String(project.status || '').toLowerCase()))) {
           stopProgressPolling();
           await refreshSections('summary,assets,story,shots,media');
           set({ generationCompletionSeq: state.generationCompletionSeq + 1 });
