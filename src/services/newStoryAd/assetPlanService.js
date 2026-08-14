@@ -1615,6 +1615,8 @@ function syncPrevious(taskId) {
   storage.updateTask(taskId, {
     status: 'running',
     stage: 'scene_config_done',
+    error: '',
+    error_code: '',
     active_generation_id: '',
     active_stage: '',
   });
@@ -1905,7 +1907,9 @@ async function generate(taskId, options = {}) {
     output_summary: '统一资产计划已生成',
     diagnostics: { ...modelMeta, fingerprint: currentFingerprint, cache_hit: false },
   });
-  storage.updateTask(taskId, { status: 'running', stage: 'scene_config_done' });
+  storage.updateTask(taskId, {
+    status: 'running', stage: 'scene_config_done', error: '', error_code: '', active_generation_id: '', active_stage: '',
+  });
   stageProgress.update(taskId, {
     stage: 'scene_config',
     status: 'done',

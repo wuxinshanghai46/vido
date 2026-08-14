@@ -179,7 +179,7 @@ const familyStory = genericStory({
   assert.equal(coverage.coverageIssues(shallow, context('commercial_subject')).length, 0, '商业广告路径不启用纯剧情场景深度合同');
 
   const taskId = 'causal-scenes-retry-v104';
-  storage.createTask({ id: taskId, brief: narrative.brief, content_revision: 1, request: narrative });
+  storage.createTask({ id: taskId, brief: narrative.brief, content_revision: 1, request: narrative, error: '旧资产方案错误', error_code: 'STALE_ASSET_PLAN_ERROR' });
   storage.saveOutput(taskId, 'context', narrative);
   const currentPlan = {
     story_seed: storySeed(),
@@ -246,6 +246,8 @@ const familyStory = genericStory({
   assert.equal(sceneCalls, 0, '场景拓扑必须由平台确定性编译，不能回落旧场景模型');
   assert.equal(coverage.coverageIssues(stored, storage.getOutput(taskId, 'context')).length, 0);
   assert.equal(refreshedCheckpointObserved, true);
+  assert.equal(storage.getTask(taskId).error || '', '', '资产方案成功后必须清除上一次失败遗留的错误文字');
+  assert.equal(storage.getTask(taskId).error_code || '', '', '资产方案成功后必须清除上一次失败遗留的错误码');
 
   modelGateway.generateText = originalGenerateText;
   let semanticError;
