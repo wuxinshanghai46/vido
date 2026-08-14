@@ -43,7 +43,13 @@ assert.match(assetPersonState, /visual_asset_contract_version \|\| 0\) >= 2/);
 assert.match(assetView, /旧版档案 · 待升级/);
 assert.match(assetView, /升级独立穿搭 \/ 配饰档案/);
 assert.match(assetView, /repair_existing: repairing/);
-assert.match(assetView, /subject_targets = pending\.slice\(0, 1\)\.map/, 'missing people must be submitted as independent tasks instead of one failure-prone batch');
+assert.match(assetView, /subject_targets = pending\.map/, 'one user action must submit every missing person target');
+
+const subjectBundleSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/subjectAssetBundleService.js'), 'utf8');
+assert.match(subjectBundleSource, /for \(let index = 0; index < humans\.length; index \+= 1\)/, 'the service must process people as isolated subject units');
+assert.match(subjectBundleSource, /subjectFailures\.push\(\{ kind: 'human'/, 'one failed person must be recorded independently');
+assert.match(subjectBundleSource, /人物 \$\{index \+ 1\} 生成中断，继续处理其它独立主体/, 'one failed person must not stop the remaining people');
+assert.match(subjectBundleSource, /checkpoint\.humans\[index\] = asset;[\s\S]*?save\(\);/, 'each successful person must be checkpointed before the next subject');
 
 const personEditor = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonLooks.js'), 'utf8');
 assert.match(personEditor, /华丽程度（AI 帮写和图片生成都会遵守）/);
