@@ -64,6 +64,20 @@ function preserveUnconfirmedMediaSettings(previous = {}, next = {}, { savingProg
   ), next);
 }
 
+function preservesAuthoritativeContext(body = {}, { savingProgress = false, requestedScope = '', explicitScenePlan = null } = {}) {
+  if (savingProgress && requestedScope === 'scene' && explicitScenePlan) return true;
+  const changed = body.changed_domains || body.changedDomains;
+  const hasSceneSpec = Object.prototype.hasOwnProperty.call(body, 'scene_spec')
+    || Object.prototype.hasOwnProperty.call(body, 'sceneSpec');
+  const operationalKeys = new Set([
+    'scene_spec', 'sceneSpec', 'save_progress', 'saveProgress', 'change_scope', 'changeScope',
+    'changed_domains', 'changedDomains', 'base_content_revision', 'baseContentRevision',
+    'client_edit_seq', 'clientEditSeq', 'progress_stage', 'progressStage',
+  ]);
+  return savingProgress && requestedScope === 'none' && Array.isArray(changed) && changed.length === 0
+    && hasSceneSpec && Object.keys(body).every(key => operationalKeys.has(key));
+}
+
 function sceneAssetStableId(asset = {}) {
   return String(asset.space_id || asset.scene_id || asset.id || '').trim();
 }
@@ -94,5 +108,6 @@ module.exports = {
   taskPatch,
   mediaInvalidatedOutputs,
   preserveUnconfirmedMediaSettings,
+  preservesAuthoritativeContext,
   mergeAutosaveSceneAssets,
 };

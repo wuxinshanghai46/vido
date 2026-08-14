@@ -1624,11 +1624,10 @@ function visualEvidenceCacheKey(record = {}, frames = []) {
 }
 
 function shouldSplitEvidenceBatchRecovery(previousCache = {}, index = 0, batch = [], error = {}) {
-  const priorFailures = previousCache?.failed_attempts?.[index];
-  if (!Array.isArray(priorFailures) || !priorFailures.length || !Array.isArray(batch) || batch.length <= 1) return false;
+  if (!Array.isArray(batch) || batch.length <= 1) return false;
   const codes = [error?.code, ...(Array.isArray(error?.failed_models) ? error.failed_models.map(item => item?.code) : [])]
     .map(value => String(value || '').toUpperCase());
-  return codes.some(code => ['PROVIDER_RESPONSE_INVALID', 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID'].includes(code));
+  return codes.some(code => ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID'].includes(code));
 }
 
 /** 失败重试只在证据帧和全部视觉批次齐全时复用，禁止拿不完整缓存伪装成功。 */
@@ -2911,6 +2910,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
         maxCandidates: REFERENCE_VISION_MAX_CANDIDATES,
         timeoutMs: 120000,
         stageBudgetMs: REFERENCE_VISION_STAGE_BUDGET_MS,
+        structuredOutput: { mode: 'json_object', name: 'reference_video_evidence' },
         validateText: (text) => {
           validatedPayload = parseVisionEvidencePayload(text, targetBatch);
           return true;
@@ -2922,11 +2922,34 @@ async function analyzeWithModels(record, frames, transcript = {}) {
     try {
       evidenceAttempt = await requestEvidenceBatch(batch);
     } catch (error) {
-      if (!shouldSplitEvidenceBatchRecovery(recoveryCache, index, batch, error)) {
+      // A syntax-only repair is allowed when the provider returned text but no
+      // parseable object. The repaired object still has to pass the exact
+      // frame-id and evidence contract below, so a text model cannot invent a
+      // missing visual frame. Coverage failures go directly to visual recovery.
+      if (error.candidate_text && !error.candidate_parsed_json) {
+        try {
+          const repaired = await jsonRepair.parseOrRepair({
+            raw: error.candidate_text,
+            expected: 'object',
+            modelGateway,
+            taskId: record.id,
+          });
+          const repairedPayload = parseVisionEvidencePayload(JSON.stringify(repaired), batch);
+          evidenceAttempt = {
+            vision: {
+              text: JSON.stringify(repaired),
+              used_model: `${error.failed_models?.[0]?.provider_id || ''}/${error.failed_models?.[0]?.model_id || ''} + json-repair`,
+            },
+            payload: repairedPayload,
+          };
+        } catch {}
+      }
+      if (evidenceAttempt) {
+        // Continue with the same persistence path as a native valid response.
+      } else if (!shouldSplitEvidenceBatchRecovery(recoveryCache, index, batch, error)) {
         persistBatchFailure(index, error);
         throw error;
-      }
-      try {
+      } else try {
         const singles = [];
         for (const frame of batch) singles.push(await requestEvidenceBatch([frame], true));
         evidenceAttempt = {

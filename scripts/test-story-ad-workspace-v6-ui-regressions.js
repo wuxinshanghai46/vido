@@ -404,6 +404,11 @@ assert.match(referenceAnalysisService, /function evidenceBatchProgress\([\s\S]*r
 const appWorkflowSource = read('public/story-ad/app.js');
 assert.match(appWorkflowSource, /projectModeView\(project\)/, '项目列表必须读取内容类型并显示广告或剧情');
 assert.match(appWorkflowSource, /commercial_subject[\s\S]*label: '广告'/, '广告任务必须显示明确的广告标识');
+assert.match(appWorkflowSource, /<span>项目名称<\/span><span>任务类型<\/span>/, '项目名称和任务类型必须是两个独立列表字段');
+assert.match(appWorkflowSource, /data-project-name-filter/, '任务中心必须提供任务名称查询条件');
+assert.match(appWorkflowSource, /data-project-type-filter[\s\S]*narrative_story[\s\S]*commercial_subject[\s\S]*unset/, '任务类型查询必须覆盖全部、剧情、广告和未选择');
+assert.match(appWorkflowSource, /data-project-stage-filter[\s\S]*stageOptions/, '任务中心必须提供默认全部且可选择现有阶段的查询条件');
+assert.match(appWorkflowSource, /typeMatched[\s\S]*stageMatched[\s\S]*return statusMatched && nameMatched && typeMatched && stageMatched/, '三个查询条件必须与原状态分类共同生效');
 assert.match(appWorkflowSource, /subject_assets \?\? counts\.assets/, '人物资产步骤不得继续混用场景资产总数');
 assert.match(appWorkflowSource, /scene: counts\.scenes/, '场景步骤必须使用独立场景计数');
 assert.match(appWorkflowSource, /state\.enabled === false \? 'is-locked'/, '未满足前置条件的环节必须显示锁定态');

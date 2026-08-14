@@ -771,6 +771,7 @@ async function generateVision({
   maxCandidates = VISION_MAX_CANDIDATES,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
   validateText = null,
+  structuredOutput = null,
   _candidateModels = null,
   _generateText = null,
 } = {}) {
@@ -801,8 +802,7 @@ async function generateVision({
     throw error;
   }
   if (process.env.NEW_STORY_AD_MOCK_LLM === '1') {
-    return {
-      text: JSON.stringify({
+    const text = JSON.stringify({
         pass: true,
         status: 'verified',
         scene_consistency_score: 0.92,
@@ -832,7 +832,12 @@ async function generateVision({
         geometry_facts: [],
         materials: [],
         lighting: {},
-      }),
+      });
+    const structured = parseStructuredJson(text, structuredOutput, { applied_mode: 'mock', native: false, degraded: false });
+    return {
+      text,
+      parsed_json: structured.parsed,
+      structured_output: structuredOutput ? { requested_mode: providerAdapters.normalizeStructuredOutput(structuredOutput)?.mode || '', applied_mode: 'mock', native: false, degraded: false } : null,
       used_model: 'mock/new-story-ad-vision',
       fallback_used: false,
       failed_models: [],
@@ -857,6 +862,8 @@ async function generateVision({
     throw error;
   }
   const failed = [];
+  let lastCandidateText = '';
+  let lastCandidateParsedJson = null;
   const stageStarted = Date.now();
   const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(VISION_MAX_CANDIDATES, Number(maxCandidates) || 1)));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
@@ -870,6 +877,8 @@ async function generateVision({
     if (attemptTimeoutMs <= 0) break;
     const model = attemptCandidates[i];
     const start = Date.now();
+    let candidateText = '';
+    let candidateParsedJson = null;
     try {
       const candidateImageUrls = embeddedUrls.length >= urls.length ? embeddedUrls : urls;
       const messages = [
@@ -892,11 +901,19 @@ async function generateVision({
         maxTokens,
         timeoutMs: attemptTimeoutMs,
         signal: cancellation.signal(),
+        structuredOutput,
       });
       cancellation.throwIfCancelled(taskId);
+      candidateText = result.text;
+      lastCandidateText = result.text;
+      const structured = parseStructuredJson(result.text, structuredOutput, result.structured_output);
+      candidateParsedJson = structured.parsed;
+      lastCandidateParsedJson = structured.parsed;
       await runSemanticValidation(validateText, result.text, {
         model,
         result,
+        parsed_json: structured.parsed,
+        structured_output: result.structured_output || null,
         candidate_index: i,
       }, stage);
       const latency = Date.now() - start;
@@ -905,9 +922,14 @@ async function generateVision({
         task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
         adapter: result.adapter || '', family: result.family || '', status: 'success',
         latency_ms: latency, fallback_rank: i + 1,
+        provider_reason: result.structured_output
+          ? `structured_output:${result.structured_output.requested_mode}->${result.structured_output.applied_mode}`
+          : '',
       });
       return {
         text: result.text,
+        parsed_json: structured.parsed,
+        structured_output: result.structured_output || null,
         used_model: `${model.provider_id}/${model.model_id}`,
         fallback_used: i > 0,
         failed_models: failed,
@@ -925,6 +947,10 @@ async function generateVision({
         response_diagnostics: err.response_diagnostics || null,
         retry_after_ms: 0,
       };
+      if (candidateText) {
+        err.candidate_text = candidateText;
+        err.candidate_parsed_json = candidateParsedJson;
+      }
       recordHealth(model, { ok: false, error: err, latencyMs: latency });
       failure.retry_after_ms = Math.max(0, Number(healthState(model).cooldown_remaining_ms || 0));
       failed.push(failure);
@@ -941,6 +967,10 @@ async function generateVision({
   error.retryable = failed.some(item => /TIMEOUT|RATE_LIMIT|NETWORK|5XX|PROVIDER_RESPONSE_INVALID|PROVIDER_EMPTY_RESPONSE/.test(item.code));
   error.failed_models = failed;
   error.retry_after_ms = Math.max(0, ...failed.map(item => Number(item.retry_after_ms || 0)));
+  if (lastCandidateText) {
+    error.candidate_text = lastCandidateText;
+    error.candidate_parsed_json = lastCandidateParsedJson;
+  }
   throw error;
 }
 

@@ -1295,14 +1295,16 @@ async function main() {
     userPrompt: 'test',
     imageUrls: ['https://example.com/reference-frame.jpg'],
     imageDataUrls: ['data:image/jpeg;base64,YWJj'],
+    structuredOutput: { mode: 'json_object', name: 'reference_video_evidence_test' },
     maxCandidates: 3,
     _candidateModels: [
       { provider_id: 'deyunai', model_id: 'empty-model' },
       { provider_id: 'zhipu', model_id: 'refusal-model' },
       { provider_id: 'openai', model_id: 'valid-model' },
     ],
-    _generateText: async ({ model, messages }) => {
+    _generateText: async ({ model, messages, structuredOutput }) => {
       providerVisionInputs[model.provider_id] = messages[1].content[1].image_url.url;
+      providerVisionInputs[`${model.provider_id}_structured`] = structuredOutput?.mode || '';
       if (model.model_id === 'empty-model') {
         const error = new Error('provider returned no visible content');
         error.code = 'PROVIDER_EMPTY_RESPONSE';
@@ -1331,6 +1333,8 @@ async function main() {
   );
   assert.ok(providerVisionInputs.zhipu.startsWith('data:image/jpeg;base64,'));
   assert.ok(providerVisionInputs.openai.startsWith('data:image/jpeg;base64,'));
+  assert.equal(providerVisionInputs.openai_structured, 'json_object',
+    'vision gateway must forward structured-output mode to the provider adapter');
   assert.deepStrictEqual(
     fallbackVision.failed_models.map(item => item.code),
     ['PROVIDER_EMPTY_RESPONSE', 'PROVIDER_RESPONSE_INVALID'],
@@ -1630,7 +1634,12 @@ async function main() {
     const recoveryCandidateLimits = [];
     modelGateway.generateVision = async (options) => {
       const batchIndex = Number(String(options.userPrompt || '').match(/第\s+(\d+)\/2\s+组/)?.[1] || 0);
-      recoveryCalls.push({ round: recoveryRound, batch_index: batchIndex, frame_count: options.imageUrls.length });
+      recoveryCalls.push({
+        round: recoveryRound,
+        batch_index: batchIndex,
+        frame_count: options.imageUrls.length,
+        structured_mode: options.structuredOutput?.mode || '',
+      });
       recoveryCandidateLimits.push(options.maxCandidates);
       if (batchIndex === 2 && options.imageUrls.length > 1) {
         const error = new Error('multi-frame provider response omitted required frames');
@@ -1652,59 +1661,46 @@ async function main() {
         used_model: recoveryRound === 1 ? 'zhipu/glm-4.6v-flash' : 'backup-provider/backup-vision',
       };
     };
-    await assert.rejects(
-      service._private.analyzeWithModels(recoveryRecord, recoveryFrames, { status: 'no_audio', text: '' }),
-      error => error.code === 'VISION_QA_UNAVAILABLE',
-    );
-    recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
-    assert.deepStrictEqual(
-      recoveryCalls.map(item => item.batch_index).sort(),
-      [1, 2],
-      'the first attempt must run both bounded evidence batches',
-    );
-    assert.ok(
-      recoveryCandidateLimits.every(limit => limit === 3),
-      'each reference-video batch must allow cross-provider fallback candidates',
-    );
-    assert.deepStrictEqual(
-      recoveryRecord._visual_evidence_cache.completed_batch_indexes,
-      [0],
-      'the successful batch must be persisted when its sibling is rate limited',
-    );
-    assert.ok(
-      recoveryRecord._visual_evidence_cache.failed_attempts['1'],
-      `failed batch diagnostics missing: ${JSON.stringify(recoveryRecord._visual_evidence_cache)}`,
-    );
-    assert.equal(recoveryRecord._visual_evidence_cache.failed_attempts['1'][0].code, 'PROVIDER_RESPONSE_INVALID');
-    assert.equal(
-      recoveryRecord._visual_evidence_cache.failed_attempts['1'][0].response_diagnostics.response_length,
-      123,
-      '失败批次必须私下持久化安全诊断，不能只剩页面上的 UNKNOWN',
-    );
-    const partialPublicRecord = service.get(recoveryAnalysis.id, user);
-    assert.deepStrictEqual(
-      partialPublicRecord.evidence_batch_progress,
-      { total: 2, completed: 1, remaining: 1, failed: 1 },
-      '失败任务必须公开安全的批次进度，明确重试只处理缺失批次',
-    );
-    assert.equal(Object.prototype.hasOwnProperty.call(partialPublicRecord, '_visual_evidence_cache'), false);
-
-    recoveryRound = 2;
     const recovered = await service._private.analyzeWithModels(
       recoveryRecord,
       recoveryFrames,
       { status: 'no_audio', text: '' },
     );
-    const secondRoundCalls = recoveryCalls.filter(item => item.round === 2);
-    assert.deepStrictEqual(
-      secondRoundCalls.map(item => [item.batch_index, item.frame_count]),
-      [[2, 4], [2, 1], [2, 1], [2, 1], [2, 1]],
-      'retry must first retry only the missing batch, then split a repeated structural failure into single-frame recovery calls',
-    );
-    assert.strictEqual(recovered.visual_evidence_batches.length, 2);
     recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
-    assert.deepStrictEqual(recoveryRecord._visual_evidence_cache.completed_batch_indexes, [0, 1]);
-    assert.equal(recoveryRecord._visual_evidence_cache.failed_attempts['1'], undefined, '缺失批次成功后必须清除该批次旧失败状态');
+    assert.deepStrictEqual(
+      recoveryCalls.map(item => [item.batch_index, item.frame_count]).sort((a, b) => a[0] - b[0] || b[1] - a[1]),
+      [[1, 4], [2, 4], [2, 1], [2, 1], [2, 1], [2, 1]],
+      'the first operation must immediately recover an invalid multi-frame batch as single-frame evidence',
+    );
+    assert.ok(
+      recoveryCandidateLimits.every(limit => limit === 3),
+      'each reference-video batch must allow cross-provider fallback candidates',
+    );
+    assert.ok(recoveryCalls.every(item => item.structured_mode === 'json_object'),
+      'every visual evidence request must ask the provider for native JSON output');
+    assert.deepStrictEqual(
+      recoveryRecord._visual_evidence_cache.completed_batch_indexes,
+      [0, 1],
+      'all evidence batches must be persisted in the same operation after bounded recovery',
+    );
+    assert.equal(recoveryRecord._visual_evidence_cache.failed_attempts['1'], undefined);
+    const partialPublicRecord = service.get(recoveryAnalysis.id, user);
+    assert.deepStrictEqual(
+      partialPublicRecord.evidence_batch_progress,
+      { total: 2, completed: 2, remaining: 0, failed: 0 },
+      'same-operation recovery must expose complete evidence progress',
+    );
+    assert.equal(Object.prototype.hasOwnProperty.call(partialPublicRecord, '_visual_evidence_cache'), false);
+
+    const visionCallCount = recoveryCalls.length;
+    await service._private.analyzeWithModels(
+      recoveryRecord,
+      recoveryFrames,
+      { status: 'no_audio', text: '' },
+    );
+    assert.equal(recoveryCalls.length, visionCallCount,
+      'a completed evidence cache must not repeat any paid visual frame call');
+    assert.strictEqual(recovered.visual_evidence_batches.length, 2);
     service.remove(recoveryAnalysis.id, user);
   } finally {
     modelGateway.generateVision = originalGenerateVision;

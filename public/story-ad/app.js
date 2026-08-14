@@ -39,6 +39,7 @@ const VIEW_SECTIONS = Object.freeze({
 function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SECTIONS.brief; }
 let activeViewCleanup = null;
 let centerFilter = '';
+let centerQuery = { taskName: '', taskType: 'all', stage: 'all' };
 const deletingProjectIds = new Set();
 let observedGenerationCompletionSeq = 0;
 setInterval(() => refreshElapsedLabels(document), 1000);
@@ -106,12 +107,22 @@ function statCards(stats = {}) {
 
 function renderCenter() {
   const { projects, stats, loading, error } = store.state;
+  const stageOptions = [...new Set(projects.map(project => statusView(project).label).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'zh-CN'));
   const visibleProjects = projects.filter(project => {
-    if (!centerFilter) return true;
     const tone = statusView(project).tone;
-    if (centerFilter === 'waiting') return tone === 'danger';
-    if (centerFilter === 'completed') return tone === 'success';
-    return tone === 'info' || tone === 'neutral';
+    const statusMatched = !centerFilter
+      || (centerFilter === 'waiting' && tone === 'danger')
+      || (centerFilter === 'completed' && tone === 'success')
+      || (centerFilter === 'active' && (tone === 'info' || tone === 'neutral'));
+    const taskName = String(project.title || '').toLocaleLowerCase('zh-CN');
+    const nameMatched = !centerQuery.taskName.trim()
+      || taskName.includes(centerQuery.taskName.trim().toLocaleLowerCase('zh-CN'));
+    const mode = String(project.content_mode || '');
+    const typeMatched = centerQuery.taskType === 'all'
+      || (centerQuery.taskType === 'unset' ? !mode : mode === centerQuery.taskType);
+    const stageMatched = centerQuery.stage === 'all' || statusView(project).label === centerQuery.stage;
+    return statusMatched && nameMatched && typeMatched && stageMatched;
   });
   app.innerHTML = `
     ${platformTopbar()}
@@ -134,17 +145,31 @@ function renderCenter() {
               <div><h2>项目</h2><p>只显示当前账号真实任务，不使用演示数据。</p></div>
               <button class="btn" type="button" data-refresh-projects>刷新</button>
             </div>
+            <div class="project-query" aria-label="项目查询条件">
+              <label><span>任务名称</span><input class="input" type="search" value="${escapeHtml(centerQuery.taskName)}" placeholder="输入任务名称" data-project-name-filter></label>
+              <label><span>任务类型</span><select class="select" data-project-type-filter>
+                <option value="all" ${centerQuery.taskType === 'all' ? 'selected' : ''}>全部</option>
+                <option value="narrative_story" ${centerQuery.taskType === 'narrative_story' ? 'selected' : ''}>剧情</option>
+                <option value="commercial_subject" ${centerQuery.taskType === 'commercial_subject' ? 'selected' : ''}>广告</option>
+                <option value="unset" ${centerQuery.taskType === 'unset' ? 'selected' : ''}>内容类型未选择</option>
+              </select></label>
+              <label><span>当前阶段</span><select class="select" data-project-stage-filter>
+                <option value="all">全部</option>
+                ${stageOptions.map(label => `<option value="${escapeHtml(label)}" ${centerQuery.stage === label ? 'selected' : ''}>${escapeHtml(label)}</option>`).join('')}
+              </select></label>
+            </div>
             ${loading ? '<div class="table-loading">正在读取项目…</div>' : ''}
             ${error ? `<div class="inline-error">${escapeHtml(error)}</div>` : ''}
             <div class="project-table" role="table">
-              <div class="project-row project-head" role="row"><span>任务编号</span><span>项目内容</span><span>当前阶段</span><span>镜头</span><span>最近更新</span><span>操作</span></div>
+              <div class="project-row project-head" role="row"><span>任务编号</span><span>项目名称</span><span>任务类型</span><span>当前阶段</span><span>镜头</span><span>最近更新</span><span>操作</span></div>
               ${visibleProjects.map(project => {
                 const status = statusView(project);
                 const mode = projectModeView(project);
                 const deleting = deletingProjectIds.has(String(project.id));
                 return `<div class="project-row${deleting ? ' is-deleting' : ''}" role="row" data-project-id="${escapeHtml(project.id)}" ${deleting ? 'aria-busy="true"' : ''}>
                   <code>${escapeHtml(project.display_id)}</code>
-                  <span class="project-copy"><b>${escapeHtml(project.title)}</b><span class="project-mode is-${mode.tone}">${escapeHtml(mode.label)}</span><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
+                  <span class="project-copy"><b>${escapeHtml(project.title)}</b><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
+                  <span class="project-mode is-${mode.tone}">${escapeHtml(mode.label)}</span>
                   <span class="status-tag is-${status.tone}">${escapeHtml(status.label)}</span>
                   <span>${Number(project.shot_count) || 0}</span>
                   <time>${escapeHtml(formatDate(project.updated_at))}</time>
@@ -369,6 +394,25 @@ document.addEventListener('click', event => {
     return;
   }
   if (target.matches('[data-retry-view]')) mountView(currentRoute());
+});
+
+document.addEventListener('input', event => {
+  if (!event.target.matches('[data-project-name-filter]')) return;
+  centerQuery.taskName = event.target.value || '';
+  renderCenter();
+  const input = document.querySelector('[data-project-name-filter]');
+  input?.focus();
+  input?.setSelectionRange(input.value.length, input.value.length);
+});
+
+document.addEventListener('change', event => {
+  if (event.target.matches('[data-project-type-filter]')) {
+    centerQuery.taskType = event.target.value || 'all';
+    renderCenter();
+  } else if (event.target.matches('[data-project-stage-filter]')) {
+    centerQuery.stage = event.target.value || 'all';
+    renderCenter();
+  }
 });
 
 window.addEventListener('popstate', () => renderRoute().catch(showFatal));
