@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-scoped-plans-v26';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-recovery-v27';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

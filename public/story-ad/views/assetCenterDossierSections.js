@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-scoped-plans-v26';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-recovery-v27';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];

@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-scoped-plans-v26';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-reference-recovery-v27';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-scoped-plans-v26';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-recovery-v27';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
