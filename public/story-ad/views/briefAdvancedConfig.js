@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-plan-authority-repair-v55';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-release-efficiency-v56';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};
