@@ -17,9 +17,9 @@ export function worldSettingFields(profile = {}, escapeHtml = value => String(va
   const mediumOptions = [['auto','待识别：原文未指定真人、3D或动漫'],['live_action','真人 / 实拍'],['cinematic_3d','3D 动画'],['anime_2d','2D 动漫 / 赛璐璐'],['motion_comic','动态漫 / 插画'],['mixed_media','混合媒介'],['custom','自定义画面形态']];
   const selectOptions = (rows, current) => rows.map(([value,label]) => `<option value="${value}" ${String(current) === value ? 'selected' : ''}>${label}</option>`).join('');
   const formOwner = settings.formId ? ` form="${escapeHtml(settings.formId)}"` : '';
-  const inferred = value => ['reference_analysis', 'content_inference'].includes(String(value || ''));
-  const familyBadge = inferred(profile.era_family_source) && profile.era_family !== 'auto' ? 'AI 已识别' : 'AI 可识别';
-  const mediumBadge = inferred(profile.visual_medium_source) && profile.visual_medium !== 'auto' ? 'AI 已识别' : 'AI 可识别';
+  const inferred = value => ['reference_analysis', 'content_inference'].includes(String(value));
+  const familyBadge = inferred(profile.era_family_source) ? 'AI 已识别' : 'AI 可识别';
+  const mediumBadge = inferred(profile.visual_medium_source) ? 'AI 已识别' : 'AI 可识别';
   return `<label class="field brief-setting-tile"><span>世界 / 时代类型 <em>${familyBadge}</em></span><select class="select" name="world_family"${formOwner}>${selectOptions(familyOptions, profile.era_family || 'auto')}</select><small>根据内容目标或参考视频识别，也可以手动选择；统一约束人物、场景、道具与分镜。</small></label>
 <label class="field brief-setting-tile"><span>视觉真实度 <em>可手动确认</em></span><select class="select" name="world_fidelity"${formOwner}>${selectOptions(fidelityOptions, profile.fidelity_mode || 'contemporary_realism')}</select><small>只决定画面是否像真人摄影；不会把古代剧情改成现代剧情。</small></label>
 <label class="field brief-setting-tile"><span>画面形态 <em>${mediumBadge}</em></span><select class="select" name="visual_medium"${formOwner}>${selectOptions(mediumOptions, profile.visual_medium || 'auto')}</select><small>统一真人、3D、动漫或动态漫呈现。</small></label>
