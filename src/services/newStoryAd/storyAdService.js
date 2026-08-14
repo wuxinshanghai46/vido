@@ -301,6 +301,7 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
   );
   // Active scene_spec is UI state; an explicit scene_plan owns only the scene domain.
   if (taskProgressSave.preservesAuthoritativeContext(body, { savingProgress, requestedScope, explicitScenePlan: explicitScenePlanInput })) builtCtx = previousCtx;
+  else if (savingProgress && requestedScope === 'person') builtCtx = taskProgressSave.preserveProductDomain(previousCtx, builtCtx);
   const contentModeChanged = Boolean(String(previousCtx.content_mode || '').trim() && String(builtCtx.content_mode || '').trim() && String(previousCtx.content_mode || '').trim() !== String(builtCtx.content_mode || '').trim());
   contentSkill.applyModeTransition(previousCtx, builtCtx, body);
   // Completion flags are workflow state, not creative content. Running them

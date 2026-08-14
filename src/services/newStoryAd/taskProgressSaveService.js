@@ -78,6 +78,20 @@ function preservesAuthoritativeContext(body = {}, { savingProgress = false, requ
     && hasSceneSpec && Object.keys(body).every(key => operationalKeys.has(key));
 }
 
+function preserveProductDomain(previous = {}, next = {}) {
+  const result = { ...next };
+  ['product_subject', 'product_presentation', 'assets', 'product_contract'].forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(previous, key)) result[key] = previous[key];
+    else delete result[key];
+  });
+  const controlled = { ...(next.controlled_production || {}) };
+  if (Object.prototype.hasOwnProperty.call(previous.controlled_production || {}, 'product_control')) {
+    controlled.product_control = previous.controlled_production.product_control;
+  } else delete controlled.product_control;
+  result.controlled_production = controlled;
+  return result;
+}
+
 function sceneAssetStableId(asset = {}) {
   return String(asset.space_id || asset.scene_id || asset.id || '').trim();
 }
@@ -109,5 +123,6 @@ module.exports = {
   mediaInvalidatedOutputs,
   preserveUnconfirmedMediaSettings,
   preservesAuthoritativeContext,
+  preserveProductDomain,
   mergeAutosaveSceneAssets,
 };

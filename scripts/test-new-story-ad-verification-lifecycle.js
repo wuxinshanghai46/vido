@@ -155,6 +155,8 @@ async function main() {
   }, { id: 'verification-lifecycle-user' });
   assert.equal(autosaved.context.person_contract.status, 'verified', '同一人物指纹的自动保存不得重置验证状态');
   assert.equal(autosaved.context.person_contract.cross_view_qa.pass, true);
+  assert.equal(storage.getOutput(taskId, 'scene_config')?.spaces?.length, 2,
+    `人物自动保存不得失效当前逐空间场景计划：${JSON.stringify(autosaved.changed_domains)}`);
   const changed = storyAd.updateTaskRequest(taskId, {
     ...autosaved.context,
     save_progress: true,
@@ -162,6 +164,8 @@ async function main() {
     person_spec: { ...spec, wardrobeText: '改为白色短袖服装' },
   }, { id: 'verification-lifecycle-user' });
   assert.notEqual(changed.context.person_contract.status, 'verified', '人物外观合同真实变化后必须重新验证');
+  assert.equal(storage.getOutput(taskId, 'scene_config')?.spaces?.length, 2,
+    '人物规格变化不得失效当前逐空间场景计划');
 
   let personQaAttempts = 0;
   const retriedPersonContract = await personIdentity.verifyPersonAsset({
