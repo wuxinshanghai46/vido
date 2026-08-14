@@ -242,7 +242,9 @@ export async function mount(host, context) {
     </section>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
-      <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${generationActive || !missingSubjectCount ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '生成全部缺失人物 / 动物'}</button></div>
+      <div class="asset-visual-next-actions">${missingSubjectCount
+        ? `<button class="btn primary" type="button" data-generate-missing-subjects ${generationActive ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '生成全部缺失人物 / 动物'}</button>`
+        : `<button class="btn primary" type="button" data-confirm-assets ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
     </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
@@ -553,7 +555,7 @@ export async function mount(host, context) {
         migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
     });
   });
-  host.querySelector('[data-confirm-assets]')?.addEventListener('click', async event => {
+  host.querySelectorAll('[data-confirm-assets]').forEach(confirmButton => confirmButton.addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
       setButtonBusy(button, true, '正在确认…');
@@ -564,5 +566,5 @@ export async function mount(host, context) {
       toast(error.message, 'danger');
       setButtonBusy(button, false);
     }
-  });
+  }));
 }

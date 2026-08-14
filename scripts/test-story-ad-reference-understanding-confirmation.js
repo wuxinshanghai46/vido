@@ -113,7 +113,13 @@ try {
   assert.equal(syncedContext.reference_video_analysis.reference_understanding.audio_visual.ocr.length, 2,
     '状态、进度和完成时间不变时，OCR/理解指纹变化仍必须同步到持久化 context');
 
-  const bundleTask = storyAd.createTask({ project_name: '确认后 bundle 回读测试', brief: '确认后 bundle 回读测试' }, owner).task;
+  const bundleTask = storyAd.createTask({
+    project_name: '确认后 bundle 回读测试',
+    brief: '确认后 bundle 回读测试',
+    content_mode: 'narrative_story',
+    content_mode_source: 'user',
+    content_form: 'narrative_live_action',
+  }, owner).task;
   const staleContextAnalysis = analysis('analysis-authoritative-snapshot', '旧投影');
   let authoritativeAnalysis = analysis('analysis-authoritative-snapshot', '权威投影');
   authoritativeAnalysis.task_id = bundleTask.id;
@@ -141,6 +147,20 @@ try {
     const confirmedBundle = projectBundles.buildProjectBundle(bundleTask.id, { sections: 'summary,reference' });
     assert.equal(confirmedBundle.reference.understanding_confirmation.status, 'confirmed',
       '确认接口与 bundle 必须使用同一权威快照，确认后回读仍为 confirmed');
+    const revisionBeforeNoopSave = storage.getTask(bundleTask.id).content_revision;
+    storyAd.updateTaskRequest(bundleTask.id, {
+      asset_setup_confirmed: false,
+      base_content_revision: revisionBeforeNoopSave,
+      client_edit_seq: 1,
+    }, owner, { previousContext: authoritativeSnapshot.context });
+    const afterNoopSave = storage.getOutput(bundleTask.id, 'context');
+    assert.equal(storage.getTask(bundleTask.id).content_revision, revisionBeforeNoopSave,
+      '确认后的无业务变化保存不得增加内容版本');
+    assert.equal(afterNoopSave.reference_video_analysis.reference_understanding.story_summary.full_synopsis,
+      authoritativeAnalysis.reference_understanding.story_summary.full_synopsis,
+      '通用保存必须从权威参考快照合并，不能让旧 task context 回灌');
+    assert.equal(confirmation.inspect(bundleTask.id, afterNoopSave).status, 'confirmed',
+      '确认后的无业务变化保存不得使当前确认失效');
 
     authoritativeAnalysis = JSON.parse(JSON.stringify(authoritativeAnalysis));
     authoritativeAnalysis.reference_understanding.audio_visual.ocr.push({
@@ -154,7 +174,7 @@ try {
     referenceVideoAnalyses.taskRecord = originalTaskRecord;
   }
 
-  console.log(JSON.stringify({ passed: true, checks: 20, industry_hardcoding: false, repeat_paid_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 23, industry_hardcoding: false, repeat_paid_calls: 0 }));
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }

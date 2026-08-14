@@ -119,6 +119,8 @@ assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /brief_source:\s*'user'/, '新建项目时必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /生成全部缺失人物 \/ 动物/, '主体批量入口必须如实说明会生成全部缺失主体，不得误写为逐个生成');
+assert.match(assets, /人物资产已齐全，进入场景世界/, '人物图片已经齐全时，页面顶部必须提供可见的下一步入口');
+assert.match(assets, /querySelectorAll\('\[data-confirm-assets\]'\)/, '顶部与底部的人物确认入口都必须绑定真实点击事件');
 assert.match(briefView, /mode:\s*'brief_goal'/, '剧情与广告剧本帮写必须使用独立模式，不能提前生成分镜或调用视觉模型');
 assert.match(briefView, /剧情和广告都会整理成正常剧本式结构；保留你写明的人物、场景、故事、商品与业务事实，不提前生成分镜/, '目标页必须解释 AI 帮写的结构与职责边界');
 assert.match(briefView, /brief-config-section full/, '基础信息必须使用独立设置分区，不能继续平铺在旧表单网格');
@@ -151,7 +153,8 @@ assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
-assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*createAssetPlanAndRefresh\(store, createdProjectId\)[\s\S]*view=assets/, '目标确认必须先处理内容类型迁移，再按保存最新输入、创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*createAssetPlanAndRefresh\(store, createdProjectId\)[\s\S]*view=assets/, '目标确认必须只保存真实编辑，再按创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /if \(dirtyFields\.size\)/, '刚确认参考报告且没有修改目标时不得发送会使确认失效的空保存');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
   escapeHtml,

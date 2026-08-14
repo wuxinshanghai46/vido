@@ -262,6 +262,22 @@ async function testTaskPutAwaitsProjection() {
         'PUT 投影后的 current snapshot 必须与 context 完全一致',
       );
     }
+    const beforeNoop = storage.getTask(taskId);
+    const referenceFingerprintBeforeNoop = assetPlan.referenceProjectionFingerprint(
+      storage.getOutput(taskId, 'context').reference_video_analysis,
+    );
+    const noopResponse = await putJson(endpoint, {
+      base_content_revision: beforeNoop.content_revision,
+      client_edit_seq: Number(beforeNoop.latest_client_edit_seq || 0) + 1,
+    });
+    assert.equal(noopResponse.status, 200);
+    assert.equal(noopResponse.payload.reference_projection.reason, 'no_business_change',
+      '没有真实业务修改时不得重新投影参考内容');
+    assert.equal(noopResponse.payload.content_revision, beforeNoop.content_revision,
+      '无业务变化 PUT 不得制造新内容版本');
+    assert.equal(assetPlan.referenceProjectionFingerprint(
+      storage.getOutput(taskId, 'context').reference_video_analysis,
+    ), referenceFingerprintBeforeNoop, '无业务变化 PUT 不得覆盖当前参考投影');
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

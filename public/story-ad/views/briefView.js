@@ -404,8 +404,14 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       if (migration.cancelled) return false;
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
-      const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
-      assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
+      // Confirming an already-rendered authoritative reference must not issue
+      // a no-op brief save. That save can advance the content revision and
+      // immediately invalidate the confirmation that was just persisted.
+      if (dirtyFields.size) {
+        const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
+        assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
+        dirtyFields.clear();
+      }
       const planError = await createAssetPlanAndRefresh(store, createdProjectId);
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
       if (planError) {

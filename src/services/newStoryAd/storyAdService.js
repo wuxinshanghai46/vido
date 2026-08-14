@@ -273,7 +273,9 @@ function updateTaskRequest(taskId, body = {}, user = {}, options = {}) {
     error.content_revision = currentRevision;
     throw error;
   }
-  const previousCtx = storage.getOutput(taskId, 'context') || task.request || {};
+  const previousCtx = options.previousContext && typeof options.previousContext === 'object'
+    ? options.previousContext
+    : (storage.getOutput(taskId, 'context') || task.request || {});
   if (body.reference_understanding_override && typeof body.reference_understanding_override === 'object' && revisionService.signature(body.reference_understanding_override) !== revisionService.signature(previousCtx.reference_understanding_override) && options.referenceUnderstandingEdit !== true) {
     const error = Object.assign(new Error('参考内容修订只能通过专用编辑接口保存'), { code: 'REFERENCE_UNDERSTANDING_OVERRIDE_FORBIDDEN', status: 403, retryable: false });
     throw error;
