@@ -47,8 +47,8 @@ function context(mode = 'narrative_story') {
 
 function cast() {
   return [
-    { id: 'hero', name: '陆光', role: '男主', appearanceText: '清俊', wardrobeText: '古装与现代装', look_profiles: [] },
-    { id: 'heroine', name: '月瑶', role: '女主', appearanceText: '清秀', wardrobeText: '古代华服与现代白裙', look_profiles: [] },
+    { id: 'hero', name: '陆光', role: '男主', age: '28岁', ethnicity: '东亚外貌设计', asset_scope: 'primary', appearanceText: '清俊', wardrobeText: '古装与现代装', look_profiles: [] },
+    { id: 'heroine', name: '月瑶', role: '女主', age: '25岁', ethnicity: '东亚外貌设计', asset_scope: 'primary', appearanceText: '清秀', wardrobeText: '古代华服与现代白裙', look_profiles: [] },
   ];
 }
 

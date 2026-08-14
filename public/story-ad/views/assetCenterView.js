@@ -93,7 +93,7 @@ function generationValidation(payload = {}) {
   if (payload.cast_profiles.length !== payload.expected_people) return `人物档案数量不完整：需要 ${payload.expected_people} 份。`;
   if (payload.pet_profiles.length !== payload.expected_animals) return `动物档案数量不完整：需要 ${payload.expected_animals} 份。`;
   for (const [index, profile] of payload.cast_profiles.entries()) {
-    const missing = [['姓名', profile.displayName], ['角色', profile.roleName], ['外貌', profile.appearanceText], ['发型/妆造', profile.hairMakeupText]]
+    const missing = [['姓名', profile.displayName], ['角色', profile.roleName], ['年龄', personAgeDisplay(profile)], ['原创族裔外貌设定', profile.ethnicity], ['外貌', profile.appearanceText], ['发型/妆造', profile.hairMakeupText]]
       .filter(([, value]) => !String(value || '').trim()).map(([label]) => label);
     if (missing.length) return `人物 ${index + 1} 缺少：${missing.join('、')}。`;
     const looks = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
@@ -169,6 +169,7 @@ function profileDetails(item = {}, group = '') {
   const rows = group === 'people' ? [
     ['身份 / 关系', profile.roleName || item.role],
     ['年龄', personAgeDisplay(profile)],
+    ['原创族裔外貌设定', profile.ethnicity || profile.ethnic_appearance],
     ['外貌与气质', profile.appearanceText],
     ...(looks.length ? looks.map((look, index) => [`造型 ${index + 1} · ${look.name || '未命名'}`, `${(look.scene_names || look.scene_ids || []).join('、') || '未限定场景'}｜${look.wardrobeText || ''}`]) : [['服装 / 鞋 / 配饰', profile.wardrobeText]]),
     ['发型 / 妆造', profile.hairMakeupText],
@@ -198,6 +199,7 @@ function personEditForm(item = {}) {
   return `<details class="person-edit-panel" open><summary>修改人物信息</summary><form id="personEditForm" data-person-edit>
     <div class="form-grid two">${field('displayName', '人物名称', profile.displayName)}${field('roleName', '身份 / 关系', profile.roleName || item.role)}</div>
     <label><span>年龄（确切年龄或年龄区间）</span><input name="age" value="${escapeHtml(personAgeDisplay(profile))}" placeholder="如：22岁、18~25岁、实际年龄1000岁"><small>填写后作为生成硬约束；支持 ~、～、-、—、–、至、到，保存时统一为“22岁”或“18~25岁”。留空则根据剧本和人物关系自动分析。</small></label><input type="hidden" name="age_source" value="user">
+    <label><span>原创族裔 / 地域外貌设定</span><input name="ethnicity" value="${escapeHtml(profile.ethnicity || profile.ethnic_appearance || '')}" list="personEthnicityOptions" placeholder="如：东亚外貌设计、欧美外貌设计"><datalist id="personEthnicityOptions"><option value="东亚外貌设计"><option value="欧美外貌设计"><option value="南亚外貌设计"><option value="中东外貌设计"><option value="非洲外貌设计"><option value="拉丁裔外貌设计"><option value="多元混合外貌设计"><option value="未指定（原创角色，可修改）"></datalist><small>这是原创角色设计字段，不会把参考真人的族裔当作识别事实；系统会优先按已确认的地域和剧情自动补齐，无法可靠判断时保留可编辑默认值。</small></label><input type="hidden" name="ethnicity_source" value="user">
     ${field('appearanceText', '外貌与气质（年龄请填写在上方独立字段）', profile.appearanceText, true)}
     ${renderPersonEvolutionEditor(profile)}
     ${renderPersonLookEditors(profile)}<p class="form-hint">每套造型会独立补齐服装组成、鞋履、配饰、配色和面料；不会再把跨时代或换装状态合并。</p>

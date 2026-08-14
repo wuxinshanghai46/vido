@@ -25,6 +25,11 @@ function fact(label, value) {
   return `<div><span>${escapeHtml(label)}</span><b>${text(value)}</b></div>`;
 }
 
+function personAge(profile = {}) {
+  const value = profile.age_contract?.display_text || profile.age || profile.age_range || '';
+  return String(value) === 'match_brief' ? '' : value;
+}
+
 function keywords(profile = {}) {
   const source = [profile.roleName, profile.appearanceText, profile.wardrobeText, profile.hairMakeupText]
     .filter(Boolean).join('，').split(/[，。；、·/]/).map(value => value.trim()).filter(value => value.length >= 2);
@@ -72,7 +77,8 @@ export function personDossierShowcase(item = {}) {
     <div class="character-dossier-primary">
       <aside class="character-dossier-panel character-dossier-facts"><h3>基本信息</h3>
         ${fact('人物名称', profile.displayName || displayName)}${fact('身份 / 关系', profile.roleName || item.role)}
-        ${fact('外貌、气质与年龄', profile.appearanceText)}${fact('服装与配饰', profile.wardrobeText)}${fact('发型 / 妆造', profile.hairMakeupText)}
+        ${fact('年龄', personAge(profile))}${fact('原创族裔外貌设定', profile.ethnicity || profile.ethnic_appearance)}
+        ${fact('外貌与气质', profile.appearanceText)}${fact('服装与配饰', profile.wardrobeText)}${fact('发型 / 妆造', profile.hairMakeupText)}
       </aside>
       <section class="character-dossier-panel character-dossier-views"><h3>形象展示</h3><div>${views.map((view, index) => `<figure>${image(view, localizedLabel(view, `人物视图 ${index + 1}`), groups.views)}<figcaption>${escapeHtml(localizedLabel(view, `视图 ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>
       <section class="character-dossier-panel character-dossier-expressions"><h3>表情记录</h3><div>${expressions.slice(0, 6).map((view, index) => `<figure>${image(view, localizedLabel(view, `表情 ${index + 1}`), groups.expressions, 520)}<figcaption>${escapeHtml(localizedLabel(view, `表情 ${index + 1}`))}</figcaption></figure>`).join('')}</div></section>

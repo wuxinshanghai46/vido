@@ -4,7 +4,7 @@ export function personAgeDisplay(profile={}) {
     teen_13_17:'13~17岁',young_adult_17_25:'17~25岁',young_adult:'25~32岁',
     adult_30_40:'30~40岁',middle_40_55:'40~55岁',senior_55_plus:'55岁以上',
   };
-  return profile.age_contract?.display_text||presets[profile.age]||(profile.age==='match_brief'?'':profile.age)||''
+  return profile.age_contract?.display_text||presets[profile.age]||(profile.age==='match_brief'?'':profile.age)||profile.age_range||''
 }
 export function personAssetState(item = {}) {
   const expectedMedium = String(item.profile?.visual_medium || 'auto');
@@ -20,6 +20,7 @@ export function personAssetState(item = {}) {
   const profileSnapshot = profile => JSON.stringify({
     displayName: String(profile?.displayName || ''), roleName: String(profile?.roleName || ''),
     age: ageValue(profile), appearanceText: String(profile?.appearanceText || ''),
+    ethnicity: String(profile?.ethnicity || profile?.ethnic_appearance || ''),
     negativeText: String(profile?.negativeText || ''), looks: lookSnapshot(profile),
     identity_id: String(profile?.identity_id || profile?.id || ''),
     lineage_identity_id: String(profile?.lineage_identity_id || profile?.source_identity_id || profile?.id || ''),
@@ -60,6 +61,9 @@ export function assertSavedPerson(savedBundle = {}, item = {}, normalizedValues 
   const canonicalAge = value => String(value || '').trim() || 'match_brief';
   if (!savedProfile
     || canonicalAge(savedProfile.age) !== canonicalAge(normalizedValues.age)
+    || String(savedProfile.displayName || '') !== String(normalizedValues.displayName || '')
+    || String(savedProfile.roleName || '') !== String(normalizedValues.roleName || '')
+    || String(savedProfile.ethnicity || '') !== String(normalizedValues.ethnicity || '')
     || String(savedProfile.appearanceText || '') !== String(normalizedValues.appearanceText || '')
     || expectedLookIds.some(id => !savedLookIds.includes(id))
     || String(savedProfile.identity_id || savedProfile.id || '') !== String(normalizedValues.identity_id || normalizedValues.id || item.profile?.id || '')

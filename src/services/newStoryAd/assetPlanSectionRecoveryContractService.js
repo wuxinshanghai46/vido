@@ -61,7 +61,7 @@ function expectedCastRule(ctx = {}) {
   return { kind: 'open', count: 0 };
 }
 
-function castDiagnostics(source = {}, ctx = {}) {
+function castDiagnostics(source = {}, ctx = {}, validator = null) {
   const present = sectionPresent(source, 'cast_profiles');
   const value = sectionValue(source, 'cast_profiles');
   const issues = [];
@@ -74,6 +74,11 @@ function castDiagnostics(source = {}, ctx = {}) {
     }
     if (rule.kind === 'minimum' && value.length < rule.count) {
       issues.push(`cast_profiles_count_below_minimum:${value.length}/${rule.count}`);
+    }
+    if (typeof validator === 'function') {
+      const result = validator(value, source);
+      if (result === false) issues.push('cast_profiles_contract_invalid');
+      else if (Array.isArray(result)) issues.push(...result.map(item => `cast_profiles:${clean(item, 500)}`));
     }
   }
   return { present, valid: issues.length === 0, issues, value };
@@ -151,7 +156,7 @@ function objectSectionDiagnostics(source = {}, section = '', validator = null) {
 
 function sectionDiagnostics(source = {}, ctx = {}, validators = {}) {
   return {
-    cast_profiles: castDiagnostics(source, ctx),
+    cast_profiles: castDiagnostics(source, ctx, validators.cast_profiles),
     prop_plan: propDiagnostics(source, ctx),
     scene_plan: objectSectionDiagnostics(source, 'scene_plan', validators.scene_plan),
     story_seed: objectSectionDiagnostics(source, 'story_seed', validators.story_seed),

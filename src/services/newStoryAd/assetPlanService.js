@@ -22,7 +22,7 @@ const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 13;
+const ASSET_PLAN_PROJECTION_VERSION = 14;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
 const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
 
@@ -109,6 +109,197 @@ function uniquePrompts(items = [], prefix = 'reference_subject') {
     if (used.has(key)) return false;
     used.add(key);
     return true;
+  });
+}
+
+function referenceCharacterRecord(reference = {}, prompt = {}) {
+  const characters = Array.isArray(reference.reference_understanding?.characters)
+    ? reference.reference_understanding.characters
+    : [];
+  const id = cleanText(prompt.id || prompt.character_id || '', 100);
+  return characters.find(item => cleanText(item?.character_id || item?.id || '', 100) === id) || {};
+}
+
+function referenceCharacterEvidence(record = {}) {
+  const values = record.evidence_refs || record.evidence_frame_ids || record.frame_ids || [];
+  return Array.isArray(values) ? values.filter(Boolean) : [];
+}
+
+function referenceCharacterText(prompt = {}, record = {}) {
+  return cleanText([
+    prompt.name, prompt.role, prompt.narrative_function, prompt.appearance_direction,
+    prompt.performance_style, record.role, record.narrative_function,
+  ].filter(Boolean).join('；'), 2400);
+}
+
+function referenceCharacterGender(text = '') {
+  if (/女性|女士|女孩|女讲解|女展示|woman|female/iu.test(text)) return 'female';
+  if (/男性|男士|男孩|男创作|man|male/iu.test(text)) return 'male';
+  return 'unspecified';
+}
+
+function incidentalReferenceCharacter(prompt = {}, record = {}) {
+  const explicitScope = cleanText(prompt.asset_scope || prompt.assetScope || record.asset_scope || '', 80).toLowerCase();
+  if (['background', 'ambient', 'incidental', 'scene_extra', 'crowd', 'non_asset'].includes(explicitScope)) return true;
+  const text = referenceCharacterText(prompt, record);
+  const evidence = referenceCharacterEvidence(record);
+  if (/人流|路人|群演|背景人物|围观人群|游客群|顾客群|其他的人|crowd|background extra/iu.test(text)) return true;
+  if (/只可见.{0,8}(?:手|手部|局部)|一只.{0,8}手|局部肢体/iu.test(text)) return true;
+  if (/半透明.{0,12}(?:人形|数字)|(?:人形|数字).{0,12}(?:AI代理|全息)|AI代理之一|数字代理之一/iu.test(text)) return true;
+  if (evidence.length <= 1 && /只可见后脑|部分肩部|轮廓模糊|几乎成为剪影/iu.test(text)) return true;
+  return false;
+}
+
+function referenceCharacterDesign(ctx = {}, prompt = {}, record = {}, index = 0) {
+  const text = referenceCharacterText(prompt, record);
+  const gender = referenceCharacterGender(text);
+  const names = gender === 'female'
+    ? ['林澜', '顾宁', '苏晴', '沈悦']
+    : (gender === 'male' ? ['周屿', '陈序', '陆川', '程远'] : ['云舟', '安然', '知夏', '景行']);
+  const explicitAge = cleanText(prompt.age_range || prompt.age || '', 100);
+  const ageRange = /\d{1,3}\s*(?:岁|~|～|-|—|–|至|到)/u.test(explicitAge)
+    ? explicitAge
+    : (/讲解|展示|创作|操作|西装|职业/iu.test(text) ? '25~35岁' : '20~40岁');
+  const explicitEthnicity = cleanText(prompt.ethnicity || prompt.ethnic_appearance || '', 100);
+  const confirmedRegion = cleanText([
+    ctx.world_setting?.country_region, ctx.world_setting?.country, ctx.world_setting?.region,
+    ctx.country_region, ctx.country, ctx.region, ctx.reference_video_analysis?.source_facts?.country_region,
+  ].filter(Boolean).join(' '), 400);
+  const eastAsianContext = /中国|中国大陆|港澳台|东亚|China|Chinese|East Asian/iu.test(confirmedRegion);
+  const ethnicity = explicitEthnicity || (eastAsianContext ? '东亚外貌设计' : '未指定（原创角色，可修改）');
+  const role = cleanText(record.role || prompt.narrative_function || prompt.role || '', 200);
+  return {
+    name: names[index % names.length],
+    name_source: 'platform_original_character_design',
+    role,
+    gender,
+    age_range: ageRange,
+    age_source: /\d/u.test(explicitAge) ? 'confirmed_reference' : 'platform_story_inference',
+    ethnicity,
+    ethnicity_source: explicitEthnicity ? 'confirmed_input' : (eastAsianContext ? 'platform_story_inference' : 'user_confirmable_default'),
+  };
+}
+
+function projectReferenceCharacters(reference = {}, ctx = {}) {
+  const prompts = (Array.isArray(reference.character_prompts) ? reference.character_prompts : [])
+    .filter(item => !explicitAnimalPrompt(item));
+  const ambientPeople = [];
+  const primary = [];
+  const sourceToPrimary = new Map();
+  for (const prompt of prompts) {
+    const record = referenceCharacterRecord(reference, prompt);
+    const sourceId = cleanText(prompt.id || prompt.character_id || `reference_character_${primary.length + 1}`, 100);
+    if (incidentalReferenceCharacter(prompt, record)) {
+      ambientPeople.push({
+        id: sourceId,
+        description: referenceCharacterText(prompt, record),
+        evidence_refs: referenceCharacterEvidence(record),
+        requires_asset: false,
+        asset_scope: 'scene_extra',
+      });
+      continue;
+    }
+    const evidence = new Set(referenceCharacterEvidence(record));
+    const gender = referenceCharacterGender(referenceCharacterText(prompt, record));
+    const duplicate = primary.find(item => item.gender === gender && gender !== 'unspecified'
+      && [...evidence].some(frameId => item.evidence.has(frameId)));
+    if (duplicate) {
+      duplicate.prompts.push(prompt);
+      duplicate.records.push(record);
+      evidence.forEach(frameId => duplicate.evidence.add(frameId));
+      sourceToPrimary.set(sourceId, duplicate.id);
+      continue;
+    }
+    const design = referenceCharacterDesign(ctx, prompt, record, primary.length);
+    const row = { id: sourceId, prompt, prompts: [prompt], records: [record], evidence, gender, design };
+    primary.push(row);
+    sourceToPrimary.set(sourceId, sourceId);
+  }
+  const castProfiles = primary.map(row => {
+    const appearance = [...new Set(row.prompts.map(item => cleanText(item.appearance_direction || '', 600)).filter(Boolean))].join('；');
+    const performance = [...new Set(row.prompts.map(item => cleanText(item.performance_style || item.narrative_function || '', 500)).filter(Boolean))].join('；');
+    return {
+      id: row.id,
+      name: row.design.name,
+      displayName: row.design.name,
+      name_source: row.design.name_source,
+      role: row.design.role,
+      roleName: row.design.role,
+      gender: row.design.gender,
+      age_range: row.design.age_range,
+      age: row.design.age_range,
+      age_source: row.design.age_source,
+      ethnicity: row.design.ethnicity,
+      ethnicity_source: row.design.ethnicity_source,
+      appearanceText: cleanText(appearance || '按已确认剧情设计原创、可持续复用的人物外观', 800),
+      wardrobeText: cleanText(row.prompt.wardrobe_direction || '根据当前品牌、时代与场景设计原创服装', 600),
+      hairMakeupText: cleanText(row.prompt.hair_makeup_direction || row.prompt.hairMakeupText || '符合年龄、身份和剧情地域的自然发型与妆造', 500),
+      performanceText: cleanText(performance, 500),
+      continuityText: cleanText(row.prompt.continuity_rules || '跨镜保持原创人物身份、年龄、外貌和造型一致', 500),
+      negativeText: cleanText(row.prompt.negative_prompt || '禁止复制参考真人身份、禁止产生多余人物', 500),
+      source_identity_ids: row.prompts.map(item => cleanText(item.id || item.character_id || '', 100)).filter(Boolean),
+      evidence_refs: [...row.evidence],
+      asset_scope: 'primary',
+      source: 'reference_analysis_projection',
+      status: 'draft',
+      projection_only: true,
+      generated_asset: false,
+      identity_extraction_allowed: false,
+    };
+  });
+  return { castProfiles, ambientPeople, sourceToPrimary };
+}
+
+function referenceStorySeed(reference = {}, scenePrompts = [], sourceToPrimary = new Map()) {
+  const sourceBeats = Array.isArray(reference.plot_beats) ? reference.plot_beats : [];
+  const shots = Array.isArray(reference.shot_breakdown) ? reference.shot_breakdown : [];
+  const sceneById = new Map(scenePrompts.map(scene => [cleanText(scene.id || '', 100), scene]));
+  const count = Math.max(sourceBeats.length, shots.length);
+  const plotBeats = Array.from({ length: count }, (_, index) => {
+    const beat = sourceBeats[index] || {};
+    const shot = shots[index] || {};
+    const sceneId = cleanText(shot.scene_id || '', 100);
+    const scene = sceneById.get(sceneId) || {};
+    const previousSceneId = cleanText(shots[index - 1]?.scene_id || '', 100);
+    const summary = cleanText(beat.purpose || shot.action || shot.visual || `推进第 ${index + 1} 个参考事件`, 600);
+    const nextSummary = cleanText(sourceBeats[index + 1]?.purpose || shots[index + 1]?.action || '', 500);
+    const range = Array.isArray(beat.range) ? beat.range : (Array.isArray(shot.range) ? shot.range : []);
+    const location = cleanText(scene.location_type || scene.name || sceneId || '已确认参考空间', 160);
+    return {
+      id: cleanText(beat.id || `beat_${String(index + 1).padStart(3, '0')}`, 100),
+      phase: index === 0 ? 'opening' : (index === count - 1 ? 'resolution' : (index >= Math.floor(count * 0.7) ? 'turning_point' : 'development')),
+      era: cleanText(scene.era || reference.source_facts?.era || '当代原创视觉世界', 120),
+      time_anchor: range.length >= 2 ? `${Number(range[0]).toFixed(3)}~${Number(range[1]).toFixed(3)}秒` : `第${index + 1}事件`,
+      location,
+      production_state: cleanText([scene.layout_prompt, scene.material_light_prompt, reference.source_facts?.environment].filter(Boolean).join('；') || location, 320),
+      summary,
+      cause: index === 0 ? '参考叙事开始并建立主题' : cleanText(sourceBeats[index - 1]?.purpose || shots[index - 1]?.action || '上一事件推进至当前状态', 500),
+      consequence: nextSummary || (index === count - 1 ? '完成故事主题收束' : '推动下一事件发生'),
+      production_relation: index === 0
+        ? { era: 'changed', time: 'changed', location: 'changed', environment: 'changed' }
+        : { era: 'same', time: 'continuous', location: sceneId && sceneId === previousSceneId ? 'same' : 'changed', environment: sceneId && sceneId === previousSceneId ? 'continuous' : 'changed' },
+      production_requirements: {
+        layout: cleanText(scene.layout_prompt || '', 500),
+        material_light: cleanText(scene.material_light_prompt || '', 500),
+        interaction: cleanText(scene.interaction_prompt || shot.action || '', 500),
+        negative: cleanText(scene.negative_prompt || '', 500),
+      },
+    };
+  });
+  const shotBreakdown = shots.map(shot => ({
+    ...shot,
+    subject_ids: [...new Set((Array.isArray(shot.subject_ids) ? shot.subject_ids : [])
+      .map(id => sourceToPrimary.get(cleanText(id, 100)) || (String(id) === 'advertised_subject' ? 'advertised_subject' : ''))
+      .filter(Boolean))],
+  }));
+  return storySceneCoverage.compileStorySeed({
+    ...reference.story_outline,
+    plot_beats: plotBeats,
+    shot_breakdown: shotBreakdown,
+    camera_intents: reference.camera_intents || [],
+    character_actions: reference.character_actions || [],
+    source: 'reference_analysis_projection',
+    projection_only: true,
   });
 }
 
@@ -200,24 +391,8 @@ function projectReferencePlan(ctx = {}) {
     ...(narrativeAnimalPresence && Array.isArray(reference.animal_prompts) ? reference.animal_prompts : []),
     ...(narrativeAnimalPresence ? characterPrompts.filter(explicitAnimalPrompt) : []),
   ], 'reference_animal');
-  const humanPrompts = characterPrompts.filter(item => !explicitAnimalPrompt(item));
-  const castProfiles = humanPrompts.map((item, index) => ({
-    id: cleanText(item.id || `reference_character_${index + 1}`, 100),
-    name: cleanText(item.role || item.name || `人物${index + 1}`, 120),
-    role: cleanText(item.role || item.narrative_function || '', 200),
-    age_range: cleanText(item.age_range || '', 100),
-    appearanceText: cleanText(item.appearance_direction || '', 600),
-    wardrobeText: cleanText(item.wardrobe_direction || '', 600),
-    hairMakeupText: cleanText(item.hair_makeup_direction || item.hairMakeupText || '', 500),
-    performanceText: cleanText(item.performance_style || '', 500),
-    continuityText: cleanText(item.continuity_rules || '', 500),
-    negativeText: cleanText(item.negative_prompt || '', 500),
-    source: 'reference_analysis_projection',
-    status: 'draft',
-    projection_only: true,
-    generated_asset: false,
-    identity_extraction_allowed: false,
-  }));
+  const projectedCharacters = projectReferenceCharacters(reference, ctx);
+  const castProfiles = projectedCharacters.castProfiles;
   const petProfiles = animalPrompts.map((item, index) => ({
     id: cleanText(item.id || item.subject_id || `reference_animal_${index + 1}`, 100),
     pet_id: cleanText(item.id || item.subject_id || `reference_animal_${index + 1}`, 100),
@@ -262,41 +437,55 @@ function projectReferencePlan(ctx = {}) {
   });
   const product = cleanText(reference.source_facts?.product_or_service || ctx.product_subject || '', 200);
   const subjectContract = advertisedSubjectContract(ctx, reference);
+  const narrativeOnly = contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode) === 'narrative_story';
+  const compiledReferenceStory = referenceStorySeed(reference, sourceScenePrompts, projectedCharacters.sourceToPrimary);
+  const projectedScenePlan = {
+    source: 'reference_analysis_projection',
+    projection_only: true,
+    business_boundary: cleanText(ctx.brief, 500),
+    advertised_subject: narrativeOnly ? '' : (ctx.product_subject || product),
+    cast_mode: castProfiles.length && petProfiles.length
+      ? 'human_pet'
+      : (petProfiles.length
+        ? 'animal'
+        : (castProfiles.length > 2 ? 'multi' : (castProfiles.length === 2 ? 'dual' : (castProfiles.length === 1 ? 'single' : 'no_human')))),
+    scene_mode: spaces.length > 1 ? 'multi' : 'single',
+    spaces,
+    ambient_people: projectedCharacters.ambientPeople,
+    ambient_people_policy: '背景人流、路人、群演、局部肢体和非叙事数字人形属于场景氛围，不建立独立人物资产；仅在镜头中按需生成。',
+    asset_strategy: [],
+    story_strategy: (reference.plot_beats || []).map(item => cleanText(item.purpose || '', 300)).filter(Boolean),
+    forbidden: ['不得复制参考视频中的真人身份、品牌标识、版权图案和水印'],
+    suggested_shot_count: Number(ctx.shot_count || reference.camera_intents?.length || 5),
+  };
+  const authoritativeScenePlan = narrativeOnly
+    ? {
+      ...storySceneCoverage.compileScenePlan(compiledReferenceStory, projectedScenePlan),
+      source: projectedScenePlan.source,
+      projection_only: true,
+      ambient_people: projectedScenePlan.ambient_people,
+      ambient_people_policy: projectedScenePlan.ambient_people_policy,
+      cast_mode: projectedScenePlan.cast_mode,
+      suggested_shot_count: projectedScenePlan.suggested_shot_count,
+      forbidden: projectedScenePlan.forbidden,
+    }
+    : projectedScenePlan;
   return {
     cast_profiles: castProfiles,
     pet_profiles: petProfiles,
     // 参考视频识别出的广告主体已经进入 product_subject / advertised_subject。
     // 它不是剧情中需要单独持有、移动或改变状态的道具，不能重复投影成“独立道具”。
     prop_plan: [],
-    advertised_subject_contract: subjectContract,
-    scene_plan: {
-      source: 'reference_analysis_projection',
-      projection_only: true,
-      business_boundary: cleanText(ctx.brief, 500),
-      advertised_subject: ctx.product_subject || product,
-      cast_mode: castProfiles.length && petProfiles.length
-        ? 'human_pet'
-        : (petProfiles.length
-          ? 'animal'
-          : (castProfiles.length > 2 ? 'multi' : (castProfiles.length === 2 ? 'dual' : (castProfiles.length === 1 ? 'single' : 'no_human')))),
-      scene_mode: spaces.length > 1 ? 'multi' : 'single',
-      spaces,
-      asset_strategy: [],
-      story_strategy: (reference.plot_beats || []).map(item => cleanText(item.purpose || '', 300)).filter(Boolean),
-      forbidden: ['不得复制参考视频中的真人身份、品牌标识、版权图案和水印'],
-      suggested_shot_count: Number(ctx.shot_count || reference.camera_intents?.length || 5),
-    },
+    advertised_subject_contract: narrativeOnly ? null : subjectContract,
+    scene_plan: authoritativeScenePlan,
     story_seed: {
-      ...reference.story_outline,
-      plot_beats: reference.plot_beats || [],
-      shot_breakdown: (reference.shot_breakdown || []).map((shot, index) => ({
+      ...compiledReferenceStory,
+      shot_breakdown: compiledReferenceStory.shot_breakdown.map((shot, index) => ({
         ...shot,
         scene_id: eventSceneIds.get(index + 1) || shot.scene_id,
       })),
-      camera_intents: reference.camera_intents || [],
-      character_actions: reference.character_actions || [],
-      advertised_subject: subjectContract.subject || product,
-      product_proof_requirements: subjectContract.proof_requirements || [],
+      advertised_subject: narrativeOnly ? '' : (subjectContract.subject || product),
+      product_proof_requirements: narrativeOnly ? [] : (subjectContract.proof_requirements || []),
       source: 'reference_analysis_projection',
       projection_only: true,
     },
@@ -550,6 +739,20 @@ function sourceSection(source = {}, snakeKey = '', camelKey = '') {
 
 function recoverySectionValidators(ctx = {}) {
   return {
+    cast_profiles: (profiles) => (Array.isArray(profiles) ? profiles : []).flatMap((profile, index) => {
+      const issues = [];
+      const prefix = `[${index}]`;
+      const name = cleanText(profile?.name || profile?.displayName || '', 120);
+      const age = cleanText(profile?.age || profile?.age_range || '', 100);
+      const ethnicity = cleanText(profile?.ethnicity || profile?.ethnic_appearance || '', 120);
+      if (!name || /^(?:出镜人物|人物|角色|主角)\s*\d*$/u.test(name)) issues.push(`${prefix}.descriptive_name_missing`);
+      if (!/\d{1,3}\s*(?:岁|~|～|-|—|–|至|到)/u.test(age)) issues.push(`${prefix}.concrete_age_missing`);
+      if (!ethnicity) issues.push(`${prefix}.ethnicity_design_missing`);
+      if (['background', 'ambient', 'incidental', 'scene_extra', 'crowd', 'non_asset'].includes(cleanText(profile?.asset_scope || '', 80).toLowerCase())) {
+        issues.push(`${prefix}.incidental_person_must_not_be_asset`);
+      }
+      return issues;
+    }),
     story_seed: (storySeed) => {
       if (!Object.values(storySeed || {}).some(value => cleanText(value, 300))) return ['empty'];
       return storySceneCoverage.storySeedIssues(storySeed, ctx);
@@ -675,7 +878,8 @@ function sectionPatchValidators(ctx = {}, basePayload = {}) {
 function sectionPatchOutput(section = '', contentMode = 'commercial_subject', ctx = {}) {
   if (section === 'cast_profiles') {
     return [{
-      id: 'stable_cast_id', name: '人物名称', role: '剧情或广告职责', appearanceText: '外貌',
+      id: 'stable_cast_id', name: '具体原创人物名称', role: '剧情或广告职责', age_range: '25~35岁',
+      ethnicity: '依据已确认地域和剧情设定的原创外貌族裔设计；无法确定时标记为待用户确认', asset_scope: 'primary', appearanceText: '外貌',
       wardrobeText: '服装', look_profiles: [],
     }];
   }
@@ -742,7 +946,7 @@ async function recoverAssetPlanSectionPatch(taskId, ctx = {}, payload = {}, sect
       '用户原文和 existing_valid_sections 是事实权威，不得新造题材、行业、人物、商品、地点或关系。',
       contentSkill.promptBlock(contentMode),
       section === 'cast_profiles'
-        ? `cast_profiles must contain exactly ${personCountContract.contract(ctx).planning_cast_count} narrative identities. Count identities, not era-specific visual asset cards. A reincarnation is a separate named identity; the same living or time-travelling person across eras is one identity with multiple look_profiles.`
+        ? `cast_profiles must contain exactly ${personCountContract.contract(ctx).planning_cast_count} primary narrative identities. Count identities, not era-specific visual asset cards. Never include crowds, passers-by, background people, partial hands/bodies, silhouettes without continuity, holographic agents or other ambient people as assets. Every asset must have a concrete original name, a numeric age or age range, ethnicity as an original character design field, and asset_scope=primary. A reincarnation is a separate named identity; the same living or time-travelling person across eras is one identity with multiple look_profiles.`
         : '',
       section === 'story_seed' || section === 'scene_plan' ? storySceneCoverage.promptBlock(ctx) : '',
       contentMode === 'narrative_story'
@@ -1210,6 +1414,7 @@ function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
     displayName: primaryCast.displayName || primaryCast.name || '',
     roleName: primaryCast.roleName || primaryCast.role || '',
     age: primaryCast.age || primaryCast.age_range || 'match_brief',
+    ethnicity: primaryCast.ethnicity || primaryCast.ethnic_appearance || '',
     appearanceText: primaryCast.appearanceText || '',
     wardrobeText: primaryCast.wardrobeText || '',
     look_profiles: primaryCast.look_profiles || [],
@@ -1470,6 +1675,8 @@ async function generate(taskId, options = {}) {
       '人物模式严格遵守用户人数与是否无人；固定场景物只能放入场景，不得当作独立道具图片生成。',
       '用户原文是事实权威：人物数量、时代对应关系、明确地点和人物动作必须逐项保留，不得为了“更像广告”而替换、合并或补成其它行业空间。',
       '先识别跨时代人物关系，再建立人物方案：只有原文明确“本人穿越、两人共同穿越、长生者本人活到现代、同一身份来到未来”时，identity_continuity 才能写 same_person，古今姓名保持不变；“转生、转世、轮回、投胎、来生、后世化身”必须写 reincarnation，视为新的独立人物身份，禁止沿用前世姓名。',
+      '人物资产只包含需要跨镜保持身份一致的主要剧情人物。人流、路人、群演、商场顾客群、草地远景人群、只露手或局部身体的人、无持续身份的背影剪影、半透明数字人形和背景 AI 代理必须归入场景氛围，不得建立人物资产。',
+      '每个主要人物必须提供具体原创名称、数字年龄或年龄区间、原创角色的族裔/地域外貌设计、身份职责和 asset_scope=primary。参考真人未明确的族裔不得冒充事实；应依据已确认地域与剧情设定给出可编辑的原创设计，确实无法确定时明确标记待用户确认。',
       '转世人物必须在对应现代 look_profile.character_name 写出自己的正式姓名；原文没有提供时也必须生成一个符合现代背景的正式姓名，并将 name_source 写为 planner_generated，不能写“转世女主、现代女子、云知月（现代）”等占位名或沿用前世姓名。',
       '同一时代内的普通换装可使用多个 look_profiles；古代与现代、前世与今生等跨时代状态不得作为同一人物资产的两套造型交付，必须由平台拆成独立人物档案。',
       `cast_profiles 必须严格输出 ${personCountContract.contract(ctx).planning_cast_count} 个剧情身份，而不是 ${personCountContract.contract(ctx).visual_asset_count} 张分时代素材卡。同一本人跨时代只占一个剧情身份并保留多个 look_profiles；转世必须单列为新身份和新姓名。平台会在规划通过后再投影为分时代素材卡。`,
@@ -1490,7 +1697,7 @@ async function generate(taskId, options = {}) {
   "story_seed":${currentContentMode === 'narrative_story'
     ? '{"logline":"故事梗概","opening":"","development":"","turning_point":"","resolution":"","plot_beats":[{"id":"稳定节拍ID","phase":"opening/development/turning_point/resolution/transition","era":"来自输入的时间层/时期","time_anchor":"明确时间位置","location":"具体地点","production_state":"该节拍可见环境状态","production_relation":{"era":"same/continuous/changed","time":"same/continuous/changed","location":"same/continuous/changed","environment":"same/continuous/changed"},"production_requirements":{"layout":"布局事实","material_light":"材质光线事实","interaction":"动作区和路线事实","negative":"禁止内容"},"scene_change_reason":"关系说明","summary":"可见剧情动作","cause":"发生原因","consequence":"造成结果"}]}'
     : '{"logline":"广告故事梗概","opening":"","development":"","turning_point":"","resolution":""}'},
-  "cast_profiles": [{"id":"稳定人物ID","name":"人物名称","role":"剧情职责","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"world_profile_id":"world_setting中的稳定ID","wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
+  "cast_profiles": [{"id":"稳定人物ID","name":"具体原创人物名称","role":"剧情职责","age_range":"25~35岁","ethnicity":"原创角色的族裔或地域外貌设计","asset_scope":"primary","appearanceText":"原创外貌与气质","wardrobeText":"首个造型的兼容字段","look_profiles":[{"id":"稳定造型ID","name":"造型名称","story_state":"时代或剧情状态","scene_ids":["适用场景ID"],"scene_names":["适用场景名称"],"world_profile_id":"world_setting中的稳定ID","wardrobeText":"该造型固定服装鞋履配饰","hairMakeupText":"该造型固定发型妆容","negativeText":"该造型禁止项","continuityText":"该造型内部一致性","style_family":"知识风格ID或task_defined","wardrobe_contract":{"garment_system":{"mode":"one_piece/top_bottom/layered","items":[{"slot":"upper/lower/one_piece/ensemble/outerwear","type":"具体单品","evidence":"证据"}]},"footwear":{"type":"类型","color":"颜色","material":"材质","evidence":"证据"},"accessories":{"mode":"specified/none","items":[],"evidence":"证据"},"palette":{"colors":["主色","辅色"],"evidence":"证据"},"materials":[{"name":"材质","used_for":"位置","evidence":"证据"}],"negative_constraints":[],"knowledge_doc_ids":[]}}],"performanceText":"表演与动作","continuityText":"人物身份跨镜一致性","negativeText":"全局禁止项"}],
   "prop_plan": [{"id":"稳定道具ID","name":"名称","type":"${currentContentMode === 'narrative_story' ? 'wearable_accessory/story_prop/fixed_scene_object' : 'advertised_product/wearable_accessory/story_prop/fixed_scene_object'}","description":"身份、材质、比例和使用方式","states":[],"owner_id":"","scene_id":""}],
   "scene_plan": {
     "business_boundary":"业务边界","advertised_subject":"${currentContentMode === 'narrative_story' ? '' : '明确广告主体'}","cast_mode":"single/dual/multi/no_human/animal/human_pet/auto","scene_mode":"single/multi",

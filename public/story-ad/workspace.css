@@ -84,6 +84,12 @@
 .project-progress-foot small { color: var(--muted); line-height: 1.45; }
 .project-progress-foot .btn { margin-left: auto; flex: 0 0 auto; }
 .view-host { min-height: calc(100vh - 64px); padding: 26px 30px 70px; }
+.historical-step-banner { display: flex; align-items: center; gap: 18px; margin-bottom: 16px; padding: 13px 15px; border: 1px solid color-mix(in srgb, var(--warning) 48%, var(--line)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 8%, var(--surface)); }
+.historical-step-banner > div { display: grid; gap: 4px; min-width: 0; }
+.historical-step-banner b { color: var(--text); }
+.historical-step-banner span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.historical-step-banner .btn { flex: 0 0 auto; margin-left: auto; }
+.view-host [data-historical-readonly="true"] { cursor: not-allowed; }
 .view-loading, .view-error { min-height: 300px; display: grid; place-items: center; color: var(--muted); }
 .view-error { align-content: center; gap: 10px; }
 .view-error b { color: var(--text); }

@@ -405,9 +405,23 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
       const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
       assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
-      await store.runStage('scene-config');
-      toast('人物与场景方案已提交，正在进入资产中心。视觉图片仍由你在资产中心确认后生成。', 'success');
+      let planError = null;
+      try {
+        await store.runStage('scene-config');
+      } catch (error) {
+        planError = error;
+      }
+      try {
+        await store.loadBundle(createdProjectId, 'summary,assets');
+      } catch (error) {
+        planError ||= error;
+      }
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
+      if (planError) {
+        window.setTimeout(() => toast(`已进入资产中心，但人物与场景方案尚未创建完成：${planError.message}`, 'danger'), 0);
+      } else {
+        toast('人物与场景方案已提交，正在进入资产中心。视觉图片仍由你在资产中心确认后生成。', 'success');
+      }
       return true;
     } catch (error) {
       toast(error.message, 'danger');
