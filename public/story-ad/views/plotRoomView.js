@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v45';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v45';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v45';
+import { request } from '../api.js?v=20260814-reference-asset-autofill-v46';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v46';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v46';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
