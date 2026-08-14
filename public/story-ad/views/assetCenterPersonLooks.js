@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-reference-recovery-v36';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-recovery-v37';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

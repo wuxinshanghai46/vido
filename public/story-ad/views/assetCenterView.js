@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v36';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v36';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v36';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-reference-recovery-v36';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-reference-recovery-v36';
-import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-recovery-v36';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-reference-recovery-v36';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-recovery-v36';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-recovery-v36';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-recovery-v36';
-import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-recovery-v36';
+import { request } from '../api.js?v=20260814-reference-recovery-v37';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v37';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v37';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-reference-recovery-v37';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-reference-recovery-v37';
+import { collectPersonLookValues, renderPersonLookEditors, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-recovery-v37';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-reference-recovery-v37';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-recovery-v37';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-recovery-v37';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-recovery-v37';
+import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-recovery-v37';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -207,7 +207,7 @@ function personEditForm(item = {}) {
 }
 
 let planningDetailsPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-reference-recovery-v36');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-reference-recovery-v37');
   return (await planningDetailsPromise).openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
     mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm,
@@ -232,7 +232,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-reference-recovery-v36'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-reference-recovery-v37'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

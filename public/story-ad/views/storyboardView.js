@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v36';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v36';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v36';
+import { request } from '../api.js?v=20260814-reference-recovery-v37';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v37';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v37';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -90,7 +90,7 @@ function sketchBatchMarkup(batch = null, total = 0) {
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260814-reference-recovery-v36');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260814-reference-recovery-v37');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;

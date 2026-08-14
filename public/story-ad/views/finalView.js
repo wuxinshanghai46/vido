@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v36';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-reference-recovery-v36';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v37';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-reference-recovery-v37';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
