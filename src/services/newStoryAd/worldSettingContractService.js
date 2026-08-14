@@ -133,9 +133,11 @@ function normalize(input = null) {
   const profiles = rawProfiles.slice(0, 8).map(normalizeProfile);
   const primary = profiles[0];
   const needsDetail = ['modern_overseas', 'western_historical', 'medieval', 'custom'].includes(primary.era_family);
+  const explicitlyDraft = source.status === 'draft';
+  const userConfirmed = source.authority?.user_confirmed === true || source.user_confirmed === true;
   const confirmed = source.status === 'confirmed'
-    || source.user_confirmed === true
-    || (primary.era_family !== 'auto' && (!needsDetail || Boolean(primary.time_period || primary.region)));
+    || userConfirmed
+    || (!explicitlyDraft && primary.era_family !== 'auto' && (!needsDetail || Boolean(primary.time_period || primary.region)));
   const canonical = { schema_version: 1, status: confirmed ? 'confirmed' : 'draft', profiles };
   const fingerprint = crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
   return {
@@ -143,7 +145,7 @@ function normalize(input = null) {
     revision: Math.max(1, Number(source.revision || 1) || 1),
     authority: {
       source: clean(source.authority?.source || source.source || (confirmed ? 'user' : 'system_default'), 40),
-      user_confirmed: confirmed,
+      user_confirmed: userConfirmed,
     },
     bindings: source.bindings && typeof source.bindings === 'object' ? source.bindings : {},
     fingerprint,

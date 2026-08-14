@@ -43,6 +43,8 @@ assert.equal(inferredReferenceWorld.profiles[0].era_family, 'future', '参考内
 assert.equal(inferredReferenceWorld.profiles[0].visual_medium, 'live_action', '参考人物存在真实服装与面部证据时必须自动补齐真人实拍');
 assert.equal(inferredReferenceWorld.profiles[0].era_family_source, 'reference_analysis');
 assert.equal(inferredReferenceWorld.profiles[0].visual_medium_source, 'reference_analysis');
+assert.equal(inferredReferenceWorld.status, 'draft', 'AI 推断不得冒充用户已确认');
+assert.equal(inferredReferenceWorld.authority.user_confirmed, false, 'AI 推断必须保留待用户确认状态');
 const inferredContext = contextBuilder.buildContext({
   brief: '未来感数字工作室中，一位女性穿西装与全息屏幕互动。',
   content_mode: 'narrative_story', content_mode_source: 'user', content_form: 'narrative_live_action',
