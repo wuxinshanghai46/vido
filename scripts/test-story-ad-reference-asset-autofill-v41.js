@@ -54,6 +54,12 @@ const ctx = {
   brief: '讲述人与科技在不同空间中的体验故事',
   target_duration: 24,
   shot_count: 6,
+  expected_people: 9,
+  planning_cast_count: 9,
+  narrative_identity_count: 9,
+  visual_asset_count: 9,
+  cast_mode: 'multi',
+  brief_source: 'reference_analysis',
   story_scene_contract_version: storySceneCoverage.CONTRACT_VERSION,
   world_setting: { country_region: '中国大陆' },
   reference_video_analysis: {
@@ -92,7 +98,7 @@ assert.ok(projected.scene_plan.ambient_people.every(item => item.requires_asset 
 assert.equal(projected.advertised_subject_contract, null, '纯剧情不得从参考内容误建广告主体');
 assert.equal(projected.story_seed.advertised_subject, '');
 assert.deepStrictEqual(storySceneCoverage.coverageIssues(projected, ctx), [], '参考投影必须一次形成完整剧情与场景覆盖合同');
-assert.equal(assetPlan.complete(normalized, ctx), true, '参考投影经正式归一化后必须一次通过资产方案完整性门禁');
+assert.equal(assetPlan.complete(normalized, ctx), true, '参考投影过滤主要人物后必须替换旧识别总人数并一次通过资产方案完整性门禁');
 assert.ok(projected.story_seed.shot_breakdown.every(shot => !shot.subject_ids.includes('partial_hand') && !shot.subject_ids.includes('digital_agent')));
 assert.ok(projected.story_seed.shot_breakdown[0].subject_ids.includes('person_presenter_a'));
 assert.equal(projected.story_seed.shot_breakdown[0].subject_ids.filter(id => id === 'person_presenter_a').length, 1, '重复人物证据必须映射到同一稳定人物 ID');

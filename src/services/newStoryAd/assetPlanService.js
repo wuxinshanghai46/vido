@@ -764,20 +764,44 @@ function recoverySectionValidators(ctx = {}) {
   };
 }
 
+function sectionValidationContext(source = {}, ctx = {}) {
+  const referenceProjection = cleanText(rawScenePlan(source)?.source || source?.story_seed?.source || '', 100)
+    === 'reference_analysis_projection';
+  if (!referenceProjection || cleanText(ctx.brief_source || '', 80) !== 'reference_analysis') return ctx;
+  const projectedCast = Array.isArray(sourceSection(source, 'cast_profiles', 'castProfiles'))
+    ? sourceSection(source, 'cast_profiles', 'castProfiles')
+    : [];
+  const count = projectedCast.length;
+  return {
+    ...ctx,
+    cast_profiles: projectedCast,
+    narrative_cast_profiles: projectedCast,
+    expected_people: count,
+    narrative_identity_count: count,
+    planning_cast_count: count,
+    visual_asset_count: count,
+    cast_mode: count > 2 ? 'multi' : (count === 2 ? 'dual' : (count === 1 ? 'single' : 'no_human')),
+  };
+}
+
 function validStorySeedSection(source = {}, ctx = {}) {
-  return sectionRecovery.sectionDiagnostics(source, ctx, recoverySectionValidators(ctx)).story_seed.valid;
+  const validationCtx = sectionValidationContext(source, ctx);
+  return sectionRecovery.sectionDiagnostics(source, validationCtx, recoverySectionValidators(validationCtx)).story_seed.valid;
 }
 
 function validScenePlanSection(source = {}, ctx = {}) {
-  return sectionRecovery.sectionDiagnostics(source, ctx, recoverySectionValidators(ctx)).scene_plan.valid;
+  const validationCtx = sectionValidationContext(source, ctx);
+  return sectionRecovery.sectionDiagnostics(source, validationCtx, recoverySectionValidators(validationCtx)).scene_plan.valid;
 }
 
 function validAssetPlanSections(source = {}, ctx = {}) {
-  return sectionRecovery.validSections(source, ctx, recoverySectionValidators(ctx));
+  const validationCtx = sectionValidationContext(source, ctx);
+  return sectionRecovery.validSections(source, validationCtx, recoverySectionValidators(validationCtx));
 }
 
 function missingAssetPlanSections(source = {}, ctx = {}) {
-  return sectionRecovery.missingSections(source, ctx, recoverySectionValidators(ctx));
+  const validationCtx = sectionValidationContext(source, ctx);
+  return sectionRecovery.missingSections(source, validationCtx, recoverySectionValidators(validationCtx));
 }
 
 function reusableDraftPayload(source = {}, ctx = {}) {
