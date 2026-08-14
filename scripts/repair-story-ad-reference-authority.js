@@ -21,6 +21,10 @@ function taskCalls(task) {
   return (storage.readDb().model_calls || []).filter(call => String(call.task_id || '') === String(task.id)).length;
 }
 
+function confirmationWasInvalidated({ wouldChange = false, beforeStatus = '', afterStatus = '' } = {}) {
+  return !wouldChange || beforeStatus !== 'confirmed' || afterStatus !== 'confirmed';
+}
+
 async function main() {
   if (!taskId) fail('Usage: node scripts/repair-story-ad-reference-authority.js --task <task-id> [--apply]', 'TASK_ID_REQUIRED');
   if (apply && taskIndex < 0) fail('--apply 必须与显式 --task 一起使用', 'EXPLICIT_TASK_REQUIRED');
@@ -62,7 +66,7 @@ async function main() {
     would_change: wouldChange,
     confirmation_status_before: beforeConfirmation.status,
     expected_confirmation_status_after: wouldChange && beforeConfirmation.status === 'confirmed'
-      ? 'stale'
+      ? 'not_confirmed'
       : beforeConfirmation.status,
     changed: false,
     confirmation_status_after: beforeConfirmation.status,
@@ -91,13 +95,19 @@ async function main() {
   if (Number(syncResult.model_call_count || 0) !== 0 || applied.model_calls_delta !== 0) {
     fail('参考权威投影修复出现了模型调用，已违反零模型合同', 'REFERENCE_REPAIR_MODEL_CALL_DETECTED');
   }
-  if (wouldChange && beforeConfirmation.status === 'confirmed' && afterConfirmation.status !== 'stale') {
-    fail('旧指纹确认未按预期变为 stale', 'REFERENCE_CONFIRMATION_NOT_STALE');
+  if (!confirmationWasInvalidated({
+    wouldChange,
+    beforeStatus: beforeConfirmation.status,
+    afterStatus: afterConfirmation.status,
+  })) {
+    fail('旧指纹确认仍被错误复用', 'REFERENCE_CONFIRMATION_STILL_CURRENT');
   }
   console.log(JSON.stringify(applied, null, 2));
 }
 
-main().catch(error => {
+if (require.main === module) main().catch(error => {
   console.error(JSON.stringify({ success: false, code: error.code || 'REFERENCE_AUTHORITY_REPAIR_FAILED', error: error.message }));
   process.exitCode = 1;
 });
+
+module.exports = { confirmationWasInvalidated, main };

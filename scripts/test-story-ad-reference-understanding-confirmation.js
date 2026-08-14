@@ -12,6 +12,7 @@ const storage = require('../src/services/newStoryAd/storageService');
 const taskSync = require('../src/services/newStoryAd/referenceAnalysisTaskSyncService');
 const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const projectBundles = require('../src/services/storyAdWorkspace/projectBundleService');
+const authorityRepair = require('./repair-story-ad-reference-authority');
 const authoritativeReference = require('../src/services/storyAdWorkspace/authoritativeReferenceProjectionService');
 const referenceVideoAnalyses = require('../src/services/newStoryAd/referenceVideoAnalysisService');
 
@@ -76,6 +77,11 @@ try {
   const changed = JSON.parse(JSON.stringify(retail));
   changed.reference_video_analysis.reference_understanding.story_summary.full_synopsis += ' 新证据改变了报告。';
   assert.equal(confirmation.inspect(task.id, changed).status, 'stale', '报告内容改变后不得沿用旧确认');
+  assert.equal(authorityRepair.confirmationWasInvalidated({ wouldChange: true, beforeStatus: 'confirmed', afterStatus: 'stale' }), true);
+  assert.equal(authorityRepair.confirmationWasInvalidated({ wouldChange: true, beforeStatus: 'confirmed', afterStatus: 'unconfirmed' }), true,
+    '修订服务删除旧确认时，unconfirmed 也属于安全失效状态');
+  assert.equal(authorityRepair.confirmationWasInvalidated({ wouldChange: true, beforeStatus: 'confirmed', afterStatus: 'confirmed' }), false,
+    '指纹变化后仍 confirmed 必须触发修复失败');
 
   assert.throws(() => confirmation.confirm(task.id, retail, {
     analysis_id: 'analysis-retail', base_revision: task.content_revision + 1, confirmation: 'authoritative_input',
@@ -148,7 +154,7 @@ try {
     referenceVideoAnalyses.taskRecord = originalTaskRecord;
   }
 
-  console.log(JSON.stringify({ passed: true, checks: 17, industry_hardcoding: false, repeat_paid_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 20, industry_hardcoding: false, repeat_paid_calls: 0 }));
 } finally {
   fs.rmSync(tempRoot, { recursive: true, force: true });
 }
