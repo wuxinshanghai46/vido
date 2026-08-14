@@ -1,8 +1,8 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-recovery-v32';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-reference-recovery-v32';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-reference-recovery-v32';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-reference-recovery-v32';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-reference-recovery-v32';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-recovery-v33';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-reference-recovery-v33';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-reference-recovery-v33';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-reference-recovery-v33';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-reference-recovery-v33';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};
