@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v44';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v44';
+import { request } from '../api.js?v=20260814-reference-asset-autofill-v45';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v45';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

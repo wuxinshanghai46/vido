@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-reference-asset-autofill-v44';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260814-reference-asset-autofill-v45';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};
