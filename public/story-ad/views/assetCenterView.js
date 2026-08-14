@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v47';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v47';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v47';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-reference-asset-autofill-v47';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-reference-asset-autofill-v47';
-import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v47';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-reference-asset-autofill-v47';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-asset-autofill-v47';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-asset-autofill-v47';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-asset-autofill-v47';
-import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-asset-autofill-v47';
+import { request } from '../api.js?v=20260814-reference-asset-autofill-v48';
+import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v48';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v48';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260814-reference-asset-autofill-v48';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-reference-asset-autofill-v48';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v48';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260814-reference-asset-autofill-v48';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-asset-autofill-v48';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-asset-autofill-v48';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-asset-autofill-v48';
+import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-asset-autofill-v48';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -192,8 +192,8 @@ function dossierDetails(item = {}) {
   return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-reference-asset-autofill-v47');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260814-reference-asset-autofill-v47');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260814-reference-asset-autofill-v48');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260814-reference-asset-autofill-v48');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -219,7 +219,7 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const assets = bundle?.assets || {};
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-reference-asset-autofill-v47'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260814-reference-asset-autofill-v48'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};

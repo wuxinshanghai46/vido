@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v47';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-reference-asset-autofill-v47';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v48';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-reference-asset-autofill-v48';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
