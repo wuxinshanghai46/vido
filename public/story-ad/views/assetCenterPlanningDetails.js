@@ -1,8 +1,8 @@
-import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-plan-authority-repair-v52';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-plan-authority-repair-v52';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v52';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-plan-authority-repair-v52';
+import { bindMediaLightbox, escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-plan-authority-repair-v53';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260814-plan-authority-repair-v53';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260814-plan-authority-repair-v53';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v53';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260814-plan-authority-repair-v53';
 
 function knowledgePolicyTrace(item = {}) {
   const policy = item.knowledge_policy || item.knowledgePolicy || {};

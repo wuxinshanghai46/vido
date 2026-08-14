@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
+import { escapeHtml } from '../components/ui.js?v=20260814-plan-authority-repair-v53';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

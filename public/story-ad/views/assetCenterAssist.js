@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260814-plan-authority-repair-v52';
-import { promptDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v52';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v52';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v53';
+import { promptDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v53';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v53';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v53';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {
