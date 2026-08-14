@@ -17,6 +17,7 @@ const ffmpegPath = require('ffmpeg-static');
 const service = require('../src/services/newStoryAd/referenceVideoAnalysisService');
 const contextBuilder = require('../src/services/newStoryAd/contextBuilder');
 const referenceEvidenceText = require('../src/services/newStoryAd/referenceEvidenceTextService');
+const referenceUnderstandingService = require('../src/services/newStoryAd/referenceUnderstandingService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const referenceAnalysisTaskSync = require('../src/services/newStoryAd/referenceAnalysisTaskSyncService');
 const assistScenePlan = require('../src/services/newStoryAd/assistScenePlanService');
@@ -527,6 +528,47 @@ async function main() {
     ],
   };
   assert.equal(service._private.hasReusableVisualEvidence(cachedRecord), true);
+  const duplicateEventAnalysis = {
+    source_facts: { product_or_service: '测试产品' },
+    shot_breakdown: [
+      { range: [0, 1], scene_id: 'scene_prompt_1', action: '开场展示产品' },
+      { range: [1, 2], scene_id: 'scene_prompt_1', action: '继续展示细节' },
+      { range: [2, 3], scene_id: 'scene_prompt_2', action: '片尾品牌落版' },
+    ],
+    scene_prompts: [
+      { id: 'scene_prompt_1', location_type: '室内展示空间', interaction_prompt: '产品细节展示' },
+      { id: 'scene_prompt_2', location_type: '品牌落版空间', interaction_prompt: '品牌信息出现' },
+    ],
+    reference_understanding: {
+      story_summary: {
+        narrative_mode: 'showcase_montage', narrative_mode_reason: '按产品体验递进',
+        logline: '产品从整体到细节再到品牌落版', short_synopsis: '展示产品与品牌',
+        full_synopsis: '开场展示产品，随后呈现细节，最后以品牌落版收束。', theme: '产品展示',
+        resolution: '品牌信息清晰出现', brand_function: '证明并识别当前产品',
+      },
+      causal_chain: [
+        { id: 'event_1', range: [0, 1], scene_id: 'scene_prompt_1', subject: '产品', action: '开场展示产品', evidence_refs: ['F001'], certainty: 'fact' },
+        { id: 'event_1', range: [1, 2], scene_id: 'scene_prompt_1', subject: '产品', action: '继续展示细节', evidence_refs: ['F002'], certainty: 'fact' },
+        { id: 'event_1', range: [2, 3], scene_id: 'scene_prompt_2', subject: '品牌', action: '片尾品牌落版', evidence_refs: ['F003'], certainty: 'fact' },
+      ],
+      scenes: [
+        { scene_id: 'scene_prompt_1', narrative_function: '承载产品整体与细节展示', events: ['event_1'], evidence_refs: ['F001', 'F002'], certainty: 'fact' },
+        { scene_id: 'scene_prompt_2', narrative_function: '承载品牌信息与结尾收束', events: ['event_1'], evidence_refs: ['F003'], certainty: 'fact' },
+      ],
+      brand_role: { subject: '测试产品', story_function: '展示并完成品牌识别', evidence_refs: ['F003'], certainty: 'fact' },
+    },
+  };
+  const duplicateEventNormalized = referenceUnderstandingService.enrichAnalysis(duplicateEventAnalysis, {
+    visualEvidence: [{ payload: testVisionPayload(cachedFrames.slice(0, 4)) }],
+    transcript: { status: 'no_audio', text: '' },
+  });
+  assert.deepStrictEqual(
+    duplicateEventNormalized.reference_understanding.causal_chain.map(item => item.id),
+    ['event_1', 'event_2', 'event_3'],
+    'model duplicate event IDs must not overwrite authoritative shot timeline identities',
+  );
+  assert.ok(!duplicateEventNormalized.reference_understanding.completeness.failures.includes('scene_event_mapping_incomplete'),
+    'authoritative unique event IDs must deterministically close the scene-event mapping contract');
   assert.equal(service._private.hasReusableVisualEvidence({
     ...cachedRecord,
     _visual_evidence_cache: { ...cachedRecord._visual_evidence_cache, batches: [cachedRecord._visual_evidence_cache.batches[0], null] },

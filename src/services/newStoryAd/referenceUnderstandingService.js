@@ -124,8 +124,11 @@ function normalizeCausalChain(proposed, fallback, validRefs) {
       ? 'inference'
       : requestedCertainty;
     return {
-      id: text(row.id || base.id || `event_${index + 1}`, 80),
-      range: range(row.range, base.range || [0, 0]),
+      // The audited shot timeline owns event identity and range. Model output
+      // may enrich semantics, but duplicate/misaligned IDs must never replace
+      // event_1..event_N and make one event impossible to map to a scene.
+      id: text(base.id || row.id || `event_${index + 1}`, 80),
+      range: range(base.range || row.range, [0, 0]),
       // The audited shot breakdown owns physical-space identity. A synthesis
       // candidate may explain a scene, but it must not remap an event to an
       // invented or different space.
