@@ -1457,7 +1457,6 @@ async function main() {
       systemPrompt: 'test',
       userPrompt: 'test',
       timeoutMs: 60000,
-      maxCandidates: 5,
       stageBudgetMs: 300000,
       _candidateModels: [
         { provider_id: 'provider-a', model_id: 'empty-primary' },

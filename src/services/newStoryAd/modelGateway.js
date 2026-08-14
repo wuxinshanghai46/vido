@@ -587,7 +587,7 @@ async function generateText({
   temperature = 0.3,
   timeoutMs = 90000,
   skipKb = true,
-  maxCandidates = TEXT_MAX_CANDIDATES,
+  maxCandidates = null,
   stageBudgetMs = TEXT_STAGE_BUDGET_MS,
   validateText = null,
   structuredOutput = null,
@@ -629,7 +629,11 @@ async function generateText({
   const stageCandidateCap = String(stage || '') === REFERENCE_SYNTHESIS_STAGE
     ? Math.max(TEXT_MAX_CANDIDATES, 5)
     : TEXT_MAX_CANDIDATES;
-  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(stageCandidateCap, Number(maxCandidates) || stageCandidateCap)));
+  const requestedCandidateCount = Number(maxCandidates);
+  const attemptCandidates = candidates.slice(0, Math.max(1, Math.min(
+    stageCandidateCap,
+    requestedCandidateCount > 0 ? requestedCandidateCount : stageCandidateCap,
+  )));
   for (let i = 0; i < attemptCandidates.length; i += 1) {
     cancellation.throwIfCancelled(taskId);
     if (Date.now() - stageStarted >= Math.max(5000, Number(stageBudgetMs) || TEXT_STAGE_BUDGET_MS)) break;
