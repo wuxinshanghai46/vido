@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-scoped-plans-v25';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260814-scoped-plans-v25';
+import { request } from '../api.js?v=20260814-scoped-plans-v26';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260814-scoped-plans-v26';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;
