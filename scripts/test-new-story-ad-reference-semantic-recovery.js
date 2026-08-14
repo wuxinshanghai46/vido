@@ -55,6 +55,13 @@ assert.ok(
   isolatedFailure > repairFunctionStart && isolatedContinue > isolatedFailure && aggregateFailure > isolatedContinue,
   '单个语义合同失败必须继续执行后续独立合同，并在全部尝试后统一报告',
 );
+const asyncAnalysisReturn = analysisServiceSource.indexOf('await analyzeWithModels(record, frames, transcript)');
+const persistedStateRefresh = analysisServiceSource.indexOf('record = readRecord(record.user_id, record.id) || record;', asyncAnalysisReturn);
+const finalResultCheckpoint = analysisServiceSource.indexOf("checkpoint(record, '", persistedStateRefresh);
+assert.ok(
+  asyncAnalysisReturn >= 0 && persistedStateRefresh > asyncAnalysisReturn && finalResultCheckpoint > persistedStateRefresh,
+  '异步分析期间持久化的证据和语义 checkpoint 必须在最终完成写入前重新读取，禁止被旧内存记录覆盖',
+);
 
 const weakCandidate = {
   reference_understanding: {

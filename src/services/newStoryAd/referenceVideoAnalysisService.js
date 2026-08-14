@@ -3337,6 +3337,10 @@ async function runAnalysis(initialRecord, options = {}) {
     const raw = process.env.NEW_STORY_AD_MOCK_LLM === '1'
       ? mockAnalysis({ ...record, transcript }, frames)
       : await analyzeWithModels(record, frames, transcript);
+    // Semantic/evidence recovery persists checkpoints while the asynchronous
+    // model pipeline is running. Refresh before the final result checkpoint so
+    // a stale in-memory record cannot overwrite those authoritative updates.
+    record = readRecord(record.user_id, record.id) || record;
     throwIfCancelled(record);
     const result = normalizeResult(raw);
     record = checkpoint(record, '整理中文广告需求草稿', 90, { result });
