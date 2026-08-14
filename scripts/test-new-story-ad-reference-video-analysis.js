@@ -1385,7 +1385,8 @@ async function main() {
   Date.now = () => synthesisBudgetClock;
   process.env.NEW_STORY_AD_MOCK_LLM = '0';
   try {
-    const synthesisBudgetResult = await originalGenerateText({
+    let synthesisBudgetError = null;
+    try { await originalGenerateText({
       taskId: 'reference-synthesis-budget-fallback',
       stage: 'new_story_ad.reference_video_synthesis',
       systemPrompt: 'test',
@@ -1421,13 +1422,10 @@ async function main() {
         error.retryable = true;
         throw error;
       },
-    });
-    assert.deepStrictEqual(synthesisBudgetAttempts, [
-      'timeout-provider/slow-primary',
-      'invalid-provider/malformed-secondary',
-      'backup-provider/fast-tertiary',
-    ], '语义阶段必须在超时和结构无效后依次切换到下一候选');
-    assert.strictEqual(synthesisBudgetResult.used_model, 'backup-provider/fast-tertiary');
+    }); } catch (error) { synthesisBudgetError = error; }
+    assert.deepStrictEqual(synthesisBudgetAttempts, ['timeout-provider/slow-primary'], '供应商已接单后超时必须停止候选切换，避免重复计费');
+    assert.strictEqual(synthesisBudgetError?.billing_state, 'unknown');
+    assert.strictEqual(synthesisBudgetError?.provider_submission_state, 'submitted_unknown');
   } finally {
     Date.now = originalNow;
     process.env.NEW_STORY_AD_MOCK_LLM = synthesisBudgetMockFlag;
