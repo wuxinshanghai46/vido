@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v34';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v34';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-reference-recovery-v34';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-reference-recovery-v34';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-reference-recovery-v34';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-reference-recovery-v34';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-reference-recovery-v34';
-import { assertBriefReadback } from './briefTextContract.js?v=20260814-reference-recovery-v34';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-reference-recovery-v34';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-reference-recovery-v34';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-reference-recovery-v34';
+import { request } from '../api.js?v=20260814-reference-recovery-v35';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v35';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-reference-recovery-v35';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-reference-recovery-v35';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-reference-recovery-v35';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-reference-recovery-v35';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-reference-recovery-v35';
+import { assertBriefReadback } from './briefTextContract.js?v=20260814-reference-recovery-v35';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-reference-recovery-v35';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-reference-recovery-v35';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-reference-recovery-v35';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -214,7 +214,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260814-reference-recovery-v34');
+    const module = await import('./referenceUnderstandingView.js?v=20260814-reference-recovery-v35');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
