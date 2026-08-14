@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v38';
-import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v38';
+import { request } from '../api.js?v=20260814-reference-recovery-v39';
+import { bindMediaLightbox, emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v39';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
