@@ -593,7 +593,15 @@ async function projectReferenceIntake(taskId, options = {}) {
     return { projected: false, reason: 'unchanged', context: currentContext };
   }
   const priorContext = options.previous_context || options.previousContext || currentContext;
-  const projectionContext = { ...currentContext, reference_video_analysis: reference };
+  const projectionContext = {
+    ...currentContext,
+    reference_video_analysis: reference,
+    world_setting: worldSetting.infer(currentContext.world_setting, {
+      brief: currentContext.brief,
+      reference_video_analysis: reference,
+      content_form: currentContext.content_form,
+    }),
+  };
   const plan = normalizePlan(projectReferencePlan(projectionContext), projectionContext);
   const existingCast = Array.isArray(priorContext.cast_profiles) ? priorContext.cast_profiles : [];
   const existingPets = Array.isArray(priorContext.pet_profiles) ? priorContext.pet_profiles : [];

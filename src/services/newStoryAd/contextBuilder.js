@@ -1094,7 +1094,17 @@ function buildContext(body = {}, user = {}) {
     reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
   });
   const contentMode = productPresentation.mode === 'narrative_story' ? 'narrative_story' : 'commercial_subject';
-  const worldSettingContract = worldSetting.normalize(body.world_setting || body.worldSetting);
+  const requestedCapabilityPack = capabilityPacks.resolve({
+    content_mode: contentMode,
+    content_form: body.content_form || body.contentForm,
+    production_mode: body.production_mode || body.productionMode,
+    industry_profile: body.industry_profile || body.industryProfile || body.industry,
+  });
+  const worldSettingContract = worldSetting.infer(body.world_setting || body.worldSetting, {
+    brief,
+    reference_video_analysis: body.reference_video_analysis || body.referenceVideoAnalysis,
+    content_form: body.content_form || body.contentForm || requestedCapabilityPack.content_form_id,
+  });
   const visualMedium = worldSetting.primaryVisualMedium(worldSettingContract);
   const mediumBoundCastProfiles = castProfiles.map(profile => ({
     ...profile,
@@ -1112,12 +1122,7 @@ function buildContext(body = {}, user = {}) {
     narrative_cast_profiles: noHuman || animalOnly ? [] : mediumBoundCastProfiles,
   });
   const contextCastProfiles = noHuman || animalOnly ? [] : personCounts.visual_profiles;
-  const capabilityPack = capabilityPacks.resolve({
-    content_mode: contentMode,
-    content_form: body.content_form || body.contentForm,
-    production_mode: body.production_mode || body.productionMode,
-    industry_profile: body.industry_profile || body.industryProfile || body.industry,
-  });
+  const capabilityPack = requestedCapabilityPack;
   return {
     request_id: requestId,
     request_source: cleanText(body.source || body.request_source || body.requestSource || '', 80),

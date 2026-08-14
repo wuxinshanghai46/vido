@@ -31,6 +31,44 @@ assert.equal(overseas.status, 'draft', '海外未细化地区时不得伪装成�
 const custom = world.normalize({ profiles: [{ era_family: 'brand_new_open_domain', time_period: '自定义纪元' }] });
 assert.equal(custom.profiles[0].era_family, 'custom', '开放题材不得被硬编码行业枚举拒绝');
 
+const inferredReferenceWorld = world.infer({ profiles: [{ era_family: 'auto', visual_medium: 'auto' }] }, {
+  brief: '未来感数字工作室中，一位女性穿西装与全息屏幕互动。',
+  content_form: 'narrative_live_action',
+  reference_video_analysis: {
+    status: 'completed', analysis_quality: { valid: true },
+    generated_brief: '未来城市与虚拟数字空间；人物服装为西装，面部化淡妆，动作真实可见。',
+  },
+});
+assert.equal(inferredReferenceWorld.profiles[0].era_family, 'future', '参考内容明确未来科技时必须自动补齐时代类型');
+assert.equal(inferredReferenceWorld.profiles[0].visual_medium, 'live_action', '参考人物存在真实服装与面部证据时必须自动补齐真人实拍');
+assert.equal(inferredReferenceWorld.profiles[0].era_family_source, 'reference_analysis');
+assert.equal(inferredReferenceWorld.profiles[0].visual_medium_source, 'reference_analysis');
+const inferredContext = contextBuilder.buildContext({
+  brief: '未来感数字工作室中，一位女性穿西装与全息屏幕互动。',
+  content_mode: 'narrative_story', content_mode_source: 'user', content_form: 'narrative_live_action',
+  world_setting: { profiles: [{ era_family: 'auto', visual_medium: 'auto' }] },
+  reference_video_analysis: {
+    status: 'completed', schema_version: 4,
+    analysis_quality: { valid: true },
+    source_facts: { product_or_service: 'AI 光影引擎', environment: '未来城市与虚拟数字空间' },
+    story_outline: { logline: '讲解者展示未来创作工具' },
+    plot_beats: [{ id: 'beat_1', summary: '展示工具' }],
+    scene_prompts: [{ id: 'scene_1', location_type: '未来数字工作室' }],
+    camera_intents: [{ range: [0, 3], movement: '固定镜头' }],
+    generated_brief: '未来城市与虚拟数字空间；人物服装为西装，面部化淡妆，动作真实可见。',
+  },
+  expected_people: 1,
+  cast_profiles: [{ id: 'presenter', name: '林澜', role: '讲解者', age: '25~35岁', ethnicity: '东亚外貌设计', appearanceText: '女性讲解者', wardrobeText: '西装' }],
+});
+assert.equal(inferredContext.world_setting.profiles[0].era_family, 'future', '上下文构建必须落库自动识别的时代');
+assert.equal(inferredContext.world_setting.profiles[0].visual_medium, 'live_action', '上下文构建必须落库自动识别的画面形态');
+assert.equal(inferredContext.cast_profiles[0].visual_medium, 'live_action', '自动识别的画面形态必须同步约束人物资产');
+const preservedUserWorld = world.infer({ status: 'confirmed', authority: { source: 'user', user_confirmed: true }, profiles: [{
+  era_family: 'chinese_historical', era_family_source: 'user', visual_medium: 'anime_2d', visual_medium_source: 'user',
+}] }, { brief: '未来城市真人实拍' });
+assert.equal(preservedUserWorld.profiles[0].era_family, 'chinese_historical', '用户手动时代不得被自动识别覆盖');
+assert.equal(preservedUserWorld.profiles[0].visual_medium, 'anime_2d', '用户手动画面形态不得被自动识别覆盖');
+
 const ctx = contextBuilder.buildContext({
   brief: '一名古代将军在千年后醒来。', content_mode: 'narrative_story',
   world_setting: explicit,
