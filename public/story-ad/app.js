@@ -40,6 +40,7 @@ function sectionsForView(view = 'brief') { return VIEW_SECTIONS[view] || VIEW_SE
 let activeViewCleanup = null;
 let centerFilter = '';
 let centerQuery = { taskName: '', taskType: 'all', stage: 'all' };
+let centerVisibleIds = null;
 const deletingProjectIds = new Set();
 let observedGenerationCompletionSeq = 0;
 setInterval(() => refreshElapsedLabels(document), 1000);
@@ -105,28 +106,6 @@ function statCards(stats = {}) {
     </article>`).join('');
 }
 
-function projectMatchesCenterQuery(project = {}) {
-  const taskName = String(project.title || '').toLocaleLowerCase('zh-CN');
-  const nameMatched = !centerQuery.taskName.trim()
-    || taskName.includes(centerQuery.taskName.trim().toLocaleLowerCase('zh-CN'));
-  const mode = String(project.content_mode || '');
-  const typeMatched = centerQuery.taskType === 'all'
-    || (centerQuery.taskType === 'unset' ? !mode : mode === centerQuery.taskType);
-  const stageMatched = centerQuery.stage === 'all' || statusView(project).label === centerQuery.stage;
-  return nameMatched && typeMatched && stageMatched;
-}
-
-function applyCenterQueryVisibility() {
-  let visible = 0;
-  document.querySelectorAll('.project-row[data-project-id]').forEach(row => {
-    const project = store.state.projects.find(item => String(item.id) === String(row.dataset.projectId));
-    row.hidden = !project || !projectMatchesCenterQuery(project);
-    if (!row.hidden) visible += 1;
-  });
-  const empty = document.querySelector('[data-query-empty]');
-  if (empty) empty.hidden = visible > 0 || store.state.loading;
-}
-
 function renderCenter() {
   const { projects, stats, loading, error } = store.state;
   const stageOptions = [...new Set(projects.map(project => statusView(project).label).filter(Boolean))]
@@ -138,7 +117,7 @@ function renderCenter() {
       || (centerFilter === 'completed' && tone === 'success')
       || (centerFilter === 'active' && (tone === 'info' || tone === 'neutral'));
   });
-  const visibleProjects = statusProjects.filter(projectMatchesCenterQuery);
+  const visibleProjects = statusProjects.filter(project => !centerVisibleIds || centerVisibleIds.has(String(project.id)));
   app.innerHTML = `
     ${platformTopbar()}
     <main class="center-shell">
@@ -181,7 +160,7 @@ function renderCenter() {
                 const status = statusView(project);
                 const mode = projectModeView(project);
                 const deleting = deletingProjectIds.has(String(project.id));
-                return `<div class="project-row${deleting ? ' is-deleting' : ''}" role="row" data-project-id="${escapeHtml(project.id)}" ${projectMatchesCenterQuery(project) ? '' : 'hidden'} ${deleting ? 'aria-busy="true"' : ''}>
+                return `<div class="project-row${deleting ? ' is-deleting' : ''}" role="row" data-project-id="${escapeHtml(project.id)}" ${centerVisibleIds && !centerVisibleIds.has(String(project.id)) ? 'hidden' : ''} ${deleting ? 'aria-busy="true"' : ''}>
                   <code>${escapeHtml(project.display_id)}</code>
                   <span class="project-copy"><b>${escapeHtml(project.title)}</b><small>${escapeHtml(project.brief || '尚未填写完整目标')}</small></span>
                   <span class="project-mode is-${mode.tone}">${escapeHtml(mode.label)}</span>
@@ -411,20 +390,16 @@ document.addEventListener('click', event => {
   if (target.matches('[data-retry-view]')) mountView(currentRoute());
 });
 
-document.addEventListener('input', event => {
-  if (!event.target.matches('[data-project-name-filter]')) return;
-  centerQuery.taskName = event.target.value || '';
-  applyCenterQueryVisibility();
-});
-
-document.addEventListener('change', event => {
-  if (event.target.matches('[data-project-type-filter]')) {
-    centerQuery.taskType = event.target.value || 'all';
-    applyCenterQueryVisibility();
-  } else if (event.target.matches('[data-project-stage-filter]')) {
-    centerQuery.stage = event.target.value || 'all';
-    applyCenterQueryVisibility();
-  }
+document.addEventListener('input', async ({ target }) => {
+  if (target.matches('[data-project-name-filter]')) centerQuery.taskName = target.value || '';
+  else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
+  else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
+  else return;
+  const filters = await import('./projectCenterFilters.js?v=20260814-reference-recovery-v31');
+  centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
+    id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
+  })), centerQuery);
+  filters.applyProjectVisibility(document, centerVisibleIds, store.state.loading);
 });
 
 window.addEventListener('popstate', () => renderRoute().catch(showFatal));
