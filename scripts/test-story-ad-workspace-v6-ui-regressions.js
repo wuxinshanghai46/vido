@@ -402,7 +402,6 @@ assert.match(referenceAnalysisService, /if \(record\.task_id\)[\s\S]*promise\.th
 assert.match(referenceAnalysisService, /function evidenceBatchProgress\([\s\S]*remaining:[\s\S]*total - completed/, '参考分析必须公开安全的批次恢复进度，但不能公开模型原文');
 
 const appWorkflowSource = read('public/story-ad/app.js');
-const storyAdStyles = read('public/story-ad/styles.css');
 assert.match(appWorkflowSource, /projectModeView\(project\)/, '项目列表必须读取内容类型并显示广告或剧情');
 assert.match(appWorkflowSource, /commercial_subject[\s\S]*label: '广告'/, '广告任务必须显示明确的广告标识');
 assert.match(appWorkflowSource, /<span>项目名称<\/span><span>任务类型<\/span>/, '项目名称和任务类型必须是两个独立列表字段');
