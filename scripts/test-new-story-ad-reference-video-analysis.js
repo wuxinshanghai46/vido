@@ -563,6 +563,21 @@ async function main() {
     derivedSummaryEvidence.frames.every(frame => frame.summary.includes('测试门窗产品')),
     'summary 简短时应从同帧结构化证据生成摘要，不能与“单项可不确定”的提示词冲突',
   );
+  const visibleTextSummaryPayload = testVisionPayload(cachedFrames.slice(0, 1));
+  visibleTextSummaryPayload.frames[0].summary = '不确定';
+  visibleTextSummaryPayload.frames[0].product_or_service = '';
+  visibleTextSummaryPayload.frames[0].environment = '';
+  visibleTextSummaryPayload.frames[0].materials = [];
+  visibleTextSummaryPayload.frames[0].colors = [];
+  visibleTextSummaryPayload.frames[0].layout = '';
+  visibleTextSummaryPayload.frames[0].lighting = '';
+  visibleTextSummaryPayload.frames[0].visible_text = [{ text: '元梦AI光影引擎产品演示界面' }];
+  const visibleTextSummaryEvidence = service._private.parseVisionEvidencePayload(
+    JSON.stringify(visibleTextSummaryPayload),
+    cachedFrames.slice(0, 1),
+  );
+  assert.match(visibleTextSummaryEvidence.frames[0].summary, /元梦AI光影引擎产品演示界面/,
+    'structured visible_text objects must count as same-frame evidence instead of being discarded as empty content');
   const emptyEvidencePayload = testVisionPayload(cachedFrames.slice(0, 4));
   emptyEvidencePayload.frames = emptyEvidencePayload.frames.map(frame => ({
     frame_id: frame.frame_id,
@@ -1632,6 +1647,7 @@ async function main() {
     let recoveryRound = 1;
     const recoveryCalls = [];
     const recoveryCandidateLimits = [];
+    const singleFrameAttempts = new Map();
     modelGateway.generateVision = async (options) => {
       const batchIndex = Number(String(options.userPrompt || '').match(/第\s+(\d+)\/2\s+组/)?.[1] || 0);
       recoveryCalls.push({
@@ -1654,6 +1670,29 @@ async function main() {
         throw error;
       }
       const batchFrames = options.imageUrls.map(url => recoveryFrames.find(frame => frame.image_url === url));
+      if (batchIndex === 2 && batchFrames.length === 1) {
+        const frame = batchFrames[0];
+        const attempts = Number(singleFrameAttempts.get(frame.frame_id) || 0) + 1;
+        singleFrameAttempts.set(frame.frame_id, attempts);
+        if (frame.frame_id === recoveryFrames[4].frame_id && attempts === 1) {
+          const error = new Error(`逐帧证据覆盖不完整：内容不足=${frame.frame_id}`);
+          error.code = 'VISION_QA_UNAVAILABLE';
+          error.retryable = true;
+          error.failed_models = [{ provider_id: 'deyunai', model_id: 'gemini-2.5-flash', code: 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID' }];
+          error.response_diagnostics = { incomplete_frame_ids: [frame.frame_id] };
+          throw error;
+        }
+        if (frame.frame_id === recoveryFrames[5].frame_id && attempts === 1) {
+          const syntaxPayload = testVisionPayload(batchFrames, `恢复${batchIndex}`);
+          const error = new Error('native structured output contained one trailing comma');
+          error.code = 'VISION_QA_UNAVAILABLE';
+          error.retryable = true;
+          error.candidate_text = JSON.stringify(syntaxPayload).replace(/}$/, ',}');
+          error.candidate_parsed_json = null;
+          error.failed_models = [{ provider_id: 'deyunai', model_id: 'gemini-2.5-flash', code: 'PROVIDER_RESPONSE_INVALID' }];
+          throw error;
+        }
+      }
       const text = JSON.stringify(testVisionPayload(batchFrames, `恢复${batchIndex}`));
       await options.validateText(text);
       return {
@@ -1669,9 +1708,10 @@ async function main() {
     recoveryRecord = JSON.parse(fs.readFileSync(recoveryRecordPath, 'utf8'));
     assert.deepStrictEqual(
       recoveryCalls.map(item => [item.batch_index, item.frame_count]).sort((a, b) => a[0] - b[0] || b[1] - a[1]),
-      [[1, 4], [2, 4], [2, 1], [2, 1], [2, 1], [2, 1]],
-      'the first operation must immediately recover an invalid multi-frame batch as single-frame evidence',
+      [[1, 4], [2, 4], [2, 1], [2, 1], [2, 1], [2, 1], [2, 1]],
+      'the first operation must recover an invalid batch, retry one content-incomplete frame, and repair one malformed single-frame JSON response',
     );
+    assert.ok(recoveryCalls.some(item => item.frame_count === 1), 'single-frame recovery must remain bounded to the failed batch');
     assert.ok(
       recoveryCandidateLimits.every(limit => limit === 3),
       'each reference-video batch must allow cross-provider fallback candidates',

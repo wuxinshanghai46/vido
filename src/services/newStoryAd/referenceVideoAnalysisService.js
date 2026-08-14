@@ -1479,6 +1479,9 @@ function parseVisionEvidencePayload(text = '', expectedFrames = []) {
     const direct = cleanEvidenceText(row?.summary || row?.observation_summary || '', 700);
     if (hasChineseDetail(direct, 4)) return direct;
     const list = value => (Array.isArray(value) ? value : [value])
+      .map(item => (item && typeof item === 'object'
+        ? (item.text || item.value || item.content || item.name || item.description || item.action || item.appearance || '')
+        : item))
       .map(item => cleanEvidenceText(item, 300))
       .filter(item => item && !/^(?:不确定|未知|无|未出现|无法判断|none|null)$/i.test(item));
     const evidence = [
@@ -1509,6 +1512,16 @@ function parseVisionEvidencePayload(text = '', expectedFrames = []) {
     error.code = 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID';
     error.retryable = true;
     error.failures = ['visual_frame_coverage_incomplete'];
+    error.response_diagnostics = {
+      kind: 'business_semantic_validation',
+      validation_code: error.code,
+      missing_frame_ids: missing,
+      unexpected_frame_ids: unexpected,
+      duplicated_frame_ids: duplicated,
+      incomplete_frame_ids: incomplete,
+      response_length: raw.length,
+      response_excerpt: raw.slice(0, 1200),
+    };
     throw error;
   }
   const list = value => (Array.isArray(value) ? value : (value == null || value === '' ? [] : [value]))
@@ -1623,11 +1636,15 @@ function visualEvidenceCacheKey(record = {}, frames = []) {
   return crypto.createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
 }
 
-function shouldSplitEvidenceBatchRecovery(previousCache = {}, index = 0, batch = [], error = {}) {
-  if (!Array.isArray(batch) || batch.length <= 1) return false;
+function evidenceResponseInvalid(error = {}) {
   const codes = [error?.code, ...(Array.isArray(error?.failed_models) ? error.failed_models.map(item => item?.code) : [])]
     .map(value => String(value || '').toUpperCase());
   return codes.some(code => ['PROVIDER_RESPONSE_INVALID', 'MODEL_JSON', 'REFERENCE_VIDEO_EVIDENCE_COVERAGE_INVALID'].includes(code));
+}
+
+function shouldSplitEvidenceBatchRecovery(previousCache = {}, index = 0, batch = [], error = {}) {
+  if (!Array.isArray(batch) || batch.length <= 1) return false;
+  return evidenceResponseInvalid(error);
 }
 
 /** 失败重试只在证据帧和全部视觉批次齐全时复用，禁止拿不完整缓存伪装成功。 */
@@ -2890,7 +2907,9 @@ async function analyzeWithModels(record, frames, transcript = {}) {
         intents: Array.isArray(item.intents) ? item.intents : evidenceStrategy.routeFrameIntents(item),
       }));
       const batchIntents = [...new Set(frameManifest.flatMap(item => item.intents))];
+      const invokeVision = async (correctionHint = '') => {
       let validatedPayload = null;
+      try {
       const vision = await modelGateway.generateVision({
         taskId: record.id,
         stage,
@@ -2903,6 +2922,7 @@ async function analyzeWithModels(record, frames, transcript = {}) {
           '动物逐帧合同：animal_role 只能是 narrative_character、companion、product_subject、ambient_wildlife、background 或 uncertain；自然风光中的鸟群/野生动物通常是 ambient_wildlife，不能当宠物。多只动物必须在 animals 中逐只列出可见物种、位置、外观和动作，不得合并。',
           '每帧必须返回 covered_intents，且只能填写该帧清单要求并已实际检查的维度。只返回单个合法 JSON，不要 Markdown：{"frames":[{"frame_id":"F001","timestamp_seconds":0.3,"covered_intents":["entity","scene","action","transition","brand_text"],"transition":"无可见转场变化","product_or_service":"","visible_text":[],"environment":"","materials":[],"colors":[],"layout":"","lighting":"","human_presence":false,"human_count":0,"people":[],"human_actions":[],"animal_presence":false,"animal_count":0,"animal_role":"","animal_description":"","animals":[],"animal_actions":[],"shot_size":"","angle":"","movement":"","summary":"该帧真实可见内容的简体中文总结"}],"batch_summary":"本批在广告时间线中的作用"}',
           `frames 必须恰好包含 ${targetBatch.length} 条，frame_id 必须且只能是：${targetBatch.map(item => item.frame_id).join('、')}。`,
+          correctionHint,
         ].join('\n'),
         imageUrls: targetBatch.map(item => item.image_url),
         imageDataUrls: targetBatch.map(frameVisionUrl),
@@ -2917,36 +2937,53 @@ async function analyzeWithModels(record, frames, transcript = {}) {
         },
       });
       return { vision, payload: validatedPayload || parseVisionEvidencePayload(vision.text, targetBatch) };
+      } catch (error) {
+        if (error.candidate_text && !error.candidate_parsed_json) {
+          try {
+            const repaired = await jsonRepair.parseOrRepair({
+              raw: error.candidate_text,
+              expected: 'object',
+              modelGateway,
+              taskId: record.id,
+            });
+            const payload = parseVisionEvidencePayload(JSON.stringify(repaired), targetBatch);
+            return {
+              vision: {
+                text: JSON.stringify(repaired),
+                used_model: `${error.failed_models?.[0]?.provider_id || ''}/${error.failed_models?.[0]?.model_id || ''} + json-repair`,
+              },
+              payload,
+            };
+          } catch {}
+        }
+        throw error;
+      }
+      };
+      try {
+        return await invokeVision();
+      } catch (error) {
+        if (!singleFrameRecovery || !evidenceResponseInvalid(error)) throw error;
+        const diagnostics = error.response_diagnostics
+          || error.failed_models?.find(item => item?.response_diagnostics)?.response_diagnostics
+          || {};
+        return invokeVision([
+          '上一次对这一帧的响应未通过逐帧证据合同，请重新查看原图后完整返回，不能复制上一次答案。',
+          `失败原因：${String(error.message || error).slice(0, 300)}。`,
+          `需要重点修正：${JSON.stringify({
+            missing_frame_ids: diagnostics.missing_frame_ids || [],
+            unexpected_frame_ids: diagnostics.unexpected_frame_ids || [],
+            duplicated_frame_ids: diagnostics.duplicated_frame_ids || [],
+            incomplete_frame_ids: diagnostics.incomplete_frame_ids || targetBatch.map(item => item.frame_id),
+          })}。`,
+          'summary 必须根据当前原图写出至少 12 个简体中文字符；如果没有产品、人物或动物，也必须具体描述可见环境、构图、色彩或光线。',
+        ].join(''));
+      }
     };
     let evidenceAttempt;
     try {
       evidenceAttempt = await requestEvidenceBatch(batch);
     } catch (error) {
-      // A syntax-only repair is allowed when the provider returned text but no
-      // parseable object. The repaired object still has to pass the exact
-      // frame-id and evidence contract below, so a text model cannot invent a
-      // missing visual frame. Coverage failures go directly to visual recovery.
-      if (error.candidate_text && !error.candidate_parsed_json) {
-        try {
-          const repaired = await jsonRepair.parseOrRepair({
-            raw: error.candidate_text,
-            expected: 'object',
-            modelGateway,
-            taskId: record.id,
-          });
-          const repairedPayload = parseVisionEvidencePayload(JSON.stringify(repaired), batch);
-          evidenceAttempt = {
-            vision: {
-              text: JSON.stringify(repaired),
-              used_model: `${error.failed_models?.[0]?.provider_id || ''}/${error.failed_models?.[0]?.model_id || ''} + json-repair`,
-            },
-            payload: repairedPayload,
-          };
-        } catch {}
-      }
-      if (evidenceAttempt) {
-        // Continue with the same persistence path as a native valid response.
-      } else if (!shouldSplitEvidenceBatchRecovery(recoveryCache, index, batch, error)) {
+      if (!shouldSplitEvidenceBatchRecovery(recoveryCache, index, batch, error)) {
         persistBatchFailure(index, error);
         throw error;
       } else try {
