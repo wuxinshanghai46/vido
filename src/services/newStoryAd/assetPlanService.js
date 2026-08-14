@@ -1177,9 +1177,9 @@ function attachFixedPropsToScenes(plan = {}) {
   return { ...plan, scene_plan: { ...plan.scene_plan, spaces } };
 }
 
-function persist(taskId, ctx, rawPlan, meta) {
+function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
   const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx));
-  const activePlan = assetPlanPublication.publish(taskId, plan, meta);
+  const activePlan = assetPlanPublication.publish(taskId, plan, { ...meta, scope });
   const nextPlan = { ...activePlan, ...meta };
   const props = propDrafts(plan, ctx.prop_assets);
   const castFingerprint = crypto.createHash('sha256')
@@ -1216,7 +1216,7 @@ function persist(taskId, ctx, rawPlan, meta) {
     hairMakeupText: primaryCast.hairMakeupText || '',
     negativeText: primaryCast.negativeText || '',
   };
-  const nextContext = assertContextConsistent({
+  const personContext = {
     ...ctx,
     cast_profiles: plan.cast_profiles,
     narrative_cast_profiles: plan.narrative_cast_profiles,
@@ -1226,24 +1226,141 @@ function persist(taskId, ctx, rawPlan, meta) {
     narrative_identity_count: personCounts.narrative_identity_count,
     planning_cast_count: personCounts.planning_cast_count,
     visual_asset_count: personCounts.visual_asset_count,
-    prop_plan: plan.prop_plan,
-    prop_assets: props,
-    story_seed: plan.story_seed,
-    advertised_subject_contract: plan.advertised_subject_contract || ctx.advertised_subject_contract || null,
-    product_contract: projectedProductContract,
     person_spec: personSpec,
     asset_plan_fingerprint: meta.fingerprint,
     asset_plan_generated_cast_fingerprint: castFingerprint,
     asset_setup_confirmed: false,
     shot_design_confirmed: false,
-  });
+  };
+  const sceneContext = {
+    ...ctx,
+    story_seed: plan.story_seed,
+    asset_plan_fingerprint: meta.fingerprint,
+    shot_design_confirmed: false,
+  };
+  const fullContext = {
+    ...personContext,
+    prop_plan: plan.prop_plan,
+    prop_assets: props,
+    story_seed: plan.story_seed,
+    advertised_subject_contract: plan.advertised_subject_contract || ctx.advertised_subject_contract || null,
+    product_contract: projectedProductContract,
+  };
+  const nextContext = assertContextConsistent(scope === 'person'
+    ? personContext
+    : (scope === 'scene' ? sceneContext : fullContext));
   storage.saveOutput(taskId, 'asset_plan', nextPlan);
-  storage.saveOutput(taskId, 'scene_config', plan.scene_plan);
-  storage.saveOutput(taskId, 'prop_assets', props);
+  if (scope !== 'person') storage.saveOutput(taskId, 'scene_config', plan.scene_plan);
+  if (scope === 'all') storage.saveOutput(taskId, 'prop_assets', props);
   storage.saveOutput(taskId, 'context', nextContext);
   storage.updateTask(taskId, checkpointLineage.currentPlanningTaskPatch(), { systemFinalization: true });
   return nextPlan;
 }
+
+function ids(items = []) {
+  return (Array.isArray(items) ? items : []).map(item => cleanText(item?.id, 160)).filter(Boolean).sort();
+}
+
+function assertSameIds(before = [], after = [], code, label) {
+  if (JSON.stringify(ids(before)) === JSON.stringify(ids(after))) return;
+  const error = new Error(`${label}的稳定 ID 发生变化，已阻止发布以保护人物与场景绑定`);
+  error.code = code;
+  error.status = 422;
+  error.retryable = false;
+  throw error;
+}
+
+function assertScopedPlanIsolation(previous = {}, next = {}, scope = '', overrides = {}) {
+  const unchanged = scope === 'person'
+    ? ['scene_plan', 'story_seed', 'prop_plan', 'pet_profiles', 'advertised_subject_contract']
+    : ['cast_profiles', 'narrative_cast_profiles', 'pet_profiles', 'prop_plan', 'story_seed', 'advertised_subject_contract'];
+  unchanged.forEach(key => {
+    if (JSON.stringify(canonical(previous[key])) === JSON.stringify(canonical(next[key]))) return;
+    const error = new Error(`${scope}方案更新越界修改了 ${key}，候选方案未发布`);
+    error.code = 'ASSET_PLAN_SCOPED_UPDATE_CROSSTALK';
+    error.status = 422;
+    error.retryable = false;
+    throw error;
+  });
+  if (scope === 'person') {
+    assertSameIds(previous.cast_profiles, next.cast_profiles, 'PERSON_PLAN_STABLE_ID_CHANGED', '人物方案');
+    const nextById = new Map((next.cast_profiles || []).map(person => [String(person.id || ''), person]));
+    for (const assignment of (overrides.assignments || [])) {
+      const person = nextById.get(String(assignment.character_id || ''));
+      const lookIds = new Set((person?.look_profiles || []).map(look => String(look.id || '')));
+      if (!person || (assignment.look_id && !lookIds.has(String(assignment.look_id)))) {
+        const error = new Error('人物方案会使现有场景站位或造型绑定失效，已阻止发布');
+        error.code = 'PERSON_PLAN_BINDING_ORPHANED';
+        error.status = 422;
+        error.retryable = false;
+        throw error;
+      }
+    }
+  } else {
+    assertSameIds(previous.scene_plan?.spaces, next.scene_plan?.spaces, 'SCENE_PLAN_STABLE_ID_CHANGED', '场景方案');
+    const worldIds = new Set(ids(next.scene_plan?.spaces));
+    if ((overrides.assignments || []).some(item => item.world_id && !worldIds.has(String(item.world_id)))) {
+      const error = new Error('场景方案会使现有人物站位绑定失效，已阻止发布');
+      error.code = 'SCENE_PLAN_BINDING_ORPHANED';
+      error.status = 422;
+      error.retryable = false;
+      throw error;
+    }
+  }
+  return true;
+}
+
+async function replanScope(taskId, scope, options = {}) {
+  const task = storage.getTask(taskId);
+  if (!task) throw new Error('任务不存在');
+  const ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  const previous = assetPlanPublication.currentPlan(taskId);
+  if (!complete(previous, ctx)) {
+    const error = new Error('当前完整资产方案不存在，不能执行分域更新');
+    error.code = 'ASSET_PLAN_SCOPED_SOURCE_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
+  const section = scope === 'person' ? 'cast_profiles' : 'scene_plan';
+  const generationId = cleanText(options.generation_id || options.generationId || '', 160);
+  const currentFingerprint = fingerprint(task, ctx);
+  sectionRecovery.saveCheckpointAtomic(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND, previous, ctx, {
+    ...options,
+    generation_id: generationId,
+    fingerprint: currentFingerprint,
+    status: `${scope}_plan_update_ready`,
+    validators: recoverySectionValidators(ctx),
+    allow_generation_handoff: true,
+    replace_incompatible: true,
+  });
+  storage.updateTask(taskId, { status: 'running', stage: `${scope}_plan` });
+  storage.saveStage(taskId, `${scope}_plan`, { status: 'running', input_summary: ctx.brief });
+  const recovered = await recoverAssetPlanSectionPatch(taskId, ctx, previous, section, {
+    ...options,
+    generation_id: generationId,
+    fingerprint: currentFingerprint,
+  });
+  const next = normalizePlan(recovered.payload, ctx);
+  const overrides = storage.getOutput(taskId, 'scene_world_overrides') || {};
+  assertScopedPlanIsolation(normalizePlan(previous, ctx), next, scope, overrides);
+  const saved = persist(taskId, ctx, next, {
+    fingerprint: currentFingerprint,
+    source: `${scope}_plan_section_patch`,
+    model_meta: { ...recovered.model_meta, model_call_count: 1, scope },
+    completed_at: new Date().toISOString(),
+  }, scope);
+  storage.deleteOutput(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND);
+  storage.saveStage(taskId, `${scope}_plan`, {
+    status: 'done',
+    output_summary: scope === 'person' ? '人物文字方案已独立更新' : '场景文字方案已独立更新',
+    diagnostics: { fingerprint: currentFingerprint, scope, model_call_count: 1 },
+  });
+  storage.updateTask(taskId, { status: 'running', stage: `${scope}_plan_done` });
+  return scope === 'person' ? saved.cast_profiles : saved.scene_plan;
+}
+
+async function replanPerson(taskId, options = {}) { return replanScope(taskId, 'person', options); }
+async function replanScene(taskId, options = {}) { return replanScope(taskId, 'scene', options); }
 
 function syncPrevious(taskId) {
   const task = storage.getTask(taskId);
@@ -1588,6 +1705,9 @@ module.exports = {
   normalizeContentModeMarkers,
   assertGeneratedContentMode,
   assertContentModeIsolation,
+  assertScopedPlanIsolation,
+  replanPerson,
+  replanScene,
   syncPrevious,
   generate,
 };

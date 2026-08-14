@@ -1,24 +1,42 @@
 import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260814-sr14-v22';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr14-v22';
+import { confirmDialog, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-sr14-v22';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260814-sr14-v22';
+import { scenePlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-sr14-v22';
 
-function sceneGenerationQueue(bundle = {}) {
+function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
   if (!scenes.length) return '<section class="card"><h2>场景生成队列</h2><p>尚未建立场景文字方案。</p></section>';
   return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景生成队列</h2><span>${scenes.length}</span></div><p>每次只提交一个场景；人物出场、造型、年龄、机位和地点沿革确认后再生成。</p><div class="asset-grid">${scenes.map(scene => {
     const generated = Boolean(scene.layout?.image_url || scene.view_images?.length || scene.cameras?.some(camera => camera.image_url));
-    return `<article class="asset-card"><div><small>${generated ? '已有场景资产' : '等待单独生成'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><button class="btn ${generated ? '' : 'primary'}" type="button" data-generate-base-scene="${escapeHtml(scene.id || scene.scene_id || '')}">${generated ? '核对后重新生成' : '生成这个场景'}</button></article>`;
+    return `<article class="asset-card"><div><small>${generated ? '已有场景资产' : '等待单独生成'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><button class="btn ${generated ? '' : 'primary'}" type="button" data-generate-base-scene="${escapeHtml(scene.id || scene.scene_id || '')}" ${scenePlanReady ? '' : 'disabled title="请先更新场景方案"'}>${generated ? '核对后重新生成' : '生成这个场景'}</button></article>`;
   }).join('')}</div></section>`;
 }
 
 export async function mount(host, context) {
   const { bundle, store } = context;
+  const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
+  const scenePlanEligibility = planEligibility.scene || planEligibility;
+  const scenePlanReady = scenePlanEligibility.eligible === true;
+  const generationActive = !!bundle?.project?.active_generation_id;
   host.innerHTML = `<section class="view-head"><div><h1>场景世界</h1><p>先确认地点、跨时代关系、空间结构、机位、人物出场顺序和造型，再按场景单独生成视觉资产。</p></div><span class="status-tag is-neutral">第 3 步 · 场景规划</span></section>
     <div class="guide"><b>操作方法</b>　①核对场景与地点血缘　②确认人物出场、造型、年龄和机位　③按场景单独生成视觉资产　④进入剧本</div>
-    ${sceneGenerationQueue(bundle)}
+    ${scenePlanReady ? '' : scenePlanBlockedView(scenePlanEligibility, generationActive)}
+    ${sceneGenerationQueue(bundle, scenePlanReady)}
     ${renderSceneWorldWorkspace(bundle)}
-    <section class="step-completion-card is-ready"><div><b>场景规划独立于人物资产</b><span>确认文字规划即可进入剧本；场景图片可按场景分别生成，不要求一次补齐全部缺失内容。</span></div><button class="btn primary" type="button" data-open-script>进入第 4 步：剧本</button></section>`;
+    <section class="step-completion-card ${scenePlanReady ? 'is-ready' : ''}"><div><b>场景规划独立于人物资产</b><span>${scenePlanReady ? '确认文字规划即可进入剧本；场景图片可按场景分别生成，不要求一次补齐全部缺失内容。' : '请先完成场景文字方案更新；人物方案与人物资产不会因此被修改。'}</span></div><button class="btn primary" type="button" data-open-script ${scenePlanReady ? '' : 'disabled'}>进入第 4 步：剧本</button></section>`;
   bindSceneWorldWorkspace(host, bundle, store);
+  host.querySelector('[data-update-scene-plan]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (!await confirmDialog('本次只更新场景文字方案，不修改人物身份、人物图片或人物造型。若已有站位绑定无法安全延续，系统会阻止发布。', { title: '更新场景方案', confirmText: '确认更新场景方案' })) return;
+    try {
+      setButtonBusy(button, true, '正在更新场景方案…', { elapsed: true });
+      await store.runStage('scene-plan');
+      toast('场景方案更新已提交；人物方案和人物资产不会被改动。', 'success');
+      await context.refreshShell();
+    } catch (error) { toast(error.message, 'danger'); } finally {
+      setButtonBusy(button, false);
+    }
+  });
   host.querySelectorAll('[data-generate-base-scene]').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.generateBaseScene;
     const scene = (bundle.assets?.scenes || []).find(item => String(item.id || item.scene_id || '') === id);

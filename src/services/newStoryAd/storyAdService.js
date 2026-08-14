@@ -782,6 +782,14 @@ async function generateSceneConfig(taskId, options = {}) {
   return assetPlan.generate(taskId, options);
 }
 
+async function updatePersonPlan(taskId, options = {}) {
+  return assetPlan.replanPerson(taskId, options);
+}
+
+async function updateScenePlan(taskId, options = {}) {
+  return assetPlan.replanScene(taskId, options);
+}
+
 async function generateBlueprintStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
@@ -3730,6 +3738,8 @@ module.exports = {
   updateBlueprint,
   updateStoryboardTable,
   generateSceneConfig,
+  updatePersonPlan,
+  updateScenePlan,
   generateBlueprintStage,
   generateScriptPackageStage,
   runTextStageWithRecovery,

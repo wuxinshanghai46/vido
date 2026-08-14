@@ -169,6 +169,7 @@ export function createProjectStore() {
       applyMutationResult(data);
       state.progressRevision = '';
       if (path === 'scene-config') await refreshSections('summary,assets');
+      else if (['person-plan', 'scene-plan'].includes(path)) await refreshSections('summary,assets');
       set({ saving: false });
       syncProgressPolling(true);
       return data;

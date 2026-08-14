@@ -1929,6 +1929,18 @@ router.post('/tasks/:id/scene-config', asyncRoute(async (req, res) => {
   }) });
 }));
 
+router.post('/tasks/:id/person-plan', asyncRoute(async (req, res) => {
+  return queueTaskStage(req, res, 'person_plan', job => service.updatePersonPlan(req.params.id, {
+    generation_id: job.generationId,
+  }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, {}) });
+}));
+
+router.post('/tasks/:id/scene-plan', asyncRoute(async (req, res) => {
+  return queueTaskStage(req, res, 'scene_plan', job => service.updateScenePlan(req.params.id, {
+    generation_id: job.generationId,
+  }), { deadlineMs: task => service.sceneConfigStageBudgetMs(task.id, { replan_scene_coverage: true }) });
+}));
+
 router.post('/tasks/:id/blueprint', asyncRoute(async (req, res) => {
   const forceRegenerate = req.body?.force_regenerate === true || req.body?.forceRegenerate === true;
   return queueTaskStage(req, res, 'blueprint', job => service.generateBlueprintStage(req.params.id, { ...job, force_regenerate: forceRegenerate }));

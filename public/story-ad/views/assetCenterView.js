@@ -8,7 +8,7 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260814-sr14-v22';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-sr14-v22';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionEditor, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-sr14-v22';
-import { assetPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-sr14-v22';
+import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-sr14-v22';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -236,7 +236,8 @@ export async function mount(host, context) {
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
-  const assetPlanReady = planEligibility.eligible === true;
+  const personPlanEligibility = planEligibility.person || planEligibility;
+  const assetPlanReady = personPlanEligibility.eligible === true;
   const generationActive = !!bundle?.project?.active_generation_id;
   const generationDisabled = generationActive ? 'disabled' : '';
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物与场景方案"';
@@ -251,7 +252,7 @@ export async function mount(host, context) {
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">方案已建立</span><h2>接下来生成视觉资产</h2><p>当前方案包含 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。图片生成会产生模型调用，每类资产都会在提交前单独确认，不会因刚才确认参考理解而自动付费。</p></div>
       <div class="asset-visual-next-actions"><button class="btn primary" type="button" data-generate-missing-subjects ${generationActive || !missingSubjectCount ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '生成全部缺失人物 / 动物'}</button></div>
-    </section>` : assetPlanBlockedView(planEligibility, generationActive)}
+    </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, bundle.brief || {})}</div>
@@ -553,13 +554,13 @@ export async function mount(host, context) {
     }
     generateProduct(item, event.currentTarget);
   });
-  host.querySelector('[data-build-scenes]')?.addEventListener('click', async event => {
-    const button = event.currentTarget, replanSceneCoverage = Boolean(assets.scenes?.length);
-    if (replanSceneCoverage && !await confirmDialog('将根据当前内容重新规划人物、道具、场景和故事结构；已有资产会保留，本步不生成图片。', { title: '更新人物与场景方案', confirmText: '确认更新方案' })) return;
+  host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    if (!await confirmDialog('本次只更新人物文字方案，不会修改场景方案、场景图片或人物在场景中的站位绑定，也不会生成图片。', { title: '更新人物方案', confirmText: '确认更新人物方案' })) return;
     try {
-      setButtonBusy(button, true, '正在建立…', { elapsed: true });
-      await store.runStage('scene-config', replanSceneCoverage ? { replan_scene_coverage: true } : {});
-      toast('人物与场景方案更新已提交；完成后可继续生成缺失图片。', 'success');
+      setButtonBusy(button, true, '正在更新人物方案…', { elapsed: true });
+      await store.runStage('person-plan');
+      toast('人物方案更新已提交；场景方案和站位绑定不会被改动。', 'success');
       await context.refreshShell();
     } catch (error) { toast(error.message, 'danger'); } finally {
       setButtonBusy(button, false);
