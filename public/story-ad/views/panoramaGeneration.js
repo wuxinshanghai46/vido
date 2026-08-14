@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-plan-authority-repair-v53';
-import { toast } from '../components/ui.js?v=20260814-plan-authority-repair-v53';
-import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v53';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v54';
+import { toast } from '../components/ui.js?v=20260814-plan-authority-repair-v54';
+import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v54';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v53';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-plan-authority-repair-v53';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v54';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-plan-authority-repair-v54';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
