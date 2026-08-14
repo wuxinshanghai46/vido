@@ -96,6 +96,28 @@ function git(root, args = []) {
   return childProcess.execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 }
 
+function resolveArtifactRevision(root, artifactId = '', targetRevision = '') {
+  if (!/^[a-f0-9]{64}$/i.test(String(artifactId || ''))) return '';
+  try {
+    const commits = git(root, ['log', '--all', '--format=%H', '--', 'config/story-ad-runtime-manifest.json'])
+      .split(/\r?\n/).filter(value => /^[a-f0-9]{40}$/i.test(value)).slice(0, 200);
+    for (const commit of commits) {
+      let manifest;
+      try { manifest = JSON.parse(git(root, ['show', `${commit}:config/story-ad-runtime-manifest.json`])); } catch { continue; }
+      if (String(manifest.artifact_id || '') !== String(artifactId)) continue;
+      if (/^[a-f0-9]{40}$/i.test(String(targetRevision || ''))) {
+        try {
+          childProcess.execFileSync('git', ['merge-base', '--is-ancestor', commit, targetRevision], {
+            cwd: root, stdio: 'ignore', windowsHide: true,
+          });
+        } catch { continue; }
+      }
+      return commit;
+    }
+  } catch {}
+  return '';
+}
+
 function changedFiles(root, baseRevision, targetRevision) {
   if (!/^[a-f0-9]{40}$/i.test(String(baseRevision || '')) || !/^[a-f0-9]{40}$/i.test(String(targetRevision || ''))) {
     return { files: [], reliable: false, reason: 'revision_missing' };
@@ -163,10 +185,14 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
   return profiles[profile] || profiles.full;
 }
 
-function createPlan({ root, baseRevision = '', targetRevision = '', sourceTree = '', files, reliable, fullPlatform = false } = {}) {
+function createPlan({
+  root, baseRevision = '', baseArtifactId = '', targetRevision = '', sourceTree = '', files, reliable, fullPlatform = false,
+} = {}) {
+  const artifactRevision = Array.isArray(files) ? '' : resolveArtifactRevision(root, baseArtifactId, targetRevision);
+  const effectiveBaseRevision = artifactRevision || baseRevision;
   const delta = Array.isArray(files)
     ? { files: files.map(normalizeFile), reliable: reliable !== false, reason: 'provided' }
-    : changedFiles(root, baseRevision, targetRevision);
+    : changedFiles(root, effectiveBaseRevision, targetRevision);
   const classification = classifyFiles(delta.files, { reliable: delta.reliable });
   const gateIds = gateIdsForProfile(classification.profile, { fullPlatform });
   return {
@@ -178,7 +204,10 @@ function createPlan({ root, baseRevision = '', targetRevision = '', sourceTree =
     changed_files: delta.files,
     delta_reliable: delta.reliable,
     delta_reason: delta.reason,
-    base_revision: baseRevision,
+    base_revision: effectiveBaseRevision,
+    base_source_revision: baseRevision,
+    base_artifact_id: baseArtifactId,
+    artifact_revision_resolved: Boolean(artifactRevision),
     target_revision: targetRevision,
     source_tree: sourceTree,
     full_platform: fullPlatform === true,
@@ -309,6 +338,7 @@ module.exports = {
   executeGate,
   gateIdsForProfile,
   readGateCache,
+  resolveArtifactRevision,
   runPlan,
   saveGateCache,
 };

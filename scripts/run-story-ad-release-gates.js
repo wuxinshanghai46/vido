@@ -16,9 +16,10 @@ function argument(name) {
 async function main() {
   const root = path.resolve(__dirname, '..');
   const baseRevision = argument('base');
+  const baseArtifactId = argument('base-artifact');
   const targetRevision = argument('target') || runtimeManifest.source_revision;
   const sourceTree = argument('tree') || runtimeManifest.source_tree;
-  const plan = planner.createPlan({ root, baseRevision, targetRevision, sourceTree });
+  const plan = planner.createPlan({ root, baseRevision, baseArtifactId, targetRevision, sourceTree });
   const result = await planner.runPlan(root, plan);
   console.log(`RELEASE_GATE_SUMMARY=${JSON.stringify(result)}`);
 }

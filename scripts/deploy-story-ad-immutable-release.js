@@ -83,12 +83,13 @@ function reportPhase(phase, details = {}) {
   console.log(`IMMUTABLE_RELEASE_PHASE=${JSON.stringify({ phase, ...details })}`);
 }
 
-async function runLocalGate(baseRevision = '') {
+async function runLocalGate(baseRevision = '', baseArtifactId = '') {
   const targetedHomeGate = process.env.VIDO_DEPLOY_TARGETED_GATE === '1'
     || os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT';
   const plan = releaseGatePlanner.createPlan({
     root,
     baseRevision,
+    baseArtifactId,
     targetRevision: runtimeManifest.source_revision,
     sourceTree: runtimeManifest.source_tree,
     fullPlatform: !targetedHomeGate,
@@ -331,7 +332,10 @@ client.on('ready', async () => {
       return;
     }
     reportPhase('local_gate', { base_revision: preVersion.release_bundle?.source_revision || '' });
-    await runLocalGate(String(preVersion.release_bundle?.source_revision || ''));
+    await runLocalGate(
+      String(preVersion.release_bundle?.source_revision || ''),
+      String(preVersion.release_bundle?.artifact_id || ''),
+    );
     await exec(`mkdir -p /opt/vido/releases /opt/vido/deploy-locks /opt/vido/dependencies /opt/vido/runtimes && mkdir ${quote(lockDir)}`);
     sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
     reportPhase('audit_upload');

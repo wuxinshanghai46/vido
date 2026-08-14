@@ -30,6 +30,7 @@ assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile,
 assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'full');
 assert.equal(plan(['docs/notes.md'], { reliable: false }).profile, 'full');
 assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['platform_full', 'release_core']);
+assert.equal(planner.resolveArtifactRevision(process.cwd(), 'not-an-artifact', 'not-a-revision'), '');
 
 const expectedRelease = {
   release_bundle_id: 'bundle-v1', artifact_id: 'artifact-v1', source_revision: 'source-v1', source_tree: 'tree-v1', build_id: 'build-v1',
