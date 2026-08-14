@@ -1,14 +1,14 @@
-import { request } from '../api.js?v=20260814-scoped-plans-v24';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-scoped-plans-v24';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-scoped-plans-v24';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-scoped-plans-v24';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-scoped-plans-v24';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-scoped-plans-v24';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-scoped-plans-v24';
-import { assertBriefReadback } from './briefTextContract.js?v=20260814-scoped-plans-v24';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-scoped-plans-v24';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-scoped-plans-v24';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-scoped-plans-v24';
+import { request } from '../api.js?v=20260814-scoped-plans-v25';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-scoped-plans-v25';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260814-scoped-plans-v25';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260814-scoped-plans-v25';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260814-scoped-plans-v25';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260814-scoped-plans-v25';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260814-scoped-plans-v25';
+import { assertBriefReadback } from './briefTextContract.js?v=20260814-scoped-plans-v25';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260814-scoped-plans-v25';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260814-scoped-plans-v25';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260814-scoped-plans-v25';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -214,7 +214,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260814-scoped-plans-v24');
+    const module = await import('./referenceUnderstandingView.js?v=20260814-scoped-plans-v25');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
