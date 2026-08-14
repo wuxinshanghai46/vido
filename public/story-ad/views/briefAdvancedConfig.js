@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260815-release-efficiency-v58';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260815-reference-transition-v59';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

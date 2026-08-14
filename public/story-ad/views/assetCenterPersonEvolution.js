@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260815-release-efficiency-v58';
+import { escapeHtml } from '../components/ui.js?v=20260815-reference-transition-v59';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];

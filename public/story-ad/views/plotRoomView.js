@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260815-release-efficiency-v58';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-release-efficiency-v58';
-import { confirmDialog } from '../components/dialog.js?v=20260815-release-efficiency-v58';
+import { request } from '../api.js?v=20260815-reference-transition-v59';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-reference-transition-v59';
+import { confirmDialog } from '../components/dialog.js?v=20260815-reference-transition-v59';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
