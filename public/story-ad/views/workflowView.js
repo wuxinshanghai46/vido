@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v37';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v37';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260814-reference-recovery-v37';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260814-reference-recovery-v37';
+import { request } from '../api.js?v=20260814-reference-recovery-v38';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v38';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260814-reference-recovery-v38';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260814-reference-recovery-v38';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

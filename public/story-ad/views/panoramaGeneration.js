@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v37';
-import { toast } from '../components/ui.js?v=20260814-reference-recovery-v37';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v37';
+import { request } from '../api.js?v=20260814-reference-recovery-v38';
+import { toast } from '../components/ui.js?v=20260814-reference-recovery-v38';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v38';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

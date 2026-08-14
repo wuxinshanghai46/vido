@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-reference-recovery-v37';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-recovery-v37';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-recovery-v37';
-import { confirmDialog } from './components/dialog.js?v=20260814-reference-recovery-v37';
+import { createProjectStore } from './store/projectStore.js?v=20260814-reference-recovery-v38';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-recovery-v38';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-recovery-v38';
+import { confirmDialog } from './components/dialog.js?v=20260814-reference-recovery-v38';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-reference-recovery-v37'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-reference-recovery-v37'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-recovery-v37'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-reference-recovery-v37'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-recovery-v37'),
-  final: () => import('./views/finalView.js?v=20260814-reference-recovery-v37'),
-  workflow: () => import('./views/workflowView.js?v=20260814-reference-recovery-v37'),
+  brief: () => import('./views/briefView.js?v=20260814-reference-recovery-v38'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-reference-recovery-v38'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-recovery-v38'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-reference-recovery-v38'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-recovery-v38'),
+  final: () => import('./views/finalView.js?v=20260814-reference-recovery-v38'),
+  workflow: () => import('./views/workflowView.js?v=20260814-reference-recovery-v38'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
@@ -395,7 +395,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260814-reference-recovery-v37');
+  const filters = await import('./projectCenterFilters.js?v=20260814-reference-recovery-v38');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
