@@ -35,6 +35,7 @@ const BASE_FILES = [
   'scripts/check-new-story-ad-active-tasks.js',
   'scripts/deploy-story-ad-release.js',
   'scripts/deploy-story-ad-immutable-release.js',
+  'scripts/run-story-ad-release-gates.js',
   'scripts/manage-story-ad-release-control.js',
   'scripts/migrate-story-ad-platform-v111.js',
   'scripts/migrate-story-ad-v120-checkpoints.js',

@@ -2,13 +2,14 @@
 'use strict';
 
 const crypto = require('crypto');
-const childProcess = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Client } = require('ssh2');
 const { connectionOptions } = require('./lib/vidoSshAuth');
 const { collectStoryAdReleaseFiles } = require('./lib/storyAdReleaseFiles');
+const releaseGatePlanner = require('./lib/storyAdReleaseGatePlanner');
+const deployRecovery = require('./lib/immutableDeployRecovery');
 const deployOptions = require('./lib/immutableDeployOptions');
 const integrity = require('../src/services/storyAdReleaseIntegrityService');
 const releaseBundle = require('../src/services/storyAdReleaseBundleService');
@@ -82,28 +83,22 @@ function reportPhase(phase, details = {}) {
   console.log(`IMMUTABLE_RELEASE_PHASE=${JSON.stringify({ phase, ...details })}`);
 }
 
-function runLocalGate() {
+async function runLocalGate(baseRevision = '') {
   const targetedHomeGate = process.env.VIDO_DEPLOY_TARGETED_GATE === '1'
     || os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT';
-  const gateCommand = targetedHomeGate
-    ? 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-platform-narrative-release-v111.js && node scripts/check-story-ad-workspace-v6-boundaries.js && npm run story-ad:release:test'
-    : 'npm run story-ad:v111:test && npm run platform:upgrade:test';
-  const command = process.platform === 'win32' ? (process.env.ComSpec || 'cmd.exe') : 'npm';
-  const args = process.platform === 'win32'
-    ? ['/d', '/s', '/c', gateCommand]
-    : ['run', 'story-ad:release:predeploy'];
-  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vido-immutable-release-'));
-  try {
-    const result = childProcess.spawnSync(command, args, {
-      cwd: root,
-      env: { ...process.env, OUTPUT_DIR: outputDir, DB_ENABLED: '0', DB_READ_PRIMARY: '0', DB_DUAL_WRITE: '0', DB_JSON_FALLBACK: '1' },
-      encoding: 'utf8', maxBuffer: 96 * 1024 * 1024, timeout: 45 * 60 * 1000,
-    });
-    if (result.status !== 0) throw new Error(`本地不可变制品门禁失败：\n${`${result.stdout || ''}\n${result.stderr || ''}`.slice(-30000)}`);
-    console.log(`LOCAL_IMMUTABLE_RELEASE_GATE=${targetedHomeGate ? 'targeted_passed' : 'passed'}`);
-  } finally {
-    fs.rmSync(outputDir, { recursive: true, force: true });
-  }
+  const plan = releaseGatePlanner.createPlan({
+    root,
+    baseRevision,
+    targetRevision: runtimeManifest.source_revision,
+    sourceTree: runtimeManifest.source_tree,
+    fullPlatform: !targetedHomeGate,
+  });
+  const result = await releaseGatePlanner.runPlan(root, plan);
+  console.log(`LOCAL_IMMUTABLE_RELEASE_GATE=${JSON.stringify({
+    mode: targetedHomeGate ? 'targeted' : 'standard', profile: result.profile,
+    cached: result.cached_count, total: result.results.length,
+  })}`);
+  return result;
 }
 
 function exec(command) {
@@ -142,6 +137,39 @@ function blockingUnknownBilling(readiness = {}) {
   return Number(readiness.active_unknown_billing_count
     ?? readiness.unknown_billing_count
     ?? 0);
+}
+
+function isExpectedActiveRelease(version = {}) {
+  return deployRecovery.isExpectedActiveRelease(version, {
+    release_bundle_id: releaseBundleId,
+    artifact_id: artifactId,
+    source_revision: runtimeManifest.source_revision,
+    source_tree: runtimeManifest.source_tree,
+    build_id: release.build_id,
+  });
+}
+
+async function recoverAlreadyActiveRelease(version = {}) {
+  if (!isExpectedActiveRelease(version)) return null;
+  reportPhase('already_active_verify', { build_id: version.build_id, artifact_id: artifactId });
+  const health = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/health'));
+  const publicHealth = parseJson(await exec('curl -fsS https://vido.smsend.cn/api/health'));
+  const publicVersion = parseJson(await exec('curl -fsS https://vido.smsend.cn/api/story-ad/version'));
+  const readiness = await releaseReadiness(previousTarget);
+  const quick = await exec("echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite");
+  const receipt = deployRecovery.confirmRecoveredRelease({
+    version, health, public_health: publicHealth, public_version: publicVersion,
+    readiness, sqlite_quick_check: quick.trim(), release_dir: previousTarget,
+  }, {
+    release_bundle_id: releaseBundleId,
+    artifact_id: artifactId,
+    source_revision: runtimeManifest.source_revision,
+    source_tree: runtimeManifest.source_tree,
+    build_id: release.build_id,
+  });
+  reportPhase('already_active', { build_id: version.build_id, artifact_id: artifactId });
+  console.log(`IMMUTABLE_RELEASE=${JSON.stringify(receipt)}`);
+  return receipt;
 }
 
 async function setReleaseControl(state, bundleId = '') {
@@ -283,16 +311,10 @@ async function rollback() {
   }
 }
 
-runLocalGate();
-
 client.on('ready', async () => {
   let sftp;
   try {
     reportPhase('connected', { files: files.length, upload_concurrency: uploadConcurrency });
-    await exec(`mkdir -p /opt/vido/releases /opt/vido/deploy-locks /opt/vido/dependencies /opt/vido/runtimes && mkdir ${quote(lockDir)}`);
-    sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
-    reportPhase('audit_upload');
-    await new Promise((resolve, reject) => sftp.writeFile(remoteAuditSpecPath, auditSpec, error => error ? reject(error) : resolve()));
     previousTarget = (await exec(`if test -e ${quote(currentLink)}; then readlink -f ${quote(currentLink)}; else printf %s /opt/vido/app; fi`)).trim() || '/opt/vido/app';
     const preVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
     previousBundleId = String(preVersion.release_bundle_id || '');
@@ -303,6 +325,17 @@ client.on('ready', async () => {
     if (/^v\d+\.\d+\.\d+$/.test(previousRuntimeVersion) && /^[a-z0-9._-]+$/i.test(previousRuntimePlatform)) {
       previousNodeRuntimeBin = `/opt/vido/runtimes/node-${previousRuntimeVersion}-${previousRuntimePlatform}/bin/node`;
     }
+    const recovered = await recoverAlreadyActiveRelease(preVersion);
+    if (recovered) {
+      client.end();
+      return;
+    }
+    reportPhase('local_gate', { base_revision: preVersion.release_bundle?.source_revision || '' });
+    await runLocalGate(String(preVersion.release_bundle?.source_revision || ''));
+    await exec(`mkdir -p /opt/vido/releases /opt/vido/deploy-locks /opt/vido/dependencies /opt/vido/runtimes && mkdir ${quote(lockDir)}`);
+    sftp = await new Promise((resolve, reject) => client.sftp((error, channel) => error ? reject(error) : resolve(channel)));
+    reportPhase('audit_upload');
+    await new Promise((resolve, reject) => sftp.writeFile(remoteAuditSpecPath, auditSpec, error => error ? reject(error) : resolve()));
     const before = await releaseReadiness(previousTarget);
     if (Number(before.active_count) || blockingUnknownBilling(before)) throw new Error(`发布前仍有活动任务或当前生成未知计费：${JSON.stringify(before)}`);
     const quickBefore = await exec("echo UFJBR01BIHF1aWNrX2NoZWNrOw== | base64 -d | sqlite3 /data/vido/db/vido.sqlite");

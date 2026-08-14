@@ -6,6 +6,7 @@ const path = require('path');
 const vm = require('vm');
 
 const source = fs.readFileSync(path.resolve(__dirname, 'deploy-story-ad-immutable-release.js'), 'utf8');
+const recoverySource = fs.readFileSync(path.resolve(__dirname, 'lib/immutableDeployRecovery.js'), 'utf8');
 
 assert(source.includes("const port = Number(process.env.VIDO_DEPLOY_PORT || 2222)"), 'immutable deploy must default to the production SSH port');
 assert(source.includes('connectionOptions({ host, port, username })'), 'immutable deploy must pass the resolved SSH port');
@@ -40,9 +41,14 @@ assert(source.includes('VIDO_IMMUTABLE_UPLOAD_CONCURRENCY'), 'immutable deploy m
 assert(source.includes('Math.min(uploadConcurrency, queue.length)'), 'immutable deploy must not use fixed high upload concurrency');
 assert(source.includes("reportPhase('artifact_upload'"), 'immutable deploy must report the phase of a transport interruption');
 assert(source.includes("os.hostname().toUpperCase() === 'LAPTOP-LDFOL0GT'"), '家庭电脑必须自动选择定向发布门禁');
-assert(source.includes('test-story-ad-workspace-v6-ui-regressions.js'), '家庭电脑定向发布门禁必须覆盖本次工作台 UI');
-assert(source.includes("targetedHomeGate ? 'targeted_passed' : 'passed'"), '发布输出必须区分定向门禁与完整门禁');
+assert(source.includes("require('./lib/storyAdReleaseGatePlanner')"), '不可变发布必须使用统一影响分析与门禁规划器');
+assert(source.includes("require('./lib/immutableDeployRecovery')"), '已上线制品恢复必须使用可独立回归的严格验证器');
+assert(source.includes('await releaseGatePlanner.runPlan(root, plan)'), '发布门禁必须流式执行可缓存的精确测试计划');
+assert(source.includes("mode: targetedHomeGate ? 'targeted' : 'standard'"), '发布输出必须区分家庭定向与标准环境门禁');
 assert(source.includes("process.env.VIDO_DEPLOY_TARGETED_GATE === '1'"), '非标准主机名环境必须支持显式启用定向门禁');
+assert(source.indexOf('recoverAlreadyActiveRelease(preVersion)') < source.indexOf("reportPhase('local_gate'"), '重复部署必须先恢复已上线制品回执，不能先重跑耗时门禁');
+assert(recoverySource.includes('recovered_receipt: true'), '已上线目标制品必须返回明确的恢复回执');
+assert(source.includes("reportPhase('already_active_verify'"), '恢复回执前必须执行生产健康与数据门禁');
 assert(source.includes("runtimeManifest.schema_version || 0) < 3"), '不可变部署必须拒绝没有源码身份的旧清单');
 assert(source.includes("candidateVersion.release_bundle?.source_revision !== runtimeManifest.source_revision"), '候选进程必须核对源码提交身份');
 assert(source.includes("version.release_bundle?.source_tree !== runtimeManifest.source_tree"), '切换后进程必须核对源码树身份');
@@ -66,4 +72,4 @@ const syntheticHashes = Object.fromEntries(syntheticFiles.map(file => [file, 'a'
 const manifestBytes = Buffer.byteLength(JSON.stringify({ files: syntheticFiles, hashes: syntheticHashes }));
 assert(manifestBytes > 1024 * 1024, '合成清单必须超过常见单参数安全上限');
 
-console.log(JSON.stringify({ passed: true, checks: 24, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'targeted', canonical_shared_outputs: true, cli_candidate_only: true, unknown_flag_rejected: true, sqlite_quick_check_preserved: true }));
+console.log(JSON.stringify({ passed: true, checks: 28, synthetic_files: syntheticFiles.length, manifest_bytes: manifestBytes, shell_embedded_manifest: false, multiline_json: true, home_gate: 'impact_scoped', cached_gate_runner: true, already_active_recovery: true, canonical_shared_outputs: true, cli_candidate_only: true, unknown_flag_rejected: true, sqlite_quick_check_preserved: true }));
