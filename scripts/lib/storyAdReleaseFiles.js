@@ -46,6 +46,8 @@ const BASE_FILES = [
   'scripts/test-story-ad-platform-v111-real-model-contract.js',
   'scripts/story-ad-pm2-release.js',
   'scripts/repair-new-story-ad-person-looks.js',
+  'scripts/repair-story-ad-reference-authority.js',
+  'scripts/migrate-story-ad-active-plan-release.js',
   'scripts/lib/storyAdReleaseFiles.js',
   'scripts/run-with-pm2-env.js',
 ];

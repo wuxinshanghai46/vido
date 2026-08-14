@@ -102,6 +102,8 @@ async function runSync(analysis = {}, reference = {}) {
       currentReference.analysis_quality?.valid === true
       && Boolean(currentReference.reference_understanding)
       && text(currentReference.generated_brief) === text(projectedReference.generated_brief)
+      && referenceUnderstandingEdits.fingerprint(currentReference)
+        === referenceUnderstandingEdits.fingerprint(projectedReference)
     );
   const sameBrief = !Object.prototype.hasOwnProperty.call(patch, 'brief')
     || (comparableText(previousContext.brief) === comparableText(patch.brief)

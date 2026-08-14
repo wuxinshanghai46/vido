@@ -8,7 +8,7 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260814-reference-world-recognition-v51';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260814-reference-world-recognition-v51';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260814-reference-world-recognition-v51';
-import { personPlanBlockedView } from './assetCenterPlanningDetailsStatus.js?v=20260814-reference-world-recognition-v51';
+import { createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260814-plan-authority-repair-v52';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -223,10 +223,14 @@ export async function mount(host, context) {
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
-  const personPlanEligibility = planEligibility.person || planEligibility;
+  const personPlanEligibility = planEligibility.person
+    ? { ...planEligibility, ...planEligibility.person, release_migration: planEligibility.release_migration }
+    : planEligibility;
   const assetPlanReady = personPlanEligibility.eligible === true;
   const generationActive = !!bundle?.project?.active_generation_id;
   const generationDisabled = generationActive ? 'disabled' : '';
+  const personPlanRequestKey = `person-plan:${bundle.project.id}:${bundle.revisions?.content || 1}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+  const personPlanRequestGuard = createPersonPlanRequestGuard(personPlanRequestKey);
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
   const assetScopeLabel = bundle.brief?.content_mode === 'narrative_story' ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
@@ -543,15 +547,11 @@ export async function mount(host, context) {
   });
   host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
-    if (!await confirmDialog('本次只更新人物文字方案，不会修改场景方案、场景图片或人物在场景中的站位绑定，也不会生成图片。', { title: '更新人物方案', confirmText: '确认更新人物方案' })) return;
-    try {
-      setButtonBusy(button, true, '正在更新人物方案…', { elapsed: true });
-      await store.runStage('person-plan');
-      toast('人物方案更新已提交；场景方案和站位绑定不会被改动。', 'success');
-      await context.refreshShell();
-    } catch (error) { toast(error.message, 'danger'); } finally {
-      setButtonBusy(button, false);
-    }
+    await personPlanRequestGuard.run(async (requestKey) => {
+      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260814-plan-authority-repair-v52');
+      return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
+        migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
+    });
   });
   host.querySelector('[data-confirm-assets]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

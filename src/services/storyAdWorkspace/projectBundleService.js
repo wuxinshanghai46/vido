@@ -450,9 +450,10 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   const requested = new Set(clean(sections, 300).split(',').map(item => item.trim()).filter(Boolean));
   const include = name => !requested.size || requested.has(name) || requested.has('all');
   const outputs = raw.outputs && typeof raw.outputs === 'object' ? raw.outputs : {};
-  const context = authoritativeReference.resolve(raw.task, outputs.context && typeof outputs.context === 'object'
+  const referenceSnapshot = authoritativeReference.snapshot(raw.task, outputs.context && typeof outputs.context === 'object'
     ? outputs.context
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
+  const context = referenceSnapshot.context;
   const project = {
     ...projectSummary({ ...storyAd.taskSummary(raw.task), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),

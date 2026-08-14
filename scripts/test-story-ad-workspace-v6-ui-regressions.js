@@ -466,7 +466,8 @@ const planningModule = loadBrowserModule(
     bindPersonLookForm: personLookModule.bindPersonLookForm,
   },
 );
-const planningStatusSource = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js');
+const planningStatusSource = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js')
+  + read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
 const scenePlanningStatusSource = read('public/story-ad/views/scenePlanStatus.js');
 const dossierModule = loadBrowserModule(
   'public/story-ad/views/personDossierShowcase.js',

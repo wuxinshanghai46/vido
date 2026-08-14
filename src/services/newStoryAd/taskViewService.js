@@ -28,6 +28,7 @@ function createTaskViewService(deps = {}) {
     blueprintFingerprint,
     keyframeCompletion,
     isBeforeOrAtKeyframes,
+    assetPlanFingerprint,
   } = deps;
 
   function storyboardStatus(bundle = {}, outputs = {}) {
@@ -154,8 +155,11 @@ function createTaskViewService(deps = {}) {
       ? outputs.asset_plan_active
       : null;
     if (activePlanRecord?.plan) outputs.asset_plan = activePlanRecord.plan;
+    const currentPlanFingerprint = typeof assetPlanFingerprint === 'function'
+      ? assetPlanFingerprint(bundle.task || {}, outputs.context || bundle.task?.request || {})
+      : (activePlanRecord?.fingerprint || '');
     outputs.asset_plan_eligibility = assetPlanPublication
-      ? assetPlanPublication.eligibility(taskId, { fingerprint: activePlanRecord?.fingerprint || '' })
+      ? assetPlanPublication.eligibility(taskId, { fingerprint: currentPlanFingerprint })
       : { eligible: false, issues: ['asset_plan_publication_service_missing'] };
     outputs.video_clips = videoClipStatusRecovery.recoverFromOutputRows(rawBundle.outputs || [], outputs.video_clips || []);
     const currentStoryboardStatus = storyboardStatus(bundle, outputs);

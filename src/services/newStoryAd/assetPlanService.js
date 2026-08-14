@@ -1567,6 +1567,35 @@ async function replanScope(taskId, scope, options = {}) {
   const section = scope === 'person' ? 'cast_profiles' : 'scene_plan';
   const generationId = cleanText(options.generation_id || options.generationId || '', 160);
   const currentFingerprint = fingerprint(task, ctx);
+  const releaseMigration = assetPlanPublication.migrateCompatibleRelease(taskId, {
+    fingerprint: currentFingerprint,
+    reason: `${scope}_plan_user_refresh`,
+    generationId,
+  });
+  if (releaseMigration.blocked) {
+    const error = new Error('当前任务仍有活动生成或计费状态未确认，已停止方案迁移和模型调用');
+    error.code = 'ASSET_PLAN_RELEASE_MIGRATION_BLOCKED';
+    error.status = 409;
+    error.retryable = false;
+    error.details = releaseMigration.compatibility;
+    throw error;
+  }
+  if (releaseMigration.migrated) {
+    storage.saveStage(taskId, `${scope}_plan`, {
+      status: 'done',
+      output_summary: '现有方案已通过兼容校验并升级到当前运行版本',
+      diagnostics: {
+        fingerprint: currentFingerprint,
+        scope,
+        model_call_count: 0,
+        release_migration: true,
+        from_bundle_id: releaseMigration.compatibility.from_bundle_id,
+        to_bundle_id: releaseMigration.compatibility.to_bundle_id,
+      },
+    });
+    storage.updateTask(taskId, { status: 'running', stage: `${scope}_plan_done` });
+    return scope === 'person' ? releaseMigration.plan.cast_profiles : releaseMigration.plan.scene_plan;
+  }
   sectionRecovery.saveCheckpointAtomic(taskId, ASSET_PLAN_DRAFT_CHECKPOINT_KIND, previous, ctx, {
     ...options,
     generation_id: generationId,

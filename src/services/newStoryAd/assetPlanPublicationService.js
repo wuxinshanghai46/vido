@@ -8,7 +8,103 @@ const releaseBundle = require('../storyAdReleaseBundleService');
 
 const CANDIDATE_KIND = 'asset_plan_candidate';
 const ACTIVE_KIND = 'asset_plan_active';
+const RELEASE_MIGRATION_KIND = 'asset_plan_release_migration';
+const FINGERPRINT_CONTRACT = 'asset-plan-input-v14';
 const PLAN_DOMAINS = ['person', 'scene'];
+const ENVELOPE_CONTRACT_FIELDS = [
+  'contract_version',
+  'story_facts_schema_version',
+  'normalizer_version',
+  'topology_compiler_version',
+  'validator_version',
+  'scene_layer_contract_version',
+  'reference_expansion_contract_version',
+  'storyboard_coverage_contract_version',
+];
+
+function clean(value) { return String(value ?? '').trim(); }
+
+function itemId(item = {}) {
+  return clean(item.permanent_id || item.stable_id || item.id || item.cast_id
+    || item.scene_id || item.space_id || item.prop_id || item.pet_id || item.beat_id);
+}
+
+function stableIdentityIssues(plan = {}) {
+  const groups = [
+    ['cast_profiles', plan.cast_profiles],
+    ['pet_profiles', plan.pet_profiles],
+    ['prop_plan', plan.prop_plan],
+    ['scene_plan.spaces', plan.scene_plan?.spaces],
+    ['story_seed.plot_beats', plan.story_seed?.plot_beats],
+  ];
+  const issues = [];
+  groups.forEach(([label, values]) => {
+    if (!Array.isArray(values)) return;
+    const ids = values.map(itemId);
+    ids.forEach((id, index) => { if (!id) issues.push(`stable_id_missing:${label}[${index}]`); });
+    const populated = ids.filter(Boolean);
+    if (new Set(populated).size !== populated.length) issues.push(`stable_id_duplicate:${label}`);
+  });
+  return issues;
+}
+
+function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord: active = null, candidate = null, fingerprint = '' } = {}) {
+  const identity = releaseBundle.identity();
+  const currentEnvelope = releaseBundle.envelope();
+  const previousEnvelope = plan?.release_envelope || {};
+  const issues = [];
+  if (!plan || typeof plan !== 'object') issues.push('active_plan_missing');
+  else {
+    if (clean(plan.status) !== 'active') issues.push('active_plan_status_invalid');
+    if (!clean(previousEnvelope.producer_bundle_id)) issues.push('active_plan_bundle_missing');
+    if (!active || clean(active.plan_id) !== clean(plan.candidate_id)
+      || Number(active.active_revision || 0) !== Number(plan.active_revision || 0)
+      || clean(active.fingerprint) !== clean(plan.fingerprint)
+      || clean(active.fingerprint_contract) !== clean(plan.fingerprint_contract)) issues.push('active_plan_record_inconsistent');
+    if (!candidate || clean(candidate.candidate_id) !== clean(plan.candidate_id)
+      || clean(candidate.fingerprint) !== clean(plan.fingerprint)
+      || clean(candidate.fingerprint_contract) !== clean(plan.fingerprint_contract)
+      || Number(candidate.content_revision || 0) !== Number(plan.content_revision || 0)
+      || clean(candidate.validation_status) !== 'passed') issues.push('asset_plan_candidate_inconsistent');
+    if (Number(plan.content_revision || 0) !== Number(task.content_revision || 1)) issues.push('active_plan_content_revision_mismatch');
+    const previousFingerprintContract = clean(plan.fingerprint_contract);
+    if (previousFingerprintContract) {
+      if (previousFingerprintContract !== FINGERPRINT_CONTRACT) issues.push('active_plan_fingerprint_contract_mismatch');
+      else if (!clean(fingerprint) || clean(plan.fingerprint) !== clean(fingerprint)) issues.push('active_plan_input_fingerprint_mismatch');
+    } else {
+      // Pre-contract plans carry an opaque digest produced by the release that
+      // created them. Re-hashing their context with today's projection can
+      // create false drift when defaults/normalizers changed. The persist-time
+      // lineage marker plus unchanged content revision is the legacy proof.
+      if (!clean(context.asset_plan_fingerprint)) issues.push('legacy_asset_plan_lineage_missing');
+      else if (clean(context.asset_plan_fingerprint) !== clean(plan.fingerprint)) issues.push('legacy_asset_plan_lineage_mismatch');
+    }
+    ENVELOPE_CONTRACT_FIELDS.forEach((field) => {
+      if (!clean(previousEnvelope[field]) || clean(previousEnvelope[field]) !== clean(currentEnvelope[field])) {
+        issues.push(`active_plan_contract_component_mismatch:${field}`);
+      }
+    });
+    if (contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story') {
+      if (Number(plan.story_scene_contract_version || 0) !== storySceneCoverage.CONTRACT_VERSION) issues.push('active_plan_contract_mismatch');
+      issues.push(...storySceneCoverage.coverageIssues(plan, context).map(issue => `coverage:${issue}`));
+    }
+    issues.push(...stableIdentityIssues(plan));
+  }
+  const uniqueIssues = [...new Set(issues)];
+  const alreadyCurrent = clean(previousEnvelope.producer_bundle_id) === identity.bundle_id;
+  return {
+    compatible: uniqueIssues.length === 0,
+    migration_required: uniqueIssues.length === 0 && !alreadyCurrent,
+    already_current: uniqueIssues.length === 0 && alreadyCurrent,
+    issues: uniqueIssues,
+    from_bundle_id: clean(previousEnvelope.producer_bundle_id),
+    to_bundle_id: identity.bundle_id,
+    content_revision: Number(task.content_revision || 1) || 1,
+    fingerprint: clean(fingerprint),
+    fingerprint_contract: FINGERPRINT_CONTRACT,
+    fingerprint_basis: clean(plan?.fingerprint_contract) ? 'same_contract_strict_hash' : 'legacy_revision_and_persisted_lineage',
+  };
+}
 
 function domainMarker(plan = {}, fallback = {}) {
   return {
@@ -83,6 +179,7 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
     candidate_id: candidateId,
     content_revision: Number(task.content_revision || 1) || 1,
     fingerprint,
+    fingerprint_contract: FINGERPRINT_CONTRACT,
     story_scene_contract_version: contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
       ? storySceneCoverage.CONTRACT_VERSION
       : Number(context.story_scene_contract_version || 0),
@@ -124,6 +221,7 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
     active_revision: activeRevision,
     content_revision: activePlan.content_revision,
     fingerprint,
+    fingerprint_contract: FINGERPRINT_CONTRACT,
     release_envelope: activePlan.release_envelope,
     domain_state: activePlan.domain_state,
     plan: activePlan,
@@ -170,6 +268,115 @@ function carryForward(taskId, { contentRevision = 0, reason = '' } = {}) {
   return carriedPlan;
 }
 
+function migrateCompatibleRelease(taskId, {
+  fingerprint = '', reason = 'user_requested_plan_refresh', generationId = '', generation_id: legacyGenerationId = '',
+} = {}) {
+  const task = storage.getTask(taskId);
+  const active = activeRecord(taskId);
+  const plan = active?.plan || null;
+  const candidate = storage.getOutput(taskId, CANDIDATE_KIND);
+  const context = storage.getOutput(taskId, 'context') || task?.request || {};
+  const compatibility = releaseCompatibility({ task, context, plan, activeRecord: active, candidate, fingerprint });
+  if (!compatibility.compatible || !compatibility.migration_required) {
+    return { migrated: false, compatibility, plan };
+  }
+  const currentGenerationId = clean(generationId || legacyGenerationId);
+  const runningStates = new Set(['submitted', 'submitted_unknown', 'accepted', 'polling', 'running', 'generating', 'retrying']);
+  const activeUnknownBilling = (storage.readDb().model_calls || []).filter(call => String(call.task_id) === String(taskId)
+    && clean(call.billing_state).toLowerCase() === 'unknown'
+    && runningStates.has(clean(call.provider_submission_state || call.status).toLowerCase()));
+  const safetyIssues = [];
+  if (task?.active_generation_id && clean(task.active_generation_id) !== currentGenerationId) safetyIssues.push('active_generation_exists');
+  if (activeUnknownBilling.length) safetyIssues.push('active_unknown_billing_exists');
+  if (safetyIssues.length) return {
+    migrated: false,
+    blocked: true,
+    compatibility: { ...compatibility, compatible: false, issues: safetyIssues },
+    plan,
+  };
+  const migratedAt = new Date().toISOString();
+  const nextEnvelope = releaseBundle.envelope({
+    migrated_from_bundle_id: compatibility.from_bundle_id,
+    migrated_at: migratedAt,
+    migration_reason: clean(reason),
+  });
+  const nextDomainState = Object.fromEntries(PLAN_DOMAINS.map(domain => [domain, {
+    ...(plan.domain_state?.[domain] || {}),
+    bundle_id: compatibility.to_bundle_id,
+    fingerprint: compatibility.fingerprint,
+    content_revision: compatibility.content_revision,
+    updated_at: migratedAt,
+  }]));
+  const nextPlan = {
+    ...plan,
+    fingerprint: compatibility.fingerprint,
+    fingerprint_contract: FINGERPRINT_CONTRACT,
+    content_revision: compatibility.content_revision,
+    release_envelope: nextEnvelope,
+    domain_state: nextDomainState,
+    migrated_from_bundle_id: compatibility.from_bundle_id,
+    migrated_at: migratedAt,
+    migration_reason: clean(reason),
+  };
+  const nextActive = {
+    ...active,
+    content_revision: compatibility.content_revision,
+    fingerprint: compatibility.fingerprint,
+    fingerprint_contract: FINGERPRINT_CONTRACT,
+    release_envelope: nextEnvelope,
+    domain_state: nextDomainState,
+    plan: nextPlan,
+    migrated_from_bundle_id: compatibility.from_bundle_id,
+    migrated_at: migratedAt,
+  };
+  const nextCandidate = {
+    ...nextPlan,
+    status: 'candidate',
+    validation_status: 'passed',
+    validation_issues: [],
+    migration_only: true,
+  };
+  const migrationRecord = {
+    schema_version: 1,
+    status: 'prepared',
+    model_call_count: 0,
+    plan_id: active.plan_id || plan.candidate_id || '',
+    active_revision: Number(active.active_revision || plan.active_revision || 0),
+    content_revision: compatibility.content_revision,
+    fingerprint: compatibility.fingerprint,
+    fingerprint_contract: FINGERPRINT_CONTRACT,
+    fingerprint_basis: compatibility.fingerprint_basis,
+    from_bundle_id: compatibility.from_bundle_id,
+    to_bundle_id: compatibility.to_bundle_id,
+    reason: clean(reason),
+    migrated_at: migratedAt,
+  };
+  // Publish Active last. JSON uses one atomic batch; SQLite/Work may span
+  // physical writes, so any earlier failure leaves the old Active authority in
+  // place and a later retry can safely complete the same migration.
+  storage.withWriteBatch(() => {
+    storage.saveOutput(taskId, CANDIDATE_KIND, nextCandidate, { content_revision: compatibility.content_revision });
+    storage.saveOutput(taskId, 'asset_plan', nextPlan, { content_revision: compatibility.content_revision });
+    storage.saveOutput(taskId, RELEASE_MIGRATION_KIND, migrationRecord, { content_revision: compatibility.content_revision });
+    storage.saveOutput(taskId, ACTIVE_KIND, nextActive, { content_revision: compatibility.content_revision });
+  });
+  let auditFinalized = true;
+  try {
+    storage.saveOutput(taskId, RELEASE_MIGRATION_KIND, { ...migrationRecord, status: 'completed' }, { content_revision: compatibility.content_revision });
+  } catch {
+    // Active is already the current authority. Keep the prepared receipt for a
+    // read-only audit/retry instead of rolling the plan back across releases.
+    auditFinalized = false;
+  }
+  return {
+    migrated: true,
+    compatibility,
+    plan: nextPlan,
+    audit_finalized: auditFinalized,
+    record: storage.getOutput(taskId, RELEASE_MIGRATION_KIND),
+  };
+}
+
 function eligibility(taskId, { fingerprint = '' } = {}) {
   const task = storage.getTask(taskId) || {};
   const context = storage.getOutput(taskId, 'context') || task.request || {};
@@ -181,6 +388,14 @@ function eligibility(taskId, { fingerprint = '' } = {}) {
     && /_failed$/.test(failedStage);
   if (planningFailed) issues.push('task_current_planning_stage_failed');
   const uniqueIssues = [...new Set(issues)];
+  const releaseMigration = releaseCompatibility({
+    task,
+    context,
+    plan,
+    activeRecord: active,
+    candidate: storage.getOutput(taskId, CANDIDATE_KIND),
+    fingerprint,
+  });
   const domainEligibility = domain => ({
     eligible: !uniqueIssues.includes(`${domain}_plan_stale`)
       && !uniqueIssues.some(issue => issue.startsWith('active_plan_') || issue === 'task_current_planning_stage_failed'),
@@ -197,12 +412,18 @@ function eligibility(taskId, { fingerprint = '' } = {}) {
     release_bundle_id: releaseBundle.identity().bundle_id,
     plan_bundle_id: plan?.release_envelope?.producer_bundle_id || '',
     topology_hash: plan?.story_seed?.topology_hash || plan?.scene_plan?.topology_hash || '',
+    release_migration: releaseMigration,
   };
 }
 
 module.exports = {
   CANDIDATE_KIND,
   ACTIVE_KIND,
+  RELEASE_MIGRATION_KIND,
+  FINGERPRINT_CONTRACT,
+  stableIdentityIssues,
+  releaseCompatibility,
+  migrateCompatibleRelease,
   currentPlan,
   activeRecord,
   planIssues,

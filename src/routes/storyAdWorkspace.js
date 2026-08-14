@@ -8,6 +8,7 @@ const storyboardSketches = require('../services/storyAdWorkspace/storyboardSketc
 const sceneWorlds = require('../services/storyAdWorkspace/sceneWorldService');
 const directorScenes = require('../services/storyAdWorkspace/directorSceneService');
 const referenceUnderstandingConfirmations = require('../services/storyAdWorkspace/referenceUnderstandingConfirmationService');
+const authoritativeReference = require('../services/storyAdWorkspace/authoritativeReferenceProjectionService');
 const referenceVideoAnalyses = require('../services/newStoryAd/referenceVideoAnalysisService');
 const referenceUnderstandingEdits = require('../services/newStoryAd/referenceUnderstandingEditService');
 const videoCore = require('../services/videoGenerationCore');
@@ -234,7 +235,8 @@ router.put('/projects/:taskId/scene-world-assignments', asyncRoute(async (req, r
 router.post('/projects/:taskId/reference-understanding/confirm', asyncRoute(async (req, res) => {
   projectForRequest(req);
   const raw = storyAd.publicTaskBundle(req.params.taskId);
-  const context = raw?.context || raw?.outputs?.context || raw?.task?.request || {};
+  const storedContext = raw?.context || raw?.outputs?.context || raw?.task?.request || {};
+  const context = authoritativeReference.snapshot(raw?.task || {}, storedContext, undefined, { required: true }).context;
   const reference_understanding_confirmation = referenceUnderstandingConfirmations.confirm(
     req.params.taskId,
     context,

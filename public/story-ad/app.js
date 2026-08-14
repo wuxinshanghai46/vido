@@ -21,7 +21,7 @@ const VIEW_META = {
 };
 const VIEW_MODULES = {
   brief: () => import('./views/briefView.js?v=20260814-reference-world-recognition-v51'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-reference-world-recognition-v51'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-plan-authority-repair-v52'),
   scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-world-recognition-v51'),
   plot: () => import('./views/plotRoomView.js?v=20260814-reference-world-recognition-v51'),
   storyboard: () => import('./views/storyboardView.js?v=20260814-reference-world-recognition-v51'),

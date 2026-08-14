@@ -208,6 +208,7 @@ const taskViews = createTaskViewService({
   keyframeCompletion,
   isBeforeOrAtKeyframes,
   assetPlanPublication,
+  assetPlanFingerprint: assetPlan.fingerprint,
 });
 function publicTaskBundle(taskId, options = {}) { return taskViews.publicTaskBundle(taskId, options); }
 function taskSummary(task = {}, options = {}) { return taskViews.taskSummary(task, options); }
