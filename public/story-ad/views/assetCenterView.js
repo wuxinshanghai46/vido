@@ -240,7 +240,7 @@ export async function mount(host, context) {
   const assetPlanReady = personPlanEligibility.eligible === true;
   const generationActive = !!bundle?.project?.active_generation_id;
   const generationDisabled = generationActive ? 'disabled' : '';
-  const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物与场景方案"';
+  const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
   const assetScopeLabel = bundle.brief?.content_mode === 'narrative_story' ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
