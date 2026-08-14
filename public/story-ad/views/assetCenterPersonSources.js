@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v31';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v31';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v31';
+import { request } from '../api.js?v=20260814-reference-recovery-v32';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v32';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v32';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
