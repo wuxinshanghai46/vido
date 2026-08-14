@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260814-reference-asset-autofill-v43';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260814-reference-asset-autofill-v44';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

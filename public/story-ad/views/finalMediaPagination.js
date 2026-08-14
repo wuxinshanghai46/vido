@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v43';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v44';
 
 export function moreMediaButton(catalog = {}, kind = 'keyframes', label = '继续加载') {
   return catalog?.has_more

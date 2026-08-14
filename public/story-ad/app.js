@@ -1,8 +1,8 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-reference-asset-autofill-v43';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-asset-autofill-v43';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-asset-autofill-v43';
-import { confirmDialog } from './components/dialog.js?v=20260814-reference-asset-autofill-v43';
-import { historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260814-reference-asset-autofill-v43';
+import { createProjectStore } from './store/projectStore.js?v=20260814-reference-asset-autofill-v44';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-asset-autofill-v44';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-asset-autofill-v44';
+import { confirmDialog } from './components/dialog.js?v=20260814-reference-asset-autofill-v44';
+import { historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260814-reference-asset-autofill-v44';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -20,13 +20,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-reference-asset-autofill-v43'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-reference-asset-autofill-v43'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-asset-autofill-v43'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-reference-asset-autofill-v43'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-asset-autofill-v43'),
-  final: () => import('./views/finalView.js?v=20260814-reference-asset-autofill-v43'),
-  workflow: () => import('./views/workflowView.js?v=20260814-reference-asset-autofill-v43'),
+  brief: () => import('./views/briefView.js?v=20260814-reference-asset-autofill-v44'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-reference-asset-autofill-v44'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-asset-autofill-v44'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-reference-asset-autofill-v44'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-asset-autofill-v44'),
+  final: () => import('./views/finalView.js?v=20260814-reference-asset-autofill-v44'),
+  workflow: () => import('./views/workflowView.js?v=20260814-reference-asset-autofill-v44'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
@@ -426,7 +426,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260814-reference-asset-autofill-v43');
+  const filters = await import('./projectCenterFilters.js?v=20260814-reference-asset-autofill-v44');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

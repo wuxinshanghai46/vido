@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-asset-autofill-v43';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-asset-autofill-v44';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
