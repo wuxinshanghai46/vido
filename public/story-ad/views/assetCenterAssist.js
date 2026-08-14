@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v42';
-import { promptDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v42';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v42';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v42';
+import { request } from '../api.js?v=20260814-reference-asset-autofill-v43';
+import { promptDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v43';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v43';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260814-reference-asset-autofill-v43';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {

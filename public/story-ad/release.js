@@ -1,2 +1,2 @@
-export const CLIENT_BUILD_ID = "20260814-reference-asset-autofill-v42";
+export const CLIENT_BUILD_ID = "20260814-reference-asset-autofill-v43";
 export const CLIENT_CONTRACT_VERSION = "story-scene-platform-v6";

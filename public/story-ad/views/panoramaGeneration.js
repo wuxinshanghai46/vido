@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-asset-autofill-v42';
-import { toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v42';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v42';
+import { request } from '../api.js?v=20260814-reference-asset-autofill-v43';
+import { toast } from '../components/ui.js?v=20260814-reference-asset-autofill-v43';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-asset-autofill-v43';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
