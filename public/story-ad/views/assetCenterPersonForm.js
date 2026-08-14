@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
-import { personAgeDisplay } from './assetCenterPersonState.js?v=20260814-reference-world-recognition-v51';
-import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260814-reference-world-recognition-v51';
-import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260814-reference-world-recognition-v51';
+import { escapeHtml } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
+import { personAgeDisplay } from './assetCenterPersonState.js?v=20260814-plan-authority-repair-v52';
+import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260814-plan-authority-repair-v52';
+import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260814-plan-authority-repair-v52';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};

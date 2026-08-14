@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-reference-world-recognition-v51';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v52';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
 
 export function visualGenerationState(bundle, missingSubjectCount, missingSceneCount) {
   const progress = bundle.generation?.progress || {};
@@ -21,7 +21,7 @@ export function visualGenerationState(bundle, missingSubjectCount, missingSceneC
 
 let billingReviewDialogPromise;
 function billingReviewDialog() {
-  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260814-reference-world-recognition-v51');
+  billingReviewDialogPromise ||= import('./assetCenterBillingReviewDialog.js?v=20260814-plan-authority-repair-v52');
   return billingReviewDialogPromise;
 }
 export async function loadBillingReviews(options = {}) {

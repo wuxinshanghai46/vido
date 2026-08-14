@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-world-recognition-v51';
-import { toast } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-world-recognition-v51';
+import { request } from '../api.js?v=20260814-plan-authority-repair-v52';
+import { toast } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
+import { confirmDialog } from '../components/dialog.js?v=20260814-plan-authority-repair-v52';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

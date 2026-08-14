@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-world-recognition-v51';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-reference-world-recognition-v51';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260814-plan-authority-repair-v52';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260814-plan-authority-repair-v52';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
