@@ -298,7 +298,8 @@ async function main() {
   const assetView = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(root, 'src/services/storyAdWorkspace/workflowNavigationService.js'), 'utf8');
   const ui = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
-  assert.match(assetView, /personPlanEligibility = planEligibility\.person \|\| planEligibility/);
+  assert.match(assetView, /personPlanEligibility = planEligibility\.person[\s\S]{0,180}release_migration: planEligibility\.release_migration/,
+    '人物分域资格必须保留顶层 release migration 兼容诊断');
   assert.match(assetView, /personPlanEligibility\.eligible === true/);
   assert.match(assetView, /contractDisabled/);
   assert.match(navigation, /asset_plan_eligibility/);
