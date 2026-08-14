@@ -2437,7 +2437,7 @@ async function synthesizeAnalysisFromEvidence(record = {}, visualEvidence = [], 
           temperature: 0.05,
           timeoutMs: 120000,
           stageBudgetMs: 180000,
-          maxCandidates: 3,
+          maxCandidates: 5,
           validateText: async (text, meta = {}) => {
             const patch = meta.parsed_json || jsonRepair.parseJson(text, 'object');
             const ownedMerge = semanticRecovery.mergeContractPatch(workingAnalysis, patch, [contract]);

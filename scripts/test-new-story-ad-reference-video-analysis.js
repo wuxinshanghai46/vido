@@ -1293,6 +1293,9 @@ async function main() {
   const modelGatewaySource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/modelGateway.js'), 'utf8');
   assert.match(modelGatewaySource, /REFERENCE_SYNTHESIS_RECOVERY_FALLBACKS[\s\S]*?provider_id: 'aiapi', model_id: 'deepseek-chat'/,
     'reference synthesis must retain an independent DeepSeek recovery candidate when the managed route is customized');
+  const referenceVideoSource = fs.readFileSync(path.resolve(__dirname, '../src/services/newStoryAd/referenceVideoAnalysisService.js'), 'utf8');
+  assert.match(referenceVideoSource, /maxTokens: 4200,[\s\S]*?stageBudgetMs: 180000,[\s\S]*?maxCandidates: 5/,
+    'targeted semantic contract repair must reach the fourth DeepSeek candidate instead of overriding the gateway cap with three');
   assert.deepStrictEqual(
     modelGateway.classifyError(new Error('400 status code (no body)')),
     { code: 'PROVIDER_REQUEST_REJECTED', retryable: false },
