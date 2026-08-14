@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v28';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v28';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v28';
+import { request } from '../api.js?v=20260814-reference-recovery-v30';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260814-reference-recovery-v30';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v30';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};

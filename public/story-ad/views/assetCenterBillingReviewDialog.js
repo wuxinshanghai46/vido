@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260814-reference-recovery-v28';
-import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v28';
+import { request } from '../api.js?v=20260814-reference-recovery-v30';
+import { confirmDialog } from '../components/dialog.js?v=20260814-reference-recovery-v30';
 
 function reviewLabel(review = {}) {
   if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;

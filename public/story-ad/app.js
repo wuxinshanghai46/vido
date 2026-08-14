@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260814-reference-recovery-v28';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-recovery-v28';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-recovery-v28';
-import { confirmDialog } from './components/dialog.js?v=20260814-reference-recovery-v28';
+import { createProjectStore } from './store/projectStore.js?v=20260814-reference-recovery-v30';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260814-reference-recovery-v30';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260814-reference-recovery-v30';
+import { confirmDialog } from './components/dialog.js?v=20260814-reference-recovery-v30';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260814-reference-recovery-v28'),
-  assets: () => import('./views/assetCenterView.js?v=20260814-reference-recovery-v28'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-recovery-v28'),
-  plot: () => import('./views/plotRoomView.js?v=20260814-reference-recovery-v28'),
-  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-recovery-v28'),
-  final: () => import('./views/finalView.js?v=20260814-reference-recovery-v28'),
-  workflow: () => import('./views/workflowView.js?v=20260814-reference-recovery-v28'),
+  brief: () => import('./views/briefView.js?v=20260814-reference-recovery-v30'),
+  assets: () => import('./views/assetCenterView.js?v=20260814-reference-recovery-v30'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260814-reference-recovery-v30'),
+  plot: () => import('./views/plotRoomView.js?v=20260814-reference-recovery-v30'),
+  storyboard: () => import('./views/storyboardView.js?v=20260814-reference-recovery-v30'),
+  final: () => import('./views/finalView.js?v=20260814-reference-recovery-v30'),
+  workflow: () => import('./views/workflowView.js?v=20260814-reference-recovery-v30'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
