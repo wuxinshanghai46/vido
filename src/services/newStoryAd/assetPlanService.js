@@ -1539,6 +1539,12 @@ function assertScopedPlanIsolation(previous = {}, next = {}, scope = '', overrid
   return true;
 }
 
+function markSceneConfigDone(taskId) {
+  storage.updateTask(taskId, {
+    status: 'running', stage: 'scene_config_done', error: '', error_code: '', active_generation_id: '', active_stage: '',
+  });
+}
+
 async function replanScope(taskId, scope, options = {}) {
   const task = storage.getTask(taskId);
   if (!task) throw new Error('任务不存在');
@@ -1612,14 +1618,7 @@ function syncPrevious(taskId) {
     output_summary: 'Complete asset plan synchronized to person, prop and scene context',
     diagnostics: { fingerprint: synchronized.fingerprint, cache_hit: true, synchronized: true },
   });
-  storage.updateTask(taskId, {
-    status: 'running',
-    stage: 'scene_config_done',
-    error: '',
-    error_code: '',
-    active_generation_id: '',
-    active_stage: '',
-  });
+  markSceneConfigDone(taskId);
   stageProgress.update(taskId, {
     stage: 'scene_config',
     status: 'done',
@@ -1671,6 +1670,7 @@ async function generate(taskId, options = {}) {
       generationId,
       message: '输入指纹一致，已复用人物、道具和场景资产计划',
     });
+    markSceneConfigDone(taskId);
     return previous.scene_plan;
   }
 
@@ -1907,9 +1907,7 @@ async function generate(taskId, options = {}) {
     output_summary: '统一资产计划已生成',
     diagnostics: { ...modelMeta, fingerprint: currentFingerprint, cache_hit: false },
   });
-  storage.updateTask(taskId, {
-    status: 'running', stage: 'scene_config_done', error: '', error_code: '', active_generation_id: '', active_stage: '',
-  });
+  markSceneConfigDone(taskId);
   stageProgress.update(taskId, {
     stage: 'scene_config',
     status: 'done',

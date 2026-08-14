@@ -248,6 +248,12 @@ const familyStory = genericStory({
   assert.equal(refreshedCheckpointObserved, true);
   assert.equal(storage.getTask(taskId).error || '', '', '资产方案成功后必须清除上一次失败遗留的错误文字');
   assert.equal(storage.getTask(taskId).error_code || '', '', '资产方案成功后必须清除上一次失败遗留的错误码');
+  storage.updateTask(taskId, { status: 'failed', stage: 'scene_config_failed', error: '缓存前的旧错误', error_code: 'STALE_CACHE_ERROR' });
+  const storyCallsBeforeCacheHit = storyCalls;
+  await assetPlan.generate(taskId);
+  assert.equal(storyCalls, storyCallsBeforeCacheHit, '完整方案缓存命中不得再次调用故事模型');
+  assert.equal(storage.getTask(taskId).error || '', '', '完整方案缓存命中后也必须清除旧错误文字');
+  assert.equal(storage.getTask(taskId).error_code || '', '', '完整方案缓存命中后也必须清除旧错误码');
 
   modelGateway.generateText = originalGenerateText;
   let semanticError;
