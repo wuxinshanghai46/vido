@@ -1,8 +1,8 @@
 # VIDO 剧情广告 V51 回家续接交接
 
-> 日期：2026-08-14  
-> 当前权威分支：`codex/story-ad-systemic-remediation`  
-> 当前生产版本：`20260814-reference-world-recognition-v51`  
+> 日期：2026-08-14
+> 当前权威分支：`codex/story-ad-systemic-remediation`
+> 当前生产版本：`20260814-reference-world-recognition-v51`
 > 用途：家庭电脑拉取后继续优化剧情广告全流程
 
 ## 1. 当日目标与用户决策
