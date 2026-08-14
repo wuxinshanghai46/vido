@@ -136,6 +136,37 @@ function changedFiles(root, baseRevision, targetRevision) {
   }
 }
 
+function releaseConfigChangeKind(before = {}, after = {}) {
+  const stripBuildId = value => {
+    const copy = canonicalJson(value);
+    if (copy && typeof copy === 'object' && !Array.isArray(copy)) delete copy.build_id;
+    return copy;
+  };
+  if (JSON.stringify(canonicalJson(before)) === JSON.stringify(canonicalJson(after))) return 'unchanged';
+  return JSON.stringify(stripBuildId(before)) === JSON.stringify(stripBuildId(after))
+    ? 'build_id_only'
+    : 'runtime_contract';
+}
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!value || typeof value !== 'object') return value;
+  return Object.keys(value).sort().reduce((result, key) => {
+    result[key] = canonicalJson(value[key]);
+    return result;
+  }, {});
+}
+
+function releaseConfigDelta(root, baseRevision, targetRevision) {
+  try {
+    const before = JSON.parse(git(root, ['show', `${baseRevision}:config/story-ad-release.json`]));
+    const after = JSON.parse(git(root, ['show', `${targetRevision}:config/story-ad-release.json`]));
+    return releaseConfigChangeKind(before, after);
+  } catch {
+    return 'unverified';
+  }
+}
+
 function classifyFiles(files = [], { reliable = true } = {}) {
   const normalized = unique(files.map(normalizeFile).filter(Boolean));
   if (!reliable) return {
@@ -173,6 +204,7 @@ function classifyFiles(files = [], { reliable = true } = {}) {
 
 function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
   const profiles = {
+    release_metadata: ['release_core'],
     ui: ['workspace_ui', 'release_core'],
     reference: ['reference', 'workspace_ui', 'release_core'],
     asset_plan: ['asset_plan', 'workspace_ui', 'release_core'],
@@ -193,7 +225,20 @@ function createPlan({
   const delta = Array.isArray(files)
     ? { files: files.map(normalizeFile), reliable: reliable !== false, reason: 'provided' }
     : changedFiles(root, effectiveBaseRevision, targetRevision);
-  const classification = classifyFiles(delta.files, { reliable: delta.reliable });
+  const metadataFiles = [];
+  let runtimeFiles = delta.files;
+  if (!Array.isArray(files) && delta.reliable && delta.files.includes('config/story-ad-release.json')) {
+    const kind = releaseConfigDelta(root, effectiveBaseRevision, targetRevision);
+    if (kind === 'build_id_only') {
+      metadataFiles.push('config/story-ad-release.json');
+      runtimeFiles = delta.files.filter(file => file !== 'config/story-ad-release.json');
+    }
+  }
+  const classification = runtimeFiles.length
+    ? classifyFiles(runtimeFiles, { reliable: delta.reliable })
+    : (metadataFiles.length
+      ? { profile: 'release_metadata', domains: ['release_metadata'], unknown_files: [], reasons: ['仅发布编号变化，执行发布完整性门禁'] }
+      : classifyFiles(runtimeFiles, { reliable: delta.reliable }));
   const gateIds = gateIdsForProfile(classification.profile, { fullPlatform });
   return {
     contract_version: CONTRACT_VERSION,
@@ -202,6 +247,8 @@ function createPlan({
     reasons: classification.reasons,
     unknown_files: classification.unknown_files,
     changed_files: delta.files,
+    runtime_changed_files: runtimeFiles,
+    metadata_files: metadataFiles,
     delta_reliable: delta.reliable,
     delta_reason: delta.reason,
     base_revision: effectiveBaseRevision,
@@ -338,6 +385,8 @@ module.exports = {
   executeGate,
   gateIdsForProfile,
   readGateCache,
+  releaseConfigChangeKind,
+  releaseConfigDelta,
   resolveArtifactRevision,
   runPlan,
   saveGateCache,

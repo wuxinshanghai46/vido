@@ -1415,8 +1415,6 @@ function attachFixedPropsToScenes(plan = {}) {
 
 function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
   const plan = attachFixedPropsToScenes(normalizePlan(rawPlan, ctx));
-  const activePlan = assetPlanPublication.publish(taskId, plan, { ...meta, scope });
-  const nextPlan = { ...activePlan, ...meta };
   const props = propDrafts(plan, ctx.prop_assets);
   const castFingerprint = crypto.createHash('sha256')
     .update(JSON.stringify(canonical(plan.cast_profiles || [])))
@@ -1483,9 +1481,20 @@ function persist(taskId, ctx, rawPlan, meta, scope = 'all') {
     advertised_subject_contract: plan.advertised_subject_contract || ctx.advertised_subject_contract || null,
     product_contract: projectedProductContract,
   };
-  const nextContext = assertContextConsistent(scope === 'person'
+  const projectedContext = assertContextConsistent(scope === 'person'
     ? personContext
     : (scope === 'scene' ? sceneContext : fullContext));
+  // The persisted context marks planner-generated cast profiles so future
+  // fingerprints exclude derived output. Publish against that exact context
+  // snapshot; otherwise a newly created plan is stale on its very next read.
+  const persistedFingerprint = fingerprint(storage.getTask(taskId) || {}, projectedContext);
+  const persistedMeta = { ...meta, fingerprint: persistedFingerprint };
+  const nextContext = assertContextConsistent({
+    ...projectedContext,
+    asset_plan_fingerprint: persistedFingerprint,
+  });
+  const activePlan = assetPlanPublication.publish(taskId, plan, { ...persistedMeta, scope });
+  const nextPlan = { ...activePlan, ...persistedMeta };
   storage.saveOutput(taskId, 'asset_plan', nextPlan);
   if (scope !== 'person') storage.saveOutput(taskId, 'scene_config', plan.scene_plan);
   if (scope === 'all') storage.saveOutput(taskId, 'prop_assets', props);

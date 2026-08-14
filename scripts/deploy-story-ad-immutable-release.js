@@ -58,6 +58,7 @@ const client = new Client();
 const quote = value => `'${String(value).replace(/'/g, `'"'"'`)}'`;
 const candidateName = `vido-candidate-${artifactId.slice(0, 12)}`;
 let previousTarget = '/opt/vido/app';
+let effectiveBaseReleaseDir = baseReleaseDir;
 let previousBundleId = '';
 let previousBuildId = '';
 let previousContractVersion = '';
@@ -317,6 +318,9 @@ client.on('ready', async () => {
   try {
     reportPhase('connected', { files: files.length, upload_concurrency: uploadConcurrency });
     previousTarget = (await exec(`if test -e ${quote(currentLink)}; then readlink -f ${quote(currentLink)}; else printf %s /opt/vido/app; fi`)).trim() || '/opt/vido/app';
+    if (!effectiveBaseReleaseDir && /^\/opt\/vido\/releases\/[a-f0-9]{64}$/.test(previousTarget)) {
+      effectiveBaseReleaseDir = previousTarget;
+    }
     const preVersion = parseJson(await exec('curl -fsS http://127.0.0.1:4600/api/story-ad/version'));
     previousBundleId = String(preVersion.release_bundle_id || '');
     previousBuildId = String(preVersion.build_id || '');
@@ -349,9 +353,9 @@ client.on('ready', async () => {
     if (!exists) {
       reportPhase('artifact_upload', { files: files.length, upload_concurrency: uploadConcurrency });
       await exec(`mkdir -p ${quote(stagingDir)}`);
-      if (baseReleaseDir) {
-        const baseExists = (await exec(`test -d ${quote(baseReleaseDir)} && echo yes || echo no`)).trim() === 'yes';
-        if (!baseExists) throw new Error(`IMMUTABLE_BASE_RELEASE_MISSING: ${baseReleaseDir}`);
+      if (effectiveBaseReleaseDir) {
+        const baseExists = (await exec(`test -d ${quote(effectiveBaseReleaseDir)} && echo yes || echo no`)).trim() === 'yes';
+        if (!baseExists) throw new Error(`IMMUTABLE_BASE_RELEASE_MISSING: ${effectiveBaseReleaseDir}`);
         await exec(`node -e ${quote(`
           const fs=require('fs'),path=require('path');
           const spec=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));
@@ -364,7 +368,7 @@ client.on('ready', async () => {
             fs.linkSync(source,destination); reused+=1;
           }
           console.log(JSON.stringify({reused}));
-        `)} ${quote(remoteAuditSpecPath)} ${quote(baseReleaseDir)} ${quote(stagingDir)}`);
+        `)} ${quote(remoteAuditSpecPath)} ${quote(effectiveBaseReleaseDir)} ${quote(stagingDir)}`);
       }
       const directories = [...new Set(files.map(file => path.posix.dirname(file)).filter(dir => dir !== '.'))];
       await exec(`mkdir -p ${directories.map(dir => quote(`${stagingDir}/${dir}`)).join(' ')}`);

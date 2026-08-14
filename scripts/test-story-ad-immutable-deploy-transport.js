@@ -30,6 +30,8 @@ assert(source.includes('cutoverStarted || legacyProcessFrozen || restored?.resto
 assert(!source.includes('echo PRAGMA quick_check'), 'SQLite quick_check 必须保留分号，禁止 shell echo 截断 SQL');
 assert(source.includes('SYSTEMIC_MIGRATION_AUDIT_FAILED'), 'systemic migration must pass a post-write audit before cutover');
 assert(source.includes('VIDO_IMMUTABLE_BASE_RELEASE') && source.includes('fs.linkSync(source,destination)'), 'immutable deployment must reuse only manifest-listed files from a verified base release');
+assert(source.includes('effectiveBaseReleaseDir = previousTarget'), 'immutable deployment must automatically reuse the active immutable release as the verified delta base');
+assert(source.includes('remoteHashAudit(stagingDir)') && source.indexOf('remoteHashAudit(stagingDir)') < source.indexOf("reportPhase('artifact_delta'"), 'reused files must be hash-audited before deciding the upload delta');
 assert(source.includes('const queue = stagedAudit.mismatches.slice()'), 'immutable deployment must upload only hash mismatches after safe reuse');
 
 assert(source.includes("sftp.writeFile(remoteAuditSpecPath, auditSpec"), '发布审计清单必须通过 SFTP 文件传输');

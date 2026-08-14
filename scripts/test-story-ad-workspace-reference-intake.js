@@ -19,6 +19,7 @@ const assetPlan = require('../src/services/newStoryAd/assetPlanService');
 const modelGateway = require('../src/services/newStoryAd/modelGateway');
 const referenceVideoAnalyses = require('../src/services/newStoryAd/referenceVideoAnalysisService');
 const referenceDetach = require('../src/services/newStoryAd/referenceDetachService');
+const referenceConfirmation = require('../src/services/storyAdWorkspace/referenceUnderstandingConfirmationService');
 const bundles = require('../src/services/storyAdWorkspace/projectBundleService');
 const newStoryAdRouter = require('../src/routes/newStoryAd');
 
@@ -66,6 +67,14 @@ function completedReference(overrides = {}) {
     phase: '分析完成，已生成中文广告需求',
     checkpoints: [{ phase: '证据帧与语音已提取', progress: 42, at: '2026-08-01T06:00:00.000Z' }],
     analysis_quality: { valid: true },
+    reference_understanding: {
+      contract_version: 'reference-understanding-v6',
+      schema_version: 6,
+      story_summary: { full_synopsis: '参考视频展示主体、人物、场景与行动的完整发展过程。' },
+      causal_chain: [{ cause: '主体需求出现', event: '人物使用主体', effect: '需求得到解决' }],
+      scenes: [{ scene_id: 'reference-scene', narrative_purpose: '承载主体与人物行动' }],
+      completeness: { valid: true, story_complete: true, cause_chain_complete: true, failures: [] },
+    },
     generated_brief: '参考视频完整分析',
     source_facts: {
       product_or_service: '智能宠物饮水机',
@@ -653,10 +662,34 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     assert.equal(bundle.navigation.steps.plot.enabled, false, '资产方案未确认时不得越级进入剧情室');
     assert.equal(bundle.navigation.current, 'brief', '资产方案尚未创建时当前环节仍应停留在目标页');
 
+    context = storage.getOutput(taskId, 'context');
+    referenceConfirmation.confirm(taskId, context, {
+      base_revision: storage.getTask(taskId).content_revision,
+      confirmation: 'authoritative_input',
+      analysis_id: familyReference.analysis_id,
+    }, { user });
     await assetPlan.generate(taskId);
     assert.equal(modelCalls, 0, '参考视频到正式资产方案必须复用识别结果，不能重复调用模型');
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.brief.completed, true);
+    assert.equal(bundle.navigation.steps.brief.completed, true, JSON.stringify(bundle.navigation.asset_plan_eligibility));
+    const publishedPlan = storage.getOutput(taskId, 'asset_plan');
+    const persistedContext = storage.getOutput(taskId, 'context');
+    assert.equal(
+      publishedPlan.fingerprint,
+      assetPlan.fingerprint(storage.getTask(taskId), persistedContext),
+      '新方案必须使用最终持久化上下文的同一输入指纹，不能创建后立即过期',
+    );
+    const userEditedContext = {
+      ...persistedContext,
+      cast_profiles: persistedContext.cast_profiles.map((item, index) => (
+        index === 0 ? { ...item, appearanceText: `${item.appearanceText || ''} 用户明确修改外观` } : item
+      )),
+    };
+    assert.notEqual(
+      assetPlan.fingerprint(storage.getTask(taskId), userEditedContext),
+      publishedPlan.fingerprint,
+      '用户真实修改人物后仍必须使方案指纹失效',
+    );
     assert.equal(bundle.assets.people.length, 3);
     assert.equal(bundle.assets.animals.length, 0);
     assert.equal(bundle.assets.scenes.length, 16, '长参考视频的场景目录不得静默截断为前 12 个');
