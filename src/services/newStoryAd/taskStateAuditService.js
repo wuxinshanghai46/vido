@@ -12,6 +12,25 @@ function isUnknownBilling(call = {}) {
     && RUNNING_STATES.has(text(call.provider_submission_state || call.status).toLowerCase());
 }
 
+function billingRiskForTask(db = {}, taskId = '') {
+  const normalizedTaskId = text(taskId);
+  const taskGenerations = rows(db.generation_runs)
+    .filter(run => text(run.task_id || run.work_id) === normalizedTaskId);
+  const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
+    || text(run.billing_state).toLowerCase() === 'unknown');
+  const allUnknownBilling = rows(db.model_calls)
+    .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown');
+  const activeUnknownBilling = allUnknownBilling.filter(isUnknownBilling);
+  const quarantinedCallIds = new Set(unknownBillingUnits.map(run => text(run.legacy_model_call_id)).filter(Boolean));
+  const unquarantinedUnknownBilling = allUnknownBilling.filter(call => !quarantinedCallIds.has(text(call.id)));
+  return {
+    all_unknown_billing: allUnknownBilling,
+    active_unknown_billing: activeUnknownBilling,
+    unknown_billing_units: unknownBillingUnits,
+    unquarantined_unknown_billing: unquarantinedUnknownBilling,
+  };
+}
+
 function semanticSceneKey(scene = {}) {
   return text(scene.semantic_key || scene.scene_semantic_key || scene.stable_id || scene.scene_id || scene.id).toLowerCase();
 }
@@ -64,12 +83,11 @@ function auditSnapshot(db = {}) {
     const duplicateScenes = duplicateKeys(sceneRows(taskOutputs), semanticSceneKey);
     const taskGenerations = generations.filter(run => text(run.task_id || run.work_id) === taskId);
     const activeGenerations = taskGenerations.filter(run => RUNNING_STATES.has(text(run.state || run.status).toLowerCase()));
-    const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
-      || text(run.billing_state).toLowerCase() === 'unknown');
-    const allUnknownBilling = modelCalls.filter(call => text(call.task_id) === taskId && text(call.billing_state).toLowerCase() === 'unknown');
-    const activeUnknownBilling = allUnknownBilling.filter(isUnknownBilling);
-    const quarantinedCallIds = new Set(unknownBillingUnits.map(run => text(run.legacy_model_call_id)).filter(Boolean));
-    const unquarantinedUnknownBilling = allUnknownBilling.filter(call => !quarantinedCallIds.has(text(call.id)));
+    const billingRisk = billingRiskForTask({ model_calls: modelCalls, generation_runs: generations }, taskId);
+    const allUnknownBilling = billingRisk.all_unknown_billing;
+    const activeUnknownBilling = billingRisk.active_unknown_billing;
+    const unknownBillingUnits = billingRisk.unknown_billing_units;
+    const unquarantinedUnknownBilling = billingRisk.unquarantined_unknown_billing;
     const issues = [];
     const warnings = [];
     if (task.lineage_enforced !== true) issues.push('lineage_not_enforced');
@@ -139,4 +157,12 @@ function auditCurrent() {
   return auditSnapshot(storage.readDb());
 }
 
-module.exports = { RUNNING_STATES, auditCurrent, auditSnapshot, duplicateKeys, isUnknownBilling, semanticSceneKey };
+module.exports = {
+  RUNNING_STATES,
+  auditCurrent,
+  auditSnapshot,
+  billingRiskForTask,
+  duplicateKeys,
+  isUnknownBilling,
+  semanticSceneKey,
+};

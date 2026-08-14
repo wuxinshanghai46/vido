@@ -132,9 +132,23 @@ const guarded = createFixture({ id: 'anon-guarded', oldBundle: 'legacy-guarded',
 storage.updateTask(guarded.taskId, { active_generation_id: 'another-job', active_stage: 'person_plan' });
 assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).blocked, true);
 storage.updateTask(guarded.taskId, { active_generation_id: '', active_stage: '' });
-storage.saveModelCall({ id: 'unknown-active', task_id: guarded.taskId, stage: 'person_plan', status: 'running', billing_state: 'unknown', provider_submission_state: 'submitted_unknown' });
-assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).blocked, true);
+storage.saveModelCall({ id: 'unknown-active', task_id: guarded.taskId, stage: 'person_plan', status: 'running', billing_state: 'unknown', provider_submission_state: 'submitted' });
+let billingBlocked = publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint });
+assert.equal(billingBlocked.blocked, true);
+assert(billingBlocked.compatibility.issues.includes('active_unknown_billing_exists'));
+assert(billingBlocked.compatibility.issues.includes('unknown_billing_unquarantined'));
 storage.saveModelCall({ id: 'unknown-active', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'confirmed', provider_submission_state: 'failed' });
+storage.saveModelCall({ id: 'unknown-historical', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown' });
+billingBlocked = publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint });
+assert.equal(billingBlocked.blocked, true);
+assert.deepEqual(billingBlocked.compatibility.issues, ['unknown_billing_unquarantined']);
+storage.createGenerationRun({
+  id: 'quarantine-unknown-historical', task_id: guarded.taskId, work_id: guarded.taskId,
+  state: 'billing_unknown', billing_state: 'unknown', legacy_model_call_id: 'unknown-historical',
+});
+assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).migrated, true);
+
+const failureGuarded = createFixture({ id: 'anon-write-failure', oldBundle: 'legacy-write-failure', castCount: 2, propCount: 0, sceneCount: 4 });
 
 const originalSaveOutput = storage.saveOutput;
 let writes = 0;
@@ -143,10 +157,10 @@ storage.saveOutput = (...args) => {
   if (writes === 2) throw new Error('simulated-active-write-failure');
   return originalSaveOutput(...args);
 };
-assert.throws(() => publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }), /simulated-active-write-failure/);
+assert.throws(() => publication.migrateCompatibleRelease(failureGuarded.taskId, { fingerprint: failureGuarded.fingerprint }), /simulated-active-write-failure/);
 storage.saveOutput = originalSaveOutput;
-assert.equal(publication.activeRecord(guarded.taskId).plan.release_envelope.producer_bundle_id, 'legacy-guarded', 'failed JSON batch must retain old active plan');
-assert.equal(storage.getOutput(guarded.taskId, publication.RELEASE_MIGRATION_KIND), null);
+assert.equal(publication.activeRecord(failureGuarded.taskId).plan.release_envelope.producer_bundle_id, 'legacy-write-failure', 'failed JSON batch must retain old active plan');
+assert.equal(storage.getOutput(failureGuarded.taskId, publication.RELEASE_MIGRATION_KIND), null);
 
 const incompatibleCases = [
   ['fingerprint', { strictFingerprintContract: true, fingerprint: 'different' }, 'active_plan_input_fingerprint_mismatch'],

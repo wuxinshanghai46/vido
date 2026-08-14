@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const storage = require('./storageService');
 const contentSkill = require('./contentSkillService');
 const storySceneCoverage = require('./storySceneCoverageService');
+const taskStateAudit = require('./taskStateAuditService');
 const releaseBundle = require('../storyAdReleaseBundleService');
 
 const CANDIDATE_KIND = 'asset_plan_candidate';
@@ -281,13 +282,11 @@ function migrateCompatibleRelease(taskId, {
     return { migrated: false, compatibility, plan };
   }
   const currentGenerationId = clean(generationId || legacyGenerationId);
-  const runningStates = new Set(['submitted', 'submitted_unknown', 'accepted', 'polling', 'running', 'generating', 'retrying']);
-  const activeUnknownBilling = (storage.readDb().model_calls || []).filter(call => String(call.task_id) === String(taskId)
-    && clean(call.billing_state).toLowerCase() === 'unknown'
-    && runningStates.has(clean(call.provider_submission_state || call.status).toLowerCase()));
+  const billingRisk = taskStateAudit.billingRiskForTask(storage.readDb(), taskId);
   const safetyIssues = [];
   if (task?.active_generation_id && clean(task.active_generation_id) !== currentGenerationId) safetyIssues.push('active_generation_exists');
-  if (activeUnknownBilling.length) safetyIssues.push('active_unknown_billing_exists');
+  if (billingRisk.active_unknown_billing.length) safetyIssues.push('active_unknown_billing_exists');
+  if (billingRisk.unquarantined_unknown_billing.length) safetyIssues.push('unknown_billing_unquarantined');
   if (safetyIssues.length) return {
     migrated: false,
     blocked: true,
