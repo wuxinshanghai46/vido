@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-recovery-v39';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260814-reference-recovery-v40';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',
