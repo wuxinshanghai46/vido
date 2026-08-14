@@ -311,6 +311,7 @@ body.story-dialog-open { overflow: hidden; }
   border-bottom: 1px solid var(--line);
 }
 .project-row:last-child { border-bottom: 0; }
+.project-table [hidden] { display: none; }
 .project-row code { color: color-mix(in srgb, var(--info) 75%, var(--text)); font-size: 12px; }
 .project-head { min-height: 46px; background: var(--surface-2); color: var(--muted); font-size: 12px; }
 .project-copy b, .project-copy small { display: block; }

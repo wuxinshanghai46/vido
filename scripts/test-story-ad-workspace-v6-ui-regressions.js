@@ -402,6 +402,7 @@ assert.match(referenceAnalysisService, /if \(record\.task_id\)[\s\S]*promise\.th
 assert.match(referenceAnalysisService, /function evidenceBatchProgress\([\s\S]*remaining:[\s\S]*total - completed/, '参考分析必须公开安全的批次恢复进度，但不能公开模型原文');
 
 const appWorkflowSource = read('public/story-ad/app.js');
+const storyAdStyles = read('public/story-ad/styles.css');
 assert.match(appWorkflowSource, /projectModeView\(project\)/, '项目列表必须读取内容类型并显示广告或剧情');
 assert.match(appWorkflowSource, /commercial_subject[\s\S]*label: '广告'/, '广告任务必须显示明确的广告标识');
 assert.match(appWorkflowSource, /<span>项目名称<\/span><span>任务类型<\/span>/, '项目名称和任务类型必须是两个独立列表字段');
@@ -410,6 +411,7 @@ assert.match(appWorkflowSource, /data-project-type-filter[\s\S]*narrative_story[
 assert.match(appWorkflowSource, /data-project-stage-filter[\s\S]*stageOptions/, '任务中心必须提供默认全部且可选择现有阶段的查询条件');
 assert.match(appWorkflowSource, /function projectMatchesCenterQuery[\s\S]*nameMatched[\s\S]*typeMatched[\s\S]*stageMatched[\s\S]*return nameMatched && typeMatched && stageMatched/, '三个查询条件必须共同生效');
 assert.match(appWorkflowSource, /function applyCenterQueryVisibility[\s\S]*row\.hidden/, '输入查询时只能切换项目行显示状态，不能重建输入控件');
+assert.match(storyAdStyles, /\.project-table \[hidden\]\s*\{\s*display:\s*none/, '查询隐藏行不得被表格网格 display 规则重新显示');
 assert.match(appWorkflowSource, /subject_assets \?\? counts\.assets/, '人物资产步骤不得继续混用场景资产总数');
 assert.match(appWorkflowSource, /scene: counts\.scenes/, '场景步骤必须使用独立场景计数');
 assert.match(appWorkflowSource, /state\.enabled === false \? 'is-locked'/, '未满足前置条件的环节必须显示锁定态');
