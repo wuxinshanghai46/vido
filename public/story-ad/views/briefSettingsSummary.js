@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260814-reference-asset-autofill-v46';
+import { escapeHtml } from '../components/ui.js?v=20260814-reference-asset-autofill-v47';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
