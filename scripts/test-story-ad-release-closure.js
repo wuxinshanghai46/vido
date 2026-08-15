@@ -62,12 +62,16 @@ function main() {
   assert(selected.has('public/story-ad/views/subjectRecoveryPreflightAction.js'), '发布闭包必须包含人物恢复安全预检点击模块');
   assert(selected.has('src/services/newStoryAd/negativeConstraintContractService.js'), '发布闭包必须包含结构化人物禁止项合同服务');
   assert(selected.has('src/services/newStoryAd/subjectRecoveryPreflightService.js'), '发布闭包必须包含人物缺图安全预检与零模型血缘处理服务');
+  assert(selected.has('src/services/newStoryAd/subjectProfileAuthorityProofService.js'), '发布闭包必须包含人物三方权威与派生富化证明服务');
   assert(selected.has('scripts/test-story-ad-single-stage-primary-action-v79.js'), '发布闭包必须包含恢复阶段单主操作回归');
   assert(selected.has('scripts/test-story-ad-recovery-plan-action-final-dom-v79.js'), '发布闭包必须包含恢复与人物方案门禁最终DOM回归');
   assert(selected.has('scripts/test-story-ad-partial-checkpoint-negative-rebase-v79.js'), '发布闭包必须包含25项复用与negative单调放宽回归');
   assert(selected.has('scripts/test-story-ad-negative-constraint-semantics-v81.js'), '发布闭包必须包含禁止项语义等价、放宽与冲突回归');
   assert(selected.has('scripts/test-story-ad-negative-constraint-production-v81.js'), '发布闭包必须包含生产四人物禁止项合同回归');
   assert(selected.has('scripts/test-story-ad-subject-recovery-preflight-v81.js'), '发布闭包必须包含恢复预检并发、原子与零模型回归');
+  assert(selected.has('scripts/test-story-ad-three-way-authority-proof-v84.js'), '发布闭包必须包含三方权威、派生富化与拒绝路径回归');
+  assert(selected.has('scripts/test-story-ad-three-way-authority-proof-independent-v84.js'), '发布闭包必须包含独立三方权威与未证明字段拒绝回归');
+  assert(selected.has('scripts/test-story-ad-three-way-authority-rebase-independent-v84.js'), '发布闭包必须包含独立三方权威原子rebase与25项复用回归');
   assert(selected.has('scripts/resolve-story-ad-visual-billing-review-v75.js'), '发布闭包必须包含默认dry-run核账CLI');
   assert(selected.has('scripts/audit-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含生产视觉生成只读审计入口');
   assert(selected.has('scripts/audit-story-ad-checkpoint-billing-correlation-v65.js'), '发布闭包必须包含checkpoint与model_call计费关联只读审计');
