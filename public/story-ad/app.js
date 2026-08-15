@@ -2,7 +2,7 @@ import { createProjectStore } from './store/projectStore.js?v=20260815-asset-ui-
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260815-asset-ui-v60';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260815-asset-ui-v60';
 import { confirmDialog } from './components/dialog.js?v=20260815-asset-ui-v60';
-import { historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260815-asset-ui-v60';
+import { applyHistoricalReadonlyControls, historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260815-asset-ui-v60';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -210,13 +210,9 @@ function applyHistoricalStepMode(host, route) {
   const banner = document.createElement('section');
   banner.className = 'historical-step-banner';
   banner.setAttribute('role', 'status');
-  banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>该步骤已经进入后续制作环节。需要新增或修改内容时，请先明确开启编辑；保存后系统会重新检查受影响的后续方案。</span></div><button class="btn" type="button" data-unlock-history-step>新增 / 修改内容</button>';
+  banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>该步骤已经进入后续制作环节。需要新增或修改内容时，请先明确开启编辑；保存后系统会重新检查受影响的后续方案。</span></div><button class="btn" type="button" data-unlock-history-step data-historical-readonly-action="safe">新增 / 修改内容</button>';
   host.prepend(banner);
-  host.querySelectorAll('button, input, select, textarea').forEach(control => {
-    if (control.matches('[data-unlock-history-step]')) return;
-    control.disabled = true;
-    control.dataset.historicalReadonly = 'true';
-  });
+  applyHistoricalReadonlyControls(host);
   banner.querySelector('[data-unlock-history-step]')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog('修改已确认步骤可能使人物、场景、剧情或镜头方案需要重新核对。确认后仅解锁当前步骤，系统不会自动生成图片或产生视觉模型费用。', {
       title: '开启历史步骤编辑',
@@ -288,6 +284,8 @@ async function mountView(route) {
         await renderRoute();
       },
       refreshCurrentView: async () => mountView(currentRoute()),
+      historicalReadOnly: historicalStepReadOnly(store.state.bundle, route)
+        && !historicalEditUnlocks.has(historicalUnlockKey(route)),
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
