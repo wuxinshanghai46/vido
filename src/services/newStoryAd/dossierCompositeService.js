@@ -94,6 +94,10 @@ function explicitAccessoryDefinitions(profile = {}) {
   return ACCESSORY_DEFINITIONS.filter(item => accessoryEvidence(profile, item));
 }
 
+function desiredWearableUnits(profile = {}) {
+  return new Set(explicitAccessoryDefinitions(profile).map(item => `wearable_accessory:${item.key}`));
+}
+
 async function generateDetailRows({
   taskId,
   assetId = 'primary',
@@ -671,6 +675,7 @@ module.exports = {
   generateWearableDetails,
   generateWardrobeDetails,
   explicitAccessoryDefinitions,
+  desiredWearableUnits,
   accessoryEvidence,
   minorProfile,
   composePersonDossier,

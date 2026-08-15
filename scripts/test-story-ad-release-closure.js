@@ -55,6 +55,9 @@ function main() {
   assert(selected.has('scripts/test-story-ad-asset-url-readiness-v75.js'), '发布闭包必须包含资产URL就绪性回归');
   assert(selected.has('scripts/test-story-ad-billing-recovery-routes-v76.js'), '发布闭包必须包含核账路由权限、方法与顺序回归');
   assert(selected.has('scripts/test-story-ad-asset-center-mount-dependencies-v77.js'), '发布闭包必须包含资产中心mount真实依赖注入回归');
+  assert(selected.has('scripts/test-story-ad-desired-unit-reconciliation-v78.js'), '发布闭包必须包含编译器目标单元与历史恢复计划收敛回归');
+  assert(selected.has('scripts/test-story-ad-desired-unit-obsolescence-v78.js'), '发布闭包必须包含目标单元废止、原子回滚与25+3恢复行为回归');
+  assert(selected.has('scripts/reconcile-story-ad-desired-visual-units-v78.js'), '发布闭包必须包含默认dry-run的目标单元恢复CLI');
   assert(selected.has('scripts/resolve-story-ad-visual-billing-review-v75.js'), '发布闭包必须包含默认dry-run核账CLI');
   assert(selected.has('scripts/audit-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含生产视觉生成只读审计入口');
   assert(selected.has('scripts/audit-story-ad-checkpoint-billing-correlation-v65.js'), '发布闭包必须包含checkpoint与model_call计费关联只读审计');

@@ -1,6 +1,7 @@
 const storage = require('./storageService');
 const authorization = require('./visualAssetBillingAuthorizationService');
 const reviewStates = require('./visualAssetBillingReviewStateService');
+const desiredUnits = require('./visualAssetDesiredUnitReconciliationService');
 
 function findUnit(taskId, reviewKey) {
   return authorization.ambiguousUnits(taskId).find(unit => unit.review_key === String(reviewKey || '')) || null;
@@ -25,6 +26,19 @@ function preview({ taskId = '', reviewKey = '', state = '', evidence = '', revie
 function apply(input = {}, options = {}) {
   if (options.apply !== true) return { applied: false, dry_run: true, ...preview(input), resolved_checkpoint: undefined, unit: undefined };
   const plan = preview(input);
+  const desiredPreview = desiredUnits.reconcileTask({
+    taskId: input.taskId,
+    resolutions: { [plan.unit.review_key]: { state: input.state, evidence: input.evidence, reviewer: input.reviewer, expected_revision: input.expectedRevision } },
+    expectedRevisions: { [plan.unit.review_key]: input.expectedRevision },
+  });
+  if (desiredPreview.obsolete_keys.includes(plan.unit.review_key)) {
+    return desiredUnits.reconcileTask({
+      taskId: input.taskId, apply: true,
+      resolutions: { [plan.unit.review_key]: { state: input.state, evidence: input.evidence, reviewer: input.reviewer, expected_revision: input.expectedRevision } },
+      expectedRevisions: { [plan.unit.review_key]: input.expectedRevision },
+    });
+  }
+  let reconciled = [];
   storage.withWriteBatch(() => {
     if (plan.unit.kind === 'subject') {
       storage.saveOutput(input.taskId, plan.unit.row.kind, {
@@ -42,11 +56,11 @@ function apply(input = {}, options = {}) {
         updated_at: new Date().toISOString(),
       });
     }
+    if ([reviewStates.STATES.NOT_BILLED, reviewStates.STATES.COMPLETED].includes(plan.after.state)) {
+      reconciled = authorization.reconcileNestedOrchestrator(input.taskId, [plan.unit.review_key]);
+    }
   });
-  if ([reviewStates.STATES.NOT_BILLED, reviewStates.STATES.COMPLETED].includes(plan.after.state)) {
-    authorization.reconcileNestedOrchestrator(input.taskId, []);
-  }
-  return { applied: true, dry_run: false, task_id: input.taskId, review_key: input.reviewKey, before: plan.before, after: plan.after };
+  return { applied: true, dry_run: false, task_id: input.taskId, review_key: input.reviewKey, before: plan.before, after: plan.after, reconciled_outer_ids: reconciled.map(item => item.id) };
 }
 
 module.exports = { apply, findUnit, preview };

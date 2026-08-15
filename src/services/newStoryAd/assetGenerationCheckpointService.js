@@ -61,12 +61,21 @@ function normalizeCheckpoint(value = {}, identity = {}) {
           resolved_at: String(value.billing_review.resolved_at || '').slice(0, 40),
         }
       : null,
+    lifecycle_state: String(value.lifecycle_state || ''),
+    obsolete: value.obsolete === true || value.lifecycle_state === 'obsolete',
+    obsolete_at: String(value.obsolete_at || '').slice(0, 40),
+    obsolete_reason: String(value.obsolete_reason || '').slice(0, 240),
+    obsolete_from_status: String(value.obsolete_from_status || '').slice(0, 60),
     attempt_history: Array.isArray(value.attempt_history) ? value.attempt_history.slice(-20) : [],
     started_at: value.started_at || '',
     submitted_at: value.submitted_at || '',
     completed_at: value.completed_at || '',
     updated_at: value.updated_at || now(),
   };
+}
+
+function isObsolete(checkpoint = {}) {
+  return checkpoint.obsolete === true || checkpoint.lifecycle_state === 'obsolete';
 }
 
 function reusable(checkpoint = {}) {
@@ -288,7 +297,7 @@ module.exports = {
   SUBMISSION_STATES,
   fingerprint,
   checkpointKey,
-  normalizeCheckpoint,
+  normalizeCheckpoint, isObsolete,
   reusable,
   hasAmbiguousSubmission,
   hasRetryAuthorization,

@@ -18,6 +18,7 @@ const generationSpecCompletion = require('./generationSpecCompletionService');
 const assetGenerationCheckpoint = require('./assetGenerationCheckpointService');
 const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const wearableEvidence = require('./wearableEvidencePolicyService');
+const desiredUnitReconciliation = require('./visualAssetDesiredUnitReconciliationService');
 const personLooks = require('./personLookProfileService');
 const personAgeContract = require('./personAgeContractService');
 const worldSetting = require('./worldSettingContractService');
@@ -1017,6 +1018,16 @@ async function generateSubjectBundle(options = {}, deps = {}) {
       checkpoint.subject_checkpoint_owners[key] = { kind: 'human', subject_id: member.id, index };
       save();
     };
+    const desiredUnitPlan = desiredUnitReconciliation.reconcileCheckpointMap({
+      checkpoints: checkpoint.person_dossier_checkpoints,
+      owners: checkpoint.subject_checkpoint_owners,
+      profiles: [member],
+      subjectIds: [member.id],
+    });
+    if (desiredUnitPlan.changed) {
+      checkpoint.person_dossier_checkpoints = desiredUnitPlan.checkpoints;
+      save();
+    }
     const accessoryEvidence = await wearableEvidence.resolve({
       taskId: taskId || options.generationId,
       assetId: actorId,

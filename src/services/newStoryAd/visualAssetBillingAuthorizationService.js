@@ -25,7 +25,7 @@ function sceneCheckpointRows(taskId) {
 
 function ambiguousUnits(taskId) {
   const subjectCandidates = subjectCheckpointRows(taskId).flatMap(row => Object.entries(row.payload?.person_dossier_checkpoints || {})
-    .filter(([, checkpoint]) => checkpoints.hasAmbiguousSubmission(checkpoint))
+    .filter(([, checkpoint]) => !checkpoints.isObsolete(checkpoint) && checkpoints.hasAmbiguousSubmission(checkpoint))
     .map(([key, checkpoint]) => {
       const normalized = checkpoints.normalizeCheckpoint(checkpoint, { key });
       const owner = row.payload?.subject_checkpoint_owners?.[key] || {};

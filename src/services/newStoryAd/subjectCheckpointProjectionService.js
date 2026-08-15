@@ -77,6 +77,7 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
   const bySubject = new Map();
   units.forEach(([key, raw]) => {
     const unit = checkpoints.normalizeCheckpoint(raw, { key });
+    if (checkpoints.isObsolete(unit)) return;
     const owner = checkpoint.subject_checkpoint_owners?.[key] || {};
     const subjectId = clean(owner.subject_id || profiles[Number(owner.index || 0)]?.id || profiles[0]?.id || 'subject', 120);
     const current = bySubject.get(subjectId) || { media: [], completed: 0, failed: [] };
