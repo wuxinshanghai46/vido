@@ -21,6 +21,21 @@ function guard() {
   } };
 }
 
+const billingBindingSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterBillingRetry.js'), 'utf8')
+  .replace(/^import\s+.*?;\s*$/gm, '')
+  .replace(/\bexport\s+/g, '');
+const billingBindingSandbox = {
+  request: async () => ({}),
+  setButtonBusy() {},
+  toast() {},
+  setTimeout() {},
+  document: { visibilityState: 'visible' },
+};
+vm.runInNewContext(`${billingBindingSource}\nglobalThis.__bindSubjectBillingRecovery = bindSubjectBillingRecovery;`, billingBindingSandbox, {
+  filename: 'assetCenterBillingRetry.js',
+});
+const realBindSubjectBillingRecovery = billingBindingSandbox.__bindSubjectBillingRecovery;
+const billingRecoveryBindings = [];
 const sandbox = {
   __loadAssetCheckpointRecovery: async () => ({
     checkpointRecoverySummary: () => ({ completed: 0, total: 0, missing: [], retry_blocked: false }),
@@ -36,6 +51,10 @@ const sandbox = {
   openActorLibrary() {},
   openRealPersonFlow() {},
   authorizeBillingReviews: async () => {},
+  bindSubjectBillingRecovery(options) {
+    billingRecoveryBindings.push(options);
+    return realBindSubjectBillingRecovery(options);
+  },
   confirmBillingAwareAction: async () => ({ accepted: false }),
   collectPersonLookValues: values => values,
   renderPersonLookTiles: () => '',
@@ -179,6 +198,12 @@ function viewHead(html) {
   const generateProduct = buttonTag(commercialExisting, 'data-generate-product="product-1"');
   assert.match(generateProduct, /data-history-safe/, '商品生成属于有二次确认的历史安全执行动作');
   assert.doesNotMatch(generateProduct, /\sdisabled(?:\s|>|=)/, '已有商品的分类内生成入口必须可操作');
+
+  assert.equal(billingRecoveryBindings.length, 5, '每次资产中心 mount 都必须绑定一次计费恢复状态机');
+  billingRecoveryBindings.forEach(binding => {
+    assert(binding.host && binding.bundle && binding.store, '计费恢复绑定必须取得真实 mount 上下文');
+    assert.equal(typeof binding.generate, 'function', '计费恢复绑定必须复用当前人物精确生成入口');
+  });
 
   console.log('story-ad product entry taxonomy v64 passed');
 })().catch(error => {
