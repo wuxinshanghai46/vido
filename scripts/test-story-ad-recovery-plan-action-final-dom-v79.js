@@ -29,6 +29,7 @@ function control() {
     dataset: {}, files: [], value: '', disabled: false, isConnected: true,
     addEventListener(type, handler) { this.listeners ||= {}; this.listeners[type] = handler; },
     async click() {
+      if (this.disabled) return false;
       const result = this.listeners?.click?.({ currentTarget: this, preventDefault() {} });
       await result;
       await new Promise(resolve => setImmediate(resolve));
@@ -112,7 +113,12 @@ async function render({ checkpoint = null, stale = true, active = false, histori
   const controls = new Map();
   const getControl = selector => {
     if (!controls.has(selector)) controls.set(selector, control());
-    return controls.get(selector);
+    const node = controls.get(selector);
+    if (/data-generate-recovery/.test(selector)) {
+      const tag = html.match(/<button\b[^>]*data-generate-recovery[^>]*>/)?.[0] || '';
+      node.disabled = /\sdisabled(?:\s|=|>)/.test(tag);
+    }
+    return node;
   };
   const host = {
     isConnected: true,
