@@ -1,15 +1,15 @@
-import { request } from '../api.js?v=20260815-asset-v74';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v74';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v74';
-import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v74';
-import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260815-asset-v74';
-import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260815-asset-v74';
-import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260815-asset-v74';
-import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260815-asset-v74';
-import { assetCardMedia } from './sceneDossierCard.js?v=20260815-asset-v74';
-import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260815-asset-v74';
-import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260815-asset-v74';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260815-asset-v74';
+import { request } from '../api.js?v=20260815-asset-v75';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v75';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v75';
+import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v75';
+import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260815-asset-v75';
+import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260815-asset-v75';
+import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260815-asset-v75';
+import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260815-asset-v75';
+import { assetCardMedia } from './sceneDossierCard.js?v=20260815-asset-v75';
+import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260815-asset-v75';
+import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260815-asset-v75';
+import { createKeyedRequestGuard, createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260815-asset-v75';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -18,7 +18,7 @@ const GROUPS = [
 ];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
-  || (() => import('./assetCheckpointRecovery.js?v=20260815-asset-v74'));
+  || (() => import('./assetCheckpointRecovery.js?v=20260815-asset-v75'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -209,8 +209,8 @@ function knowledgePolicyTrace(item = {}) {
   const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
 }
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
-  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260815-asset-v74');
-  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260815-asset-v74');
+  planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260815-asset-v75');
+  personFormPromise ||= import('./assetCenterPersonForm.js?v=20260815-asset-v75');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
@@ -241,7 +241,7 @@ export async function mount(host, context) {
   const narrative = contentMode === 'narrative_story';
   const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
-  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260815-asset-v74'))).createAssetAssistHandlers(bundle)[kind](...args);
+  const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260815-asset-v75'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
   const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
@@ -580,7 +580,7 @@ export async function mount(host, context) {
   host.querySelector('[data-update-person-plan]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     await personPlanRequestGuard.run(async (requestKey) => {
-      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260815-asset-v74');
+      const { submitPersonPlanUpdate } = await import('./assetCenterPlanMigrationAction.js?v=20260815-asset-v75');
       return submitPersonPlanUpdate({ button, requestKey, confirmDialog, store, setButtonBusy, toast,
         migrationOnly: button.dataset.releaseMigrationOnly === 'true', refresh: context.refreshShell });
     });
