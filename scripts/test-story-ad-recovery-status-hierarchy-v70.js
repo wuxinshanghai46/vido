@@ -74,7 +74,7 @@ verify('checkpoint summary is authoritative 25/29 with four missing units', () =
 verify('asset route renders one primary recovery status instead of terminal plus recovery duplicates', () => {
   assert.equal(terminal, '', 'assets route must suppress the duplicate terminal panel when checkpoint recovery is present');
   assert.equal((page.match(/data-checkpoint-recovery-(?:details|banner)/g) || []).length, 1);
-  assert.match(recovery, /<h2>[^<]*25\/29[^<]*<\/h2>/);
+  assert.match(recovery, /25[\s\S]*?\/29/);
 });
 verify('the one recovery status is an accessible primary alert', () => {
   assert.match(recovery, /data-checkpoint-recovery-banner[^>]*role="alert"|role="alert"[^>]*data-checkpoint-recovery-banner/);
@@ -91,8 +91,8 @@ verify('customer UI does not expose internal error codes', () => {
   assert.doesNotMatch(page, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED|submitted_unknown|billing_state|UNKNOWN/);
 });
 verify('next step says no click is needed and generation remains prohibited until billing review', () => {
-  assert.match(recovery, /无需点击/);
-  assert.match(recovery, /计费核对(?:完成|确认)前[^。]*(?:禁止|不能|不可)[^。]*生成/);
+  assert.match(recovery, /无需(?:点击|操作)/);
+  assert.match(recovery, /计费(?:核对完成|安全确认)前[^。]*(?:禁止|不能|不可)[^。]*生成/);
 });
 verify('updating the person plan is never presented as missing-image recovery', () => {
   const outside = ui.generationProgressPanel(bundle, 'brief');

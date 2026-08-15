@@ -26,6 +26,13 @@ function hasGeneratedMedia(item = {}) {
   return Boolean(item.dossier_sheet?.image_url
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
 }
+
+export function drawerCheckpointDetails(item = {}) {
+  const failed = item.failed_checkpoint_units || [];
+  if (!failed.length) return '';
+  const missing = item.checkpoint_recovery_summary?.missing_units || [];
+  return `<section class="drawer-checkpoint-details" data-drawer-checkpoint-details><h3>待平台核对</h3>${failed.map(unit => `<p><b>${escapeHtml(missing.find(row => row.key === unit.key)?.label || unit.unit || unit.key)}</b> · ${escapeHtml(unit.reason)}</p>`).join('')}</section>`;
+}
 function subjectNeedsGeneration(item = {}, kind = '') {
   return kind === 'human'
     ? personAssetState(item) !== 'complete_dossier'
@@ -147,8 +154,6 @@ function assetCard(item, group) {
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
-  const failureBanner = group === 'people' && item.failed_checkpoint_units?.length
-    ? `<div class="asset-failure-banner" data-asset-failure-banner>${item.failed_checkpoint_units.map(unit => `<span><b>${escapeHtml((recovery.missing_units || []).find(row => row.key === unit.key)?.label || unit.unit || unit.key)}</b>${escapeHtml(unit.reason)}</span>`).join('')}</div>` : '';
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
       <div class="asset-card-media">${assetCardMedia(item, group)}</div>
@@ -156,7 +161,7 @@ function assetCard(item, group) {
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
-      </button>${failureBanner}${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}
+      </button>${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
@@ -198,13 +203,19 @@ function dossierDetails(item = {}) {
   ].join('');
   return sections ? `<details class="raw-view-details dossier-atomic-details"><summary>查看单图素材（点击任意图片放大）</summary>${sections}</details>` : '';
 }
+function knowledgePolicyTrace(item = {}) {
+  const policy = item.knowledge_policy || item.knowledgePolicy || {};
+  const ruleIds = Array.isArray(policy.rule_ids) ? policy.rule_ids : [], generation = String(policy.generation_fingerprint || policy.prompt_policy_fingerprint || '').trim(), qa = String(policy.qa_fingerprint || policy.qa_policy_fingerprint || '').trim();
+  if (!generation && !qa && !ruleIds.length) return '';
+  const short = value => value ? `${value.slice(0, 12)}…` : '—'; return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list"><div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div><div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div><div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div></div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
+}
 let planningDetailsPromise; let personFormPromise; async function openDrawer(item, group, handlers = {}) {
   planningDetailsPromise ||= import('./assetCenterPlanningDetails.js?v=20260815-asset-v71');
   personFormPromise ||= import('./assetCenterPersonForm.js?v=20260815-asset-v71');
   const [planningDetails, personForm] = await Promise.all([planningDetailsPromise, personFormPromise]);
   return planningDetails.openAssetDrawer(item, group, handlers, {
     groupLabel: groupLabel(group), generatable: GENERATABLE.has(group),
-    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm: personForm.personEditForm,
+    mediaSection, profileDetails, legacyDossierBoard, dossierDetails, checkpointDetails: drawerCheckpointDetails, knowledgePolicyTrace, personEditForm: personForm.personEditForm,
   });
 }
 

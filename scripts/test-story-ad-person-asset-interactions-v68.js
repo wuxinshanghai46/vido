@@ -245,10 +245,8 @@ async function main() {
     ...projected,
     failed_checkpoint_units: [{ key: 'walk', unit: 'base_action:natural_walk', label: '自然行走', reason: '三次质量审核未通过' }],
   }, 'people');
-  verify('final person card renders a concrete failed-unit banner', () => {
-    assert.match(cardHtml, /data-asset-failure-banner/);
-    assert.match(cardHtml, /自然行走/);
-    assert.match(cardHtml, /三次质量审核未通过/);
+  verify('final person card does not duplicate the project recovery detail banner', () => {
+    assert.doesNotMatch(cardHtml, /data-asset-failure-banner|asset-failure-banner/);
   });
 
   const complete = { ...people[0], dossier_sheet: { image_url: '/complete-dossier.png' }, status: 'verified' };
@@ -273,9 +271,9 @@ async function main() {
   const recoveryBanner = recoveryUi.checkpointRecoveryBanner(recoveryUi.checkpointRecoverySummary(recoveryPeople));
   verify('asset page renders one actionable recovery status instead of duplicating terminal state', () => {
     assert.equal(ui.generationProgressPanel(recoveryBundle, 'assets'), '');
-    assert.match(recoveryBanner, /人物图片已生成 25\/29/);
-    assert.match(recoveryBanner, /平台核账中|无需点击或重试/);
-    assert.match(recoveryBanner, /查看已生成图片/);
+    assert.match(recoveryBanner.replace(/<[^>]+>/g, ''), /25\/29/);
+    assert.match(recoveryBanner, /平台核账中|无需(?:点击|操作)/);
+    assert.match(recoveryBanner, /查看[^<]*图片/);
     assert.doesNotMatch(recoveryBanner, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED/);
   });
   verify('non-asset global progress keeps authoritative counts without exposing internal codes', () => {

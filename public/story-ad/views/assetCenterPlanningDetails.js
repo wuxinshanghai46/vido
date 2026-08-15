@@ -5,20 +5,6 @@ import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard
 import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260815-asset-v71';
 import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260815-asset-v71';
 
-function knowledgePolicyTrace(item = {}) {
-  const policy = item.knowledge_policy || item.knowledgePolicy || {};
-  const ruleIds = Array.isArray(policy.rule_ids) ? policy.rule_ids : [];
-  const generation = String(policy.generation_fingerprint || policy.prompt_policy_fingerprint || '').trim();
-  const qa = String(policy.qa_fingerprint || policy.qa_policy_fingerprint || '').trim();
-  if (!generation && !qa && !ruleIds.length) return '';
-  const short = value => value ? `${value.slice(0, 12)}…` : '—';
-  return `<details class="raw-view-details knowledge-policy-trace"><summary>本资产使用的知识规则</summary><div class="meta-list">
-    <div class="meta-row"><span>匹配规则</span><b>${ruleIds.length}</b></div>
-    <div class="meta-row"><span>生成规则指纹</span><b title="${escapeHtml(generation)}">${escapeHtml(short(generation))}</b></div>
-    <div class="meta-row"><span>质检规则指纹</span><b title="${escapeHtml(qa)}">${escapeHtml(short(qa))}</b></div>
-  </div><p class="drawer-section-note">这里只显示规则追踪信息，不加载知识库正文，也不会增加模型调用。</p></details>`;
-}
-
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
   return `<section class="drawer-owned-props"><div class="drawer-section-head"><h3>人物随身道具</h3><span>${rows.length}</span></div><p class="drawer-section-note">道具跟随当前人物保存，不再作为独立顶级资产展示。</p>
@@ -127,7 +113,7 @@ export function sceneEditForm(item = {}) {
 
 export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   const { readOnly = false, onGenerate, onVerifyProduct, onSavePerson, onAssistPerson, onSaveProduct, onSaveScene, onAssistScene, onGenerateScene, onGenerateProp, onGenerateProduct, onUploadProduct, returnFocus } = handlers;
-  const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, personEditForm } = renderers;
+  const { groupLabel, generatable, mediaSection, profileDetails, legacyDossierBoard, dossierDetails, checkpointDetails = () => '', knowledgePolicyTrace = () => '', personEditForm } = renderers;
   const views = Array.isArray(item.view_images) ? item.view_images : [];
   const dossier = item.dossier_sheet?.image_url ? { image_url: item.dossier_sheet.image_url } : null;
   const subjectId = String(item.subject_id || item.profile?.id || item.id || '');
@@ -145,7 +131,7 @@ export function openAssetDrawer(item, group, handlers = {}, renderers = {}) {
   const drawer = document.createElement('aside');
   drawer.className = `drawer ${group === 'people' ? 'is-person-drawer' : ''} ${group === 'scenes' ? 'is-scene-drawer' : ''}`;
   drawer.innerHTML = `<header class="drawer-head"><div><small>${escapeHtml(groupLabel)}</small><h2>${escapeHtml(item.name)}</h2></div><button class="icon-btn" type="button" data-close-drawer>×</button></header><div class="drawer-content">
-    ${dossier ? personDossierShowcase(item) : (retainedDossier || (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel, zoomable: true, zoomGroup: `asset-${item.id}` }) : ''))}
+    ${dossier ? personDossierShowcase(item) : (retainedDossier || (!views.length ? mediaPreview(item, { label: item.name, width: 1200, symbol: groupLabel, zoomable: true, zoomGroup: `asset-${item.id}` }) : ''))}${checkpointDetails(item)}
     ${group === 'people' && !dossier && !retainedDossier && views.length ? legacyDossierBoard(item, views) : ''}
     ${group === 'scenes' ? sceneDetails(item) : ''}
     ${views.length ? (group === 'people' && !dossier ? `<details class="raw-view-details"><summary>查看原始四视图</summary>${mediaSection('原始人物视图', views, 'is-portrait-grid')}</details>` : (group === 'scenes' ? `<details class="raw-view-details"><summary>查看场景原始图集（${views.length} 张）</summary>${mediaSection('场景视角图集', views)}</details>` : mediaSection('完整视图', views, group === 'people' || group === 'animals' ? 'is-portrait-grid' : ''))) : ''}
