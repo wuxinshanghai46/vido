@@ -64,6 +64,7 @@ function subjectUnit(key, status = 'submitted_unknown') {
   return {
     key, task_id: 'task-a', asset_type: 'person_dossier', asset_id: 'actor-1', unit: 'wardrobe_detail', revision: 1,
     status, provider_submission_state: 'submitted_unknown', billing_state: 'unknown', error: { code: 'PROVIDER_5XX_AMBIGUOUS' },
+    billing_review: { state: 'unverifiable', revision: 2, reviewer: 'test-reviewer', evidence: 'provider lookup inconclusive' },
   };
 }
 
@@ -86,7 +87,7 @@ function testExactAuthorization() {
       kind: 'scene_asset_checkpoint:scene-1',
       payload: {
         task_id: 'task-a', scene_id: 'scene-1', status: 'partial',
-        views: { layout: { key: 'layout', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown', error_code: 'PROVIDER_5XX_AMBIGUOUS' } },
+        views: { layout: { key: 'layout', status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown', error_code: 'PROVIDER_5XX_AMBIGUOUS', billing_review: { state: 'unverifiable', revision: 2, reviewer: 'test-reviewer', evidence: 'provider lookup inconclusive' } } },
       },
     },
   ];
@@ -226,8 +227,8 @@ function testUiScope() {
   assert.ok(!view.includes('当前人物配饰存在计费未知记录'));
   assert.ok(view.includes("lane: 'subjects'"));
   assert.ok(view.includes("lane: 'scenes'"));
-  assert.ok(retry.includes('checkpoint_key: review.review_key'));
-  assert.ok(retry.includes('for (const review of reviews)'), 'unknown units must be authorized one by one');
+  assert.ok(retry.includes('checkpoint_keys: reviews.map(review => review.review_key)'));
+  assert.ok(retry.includes('expected_review_revisions:'), 'unknown units must be authorized by one revision-bound batch');
   assert.ok(view.includes('resume_partial_checkpoint = target.partial_checkpoint === true'));
 }
 

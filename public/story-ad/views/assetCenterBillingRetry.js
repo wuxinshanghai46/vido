@@ -31,21 +31,60 @@ export async function confirmBillingAwareAction(options = {}) {
   return (await billingReviewDialog()).confirmBillingAwareAction(options);
 }
 
+export function startBillingReviewPolling({ bundle, store, host, initialDelay = 4000 } = {}) {
+  let cancelled = false;
+  let delay = Math.max(2000, Number(initialDelay) || 4000);
+  const poll = async () => {
+    if (cancelled || !host?.isConnected) return;
+    if (globalThis.document?.visibilityState === 'hidden') {
+      globalThis.setTimeout(poll, Math.min(30000, delay * 2)); return;
+    }
+    try {
+      const result = await loadBillingReviews({ bundle, lane: 'subjects' });
+      if (result.reviews.some(review => review.billing_review_state !== 'pending')) {
+        await store.refreshSections('summary,assets');
+        return;
+      }
+      delay = Math.min(30000, Math.round(delay * 1.5));
+    } catch { delay = Math.min(30000, delay * 2); }
+    globalThis.setTimeout(poll, delay);
+  };
+  globalThis.setTimeout(poll, delay);
+  return () => { cancelled = true; };
+}
+
+export function recoveryRequestKey(bundle = {}, recovery = {}, intent = 'all') {
+  if (!recovery?.missing_units?.length) return `${bundle.project?.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
+  return `${bundle.project?.id}:subject-recovery:r${bundle.revisions?.content || 1}:${recovery.missing_units
+    .map(unit => `${unit.key}@${unit.review_revision || 1}`).sort().join('|')}`.slice(0, 180);
+}
+
+export function bindSubjectBillingRecovery({ host, bundle, store, checkpointRecovery, generate } = {}) {
+  host.querySelector('[data-generate-recovery], [data-accept-billing-risk]')?.addEventListener('click', event => generate(null, '', event.currentTarget));
+  host.querySelector('[data-billing-review]')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    try { setButtonBusy(button, true, '正在刷新核账状态…'); await store.refreshSections('summary,assets'); }
+    catch (error) { toast(error.message, 'danger'); }
+    finally { setButtonBusy(button, false); }
+  });
+  if (checkpointRecovery?.billing_review_state === 'pending') startBillingReviewPolling({ bundle, store, host });
+}
+
 export async function authorizeBillingReviews({ bundle, lane = '', subjectId = '', sceneId = '', reviewBatch = null } = {}) {
   const taskId = bundle?.project?.id || '';
   if (!taskId) return [];
   const prepared = reviewBatch || await loadBillingReviews({ bundle, lane, subjectId, sceneId });
   const reviews = prepared.reviews || [];
-  for (const review of reviews) {
-    await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/retry-authorization`, {
-      method: 'POST',
-      body: {
-        support_id: prepared.support_id,
-        checkpoint_key: review.review_key,
-        accept_duplicate_charge_risk: true,
-      },
-    });
-  }
+  if (!reviews.length) return reviews;
+  await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/visual-assets/retry-authorizations`, {
+    method: 'POST',
+    body: {
+      support_id: prepared.support_id,
+      checkpoint_keys: reviews.map(review => review.review_key),
+      expected_review_revisions: Object.fromEntries(reviews.map(review => [review.review_key, review.review_revision])),
+      accept_duplicate_charge_risk: true,
+    },
+  });
   return reviews;
 }
 

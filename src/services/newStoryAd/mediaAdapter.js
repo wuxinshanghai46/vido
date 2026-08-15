@@ -2,6 +2,7 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
+const assetUrlReadiness = require('./visualAssetUrlReadinessService');
 const sharp = require('sharp');
 const OpenAI = require('openai');
 const pipeline = require('../pipelineModelService');
@@ -230,6 +231,7 @@ function createImageSubmissionTracker({ onSubmitting = null, onSubmitted = null 
     },
     failure: error => {
       const current = evidence;
+      if (current.provider_submission_state === 'submission_rejected' && current.billing_state === 'not_billed') return { ...current };
       return {
         provider_submission_state: String(error?.providerSubmissionState || error?.provider_submission_state
           || (current.provider_submission_state === 'submitting' ? 'submitted_unknown' : current.provider_submission_state)),
@@ -513,8 +515,9 @@ async function imageBufferFromResult(result = {}) {
     if (filePath && fs.existsSync(filePath)) return fs.readFileSync(filePath);
   }
   if (/^https?:\/\//i.test(value)) {
-    const response = await axios.get(value, { responseType: 'arraybuffer', timeout: 120000, signal: cancellation.signal() });
-    return Buffer.from(response.data);
+    const readiness = await assetUrlReadiness.probe(value, { timeoutMs: 120000, signal: cancellation.signal() });
+    if (readiness.state !== 'ready') throw assetUrlReadiness.readinessError(readiness);
+    return Buffer.from(readiness.data);
   }
   throw new Error(`当前图片地址不支持本地处理：${value.slice(0, 120)}`);
 }

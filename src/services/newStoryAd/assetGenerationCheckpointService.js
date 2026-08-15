@@ -51,6 +51,16 @@ function normalizeCheckpoint(value = {}, identity = {}) {
     retry_authorization: value.retry_authorization && typeof value.retry_authorization === 'object'
       ? { ...value.retry_authorization }
       : null,
+    billing_review: value.billing_review && typeof value.billing_review === 'object'
+      ? {
+          id: String(value.billing_review.id || ''),
+          state: String(value.billing_review.state || 'pending'),
+          revision: Math.max(1, Number(value.billing_review.revision || 1) || 1),
+          reviewer: String(value.billing_review.reviewer || '').slice(0, 120),
+          evidence: String(value.billing_review.evidence || '').slice(0, 1000),
+          resolved_at: String(value.billing_review.resolved_at || '').slice(0, 40),
+        }
+      : null,
     attempt_history: Array.isArray(value.attempt_history) ? value.attempt_history.slice(-20) : [],
     started_at: value.started_at || '',
     submitted_at: value.submitted_at || '',
@@ -193,10 +203,13 @@ async function runCheckpointedUnit({
       await save(key, checkpoint);
     },
     onSubmitted: async payload => {
+      const rejected = ['rejected', 'submission_rejected', 'not_billed'].includes(String(payload?.status || payload?.provider_submission_state || '').toLowerCase())
+        || String(payload?.billing_state || payload?.billingState || '').toLowerCase() === 'not_billed';
       checkpoint = {
         ...checkpoint,
-        provider_submission_state: 'submitted',
-        billing_state: 'unknown',
+        status: rejected ? 'failed' : checkpoint.status,
+        provider_submission_state: rejected ? 'not_submitted' : 'submitted',
+        billing_state: rejected ? 'not_billed' : 'unknown',
         provider_request_id: String(payload?.providerRequestId || payload?.provider_request_id || ''),
         provider_task_id: String(payload?.taskId || payload?.provider_task_id || ''),
         submitted_at: now(),
@@ -237,7 +250,10 @@ async function runCheckpointedUnit({
     const providerCompleted = Boolean(checkpoint.provider_result)
       && checkpoint.provider_submission_state === 'completed'
       && checkpoint.billing_state === 'confirmed';
-    const billingUnknown = !providerCompleted && (error?.billingState === 'unknown'
+    const explicitlyNotBilled = checkpoint.billing_state === 'not_billed'
+      || String(error?.billingState || error?.billing_state || '').toLowerCase() === 'not_billed'
+      || ['rejected', 'submission_rejected', 'not_submitted'].includes(String(error?.providerSubmissionState || error?.provider_submission_state || '').toLowerCase());
+    const billingUnknown = !providerCompleted && !explicitlyNotBilled && (error?.billingState === 'unknown'
       || error?.billing_state === 'unknown'
       || SUBMISSION_STATES.has(checkpoint.provider_submission_state));
     checkpoint = {

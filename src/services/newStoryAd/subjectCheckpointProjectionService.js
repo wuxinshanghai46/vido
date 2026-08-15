@@ -1,4 +1,5 @@
 const checkpoints = require('./assetGenerationCheckpointService');
+const reviewStates = require('./visualAssetBillingReviewStateService');
 
 const MAX_PROJECTED_MEDIA = 48;
 
@@ -92,6 +93,8 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
         error_code: errorCode,
         billing_state: clean(unit.billing_state, 40),
         provider_submission_state: clean(unit.provider_submission_state, 60),
+        billing_review_state: reviewStates.reviewState(unit),
+        review_revision: reviewStates.reviewRevision(unit),
         retry_blocked: checkpoints.hasAmbiguousSubmission(unit) && !checkpoints.hasRetryAuthorization(unit),
       });
     }
@@ -125,9 +128,7 @@ function mergePeople(people = [], outputs = {}) {
     const preview = directPreview || retainedLineagePreview
       || (previews.length === 1 && index === 0 ? previews[0] : null);
     if (!preview) return item;
-    const failedUnits = preview.failed_units.map(({ key, unit, reason, error_code: errorCode }) => ({
-      key, unit, reason, error_code: errorCode,
-    }));
+    const failedUnits = preview.failed_units.map(unit => ({ ...unit }));
     const retryBlocked = preview.failed_units.some(unit => unit.retry_blocked);
     return {
       ...item,
@@ -146,6 +147,10 @@ function mergePeople(people = [], outputs = {}) {
         missing_units: preview.failed_units,
         retry_blocked: retryBlocked,
         requires_billing_review: retryBlocked,
+        billing_review_state: preview.failed_units.some(unit => unit.billing_review_state === 'pending')
+          ? 'pending'
+          : (preview.failed_units.some(unit => unit.billing_review_state === 'unverifiable') ? 'unverifiable'
+            : (preview.failed_units.some(unit => unit.billing_review_state === 'not_billed') ? 'not_billed' : 'completed')),
       },
       billing_review_required: retryBlocked,
       status: 'partial',

@@ -47,6 +47,13 @@ function main() {
   assert(selected.has('scripts/test-story-ad-recovery-card-visual-v72.js'), '发布闭包必须包含人物恢复专业状态面板回归');
   assert(selected.has('scripts/test-story-ad-recovery-action-computed-style-v73.js'), '发布闭包必须包含恢复动作最终计算样式回归');
   assert(selected.has('scripts/test-story-ad-recovery-metric-layout-v74.js'), '发布闭包必须包含恢复指标真实几何布局回归');
+  assert(selected.has('scripts/test-story-ad-billing-recovery-next-step-v75.js'), '发布闭包必须包含计费恢复下一步回归');
+  assert(selected.has('scripts/test-story-ad-billing-review-state-machine-v75.js'), '发布闭包必须包含计费核账状态机回归');
+  assert(selected.has('scripts/test-story-ad-billing-recovery-atomic-v75.js'), '发布闭包必须包含原子授权与25+4恢复回归');
+  assert(selected.has('scripts/test-story-ad-submission-billing-classification-v75.js'), '发布闭包必须包含供应商提交计费分类回归');
+  assert(selected.has('scripts/test-story-ad-accessory-slot-contract-v75.js'), '发布闭包必须包含配饰槽位证据回归');
+  assert(selected.has('scripts/test-story-ad-asset-url-readiness-v75.js'), '发布闭包必须包含资产URL就绪性回归');
+  assert(selected.has('scripts/resolve-story-ad-visual-billing-review-v75.js'), '发布闭包必须包含默认dry-run核账CLI');
   assert(selected.has('scripts/audit-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含生产视觉生成只读审计入口');
   assert(selected.has('scripts/audit-story-ad-checkpoint-billing-correlation-v65.js'), '发布闭包必须包含checkpoint与model_call计费关联只读审计');
   assert(selected.has('scripts/repair-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含默认dry-run的视觉血缘安全恢复入口');

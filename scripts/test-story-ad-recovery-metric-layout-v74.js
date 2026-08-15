@@ -17,7 +17,7 @@ const chrome = [
 assert.ok(chrome, 'V74 layout regression requires Chrome/Chromium');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-const source = read('public/story-ad/views/assetCheckpointRecovery.js').replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
+const source = `${read('public/story-ad/views/billingRecoveryBanner.js')}\n${read('public/story-ad/views/assetCheckpointRecovery.js')}`.replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
 const sandbox = { escapeHtml };
 vm.runInNewContext(`${source}\nglobalThis.__banner=checkpointRecoveryBanner;`, sandbox, { filename: 'assetCheckpointRecovery.js' });
 const people = [7, 6, 6, 6].map((completed, index) => ({ name: `人物${index + 1}`, units: [index < 2 ? '腰部配饰' : '发饰'], reason: '需要平台人工核对后处理', completed }));
@@ -60,7 +60,7 @@ const snapshot = page => page.evaluate(rectSource => {
 
     await page.setViewport({ width: 720, height: 720 });
     const narrow = await snapshot(page);
-    assert.equal(narrow.numberText, '25/29'); assert.equal(narrow.labelText, '已保留'); assert.equal(narrow.actionText, '查看人物图片');
+    assert.equal(narrow.numberText, '25/29'); assert.equal(narrow.labelText, '已保留'); assert.equal(narrow.actionText, '查看核账进度');
     assert.ok(narrow.metric.width >= 90 && narrow.metric.height >= 22, 'narrow metric is collapsed');
     assert.ok(narrow.action.width >= 148 && narrow.action.height >= 40, 'narrow action is not clear');
     assert.ok(narrow.action.top >= Math.min(narrow.copy.bottom, narrow.metric.bottom), 'narrow action overlaps header content');

@@ -3,7 +3,7 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v74';
 import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v74';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260815-asset-v74';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260815-asset-v74';
+import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260815-asset-v74';
 import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260815-asset-v74';
 import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260815-asset-v74';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260815-asset-v74';
@@ -26,7 +26,6 @@ function hasGeneratedMedia(item = {}) {
   return Boolean(item.dossier_sheet?.image_url
     || (Array.isArray(item.view_images) && item.view_images.length >= 4));
 }
-
 export function drawerCheckpointDetails(item = {}) {
   const failed = item.failed_checkpoint_units || [];
   if (!failed.length) return '';
@@ -284,12 +283,14 @@ export async function mount(host, context) {
   const subjectRequests = createKeyedRequestGuard();
   const generate = async (target = null, group = '', button = null) => {
     const selectedRecovery = target?.checkpoint_recovery_summary || checkpointRecovery;
-    if (selectedRecovery?.retry_blocked === true) {
+    const reviewState = selectedRecovery?.billing_review_state || 'pending';
+    if (selectedRecovery?.retry_blocked === true && reviewState !== 'unverifiable') {
       toast('缺失人物单元存在供应商提交或计费未知状态，已停止重试，避免重复付费。', 'warning');
       return false;
     }
     const intent = target?.subject_id || 'all';
-    return subjectRequests.run(intent, `${bundle.project.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`, async requestKey => {
+    const recoveryKey = recoveryRequestKey(bundle, selectedRecovery, intent);
+    return subjectRequests.run(intent, recoveryKey, async requestKey => {
       const payload = subjectGenerationPayload(bundle, target, requestKey);
       const validation = generationValidation(payload);
       if (validation) { toast(validation, 'warning'); return false; }
@@ -565,6 +566,7 @@ export async function mount(host, context) {
   });
 
   host.querySelectorAll('[data-generate-subjects], [data-generate-missing-subjects]').forEach(button => button.addEventListener('click', event => generate(null, '', event.currentTarget)));
+  bindSubjectBillingRecovery({ host, bundle, store, checkpointRecovery, generate });
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
   host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
   host.querySelector('[data-generate-product-main]')?.addEventListener('click', event => {

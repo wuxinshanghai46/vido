@@ -19,10 +19,11 @@ function loadBrowserModule(file, exposed, globals = {}) {
 }
 
 const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel']);
+const recoveryBannerUi = loadBrowserModule('public/story-ad/views/billingRecoveryBanner.js', ['renderCheckpointRecoveryBanner']);
 const recoveryUi = loadBrowserModule(
   'public/story-ad/views/assetCheckpointRecovery.js',
   ['checkpointRecoverySummary', 'checkpointRecoveryBanner'],
-  { escapeHtml },
+  { escapeHtml, renderCheckpointRecoveryBanner: recoveryBannerUi.renderCheckpointRecoveryBanner },
 );
 const planStatusUi = loadBrowserModule(
   'public/story-ad/views/assetCenterPlanReleaseStatus.js',
@@ -90,9 +91,10 @@ verify('four rows are shown once by person with Chinese labels and reasons', () 
 verify('customer UI does not expose internal error codes', () => {
   assert.doesNotMatch(page, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED|submitted_unknown|billing_state|UNKNOWN/);
 });
-verify('next step says no click is needed and generation remains prohibited until billing review', () => {
-  assert.match(recovery, /无需(?:点击|操作)/);
-  assert.match(recovery, /计费(?:核对完成|安全确认)前[^。]*(?:禁止|不能|不可)[^。]*生成/);
+verify('next step exposes review refresh but generation remains prohibited until billing review', () => {
+  assert.match(recovery, /data-billing-review[^>]*>查看核账进度/);
+  assert.match(recovery, /data-review-state="pending"/);
+  assert.doesNotMatch(recovery, /data-generate-recovery|data-accept-billing-risk/);
 });
 verify('updating the person plan is never presented as missing-image recovery', () => {
   const outside = ui.generationProgressPanel(bundle, 'brief');

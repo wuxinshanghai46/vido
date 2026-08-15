@@ -1545,6 +1545,21 @@ router.post('/tasks/:id/visual-assets/retry-authorization', asyncRoute(async (re
   res.json({ success: true, ...result });
 }));
 
+router.post('/tasks/:id/visual-assets/retry-authorizations', asyncRoute(async (req, res) => {
+  taskForReq(req);
+  const user = userFromReq(req);
+  const body = req.body || {};
+  const result = visualAssetBillingAuthorization.authorizeTaskRetryBatch({
+    taskId: req.params.id,
+    supportId: String(body.support_id || body.supportId || ''),
+    checkpointKeys: body.checkpoint_keys || body.checkpointKeys || [],
+    expectedReviewRevisions: body.expected_review_revisions || body.expectedReviewRevisions || {},
+    acceptedBy: String(user.id || user.userId || user.username || 'anonymous'),
+    acceptDuplicateChargeRisk: body.accept_duplicate_charge_risk === true || body.acceptDuplicateChargeRisk === true,
+  });
+  res.json({ success: true, ...result });
+}));
+
 router.get('/tasks/:id/visual-assets/billing-reviews', asyncRoute(async (req, res) => {
   taskForReq(req);
   res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');

@@ -190,7 +190,8 @@ async function main() {
     document: fixture.document, Image: PreloadImage, escapeHtml,
   });
   const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel']);
-  const recoveryUi = loadBrowserModule('public/story-ad/views/assetCheckpointRecovery.js', ['checkpointRecoverySummary', 'checkpointRecoveryBanner'], { escapeHtml });
+  const recoveryBannerUi = loadBrowserModule('public/story-ad/views/billingRecoveryBanner.js', ['renderCheckpointRecoveryBanner']);
+  const recoveryUi = loadBrowserModule('public/story-ad/views/assetCheckpointRecovery.js', ['checkpointRecoverySummary', 'checkpointRecoveryBanner'], { escapeHtml, renderCheckpointRecoveryBanner: recoveryBannerUi.renderCheckpointRecoveryBanner });
   const planUi = loadBrowserModule('public/story-ad/views/assetCenterPlanReleaseStatus.js', ['personPlanBlockedView']);
   lightbox.bindMediaLightbox(fixture.scope);
   fixture.scope.dispatch('click', { target: fixture.trigger });
@@ -237,9 +238,11 @@ async function main() {
     assert.equal(atlas.image_url, '/person_body_atlas.png');
   });
   verify('projection preserves each failed unit and public reason', () => {
-    assert.deepEqual(projected.failed_checkpoint_units, [{
-      key: 'walk', unit: 'base_action:natural_walk', reason: '三次质量审核未通过', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED',
-    }]);
+    assert.equal(projected.failed_checkpoint_units.length, 1);
+    const failed = projected.failed_checkpoint_units[0];
+    assert.equal(failed.key, 'walk'); assert.equal(failed.unit, 'base_action:natural_walk');
+    assert.equal(failed.reason, '三次质量审核未通过'); assert.equal(failed.error_code, 'IMAGE_ATTEMPTS_EXHAUSTED');
+    assert.equal(failed.billing_review_state, 'pending'); assert.equal(failed.review_revision, 1);
   });
   const cardHtml = assetCardRenderer()({
     ...projected,
@@ -273,7 +276,8 @@ async function main() {
     assert.equal(ui.generationProgressPanel(recoveryBundle, 'assets'), '');
     assert.match(recoveryBanner.replace(/<[^>]+>/g, ''), /25\/29/);
     assert.match(recoveryBanner, /平台核账中|无需(?:点击|操作)/);
-    assert.match(recoveryBanner, /查看[^<]*图片/);
+    assert.match(recoveryBanner, /查看核账进度/);
+    assert.doesNotMatch(recoveryBanner, /data-generate|data-billing-risk-accept/);
     assert.doesNotMatch(recoveryBanner, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED/);
   });
   verify('non-asset global progress keeps authoritative counts without exposing internal codes', () => {

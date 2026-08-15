@@ -187,6 +187,18 @@ function failJobUnit(job = {}, error = null, failure = {}) {
   const billingState = String(error?.billingState || error?.billing_state || '').trim().toLowerCase();
   const submitted = !!(error?.providerTaskId || error?.provider_task_id
     || ['submitted', 'submitted_unknown', 'running'].includes(String(error?.providerSubmissionState || error?.provider_submission_state || '').toLowerCase()));
+  const nestedCheckpointRisk = ['subject_assets', 'visual_assets', 'scene_asset'].includes(String(job.stage || ''))
+    && (error?.partial_subject_checkpoint === true || error?.partial_scene_checkpoint === true
+      || error?.details?.subject_checkpoint || error?.details?.scene_checkpoint || Array.isArray(error?.subject_failures));
+  if (billingState === 'unknown' && nestedCheckpointRisk) {
+    return generationUnits.transition(current.id, 'failed_terminal', {
+      billing_state: 'not_submitted', provider_submission_state: 'not_applicable', provider_task_id: '',
+      nested_billing_review_required: true,
+      nested_billing_error_code: String(failure.code || error?.code || '').slice(0, 160),
+      error_code: String(failure.code || error?.code || '').slice(0, 160),
+      error_message: String(error?.message || error || '').slice(0, 1000),
+    }, { expected_version: current.unit_version, reason: 'job_nested_checkpoint_billing_review' });
+  }
   if (billingState === 'unknown') {
     return generationUnits.transition(current.id, 'billing_unknown', {
       billing_state: 'unknown',

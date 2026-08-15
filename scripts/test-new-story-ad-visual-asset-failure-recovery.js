@@ -273,6 +273,7 @@ async function main() {
         'person_detail:actor:1:wearable_accessory:wrist': {
           key: 'person_detail:actor:1:wearable_accessory:wrist',
           status: 'submitted_unknown', provider_submission_state: 'submitted_unknown', billing_state: 'unknown',
+          billing_review: { state: 'unverifiable', revision: 2, reviewer: 'test-reviewer', evidence: 'provider lookup inconclusive' },
         },
       },
     },

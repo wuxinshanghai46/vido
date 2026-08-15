@@ -52,20 +52,46 @@ function atomicByKindKey(atomicAssets = [], pairs = []) {
   return atomicAssets.find(item => item?.image_url) || null;
 }
 
-function explicitAccessoryDefinitions(profile = {}) {
-  const accessoryText = (Array.isArray(profile.accessories) ? profile.accessories : [])
-    .map(item => item?.name || item?.key || item).filter(Boolean).join(' ');
+function negativeAccessoryClaim(value = '') {
+  return /(?:不加|不戴|不佩戴|未佩戴|没有|无|without|\bno\b)[^，。；,;\n]{0,36}(?:配饰|首饰|发饰|发冠|发簪|耳饰|项链|腰带|腰佩|玉佩|香囊|腕表|手链|戒指|accessor|hairpin|earring|necklace|belt|watch|ring)/iu.test(String(value || ''));
+}
+
+function accessoryEvidence(profile = {}, definition = {}) {
+  if (!(definition.pattern instanceof RegExp)) return '';
   const contract = profile.wardrobe_contract || profile.wardrobeContract
     || profile.look_profiles?.find?.(look => look?.id === profile.active_look_id)?.wardrobe_contract
     || profile.look_profiles?.[0]?.wardrobe_contract || {};
-  const contractAccessories = (contract.accessories?.items || []).flatMap(item => [item?.type, item?.position, item?.material, item?.evidence]).filter(Boolean).join(' ');
-  const contractHairMakeup = contract.hair_makeup || contract.hairMakeup || {};
-  const hairContractText = typeof contractHairMakeup === 'string'
-    ? contractHairMakeup
-    : [contractHairMakeup.description, contractHairMakeup.hairstyle, ...(contractHairMakeup.hair_accessories || []), contractHairMakeup.makeup, contractHairMakeup.evidence].filter(Boolean).join(' ');
-  const wardrobe = `${String(profile.wardrobeText || profile.wardrobe || '')} ${String(profile.hairMakeupText || profile.hairMakeup || '')} ${accessoryText} ${contractAccessories} ${hairContractText}`
-    .replace(/(?:不佩戴|未佩戴|没有|无)(?:任何)?[^，。；]{0,24}(?=，|。|；|$)/g, '');
-  return ACCESSORY_DEFINITIONS.filter(item => item.pattern.test(wardrobe));
+  const values = [];
+  if (definition.key === 'shoes') values.push(...Object.values(contract.footwear || {}));
+  if (definition.key === 'hair_makeup') {
+    const hair = contract.hair_makeup || contract.hairMakeup || {};
+    values.push(...(typeof hair === 'string' ? [hair] : [hair.description, hair.hairstyle, hair.makeup, hair.evidence]));
+  }
+  if (definition.key === 'hair_accessories') {
+    const hair = contract.hair_makeup || contract.hairMakeup || {};
+    values.push(...(Array.isArray(hair.hair_accessories) ? hair.hair_accessories : []));
+  }
+  if (contract.accessories?.mode !== 'none') {
+    (contract.accessories?.items || []).forEach(item => {
+      const candidate = [item?.type, item?.position, item?.material, item?.evidence].filter(Boolean).join(' ');
+      if (definition.pattern.test(candidate)) values.push(candidate);
+    });
+  }
+  const freeText = [profile.wardrobeText, profile.wardrobe, profile.hairMakeupText, profile.hairMakeup,
+    ...(Array.isArray(profile.accessories) ? profile.accessories.map(item => item?.name || item?.type || item) : [])]
+    .filter(Boolean).join('。').split(/[。；;\n]/);
+  values.push(...freeText.filter(value => definition.pattern.test(value)));
+  return [...new Set(values.map(value => String(value || '').trim()).filter(value => value && !negativeAccessoryClaim(value)))].join('；').slice(0, 600);
+}
+
+function minorProfile(profile = {}) {
+  const age = String(profile.age_range || profile.ageRange || profile.apparent_age || profile.apparentAge || profile.age || '');
+  const numbers = age.match(/\d{1,3}/g)?.map(Number) || [];
+  return numbers.length > 0 && Math.max(...numbers) < 18;
+}
+
+function explicitAccessoryDefinitions(profile = {}) {
+  return ACCESSORY_DEFINITIONS.filter(item => accessoryEvidence(profile, item));
 }
 
 async function generateDetailRows({
@@ -93,8 +119,17 @@ async function generateDetailRows({
       await onProgress({ completed: index + 1, total: definitions.length, key: spec.key, reused: true });
       continue;
     }
-    const reference = atomicByKindKey(atomicAssets, spec.referenceKinds);
-    if (!reference?.image_url) throw new Error(`人物高清细节 ${spec.label} 缺少可追溯参考图`);
+    const evidence = detailKind === 'wearable_accessory'
+      ? accessoryEvidence(profile, spec)
+      : [profile.wardrobeText || profile.wardrobe, profile.hairMakeupText || profile.hairMakeup].filter(Boolean).join('；').slice(0, 1200);
+    if (detailKind === 'wearable_accessory' && !evidence) continue;
+    const directReference = atomicAssets.find(item => item?.image_url && (item?.key === spec.key
+      || (['wearable_accessory', 'accessory'].includes(item?.kind) && spec.pattern?.test(`${item.label || ''} ${item.key || ''}`))));
+    const reference = directReference || (detailKind === 'wearable_accessory' && minorProfile(profile)
+      ? null : atomicByKindKey(atomicAssets, spec.referenceKinds));
+    if (!reference?.image_url && detailKind !== 'wearable_accessory') {
+      throw new Error(`人物高清细节 ${spec.label} 缺少可追溯参考图`);
+    }
     const wardrobeInstructions = {
       outfit_silhouette: '把整套锁定服装拆成外层、内搭、下装或连体主件、腰部配件和鞋履的独立白底陈列，单品之间留出清晰间距，像专业造型清单，不出现人物。',
       neckline_cut: '只展示锁定服装的上装或外层主件，使用白底平铺或隐形人台陈列，完整保留领口、肩线、袖型和门襟，不出现人物。',
@@ -104,16 +139,13 @@ async function generateDetailRows({
     const detailInstruction = detailKind === 'wearable_accessory'
       ? `只展示人物设定中真实存在的“${spec.label}”独立物件，使用纯净暖白背景和产品目录式陈列；完整呈现外形、材质、结构和佩戴方向，不出现人物头像、身体、手、衣服，不凭空增加其它首饰。`
       : (wardrobeInstructions[spec.key] || `制作“${spec.label}”独立服装单品证据图，不出现人物。`);
-    const contract = profile.wardrobe_contract || profile.wardrobeContract || {};
-    const structuredAccessories = (contract.accessories?.items || []).map(item => [item?.type, item?.position, item?.material].filter(Boolean).join('/')).filter(Boolean).join('；');
     const prompt = [
       '商业影视人物造型档案，真实摄影，高清产品目录质感，纯净暖白背景，柔和自然阴影。',
       detailInstruction,
-      `人物服装与配饰设定：${String(profile.wardrobeText || profile.wardrobe || '').trim()}`,
-      `人物发型与妆造设定：${String(profile.hairMakeupText || profile.hairMakeup || '').trim()}`,
-      structuredAccessories ? `结构化配饰清单：${structuredAccessories}` : '',
+      evidence ? `目标物件证据：${evidence}` : '',
       '严格依据参考图，不改变服装款式和配色，不加入文字、标签、水印、拼贴边框或人物档案排版。',
     ].filter(Boolean).join('\n');
+    const auditSafePrompt = `纯净暖白背景的${spec.label}独立产品目录图。仅呈现该物件的外形、材质和佩戴方向；不出现人物、身体、武器、文字、水印或其它配饰。目标证据：${evidence}`;
     const localWardrobeFallback = async modelCallCount => {
       if (detailKind !== 'wardrobe_detail') return null;
       const crop = {
@@ -182,10 +214,10 @@ async function generateDetailRows({
         input: {
           detail_kind: detailKind,
           detail_key: spec.key,
-          reference_image: reference.image_url,
+          reference_image: reference?.image_url || '',
           wardrobe: String(profile.wardrobeText || profile.wardrobe || '').trim(),
           hair_makeup: String(profile.hairMakeupText || profile.hairMakeup || '').trim(),
-          structured_accessories: structuredAccessories,
+          accessory_evidence: evidence,
         },
       },
       load: loadCheckpoint,
@@ -198,13 +230,13 @@ async function generateDetailRows({
               taskId,
               stage: `new_story_ad.person_dossier_${detailKind}`,
               prompt,
-              auditSafePrompt: prompt,
+              auditSafePrompt,
               filename: `${detailKind}_${taskId}_${assetId}_${spec.key}_r${revision}`,
               aspectRatio: spec.aspectRatio || '4:3',
               resolution: '2K',
               imageModel: 'gpt-image-2',
-              referenceImages: [reference.image_url],
-              requireReferences: true,
+              referenceImages: reference?.image_url ? [reference.image_url] : [],
+              requireReferences: Boolean(reference?.image_url),
               inputFidelity: 'high',
               singleAttempt: true,
               clientRequestId: checkpointKey,
@@ -227,7 +259,7 @@ async function generateDetailRows({
           label: spec.label,
           filename: generated.filename || '',
           image_url: generated.image_url || generated.url || '',
-          source_asset_id: reference.id || reference.asset_id || reference.key || '',
+          source_asset_id: reference?.id || reference?.asset_id || reference?.key || '',
           derived_locally: false,
           detail_mode: 'generated_high_resolution',
           resolution: '2K',
@@ -639,6 +671,8 @@ module.exports = {
   generateWearableDetails,
   generateWardrobeDetails,
   explicitAccessoryDefinitions,
+  accessoryEvidence,
+  minorProfile,
   composePersonDossier,
   composePersonReferenceBoard,
 };
