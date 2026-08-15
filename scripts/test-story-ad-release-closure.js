@@ -58,6 +58,10 @@ function main() {
   assert(selected.has('scripts/test-story-ad-desired-unit-reconciliation-v78.js'), '发布闭包必须包含编译器目标单元与历史恢复计划收敛回归');
   assert(selected.has('scripts/test-story-ad-desired-unit-obsolescence-v78.js'), '发布闭包必须包含目标单元废止、原子回滚与25+3恢复行为回归');
   assert(selected.has('scripts/reconcile-story-ad-desired-visual-units-v78.js'), '发布闭包必须包含默认dry-run的目标单元恢复CLI');
+  assert(selected.has('public/story-ad/views/assetCenterStageView.js'), '发布闭包必须包含资产阶段按需运行模块');
+  assert(selected.has('scripts/test-story-ad-single-stage-primary-action-v79.js'), '发布闭包必须包含恢复阶段单主操作回归');
+  assert(selected.has('scripts/test-story-ad-recovery-plan-action-final-dom-v79.js'), '发布闭包必须包含恢复与人物方案门禁最终DOM回归');
+  assert(selected.has('scripts/test-story-ad-partial-checkpoint-negative-rebase-v79.js'), '发布闭包必须包含25项复用与negative单调放宽回归');
   assert(selected.has('scripts/resolve-story-ad-visual-billing-review-v75.js'), '发布闭包必须包含默认dry-run核账CLI');
   assert(selected.has('scripts/audit-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含生产视觉生成只读审计入口');
   assert(selected.has('scripts/audit-story-ad-checkpoint-billing-correlation-v65.js'), '发布闭包必须包含checkpoint与model_call计费关联只读审计');

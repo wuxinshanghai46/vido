@@ -5,7 +5,7 @@ export const createKeyedRequestGuard = () => makeGuardMap();
 export function personPlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');
   const migrationOnly = eligibility.release_migration?.compatible === true && eligibility.release_migration?.migration_required === true;
-  if (eligibility.visual_recovery_active === true) return '<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag is-info">独立事项：人物方案待处理</span><h2>等待平台完成图片计费核对</h2><p>人物方案与当前缺图无关，更新方案不能补图；平台核对完成后再处理。</p></div><button class="btn" type="button" disabled>平台核对完成后处理</button></section>';
+  if (eligibility.visual_recovery_active === true) return '';
   const label = failed ? '人物方案更新失败' : (migrationOnly ? '方案可安全升级' : '人物方案需要更新');
   const button = generationActive ? (migrationOnly ? '正在升级方案' : '正在更新人物方案')
     : (failed ? '重新更新人物方案' : (migrationOnly ? '升级当前方案' : '更新人物方案'));

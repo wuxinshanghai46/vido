@@ -287,11 +287,7 @@ async function main() {
   });
   verify('person plan eligibility is explicitly separate from billing recovery', () => {
     const plan = planUi.personPlanBlockedView({ issues: [], visual_recovery_active: true }, false);
-    assert.match(plan, /独立事项/);
-    assert.match(plan, /与当前缺图无关/);
-    assert.match(plan, /平台核对完成后/);
-    assert.doesNotMatch(plan, /data-update-person-plan/);
-    assert.match(plan, /disabled/);
+    assert.equal(plan, '', '缺图恢复期间人物方案卡不得进入DOM形成第二主动作');
   });
 
   if (failures.length) {

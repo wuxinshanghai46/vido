@@ -9,7 +9,7 @@ import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.j
 import { assetCardMedia } from './sceneDossierCard.js?v=20260815-asset-v78';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260815-asset-v78';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260815-asset-v78';
-import { createKeyedRequestGuard, createPersonPlanRequestGuard, personPlanBlockedView } from './assetCenterPlanReleaseStatus.js?v=20260815-asset-v78';
+import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterPlanReleaseStatus.js?v=20260815-asset-v78';
 const GROUPS = [
   ['people', '人物'],
   ['animals', '动物'],
@@ -19,6 +19,7 @@ const GROUPS = [
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
   || (() => import('./assetCheckpointRecovery.js?v=20260815-asset-v78'));
+const loadAssetCenterStage = globalThis.__loadAssetCenterStage || (() => import('./assetCenterStageView.js?v=20260815-asset-v78'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -234,7 +235,9 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
 
 export async function mount(host, context) {
   const { store, bundle } = context;
-  const { checkpointRecoveryBanner, checkpointRecoverySummary } = await loadCheckpointRecovery();
+  const [{ checkpointRecoveryBanner, checkpointRecoverySummary }, { assetPlanStageView }] = await Promise.all([
+    loadCheckpointRecovery(), loadAssetCenterStage(),
+  ]);
   const historicalReadOnly = context.historicalReadOnly === true;
   const assets = bundle?.assets || {};
   const contentMode = bundle.project?.content_mode || bundle.brief?.content_mode || '';
@@ -257,19 +260,16 @@ export async function mount(host, context) {
   const assetScopeLabel = narrative ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
-  const checkpointRecovery = checkpointRecoverySummary(assets.people || []);
+  const checkpointRecovery = { ...checkpointRecoverySummary(assets.people || []), plan_eligible: assetPlanReady };
+  const recoveryOwnsStage = checkpointRecovery.missing.length > 0
+    && ['pending', 'not_billed', 'unverifiable'].includes(checkpointRecovery.billing_review_state);
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
     </section>
     ${checkpointRecoveryBanner(checkpointRecovery)}
-    ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
-      <div><span class="status-tag is-success">文字方案已建立 · 图片未生成</span><h2>生成真实人物图片</h2><p>进入资产中心不会自动生成图片。点击右侧按钮并确认后才调用图片模型；当前有 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。</p></div>
-      <div class="asset-visual-next-actions">${missingSubjectCount
-        ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationActive || checkpointRecovery.retry_blocked ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : (checkpointRecovery.retry_blocked ? '等待缺失项计费核对' : '确认并生成全部缺失人物图片')}</button>`
-        : `<button class="btn primary" type="button" data-confirm-assets data-history-safe ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
-    </section>` : personPlanBlockedView({ ...personPlanEligibility, visual_recovery_active: checkpointRecovery.retry_blocked }, generationActive)}
+    ${assetPlanStageView({ assetPlanReady, recoveryActive: recoveryOwnsStage, eligibility: personPlanEligibility, generationActive, missingSubjectCount, counts: { people: assets.people?.length, animals: assets.animals?.length, scenes: assets.scenes?.length } })}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>

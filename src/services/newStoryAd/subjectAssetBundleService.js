@@ -141,6 +141,31 @@ function personGenerationProfile(source = {}) {
   };
 }
 
+function personProfileResumeCompatible(previous = {}, current = {}) {
+  const prior = personGenerationProfile(previous), next = personGenerationProfile(current);
+  const negativeCompatible = (before = '', after = '') => before === after || before.includes(after);
+  const explicitConsistent = (source, normalized, keys, field) => {
+    const explicit = cleanText(keys.map(key => source?.[key]).find(value => value !== undefined && value !== null && String(value).trim()) || '', 800);
+    const projected = cleanText(normalized[field] || '', 800);
+    return !explicit || !projected || explicit.includes(projected) || projected.includes(explicit);
+  };
+  if (!explicitConsistent(current, next, ['wardrobeText', 'wardrobe'], 'wardrobeText')
+    || !explicitConsistent(current, next, ['hairMakeupText', 'hairMakeup'], 'hairMakeupText')) return false;
+  const priorNegative = prior.negativeText, nextNegative = next.negativeText;
+  const priorLooks = Array.isArray(prior.look_profiles) ? prior.look_profiles : [];
+  const nextLooks = Array.isArray(next.look_profiles) ? next.look_profiles : [];
+  delete prior.negativeText; delete next.negativeText;
+  delete prior.look_profiles; delete next.look_profiles;
+  if (JSON.stringify(prior) !== JSON.stringify(next)) return false;
+  if (!negativeCompatible(priorNegative, nextNegative) || priorLooks.length !== nextLooks.length) return false;
+  return priorLooks.every((look, index) => {
+    const before = { ...look }, after = { ...nextLooks[index] };
+    const beforeNegative = before.negativeText || '', afterNegative = after.negativeText || '';
+    delete before.negativeText; delete after.negativeText;
+    return JSON.stringify(before) === JSON.stringify(after) && negativeCompatible(beforeNegative, afterNegative);
+  });
+}
+
 function petGenerationProfile(source = {}) {
   return {
     id: cleanText(source.id || source.pet_id || source.petId || '', 80),
@@ -268,7 +293,12 @@ function compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) {
 
 function resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pets) {
   if (!taskId || typeof storage?.listOutputs !== 'function') return null;
-  const selectedIds = new Set(targets.selected.map(item => cleanText(item.id, 80)).filter(Boolean));
+  const targetContract = item => ({
+    kind: cleanText(item?.kind || '', 20), id: cleanText(item?.id || '', 80),
+    index: Math.max(0, Number(item?.index || 0) || 0),
+    key: cleanText(item?.key || subjectKey(item?.kind, item?.id, Number(item?.index || 0) + 1), 140),
+  });
+  const selectedContract = JSON.stringify(targets.selected.map(targetContract));
   return storage.listOutputs(taskId)
     .filter(row => String(row?.kind || '').startsWith('subject_asset_checkpoint:'))
     .filter(row => ['running', 'partial', 'failed'].includes(String(row?.payload?.status || '')))
@@ -277,12 +307,11 @@ function resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pe
     .sort((left, right) => Date.parse(right.updated_at || right.payload?.updated_at || '') - Date.parse(left.updated_at || left.payload?.updated_at || ''))
     .map(row => row.payload)
     .find(payload => {
-      const priorIds = new Set((Array.isArray(payload.targets) ? payload.targets : [])
-        .map(item => cleanText(item?.id, 80)).filter(Boolean));
-      if (selectedIds.size && [...selectedIds].some(id => !priorIds.has(id))) return false;
+      if (JSON.stringify((Array.isArray(payload.targets) ? payload.targets : []).map(targetContract)) !== selectedContract) return false;
       const inputProfiles = payload.input_profiles || {};
       if (Array.isArray(inputProfiles.humans)
-        && JSON.stringify(inputProfiles.humans) !== JSON.stringify(humans.map(personGenerationProfile))) return false;
+        && (inputProfiles.humans.length !== humans.length
+          || !inputProfiles.humans.every((profile, index) => personProfileResumeCompatible(profile, humans[index])))) return false;
       if (Array.isArray(inputProfiles.pets)
         && JSON.stringify(inputProfiles.pets) !== JSON.stringify(pets.map(petGenerationProfile))) return false;
       return Object.keys(payload.person_dossier_checkpoints || {}).length > 0;
@@ -923,9 +952,17 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   try {
   const resumePartial = body.resume_partial_checkpoint === true || body.resumePartialCheckpoint === true;
   const forceRegenerate = body.regenerate_selected === true && !resumePartial;
+  const exactPrevious = taskId ? storage.getOutput(taskId, kind) : null;
+  const resumablePrevious = taskId && resumePartial
+    ? resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pets)
+    : null;
+  if (taskId && resumePartial && !exactPrevious && !resumablePrevious) {
+    const error = new Error('人物方案已变化，现有图片与新方案的兼容性无法确认；已保留原图片并停止生成。');
+    error.code = 'SUBJECT_PARTIAL_CHECKPOINT_INCOMPATIBLE'; error.status = 409; error.retryable = false; throw error;
+  }
   const previous = taskId
-    ? (storage.getOutput(taskId, kind)
-      || (resumePartial ? resumablePartialCheckpoint(storage, taskId, counts, targets, humans, pets) : null)
+    ? (exactPrevious
+      || resumablePrevious
       || (!forceRegenerate ? compatibleCheckpoint(storage, taskId, counts, targets, humans, pets) : null)
       || {})
     : {};
@@ -1332,7 +1369,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
-  resumablePartialCheckpoint,
+  resumablePartialCheckpoint, personGenerationProfile, personProfileResumeCompatible,
   alignMemberAgeText, inferMemberAge, historicalYouthStyling,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,

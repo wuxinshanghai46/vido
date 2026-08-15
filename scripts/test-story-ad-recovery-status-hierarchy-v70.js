@@ -102,9 +102,7 @@ verify('updating the person plan is never presented as missing-image recovery', 
   const blockedPlan = planStatusUi.personPlanBlockedView({
     eligible: false, visual_recovery_active: true, issues: ['person_plan_stale'],
   }, false);
-  assert.doesNotMatch(blockedPlan, /data-update-person-plan/);
-  assert.match(blockedPlan, /平台核对完成后/);
-  assert.match(blockedPlan, /不能补图|不会补图/);
+  assert.equal(blockedPlan, '', '恢复阶段必须完全隐藏人物方案卡，而不是保留禁用说明');
 });
 
 const css = read('public/story-ad/workspace.css');
