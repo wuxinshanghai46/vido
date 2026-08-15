@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260815-asset-v83';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v83';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v83';
-import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v83';
+import { request } from '../api.js?v=20260815-asset-v84';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v84';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v84';
+import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v84';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -91,7 +91,7 @@ function sketchBatchMarkup(batch = null, total = 0) {
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260815-asset-v83');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260815-asset-v84');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
