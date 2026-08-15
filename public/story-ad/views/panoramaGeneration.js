@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260815-asset-v77';
-import { toast } from '../components/ui.js?v=20260815-asset-v77';
-import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v77';
+import { request } from '../api.js?v=20260815-asset-v78';
+import { toast } from '../components/ui.js?v=20260815-asset-v78';
+import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v78';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
