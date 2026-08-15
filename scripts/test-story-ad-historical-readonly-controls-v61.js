@@ -14,10 +14,14 @@ function control({ safe = false, disabled = false } = {}) {
 
 (async () => {
   const moduleUrl = pathToFileURL(path.resolve(__dirname, '../public/story-ad/workspaceHistoryMode.js')).href;
-  const { applyHistoricalReadonlyControls, historicalStepReadOnly } = await import(moduleUrl);
+  const { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } = await import(moduleUrl);
 
   assert.equal(historicalStepReadOnly({ navigation: { current: 'scene' } }, { view: 'assets' }), true);
   assert.equal(historicalStepReadOnly({ navigation: { current: 'assets' } }, { view: 'assets' }), false);
+  assert.equal(historicalStepUsesGlobalEdit({ view: 'brief' }), true);
+  for (const view of ['assets', 'scene', 'plot', 'storyboard', 'shot', 'final', 'workflow']) {
+    assert.equal(historicalStepUsesGlobalEdit({ view }), false, `${view} 必须使用步骤内独立编辑入口`);
+  }
 
   const safeGenerate = control({ safe: true });
   const safeNavigation = control({ safe: true });

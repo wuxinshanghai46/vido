@@ -39,6 +39,22 @@ function buttonTagWith(...attributes) {
 }
 
 const historyMode = functionBody(app, 'function applyHistoricalStepMode');
+const runHistoricalStepMode = new Function(
+  'host', 'route', 'historicalStepUsesGlobalEdit', 'historicalStepReadOnly', 'store',
+  'historicalEditUnlocks', 'historicalUnlockKey', 'document', 'applyHistoricalReadonlyControls',
+  'confirmDialog', 'mountView', 'currentRoute', historyMode,
+);
+function historicalDom(view) {
+  const inserted = [];
+  const host = { prepend: node => inserted.push(node) };
+  const document = { createElement: () => ({
+    className: '', innerHTML: '', setAttribute() {},
+    querySelector: () => ({ addEventListener() {} }),
+  }) };
+  runHistoricalStepMode(host, { view, taskId: 'task-1' }, historyModule?.historicalStepUsesGlobalEdit || (route => route.view === 'brief'),
+    () => true, { state: { bundle: {} } }, new Set(), () => 'task-1', document, () => {}, async () => false, async () => {}, () => ({}));
+  return inserted;
+}
 
 // 历史步骤只读只能保护编辑动作，不能把查看、生成和进入下一步等执行动作一刀切锁死。
 assert.doesNotMatch(
@@ -61,7 +77,11 @@ assert.match(
   buttonTagWith('data-confirm-assets', 'data-history-safe'),
   '人物资产确认/进入下一步必须显式声明为历史资产页仍可执行的动作',
 );
-const historyModule = new Function(`${historySource.replace(/\bexport\s+/g, '')}; return { applyHistoricalReadonlyControls };`)();
+const historyModule = new Function(`${historySource.replace(/\bexport\s+/g, '')}; return { applyHistoricalReadonlyControls, historicalStepUsesGlobalEdit };`)();
+assert.equal(historicalDom('brief').length, 1, '第1步完成后必须渲染唯一的全局历史编辑入口');
+for (const view of ['assets', 'scene', 'plot', 'storyboard', 'shot', 'final']) {
+  assert.equal(historicalDom(view).length, 0, `${view} 最终 DOM 不得插入全局新增/修改横幅`);
+}
 const control = selectors => ({
   disabled: false,
   dataset: {},
@@ -78,11 +98,12 @@ assert.equal(safeAction.disabled, false, '人物生成/下一步等显式安全�
 assert.equal(unlockAction.disabled, false, '历史步骤的“新增/修改内容”解锁按钮绝不能被只读处理自己禁用');
 assert.equal(ordinaryAction.disabled, true, '未分类的动作默认必须受保护，防止打开动态编辑面板绕过只读');
 assert.equal(editInput.disabled, true, '输入控件在显式解锁前必须保持只读');
-assert.match(assets, /historicalReadOnly\s*=\s*context\.historicalReadOnly === true/, '资产页必须采用壳层传入的最终历史只读状态');
-assert.match(assets, /openDrawer\(item, group, \{ readOnly: historicalReadOnly,/, '查看详情打开的动态 drawer 必须继承历史只读状态');
-assert.match(planningDetails, /readOnly \? '<p[^']*data-historical-drawer-readonly[^']*' : `\$\{group === 'people' \? personEditForm/s, '历史 drawer 必须只展示已保存内容，不能动态补回编辑表单');
-assert.match(planningDetails, /readOnly \? '' : '<button[^']*type="submit"[^']*保存人物文字设定/, '历史 drawer 不得显示人物文字保存动作');
-assert.match(planningDetails, /readOnly \? '' : `<button[^`]*data-drawer-upload-product/s, '历史 drawer 不得显示商品上传/替换动作');
+assert.equal(historyModule.historicalStepUsesGlobalEdit({ view: 'brief' }), true, '全局新增/修改只属于第1步目标与材料');
+for (const view of ['assets', 'scene', 'plot', 'storyboard', 'shot', 'final']) assert.equal(historyModule.historicalStepUsesGlobalEdit({ view }), false, `${view} 不得显示全局新增/修改入口`);
+assert.doesNotMatch(assets, /data-unlock-history-step|新增\s*\/\s*修改内容/, '人物资产最终 DOM 不得包含第1步的全局新增/修改入口');
+assert.doesNotMatch(app, /historicalReadOnly\s*:/, '壳层不得再把第2步后的独立编辑入口降级成公共历史只读模式');
+assert.match(assets, /data-asset-id/, '人物资产必须保留本步骤的详情编辑入口');
+assert.match(planningDetails, /personEditForm\(item\)/, '人物详情必须保留独立人物编辑表单');
 assert.match(planningDetails, /data-drawer-generate/, '历史只读只保护文字编辑，付费生成入口在二次确认前仍需可达');
 assert.match(assets, /createKeyedRequestGuard\(\)/, '人物图片生成必须按意图复用统一防重入 guard');
 assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmBillingAwareAction\(\{/, '防重入 guard 必须包住计费确认与提交链');

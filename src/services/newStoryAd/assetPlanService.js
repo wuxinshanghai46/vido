@@ -492,6 +492,92 @@ function projectReferencePlan(ctx = {}) {
   };
 }
 
+function concreteAge(value = '') {
+  const text = cleanText(value, 80);
+  if (!/\d{1,3}\s*(?:岁|~|～|-|—|–|至|到)/u.test(text)) return '';
+  const range = text.match(/(\d{1,3})\s*(?:~|～|-|—|–|至|到)\s*(\d{1,3})\s*岁?/u);
+  if (range) return `${range[1]}~${range[2]}岁`;
+  const exact = text.match(/(\d{1,3})\s*岁/u);
+  return exact ? `${exact[1]}岁` : '';
+}
+
+function confirmedRegion(ctx = {}) {
+  const world = ctx.world_setting || ctx.worldSetting || {};
+  const confirmed = world.country_region_confirmed === true || world.region_confirmed === true
+    || ctx.country_region_confirmed === true || ctx.region_confirmed === true;
+  if (!confirmed) return '';
+  return cleanText(world.country_region || world.country || world.region || ctx.country_region || ctx.country || ctx.region, 120);
+}
+
+function originalEthnicityForRegion(region = '') {
+  if (/中国|港澳台|东亚|日本|韩国|China|Chinese|East Asian|Japan|Korea/iu.test(region)) return '东亚外貌设计';
+  if (/南亚|印度|India|South Asian/iu.test(region)) return '南亚外貌设计';
+  if (/中东|西亚|Middle East|West Asian/iu.test(region)) return '中东外貌设计';
+  if (/非洲|Africa/iu.test(region)) return '非洲外貌设计';
+  if (/拉丁|南美|Latin|South America/iu.test(region)) return '拉丁裔外貌设计';
+  if (/欧洲|北美|欧美|Europe|North America/iu.test(region)) return '欧美外貌设计';
+  return region ? `${region}原创地域外貌设计` : '';
+}
+
+function ageRangeForStoryStage(text = '') {
+  if (/婴儿|婴孩|幼儿|襁褓/iu.test(text)) return '0~3岁';
+  if (/儿童|小孩|孩童|男孩|女孩|小学生/iu.test(text)) return '6~12岁';
+  if (/少年|少女|青少年|中学生/iu.test(text)) return '13~17岁';
+  if (/青年|年轻|姑娘|小伙/iu.test(text)) return '20~30岁';
+  if (/中年/iu.test(text)) return '40~55岁';
+  if (/老年|老人|老者|年迈/iu.test(text)) return '60~75岁';
+  return '';
+}
+
+function normalizeProfileDemographics(profile = {}, existing = {}, ctx = {}, castCount = 1) {
+  const ageCandidates = [
+    profile.age_contract?.display_text, profile.age_contract?.value, profile.age, profile.age_range, profile.ageRange,
+    ...(Array.isArray(profile.age_states) ? profile.age_states.map(item => item?.apparent_age) : []),
+    existing.age_contract?.display_text, existing.age_contract?.value, existing.age, existing.age_range, existing.ageRange,
+    ...(Array.isArray(existing.age_states) ? existing.age_states.map(item => item?.apparent_age) : []),
+  ];
+  let age = ageCandidates.map(concreteAge).find(Boolean) || '';
+  let ageSource = cleanText(profile.age_source || existing.age_source, 80);
+  const name = cleanText(profile.displayName || profile.name || existing.displayName || existing.name, 120);
+  const brief = cleanText(ctx.brief, 5000);
+  if (!age) {
+    const nameIndex = name ? brief.indexOf(name) : -1;
+    const briefScope = castCount === 1 ? brief : (nameIndex >= 0 ? brief.slice(Math.max(0, nameIndex - 40), nameIndex + name.length + 40) : '');
+    age = concreteAge(briefScope);
+    if (age) ageSource = 'confirmed_brief';
+  }
+  if (!age) {
+    const adultEvidence = cleanText([
+      profile.roleName, profile.role, profile.appearanceText, profile.appearance,
+      existing.roleName, existing.role, existing.appearanceText, existing.appearance,
+      castCount === 1 ? brief : '',
+    ].filter(Boolean).join('；'), 2400);
+    age = ageRangeForStoryStage(adultEvidence);
+    if (age) ageSource = 'platform_story_inference';
+    else if (/成年|成人|女士|男士|女子|母亲|父亲|父母|夫妻|丈夫|妻子|职业|侠客|恋人|重逢对象|转世之人|现代重逢|白月光/iu.test(adultEvidence)) {
+      age = '25~35岁';
+      ageSource = 'platform_story_inference';
+    }
+  }
+  const explicitEthnicity = cleanText(
+    profile.ethnicity || profile.ethnic_appearance || existing.ethnicity || existing.ethnic_appearance,
+    120,
+  );
+  const region = confirmedRegion(ctx);
+  const characterEvidence = cleanText([
+    profile.roleName, profile.role, profile.appearanceText, profile.appearance,
+    existing.roleName, existing.role, existing.appearanceText, existing.appearance,
+  ].filter(Boolean).join('；'), 1000);
+  const ethnicity = explicitEthnicity || originalEthnicityForRegion(region)
+    || (characterEvidence ? '未指定（原创角色，可修改）' : '');
+  const ethnicitySource = cleanText(profile.ethnicity_source || existing.ethnicity_source, 80)
+    || (explicitEthnicity ? 'confirmed_input' : (region ? 'platform_story_inference' : (ethnicity ? 'user_confirmable_default' : '')));
+  return {
+    ...(age ? { age, age_range: age, age_source: ageSource || 'confirmed_input' } : {}),
+    ...(ethnicity ? { ethnicity, ethnicity_source: ethnicitySource } : {}),
+  };
+}
+
 function normalizePlan(source = {}, ctx = {}) {
   const rawScenePlan = source.scene_plan || source.scenePlan || source.scene_config || source.sceneConfig || {};
   let scenePlan = normalizeScenePlan(assetPlanSceneContracts.closeAssetPlanSceneContracts(rawScenePlan, {
@@ -510,7 +596,8 @@ function normalizePlan(source = {}, ctx = {}) {
       const generatedLooks = personLooks.normalizeLookProfiles(profile);
       const existingLooks = existing ? personLooks.normalizeLookProfiles(existing) : [];
       const preservedLooks = existingLooks.length > generatedLooks.length ? existingLooks : generatedLooks;
-      const withLooks = personLooks.normalizeProfileLooks({ ...profile, look_profiles: preservedLooks });
+      const demographics = normalizeProfileDemographics(profile, existing, ctx, castProfiles.length);
+      const withLooks = personLooks.normalizeProfileLooks({ ...profile, ...demographics, look_profiles: preservedLooks });
       return ({
       ...withLooks,
       id: cleanText(profile.id || `cast_${index + 1}`, 100),
@@ -524,6 +611,7 @@ function normalizePlan(source = {}, ctx = {}) {
         400,
       ),
       negativeText: cleanText(profile.negativeText || profile.negative || '', 500),
+      ...demographics,
       look_profiles: withLooks.look_profiles,
     }); });
   const narrativeCastProfiles = personCountContract.narrativeProfiles(normalizedCastProfiles, { brief: ctx.brief || '' });
@@ -750,13 +838,26 @@ function recoverySectionValidators(ctx = {}) {
     cast_profiles: (profiles) => (Array.isArray(profiles) ? profiles : []).flatMap((profile, index) => {
       const issues = [];
       const prefix = `[${index}]`;
-      const name = cleanText(profile?.name || profile?.displayName || '', 120);
-      const age = cleanText(profile?.age || profile?.age_range || '', 100);
-      const ethnicity = cleanText(profile?.ethnicity || profile?.ethnic_appearance || '', 120);
+      const existingProfiles = Array.isArray(ctx.cast_profiles) ? ctx.cast_profiles : [];
+      const existing = existingProfiles.find(item => cleanText(item?.id || '', 100)
+        && cleanText(item?.id || '', 100) === cleanText(profile?.id || '', 100))
+        || existingProfiles.find(item => cleanText(item?.displayName || item?.name || '', 120)
+          && cleanText(item?.displayName || item?.name || '', 120) === cleanText(profile?.displayName || profile?.name || '', 120))
+        || {};
+      // Missing-section recovery must evaluate the same deterministic
+      // demographics that normalizePlan will persist. Otherwise a valid first
+      // model result is incorrectly sent through a second paid recovery call.
+      const validatedProfile = {
+        ...profile,
+        ...normalizeProfileDemographics(profile, existing, ctx, profiles.length),
+      };
+      const name = cleanText(validatedProfile.name || validatedProfile.displayName || '', 120);
+      const age = cleanText(validatedProfile.age || validatedProfile.age_range || '', 100);
+      const ethnicity = cleanText(validatedProfile.ethnicity || validatedProfile.ethnic_appearance || '', 120);
       if (!name || /^(?:出镜人物|人物|角色|主角)\s*\d*$/u.test(name)) issues.push(`${prefix}.descriptive_name_missing`);
       if (!/\d{1,3}\s*(?:岁|~|～|-|—|–|至|到)/u.test(age)) issues.push(`${prefix}.concrete_age_missing`);
       if (!ethnicity) issues.push(`${prefix}.ethnicity_design_missing`);
-      if (['background', 'ambient', 'incidental', 'scene_extra', 'crowd', 'non_asset'].includes(cleanText(profile?.asset_scope || '', 80).toLowerCase())) {
+      if (['background', 'ambient', 'incidental', 'scene_extra', 'crowd', 'non_asset'].includes(cleanText(validatedProfile.asset_scope || '', 80).toLowerCase())) {
         issues.push(`${prefix}.incidental_person_must_not_be_asset`);
       }
       return issues;
@@ -1982,6 +2083,7 @@ module.exports = {
   projectReferenceIntake,
   referenceProjectionFingerprint,
   normalizePlan,
+  normalizeProfileDemographics,
   complete,
   validAssetPlanSections,
   missingAssetPlanSections,

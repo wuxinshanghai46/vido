@@ -17,6 +17,10 @@ export function historicalStepReadOnly(bundle = {}, route = {}) {
   return routeIndex >= 0 && Math.max(0, ...progressIndexes) > routeIndex;
 }
 
+export function historicalStepUsesGlobalEdit(route = {}) {
+  return route.view === 'brief';
+}
+
 export function applyHistoricalReadonlyControls(host) {
   const result = { protected: 0, safe: 0 };
   host.querySelectorAll('button, input, select, textarea').forEach(control => {

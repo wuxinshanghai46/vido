@@ -2,7 +2,7 @@ import { createProjectStore } from './store/projectStore.js?v=20260815-asset-ui-
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260815-asset-ui-v62';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260815-asset-ui-v62';
 import { confirmDialog } from './components/dialog.js?v=20260815-asset-ui-v62';
-import { applyHistoricalReadonlyControls, historicalStepReadOnly } from './workspaceHistoryMode.js?v=20260815-asset-ui-v62';
+import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260815-asset-ui-v62';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -206,7 +206,7 @@ function historicalUnlockKey(route = {}) {
 }
 
 function applyHistoricalStepMode(host, route) {
-  if (!historicalStepReadOnly(store.state.bundle, route) || historicalEditUnlocks.has(historicalUnlockKey(route))) return;
+  if (!historicalStepUsesGlobalEdit(route) || !historicalStepReadOnly(store.state.bundle, route) || historicalEditUnlocks.has(historicalUnlockKey(route))) return;
   const banner = document.createElement('section');
   banner.className = 'historical-step-banner';
   banner.setAttribute('role', 'status');
@@ -284,8 +284,6 @@ async function mountView(route) {
         await renderRoute();
       },
       refreshCurrentView: async () => mountView(currentRoute()),
-      historicalReadOnly: historicalStepReadOnly(store.state.bundle, route)
-        && !historicalEditUnlocks.has(historicalUnlockKey(route)),
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
