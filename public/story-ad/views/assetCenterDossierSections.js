@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260815-asset-ui-v61';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260815-asset-ui-v62';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
