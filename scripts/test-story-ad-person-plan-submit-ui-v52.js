@@ -10,9 +10,12 @@ const source = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCente
 assert(source.includes('personPlanRequestGuard.run(async (requestKey)'), 'person plan click must enter the shared guard before loading the action');
 assert(source.includes("import('./assetCenterPlanMigrationAction.js"), 'person plan submission action must stay click-lazy');
 
+const guardSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterRequestGuard.js'), 'utf8').replace(/\bexport\s+/g, '');
 const statusSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPlanReleaseStatus.js'), 'utf8')
-  .replace(/export\s+(?=(?:async\s+)?function\s+)/g, '') + '\n;globalThis.__view = personPlanBlockedView; globalThis.__guard = createPersonPlanRequestGuard;';
-const sandbox = {};
+  .replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '') + '\n;globalThis.__view = personPlanBlockedView; globalThis.__guard = createPersonPlanRequestGuard;';
+const guardSandbox = {};
+vm.runInNewContext(`${guardSource}\nglobalThis.__person = createPersonPlanRequestGuard; globalThis.__keyed = createKeyedRequestGuard;`, guardSandbox);
+const sandbox = { makePersonGuard: guardSandbox.__person, makeGuardMap: guardSandbox.__keyed };
 vm.runInNewContext(statusSource, sandbox, { filename: 'asset-center-plan-status-v52.js' });
 const compatible = sandbox.__view({
   issues: ['active_plan_bundle_mismatch'],

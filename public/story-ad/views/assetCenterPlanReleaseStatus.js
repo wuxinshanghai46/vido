@@ -1,37 +1,19 @@
-export function createPersonPlanRequestGuard(requestKey = '') {
-  let active = false;
-  return { get active() { return active; }, async run(operation) {
-    if (active) return { skipped: true, request_key: requestKey };
-    active = true;
-    try { return await operation(requestKey); } finally { active = false; }
-  } };
-}
-
-export function createKeyedRequestGuard() {
-  const guards = new Map();
-  return { async run(key, requestKey, operation, onSkipped) {
-    const guard = guards.get(key) || createPersonPlanRequestGuard(requestKey);
-    guards.set(key, guard);
-    if (guard.active) return onSkipped?.();
-    const result = await guard.run(operation);
-    if (result === true) guards.delete(key);
-    return result;
-  } };
-}
+import { createKeyedRequestGuard as makeGuardMap, createPersonPlanRequestGuard as makePersonGuard } from './assetCenterRequestGuard.js?v=20260815-asset-v70';
+export const createPersonPlanRequestGuard = key => makePersonGuard(key);
+export const createKeyedRequestGuard = () => makeGuardMap();
 
 export function personPlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');
   const migrationOnly = eligibility.release_migration?.compatible === true && eligibility.release_migration?.migration_required === true;
+  if (eligibility.visual_recovery_active === true) return '<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag is-info">独立事项：人物方案待处理</span><h2>等待平台完成图片计费核对</h2><p>人物方案与当前缺图无关，更新方案不能补图；平台核对完成后再处理。</p></div><button class="btn" type="button" disabled>平台核对完成后处理</button></section>';
   const label = failed ? '人物方案更新失败' : (migrationOnly ? '方案可安全升级' : '人物方案需要更新');
   const button = generationActive ? (migrationOnly ? '正在升级方案' : '正在更新人物方案')
     : (failed ? '重新更新人物方案' : (migrationOnly ? '升级当前方案' : '更新人物方案'));
   const title = migrationOnly ? '将当前方案升级到运行版本' : `${failed ? '重新建立' : '更新'}当前内容的人物方案`;
   const description = migrationOnly
-    ? '合同、内容版本、故事覆盖和稳定 ID 均兼容；本次只升级版本，模型调用为 0，不修改现有方案。'
-    : '本次只更新人物文字方案，不修改场景方案、场景图片和人物在场景中的站位绑定，也不会生成图片。';
+    ? '版本兼容；本次只升级合同版本，模型调用为 0，不修改现有方案。'
+    : '只更新人物文字方案；不修改场景方案、场景图片和人物在场景中的站位绑定，也不会生成图片。';
   return `<section class="card asset-visual-next-step is-blocked" role="status"><div><span class="status-tag ${migrationOnly ? 'is-info' : 'is-danger'}">${label}</span><h2>${title}</h2><p>${description}</p></div><div class="asset-visual-next-actions"><button class="btn${generationActive ? '' : ' primary'}" type="button" data-update-person-plan data-release-migration-only="${migrationOnly}" ${generationActive ? 'disabled' : ''}>${button}</button><button class="btn" type="button" disabled>${migrationOnly ? '升级完成后即可继续' : '文字方案确认后，再单独生成图片'}</button></div></section>`;
 }
 
-export function assetPlanBlockedView(eligibility = {}, generationActive = false) {
-  return personPlanBlockedView(eligibility.person || eligibility, generationActive);
-}
+export function assetPlanBlockedView(eligibility = {}, active = false) { return personPlanBlockedView(eligibility.person || eligibility, active); }

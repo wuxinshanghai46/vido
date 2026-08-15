@@ -170,6 +170,7 @@ export function generationProgressView(bundle = {}) {
 export function generationProgressPanel(bundle = {}, currentView = '') {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  if (currentView === 'assets' && view.checkpointRecovery) return '';
   const ready=bundle.navigation?.asset_plan_eligibility?.eligible === true;
   const recovery=view.stage === 'visual_assets' && currentView !== 'assets'
     ? `<button class="btn small" data-view="assets">前往资产中心${ready ? '继续缺失图片' : '更新人物与场景方案'}</button>`:'';
@@ -182,7 +183,7 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
     const status = lane.required === false ? '不需要' : (lane.status === 'completed' ? '已完成' : (lane.status === 'failed' ? '需处理' : `${Math.floor(completed)}/${total}`));
     return `<div><span><b>${label}</b><small>${escapeHtml(publicGenerationMessage(lane.message || ''))}</small></span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('')}</div>` : '';
-  const checkpointRows = view.checkpointRecovery ? `<div class="generation-lanes" data-checkpoint-recovery-details>${view.checkpointRecovery.missing.map(unit => `<div><span><b>${escapeHtml(unit.person_name)} · ${escapeHtml(unit.label)}</b><small>${escapeHtml(unit.reason)}（${escapeHtml(unit.error_code)}）</small></span><strong>${unit.retry_blocked ? '待计费核对' : '待处理'}</strong></div>`).join('')}</div>` : '';
+  const checkpointRows = view.checkpointRecovery ? `<div class="generation-lanes" data-checkpoint-recovery-details>${view.checkpointRecovery.missing.map(unit => `<div><span><b>${escapeHtml(unit.person_name)} · ${escapeHtml(unit.label)}</b><small>${escapeHtml(unit.reason)}</small></span><strong>${unit.retry_blocked ? '平台核账中' : '待处理'}</strong></div>`).join('')}</div>` : '';
   if (view.failed) {
     const retained = laneRows || checkpointRows || recovery
       ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${checkpointRows}${laneRows}${recovery && !view.checkpointRecovery?.retryBlocked ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`

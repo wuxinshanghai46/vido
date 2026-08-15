@@ -2,16 +2,20 @@ import { escapeHtml } from '../components/ui.js?v=20260815-asset-v70';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);
-  const completed = rows.reduce((sum, item) => sum + Number(item.checkpoint_recovery_summary.completed_units || 0), 0);
-  const total = rows.reduce((sum, item) => sum + Number(item.checkpoint_recovery_summary.total_units || 0), 0);
+  const sum = key => rows.reduce((value, item) => value + Number(item.checkpoint_recovery_summary[key] || 0), 0);
   const missing = rows.flatMap(item => (item.checkpoint_recovery_summary.missing_units || []).map(unit => ({ ...unit, person_name: item.name || '人物' })));
-  return { completed, total, missing, retry_blocked: missing.some(unit => unit.retry_blocked) };
+  return { completed: sum('completed_units'), total: sum('total_units'), missing, retry_blocked: missing.some(unit => unit.retry_blocked) };
 }
 
 export function checkpointRecoveryBanner(summary = {}) {
   if (!summary.total || !summary.missing.length) return '';
-  return `<section class="card asset-checkpoint-recovery ${summary.retry_blocked ? 'is-blocked' : ''}" data-checkpoint-recovery-banner>
-    <div><span class="status-tag ${summary.retry_blocked ? 'is-warning' : ''}">人物图片已保留 ${summary.completed}/${summary.total}</span><h2>${summary.retry_blocked ? '缺失项正在等待计费核对' : '人物图片仍有缺失项'}</h2><p>${summary.retry_blocked ? '这些单元已提交供应商，但结果或计费状态未知。为避免重复付费，系统不会自动重试。' : '成功图片已保留，只处理下列缺失项。'}</p></div>
-    <ul>${summary.missing.map(unit => `<li><b>${escapeHtml(unit.person_name)} · ${escapeHtml(unit.label || unit.unit || unit.key)}</b><span>${escapeHtml(unit.reason || '未完成')}（${escapeHtml(unit.error_code || 'UNKNOWN')}）</span></li>`).join('')}</ul>
-  </section>`;
+  const people = [...summary.missing.reduce((groups, unit) => {
+    const name = unit.person_name || '人物';
+    const row = groups.get(name) || { name, units: [], reason: '' };
+    row.units.push(unit.label || unit.unit || unit.key || '缺失单元');
+    row.reason ||= unit.reason;
+    groups.set(name, row);
+    return groups;
+  }, new Map()).values()];
+  return `<section class="card asset-checkpoint-recovery" data-checkpoint-recovery-banner role="alert"><header><div><span class="status-tag is-warning">平台核账中</span><h2>人物图片已生成 ${summary.completed}/${summary.total}</h2><p>剩余 ${summary.missing.length} 项由平台核对，无需点击；计费核对完成前不能再次生成。已生成图片可正常查看。</p></div><a class="btn" href="#asset-section-people">查看已生成图片</a></header><div class="asset-checkpoint-track"><i style="width:${Math.round(summary.completed / summary.total * 100)}%"></i></div><ul>${people.map(person => `<li><b>${escapeHtml(person.name)}</b><span>缺少：${escapeHtml(person.units.join('、'))}</span><small>${escapeHtml(person.reason || '平台正在核对')}</small></li>`).join('')}</ul></section>`;
 }

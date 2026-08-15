@@ -8,7 +8,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const app = read('public/story-ad/app.js');
 const assets = read('public/story-ad/views/assetCenterView.js');
 const planningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
-const requestGuards = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
+const requestGuards = read('public/story-ad/views/assetCenterRequestGuard.js');
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
 const brief = read('public/story-ad/views/briefView.js');
 const styles = read('public/story-ad/styles.css');

@@ -45,6 +45,7 @@ function collectMedia(value, label, result = [], seen = new Set(), depth = 0) {
     result.push({
       key: clean(value.key || value.id || `${label}_${result.length + 1}`, 120),
       label: clean(value.label || value.name || label, 160),
+      kind: clean(value.kind || value.asset_type || value.category || label, 80),
       image_url: direct,
     });
   }
@@ -54,6 +55,20 @@ function collectMedia(value, label, result = [], seen = new Set(), depth = 0) {
     }
   });
   return result;
+}
+
+function canonicalPersonAtlas(media = []) {
+  const score = row => {
+    const key = clean(row.key, 120).toLowerCase();
+    const semantic = `${key} ${clean(row.kind, 80)} ${clean(row.label, 160)} ${clean(row.image_url, 1200)}`.toLowerCase();
+    if (key === 'body_1' || /person[_-]body[_-]atlas/.test(semantic)) return 100;
+    if (/body/.test(semantic) && /atlas/.test(semantic)) return 90;
+    if (/(?:person|dossier)/.test(semantic) && /atlas/.test(semantic)) return 80;
+    if (/(?:identity|face.?front|portrait)/.test(semantic)) return 40;
+    return 0;
+  };
+  return media.map((row, index) => ({ row, index, score: score(row) }))
+    .filter(item => item.score > 0).sort((left, right) => right.score - left.score || left.index - right.index)[0]?.row || null;
 }
 
 function projectCheckpoint(checkpoint = {}, profiles = []) {
@@ -84,8 +99,7 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
   });
   return [...bySubject.entries()].map(([subjectId, state]) => ({
     subject_id: subjectId,
-    image_url: state.media.find(row => /(?:dossier|atlas|identity|face.?front|portrait)/i.test(`${row.key} ${row.label}`))?.image_url
-      || state.media[0]?.image_url || '',
+    image_url: canonicalPersonAtlas(state.media)?.image_url || state.media[0]?.image_url || '',
     checkpoint_media: state.media,
     completed_unit_count: state.completed,
     total_unit_count: state.completed + state.failed.length,
@@ -139,4 +153,4 @@ function mergePeople(people = [], outputs = {}) {
   });
 }
 
-module.exports = { MAX_PROJECTED_MEDIA, collectMedia, mergePeople, projectCheckpoint, publicFailureReason, publicUnitLabel };
+module.exports = { MAX_PROJECTED_MEDIA, canonicalPersonAtlas, collectMedia, mergePeople, projectCheckpoint, publicFailureReason, publicUnitLabel };

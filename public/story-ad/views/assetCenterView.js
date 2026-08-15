@@ -148,7 +148,7 @@ function assetCard(item, group) {
   const recovery = item.checkpoint_recovery_summary || {};
   const retryBlocked = group === 'people' && recovery.retry_blocked === true;
   const failureBanner = group === 'people' && item.failed_checkpoint_units?.length
-    ? `<div class="asset-failure-banner" data-asset-failure-banner>${item.failed_checkpoint_units.map(unit => `<span><b>${escapeHtml((recovery.missing_units || []).find(row => row.key === unit.key)?.label || unit.unit || unit.key)}</b>${escapeHtml(unit.reason)}（${escapeHtml(unit.error_code)}）</span>`).join('')}</div>` : '';
+    ? `<div class="asset-failure-banner" data-asset-failure-banner>${item.failed_checkpoint_units.map(unit => `<span><b>${escapeHtml((recovery.missing_units || []).find(row => row.key === unit.key)?.label || unit.unit || unit.key)}</b>${escapeHtml(unit.reason)}</span>`).join('')}</div>` : '';
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
       <div class="asset-card-media">${assetCardMedia(item, group)}</div>
@@ -215,7 +215,7 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
   })}</div>` : '';
   return allEmpty + groups.map(([key, label]) => {
       const rows = assets[key] || [];
-      return `<section class="asset-section" data-asset-section="${key}" ${rows.length ? '' : 'hidden'}>
+      return `<section class="asset-section" id="asset-section-${key}" data-asset-section="${key}" ${rows.length ? '' : 'hidden'}>
         <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span>${key === 'products' ? `<button class="btn small" type="button" data-history-safe data-generate-product-main ${productDisabled}>添加商品/展示主体</button>` : ''}<button class="btn small" type="button" data-add-asset="${key}">+ ${key === 'products' ? '上传商品/展示主体素材' : `添加${escapeHtml(label)}`}</button></div>
         <div data-section-body>${rows.length ? `<div class="asset-grid">${rows.map(item => assetCard(item, key)).join('')}</div>` : emptyState({ title: `尚未建立${label}`, body: '可以上传已有参考，或先完善该主体档案。', action: `添加${label}`, actionId: key })}</div>
       </section>`;
@@ -259,7 +259,7 @@ export async function mount(host, context) {
       <div class="asset-visual-next-actions">${missingSubjectCount
         ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationActive || checkpointRecovery.retry_blocked ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : (checkpointRecovery.retry_blocked ? '等待缺失项计费核对' : '确认并生成全部缺失人物图片')}</button>`
         : `<button class="btn primary" type="button" data-confirm-assets data-history-safe ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
-    </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
+    </section>` : personPlanBlockedView({ ...personPlanEligibility, visual_recovery_active: checkpointRecovery.retry_blocked }, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>

@@ -190,6 +190,8 @@ async function main() {
     document: fixture.document, Image: PreloadImage, escapeHtml,
   });
   const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel']);
+  const recoveryUi = loadBrowserModule('public/story-ad/views/assetCheckpointRecovery.js', ['checkpointRecoverySummary', 'checkpointRecoveryBanner'], { escapeHtml });
+  const planUi = loadBrowserModule('public/story-ad/views/assetCenterPlanReleaseStatus.js', ['personPlanBlockedView']);
   lightbox.bindMediaLightbox(fixture.scope);
   fixture.scope.dispatch('click', { target: fixture.trigger });
   await Promise.resolve();
@@ -227,6 +229,13 @@ async function main() {
     assert.equal(projected.category_atlases.length, 1);
     assert.equal(projected.cover_image_url, '/api/new-story-ad/assets/person-face.png');
   });
+  verify('body atlas wins canonical cover even when an identity atlas appears first', () => {
+    const atlas = projection.canonicalPersonAtlas([
+      { key: 'identity_1', kind: 'identity', image_url: '/person_identity_atlas.png' },
+      { key: 'body_1', kind: 'body', image_url: '/person_body_atlas.png' },
+    ]);
+    assert.equal(atlas.image_url, '/person_body_atlas.png');
+  });
   verify('projection preserves each failed unit and public reason', () => {
     assert.deepEqual(projected.failed_checkpoint_units, [{
       key: 'walk', unit: 'base_action:natural_walk', reason: '三次质量审核未通过', error_code: 'IMAGE_ATTEMPTS_EXHAUSTED',
@@ -256,15 +265,31 @@ async function main() {
       missing_units: [{ label: index < 2 ? '腰部配饰' : '发饰', reason: '需人工核对后处理', error_code: index < 3 ? 'PROVIDER_CONTENT_AUDIT' : 'IMAGE_ATTEMPTS_EXHAUSTED', retry_blocked: true }],
     },
   }));
-  const globalPanel = ui.generationProgressPanel({
+  const recoveryBundle = {
     project: { status: 'failed', error: 'provider failure' },
     generation: { progress: { status: 'failed', stage: 'visual_assets', completed: 21, total: 21 } },
     assets: { people: recoveryPeople }, navigation: { asset_plan_eligibility: { eligible: true } },
-  }, 'assets');
-  verify('global progress uses checkpoint 25/29 and blocks retry instead of showing stale 21/21', () => {
+  };
+  const recoveryBanner = recoveryUi.checkpointRecoveryBanner(recoveryUi.checkpointRecoverySummary(recoveryPeople));
+  verify('asset page renders one actionable recovery status instead of duplicating terminal state', () => {
+    assert.equal(ui.generationProgressPanel(recoveryBundle, 'assets'), '');
+    assert.match(recoveryBanner, /人物图片已生成 25\/29/);
+    assert.match(recoveryBanner, /平台核账中|无需点击或重试/);
+    assert.match(recoveryBanner, /查看已生成图片/);
+    assert.doesNotMatch(recoveryBanner, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED/);
+  });
+  verify('non-asset global progress keeps authoritative counts without exposing internal codes', () => {
+    const globalPanel = ui.generationProgressPanel(recoveryBundle, 'story');
     assert.match(globalPanel, /25\/29/);
-    assert.match(globalPanel, /待计费核对/);
-    assert.doesNotMatch(globalPanel, /可从缺失项继续|21\/21/);
+    assert.doesNotMatch(globalPanel, /可从缺失项继续|21\/21|PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED/);
+  });
+  verify('person plan eligibility is explicitly separate from billing recovery', () => {
+    const plan = planUi.personPlanBlockedView({ issues: [], visual_recovery_active: true }, false);
+    assert.match(plan, /独立事项/);
+    assert.match(plan, /与当前缺图无关/);
+    assert.match(plan, /平台核对完成后/);
+    assert.doesNotMatch(plan, /data-update-person-plan/);
+    assert.match(plan, /disabled/);
   });
 
   if (failures.length) {

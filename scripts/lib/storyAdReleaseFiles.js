@@ -49,6 +49,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-visual-generation-lineage-v65.js',
   'scripts/test-story-ad-candidate-systemic-readiness-v66.js',
   'scripts/test-story-ad-person-asset-interactions-v68.js',
+  'scripts/test-story-ad-recovery-status-hierarchy-v70.js',
   'scripts/audit-story-ad-visual-generation-lineage-v65.js',
   'scripts/audit-story-ad-checkpoint-billing-correlation-v65.js',
   'scripts/repair-story-ad-visual-generation-lineage-v65.js',
