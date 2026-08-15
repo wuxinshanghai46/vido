@@ -96,14 +96,16 @@ function testCheckpointBillingRiskJoinsUnifiedAudit() {
   }, 'xingyue-v65');
   assert.equal(risk.all_unknown_billing.length, 1,
     'submitted_unknown checkpoint 必须进入统一计费风险审计，不能只扫描 model_calls');
-  assert.equal(risk.active_unknown_billing.length, 1,
-    '未核清的 submitted_unknown checkpoint 必须作为活动计费风险阻断写入和迁移');
+  assert.equal(risk.active_unknown_billing.length, 0,
+    'submitted_unknown 是已停止自动重试的终态，不得冒充仍在供应商运行中的任务');
+  assert.equal(risk.unquarantined_unknown_billing.length, 1,
+    '未核清的 submitted_unknown checkpoint 必须作为未隔离计费风险阻断写入和迁移');
   const snapshot = billingAudit.auditSnapshot({
     tasks: [{ id: 'xingyue-v65', lineage_enforced: true }],
     model_calls: [], generation_runs: [], manifests: [], artifacts: [], works: [], work_events: [],
     outputs: [{ task_id: 'xingyue-v65', kind: 'subject_asset_checkpoint:xingyue-v65:partial', payload: checkpoint }],
   });
-  assert.ok(snapshot.tasks[0].issues.includes('active_unknown_billing'),
+  assert.ok(snapshot.tasks[0].issues.includes('unknown_billing_unquarantined'),
     'top-level systemic audit must pass outputs into checkpoint billing risk');
   const resolvedRisk = billingAudit.billingRiskForTask({
     model_calls: [], generation_runs: [],
@@ -163,8 +165,8 @@ function testUnknownCheckpointBlocksMigrationWithoutWrites() {
   try {
     const result = publication.migrateCompatibleRelease(taskId, { fingerprint, reason: 'v65-test' });
     assert.equal(result.blocked, true, 'submitted_unknown checkpoint 未核清时必须阻断 release migration');
-    assert.ok(result.compatibility.issues.includes('active_unknown_billing_exists'),
-      '迁移阻断结果必须给出统一的活动计费风险原因');
+    assert.ok(result.compatibility.issues.includes('unknown_billing_unquarantined'),
+      '迁移阻断结果必须给出统一的未隔离计费风险原因');
     assert.equal(writes, 0, '计费风险未核清时迁移不得发生任何持久化写入');
   } finally {
     Object.assign(storage, original);

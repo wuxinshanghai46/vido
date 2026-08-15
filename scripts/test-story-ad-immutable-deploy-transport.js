@@ -24,7 +24,11 @@ assert.strictEqual(deployOptions.candidateOnlyRequested([], { VIDO_IMMUTABLE_CAN
 assert.strictEqual(deployOptions.candidateOnlyRequested([], {}), false, '未授权候选模式不得自行启用');
 assert.throws(() => deployOptions.assertKnownDeployArgs(['--candidate-onyl']), /未知不可变部署参数/, '拼错的部署参数必须失败，禁止静默进入切流');
 assert(source.indexOf('if (candidateOnly)') < source.indexOf("setReleaseControl('draining'"), 'candidate-only mode must exit before draining, migration, or cutover');
+assert(source.includes('auditCandidateSystemicState()'), 'candidate-only must run the same systemic migration/audit preflight before approval');
+assert(source.indexOf('await auditCandidateSystemicState()') < source.indexOf("reportPhase('candidate_verified'"), 'candidate-only systemic preflight must pass before candidate verification');
+assert(source.includes('candidateSystemicAudit.unquarantined_unknown_billing_count'), 'candidate preflight must prove every unquarantined billing risk has a deterministic quarantine plan');
 assert(source.includes('releaseControlDrained = true'), '发布器必须单独记录停写状态');
+assert(source.includes('&& !releaseControlDrained && !systemicBackupCreated'), 'rollback must not early-return after draining or systemic backup creation');
 assert.strictEqual((source.match(/cutoverStarted = true/g) || []).length, 1, '切流标志只能在真实切换点设置一次');
 assert(source.indexOf('cutoverStarted = true') > source.indexOf("reportPhase('cutover')"), '切流标志只能在备份和迁移通过后设置');
 assert(source.includes('cutoverStarted || legacyProcessFrozen || restored?.restored === true'), '旧生产进程若在切流前冻结，回滚必须仍可恢复');

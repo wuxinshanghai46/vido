@@ -23,6 +23,19 @@ try {
     provider_id: 'provider-a', model_id: 'model-a', provider_task_id: 'paid-task-1',
     provider_submission_state: 'submitted_unknown', billing_state: 'unknown', error_code: 'PROVIDER_5XX_AMBIGUOUS',
   });
+  storage.saveModelCall({
+    id: 'legacy-call-blank', task_id: 'legacy-one', stage: 'person_dossier', status: 'failed',
+    submission_id: 'checkpoint-blank-call', provider_submission_state: '', billing_state: '',
+  });
+  storage.saveOutput('legacy-one', 'subject_asset_checkpoint:legacy-one:partial', {
+    person_dossier_checkpoints: {
+      correlated: { key: 'checkpoint-correlated', status: 'submitted_unknown', provider_task_id: 'paid-task-1', provider_submission_state: 'submitted_unknown', billing_state: 'unknown' },
+      blank: { key: 'checkpoint-blank-call', status: 'submitted_unknown', provider_submission_state: 'submitted_unknown', billing_state: 'unknown' },
+    },
+  });
+  storage.saveOutput('legacy-one', 'scene_asset_checkpoint:scene-one', {
+    views: { master: { status: 'failed', provider_submission_state: 'submitted_unknown', billing_state: 'unknown' } },
+  });
 
   const beforeBytes = fs.readFileSync(storage.DB_PATH);
   const dry = migration.plan(storage.readDb());
@@ -30,7 +43,9 @@ try {
   assert.strictEqual(Buffer.compare(beforeBytes, afterDryBytes), 0, 'dry-run 不得写数据库');
   assert.strictEqual(dry.model_calls_started, 0);
   assert.strictEqual(dry.tasks_to_enable_lineage.includes('legacy-one'), true);
-  assert.strictEqual(dry.unknown_billing_to_quarantine.length, 1);
+  assert.strictEqual(dry.unknown_billing_to_quarantine.length, 3,
+    'one model call plus two checkpoint-only risks must be quarantined; correlated unknown must not double count');
+  assert.strictEqual(dry.checkpoint_billing_to_quarantine.length, 2);
 
   const beforeRollbackBytes = fs.readFileSync(storage.DB_PATH);
   assert.throws(() => storage.withWriteBatch(() => {
@@ -44,7 +59,7 @@ try {
   assert.strictEqual(first.ok, true);
   assert.strictEqual(first.model_calls_started, 0);
   assert.strictEqual(first.lineage_enabled, 1);
-  assert.strictEqual(first.billing_quarantined, 1);
+  assert.strictEqual(first.billing_quarantined, 3);
   assert.strictEqual(first.remaining.tasks_without_work, 0);
   assert.strictEqual(first.remaining.tasks_without_lineage, 0);
   assert.strictEqual(first.remaining.unknown_billing_without_quarantine, 0);
@@ -52,6 +67,7 @@ try {
   assert.strictEqual(unit.state, 'billing_unknown');
   assert.strictEqual(unit.retry_blocked, true);
   assert.strictEqual(unit.provider_task_id, 'paid-task-1');
+  assert.strictEqual(storage.listGenerationRuns().filter(run => run.legacy_checkpoint_key).length, 2);
   assert.strictEqual(storage.getWork('legacy-one').mode, 'authoritative');
   assert.strictEqual(first.authority_promoted, 2);
   assert.strictEqual(first.legacy_output_rows_pruned > 0, true);
@@ -64,7 +80,7 @@ try {
   assert.strictEqual(second.lineage_enabled, 0);
   assert.strictEqual(second.billing_quarantined, 0);
   assert.strictEqual(second.authority_promoted, 0);
-  assert.strictEqual(storage.listGenerationRuns().length, 1, '重复迁移不得复制计费隔离单元');
+  assert.strictEqual(storage.listGenerationRuns().length, 3, '重复迁移不得复制计费隔离单元');
 
   const legacyOutputCount = storage.readDb().outputs.length;
   storage.saveOutput('legacy-one', 'blueprint', { story_title: 'new blueprint' });

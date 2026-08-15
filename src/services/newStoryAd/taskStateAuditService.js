@@ -2,7 +2,7 @@
 
 const storage = require('./storageService');
 
-const RUNNING_STATES = new Set(['queued', 'submitting', 'submitted', 'submitted_unknown', 'accepted', 'polling', 'running', 'generating', 'retrying']);
+const RUNNING_STATES = new Set(['queued', 'submitting', 'submitted', 'accepted', 'polling', 'running', 'generating', 'retrying']);
 
 function text(value = '') { return String(value ?? '').trim(); }
 function rows(value) { return Array.isArray(value) ? value : []; }
@@ -16,40 +16,55 @@ function checkpointBillingRows(outputs = [], taskId = '') {
   const normalizedTaskId = text(taskId);
   const found = [];
   const seen = new Set();
-  const visit = (value, location) => {
-    if (!value || typeof value !== 'object') return;
+  const add = (key, value = {}, outputKind = '') => {
+    const checkpointKey = text(key);
+    if (!checkpointKey || seen.has(checkpointKey)) return;
+    seen.add(checkpointKey);
     const billing = text(value.billing_state).toLowerCase();
-    const submission = text(value.provider_submission_state || value.status).toLowerCase();
-    const checkpointLike = value.key || value.unit || value.provider_request_id || value.provider_task_id;
-    if (checkpointLike) {
-      const id = `checkpoint:${text(value.key) || location}`;
-      if (seen.has(id)) return;
-      seen.add(id);
-      if (billing === 'unknown') {
-        found.push({
-          id,
-          task_id: normalizedTaskId,
-          stage: text(value.unit || value.asset_type || 'visual_asset_checkpoint'),
-          status: text(value.status || submission),
-          provider_submission_state: submission,
-          billing_state: 'unknown',
-          provider_request_id: text(value.provider_request_id),
-          provider_task_id: text(value.provider_task_id),
-          source: 'generation_checkpoint',
-          checkpoint_key: text(value.key),
-        });
-      }
-    }
-    if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${location}[${index}]`));
-    else Object.entries(value).forEach(([key, item]) => {
-      if (item && typeof item === 'object') visit(item, `${location}.${key}`);
+    const submission = text(value.provider_submission_state || value.submission_state || value.status).toLowerCase();
+    if (billing !== 'unknown' && submission !== 'submitted_unknown') return;
+    found.push({
+      id: `checkpoint:${checkpointKey}`,
+      task_id: normalizedTaskId,
+      stage: text(value.unit || value.asset_type || outputKind || 'visual_asset_checkpoint'),
+      status: text(value.status || submission),
+      provider_submission_state: submission,
+      billing_state: 'unknown',
+      provider_request_id: text(value.provider_request_id),
+      provider_task_id: text(value.provider_task_id),
+      submission_id: text(value.submission_id || value.key || checkpointKey),
+      source: 'generation_checkpoint',
+      source_kind: outputKind,
+      checkpoint_key: checkpointKey,
     });
   };
   rows(outputs).filter(output => text(output.task_id) === normalizedTaskId)
     .sort((left, right) => text(right.updated_at || right.payload?.updated_at)
       .localeCompare(text(left.updated_at || left.payload?.updated_at)))
-    .forEach((output, index) => visit(output.payload, `${text(output.kind) || 'output'}:${index}`));
+    .forEach(output => {
+      const kind = text(output.kind);
+      const payload = output.payload || {};
+      if (kind.startsWith('subject_asset_checkpoint:')) {
+        Object.entries(payload.person_dossier_checkpoints || {})
+          .forEach(([key, value]) => add(text(value?.key) || key, value, kind));
+      } else if (kind.startsWith('prop_asset_checkpoint:')) {
+        Object.entries(payload.units || {})
+          .forEach(([key, value]) => add(text(value?.key) || key, value, kind));
+      } else if (kind.startsWith('scene_asset_checkpoint:')) {
+        Object.entries(payload.views || {})
+          .forEach(([key, value]) => add(`${kind}#${key}`, value, kind));
+      }
+    });
   return found;
+}
+
+function sameBillingAttempt(call = {}, checkpoint = {}) {
+  if (text(call.task_id) !== text(checkpoint.task_id)) return false;
+  return Boolean(
+    (text(call.submission_id) && text(call.submission_id) === text(checkpoint.submission_id))
+    || (text(call.provider_task_id) && text(call.provider_task_id) === text(checkpoint.provider_task_id))
+    || (text(call.provider_request_id) && text(call.provider_request_id) === text(checkpoint.provider_request_id)),
+  );
 }
 
 function billingRiskForTask(db = {}, taskId = '') {
@@ -58,15 +73,20 @@ function billingRiskForTask(db = {}, taskId = '') {
     .filter(run => text(run.task_id || run.work_id) === normalizedTaskId);
   const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
     || text(run.billing_state).toLowerCase() === 'unknown');
-  const checkpointUnknownBilling = checkpointBillingRows(db.outputs, normalizedTaskId);
+  const modelUnknownBilling = rows(db.model_calls)
+    .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown');
+  const checkpointUnknownBilling = checkpointBillingRows(db.outputs, normalizedTaskId)
+    .filter(checkpoint => !modelUnknownBilling.some(call => sameBillingAttempt(call, checkpoint)));
   const allUnknownBilling = [
-    ...rows(db.model_calls)
-      .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown'),
+    ...modelUnknownBilling,
     ...checkpointUnknownBilling,
   ];
   const activeUnknownBilling = allUnknownBilling.filter(isUnknownBilling);
   const quarantinedCallIds = new Set(unknownBillingUnits.map(run => text(run.legacy_model_call_id)).filter(Boolean));
-  const unquarantinedUnknownBilling = allUnknownBilling.filter(call => !quarantinedCallIds.has(text(call.id)));
+  const quarantinedCheckpointKeys = new Set(unknownBillingUnits.map(run => text(run.legacy_checkpoint_key)).filter(Boolean));
+  const unquarantinedUnknownBilling = allUnknownBilling.filter(call => call.source === 'generation_checkpoint'
+    ? !quarantinedCheckpointKeys.has(text(call.checkpoint_key))
+    : !quarantinedCallIds.has(text(call.id)));
   return {
     all_unknown_billing: allUnknownBilling,
     active_unknown_billing: activeUnknownBilling,
@@ -206,7 +226,9 @@ module.exports = {
   auditCurrent,
   auditSnapshot,
   billingRiskForTask,
+  checkpointBillingRows,
   duplicateKeys,
   isUnknownBilling,
+  sameBillingAttempt,
   semanticSceneKey,
 };

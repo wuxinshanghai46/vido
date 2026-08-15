@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const defaultStorage = require('./storageService');
 const works = require('./workAggregateService');
+const taskStateAudit = require('./taskStateAuditService');
 
 function text(value = '') { return String(value ?? '').trim(); }
 function rows(value) { return Array.isArray(value) ? value : []; }
@@ -14,22 +15,77 @@ function unknownBilling(call = {}) {
   return text(call.billing_state).toLowerCase() === 'unknown';
 }
 
+function legacyCheckpointBillingId(checkpoint = {}) {
+  const source = JSON.stringify([checkpoint.task_id, checkpoint.checkpoint_key]);
+  return `gu_legacy_checkpoint_${crypto.createHash('sha256').update(source).digest('hex').slice(0, 24)}`;
+}
+
+function checkpointUnknownBilling(db = {}) {
+  const taskIds = [...new Set(rows(db.outputs).map(row => text(row.task_id)).filter(Boolean))];
+  const unknownCalls = rows(db.model_calls).filter(unknownBilling);
+  return taskIds.flatMap(taskId => taskStateAudit.checkpointBillingRows(db.outputs, taskId))
+    .filter(checkpoint => !unknownCalls.some(call => taskStateAudit.sameBillingAttempt(call, checkpoint)));
+}
+
 function plan(db = {}) {
   const tasks = rows(db.tasks);
   const existingWorkIds = new Set(rows(db.works).map(work => text(work.id || work.task_id)));
   const existingRunIds = new Set(rows(db.generation_runs).map(run => text(run.id)));
   const unknownCalls = rows(db.model_calls).filter(unknownBilling);
+  const checkpointUnknown = checkpointUnknownBilling(db);
+  const modelRisks = unknownCalls
+    .map(call => ({ id: legacyBillingId(call), source: 'model_call', call_id: text(call.id), task_id: text(call.task_id), provider_task_id: text(call.provider_task_id) }))
+    .filter(item => !existingRunIds.has(item.id));
+  const checkpointRisks = checkpointUnknown
+    .map(checkpoint => ({
+      id: legacyCheckpointBillingId(checkpoint), source: 'generation_checkpoint', checkpoint_key: checkpoint.checkpoint_key,
+      task_id: checkpoint.task_id, provider_task_id: checkpoint.provider_task_id,
+    }))
+    .filter(item => !existingRunIds.has(item.id));
   return {
     schema_version: 1,
     read_only: true,
     task_count: tasks.length,
     tasks_to_create_work: tasks.filter(task => !existingWorkIds.has(text(task.id))).map(task => text(task.id)),
     tasks_to_enable_lineage: tasks.filter(task => task.lineage_enforced !== true).map(task => text(task.id)),
-    unknown_billing_to_quarantine: unknownCalls
-      .map(call => ({ id: legacyBillingId(call), call_id: text(call.id), task_id: text(call.task_id), provider_task_id: text(call.provider_task_id) }))
-      .filter(item => !existingRunIds.has(item.id)),
+    unknown_billing_to_quarantine: [...modelRisks, ...checkpointRisks],
+    model_call_billing_to_quarantine: modelRisks,
+    checkpoint_billing_to_quarantine: checkpointRisks,
     model_calls_started: 0,
   };
+}
+
+function quarantineCheckpointBilling(checkpoint = {}, storage = defaultStorage) {
+  const id = legacyCheckpointBillingId(checkpoint);
+  const existing = storage.getGenerationRun(id);
+  if (existing) return { created: false, unit: existing };
+  const unit = storage.createGenerationRun({
+    id,
+    task_id: text(checkpoint.task_id),
+    work_id: text(checkpoint.task_id),
+    domain: text(checkpoint.stage || 'legacy_checkpoint_generation'),
+    target_permanent_id: `checkpoint:${text(checkpoint.checkpoint_key)}`,
+    operation: 'legacy_checkpoint_billing_reconciliation',
+    input_fingerprint: crypto.createHash('sha256').update(text(checkpoint.checkpoint_key)).digest('hex'),
+    spec_revision: 1,
+    provider_id: 'legacy_checkpoint_unknown',
+    model_id: '',
+    idempotency_key: crypto.createHash('sha256').update(`legacy-checkpoint-billing\n${id}`).digest('hex'),
+    contract_version: 1,
+    state: 'billing_unknown',
+    unit_version: 1,
+    provider_submission_state: text(checkpoint.provider_submission_state || 'submitted_unknown'),
+    billing_state: 'unknown',
+    retry_blocked: true,
+    automatic_retry_allowed: false,
+    provider_task_id: text(checkpoint.provider_task_id),
+    error_code: 'LEGACY_CHECKPOINT_BILLING_UNKNOWN',
+    error_message: '历史生成checkpoint计费状态未知，已隔离并等待人工核账',
+    legacy_checkpoint_key: text(checkpoint.checkpoint_key),
+    migrated_at: new Date().toISOString(),
+    state_history: [{ from: '', to: 'billing_unknown', reason: 'legacy_checkpoint_migration', at: new Date().toISOString() }],
+  });
+  return { created: true, unit };
 }
 
 function quarantineUnknownBilling(call = {}, storage = defaultStorage) {
@@ -110,6 +166,10 @@ function apply({ storage = defaultStorage, enableLineage = true, promoteAuthorit
     const quarantined = quarantineUnknownBilling(call, storage);
     if (quarantined.created) result.billing_quarantined += 1;
   });
+  checkpointUnknownBilling(storage.readDb()).forEach(checkpoint => {
+    const quarantined = quarantineCheckpointBilling(checkpoint, storage);
+    if (quarantined.created) result.billing_quarantined += 1;
+  });
   const after = plan(storage.readDb());
   const authoritativeWorks = rows(storage.readDb().works).filter(work => work.mode === 'authoritative').length;
   result.remaining = {
@@ -126,4 +186,7 @@ function apply({ storage = defaultStorage, enableLineage = true, promoteAuthorit
   return result;
 }
 
-module.exports = { apply, legacyBillingId, plan, quarantineUnknownBilling, unknownBilling };
+module.exports = {
+  apply, checkpointUnknownBilling, legacyBillingId, legacyCheckpointBillingId, plan,
+  quarantineCheckpointBilling, quarantineUnknownBilling, unknownBilling,
+};

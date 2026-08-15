@@ -257,6 +257,26 @@ async function migrateSystemicState() {
   return { dry_run: dryRun, applied, audit: audit.summary };
 }
 
+async function auditCandidateSystemicState() {
+  const runner = `${previousTarget}/scripts/run-with-pm2-env.js`;
+  const dryRun = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/migrate-new-story-ad-systemic-state.js`));
+  const audit = parseJson(await exec(`cd ${quote(releaseDir)} && node ${quote(runner)} vido node scripts/audit-new-story-ad-systemic-state.js`));
+  const plannedQuarantines = Number(dryRun.unknown_billing_to_quarantine?.length || 0);
+  const unquarantined = Number(audit.summary?.unquarantined_unknown_billing_count || 0);
+  if (dryRun.read_only !== true || Number(dryRun.model_calls_started || 0) !== 0
+    || Number(audit.summary?.active_generation_count || 0) !== 0) {
+    throw new Error(`CANDIDATE_SYSTEMIC_PREFLIGHT_FAILED: ${JSON.stringify({
+      planned_quarantines: plannedQuarantines,
+      unquarantined_unknown_billing: unquarantined,
+      active_generation_count: Number(audit.summary?.active_generation_count || 0),
+    })}`);
+  }
+  return {
+    dry_run: dryRun, audit: audit.summary, planned_quarantines: plannedQuarantines,
+    unquarantined_unknown_billing_count: unquarantined,
+  };
+}
+
 async function restoreSystemicBackup() {
   if (!systemicBackupCreated) return null;
   await exec(`pm2 stop vido >/dev/null 2>&1 || true; pm2 stop ${quote(candidateName)} >/dev/null 2>&1 || true`);
@@ -288,7 +308,8 @@ async function rollbackReleaseState() {
 }
 
 async function rollback() {
-  if (!cutoverStarted && !releaseMigrationApplied && !assistRouteMigrationApplied) return;
+  if (!cutoverStarted && !releaseMigrationApplied && !assistRouteMigrationApplied
+    && !releaseControlDrained && !systemicBackupCreated) return;
   await rollbackAssistRoute();
   await rollbackReleaseState();
   const restored = await restoreSystemicBackup();
@@ -444,6 +465,11 @@ client.on('ready', async () => {
       if (Number(candidateReadiness.active_count) || blockingUnknownBilling(candidateReadiness)) {
         throw new Error(`候选只读灰度发现活动任务或当前未知计费：${JSON.stringify(candidateReadiness)}`);
       }
+      const candidateSystemicAudit = await auditCandidateSystemicState();
+      if (Number(candidateSystemicAudit.unquarantined_unknown_billing_count || 0)
+        > Number(candidateSystemicAudit.planned_quarantines || 0)) {
+        throw new Error(`CANDIDATE_SYSTEMIC_PREFLIGHT_FAILED: ${JSON.stringify(candidateSystemicAudit)}`);
+      }
       reportPhase('candidate_verified', { build_id: candidateVersion.build_id, artifact_id: artifactId, write_allowed: candidateVersion.release_control?.allowed === true });
       console.log(`IMMUTABLE_CANDIDATE=${JSON.stringify({
         build_id: candidateVersion.build_id,
@@ -455,6 +481,7 @@ client.on('ready', async () => {
         write_allowed: candidateVersion.release_control?.allowed === true,
         release_dir: releaseDir,
         process_id: candidateVersion.process_id,
+        systemic_preflight: candidateSystemicAudit,
       })}`);
       if (sftp) sftp.end();
       await exec(`rm -f ${quote(remoteAuditSpecPath)} && rmdir ${quote(lockDir)}`);
