@@ -1,15 +1,15 @@
-import { request } from '../api.js?v=20260815-asset-v80';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v80';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260815-asset-v80';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260815-asset-v80';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260815-asset-v80';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260815-asset-v80';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260815-asset-v80';
-import { assertBriefReadback } from './briefTextContract.js?v=20260815-asset-v80';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260815-asset-v80';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260815-asset-v80';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260815-asset-v80';
-import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260815-asset-v80';
+import { request } from '../api.js?v=20260815-asset-v81';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v81';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260815-asset-v81';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260815-asset-v81';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260815-asset-v81';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260815-asset-v81';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260815-asset-v81';
+import { assertBriefReadback } from './briefTextContract.js?v=20260815-asset-v81';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260815-asset-v81';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260815-asset-v81';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260815-asset-v81';
+import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260815-asset-v81';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -216,7 +216,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260815-asset-v80');
+    const module = await import('./referenceUnderstandingView.js?v=20260815-asset-v81');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
