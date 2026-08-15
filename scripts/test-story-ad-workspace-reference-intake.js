@@ -5,7 +5,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 
-const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd.js'), 'utf8');
+const routeSource = fs.readFileSync(path.join(__dirname, '../src/routes/newStoryAd/taskUpdateRoute.js'), 'utf8');
 assert.match(routeSource, /workflowStateOnly \? \{[\s\S]*reason: 'workflow_state_only'[\s\S]*model_call_count: 0/, '纯环节确认不得重复执行参考资产投影或模型调用');
 const express = require('express');
 

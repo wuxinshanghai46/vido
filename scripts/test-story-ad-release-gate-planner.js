@@ -27,9 +27,11 @@ assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'ass
 assert.equal(plan(['src/services/newStoryAd/referenceVideoUploadService.js']).profile, 'upload_media');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
+assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
+  '未知运行文件回退full时必须执行systemic结构与权威门禁');
 assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'full');
 assert.equal(plan(['docs/notes.md'], { reliable: false }).profile, 'full');
-assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['platform_full', 'release_core']);
+assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['systemic', 'platform_full', 'release_core']);
 assert.equal(planner.resolveArtifactRevision(process.cwd(), 'not-an-artifact', 'not-a-revision'), '');
 assert.equal(planner.releaseConfigChangeKind(
   { build_id: 'v1', contract_version: 7, node_runtime: { version: 'v22' } },

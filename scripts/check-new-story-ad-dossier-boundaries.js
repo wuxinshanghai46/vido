@@ -38,6 +38,7 @@ function run() {
     'src/services/newStoryAd/sceneStructuredContractService.js',
     'src/services/newStoryAd/assetPlanService.js',
     'src/routes/newStoryAd/propRoutes.js',
+    'src/routes/newStoryAd/taskUpdateRoute.js',
     'src/routes/newStoryAd/videoMonitorRoute.js',
     'public/js/new-story-ad/asset-ui-contract.js',
     'public/js/new-story-ad/person-dossier-ui.js',
@@ -70,6 +71,10 @@ function run() {
   const rootRoutes = read('src/routes/newStoryAd.js');
   assert(propRoutes.includes('/tasks/:id/prop-assets'), '独立道具路由缺失');
   assert(!rootRoutes.includes("router.get('/tasks/:id/prop-assets'"), '道具路由不得回写旧总路由');
+  const taskUpdateRoute = read('src/routes/newStoryAd/taskUpdateRoute.js');
+  assert(taskUpdateRoute.includes("router.put('/tasks/:id'"), '任务更新路由必须由独立模块注册');
+  assert(rootRoutes.includes('registerTaskUpdateRoute(router'), '总路由必须注册独立任务更新路由');
+  assert(!rootRoutes.includes("router.put('/tasks/:id'"), '任务更新实现不得回写旧总路由');
   const videoMonitorRoutes = read('src/routes/newStoryAd/videoMonitorRoute.js');
   assert(videoMonitorRoutes.includes("'/admin/tasks/:id/video-monitor'"), '独立视频监控路由缺失');
   assert(!rootRoutes.includes("router.get('/admin/tasks/:id/video-monitor'"), '视频监控路由不得回写旧总路由');

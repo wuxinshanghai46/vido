@@ -6,7 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const CONTRACT_VERSION = 'story-ad-release-gates-v1';
+const CONTRACT_VERSION = 'story-ad-release-gates-v2';
 const CACHE_DIRECTORY = path.join('.runtime', 'story-ad-release-gates');
 
 const GATES = Object.freeze({
@@ -211,9 +211,9 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
     reference_asset_plan: ['reference', 'asset_plan', 'workspace_ui', 'release_core'],
     upload_media: ['upload_media', 'reference', 'workspace_ui', 'release_core'],
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
-    full: ['workspace_ui', 'narrative_v111', 'release_core'],
+    full: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
   };
-  if (profile === 'full' && fullPlatform) return ['platform_full', 'release_core'];
+  if (profile === 'full' && fullPlatform) return ['systemic', 'platform_full', 'release_core'];
   return profiles[profile] || profiles.full;
 }
 
