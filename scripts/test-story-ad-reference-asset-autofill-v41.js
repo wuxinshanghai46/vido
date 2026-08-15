@@ -125,7 +125,7 @@ const historyMode = new Function(`${historyModeSource}; return { historicalStepR
 assert.match(briefView, /createAssetPlanAndRefresh[\s\S]*view=assets/, '目标确认必须使用可恢复的资产方案转场');
 assert.match(briefTransition, /let planError = null;[\s\S]*runStage\('scene-config'\)[\s\S]*loadBundle\(taskId, 'summary,assets'\)/, '方案创建失败后必须刷新可恢复状态并进入资产中心');
 assert.match(appView, /historicalStepReadOnly[\s\S]*data-unlock-history-step/, '已进入后续环节的历史步骤必须默认只读并提供显式编辑入口');
-const safeAction = { disabled: false, dataset: {}, matches: selector => selector === '[data-historical-readonly-action="safe"]' };
+const safeAction = { disabled: false, dataset: {}, matches: selector => selector === '[data-history-safe]' };
 const editControl = { disabled: false, dataset: {}, matches: () => false };
 historyMode.applyHistoricalReadonlyControls({ querySelectorAll: () => [safeAction, editControl] });
 assert.equal(safeAction.disabled, false, '历史步骤中的生成、查看和导航等显式安全动作不得被误锁');

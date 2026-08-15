@@ -7,6 +7,18 @@ export function createPersonPlanRequestGuard(requestKey = '') {
   } };
 }
 
+export function createKeyedRequestGuard() {
+  const guards = new Map();
+  return { async run(key, requestKey, operation, onSkipped) {
+    const guard = guards.get(key) || createPersonPlanRequestGuard(requestKey);
+    guards.set(key, guard);
+    if (guard.active) return onSkipped?.();
+    const result = await guard.run(operation);
+    if (result === true) guards.delete(key);
+    return result;
+  } };
+}
+
 export function personPlanBlockedView(eligibility = {}, generationActive = false) {
   const failed = (eligibility.issues || []).includes('task_current_planning_stage_failed');
   const migrationOnly = eligibility.release_migration?.compatible === true && eligibility.release_migration?.migration_required === true;

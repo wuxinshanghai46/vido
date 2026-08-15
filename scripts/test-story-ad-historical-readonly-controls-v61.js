@@ -7,7 +7,7 @@ function control({ safe = false, disabled = false } = {}) {
     disabled,
     dataset: {},
     matches(selector) {
-      return safe && selector === '[data-historical-readonly-action="safe"]';
+      return safe && selector === '[data-history-safe]';
     },
   };
 }
@@ -36,6 +36,23 @@ function control({ safe = false, disabled = false } = {}) {
     assert.equal(editable.disabled, true, '历史内容编辑控件必须继续锁定');
     assert.equal(editable.dataset.historicalReadonly, 'true');
   }
+
+  const guardUrl = pathToFileURL(path.resolve(__dirname, '../public/story-ad/views/assetCenterPlanReleaseStatus.js')).href;
+  const { createKeyedRequestGuard } = await import(guardUrl);
+  const keyedGuard = createKeyedRequestGuard();
+  let releaseFirst;
+  let calls = 0;
+  const first = keyedGuard.run('all', 'request-1', async requestKey => {
+    calls += 1;
+    assert.equal(requestKey, 'request-1');
+    await new Promise(resolve => { releaseFirst = resolve; });
+    return false;
+  });
+  assert.equal(await keyedGuard.run('all', 'request-2', async () => { calls += 1; }, () => 'skipped'), 'skipped', '同一生成意图并发时必须在第二次确认前拦截');
+  assert.equal(calls, 1, '同一意图不得并行执行两次');
+  releaseFirst();
+  await first;
+  assert.equal(await keyedGuard.run('all', 'request-2', async requestKey => requestKey), 'request-1', '取消或失败后允许重试，并继续复用幂等 request_key');
 
   console.log('story-ad historical readonly control behavior v61 passed');
 })().catch(error => {

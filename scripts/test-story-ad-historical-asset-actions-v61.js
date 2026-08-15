@@ -8,6 +8,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const app = read('public/story-ad/app.js');
 const assets = read('public/story-ad/views/assetCenterView.js');
 const planningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
+const requestGuards = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
 const brief = read('public/story-ad/views/briefView.js');
 const styles = read('public/story-ad/styles.css');
@@ -52,12 +53,12 @@ assert.match(
 );
 assert.match(
   assets,
-  buttonTagWith('data-generate-missing-subjects', 'data-historical-readonly-action="safe"'),
+  buttonTagWith('data-generate-missing-subjects', 'data-history-safe'),
   '整批人物图片生成按钮必须显式声明为历史资产页仍可执行的动作',
 );
 assert.match(
   assets,
-  buttonTagWith('data-confirm-assets', 'data-historical-readonly-action="safe"'),
+  buttonTagWith('data-confirm-assets', 'data-history-safe'),
   '人物资产确认/进入下一步必须显式声明为历史资产页仍可执行的动作',
 );
 const historyModule = new Function(`${historySource.replace(/\bexport\s+/g, '')}; return { applyHistoricalReadonlyControls };`)();
@@ -66,9 +67,9 @@ const control = selectors => ({
   dataset: {},
   matches: selector => selectors.includes(selector),
 });
-const safeAction = control(['[data-historical-readonly-action="safe"]']);
-assert.match(app, buttonTagWith('data-unlock-history-step', 'data-historical-readonly-action="safe"'), '解锁按钮必须纳入只读安全动作契约');
-const unlockAction = control(['[data-unlock-history-step]', '[data-historical-readonly-action="safe"]']);
+const safeAction = control(['[data-history-safe]']);
+assert.match(app, buttonTagWith('data-unlock-history-step', 'data-history-safe'), '解锁按钮必须纳入只读安全动作契约');
+const unlockAction = control(['[data-unlock-history-step]', '[data-history-safe]']);
 const ordinaryAction = control([]);
 const editInput = control([]);
 const fakeHost = { querySelectorAll: () => [safeAction, unlockAction, ordinaryAction, editInput] };
@@ -83,12 +84,10 @@ assert.match(planningDetails, /readOnly \? '<p[^']*data-historical-drawer-readon
 assert.match(planningDetails, /readOnly \? '' : '<button[^']*type="submit"[^']*保存人物文字设定/, '历史 drawer 不得显示人物文字保存动作');
 assert.match(planningDetails, /readOnly \? '' : `<button[^`]*data-drawer-upload-product/s, '历史 drawer 不得显示商品上传/替换动作');
 assert.match(planningDetails, /data-drawer-generate/, '历史只读只保护文字编辑，付费生成入口在二次确认前仍需可达');
-assert.match(assets, /const generationIntentsInFlight = new Set\(\)/, '人物图片生成必须按意图维护页面级防重入状态');
-assert.ok(
-  assets.indexOf('generationIntentsInFlight.add(intent)') < assets.indexOf('await confirmBillingAwareAction({'),
-  '防重入锁必须在打开计费确认框之前取得，避免快速双击产生两个确认与提交链',
-);
-assert.match(assets, /finally \{\s*generationIntentsInFlight\.delete\(intent\);\s*\}/, '取消、失败与成功后都必须释放人物生成防重入锁');
+assert.match(assets, /createKeyedRequestGuard\(\)/, '人物图片生成必须按意图复用统一防重入 guard');
+assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmBillingAwareAction\(\{/, '防重入 guard 必须包住计费确认与提交链');
+assert.match(requestGuards, /if \(guard\.active\) return onSkipped\?\.\(\);[\s\S]*await guard\.run\(operation\)/, '同一意图在确认框打开前必须被 guard 拦截');
+assert.match(requestGuards, /try \{ return await operation\(requestKey\); \} finally \{ active = false; \}/, '取消、失败与成功后都必须释放人物生成防重入锁');
 assert.match(newStoryAdRoute, /requestKey[\s\S]*idempotencyKey[\s\S]*queueStage\(/, '页面防重入之外，人物生成请求仍必须保留服务端 request_key 幂等兜底');
 
 // 已完成第一步时，下一步卡和参考进度卡必须同时不渲染。

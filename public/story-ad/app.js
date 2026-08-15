@@ -210,11 +210,11 @@ function applyHistoricalStepMode(host, route) {
   const banner = document.createElement('section');
   banner.className = 'historical-step-banner';
   banner.setAttribute('role', 'status');
-  banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>该步骤已经进入后续制作环节。需要新增或修改内容时，请先明确开启编辑；保存后系统会重新检查受影响的后续方案。</span></div><button class="btn" type="button" data-unlock-history-step data-historical-readonly-action="safe">新增 / 修改内容</button>';
+  banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>已有后续成果。修改前请开启编辑；保存后会检查影响。</span></div><button class="btn" type="button" data-unlock-history-step data-history-safe>新增 / 修改内容</button>';
   host.prepend(banner);
   applyHistoricalReadonlyControls(host);
   banner.querySelector('[data-unlock-history-step]')?.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('修改已确认步骤可能使人物、场景、剧情或镜头方案需要重新核对。确认后仅解锁当前步骤，系统不会自动生成图片或产生视觉模型费用。', {
+    const confirmed = await confirmDialog('修改已确认内容会重新检查下游方案。本操作仅解锁当前步骤，不生成图片、不产生模型费用。', {
       title: '开启历史步骤编辑',
       confirmText: '确认开启编辑',
       cancelText: '保持只读',

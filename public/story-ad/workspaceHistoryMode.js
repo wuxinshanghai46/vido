@@ -1,10 +1,7 @@
 const VIEW_PROGRESS = Object.freeze(['brief', 'assets', 'scene', 'plot', 'storyboard', 'final']);
 
-export const HISTORICAL_READONLY_SAFE_ACTION_SELECTOR = '[data-historical-readonly-action="safe"]';
-
 export function routeProgressIndex(view = '') {
-  if (view === 'shot') return VIEW_PROGRESS.indexOf('final');
-  return VIEW_PROGRESS.indexOf(view);
+  return VIEW_PROGRESS.indexOf(view === 'shot' ? 'final' : view);
 }
 
 export function historicalStepReadOnly(bundle = {}, route = {}) {
@@ -17,14 +14,13 @@ export function historicalStepReadOnly(bundle = {}, route = {}) {
       .filter(([, state]) => state?.completed === true)
       .map(([view]) => routeProgressIndex(view)),
   ].filter(index => index >= 0);
-  const furthestIndex = progressIndexes.length ? Math.max(...progressIndexes) : 0;
-  return routeIndex >= 0 && furthestIndex > routeIndex;
+  return routeIndex >= 0 && Math.max(0, ...progressIndexes) > routeIndex;
 }
 
 export function applyHistoricalReadonlyControls(host) {
   const result = { protected: 0, safe: 0 };
-  host?.querySelectorAll?.('button, input, select, textarea')?.forEach(control => {
-    if (control.matches(HISTORICAL_READONLY_SAFE_ACTION_SELECTOR)) {
+  host.querySelectorAll('button, input, select, textarea').forEach(control => {
+    if (control.matches('[data-history-safe]')) {
       result.safe += 1;
       return;
     }
