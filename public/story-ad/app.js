@@ -1,8 +1,8 @@
-import { createProjectStore } from './store/projectStore.js?v=20260815-asset-ui-v62';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260815-asset-ui-v62';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260815-asset-ui-v62';
-import { confirmDialog } from './components/dialog.js?v=20260815-asset-ui-v62';
-import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260815-asset-ui-v62';
+import { createProjectStore } from './store/projectStore.js?v=20260815-asset-ui-v63';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260815-asset-ui-v63';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260815-asset-ui-v63';
+import { confirmDialog } from './components/dialog.js?v=20260815-asset-ui-v63';
+import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260815-asset-ui-v63';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -20,13 +20,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260815-asset-ui-v62'),
-  assets: () => import('./views/assetCenterView.js?v=20260815-asset-ui-v62'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260815-asset-ui-v62'),
-  plot: () => import('./views/plotRoomView.js?v=20260815-asset-ui-v62'),
-  storyboard: () => import('./views/storyboardView.js?v=20260815-asset-ui-v62'),
-  final: () => import('./views/finalView.js?v=20260815-asset-ui-v62'),
-  workflow: () => import('./views/workflowView.js?v=20260815-asset-ui-v62'),
+  brief: () => import('./views/briefView.js?v=20260815-asset-ui-v63'),
+  assets: () => import('./views/assetCenterView.js?v=20260815-asset-ui-v63'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260815-asset-ui-v63'),
+  plot: () => import('./views/plotRoomView.js?v=20260815-asset-ui-v63'),
+  storyboard: () => import('./views/storyboardView.js?v=20260815-asset-ui-v63'),
+  final: () => import('./views/finalView.js?v=20260815-asset-ui-v63'),
+  workflow: () => import('./views/workflowView.js?v=20260815-asset-ui-v63'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference,assets',
@@ -422,7 +422,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260815-asset-ui-v62');
+  const filters = await import('./projectCenterFilters.js?v=20260815-asset-ui-v63');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);

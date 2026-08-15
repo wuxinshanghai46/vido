@@ -328,7 +328,7 @@ export function bindWorkflowDirectorSync({ taskId, refresh }) {
 export async function openWorkflowDirector({ taskId, world, refresh }) {
   if (!taskId || !world?.id) throw new Error('当前导演节点缺少场景引用，无法打开');
   const before = new Set(typeof document === 'undefined' ? [] : document.querySelectorAll('.director-studio'));
-  const module = await import('./directorStudioView.js?v=20260815-asset-ui-v62');
+  const module = await import('./directorStudioView.js?v=20260815-asset-ui-v63');
   await module.openDirectorStudio({ taskId, world });
   const overlay = [...document.querySelectorAll('.director-studio')].find(item => !before.has(item));
   if (!overlay) return;
