@@ -51,6 +51,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-person-asset-interactions-v68.js',
   'scripts/test-story-ad-recovery-status-hierarchy-v70.js',
   'scripts/test-story-ad-recovery-card-visual-v72.js',
+  'scripts/test-story-ad-recovery-action-computed-style-v73.js',
   'scripts/audit-story-ad-visual-generation-lineage-v65.js',
   'scripts/audit-story-ad-checkpoint-billing-correlation-v65.js',
   'scripts/repair-story-ad-visual-generation-lineage-v65.js',
