@@ -85,6 +85,39 @@ function createFixture({ id, oldBundle, castCount, propCount, sceneCount, opaque
   return { taskId: id, fingerprint: currentFingerprint, planFingerprint: fingerprint, candidateId, plan };
 }
 function modelCalls(taskId) { return (storage.readDb().model_calls || []).filter(row => row.task_id === taskId).length; }
+function nextTimestamp() { const started = Date.now(); while (Date.now() === started) {} }
+
+function createLegacyV14Fixture(id) {
+  const ctx = context(id, 2);
+  storage.createTask({ id, title: '匿名V14任务', content_revision: 8, request: ctx, status: 'done', stage: 'scene_config_done' });
+  const task = storage.getTask(id);
+  const fingerprint = assetPlan.legacyFingerprintV14(task, ctx);
+  ctx.asset_plan_fingerprint = fingerprint;
+  storage.saveOutput(id, 'context', ctx);
+  storage.saveArtifact(id, 'context', ctx, { content_revision: 8, snapshot_id: `${id}:r8:context` });
+  storage.saveOutput(id, 'person_demographics_migration_backup_v63', { context: ctx });
+  const candidateId = `${id}-candidate`;
+  const envelope = oldEnvelope('legacy-v14-bundle');
+  const domains = Object.fromEntries(['person', 'scene'].map(domain => [domain, {
+    bundle_id: 'legacy-v14-bundle', fingerprint, content_revision: 8,
+  }]));
+  const base = {
+    ...rawPlan(2, 0, 4), candidate_id: candidateId, content_revision: 8, fingerprint,
+    fingerprint_contract: publication.LEGACY_FINGERPRINT_CONTRACT,
+    story_scene_contract_version: coverage.CONTRACT_VERSION, release_envelope: envelope,
+  };
+  const plan = { ...base, status: 'active', active_revision: 3, domain_state: domains };
+  storage.saveOutput(id, publication.CANDIDATE_KIND, {
+    ...base, status: 'candidate', validation_status: 'passed', validation_issues: [],
+  });
+  storage.saveOutput(id, publication.ACTIVE_KIND, {
+    plan_id: candidateId, active_revision: 3, content_revision: 8, fingerprint,
+    fingerprint_contract: publication.LEGACY_FINGERPRINT_CONTRACT,
+    release_envelope: envelope, domain_state: domains, plan,
+  });
+  storage.saveOutput(id, 'asset_plan', plan);
+  return { taskId: id, fingerprint, currentFingerprint: assetPlan.fingerprint(task, ctx) };
+}
 
 const fixtures = [
   createFixture({ id: 'anon-tech-structure', oldBundle: 'c06ecadb-old-v50', castCount: 2, propCount: 0, sceneCount: 7 }),
@@ -127,6 +160,96 @@ for (const fixture of fixtures) {
   assert.equal(repeated.compatibility.already_current, true);
   assert.equal(storage.getOutput(fixture.taskId, publication.RELEASE_MIGRATION_KIND).migrated_at, migrationTimestamp);
 }
+
+const legacyV14 = createLegacyV14Fixture('legacy-v14-four-source');
+assert.notEqual(legacyV14.currentFingerprint, legacyV14.fingerprint, 'V15必须与旧V14投影明确分版');
+const legacyV14Calls = modelCalls(legacyV14.taskId);
+const legacyV14Migrated = publication.migrateCompatibleRelease(legacyV14.taskId, {
+  fingerprint: legacyV14.currentFingerprint, reason: 'v14-four-source-proof',
+});
+assert.equal(legacyV14Migrated.migrated, true);
+assert.equal(legacyV14Migrated.compatibility.fingerprint_basis, 'legacy_v14_four_source_exact_match');
+assert.equal(publication.activeRecord(legacyV14.taskId).fingerprint_contract, publication.FINGERPRINT_CONTRACT);
+assert.equal(publication.activeRecord(legacyV14.taskId).fingerprint, legacyV14.currentFingerprint);
+assert.equal(modelCalls(legacyV14.taskId), legacyV14Calls, '兼容迁移不得新增模型调用');
+assert.equal(publication.migrateCompatibleRelease(legacyV14.taskId, {
+  fingerprint: legacyV14.currentFingerprint,
+}).migrated, false, '兼容迁移必须幂等');
+
+const legacyChanged = createLegacyV14Fixture('legacy-v14-semantic-changed');
+storage.updateTask(legacyChanged.taskId, {
+  request: { ...storage.getTask(legacyChanged.taskId).request, brief: '用户已经修改的不同语义输入' },
+});
+const semanticChangedResult = publication.migrateCompatibleRelease(legacyChanged.taskId, {
+  fingerprint: assetPlan.fingerprint(storage.getTask(legacyChanged.taskId), storage.getOutput(legacyChanged.taskId, 'context')),
+});
+assert.equal(semanticChangedResult.migrated, false);
+assert(semanticChangedResult.compatibility.issues.includes('active_plan_legacy_v14_proof_failed'));
+
+const legacyUnknown = createLegacyV14Fixture('legacy-v14-unknown-billing');
+storage.saveModelCall({
+  id: 'legacy-v14-unknown-call', task_id: legacyUnknown.taskId, stage: 'person_plan',
+  status: 'failed', billing_state: 'unknown', provider_submission_state: 'submitted_unknown',
+});
+const unknownResult = publication.migrateCompatibleRelease(legacyUnknown.taskId, {
+  fingerprint: legacyUnknown.currentFingerprint,
+});
+assert.equal(unknownResult.blocked, true);
+assert(unknownResult.compatibility.issues.includes('unknown_billing_unquarantined'));
+
+const legacyActive = createLegacyV14Fixture('legacy-v14-active-generation');
+storage.updateTask(legacyActive.taskId, { active_generation_id: 'same-generation' });
+const activeResult = publication.migrateCompatibleRelease(legacyActive.taskId, {
+  fingerprint: legacyActive.currentFingerprint, generationId: 'same-generation',
+});
+assert.equal(activeResult.blocked, true, '旧合同兼容迁移必须等待活动生成完全结束');
+assert(activeResult.compatibility.issues.includes('active_generation_exists'));
+
+const legacyWrongTarget = createLegacyV14Fixture('legacy-v14-wrong-target');
+const wrongTargetResult = publication.migrateCompatibleRelease(legacyWrongTarget.taskId, {
+  fingerprint: 'caller-supplied-wrong-v15-fingerprint',
+});
+assert.equal(wrongTargetResult.migrated, false, '目标V15指纹也必须由当前权威context重算证明');
+assert(wrongTargetResult.compatibility.issues.includes('active_plan_input_fingerprint_mismatch'));
+
+const legacyLatestMismatch = createLegacyV14Fixture('legacy-v14-latest-artifact-mismatch');
+nextTimestamp();
+storage.saveArtifact(legacyLatestMismatch.taskId, 'context', {
+  ...storage.getOutput(legacyLatestMismatch.taskId, 'context'), brief: '最新artifact已经变化',
+}, { content_revision: 8, snapshot_id: 'latest-mismatch' });
+const latestMismatchResult = publication.migrateCompatibleRelease(legacyLatestMismatch.taskId, {
+  fingerprint: legacyLatestMismatch.currentFingerprint,
+});
+assert.equal(latestMismatchResult.migrated, false, '最新artifact不匹配时不得被更旧的匹配artifact掩盖');
+assert(latestMismatchResult.compatibility.issues.includes('active_plan_legacy_v14_proof_failed'));
+
+const legacyLatestMatch = createLegacyV14Fixture('legacy-v14-latest-artifact-match');
+nextTimestamp();
+storage.saveArtifact(legacyLatestMatch.taskId, 'context', {
+  ...storage.getOutput(legacyLatestMatch.taskId, 'context'), brief: '较旧artifact不匹配',
+}, { content_revision: 8, snapshot_id: 'older-mismatch' });
+nextTimestamp();
+storage.saveArtifact(legacyLatestMatch.taskId, 'context', storage.getOutput(legacyLatestMatch.taskId, 'context'), {
+  content_revision: 8, snapshot_id: 'newest-match',
+});
+assert.equal(publication.migrateCompatibleRelease(legacyLatestMatch.taskId, {
+  fingerprint: legacyLatestMatch.currentFingerprint,
+}).migrated, true, '最新artifact匹配时不应被更旧的artifact误阻断');
+
+const legacyNewProjectionDrift = createLegacyV14Fixture('legacy-v14-new-projection-drift');
+nextTimestamp();
+storage.saveArtifact(legacyNewProjectionDrift.taskId, 'context', {
+  ...storage.getOutput(legacyNewProjectionDrift.taskId, 'context'), revisions: { scene: 1 },
+}, { content_revision: 8, snapshot_id: 'new-projection-semantic-drift' });
+assert.equal(assetPlan.legacyFingerprintV14(
+  storage.getTask(legacyNewProjectionDrift.taskId),
+  storage.listArtifacts(legacyNewProjectionDrift.taskId, 'context')[0].payload,
+), legacyNewProjectionDrift.fingerprint, '该场景语义差异在旧V14投影中不可见');
+const newProjectionDriftResult = publication.migrateCompatibleRelease(legacyNewProjectionDrift.taskId, {
+  fingerprint: legacyNewProjectionDrift.currentFingerprint,
+});
+assert.equal(newProjectionDriftResult.migrated, false, '四源还必须在新V15语义投影下保持一致');
+assert(newProjectionDriftResult.compatibility.issues.includes('active_plan_legacy_v14_proof_failed'));
 
 const guarded = createFixture({ id: 'anon-guarded', oldBundle: 'legacy-guarded', castCount: 2, propCount: 0, sceneCount: 4 });
 storage.updateTask(guarded.taskId, { active_generation_id: 'another-job', active_stage: 'person_plan' });

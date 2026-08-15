@@ -10,7 +10,8 @@ const releaseBundle = require('../storyAdReleaseBundleService');
 const CANDIDATE_KIND = 'asset_plan_candidate';
 const ACTIVE_KIND = 'asset_plan_active';
 const RELEASE_MIGRATION_KIND = 'asset_plan_release_migration';
-const FINGERPRINT_CONTRACT = 'asset-plan-input-v14';
+const FINGERPRINT_CONTRACT = 'asset-plan-input-v15';
+const LEGACY_FINGERPRINT_CONTRACT = 'asset-plan-input-v14';
 const PLAN_DOMAINS = ['person', 'scene'];
 const ENVELOPE_CONTRACT_FIELDS = [
   'contract_version',
@@ -49,6 +50,31 @@ function stableIdentityIssues(plan = {}) {
   return issues;
 }
 
+function legacyV14Proof(taskId, task = {}, context = {}, expectedFingerprint = '') {
+  const revision = Number(task.content_revision || 1) || 1;
+  const artifact = storage.listArtifacts(taskId, 'context')
+    .find(row => Number(row.source_content_revision || revision) === revision)?.payload;
+  const backup = storage.getOutput(taskId, 'person_demographics_migration_backup_v63')?.context;
+  const sources = [context, task.request, artifact, backup];
+  const fingerprintService = require('./assetPlanService');
+  const legacyFingerprint = fingerprintService.legacyFingerprintV14;
+  const fingerprints = sources.map(source => (source && typeof source === 'object'
+    ? legacyFingerprint(task, source)
+    : ''));
+  const currentFingerprints = sources.map(source => (source && typeof source === 'object'
+    ? fingerprintService.fingerprint(task, source)
+    : ''));
+  return {
+    proven: fingerprints.length === 4
+      && fingerprints.every(value => value && value === clean(expectedFingerprint))
+      && currentFingerprints.every(value => value && value === currentFingerprints[0]),
+    source_count: fingerprints.filter(Boolean).length,
+    sources_equal: new Set(fingerprints.filter(Boolean)).size === 1,
+    current_sources_equal: new Set(currentFingerprints.filter(Boolean)).size === 1,
+    current_fingerprint: currentFingerprints[0],
+  };
+}
+
 function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord: active = null, candidate = null, fingerprint = '' } = {}) {
   const identity = releaseBundle.identity();
   const currentEnvelope = releaseBundle.envelope();
@@ -70,8 +96,13 @@ function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord
     if (Number(plan.content_revision || 0) !== Number(task.content_revision || 1)) issues.push('active_plan_content_revision_mismatch');
     const previousFingerprintContract = clean(plan.fingerprint_contract);
     if (previousFingerprintContract) {
-      if (previousFingerprintContract !== FINGERPRINT_CONTRACT) issues.push('active_plan_fingerprint_contract_mismatch');
-      else if (!clean(fingerprint) || clean(plan.fingerprint) !== clean(fingerprint)) issues.push('active_plan_input_fingerprint_mismatch');
+      if (previousFingerprintContract === FINGERPRINT_CONTRACT) {
+        if (!clean(fingerprint) || clean(plan.fingerprint) !== clean(fingerprint)) issues.push('active_plan_input_fingerprint_mismatch');
+      } else if (previousFingerprintContract === LEGACY_FINGERPRINT_CONTRACT) {
+        const proof = legacyV14Proof(task.id, task, context, plan.fingerprint);
+        if (!proof.proven) issues.push('active_plan_legacy_v14_proof_failed');
+        else if (!clean(fingerprint) || clean(fingerprint) !== proof.current_fingerprint) issues.push('active_plan_input_fingerprint_mismatch');
+      } else issues.push('active_plan_fingerprint_contract_mismatch');
     } else {
       // Pre-contract plans carry an opaque digest produced by the release that
       // created them. Re-hashing their context with today's projection can
@@ -103,7 +134,9 @@ function releaseCompatibility({ task = {}, context = {}, plan = {}, activeRecord
     content_revision: Number(task.content_revision || 1) || 1,
     fingerprint: clean(fingerprint),
     fingerprint_contract: FINGERPRINT_CONTRACT,
-    fingerprint_basis: clean(plan?.fingerprint_contract) ? 'same_contract_strict_hash' : 'legacy_revision_and_persisted_lineage',
+    fingerprint_basis: clean(plan?.fingerprint_contract) === LEGACY_FINGERPRINT_CONTRACT
+      ? 'legacy_v14_four_source_exact_match'
+      : (clean(plan?.fingerprint_contract) ? 'same_contract_strict_hash' : 'legacy_revision_and_persisted_lineage'),
   };
 }
 
@@ -284,7 +317,9 @@ function migrateCompatibleRelease(taskId, {
   const currentGenerationId = clean(generationId || legacyGenerationId);
   const billingRisk = taskStateAudit.billingRiskForTask(storage.readDb(), taskId);
   const safetyIssues = [];
-  if (task?.active_generation_id && clean(task.active_generation_id) !== currentGenerationId) safetyIssues.push('active_generation_exists');
+  const legacyV14Migration = compatibility.fingerprint_basis === 'legacy_v14_four_source_exact_match';
+  if (task?.active_generation_id
+    && (legacyV14Migration || clean(task.active_generation_id) !== currentGenerationId)) safetyIssues.push('active_generation_exists');
   if (billingRisk.active_unknown_billing.length) safetyIssues.push('active_unknown_billing_exists');
   if (billingRisk.unquarantined_unknown_billing.length) safetyIssues.push('unknown_billing_unquarantined');
   if (safetyIssues.length) return {
@@ -420,6 +455,8 @@ module.exports = {
   ACTIVE_KIND,
   RELEASE_MIGRATION_KIND,
   FINGERPRINT_CONTRACT,
+  LEGACY_FINGERPRINT_CONTRACT,
+  legacyV14Proof,
   stableIdentityIssues,
   releaseCompatibility,
   migrateCompatibleRelease,

@@ -22,7 +22,7 @@ const assetPlanPublication = require('./assetPlanPublicationService');
 const checkpointLineage = require('./assetPlanCheckpointLineageService');
 const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 
-const ASSET_PLAN_PROJECTION_VERSION = 14;
+const ASSET_PLAN_PROJECTION_VERSION = 15;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
 const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
 
@@ -79,6 +79,45 @@ function fingerprint(task = {}, ctx = {}) {
     // Generated prop/scene assets are plan outputs. Only the semantic scene
     // revision belongs to the textual planning input.
     scene_revision: ctx.revisions?.scene || 0,
+    target_duration: ctx.target_duration,
+    shot_count: ctx.shot_count,
+    output_ratio: ctx.output_ratio,
+    creative_direction: ctx.creative_direction,
+    performance: ctx.performance,
+  }))).digest('hex');
+}
+
+// V14 included generated visual output revisions in the planning-input hash.
+// Keep the exact historical projection read-only so a controlled migration can
+// prove old records without treating newly generated images as semantic edits.
+function legacyFingerprintV14(task = {}, ctx = {}) {
+  const currentCastFingerprint = crypto.createHash('sha256')
+    .update(JSON.stringify(canonical(ctx.cast_profiles || [])))
+    .digest('hex');
+  const castProfiles = currentCastFingerprint === ctx.asset_plan_generated_cast_fingerprint
+    ? []
+    : ctx.cast_profiles;
+  return crypto.createHash('sha256').update(JSON.stringify(canonical({
+    version: 14,
+    content_mode: contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode),
+    story_scene_contract_version: Number(ctx.story_scene_contract_version || 0) || 0,
+    brief: cleanText(ctx.brief, 5000),
+    product_subject: ctx.product_subject,
+    advertised_subject_contract: ctx.advertised_subject_contract
+      || (referenceIsValid(ctx.reference_video_analysis)
+        ? advertisedSubjectContract(ctx, ctx.reference_video_analysis)
+        : null),
+    reference_analysis: ctx.reference_video_analysis || null,
+    cast_profiles: castProfiles,
+    planning_cast_count: personCountContract.contract(ctx).planning_cast_count,
+    visual_asset_count: personCountContract.contract(ctx).visual_asset_count,
+    pet_profiles: ctx.pet_profiles,
+    person_revision: ctx.person_contract?.person_revision || ctx.revisions?.person || 0,
+    product_revision: ctx.product_contract?.product_revision || ctx.revisions?.product || 0,
+    prop_revisions: (ctx.prop_assets || [])
+      .filter(item => item.status !== 'planned_not_generated')
+      .map(item => [item.prop_id || item.id, item.revision || 1]),
+    scene_revisions: (ctx.scene_assets || []).map(item => [item.scene_id || item.id, item.revision || 1]),
     target_duration: ctx.target_duration,
     shot_count: ctx.shot_count,
     output_ratio: ctx.output_ratio,
@@ -2090,6 +2129,7 @@ async function generate(taskId, options = {}) {
 
 module.exports = {
   fingerprint,
+  legacyFingerprintV14,
   referenceIsValid,
   assertReferenceReady,
   advertisedSubjectContract,
