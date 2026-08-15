@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260815-asset-v72';
+import { escapeHtml } from '../components/ui.js?v=20260815-asset-v73';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);
