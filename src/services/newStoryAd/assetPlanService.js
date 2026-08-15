@@ -35,6 +35,17 @@ function canonical(value) {
   }, {});
 }
 
+function planningPetProfiles(profiles = []) {
+  return (Array.isArray(profiles) ? profiles : []).map(profile => ({
+    id: profile.pet_id || profile.petId || profile.id || '',
+    name: profile.name || '',
+    type: profile.type || profile.species || '',
+    breed: profile.breed || '',
+    appearance: profile.appearance || profile.description || '',
+    visual_medium: profile.visual_medium || '',
+  }));
+}
+
 function fingerprint(task = {}, ctx = {}) {
   const currentCastFingerprint = crypto.createHash('sha256')
     .update(JSON.stringify(canonical(ctx.cast_profiles || [])))
@@ -58,13 +69,16 @@ function fingerprint(task = {}, ctx = {}) {
     cast_profiles: castProfiles,
     planning_cast_count: personCountContract.contract(ctx).planning_cast_count,
     visual_asset_count: personCountContract.contract(ctx).visual_asset_count,
-    pet_profiles: ctx.pet_profiles,
-    person_revision: ctx.person_contract?.person_revision || ctx.revisions?.person || 0,
+    pet_profiles: planningPetProfiles(ctx.pet_profiles),
+    // Visual dossier/image refreshes have their own person revision, but they do
+    // not change the approved textual cast input used to build an asset plan.
+    // Older contexts have no person_semantic revision, so retain the legacy
+    // revision as the compatibility fallback.
+    person_revision: ctx.revisions?.person_semantic ?? ctx.revisions?.person ?? 0,
     product_revision: ctx.product_contract?.product_revision || ctx.revisions?.product || 0,
-    prop_revisions: (ctx.prop_assets || [])
-      .filter(item => item.status !== 'planned_not_generated')
-      .map(item => [item.prop_id || item.id, item.revision || 1]),
-    scene_revisions: (ctx.scene_assets || []).map(item => [item.scene_id || item.id, item.revision || 1]),
+    // Generated prop/scene assets are plan outputs. Only the semantic scene
+    // revision belongs to the textual planning input.
+    scene_revision: ctx.revisions?.scene || 0,
     target_duration: ctx.target_duration,
     shot_count: ctx.shot_count,
     output_ratio: ctx.output_ratio,

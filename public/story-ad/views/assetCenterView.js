@@ -201,15 +201,15 @@ let planningDetailsPromise; let personFormPromise; async function openDrawer(ite
   });
 }
 
-function renderSections(assets = {}, total = 0, brief = {}) {
-  if (!total) return `<div class="asset-total-empty">${emptyState({
-    title: '当前项目还没有可用资产', body: brief.content_mode === 'narrative_story' ? '先完善剧情所需的人物、动物或场景。' : '先完善人物或动物档案，也可以上传已有的商品、LOGO、场景和道具参考。',
+function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUPS, productDisabled = '') {
+  const allEmpty = !total ? `<div class="asset-total-empty">${emptyState({
+    title: '当前项目还没有可用资产', body: contentMode === 'narrative_story' ? '先完善剧情所需的人物、动物或场景。' : '先完善人物、动物或商品素材。',
     action: '添加人物', actionId: 'people',
-  })}</div>`;
-  return GROUPS.map(([key, label]) => {
+  })}</div>` : '';
+  return allEmpty + groups.map(([key, label]) => {
       const rows = assets[key] || [];
       return `<section class="asset-section" data-asset-section="${key}" ${rows.length ? '' : 'hidden'}>
-        <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span><button class="btn small" type="button" data-add-asset="${key}">+ 添加${escapeHtml(label)}</button></div>
+        <div class="section-title"><h2>${escapeHtml(label)}</h2><span>${rows.length}</span>${key === 'products' ? `<button class="btn small" type="button" data-history-safe data-generate-product-main ${productDisabled}>添加商品/展示主体</button>` : ''}<button class="btn small" type="button" data-add-asset="${key}">+ ${key === 'products' ? '上传商品/展示主体素材' : `添加${escapeHtml(label)}`}</button></div>
         <div data-section-body>${rows.length ? `<div class="asset-grid">${rows.map(item => assetCard(item, key)).join('')}</div>` : emptyState({ title: `尚未建立${label}`, body: '可以上传已有参考，或先完善该主体档案。', action: `添加${label}`, actionId: key })}</div>
       </section>`;
     }).join('');
@@ -219,10 +219,13 @@ export async function mount(host, context) {
   const { store, bundle } = context;
   const historicalReadOnly = context.historicalReadOnly === true;
   const assets = bundle?.assets || {};
+  const contentMode = bundle.project?.content_mode || bundle.brief?.content_mode || '';
+  const narrative = contentMode === 'narrative_story';
+  const assetGroups = narrative ? GROUPS.filter(([key]) => !['products', 'logos'].includes(key)) : GROUPS;
   let assistModulePromise;
   const runAssist = async (kind, ...args) => (await (assistModulePromise ||= import('./assetCenterAssist.js?v=20260815-asset-ui-v63'))).createAssetAssistHandlers(bundle)[kind](...args);
   const assistPerson = (...args) => runAssist('assistPerson', ...args); const assistScene = (...args) => runAssist('assistScene', ...args);
-  const total = GROUPS.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
+  const total = assetGroups.reduce((sum, [key]) => sum + (assets[key]?.length || 0), 0);
   const planEligibility = bundle?.navigation?.asset_plan_eligibility || {};
   const personPlanEligibility = planEligibility.person
     ? { ...planEligibility, ...planEligibility.person, release_migration: planEligibility.release_migration }
@@ -233,13 +236,13 @@ export async function mount(host, context) {
   const personPlanRequestKey = `person-plan:${bundle.project.id}:${bundle.revisions?.content || 1}:${globalThis.crypto?.randomUUID?.() || Date.now()}`;
   const personPlanRequestGuard = createPersonPlanRequestGuard(personPlanRequestKey);
   const contractDisabled = assetPlanReady ? '' : 'disabled title="请先更新当前人物方案"';
-  const assetScopeLabel = bundle.brief?.content_mode === 'narrative_story' ? '人物与动物' : '人物、动物与商品主体';
+  const assetScopeLabel = narrative ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>资产中心</h1><p>人物、动物、展示主体、LOGO、场景与机位分别建档；材料墙、展台等空间成果不再冒充独立商品。</p></div>
-      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button><button class="btn" type="button" data-history-safe data-generate-product-main ${generationActive ? generationDisabled : contractDisabled}>${assets.products?.[0]?.presentation?.standalone_generation_supported ? 'AI 生成独立商品' : '添加 / 生成展示主体'}</button></div>
+      <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
+      <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
     </section>
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">文字方案已建立 · 图片未生成</span><h2>生成真实人物图片</h2><p>进入资产中心不会自动生成图片。点击右侧按钮并确认后才调用图片模型；当前有 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。</p></div>
@@ -247,9 +250,9 @@ export async function mount(host, context) {
         ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationActive ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '确认并生成全部缺失人物图片'}</button>`
         : `<button class="btn primary" type="button" data-confirm-assets data-history-safe ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
     </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
-    <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${GROUPS.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
+    <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
-    <div data-asset-sections>${renderSections(assets, total, bundle.brief || {})}</div>
+    <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>
     <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
       <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? `请核对${assetScopeLabel}是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。` : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
       <button class="btn primary" type="button" data-confirm-assets data-history-safe ${assetPlanReady ? '' : 'disabled'}>确认人物资产，进入场景世界</button>
@@ -538,7 +541,7 @@ export async function mount(host, context) {
   host.querySelectorAll('[data-generate-subjects], [data-generate-missing-subjects]').forEach(button => button.addEventListener('click', event => generate(null, '', event.currentTarget)));
   host.querySelector('[data-select-person]').addEventListener('click', () => openActorLibrary({ store, context, taskId: bundle.project.id }));
   host.querySelector('[data-upload-real-person]').addEventListener('click', () => openRealPersonFlow({ context, taskId: bundle.project.id }));
-  host.querySelector('[data-generate-product-main]').addEventListener('click', event => {
+  host.querySelector('[data-generate-product-main]')?.addEventListener('click', event => {
     const item = (assets.products || [])[0] || null;
     if (item && !item.presentation?.standalone_generation_supported) {
       openDrawer(item, 'products', { readOnly: historicalReadOnly, onGenerate: generate, onVerifyProduct: verifyProduct, onSavePerson: savePerson, onAssistPerson: assistPerson, onSaveProduct: saveProduct, onSaveScene: saveScene, onAssistScene: assistScene, onGenerateScene: generateScene, onGenerateProp: generateProp, onGenerateProduct: generateProduct, onUploadProduct: () => openUpload('products'), returnFocus: event.currentTarget });

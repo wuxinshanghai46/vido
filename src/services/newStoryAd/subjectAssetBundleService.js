@@ -857,17 +857,12 @@ async function generateSubjectBundle(options = {}, deps = {}) {
   });
   if (completion.changed) {
     body = { ...body, cast_profiles: completion.cast_profiles };
-    if (options.deferContextCommit !== true && taskId && typeof storage.getOutput === 'function' && typeof storage.saveOutput === 'function') {
-      const current = storage.getOutput(taskId, 'context') || {};
-      storage.saveOutput(taskId, 'context', {
-        ...current,
-        cast_profiles: completion.cast_profiles,
-        generation_input_completion: {
-          ...(current.generation_input_completion || {}),
-          person: { checkpoint_kind: completion.checkpoint_kind, updated_at: new Date().toISOString() },
-        },
-      });
-    }
+    // The completed profiles are a paid-generation input overlay and already
+    // live in the immutable completion checkpoint. They must not replace the
+    // approved textual cast authority in context: callers can carry a partial
+    // generation projection (for example displayName without name/age_range),
+    // and writing that projection back made successful visual generation alter
+    // the asset-plan input fingerprint.
   }
   const spec = body.person_spec && typeof body.person_spec === 'object' ? body.person_spec : {};
   const counts = resolveCounts(spec, body);

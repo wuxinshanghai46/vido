@@ -2,7 +2,7 @@
 
 const storage = require('./storageService');
 
-const RUNNING_STATES = new Set(['queued', 'submitted', 'accepted', 'polling', 'running', 'generating', 'retrying']);
+const RUNNING_STATES = new Set(['queued', 'submitting', 'submitted', 'submitted_unknown', 'accepted', 'polling', 'running', 'generating', 'retrying']);
 
 function text(value = '') { return String(value ?? '').trim(); }
 function rows(value) { return Array.isArray(value) ? value : []; }
@@ -12,14 +12,58 @@ function isUnknownBilling(call = {}) {
     && RUNNING_STATES.has(text(call.provider_submission_state || call.status).toLowerCase());
 }
 
+function checkpointBillingRows(outputs = [], taskId = '') {
+  const normalizedTaskId = text(taskId);
+  const found = [];
+  const seen = new Set();
+  const visit = (value, location) => {
+    if (!value || typeof value !== 'object') return;
+    const billing = text(value.billing_state).toLowerCase();
+    const submission = text(value.provider_submission_state || value.status).toLowerCase();
+    const checkpointLike = value.key || value.unit || value.provider_request_id || value.provider_task_id;
+    if (checkpointLike) {
+      const id = `checkpoint:${text(value.key) || location}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+      if (billing === 'unknown') {
+        found.push({
+          id,
+          task_id: normalizedTaskId,
+          stage: text(value.unit || value.asset_type || 'visual_asset_checkpoint'),
+          status: text(value.status || submission),
+          provider_submission_state: submission,
+          billing_state: 'unknown',
+          provider_request_id: text(value.provider_request_id),
+          provider_task_id: text(value.provider_task_id),
+          source: 'generation_checkpoint',
+          checkpoint_key: text(value.key),
+        });
+      }
+    }
+    if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${location}[${index}]`));
+    else Object.entries(value).forEach(([key, item]) => {
+      if (item && typeof item === 'object') visit(item, `${location}.${key}`);
+    });
+  };
+  rows(outputs).filter(output => text(output.task_id) === normalizedTaskId)
+    .sort((left, right) => text(right.updated_at || right.payload?.updated_at)
+      .localeCompare(text(left.updated_at || left.payload?.updated_at)))
+    .forEach((output, index) => visit(output.payload, `${text(output.kind) || 'output'}:${index}`));
+  return found;
+}
+
 function billingRiskForTask(db = {}, taskId = '') {
   const normalizedTaskId = text(taskId);
   const taskGenerations = rows(db.generation_runs)
     .filter(run => text(run.task_id || run.work_id) === normalizedTaskId);
   const unknownBillingUnits = taskGenerations.filter(run => text(run.state).toLowerCase() === 'billing_unknown'
     || text(run.billing_state).toLowerCase() === 'unknown');
-  const allUnknownBilling = rows(db.model_calls)
-    .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown');
+  const checkpointUnknownBilling = checkpointBillingRows(db.outputs, normalizedTaskId);
+  const allUnknownBilling = [
+    ...rows(db.model_calls)
+      .filter(call => text(call.task_id) === normalizedTaskId && text(call.billing_state).toLowerCase() === 'unknown'),
+    ...checkpointUnknownBilling,
+  ];
   const activeUnknownBilling = allUnknownBilling.filter(isUnknownBilling);
   const quarantinedCallIds = new Set(unknownBillingUnits.map(run => text(run.legacy_model_call_id)).filter(Boolean));
   const unquarantinedUnknownBilling = allUnknownBilling.filter(call => !quarantinedCallIds.has(text(call.id)));
@@ -83,7 +127,7 @@ function auditSnapshot(db = {}) {
     const duplicateScenes = duplicateKeys(sceneRows(taskOutputs), semanticSceneKey);
     const taskGenerations = generations.filter(run => text(run.task_id || run.work_id) === taskId);
     const activeGenerations = taskGenerations.filter(run => RUNNING_STATES.has(text(run.state || run.status).toLowerCase()));
-    const billingRisk = billingRiskForTask({ model_calls: modelCalls, generation_runs: generations }, taskId);
+    const billingRisk = billingRiskForTask({ model_calls: modelCalls, generation_runs: generations, outputs }, taskId);
     const allUnknownBilling = billingRisk.all_unknown_billing;
     const activeUnknownBilling = billingRisk.active_unknown_billing;
     const unknownBillingUnits = billingRisk.unknown_billing_units;

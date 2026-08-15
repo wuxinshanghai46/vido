@@ -56,6 +56,8 @@ function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}, options = {})
     person_contract: personContract,
     production_usable_actor: personContract.status === 'verified',
   };
+  const changeScope = personChangeScope(options);
+  const semanticRevision = Number(previousCtx.revisions?.person_semantic ?? oldRevision) || oldRevision;
   const next = {
     ...previousCtx,
     cast_mode: committedAsset.cast_mode || previousCtx.cast_mode,
@@ -63,9 +65,12 @@ function commitGeneratedPersonAsset(taskId, asset = {}, spec = {}, options = {})
     person_spec: spec && typeof spec === 'object' ? spec : (previousCtx.person_spec || {}),
     person_asset: committedAsset,
     person_contract: personContract,
-    revisions: { ...(previousCtx.revisions || {}), person: personRevision },
+    revisions: {
+      ...(previousCtx.revisions || {}),
+      person: personRevision,
+      person_semantic: changeScope === 'person_visual' ? semanticRevision : personRevision,
+    },
   };
-  const changeScope = personChangeScope(options);
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
   if (options.deferContextWrite !== true) storage.saveOutput(taskId, 'context', next);
   storage.saveOutput(taskId, 'person_contract', personContract);
@@ -93,6 +98,8 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
   const castAssets = Array.isArray(bundle.cast_assets) ? bundle.cast_assets : [];
   const petProfiles = Array.isArray(bundle.pet_profiles) ? bundle.pet_profiles : [];
   const personRevision = oldRevision + 1;
+  const changeScope = personChangeScope(options);
+  const semanticRevision = Number(previousCtx.revisions?.person_semantic ?? oldRevision) || oldRevision;
   const personContract = bundle.person_contract ? carryContract(bundle.person_contract, personRevision) : null;
   const personAsset = castAssets.length ? {
     id: `cast_bundle_${taskId}_${personRevision}`,
@@ -113,23 +120,39 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
     production_usable_actor: personContract?.status === 'verified',
   } : null;
   const previousProfiles = Array.isArray(previousCtx.cast_profiles) ? previousCtx.cast_profiles : [];
-  const castProfiles = castAssets.map((asset, index) => subjectProfileText.canonicalProfile({
-    ...(asset.subject_profile && typeof asset.subject_profile === 'object' ? asset.subject_profile : {}),
-    id: stableCastProfileId(previousProfiles, asset, index),
-    name: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
-    displayName: asset.subject_profile?.displayName || asset.name || `人物${index + 1}`,
-    roleName: asset.subject_profile?.roleName || asset.cast_role || `角色${index + 1}`,
-    assetId: asset.actor_asset_id || asset.id || '',
-    actor_asset_id: asset.actor_asset_id || asset.id || '',
-    actor_id: asset.actor_id || '',
-    sourceType: asset.reference_kind || 'synthetic_realistic_actor',
-    referenceImageUrl: asset.image_url || '',
-    image_url: asset.image_url || '',
-    extra_image_urls: asset.extra_image_urls || [],
-    view_images: asset.view_images || [],
-    person_contract: asset.person_contract || null,
-    identityLock: { face: true, outfit: true, body: true },
-  }));
+  const castProfiles = castAssets.map((asset, index) => {
+    const stableId = stableCastProfileId(previousProfiles, asset, index);
+    const previous = previousProfiles.find(profile => [profile.id, profile.cast_id, profile.castId]
+      .map(value => String(value || '').trim()).includes(stableId)) || previousProfiles[index] || null;
+    const incoming = asset.subject_profile && typeof asset.subject_profile === 'object' ? asset.subject_profile : {};
+    // A visual request carries a UI/generation projection, not a replacement
+    // for the approved cast authority. Preserve all semantic aliases and
+    // demographics from the stable profile; only attach generated media.
+    const semantic = changeScope === 'person_visual' && previous
+      ? previous
+      : { ...(previous || {}), ...Object.fromEntries(Object.entries(incoming)
+        .filter(([, value]) => value !== undefined && value !== null && value !== '')) };
+    return subjectProfileText.canonicalProfile({
+      ...semantic,
+      id: stableId,
+      name: semantic.name || semantic.displayName || asset.name || `人物${index + 1}`,
+      displayName: semantic.displayName || semantic.name || asset.name || `人物${index + 1}`,
+      roleName: semantic.roleName || semantic.role || asset.cast_role || `角色${index + 1}`,
+      assetId: asset.actor_asset_id || asset.id || '',
+      actor_asset_id: asset.actor_asset_id || asset.id || '',
+      actor_id: asset.actor_id || '',
+      sourceType: asset.reference_kind || 'synthetic_realistic_actor',
+      referenceImageUrl: asset.image_url || '',
+      image_url: asset.image_url || '',
+      extra_image_urls: asset.extra_image_urls || [],
+      view_images: asset.view_images || [],
+      person_contract: asset.person_contract || null,
+      identityLock: { face: true, outfit: true, body: true },
+    });
+  });
+  const previousCastFingerprint = storage.canonicalFingerprint(previousProfiles);
+  const generatedCastLineageIsCurrent = Boolean(previousCtx.asset_plan_generated_cast_fingerprint)
+    && previousCtx.asset_plan_generated_cast_fingerprint === previousCastFingerprint;
   const next = {
     ...previousCtx,
     cast_mode: bundle.counts?.mode || previousCtx.cast_mode,
@@ -142,9 +165,15 @@ function commitGeneratedSubjectAssets(taskId, bundle = {}, spec = {}, options = 
     pet_profiles: petProfiles,
     pet_contract: bundle.pet_contract || null,
     subject_board_url: bundle.subject_board_url || '',
-    revisions: { ...(previousCtx.revisions || {}), person: personRevision },
+    revisions: {
+      ...(previousCtx.revisions || {}),
+      person: personRevision,
+      person_semantic: changeScope === 'person_visual' ? semanticRevision : personRevision,
+    },
+    ...(changeScope === 'person_visual' && generatedCastLineageIsCurrent
+      ? { asset_plan_generated_cast_fingerprint: storage.canonicalFingerprint(castProfiles) }
+      : {}),
   };
-  const changeScope = personChangeScope(options);
   const invalidated = revisionService.invalidateOutputs(storage, taskId, changeScope);
   if (options.deferContextWrite !== true) storage.saveOutput(taskId, 'context', next);
   if (personContract) storage.saveOutput(taskId, 'person_contract', personContract);

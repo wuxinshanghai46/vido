@@ -27,6 +27,25 @@ function functionBody(source, signature) {
   throw new Error(`unterminated ${signature}`);
 }
 
+function functionDeclaration(source, signature) {
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `missing ${signature}`);
+  const params = source.indexOf('(', start);
+  let paramDepth = 0; let open = -1;
+  for (let index = params; index < source.length; index += 1) {
+    if (source[index] === '(') paramDepth += 1;
+    if (source[index] === ')' && --paramDepth === 0) { open = source.indexOf('{', index); break; }
+  }
+  assert.notEqual(open, -1, `missing body for ${signature}`);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    if (source[index] === '}') depth -= 1;
+    if (depth === 0) return source.slice(start, index + 1);
+  }
+  throw new Error(`unterminated ${signature}`);
+}
+
 function cssRule(source, selector) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = source.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`));
@@ -110,6 +129,34 @@ assert.match(assets, /subjectRequests\.run\(intent,[\s\S]*await confirmBillingAw
 assert.match(requestGuards, /if \(guard\.active\) return onSkipped\?\.\(\);[\s\S]*await guard\.run\(operation\)/, '同一意图在确认框打开前必须被 guard 拦截');
 assert.match(requestGuards, /try \{ return await operation\(requestKey\); \} finally \{ active = false; \}/, '取消、失败与成功后都必须释放人物生成防重入锁');
 assert.match(newStoryAdRoute, /requestKey[\s\S]*idempotencyKey[\s\S]*queueStage\(/, '页面防重入之外，人物生成请求仍必须保留服务端 request_key 幂等兜底');
+
+// 信息架构：剧情不提供商品主体操作；广告主体操作只属于商品分类工具栏。
+const modeExpression = assets.match(/const contentMode\s*=\s*([^;]+);/)?.[1];
+assert(modeExpression, '资产中心必须先读取项目权威内容类型');
+const resolveMode = new Function('bundle', `return ${modeExpression};`);
+assert.equal(resolveMode({ project: { content_mode: 'narrative_story' }, brief: { content_mode: null } }), 'narrative_story', 'brief模式为空时必须使用项目权威剧情模式');
+assert.equal(resolveMode({ project: { content_mode: 'commercial_subject' }, brief: { content_mode: 'narrative_story' } }), 'commercial_subject', '项目权威广告模式不得被陈旧brief覆盖');
+const groupExpression = assets.match(/const assetGroups\s*=\s*([^;]+);/)?.[1];
+assert(groupExpression, '资产中心必须按内容类型建立可见分类');
+const groupsFor = new Function('narrative', 'GROUPS', `return ${groupExpression};`);
+const groupContract = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
+const narrativeGroups = groupsFor(true, groupContract);
+const commercialGroups = groupsFor(false, groupContract);
+assert(!narrativeGroups.some(([key]) => key === 'products'), '剧情项目最终分类不得出现商品/展示主体及其添加生成入口');
+assert(!narrativeGroups.some(([key]) => key === 'logos'), '剧情项目不得显示广告专属LOGO分类');
+assert(commercialGroups.some(([key]) => key === 'products'), '广告项目必须保留商品/展示主体分类');
+const renderSectionsSource = functionDeclaration(assets, 'function renderSections');
+const renderSections = new Function('emptyState', 'GROUPS', 'escapeHtml', 'assetCard', `${renderSectionsSource}; return renderSections;`)(
+  ({ title }) => `<div>${title}</div>`, groupContract, value => String(value || ''), item => `<article>${item.name}</article>`,
+);
+const commercialProductDom = renderSections({ products: [{ id: 'product-1', name: '商品一' }] }, 1, 'commercial_subject', commercialGroups, '');
+assert.match(commercialProductDom, /data-asset-section="products"[\s\S]*data-generate-product-main[\s\S]*添加商品\/展示主体/, '广告商品操作必须渲染在商品/展示主体分类内部');
+const commercialEmptyDom = renderSections({}, 0, 'commercial_subject', commercialGroups, '');
+assert.match(commercialEmptyDom, /data-asset-section="products" hidden[\s\S]*data-generate-product-main[\s\S]*上传商品\/展示主体素材/, '广告全部资产为空时仍必须保留可由分类点击显示的商品空态与操作');
+const narrativeDom = renderSections({ products: [{ id: 'legacy-product', name: '旧主体' }] }, 1, 'narrative_story', narrativeGroups, '');
+assert.doesNotMatch(narrativeDom, /data-generate-product-main|商品 \/ 展示主体|legacy-product/, '剧情项目最终资产 DOM 不得泄漏历史商品主体操作');
+const viewHead = assets.match(/<section class="view-head">[\s\S]*?<\/section>/)?.[0] || '';
+assert.doesNotMatch(viewHead, /data-generate-product-main|添加商品|生成展示主体/, '商品主体操作不得与顶部人物动作并列');
 
 // 已完成第一步时，下一步卡和参考进度卡必须同时不渲染。
 assert.match(

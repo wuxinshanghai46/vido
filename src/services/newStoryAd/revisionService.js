@@ -145,10 +145,12 @@ function changeScope(previous = {}, next = {}, explicit = '') {
 function applyRevisions(previous = {}, next = {}, scope = 'none') {
   const domains = Array.isArray(scope) ? scope : (scope && scope !== 'none' ? [scope] : []);
   const old = previous.revisions || {};
+  const oldPersonSemantic = Math.max(1, Number(old.person_semantic ?? old.person ?? 1) || 1);
   const revisions = {
     source: Math.max(1, Number(old.source || 1) || 1),
     scene: Math.max(1, Number(old.scene || 1) || 1),
     person: Math.max(1, Number(old.person || 1) || 1),
+    person_semantic: oldPersonSemantic,
     product: Math.max(1, Number(old.product || 1) || 1),
     creative: Math.max(1, Number(old.creative || 1) || 1),
     voice: Math.max(1, Number(old.voice || 1) || 1),
@@ -157,6 +159,7 @@ function applyRevisions(previous = {}, next = {}, scope = 'none') {
   if (domains.includes('source')) revisions.source += 1;
   if (domains.includes('scene') || domains.includes('source')) revisions.scene += 1;
   if (domains.includes('person') || domains.includes('source')) revisions.person += 1;
+  if (domains.includes('person') || domains.includes('source')) revisions.person_semantic += 1;
   if (domains.includes('product') || domains.includes('source')) revisions.product += 1;
   if (domains.includes('creative') || domains.includes('source')) revisions.creative += 1;
   if (domains.includes('voice')) revisions.voice += 1;

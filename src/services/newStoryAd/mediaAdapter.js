@@ -203,6 +203,45 @@ async function notifyGenerationObserver(observer, payload) {
   await observer(payload);
 }
 
+function createImageSubmissionTracker({ onSubmitting = null, onSubmitted = null } = {}) {
+  let evidence = {
+    provider_submission_state: 'not_submitted',
+    billing_state: 'not_submitted',
+    provider_request_id: '',
+    provider_task_id: '',
+  };
+  return {
+    evidence: () => ({ ...evidence }),
+    onSubmitting: async payload => {
+      evidence = { ...evidence, provider_submission_state: 'submitting', billing_state: 'unknown' };
+      await notifyGenerationObserver(onSubmitting, payload);
+    },
+    onSubmitted: async payload => {
+      const status = String(payload?.status || '').toLowerCase();
+      const completed = status === 'completed';
+      const rejected = status === 'rejected';
+      evidence = {
+        provider_submission_state: completed ? 'completed' : (rejected ? 'submission_rejected' : 'submitted'),
+        billing_state: completed ? 'confirmed' : (rejected ? 'not_billed' : 'unknown'),
+        provider_request_id: String(payload?.providerRequestId || payload?.provider_request_id || ''),
+        provider_task_id: String(payload?.taskId || payload?.provider_task_id || ''),
+      };
+      await notifyGenerationObserver(onSubmitted, payload);
+    },
+    failure: error => {
+      const current = evidence;
+      return {
+        provider_submission_state: String(error?.providerSubmissionState || error?.provider_submission_state
+          || (current.provider_submission_state === 'submitting' ? 'submitted_unknown' : current.provider_submission_state)),
+        billing_state: String(error?.billingState || error?.billing_state
+          || (['submitting', 'submitted'].includes(current.provider_submission_state) ? 'unknown' : current.billing_state)),
+        provider_request_id: String(error?.providerRequestId || error?.provider_request_id || current.provider_request_id || ''),
+        provider_task_id: String(error?.providerTaskId || error?.provider_task_id || current.provider_task_id || ''),
+      };
+    },
+  };
+}
+
 async function invokeOpenAiCompatibleGptImage2(config = {}, options = {}) {
   const request = buildOpenAiCompatibleGptImage2Request(config, options);
   await notifyGenerationObserver(options.onSubmitting, {
@@ -651,6 +690,9 @@ async function generateImage({
     const model = filtered[candidateIndex];
     const startedAt = Date.now();
     let config = null;
+    const submissionTracker = createImageSubmissionTracker({ onSubmitting, onSubmitted });
+    const observeSubmitting = submissionTracker.onSubmitting;
+    const observeSubmitted = submissionTracker.onSubmitted;
     try {
       config = resolveImageAdapter(model);
       if (!/(openai|compatible|apismile|webang|deyunai|bridgellm)/i.test(config.family + ' ' + config.adapter)) {
@@ -694,8 +736,8 @@ async function generateImage({
           inputFidelity,
           signal: cancellation.signal(),
           clientRequestId,
-          onSubmitting,
-          onSubmitted,
+          onSubmitting: observeSubmitting,
+          onSubmitted: observeSubmitted,
           onProgress,
             timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
             }),
@@ -777,12 +819,12 @@ async function generateImage({
               inputFidelity,
               signal: cancellation.signal(),
               clientRequestId,
-              onSubmitting,
-              onSubmitted,
+              onSubmitting: observeSubmitting,
+              onSubmitted: observeSubmitted,
               timeoutMs: Math.max(30000, Math.min(10 * 60 * 1000, Number(timeoutMs) || (5 * 60 * 1000))),
             })
             : (async () => {
-              await notifyGenerationObserver(onSubmitting, {
+              await observeSubmitting({
                 clientRequestId, status: 'submitting', submittedAt: new Date().toISOString(),
               });
               const generated = await client.images.generate({
@@ -791,7 +833,7 @@ async function generateImage({
                 size: sizeFor(config, aspectRatio),
                 n: 1,
               }, { signal: cancellation.signal() });
-              await notifyGenerationObserver(onSubmitted, {
+              await observeSubmitted({
                 clientRequestId, providerRequestId: String(generated?._request_id || ''),
                 status: 'completed', submittedAt: new Date().toISOString(),
               });
@@ -801,6 +843,7 @@ async function generateImage({
       );
       cancellation.throwIfCancelled(taskId);
       const first = Array.isArray(response?.data) ? response.data[0] : null;
+      const submissionEvidence = submissionTracker.evidence();
       if (first?.url) {
         const payload = {
           image_url: first.url,
@@ -819,7 +862,14 @@ async function generateImage({
           thumbnailWidths: [520, 640],
         });
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
-        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        storage.saveModelCall({
+          task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+          status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1,
+          shot_index: shotIndex, generation_id: generationId, submission_id: clientRequestId,
+          provider_request_id: submissionEvidence.provider_request_id || response.providerRequestId || '',
+          provider_task_id: submissionEvidence.provider_task_id,
+          provider_submission_state: 'completed', billing_state: 'confirmed',
+        });
         return stablePayload;
       }
       if (first?.b64_json) {
@@ -839,7 +889,14 @@ async function generateImage({
           provider_request_id: response.providerRequestId || '',
         };
         modelGateway.recordHealth(model, { ok: true, latencyMs: Date.now() - startedAt });
-        storage.saveModelCall({ task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id, status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1 });
+        storage.saveModelCall({
+          task_id: taskId, stage, provider_id: model.provider_id, model_id: model.model_id,
+          status: 'success', latency_ms: Date.now() - startedAt, fallback_rank: candidateIndex + 1,
+          shot_index: shotIndex, generation_id: generationId, submission_id: clientRequestId,
+          provider_request_id: submissionEvidence.provider_request_id || response.providerRequestId || '',
+          provider_task_id: submissionEvidence.provider_task_id,
+          provider_submission_state: 'completed', billing_state: 'confirmed',
+        });
         return payload;
       }
       throw new Error('图片供应商没有返回图片地址或图片数据。');
@@ -847,7 +904,10 @@ async function generateImage({
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
       const classified = classifyImageGenerationError(err);
       const providerDiagnostics = providerErrorDiagnostics(err);
-      const billingUnknown = err.billingState === 'unknown' || err.billing_state === 'unknown';
+      const submissionEvidence = submissionTracker.failure(err);
+      const evidenceSubmission = submissionEvidence.provider_submission_state;
+      const evidenceBilling = submissionEvidence.billing_state;
+      const billingUnknown = evidenceBilling === 'unknown';
       if (err.code !== 'REFERENCE_IMAGE_UNSUPPORTED' && !['PROVIDER_RIGHTS_AUDIT', 'PROVIDER_CONTENT_AUDIT'].includes(classified.code)) {
         const healthError = classified.code === 'PROVIDER_5XX_AMBIGUOUS'
           ? Object.assign(new Error(classified.message || err.message), { code: 'PROVIDER_5XX' })
@@ -866,9 +926,10 @@ async function generateImage({
         shot_index: shotIndex,
         generation_id: generationId,
         submission_id: clientRequestId,
-        provider_task_id: err.providerTaskId || err.provider_task_id || '',
-        provider_submission_state: err.providerSubmissionState || err.provider_submission_state || '',
-        billing_state: err.billingState || err.billing_state || '',
+        provider_task_id: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id || '',
+        provider_request_id: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id || '',
+        provider_submission_state: evidenceSubmission,
+        billing_state: evidenceBilling,
         latency_ms: Date.now() - startedAt,
         fallback_rank: candidateIndex + 1,
       });
@@ -878,9 +939,10 @@ async function generateImage({
         retryable: classified.retryable === true,
         message: String(classified.message || err.message || err).slice(0, 240),
         ...providerDiagnostics,
-        provider_task_id: err.providerTaskId || err.provider_task_id || '',
-        provider_submission_state: err.providerSubmissionState || err.provider_submission_state || '',
-        billing_state: err.billingState || err.billing_state || '',
+        provider_task_id: err.providerTaskId || err.provider_task_id || submissionEvidence.provider_task_id || '',
+        provider_request_id: err.providerRequestId || err.provider_request_id || submissionEvidence.provider_request_id || '',
+        provider_submission_state: evidenceSubmission,
+        billing_state: evidenceBilling,
       });
       if (billingUnknown || classified.terminal === true) break;
     }
@@ -962,6 +1024,7 @@ module.exports = {
   domesticGptImage2ReviewPrompt,
   buildOpenAiCompatibleGptImage2Request,
   normalizeCompatibleImageResponse,
+  createImageSubmissionTracker,
   promptForImageCandidate,
   imageConfigStage,
   requiredImageModelForStage,

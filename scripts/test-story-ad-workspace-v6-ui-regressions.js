@@ -484,7 +484,7 @@ const dossierModule = loadBrowserModule(
 assert.match(assets, /data-confirm-assets/);
 assert.doesNotMatch(assets, /asset-missing-strip/, '空分类不能被前端猜测为合同缺失；必需项只由版本合同判定');
 assert.match(assets, /先完善剧情所需的人物、动物或场景/, '纯剧情空状态不得提示商品或 LOGO');
-assert.match(assets, /content_mode === 'narrative_story' \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
+assert.match(assets, /const assetScopeLabel = narrative \? '人物与动物'/, '纯剧情人物步骤不得要求核对商品或混入场景流程');
 assert.doesNotMatch(assets, /版本合同未通过|Active Plan|合同通过后/, '普通用户界面不得暴露内部版本合同术语');
 assert.match(planningStatusSource, /人物方案/, '人物页必须显示独立的人物方案状态');
 assert.match(scenePlanningStatusSource, /场景方案/, '场景页必须显示独立的场景方案状态');
