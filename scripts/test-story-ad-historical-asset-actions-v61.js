@@ -1,12 +1,15 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
 const app = read('public/story-ad/app.js');
 const assets = read('public/story-ad/views/assetCenterView.js');
+const stageSource = read('public/story-ad/views/assetCenterStageView.js');
+const planStatusSource = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
 const planningDetails = read('public/story-ad/views/assetCenterPlanningDetails.js');
 const requestGuards = read('public/story-ad/views/assetCenterRequestGuard.js');
 const newStoryAdRoute = read('src/routes/newStoryAd.js');
@@ -57,6 +60,16 @@ function buttonTagWith(...attributes) {
   return new RegExp(`<button${attributes.map(attribute => `(?=[^>]*${attribute})`).join('')}[^>]*>`, 'i');
 }
 
+const browserSource = source => source
+  .replace(/^import\s+.*?;\s*$/gm, '')
+  .replace(/^export\s+\{.*$/gm, '')
+  .replace(/\bexport\s+/g, '');
+const stageSandbox = { makeGuardMap: () => ({}), makePersonGuard: () => ({}) };
+vm.runInNewContext(`${browserSource(planStatusSource)}\n${browserSource(stageSource)}\nglobalThis.__stage=assetPlanStageView;`, stageSandbox);
+const historicalGenerateDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 2, counts: { people: 2 } });
+const historicalContinueDom = stageSandbox.__stage({ assetPlanReady: true, missingSubjectCount: 0, counts: { people: 2 } });
+const historicalEditDom = stageSandbox.__stage({ assetPlanReady: false, eligibility: { issues: ['person_plan_stale'] } });
+
 const historyMode = functionBody(app, 'function applyHistoricalStepMode');
 const runHistoricalStepMode = new Function(
   'host', 'route', 'historicalStepUsesGlobalEdit', 'historicalStepReadOnly', 'store',
@@ -87,12 +100,12 @@ assert.match(
   '历史只读必须使用明确的控件分类契约，而不是依赖按钮文案或页面位置',
 );
 assert.match(
-  assets,
+  historicalGenerateDom,
   buttonTagWith('data-generate-missing-subjects', 'data-history-safe'),
   '整批人物图片生成按钮必须显式声明为历史资产页仍可执行的动作',
 );
 assert.match(
-  assets,
+  historicalContinueDom,
   buttonTagWith('data-confirm-assets', 'data-history-safe'),
   '人物资产确认/进入下一步必须显式声明为历史资产页仍可执行的动作',
 );
@@ -106,10 +119,15 @@ const control = selectors => ({
   dataset: {},
   matches: selector => selectors.includes(selector),
 });
-const safeAction = control(['[data-history-safe]']);
+const controlFromDom = (html, attribute) => {
+  const tag = html.match(new RegExp(`<button(?=[^>]*${attribute})[^>]*>`, 'i'))?.[0] || '';
+  assert(tag, `最终DOM缺少 ${attribute} 按钮`);
+  return control(tag.includes('data-history-safe') ? ['[data-history-safe]'] : []);
+};
+const safeAction = controlFromDom(historicalGenerateDom, 'data-generate-missing-subjects');
 assert.match(app, buttonTagWith('data-unlock-history-step', 'data-history-safe'), '解锁按钮必须纳入只读安全动作契约');
 const unlockAction = control(['[data-unlock-history-step]', '[data-history-safe]']);
-const ordinaryAction = control([]);
+const ordinaryAction = controlFromDom(historicalEditDom, 'data-update-person-plan');
 const editInput = control([]);
 const fakeHost = { querySelectorAll: () => [safeAction, unlockAction, ordinaryAction, editInput] };
 historyModule.applyHistoricalReadonlyControls(fakeHost);
@@ -186,4 +204,32 @@ const busy = cssRule(styles, '.btn[aria-busy="true"], .icon-btn[aria-busy="true"
 assert.match(busy, /cursor\s*:\s*progress/, '执行中必须显示进度指针');
 assert.match(busy, /opacity\s*:\s*1/, '执行中不能看起来像禁用失败');
 
-console.log('story-ad historical asset action and interaction v61 contracts passed');
+async function assertMountedHistoricalControls() {
+  const harness = require('./test-story-ad-recovery-plan-action-final-dom-v79');
+  const controls = buttons => buttons.map(button => ({
+    ...button, dataset: {},
+    matches: selector => selector === '[data-history-safe]' && /\bdata-history-safe(?:\s|=|$)/.test(button.attrs),
+  }));
+  harness.resetStageLoads();
+  const eligible = await harness.render({ checkpoint: null, stale: false, historicalReadOnly: true });
+  assert.equal(harness.stageLoadCount(), 1, '真实assetCenterView mount必须恰好加载一次资产阶段模块');
+  const eligibleControls = controls(eligible.buttons);
+  historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => eligibleControls });
+  const generateButton = eligibleControls.find(button => /data-generate-missing-subjects\b/.test(button.attrs));
+  assert(generateButton && generateButton.disabled === false, '真实mount最终DOM中的历史安全生成人物按钮必须保持可用');
+  assert(eligibleControls.find(button => /data-select-person\b/.test(button.attrs))?.disabled === true,
+    '真实mount最终DOM中的人物编辑/替换动作必须继续受历史只读保护');
+
+  harness.resetStageLoads();
+  const stale = await harness.render({ checkpoint: null, stale: true, historicalReadOnly: true });
+  assert.equal(harness.stageLoadCount(), 1, '人物方案阻断态mount也必须通过同一loader加载阶段模块');
+  const staleControls = controls(stale.buttons);
+  historyModule.applyHistoricalReadonlyControls({ querySelectorAll: () => staleControls });
+  const updateButton = staleControls.find(button => /data-update-person-plan\b/.test(button.attrs));
+  assert(updateButton && updateButton.disabled === true && !/data-history-safe/.test(updateButton.attrs),
+    '历史资产页的人物方案编辑按钮不得伪装成安全生成动作绕过只读');
+}
+
+assertMountedHistoricalControls()
+  .then(() => console.log('story-ad historical asset action and interaction v61 contracts passed'))
+  .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

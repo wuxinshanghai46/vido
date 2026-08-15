@@ -37,9 +37,10 @@ const billingSandbox = {
 };
 vm.runInNewContext(`${executable('public/story-ad/views/assetCenterBillingRetry.js')}\nglobalThis.__bind=bindSubjectBillingRecovery;`, billingSandbox);
 
+let stageLoads = 0;
 const viewSandbox = {
   __loadAssetCheckpointRecovery: async () => recoverySandbox.__recovery,
-  __loadAssetCenterStage: async () => ({ assetPlanStageView: planSandbox.__plan.assetPlanStageView }),
+  __loadAssetCenterStage: async () => { stageLoads += 1; return { assetPlanStageView: planSandbox.__plan.assetPlanStageView }; },
   request: async () => ({}),
   bindMediaLightbox() {},
   emptyState: ({ title = '', body = '', action = '', actionId = '' } = {}) => `<section data-empty><b>${title}</b><p>${body}</p><button data-empty-action="${actionId}">${action}</button></section>`,
@@ -92,7 +93,7 @@ function primaryStateActions(html) {
   return tags(html).filter(button => /data-(?:generate-recovery|update-person-plan|billing-review|accept-billing-risk|generate-missing-subjects)\b/.test(button.attrs));
 }
 
-async function render({ checkpoint = null, stale = true, active = false } = {}) {
+async function render({ checkpoint = null, stale = true, active = false, historicalReadOnly = false } = {}) {
   let html = '';
   const host = {
     isConnected: true,
@@ -107,12 +108,12 @@ async function render({ checkpoint = null, stale = true, active = false } = {}) 
   };
   await viewSandbox.__mount(host, {
     store: { runStage: async () => {}, updateRequest: async () => bundle, refreshSections: async () => {} },
-    bundle, refreshShell: async () => {}, refreshCurrentView: async () => {}, navigate() {},
+    bundle, historicalReadOnly, refreshShell: async () => {}, refreshCurrentView: async () => {}, navigate() {},
   });
   return { html, buttons: tags(html) };
 }
 
-(async () => {
+async function main() {
   const staleRecovery = await render({ checkpoint: recovery('not_billed'), stale: true });
   assert.equal(recoveryCards(staleRecovery.html).length, 1, 'recovery+stale must render one recovery state card');
   assert.equal(independentPlanCards(staleRecovery.html).length, 0, 'recovery card must own the stage instead of duplicating the plan card');
@@ -175,4 +176,7 @@ async function render({ checkpoint = null, stale = true, active = false } = {}) 
     'active generation must continue disabling plan mutation');
 
   console.log(JSON.stringify({ passed: true, stale_recovery_update_actions: 1, eligible_recovery_generate_actions: 1, pending_plan_gate_actions: 1, completed_stale_update_actions: 1, model_calls: 0 }));
-})().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
+}
+
+module.exports = { render, tags, withAttr, resetStageLoads: () => { stageLoads = 0; }, stageLoadCount: () => stageLoads };
+if (require.main === module) main().catch(error => { console.error(error.stack || error); process.exitCode = 1; });
