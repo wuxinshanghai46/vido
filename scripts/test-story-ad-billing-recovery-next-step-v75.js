@@ -39,8 +39,8 @@ verify('25 successes and only four missing units remain authoritative in every r
 });
 verify('pending review offers a clear non-generation next step but keeps retry prohibited', () => {
   assert.match(pending.html, /(?:平台核账中|核账尚未完成|核账进行中|等待平台核账)/);
-  assert.match(pending.html, /<(?:a|button)\b[^>]*(?:data-billing-review|data-recovery-next-step)[^>]*>[^<]*(?:查看核账|处理剩余|恢复选项)[^<]*<\/(?:a|button)>/);
-  assert.doesNotMatch(pending.html, /data-generate-recovery|生成剩余\s*4\s*项|接受[^<]*重复计费风险/);
+  assert.match(pending.html, /<button\b[^>]*data-generate-recovery[^>]*disabled[^>]*>生成剩余\s*4\s*项<\/button>/);
+  assert.doesNotMatch(pending.html, /接受[^<]*重复计费风险/);
   assert.doesNotMatch(pending.html, /data-update-person-plan|更新人物方案/);
 });
 verify('confirmed not-billed review exposes generation of exactly the remaining four units', () => {
@@ -50,8 +50,8 @@ verify('confirmed not-billed review exposes generation of exactly the remaining 
 });
 verify('unverifiable review requires one explicit bounded-risk action and never silently retries', () => {
   assert.match(unverifiable.html, /最多\s*4\s*次重复计费/);
-  assert.match(unverifiable.html, /<(?:a|button)\b[^>]*data-accept-billing-risk[^>]*>[^<]*接受[^<]*风险[^<]*<\/(?:a|button)>/);
-  assert.doesNotMatch(unverifiable.html, /data-generate-recovery(?![^>]*data-accept-billing-risk)|data-update-person-plan/);
+  assert.match(unverifiable.html, /<button\b[^>]*data-history-safe[^>]*data-generate-recovery[^>]*>生成剩余\s*4\s*项<\/button>/);
+  assert.doesNotMatch(unverifiable.html, /data-accept-billing-risk|data-update-person-plan/);
 });
 
 const billingService = read('src/services/newStoryAd/visualAssetBillingAuthorizationService.js');

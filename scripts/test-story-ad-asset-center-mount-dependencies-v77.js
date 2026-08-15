@@ -21,8 +21,10 @@ assert.deepEqual(mountHarnesses, ['test-story-ad-product-entry-taxonomy-v64.js',
 for (const name of mountHarnesses) {
   const source = fs.readFileSync(path.join(scriptsDir, name), 'utf8');
   assert.match(source, /__loadAssetCenterStage/, `${name} 必须注入资产阶段模块加载合同，不能在VM里遗漏真实运行依赖`);
+  if (name.includes('recovery-plan-action')) assert.match(source, /subjectRecoveryPreflightAction\.js[\s\S]*ensureSubjectRecoveryReady/,
+    `${name} 必须执行真实安全预检点击模块，不能用noop跳过`);
   const observesBilling = /billingRecoveryBindings\.length/.test(source)
-    || (/assetCenterBillingRetry\.js/.test(source) && /bindSubjectBillingRecovery:\s*billingSandbox\.__bind/.test(source));
+    || (/assetCenterBillingRetry\.js/.test(source) && /globalThis\.__billing=\{bindSubjectBillingRecovery/.test(source));
   assert.equal(observesBilling, true, `${name} 必须注入并观察真实计费恢复绑定器，不能吞掉绑定`);
 }
 

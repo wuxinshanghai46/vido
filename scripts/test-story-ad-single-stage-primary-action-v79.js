@@ -35,13 +35,12 @@ function page(state, { missing = 3, eligible = false } = {}) {
 
 const actionable = page('not_billed');
 assert.match(actionable, /data-recovery-count="3"/);
-assert.match(actionable, /data-update-person-plan[^>]*>先更新人物方案/);
-assert.match(actionable, /自动切换为“生成剩余 3 项”/);
-assert.doesNotMatch(actionable, /data-generate-recovery|人物方案需要更新|更新当前内容的人物方案|asset-visual-next-step/);
+assert.match(actionable, /data-generate-recovery[^>]*>生成剩余 3 项/);
+assert.doesNotMatch(actionable, /人物方案|data-update-person-plan|asset-visual-next-step/);
 assert.equal((actionable.match(/data-(?:generate-recovery|update-person-plan)/g) || []).length, 1, '恢复阶段只能有一个主动作');
 
 const pending = page('pending');
-assert.match(pending, /data-update-person-plan/); assert.doesNotMatch(pending, /data-billing-review|人物方案需要更新/);
+assert.match(pending, /data-generate-recovery disabled[^>]*>生成剩余 3 项/); assert.doesNotMatch(pending, /data-update-person-plan|人物方案/);
 const completedButStale = page('completed', { missing: 0, eligible: false });
 assert.doesNotMatch(completedButStale, /data-checkpoint-recovery-banner/);
 assert.match(completedButStale, /data-update-person-plan/);

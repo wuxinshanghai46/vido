@@ -3,19 +3,14 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v80';
 import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v80';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260815-asset-v80';
-import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260815-asset-v80';
+import { authorizeBillingReviews, bindSubjectBillingRecovery, confirmBillingAwareAction, ensureSubjectRecoveryReady, recoveryRequestKey } from './assetCenterBillingRetry.js?v=20260815-asset-v81';
 import { collectPersonLookValues, renderPersonLookTiles } from './assetCenterPersonLooks.js?v=20260815-asset-v80';
 import { legacyDossierBoard, mediaSection } from './assetCenterDossierSections.js?v=20260815-asset-v80';
 import { assetCardMedia } from './sceneDossierCard.js?v=20260815-asset-v80';
 import { assertSavedPerson, personAgeDisplay, personAssetState, personLookSummary } from './assetCenterPersonState.js?v=20260815-asset-v80';
 import { bindPersonEvolutionForm, collectPersonEvolutionValues, renderPersonEvolutionSummary } from './assetCenterPersonEvolution.js?v=20260815-asset-v80';
 import { createKeyedRequestGuard, createPersonPlanRequestGuard } from './assetCenterPlanReleaseStatus.js?v=20260815-asset-v80';
-const GROUPS = [
-  ['people', '人物'],
-  ['animals', '动物'],
-  ['products', '商品 / 展示主体'],
-  ['logos', 'LOGO'],
-];
+const GROUPS = [['people', '人物'], ['animals', '动物'], ['products', '商品 / 展示主体'], ['logos', 'LOGO']];
 const GENERATABLE = new Set(['people', 'animals']);
 const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
   || (() => import('./assetCheckpointRecovery.js?v=20260815-asset-v80'));
@@ -294,6 +289,8 @@ export async function mount(host, context) {
       const payload = subjectGenerationPayload(bundle, target, requestKey);
       const validation = generationValidation(payload);
       if (validation) { toast(validation, 'warning'); return false; }
+      if (!target && checkpointRecovery?.missing?.length
+        && !await ensureSubjectRecoveryReady({ bundle, generationPayload: payload, button, host })) return false;
       const selected = payload.subject_targets?.length || payload.expected_people + payload.expected_animals;
       const regeneratingCompletePerson = selected === 1 && group === 'people' && personAssetState(target || {}) === 'complete_dossier';
       const lookCount = payload.cast_profiles.reduce((sum, profile) => sum + Math.max(1, profile.look_profiles?.length || 0), 0);

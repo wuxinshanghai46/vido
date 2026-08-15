@@ -1,7 +1,7 @@
 'use strict';
 
 function registerVisualAssetBillingRoutes(router, deps = {}) {
-  const { asyncRoute, taskForReq, userFromReq, authorization } = deps;
+  const { asyncRoute, taskForReq, userFromReq, authorization, recoveryPreflight } = deps;
   if (!router || typeof asyncRoute !== 'function' || typeof taskForReq !== 'function'
     || typeof userFromReq !== 'function' || !authorization) {
     throw new Error('visual asset billing routes require router, ownership and authorization dependencies');
@@ -38,6 +38,17 @@ function registerVisualAssetBillingRoutes(router, deps = {}) {
     res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     res.setHeader('Vary', 'Authorization');
     res.json({ success: true, ...authorization.listBillingReviews(req.params.id) });
+  }));
+  if (recoveryPreflight) router.post('/tasks/:id/subject-recovery-preflight', asyncRoute(async (req, res) => {
+    taskForReq(req);
+    const body = req.body || {};
+    const generationPayload = body.generation_payload || body.generationPayload || {};
+    const result = body.apply === true
+      ? recoveryPreflight.apply(req.params.id, generationPayload, body.expected_proof_token || body.expectedProofToken)
+      : recoveryPreflight.preview(req.params.id, generationPayload);
+    res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    res.setHeader('Vary', 'Authorization');
+    res.json({ success: true, ...result, repaired_context: undefined });
   }));
 }
 

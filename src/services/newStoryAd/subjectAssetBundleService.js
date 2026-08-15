@@ -20,6 +20,7 @@ const knowledgePolicyRuntime = require('./knowledgePolicyRuntimeService');
 const wearableEvidence = require('./wearableEvidencePolicyService');
 const desiredUnitReconciliation = require('./visualAssetDesiredUnitReconciliationService');
 const personLooks = require('./personLookProfileService');
+const negativeConstraints = require('./negativeConstraintContractService');
 const personAgeContract = require('./personAgeContractService');
 const worldSetting = require('./worldSettingContractService');
 
@@ -141,29 +142,81 @@ function personGenerationProfile(source = {}) {
   };
 }
 
-function personProfileResumeCompatible(previous = {}, current = {}) {
+function resumeSafeSummary(value) {
+  const serialized = JSON.stringify(value ?? null);
+  return { length: serialized.length, fingerprint: crypto.createHash('sha256').update(serialized).digest('hex').slice(0, 12) };
+}
+
+function personProfileResumeCompatibility(previous = {}, current = {}) {
   const prior = personGenerationProfile(previous), next = personGenerationProfile(current);
-  const negativeCompatible = (before = '', after = '') => before === after || before.includes(after);
+  const differences = [], personId = next.id || prior.id || '', displayName = next.displayName || prior.displayName || personId || '人物';
+  const add = (fieldPath, reasonCode, before, after, action = 'review_required') => {
+    const beforeSummary = resumeSafeSummary(before), afterSummary = resumeSafeSummary(after);
+    differences.push({ person_id: personId, subject_id: personId, display_name: displayName, subject_name: displayName, field_path: fieldPath, field: fieldPath,
+      reason_code: reasonCode, before_summary: beforeSummary, after_summary: afterSummary,
+      before: beforeSummary, after: afterSummary, action });
+  };
+  const negativeRelation = (before = '', after = '', source = 'profile') => negativeConstraints
+    .compareNegativeConstraintContracts(before, after, { previousSource: `checkpoint_${source}`, currentSource: `current_${source}` });
+  const positiveText = value => cleanText(value || '', 800).normalize('NFKC')
+    .replace(/\s*([;,:])\s*/gu, '$1')
+    .replace(/。;(?=(?:AI补齐|Accessories|配饰|鞋履|发型|妆容):)/gu, '。')
+    .replace(/[.;]+$/gu, '');
+  const normalizePositiveFields = value => {
+    const row = { ...value };
+    ['appearanceText', 'wardrobeText', 'hairMakeupText', 'continuityText'].forEach((field) => {
+      if (field in row) row[field] = positiveText(row[field]);
+    });
+    return row;
+  };
+  const explicitLookInventory = source => (Array.isArray(source?.look_profiles) ? source.look_profiles : []).map(look => ({
+    id: cleanText(look?.id || '', 120),
+    garments: look?.garments || [], footwear: look?.footwear || [], accessories: look?.accessories || [],
+    wardrobe_contract: look?.wardrobe_contract || null,
+  }));
+  const priorInventory = explicitLookInventory(previous), nextInventory = explicitLookInventory(current);
+  const inventoryFields = ['id', 'garments', 'footwear', 'accessories', 'wardrobe_contract'];
+  if (priorInventory.length !== nextInventory.length) add('look_profiles', 'look_count_changed', priorInventory.length, nextInventory.length);
+  priorInventory.forEach((look, index) => inventoryFields.forEach((field) => {
+    if (JSON.stringify(look[field]) !== JSON.stringify(nextInventory[index]?.[field])) {
+      add(`look_profiles.${index}.${field}`, 'positive_structure_changed', look[field], nextInventory[index]?.[field]);
+    }
+  }));
   const explicitConsistent = (source, normalized, keys, field) => {
-    const explicit = cleanText(keys.map(key => source?.[key]).find(value => value !== undefined && value !== null && String(value).trim()) || '', 800);
-    const projected = cleanText(normalized[field] || '', 800);
+    const explicit = positiveText(keys.map(key => source?.[key]).find(value => value !== undefined && value !== null && String(value).trim()) || '');
+    const projected = positiveText(normalized[field] || '');
     return !explicit || !projected || explicit.includes(projected) || projected.includes(explicit);
   };
-  if (!explicitConsistent(current, next, ['wardrobeText', 'wardrobe'], 'wardrobeText')
-    || !explicitConsistent(current, next, ['hairMakeupText', 'hairMakeup'], 'hairMakeupText')) return false;
+  if (!explicitConsistent(current, next, ['wardrobeText', 'wardrobe'], 'wardrobeText')) add('wardrobeText', 'projection_inconsistent', current.wardrobeText || current.wardrobe, next.wardrobeText);
+  if (!explicitConsistent(current, next, ['hairMakeupText', 'hairMakeup'], 'hairMakeupText')) add('hairMakeupText', 'projection_inconsistent', current.hairMakeupText || current.hairMakeup, next.hairMakeupText);
   const priorNegative = prior.negativeText, nextNegative = next.negativeText;
   const priorLooks = Array.isArray(prior.look_profiles) ? prior.look_profiles : [];
   const nextLooks = Array.isArray(next.look_profiles) ? next.look_profiles : [];
   delete prior.negativeText; delete next.negativeText;
   delete prior.look_profiles; delete next.look_profiles;
-  if (JSON.stringify(prior) !== JSON.stringify(next)) return false;
-  if (!negativeCompatible(priorNegative, nextNegative) || priorLooks.length !== nextLooks.length) return false;
-  return priorLooks.every((look, index) => {
+  const priorPositive = normalizePositiveFields(prior), nextPositive = normalizePositiveFields(next);
+  [...new Set([...Object.keys(priorPositive), ...Object.keys(nextPositive)])].forEach((field) => {
+    if (JSON.stringify(priorPositive[field]) !== JSON.stringify(nextPositive[field])) add(field, 'positive_field_changed', priorPositive[field], nextPositive[field]);
+  });
+  const personNegative = negativeRelation(priorNegative, nextNegative, 'person');
+  if (!personNegative.compatible) add('negativeText', personNegative.relation, priorNegative, nextNegative);
+  if (priorLooks.length !== nextLooks.length) add('look_profiles', 'look_count_changed', priorLooks.length, nextLooks.length);
+  priorLooks.forEach((look, index) => {
     const before = { ...look }, after = { ...nextLooks[index] };
     const beforeNegative = before.negativeText || '', afterNegative = after.negativeText || '';
     delete before.negativeText; delete after.negativeText;
-    return JSON.stringify(before) === JSON.stringify(after) && negativeCompatible(beforeNegative, afterNegative);
+    const beforePositive = normalizePositiveFields(before), afterPositive = normalizePositiveFields(after);
+    [...new Set([...Object.keys(beforePositive), ...Object.keys(afterPositive)])].forEach((field) => {
+      if (JSON.stringify(beforePositive[field]) !== JSON.stringify(afterPositive[field])) add(`look_profiles.${index}.${field}`, 'positive_field_changed', beforePositive[field], afterPositive[field]);
+    });
+    const relation = negativeRelation(beforeNegative, afterNegative, `look_${index}`);
+    if (!relation.compatible) add(`look_profiles.${index}.negativeText`, relation.relation, beforeNegative, afterNegative);
   });
+  return { compatible: differences.length === 0, person_id: personId, display_name: displayName, differences };
+}
+
+function personProfileResumeCompatible(previous = {}, current = {}) {
+  return personProfileResumeCompatibility(previous, current).compatible;
 }
 
 function petGenerationProfile(source = {}) {
@@ -1369,7 +1422,7 @@ async function generateSubjectBundle(options = {}, deps = {}) {
 
 module.exports = {
   resolveCounts, checkpointKind, humanMemberSpecs, petMemberSpecs,
-  resumablePartialCheckpoint, personGenerationProfile, personProfileResumeCompatible,
+  resumablePartialCheckpoint, personGenerationProfile, personProfileResumeCompatible, personProfileResumeCompatibility,
   alignMemberAgeText, inferMemberAge, historicalYouthStyling,
   subjectKey, requestedSubjectTargets, existingSubjectAssets,
   assertCompleteSubjectProfiles, humanPrompt, petPrompt,

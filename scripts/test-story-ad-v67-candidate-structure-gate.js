@@ -39,7 +39,8 @@ assert.deepEqual(billingRoutes.map(item => item.signature), [
   'POST /tasks/:id/visual-assets/retry-authorization',
   'POST /tasks/:id/visual-assets/retry-authorizations',
   'GET /tasks/:id/visual-assets/billing-reviews',
-], '核账路由模块必须保留单项兼容、原子批量授权及只读核账查询的精确顺序');
+  'POST /tasks/:id/subject-recovery-preflight',
+], '核账路由模块必须保留授权、只读核账及安全预检的精确顺序');
 const registrations = [
   { index: source.indexOf('registerTaskUpdateRoute(router'), routes: taskUpdateRoutes },
   { index: source.indexOf('registerVisualAssetBillingRoutes(router'), routes: billingRoutes },
@@ -53,20 +54,23 @@ for (const registration of registrations) {
   cursor = registration.index;
 }
 routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
-assert.equal(routeSignatures.length, 83, 'V76 合并路由只能新增批量计费授权 POST，不能丢失或重复其它路由');
+assert.equal(routeSignatures.length, 84, 'V81 只能新增一个人物恢复安全预检路由，不能丢失或重复其它路由');
 const singleRetry = 'POST /tasks/:id/visual-assets/retry-authorization';
 const batchRetry = 'POST /tasks/:id/visual-assets/retry-authorizations';
 const billingReviews = 'GET /tasks/:id/visual-assets/billing-reviews';
+const recoveryPreflight = 'POST /tasks/:id/subject-recovery-preflight';
 assert.equal(routeSignatures.filter(value => value === batchRetry).length, 1,
   '批量计费授权路由必须且只能注册一次');
 assert.equal(routeSignatures.indexOf(batchRetry), routeSignatures.indexOf(singleRetry) + 1,
   '批量授权必须紧随兼容的单项授权路由，不能改变既有匹配顺序');
 assert.equal(routeSignatures.indexOf(billingReviews), routeSignatures.indexOf(batchRetry) + 1,
   '只读核账查询必须继续位于两个授权路由之后');
+assert.equal(routeSignatures.indexOf(recoveryPreflight), routeSignatures.indexOf(billingReviews) + 1,
+  '恢复安全预检必须位于核账查询之后且只能注册一次');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  '712b8995d94e1b55b4d93584253fd516a6f6cc8d9e8875e83b8134642f25c8ee',
-  'V76 合并路由方法、路径及注册顺序必须与审计签名一致',
+  '49391e81ffdbfa63c20760bbd97ef416e9235842f76587f36e2bdfb59bc4a747',
+  'V81 合并路由方法、路径及注册顺序必须与审计签名一致',
 );
 
 const batchRouteStart = billingRoutesSource.indexOf("router.post('/tasks/:id/visual-assets/retry-authorizations'");
@@ -108,5 +112,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: '712b8995d94e1b55b4d93584253fd516a6f6cc8d9e8875e83b8134642f25c8ee',
+  route_signature_sha256: '49391e81ffdbfa63c20760bbd97ef416e9235842f76587f36e2bdfb59bc4a747',
 }));

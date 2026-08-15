@@ -25,6 +25,7 @@ const personProviderAssets = require('../services/newStoryAd/personProviderAsset
 const registerPersonDossierApprovalRoute = require('./newStoryAd/personDossierApprovalRoute');
 const registerTaskUpdateRoute = require('./newStoryAd/taskUpdateRoute');
 const registerVisualAssetBillingRoutes = require('./newStoryAd/visualAssetBillingRoutes');
+const subjectRecoveryPreflight = require('../services/newStoryAd/subjectRecoveryPreflightService').createService();
 const { registerVideoMonitorRoute } = require('./newStoryAd/videoMonitorRoute');
 const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
@@ -1534,6 +1535,7 @@ router.get('/tasks/:id/scene-assets/panoramas/plan', asyncRoute(async (req, res)
 
 registerVisualAssetBillingRoutes(router, {
   asyncRoute, taskForReq, userFromReq, authorization: visualAssetBillingAuthorization,
+  recoveryPreflight: subjectRecoveryPreflight,
 });
 
 router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {

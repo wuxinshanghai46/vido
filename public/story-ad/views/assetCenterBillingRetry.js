@@ -59,6 +59,10 @@ export function recoveryRequestKey(bundle = {}, recovery = {}, intent = 'all') {
     .map(unit => `${unit.key}@${unit.review_revision || 1}`).sort().join('|')}`.slice(0, 180);
 }
 
+export async function ensureSubjectRecoveryReady(options = {}) {
+  return (await billingReviewDialog()).ensureSubjectRecoveryReady({ ...options,setButtonBusy,toast });
+}
+
 export function bindSubjectBillingRecovery({ host, bundle, store, checkpointRecovery, generate } = {}) {
   host.querySelector('[data-generate-recovery], [data-accept-billing-risk]')?.addEventListener('click', event => generate(null, '', event.currentTarget));
   host.querySelector('[data-billing-review]')?.addEventListener('click', async event => {
