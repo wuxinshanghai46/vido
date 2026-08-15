@@ -91,10 +91,10 @@ verify('four rows are shown once by person with Chinese labels and reasons', () 
 verify('customer UI does not expose internal error codes', () => {
   assert.doesNotMatch(page, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED|submitted_unknown|billing_state|UNKNOWN/);
 });
-verify('next step exposes review refresh but generation remains prohibited until billing review', () => {
-  assert.match(recovery, /data-billing-review[^>]*>查看核账进度/);
+verify('pending final DOM keeps the single outcome action visible but disabled until review completes', () => {
+  assert.match(recovery, /data-generate-recovery disabled[^>]*>生成剩余 4 项/);
   assert.match(recovery, /data-review-state="pending"/);
-  assert.doesNotMatch(recovery, /data-generate-recovery|data-accept-billing-risk/);
+  assert.doesNotMatch(recovery, /查看核账进度|data-billing-review|data-accept-billing-risk/);
 });
 verify('updating the person plan is never presented as missing-image recovery', () => {
   const outside = ui.generationProgressPanel(bundle, 'brief');

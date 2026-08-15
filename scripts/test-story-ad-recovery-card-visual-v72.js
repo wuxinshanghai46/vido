@@ -61,14 +61,12 @@ verify('header is compact, aligned, and does not create a large empty column', (
   assert.match(css, /\.asset-checkpoint-recovery\s+header\s*\{[^}]*grid-template-columns\s*:\s*(?:auto\s+minmax\(0,1fr\)\s+auto|minmax\(0,1fr\)\s+auto\s+auto)/s);
   assert.doesNotMatch(css, /\.asset-checkpoint-recovery\s+header\s*\{[^}]*min-height\s*:/s);
 });
-verify('pending review exposes one quiet status action with hover and focus highlight', () => {
+verify('pending review exposes one quiet disabled result action without false highlight', () => {
   const actions = [...html.matchAll(/<(?:a|button)\b[^>]*>[\s\S]*?<\/(?:a|button)>/g)].map(match => match[0]);
   assert.equal(actions.length, 1);
-  assert.match(actions[0], /查看核账进度/);
+  assert.match(actions[0], /生成剩余 4 项/); assert.match(actions[0], /\bdisabled\b/);
   assert.doesNotMatch(actions[0], /\bprimary\b|is-warning|is-success/);
-  assert.doesNotMatch(actions[0], /生成|重试|更新人物方案/);
-  assert.match(css, /\.btn:not\(:disabled\):hover[\s\S]*?border-color\s*:\s*var\(--mint\)/);
-  assert.match(css, /\.btn:focus-visible[\s\S]*?border-color\s*:\s*var\(--mint\)/);
+  assert.doesNotMatch(actions[0], /查看核账|重试|更新人物方案/);
 });
 verify('pointer rest state stays neutral after click and blocked next-step is not styled as a primary call to action', () => {
   assert.doesNotMatch(css, /\.asset-card:hover\s*,\s*\.asset-card:focus-within\s*\{[^}]*(?:border-color|box-shadow)\s*:/s);
@@ -96,11 +94,11 @@ verify('four people form a clear wide grid and a readable narrow single column',
   assert.match(css, /\.asset-checkpoint-recovery\s+li\s+(?:small|p)\s*\{[^}]*font-size\s*:\s*(?:12|13|14)px/s);
 });
 verify('safe user-facing state remains explicit and contains no internal controls or codes', () => {
-  assert.match(html, /核账中/); assert.match(html, /核账完成前不能授权或生成/);
+  assert.match(html, /核账中/); assert.match(html, /完成前不能生成/);
   assert.match(html, /内容安全审核未通过/); assert.match(html, /多次生成仍未达到质量标准/);
   assert.doesNotMatch(html, /PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED|submitted_unknown|UNKNOWN/);
-  assert.match(html, /data-billing-review/);
-  assert.doesNotMatch(html, /data-update-person-plan|data-generate|data-billing-risk-accept|重试/);
+  assert.match(html, /data-generate-recovery disabled/);
+  assert.doesNotMatch(html, /data-update-person-plan|data-billing-review|data-billing-risk-accept|重试/);
 });
 
 function loadAssetCard() {

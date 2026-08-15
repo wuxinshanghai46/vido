@@ -60,7 +60,7 @@ const snapshot = page => page.evaluate(rectSource => {
 
     await page.setViewport({ width: 720, height: 720 });
     const narrow = await snapshot(page);
-    assert.equal(narrow.numberText, '25/29'); assert.equal(narrow.labelText, '已保留'); assert.equal(narrow.actionText, '查看核账进度');
+    assert.equal(narrow.numberText, '25/29'); assert.equal(narrow.labelText, '已保留'); assert.equal(narrow.actionText, '生成剩余 4 项');
     assert.ok(narrow.metric.width >= 90 && narrow.metric.height >= 22, 'narrow metric is collapsed');
     assert.ok(narrow.action.width >= 148 && narrow.action.height >= 40, 'narrow action is not clear');
     assert.ok(narrow.action.top >= Math.min(narrow.copy.bottom, narrow.metric.bottom), 'narrow action overlaps header content');

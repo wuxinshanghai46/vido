@@ -65,12 +65,6 @@ export async function ensureSubjectRecoveryReady(options = {}) {
 
 export function bindSubjectBillingRecovery({ host, bundle, store, checkpointRecovery, generate } = {}) {
   host.querySelector('[data-generate-recovery], [data-accept-billing-risk]')?.addEventListener('click', event => generate(null, '', event.currentTarget));
-  host.querySelector('[data-billing-review]')?.addEventListener('click', async event => {
-    const button = event.currentTarget;
-    try { setButtonBusy(button, true, '正在刷新核账状态…'); await store.refreshSections('summary,assets'); }
-    catch (error) { toast(error.message, 'danger'); }
-    finally { setButtonBusy(button, false); }
-  });
   if (checkpointRecovery?.billing_review_state === 'pending') startBillingReviewPolling({ bundle, store, host });
 }
 
