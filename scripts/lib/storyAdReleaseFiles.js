@@ -59,6 +59,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-submission-billing-classification-v75.js',
   'scripts/test-story-ad-accessory-slot-contract-v75.js',
   'scripts/test-story-ad-asset-url-readiness-v75.js',
+  'scripts/test-story-ad-billing-recovery-routes-v76.js',
   'scripts/resolve-story-ad-visual-billing-review-v75.js',
   'scripts/audit-story-ad-visual-generation-lineage-v65.js',
   'scripts/audit-story-ad-checkpoint-billing-correlation-v65.js',

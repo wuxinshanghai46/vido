@@ -11,6 +11,7 @@ const root = path.resolve(__dirname, '..');
 const routeFile = path.join(root, 'src/routes/newStoryAd.js');
 const source = fs.readFileSync(routeFile, 'utf8');
 const taskUpdateSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/taskUpdateRoute.js'), 'utf8');
+const billingRoutesSource = fs.readFileSync(path.join(root, 'src/routes/newStoryAd/visualAssetBillingRoutes.js'), 'utf8');
 const lines = source.replace(/\r?\n$/, '').split(/\r?\n/).length;
 
 const fullGates = planner.gateIdsForProfile('full');
@@ -29,25 +30,65 @@ function routeMatches(value) {
 }
 const rootRoutes = routeMatches(source);
 const taskUpdateRoutes = routeMatches(taskUpdateSource);
+const billingRoutes = routeMatches(billingRoutesSource);
 assert.deepEqual(taskUpdateRoutes.map(item => item.signature), ['PUT /tasks/:id'],
   '独立任务更新模块必须且只能注册一次 PUT /tasks/:id');
 assert.equal(rootRoutes.some(item => item.signature === 'PUT /tasks/:id'), false,
   '根路由不得重复注册已抽取的 PUT /tasks/:id');
-const registrationIndex = source.indexOf('registerTaskUpdateRoute(router');
-assert(registrationIndex >= 0, '根路由必须在原顺序位置注册任务更新模块');
-const beforeRegistration = rootRoutes.filter(item => item.index < registrationIndex).map(item => item.signature);
-const afterRegistration = rootRoutes.filter(item => item.index > registrationIndex).map(item => item.signature);
-const routeSignatures = [
-  ...beforeRegistration,
-  ...taskUpdateRoutes.map(item => item.signature),
-  ...afterRegistration,
-];
-assert.equal(routeSignatures.length, 82, '拆模块不得丢失或重复根路由注册');
+assert.deepEqual(billingRoutes.map(item => item.signature), [
+  'POST /tasks/:id/visual-assets/retry-authorization',
+  'POST /tasks/:id/visual-assets/retry-authorizations',
+  'GET /tasks/:id/visual-assets/billing-reviews',
+], '核账路由模块必须保留单项兼容、原子批量授权及只读核账查询的精确顺序');
+const registrations = [
+  { index: source.indexOf('registerTaskUpdateRoute(router'), routes: taskUpdateRoutes },
+  { index: source.indexOf('registerVisualAssetBillingRoutes(router'), routes: billingRoutes },
+].sort((a, b) => a.index - b.index);
+assert(registrations.every(item => item.index >= 0), '根路由必须在原顺序位置注册独立路由模块');
+const routeSignatures = [];
+let cursor = -1;
+for (const registration of registrations) {
+  routeSignatures.push(...rootRoutes.filter(item => item.index > cursor && item.index < registration.index).map(item => item.signature));
+  routeSignatures.push(...registration.routes.map(item => item.signature));
+  cursor = registration.index;
+}
+routeSignatures.push(...rootRoutes.filter(item => item.index > cursor).map(item => item.signature));
+assert.equal(routeSignatures.length, 83, 'V76 合并路由只能新增批量计费授权 POST，不能丢失或重复其它路由');
+const singleRetry = 'POST /tasks/:id/visual-assets/retry-authorization';
+const batchRetry = 'POST /tasks/:id/visual-assets/retry-authorizations';
+const billingReviews = 'GET /tasks/:id/visual-assets/billing-reviews';
+assert.equal(routeSignatures.filter(value => value === batchRetry).length, 1,
+  '批量计费授权路由必须且只能注册一次');
+assert.equal(routeSignatures.indexOf(batchRetry), routeSignatures.indexOf(singleRetry) + 1,
+  '批量授权必须紧随兼容的单项授权路由，不能改变既有匹配顺序');
+assert.equal(routeSignatures.indexOf(billingReviews), routeSignatures.indexOf(batchRetry) + 1,
+  '只读核账查询必须继续位于两个授权路由之后');
 assert.equal(
   crypto.createHash('sha256').update(JSON.stringify(routeSignatures)).digest('hex'),
-  '82a420099957166c91f9ec6a312db13ada54e0bc31dcb6baba29a4fe4efd47cd',
-  '拆模块前后根路由方法、路径及注册顺序必须保持一致',
+  '712b8995d94e1b55b4d93584253fd516a6f6cc8d9e8875e83b8134642f25c8ee',
+  'V76 合并路由方法、路径及注册顺序必须与审计签名一致',
 );
+
+const batchRouteStart = billingRoutesSource.indexOf("router.post('/tasks/:id/visual-assets/retry-authorizations'");
+const batchRouteEnd = billingRoutesSource.indexOf("router.get('/tasks/:id/visual-assets/billing-reviews'", batchRouteStart);
+assert(batchRouteStart >= 0 && batchRouteEnd > batchRouteStart, '必须能隔离批量授权路由实现');
+const batchRouteSource = billingRoutesSource.slice(batchRouteStart, batchRouteEnd);
+assert.equal((batchRouteSource.match(/taskForReq\(req\)/g) || []).length, 1,
+  '批量授权写路由必须先执行任务所有权/访问权限校验');
+assert.equal((batchRouteSource.match(/authorizeTaskRetryBatch\(/g) || []).length, 1,
+  '批量路由只能调用一次原子服务入口，不能在路由逐项写入');
+assert.match(batchRouteSource, /expected_review_revisions[\s\S]*expectedReviewRevisions/,
+  '批量授权必须传递客户端所见的核账 revisions 以执行并发校验');
+assert.match(billingRoutesSource, /userFromReq\(req\)[\s\S]*acceptedBy:/,
+  '授权审计身份必须来自服务端鉴权用户，不能相信客户端 reviewer');
+assert.match(billingRoutesSource, /accept_duplicate_charge_risk\s*===\s*true[\s\S]*acceptDuplicateChargeRisk\s*===\s*true/,
+  '重复计费风险必须是显式布尔 true，不能接受真值字符串');
+const billingAuthorizationSource = fs.readFileSync(path.join(root, 'src/services/newStoryAd/visualAssetBillingAuthorizationService.js'), 'utf8');
+assert.match(billingAuthorizationSource, /function authorizeTaskRetryBatch[\s\S]*withWriteBatch\(/,
+  '批量授权服务必须进入原子写批次');
+const billingRetryUiSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterBillingRetry.js'), 'utf8');
+assert.match(billingRetryUiSource, /visual-assets\/retry-authorizations/,
+  '一次确认多个风险单元的真实 UI 必须使用新增批量端点，证明该路由确有必要');
 
 const router = require('../src/routes/newStoryAd');
 ['buildActorDescription', 'buildActorViewPrompt', 'buildActorSheetPrompt'].forEach(name => {
@@ -67,5 +108,5 @@ console.log(JSON.stringify({
   full_platform_gates: fullPlatformGates,
   route_lines: lines,
   root_route_count: routeSignatures.length,
-  route_signature_sha256: '82a420099957166c91f9ec6a312db13ada54e0bc31dcb6baba29a4fe4efd47cd',
+  route_signature_sha256: '712b8995d94e1b55b4d93584253fd516a6f6cc8d9e8875e83b8134642f25c8ee',
 }));

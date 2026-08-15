@@ -24,6 +24,7 @@ const subjectAssetPersistence = require('./newStoryAd/subjectAssetPersistence');
 const personProviderAssets = require('../services/newStoryAd/personProviderAssetLifecycleService');
 const registerPersonDossierApprovalRoute = require('./newStoryAd/personDossierApprovalRoute');
 const registerTaskUpdateRoute = require('./newStoryAd/taskUpdateRoute');
+const registerVisualAssetBillingRoutes = require('./newStoryAd/visualAssetBillingRoutes');
 const { registerVideoMonitorRoute } = require('./newStoryAd/videoMonitorRoute');
 const directorWorkspace = require('../services/newStoryAd/directorWorkspaceService');
 const paidExecutionPolicy = require('../services/newStoryAd/paidVideoExecutionPolicyService');
@@ -1531,40 +1532,9 @@ router.get('/tasks/:id/scene-assets/panoramas/plan', asyncRoute(async (req, res)
   res.json({ success: true, ...scenePanoramaService.planForTask(req.params.id) });
 }));
 
-router.post('/tasks/:id/visual-assets/retry-authorization', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const user = userFromReq(req);
-  const body = req.body || {};
-  const result = visualAssetBillingAuthorization.authorizeTaskRetry({
-    taskId: req.params.id,
-    supportId: String(body.support_id || body.supportId || ''),
-    checkpointKey: String(body.checkpoint_key || body.checkpointKey || ''),
-    acceptedBy: String(user.id || user.userId || user.username || 'anonymous'),
-    acceptDuplicateChargeRisk: body.accept_duplicate_charge_risk === true || body.acceptDuplicateChargeRisk === true,
-  });
-  res.json({ success: true, ...result });
-}));
-
-router.post('/tasks/:id/visual-assets/retry-authorizations', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  const user = userFromReq(req);
-  const body = req.body || {};
-  const result = visualAssetBillingAuthorization.authorizeTaskRetryBatch({
-    taskId: req.params.id,
-    supportId: String(body.support_id || body.supportId || ''),
-    checkpointKeys: body.checkpoint_keys || body.checkpointKeys || [],
-    expectedReviewRevisions: body.expected_review_revisions || body.expectedReviewRevisions || {},
-    acceptedBy: String(user.id || user.userId || user.username || 'anonymous'),
-    acceptDuplicateChargeRisk: body.accept_duplicate_charge_risk === true || body.acceptDuplicateChargeRisk === true,
-  });
-  res.json({ success: true, ...result });
-}));
-
-router.get('/tasks/:id/visual-assets/billing-reviews', asyncRoute(async (req, res) => {
-  taskForReq(req);
-  res.setHeader('Cache-Control', 'private, no-store, no-cache, must-revalidate');
-  res.json({ success: true, ...visualAssetBillingAuthorization.listBillingReviews(req.params.id) });
-}));
+registerVisualAssetBillingRoutes(router, {
+  asyncRoute, taskForReq, userFromReq, authorization: visualAssetBillingAuthorization,
+});
 
 router.post('/tasks/:id/visual-assets', asyncRoute(async (req, res) => {
   taskForReq(req);
