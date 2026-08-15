@@ -42,6 +42,7 @@ function main() {
   assert(selected.has('scripts/test-story-ad-visual-checkpoint-plan-stability-v65.js'), '发布闭包必须包含视觉checkpoint与计划指纹稳定性回归');
   assert(selected.has('scripts/test-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含视觉生成血缘与计费同步回归');
   assert(selected.has('scripts/test-story-ad-candidate-systemic-readiness-v66.js'), '发布闭包必须包含candidate-only系统门禁防假绿回归');
+  assert(selected.has('scripts/test-story-ad-person-asset-interactions-v68.js'), '发布闭包必须包含人物checkpoint图集与灯箱交互回归');
   assert(selected.has('scripts/audit-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含生产视觉生成只读审计入口');
   assert(selected.has('scripts/audit-story-ad-checkpoint-billing-correlation-v65.js'), '发布闭包必须包含checkpoint与model_call计费关联只读审计');
   assert(selected.has('scripts/repair-story-ad-visual-generation-lineage-v65.js'), '发布闭包必须包含默认dry-run的视觉血缘安全恢复入口');

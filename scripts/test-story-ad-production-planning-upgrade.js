@@ -135,17 +135,19 @@ async function main() {
   assert.match(prompt, /不能靠故意病句/);
 
   const uiSource = read('public/story-ad/components/ui.js').replace(/\bexport\s+/g, '');
+  const lightboxSource = read('public/story-ad/views/mediaLightbox.js').replace(/^import\s+.*?;\s*$/gm, '').replace(/\bexport\s+/g, '');
   const sandbox = {};
-  vm.runInNewContext(`${uiSource}\nglobalThis.__unique = uniqueLightboxEntries; globalThis.__progressView = generationProgressView;`, sandbox, { filename: 'ui.js' });
+  vm.runInNewContext(`${lightboxSource}\nglobalThis.__unique = uniqueLightboxEntries;`, sandbox, { filename: 'sceneDossierLightbox.js' });
+  vm.runInNewContext(`${uiSource}\nglobalThis.__progressView = generationProgressView;`, sandbox, { filename: 'ui.js' });
   const unique = sandbox.__unique([
     { dataset: { mediaZoomGroup: 'person', mediaZoomUrl: '/same.png', mediaZoomLabel: '重复一' } },
     { dataset: { mediaZoomGroup: 'person', mediaZoomUrl: '/same.png', mediaZoomLabel: '重复二' } },
     { dataset: { mediaZoomGroup: 'person', mediaZoomUrl: '/next.png', mediaZoomLabel: '下一张' } },
   ], 'person');
   assert.deepEqual(Array.from(unique, item => item.url), ['/same.png', '/next.png']);
-  assert.match(uiSource, /displayedUrl = await preloadLightboxUrl\(previewUrl\)[\s\S]+image\.src = displayedUrl/, '灯箱必须等待预览图可用后再同步替换主图与字幕');
-  assert.match(uiSource, /image\.removeAttribute\('src'\)[\s\S]+overlay\.classList\.remove\('is-switching'\)/, '切换时必须清除旧主图并在新图提交后结束切换状态');
-  assert.match(uiSource, /<img data-media-lock="true" alt="">/, '动态大图必须阻止全局媒体优化器复用第一张图片地址');
+  assert.match(lightboxSource, /displayedUrl = await preloadLightboxUrl\(previewUrl\)[\s\S]+image\.src = displayedUrl/, '灯箱必须等待预览图可用后再同步替换主图与字幕');
+  assert.match(lightboxSource, /image\.removeAttribute\('src'\)[\s\S]+overlay\.classList\.remove\('is-switching'\)/, '切换时必须清除旧主图并在新图提交后结束切换状态');
+  assert.match(lightboxSource, /<img data-media-lock="true" draggable="false" alt="">/, '动态大图必须阻止全局媒体优化器和原生拖拽复用图片');
   assert.match(uiSource, /data-media-preview-url="\$\{escapeHtml\(previewUrl\)\}"/, '灯箱预览地址必须复用已经请求的缩略图');
 
   const dossierUi = read('public/story-ad/views/personDossierShowcase.js');

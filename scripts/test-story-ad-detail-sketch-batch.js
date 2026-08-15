@@ -60,14 +60,15 @@ async function main() {
   assert.equal(pipeline.getStageDefaults('new_story_ad.storyboard_sketch')[0].model_id, 'gpt-image-2');
   assert(pipeline.NEW_STORY_AD_IMAGE_STAGE_IDS.has('new_story_ad.storyboard_sketch'));
 
-  const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel', 'mediaPreview', 'nextLightboxIndex', 'preloadLightboxUrl']);
+  const ui = loadBrowserModule('public/story-ad/components/ui.js', ['generationProgressPanel', 'mediaPreview']);
+  const lightbox = loadBrowserModule('public/story-ad/views/mediaLightbox.js', ['nextLightboxIndex', 'preloadLightboxUrl']);
   const preview = ui.mediaPreview({ thumbnail_url: '/thumb/a.jpg', image_url: '/full/a.png' }, { zoomable: true, zoomGroup: 'g' });
   assert.match(preview, /data-media-zoom-url="\/full\/a\.png"/);
   assert.match(preview, /src="\/thumb\/a\.jpg\?thumb=/);
-  assert.equal(ui.nextLightboxIndex(1, 1, 4), 2);
-  assert.equal(ui.nextLightboxIndex(3, 1, 4), 0);
-  assert.equal(ui.nextLightboxIndex(0, -1, 4), 3);
-  const loadedLightboxUrl = await ui.preloadLightboxUrl('/thumb/next.png', () => {
+  assert.equal(lightbox.nextLightboxIndex(1, 1, 4), 2);
+  assert.equal(lightbox.nextLightboxIndex(3, 1, 4), 0);
+  assert.equal(lightbox.nextLightboxIndex(0, -1, 4), 3);
+  const loadedLightboxUrl = await lightbox.preloadLightboxUrl('/thumb/next.png', () => {
     const candidate = {};
     Object.defineProperty(candidate, 'src', { set(value) { this.loaded = value; this.onload(); } });
     return candidate;

@@ -4,9 +4,11 @@ export function assetCardMedia(item = {}, group = '') {
   if (group === 'scenes') return renderSceneCoverCard(item);
   if (group === 'people') {
     const portrait = item.native_masters?.face?.image_url ? item.native_masters.face
-      : (item.identity_views || []).find(view => ['face_front', 'front', 'portrait'].includes(String(view.key || view.id || '').toLowerCase()))
+      : (item.cover_image_url || item.image_url ? { image_url: item.cover_image_url || item.image_url } : null)
+      || (item.identity_views || []).find(view => ['face_front', 'front', 'portrait'].includes(String(view.key || view.id || '').toLowerCase()))
       || (item.body_views || item.view_images || []).find(view => ['front', 'body_front'].includes(String(view.key || view.id || '').toLowerCase()))
-      || (item.dossier_sheet?.image_url ? item.dossier_sheet : {});
+      || (item.dossier_sheet?.image_url ? item.dossier_sheet : null)
+      || (item.cover_image_url || item.image_url ? { image_url: item.cover_image_url || item.image_url } : {});
     return mediaPreview(portrait, {
       label: `${item.name || '人物'}单人物标准人像`, width: 720,
       symbol: portrait?.image_url ? '人物标准人像' : '人物人像待补齐',

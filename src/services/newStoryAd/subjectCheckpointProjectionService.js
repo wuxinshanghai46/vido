@@ -11,6 +11,20 @@ function mediaUrl(value = {}) {
   return clean(value?.image_url || value?.imageUrl || value?.url || '');
 }
 
+function publicUnitLabel(unit = '', key = '') {
+  const value = `${unit} ${key}`.toLowerCase();
+  if (value.includes('waist_accessories')) return '腰部配饰';
+  if (value.includes('hair_accessories')) return '发饰';
+  if (value.includes('natural_walk')) return '自然行走';
+  return clean(unit || key || '人物资产单元', 80).replaceAll('_', ' / ');
+}
+
+function publicFailureReason(code = '', fallback = '') {
+  if (code === 'PROVIDER_CONTENT_AUDIT') return '内容安全审核未通过，需人工核对后处理';
+  if (code === 'IMAGE_ATTEMPTS_EXHAUSTED') return clean(fallback || '多次生成仍未达到质量标准', 120);
+  return '该生成单元未完成，需人工核对后处理';
+}
+
 function collectMedia(value, label, result = [], seen = new Set(), depth = 0) {
   if (!value || depth > 5 || result.length >= MAX_PROJECTED_MEDIA) return result;
   if (typeof value === 'string') {
@@ -47,23 +61,36 @@ function projectCheckpoint(checkpoint = {}, profiles = []) {
   const bySubject = new Map();
   units.forEach(([key, raw]) => {
     const unit = checkpoints.normalizeCheckpoint(raw, { key });
-    if (unit.status !== 'completed' || !unit.result) return;
     const owner = checkpoint.subject_checkpoint_owners?.[key] || {};
     const subjectId = clean(owner.subject_id || profiles[Number(owner.index || 0)]?.id || profiles[0]?.id || 'subject', 120);
-    const current = bySubject.get(subjectId) || [];
-    collectMedia(unit.result, clean(unit.unit || unit.asset_type || '已完成素材', 160), current);
+    const current = bySubject.get(subjectId) || { media: [], completed: 0, failed: [] };
+    if (unit.status === 'completed' && unit.result) {
+      collectMedia(unit.result, clean(unit.unit || unit.asset_type || '已完成素材', 160), current.media);
+      current.completed += 1;
+    } else if (!['pending', 'cancelled'].includes(unit.status)) {
+      const errorCode = clean(unit.error?.code || unit.status || 'GENERATION_INCOMPLETE', 120);
+      current.failed.push({
+        key: clean(key, 120),
+        unit: clean(unit.unit || unit.asset_type || key, 160),
+        label: publicUnitLabel(unit.unit, key),
+        reason: publicFailureReason(errorCode, unit.error?.message),
+        error_code: errorCode,
+        billing_state: clean(unit.billing_state, 40),
+        provider_submission_state: clean(unit.provider_submission_state, 60),
+        retry_blocked: checkpoints.hasAmbiguousSubmission(unit) && !checkpoints.hasRetryAuthorization(unit),
+      });
+    }
     bySubject.set(subjectId, current);
   });
-  return [...bySubject.entries()].map(([subjectId, media]) => ({
+  return [...bySubject.entries()].map(([subjectId, state]) => ({
     subject_id: subjectId,
-    image_url: media[0]?.image_url || '',
-    checkpoint_media: media,
-    completed_unit_count: units.filter(([key, raw]) => {
-      const owner = checkpoint.subject_checkpoint_owners?.[key] || {};
-      const ownerId = clean(owner.subject_id || profiles[Number(owner.index || 0)]?.id || profiles[0]?.id || 'subject', 120);
-      return ownerId === subjectId && checkpoints.normalizeCheckpoint(raw, { key }).status === 'completed';
-    }).length,
-  })).filter(item => item.image_url);
+    image_url: state.media.find(row => /(?:dossier|atlas|identity|face.?front|portrait)/i.test(`${row.key} ${row.label}`))?.image_url
+      || state.media[0]?.image_url || '',
+    checkpoint_media: state.media,
+    completed_unit_count: state.completed,
+    total_unit_count: state.completed + state.failed.length,
+    failed_units: state.failed,
+  }));
 }
 
 function mergePeople(people = [], outputs = {}) {
@@ -75,7 +102,7 @@ function mergePeople(people = [], outputs = {}) {
   const profiles = people.map(item => item.profile || {});
   const previews = projectCheckpoint(checkpoint, profiles);
   return people.map((item, index) => {
-    if (item.dossier_sheet?.image_url) return item;
+    if (item.dossier_sheet?.image_url && item.partial_checkpoint !== true) return item;
     const directPreview = previews.find(row => row.subject_id === item.subject_id || row.subject_id === item.profile?.id);
     const lineageId = clean(item.profile?.lineage_identity_id || item.profile?.source_identity_id, 120);
     const retainedLineagePreview = item.profile?.era_identity === 'ancient' && lineageId
@@ -84,17 +111,32 @@ function mergePeople(people = [], outputs = {}) {
     const preview = directPreview || retainedLineagePreview
       || (previews.length === 1 && index === 0 ? previews[0] : null);
     if (!preview) return item;
+    const failedUnits = preview.failed_units.map(({ key, unit, reason, error_code: errorCode }) => ({
+      key, unit, reason, error_code: errorCode,
+    }));
+    const retryBlocked = preview.failed_units.some(unit => unit.retry_blocked);
     return {
       ...item,
       image_url: item.image_url || preview.image_url,
       cover_image_url: item.cover_image_url || preview.image_url,
+      view_images: item.view_images?.length ? item.view_images : preview.checkpoint_media,
       category_atlases: item.category_atlases?.length ? item.category_atlases : preview.checkpoint_media,
       partial_checkpoint: true,
       checkpoint_status: clean(checkpoint.status, 40),
       completed_checkpoint_units: preview.completed_unit_count,
+      total_checkpoint_units: preview.total_unit_count,
+      failed_checkpoint_units: failedUnits,
+      checkpoint_recovery_summary: {
+        completed_units: preview.completed_unit_count,
+        total_units: preview.total_unit_count,
+        missing_units: preview.failed_units,
+        retry_blocked: retryBlocked,
+        requires_billing_review: retryBlocked,
+      },
+      billing_review_required: retryBlocked,
       status: 'partial',
     };
   });
 }
 
-module.exports = { MAX_PROJECTED_MEDIA, collectMedia, mergePeople, projectCheckpoint };
+module.exports = { MAX_PROJECTED_MEDIA, collectMedia, mergePeople, projectCheckpoint, publicFailureReason, publicUnitLabel };

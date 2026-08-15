@@ -82,7 +82,7 @@ async function main() {
   assert.equal(closed.scene_spec.cameraPlan.length, 4);
   assert.ok(closed.scene_spec.cameraPlan.every(camera => camera.normalized_position.length === 2 && camera.look_at.length === 2));
 
-  const uiSource = fs.readFileSync(path.join(root, 'public/story-ad/components/ui.js'), 'utf8');
+  const uiSource = fs.readFileSync(path.join(root, 'public/story-ad/views/mediaLightbox.js'), 'utf8');
   assert.match(uiSource, /export function lightboxPanDelta/);
   assert.match(uiSource, /lightboxPanDelta\(event\.clientX - drag\.x, scale\)/);
   const billingSource = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterBillingRetry.js'), 'utf8');

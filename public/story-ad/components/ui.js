@@ -103,6 +103,18 @@ export function publicGenerationMessage(value = '', options = {}) {
     || options.fallback || '本次生成未完成，成功资产已保留。';
 }
 
+export function checkpointRecoveryView(bundle = {}) {
+  const people = Array.isArray(bundle.assets?.people) ? bundle.assets.people : [];
+  const rows = people.filter(item => item.checkpoint_recovery_summary);
+  const completed = rows.reduce((sum, item) => sum + Number(item.checkpoint_recovery_summary.completed_units || 0), 0);
+  const total = rows.reduce((sum, item) => sum + Number(item.checkpoint_recovery_summary.total_units || 0), 0);
+  const missing = rows.flatMap(item => (item.checkpoint_recovery_summary.missing_units || []).map(unit => ({
+    person_name: item.name || '人物', label: unit.label || unit.unit || unit.key || '缺失单元',
+    reason: unit.reason || '未完成', error_code: unit.error_code || 'UNKNOWN', retry_blocked: unit.retry_blocked === true,
+  })));
+  return total && missing.length ? { completed, total, missing, retryBlocked: missing.some(unit => unit.retry_blocked) } : null;
+}
+
 export function generationProgressView(bundle = {}) {
   const project = bundle.project || {};
   const progress = bundle.generation?.progress || project.generation_progress || {};
@@ -111,11 +123,14 @@ export function generationProgressView(bundle = {}) {
   const failed = ['failed', 'blocked'].includes(status) || Boolean(project.error && !active);
   if (!active && !failed) return null;
   const stage = String(progress.stage || project.active_stage || project.stage || 'full').toLowerCase();
-  const total = Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
-  const completed = Math.floor(Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0)));
-  const percent = Math.max(0, Math.min(100, Number.isFinite(Number(progress.percent))
-    ? Math.round(Number(progress.percent))
-    : Math.round((completed / total) * 100)));
+  const checkpointRecovery = checkpointRecoveryView(bundle);
+  const total = checkpointRecovery?.total || Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
+  const completed = checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0)));
+  const percent = checkpointRecovery
+    ? Math.round((completed / total) * 100)
+    : Math.max(0, Math.min(100, Number.isFinite(Number(progress.percent))
+      ? Math.round(Number(progress.percent))
+      : Math.round((completed / total) * 100)));
   const activeIndexes = Array.isArray(progress.active_indexes)
     ? progress.active_indexes.map(value => Math.round(Number(value) || 0)).filter(value => value > 0).slice(0, 8)
     : [];
@@ -126,7 +141,7 @@ export function generationProgressView(bundle = {}) {
   const finishedAt = String(progress.finished_at || project.generation_finished_at || project.updated_at || '');
   const failureCode = String(progress.error_code || project.error_code || '').toUpperCase();
   const failureText = String(progress.message || project.error || '');
-  const billingUnknown = progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
+  const billingUnknown = checkpointRecovery?.retryBlocked === true || progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
   let failureTitle = stage === 'scene_config' ? `${stageLabel}更新失败` : `${stageLabel}生成失败`;
   if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
   else if (progress.phase === 'review_failed' || /(?:QUALITY|QA|REVIEW).*FAILED/.test(failureCode)) failureTitle = `${stageLabel}质量审核未通过`;
@@ -134,7 +149,9 @@ export function generationProgressView(bundle = {}) {
   else if (/TIMEOUT|NETWORK|IMAGE_ATTEMPTS_EXHAUSTED/.test(failureCode) || /upstream connect error|connection termination|reset before headers/i.test(failureText)) failureTitle = `${stageLabel}生成中断（模型连接失败）`;
   let liveText = '';
   if (failed && stage === 'scene_config') liveText = '资产已保留，请更新方案';
-  else if (failed) liveText = billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续';
+  else if (failed) liveText = checkpointRecovery
+    ? `已保留 ${checkpointRecovery.completed}/${checkpointRecovery.total} 项人物图片；${billingUnknown ? '核对计费前不会重复调用' : '仅处理缺失项'}`
+    : (billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续');
   else if (activeIndexes.length) liveText = `正在生成第 ${activeIndexes.join('、')} 镜`;
   else if (currentIndex && ['storyboard', 'keyframes', 'video', 'media'].includes(stage)) liveText = `正在生成第 ${currentIndex} 镜`;
   else liveText = progress.phase ? String(progress.phase).replaceAll('_', ' ') : '正在处理';
@@ -145,7 +162,7 @@ export function generationProgressView(bundle = {}) {
       ? '方案更新失败，资产已保留。'
       : publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
     generationId: String(project.active_generation_id || progress.generation_id || ''),
-    startedAt,
+    startedAt, checkpointRecovery,
     finishedAt,
   };
 }
@@ -165,9 +182,10 @@ export function generationProgressPanel(bundle = {}, currentView = '') {
     const status = lane.required === false ? '不需要' : (lane.status === 'completed' ? '已完成' : (lane.status === 'failed' ? '需处理' : `${Math.floor(completed)}/${total}`));
     return `<div><span><b>${label}</b><small>${escapeHtml(publicGenerationMessage(lane.message || ''))}</small></span><strong>${escapeHtml(status)}</strong></div>`;
   }).join('')}</div>` : '';
+  const checkpointRows = view.checkpointRecovery ? `<div class="generation-lanes" data-checkpoint-recovery-details>${view.checkpointRecovery.missing.map(unit => `<div><span><b>${escapeHtml(unit.person_name)} · ${escapeHtml(unit.label)}</b><small>${escapeHtml(unit.reason)}（${escapeHtml(unit.error_code)}）</small></span><strong>${unit.retry_blocked ? '待计费核对' : '待处理'}</strong></div>`).join('')}</div>` : '';
   if (view.failed) {
-    const retained = laneRows || recovery
-      ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${laneRows}${recovery ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`
+    const retained = laneRows || checkpointRows || recovery
+      ? `<details class="project-progress-details"><summary>查看已保留内容</summary>${checkpointRows}${laneRows}${recovery && !view.checkpointRecovery?.retryBlocked ? `<div class="project-progress-foot">${recovery}</div>` : ''}</details>`
       : '';
     return `<section class="project-generation-progress is-failed is-terminal" role="alert">
       <div class="project-progress-head"><div><b>${escapeHtml(view.failureTitle)}</b><span>${escapeHtml(view.liveText)}</span></div><span class="status-tag is-danger">已停止</span></div>
@@ -228,7 +246,7 @@ export function emptyState({ title, body, action = '', actionId = '' }) {
 }
 
 export function mediaPreview(item = {}, options = {}) {
-  const sourceImageUrl = item.image_url || item.imageUrl || '';
+  const sourceImageUrl = item.image_url || item.imageUrl || item.cover_image_url || '';
   const imageUrl = item.thumbnail_url || sourceImageUrl;
   const videoUrl = item.video_url || item.videoUrl || '';
   const url = videoUrl || imageUrl || item.media_url || item.url || '';
@@ -276,191 +294,4 @@ export function bindHoverVideoPreviews(scope = document) {
     });
   });
   return () => cleanups.forEach(cleanup => cleanup());
-}
-
-export function uniqueLightboxEntries(nodes = [], group = 'media') {
-  return [...nodes]
-    .filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)
-    .map(node => ({ url: node.dataset?.mediaZoomUrl || '', previewUrl: node.dataset?.mediaPreviewUrl || node.dataset?.mediaZoomUrl || '', label: node.dataset?.mediaZoomLabel || '图片' }))
-    .filter((item, itemIndex, rows) => item.url && rows.findIndex(candidate => candidate.url === item.url) === itemIndex);
-}
-
-export function nextLightboxIndex(index = 0, direction = 1, total = 0) {
-  const count = Math.max(0, Number(total) || 0);
-  return count ? (Number(index || 0) + Number(direction || 0) + count) % count : 0;
-}
-
-export function preloadLightboxUrl(url = '', createImage = () => new Image()) {
-  return new Promise((resolve, reject) => {
-    if (!url) return reject(new Error('图片地址为空'));
-    const candidate = createImage();
-    candidate.onload = () => resolve(url);
-    candidate.onerror = () => reject(new Error('图片加载失败'));
-    candidate.src = url;
-  });
-}
-
-export function lightboxPanDelta(pointerDelta = 0, scale = 1) {
-  const zoom = Math.max(1, Number(scale) || 1);
-  return (Number(pointerDelta) || 0) * Math.min(3, 1 + (zoom - 1) * 0.35);
-}
-
-export function bindMediaLightbox(scope = document) {
-  if (!scope || scope.dataset?.mediaLightboxBound === 'true') return;
-  if (scope.dataset) scope.dataset.mediaLightboxBound = 'true';
-  scope.addEventListener('click', event => {
-    const trigger = event.target.closest?.('[data-media-zoom-url]');
-    if (!trigger || !scope.contains(trigger)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const group = trigger.dataset.mediaZoomGroup || 'media';
-    const entries = uniqueLightboxEntries(scope.querySelectorAll('[data-media-zoom-url]'), group);
-    let index = Math.max(0, entries.findIndex(item => item.url === (trigger.dataset.mediaZoomUrl || '')));
-    if (!entries.length) return;
-    document.querySelector('[data-media-lightbox]')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'media-lightbox';
-    overlay.dataset.mediaLightbox = 'true';
-    overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
-    overlay.innerHTML = `<button class="media-lightbox-close" type="button" aria-label="关闭大图">×</button><button class="media-lightbox-nav is-prev" type="button" aria-label="上一张">‹</button><figure><img data-media-lock="true" alt=""><figcaption><span></span><b></b><div class="media-lightbox-tools" aria-label="图片缩放工具"><button type="button" data-media-zoom-out aria-label="缩小">−</button><output data-media-zoom-level>100%</output><button type="button" data-media-zoom-in aria-label="放大">＋</button><button type="button" data-media-zoom-reset>适应屏幕</button><small data-media-pixel-size></small></div></figcaption><div class="media-lightbox-strip" role="list" aria-label="同组图片"></div></figure><button class="media-lightbox-nav is-next" type="button" aria-label="下一张">›</button>`;
-    const image = overlay.querySelector('img');
-    const caption = overlay.querySelector('figcaption span');
-    const counter = overlay.querySelector('figcaption b');
-    const strip = overlay.querySelector('.media-lightbox-strip');
-    const zoomLevel = overlay.querySelector('[data-media-zoom-level]');
-    const pixelSize = overlay.querySelector('[data-media-pixel-size]');
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
-    let drag = null;
-    const applyTransform = () => {
-      image.style.transform = `translate(${translateX}px,${translateY}px) scale(${scale})`;
-      image.classList.toggle('is-zoomed', scale > 1.001);
-      zoomLevel.textContent = `${Math.round(scale * 100)}%`;
-    };
-    const resetTransform = () => { scale = 1; translateX = 0; translateY = 0; applyTransform(); };
-    const setScale = (next, anchorX = 0, anchorY = 0) => {
-      const prior = scale;
-      scale = Math.max(1, Math.min(8, Number(next) || 1));
-      if (prior !== scale && anchorX && anchorY) {
-        const rect = image.getBoundingClientRect();
-        const offsetX = anchorX - (rect.left + rect.width / 2);
-        const offsetY = anchorY - (rect.top + rect.height / 2);
-        translateX -= offsetX * (scale / prior - 1);
-        translateY -= offsetY * (scale / prior - 1);
-      }
-      if (scale === 1) { translateX = 0; translateY = 0; }
-      applyTransform();
-    };
-    strip.innerHTML = entries.map((entry, entryIndex) => `<button type="button" role="listitem" data-lightbox-index="${entryIndex}" aria-label="查看${escapeHtml(entry.label)}"><img src="${escapeHtml(entry.previewUrl)}" alt=""></button>`).join('');
-    let renderToken = 0;
-    const prefetch = entry => {
-      if (!entry?.url || entry.url === entry.previewUrl) return;
-      const preload = new Image();
-      preload.src = entry.url;
-    };
-    const render = () => {
-      const current = entries[index];
-      const requestedIndex = index;
-      const token = ++renderToken;
-      const previewUrl = current.previewUrl || current.url;
-      resetTransform();
-      pixelSize.textContent = '';
-      strip.querySelectorAll('[data-lightbox-index]').forEach(button => button.classList.toggle('active', Number(button.dataset.lightboxIndex) === requestedIndex));
-      overlay.querySelectorAll('.media-lightbox-nav').forEach(button => { button.hidden = entries.length < 2; });
-      overlay.classList.add('is-loading', 'is-switching');
-      overlay.setAttribute('aria-busy', 'true');
-      overlay.dataset.pendingMediaUrl = previewUrl;
-      void (async () => {
-        let displayedUrl = '';
-        try {
-          displayedUrl = await preloadLightboxUrl(previewUrl);
-        } catch {
-          if (!current.url || current.url === previewUrl) throw new Error('图片加载失败');
-          displayedUrl = await preloadLightboxUrl(current.url);
-        }
-        if (token !== renderToken) return;
-        image.onload = () => { pixelSize.textContent = image.naturalWidth && image.naturalHeight ? `${image.naturalWidth} × ${image.naturalHeight}px` : ''; };
-        image.removeAttribute('src');
-        image.alt = current.label;
-        image.src = displayedUrl;
-        if (image.complete) image.onload();
-        caption.textContent = current.label;
-        counter.textContent = `${requestedIndex + 1} / ${entries.length}`;
-        overlay.dataset.currentMediaUrl = displayedUrl;
-        delete overlay.dataset.pendingMediaUrl;
-        overlay.classList.remove('is-switching');
-        if (current.url && current.url !== displayedUrl) {
-          overlay.dataset.pendingMediaUrl = current.url;
-          try {
-            const originalUrl = await preloadLightboxUrl(current.url);
-            if (token !== renderToken) return;
-            image.removeAttribute('src');
-            image.src = originalUrl;
-            if (image.complete) image.onload();
-            overlay.dataset.currentMediaUrl = originalUrl;
-          } catch {
-            if (token === renderToken) caption.textContent = `${current.label}（正在显示清晰预览，原图暂未加载）`;
-          }
-        }
-        if (token !== renderToken) return;
-        delete overlay.dataset.pendingMediaUrl;
-        overlay.classList.remove('is-loading', 'is-switching');
-        overlay.removeAttribute('aria-busy');
-        if (entries.length > 1) {
-          prefetch(entries[nextLightboxIndex(requestedIndex, -1, entries.length)]);
-          prefetch(entries[nextLightboxIndex(requestedIndex, 1, entries.length)]);
-        }
-      })().catch(() => {
-        if (token !== renderToken) return;
-        caption.textContent = `${current.label}（图片加载失败）`;
-        delete overlay.dataset.pendingMediaUrl;
-        overlay.classList.remove('is-loading', 'is-switching');
-        overlay.removeAttribute('aria-busy');
-      });
-    };
-    const close = () => { document.removeEventListener('keydown', onKey); overlay.remove(); };
-    const move = direction => { index = nextLightboxIndex(index, direction, entries.length); render(); };
-    const onKey = keyEvent => {
-      if (keyEvent.key === 'Escape') close();
-      else if (keyEvent.key === 'ArrowLeft') move(-1);
-      else if (keyEvent.key === 'ArrowRight') move(1);
-    };
-    overlay.addEventListener('click', clickEvent => { if (clickEvent.target === overlay) close(); });
-    overlay.querySelector('.media-lightbox-close').addEventListener('click', close);
-    overlay.querySelector('.is-prev').addEventListener('click', () => move(-1));
-    overlay.querySelector('.is-next').addEventListener('click', () => move(1));
-    overlay.querySelector('[data-media-zoom-in]').addEventListener('click', () => setScale(scale * 1.25));
-    overlay.querySelector('[data-media-zoom-out]').addEventListener('click', () => setScale(scale / 1.25));
-    overlay.querySelector('[data-media-zoom-reset]').addEventListener('click', resetTransform);
-    image.addEventListener('dblclick', event => { event.preventDefault(); setScale(scale > 1 ? 1 : 2, event.clientX, event.clientY); });
-    image.addEventListener('wheel', event => {
-      event.preventDefault();
-      setScale(scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), event.clientX, event.clientY);
-    }, { passive: false });
-    image.addEventListener('pointerdown', event => {
-      if (scale <= 1) return;
-      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, tx: translateX, ty: translateY };
-      image.setPointerCapture?.(event.pointerId);
-    });
-    image.addEventListener('pointermove', event => {
-      if (!drag || drag.id !== event.pointerId) return;
-      event.preventDefault();
-      translateX = drag.tx + lightboxPanDelta(event.clientX - drag.x, scale);
-      translateY = drag.ty + lightboxPanDelta(event.clientY - drag.y, scale);
-      applyTransform();
-    });
-    image.addEventListener('pointerup', () => { drag = null; });
-    image.addEventListener('pointercancel', () => { drag = null; });
-    strip.addEventListener('click', stripEvent => {
-      const button = stripEvent.target.closest?.('[data-lightbox-index]');
-      if (!button) return;
-      index = Number(button.dataset.lightboxIndex) || 0;
-      render();
-    });
-    document.addEventListener('keydown', onKey);
-    document.body.appendChild(overlay);
-    render();
-  });
 }

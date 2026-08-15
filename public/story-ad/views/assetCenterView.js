@@ -1,5 +1,6 @@
 import { request } from '../api.js?v=20260815-asset-v68';
-import { bindMediaLightbox, emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v68';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v68';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260815-asset-v68';
 import { confirmDialog } from '../components/dialog.js?v=20260815-asset-v68';
 import { openActorLibrary, openRealPersonFlow } from './assetCenterPersonSources.js?v=20260815-asset-v68';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260815-asset-v68';
@@ -142,6 +143,10 @@ function assetCard(item, group) {
     : (GENERATABLE.has(group) && !hasGeneratedMedia(item));
   const needsProductVerification = group === 'products' && Boolean(item.image_url) && item.status !== 'verified';
   const sceneGenerated = group === 'scenes' && Boolean(item.layout?.image_url || item.view_images?.length || item.cameras?.some(camera => camera.image_url));
+  const recovery = item.checkpoint_recovery_summary || {};
+  const retryBlocked = group === 'people' && recovery.retry_blocked === true;
+  const failureBanner = group === 'people' && item.failed_checkpoint_units?.length
+    ? `<div class="asset-failure-banner" data-asset-failure-banner>${item.failed_checkpoint_units.map(unit => `<span><b>${escapeHtml((recovery.missing_units || []).find(row => row.key === unit.key)?.label || unit.unit || unit.key)}</b>${escapeHtml(unit.reason)}（${escapeHtml(unit.error_code)}）</span>`).join('')}</div>` : '';
   return `<article class="asset-card ${GENERATABLE.has(group) ? 'is-subject' : ''} ${group === 'scenes' ? 'is-scene' : ''}">
     <div class="asset-card-preview">
       <div class="asset-card-media">${assetCardMedia(item, group)}</div>
@@ -149,11 +154,11 @@ function assetCard(item, group) {
         <span>${escapeHtml(item.partial_checkpoint ? '部分资产已保留' : (personState === 'legacy_views' ? '历史四视图' : (personState === 'medium_upgrade_required' ? '画面形态已更新 · 待同步档案' : (personState === 'profile_upgrade_required' ? '人物设定已更新 · 待同步档案' : (personState === 'look_upgrade_required' ? `${personLooks.length}套造型 · 待同步档案` : (personState === 'upgrade_required' ? '旧版档案 · 待升级' : (personState === 'complete_dossier' ? `${Math.max(1, personLooks.length)}套造型 · 完整档案` : (personLooks.length ? `${personLooks.length}套造型` : (item.status || '未确认')))))))))}</span>
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(detail || '点击查看当前项目中的真实详情')}</small>
-      </button>${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}
+      </button>${failureBanner}${group === 'people' ? renderPersonEvolutionSummary(item.profile || {}) : ''}${personLookTiles}
     </div>
     <div class="asset-card-actions">
       <button class="btn small" type="button" data-history-safe data-asset-group="${group}" data-asset-id="${escapeHtml(item.id)}">${personState === 'legacy_views' ? '查看参考档案' : `查看${item.dossier_sheet?.image_url ? '完整档案' : (group === 'scenes' ? '完整场景档案' : '完整视图')}`}</button>
-      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'profile_upgrade_required' || personState === 'look_upgrade_required' || personState === 'medium_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">${group === 'people' ? (personState === 'medium_upgrade_required' ? '同步最新画面形态' : (personState === 'profile_upgrade_required' ? '同步最新人物设定' : (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')))) : '生成该动物资产'}</button>` : ''}
+      ${needsGeneration ? `<button class="btn small primary ${personState === 'legacy_views' || personState === 'upgrade_required' || personState === 'profile_upgrade_required' || personState === 'look_upgrade_required' || personState === 'medium_upgrade_required' ? 'complete-dossier-action' : ''}" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}" ${retryBlocked ? 'disabled title="计费状态未知，禁止自动重试"' : ''}>${retryBlocked ? '等待计费核对' : (group === 'people' ? (personState === 'medium_upgrade_required' ? '同步最新画面形态' : (personState === 'profile_upgrade_required' ? '同步最新人物设定' : (personState === 'look_upgrade_required' ? '同步最新造型档案' : (personState === 'upgrade_required' ? '升级独立穿搭 / 配饰档案' : '生成完整人物档案')))) : '生成该动物资产')}</button>` : ''}
       ${group === 'people' && personState === 'complete_dossier' ? `<button class="btn small" type="button" data-history-safe data-generate-asset="${escapeHtml(item.id)}" data-generate-group="${group}">重生成完整人物档案</button>` : ''}
       ${group === 'people' && item.status === 'verified' && !item.provider_asset_id ? `<button class="btn small" type="button" data-history-safe data-sync-person-provider="${escapeHtml(item.id)}">同步 / 重试 Seedance 人物 ID</button>` : ''}
       ${group === 'products' ? `<button class="btn small" type="button" data-upload-product="${escapeHtml(item.id)}">${item.image_url ? '更换主体图片' : '上传主体图片'}</button><button class="btn small primary" type="button" data-history-safe data-generate-product="${escapeHtml(item.id)}">${item.presentation?.standalone_generation_supported ? 'AI 生成商品多视图' : 'AI 生成主体参考图'}</button>` : ''}
@@ -217,6 +222,7 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
 
 export async function mount(host, context) {
   const { store, bundle } = context;
+  const { checkpointRecoveryBanner, checkpointRecoverySummary } = await import('./assetCheckpointRecovery.js?v=20260815-asset-v68');
   const historicalReadOnly = context.historicalReadOnly === true;
   const assets = bundle?.assets || {};
   const contentMode = bundle.project?.content_mode || bundle.brief?.content_mode || '';
@@ -239,15 +245,17 @@ export async function mount(host, context) {
   const assetScopeLabel = narrative ? '人物与动物' : '人物、动物与商品主体';
   const missingSubjectCount = (assets.people || []).filter(item => subjectNeedsGeneration(item, 'human')).length
     + (assets.animals || []).filter(item => subjectNeedsGeneration(item, 'animal')).length;
+  const checkpointRecovery = checkpointRecoverySummary(assets.people || []);
   host.innerHTML = `
     <section class="view-head">
       <div><h1>资产中心</h1><p>${narrative ? '人物、动物、场景与机位独立建档。' : '人物、动物、商品/展示主体、LOGO、场景与机位独立建档。'}</p></div>
       <div class="view-actions asset-primary-actions"><button class="btn" type="button" data-select-person ${generationDisabled}>选择已有人物素材</button><button class="btn" type="button" data-upload-real-person ${generationDisabled}>上传真人素材</button><button class="btn" type="button" data-history-safe data-generate-subjects ${generationActive ? generationDisabled : contractDisabled}>AI 生成人物 / 动物</button></div>
     </section>
+    ${checkpointRecoveryBanner(checkpointRecovery)}
     ${assetPlanReady ? `<section class="card asset-visual-next-step" aria-label="人物与场景视觉生成步骤">
       <div><span class="status-tag is-success">文字方案已建立 · 图片未生成</span><h2>生成真实人物图片</h2><p>进入资产中心不会自动生成图片。点击右侧按钮并确认后才调用图片模型；当前有 ${assets.people?.length || 0} 个人物、${assets.animals?.length || 0} 个动物和 ${assets.scenes?.length || 0} 个场景。</p></div>
       <div class="asset-visual-next-actions">${missingSubjectCount
-        ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationActive ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : '确认并生成全部缺失人物图片'}</button>`
+        ? `<button class="btn primary" type="button" data-generate-missing-subjects data-history-safe ${generationActive || checkpointRecovery.retry_blocked ? 'disabled' : ''}>${generationActive ? '当前生成任务进行中' : (checkpointRecovery.retry_blocked ? '等待缺失项计费核对' : '确认并生成全部缺失人物图片')}</button>`
         : `<button class="btn primary" type="button" data-confirm-assets data-history-safe ${generationActive ? 'disabled' : ''}>人物资产已齐全，进入场景世界</button>`}</div>
     </section>` : personPlanBlockedView(personPlanEligibility, generationActive)}
     <div class="tabs"><button class="tab active" type="button" data-history-safe data-asset-filter="all">全部 ${total}</button>${assetGroups.map(([key, label]) => `<button class="tab" type="button" data-history-safe data-asset-filter="${key}">${label} ${assets[key]?.length || 0}</button>`).join('')}</div>
@@ -262,6 +270,11 @@ export async function mount(host, context) {
 
   const subjectRequests = createKeyedRequestGuard();
   const generate = async (target = null, group = '', button = null) => {
+    const selectedRecovery = target?.checkpoint_recovery_summary || checkpointRecovery;
+    if (selectedRecovery?.retry_blocked === true) {
+      toast('缺失人物单元存在供应商提交或计费未知状态，已停止重试，避免重复付费。', 'warning');
+      return false;
+    }
     const intent = target?.subject_id || 'all';
     return subjectRequests.run(intent, `${bundle.project.id}:${intent}:${globalThis.crypto?.randomUUID?.() || Date.now()}`, async requestKey => {
       const payload = subjectGenerationPayload(bundle, target, requestKey);
