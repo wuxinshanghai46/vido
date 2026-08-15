@@ -17,6 +17,8 @@ const GROUPS = [
   ['logos', 'LOGO'],
 ];
 const GENERATABLE = new Set(['people', 'animals']);
+const loadCheckpointRecovery = globalThis.__loadAssetCheckpointRecovery
+  || (() => import('./assetCheckpointRecovery.js?v=20260815-asset-v69'));
 function groupLabel(group = '') {
   return GROUPS.find(([id]) => id === group)?.[1] || '资产';
 }
@@ -222,7 +224,7 @@ function renderSections(assets = {}, total = 0, contentMode = '', groups = GROUP
 
 export async function mount(host, context) {
   const { store, bundle } = context;
-  const { checkpointRecoveryBanner, checkpointRecoverySummary } = await import('./assetCheckpointRecovery.js?v=20260815-asset-v69');
+  const { checkpointRecoveryBanner, checkpointRecoverySummary } = await loadCheckpointRecovery();
   const historicalReadOnly = context.historicalReadOnly === true;
   const assets = bundle?.assets || {};
   const contentMode = bundle.project?.content_mode || bundle.brief?.content_mode || '';

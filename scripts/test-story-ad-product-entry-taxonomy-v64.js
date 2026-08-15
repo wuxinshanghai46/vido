@@ -22,6 +22,10 @@ function guard() {
 }
 
 const sandbox = {
+  __loadAssetCheckpointRecovery: async () => ({
+    checkpointRecoverySummary: () => ({ completed: 0, total: 0, missing: [], retry_blocked: false }),
+    checkpointRecoveryBanner: () => '',
+  }),
   request: async () => ({}),
   bindMediaLightbox() {},
   emptyState: ({ title = '', body = '', action = '', actionId = '' } = {}) => `<section data-empty><b>${title}</b><p>${body}</p><button data-empty-action="${actionId}">${action}</button></section>`,
