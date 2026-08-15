@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-lineage-v65';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260815-asset-lineage-v65';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v65';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260815-asset-v65';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);

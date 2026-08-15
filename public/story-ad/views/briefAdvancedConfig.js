@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260815-asset-lineage-v65';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260815-asset-v65';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};
