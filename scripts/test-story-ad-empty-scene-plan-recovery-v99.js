@@ -46,9 +46,9 @@ function context(id) {
 function incompleteUnifiedPayload() {
   return {
     cast_profiles: [
-      { id: 'male_lead', name: '男主', role: '跨越千年的等待者', appearanceText: '清俊沉静', wardrobeText: '华丽古装', look_profiles: [] },
-      { id: 'female_lead_ancient', name: '云知月', role: '古代恋人', appearanceText: '清秀年轻', wardrobeText: '古代华服', look_profiles: [] },
-      { id: 'female_lead_modern', name: '林知月', role: '女主的现代转世，独立身份', identity_continuity: 'reincarnation', appearanceText: '清秀年轻', wardrobeText: '现代服装', look_profiles: [] },
+      { id: 'male_lead', name: '男主', role: '跨越千年的等待者', age_range: '28~32岁', ethnicity: '东亚原创男性外貌', asset_scope: 'primary', appearanceText: '清俊沉静', wardrobeText: '华丽古装', look_profiles: [] },
+      { id: 'female_lead_ancient', name: '云知月', role: '古代恋人', age_range: '22~26岁', ethnicity: '东亚原创女性外貌', asset_scope: 'primary', appearanceText: '清秀年轻', wardrobeText: '古代华服', look_profiles: [] },
+      { id: 'female_lead_modern', name: '林知月', role: '女主的现代转世，独立身份', age_range: '22~26岁', ethnicity: '东亚原创女性外貌', asset_scope: 'primary', identity_continuity: 'reincarnation', appearanceText: '清秀年轻', wardrobeText: '现代服装', look_profiles: [] },
     ],
     prop_plan: [],
     story_seed: {
@@ -94,7 +94,7 @@ function commercialContext(id) {
 
 function commercialIncompletePayload() {
   return {
-    cast_profiles: [{ id: 'homeowner', name: '归家女性', role: '演示门锁使用', appearanceText: '年轻都市女性', wardrobeText: '现代通勤装', look_profiles: [] }],
+    cast_profiles: [{ id: 'homeowner', name: '归家女性', role: '演示门锁使用', age_range: '25~30岁', ethnicity: '东亚原创女性外貌', asset_scope: 'primary', appearanceText: '年轻都市女性', wardrobeText: '现代通勤装', look_profiles: [] }],
     prop_plan: [{ id: 'smart_lock', name: '智能门锁', type: 'advertised_product', description: '安装在入户门上的智能门锁' }],
     story_seed: { logline: '顺畅开锁并安心归家', opening: '走近家门', development: '验证身份', turning_point: '门锁开启', resolution: '安心进门' },
   };

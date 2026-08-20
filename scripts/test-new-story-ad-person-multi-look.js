@@ -118,9 +118,11 @@ async function run() {
   const root = path.resolve(__dirname, '..');
   const frontend = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonLooks.js'), 'utf8');
   const drawer = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterView.js'), 'utf8');
+  const personForm = fs.readFileSync(path.join(root, 'public/story-ad/views/assetCenterPersonForm.js'), 'utf8');
   assert.match(frontend, /data-person-look/);
   assert.match(frontend, /collectPersonLookValues/);
-  assert.match(drawer, /renderPersonLookEditors/);
+  assert.match(drawer, /assetCenterPersonForm\.js/, '人物抽屉必须按需加载独立表单模块');
+  assert.match(personForm, /renderPersonLookEditors/, '独立人物表单必须渲染多造型编辑器');
   assert.match(drawer, /look_upgrade_required/);
   assert.match(drawer, /personLookSummary/);
   console.log('person multi-look regression: 25 assertions passed');
