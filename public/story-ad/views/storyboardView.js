@@ -92,7 +92,7 @@ function sketchBatchMarkup(batch = null, total = 0) {
 
 function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才能继续。') {
   const reason = gate?.reason;
-  if (typeof reason === 'string' && reason.trim() && reason.trim() !== '[object Object]') return reason.trim();
+  if (typeof reason === 'string' && reason.trim() && !reason.includes('[object Object]')) return reason.trim();
   if (reason && typeof reason === 'object') {
     const nested = reason.message || reason.reason || reason.detail || reason.error;
     if (typeof nested === 'string' && nested.trim()) return nested.trim();
