@@ -97,7 +97,9 @@ function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才�
     const nested = reason.message || reason.reason || reason.detail || reason.error;
     if (typeof nested === 'string' && nested.trim()) return nested.trim();
   }
-  const issue = Array.isArray(gate?.issues) ? gate.issues.find(item => typeof item === 'string' && item.trim()) : '';
+  const issue = Array.isArray(gate?.issues)
+    ? gate.issues.find(item => typeof item === 'string' && item.trim() && !item.includes('[object Object]'))
+    : '';
   return issue || fallback;
 }
 
