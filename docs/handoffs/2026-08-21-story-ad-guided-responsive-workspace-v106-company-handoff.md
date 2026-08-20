@@ -1,0 +1,197 @@
+# VIDO 剧情广告引导式工作台 V106 公司续接交接
+
+> 交接日期：2026-08-21（Asia/Shanghai）
+> 当前权威分支：`codex/story-ad-systemic-remediation`
+> 生产版本：`20260821-responsive-brief-v106`
+> 用途：明天在公司电脑拉取后继续产品与交互优化。
+
+## 1. 当日目标与用户决策
+
+当日完成并上线的目标：
+
+1. 立项改为引导式对话。用户给出完整内容时直接识别；缺少高价值信息时再追问；参考视频、链接与“无参考继续”均在对话内完成。
+2. “手动编辑全部设置”降级为模态弹窗，移除正常文档流中的设置区和冗余“新增 / 修改内容”入口。
+3. 用户确认设想后，系统以稳定幂等键自动生成剧情、动作与对白，再进入剧情页；双击、刷新和重挂载不得重复生成。
+4. 业务错误严格按制作环节归属：具体错误只在所属环节显示，其他环节只允许导航徽标或紧凑提示。
+5. 修复剧情列表列轨错位、操作按钮裁切和窄桌面变形。
+6. 优化首屏阻塞读取，跳过未请求的大域投影与重复输出查询。
+7. 修复立项页在不同桌面尺寸下输入区被截断或左侧出现大块空白的问题。
+
+用户后续方向：继续参考专业视频工具，但不照搬无结构聊天框、万能提示词或第四套画布；优先考虑动作编排节拍、人物完整度面板、导演卡与复杂镜头可选预演。
+
+## 2. 修改前后的完整数据流
+
+### 2.1 立项与自动剧情
+
+修改前：
+
+`用户输入 → 文本原样追加 → 固定回复 → 右侧高级配置逐项选择 → 手动确认 → 进入剧情页后再次点击 AI 补全`
+
+问题：对话、手动设置和高级配置形成三个主入口；参考链接不在对话内；确认后还需二次点击；历史参考草稿可能被误标为当前参考分析。
+
+修改后：
+
+`用户自然语言/参考材料 → 显式规格与世界设置识别 → 只追问缺失高价值项 → 同一项目确认单实时同步 → 对话内确认 → 以 content revision + 稳定 idempotency key 提交 blueprint → 持久化正式剧情 → 清除旧 reference_draft → 自动进入剧情与对白`
+
+失败边界：提交失败不导航，按钮恢复；只有用户再次明确确认才重试；同一内容版本复用同一幂等键，不重复付费。
+
+### 2.2 错误归属
+
+修改前：
+
+`任意业务阶段失败 → 公共 projectProgressHost → 所有页面显示同一失败正文`
+
+修改后：
+
+`业务阶段 → normalize stage → owning view 显式映射 → 所属页面显示具体错误；其他页面仅保留可发现的导航状态`
+
+人物、场景、剧情、分镜、最终合成错误不会再跨环节覆盖当前工作。
+
+### 2.3 首屏性能
+
+修改前：
+
+`等待 release 校验 → 全屏 loading → 读取完整 task bundle → 无条件投影全部资产/场景/视频域 → 重复查询 outputs → 渲染当前页`
+
+修改后：
+
+`先显示应用壳 → 当前页面只请求需要的 sections → summary/reference 不读取资产大域 → task summary 禁止重复 outputs/video boundary 查询 → 增量合并当前页数据`
+
+真实大任务 summary/reference 服务端耗时由约 3.0–3.2 秒降至接近基础 task bundle 读取范围；仍应在公司继续采集 cold/warm API、parse、render 分段数据。
+
+### 2.4 响应式立项布局
+
+修改前：
+
+`右侧确认单内容决定双栏总高度 + 左侧 align-self:start + 对话滚动区固定 max-height:390px`
+
+结果：高屏左侧出现大块空白，低高度屏幕输入区被挤出或裁切。
+
+修改后：
+
+`动态视口高度 → 左侧 76px / minmax(0,1fr) / auto 三行网格 → 对话记录占剩余空间并独立滚动 → 输入区固定在工作台底部 → 1080px 窄桌面切单栏`
+
+## 3. 代码与文件变更清单
+
+主要生产文件：
+
+- `public/story-ad/views/briefDialoguePanel.js`：引导式追问、参考上传/链接/无参考与确认入口。
+- `public/story-ad/views/briefView.js`：单一表单权威、自动 blueprint 提交、成功导航和失败恢复。
+- `public/story-ad/views/briefSettingsModal.js`：手动设置模态弹窗、焦点与关闭行为。
+- `public/story-ad/components/ui.js`：生成错误的 owning view 隔离。
+- `public/story-ad/views/plotBeatEditor.js`、`public/story-ad/workspace-ux.css`：剧情列轨与操作区修复。
+- `public/story-ad/dialogue-theme.css`：动态视口高度、弹性对话区和窄桌面单栏。
+- `src/services/storyAdWorkspace/projectBundleService.js`：轻量 sections 与按需投影。
+- `src/services/storyAdWorkspace/referenceDraftProjectionService.js`：当前参考有效性与来源门禁。
+- `scripts/run-with-pm2-env.js`：清除可能误导运行目录的 PM2 控制字段。
+
+关键新增/更新回归：
+
+- `scripts/test-story-ad-brief-modal-auto-blueprint-v103.js`：84 项，覆盖弹窗、自动剧情、幂等、失败恢复和六组桌面视口几何。
+- `scripts/test-story-ad-dialogue-intake-v100.js`：完整输入识别与参考材料分支。
+- `scripts/test-story-ad-lightweight-bundle-v100.js`：首包大域读取与重复 output 查询门禁。
+- `scripts/test-story-ad-workspace-ux-v100-regressions.js`：错误归属、剧情表列轨与溢出。
+- `scripts/test-story-ad-pm2-env-sanitization-v104.js`：旧运行目录环境字段隔离。
+
+## 4. 提交记录、分支与公司电脑拉取命令
+
+关键提交：
+
+- `928dfaea`：引导式立项、错误归属、剧情布局首轮收口。
+- `27e92bfd`、`72483e84`、`7fd2df2c`：轻量首包、去除重复查询和按需辅助模块。
+- `e26d1c29`：设置弹窗、删除冗余入口、确认后自动剧情、旧参考隔离、PM2 环境清理。
+- `203fcf22`：同步历史编辑发布契约。
+- `708df268`：不同桌面高度的立项自适应修复。
+- `e19afc1f`：V106 不可变发布构建。
+
+本交接文件提交后，公司电脑使用实际权威分支，不使用协议模板中的旧 `codex/story-ad-v3-upgrade`：
+
+```powershell
+git status --short
+git fetch --all --prune
+git switch codex/story-ad-systemic-remediation
+git pull --ff-only origin codex/story-ad-systemic-remediation
+npm install
+node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js
+node scripts/test-story-ad-dialogue-intake-v100.js
+node scripts/test-story-ad-lightweight-bundle-v100.js
+$env:PORT='3007'
+node src/server.js
+```
+
+禁止在公司电脑有未提交修改时使用 `git reset --hard`。5 份家庭电脑既有未跟踪历史文档未纳入本次交接，也不属于生产制品。
+
+## 5. 本地、Git、生产三方一致性
+
+| 核对对象 | 结果 | 证据 |
+|---|---|---|
+| 本地源码 | 一致 | 构建提交 `e19afc1f`；受跟踪文件干净；运行清单 source revision `708df26830498ff87166ce1a71c127c03dad6be0` |
+| origin/Gitee | 一致 | `codex/story-ad-systemic-remediation` 与本地 ahead/behind `0/0` |
+| GitHub 镜像 | 一致 | 原落后 235 个提交，本轮已安全快进到与本地相同提交 |
+| 生产运行代码 | 一致 | `/opt/vido/current` 指向 artifact `a1845f237581e395a981c18f645f056b06071135fb6e12b40232365922a04b3f`；794 个 runtime manifest 条目逐项 SHA-256 复算，mismatch `0` |
+| 发布身份 | 一致 | build `20260821-responsive-brief-v106`；bundle `a920ce166158b1195df414d783555cc6471e4e94ba3703947d3914482fedff5a`；runtime hash `18b732dd5e91437fbe8dabdab7feaa5a2b3b888a5fe3be961453dcf7093eea6a` |
+
+说明：交接 MD 提交后，本地/Git HEAD 会比生产 source revision 多一个纯文档提交；生产代码仍按不可变清单与 `708df268` 源码树一致，不构成代码差异。
+
+## 6. 实际执行的验证
+
+### 静态与定向
+
+- `node --check`：相关 JS 通过。
+- 引导立项：14 项通过，模型调用 0。
+- 弹窗、自动剧情与响应式：84 项通过；stub blueprint 调用 3，真实模型调用 0。
+- 轻量 Bundle：10 项通过，模型调用 0。
+- 工作台边界：通过；initial JS 79,650 bytes，core gzip 104,501 bytes。
+- 工作台错误归属与剧情几何：64 项通过，模型调用 0。
+
+### V106 完整发布门禁
+
+- `systemic`：通过，21.245 秒。
+- `workspace_ui`：通过，9.633 秒。
+- `narrative_v111`：通过，304.442 秒；10,000 固定种子、400 组变形、50 并发任务、重复许可 0、付费 provider 调用 0。
+- `release_core`：通过，81.295 秒；发布完整性 11 项、不可变传输 29 项、发布闭包 795 项。
+
+### 生产只读核对
+
+- PM2 `vido`：online，restart 0，PID 13459；exec cwd 与 script path 都指向 V106 不可变目录。
+- 内网 `127.0.0.1:4600`、公网 `https://vido.smsend.cn`、本地 `localhost:3007`：health 均为 ok，版本和 runtime hash 一致。
+- SQLite：`PRAGMA quick_check` 为 `ok`，数据库路径 `/data/vido/db/vido.sqlite`。
+- 生产只读系统审计：31 个任务、31 个 authoritative Work、active generation 0、active unknown billing 0、orphan output task 0。
+- 历史隔离 unknown billing 60 保持，未作为活动任务自动重试。
+- 生产 runtime manifest 自身 SHA-256：`0e09db46f76b10b35d877435bb7edfb98d1a66f700b962ab1b9a56f5f813db33`，与本地相同。
+
+## 7. 未执行项、剩余风险、费用与数据边界
+
+未执行项：
+
+- 家庭电脑按用户规则未运行 `platform:upgrade:test` 等全平台跨版本回归；本次直接相关的 full 发布门禁已全部执行。
+- 未执行真实文字模型、图片或视频生成；没有用真实生成来验证交接。
+- 未替用户确认参考理解、人物资产、费用或生成许可。
+
+剩余限制与风险：
+
+1. 当前工作台全局最低支持宽度仍为 1080px；手机/平板需要单独重构顶栏、侧栏与导航，不应只靠局部 CSS。
+2. 轻量首包已显著减少无关读取，但大型真实项目仍应继续记录 cold/warm TTFB、JSON parse 和 render 三段耗时。
+3. 生产保留 60 条历史、已隔离的未知计费记录；活动未知为 0。不得把历史记录自动重试或删除。
+4. 5 份家庭电脑既有未跟踪文档未纳入 Git；公司电脑不会拉到这些文件，也不影响受控代码一致性。
+
+费用与覆盖边界：本轮三方核对和交接生成均为只读；模型、图片、视频调用 0；没有覆盖用户项目数据、历史日志或未跟踪文件。
+
+## 8. 明天继续优化的入口与顺序
+
+建议按以下顺序继续：
+
+1. 先按第 4 节命令拉取，确认 `git rev-list --left-right --count "HEAD...@{upstream}"` 为 `0 0`，运行三条立项/性能定向回归。
+2. 用真实项目在 1920×1080、1600×900、1440×760、1366×680、1280×640、1080×720 复核立项页；重点观察浏览器缩放 80%/100%/125% 和系统显示缩放。
+3. 性能：建立导航、summary API TTFB、payload、parse、render 和 long task 记录；先测后改，不再用整页 loading 掩盖。
+4. 产品 P1：设计“动作编排节拍”结构，至少包含参与者/武器、空间与轴线、攻击、闪避/防御、反击、受击反馈、镜头和连续性；先做 schema 与黄金回归，不直接写万能 prompt。
+5. 产品 P1：在现有人物档案上补“完整度面板”，展示基础设定、三视图、造型、情绪、习惯动作、一致性 QA 及受影响镜头，不新建第二套人物资产系统。
+6. 产品 P2：把现有结构化导演参数汇总成可解释的导演卡；复杂人物走位与运镜再评估可选 3D 预演/控制视频链路，简单镜头不强制使用。
+
+生产只读复核命令：
+
+```powershell
+ssh -o BatchMode=yes vido-prod
+```
+
+新公司电脑如果尚未配置独立 SSH 公钥，先按 `docs/handoffs/HANDOFF_PROTOCOL.md` 初始化；禁止通过 Git、交接 MD 或聊天复制私钥和服务器凭证。
