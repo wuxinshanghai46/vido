@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-workspace-ux-v99';
+import { escapeHtml } from '../components/ui.js?v=20260820-workspace-ux-v100';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];

@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-workspace-ux-v99';
+import { escapeHtml } from '../components/ui.js?v=20260820-workspace-ux-v100';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
