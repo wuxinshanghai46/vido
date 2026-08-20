@@ -119,6 +119,55 @@ async function main() {
     assert.deepEqual(initial.referenceChoices, ['link', 'none', 'upload'], '对话必须提供上传、链接、无参考三条路径');
     assert.equal(initial.redundantText, false, '页面不得出现冗余“新增 / 修改内容”入口');
 
+    // 双栏工作台必须随可用高度伸缩：右侧确认单不能把左侧撑出空白，
+    // 低高度视口也必须始终保留完整输入区。
+    const responsiveViewports = [
+      { width: 1920, height: 1080, mode: 'split' },
+      { width: 1600, height: 900, mode: 'split' },
+      { width: 1440, height: 760, mode: 'split' },
+      { width: 1366, height: 680, mode: 'split' },
+      { width: 1280, height: 640, mode: 'split' },
+      { width: 1080, height: 720, mode: 'stacked' },
+    ];
+    for (const viewport of responsiveViewports) {
+      await page.setViewport(viewport);
+      const geometry = await page.evaluate(() => {
+        const rect = selector => {
+          const value = document.querySelector(selector)?.getBoundingClientRect();
+          return value ? { top: value.top, right: value.right, bottom: value.bottom, left: value.left, width: value.width, height: value.height } : null;
+        };
+        return {
+          viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
+          pageOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          overflowElements: [...document.querySelectorAll('body *')].map(element => {
+            const value = element.getBoundingClientRect();
+            return { tag: element.tagName, cls: element.className, right: Math.round(value.right), width: Math.round(value.width) };
+          }).filter(value => value.right > document.documentElement.clientWidth + 1).slice(0, 6),
+          dialogue: rect('[data-brief-dialogue]'),
+          conversation: rect('.brief-conversation-panel'),
+          scroll: rect('.brief-conversation-scroll'),
+          composer: rect('.brief-composer'),
+          contract: rect('.brief-contract-panel'),
+        };
+      });
+      const label = `${viewport.width}x${viewport.height}`;
+      assert.ok(geometry.dialogue && geometry.conversation && geometry.composer && geometry.scroll && geometry.contract, `${label} 必须渲染完整立项布局`);
+      assert.ok(geometry.pageOverflowX <= 1, `${label} 页面不得横向溢出，实际 ${geometry.pageOverflowX}px：${JSON.stringify(geometry.overflowElements)}`);
+      assert.ok(geometry.dialogue.right <= geometry.viewport.width + 1, `${label} 工作台不得越过右边界`);
+      if (viewport.mode === 'split') {
+        assert.ok(geometry.dialogue.bottom <= geometry.viewport.height + 1, `${label} 双栏工作台不得越过可视高度`);
+        assert.ok(Math.abs(geometry.conversation.bottom - geometry.dialogue.bottom) <= 1, `${label} 左侧对话必须随右侧等高，不得留下底部空白`);
+        assert.ok(Math.abs(geometry.composer.bottom - geometry.dialogue.bottom) <= 1, `${label} 输入区必须固定在工作台底部`);
+      } else {
+        assert.ok(geometry.contract.top >= geometry.conversation.bottom - 1, `${label} 单栏确认单必须排在对话区之后`);
+        assert.ok(geometry.conversation.width <= geometry.dialogue.width + 1, `${label} 单栏对话不得横向越界`);
+        assert.ok(geometry.contract.width <= geometry.dialogue.width + 1, `${label} 单栏确认单不得横向越界`);
+      }
+      assert.ok(geometry.composer.top >= geometry.dialogue.top && geometry.composer.bottom <= geometry.viewport.height + 1, `${label} 输入区必须完整可见`);
+      assert.ok(geometry.scroll.height >= 120, `${label} 对话记录仍需保留可用滚动高度，实际 ${geometry.scroll.height}px`);
+    }
+    await page.setViewport({ width: 1920, height: 1000 });
+
     await page.click('[data-dialogue-reference]');
     assert.equal(await page.evaluate(() => window.__briefQa.refClicks), 1, '对话参考按钮必须触发隐藏上传入口');
 
@@ -206,7 +255,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 36,
+    checks: 84,
     scope: 'story-ad-brief-modal-auto-blueprint-v103',
     stubbed_blueprint_stage_calls: stubbedStageCalls,
     real_model_calls: 0,
