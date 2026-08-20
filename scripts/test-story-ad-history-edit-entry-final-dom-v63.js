@@ -3,19 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 
-function extractFunction(source, name) {
-  const start = source.indexOf(`function ${name}(`);
-  assert.notEqual(start, -1, `missing function ${name}`);
-  const open = source.indexOf('{', start);
-  let depth = 0;
-  for (let index = open; index < source.length; index += 1) {
-    if (source[index] === '{') depth += 1;
-    if (source[index] === '}') depth -= 1;
-    if (depth === 0) return source.slice(start, index + 1);
-  }
-  throw new Error(`unterminated function ${name}`);
-}
-
 function control({ safe = false } = {}) {
   return {
     disabled: false,
@@ -26,60 +13,30 @@ function control({ safe = false } = {}) {
 
 (async () => {
   const root = path.resolve(__dirname, '..');
-  const appSource = fs.readFileSync(path.join(root, 'public/story-ad/app.js'), 'utf8');
+  const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
+  const appSource = read('public/story-ad/app.js');
+  const briefSource = read('public/story-ad/views/briefView.js');
+  const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
+  const storeSource = read('public/story-ad/store/projectStore.js');
   const historyUrl = pathToFileURL(path.join(root, 'public/story-ad/workspaceHistoryMode.js')).href;
-  const { applyHistoricalReadonlyControls, historicalStepUsesGlobalEdit } = await import(historyUrl);
-  const functionSource = extractFunction(appSource, 'applyHistoricalStepMode');
-  const store = { state: { bundle: { navigation: { current: 'final' } } } };
-  const applyHistoricalStepMode = new Function(
-    'historicalStepUsesGlobalEdit', 'historicalStepReadOnly', 'historicalEditUnlocks', 'historicalUnlockKey', 'document',
-    'store', 'applyHistoricalReadonlyControls', 'confirmDialog', 'mountView', 'currentRoute',
-    `return (${functionSource});`,
-  )(
-    historicalStepUsesGlobalEdit,
-    () => true,
-    { has: () => false, add: () => {} },
-    route => route.view,
-    { createElement: () => ({
-      className: '', innerHTML: '', setAttribute() {},
-      querySelector(selector) {
-        return selector === '[data-unlock-history-step]' && this.innerHTML.includes('data-unlock-history-step')
-          ? { addEventListener() {} }
-          : null;
-      },
-    }) },
-    store,
-    applyHistoricalReadonlyControls,
-    async () => false,
-    async () => {},
-    () => ({ view: 'brief' }),
-  );
+  const { applyHistoricalReadonlyControls } = await import(historyUrl);
 
-  function render(view) {
-    const safeAction = control({ safe: true });
-    const editAction = control();
-    const host = {
-      banner: null,
-      prepend(node) { this.banner = node; },
-      querySelectorAll: () => [safeAction, editAction],
-    };
-    applyHistoricalStepMode(host, { taskId: 'task-1', view });
-    return { html: host.banner?.innerHTML || '', safeAction, editAction };
-  }
+  assert.doesNotMatch(appSource, /applyHistoricalStepMode|data-unlock-history-step|新增\s*\/\s*修改内容/, '壳层不得再注入冗余历史编辑横幅');
+  assert.doesNotMatch(dialogueSource, /data-open-history-edit|brief-edit-history|这一步已确认；需要修改时点这里开启编辑/, '对话页不得保留第二个历史编辑入口');
+  assert.match(dialogueSource, /data-dialogue-professional/, '手动设置 modal 仍是唯一的结构化精调入口');
+  assert.match(briefSource, /await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\)/, '历史内容修改必须继续走权威更新接口');
+  assert.match(storeSource, /base_content_revision/, '权威更新必须继续携带内容版本，阻止陈旧覆盖');
+  assert.match(storeSource, /client_edit_seq/, '权威更新必须继续携带客户端编辑序列');
 
-  const brief = render('brief');
-  assert.match(brief.html, /data-unlock-history-step/, '第 1 步必须保留“新增 / 修改内容”入口');
-  assert.equal(brief.safeAction.disabled, false, '第 1 步的独立安全动作不得被历史只读误锁');
-  assert.equal(brief.editAction.disabled, true, '第 1 步未明确解锁前，内容编辑仍须只读');
+  const safeAction = control({ safe: true });
+  const editAction = control();
+  const editInput = control();
+  applyHistoricalReadonlyControls({ querySelectorAll: () => [safeAction, editAction, editInput] });
+  assert.equal(safeAction.disabled, false, '显式安全动作必须保持可用');
+  assert.equal(editAction.disabled, true, '未分类编辑动作仍须受局部只读保护');
+  assert.equal(editInput.disabled, true, '未分类输入仍须受局部只读保护');
 
-  for (const view of ['assets', 'scene', 'plot', 'storyboard', 'final']) {
-    const rendered = render(view);
-    assert.doesNotMatch(rendered.html, /data-unlock-history-step/, `${view} 步骤不得再显示第 1 步的“新增 / 修改内容”入口`);
-    assert.equal(rendered.safeAction.disabled, false, `${view} 自身明确声明的安全入口必须保持可用`);
-    assert.equal(rendered.editAction.disabled, false, `${view} 自身的独立编辑入口不得被第 1 步全局门禁接管`);
-  }
-
-  console.log('story-ad history edit entry final DOM v63 passed');
+  console.log(JSON.stringify({ passed: true, checks: 10, scope: 'story-ad-history-edit-entry-final-dom-v63', model_calls: 0 }));
 })().catch(error => {
   console.error(error);
   process.exit(1);
