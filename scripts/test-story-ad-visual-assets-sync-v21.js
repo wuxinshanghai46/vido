@@ -26,7 +26,7 @@ assert.strictEqual(partialManifest.counts.planned_scenes, 2);
 assert.strictEqual(partialManifest.counts.pending_scenes, 1);
 
 const assetView = read('public/story-ad/views/assetCenterView.js');
-const planningStatusView = read('public/story-ad/views/assetCenterPlanningDetailsStatus.js');
+const planningStatusView = read('public/story-ad/views/assetCenterPlanReleaseStatus.js');
 const billingRetryView = read('public/story-ad/views/assetCenterBillingRetry.js');
 const billingReviewDialog = read('public/story-ad/views/assetCenterBillingReviewDialog.js');
 const sceneWorldPage = read('public/story-ad/views/sceneWorldPage.js');
@@ -40,7 +40,8 @@ assert(billingRetryView.includes('同时生成人物与场景'));
 assert(planningStatusView.includes('当前内容的人物方案'), '人物合同失效时必须只给出人物方案第一步');
 assert(planningStatusView.includes('不修改场景方案、场景图片和人物在场景中的站位绑定'), '人物更新提示必须明确保护场景及站位绑定');
 assert.strictEqual((planningStatusView.match(/data-update-person-plan/g) || []).length, 1, '人物合同失效提示只能提供一个人物方案更新入口');
-assert(planningStatusView.includes("generationActive ? '正在更新人物方案'"), '人物规划按钮必须区分运行中与空闲状态');
+assert(planningStatusView.includes('const button = generationActive ?'), '人物规划按钮必须区分运行中与空闲状态');
+assert(planningStatusView.includes("'正在更新人物方案'"), '人物规划按钮运行中必须展示明确状态');
 assert(!planningStatusView.includes('人物与场景方案'), '人物页不得继续显示合并方案提示');
 assert(scenePlanStatus.includes('当前内容的场景方案'), '场景合同失效时必须只给出场景方案第一步');
 assert(scenePlanStatus.includes('不修改人物身份、人物图片和人物造型'), '场景更新提示必须明确保护人物资产');
