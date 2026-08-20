@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260820-workspace-ux-v98';
+import { confirmDialog } from '../components/dialog.js?v=20260820-workspace-ux-v99';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

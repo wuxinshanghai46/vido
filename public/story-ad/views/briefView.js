@@ -1,15 +1,15 @@
-import { request } from '../api.js?v=20260820-workspace-ux-v98';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260820-workspace-ux-v98';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260820-workspace-ux-v98';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260820-workspace-ux-v98';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260820-workspace-ux-v98';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260820-workspace-ux-v98';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260820-workspace-ux-v98';
-import { assertBriefReadback } from './briefTextContract.js?v=20260820-workspace-ux-v98';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260820-workspace-ux-v98';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260820-workspace-ux-v98';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260820-workspace-ux-v98';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260820-workspace-ux-v98';
+import { request } from '../api.js?v=20260820-workspace-ux-v99';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260820-workspace-ux-v99';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260820-workspace-ux-v99';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260820-workspace-ux-v99';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260820-workspace-ux-v99';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260820-workspace-ux-v99';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260820-workspace-ux-v99';
+import { assertBriefReadback } from './briefTextContract.js?v=20260820-workspace-ux-v99';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260820-workspace-ux-v99';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260820-workspace-ux-v99';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260820-workspace-ux-v99';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260820-workspace-ux-v99';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -204,7 +204,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260820-workspace-ux-v98');
+    const module = await import('./referenceUnderstandingView.js?v=20260820-workspace-ux-v99');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
