@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v85';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v86';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
