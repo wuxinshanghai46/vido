@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v103';
+import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v105';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)

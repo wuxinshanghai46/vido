@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260821-guided-workspace-v103';
-import { toast } from '../components/ui.js?v=20260821-guided-workspace-v103';
-import { confirmDialog } from '../components/dialog.js?v=20260821-guided-workspace-v103';
+import { request } from '../api.js?v=20260821-guided-workspace-v105';
+import { toast } from '../components/ui.js?v=20260821-guided-workspace-v105';
+import { confirmDialog } from '../components/dialog.js?v=20260821-guided-workspace-v105';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

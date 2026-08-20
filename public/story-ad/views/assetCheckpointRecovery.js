@@ -1,5 +1,5 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v103';
-import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260821-guided-workspace-v103';
+import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v105';
+import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260821-guided-workspace-v105';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);

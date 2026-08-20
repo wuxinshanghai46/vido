@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v103';
+import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v105';
 
 function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
@@ -87,7 +87,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-guided-workspace-v103');
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-guided-workspace-v105');
     mountReferenceQuestion(conversation, { onReference, onReferenceLink, onSkip: () => {
       referenceSkipped = true;
       message('user', '没有参考材料，继续');
@@ -134,7 +134,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
   const submit = async () => {
     const text = input.value.trim();
     if (!text) return;
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-guided-workspace-v103');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-guided-workspace-v105');
     input.value = '';
     let mode = String(control('content_mode')?.value || '');
     if (!mode) {
