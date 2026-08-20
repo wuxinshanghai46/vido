@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v105';
+import { escapeHtml } from '../components/ui.js?v=20260821-responsive-brief-v106';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];

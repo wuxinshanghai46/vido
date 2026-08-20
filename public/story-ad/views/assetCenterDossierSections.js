@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-guided-workspace-v105';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-responsive-brief-v106';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];

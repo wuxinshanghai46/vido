@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-guided-workspace-v105';
+import { escapeHtml } from '../components/ui.js?v=20260821-responsive-brief-v106';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';

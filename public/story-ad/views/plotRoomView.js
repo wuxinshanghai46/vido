@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260821-guided-workspace-v105';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-guided-workspace-v105';
-import { confirmDialog } from '../components/dialog.js?v=20260821-guided-workspace-v105';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260821-guided-workspace-v105';
+import { request } from '../api.js?v=20260821-responsive-brief-v106';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-responsive-brief-v106';
+import { confirmDialog } from '../components/dialog.js?v=20260821-responsive-brief-v106';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260821-responsive-brief-v106';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
