@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260820-workspace-ux-v100';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260821-guided-workspace-v102';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

@@ -1,8 +1,8 @@
-import { createProjectStore } from './store/projectStore.js?v=20260820-workspace-ux-v100';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260820-workspace-ux-v100';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260820-workspace-ux-v100';
-import { confirmDialog } from './components/dialog.js?v=20260820-workspace-ux-v100';
-import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260820-workspace-ux-v100';
+import { createProjectStore } from './store/projectStore.js?v=20260821-guided-workspace-v102';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260821-guided-workspace-v102';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260821-guided-workspace-v102';
+import { confirmDialog } from './components/dialog.js?v=20260821-guided-workspace-v102';
+import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260821-guided-workspace-v102';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -20,13 +20,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260820-workspace-ux-v100'),
-  assets: () => import('./views/assetCenterView.js?v=20260820-workspace-ux-v100'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260820-workspace-ux-v100'),
-  plot: () => import('./views/plotRoomView.js?v=20260820-workspace-ux-v100'),
-  storyboard: () => import('./views/storyboardView.js?v=20260820-workspace-ux-v100'),
-  final: () => import('./views/finalView.js?v=20260820-workspace-ux-v100'),
-  workflow: () => import('./views/workflowView.js?v=20260820-workspace-ux-v100'),
+  brief: () => import('./views/briefView.js?v=20260821-guided-workspace-v102'),
+  assets: () => import('./views/assetCenterView.js?v=20260821-guided-workspace-v102'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260821-guided-workspace-v102'),
+  plot: () => import('./views/plotRoomView.js?v=20260821-guided-workspace-v102'),
+  storyboard: () => import('./views/storyboardView.js?v=20260821-guided-workspace-v102'),
+  final: () => import('./views/finalView.js?v=20260821-guided-workspace-v102'),
+  workflow: () => import('./views/workflowView.js?v=20260821-guided-workspace-v102'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -429,7 +429,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260820-workspace-ux-v100');
+  const filters = await import('./projectCenterFilters.js?v=20260821-guided-workspace-v102');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
