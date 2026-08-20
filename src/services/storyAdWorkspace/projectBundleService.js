@@ -455,25 +455,25 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
   const context = referenceSnapshot.context;
   const project = {
-    ...projectSummary({ ...storyAd.taskSummary(raw.task), ...raw.task }),
+    ...projectSummary({ ...storyAd.taskSummary(raw.task, { detailed: false }), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),
     workspace: workspaceStage(raw.task, outputs),
     saved_progress: raw.task.saved_progress === true,
     active_stage: clean(raw.task.active_stage, 80),
     ...timingProjection.generationTiming(raw.task, clean),
   };
-  const projectedProps = propAssets(outputs, context);
-  const projectedAssets = {
-    people: include('assets')
-      ? subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs)
-      : peopleAssets(context, projectedProps),
+  const projectedProps = include('assets') ? propAssets(outputs, context) : [];
+  const projectedAssets = include('assets') ? {
+    people: subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs),
     animals: animalAssets(context),
     products: productAssets(context),
     logos: logoAssets(context),
     props: projectedProps,
     scenes: sceneAssets(outputs, context),
-  };
-  const projectedCounts = countProjection.projectCounts(projectedAssets, mediaUrl, list);
+  } : null;
+  const projectedCounts = projectedAssets
+    ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
+    : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };
   const navigation = workflowNavigation.build({ task: raw.task, context, outputs, counts: projectedCounts, clean, list });
   const bundle = {
     schema_version: 'story-ad-project-bundle-v1',
@@ -496,12 +496,12 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     },
     loaded_sections: requested.size ? [...requested] : ['all'],
   };
-  const uploadedMaterials = list(context.assets).slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
+  const uploadedMaterials = include('assets') ? list(context.assets).slice(0, MAX_MEDIA_ITEMS).map((item, index) => ({
     id: clean(item.id || item.asset_id || `material-${index + 1}`, 120),
     role: clean(item.role || item.asset_role || 'reference', 80),
     name: clean(item.name || item.original_name || item.filename || `材料 ${index + 1}`, 160),
     url: mediaUrl(item),
-  }));
+  })) : [];
   bundle.materials = {
     uploads: uploadedMaterials,
     roles: [...new Set(uploadedMaterials.map(item => item.role).filter(Boolean))],
@@ -547,7 +547,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
       character_actions: list(analysis.character_actions).slice(0, 24),
       ...referenceUnderstandingProjection.project(taskId, context, analysis),
     };
-    bundle.brief = briefProjection.project(context, raw.task, clean);
+    bundle.brief = briefProjection.project(context, raw.task, clean, { includeAssetPresentation: include('assets') });
   }
 
   if (include('assets')) {

@@ -355,10 +355,9 @@ async function main() {
   verify('reviewed safe recovery follows one preflight, one confirmation and one targeted submission', () => {
     assert.equal(safePreflightCalls, 1); assert.equal(safeConfirmCalls, 1); assert.equal(safeMounted.runStageCalls.length, 1);
   });
-  verify('non-asset global progress keeps authoritative counts without exposing internal codes', () => {
-    const globalPanel = ui.generationProgressPanel(recoveryBundle, 'story');
-    assert.match(globalPanel, /25\/29/);
-    assert.doesNotMatch(globalPanel, /可从缺失项继续|21\/21|PROVIDER_CONTENT_AUDIT|IMAGE_ATTEMPTS_EXHAUSTED/);
+  verify('non-owner views do not expose person asset failures', () => {
+    const globalPanel = ui.generationProgressPanel(recoveryBundle, 'brief');
+    assert.equal(globalPanel, '');
   });
   verify('person plan eligibility is explicitly separate from billing recovery', () => {
     const plan = planUi.personPlanBlockedView({ issues: [], visual_recovery_active: true }, false);

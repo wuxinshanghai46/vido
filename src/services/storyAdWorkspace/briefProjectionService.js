@@ -4,8 +4,10 @@ const productAssetResolver = require('../newStoryAd/productAssetResolverService'
 const benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
 
-function project(context = {}, task = {}, clean = value => String(value || '').trim()) {
-  const presentation = productAssetResolver.productPresentation(context);
+function project(context = {}, task = {}, clean = value => String(value || '').trim(), options = {}) {
+  const presentation = options.includeAssetPresentation === false
+    ? { mode: String(context.content_mode || ''), subject: null }
+    : productAssetResolver.productPresentation(context);
   return {
     project_name: clean(context.project_name || task.title, 120),
     text: multilineTextContract.normalize(context.brief || task.brief, 5000),
