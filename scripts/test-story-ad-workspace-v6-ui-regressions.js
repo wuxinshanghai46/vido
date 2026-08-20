@@ -663,11 +663,13 @@ assert(verifyProductFunction.indexOf('confirmDialog') >= 0, '商品视觉验证�
 assert(verifyProductFunction.indexOf('confirmDialog') < verifyProductFunction.indexOf('/product-verify'), '商品验证确认必须发生在视觉模型请求前');
 
 const plot = read('public/story-ad/views/plotRoomView.js');
-assert.match(plot, /toFixed\(2\)/, '参考视频时间段投影到剧情室后不得显示浮点尾数噪声');
+const plotEditor = read('public/story-ad/views/plotBeatEditor.js');
+const plotUi = `${plot}\n${plotEditor}`;
+assert.match(plotUi, /toFixed\(2\)/, '参考视频时间段投影到剧情室后不得显示浮点尾数噪声');
 assert.match(plot, /mode:\s*'story_beat'/);
-assert.match(plot, /AI 帮写/);
+assert.match(plotUi, /AI 帮写/);
 assert.match(plot, /confirmDialog\('删除后/);
-assert.match(plot, /beat-actions/);
+assert.match(plotUi, /beat-actions/);
 assert.match(plot, /story\?\.reference_draft/, '剧情室必须读取参考视频故事草稿');
 assert.match(plot, /参考视频提取草稿 · 待优化/, '剧情室必须明确草稿来源和可优化状态');
 assert.match(plot, /data-import-script/, '原始脚本必须在剧情室提供导入入口');
