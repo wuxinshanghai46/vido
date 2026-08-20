@@ -54,48 +54,6 @@ export function referenceNextStepDescription(reference = {}, action = {}) {
   return '参考分析中；完成并确认后自动继续。';
 }
 
-function suggestedName(idea = '', mode = '') {
-  if (/不锈钢|佛山|金属/.test(idea)) return '佛山智造 · 不锈钢品牌广告';
-  if (/护肤|精华|面霜/.test(idea)) return '高端护肤品牌短片';
-  if (/校园|学院|孩子/.test(idea)) return '校园故事 · 剧情短片';
-  return mode === 'narrative_story' ? '未命名剧情项目' : '未命名广告项目';
-}
-
-export function extractExplicitBriefSettings(text = '') {
-  const source = String(text || '');
-  const result = {};
-  const duration = source.match(/(?:时长|做|约|大概)?\s*(15|30|45|60|90|120|180|240|300|360|480|600)\s*(?:秒|s\b)/i);
-  const minutes = source.match(/(?:时长|做|约|大概)?\s*(1|2|3|4|5|6|8|10)\s*分钟/);
-  const ratio = source.match(/(?:画幅|比例|竖屏|横屏|方形)?\s*(9\s*[:：]\s*16|16\s*[:：]\s*9|1\s*[:：]\s*1)/i);
-  const resolution = source.match(/(?:清晰度|分辨率)?\s*(720p|1080p|4k)\b/i);
-  if (duration) result.target_duration = Number(duration[1]);
-  else if (minutes) result.target_duration = Number(minutes[1]) * 60;
-  if (ratio) result.output_ratio = ratio[1].replace(/\s/g, '').replace('：', ':');
-  if (resolution) result.video_resolution = resolution[1].toUpperCase() === '4K' ? '4K' : resolution[1].toLowerCase();
-  const explicitWorld = [
-    ['cyberpunk', /赛博朋克/], ['post_apocalyptic', /末日|废土/], ['xianxia', /仙侠/], ['wuxia', /武侠/],
-    ['republican_china', /民国/], ['medieval', /中世纪/], ['future', /未来世界|未来时代/],
-    ['modern_china', /现代中国|当代中国/], ['modern_overseas', /海外现代|现代海外/],
-    ['chinese_historical', /中国古代|古代中国|唐朝|宋朝|明朝|清朝|汉朝|秦朝/],
-  ].find(([, pattern]) => pattern.test(source));
-  const explicitMedium = [
-    ['cinematic_3d', /(?:3D|三维)\s*(?:动画|电影)/i], ['anime_2d', /(?:2D|二维)\s*(?:动漫|动画)|赛璐璐/i],
-    ['motion_comic', /动态漫|动态漫画/], ['mixed_media', /混合媒介/], ['live_action', /真人(?:实拍|写实)|实拍/],
-  ].find(([, pattern]) => pattern.test(source));
-  const explicitFidelity = [
-    ['historical_realism', /史实写实/], ['stylized_history', /艺术化历史/], ['fantasy', /幻想规则|奇幻风格/],
-    ['contemporary_realism', /真人写实|电影写实|摄影写实/],
-  ].find(([, pattern]) => pattern.test(source));
-  const period = source.match(/(?:具体时期|时代|年代)[：:]?\s*([^，。；;\n]{2,30})/);
-  const region = source.match(/(?:国家|地区|地点)[：:]?\s*([^，。；;\n]{2,40})/);
-  if (explicitWorld) result.world_family = explicitWorld[0];
-  if (explicitMedium) result.visual_medium = explicitMedium[0];
-  if (explicitFidelity) result.world_fidelity = explicitFidelity[0];
-  if (period) result.world_period = period[1].trim();
-  if (region) result.world_region = region[1].trim();
-  return result;
-}
-
 export function dialogueIntakeState({ name = '', mode = '', idea = '', referenceAttached = false, referenceSkipped = false } = {}) {
   const missing = [];
   if (!mode) missing.push('mode');
@@ -125,23 +83,18 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
     conversation.scrollTop = conversation.scrollHeight;
   };
   let referenceSkipped = false;
-  const appendReferenceQuestion = () => {
-    if (conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
-    const article = document.createElement('article');
-    article.className = 'brief-message is-assistant';
-    article.dataset.referenceQuestion = '';
-    article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><p>有参考视频或链接吗？有的话可以直接添加，没有也可以继续。</p></div><div class="brief-quick-actions"><button type="button" data-reference-choice="upload">上传视频</button><button type="button" data-reference-choice="link">添加链接</button><button type="button" data-reference-choice="none">没有，继续</button></div></div>';
-    conversation.appendChild(article);
-    article.querySelector('[data-reference-choice="upload"]')?.addEventListener('click', () => onReference?.());
-    article.querySelector('[data-reference-choice="link"]')?.addEventListener('click', () => onReferenceLink?.());
-    article.querySelector('[data-reference-choice="none"]')?.addEventListener('click', () => {
+  let referenceQuestionLoading = false;
+  const appendReferenceQuestion = async () => {
+    if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
+    referenceQuestionLoading = true;
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-guided-workspace-v102');
+    mountReferenceQuestion(conversation, { onReference, onReferenceLink, onSkip: () => {
       referenceSkipped = true;
-      article.querySelectorAll('button').forEach(button => { button.disabled = true; });
       message('user', '没有参考材料，继续');
       message('assistant', '好的。我会按你已经明确的内容整理，不会把默认值伪装成你的选择。请核对右侧确认单。');
       sync();
-    });
-    conversation.scrollTop = conversation.scrollHeight;
+    } });
+    referenceQuestionLoading = false;
   };
   const sync = () => {
     const name = String(control('project_name')?.value || '').trim();
@@ -178,9 +131,10 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
     input.focus();
     sync();
   }));
-  const submit = () => {
+  const submit = async () => {
     const text = input.value.trim();
     if (!text) return;
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-guided-workspace-v102');
     input.value = '';
     let mode = String(control('content_mode')?.value || '');
     if (!mode) {
@@ -192,10 +146,10 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
     control('brief').value = previous ? `${previous}\n${text}` : text;
     dispatch(control('brief'));
     if (!String(control('project_name')?.value || '').trim()) {
-      control('project_name').value = suggestedName(text, mode);
+      control('project_name').value = explicitSettings.suggestedName(text, mode);
       dispatch(control('project_name'));
     }
-    const explicit = extractExplicitBriefSettings(text);
+    const explicit = explicitSettings.extractExplicitBriefSettings(text);
     Object.entries(explicit).forEach(([name, value]) => {
       const field = control(name);
       if (!field) return;

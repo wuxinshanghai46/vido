@@ -471,8 +471,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     props: projectedProps,
     scenes: sceneAssets(outputs, context),
   } : null;
-  const projectedCounts = projectedAssets
-    ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
+  const projectedCounts = projectedAssets ? countProjection.projectCounts(projectedAssets, mediaUrl, list)
     : { assets: 0, subject_assets: 0, ready_subject_assets: 0, planned_assets: 0, scenes: 0 };
   const navigation = workflowNavigation.build({ task: raw.task, context, outputs, counts: projectedCounts, clean, list });
   const bundle = {

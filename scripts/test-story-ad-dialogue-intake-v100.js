@@ -13,14 +13,16 @@ async function main() {
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
     .replace(/^import[^\n]+\n/, 'const escapeHtml = value => String(value ?? "");\n');
   const dialogue = await asModule(dialogueSource);
+  const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
+  const referenceQuestionSource = read('public/story-ad/views/briefReferenceQuestion.js');
 
   assert.deepEqual(
-    dialogue.extractExplicitBriefSettings('做一条60秒、16:9横屏、4K清晰度的现代剧情短片'),
+    explicitSettings.extractExplicitBriefSettings('做一条60秒、16:9横屏、4K清晰度的现代剧情短片'),
     { target_duration: 60, output_ratio: '16:9', video_resolution: '4K' },
     '用户明确写出的成片规格必须直接识别，不能再次逐项追问',
   );
   assert.deepEqual(
-    dialogue.extractExplicitBriefSettings('做一条120秒9:16的中国古代真人实拍广告，史实写实，具体时期：唐朝，地区：中国长安'),
+    explicitSettings.extractExplicitBriefSettings('做一条120秒9:16的中国古代真人实拍广告，史实写实，具体时期：唐朝，地区：中国长安'),
     {
       target_duration: 120,
       output_ratio: '9:16',
@@ -47,9 +49,9 @@ async function main() {
     { ready: false, missing: ['reference'], next: 'reference' },
     '只有参考材料尚未决定时才应追问参考入口',
   );
-  assert.match(dialogueSource, /data-reference-choice="upload"[^>]*>上传视频<\/button>/, '对话内必须提供上传参考视频入口');
-  assert.match(dialogueSource, /data-reference-choice="link"[^>]*>添加链接<\/button>/, '对话内必须提供参考链接入口');
-  assert.match(dialogueSource, /data-reference-choice="none"[^>]*>没有，继续<\/button>/, '对话内必须提供无参考继续入口');
+  assert.match(referenceQuestionSource, /data-reference-choice="upload"[^>]*>上传视频<\/button>/, '对话内必须提供上传参考视频入口');
+  assert.match(referenceQuestionSource, /data-reference-choice="link"[^>]*>添加链接<\/button>/, '对话内必须提供参考链接入口');
+  assert.match(referenceQuestionSource, /data-reference-choice="none"[^>]*>没有，继续<\/button>/, '对话内必须提供无参考继续入口');
   assert.match(dialogueSource, /conversation\.querySelector\('\[data-reference-question\]'\)/, '同一次对话不得重复插入参考问题');
   assert.match(dialogueSource, /referenceAttached \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
 
