@@ -212,6 +212,7 @@ function applyHistoricalStepMode(host, route) {
   banner.setAttribute('role', 'status');
   banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>已有后续成果。修改前请开启编辑；保存后会检查影响。</span></div><button class="btn" type="button" data-unlock-history-step data-history-safe>新增 / 修改内容</button>';
   host.prepend(banner);
+  host.classList.add('is-historical-readonly');
   applyHistoricalReadonlyControls(host);
   banner.querySelector('[data-unlock-history-step]')?.addEventListener('click', async () => {
     const confirmed = await confirmDialog('修改已确认内容会重新检查下游方案。本操作仅解锁当前步骤，不生成图片、不产生模型费用。', {

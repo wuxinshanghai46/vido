@@ -6,7 +6,7 @@ import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
   if (!scenes.length) return '<section class="card"><h2>场景生成队列</h2><p>尚未建立场景文字方案。</p></section>';
-  return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景生成队列</h2><span>${scenes.length}</span></div><p>每次只提交一个场景；人物出场、造型、年龄、机位和地点沿革确认后再生成。</p><div class="asset-grid">${scenes.map(scene => {
+  return `<section class="card scene-generation-queue"><div class="section-title"><h2>场景生成队列</h2><span>${scenes.length}</span></div><p>每次只提交一个场景；人物出场、造型、年龄、机位和地点沿革确认后再生成。</p><div class="scene-queue-grid">${scenes.map(scene => {
     const generated = Boolean(scene.layout?.image_url || scene.view_images?.length || scene.cameras?.some(camera => camera.image_url));
     return `<article class="asset-card"><div><small>${generated ? '已有场景资产' : '等待单独生成'}</small><h3>${escapeHtml(scene.name || '未命名场景')}</h3><p>${escapeHtml(scene.description || scene.scene_spec?.description || '')}</p></div><button class="btn ${generated ? '' : 'primary'}" type="button" data-generate-base-scene="${escapeHtml(scene.id || scene.scene_id || '')}" ${scenePlanReady ? '' : 'disabled title="请先更新场景方案"'}>${generated ? '核对后重新生成' : '生成这个场景'}</button></article>`;
   }).join('')}</div></section>`;

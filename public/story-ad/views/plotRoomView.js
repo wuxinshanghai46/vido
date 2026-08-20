@@ -11,16 +11,28 @@ function domainContractBanner(brief = {}) {
 }
 
 function beatEditor(beat = {}, index = 0) {
+  const visual = beat.visual || beat.plot || '';
+  const spoken = beat.spoken_line || beat.voiceover || '';
   return `<article class="beat-row" data-beat-index="${index}">
-    <header><code>B${String(index + 1).padStart(2, '0')}</code><input class="input" data-beat-field="title" value="${escapeHtml(beat.title || beat.role || '')}" placeholder="情节点名称"><span class="beat-actions"><button class="btn small ai-action" type="button" data-ai-beat>AI 帮写</button><button class="btn small danger delete-action" type="button" data-remove-beat><span aria-hidden="true">×</span><span>删除</span></button></span></header>
-    <div class="form-grid">
-      <label class="field full"><span>画面与剧情动作</span><textarea class="textarea" rows="3" data-beat-field="visual" placeholder="描述这一段实际发生的事情。">${escapeHtml(beat.visual || beat.plot || '')}</textarea></label>
+    <div class="beat-overview"><code>B${String(index + 1).padStart(2, '0')}</code><span class="beat-title-summary" data-beat-summary="title">${escapeHtml(beat.title || beat.role || `情节点 ${index + 1}`)}</span><span class="beat-duration-summary" data-beat-summary="duration">${Number((Number(beat.duration || beat.duration_sec || 3) || 3).toFixed(2))}s</span><span class="beat-visual-summary" data-beat-summary="visual">${escapeHtml(visual || '等待补充画面与剧情动作')}</span><span class="beat-spoken-summary" data-beat-summary="spoken_line">${escapeHtml(spoken || '暂无对白 / 旁白')}</span><span class="beat-actions"><button class="btn small ai-action" type="button" data-ai-beat>AI 帮写</button><button class="btn small" type="button" data-toggle-beat-editor>编辑</button><button class="btn small danger delete-action" type="button" data-remove-beat aria-label="删除情节点"><span aria-hidden="true">×</span></button></span></div>
+    <div class="beat-detail-editor" data-beat-editor hidden><div class="form-grid">
+      <label class="field full"><span>情节点名称</span><input class="input" data-beat-field="title" value="${escapeHtml(beat.title || beat.role || '')}" placeholder="情节点名称"></label>
+      <label class="field full"><span>画面与剧情动作</span><textarea class="textarea" rows="4" data-beat-field="visual" placeholder="描述这一段实际发生的事情。">${escapeHtml(visual)}</textarea></label>
       <label class="field"><span>人物动作</span><input class="input" data-beat-field="action" value="${escapeHtml(beat.action || '')}"></label>
       <label class="field"><span>时长（秒）</span><input class="input" type="number" min="1" max="30" step="0.01" data-beat-field="duration" value="${Number((Number(beat.duration || beat.duration_sec || 3) || 3).toFixed(2))}"></label>
       <label class="field"><span>旁白或台词</span><input class="input" data-beat-field="spoken_line" value="${escapeHtml(beat.spoken_line || beat.voiceover || '')}"></label>
       <label class="field"><span>可见证据</span><input class="input" data-beat-field="visual_proof" value="${escapeHtml(beat.visual_proof || beat.purpose || '')}"></label>
-    </div>
+    </div><div class="beat-detail-actions"><button class="btn primary small" type="button" data-close-beat-editor>完成本段编辑</button></div></div>
   </article>`;
+}
+
+function syncBeatPresentation(row) {
+  const value = name => row.querySelector(`[data-beat-field="${name}"]`)?.value?.trim() || '';
+  const set = (name, text) => { const target = row.querySelector(`[data-beat-summary="${name}"]`); if (target) target.textContent = text; };
+  set('title', value('title') || '未命名情节点');
+  set('duration', `${Math.max(1, Number(value('duration')) || 3)}s`);
+  set('visual', value('visual') || '等待补充画面与剧情动作');
+  set('spoken_line', value('spoken_line') || '暂无对白 / 旁白');
 }
 
 function collectBeat(row) {
@@ -47,6 +59,7 @@ function applyBeat(row, beat = {}) {
     const field = row.querySelector(`[data-beat-field="${name}"]`);
     if (field && value !== undefined && value !== null) field.value = value;
   });
+  syncBeatPresentation(row);
 }
 
 function collectBlueprint(host, original = {}) {
@@ -82,29 +95,31 @@ export async function mount(host, context) {
   const referenceDraft = bundle?.story?.reference_draft || null;
   const blueprint = savedBlueprint || referenceDraft;
   const isReferenceDraft = !savedBlueprint && !!referenceDraft;
+  const draftNeedsGeneration = isReferenceDraft && (blueprint?.beats || []).some(beat => !String(beat.visual || beat.plot || '').trim() || !String(beat.spoken_line || beat.voiceover || '').trim());
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
   host.innerHTML = `
     <section class="view-head">
       <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn ${isReferenceDraft ? 'primary' : ''}" type="button" data-save-story>${isReferenceDraft ? '保存参考故事草稿' : '保存剧情'}</button>${!isReferenceDraft ? '<button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>' : ''}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
+        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button>${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : '<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>'}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
       </div>
     </section>
     ${domainContractBanner(bundle.brief || {})}
     <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请先补齐分段、动作和对白，确认后再提取人物。' : '先确认故事因果、每段动作和对白。人物、场景、线稿与分镜都从这份已确认剧情继续，避免先生成资产再反过来改故事。'}</div>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
-    ${blueprint ? `<div class="plot-layout">
-      <aside class="card">
+    ${blueprint ? `<div class="plot-layout plot-workspace">
+      <section class="card story-overview-card">
         <div class="card-head"><div><h2>故事与角色</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
         <div class="card-body form-grid">
           <label class="field full"><span>故事标题</span><input class="input" name="story_title" value="${escapeHtml(blueprint.story_title || blueprint.title || '')}"></label>
           <label class="field full"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="5">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
           <div class="field full"><span>角色</span><div class="binding-chips">${characters.length ? characters.map(character => `<span class="chip ok">${escapeHtml(character.name || character.role || '角色')}</span>`).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></div>
         </div>
-      </aside>
-      <section class="card">
-        <div class="card-head"><div><h2>情节点</h2><p>按故事发生顺序排列。</p></div></div>
+      </section>
+      <section class="card plot-sequence-card">
+        <div class="card-head"><div><h2>剧情、动作与对白</h2><p>系统先生成完整顺序；点击某一段“编辑”再修改细节。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
+        <div class="beat-table-head" aria-hidden="true"><span>段落</span><span>时长</span><span>画面与剧情动作</span><span>对白 / 旁白</span><span>操作</span></div>
         <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div>
       </section>
     </div>` : `<section class="card">${emptyState({
@@ -202,6 +217,19 @@ export async function mount(host, context) {
       }
       return;
     }
+    const toggle = event.target.closest('[data-toggle-beat-editor]');
+    if (toggle) {
+      const editor = row.querySelector('[data-beat-editor]');
+      editor.hidden = !editor.hidden;
+      toggle.textContent = editor.hidden ? '编辑' : '收起';
+      return;
+    }
+    if (event.target.closest('[data-close-beat-editor]')) {
+      syncBeatPresentation(row);
+      row.querySelector('[data-beat-editor]').hidden = true;
+      row.querySelector('[data-toggle-beat-editor]').textContent = '编辑';
+      return;
+    }
     if (!event.target.closest('[data-remove-beat]')) return;
     if (!await confirmDialog('删除后，该情节点只会从当前编辑器移除；点击“保存剧情”后才会写入项目。', {
       title: '删除这个情节点？',
@@ -213,6 +241,10 @@ export async function mount(host, context) {
       item.dataset.beatIndex = index;
       item.querySelector('code').textContent = `B${String(index + 1).padStart(2, '0')}`;
     });
+  });
+  host.querySelector('[data-beat-list]')?.addEventListener('input', event => {
+    const row = event.target.closest('[data-beat-index]');
+    if (row) syncBeatPresentation(row);
   });
   host.querySelector('[data-save-story]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

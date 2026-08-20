@@ -38,6 +38,7 @@ function shotRow(shot = {}, index = 0, bundle = {}) {
   const bindings = friendlyBindings(bundle, shot);
   return `<div class="shot-row" data-storyboard-shot="${shotIndex}">
     <b>SH${String(shotIndex).padStart(2, '0')}</b>
+    <span class="shot-duration">${Number(shot.duration || shot.duration_sec || 3) || 3}s</span>
     <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small></span>
     <span>${escapeHtml(shot.voiceover || shot.narration || '—')}</span>
     <span class="binding-chips">${bindings.length ? bindings.map(item => `<span class="chip ok" title="${escapeHtml(item.id)}">${escapeHtml(item.label)}</span>`).join('') : '<span class="chip">未绑定</span>'}</span>
@@ -139,10 +140,10 @@ export async function mount(host, context) {
       <button class="tab" type="button" role="tab" aria-selected="false" data-board-tab="sketches" ${sketchGate.ready || sketches.length ? '' : 'disabled'}>线稿分镜 ${generatedSketchCount}/${shots.length}</button>
     </div>
     <section data-board-panel="shots">
-      ${shots.length ? `<div class="card shot-table">
-        <div class="shot-row header"><span>镜头</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
+      ${shots.length ? `<div class="card shot-table"><div class="shot-table-scroll">
+        <div class="shot-row header"><span>镜头</span><span>时长</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
         ${visibleShots.map((shot, index) => shotRow(shot, pageStart + index, bundle)).join('')}
-      </div>${pageNav}` : `<div class="card">${emptyState({
+      </div></div>${pageNav}` : `<div class="card">${emptyState({
         title: '还没有文字分镜',
         body: '先确认剧情蓝图，再生成与剧情情节点一一对应的镜头。',
         action: '生成文字分镜',

@@ -4,6 +4,23 @@ function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
 }
 
+const IDEA_SECTION_MARKER = /(?:^|\n)\s*(?:【?(?:详细剧情描述|剧情表达补充|出场人物|主要场景|剧情段落|结尾|主题|人物设定|场景设定)】?|#{1,4}\s*(?:剧情|人物|场景))/i;
+
+export function briefIdeaPreview(value = '', max = 420) {
+  const full = String(value || '').trim();
+  if (!full) return { text: '', full: '', collapsed: false };
+  const sectionIndex = full.search(IDEA_SECTION_MARKER);
+  const source = sectionIndex > 80 ? full.slice(0, sectionIndex).trim() : full;
+  const text = source.length > max ? `${source.slice(0, max).trim()}…` : source;
+  return { text, full, collapsed: text !== full };
+}
+
+function ideaMarkup(value = '', location = 'conversation') {
+  const preview = briefIdeaPreview(value, location === 'contract' ? 180 : 420);
+  if (!preview.text) return '<em>等待你的描述</em>';
+  return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
+}
+
 export function briefDialogueMarkup(bundle = {}, route = {}) {
   const brief = bundle.brief || {};
   const hasIdea = Boolean(String(brief.text || '').trim());
@@ -12,15 +29,15 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
       <header class="brief-conversation-head"><span class="brief-director-avatar">导</span><div><h1>导演助理</h1><p><i></i>在线 · 先把想法整理成可执行剧情</p></div><span class="brief-stage-chip">第 1 步 · 对话立项</span></header>
       <div class="brief-conversation-scroll" data-brief-conversation aria-live="polite">
         <article class="brief-message is-assistant"><span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><b>${route.isNew ? '先聊聊你想做什么。' : '我已读取这个项目的设想。'}</b><p>${route.isNew ? '你不需要先填一整页表单。我会逐步确认内容类型、核心想法和成片规格，再先生成详细剧情与对白。' : '你可以继续补充或纠正；确认后会先进入剧情与对白，不会提前生成人物图片或视频。'}</p></div>${!hasIdea ? `<div class="brief-quick-actions"><button type="button" data-dialogue-mode="commercial_subject">我要做商业广告</button><button type="button" data-dialogue-mode="narrative_story">我要做剧情短片</button></div>` : ''}</div></article>
-        ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble"><p>${escapeHtml(brief.text)}</p></div></div></article>` : ''}
+        ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
       </div>
-      <footer class="brief-composer"><label data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '先选择类型，也可以直接描述你的想法'}</label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">＋</button><textarea rows="2" data-dialogue-input placeholder="例如：做一条30秒不锈钢品牌广告，突出佛山制造、耐腐蚀和高端科技感…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>AI 建议会单独标记，不会静默覆盖你已确认的内容</small></footer>
+      <footer class="brief-composer"><label data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '先选择类型，也可以直接描述你的想法'}</label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">＋</button><textarea rows="2" data-dialogue-input placeholder="例如：做一条30秒不锈钢品牌广告，突出佛山制造、耐腐蚀和高端科技感…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><button type="button" class="brief-edit-history" data-open-history-edit data-history-safe>这一步已确认；需要修改时点这里开启编辑</button><small>AI 建议会单独标记，不会静默覆盖你已确认的内容</small></footer>
     </div>
     <aside class="brief-contract-panel">
       <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
       <div class="brief-contract-progress"><i><b data-dialogue-progress></b></i><strong data-dialogue-progress-text>20%</strong></div>
       <p class="brief-contract-hint">对话内容会自动同步到这里。项目名称可由系统建议，也可在“手动编辑全部设置”中修改。</p>
-      <section><h3>基础信息</h3><dl><div><dt>项目名称</dt><dd data-contract-name>待根据创意命名</dd></div><div><dt>内容类型</dt><dd data-contract-mode>${escapeHtml(modeLabel(brief.content_mode_source === 'user' ? brief.content_mode : ''))}</dd></div><div class="wide"><dt>核心创意</dt><dd data-contract-idea>${hasIdea ? escapeHtml(brief.text) : '<em>等待你的描述</em>'}</dd></div></dl></section>
+      <section><h3>基础信息</h3><dl><div><dt>项目名称</dt><dd data-contract-name>待根据创意命名</dd></div><div><dt>内容类型</dt><dd data-contract-mode>${escapeHtml(modeLabel(brief.content_mode_source === 'user' ? brief.content_mode : ''))}</dd></div><div class="wide"><dt>核心创意</dt><dd data-contract-idea>${ideaMarkup(brief.text, 'contract')}</dd></div></dl></section>
       <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd data-contract-duration>${Number(brief.target_duration || 30)}秒 <i>建议</i></dd></div><div><dt>画幅</dt><dd data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')} <i>建议</i></dd></div><div><dt>清晰度</dt><dd data-contract-resolution>${escapeHtml(brief.video_resolution || '1080p')}</dd></div></dl></section>
       <section><h3>信息依据</h3><div class="brief-evidence"><span class="user">用户明确</span><b data-contract-user>${hasIdea ? 2 : 0} 项</b></div><div class="brief-evidence"><span class="ai">AI 建议</span><b>3 项</b></div><div class="brief-evidence"><span class="pending">等待确认</span><b data-contract-pending>${hasIdea ? 2 : 5} 项</b></div></section>
       <button class="brief-confirm-concept" type="button" data-dialogue-confirm disabled>确认设想，生成剧情与对白</button>
@@ -70,7 +87,7 @@ export function bindBriefDialogue(host, { form, onConfirm, onReference } = {}) {
     const progress = ready ? 100 : (idea ? 72 : (mode ? 38 : 20));
     panel.querySelector('[data-contract-name]').textContent = name || '待根据创意命名';
     panel.querySelector('[data-contract-mode]').textContent = modeLabel(mode);
-    panel.querySelector('[data-contract-idea]').textContent = idea || '等待你的描述';
+    panel.querySelector('[data-contract-idea]').innerHTML = ideaMarkup(idea, 'contract');
     panel.querySelector('[data-contract-duration]').textContent = `${duration}秒`;
     panel.querySelector('[data-contract-ratio]').textContent = ratio;
     panel.querySelector('[data-contract-resolution]').textContent = resolution;
@@ -120,6 +137,14 @@ export function bindBriefDialogue(host, { form, onConfirm, onReference } = {}) {
   panel.querySelector('[data-dialogue-professional]')?.addEventListener('click', () => {
     const details = host.querySelector('[data-brief-settings]');
     if (details) { details.open = true; details.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+  panel.querySelector('[data-open-history-edit]')?.addEventListener('click', event => {
+    const unlock = host.querySelector('[data-unlock-history-step]');
+    if (unlock) unlock.click();
+    else {
+      event.currentTarget.hidden = true;
+      input?.focus();
+    }
   });
   panel.querySelector('[data-dialogue-reference]')?.addEventListener('click', () => onReference?.());
   confirm?.addEventListener('click', () => onConfirm?.(confirm));
