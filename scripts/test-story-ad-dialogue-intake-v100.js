@@ -58,9 +58,10 @@ async function main() {
   const briefView = read('public/story-ad/views/briefView.js');
   assert.doesNotMatch(briefView, /<aside class="brief-side-column">/, '目标页不得保留独立高级配置侧栏');
   assert.doesNotMatch(briefView, /<h2>高级配置<\/h2>/, '目标页不得再把高级配置作为独立必经区域');
-  assert.match(briefView, /<details class="card brief-settings"[\s\S]*参考材料与识别信息[\s\S]*<\/details>/, '可选精调项必须收进手动编辑区');
+  assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
+  assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 13, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 14, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {

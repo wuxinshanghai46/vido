@@ -15,7 +15,7 @@ const GATES = Object.freeze({
     label: '发布完整性、传输、闭包与黄金合同',
   },
   workspace_ui: {
-    command: 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
+    command: 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
     label: '工作台 UI、对话立项、首屏轻量投影与模块边界',
   },
   reference: {

@@ -38,7 +38,7 @@ const panel = read('public/story-ad/views/briefDialoguePanel.js');
 const plotView = read('public/story-ad/views/plotRoomView.js');
 const sceneView = read('public/story-ad/views/sceneWorldPage.js');
 const demoHtml = read('public/story-ad/dialogue-demo.html');
-assert.match(briefView, /runStage\('blueprint'\)[\s\S]*view=plot/, 'brief confirmation should generate plot before navigation');
+assert.match(briefView, /runStage\('blueprint',\s*\{[\s\S]*expected_content_revision:[\s\S]*idempotency_key:[\s\S]*\}\);[\s\S]*view=plot/, 'brief confirmation should submit one versioned idempotent plot generation before navigation');
 assert.doesNotMatch(briefView, /createAssetPlanAndRefresh/, 'brief must not create asset plan before plot');
 assert.match(panel, /对话内容会自动同步到这里/, 'dialogue must explain automatic contract fill');
 assert.match(panel, /手动编辑全部设置/, 'advanced settings must remain available');

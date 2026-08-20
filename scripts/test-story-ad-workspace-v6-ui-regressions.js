@@ -68,6 +68,7 @@ assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
 const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
+const briefSettingsModal = read('public/story-ad/views/briefSettingsModal.js');
 const briefMaterials = read('public/story-ad/views/briefMaterials.js');
 const briefAdvancedConfig = read('public/story-ad/views/briefAdvancedConfig.js');
 const briefWorldSettings = read('public/story-ad/views/briefWorldSettings.js');
@@ -92,18 +93,19 @@ assert.doesNotMatch(briefView, /payload\.brief\.length\s*<\s*8/, '创建草稿�
 assert.match(briefView, /if \(!payload\.project_name\)/, '项目名称仍需非空，避免产生不可识别任务');
 assert.doesNotMatch(briefView, /referenceAnalysisSections/, '目标与材料页不得堆叠完整参考分析');
 assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分析|逐镜分析/, '参考详情必须按制作环节分流');
-assert.match(briefView, /<details class="card brief-settings" data-brief-settings>/, '对话优先流程应默认折叠原专业表单');
+assert.match(briefView, /<dialog class="brief-settings-modal" data-brief-settings-modal/, '对话优先流程必须把专业表单放进默认关闭的 modal');
 assert.match(briefDialoguePanel, /对话内容会自动同步到这里/, '确认单必须说明对话会自动同步');
-assert.match(briefDialoguePanel, /手动编辑全部设置/, '折叠后必须保留专业设置入口');
+assert.match(briefDialoguePanel, /手动编辑全部设置/, '对话中必须保留专业设置 modal 入口');
 assert.match(briefView, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
 assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return remainder \? `\$\{minutes\} 分 \$\{remainder\} 秒` : `\$\{minutes\} 分钟`/, '折叠摘要必须把 300/600 秒显示为 5/10 分钟');
-assert.match(briefView, /if \(referenceAttached\) host\.querySelector\('\[data-brief-settings\]'\)\?\.removeAttribute\('open'\)/, '已有参考视频时广告目标设置首次挂载必须默认收起');
-assert.match(briefView, /briefSettings\.open = false/, '参考状态切换后专业设置必须保持对话优先的默认收起状态');
+assert.match(briefView, /bindBriefSettingsModal\(host\)/, '目标页必须绑定独立专业设置 modal 控制器');
+assert.match(briefSettingsModal, /if \(!modal\.open\) modal\.showModal\(\)[\s\S]*modal\.querySelector\([^\n]+\)\?\.focus\(\)/, '专业设置只能通过显式入口打开并把焦点移入 modal');
+assert.match(briefView, /briefSettingsModalController\.modal\?\.open[\s\S]*briefSettingsModalController\.close\(\)/, '参考状态切换后必须关闭专业设置 modal');
 assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
 assert.match(briefView, /referenceStepVisible && bundle\.navigation\?\.steps\?\.brief\?\.completed !== true/, '已完成并进入后续步骤后不得继续显示第 1 步引导卡');
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
 assert.match(briefView, /你可以直接修改，保存后将以你的版本为准/, '识别出的广告目标必须保持可编辑且以用户修改为准');
-assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留可恢复的页面锚点');
+assert.match(briefView, /data-brief-settings-anchor>[\s\S]*data-brief-settings-modal[\s\S]*data-brief-settings-layout/, '广告目标与启动材料必须保留在稳定 modal 内');
 assert.ok(
   briefView.indexOf('data-reference-progress-host') < briefView.indexOf('data-brief-settings-anchor'),
   '分析中或失败时，参考视频状态卡必须位于广告目标与启动材料上方',
@@ -112,8 +114,8 @@ assert.ok(
   briefView.indexOf('data-brief-settings-anchor') < briefView.indexOf('data-reference-understanding-host'),
   '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
 );
-assert.match(briefView, /restoreBriefSettingsLayout/, '没有参考报告时必须把广告目标与启动材料恢复到目标页');
-assert.match(briefView, /briefSettings\.open = false/, '选择或移除参考时专业设置仍应保持对话优先的默认收起状态');
+assert.doesNotMatch(briefView, /restoreBriefSettingsLayout|briefSettingsNode:/, '参考报告不得再搬移唯一设置表单');
+assert.match(briefView, /briefSettingsModalController\.modal\?\.open[\s\S]*briefSettingsModalController\.close\(\)/, '选择或移除参考时专业设置 modal 必须安全关闭');
 assert.match(briefView, /store\.subscribe\([\s\S]*referenceProgress\(nextState\.bundle\?\.reference/, '同一分析状态内的实时进度必须局部更新，不能等待整页重载');
 assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brief-submit\]'\)[\s\S]*syncReferenceAction\(button, nextReference\)/, '分析终态到达时必须同步刷新折叠区内外的主按钮');
 assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注销进度订阅');
@@ -151,7 +153,7 @@ assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自�
 assert.match(briefView, /广告会识别商品或服务主体；剧情不创建商品主体/);
 assert.match(briefView, /<b id="brief-basic-settings-title">基础信息<\/b>/, '项目名称、内容类型和内容目标必须归入基础信息');
 assert.match(briefView, /<span class="brief-config-index">02<\/span><span><b id="brief-output-settings-title">成片规格<\/b>/, '成片规格必须排在基础信息之后');
-assert.match(briefView, /<details class="card brief-settings"[\s\S]*参考材料与识别信息[\s\S]*renderAdvancedReferenceControls[\s\S]*worldSettingFields/, '参考材料与识别信息必须收进同一手动编辑区');
+assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*renderAdvancedReferenceControls[\s\S]*worldSettingFields/, '参考材料与识别信息必须收进同一手动设置 modal');
 assert.match(briefView, /worldSettingFields\(worldProfile, escapeHtml, \{ formId: 'storyAdBriefForm' \}\)/, 'AI 识别字段必须继续关联基础信息表单');
 assert.match(briefView, /content_mode: payload\.content_mode/, 'AI 帮写必须携带用户明确选择的内容类型');
 assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_source !== 'user'/, '只有用户亲自选择内容类型后才可创建或生成');
@@ -161,7 +163,7 @@ assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
-assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*runStage\('blueprint'\)[\s\S]*view=plot/, '目标确认必须只保存真实编辑，再按生成剧情与对白、进入剧情室的顺序执行');
+assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*runStage\('blueprint',\s*\{[\s\S]*idempotency_key:[\s\S]*\}\)[\s\S]*view=plot/, '目标确认必须只保存真实编辑，再按带幂等键生成剧情与对白、进入剧情室的顺序执行');
 assert.match(briefView, /if \(dirtyFields\.size\)/, '刚确认参考报告且没有修改目标时不得发送会使确认失效的空保存');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToPlot/, '参考理解确认后必须自动接通同一条剧情与对白流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {

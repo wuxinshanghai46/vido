@@ -31,7 +31,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
         <article class="brief-message is-assistant"><span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><b>${route.isNew ? '先聊聊你想做什么。' : '我已读取这个项目的设想。'}</b><p>${route.isNew ? '你不需要先填一整页表单。我会逐步确认内容类型、核心想法和成片规格，再先生成详细剧情与对白。' : '你可以继续补充或纠正；确认后会先进入剧情与对白，不会提前生成人物图片或视频。'}</p></div>${!hasIdea ? `<div class="brief-quick-actions"><button type="button" data-dialogue-mode="commercial_subject">我要做商业广告</button><button type="button" data-dialogue-mode="narrative_story">我要做剧情短片</button></div>` : ''}</div></article>
         ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
       </div>
-      <footer class="brief-composer"><label data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '先选择类型，也可以直接描述你的想法'}</label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">＋</button><textarea rows="2" data-dialogue-input placeholder="例如：做一条30秒不锈钢品牌广告，突出佛山制造、耐腐蚀和高端科技感…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><button type="button" class="brief-edit-history" data-open-history-edit data-history-safe>这一步已确认；需要修改时点这里开启编辑</button><small>AI 建议会单独标记，不会静默覆盖你已确认的内容</small></footer>
+      <footer class="brief-composer"><label data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '先选择类型，也可以直接描述你的想法'}</label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">＋</button><textarea rows="2" data-dialogue-input placeholder="例如：做一条30秒不锈钢品牌广告，突出佛山制造、耐腐蚀和高端科技感…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>AI 建议会单独标记，不会静默覆盖你已确认的内容</small></footer>
     </div>
     <aside class="brief-contract-panel">
       <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
@@ -67,7 +67,7 @@ export function dialogueIntakeState({ name = '', mode = '', idea = '', reference
   };
 }
 
-export function bindBriefDialogue(host, { form, referenceAttached = false, onConfirm, onReference, onReferenceLink } = {}) {
+export function bindBriefDialogue(host, { form, referenceAttached = false, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
   const panel = host.querySelector('[data-brief-dialogue]');
   if (!panel || !form) return () => {};
   const conversation = panel.querySelector('[data-brief-conversation]');
@@ -168,18 +168,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
   input?.addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); }
   });
-  panel.querySelector('[data-dialogue-professional]')?.addEventListener('click', () => {
-    const details = host.querySelector('[data-brief-settings]');
-    if (details) { details.open = true; details.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  });
-  panel.querySelector('[data-open-history-edit]')?.addEventListener('click', event => {
-    const unlock = host.querySelector('[data-unlock-history-step]');
-    if (unlock) unlock.click();
-    else {
-      event.currentTarget.hidden = true;
-      input?.focus();
-    }
-  });
+  panel.querySelector('[data-dialogue-professional]')?.addEventListener('click', event => onProfessional?.(event.currentTarget));
   panel.querySelector('[data-dialogue-reference]')?.addEventListener('click', () => onReference?.());
   confirm?.addEventListener('click', () => onConfirm?.(confirm));
   form.addEventListener('input', sync);
@@ -191,12 +180,13 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, onCon
   };
 }
 
-export function bindBriefDialogueWorkflow(host, { form, referenceAttached, ensureProject, proceed, onReference, onReferenceLink, onError } = {}) {
+export function bindBriefDialogueWorkflow(host, { form, referenceAttached, ensureProject, proceed, onReference, onReferenceLink, onProfessional, onError } = {}) {
   return bindBriefDialogue(host, {
     form,
     referenceAttached,
     onReference,
     onReferenceLink,
+    onProfessional,
     onConfirm: async button => {
       try { await ensureProject(button); await proceed(button); } catch (error) { onError?.(error, button); }
     },

@@ -1,8 +1,18 @@
 const { execFileSync, spawnSync } = require('child_process');
 
-function scalarEnv(source = {}) {
+const PM2_CONTROL_ENV_KEYS = new Set([
+  'cwd',
+  'pm_cwd',
+  'pm_exec_path',
+  'exec_interpreter',
+  'node_args',
+  'pm_id',
+]);
+
+function scalarEnv(source = {}, excludedKeys = new Set()) {
   return Object.fromEntries(Object.entries(source)
     .filter(([key, value]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)
+      && !excludedKeys.has(key.toLowerCase())
       && ['string', 'number', 'boolean'].includes(typeof value))
     .map(([key, value]) => [key, String(value)]));
 }
@@ -10,9 +20,9 @@ function scalarEnv(source = {}) {
 function buildPm2Env(processInfo = {}, baseEnv = process.env) {
   const pm2Env = processInfo.pm2_env || {};
   return {
-    ...baseEnv,
-    ...scalarEnv(pm2Env.env || {}),
-    ...scalarEnv(pm2Env),
+    ...scalarEnv(baseEnv, PM2_CONTROL_ENV_KEYS),
+    ...scalarEnv(pm2Env.env || {}, PM2_CONTROL_ENV_KEYS),
+    ...scalarEnv(pm2Env, PM2_CONTROL_ENV_KEYS),
   };
 }
 
@@ -43,4 +53,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { scalarEnv, buildPm2Env };
+module.exports = { PM2_CONTROL_ENV_KEYS, scalarEnv, buildPm2Env };

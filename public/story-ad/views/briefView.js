@@ -10,6 +10,7 @@ import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-guided-workspace-v103';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-guided-workspace-v103';
 import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-guided-workspace-v103';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-guided-workspace-v103';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -103,10 +104,11 @@ export async function mount(host, context) {
     </section>` : ''}
     ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
     <div data-brief-settings-anchor>
-    <div data-brief-settings-layout>
-      <div class="brief-main-column">
-      <details class="card brief-settings" data-brief-settings>
-        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>手动编辑全部设置</b><small>对话与这里使用同一份项目数据；任一处修改都会同步到项目确认单。</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开设置</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
+    <dialog class="brief-settings-modal" data-brief-settings-modal aria-labelledby="brief-settings-modal-title">
+      <div class="brief-settings-dialog" data-brief-settings-layout>
+        <header class="brief-settings-dialog-head"><div><small>项目确认单</small><h2 id="brief-settings-modal-title">手动编辑全部设置</h2><p>这里与对话使用同一份项目数据；修改会立即同步到确认单，确认设想时统一保存。</p></div><button class="btn" type="button" data-brief-settings-close aria-label="关闭手动设置">关闭</button></header>
+        <div class="brief-settings-dialog-scroll">
+        ${referenceAttached ? briefSettingsSummary(bundle) : ''}
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
 <section class="brief-config-section full" aria-labelledby="brief-basic-settings-title">
@@ -145,20 +147,17 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '保存项目设想' : referenceAction.label}</button></div>`}
           </div>
         </form>
-      </details>
+        </div>
+        <footer class="brief-settings-dialog-foot"><button class="btn primary" type="button" data-brief-settings-close>完成设置</button></footer>
       </div>
-    </div>
+    </dialog>
     </div>
     <div data-reference-understanding-host></div>
     ${BRIEF_MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : 'accept="image/png,image/jpeg,image/webp"'}>`).join('')}`;
   const form = host.querySelector('[data-brief-form]');
   bindAdvancedReferenceControls(host);
-  const briefSettingsAnchor = host.querySelector('[data-brief-settings-anchor]');
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
-  const restoreBriefSettingsLayout = () => briefSettingsAnchor
-    && briefSettingsLayout
-    && briefSettingsLayout.parentElement !== briefSettingsAnchor
-    && briefSettingsAnchor.appendChild(briefSettingsLayout);
+  const briefSettingsModalController = bindBriefSettingsModal(host);
   let createdProjectId = route.isNew ? '' : bundle.project?.id;
   const dirtyFields = new Set();
   const syncScreenplayLayout = bindNarrativeRecognitionLayout({ form });
@@ -168,7 +167,6 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   let disposed = false;
   let lastReferenceAttached = referenceAttached;
   let lastReferenceStatus = String(bundle.reference?.status || '').toLowerCase();
-  if (referenceAttached) host.querySelector('[data-brief-settings]')?.removeAttribute('open');
   let assetPlanTransitioning = false;
   let dialogueCleanup = () => {};
   async function syncReferenceUnderstanding(reference = {}) {
@@ -194,7 +192,6 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       understandingController?.destroy();
       understandingController = null;
       if (understandingHost) understandingHost.innerHTML = '';
-      restoreBriefSettingsLayout();
       return;
     }
     const module = await import('./referenceUnderstandingView.js?v=20260821-guided-workspace-v103');
@@ -204,7 +201,6 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       reference,
       taskId: createdProjectId,
       store,
-      briefSettingsNode: briefSettingsLayout,
       onConfirmed: async () => {
         const nextButton = host.querySelector('[data-brief-inline-action] [data-brief-submit]');
         const proceeded = await proceedToPlot(nextButton);
@@ -275,17 +271,16 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     });
     const nextReference = nextState.bundle?.reference || {};
     const nextReferenceAttached = Boolean(nextReference.analysis_id);
-    const briefSettings = host.querySelector('[data-brief-settings]');
     const nextReferenceStatus = String(nextReference.status || '').toLowerCase();
-    if (briefSettings && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettings.open = false;
+    if (briefSettingsModalController.modal?.open && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettingsModalController.close();
     lastReferenceAttached = nextReferenceAttached; lastReferenceStatus = nextReferenceStatus;
     if (!route.isNew) {
+      const action = referenceActionState(nextReference);
       host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
       const description = host.querySelector('[data-brief-next-description]');
       if (description) description.textContent = referenceNextStepDescription(nextReference, action);
       const nextTag = host.querySelector('[data-brief-next-tag]');
       if (nextTag) {
-        const action = referenceActionState(nextReference);
         nextTag.textContent = action.blocked ? '等待完成' : '下一步';
         nextTag.className = `status-tag ${action.blocked ? 'is-neutral' : 'is-info'}`;
         nextTag.dataset.briefNextTag = '';
@@ -387,19 +382,25 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (migration.cancelled) return false;
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
       host.querySelectorAll('[data-brief-submit], [data-dialogue-confirm]').forEach(target => setButtonBusy(target, true, '正在生成剧情…', { elapsed: true }));
-      // Confirming an already-rendered authoritative reference must not issue
-      // a no-op brief save. That save can advance the content revision and
-      // immediately invalidate the confirmation that was just persisted.
       if (dirtyFields.size) {
         const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
         assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
         dirtyFields.clear();
       }
-      await store.runStage('blueprint');
+      const contentRevision = Math.max(1, Number(store.state.bundle?.revisions?.content || 1) || 1);
+      await store.runStage('blueprint', {
+        expected_content_revision: contentRevision,
+        idempotency_key: `${createdProjectId}:blueprint:brief-confirm:r${contentRevision}`,
+      });
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=plot`);
       toast('详细剧情与对白已提交生成。确认剧情后，系统才会继续提取人物与场景。', 'success');
       return true;
     } catch (error) {
+      if (error?.code === 'GENERATION_ALREADY_RUNNING' && createdProjectId) {
+        navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=plot`);
+        toast('剧情生成已提交，本次没有重复调用模型。', 'success');
+        return true;
+      }
       toast(error.message, 'danger');
       return false;
     } finally {
@@ -422,6 +423,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     onReferenceLink: () => host.querySelector('[data-reference-link]')?.click(),
     ensureProject,
     proceed: proceedToPlot,
+    onProfessional: briefSettingsModalController.open,
     onError: (error, button) => { setButtonBusy(button, false); toast(error.message, 'danger'); },
   });
 
@@ -585,6 +587,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     disposed = true;
     understandingLoadSequence += 1;
     understandingController?.destroy();
+    briefSettingsModalController.destroy();
     dialogueCleanup();
     unsubscribeProgress();
     host.removeEventListener('click', handleReferenceRetry);

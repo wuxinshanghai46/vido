@@ -18,6 +18,12 @@ function durationSeconds(value, fallback = 3) {
   return Math.max(1, Number(safe.toFixed(2)));
 }
 
+function referenceReady(reference = {}) {
+  return !!clean(reference.analysis_id || reference.id, 120)
+    && String(reference.status || '').toLowerCase() === 'completed'
+    && reference.analysis_quality?.valid === true;
+}
+
 const SHOT_SIZE_ALIASES = {
   '大远景': 'extreme_wide', '远景': 'extreme_wide', '全景': 'wide', '全身景': 'full',
   '中景': 'medium', '中近景': 'medium_close', '特写': 'close_up', '大特写': 'extreme_close_up', '微距': 'macro',
@@ -37,7 +43,11 @@ function referenceBlueprintDraft(context = {}) {
   const reference = context.reference_video_analysis && typeof context.reference_video_analysis === 'object'
     ? context.reference_video_analysis
     : {};
-  const seed = context.story_seed && typeof context.story_seed === 'object' ? context.story_seed : {};
+  if (!referenceReady(reference)) return null;
+  const sourceSeed = context.story_seed && typeof context.story_seed === 'object' ? context.story_seed : {};
+  const seed = sourceSeed.source === 'reference_analysis_projection' || sourceSeed.projection_only === true
+    ? sourceSeed
+    : {};
   const outline = reference.story_outline && typeof reference.story_outline === 'object'
     ? reference.story_outline
     : seed;
@@ -93,7 +103,7 @@ function referenceStoryboardDraft(context = {}) {
   const reference = context.reference_video_analysis && typeof context.reference_video_analysis === 'object'
     ? context.reference_video_analysis
     : {};
-  if (reference.status !== 'completed' || reference.analysis_quality?.valid !== true) return [];
+  if (!referenceReady(reference)) return [];
   const intents = list(reference.camera_intents);
   return list(reference.shot_breakdown).slice(0, 200).map((item, index) => {
     const intent = intents[index] || {};
@@ -166,6 +176,7 @@ function storyboardSection(context = {}, outputs = {}, raw = {}) {
 module.exports = {
   referenceBlueprintDraft,
   referenceStoryboardDraft,
+  referenceReady,
   storySection,
   storyboardSection,
 };

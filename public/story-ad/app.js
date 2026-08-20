@@ -2,7 +2,6 @@ import { createProjectStore } from './store/projectStore.js?v=20260821-guided-wo
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260821-guided-workspace-v103';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260821-guided-workspace-v103';
 import { confirmDialog } from './components/dialog.js?v=20260821-guided-workspace-v103';
-import { applyHistoricalReadonlyControls, historicalStepReadOnly, historicalStepUsesGlobalEdit } from './workspaceHistoryMode.js?v=20260821-guided-workspace-v103';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -43,7 +42,6 @@ let centerFilter = '';
 let centerQuery = { taskName: '', taskType: 'all', stage: 'all' };
 let centerVisibleIds = null;
 const deletingProjectIds = new Set();
-const historicalEditUnlocks = new Set();
 let observedGenerationCompletionSeq = 0;
 setInterval(() => refreshElapsedLabels(document), 1000);
 
@@ -201,31 +199,6 @@ function projectNavigation(bundle, active) {
   }).join('');
 }
 
-function historicalUnlockKey(route = {}) {
-  return `${route.taskId || ''}:${route.view || ''}`;
-}
-
-function applyHistoricalStepMode(host, route) {
-  if (!historicalStepUsesGlobalEdit(route) || !historicalStepReadOnly(store.state.bundle, route) || historicalEditUnlocks.has(historicalUnlockKey(route))) return;
-  const banner = document.createElement('section');
-  banner.className = 'historical-step-banner';
-  banner.setAttribute('role', 'status');
-  banner.innerHTML = '<div><b>已确认步骤 · 当前只读</b><span>已有后续成果。修改前请开启编辑；保存后会检查影响。</span></div><button class="btn" type="button" data-unlock-history-step data-history-safe>新增 / 修改内容</button>';
-  host.prepend(banner);
-  host.classList?.add('is-historical-readonly');
-  applyHistoricalReadonlyControls(host);
-  banner.querySelector('[data-unlock-history-step]')?.addEventListener('click', async () => {
-    const confirmed = await confirmDialog('修改已确认内容会重新检查下游方案。本操作仅解锁当前步骤，不生成图片、不产生模型费用。', {
-      title: '开启历史步骤编辑',
-      confirmText: '确认开启编辑',
-      cancelText: '保持只读',
-    });
-    if (!confirmed) return;
-    historicalEditUnlocks.add(historicalUnlockKey(route));
-    await mountView(currentRoute());
-  });
-}
-
 function projectModeView(project = {}) {
   const mode = String(project.content_mode || '');
   if (mode === 'commercial_subject') return { label: '广告', tone: 'commercial' };
@@ -288,7 +261,6 @@ async function mountView(route) {
     });
     if (typeof result === 'function') activeViewCleanup = result;
     syncControlSemantics(host);
-    applyHistoricalStepMode(host, route);
     const disposeHoverPreviews = bindHoverVideoPreviews(host);
     const previousCleanup = activeViewCleanup;
     activeViewCleanup = () => { disposeHoverPreviews(); previousCleanup?.(); };
