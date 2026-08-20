@@ -691,25 +691,7 @@ function deleteOutputsInternal(taskId, kinds = []) {
     commandId: `outputs:delete:${canonicalFingerprint(uniqueKinds).slice(0, 20)}`,
   });
   const ids = uniqueKinds.map(kind => `${taskId}:${kind}`);
-  if (useSqlite()) {
-    ensureDbSeeded();
-    contentRecords.removeMany(COLLECTIONS.outputs, ids);
-    if (dbConfig().dualWrite) {
-      const idSet = new Set(ids);
-      mutateJson('outputs', list => {
-        for (let index = list.length - 1; index >= 0; index -= 1) {
-          if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
-        }
-      });
-    }
-  } else {
-    const idSet = new Set(ids);
-    mutateJson('outputs', list => {
-      for (let index = list.length - 1; index >= 0; index -= 1) {
-        if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
-      }
-    });
-  }
+  ids.forEach(id => removeRow('outputs', id));
   const task = getTask(taskId);
   if (task?.lineage_enforced === true) {
     const manifest = getManifest(taskId);
@@ -742,29 +724,10 @@ function pruneLegacyOutputRows(taskId, kinds = []) {
   if (!uniqueKinds.size) return 0;
   const ids = [...uniqueKinds].map(kind => `${taskId}:${kind}`);
   let removed = 0;
-  if (useSqlite()) {
-    ensureDbSeeded();
-    const existing = ids.filter(id => getRow('outputs', id));
-    contentRecords.removeMany(COLLECTIONS.outputs, existing);
-    removed = existing.length;
-    if (dbConfig().dualWrite) {
-      const idSet = new Set(existing);
-      mutateJson('outputs', list => {
-        for (let index = list.length - 1; index >= 0; index -= 1) {
-          if (idSet.has(String(list[index]?.id || ''))) list.splice(index, 1);
-        }
-      });
-    }
-    return removed;
-  }
-  const idSet = new Set(ids);
-  mutateJson('outputs', list => {
-    for (let index = list.length - 1; index >= 0; index -= 1) {
-      if (idSet.has(String(list[index]?.id || ''))) {
-        list.splice(index, 1);
-        removed += 1;
-      }
-    }
+  ids.forEach(id => {
+    if (!getRow('outputs', id)) return;
+    removeRow('outputs', id);
+    removed += 1;
   });
   return removed;
 }

@@ -24,28 +24,33 @@ const storage = require('../src/services/newStoryAd/storageService');
 const taskId = 'v85-sqlite-atomic-task';
 storage.createTask({ id: taskId, title: 'before', request: { brief: 'atomic proof' } });
 storage.saveOutput(taskId, 'context', { version: 'before' });
+storage.saveOutput(taskId, 'blueprint', { version: 'delete-proof' });
 
 assert.throws(() => storage.withWriteBatch(() => {
   storage.updateTask(taskId, { title: 'must-rollback' });
   storage.saveOutput(taskId, 'context', { version: 'must-rollback' });
   storage.saveOutput(taskId, 'asset_plan_candidate', { id: 'candidate-rollback' });
+  storage.deleteOutputs(taskId, ['blueprint']);
   storage.createGenerationRun({
     id: 'run-rollback', task_id: taskId, state: 'planned', unit_version: 1,
   });
   assert.equal(storage.getTask(taskId).title, 'must-rollback');
   assert.equal(storage.getOutput(taskId, 'asset_plan_candidate').id, 'candidate-rollback');
+  assert.equal(storage.getOutput(taskId, 'blueprint'), null);
   throw new Error('EXPECTED_SQLITE_BATCH_ROLLBACK');
 }), /EXPECTED_SQLITE_BATCH_ROLLBACK/);
 
 assert.equal(storage.getTask(taskId).title, 'before');
 assert.deepEqual(storage.getOutput(taskId, 'context'), { version: 'before' });
 assert.equal(storage.getOutput(taskId, 'asset_plan_candidate'), null);
+assert.deepEqual(storage.getOutput(taskId, 'blueprint'), { version: 'delete-proof' });
 assert.equal(storage.getGenerationRun('run-rollback'), null);
 
 storage.withWriteBatch(() => {
   storage.updateTask(taskId, { title: 'after' });
   storage.saveOutput(taskId, 'context', { version: 'after' });
   storage.saveOutput(taskId, 'asset_plan_candidate', { id: 'candidate-commit' });
+  storage.deleteOutputs(taskId, ['blueprint']);
   storage.createGenerationRun({
     id: 'run-commit', task_id: taskId, state: 'planned', unit_version: 1,
   });
@@ -54,6 +59,7 @@ storage.withWriteBatch(() => {
 assert.equal(storage.getTask(taskId).title, 'after');
 assert.deepEqual(storage.getOutput(taskId, 'context'), { version: 'after' });
 assert.equal(storage.getOutput(taskId, 'asset_plan_candidate').id, 'candidate-commit');
+assert.equal(storage.getOutput(taskId, 'blueprint'), null);
 assert.equal(storage.getGenerationRun('run-commit').state, 'planned');
 
 sqlite.closeDatabase();
@@ -63,4 +69,5 @@ console.log(JSON.stringify({
   driver: process.argv.includes('--python') ? 'python' : 'native',
   rollback_writes: 0,
   committed_records: 4,
+  committed_deletes: 1,
 }));
