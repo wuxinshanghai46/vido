@@ -21,7 +21,10 @@ assert.match(dialogueCss, /brief-conversation-scroll\{[^}]*max-height:390px/, '�
 assert.match(plot, /AI 补全剧情、动作与对白/, '参考投影为空壳时必须提供完整剧情补全主操作');
 assert.match(plot, /beat-table-head/, '剧情页必须使用顺序表呈现主流程');
 assert.match(plotEditor, /data-beat-editor hidden/, '复杂字段必须收进逐段编辑区');
+assert.match(plotEditor, /beat-visual-cell[\s\S]*beat-title-summary[\s\S]*beat-visual-summary/, '情节点标题必须并入画面列，不能脱离表头另起错位行');
 assert.match(workspaceUxCss, /beat-overview\{[^}]*grid-template-columns/, '剧情顺序表必须有稳定列布局');
+assert.doesNotMatch(workspaceUxCss, /beat-title-summary\{[^}]*grid-column:1\/-1/, '情节点标题不能跨越整行制造隐式行');
+assert.match(workspaceUxCss, /@media\(max-width:1320px\)\{[\s\S]*?beat-table-head\{display:none\}/, '窄屏剧情列表必须明确切换为卡片布局');
 
 assert.match(scene, /scene-queue-grid/, '场景生成队列必须使用独立自适应网格');
 assert.match(workspaceUxCss, /scene-queue-grid\{[^}]*auto-fit/, '单场景不得只占三分之一宽度并留下大块空白');
@@ -31,4 +34,4 @@ assert.match(`${workspaceCss}\n${workspaceUxCss}`, /shot-row[\s\S]*min-width:\s*
 assert.match(storyboard, /function sketchGateReason[\s\S]*\[object Object\]/, '历史审核原因对象必须转换为用户可读文本');
 assert.doesNotMatch(storyboard, /disabled'\}>\$\{sketchGate\.ready[\s\S]*文字分镜审核未通过/, '审核失败状态不能伪装成不可点击主按钮');
 
-console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-workspace-ux-v100' }));
+console.log(JSON.stringify({ passed: true, checks: 18, scope: 'story-ad-workspace-ux-v100' }));

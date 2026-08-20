@@ -440,14 +440,14 @@ function propAssets(outputs = {}, context = {}) {
 
 /** 生成前端唯一消费的轻量项目视图。 */
 function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
-  const raw = storyAd.publicTaskBundle(taskId);
+  const requested = new Set(clean(sections, 300).split(',').map(item => item.trim()).filter(Boolean));
+  const raw = storyAd.publicTaskBundle(taskId, { sections: [...requested].join(',') });
   if (!raw?.task) {
     const error = new Error('项目不存在');
     error.status = 404;
     error.code = 'TASK_NOT_FOUND';
     throw error;
   }
-  const requested = new Set(clean(sections, 300).split(',').map(item => item.trim()).filter(Boolean));
   const include = name => !requested.size || requested.has(name) || requested.has('all');
   const outputs = raw.outputs && typeof raw.outputs === 'object' ? raw.outputs : {};
   const referenceSnapshot = authoritativeReference.snapshot(raw.task, outputs.context && typeof outputs.context === 'object'
@@ -464,7 +464,9 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
   };
   const projectedProps = propAssets(outputs, context);
   const projectedAssets = {
-    people: subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs),
+    people: include('assets')
+      ? subjectCheckpointProjection.mergePeople(peopleAssets(context, projectedProps), outputs)
+      : peopleAssets(context, projectedProps),
     animals: animalAssets(context),
     products: productAssets(context),
     logos: logoAssets(context),

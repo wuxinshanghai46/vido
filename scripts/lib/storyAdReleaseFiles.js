@@ -29,6 +29,8 @@ const BASE_FILES = [
   'scripts/test-new-story-ad-systemic-migration.js',
   'scripts/test-new-story-ad-systemic-remote-audit.js',
   'scripts/test-story-ad-workspace-v6-ui-regressions.js',
+  'scripts/test-story-ad-dialogue-intake-v100.js',
+  'scripts/test-story-ad-lightweight-bundle-v100.js',
   'scripts/test-story-ad-platform-narrative-release-v111.js',
   'scripts/check-story-ad-workspace-v6-boundaries.js',
   'scripts/test-story-ad-release-source-identity.js',

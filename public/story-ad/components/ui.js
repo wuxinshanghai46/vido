@@ -93,6 +93,48 @@ const GENERATION_UNIT_LABELS = {
   keyframes: '张关键帧', video: '个视频片段', media: '个视频片段', tts: '段配音', compose: '个步骤', full: '个步骤',
 };
 
+const GENERATION_STAGE_OWNING_VIEW = Object.freeze({
+  subject_assets: 'assets',
+  visual_assets: 'assets',
+  person_provider_sync: 'assets',
+  product_asset: 'assets',
+  prop_asset: 'assets',
+  scene_config: 'brief',
+  person_plan: 'assets',
+  scene_plan: 'scene',
+  person_sheet: 'assets',
+  person_dossier: 'assets',
+  scene_asset: 'scene',
+  scene_panorama: 'scene',
+  blueprint: 'plot',
+  script_package: 'plot',
+  storyboard: 'storyboard',
+  keyframe: 'final',
+  keyframes: 'final',
+  keyframe_contract: 'final',
+  video: 'final',
+  video_repair: 'final',
+  media: 'final',
+  tts: 'final',
+  compose: 'final',
+  final_video: 'final',
+  full: 'final',
+});
+
+export function normalizeGenerationStage(stage = '') {
+  let value = String(stage || '').trim().toLowerCase().replace(/^new_story_ad\./, '');
+  let previous = '';
+  while (value && value !== previous) {
+    previous = value;
+    value = value.replace(/_(?:queued|running|failed|done|ready|partial|cancelled)$/, '');
+  }
+  return value;
+}
+
+export function generationProgressOwningView(stage = '') {
+  return GENERATION_STAGE_OWNING_VIEW[normalizeGenerationStage(stage)] || '';
+}
+
 export function publicGenerationMessage(value = '', options = {}) {
   const text = String(value || '').trim();
   if (!text) return options.fallback || '';
@@ -122,7 +164,7 @@ export function generationProgressView(bundle = {}) {
   const active = Boolean(project.active_generation_id) || ['queued', 'running', 'processing'].includes(status);
   const failed = ['failed', 'blocked'].includes(status) || Boolean(project.error && !active);
   if (!active && !failed) return null;
-  const stage = String(progress.stage || project.active_stage || project.stage || 'full').toLowerCase();
+  const stage = normalizeGenerationStage(progress.stage || project.active_stage || project.stage || 'full') || 'full';
   const checkpointRecovery = checkpointRecoveryView(bundle);
   const total = checkpointRecovery?.total || Math.max(1, Math.floor(Number(progress.target_total || progress.total || 1) || 1));
   const completed = checkpointRecovery?.completed ?? Math.floor(Math.max(0, Math.min(total, Number(progress.completed ?? progress.processed ?? 0) || 0)));
@@ -170,6 +212,9 @@ export function generationProgressView(bundle = {}) {
 export function generationProgressPanel(bundle = {}, currentView = '') {
   const view = generationProgressView(bundle);
   if (!view) return '';
+  const owningView = generationProgressOwningView(view.stage);
+  if (currentView && view.failed && !owningView) return '';
+  if (currentView && owningView && currentView !== owningView) return '';
   if (currentView === 'assets' && view.checkpointRecovery) return '';
   const ready=bundle.navigation?.asset_plan_eligibility?.eligible === true;
   const recovery=view.stage === 'visual_assets' && currentView !== 'assets'

@@ -47,9 +47,11 @@ export function createProjectStore() {
 
   async function loadBundle(taskId, sections = 'all') {
     const bundle = await loadProjectBundle({ request, set, state, taskId, sections });
-    await hydrateReferenceFailure();
     syncProgressPolling();
     syncReferencePolling();
+    // Failure details are supplemental. Do not hold the first usable project
+    // view behind a second network round trip.
+    hydrateReferenceFailure();
     return bundle;
   }
   const mediaStore = () => import('./mediaCatalogStore.js?v=20260820-workspace-ux-v100'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);

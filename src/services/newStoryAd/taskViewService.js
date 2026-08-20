@@ -72,9 +72,27 @@ function createTaskViewService(deps = {}) {
     return { ...rawProgress, status, finished_at: rawProgress.finished_at || now, updated_at: now };
   }
 
-  function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false } = {}) {
+  function publicTaskBundle(taskId, { diagnostics = false, includeVideoMonitor = false, sections = '', workspaceSections = [] } = {}) {
     const rawBundle = storage.getTaskBundle(taskId, { diagnostics });
     const rawOutputs = rawBundle.outputs || [];
+    const requestedWorkspaceSections = new Set(
+      (Array.isArray(workspaceSections) && workspaceSections.length ? workspaceSections : String(sections || '').split(','))
+        .map(section => String(section || '').trim()).filter(Boolean),
+    );
+    const lightweightWorkspaceRead = requestedWorkspaceSections.size > 0
+      && [...requestedWorkspaceSections].every(section => ['summary', 'reference'].includes(section));
+    if (lightweightWorkspaceRead) {
+      const outputs = Object.fromEntries(rawOutputs.map(row => [row.kind, row.payload]));
+      return {
+        ...rawBundle,
+        outputs,
+        context: outputs.context || rawBundle.task?.request || {},
+        video_shot_statuses: [],
+        media_result: null,
+        storyboard_status: null,
+        keyframe_status: null,
+      };
+    }
     const invalidated = rawBundle.manifest?.invalidated || {};
     const hasCurrentSceneConfig = rawOutputs.some(row => String(row?.kind || '') === 'scene_config')
       && !Object.prototype.hasOwnProperty.call(invalidated, 'scene_config');

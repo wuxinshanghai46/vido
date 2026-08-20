@@ -29,7 +29,7 @@ const VIEW_MODULES = {
   workflow: () => import('./views/workflowView.js?v=20260820-workspace-ux-v100'),
 };
 const VIEW_SECTIONS = Object.freeze({
-  brief: 'summary,reference,assets',
+  brief: 'summary,reference',
   assets: 'summary,assets',
   scene: 'summary,assets,shots',
   plot: 'summary,assets,story',
@@ -315,7 +315,10 @@ async function renderRoute() {
   const loadedSections = new Set(store.state.bundleSections || []);
   const needsSections = !loadedSections.has('all') && requiredSections.some(section => !loadedSections.has(section));
   if (!route.isNew && (store.state.bundle?.project?.id !== route.taskId || needsSections)) {
-    app.innerHTML = '<div class="app-loading"><div class="loading-mark">剧</div><div><b>正在读取项目</b><span>只加载当前项目的统一数据包…</span></div></div>';
+    // Keep the application shell interactive while the current section is
+    // fetched. The view host owns its loading state; navigation no longer
+    // becomes a full-screen black gate.
+    renderProjectShell(route);
     await store.loadBundle(route.taskId, requiredSections.join(','));
   }
   const routeStep = store.state.bundle?.navigation?.steps?.[route.view];

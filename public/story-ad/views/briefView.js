@@ -103,7 +103,7 @@ export async function mount(host, context) {
     </section>` : ''}
     ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
     <div data-brief-settings-anchor>
-    <div class="two-column" data-brief-settings-layout>
+    <div data-brief-settings-layout>
       <div class="brief-main-column">
       <details class="card brief-settings" data-brief-settings>
         <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>手动编辑全部设置</b><small>对话与这里使用同一份项目数据；任一处修改都会同步到项目确认单。</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开设置</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
@@ -129,6 +129,11 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
 <label class="field brief-output-field"><span>画面比例</span><select class="select" name="output_ratio">${['9:16', '16:9', '1:1'].map(value => `<option ${brief.output_ratio === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>竖屏、横屏或方形</small></label>
 <label class="field brief-output-field"><span>视频分辨率</span><select class="select" name="video_resolution">${['1080p', '720p', '4K'].map(value => `<option ${brief.video_resolution === value ? 'selected' : ''}>${value}</option>`).join('')}</select><small>最终导出清晰度</small></label>
 </div></section>
+<section class="brief-config-section full" aria-labelledby="brief-optional-settings-title">
+<header class="brief-config-heading"><span class="brief-config-index">03</span><span><b id="brief-optional-settings-title">参考材料与识别信息</b><small>这些是可选精调项，不是创建项目的必经步骤。</small></span></header>
+${renderAdvancedReferenceControls(bundle, route.isNew)}
+<div class="brief-side-world-grid">${worldSettingFields(worldProfile, escapeHtml, { formId: 'storyAdBriefForm' })}</div>
+</section>
           <input type="hidden" name="benchmark_opening_hook" value="${escapeHtml(benchmark.opening_hook || '')}">
           <input type="hidden" name="benchmark_subject_introduction" value="${escapeHtml(benchmark.subject_introduction || '')}">
           <input type="hidden" name="benchmark_proof_sequence" value="${escapeHtml(benchmark.proof_sequence || '')}">
@@ -142,18 +147,6 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
         </form>
       </details>
       </div>
-      <aside class="brief-side-column">
-        <section class="card brief-advanced-config">
-          <div class="card-head"><div><h2>高级配置</h2><p>按需添加参考材料并确认 AI 识别信息；不使用参考材料也可以直接创建项目。</p></div></div>
-          <div class="card-body brief-advanced-config-body">
-            ${renderAdvancedReferenceControls(bundle, route.isNew)}
-            <section class="brief-ai-recognition" aria-labelledby="brief-world-settings-title">
-              <div class="brief-advanced-section-head"><h3 id="brief-world-settings-title">AI 识别信息</h3><p>系统可根据内容目标和参考材料识别以下信息；识别结果会显示在这里，你也可以手动修改。</p></div>
-              <div class="brief-side-world-grid">${worldSettingFields(worldProfile, escapeHtml, { formId: 'storyAdBriefForm' })}</div>
-            </section>
-          </div>
-        </section>
-      </aside>
     </div>
     </div>
     <div data-reference-understanding-host></div>
@@ -424,7 +417,9 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
 
   dialogueCleanup = bindBriefDialogueWorkflow(host, {
     form,
+    referenceAttached,
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
+    onReferenceLink: () => host.querySelector('[data-reference-link]')?.click(),
     ensureProject,
     proceed: proceedToPlot,
     onError: (error, button) => { setButtonBusy(button, false); toast(error.message, 'danger'); },

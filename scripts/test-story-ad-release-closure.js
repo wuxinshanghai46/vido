@@ -35,6 +35,8 @@ function main() {
   assert(selected.has('.gitattributes'), '服务器发布回归依赖的换行契约必须进入发布闭包');
   assert(selected.has('scripts/audit-new-story-ad-systemic-state.js'), '发布闭包必须包含迁移后审计入口');
   assert(selected.has('scripts/test-story-ad-workspace-v6-ui-regressions.js'), '发布闭包必须包含候选 UI 定向回归');
+  assert(selected.has('scripts/test-story-ad-dialogue-intake-v100.js'), '发布闭包必须包含对话式立项状态矩阵');
+  assert(selected.has('scripts/test-story-ad-lightweight-bundle-v100.js'), '发布闭包必须包含首屏轻量投影调用门禁');
   assert(selected.has('scripts/test-story-ad-platform-narrative-release-v111.js'), '发布闭包必须包含候选剧情定向回归');
   assert(selected.has('scripts/migrate-story-ad-person-demographics-v63.js'), '发布闭包必须包含历史人物人口属性零模型迁移入口');
   assert(selected.has('scripts/test-story-ad-history-edit-entry-final-dom-v63.js'), '发布闭包必须包含历史步骤编辑入口最终 DOM 回归');
