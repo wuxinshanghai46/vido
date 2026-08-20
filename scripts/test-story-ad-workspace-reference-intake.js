@@ -673,10 +673,10 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     assert.equal(context.cast_mode, 'multi');
 
     let bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
-    assert.equal(bundle.navigation.steps.brief.completed, false, '只完成识别时还未完成资产方案创建');
-    assert.equal(bundle.navigation.steps.assets.enabled, true, '识别有效后必须能进入资产中心');
-    assert.equal(bundle.navigation.steps.plot.enabled, false, '资产方案未确认时不得越级进入剧情室');
-    assert.equal(bundle.navigation.current, 'brief', '资产方案尚未创建时当前环节仍应停留在目标页');
+    assert.equal(bundle.navigation.steps.brief.completed, true, '识别完成并形成有效设想后应完成对话立项');
+    assert.equal(bundle.navigation.steps.plot.enabled, true, '识别有效后必须先开放剧情与对白');
+    assert.equal(bundle.navigation.steps.assets.enabled, false, '剧情尚未生成时不得越级进入人物资产');
+    assert.equal(bundle.navigation.current, 'plot', '识别完成后的当前环节必须进入剧情与对白');
 
     context = storage.getOutput(taskId, 'context');
     referenceConfirmation.confirm(taskId, context, {
@@ -711,8 +711,8 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     assert.equal(bundle.assets.scenes.length, 16, '长参考视频的场景目录不得静默截断为前 12 个');
     const plannedSceneIds = new Set(bundle.assets.scenes.map(item => item.id));
     assert.equal(bundle.storyboard.shots.every(shot => plannedSceneIds.has(shot.scene_id)), true, '每个参考分镜的 scene_id 都必须能解析到资产中心场景');
-    assert.equal(bundle.navigation.steps.plot.enabled, false);
-    assert.equal(bundle.navigation.current, 'assets', '资产方案创建后必须进入确认资产环节');
+    assert.equal(bundle.navigation.steps.plot.enabled, true);
+    assert.equal(bundle.navigation.current, 'plot', '兼容资产投影不得绕过尚未确认的剧情环节');
 
     storyAd.updateTaskRequest(taskId, { asset_setup_confirmed: true }, user);
     bundle = bundles.buildProjectBundle(taskId, { sections: 'all', user });
@@ -730,7 +730,7 @@ async function testFamilyRecognitionAndSequentialWorkflowGates() {
     assert.equal(bundle.navigation.steps.plot.completed, true);
     assert.equal(bundle.navigation.steps.storyboard.enabled, true);
     assert.equal(bundle.navigation.steps.final.enabled, false);
-    assert.equal(bundle.navigation.current, 'storyboard');
+    assert.equal(bundle.navigation.current, 'scene', '剧情和人物确认后必须先核对场景，再进入分镜');
 
     storage.saveOutput(taskId, 'storyboard_table', [{
       shot_index: 1,
