@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260820-dialogue-flow-v94';
+import { request } from '../api.js?v=20260820-workspace-ux-v98';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
