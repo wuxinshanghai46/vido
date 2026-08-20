@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v87';
-import { personAgeDisplay } from './assetCenterPersonState.js?v=20260820-dialogue-flow-v87';
-import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260820-dialogue-flow-v87';
-import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260820-dialogue-flow-v87';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v88';
+import { personAgeDisplay } from './assetCenterPersonState.js?v=20260820-dialogue-flow-v88';
+import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260820-dialogue-flow-v88';
+import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260820-dialogue-flow-v88';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};
