@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v88';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v89';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

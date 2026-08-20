@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v88';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v89';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
