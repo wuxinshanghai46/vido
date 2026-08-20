@@ -31,7 +31,7 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
   const clipsReady = list(outputs.video_clips).length > 0;
   const finalReady = Boolean(outputs.final_video?.video_url || outputs.final_video?.videoUrl);
   const assetSetupComplete = context.asset_setup_confirmed === true
-    || blueprintReady || storyboardReady || keyframesReady || clipsReady || finalReady;
+    || storyboardReady || keyframesReady || clipsReady || finalReady;
   const shotDesignComplete = context.shot_design_confirmed === true || keyframesReady || clipsReady || finalReady;
   const step = (enabled, completed, blocker, nextView) => ({
     enabled,
@@ -48,18 +48,18 @@ function build({ task = {}, context = {}, outputs = {}, counts = {}, clean, list
     },
     asset_plan_eligibility: planEligibility,
     steps: {
-      brief: step(true, assetPlanReady, '', 'assets'),
-      assets: step(briefInputReady || assetPlanReady, assetSetupComplete, referenceAttached && !referenceReady
-        ? '请等待参考视频分析成功后再创建资产。'
-        : '请先填写项目名称和内容目标。', 'scene'),
-      scene: step(assetSetupComplete, assetSetupComplete, '请先在人物资产中确认人物、动物和必要展示主体。', 'plot'),
-      plot: step(assetSetupComplete, blueprintReady, '请先确认人物资产与场景世界的文字规划。', 'storyboard'),
-      storyboard: step(blueprintReady, storyboardReady && shotDesignComplete, '请先在第 4 步生成或保存剧本。', 'final'),
+      brief: step(true, briefInputReady, '', 'plot'),
+      plot: step(briefInputReady || blueprintReady, blueprintReady, referenceAttached && !referenceReady
+        ? '请等待参考视频分析成功并确认理解结果。'
+        : '请先通过对话确认项目名称、内容类型和核心设想。', 'assets'),
+      assets: step(blueprintReady || assetPlanReady, assetSetupComplete, '请先生成并确认详细剧情与对白。', 'scene'),
+      scene: step(assetSetupComplete, storyboardReady, '请先根据已确认剧情提取并确认人物方案。', 'storyboard'),
+      storyboard: step(assetSetupComplete && blueprintReady, storyboardReady && shotDesignComplete, '请先确认人物与场景规划。', 'final'),
       final: step(shotDesignComplete, finalReady, '请先完成并确认全部镜头设计。', ''),
       workflow: step(true, finalReady, '', ''),
     },
   };
-  result.current = ['brief', 'assets', 'scene', 'plot', 'storyboard', 'final']
+  result.current = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final']
     .find(view => result.steps[view].enabled && !result.steps[view].completed) || 'final';
   return result;
 }

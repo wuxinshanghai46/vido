@@ -5,6 +5,7 @@ const storage = require('./storageService');
 const contentSkill = require('./contentSkillService');
 const storySceneCoverage = require('./storySceneCoverageService');
 const taskStateAudit = require('./taskStateAuditService');
+const authorityLifecycle = require('./authorityLifecycleService');
 const releaseBundle = require('../storyAdReleaseBundleService');
 
 const CANDIDATE_KIND = 'asset_plan_candidate';
@@ -225,12 +226,13 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
   const preflightIssues = contentSkill.mode(context.content_mode || context.product_presentation?.mode) === 'narrative_story'
     ? storySceneCoverage.coverageIssues(candidate, context)
     : [];
-  storage.saveOutput(taskId, CANDIDATE_KIND, {
+  const validatedCandidate = {
     ...candidate,
     validation_status: preflightIssues.length ? 'rejected' : 'passed',
     validation_issues: preflightIssues,
-  });
+  };
   if (preflightIssues.length) {
+    storage.saveOutput(taskId, CANDIDATE_KIND, validatedCandidate);
     const error = new Error(`资产计划候选未通过当前合同：${preflightIssues.join('；')}`);
     error.code = 'ASSET_PLAN_CANDIDATE_REJECTED';
     error.status = 422;
@@ -250,7 +252,7 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
   };
   // ACTIVE_KIND is the sole generation authority. The legacy asset_plan output
   // remains a read projection only and cannot authorize paid execution.
-  storage.saveOutput(taskId, ACTIVE_KIND, {
+  const nextActive = {
     plan_id: candidateId,
     active_revision: activeRevision,
     content_revision: activePlan.content_revision,
@@ -260,6 +262,21 @@ function publish(taskId, rawPlan = {}, { fingerprint = '', source = '', model_me
     domain_state: activePlan.domain_state,
     plan: activePlan,
     activated_at: activePlan.activated_at,
+  };
+  storage.withWriteBatch(() => {
+    const authority = authorityLifecycle.activate(taskId, activePlan, nextActive, validatedCandidate);
+    Object.assign(activePlan, {
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+    });
+    storage.saveOutput(taskId, ACTIVE_KIND, {
+      ...nextActive,
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+      plan: activePlan,
+    });
   });
   return activePlan;
 }
@@ -279,8 +296,10 @@ function carryForward(taskId, { contentRevision = 0, reason = '' } = {}) {
   if (blockingIssues.length) return null;
   const carriedAt = new Date().toISOString();
   const activeRevision = Math.max(1, Number(active.active_revision || plan.active_revision || 0) + 1);
+  const candidateId = crypto.randomUUID();
   const carriedPlan = {
     ...plan,
+    candidate_id: candidateId,
     content_revision: nextContentRevision,
     domain_state: Object.fromEntries(PLAN_DOMAINS.map(domain => [domain, {
       ...(plan.domain_state?.[domain] || domainMarker(plan, active)),
@@ -291,14 +310,37 @@ function carryForward(taskId, { contentRevision = 0, reason = '' } = {}) {
     carried_forward_at: carriedAt,
     carried_forward_reason: String(reason || ''),
   };
-  storage.saveOutput(taskId, ACTIVE_KIND, {
+  const carriedCandidate = {
+    ...carriedPlan,
+    status: 'candidate',
+    validation_status: 'passed',
+    validation_issues: [],
+    carried_from_plan_id: active.plan_id || plan.candidate_id || '',
+  };
+  const nextActive = {
     ...active,
+    plan_id: candidateId,
     active_revision: activeRevision,
     content_revision: nextContentRevision,
     plan: carriedPlan,
     carried_forward_at: carriedAt,
     carried_forward_reason: String(reason || ''),
-  }, { content_revision: nextContentRevision });
+  };
+  storage.withWriteBatch(() => {
+    const authority = authorityLifecycle.activate(taskId, carriedPlan, nextActive, carriedCandidate);
+    Object.assign(carriedPlan, {
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+    });
+    storage.saveOutput(taskId, ACTIVE_KIND, {
+      ...nextActive,
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+      plan: carriedPlan,
+    }, { content_revision: nextContentRevision });
+  });
   return carriedPlan;
 }
 
@@ -385,10 +427,26 @@ function migrateCompatibleRelease(taskId, {
     reason: clean(reason),
     migrated_at: migratedAt,
   };
-  // Publish Active last. JSON uses one atomic batch; SQLite/Work may span
-  // physical writes, so any earlier failure leaves the old Active authority in
-  // place and a later retry can safely complete the same migration.
+  // The storage batch is a real SQLite transaction (or one atomic JSON batch),
+  // so authority, plan, candidate and migration become visible together.
   storage.withWriteBatch(() => {
+    const authority = authorityLifecycle.activate(taskId, nextPlan, nextActive, nextCandidate);
+    Object.assign(nextPlan, {
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+    });
+    Object.assign(nextActive, {
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+      plan: nextPlan,
+    });
+    Object.assign(nextCandidate, {
+      authority_id: authority.authority_id,
+      authority_token: authority.authority_token,
+      execution_identity: authority.execution_identity,
+    });
     storage.saveOutput(taskId, CANDIDATE_KIND, nextCandidate, { content_revision: compatibility.content_revision });
     storage.saveOutput(taskId, 'asset_plan', nextPlan, { content_revision: compatibility.content_revision });
     storage.saveOutput(taskId, RELEASE_MIGRATION_KIND, migrationRecord, { content_revision: compatibility.content_revision });

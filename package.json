@@ -27,6 +27,7 @@
     "story-ad:reference-authority:repair": "node scripts/repair-story-ad-reference-authority.js",
     "story-ad:active-plan-release:migrate": "node scripts/migrate-story-ad-active-plan-release.js",
     "story-ad:active-plan-release:test": "node scripts/test-story-ad-active-plan-release-migration-v52.js && node scripts/test-story-ad-person-plan-submit-ui-v52.js",
+    "story-ad:v85:test": "node scripts/test-story-ad-sqlite-write-batch-v85.js && node scripts/test-story-ad-sqlite-write-batch-v85.js --python && node scripts/test-story-ad-authority-lifecycle-v85.js && node scripts/test-story-ad-authority-lifecycle-v85.js --python && node scripts/test-story-ad-dialogue-flow-v85.js && node scripts/test-dashboard-hover-preview-v85.js && npm run story-ad:active-plan-release:test && npm run story-ad:v217:test",
     "story-ad:director-canvas:test": "node scripts/test-story-ad-workflow-director-nodes.js",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",

@@ -5,6 +5,7 @@ const videoCore = require('../videoGenerationCore');
 const releaseBundle = require('../storyAdReleaseBundleService');
 const assetPlanCheckpointLineage = require('./assetPlanCheckpointLineageService');
 const generationUnits = require('./generationUnitService');
+const authorityLifecycle = require('./authorityLifecycleService');
 
 const runningJobs = new Map();
 const EXECUTING_STAGES = new Set(['full', 'script_package', 'scene_config', 'visual_assets', 'blueprint', 'storyboard', 'scene_asset', 'scene_panorama', 'keyframes', 'tts', 'video', 'compose', 'media']);
@@ -358,6 +359,7 @@ function queueStage({
   snapshotId = '',
   inputFingerprint = '',
   idempotencyKey = '',
+  authorityContext = null,
 }) {
   if (!taskId || !stage || typeof execute !== 'function') throw new Error('剧情广告后台任务参数不完整');
   const key = jobKey(taskId);
@@ -408,6 +410,9 @@ function queueStage({
   const id = uuidv4();
   const queuedAt = new Date().toISOString();
   const queuedRelease = releaseBundle.identity();
+  const authority = authorityContext
+    ? authorityLifecycle.assertCurrent(taskId, authorityContext)
+    : null;
   const unitClaim = generationUnits.claim({
     work_id: String(taskId),
     domain: String(stage),
@@ -417,6 +422,8 @@ function queueStage({
     spec_revision: expectedRevision,
     provider_id: 'internal-orchestrator',
     model_id: queuedRelease.bundle_id,
+    authority_id: authority?.authority_id || '',
+    execution_identity: authority?.execution_identity || '',
   }, { explicit_user_retry: true });
   if (!unitClaim.claimed) {
     const prior = unitClaim.unit || {};
@@ -446,6 +453,9 @@ function queueStage({
     orchestration_job_id: id,
     snapshot_id: resolvedSnapshotId,
     release_bundle_id: queuedRelease.bundle_id,
+    authority_id: authority?.authority_id || '',
+    authority_token: authority?.authority_token || '',
+    execution_identity: authority?.execution_identity || '',
     billing_state: 'not_submitted',
     provider_submission_state: 'not_applicable',
     queued_at: queuedAt,
@@ -472,6 +482,9 @@ function queueStage({
     releaseBundleId: queuedRelease.bundle_id,
     releaseEnvelope: queuedRelease,
     generationUnitId: queuedUnit.id,
+    authorityId: authority?.authority_id || '',
+    authorityToken: authority?.authority_token || '',
+    executionIdentity: authority?.execution_identity || '',
   };
   runningJobs.set(key, job);
   storage.updateTask(taskId, {
@@ -502,6 +515,8 @@ function queueStage({
       idempotency_key: job.idempotencyKey,
       deadline_ms: job.deadlineMs,
       release_bundle_id: job.releaseBundleId,
+      authority_id: job.authorityId,
+      execution_identity: job.executionIdentity,
     },
   });
 
@@ -514,6 +529,9 @@ function queueStage({
       snapshotId: job.snapshotId,
       expectedContentRevision: expectedRevision,
       inputFingerprint: job.inputFingerprint,
+      authorityId: job.authorityId,
+      authorityToken: job.authorityToken,
+      executionIdentity: job.executionIdentity,
     }, async () => {
     if (cancellation.isCancelled(id)) {
       setTimeout(() => {
@@ -523,6 +541,13 @@ function queueStage({
     }
     try {
     const beforeRun = storage.getTask(taskId);
+    if (job.authorityId) authorityLifecycle.assertCurrent(taskId, {
+      authority_id: job.authorityId,
+      authority_token: job.authorityToken,
+      execution_identity: job.executionIdentity,
+      content_revision: expectedRevision,
+      release_bundle_id: job.releaseBundleId,
+    });
     if (releaseBundle.identity().bundle_id !== job.releaseBundleId) {
       const error = new Error('任务排队期间运行版本已经变化，旧版本任务已停止');
       error.code = 'STALE_RELEASE_EPOCH';
@@ -568,6 +593,13 @@ function queueStage({
       });
       cancellation.throwIfCancelled(taskId);
       const afterExecute = storage.getTask(taskId);
+      if (job.authorityId) authorityLifecycle.assertCurrent(taskId, {
+        authority_id: job.authorityId,
+        authority_token: job.authorityToken,
+        execution_identity: job.executionIdentity,
+        content_revision: expectedRevision,
+        release_bundle_id: job.releaseBundleId,
+      });
       if (releaseBundle.identity().bundle_id !== job.releaseBundleId) {
         const error = new Error('生成完成时运行版本已经变化，旧版本结果不会发布');
         error.code = 'STALE_RELEASE_EPOCH';

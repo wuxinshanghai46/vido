@@ -85,14 +85,14 @@ export async function mount(host, context) {
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
   host.innerHTML = `
     <section class="view-head">
-      <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情剧本' : '广告脚本'}</h1><p>第 4 步只处理对应内容类型的剧本；人物、展示主体和场景引用已经在上游确认。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
+      <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn ${isReferenceDraft ? 'primary' : ''}" type="button" data-save-story>${isReferenceDraft ? '保存参考故事草稿' : '保存剧情'}</button>${!isReferenceDraft ? '<button class="btn" type="button" data-regenerate-story>批量重生成全部剧情</button><button class="btn primary" type="button" data-open-storyboard>进入分镜台</button>' : ''}` : '<button class="btn primary" type="button" data-generate-story>批量生成全部剧情</button>'}
+        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button><button class="btn ${isReferenceDraft ? 'primary' : ''}" type="button" data-save-story>${isReferenceDraft ? '保存参考故事草稿' : '保存剧情'}</button>${!isReferenceDraft ? '<button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>' : ''}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
       </div>
     </section>
     ${domainContractBanner(bundle.brief || {})}
-    <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请在本环节修改故事与情节点，保存后再进入分镜。' : '先确认故事因果和品牌目标，再进入分镜。修改剧情会使下游镜头按现有版本规则失效。'}</div>
+    <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请先补齐分段、动作和对白，确认后再提取人物。' : '先确认故事因果、每段动作和对白。人物、场景、线稿与分镜都从这份已确认剧情继续，避免先生成资产再反过来改故事。'}</div>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
     ${blueprint ? `<div class="plot-layout">
       <aside class="card">
@@ -109,8 +109,8 @@ export async function mount(host, context) {
       </section>
     </div>` : `<section class="card">${emptyState({
       title: '还没有剧情蓝图',
-      body: '系统会根据当前目标、人物、商品和场景生成剧情；不会引用原型或其他任务内容。',
-      action: '批量生成全部剧情',
+      body: '系统会根据当前对话确认单生成详细剧情、动作、旁白与对白；不会引用其他项目内容。',
+      action: '生成详细剧情与对白',
       actionId: 'generate-story',
     })}</section>`}`;
 
@@ -228,6 +228,6 @@ export async function mount(host, context) {
     }
   });
   host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => {
-    context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`);
+    context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=assets`);
   });
 }

@@ -215,6 +215,66 @@ function upsertMany(collection, rows = []) {
   return records.map(rec => jsonParse(rec.payload_json));
 }
 
+function applyAtomicChanges(changes = []) {
+  const normalizedChanges = (Array.isArray(changes) ? changes : [])
+    .map(change => ({
+      collection: String(change?.collection || '').trim(),
+      upserts: Array.isArray(change?.upserts) ? change.upserts : [],
+      removeIds: [...new Set((Array.isArray(change?.removeIds) ? change.removeIds : []).map(String).filter(Boolean))],
+    }))
+    .filter(change => change.collection && (change.upserts.length || change.removeIds.length));
+  if (!normalizedChanges.length) return { upserted: 0, removed: 0, changed_collections: [] };
+  const db = requireDatabase();
+  const operations = [];
+  let upserted = 0;
+  let removed = 0;
+  for (const change of normalizedChanges) {
+    invalidateCollection(change.collection);
+    for (const id of change.removeIds) {
+      operations.push({
+        sql: 'DELETE FROM content_records WHERE collection = ? AND id = ?',
+        params: [change.collection, id],
+      });
+      removed += 1;
+    }
+    for (const row of change.upserts) {
+      const rec = normalize(change.collection, row);
+      operations.push({
+        sql: `
+          INSERT INTO content_records (
+            id, collection, user_id, project_id, account_id, type, status, payload_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(collection, id) DO UPDATE SET
+            user_id=excluded.user_id,
+            project_id=excluded.project_id,
+            account_id=excluded.account_id,
+            type=excluded.type,
+            status=excluded.status,
+            payload_json=excluded.payload_json,
+            updated_at=excluded.updated_at
+        `,
+        params: [
+          rec.id, rec.collection, rec.user_id, rec.project_id, rec.account_id,
+          rec.type, rec.status, rec.payload_json, rec.created_at, rec.updated_at,
+        ],
+      });
+      upserted += 1;
+    }
+  }
+  if (typeof db.batch === 'function') db.batch(operations);
+  else {
+    const apply = db.transaction(() => {
+      for (const operation of operations) db.prepare(operation.sql).run(...operation.params);
+    });
+    apply();
+  }
+  return {
+    upserted,
+    removed,
+    changed_collections: normalizedChanges.map(change => change.collection),
+  };
+}
+
 function normaliseFilters(filters = {}) {
   return Object.entries(filters || {})
     .filter(([key, value]) => LIST_FILTER_COLUMNS.has(key) && value !== undefined && value !== null && value !== '' && value !== 'all')
@@ -295,6 +355,7 @@ function pruneBefore(collection, field, ts) {
 }
 
 module.exports = {
+  applyAtomicChanges,
   get,
   list,
   pruneBefore,

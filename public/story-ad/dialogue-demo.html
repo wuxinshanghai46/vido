@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>VIDO 导演助理 · 对话式立项 Demo</title>
+  <link rel="stylesheet" href="/story-ad/dialogue-demo.css?v=20260820-dialogue-demo-v2">
+</head>
+<body>
+  <div class="demo-shell">
+    <header class="demo-topbar">
+      <a class="brand" href="/story-ad/" aria-label="返回剧情广告">
+        <span>V</span><b>VIDO</b><i>剧情广告</i>
+      </a>
+      <div class="demo-title">
+        <b>导演助理 · 对话式立项</b>
+        <span>第一步交互原型</span>
+      </div>
+      <div class="demo-badge"><span></span>本地 Demo · 不调用模型</div>
+      <button class="ghost-button" type="button" data-reset>重新体验</button>
+    </header>
+
+    <main class="demo-workspace">
+      <aside class="stage-rail" aria-label="制作流程">
+        <div class="stage-heading">
+          <small>剧情广告制作</small>
+          <strong>从想法到成片</strong>
+        </div>
+        <ol class="stage-list">
+          <li class="is-active" data-stage="brief"><span>01</span><div><b>对话立项</b><small>正在整理创作设想</small></div></li>
+          <li data-stage="plot"><span>02</span><div><b>剧情与对白</b><small>详细剧本确认</small></div></li>
+          <li data-stage="person"><span>03</span><div><b>人物</b><small>从剧情提取人物</small></div></li>
+          <li data-stage="scene"><span>04</span><div><b>场景</b><small>按分场规划空间</small></div></li>
+          <li data-stage="draft"><span>05</span><div><b>镜头线稿</b><small>低成本确认构图</small></div></li>
+          <li data-stage="storyboard"><span>06</span><div><b>正式分镜</b><small>关键帧与提示词</small></div></li>
+          <li data-stage="final"><span>07</span><div><b>镜头与合成</b><small>确认费用后生成</small></div></li>
+        </ol>
+        <div class="rail-note">
+          <b>本阶段不会生成图片或视频</b>
+          <p>只整理需求和剧情草案，不产生视觉生成费用。</p>
+        </div>
+      </aside>
+
+      <section class="conversation-panel" aria-labelledby="conversationTitle">
+        <header class="conversation-header">
+          <div class="director-avatar">导</div>
+          <div><h1 id="conversationTitle">导演助理</h1><p><span></span>在线 · 帮你把想法整理成可执行剧本</p></div>
+          <button class="sample-button" type="button" data-sample>载入示例</button>
+        </header>
+
+        <div class="conversation-scroll" data-conversation aria-live="polite"></div>
+
+        <footer class="composer">
+          <div class="composer-context" data-composer-context>当前：先选择想制作的内容类型</div>
+          <div class="composer-box">
+            <button class="attach-button" type="button" aria-label="添加参考材料" data-attach>＋</button>
+            <textarea rows="1" data-input placeholder="也可以直接说：我想做一个30秒的不锈钢品牌广告…"></textarea>
+            <button class="send-button" type="button" data-send aria-label="发送">发送</button>
+          </div>
+          <div class="composer-foot"><span>Enter 发送 · Shift + Enter 换行</span><span>AI建议不会自动视为你的确认</span></div>
+        </footer>
+      </section>
+
+      <aside class="contract-panel" aria-labelledby="contractTitle">
+        <header>
+          <div><small>实时结构化</small><h2 id="contractTitle">项目确认单</h2></div>
+          <span class="draft-tag">草稿</span>
+        </header>
+        <div class="completion"><div><span data-progress-bar></span></div><b data-progress-text>15%</b></div>
+        <p class="contract-hint">左侧每轮对话都会更新这里。只有你确认过的信息，才会进入正式项目。</p>
+
+        <section class="contract-section">
+          <h3>基础信息</h3>
+          <dl>
+            <div><dt>项目名称</dt><dd data-field="projectName">待根据创意命名</dd></div>
+            <div><dt>内容类型</dt><dd data-field="contentMode"><em>待确认</em></dd></div>
+            <div class="is-wide"><dt>核心创意</dt><dd data-field="idea"><em>等待你的描述</em></dd></div>
+          </dl>
+        </section>
+
+        <section class="contract-section">
+          <h3>成片规格</h3>
+          <dl class="three-column">
+            <div><dt>时长</dt><dd data-field="duration">30秒 <i>建议</i></dd></div>
+            <div><dt>画幅</dt><dd data-field="ratio">9:16 <i>建议</i></dd></div>
+            <div><dt>清晰度</dt><dd data-field="resolution">1080p</dd></div>
+          </dl>
+        </section>
+
+        <section class="contract-section">
+          <h3>世界与视觉</h3>
+          <dl>
+            <div><dt>时代 / 地区</dt><dd data-field="world"><em>待识别</em></dd></div>
+            <div><dt>画面形态</dt><dd data-field="medium"><em>待确认</em></dd></div>
+            <div class="is-wide"><dt>视觉方向</dt><dd data-field="style"><em>等待剧情方向</em></dd></div>
+          </dl>
+        </section>
+
+        <section class="evidence-section">
+          <h3>信息依据</h3>
+          <div class="evidence-row"><span class="user-source">用户明确</span><b data-user-count>0 项</b></div>
+          <div class="evidence-row"><span class="ai-source">AI 建议</span><b data-ai-count>3 项</b></div>
+          <div class="evidence-row"><span class="pending-source">等待确认</span><b data-pending-count>5 项</b></div>
+        </section>
+
+        <button class="confirm-button" type="button" data-confirm disabled>确认设想，生成剧情草案</button>
+        <button class="professional-button" type="button" data-professional>手动编辑全部设置</button>
+      </aside>
+    </main>
+  </div>
+
+  <div class="demo-toast" data-toast role="status" aria-live="polite"></div>
+  <script type="module" src="/story-ad/dialogue-demo.js?v=20260820-dialogue-demo-v2"></script>
+</body>
+</html>

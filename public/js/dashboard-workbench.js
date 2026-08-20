@@ -120,14 +120,13 @@
   function videoCard(video, index) {
     const duration = formatDuration(video.duration);
     const classes = index === 0 ? 'wb-video-card is-featured' : 'wb-video-card';
-    return `<article class="${classes}" data-video-id="${safe(video.id)}">
+    return `<article class="${classes}" data-video-id="${safe(video.id)}" role="button" tabindex="0" aria-label="预览${safe(video.title)}，点击打开视频">
       <div class="wb-video-media">
         ${video.thumbnail_url ? `<img class="wb-video-backdrop" src="${safe(video.thumbnail_url)}" alt="" loading="lazy" decoding="async" aria-hidden="true">` : ''}
-        <video class="wb-video-thumb" muted playsinline preload="metadata" data-video-src="${safe(video.video_url)}" aria-label="${safe(video.title)}第一帧"></video>
+        <video class="wb-video-thumb" muted playsinline loop preload="metadata" data-video-src="${safe(video.video_url)}" aria-hidden="true"></video>
         <div class="wb-video-fallback wb-video-placeholder">VIDO</div>
         ${video.thumbnail_url ? `<img class="wb-video-fallback wb-video-fallback-image" src="${safe(video.thumbnail_url)}" alt="${safe(video.title)}缩略图" loading="lazy" decoding="async">` : ''}
         <span class="wb-video-type">${safe(video.type)}</span>${duration ? `<span class="wb-video-duration">${duration}</span>` : ''}
-        <button class="wb-play-button" data-play-video="${safe(video.id)}" aria-label="播放${safe(video.title)}">▶</button>
         <div class="wb-video-copy"><b>${safe(video.title)}</b><small>${safe(video.time_ago || '')}</small></div>
       </div>
     </article>`;
@@ -169,6 +168,27 @@
       video.src = `${source}${source.includes('#') ? '' : '#t=0.08'}`;
       video.load();
     };
+    videos.forEach(video => {
+      const card = video.closest('.wb-video-card');
+      if (!card || card.dataset.previewBound === '1') return;
+      card.dataset.previewBound = '1';
+      const play = () => {
+        load(video);
+        video.muted = true;
+        video.loop = true;
+        card.classList.add('is-previewing');
+        video.play().catch(() => card.classList.remove('is-previewing'));
+      };
+      const stop = () => {
+        video.pause();
+        card.classList.remove('is-previewing');
+        try { video.currentTime = Math.min(0.08, Math.max(0, (video.duration || 1) / 2)); } catch {}
+      };
+      card.addEventListener('pointerenter', play);
+      card.addEventListener('pointerleave', stop);
+      card.addEventListener('focus', play);
+      card.addEventListener('blur', stop);
+    });
     if (!('IntersectionObserver' in window)) return videos.forEach(load);
     const observer = new IntersectionObserver(entries => entries.forEach(entry => {
       if (!entry.isIntersecting) return;
@@ -224,8 +244,8 @@
     page.onclick = event => {
       const resume = event.target.closest('[data-resume]');
       if (resume) return go(resume.dataset.resume);
-      const play = event.target.closest('[data-play-video]');
-      if (play) return openVideo(play.dataset.playVideo);
+      const videoCard = event.target.closest('.wb-video-card[data-video-id]');
+      if (videoCard) return openVideo(videoCard.dataset.videoId);
       const filter = event.target.closest('[data-video-filter]');
       if (filter) { state.videoFilter = filter.dataset.videoFilter; state.videoLimit = 8; return renderVideos(); }
       const close = event.target.closest('[data-close-modal]');
@@ -233,6 +253,11 @@
       if (close?.dataset.closeModal === 'creator') return closeCreator();
     };
     document.addEventListener('keydown', event => {
+      const videoCard = event.target.closest?.('.wb-video-card[data-video-id]');
+      if (videoCard && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        return openVideo(videoCard.dataset.videoId);
+      }
       if (event.key !== 'Escape') return;
       if (!document.getElementById('wb-player-modal')?.hidden) closePlayer();
       if (!document.getElementById('wb-creator-modal')?.hidden) closeCreator();

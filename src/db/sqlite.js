@@ -68,7 +68,13 @@ class NodeSqliteDatabase {
   }
 
   prepare(sql) {
-    return this.raw.prepare(sql);
+    const statement = this.raw.prepare(sql);
+    const normalizedArgs = args => (args.length === 1 && Array.isArray(args[0]) ? args[0] : args);
+    return {
+      run: (...args) => statement.run(...normalizedArgs(args)),
+      get: (...args) => statement.get(...normalizedArgs(args)),
+      all: (...args) => statement.all(...normalizedArgs(args)),
+    };
   }
 
   transaction(fn) {

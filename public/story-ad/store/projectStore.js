@@ -6,6 +6,7 @@ export function createProjectStore() {
     projects: [],
     stats: {},
     bundle: null,
+    bundleSections: [],
     loading: false,
     saving: false,
     error: '',
@@ -48,7 +49,11 @@ export function createProjectStore() {
     try {
       if (state.bundle?.project?.id && state.bundle.project.id !== taskId) state.progressRevision = '';
       const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`);
-      set({ bundle: data.bundle, loading: false });
+      set({
+        bundle: data.bundle,
+        bundleSections: sections === 'all' ? ['all'] : String(sections).split(',').map(item => item.trim()).filter(Boolean),
+        loading: false,
+      });
       await hydrateReferenceFailure();
       syncProgressPolling();
       syncReferencePolling();
@@ -73,7 +78,9 @@ export function createProjectStore() {
       navigation: { ...(current.navigation || {}), ...(data.bundle.navigation || {}) },
       revisions: { ...(current.revisions || {}), ...(data.bundle.revisions || {}) },
     };
-    set({ bundle: next });
+    const loaded = new Set(state.bundleSections || []);
+    String(sections || '').split(',').map(item => item.trim()).filter(Boolean).forEach(item => loaded.add(item));
+    set({ bundle: next, bundleSections: [...loaded] });
     return next;
   }
 
@@ -481,7 +488,7 @@ export function createProjectStore() {
   function clearProject() {
     stopProgressPolling();
     stopReferencePolling();
-    set({ bundle: null, saving: false, error: '', progressRevision: '' });
+    set({ bundle: null, bundleSections: [], saving: false, error: '', progressRevision: '' });
   }
 
   async function videoPreflight(mode = 'economy') {

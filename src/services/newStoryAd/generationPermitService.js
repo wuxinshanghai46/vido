@@ -4,10 +4,12 @@ const crypto = require('crypto');
 const storage = require('./storageService');
 const publication = require('./assetPlanPublicationService');
 const releaseBundle = require('../storyAdReleaseBundleService');
+const authorityLifecycle = require('./authorityLifecycleService');
 
 const PROTECTED_STAGES = new Set([
   'subject_assets', 'person_provider_sync', 'scene_asset', 'visual_assets', 'scene_panorama', 'product_asset',
-  'blueprint', 'script_package', 'storyboard', 'keyframes', 'tts', 'video', 'media', 'full',
+  'person_plan', 'scene_plan', 'scene_config', 'storyboard', 'line_art',
+  'keyframes', 'tts', 'video', 'media', 'compose', 'final_video', 'full',
 ]);
 
 function protectedStage(stage = '') { return PROTECTED_STAGES.has(String(stage || '').trim()); }
@@ -29,11 +31,20 @@ function issue(taskId, stage, { idempotencyKey = '' } = {}) {
     error.details = eligibility;
     throw error;
   }
+  const authority = authorityLifecycle.ensureCurrent(taskId, active);
+  authorityLifecycle.assertCurrent(taskId, {
+    authority_id: authority.authority_id,
+    plan_id: eligibility.plan_id,
+    content_revision: eligibility.content_revision,
+    release_bundle_id: eligibility.release_bundle_id,
+  });
   const key = String(idempotencyKey || `${taskId}:${stage}:r${eligibility.content_revision}`);
   const kind = kindFor(stage, key);
   const existing = storage.getOutput(taskId, kind);
   if (existing && existing.plan_id === eligibility.plan_id
+    && existing.authority_id === authority.authority_id
     && existing.release_bundle_id === eligibility.release_bundle_id
+    && existing.execution_disabled !== true
     && ['issued', 'consumed'].includes(existing.status)) return existing;
   const permit = {
     permit_id: crypto.randomUUID(),
@@ -42,6 +53,9 @@ function issue(taskId, stage, { idempotencyKey = '' } = {}) {
     stage,
     idempotency_key: key,
     plan_id: eligibility.plan_id,
+    authority_id: authority.authority_id,
+    authority_token: authority.authority_token,
+    execution_identity: authority.execution_identity,
     active_revision: eligibility.active_revision,
     content_revision: eligibility.content_revision,
     topology_hash: eligibility.topology_hash,
@@ -63,6 +77,13 @@ function consume(taskId, permit = null) {
     error.status = 409;
     throw error;
   }
+  if (stored.disabled === true || stored.execution_disabled === true || stored.status === 'disabled') {
+    const error = new Error('生成许可属于已封存方案，本次没有调用模型');
+    error.code = 'GENERATION_PERMIT_DISABLED';
+    error.status = 409;
+    throw error;
+  }
+  authorityLifecycle.assertCurrent(taskId, stored);
   const active = publication.activeRecord(taskId);
   const eligibility = publication.eligibility(taskId, { fingerprint: active?.fingerprint || '' });
   if (!eligibility.eligible

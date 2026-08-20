@@ -1,4 +1,4 @@
-import { createProjectStore } from './store/projectStore.js?v=20260815-asset-v84';
+import { createProjectStore } from './store/projectStore.js?v=20260820-dialogue-flow-v85';
 import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260815-asset-v84';
 import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260815-asset-v84';
 import { confirmDialog } from './components/dialog.js?v=20260815-asset-v84';
@@ -9,22 +9,22 @@ startReleaseHeartbeat();
 
 const app = document.querySelector('#storyAdApp');
 const store = createProjectStore();
-const VIEW_ORDER = ['brief', 'assets', 'scene', 'plot', 'storyboard', 'final', 'workflow'];
+const VIEW_ORDER = ['brief', 'plot', 'assets', 'scene', 'storyboard', 'final', 'workflow'];
 const VIEW_META = {
-  brief: ['1', '目标与材料'],
-  assets: ['2', '人物资产'],
-  scene: ['3', '场景世界'],
-  plot: ['4', '剧本'],
-  storyboard: ['5', '分镜与线稿'],
-  final: ['6', '镜头、声音与成片'],
+  brief: ['1', '对话立项'],
+  plot: ['2', '剧情与对白'],
+  assets: ['3', '人物资产'],
+  scene: ['4', '场景世界'],
+  storyboard: ['5', '线稿与分镜'],
+  final: ['6', '镜头与合成'],
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260815-asset-v84'),
+  brief: () => import('./views/briefView.js?v=20260820-dialogue-flow-v85'),
   assets: () => import('./views/assetCenterView.js?v=20260815-asset-v84'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260815-asset-v84'),
-  plot: () => import('./views/plotRoomView.js?v=20260815-asset-v84'),
-  storyboard: () => import('./views/storyboardView.js?v=20260815-asset-v84'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260820-dialogue-flow-v85'),
+  plot: () => import('./views/plotRoomView.js?v=20260820-dialogue-flow-v85'),
+  storyboard: () => import('./views/storyboardView.js?v=20260820-dialogue-flow-v85'),
   final: () => import('./views/finalView.js?v=20260815-asset-v84'),
   workflow: () => import('./views/workflowView.js?v=20260815-asset-v84'),
 };
@@ -310,9 +310,12 @@ async function renderRoute() {
     return;
   }
   if (route.isNew && store.state.bundle) store.clearProject();
-  if (!route.isNew && store.state.bundle?.project?.id !== route.taskId) {
+  const requiredSections = sectionsForView(route.view).split(',').filter(Boolean);
+  const loadedSections = new Set(store.state.bundleSections || []);
+  const needsSections = !loadedSections.has('all') && requiredSections.some(section => !loadedSections.has(section));
+  if (!route.isNew && (store.state.bundle?.project?.id !== route.taskId || needsSections)) {
     app.innerHTML = '<div class="app-loading"><div class="loading-mark">剧</div><div><b>正在读取项目</b><span>只加载当前项目的统一数据包…</span></div></div>';
-    await store.loadBundle(route.taskId, sectionsForView(route.view));
+    await store.loadBundle(route.taskId, requiredSections.join(','));
   }
   const routeStep = store.state.bundle?.navigation?.steps?.[route.view];
   if (!route.isNew && routeStep?.enabled === false) {

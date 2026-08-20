@@ -269,6 +269,13 @@ storage.createGenerationRun({
   id: 'quarantine-unknown-historical', task_id: guarded.taskId, work_id: guarded.taskId,
   state: 'billing_unknown', billing_state: 'unknown', legacy_model_call_id: 'unknown-historical',
 });
+assert.throws(
+  () => publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }),
+  error => error?.code === 'AUTHORITY_PROMOTION_BLOCKED',
+  '计费未核清的隔离 run 也必须阻止切换新 Active',
+);
+storage.updateGenerationRun('quarantine-unknown-historical', { state: 'failed', billing_state: 'confirmed' });
+storage.saveModelCall({ id: 'unknown-historical', task_id: guarded.taskId, stage: 'person_plan', status: 'failed', billing_state: 'confirmed', provider_submission_state: 'failed' });
 assert.equal(publication.migrateCompatibleRelease(guarded.taskId, { fingerprint: guarded.fingerprint }).migrated, true);
 
 const failureGuarded = createFixture({ id: 'anon-write-failure', oldBundle: 'legacy-write-failure', castCount: 2, propCount: 0, sceneCount: 4 });

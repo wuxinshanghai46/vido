@@ -9,7 +9,7 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260815-asset-v84
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260815-asset-v84';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260815-asset-v84';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260815-asset-v84';
-import { createAssetPlanAndRefresh } from './briefAssetPlanTransition.js?v=20260815-asset-v84';
+import { bindBriefDialogue, briefDialogueMarkup } from './briefDialoguePanel.js?v=20260820-dialogue-flow-v85';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -44,7 +44,7 @@ function formPayload(form) {
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export function referenceActionState(reference = {}) {
-  if (!reference.analysis_id) return { blocked: false, label: '保存目标并创建人物与场景方案' };
+  if (!reference.analysis_id) return { blocked: false, label: '确认设想，生成剧情与对白' };
   const status = String(reference.status || '').toLowerCase();
   if (status === 'completed' && reference.analysis_valid === true) {
     const understanding = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -70,7 +70,7 @@ export function referenceActionState(reference = {}) {
       || confirmation.confirmed === true
       || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
     if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '先确认上方参考理解' };
-    return { blocked: false, label: '下一步：创建人物与场景方案' };
+    return { blocked: false, label: '下一步：生成剧情与对白' };
   }
   if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
   if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };
@@ -80,7 +80,7 @@ export function referenceActionState(reference = {}) {
 
 export function referenceNextStepDescription(reference = {}) {
   const action = referenceActionState(reference);
-  if (!action.blocked) return '创建可编辑的人物与场景文字方案；不生成图片或视频。';
+  if (!action.blocked) return '先生成可编辑的详细剧情与对白；确认剧情后再提取人物与场景。';
   const status = String(reference.status || '').toLowerCase();
   if (status === 'completed' && reference.analysis_valid === true) return '先确认参考理解；成功后自动创建方案并进入资产中心。';
   if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
@@ -105,11 +105,7 @@ export async function mount(host, context) {
   const referenceStepVisible = referenceAttached && !route.isNew;
   const showReferenceStepGuidance = referenceStepVisible && bundle.navigation?.steps?.brief?.completed !== true;
   host.innerHTML = `
-    <section class="view-head">
-      <div><h1>先说清楚要做什么</h1><p>先选择广告或剧情，再填写内容目标；也可以添加参考视频并让系统读取内容。</p></div>
-      ${!route.isNew ? '<span class="status-tag is-neutral">第 1 步 · 目标确认</span>' : ''}
-    </section>
-    <div class="guide"><b>操作方法</b>　①命名项目　②填写目标或添加参考视频　③分析完成后进行资产创建</div>
+    ${briefDialogueMarkup(bundle, route)}
     ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
       <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
@@ -118,8 +114,8 @@ export async function mount(host, context) {
     <div data-brief-settings-anchor>
     <div class="two-column" data-brief-settings-layout>
       <div class="brief-main-column">
-      <details class="card brief-settings" data-brief-settings ${referenceAttached ? '' : 'open'}>
-        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>基础信息与成片设置</b><small>${referenceAttached ? '参考材料可辅助识别世界、人物和广告主体；内容类型仍以你的明确选择为准' : '先填写项目名称并选择广告或剧情，再填写内容目标；参考材料放在右侧独立区域'}</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开修改</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
+      <details class="card brief-settings" data-brief-settings>
+        <summary class="brief-settings-summary"><span class="brief-settings-summary-content"><span><b>手动编辑全部设置</b><small>对话与这里使用同一份项目数据；任一处修改都会同步到项目确认单。</small></span>${referenceAttached ? briefSettingsSummary(bundle) : ''}<span class="brief-settings-edit-hint"><span class="when-collapsed">展开设置</span><span class="when-expanded">收起设置</span></span></span><i aria-hidden="true"></i></summary>
         <form id="storyAdBriefForm" class="brief-form" data-brief-form>
           <div class="card-body form-grid">
 <section class="brief-config-section full" aria-labelledby="brief-basic-settings-title">
@@ -150,7 +146,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
           <input type="hidden" name="benchmark_camera_language" value="${escapeHtml(benchmark.camera_language || '')}">
           <input type="hidden" name="benchmark_prompt_method" value="${escapeHtml(benchmark.prompt_method || '')}">
           <input type="hidden" name="benchmark_naturalness_review" value="${escapeHtml(benchmark.naturalness_review || '')}">
-          ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '创建项目' : referenceAction.label}</button></div>`}
+          ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '保存项目设想' : referenceAction.label}</button></div>`}
           </div>
         </form>
       </details>
@@ -190,6 +186,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
   let lastReferenceStatus = String(bundle.reference?.status || '').toLowerCase();
   if (referenceAttached) host.querySelector('[data-brief-settings]')?.removeAttribute('open');
   let assetPlanTransitioning = false;
+  let dialogueCleanup = () => {};
   async function syncReferenceUnderstanding(reference = {}) {
     const sequence = ++understandingLoadSequence;
     const nested = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -296,7 +293,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     const nextReferenceAttached = Boolean(nextReference.analysis_id);
     const briefSettings = host.querySelector('[data-brief-settings]');
     const nextReferenceStatus = String(nextReference.status || '').toLowerCase();
-    if (briefSettings && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettings.open = !nextReferenceAttached;
+    if (briefSettings && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettings.open = false;
     lastReferenceAttached = nextReferenceAttached; lastReferenceStatus = nextReferenceStatus;
     if (!route.isNew) {
       host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
@@ -381,6 +378,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     const project = await store.createProject(payload);
     createdProjectId = project.id;
     await store.loadBundle(createdProjectId, 'all');
+    dirtyFields.clear();
     return createdProjectId;
   }
 
@@ -404,7 +402,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       const migration = await confirmContentModeMigration(String(store.state.bundle?.brief?.content_mode || '').trim(), payload.content_mode);
       if (migration.cancelled) return false;
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
-      host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在创建方案…', { elapsed: true }));
+      host.querySelectorAll('[data-brief-submit], [data-dialogue-confirm]').forEach(target => setButtonBusy(target, true, '正在生成剧情…', { elapsed: true }));
       // Confirming an already-rendered authoritative reference must not issue
       // a no-op brief save. That save can advance the content revision and
       // immediately invalidate the confirmation that was just persisted.
@@ -413,13 +411,9 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
         assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
         dirtyFields.clear();
       }
-      const planError = await createAssetPlanAndRefresh(store, createdProjectId);
-      navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=assets`);
-      if (planError) {
-        window.setTimeout(() => toast(`已进入资产中心，但人物与场景方案尚未创建完成：${planError.message}`, 'danger'), 0);
-      } else {
-        toast('人物与场景方案已提交，正在进入资产中心。视觉图片仍由你在资产中心确认后生成。', 'success');
-      }
+      await store.runStage('blueprint');
+      navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=plot`);
+      toast('详细剧情与对白已提交生成。确认剧情后，系统才会继续提取人物与场景。', 'success');
       return true;
     } catch (error) {
       toast(error.message, 'danger');
@@ -430,8 +424,26 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
         setButtonBusy(target, false);
         syncReferenceAction(target, store.state.bundle?.reference || {});
       });
+      host.querySelectorAll('[data-dialogue-confirm]').forEach(target => {
+        setButtonBusy(target, false);
+        target.textContent = '确认设想，生成剧情与对白';
+      });
     }
   }
+
+  dialogueCleanup = bindBriefDialogue(host, {
+    form,
+    onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
+    onConfirm: async button => {
+      try {
+        await ensureProject(button);
+        await proceedToAssetPlan(button);
+      } catch (error) {
+        setButtonBusy(button, false);
+        toast(error.message, 'danger');
+      }
+    },
+  });
 
   form.addEventListener('submit', async event => {
     event.preventDefault();
@@ -593,6 +605,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     disposed = true;
     understandingLoadSequence += 1;
     understandingController?.destroy();
+    dialogueCleanup();
     unsubscribeProgress();
     host.removeEventListener('click', handleReferenceRetry);
   };

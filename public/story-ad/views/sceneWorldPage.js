@@ -1,7 +1,7 @@
 import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260815-asset-v84';
 import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260815-asset-v84';
 import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260815-asset-v84';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260815-asset-v84';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260820-dialogue-flow-v85';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
@@ -18,12 +18,12 @@ export async function mount(host, context) {
   const scenePlanEligibility = planEligibility.scene || planEligibility;
   const scenePlanReady = scenePlanEligibility.eligible === true;
   const generationActive = !!bundle?.project?.active_generation_id;
-  host.innerHTML = `<section class="view-head"><div><h1>场景世界</h1><p>先确认地点、跨时代关系、空间结构、机位、人物出场顺序和造型，再按场景单独生成视觉资产。</p></div><span class="status-tag is-neutral">第 3 步 · 场景规划</span></section>
-    <div class="guide"><b>操作方法</b>　①核对场景与地点血缘　②确认人物出场、造型、年龄和机位　③按场景单独生成视觉资产　④进入剧本</div>
+  host.innerHTML = `<section class="view-head"><div><h1>场景世界</h1><p>根据已确认剧情和人物，核对地点、时代、空间结构、机位与人物出场关系，再按场景单独生成视觉资产。</p></div><span class="status-tag is-neutral">第 4 步 · 场景规划</span></section>
+    <div class="guide"><b>操作方法</b>　①核对剧情中的地点与时代　②确认空间结构和人物出场　③按场景单独生成视觉资产　④进入线稿与分镜</div>
     ${scenePlanReady ? '' : scenePlanBlockedView(scenePlanEligibility, generationActive)}
     ${sceneGenerationQueue(bundle, scenePlanReady)}
     ${renderSceneWorldWorkspace(bundle)}
-    <section class="step-completion-card ${scenePlanReady ? 'is-ready' : ''}"><div><b>场景规划独立于人物资产</b><span>${scenePlanReady ? '确认文字规划即可进入剧本；场景图片可按场景分别生成，不要求一次补齐全部缺失内容。' : '请先完成场景文字方案更新；人物方案与人物资产不会因此被修改。'}</span></div><button class="btn primary" type="button" data-open-script ${scenePlanReady ? '' : 'disabled'}>进入第 4 步：剧本</button></section>`;
+    <section class="step-completion-card ${scenePlanReady ? 'is-ready' : ''}"><div><b>场景规划承接已确认剧情</b><span>${scenePlanReady ? '确认文字规划即可进入线稿与分镜；场景图片可按场景分别生成，不要求一次补齐全部缺失内容。' : '请先完成场景文字方案更新；已确认的人物方案和人物资产不会被改写。'}</span></div><button class="btn primary" type="button" data-open-script ${scenePlanReady ? '' : 'disabled'}>进入第 5 步：线稿与分镜</button></section>`;
   bindSceneWorldWorkspace(host, bundle, store);
   bindScenePlanUpdate(host, context);
   host.querySelectorAll('[data-generate-base-scene]').forEach(button => button.addEventListener('click', async () => {
@@ -52,5 +52,5 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   }));
-  host.querySelector('[data-open-script]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=plot`));
+  host.querySelector('[data-open-script]')?.addEventListener('click', () => context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=storyboard`));
 }

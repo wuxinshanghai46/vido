@@ -67,6 +67,7 @@ assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
 const briefMaterials = read('public/story-ad/views/briefMaterials.js');
 const briefAdvancedConfig = read('public/story-ad/views/briefAdvancedConfig.js');
 const briefWorldSettings = read('public/story-ad/views/briefWorldSettings.js');
@@ -91,13 +92,13 @@ assert.doesNotMatch(briefView, /payload\.brief\.length\s*<\s*8/, '创建草稿�
 assert.match(briefView, /if \(!payload\.project_name\)/, '项目名称仍需非空，避免产生不可识别任务');
 assert.doesNotMatch(briefView, /referenceAnalysisSections/, '目标与材料页不得堆叠完整参考分析');
 assert.doesNotMatch(briefView, /故事结构|人物分析|动物分析|场景分析|逐镜分析/, '参考详情必须按制作环节分流');
-assert.match(briefView, /data-brief-settings \$\{referenceAttached \? '' : 'open'\}/, '只有选择参考视频或链接后才折叠广告目标设置');
-assert.match(briefView, /参考材料可辅助识别世界、人物和广告主体；内容类型仍以你的明确选择为准/, '折叠后必须明确参考材料与用户基础信息的职责边界');
-assert.match(briefView, /data-brief-settings-values/, '折叠状态必须展示真实广告目标与成片设置摘要');
+assert.match(briefView, /<details class="card brief-settings" data-brief-settings>/, '对话优先流程应默认折叠原专业表单');
+assert.match(briefDialoguePanel, /对话内容会自动同步到这里/, '确认单必须说明对话会自动同步');
+assert.match(briefDialoguePanel, /手动编辑全部设置/, '折叠后必须保留专业设置入口');
 assert.match(briefView, /\[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600\]/, '新工作区必须提供 3、4、5、6、8、10 分钟的中长片选项');
 assert.match(read('public/story-ad/views/briefSettingsSummary.js'), /return remainder \? `\$\{minutes\} 分 \$\{remainder\} 秒` : `\$\{minutes\} 分钟`/, '折叠摘要必须把 300/600 秒显示为 5/10 分钟');
 assert.match(briefView, /if \(referenceAttached\) host\.querySelector\('\[data-brief-settings\]'\)\?\.removeAttribute\('open'\)/, '已有参考视频时广告目标设置首次挂载必须默认收起');
-assert.match(briefView, /nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus/, '参考分析状态切换后广告目标设置必须恢复默认收起');
+assert.match(briefView, /briefSettings\.open = false/, '参考状态切换后专业设置必须保持对话优先的默认收起状态');
 assert.match(briefView, /data-brief-inline-action/, '参考内容存在时，下一步主操作不得藏在折叠表单内部');
 assert.match(briefView, /referenceStepVisible && bundle\.navigation\?\.steps\?\.brief\?\.completed !== true/, '已完成并进入后续步骤后不得继续显示第 1 步引导卡');
 assert.match(briefView, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的下一步必须提交同一份可编辑表单');
@@ -112,14 +113,14 @@ assert.ok(
   '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
 );
 assert.match(briefView, /restoreBriefSettingsLayout/, '没有参考报告时必须把广告目标与启动材料恢复到目标页');
-assert.match(briefView, /briefSettings\.open = !nextReferenceAttached/, '选择或移除参考时必须实时折叠或展开设置');
+assert.match(briefView, /briefSettings\.open = false/, '选择或移除参考时专业设置仍应保持对话优先的默认收起状态');
 assert.match(briefView, /store\.subscribe\([\s\S]*referenceProgress\(nextState\.bundle\?\.reference/, '同一分析状态内的实时进度必须局部更新，不能等待整页重载');
 assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brief-submit\]'\)[\s\S]*syncReferenceAction\(button, nextReference\)/, '分析终态到达时必须同步刷新折叠区内外的主按钮');
 assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注销进度订阅');
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
-assert.match(briefView, /下一步：创建人物与场景方案/, '第一步完成后的主操作必须明确进入人物与场景方案创建');
+assert.match(briefView, /下一步：生成剧情与对白/, '第一步完成后的主操作必须先进入详细剧情与对白');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefView, /brief_source:\s*'user'/, '新建项目时必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
@@ -160,7 +161,7 @@ assert.doesNotMatch(briefView, />保存目标</, '旧的保存目标按钮不得
 assert.match(briefView, /const dirtyFields = new Set\(\)/, '必须记录本页真实编辑字段');
 assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Store 重新读取识别后的权威目标');
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
-assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*createAssetPlanAndRefresh\(store, createdProjectId\)[\s\S]*view=assets/, '目标确认必须只保存真实编辑，再按创建资产方案、进入资产中心的顺序执行');
+assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*runStage\('blueprint'\)[\s\S]*view=plot/, '目标确认必须只保存真实编辑，再按生成剧情与对白、进入剧情室的顺序执行');
 assert.match(briefView, /if \(dirtyFields\.size\)/, '刚确认参考报告且没有修改目标时不得发送会使确认失效的空保存');
 assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
@@ -217,13 +218,13 @@ assert.match(partialFailureProgress, /继续读取缺失镜头（4\/5 批）/);
 assert.match(partialFailureProgress, /建议约 5 分钟后继续/);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'done', status: 'completed', analysis_valid: true }))),
-  { blocked: false, label: '下一步：创建人物与场景方案' },
-  '有效完成态必须立即开放资产创建',
+  { blocked: false, label: '下一步：生成剧情与对白' },
+  '有效完成态必须立即开放剧情生成',
 );
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'running', status: 'running', analysis_valid: false }))),
   { blocked: true, label: '等待参考视频分析完成' },
-  '运行态仍必须阻止提前进入资产创建',
+  '运行态仍必须阻止提前进入剧情生成',
 );
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'invalid', status: 'completed', analysis_valid: false }))),
@@ -241,7 +242,7 @@ briefModule.syncReferenceAction(liveActionButton, {
 });
 assert.deepStrictEqual(
   liveActionButton,
-  { disabled: false, textContent: '下一步：创建人物与场景方案' },
+  { disabled: false, textContent: '下一步：生成剧情与对白' },
   '分析从运行态实时切换到有效完成态时，现有 DOM 按钮必须立即启用且同步文案',
 );
 briefModule.syncReferenceAction(liveActionButton, {

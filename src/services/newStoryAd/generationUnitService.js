@@ -57,9 +57,11 @@ function normalizedIdentity(input = {}) {
     spec_revision: Math.max(1, Number(input.specRevision ?? input.spec_revision) || 1),
     provider_id: clean(input.providerId ?? input.provider_id, 100).toLowerCase(),
     model_id: clean(input.modelId ?? input.model_id, 180).toLowerCase(),
+    authority_id: clean(input.authorityId ?? input.authority_id, 160),
+    execution_identity: clean(input.executionIdentity ?? input.execution_identity, 160),
   };
   const missing = Object.entries(identity)
-    .filter(([key, value]) => key !== 'model_id' && !value)
+    .filter(([key, value]) => !['model_id', 'authority_id', 'execution_identity'].includes(key) && !value)
     .map(([key]) => key);
   if (missing.length) {
     throw fail(`生成单元幂等身份不完整：${missing.join(', ')}`, 'GENERATION_UNIT_IDENTITY_REQUIRED', 422, { missing });
@@ -96,6 +98,9 @@ function claim(input = {}, {
   const key = buildIdempotencyKey(identity);
   const existing = findByIdempotency(storage, key);
   if (existing) {
+    if (existing.execution_disabled === true || existing.cache_readonly === true) {
+      throw fail('历史生成单元只允许查看，禁止重试或继续执行', 'GENERATION_UNIT_EXECUTION_DISABLED');
+    }
     const safelyRestartable = explicit_user_retry === true
       && ['cancelled', 'failed_retryable'].includes(existing.state)
       && ['not_submitted', 'not_billed'].includes(existing.billing_state)
@@ -179,6 +184,9 @@ function transition(id, nextState, patch = {}, options = {}) {
   const storage = options.storage || defaultStorage;
   const current = storage.getGenerationRun(id);
   if (!current) throw fail(`Generation unit ${id} 不存在`, 'GENERATION_UNIT_NOT_FOUND', 404);
+  if ((current.execution_disabled === true || current.cache_readonly === true) && nextState !== 'superseded') {
+    throw fail('历史生成单元只允许查看，禁止改变执行状态', 'GENERATION_UNIT_EXECUTION_DISABLED');
+  }
   const wanted = clean(nextState, 40).toLowerCase();
   if (!STATES.includes(wanted)) throw fail(`未知生成状态 ${wanted}`, 'GENERATION_STATE_INVALID', 422);
   if (wanted === current.state) return current;

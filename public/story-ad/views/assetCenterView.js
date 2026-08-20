@@ -269,7 +269,7 @@ export async function mount(host, context) {
     <input class="hidden-input" hidden type="file" accept="image/png,image/jpeg,image/webp" data-asset-upload-file>
     <div data-asset-sections>${renderSections(assets, total, contentMode, assetGroups, generationActive ? generationDisabled : contractDisabled)}</div>
     <section class="step-completion-card ${assetPlanReady ? 'is-ready' : ''}">
-      <div><b>${assetPlanReady ? '资产方案已建立' : '正在建立资产方案'}</b><span>${assetPlanReady ? `请核对${assetScopeLabel}是否符合参考视频；确认后，当前方案会成为剧情室的权威输入。` : '资产规划完成前不会开放剧情室，页面会在后台任务完成后自动更新。'}</span></div>
+      <div><b>${assetPlanReady ? '资产方案已建立' : '正在根据剧情提取资产方案'}</b><span>${assetPlanReady ? `请核对${assetScopeLabel}是否符合已确认剧情；确认后，当前方案会成为场景与分镜的权威输入。` : '资产规划完成前不会开放场景世界，页面会在后台任务完成后自动更新。'}</span></div>
       <button class="btn primary" type="button" data-confirm-assets data-history-safe ${assetPlanReady ? '' : 'disabled'}>确认人物资产，进入场景世界</button>
     </section>`;
 
@@ -587,7 +587,7 @@ export async function mount(host, context) {
     try {
       setButtonBusy(button, true, '正在确认…');
       await store.updateRequest({ asset_setup_confirmed: true });
-      toast('资产方案已确认，剧情室将使用当前人物、动物、商品和场景。', 'success');
+      toast('资产方案已确认，场景与分镜将使用当前人物、动物、商品和地点规划。', 'success');
       context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=scene`);
     } catch (error) {
       toast(error.message, 'danger');

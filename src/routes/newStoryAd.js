@@ -138,6 +138,14 @@ function queueTaskStage(req, res, stage, execute, options = {}) {
     snapshotId,
     inputFingerprint,
     idempotencyKey,
+    authorityContext: permit ? {
+      authority_id: permit.authority_id,
+      authority_token: permit.authority_token,
+      execution_identity: permit.execution_identity,
+      plan_id: permit.plan_id,
+      content_revision: permit.content_revision,
+      release_bundle_id: permit.release_bundle_id,
+    } : null,
   });
   return res.status(202).json({
     success: true,
@@ -955,7 +963,7 @@ router.post('/tasks/:id/person-dossiers', asyncRoute(async (req, res) => {
 
 registerPersonDossierApprovalRoute(router, {
   asyncRoute, taskForReq, userFromReq, personDossiers, personProviderAssets, service,
-  upsertActorAssetForUser, storage, videoAdapter, persistProviderPersonIds, uuidv4,
+  upsertActorAssetForUser, storage, videoAdapter, persistProviderPersonIds, queueTaskStage,
 });
 
 router.post('/tasks/:id/person-action-assets', asyncRoute(async (req, res) => {
@@ -1447,7 +1455,16 @@ router.post('/subject-assets', asyncRoute(async (req, res) => {
   if (taskId) service.assertTaskOwner(taskId, user);
   const generationId = String(body.generation_id || body.generationId || uuidv4());
   const ownerId = String(user.id || user.userId || user.username || 'anonymous');
-  return cancellation.run({ generationId, taskId, stage: 'subject_assets', ownerId }, async () => {
+  const permit = taskId ? generationPermit.issue(taskId, 'subject_assets', {
+    idempotencyKey: String(body.idempotency_key || body.idempotencyKey || `${taskId}:subject_assets:${generationId}`),
+  }) : null;
+  return cancellation.run({
+    generationId, taskId, stage: 'subject_assets', ownerId,
+    authorityId: permit?.authority_id,
+    authorityToken: permit?.authority_token,
+    executionIdentity: permit?.execution_identity,
+  }, async () => {
+    if (permit) generationPermit.consume(taskId, permit);
     const result = await generateAndCommitSubjectAssets({ body, taskId, generationId, userId: ownerId });
     return res.json({ success: true, ...result });
   });
@@ -1965,9 +1982,19 @@ router.post('/tasks/:id/keyframes/:index/candidates/:candidateId/review', asyncR
   const permit = generationPermit.issue(req.params.id, 'keyframes', {
     idempotencyKey: `${req.params.id}:keyframe-review:${req.params.index}:${req.params.candidateId}`,
   });
-  generationPermit.consume(req.params.id, permit);
-  const result = await service.retryKeyframeCandidateQa(req.params.id, req.params.index, req.params.candidateId);
-  res.json({ success: true, task_id: req.params.id, ...result });
+  const generationId = `keyframe_review_${uuidv4()}`;
+  return cancellation.run({
+    generationId,
+    taskId: req.params.id,
+    stage: 'keyframes',
+    authorityId: permit.authority_id,
+    authorityToken: permit.authority_token,
+    executionIdentity: permit.execution_identity,
+  }, async () => {
+    generationPermit.consume(req.params.id, permit);
+    const result = await service.retryKeyframeCandidateQa(req.params.id, req.params.index, req.params.candidateId);
+    res.json({ success: true, task_id: req.params.id, generation_id: generationId, ...result });
+  });
 }));
 
 router.post('/tasks/:id/tts', asyncRoute(async (req, res) => {

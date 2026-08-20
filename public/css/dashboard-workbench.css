@@ -15,4 +15,9 @@
 .wb-video-backdrop{position:absolute;z-index:1;inset:-18px;width:calc(100% + 36px);height:calc(100% + 36px);object-fit:cover;filter:blur(16px);opacity:.52;transform:scale(1.04)}
 .wb-video-backdrop[hidden]{display:none}
 .wb-video-thumb{z-index:2;object-fit:contain;background:transparent}
+.wb-video-card{cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+.wb-video-card:focus-visible{outline:2px solid var(--wb-accent);outline-offset:3px}
+.wb-video-card.is-previewing .wb-video-thumb{opacity:1}
+.wb-video-copy{right:17px}
+.wb-play-button{display:none!important}
 .wb-video-fallback-image{z-index:2;object-fit:contain}

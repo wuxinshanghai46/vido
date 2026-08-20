@@ -30,6 +30,8 @@ let dbSeedChecked = false;
 let jsonBatchDepth = 0;
 let jsonBatchDb = null;
 let jsonBatchDirty = false;
+let sqliteBatchDepth = 0;
+let sqliteBatchDb = null;
 
 function ensureDir(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -85,8 +87,48 @@ function normalizedJsonDb() {
   return Object.fromEntries(Object.keys(base).map(key => [key, Array.isArray(db[key]) ? db[key] : []]));
 }
 
+function cloneDb(db = {}) {
+  const base = defaultDb();
+  return Object.fromEntries(Object.keys(base).map(key => [
+    key,
+    JSON.parse(JSON.stringify(Array.isArray(db[key]) ? db[key] : [])),
+  ]));
+}
+
+function atomicSqliteChanges(before = {}, after = {}) {
+  return Object.entries(COLLECTIONS).map(([key, collection]) => {
+    const previous = new Map((before[key] || []).map(row => [String(row.id || ''), row]));
+    const next = new Map((after[key] || []).map(row => [String(row.id || ''), row]));
+    const removeIds = [...previous.keys()].filter(id => id && !next.has(id));
+    const upserts = [...next.entries()].filter(([id, row]) => {
+      if (!id || !previous.has(id)) return true;
+      return JSON.stringify(previous.get(id)) !== JSON.stringify(row);
+    }).map(([, row]) => row);
+    return { collection, removeIds, upserts };
+  }).filter(change => change.removeIds.length || change.upserts.length);
+}
+
 function withWriteBatch(callback) {
-  if (useSqlite() || jsonBatchDepth > 0) return callback();
+  if (jsonBatchDepth > 0 || sqliteBatchDepth > 0) return callback();
+  if (useSqlite()) {
+    ensureDbSeeded();
+    const before = readDb();
+    sqliteBatchDb = cloneDb(before);
+    sqliteBatchDepth = 1;
+    try {
+      const result = callback();
+      if (result && typeof result.then === 'function') {
+        throw new Error('SQLITE_WRITE_BATCH_REQUIRES_SYNCHRONOUS_CALLBACK');
+      }
+      const changes = atomicSqliteChanges(before, sqliteBatchDb);
+      if (changes.length) contentRecords.applyAtomicChanges(changes);
+      if (dbConfig().dualWrite) writeJson(DB_PATH, sqliteBatchDb);
+      return result;
+    } finally {
+      sqliteBatchDepth = 0;
+      sqliteBatchDb = null;
+    }
+  }
   jsonBatchDb = normalizedJsonDb();
   jsonBatchDepth = 1;
   jsonBatchDirty = false;
@@ -124,12 +166,28 @@ function ensureDbSeeded() {
 }
 
 function listRows(key, filters = {}) {
+  if (sqliteBatchDb) {
+    const rows = (sqliteBatchDb[key] || []).slice();
+    const entries = Object.entries(filters || {}).filter(([, value]) => value !== undefined && value !== null && value !== '' && value !== 'all');
+    const fieldValue = (row, field) => {
+      if (field === 'project_id') return row?.project_id ?? row?.projectId ?? row?.task_id ?? row?.taskId ?? row?.work_id ?? '';
+      if (field === 'user_id') return row?.user_id ?? row?.userId ?? '';
+      if (field === 'account_id') return row?.account_id ?? row?.accountId ?? '';
+      if (field === 'type') return row?.type ?? row?.category ?? '';
+      if (field === 'status') return row?.status ?? row?.state ?? '';
+      return row?.[field] ?? '';
+    };
+    return entries.length
+      ? rows.filter(row => entries.every(([field, value]) => String(fieldValue(row, field)) === String(value)))
+      : rows;
+  }
   if (!useSqlite()) return normalizedJsonDb()[key].slice();
   ensureDbSeeded();
   return contentRecords.list(COLLECTIONS[key], filters);
 }
 
 function getRow(key, id) {
+  if (sqliteBatchDb) return (sqliteBatchDb[key] || []).find(row => String(row.id) === String(id)) || null;
   if (!useSqlite()) return normalizedJsonDb()[key].find(row => String(row.id) === String(id)) || null;
   ensureDbSeeded();
   return contentRecords.get(COLLECTIONS[key], String(id));
@@ -144,6 +202,13 @@ function mutateJson(key, updater) {
 }
 
 function writeRow(key, row) {
+  if (sqliteBatchDb) {
+    const list = sqliteBatchDb[key];
+    const idx = list.findIndex(item => String(item.id) === String(row.id));
+    if (idx >= 0) list[idx] = row;
+    else list.push(row);
+    return row;
+  }
   if (useSqlite()) {
     ensureDbSeeded();
     const saved = contentRecords.upsert(COLLECTIONS[key], row);
@@ -166,6 +231,12 @@ function writeRow(key, row) {
 }
 
 function removeRow(key, id) {
+  if (sqliteBatchDb) {
+    const list = sqliteBatchDb[key];
+    const idx = list.findIndex(item => String(item.id) === String(id));
+    if (idx >= 0) list.splice(idx, 1);
+    return;
+  }
   if (useSqlite()) {
     ensureDbSeeded();
     contentRecords.remove(COLLECTIONS[key], String(id));
@@ -415,7 +486,10 @@ function saveArtifact(taskId, kind, payload, meta = {}) {
   if (!task) throw new Error('任务不存在');
   const revision = Math.max(1, Number(meta.content_revision || task.content_revision || 1) || 1);
   const snapshotId = String(meta.snapshot_id || task.current_snapshot_id || `manual:${taskId}:r${revision}`);
-  const id = String(meta.id || `${taskId}:${snapshotId}:${kind}`);
+  const generation = cancellation.current();
+  const authorityId = String(meta.authority_id || generation?.authorityId || task.active_authority_id || '');
+  const executionIdentity = String(meta.execution_identity || generation?.executionIdentity || task.active_execution_identity || '');
+  const id = String(meta.id || `${taskId}:${snapshotId}:${authorityId ? `${authorityId}:` : ''}${kind}`);
   return writeRow('artifacts', mergedRow('artifacts', id, {
     task_id: String(taskId),
     kind: String(kind),
@@ -424,12 +498,22 @@ function saveArtifact(taskId, kind, payload, meta = {}) {
     input_fingerprint: String(meta.input_fingerprint || canonicalFingerprint(payload)),
     upstream_artifact_ids: Array.isArray(meta.upstream_artifact_ids) ? meta.upstream_artifact_ids : [],
     qa_status: String(meta.qa_status || 'published'),
+    authority_id: authorityId,
+    execution_identity: executionIdentity,
+    execution_disabled: false,
+    cache_readonly: false,
     payload,
   }));
 }
 
 function getArtifact(artifactId) {
   return getRow('artifacts', String(artifactId || ''));
+}
+
+function updateArtifact(artifactId, patch = {}) {
+  const current = getArtifact(artifactId);
+  if (!current) return null;
+  return writeRow('artifacts', mergedRow('artifacts', String(artifactId), patch));
 }
 
 function listArtifacts(taskId, kind = '') {
@@ -520,6 +604,14 @@ function saveOutputInternal(taskId, kind, payload, options = {}) {
   const currentRevision = Math.max(1, Number(task?.content_revision || 1) || 1);
   if (expectedRevision && expectedRevision !== currentRevision) {
     throw staleGenerationError(taskId, expectedRevision, currentRevision);
+  }
+  if (task?.authority_enforced === true && generation?.authorityId) {
+    require('./authorityLifecycleService').assertCurrent(taskId, {
+      authority_id: generation.authorityId,
+      authority_token: generation.authorityToken,
+      execution_identity: generation.executionIdentity,
+      content_revision: expectedRevision || currentRevision,
+    });
   }
   const works = require('./workAggregateService');
   const currentWork = getWork(taskId);
@@ -922,6 +1014,7 @@ module.exports = {
   getSnapshot,
   saveArtifact,
   getArtifact,
+  updateArtifact,
   listArtifacts,
   enableLineage,
   publishArtifact,
