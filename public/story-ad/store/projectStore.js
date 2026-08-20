@@ -1,6 +1,7 @@
 import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260820-dialogue-flow-v86';
 import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260820-dialogue-flow-v86';
 import { loadProjectList } from './projectListStore.js?v=20260820-dialogue-flow-v86';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260820-dialogue-flow-v86';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -45,43 +46,17 @@ export function createProjectStore() {
   }
 
   async function loadBundle(taskId, sections = 'all') {
-    set({ loading: true, error: '' });
-    try {
-      if (state.bundle?.project?.id && state.bundle.project.id !== taskId) state.progressRevision = '';
-      const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`);
-      set({
-        bundle: data.bundle,
-        bundleSections: sections === 'all' ? ['all'] : String(sections).split(',').map(item => item.trim()).filter(Boolean),
-        loading: false,
-      });
-      await hydrateReferenceFailure();
-      syncProgressPolling();
-      syncReferencePolling();
-      return data.bundle;
-    } catch (error) {
-      set({ loading: false, error: error.message });
-      throw error;
-    }
+    const bundle = await loadProjectBundle({ request, set, state, taskId, sections });
+    await hydrateReferenceFailure();
+    syncProgressPolling();
+    syncReferencePolling();
+    return bundle;
   }
   const mediaStore = () => import('./mediaCatalogStore.js?v=20260820-dialogue-flow-v86'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
-    const taskId = state.bundle?.project?.id;
-    if (!taskId) return null;
-    const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/bundle?sections=${encodeURIComponent(sections)}`);
-    const current = state.bundle || {};
-    const next = {
-      ...current,
-      ...data.bundle,
-      project: { ...(current.project || {}), ...(data.bundle.project || {}) },
-      navigation: { ...(current.navigation || {}), ...(data.bundle.navigation || {}) },
-      revisions: { ...(current.revisions || {}), ...(data.bundle.revisions || {}) },
-    };
-    const loaded = new Set(state.bundleSections || []);
-    String(sections || '').split(',').map(item => item.trim()).filter(Boolean).forEach(item => loaded.add(item));
-    set({ bundle: next, bundleSections: [...loaded] });
-    return next;
+    return refreshProjectBundle({ request, set, state, sections });
   }
 
   function applyMutationResult(data = {}) {

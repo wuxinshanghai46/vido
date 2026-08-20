@@ -29,6 +29,14 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
   </section>`;
 }
 
+export function referenceNextStepDescription(reference = {}, action = {}) {
+  if (action.blocked === false) return '先生成可编辑的详细剧情与对白；确认剧情后再提取人物与场景。';
+  const status = String(reference.status || '').toLowerCase();
+  if (status === 'completed' && reference.analysis_valid === true) return '先确认参考理解；成功后自动生成剧情与对白。';
+  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
+  return '参考分析中；完成并确认后自动继续。';
+}
+
 function suggestedName(idea = '', mode = '') {
   if (/不锈钢|佛山|金属/.test(idea)) return '佛山智造 · 不锈钢品牌广告';
   if (/护肤|精华|面霜/.test(idea)) return '高端护肤品牌短片';
@@ -122,4 +130,14 @@ export function bindBriefDialogue(host, { form, onConfirm, onReference } = {}) {
     form.removeEventListener('input', sync);
     form.removeEventListener('change', sync);
   };
+}
+
+export function bindBriefDialogueWorkflow(host, { form, ensureProject, proceed, onReference, onError } = {}) {
+  return bindBriefDialogue(host, {
+    form,
+    onReference,
+    onConfirm: async button => {
+      try { await ensureProject(button); await proceed(button); } catch (error) { onError?.(error, button); }
+    },
+  });
 }

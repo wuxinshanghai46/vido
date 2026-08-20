@@ -9,7 +9,7 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260820-dialogue-
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260820-dialogue-flow-v86';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260820-dialogue-flow-v86';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260820-dialogue-flow-v86';
-import { bindBriefDialogue, briefDialogueMarkup } from './briefDialoguePanel.js?v=20260820-dialogue-flow-v86';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260820-dialogue-flow-v86';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -78,15 +78,6 @@ export function referenceActionState(reference = {}) {
   return { blocked: true, label: '等待参考视频分析完成' };
 }
 
-export function referenceNextStepDescription(reference = {}) {
-  const action = referenceActionState(reference);
-  if (!action.blocked) return '先生成可编辑的详细剧情与对白；确认剧情后再提取人物与场景。';
-  const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) return '先确认参考理解；成功后自动创建方案并进入资产中心。';
-  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
-  return '参考分析中；完成并确认后自动继续。';
-}
-
 export function syncReferenceAction(button, reference = {}) {
   if (!button) return;
   const action = referenceActionState(reference);
@@ -107,7 +98,7 @@ export async function mount(host, context) {
   host.innerHTML = `
     ${briefDialogueMarkup(bundle, route)}
     ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
-      <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>创建人物与场景方案</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}))}</p></div></div>
+      <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>生成剧情与对白</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}, referenceAction))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
     ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
@@ -298,7 +289,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     if (!route.isNew) {
       host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
       const description = host.querySelector('[data-brief-next-description]');
-      if (description) description.textContent = referenceNextStepDescription(nextReference);
+      if (description) description.textContent = referenceNextStepDescription(nextReference, action);
       const nextTag = host.querySelector('[data-brief-next-tag]');
       if (nextTag) {
         const action = referenceActionState(nextReference);
@@ -431,18 +422,12 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     }
   }
 
-  dialogueCleanup = bindBriefDialogue(host, {
+  dialogueCleanup = bindBriefDialogueWorkflow(host, {
     form,
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
-    onConfirm: async button => {
-      try {
-        await ensureProject(button);
-        await proceedToAssetPlan(button);
-      } catch (error) {
-        setButtonBusy(button, false);
-        toast(error.message, 'danger');
-      }
-    },
+    ensureProject,
+    proceed: proceedToAssetPlan,
+    onError: (error, button) => { setButtonBusy(button, false); toast(error.message, 'danger'); },
   });
 
   form.addEventListener('submit', async event => {

@@ -9,6 +9,9 @@ const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'public/story-ad/store/projectStore.js'), 'utf8')
   .replace(/^import\s+.*?;\s*$/gm, '')
   .replace(/\bexport\s+/g, '');
+const bundleSource = fs.readFileSync(path.join(root, 'public/story-ad/store/projectBundleStore.js'), 'utf8')
+  .replace(/^import\s+.*?;\s*$/gm, '')
+  .replace(/\bexport\s+/g, '');
 
 function deferred() {
   let resolve;
@@ -69,7 +72,7 @@ async function main() {
     clearTimeout,
     console,
   };
-  vm.runInNewContext(`${source}\nglobalThis.__createProjectStore = createProjectStore;`, sandbox, {
+  vm.runInNewContext(`${bundleSource}\n${source}\nglobalThis.__createProjectStore = createProjectStore;`, sandbox, {
     filename: 'public/story-ad/store/projectStore.js',
   });
 
