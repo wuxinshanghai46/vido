@@ -1,6 +1,6 @@
-import * as THREE from '../vendor/three.module.min.js?v=20260820-dialogue-flow-v90';
-import { request, uploadAsset } from '../api.js?v=20260820-dialogue-flow-v90';
-import { escapeHtml, toast } from '../components/ui.js?v=20260820-dialogue-flow-v90';
+import * as THREE from '../vendor/three.module.min.js?v=20260820-dialogue-flow-v91';
+import { request, uploadAsset } from '../api.js?v=20260820-dialogue-flow-v91';
+import { escapeHtml, toast } from '../components/ui.js?v=20260820-dialogue-flow-v91';
 
 const VERSION = '20260803-photoreal-director-v8';
 
