@@ -1,7 +1,7 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260820-dialogue-flow-v92';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260820-dialogue-flow-v92';
-import { loadProjectList } from './projectListStore.js?v=20260820-dialogue-flow-v92';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260820-dialogue-flow-v92';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260820-dialogue-flow-v93';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260820-dialogue-flow-v93';
+import { loadProjectList } from './projectListStore.js?v=20260820-dialogue-flow-v93';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260820-dialogue-flow-v93';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -52,7 +52,7 @@ export function createProjectStore() {
     syncReferencePolling();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260820-dialogue-flow-v92'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260820-dialogue-flow-v93'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
