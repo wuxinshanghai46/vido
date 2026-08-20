@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260820-dialogue-flow-v91';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260820-dialogue-flow-v91';
-import { confirmDialog } from '../components/dialog.js?v=20260820-dialogue-flow-v91';
+import { request } from '../api.js?v=20260820-dialogue-flow-v92';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260820-dialogue-flow-v92';
+import { confirmDialog } from '../components/dialog.js?v=20260820-dialogue-flow-v92';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};

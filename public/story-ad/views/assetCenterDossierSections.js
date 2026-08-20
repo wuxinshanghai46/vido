@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260820-dialogue-flow-v91';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260820-dialogue-flow-v92';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];
