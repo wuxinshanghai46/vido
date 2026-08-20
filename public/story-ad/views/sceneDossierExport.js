@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260820-dialogue-flow-v86';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260820-dialogue-flow-v86';
+import { request } from '../api.js?v=20260820-dialogue-flow-v87';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260820-dialogue-flow-v87';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;
