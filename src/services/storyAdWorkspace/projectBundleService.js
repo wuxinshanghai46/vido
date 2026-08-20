@@ -455,7 +455,7 @@ function buildProjectBundle(taskId, { sections = '', user = {} } = {}) {
     : (raw.context && typeof raw.context === 'object' ? raw.context : (raw.task.request || {})), clean);
   const context = referenceSnapshot.context;
   const project = {
-    ...projectSummary({ ...storyAd.taskSummary(raw.task, { detailed: false }), ...raw.task }),
+    ...projectSummary({ ...storyAd.taskSummary(raw.task, { detailed: false, lookupOutputs: false }), ...raw.task }),
     name_source: clean(context.project_name ? 'user' : 'legacy_inferred', 40),
     workspace: workspaceStage(raw.task, outputs),
     saved_progress: raw.task.saved_progress === true,

@@ -8,7 +8,7 @@ function clean(value = '', max = 240) {
 }
 
 function taskViewCallGate() {
-  const calls = { sceneCheckpoint: 0, subjectCheckpoint: 0, eligibility: 0, videoRecovery: 0, videoBoundary: 0, mediaProjection: 0 };
+  const calls = { sceneCheckpoint: 0, subjectCheckpoint: 0, eligibility: 0, videoRecovery: 0, videoBoundary: 0, mediaProjection: 0, summaryOutputLookup: 0 };
   const rawBundle = {
     task: { id: 'lightweight-task', status: 'draft', stage: 'brief', request: { brief: '轻量首屏' } },
     stages: [],
@@ -22,7 +22,7 @@ function taskViewCallGate() {
   };
   const { createTaskViewService } = require('../src/services/newStoryAd/taskViewService');
   const service = createTaskViewService({
-    storage: { getTaskBundle: () => rawBundle, listTaskRows: () => [] },
+    storage: { getTaskBundle: () => rawBundle, listTaskRows: () => [], listOutputs: () => [], getOutput() { calls.summaryOutputLookup += 1; return null; } },
     cleanText: clean,
     sceneCheckpointProjection: { projectSceneAssets() { calls.sceneCheckpoint += 1; return []; } },
     videoStatusProjection: { resolveAttempts: () => ({ currentAttempt: null, lastAttempt: null, exposeLastAttempt: false, untouched: true }) },
@@ -42,6 +42,7 @@ function taskViewCallGate() {
 
   const bundle = service.publicTaskBundle('lightweight-task', { sections: 'summary,reference' });
   assert.equal(bundle.task.id, 'lightweight-task');
+  service.taskSummary({ id: 'lightweight-task', status: 'draft', stage: 'brief' }, { detailed: false, lookupOutputs: false });
   assert.deepEqual(calls, {
     sceneCheckpoint: 0,
     subjectCheckpoint: 0,
@@ -49,6 +50,7 @@ function taskViewCallGate() {
     videoRecovery: 0,
     videoBoundary: 0,
     mediaProjection: 0,
+    summaryOutputLookup: 0,
   }, 'summary/reference 首屏不得执行资产资格、检查点、视频或媒体重投影');
 }
 
@@ -85,7 +87,7 @@ function projectBundleCallGate() {
     const projectBundles = require(projectBundlePath);
     const bundle = projectBundles.buildProjectBundle('lightweight-task', { sections: 'summary,reference', user: { role: 'admin' } });
     assert.equal(receivedSections, 'summary,reference', '工作区服务必须把请求分区继续传给底层任务投影');
-    assert.deepEqual(receivedTaskSummaryOptions, { detailed: false }, '已有 raw task 时不得再次读取全部输出生成详细摘要');
+    assert.deepEqual(receivedTaskSummaryOptions, { detailed: false, lookupOutputs: false }, '已有 raw task 时不得再次查询输出生成摘要');
     assert.equal(mergePeopleCalls, 0, '未请求 assets 时不得构造人物检查点资产');
     assert.deepEqual(assetContextReads, {}, '未请求 assets 时不得读取人物、商品、场景或道具大域');
     assert.equal(bundle.assets, undefined, '轻量首屏响应不得包含资产大域');
@@ -97,6 +99,22 @@ function projectBundleCallGate() {
   }
 }
 
+function referenceConfirmationCallGate() {
+  const storage = require('../src/services/newStoryAd/storageService');
+  const confirmations = require('../src/services/storyAdWorkspace/referenceUnderstandingConfirmationService');
+  const originalGetOutput = storage.getOutput;
+  let outputLookups = 0;
+  storage.getOutput = (...args) => { outputLookups += 1; return originalGetOutput(...args); };
+  try {
+    const result = confirmations.inspect('no-reference-task', {});
+    assert.equal(result.analysis_id, '');
+    assert.equal(outputLookups, 0, '没有参考分析 ID 时不得扫描确认输出');
+  } finally {
+    storage.getOutput = originalGetOutput;
+  }
+}
+
 taskViewCallGate();
 projectBundleCallGate();
-console.log(JSON.stringify({ passed: true, checks: 7, scope: 'story-ad-lightweight-bundle-v100', model_calls: 0 }));
+referenceConfirmationCallGate();
+console.log(JSON.stringify({ passed: true, checks: 10, scope: 'story-ad-lightweight-bundle-v100', model_calls: 0 }));

@@ -241,13 +241,13 @@ function createTaskViewService(deps = {}) {
     };
   }
 
-  function taskSummary(task = {}, { detailed = true } = {}) {
+  function taskSummary(task = {}, { detailed = true, lookupOutputs = true } = {}) {
     const outputMap = detailed && task.id
       ? Object.fromEntries(storage.listOutputs(task.id).map(row => [row.kind, row.payload]))
       : {};
     const storyboard = outputMap.storyboard_table || [];
     const keyframes = outputMap.keyframes || [];
-    const finalVideo = outputMap.final_video || (!detailed && task.id ? storage.getOutput(task.id, 'final_video') : null);
+    const finalVideo = outputMap.final_video || (!detailed && lookupOutputs && task.id ? storage.getOutput(task.id, 'final_video') : null);
     const context = outputMap.context || task.request || {};
     const sceneAssets = outputMap.scene_assets || [];
     const firstFrame = keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) || {};
@@ -283,8 +283,12 @@ function createTaskViewService(deps = {}) {
       failed: videoShotStatuses.filter(item => ['qa_failed', 'failed'].includes(item.lifecycle)).length,
     } : null);
     const storedStatus = String(task.status || '').toLowerCase();
-    const failureSummary = videoBoundaryPolicy.taskFailurePatch(outputMap.video_clips || [], storyboard.length)
-      || keyframeFailure.taskSummaryPatch(task, keyframes);
+    const failureSummary = lookupOutputs
+      ? (videoBoundaryPolicy.taskFailurePatch(outputMap.video_clips || [], storyboard.length)
+        || keyframeFailure.taskSummaryPatch(task, keyframes))
+      : {
+        error: task.error || '', error_code: task.error_code || '', support_id: task.support_id || '', retryable: task.retryable === true,
+      };
     const taskStatus = hasFinalOutput
       ? 'done'
       : ((failureSummary.error_code || storedGenerationProgress?.status === 'failed')

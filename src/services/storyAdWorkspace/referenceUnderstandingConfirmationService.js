@@ -60,8 +60,21 @@ function inspect(taskId, context = {}) {
   const id = analysisId(analysis);
   const understanding = analysis.reference_understanding || {};
   const currentFingerprint = fingerprint(understanding);
-  const stored = storage.getOutput(taskId, OUTPUT_KIND);
   const gate = readiness(analysis);
+  if (!id) {
+    return {
+      schema_version: SCHEMA_VERSION,
+      status: 'unconfirmed',
+      ready: false,
+      analysis_id: '',
+      contract_version: gate.contract_version,
+      understanding_fingerprint: currentFingerprint,
+      confirmed_at: '',
+      confirmed_revision: 0,
+      failures: gate.missing,
+    };
+  }
+  const stored = storage.getOutput(taskId, OUTPUT_KIND);
   const current = !!stored
     && stored.status === 'confirmed'
     && stored.analysis_id === id
