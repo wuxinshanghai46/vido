@@ -31,4 +31,4 @@ assert.match(`${workspaceCss}\n${workspaceUxCss}`, /shot-row[\s\S]*min-width:\s*
 assert.match(storyboard, /function sketchGateReason[\s\S]*\[object Object\]/, '历史审核原因对象必须转换为用户可读文本');
 assert.doesNotMatch(storyboard, /disabled'\}>\$\{sketchGate\.ready[\s\S]*文字分镜审核未通过/, '审核失败状态不能伪装成不可点击主按钮');
 
-console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-workspace-ux-v99' }));
+console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-workspace-ux-v100' }));
