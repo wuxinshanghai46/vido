@@ -422,10 +422,10 @@ function renderShell(reference, activeTab, editing = false, options = {}) {
   return `<section class="card reference-understanding" data-reference-understanding data-reference-revision="${revision}">
     <div class="card-head reference-understanding-head"><div><h2>参考内容理解报告</h2><p>先核对系统如何理解故事，再将确认版本作为人物、场景、剧情、分镜与导演台的共同权威输入。</p></div><span class="status-tag ${confirmed ? 'is-success' : (ready ? 'is-info' : 'is-danger')}">${confirmed ? `已确认 · V${revision || 1}` : (ready ? `待确认 · V${revision || 1}` : `需补充 · V${revision || 1}`)}</span></div>
     <footer class="reference-understanding-actions">
-      <div><b>${editing ? `正在修改“${escapeHtml(TAB_DEFINITIONS.find(([id]) => id === activeTab)?.[1] || '')}”` : (confirmed ? '该版本已作为项目权威输入' : (ready ? (options.continueToAssetPlan ? '确认后将建立人物与场景方案并进入资产中心' : '确认前不会创建人物、场景、剧情、分镜或触发付费生成') : '报告尚未达到确认标准'))}</b><small>${editing ? '保存后以你的修改为准；旧确认和受影响的下游结果会失效，但不会调用生成模型。' : (confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? (options.continueToAssetPlan ? '这里只把已识别内容整理成可编辑方案，不生成图片或视频；视觉生成仍需在资产中心另行确认。' : '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。') : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`))}</small></div>
+      <div><b>${editing ? `正在修改“${escapeHtml(TAB_DEFINITIONS.find(([id]) => id === activeTab)?.[1] || '')}”` : (confirmed ? '该版本已作为项目权威输入' : (ready ? (options.continueToPlot ? '确认后将先生成详细剧情与对白' : '确认前不会创建人物、场景、剧情、分镜或触发付费生成') : '报告尚未达到确认标准'))}</b><small>${editing ? '保存后以你的修改为准；旧确认和受影响的下游结果会失效，但不会调用生成模型。' : (confirmed ? '后续环节应始终引用这一分析版本；新分析完成后必须重新确认。' : (ready ? (options.continueToPlot ? '确认动作本身只保存权威版本；随后提交详细剧情与对白，不会提前创建人物、场景或生成图片、视频。' : '请先核对事实、推断和待确认内容。确认动作只保存版本状态，不调用生成模型。') : `请重新整理报告后再确认：${escapeHtml(list(confirmation.failures || data.completeness?.failures).join('、') || '存在缺失内容')}`))}</small></div>
       ${editing
         ? '<button class="btn" type="button" data-cancel-reference-edit>取消</button><button class="btn primary" type="button" data-save-reference-edit>保存当前栏目</button>'
-        : `${ready ? '<button class="btn" type="button" data-edit-reference-understanding>修改当前栏目</button>' : ''}${confirmed || !ready ? '' : `<button class="btn primary" type="button" data-confirm-reference-understanding>${options.continueToAssetPlan ? '确认并创建人物与场景方案' : '确认理解结果，作为项目权威输入'}</button>`}`}
+        : `${ready ? '<button class="btn" type="button" data-edit-reference-understanding>修改当前栏目</button>' : ''}${confirmed || !ready ? '' : `<button class="btn primary" type="button" data-confirm-reference-understanding>${options.continueToPlot ? '确认并生成剧情与对白' : '确认理解结果，作为项目权威输入'}</button>`}`}
     </footer>
     <div class="reference-understanding-brief-slot" data-reference-brief-slot></div>
     <div class="reference-understanding-summary">
@@ -452,7 +452,7 @@ export function mountReferenceUnderstanding(host, options = {}) {
       host.innerHTML = '';
       return;
     }
-    host.innerHTML = renderShell(currentReference, activeTab, editing, { continueToAssetPlan: typeof options.onConfirmed === 'function' });
+    host.innerHTML = renderShell(currentReference, activeTab, editing, { continueToPlot: typeof options.onConfirmed === 'function' });
     const briefSlot = host.querySelector('[data-reference-brief-slot]');
     if (briefSlot && options.briefSettingsNode) briefSlot.appendChild(options.briefSettingsNode);
   };
@@ -541,12 +541,12 @@ export function mountReferenceUnderstanding(host, options = {}) {
       toast('报告缺少分析编号或版本，已停止确认以避免绑定错误内容。', 'danger');
       return;
     }
-    const continueToAssetPlan = typeof options.onConfirmed === 'function';
-    if (!await confirmDialog(continueToAssetPlan
-      ? '确认后，这一版本将成为后续制作的共同权威输入，并立即建立可编辑的人物与场景方案、进入资产中心。此步骤不生成图片或视频；视觉生成仍需另行确认。'
+    const continueToPlot = typeof options.onConfirmed === 'function';
+    if (!await confirmDialog(continueToPlot
+      ? '确认后，这一版本将成为后续制作的共同权威输入，并立即提交详细剧情与对白生成。剧情确认后才会进入人物与场景；此步骤不生成图片或视频。'
       : '确认后，这一版本将成为人物、场景、剧情、分镜和导演台的共同权威输入。本操作不会触发任何生成或付费调用。', {
       title: '确认参考理解结果',
-      confirmText: continueToAssetPlan ? '确认并进入资产中心' : '确认当前版本',
+      confirmText: continueToPlot ? '确认并生成剧情' : '确认当前版本',
     })) return;
     try {
       setButtonBusy(button, true, '正在确认…');
@@ -556,8 +556,8 @@ export function mountReferenceUnderstanding(host, options = {}) {
         body: { analysis_id: analysisId, base_revision: baseRevision, confirmation: 'authoritative_input' },
       });
       await options.store?.loadBundle?.(taskId, 'all');
-      if (continueToAssetPlan) {
-        toast('参考理解已确认，正在创建人物与场景方案。', 'success');
+      if (continueToPlot) {
+        toast('参考理解已确认，正在生成详细剧情与对白。', 'success');
         await options.onConfirmed({ taskId, analysisId, baseRevision });
       } else {
         toast('已确认当前参考理解版本；不会自动生成任何资产。', 'success');

@@ -85,12 +85,12 @@ async function main() {
     },
   });
 
-  assert.match(dialogCopy.message, /立即建立可编辑的人物与场景方案/);
+  assert.match(dialogCopy.message, /立即提交详细剧情与对白生成/);
   assert.match(dialogCopy.message, /不生成图片或视频/);
-  assert.equal(dialogCopy.options.confirmText, '确认并进入资产中心');
+  assert.equal(dialogCopy.options.confirmText, '确认并生成剧情');
   assert.deepEqual(events.filter(item => ['request', 'loadBundle', 'onConfirmed'].includes(item[0])).map(item => item[0]), [
     'request', 'loadBundle', 'onConfirmed',
-  ], '必须先确认权威版本，再刷新服务端状态，最后继续资产方案流程');
+  ], '必须先确认权威版本，再刷新服务端状态，最后继续剧情与对白流程');
   const requestEvent = events.find(item => item[0] === 'request');
   assert.equal(requestEvent[1], '/api/story-ad/projects/task-flow-1/reference-understanding/confirm');
   assert.deepEqual(JSON.parse(JSON.stringify(requestEvent[2].body)), {

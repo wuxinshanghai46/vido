@@ -163,7 +163,7 @@ assert.match(briefView, /function safeFormPayload\(\)/, '提交前必须从 Stor
 assert.match(briefView, /if \(dirtyFields\.has\(key\)/, '只有用户本页主动编辑的字段可以覆盖识别结果');
 assert.match(briefView, /const payload = safeFormPayload\(\);[\s\S]*content_mode_change_confirmed = true[\s\S]*if \(dirtyFields\.size\)[\s\S]*await store\.updateRequest\(payload, \{ refreshSections: 'summary' \}\);[\s\S]*runStage\('blueprint'\)[\s\S]*view=plot/, '目标确认必须只保存真实编辑，再按生成剧情与对白、进入剧情室的顺序执行');
 assert.match(briefView, /if \(dirtyFields\.size\)/, '刚确认参考报告且没有修改目标时不得发送会使确认失效的空保存');
-assert.match(briefView, /onConfirmed:[\s\S]*proceedToAssetPlan/, '参考理解确认后必须自动接通同一条资产方案流程');
+assert.match(briefView, /onConfirmed:[\s\S]*proceedToPlot/, '参考理解确认后必须自动接通同一条剧情与对白流程');
 const progressModule = loadBrowserModule('public/story-ad/views/referenceProgressCard.js', ['referenceProgress'], {
   escapeHtml,
   elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },

@@ -214,7 +214,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       briefSettingsNode: briefSettingsLayout,
       onConfirmed: async () => {
         const nextButton = host.querySelector('[data-brief-inline-action] [data-brief-submit]');
-        const proceeded = await proceedToAssetPlan(nextButton);
+        const proceeded = await proceedToPlot(nextButton);
         if (!proceeded) host.querySelector('[data-brief-inline-action]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       },
     });
@@ -373,7 +373,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     return createdProjectId;
   }
 
-  async function proceedToAssetPlan(button) {
+  async function proceedToPlot(button) {
     if (assetPlanTransitioning) return false;
     assetPlanTransitioning = true;
     host.querySelectorAll('[data-brief-submit]').forEach(target => setButtonBusy(target, true, '正在检查并保存…'));
@@ -426,7 +426,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
     form,
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
     ensureProject,
-    proceed: proceedToAssetPlan,
+    proceed: proceedToPlot,
     onError: (error, button) => { setButtonBusy(button, false); toast(error.message, 'danger'); },
   });
 
@@ -444,7 +444,7 @@ ${[15, 30, 45, 60, 90, 120, 180, 240, 300, 360, 480, 600].map(value => `<option 
       }
       return;
     }
-    await proceedToAssetPlan(button);
+    await proceedToPlot(button);
   });
 
   host.querySelectorAll('[data-material-upload]').forEach(button => {

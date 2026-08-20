@@ -47,10 +47,10 @@ assert.match(report, /不会调用生成模型/, '编辑参考内容不得触发
 assert.match(report, /analysis_id: analysisId, base_revision: baseRevision, confirmation: 'authoritative_input'/, '确认操作必须携带分析编号、基线版本和确认语义');
 assert.match(report, /bundle\?\.revisions\?\.content/, '确认必须使用项目内容版本，不能误用分析合同版本');
 assert.match(report, /error\?\.status === 409/, '必须处理并发版本冲突');
-assert.match(report, /确认并创建人物与场景方案/, '确认按钮必须明确说明会继续建立人物与场景方案');
-assert.match(report, /不生成图片或视频/, '确认时必须明确区分零视觉生成的方案创建与付费图片生成');
+assert.match(report, /确认并生成剧情与对白/, '确认按钮必须明确说明先继续生成详细剧情与对白');
+assert.match(report, /不生成图片或视频/, '确认时必须明确区分剧情生成与视觉生成');
 assert.match(report, /await options\.onConfirmed/, '确认成功后必须把控制权交回目标页继续下一步');
-assert.match(brief, /onConfirmed:[\s\S]*proceedToAssetPlan/, '目标页必须接通确认成功到资产方案的连续流程');
+assert.match(brief, /onConfirmed:[\s\S]*proceedToPlot/, '目标页必须接通确认成功到剧情与对白的连续流程');
 assert.match(brief, /briefSettingsNode: briefSettingsLayout/, '广告目标与启动材料必须作为稳定节点交给参考报告插槽');
 assert.match(report, /data-reference-brief-slot/, '参考报告必须提供确认操作与摘要之间的设置插槽');
 assert.match(report, /briefSlot\.appendChild\(options\.briefSettingsNode\)/, '报告每次重绘后都必须恢复广告目标与启动材料节点');
@@ -99,7 +99,7 @@ assert.strictEqual(reportFunctions.isReferenceUnderstandingConfirmed({ ...backen
 const briefFunctions = browserFunctions(brief, ['referenceActionState']);
 assert.strictEqual(briefFunctions.referenceActionState(backendShape).blocked, true, '深度报告未确认时必须阻止资产创建');
 assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).blocked, false, '确认后才允许用户主动进入资产创建');
-assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).label, '下一步：创建人物与场景方案', '确认后的可见主操作必须说明真实下一步');
+assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).label, '下一步：生成剧情与对白', '确认后的可见主操作必须说明真实下一步');
 
 console.log(JSON.stringify({
   passed: true,
