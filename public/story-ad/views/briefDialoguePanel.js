@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v93';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v94';
 
 function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');

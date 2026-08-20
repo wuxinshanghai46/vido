@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v93';
+import { escapeHtml } from '../components/ui.js?v=20260820-dialogue-flow-v94';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)

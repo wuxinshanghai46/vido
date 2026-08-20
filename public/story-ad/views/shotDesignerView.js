@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260820-dialogue-flow-v93';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260820-dialogue-flow-v93';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260820-dialogue-flow-v93';
+import { request } from '../api.js?v=20260820-dialogue-flow-v94';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260820-dialogue-flow-v94';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260820-dialogue-flow-v94';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
