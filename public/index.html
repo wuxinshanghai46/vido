@@ -9,7 +9,7 @@
   <script src="/js/vido-theme.js?v=20260624-account-theme"></script>
   <link rel="stylesheet" href="/css/style.css?v=20260731-story-ad-entry" />
   <link rel="stylesheet" href="/css/vido-ui.css?v=20260626-theme-native-controls" />
-  <link rel="stylesheet" href="/css/dashboard-workbench.css?v=20260820-hover-preview-v93" />
+  <link rel="stylesheet" href="/css/dashboard-workbench.css?v=20260820-dashboard-clean-v94" />
   <script src="/js/auth.js?v=20260626-long-session"></script>
   <script src="/js/media-delivery.js?v=20260729-platform-media-v5"></script>
 </head>
@@ -115,134 +115,19 @@
 
       <!-- ══ 创作页面 ══ -->
       <!-- ═══════ 工作台 ═══════ -->
-      <div id="page-dashboard" class="page active" style="padding:24px;">
-
-        <!-- Hero Creation Area -->
-        <div class="hub-hero hub-hero-studio">
-          <div class="hub-hero-kicker">VIDO GUIDED PRODUCTION</div>
-          <div class="hub-hero-title">你的 AI 视频创作工作台</div>
-          <div class="hub-hero-subtitle">从想法开始，选择方式后进入 VIDO 对应真实模块继续制作。</div>
-          <div class="hub-input-wrap">
-            <textarea class="hub-input" id="hub-input" placeholder="由一个想法、商品卖点、小说章节或分镜需求开始..." rows="4"></textarea>
-            <button class="hub-input-btn" onclick="hubSmartRoute()">开始创作</button>
-          </div>
-          <div class="hub-input-hints">
-            <span class="hub-hint-tag" onclick="switchPage('workflow')" style="border-color:rgba(var(--accent-rgb),.3);font-weight:600;color:var(--accent)">🔗 工作流模式 — 拖拽式创作画布</span>
-            <span class="hub-hint-tag" onclick="hubSetExample('create','一只白猫在屋顶追萤火虫，月光洒在青瓦上')">🎬 白猫追萤火虫</span>
-            <span class="hub-hint-tag" onclick="hubSetExample('avatar','大家好，今天分享三个让你效率翻倍的AI工具')">🧑‍💼 效率工具分享</span>
-            <span class="hub-hint-tag" onclick="hubSetExample('comic','机械猫与少年在废墟都市中探险')">📚 机械猫冒险</span>
-            <span class="hub-hint-tag" onclick="hubSetExample('novel','修仙世界，少年偶得上古传承，从废柴逆袭为一代仙帝')">✍️ 修仙逆袭</span>
-          </div>
+      <div id="page-dashboard" class="page active dashboard-workbench-page" style="padding:24px;">
+        <div class="wb-consumer-head">
+          <div><h1>正在打开创作中心</h1><p>正在读取你的任务和视频。</p></div>
+          <button class="wb-new-button" type="button" disabled>＋ 新建作品</button>
         </div>
-
-        <!-- Content Type Cards -->
-        <div class="hub-types">
-          <div class="hub-type-card" onclick="window.location.href='/story-ad/'">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">剧</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">剧情广告</div>
-                <div class="hub-type-desc">从创意、资产、剧情和分镜到视频成片</div>
-              </div>
-              <div class="hub-type-count">独立模块</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">参考分析</span><span class="hub-tag">人物场景</span><span class="hub-tag">镜头设计</span><span class="hub-tag">工作流画布</span>
-            </div>
-            <button class="hub-type-btn">进入剧情广告 →</button>
-          </div>
-          <div class="hub-type-card" onclick="switchPage('create')">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">🎬</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">视频动漫</div>
-                <div class="hub-type-desc">文字一键生成动画短片 · 支持13种画风</div>
-              </div>
-              <div class="hub-type-count" id="hub-cnt-video">0 作品</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">日系动漫</span><span class="hub-tag">水墨国风</span><span class="hub-tag">仙侠修真</span><span class="hub-tag">电影写实</span>
-            </div>
-            <button class="hub-type-btn">开始创作 →</button>
-          </div>
-          <div class="hub-type-card" onclick="switchPage('avatar')">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">🧑‍💼</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">广告/数字人</div>
-                <div class="hub-type-desc">上传照片 · 文字/音频驱动口播视频</div>
-              </div>
-              <div class="hub-type-count" id="hub-cnt-avatar">0 作品</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">商务女性</span><span class="hub-tag">新闻主播</span><span class="hub-tag">教育讲师</span><span class="hub-tag">动漫角色</span>
-            </div>
-            <button class="hub-type-btn">开始创作 →</button>
-          </div>
-          <div class="hub-type-card" onclick="switchPage('comic')">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">📚</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">漫画</div>
-                <div class="hub-type-desc">输入故事 · AI 自动生成分镜漫画</div>
-              </div>
-              <div class="hub-type-count" id="hub-cnt-comic">0 作品</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">日系动漫</span><span class="hub-tag">美式漫画</span><span class="hub-tag">水墨漫画</span><span class="hub-tag">赛博朋克</span>
-            </div>
-            <button class="hub-type-btn">开始创作 →</button>
-          </div>
-          <div class="hub-type-card" onclick="window.location.href='/ai-manga-drama'">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">🎞️</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">漫剧</div>
-                <div class="hub-type-desc">小说拆集 · 角色资产 · 分镜动效 · 成片流水线</div>
-              </div>
-              <div class="hub-type-count">新模块</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">角色设定</span><span class="hub-tag">场景库</span><span class="hub-tag">镜头分镜</span><span class="hub-tag">批量生成</span>
-            </div>
-            <button class="hub-type-btn">进入漫剧工作台 →</button>
-          </div>
-          <div class="hub-type-card" onclick="window.location.href='/ai-novel'">
-            <div class="hub-type-head">
-              <div class="hub-type-icon">✍️</div>
-              <div class="hub-type-info">
-                <div class="hub-type-name">小说</div>
-                <div class="hub-type-desc">AI 辅助长文创作 · 大纲规划到逐章生成</div>
-              </div>
-              <div class="hub-type-count" id="hub-cnt-novel">0 作品</div>
-            </div>
-            <div class="hub-type-tags">
-              <span class="hub-tag">奇幻</span><span class="hub-tag">仙侠</span><span class="hub-tag">武侠</span><span class="hub-tag">科幻</span><span class="hub-tag">言情</span>
-            </div>
-            <button class="hub-type-btn">开始创作 →</button>
-          </div>
-        </div>
-
-        <!-- Compact Stats Strip -->
-        <div class="hub-stats-strip">
-          <div class="hub-stat"><span class="hub-stat-val" id="ds-videos">0</span><span class="hub-stat-lbl">视频</span></div>
-          <div class="hub-stat"><span class="hub-stat-val" id="ds-avatars">0</span><span class="hub-stat-lbl">数字人</span></div>
-          <div class="hub-stat"><span class="hub-stat-val" id="ds-images">0</span><span class="hub-stat-lbl">图片/漫画</span></div>
-          <div class="hub-stat"><span class="hub-stat-val" id="ds-novels">0</span><span class="hub-stat-lbl">小说</span></div>
-        </div>
-
-        <!-- Recent Works Gallery -->
-        <div class="section-title">最近作品</div>
-        <div class="hub-recent" id="dash-tasks">
-          <div class="hub-recent-empty">还没有作品，从上方开始你的第一次创作吧</div>
-        </div>
-
-        <!-- Notice -->
-        <div class="notice" id="dash-notice" style="margin-top:16px;">
-          📢 <strong>功能更新</strong>：运镜控制系统上线，支持19种运镜+11种景别！<br>
-          🎤 声音克隆功能已集成 阿里 CosyVoice 2 + 火山声音复刻，上传 10 秒音频即可克隆。<br>
-          🎬 即梦AI图片生成已接入，角色形象更精准。
-        </div>
+        <section class="wb-resume-section">
+          <div class="wb-section-head"><div><h2>当前任务</h2><p>正在读取当前任务</p></div></div>
+          <div class="wb-resume-list"><div class="wb-empty">正在加载任务…</div></div>
+        </section>
+        <section class="wb-video-section">
+          <div class="wb-section-head"><div><h2>我的视频</h2><p>查看和播放你已经制作完成的视频</p></div></div>
+          <div class="wb-video-grid"><div class="wb-empty">正在加载视频…</div></div>
+        </section>
       </div>
 
       <div id="page-create" class="page">
@@ -3558,7 +3443,7 @@
   </div>
 </div>
 
-<script src="/js/app.js?v=20260731-story-ad-entry"></script>
- <script src="/js/dashboard-workbench.js?v=20260820-hover-preview-v93"></script>
+ <script src="/js/app.js?v=20260820-dashboard-clean-v94"></script>
+ <script src="/js/dashboard-workbench.js?v=20260820-dashboard-clean-v94"></script>
 </body>
 </html>

@@ -20,4 +20,5 @@
 .wb-video-card.is-previewing .wb-video-thumb{opacity:1}
 .wb-video-copy{right:17px}
 .wb-play-button{display:none!important}
-.wb-video-fallback-image{z-index:2;object-fit:contain}
+.wb-video-fallback-image{z-index:2;object-fit:contain;transition:opacity .18s ease}
+.wb-video-card.is-previewing .wb-video-fallback-image{opacity:0;pointer-events:none}

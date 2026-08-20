@@ -62,9 +62,9 @@ assert(server.includes("app.use('/api/story-ad'"), '独立剧情广告接口必�
 assert(server.includes("app.get(/^\\/story-ad$/"), '无斜杠的剧情广告入口必须使用严格路由');
 assert(!server.includes("app.get('/story-ad',"), '禁止用会同时匹配 /story-ad/ 的非严格路由，否则会自重定向');
 
-assert(index.includes('/js/app.js?v=20260731-story-ad-entry'), '首页业务脚本缓存版本必须更新');
+assert(index.includes('/js/app.js?v=20260820-dashboard-clean-v94'), '首页业务脚本缓存版本必须更新');
 assert(index.includes('/css/style.css?v=20260731-story-ad-entry'), '首页样式缓存版本必须更新');
-assert(index.includes('/js/dashboard-workbench.js?v=20260820-hover-preview-v93'), '工作台脚本缓存版本必须与悬停预览版本同步更新');
-assert(index.includes('/css/dashboard-workbench.css?v=20260820-hover-preview-v93'), '工作台样式缓存版本必须与悬停预览版本同步更新');
+assert(index.includes('/js/dashboard-workbench.js?v=20260820-dashboard-clean-v94'), '工作台脚本缓存版本必须与无旧首屏版本同步更新');
+assert(index.includes('/css/dashboard-workbench.css?v=20260820-dashboard-clean-v94'), '工作台样式缓存版本必须与可见悬停预览版本同步更新');
 
 console.log('platform module navigation tests passed: removed=2 story_ad_entry=2 shared_capabilities=2');

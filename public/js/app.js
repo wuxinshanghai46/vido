@@ -361,7 +361,7 @@ function switchPage(page, opts = {}) {
     return;
   }
   if (page === 'settings') return;
-  if (page === 'dashboard') loadDashboard();
+  if (page === 'dashboard' && typeof window.loadDashboard === 'function') window.loadDashboard();
   // 切换页面时停止所有音频播放
   stopAllAudio();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -399,95 +399,7 @@ function switchPage(page, opts = {}) {
   }
 }
 
-// ═══ 仪表板 ═══
-async function loadDashboard() {
-  const summaryRes = await authFetch('/api/dashboard/summary').then(r => r.json()).catch(() => null);
-  const statsRes = summaryRes?.success ? summaryRes : await authFetch('/api/dashboard/stats').then(r => r.json()).catch(() => null);
-  const tasksRes = summaryRes?.success ? summaryRes : await authFetch('/api/dashboard/recent-tasks').then(r => r.json()).catch(() => null);
-
-  // 统计数据
-  if (statsRes?.success) {
-    const s = statsRes.data;
-    const totalVideos = s.total_projects || 0;
-    const totalAvatars = s.total_avatars || 0;
-    const totalImages = (s.total_portraits || 0) + (s.total_comics || 0);
-    const totalNovels = s.total_novels || 0;
-    const el = id => document.getElementById(id);
-    if (el('ds-videos')) el('ds-videos').textContent = totalVideos;
-    if (el('ds-avatars')) el('ds-avatars').textContent = totalAvatars;
-    if (el('ds-images')) el('ds-images').textContent = totalImages;
-    if (el('ds-novels')) el('ds-novels').textContent = totalNovels;
-    // 内容卡片计数
-    if (el('hub-cnt-video')) el('hub-cnt-video').textContent = totalVideos + ' 作品';
-    if (el('hub-cnt-avatar')) el('hub-cnt-avatar').textContent = totalAvatars + ' 作品';
-    if (el('hub-cnt-comic')) el('hub-cnt-comic').textContent = totalImages + ' 作品';
-    if (el('hub-cnt-novel')) el('hub-cnt-novel').textContent = totalNovels + ' 作品';
-  }
-
-  // 最近作品（视觉画廊格式）
-  const tasksEl = document.getElementById('dash-tasks');
-  if (tasksRes?.success && tasksRes.tasks?.length) {
-    const TYPE_ICON = { 'AI视频':'🎬', '数字人':'🧑‍💼', 'AI漫画':'📚', 'AI图片':'🖼️', 'AI小说':'✍️', '图生视频':'🎞️' };
-    const STATUS_LABEL = { done:'已完成', completed:'已完成', processing:'生成中', generating:'生成中', error:'失败', pending:'等待中' };
-    const TYPE_PAGE = { 'AI视频':'projects', '数字人':'avatar', 'AI漫画':'comic', 'AI图片':'portrait', 'AI小说':'novel', '图生视频':'works' };
-    tasksEl.innerHTML = tasksRes.tasks.map(t => {
-      const st = t.status || 'pending';
-      const pg = TYPE_PAGE[t.type] || 'works';
-      const icon = TYPE_ICON[t.type] || '📄';
-      const statusColor = (st === 'done' || st === 'completed') ? 'var(--accent)' : st === 'error' ? '#ef4444' : 'var(--text3)';
-      const clickAction = t.url ? `window.location.href='${esc(t.url)}'` : `switchPage('${pg}')`;
-      return `<div class="hub-recent-item" onclick="${clickAction}">
-        <div class="hub-recent-thumb" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(var(--accent-rgb),.04);">${icon}</div>
-        <div class="hub-recent-info">
-          <div class="hub-recent-title">${esc(t.title || '未命名')}</div>
-          <div class="hub-recent-meta">
-            <span class="hub-recent-type">${esc(t.type)}</span>
-            <span style="color:${statusColor}">${STATUS_LABEL[st]||st}</span>
-            <span>${esc(t.time_ago||'')}</span>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  } else {
-    tasksEl.innerHTML = '<div class="hub-recent-empty">还没有作品，从上方开始你的第一次创作吧</div>';
-  }
-}
-
-// Hub 智能路由
-function hubSmartRoute() {
-  const text = (document.getElementById('hub-input')?.value || '').trim();
-  if (!text) return;
-  const storyAdKW = ['剧情广告','品牌广告','产品广告','广告短片','商品卖点'];
-  const avatarKW = ['数字人','口播','讲解','主播','直播','大家好','欢迎','分享','今天'];
-  const comicKW = ['漫画','分镜','格漫','条漫'];
-  const novelKW = ['小说','章节','写作','长篇','连载','第一章'];
-  if (storyAdKW.some(k => text.includes(k))) {
-    window.location.href = '/story-ad/projects/new';
-  } else if (avatarKW.some(k => text.includes(k))) {
-    switchPage('avatar');
-    const el = document.getElementById('av-text-input');
-    if (el) el.value = text;
-  } else if (comicKW.some(k => text.includes(k))) {
-    switchPage('comic');
-    const el = document.getElementById('comic-story');
-    if (el) el.value = text;
-  } else if (novelKW.some(k => text.includes(k))) {
-    window.location.href = '/ai-novel';
-  } else {
-    switchPage('create');
-    const el = document.getElementById('input-theme');
-    if (el) { el.value = text; if (typeof updateCharCount === 'function') updateCharCount(el, 'story-cnt'); }
-  }
-}
-
-function hubSetExample(page, text) {
-  const el = document.getElementById('hub-input');
-  if (el) el.value = text;
-  hubSmartRoute();
-}
-
-// 页面加载时默认打开工作台
-document.addEventListener('DOMContentLoaded', () => { loadDashboard(); });
+// 仪表板由 dashboard-workbench.js 唯一负责渲染和加载；旧 Hub 入口已移除。
 
 // ═══ 个人信息 ═══
 function loadProfilePage() {
