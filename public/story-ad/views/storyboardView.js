@@ -90,6 +90,17 @@ function sketchBatchMarkup(batch = null, total = 0) {
   </div>`;
 }
 
+function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才能继续。') {
+  const reason = gate?.reason;
+  if (typeof reason === 'string' && reason.trim() && reason.trim() !== '[object Object]') return reason.trim();
+  if (reason && typeof reason === 'object') {
+    const nested = reason.message || reason.reason || reason.detail || reason.error;
+    if (typeof nested === 'string' && nested.trim()) return nested.trim();
+  }
+  const issue = Array.isArray(gate?.issues) ? gate.issues.find(item => typeof item === 'string' && item.trim()) : '';
+  return issue || fallback;
+}
+
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
     const shotDesigner = await import('./shotDesignerView.js?v=20260820-dialogue-flow-v94');
@@ -113,6 +124,7 @@ export async function mount(host, context) {
   const regenerateAllSketches = missingSketchCount === 0 && generatedSketchCount > 0;
   const sketchBatchTargetCount = regenerateAllSketches ? shots.length : missingSketchCount;
   const sketchGate = bundle?.storyboard?.sketch_gate || { ready: false, reason: '文字分镜状态尚未核对，请刷新页面。', issues: [] };
+  const gateReason = sketchGateReason(sketchGate);
   const completedHistorical = Boolean(
     bundle?.project?.final_video_url
     || bundle?.generation?.final_video?.video_url
@@ -131,10 +143,10 @@ export async function mount(host, context) {
         ? '<button class="btn primary" type="button" data-save-reference-storyboard>保存参考分镜草稿</button>'
         : (completedHistorical && !sketchGate.ready
           ? '<span class="status-tag is-neutral">历史完成内容 · 只读</span>'
-          : `<button class="btn" type="button" data-regenerate-storyboard>批量重生成文字分镜</button><button class="btn primary" type="button" ${sketchGate.ready ? (resolvedSketchCount >= shots.length ? 'data-open-shot-design' : 'data-open-sketches') : 'disabled'}>${sketchGate.ready ? (resolvedSketchCount >= shots.length ? '进入镜头设计' : '下一步：线稿分镜') : '文字分镜审核未通过'}</button>`))
+          : `<button class="btn" type="button" data-regenerate-storyboard>批量重生成文字分镜</button>${sketchGate.ready ? `<button class="btn primary" type="button" ${resolvedSketchCount >= shots.length ? 'data-open-shot-design' : 'data-open-sketches'}>${resolvedSketchCount >= shots.length ? '进入镜头设计' : '下一步：线稿分镜'}</button>` : '<span class="status-tag is-danger">文字分镜需修改</span>'}`))
         : '<button class="btn primary" type="button" data-generate-storyboard>生成文字分镜</button>'}</div>
     </section>
-    <div class="guide ${gateWarningVisible ? 'is-danger' : ''}">${isReferenceDraft ? '这里仅显示参考视频提取的逐镜草稿。可逐镜打开编辑，确认剧情、动作和时长；机位、景别和运镜在镜头设计中继续优化。' : (completedHistoryMessage || (sketchGate.ready ? '线稿可逐镜生成、上传或跳过；确认后构图约束会写入现有分镜并使关键帧合同按版本重建。' : `线稿已锁定：${escapeHtml(sketchGate.reason || '文字分镜审核通过后才能继续。')} 请先修改或重新生成文字分镜。`))}</div>
+    <div class="guide ${gateWarningVisible ? 'is-danger' : ''}">${isReferenceDraft ? '这里仅显示参考视频提取的逐镜草稿。可逐镜打开编辑，确认剧情、动作和时长；机位、景别和运镜在镜头设计中继续优化。' : (completedHistoryMessage || (sketchGate.ready ? '线稿可逐镜生成、上传或跳过；确认后构图约束会写入现有分镜并使关键帧合同按版本重建。' : `线稿已锁定：${escapeHtml(gateReason)} 请先修改或重新生成文字分镜。`))}</div>
     <div class="tabs">
       <button class="tab active" type="button" role="tab" aria-selected="true" data-board-tab="shots">文字分镜 ${shots.length}</button>
       <button class="tab" type="button" role="tab" aria-selected="false" data-board-tab="sketches" ${sketchGate.ready || sketches.length ? '' : 'disabled'}>线稿分镜 ${generatedSketchCount}/${shots.length}</button>
@@ -151,7 +163,7 @@ export async function mount(host, context) {
       })}</div>`}
     </section>
     <section data-board-panel="sketches" hidden>
-      ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(sketchGate.reason || '文字分镜审核通过后才能生成线稿。')}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
+      ${shots.length ? `<div class="storyboard-stage-bar"><div><b>第二步 · 线稿分镜</b><span>${sketchGate.ready ? `文字分镜已审核通过 ${shots.length} 镜；当前线稿 ${generatedSketchCount}/${shots.length}，确认或跳过 ${resolvedSketchCount}/${shots.length}。` : escapeHtml(gateReason)}</span></div>${missingSketchCount ? `<button class="btn primary" type="button" data-generate-sketch-batch ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量生成全部缺失线稿（${missingSketchCount}）`}</button>` : `<div class="storyboard-stage-actions"><span class="status-tag is-success">线稿已全部生成</span><button class="btn" type="button" data-generate-sketch-batch data-regenerate-all="true" ${sketchBatchActive || !sketchGate.ready ? 'disabled' : ''}>${sketchBatchActive ? '线稿批次生成中' : `批量重生成全部线稿（${shots.length}）`}</button></div>`}</div>` : ''}
       <div data-sketch-batch-host>${sketchBatchMarkup(sketchBatch, missingSketchCount || generatedSketchCount)}</div>
       ${shots.length ? `<div class="storyboard-sketch-grid">${visibleShots.map((shot, index) => sketchCard(shot, sketchByShot.get(Number(shot.shot_index || shot.index || pageStart + index + 1)) || {}, pageStart + index, sketchGate)).join('')}</div>${pageNav}` : `<div class="card">${emptyState({ title: '没有可确认的镜头', body: '生成文字分镜后再处理线稿。' })}</div>`}
     </section>`;

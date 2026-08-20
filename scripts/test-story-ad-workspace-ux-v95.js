@@ -26,5 +26,7 @@ assert.match(workspaceCss, /scene-queue-grid\{[^}]*auto-fit/, '单场景不得�
 assert.match(storyboard, /shot-table-scroll/, '分镜宽表只能在表格内部横向滚动');
 assert.match(storyboard, /shot-duration/, '分镜主表必须直接显示时长');
 assert.match(workspaceCss, /shot-row[\s\S]*min-width:\s*1120px/, '分镜表必须保留可读列宽');
+assert.match(storyboard, /function sketchGateReason[\s\S]*\[object Object\]/, '历史审核原因对象必须转换为用户可读文本');
+assert.doesNotMatch(storyboard, /disabled'\}>\$\{sketchGate\.ready[\s\S]*文字分镜审核未通过/, '审核失败状态不能伪装成不可点击主按钮');
 
-console.log(JSON.stringify({ passed: true, checks: 13, scope: 'story-ad-workspace-ux-v95' }));
+console.log(JSON.stringify({ passed: true, checks: 15, scope: 'story-ad-workspace-ux-v96' }));
