@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-guided-workspace-v102';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-guided-workspace-v102';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260821-guided-workspace-v102';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260821-guided-workspace-v102';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260821-guided-workspace-v102';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260821-guided-workspace-v102';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-guided-workspace-v103';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-guided-workspace-v103';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260821-guided-workspace-v103';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260821-guided-workspace-v103';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260821-guided-workspace-v103';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260821-guided-workspace-v103';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

@@ -1,15 +1,15 @@
-import { request } from '../api.js?v=20260821-guided-workspace-v102';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-guided-workspace-v102';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-guided-workspace-v102';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-guided-workspace-v102';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260821-guided-workspace-v102';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-guided-workspace-v102';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-guided-workspace-v102';
-import { assertBriefReadback } from './briefTextContract.js?v=20260821-guided-workspace-v102';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-guided-workspace-v102';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-guided-workspace-v102';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-guided-workspace-v102';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-guided-workspace-v102';
+import { request } from '../api.js?v=20260821-guided-workspace-v103';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-guided-workspace-v103';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-guided-workspace-v103';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-guided-workspace-v103';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260821-guided-workspace-v103';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-guided-workspace-v103';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-guided-workspace-v103';
+import { assertBriefReadback } from './briefTextContract.js?v=20260821-guided-workspace-v103';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-guided-workspace-v103';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-guided-workspace-v103';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-guided-workspace-v103';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-guided-workspace-v103';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -197,7 +197,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       restoreBriefSettingsLayout();
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260821-guided-workspace-v102');
+    const module = await import('./referenceUnderstandingView.js?v=20260821-guided-workspace-v103');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
