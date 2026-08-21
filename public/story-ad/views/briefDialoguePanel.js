@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-interaction-v109';
+import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-interaction-v110';
 
 function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
@@ -124,7 +124,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-dialogue-interaction-v109');
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-dialogue-interaction-v110');
     mountReferenceQuestion(conversation, { onReference, onReferenceLink, onSkip: () => {
       referenceSkipped = true;
       message('user', '没有参考材料，继续');
@@ -170,7 +170,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-dialogue-interaction-v109');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-dialogue-interaction-v110');
     input.value = '';
     let mode = String(control('content_mode')?.value || '');
     if (!mode) {
