@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-v119';
+import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-v120';
 
 function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
@@ -179,7 +179,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-dialogue-v119');
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-dialogue-v120');
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
@@ -196,7 +196,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260821-dialogue-v119');
+    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260821-dialogue-v120');
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       duration: Number(control('target_duration')?.value || 30) || 30,
@@ -268,7 +268,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     retireSuggestions();
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-dialogue-v119');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-dialogue-v120');
     input.value = '';
     const intakeBefore = sync();
     const explicit = explicitSettings.extractExplicitBriefSettings(text);
