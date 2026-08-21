@@ -2,7 +2,7 @@ import { request } from '../api.js?v=20260821-dialogue-interaction-v110';
 import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v110';
 import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v110';
 import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-dialogue-interaction-v110';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v110';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v110';
 import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-dialogue-interaction-v110';
 import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-dialogue-interaction-v110';
 import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-interaction-v110';
@@ -10,38 +10,9 @@ import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-interaction-v110';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-interaction-v110';
 import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-interaction-v110';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260821-dialogue-interaction-v110';
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-interaction-v110';
-function formPayload(form) {
-  const data = new FormData(form);
-  const brief = String(data.get('brief') || '').trim();
-  return {
-    project_name: String(data.get('project_name') || '').trim(),
-    brief,
-    content: brief,
-    brief_source: 'user',
-    content_mode: String(data.get('content_mode') || '').trim(),
-    content_mode_source: 'user',
-    product_subject: '',
-    target_duration: Number(data.get('target_duration') || 30) || 30,
-    output_ratio: String(data.get('output_ratio') || '9:16'),
-    output_size: String(data.get('output_size') || 'standard'),
-    video_resolution: String(data.get('video_resolution') || '1080p'),
-    production_mode: String(data.get('production_mode') || 'auto'),
-    world_setting: worldSettingPayload(data),
-    benchmark_strategy: {
-      source: 'platform_competitor_learning',
-      opening_hook: String(data.get('benchmark_opening_hook') || '').trim(),
-      subject_introduction: String(data.get('benchmark_subject_introduction') || '').trim(),
-      proof_sequence: String(data.get('benchmark_proof_sequence') || '').trim(),
-      spectacle: String(data.get('benchmark_spectacle') || '').trim(),
-      closing: String(data.get('benchmark_closing') || '').trim(),
-      camera_language: String(data.get('benchmark_camera_language') || '').trim(),
-      prompt_method: String(data.get('benchmark_prompt_method') || '').trim(),
-      naturalness_review: String(data.get('benchmark_naturalness_review') || '').trim(),
-      user_edited: true,
-    },
-  };
-}
+import { formPayload } from './briefFormPayload.js?v=20260821-dialogue-interaction-v110';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export function referenceActionState(reference = {}) {
@@ -154,18 +125,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     </div>
     <div data-reference-understanding-host></div>
     ${BRIEF_MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : 'accept="image/png,image/jpeg,image/webp"'}>`).join('')}`;
-  host.classList?.add('brief-dialogue-view');
-  const syncBriefViewport = () => {
-    const top = Math.max(0, Math.round(host.getBoundingClientRect?.().top || 64));
-    host.style?.setProperty('--brief-view-height', `calc(100dvh - ${top}px)`);
-  };
-  syncBriefViewport();
-  window.addEventListener('resize', syncBriefViewport);
-  const progressHost = host.parentElement?.querySelector?.('.project-progress-host');
-  const progressObserver = typeof ResizeObserver === 'function' && progressHost
-    ? new ResizeObserver(syncBriefViewport)
-    : null;
-  progressObserver?.observe(progressHost);
+  const cleanupBriefViewport = bindBriefViewport(host);
   const form = host.querySelector('[data-brief-form]');
   bindAdvancedReferenceControls(host);
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
@@ -432,11 +392,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     form,
     referenceAttached,
     requireUserInitiation: route.isNew,
-    onAssist: payload => request('/api/new-story-ad/assist', {
-      method: 'POST',
-      timeoutMs: 90000,
-      body: { mode: 'brief_dialogue', task_id: createdProjectId || '', ...payload },
-    }),
+    onAssist: briefDialogueAssist(() => createdProjectId),
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
     onReferenceLink: () => host.querySelector('[data-reference-link]')?.click(),
     ensureProject,
@@ -603,10 +559,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   host.addEventListener('click', handleReferenceRetry);
   return () => {
     disposed = true;
-    progressObserver?.disconnect();
-    window.removeEventListener('resize', syncBriefViewport);
-    host.classList?.remove('brief-dialogue-view');
-    host.style?.removeProperty('--brief-view-height');
+    cleanupBriefViewport();
     understandingLoadSequence += 1;
     understandingController?.destroy();
     briefSettingsModalController.destroy();

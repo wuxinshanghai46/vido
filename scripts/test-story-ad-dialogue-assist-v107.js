@@ -52,6 +52,7 @@ function main() {
 
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
   const briefViewSource = read('public/story-ad/views/briefView.js');
+  const dialogueRuntimeSource = read('public/story-ad/views/briefDialogueRuntime.js');
   const css = read('public/story-ad/dialogue-theme.css');
   const storyService = read('src/services/newStoryAd/storyAdService.js');
   assert.match(dialogueSource, /streamMessage/);
@@ -60,11 +61,12 @@ function main() {
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /view-host\.brief-dialogue-view/);
-  assert.match(briefViewSource, /mode: 'brief_dialogue'/);
+  assert.match(briefViewSource, /briefDialogueAssist\(\(\) => createdProjectId\)/);
+  assert.match(dialogueRuntimeSource, /mode: 'brief_dialogue'/);
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 21, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 22, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 try { main(); } catch (error) { console.error(error); process.exit(1); }

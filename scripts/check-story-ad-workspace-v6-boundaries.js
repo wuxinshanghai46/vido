@@ -113,7 +113,7 @@ function main() {
   const checkpointRecoveryLazyJsFiles = allJsFiles.filter(file => /assetCheckpointRecovery/.test(file));
   const assetStageLazyJsFiles = allJsFiles.filter(file => /assetCenterStageView/.test(file));
   const recoveryPreflightLazyJsFiles = allJsFiles.filter(file => /subjectRecoveryPreflightAction/.test(file));
-  const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel|projectBundleStore)/.test(file));
+  const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel|briefDialogueRuntime|briefFormPayload|projectBundleStore)/.test(file));
   const dialogueSupportLazyJsFiles = allJsFiles.filter(file => /(?:briefExplicitSettings|briefReferenceQuestion)/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file));

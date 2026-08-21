@@ -70,7 +70,7 @@ async function main() {
   try {
     const page = await browser.newPage();
     await page.goto(`http://localhost:3007/story-ad/release.js?responsive=${Date.now()}`, { waitUntil: 'domcontentloaded' });
-    for (const file of ['public/story-ad/styles.css','public/story-ad/workspace.css','public/story-ad/workspace-ux.css','public/story-ad/workflow.css']) await page.addStyleTag({ content: read(file) });
+    for (const file of ['public/story-ad/styles.css','public/story-ad/workspace.css','public/story-ad/workspace-ux.css','public/story-ad/platform-responsive.css','public/story-ad/workflow.css']) await page.addStyleTag({ content: read(file) });
     for (const [width, height] of viewports) {
       await page.setViewport({ width, height });
       for (const [name, markup] of [['任务中心', projectCenterMarkup], ['六步工作区', workspaceMarkup]]) {

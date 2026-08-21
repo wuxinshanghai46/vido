@@ -46,7 +46,7 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1920, height: 1000 });
     await page.goto(`http://localhost:3007/story-ad/release.js?qa=${Date.now()}`, { waitUntil: 'domcontentloaded' });
-    for (const relative of ['public/story-ad/styles.css', 'public/story-ad/workspace.css', 'public/story-ad/dialogue-theme.css', 'public/story-ad/workspace-ux.css']) {
+    for (const relative of ['public/story-ad/styles.css', 'public/story-ad/workspace.css', 'public/story-ad/dialogue-theme.css', 'public/story-ad/workspace-ux.css', 'public/story-ad/platform-responsive.css']) {
       await page.addStyleTag({ content: read(relative) });
     }
 
