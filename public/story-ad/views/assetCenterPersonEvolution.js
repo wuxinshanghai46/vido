@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-professional-intake-v117';
+import { escapeHtml } from '../components/ui.js?v=20260821-guided-creative-dialogue-v118';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
