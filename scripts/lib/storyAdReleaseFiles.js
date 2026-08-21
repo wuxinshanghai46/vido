@@ -31,6 +31,7 @@ const BASE_FILES = [
   'scripts/test-story-ad-workspace-v6-ui-regressions.js',
   'scripts/test-story-ad-dialogue-intake-v100.js',
   'scripts/test-story-ad-dialogue-assist-v107.js',
+  'scripts/test-story-ad-platform-responsive-v108.js',
   'scripts/test-story-ad-brief-modal-auto-blueprint-v103.js',
   'scripts/test-story-ad-lightweight-bundle-v100.js',
   'scripts/test-story-ad-platform-narrative-release-v111.js',
