@@ -1,7 +1,7 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260821-dialogue-intake-v116';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-intake-v116';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260821-dialogue-intake-v116';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260821-dialogue-intake-v116';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260821-professional-intake-v117';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-professional-intake-v117';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260821-professional-intake-v117';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260821-professional-intake-v117';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];
