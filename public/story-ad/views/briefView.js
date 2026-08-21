@@ -1,18 +1,18 @@
-import { request } from '../api.js?v=20260821-dialogue-interaction-v110';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v110';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v110';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-dialogue-interaction-v110';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v110';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-dialogue-interaction-v110';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-dialogue-interaction-v110';
-import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-interaction-v110';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-dialogue-interaction-v110';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-interaction-v110';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-interaction-v110';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-interaction-v110';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260821-dialogue-interaction-v110';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-interaction-v110';
-import { formPayload } from './briefFormPayload.js?v=20260821-dialogue-interaction-v110';
+import { request } from '../api.js?v=20260821-dialogue-interaction-v111';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v111';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v111';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-dialogue-interaction-v111';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v111';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-dialogue-interaction-v111';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-dialogue-interaction-v111';
+import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-interaction-v111';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-dialogue-interaction-v111';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-interaction-v111';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-interaction-v111';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-interaction-v111';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260821-dialogue-interaction-v111';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-interaction-v111';
+import { formPayload } from './briefFormPayload.js?v=20260821-dialogue-interaction-v111';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export function referenceActionState(reference = {}) {
@@ -166,7 +166,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260821-dialogue-interaction-v110');
+    const module = await import('./referenceUnderstandingView.js?v=20260821-dialogue-interaction-v111');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
