@@ -1,7 +1,7 @@
-import { createProjectStore } from './store/projectStore.js?v=20260821-dialogue-layout-v115';
-import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260821-dialogue-layout-v115';
-import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260821-dialogue-layout-v115';
-import { confirmDialog } from './components/dialog.js?v=20260821-dialogue-layout-v115';
+import { createProjectStore } from './store/projectStore.js?v=20260821-dialogue-intake-v116';
+import { bindHoverVideoPreviews, escapeHtml, formatDate, generationProgressPanel, refreshElapsedLabels, setButtonBusy, statusView, toast } from './components/ui.js?v=20260821-dialogue-intake-v116';
+import { assertCurrentRelease, startReleaseHeartbeat } from './api.js?v=20260821-dialogue-intake-v116';
+import { confirmDialog } from './components/dialog.js?v=20260821-dialogue-intake-v116';
 
 await assertCurrentRelease();
 startReleaseHeartbeat();
@@ -19,13 +19,13 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260821-dialogue-layout-v115'),
-  assets: () => import('./views/assetCenterView.js?v=20260821-dialogue-layout-v115'),
-  scene: () => import('./views/sceneWorldPage.js?v=20260821-dialogue-layout-v115'),
-  plot: () => import('./views/plotRoomView.js?v=20260821-dialogue-layout-v115'),
-  storyboard: () => import('./views/storyboardView.js?v=20260821-dialogue-layout-v115'),
-  final: () => import('./views/finalView.js?v=20260821-dialogue-layout-v115'),
-  workflow: () => import('./views/workflowView.js?v=20260821-dialogue-layout-v115'),
+  brief: () => import('./views/briefView.js?v=20260821-dialogue-intake-v116'),
+  assets: () => import('./views/assetCenterView.js?v=20260821-dialogue-intake-v116'),
+  scene: () => import('./views/sceneWorldPage.js?v=20260821-dialogue-intake-v116'),
+  plot: () => import('./views/plotRoomView.js?v=20260821-dialogue-intake-v116'),
+  storyboard: () => import('./views/storyboardView.js?v=20260821-dialogue-intake-v116'),
+  final: () => import('./views/finalView.js?v=20260821-dialogue-intake-v116'),
+  workflow: () => import('./views/workflowView.js?v=20260821-dialogue-intake-v116'),
 };
 const VIEW_SECTIONS = Object.freeze({
   brief: 'summary,reference',
@@ -398,7 +398,7 @@ document.addEventListener('input', async ({ target }) => {
   else if (target.matches('[data-project-type-filter]')) centerQuery.taskType = target.value || 'all';
   else if (target.matches('[data-project-stage-filter]')) centerQuery.stage = target.value || 'all';
   else return;
-  const filters = await import('./projectCenterFilters.js?v=20260821-dialogue-layout-v115');
+  const filters = await import('./projectCenterFilters.js?v=20260821-dialogue-intake-v116');
   centerVisibleIds = filters.matchingProjectIds(store.state.projects.map(project => ({
     id: project.id, title: project.title, type: project.content_mode, stage: statusView(project).label,
   })), centerQuery);
