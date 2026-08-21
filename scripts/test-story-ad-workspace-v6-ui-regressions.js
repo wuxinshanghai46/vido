@@ -118,12 +118,12 @@ assert.ok(
 assert.doesNotMatch(briefView, /restoreBriefSettingsLayout|briefSettingsNode:/, '参考报告不得再搬移唯一设置表单');
 assert.match(briefView, /briefSettingsModalController\.modal\?\.open[\s\S]*briefSettingsModalController\.close\(\)/, '选择或移除参考时专业设置 modal 必须安全关闭');
 assert.match(briefView, /store\.subscribe\([\s\S]*referenceProgress\(nextState\.bundle\?\.reference/, '同一分析状态内的实时进度必须局部更新，不能等待整页重载');
-assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brief-submit\]'\)[\s\S]*syncReferenceAction\(button, nextReference\)/, '分析终态到达时必须同步刷新折叠区内外的主按钮');
+assert.match(briefView, /store\.subscribe\([\s\S]*querySelectorAll\('\[data-brief-submit\]'\)[\s\S]*syncReferenceAction\(button, nextReference, nextMode\)/, '分析终态到达时必须按当前内容域同步刷新折叠区内外的主按钮');
 assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注销进度订阅');
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
-assert.match(briefView, /下一步：生成剧情与对白/, '第一步完成后的主操作必须先进入详细剧情与对白');
+assert.match(briefView, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
