@@ -5,12 +5,13 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const brief = fs.readFileSync(path.join(root, 'public/story-ad/views/briefView.js'), 'utf8');
+const referenceDialogueState = fs.readFileSync(path.join(root, 'public/story-ad/views/briefReferenceDialogueState.js'), 'utf8');
 const report = fs.readFileSync(path.join(root, 'public/story-ad/views/referenceUnderstandingView.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public/story-ad/reference-understanding.css'), 'utf8');
 
 assert.match(brief, /import\('\.\/referenceUnderstandingView\.js\?v=/, '深度报告必须按需加载，不能加入所有项目首屏');
 assert.match(brief, /String\(reference\.status \|\| ''\)\.toLowerCase\(\) === 'completed'/, '分析未完成时不得挂载理解报告');
-assert.match(brief, /先确认上方参考理解/, '深度报告存在时，未确认不得进入资产方案创建');
+assert.match(referenceDialogueState, /先确认上方参考理解/, '深度报告存在时，未确认不得进入资产方案创建');
 assert.match(brief, /data-brief-inline-action/, '参考设置折叠时，下一步主操作必须始终可见');
 assert.match(brief, /form="storyAdBriefForm" data-brief-submit/, '折叠区外的主操作必须提交同一份可编辑设置');
 assert.match(brief, /understandingController\?\.destroy\(\)/, '视图退出时必须释放报告事件与 DOM');
@@ -96,7 +97,7 @@ assert.strictEqual(reportFunctions.hasReferenceUnderstanding(backendShape), true
 assert.strictEqual(reportFunctions.isReferenceUnderstandingConfirmed(backendShape), false, '未确认报告不得误判为已确认');
 assert.strictEqual(reportFunctions.isReferenceUnderstandingConfirmed({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }), true, '服务端确认状态必须被识别');
 
-const briefFunctions = browserFunctions(brief, ['referenceActionState']);
+const briefFunctions = browserFunctions(referenceDialogueState, ['referenceActionState']);
 assert.strictEqual(briefFunctions.referenceActionState(backendShape).blocked, true, '深度报告未确认时必须阻止资产创建');
 assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).blocked, false, '确认后才允许用户主动进入资产创建');
 assert.strictEqual(briefFunctions.referenceActionState({ ...backendShape, understanding_confirmation: { status: 'confirmed', ready: true } }).label, '下一步：生成剧情与对白', '确认后的可见主操作必须说明真实下一步');

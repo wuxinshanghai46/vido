@@ -9,54 +9,12 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260821-domain-re
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-domain-reference-dashboard-v129';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-domain-reference-dashboard-v129';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-domain-reference-dashboard-v129';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription, syncReferenceDialogueStatus } from './briefDialoguePanel.js?v=20260821-domain-reference-dashboard-v129';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-domain-reference-dashboard-v129';
+import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260821-domain-reference-dashboard-v129';
 import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260821-domain-reference-dashboard-v129';
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-domain-reference-dashboard-v129';
 import { formPayload } from './briefFormPayload.js?v=20260821-domain-reference-dashboard-v129';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
-
-export function referenceActionState(reference = {}, contentMode = '') {
-  const output = contentMode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
-  if (!reference.analysis_id) return { blocked: false, label: `确认设想，生成${output}` };
-  const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) {
-    const understanding = reference.reference_understanding && typeof reference.reference_understanding === 'object'
-      ? { ...reference, ...reference.reference_understanding }
-      : reference;
-    const hasDeepUnderstanding = !!(
-      Object.keys(understanding.story_bible || {}).length
-      || Object.keys(understanding.story_summary || {}).length
-      || understanding.story_events?.length
-      || understanding.causal_chain?.length
-      || understanding.character_arcs?.length
-      || understanding.characters?.length
-      || understanding.scene_narratives?.length
-      || understanding.scenes?.length
-      || Object.keys(understanding.brand_role || {}).length
-      || understanding.audio_visual_alignment?.length
-      || understanding.inferences?.length
-      || understanding.unknowns?.length
-    );
-    const confirmation = understanding.reference_understanding_confirmation || understanding.understanding_confirmation || understanding.confirmation || {};
-    const confirmed = understanding.understanding_confirmed === true
-      || understanding.authoritative_input_confirmed === true
-      || confirmation.confirmed === true
-      || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
-    if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '先确认上方参考理解' };
-    return { blocked: false, label: `下一步：生成${output}` };
-  }
-  if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
-  if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };
-  if (status === 'completed') return { blocked: true, label: '分析结果不完整，请重试' };
-  return { blocked: true, label: '等待参考视频分析完成' };
-}
-
-export function syncReferenceAction(button, reference = {}, contentMode = '') {
-  if (!button) return;
-  const action = referenceActionState(reference, contentMode);
-  button.disabled = action.blocked;
-  button.textContent = action.label;
-}
 
 export async function mount(host, context) {
   const { route, store, navigate } = context;

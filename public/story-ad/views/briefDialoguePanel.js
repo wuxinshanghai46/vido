@@ -1,4 +1,6 @@
 import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v129';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260821-domain-reference-dashboard-v129';
+export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 
 function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');
@@ -19,39 +21,6 @@ function ideaMarkup(value = '', location = 'conversation') {
   const preview = briefIdeaPreview(value, location === 'contract' ? 180 : 420);
   if (!preview.text) return '<em>等待你的描述</em>';
   return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
-}
-
-export function referenceDialogueStatus(reference = {}) {
-  const status = String(reference.status || '').toLowerCase();
-  if (!reference.analysis_id && !['importing', 'uploading', 'queued', 'running'].includes(status)) return '';
-  const progress = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
-  const phase = String(reference.phase || '').trim();
-  const error = String(reference.error?.message || reference.error || '').trim();
-  if (status === 'completed' && reference.analysis_valid === true) return '参考视频分析完成，已把识别结果同步到当前项目。请先核对参考理解，再继续生成。';
-  if (status === 'completed') return '参考视频已读取完成，但分析结果不完整。请重新识别或更换参考视频。';
-  if (status === 'failed') return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}`;
-  if (status === 'cancelled') return '参考视频分析已停止。如仍需使用，请重新添加链接或上传视频。';
-  if (status === 'sync_interrupted') return `参考分析仍在服务器继续，页面暂时无法取得最新进度：${error || '请稍后重试。'}`;
-  return `${phase || '正在读取并分析参考视频'}${progress ? `（${progress}%）` : ''}。结果会继续显示在本对话中。`;
-}
-
-export function syncReferenceDialogueStatus(host, reference = {}) {
-  const text = referenceDialogueStatus(reference);
-  if (!text) return null;
-  const conversation = host.querySelector('[data-brief-conversation]');
-  if (!conversation) return null;
-  let article = conversation.querySelector('[data-reference-dialogue-status]');
-  if (!article) {
-    article = document.createElement('article');
-    article.className = 'brief-message is-assistant';
-    article.dataset.referenceDialogueStatus = '';
-    article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p></p></div></div>';
-    conversation.appendChild(article);
-  }
-  article.querySelector('.brief-bubble p').textContent = text;
-  article.dataset.referenceStatus = String(reference.status || '').toLowerCase();
-  conversation.scrollTop = conversation.scrollHeight;
-  return article;
 }
 
 export function briefDialogueMarkup(bundle = {}, route = {}) {
@@ -84,15 +53,6 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
       <button class="brief-professional" type="button" data-dialogue-professional>手动编辑全部设置</button>
     </aside>
   </section>`;
-}
-
-export function referenceNextStepDescription(reference = {}, action = {}, contentMode = '') {
-  const output = contentMode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
-  if (action.blocked === false) return `先生成可编辑的${output}；确认后再提取制作主体与场景。`;
-  const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) return `先确认参考理解；成功后自动生成${output}。`;
-  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
-  return '参考分析中；完成并确认后自动继续。';
 }
 
 export function dialogueIntakeState({ name = '', mode = '', idea = '', ideaReady, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false } = {}) {
@@ -200,28 +160,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
       onReference,
-      onReferenceLink: async () => {
-        let pending = null;
-        try {
-          const result = await onReferenceLink?.({
-            onStart: () => {
-              message('user', '已提交参考链接');
-              pending = message('assistant', '正在读取链接并建立参考分析任务，请稍候…');
-              pending.article.dataset.referenceDialogueStatus = '';
-            },
-          });
-          if (!result || result.cancelled === true) return;
-          referencePresent = true;
-          const text = referenceDialogueStatus(result.analysis || { analysis_id: 'pending', status: 'importing' });
-          if (pending) pending.textNode.textContent = text;
-          sync();
-        } catch (error) {
-          const requestId = String(error?.data?.request_id || '').trim();
-          const text = `参考链接未能开始分析：${error?.message || '请求失败，请重试。'}${requestId ? `（请求编号：${requestId}）` : ''}`;
-          if (pending) pending.textNode.textContent = text;
-          else message('assistant', text);
-        }
-      },
+      onReferenceLink: createReferenceLinkDialogueHandler({ onReferenceLink, message, onAttached: () => { referencePresent = true; }, sync }),
       onSkip: () => {
       referenceSkipped = true;
       message('user', '没有');

@@ -182,6 +182,7 @@ async function main() {
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
+  const referenceDialogueStateSource = read('public/story-ad/views/briefReferenceDialogueState.js');
   const guidedResumeSource = read('public/story-ad/views/briefGuidedResume.js');
   const briefViewSource = read('public/story-ad/views/briefView.js');
   const dialogueRuntimeSource = read('public/story-ad/views/briefDialogueRuntime.js');
@@ -194,8 +195,8 @@ async function main() {
   assert.doesNotMatch(dialogueSource, /这轮没有取得可靠的专业审阅结果/);
   assert.match(dialogueSource, /data-dialogue-reference title="添加参考材料">参考/);
   assert.match(dialogueSource, /data-reference-dialogue-status/);
-  assert.match(dialogueSource, /参考链接未能开始分析/);
-  assert.match(dialogueSource, /请求编号/);
+  assert.match(referenceDialogueStateSource, /参考链接未能开始分析/);
+  assert.match(referenceDialogueStateSource, /请求编号/);
   assert.match(briefViewSource, /syncReferenceDialogueStatus/);
   assert.match(briefViewSource, /读取与分析进度已显示在对话中/);
   assert.match(briefViewSource, /loadBundle\(createdProjectId, 'summary,reference'\)/, '新建项目添加链接前只允许读取摘要与参考域，不能让全量工作区阻断分析任务创建');

@@ -67,6 +67,7 @@ assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const referenceDialogueState = read('public/story-ad/views/briefReferenceDialogueState.js');
 const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
 const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
 const briefSettingsModal = read('public/story-ad/views/briefSettingsModal.js');
@@ -123,7 +124,7 @@ assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注�
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
-assert.match(briefView, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
+assert.match(referenceDialogueState, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
@@ -171,7 +172,7 @@ const progressModule = loadBrowserModule('public/story-ad/views/referenceProgres
   escapeHtml,
   elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },
 });
-const briefModule = loadBrowserModule('public/story-ad/views/briefView.js', ['referenceProgress', 'referenceActionState', 'syncReferenceAction'], {
+const briefProgressModule = loadBrowserModule('public/story-ad/views/briefView.js', ['referenceProgress'], {
   escapeHtml,
   renderReferenceProgress: progressModule.referenceProgress,
   elapsedTimeTag({ active = false } = {}) { return `<span class="elapsed-time">${active ? '已耗时' : '本次耗时'} 1分05秒</span>`; },
@@ -180,6 +181,8 @@ const briefModule = loadBrowserModule('public/story-ad/views/briefView.js', ['re
   confirmDialog() { return false; },
   promptDialog() { return ''; },
 });
+const referenceStateModule = loadBrowserModule('public/story-ad/views/briefReferenceDialogueState.js', ['referenceActionState', 'syncReferenceAction']);
+const briefModule = { ...briefProgressModule, ...referenceStateModule };
 const runningReference = briefModule.referenceProgress({
   analysis_id: 'analysis-running', status: 'running', progress: 42,
   started_at: '2026-08-01T00:00:00.000Z',
