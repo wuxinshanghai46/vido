@@ -33,6 +33,8 @@ async function main() {
   assert.match(service.systemPrompt(), /suggested_answers/);
   assert.match(service.systemPrompt(), /不得是“继续补充”“都可以”“其他”/);
   assert.match(service.systemPrompt(), /不能等用户反问才意识到/);
+  assert.match(service.systemPrompt('【动态检索到的知识】导演提问方法'), /只用于改善提问方法/);
+  assert.match(service.systemPrompt('【动态检索到的知识】导演提问方法'), /不得照搬其中案例/);
 
   const incomplete = JSON.stringify({
     reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
@@ -110,6 +112,9 @@ async function main() {
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true);
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事，反派是江湖仇家', completedTopics: ['opposition'] }), false, '用户回答过的决策必须在模型候选校验阶段被拒绝');
   assert.deepEqual(service.cleanTopics(['opposition', 'opposition', 'unknown']), ['opposition']);
+  const missingTopic = JSON.stringify({ ...JSON.parse(repeatedOpposition), question_topic: '' });
+  assert.equal(service.validateRaw(missingTopic, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true, '模型漏回稳定问题字段时应从实际问题语义补全，不应废弃整段专业回答');
+  assert.equal(service.buildResponse({ parsed: JSON.parse(missingTopic), body: { accumulated_idea: '古代武侠故事' } }).question_topic, 'opposition');
 
   let capturedOptions = null;
   const fastResult = await service.run({
@@ -121,6 +126,15 @@ async function main() {
   assert.equal(capturedOptions.maxCandidates, 2);
   assert.deepEqual(capturedOptions.structuredOutput, { mode: 'json_object' });
   assert.equal(fastResult.next_step, 'specifications');
+  assert.match(capturedOptions.systemPrompt, /动态检索到的知识|五类制作依据/, '导演对话必须把当前内容送入知识检索后形成系统上下文');
+  const recovered = await service.run({
+    body: { accumulated_idea: '男女主跨越千年相爱，反派是觊觎女主家族秘宝的权贵', user_message: '反派是觊觎女主家族秘宝的权贵', content_mode: 'narrative_story', completed_topics: ['opposition'] },
+    modelGateway: { async generateText() { const error = new Error('invalid'); error.code = 'MODEL_ATTEMPTS_EXHAUSTED'; error.failed_models = ['one', 'two']; throw error; } },
+  });
+  assert.equal(recovered.question_topic, 'plot_trigger');
+  assert.match(recovered.dialogue_reply, /第一次出手/);
+  assert.doesNotMatch(recovered.dialogue_reply, /没有取得可靠|请补充最影响制作/);
+  assert.equal(recovered.model_meta.deterministic, true);
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
@@ -132,6 +146,9 @@ async function main() {
   const storyService = read('src/services/newStoryAd/storyAdService.js');
   assert.match(dialogueSource, /streamMessage/);
   assert.match(dialogueSource, /setTimeout\(resolve, 22\)/);
+  assert.match(dialogueSource, /brief-thinking-dots/);
+  assert.doesNotMatch(dialogueSource, /textNode\.textContent = '…'/);
+  assert.doesNotMatch(dialogueSource, /这轮没有取得可靠的专业审阅结果/);
   assert.match(dialogueSource, /data-dialogue-expand/);
   assert.match(dialogueSource, /appendSuggestions/);
   assert.match(dialogueSource, /result\?\.suggested_answers/);
@@ -141,6 +158,7 @@ async function main() {
   assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
+  assert.match(css, /@keyframes brief-thinking-wave/);
   assert.match(css, /brief-quick-actions button\{[^}]*font-size:11px/, '快捷选择按钮不得继承平台大字号');
   assert.match(css, /brief-send\{[^}]*font-size:12px/, '发送按钮必须使用紧凑字号');
   assert.match(css, /view-host\.brief-dialogue-view/);

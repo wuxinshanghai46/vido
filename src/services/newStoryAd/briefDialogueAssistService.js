@@ -1,4 +1,5 @@
 const jsonRepair = require('./jsonRepairService');
+const knowledgeBase = require('../knowledgeBaseService');
 
 const MODES = new Set(['brief_dialogue', 'dialogue_intake']);
 const NEXT_STEPS = new Set(['idea_details', 'specifications', 'reference', 'review']);
@@ -10,6 +11,16 @@ const DIALOGUE_TOPICS = new Set([
   'world_era', 'world_region_rules', 'character_continuity', 'visual_medium',
   'visual_tone', 'commercial_evidence',
 ]);
+const TOPIC_ORDER = [...DIALOGUE_TOPICS];
+const TOPIC_HINTS = [
+  ['opposition', /反派|对手|阻碍|敌人/u], ['subject_relationship', /关系|相识|相遇|彼此|两人/u],
+  ['subject_motivation', /动机|为什么|想要|目的|渴望/u], ['plot_trigger', /开端|触发|卷入|第一次出手|导火索/u],
+  ['plot_development', /发展|升级|中段|推进/u], ['climax_ending', /高潮|结局|最后|收束/u],
+  ['audience_intent', /观众|受众|看完|感受|行动/u], ['world_era', /时代|年代|古代|现代/u],
+  ['world_region_rules', /地点|地区|世界|规则|城市|朝代/u], ['character_continuity', /容貌|年龄|造型|连续|转世/u],
+  ['visual_medium', /真人|动画|媒介|实拍/u], ['visual_tone', /视觉|质感|风格|气质|美学/u],
+  ['commercial_evidence', /卖点|价值|证据|产品|功效/u], ['subject_identity', /人物|主角|主体|身份/u],
+];
 
 function cleanText(value = '', max = 1600) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -37,8 +48,13 @@ function modeLabel(mode = '') {
   return mode === 'commercial_subject' ? '商业广告' : (mode === 'narrative_story' ? '剧情短片' : '尚未确认');
 }
 
-function impliedDecisionGap(accumulatedIdea = '') {
+function impliedDecisionGap(accumulatedIdea = '', completedTopics) {
   const source = cleanText(accumulatedIdea, 4000);
+  if (Array.isArray(completedTopics)) {
+    const completed = new Set(cleanTopics(completedTopics));
+    const earlierTopics = TOPIC_ORDER.slice(0, TOPIC_ORDER.indexOf('character_continuity'));
+    if (!earlierTopics.every(topic => completed.has(topic))) return null;
+  }
   const crossesEras = /(?:跨越|穿越|相隔)[^，。；\n]{0,12}(?:百年|千年|时代)|古代[^，。；\n]{0,80}(?:现代|当代)|(?:现代|当代)[^，。；\n]{0,80}古代/u.test(source);
   const continuityAnswered = /(?:容貌|外貌|年龄|老去|不老|衰老|少年|青年|中年|老年|转世|轮回|同一张脸|身份变化|气质变化|服装变化|古今相似)/u.test(source);
   if (crossesEras && !continuityAnswered) return {
@@ -50,8 +66,8 @@ function impliedDecisionGap(accumulatedIdea = '') {
   return null;
 }
 
-function systemPrompt() {
-  return [
+function systemPrompt(dynamicKnowledge = '') {
+  const lines = [
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
     '不要机械复述整段原话，不要使用“针对【原始创作需求】”“核心已经成立”“已整理到确认单”等模板话术。先指出你真正理解到的创作选择或矛盾，再问能改变剧本或制作方案的具体问题。',
     '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
@@ -64,8 +80,28 @@ function systemPrompt() {
     'reply 控制在 45 至 220 个中文字符：先用一句话说出你理解到的具体创作重点，再自然地提出这轮唯一一个问题。不能回复“还要核对若干项”“缺少的内容会逐项询问”之类系统说明。',
     '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。一个选项只表达当前问题的一种选择，不要在媒介名称后用逗号追加第二层风格评价。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
     '你必须主动发现并追问内容本身隐含的制作决策，不能等用户反问才意识到。例如跨越古今、穿越或轮回的故事，要主动确认人物年龄、身份、容貌和造型如何连续；多主角要确认关系与视角；商业内容要确认可见的价值证据。只要这类关键决策仍悬空，idea_ready 必须为 false。',
-  ].join('\n');
+  ];
+  if (dynamicKnowledge) lines.push(
+    '下面是按当前项目动态检索的导演知识，只用于改善提问方法和创作判断；不得照搬其中案例、人物或设定，不得覆盖用户原话：',
+    dynamicKnowledge,
+  );
+  return lines.join('\n');
 }
+
+function knowledgeContext(body = {}) {
+  const query = [body.accumulated_idea || body.brief, body.user_message || body.message].map(item => cleanText(item, 1800)).filter(Boolean).join('\n');
+  if (!query) return '';
+  try { return knowledgeBase.searchForAgent('director', query, { limit: 2, maxCharsPerDoc: 360 }); } catch { return ''; }
+}
+
+function inferQuestionTopic(reply = '', missingTopics = [], completedTopics = []) {
+  const completed = new Set(cleanTopics(completedTopics));
+  const source = `${cleanText(reply, 400)} ${listText(missingTopics)}`;
+  const matched = TOPIC_HINTS.find(([topic, pattern]) => !completed.has(topic) && pattern.test(source));
+  return matched?.[0] || TOPIC_ORDER.find(topic => !completed.has(topic)) || '';
+}
+
+function listText(value = []) { return (Array.isArray(value) ? value : []).map(item => cleanInline(item, 80)).join(' '); }
 
 function userPrompt(body = {}) {
   const history = Array.isArray(body.history) ? body.history.slice(-8).map(item => ({
@@ -101,11 +137,11 @@ function normalizeCoverage(parsed = {}, accumulatedIdea = '') {
   }));
 }
 
-function normalizeParsed(parsed = {}, accumulatedIdea = '') {
+function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null) {
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
-  const impliedGap = impliedDecisionGap(accumulatedIdea);
+  const impliedGap = impliedDecisionGap(accumulatedIdea, Array.isArray(completedTopics) ? completedTopics : undefined);
   let ideaReady = parsed.idea_ready === true && coverageReady && !impliedGap;
   let missingTopics = (Array.isArray(parsed.missing_topics) ? parsed.missing_topics : [])
     .map(item => cleanInline(item, 80)).filter(Boolean).slice(0, 1);
@@ -125,6 +161,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '') {
       reply = impliedGap.reply;
       suggestedAnswers = impliedGap.answers;
     } else if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
+    if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, completedTopics);
     if (!impliedGap && parsed.idea_ready === true && !coverageReady) reply = `现有回答还不能形成可核验的完整立项依据，不能直接进入规格确认。请继续明确${missingTopics.join('和')}，我会以你的原话作为确认依据。`;
   } else { suggestedAnswers = []; questionTopic = ''; }
   return { reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
@@ -133,7 +170,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '') {
 function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [] } = {}) {
   try {
     const parsed = jsonRepair.parseJson(raw, 'object');
-    const value = normalizeParsed(parsed, accumulatedIdea);
+    const value = normalizeParsed(parsed, accumulatedIdea, completedTopics);
     const completed = cleanTopics(completedTopics);
     return Boolean(value.reply.length >= 12
       && value.reply.length <= 300
@@ -145,7 +182,7 @@ function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [] } = 
 }
 
 function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
-  const value = normalizeParsed(parsed, body.accumulated_idea || body.brief || '');
+  const value = normalizeParsed(parsed, body.accumulated_idea || body.brief || '', body.completed_topics);
   if (!value.reply || (!value.idea_ready && !value.missing_topics.length)) {
     const error = new Error('导演助理没有返回可用的下一问，请保留当前输入后重试');
     error.code = 'BRIEF_DIALOGUE_REPLY_INCOMPLETE';
@@ -173,10 +210,33 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
   };
 }
 
+function recoveryResponse(body = {}, failedModels = []) {
+  const completed = cleanTopics(body.completed_topics);
+  const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, TOPIC_ORDER.indexOf(item)), -1);
+  const topic = TOPIC_ORDER.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
+    || TOPIC_ORDER.find(item => !completed.includes(item)) || 'plot_trigger';
+  const preview = cleanInline(body.user_message || body.message, 72);
+  const questions = {
+    plot_trigger: ['这条人物线已经更清楚了。接下来让故事真正动起来：反派第一次出手时，做了什么让男女主不得不卷入争夺？', ['设局嫁祸男主，逼他亡命追查', '掳走女主亲人，以秘宝相要挟', '借朝廷之手灭门，强夺秘宝']],
+    plot_development: ['这个开端有了抓力。冲突升级后，你更希望男女主因共同目标逐渐靠近，还是因隐瞒与误解先走向决裂？', ['并肩追查，感情逐渐加深', '互相隐瞒，信任彻底破裂', '先决裂，再因真相重新联手']],
+    climax_ending: ['人物和冲突已经立住了。到了最后一场对决，你希望他们赢下什么，又必须失去什么？', ['守住彼此，但秘宝永远消失', '击败反派，却被迫跨越千年分离', '放弃秘宝，换来家族与爱人的自由']],
+    audience_intent: ['故事的走向已经能成立。你最希望观众看完后留下哪一种感受？', ['为跨越千年的爱情感动', '对命运与选择产生回味', '感到复仇落幕后的释然']],
+    visual_medium: ['创作方向已经比较完整了。落到画面上，你更想用真人实拍、二维动画，还是电影级三维动画来呈现？', ['真人实拍', '国风二维动画', '电影级三维动画']],
+    visual_tone: ['媒介确定后，再把画面气质定准：你希望它更偏真实克制、东方诗意，还是宏大传奇？', ['真实克制', '东方诗意', '宏大传奇']],
+  };
+  const fallback = questions[topic] || [`我记下了“${preview}”。为了把它变成能拍的故事，接下来先把主要人物的身份和彼此关系定清楚，好吗？`, ['宿命相遇的恋人', '彼此利用后动情的盟友', '因家族旧怨对立的恋人']];
+  return {
+    dialogue_reply: fallback[0], idea_ready: false, missing_topics: [topic], question_topic: topic,
+    suggested_answers: fallback[1], next_step: 'idea_details',
+    coverage: normalizeCoverage({}, body.accumulated_idea || body.brief || ''),
+    model_meta: { used_model: null, fallback_used: true, failed_models: failedModels, deterministic: true, recovery_reason: 'provider_response_invalid' },
+  };
+}
+
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
-  const immediateGap = impliedDecisionGap(accumulatedIdea);
+  const immediateGap = impliedDecisionGap(accumulatedIdea, body.completed_topics);
   if (immediateGap) return {
     dialogue_reply: immediateGap.reply,
     idea_ready: false,
@@ -187,18 +247,24 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     coverage: normalizeCoverage({}, accumulatedIdea),
     model_meta: { used_model: null, fallback_used: false, failed_models: [], deterministic: true },
   };
-  const result = await modelGateway.generateText({
-    taskId,
-    stage: 'new_story_ad.brief_dialogue',
-    systemPrompt: systemPrompt(),
-    userPrompt: userPrompt(body),
-    maxTokens: 420,
-    maxCandidates: 2,
-    timeoutMs: 8000,
-    stageBudgetMs: 12000,
-    structuredOutput: { mode: 'json_object' },
-    validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics }),
-  });
+  let result;
+  try {
+    result = await modelGateway.generateText({
+      taskId,
+      stage: 'new_story_ad.brief_dialogue',
+      systemPrompt: systemPrompt(knowledgeContext(body)),
+      userPrompt: userPrompt(body),
+      maxTokens: 420,
+      maxCandidates: 2,
+      timeoutMs: 8000,
+      stageBudgetMs: 12000,
+      structuredOutput: { mode: 'json_object' },
+      validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics }),
+    });
+  } catch (error) {
+    if (error?.code !== 'MODEL_ATTEMPTS_EXHAUSTED') throw error;
+    return recoveryResponse(body, error.failed_models || []);
+  }
   const parsed = await jsonRepair.parseOrRepair({
     raw: result.text,
     expected: 'object',
@@ -220,6 +286,9 @@ module.exports = {
   normalizeParsed,
   normalizeCoverage,
   impliedDecisionGap,
+  inferQuestionTopic,
+  knowledgeContext,
+  recoveryResponse,
   cleanTopics,
   DIALOGUE_TOPICS,
   COVERAGE_TOPICS,

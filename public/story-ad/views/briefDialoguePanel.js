@@ -234,8 +234,8 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const contextualFallback = (text, mode, ready) => {
     const preview = briefIdeaPreview(text, 72).text;
     if (!ready) return mode === 'narrative_story'
-      ? `我保留了“${preview}”。这轮没有取得可靠的专业审阅结果，所以不会擅自判定内容完整。请补充最影响制作的一项：人物关系与结局、具体时空/世界规则，或真人/动画及写实度。`
-      : `我保留了“${preview}”。这轮没有取得可靠的专业审阅结果，所以不会擅自判定内容完整。请补充产品价值证明、目标受众与行动，或使用场景及视觉制作方向。`;
+      ? `我记下了“${preview}”。我们顺着这个设定继续：接下来发生什么事，真正把人物推入冲突？`
+      : `我记下了“${preview}”。为了让表达更贴近观众，你最希望他们看完后记住什么？`;
     return `我理解到的核心是“${preview}”。人物或主体、事件与表达目标已经足够；接下来先确认成片时长、画幅和清晰度。`;
   };
   const submit = async () => {
@@ -314,7 +314,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     sync();
     const pending = message('assistant');
     pending.article.classList.add('is-thinking');
-    pending.textNode.textContent = '…';
+    pending.textNode.innerHTML = '<span class="brief-thinking-dots" role="status" aria-label="导演助理正在组织下一问"><i></i><i></i><i></i></span>';
     try {
       const accumulatedIdea = String(control('brief')?.value || '').trim();
       const result = await onAssist?.({
