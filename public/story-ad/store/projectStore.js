@@ -1,7 +1,7 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260821-guided-creative-dialogue-v118';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260821-guided-creative-dialogue-v118';
-import { loadProjectList } from './projectListStore.js?v=20260821-guided-creative-dialogue-v118';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260821-guided-creative-dialogue-v118';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260821-dialogue-v119';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260821-dialogue-v119';
+import { loadProjectList } from './projectListStore.js?v=20260821-dialogue-v119';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260821-dialogue-v119';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -54,7 +54,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260821-guided-creative-dialogue-v118'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260821-dialogue-v119'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
