@@ -161,6 +161,7 @@ async function main() {
   assert.match(dialogueSource, /brief-thinking-dots/);
   assert.doesNotMatch(dialogueSource, /textNode\.textContent = '…'/);
   assert.doesNotMatch(dialogueSource, /这轮没有取得可靠的专业审阅结果/);
+  assert.match(dialogueSource, /data-dialogue-reference title="添加参考材料">参考/);
   assert.doesNotMatch(dialogueSource, /data-dialogue-reference title="添加参考材料">＋/);
   assert.doesNotMatch(dialogueSource, /我记下了/);
   assert.match(dialogueSource, /data-dialogue-expand/);
@@ -173,7 +174,7 @@ async function main() {
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /@keyframes brief-thinking-wave/);
-  assert.doesNotMatch(css, /\.brief-attach/);
+  assert.match(css, /\.brief-attach\{display:grid;place-items:center/);
   assert.match(css, /brief-quick-actions button\{[^}]*font-size:11px/, '快捷选择按钮不得继承平台大字号');
   assert.match(css, /brief-send\{[^}]*font-size:12px/, '发送按钮必须使用紧凑字号');
   assert.match(css, /view-host\.brief-dialogue-view/);
