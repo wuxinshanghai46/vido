@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-dialogue-interaction-v114';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-dialogue-interaction-v114';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260821-dialogue-interaction-v114';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260821-dialogue-interaction-v114';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260821-dialogue-interaction-v114';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260821-dialogue-interaction-v114';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-dialogue-layout-v115';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-dialogue-layout-v115';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260821-dialogue-layout-v115';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260821-dialogue-layout-v115';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260821-dialogue-layout-v115';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260821-dialogue-layout-v115';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
