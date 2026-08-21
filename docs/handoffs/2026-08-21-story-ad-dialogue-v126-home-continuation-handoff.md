@@ -1,8 +1,11 @@
 # VIDO 剧情广告导演对话 V126 回家续接交接
 
-> 日期：2026-08-21  
-> 当前分支：`codex/story-ad-systemic-remediation`  
-> 生产版本：`20260821-dialogue-v126`  
+> 日期：2026-08-21
+>
+> 当前分支：`codex/story-ad-systemic-remediation`
+>
+> 生产版本：`20260821-dialogue-v126`
+>
 > 生产地址：`43.98.167.151:4600`
 
 ## 一、当日目标与用户决策
