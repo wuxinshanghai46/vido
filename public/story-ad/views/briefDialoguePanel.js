@@ -1,5 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-dialogue-dedup-v133';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v134';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-first-compact-dialogue-v134';
+import { dialogueBudgetReached, referenceDialoguePhase, sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-reference-first-compact-dialogue-v134';
+import { followConversationAfter } from './briefConversationScroll.js?v=20260822-reference-first-compact-dialogue-v134';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 
 function modeLabel(value = '') {
@@ -39,7 +41,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
         ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
         ${referenceStatus ? `<article class="brief-message is-assistant" data-reference-dialogue-status data-reference-status="${escapeHtml(String(bundle.reference?.status || '').toLowerCase())}"><span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p>${escapeHtml(referenceStatus)}</p></div></div></article>` : ''}
       </div>
-      <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">参考</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>导演助理会结合你刚说的内容逐步回应；高级设置不会变成固定问卷</small></footer>
+      <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">参考</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>只追问少量关键问题；有参考视频时会先完成分析，不会同时追问</small></footer>
     </div>
     <aside class="brief-contract-panel">
       <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
@@ -83,7 +85,7 @@ export function dialogueProgressState({ name = '', mode = '', idea = '', ideaRea
   return { percent: Object.keys(weights).reduce((sum, key) => sum + (complete[key] ? weights[key] : 0), 0), complete };
 }
 
-export function bindBriefDialogue(host, { form, referenceAttached = false, requireUserInitiation = false, onAssist, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
+export function bindBriefDialogue(host, { form, referenceState = {}, referenceAttached = false, requireUserInitiation = false, onAssist, onDialogueState, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
   const panel = host.querySelector('[data-brief-dialogue]');
   if (!panel || !form) return () => {};
   const conversation = panel.querySelector('[data-brief-conversation]');
@@ -93,20 +95,21 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const control = name => form.elements.namedItem(name);
   const dispatch = element => element?.dispatchEvent(new Event('input', { bubbles: true }));
   const history = [];
-  const completedTopics = new Set(String(control('completed_dialogue_topics')?.value || '').split(',').map(value => value.trim()).filter(Boolean));
-  let activeQuestionTopic = String(control('active_dialogue_topic')?.value || '').trim();
+  const modeAtMount = String(control('content_mode')?.value || '');
+  const completedTopics = new Set(sanitizeDialogueTopics(String(control('completed_dialogue_topics')?.value || '').split(','), modeAtMount));
+  let activeQuestionTopic = sanitizeDialogueTopics([String(control('active_dialogue_topic')?.value || '')], modeAtMount)[0] || '';
   let disposed = false;
   let sending = false;
   let ideaReady = String(control('creative_brief_confirmed')?.value || '') === 'true';
   let specificationsConfirmed = String(control('specifications_confirmed')?.value || '') === 'true';
-  let referencePresent = referenceAttached;
+  let currentReference = referenceState || {};
+  let referencePresent = referenceAttached || Boolean(currentReference.analysis_id);
   const explicitSpecificationKeys = new Set();
   const message = (role, text = '') => {
     const article = document.createElement('article');
     article.className = `brief-message ${role === 'user' ? 'is-user' : 'is-assistant'}`;
     article.innerHTML = `<span class="brief-message-avatar">${role === 'user' ? '你' : '导'}</span><div><small>${role === 'user' ? '你' : '导演助理'}</small><div class="brief-bubble"><p>${escapeHtml(text)}</p></div></div>`;
-    conversation.appendChild(article);
-    conversation.scrollTop = conversation.scrollHeight;
+    followConversationAfter(conversation, () => conversation.appendChild(article), { force: role === 'user' });
     return { article, textNode: article.querySelector('.brief-bubble p') };
   };
   const retireSuggestions = () => conversation.querySelectorAll('[data-dialogue-suggestions] button').forEach(button => { button.disabled = true; });
@@ -140,13 +143,12 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     if (reduced) entry.textNode.textContent = value;
     else {
       for (let index = 0; index < value.length && !disposed; index += 2) {
-        entry.textNode.textContent = value.slice(0, index + 2);
-        conversation.scrollTop = conversation.scrollHeight;
+        followConversationAfter(conversation, () => { entry.textNode.textContent = value.slice(0, index + 2); });
         await new Promise(resolve => setTimeout(resolve, 22));
       }
     }
     entry.article.classList.remove('is-streaming');
-    conversation.scrollTop = conversation.scrollHeight;
+    followConversationAfter(conversation, () => {});
     return entry;
   };
   let referenceSkipped = String(control('reference_decision')?.value || '') === 'skipped';
@@ -161,7 +163,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260822-reference-dialogue-dedup-v133');
+    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260822-reference-first-compact-dialogue-v134');
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
@@ -180,7 +182,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260822-reference-dialogue-dedup-v133');
+    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260822-reference-first-compact-dialogue-v134');
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       duration: Number(control('target_duration')?.value || 30) || 30,
@@ -243,6 +245,37 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     confirm.disabled = !ready;
     return intake;
   };
+  const persistDialogueState = async () => {
+    sync();
+    await onDialogueState?.({
+      creative_brief_confirmed: ideaReady,
+      specifications_confirmed: specificationsConfirmed,
+      reference_decision: referencePresent ? 'attached' : (referenceSkipped ? 'skipped' : ''),
+      completed_dialogue_topics: [...completedTopics],
+      active_dialogue_topic: activeQuestionTopic,
+    });
+  };
+  const applyReferenceGate = async reference => {
+    currentReference = reference || {};
+    referencePresent = Boolean(currentReference.analysis_id);
+    const phase = referenceDialoguePhase(currentReference);
+    const blocked = phase === 'active' || phase === 'blocked';
+    input.disabled = blocked;
+    send.disabled = blocked || sending;
+    const context = panel.querySelector('[data-dialogue-context]');
+    if (context) context.textContent = phase === 'active'
+      ? '正在读取并分析参考视频，完成前无需回答其他问题'
+      : (phase === 'blocked' ? '参考视频未能完成分析，请重试、更换或移除后继续'
+        : (String(control('brief')?.value || '').trim() ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'));
+    if (phase === 'ready' && !ideaReady) {
+      ideaReady = true;
+      activeQuestionTopic = '';
+      const intake = sync();
+      await persistDialogueState();
+      if (intake.next === 'specifications') await appendSpecificationQuestion();
+    }
+    return phase;
+  };
   const contextualFallback = (text, mode, ready) => {
     if (!ready) return mode === 'narrative_story'
       ? '发生什么事后，人物不得不面对这场冲突？'
@@ -255,7 +288,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     sending = true;
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
-    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-reference-dialogue-dedup-v133');
+    const explicitSettings = await import('./briefExplicitSettings.js?v=20260822-reference-first-compact-dialogue-v134');
     input.value = '';
     const intakeBefore = sync();
     if (await routeReferenceInput({
@@ -286,6 +319,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       send.disabled = false;
       panel.removeAttribute('aria-busy');
       const intake = sync();
+      await persistDialogueState();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
@@ -329,6 +363,19 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     history.push({ role: 'user', content: text });
     ideaReady = false;
     sync();
+    if (dialogueBudgetReached([...completedTopics], mode)) {
+      ideaReady = true;
+      const intake = sync();
+      await persistDialogueState();
+      sending = false;
+      send.disabled = false;
+      panel.removeAttribute('aria-busy');
+      if (intake.next === 'specifications') await appendSpecificationQuestion();
+      if (intake.next === 'reference') await appendReferenceQuestion();
+      input.focus();
+      return;
+    }
+    await persistDialogueState();
     const pending = message('assistant');
     pending.article.classList.add('is-thinking');
     pending.textNode.innerHTML = '<span class="brief-thinking-dots" role="status" aria-label="导演助理正在组织下一问"><i></i><i></i><i></i></span>';
@@ -349,7 +396,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
         completed_topics: [...completedTopics],
       });
       ideaReady = result?.idea_ready === true;
-      activeQuestionTopic = ideaReady ? '' : String(result?.question_topic || '').trim();
+      activeQuestionTopic = ideaReady ? '' : (sanitizeDialogueTopics([String(result?.question_topic || '').trim()], mode)[0] || '');
       const reply = String(result?.dialogue_reply || contextualFallback(text, mode, ideaReady));
       pending.article.classList.remove('is-thinking');
       if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
@@ -369,6 +416,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       send.disabled = false;
       panel.removeAttribute('aria-busy');
       const intake = sync();
+      await persistDialogueState();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
@@ -389,32 +437,40 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   confirm?.addEventListener('click', () => onConfirm?.(confirm));
   form.addEventListener('input', sync);
   form.addEventListener('change', sync);
+  if (dialogueBudgetReached([...completedTopics], modeAtMount)) ideaReady = true;
   const initialIntake = sync();
-  if (!requireUserInitiation && String(control('brief')?.value || '').trim() && !ideaReady) {
-    import('./briefGuidedResume.js?v=20260822-reference-dialogue-dedup-v133').then(({ guidedResumePrompt }) => {
+  const initialReferencePhase = referenceDialoguePhase(currentReference);
+  applyReferenceGate(currentReference).catch(() => {});
+  if (!requireUserInitiation && initialReferencePhase === 'none' && String(control('brief')?.value || '').trim() && !ideaReady) {
+    import('./briefGuidedResume.js?v=20260822-reference-first-compact-dialogue-v134').then(({ guidedResumePrompt }) => {
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);
       appendSuggestions(entry, guidance.answers);
       activeQuestionTopic = guidance.topic;
       sync();
+      persistDialogueState().catch(() => {});
     });
   }
-  if (!requireUserInitiation && initialIntake.next === 'specifications') appendSpecificationQuestion();
-  if (!requireUserInitiation && initialIntake.next === 'reference') appendReferenceQuestion();
-  return () => {
+  if (!requireUserInitiation && initialReferencePhase === 'none' && initialIntake.next === 'specifications') appendSpecificationQuestion();
+  if (!requireUserInitiation && initialReferencePhase === 'none' && initialIntake.next === 'reference') appendReferenceQuestion();
+  const cleanup = () => {
     disposed = true;
     form.removeEventListener('input', sync);
     form.removeEventListener('change', sync);
   };
+  cleanup.updateReference = reference => applyReferenceGate(reference);
+  return cleanup;
 }
 
-export function bindBriefDialogueWorkflow(host, { form, referenceAttached, requireUserInitiation, onAssist, ensureProject, proceed, onReference, onReferenceLink, onProfessional, onError } = {}) {
+export function bindBriefDialogueWorkflow(host, { form, referenceState, referenceAttached, requireUserInitiation, onAssist, onDialogueState, ensureProject, proceed, onReference, onReferenceLink, onProfessional, onError } = {}) {
   return bindBriefDialogue(host, {
     form,
+    referenceState,
     referenceAttached,
     requireUserInitiation,
     onAssist,
+    onDialogueState,
     onReference,
     onReferenceLink,
     onProfessional,

@@ -62,9 +62,26 @@ async function main() {
   assert.match(failed, /参考视频分析失败/);
   assert.match(failed, /请求编号：qa-127/);
 
+  const service = require('../src/services/newStoryAd/briefDialogueAssistService');
+  assert.deepStrictEqual(
+    service.cleanTopicsForMode(['plot_trigger', 'subject_identity', 'subject_motivation'], 'commercial_subject'),
+    ['subject_identity', 'subject_motivation'],
+  );
+  let gatewayCalls = 0;
+  const compact = await service.run({
+    body: {
+      user_message: '突出品牌的专业能力', accumulated_idea: '不锈钢板材品牌广告', content_mode: 'commercial_subject',
+      completed_topics: ['plot_trigger', 'subject_identity', 'subject_motivation'], specifications_confirmed: false,
+    },
+    modelGateway: { async generateText() { gatewayCalls += 1; throw new Error('达到预算后不应调用模型'); } },
+  });
+  assert.equal(compact.idea_ready, true);
+  assert.equal(compact.next_step, 'specifications');
+  assert.equal(gatewayCalls, 0);
+
   console.log(JSON.stringify({
     passed: true,
-    checks: 12,
+    checks: 16,
     scope: 'story-ad-dialogue-domain-reference-v127',
     real_model_calls: 0,
     paid_generation_calls: 0,

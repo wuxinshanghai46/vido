@@ -1,3 +1,5 @@
+import { followConversationAfter } from './briefConversationScroll.js?v=20260822-reference-first-compact-dialogue-v134';
+
 export function referenceDialogueStatus(reference = {}) {
   const status = String(reference.status || '').toLowerCase();
   if (!reference.analysis_id && !['importing', 'uploading', 'queued', 'running'].includes(status)) return '';
@@ -18,16 +20,17 @@ export function syncReferenceDialogueStatus(host, reference = {}) {
   const conversation = host.querySelector('[data-brief-conversation]');
   if (!conversation) return null;
   let article = conversation.querySelector('[data-reference-dialogue-status]');
-  if (!article) {
-    article = document.createElement('article');
-    article.className = 'brief-message is-assistant';
-    article.dataset.referenceDialogueStatus = '';
-    article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p></p></div></div>';
-    conversation.appendChild(article);
-  }
-  article.querySelector('.brief-bubble p').textContent = text;
-  article.dataset.referenceStatus = String(reference.status || '').toLowerCase();
-  conversation.scrollTop = conversation.scrollHeight;
+  followConversationAfter(conversation, () => {
+    if (!article) {
+      article = document.createElement('article');
+      article.className = 'brief-message is-assistant';
+      article.dataset.referenceDialogueStatus = '';
+      article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p></p></div></div>';
+      conversation.appendChild(article);
+    }
+    article.querySelector('.brief-bubble p').textContent = text;
+    article.dataset.referenceStatus = String(reference.status || '').toLowerCase();
+  });
   return article;
 }
 

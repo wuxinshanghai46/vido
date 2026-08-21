@@ -58,8 +58,8 @@ function topicProfile(contentMode = '') {
 }
 
 function nextQuestionTopic(profile = {}, completedTopics = []) {
-  const completed = cleanTopics(completedTopics);
   const order = Array.isArray(profile.order) ? profile.order : [];
+  const completed = cleanTopics(completedTopics).filter(topic => order.includes(topic));
   const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, order.indexOf(item)), -1);
   return order.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
     || order.find(item => !completed.includes(item)) || '';
@@ -87,6 +87,17 @@ function cleanTopics(value = []) {
   return [...new Set((Array.isArray(value) ? value : []).map(item => cleanInline(item, 40)).filter(item => DIALOGUE_TOPICS.has(item)))].slice(0, DIALOGUE_TOPICS.size);
 }
 
+function cleanTopicsForMode(value = [], contentMode = '') {
+  const allowed = new Set(topicProfile(contentMode).order);
+  return cleanTopics(value).filter(topic => allowed.has(topic));
+}
+
+function questionBudget(contentMode = '') { return contentMode === 'commercial_subject' ? 2 : 3; }
+
+function questionBudgetReached(value = [], contentMode = '') {
+  return cleanTopicsForMode(value, contentMode).length >= questionBudget(contentMode);
+}
+
 function assertInput(body = {}) {
   if (cleanText(body.user_message || body.message || '', 1600)) return;
   const error = new Error('请先输入你想制作的内容；没有调用文本模型');
@@ -103,7 +114,7 @@ function impliedDecisionGap(accumulatedIdea = '', completedTopics, contentMode =
   if (contentMode === 'commercial_subject') return null;
   const source = cleanText(accumulatedIdea, 4000);
   if (Array.isArray(completedTopics)) {
-    const completed = new Set(cleanTopics(completedTopics));
+    const completed = new Set(cleanTopicsForMode(completedTopics, contentMode));
     const earlierTopics = TOPIC_ORDER.slice(0, TOPIC_ORDER.indexOf('character_continuity'));
     if (!earlierTopics.every(topic => completed.has(topic))) return null;
   }
@@ -150,7 +161,7 @@ function knowledgeContext(body = {}) {
 }
 
 function inferQuestionTopic(reply = '', missingTopics = [], completedTopics = [], contentMode = '') {
-  const completed = new Set(cleanTopics(completedTopics));
+  const completed = new Set(cleanTopicsForMode(completedTopics, contentMode));
   const profile = topicProfile(contentMode);
   const source = `${cleanText(reply, 400)} ${listText(missingTopics)}`;
   const matched = TOPIC_HINTS.find(([topic, pattern]) => !completed.has(topic) && pattern.test(source));
@@ -180,7 +191,7 @@ function userPrompt(body = {}) {
     `用户刚刚发送：${cleanText(body.user_message || body.message || '', 1600)}`,
     `参考材料状态：${body.reference_attached === true ? '已上传' : (body.reference_skipped === true ? '用户明确无参考' : '尚未决定')}`,
     `成片规格确认状态：${body.specifications_confirmed === true ? '用户已确认' : '尚未确认；当前值只能视为建议'}`,
-    `已经回答、禁止重复询问的创作决策：${cleanTopics(body.completed_topics).join('、') || '无'}`,
+    `已经回答、禁止重复询问的创作决策：${cleanTopicsForMode(body.completed_topics, body.content_mode).join('、') || '无'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
     '{"reply":"直接提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
@@ -205,7 +216,7 @@ function normalizeCoverage(parsed = {}, accumulatedIdea = '') {
 
 function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null, contentMode = '') {
   const profile = topicProfile(contentMode);
-  const completed = cleanTopics(completedTopics);
+  const completed = cleanTopicsForMode(completedTopics, contentMode);
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
@@ -248,7 +259,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     if (contentMode === 'commercial_subject'
       && !commercialNarrativeAuthorized(accumulatedIdea)
       && commercialStoryLeak(`${reply} ${suggestedAnswers.join(' ')}`)) {
-      questionTopic = profile.order.find(topic => !cleanTopics(completedTopics).includes(topic)) || profile.order[0];
+      questionTopic = profile.order.find(topic => !cleanTopicsForMode(completedTopics, contentMode).includes(topic)) || profile.order[0];
       [reply, suggestedAnswers] = profile.questions[questionTopic];
       missingTopics = [questionTopic];
     }
@@ -260,7 +271,7 @@ function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], his
   try {
     const parsed = jsonRepair.parseJson(raw, 'object');
     const value = normalizeParsed(parsed, accumulatedIdea, completedTopics, contentMode);
-    const completed = cleanTopics(completedTopics);
+    const completed = cleanTopicsForMode(completedTopics, contentMode);
     return Boolean(value.reply.length >= 12
       && value.reply.length <= 300
       && displayableReply(value.reply, history)
@@ -301,7 +312,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
 }
 
 function recoveryResponse(body = {}, failedModels = []) {
-  const completed = cleanTopics(body.completed_topics);
+  const completed = cleanTopicsForMode(body.completed_topics, body.content_mode);
   const profile = topicProfile(body.content_mode);
   const topic = nextQuestionTopic(profile, completed) || profile.order[0];
   const fallback = profile.questions[topic];
@@ -316,6 +327,17 @@ function recoveryResponse(body = {}, failedModels = []) {
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
+  if (questionBudgetReached(body.completed_topics, body.content_mode)) return {
+    dialogue_reply: '创作关键信息已足够，接下来确认成片规格。',
+    idea_ready: true,
+    missing_topics: [],
+    question_topic: '',
+    suggested_answers: [],
+    next_step: body.specifications_confirmed !== true ? 'specifications'
+      : (!body.reference_attached && !body.reference_skipped ? 'reference' : 'review'),
+    coverage: normalizeCoverage({}, accumulatedIdea),
+    model_meta: { used_model: null, fallback_used: false, failed_models: [], deterministic: true, reason: 'question_budget_reached' },
+  };
   const immediateGap = impliedDecisionGap(accumulatedIdea, body.completed_topics, body.content_mode);
   if (immediateGap) return {
     dialogue_reply: immediateGap.reply,
@@ -371,6 +393,9 @@ module.exports = {
   recoveryResponse,
   displayableReply,
   cleanTopics,
+  cleanTopicsForMode,
+  questionBudget,
+  questionBudgetReached,
   topicProfile,
   nextQuestionTopic,
   commercialNarrativeAuthorized,

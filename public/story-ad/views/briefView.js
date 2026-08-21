@@ -9,8 +9,8 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-dialogue-dedup-v133';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-dialogue-dedup-v133';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-dialogue-dedup-v133';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-dialogue-dedup-v133';
-import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-dialogue-dedup-v133';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-first-compact-dialogue-v134';
+import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-first-compact-dialogue-v134';
 import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-dialogue-dedup-v133';
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-dialogue-dedup-v133';
 import { formPayload } from './briefFormPayload.js?v=20260822-reference-dialogue-dedup-v133';
@@ -210,6 +210,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     });
     const nextReference = nextState.bundle?.reference || {};
     syncReferenceDialogueStatus(host, nextReference);
+    dialogueCleanup.updateReference?.(nextReference);
     const nextReferenceAttached = Boolean(nextReference.analysis_id);
     const nextReferenceStatus = String(nextReference.status || '').toLowerCase();
     if (briefSettingsModalController.modal?.open && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettingsModalController.close();
@@ -396,9 +397,27 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
 
   dialogueCleanup = bindBriefDialogueWorkflow(host, {
     form,
+    referenceState: bundle.reference || {},
     referenceAttached,
     requireUserInitiation: route.isNew,
     onAssist: briefDialogueAssist(() => createdProjectId),
+    onDialogueState: async () => {
+      if (route.isNew || !createdProjectId) return;
+      const save = async () => {
+        await store.updateRequest(safeFormPayload(), { refreshSections: 'summary,reference' });
+        dirtyFields.clear();
+      };
+      try {
+        await save();
+      } catch (error) {
+        if (error?.code === 'CONTENT_REVISION_CONFLICT' || error?.status === 409) {
+          await store.refreshSections('summary,reference');
+          await save();
+          return;
+        }
+        toast(`对话进度保存失败：${error.message}`, 'danger');
+      }
+    },
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
     onReferenceLink: callbacks => handleReferenceLink(host.querySelector('[data-reference-link]'), callbacks),
     ensureProject,

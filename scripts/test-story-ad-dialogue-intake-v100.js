@@ -10,14 +10,23 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const asModule = source => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 async function main() {
-  const referenceState = await asModule(read('public/story-ad/views/briefReferenceDialogueState.js'));
+  const scrollSource = read('public/story-ad/views/briefConversationScroll.js').replace(/\bexport\s+/g, '');
+  const policySource = read('public/story-ad/views/briefDialoguePolicy.js').replace(/\bexport\s+/g, '');
+  const referenceModuleSource = read('public/story-ad/views/briefReferenceDialogueState.js')
+    .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '');
+  const referenceState = await asModule(`${scrollSource}\n${referenceModuleSource}`);
+  const policy = await asModule(read('public/story-ad/views/briefDialoguePolicy.js'));
+  const scroll = await asModule(read('public/story-ad/views/briefConversationScroll.js'));
   const referenceStateSource = read('public/story-ad/views/briefReferenceDialogueState.js')
+    .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
     .replace(/\bexport\s+/g, '');
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
     .replace(/^import[^\n]+components\/ui[^\n]+\n/m, 'const escapeHtml = value => String(value ?? "");\n')
     .replace(/^import[^\n]+briefReferenceDialogueState[^\n]+\n/m, '')
+    .replace(/^import[^\n]+briefDialoguePolicy[^\n]+\n/m, '')
+    .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
     .replace(/^export \{ referenceDialogueStatus[^\n]+\n/m, '');
-  const dialogue = await asModule(`${referenceStateSource}\n${dialogueSource}`);
+  const dialogue = await asModule(`${scrollSource}\n${policySource}\n${referenceStateSource}\n${dialogueSource}`);
   const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
   const referenceQuestion = await asModule(read('public/story-ad/views/briefReferenceQuestion.js'));
@@ -52,6 +61,17 @@ async function main() {
   );
   assert.deepEqual(referenceState.referenceInputIntent('我有视频可以上传'), { kind: 'material', preferred: 'upload' }, '明确表示有视频时必须显示参考材料入口');
   assert.deepEqual(referenceState.referenceInputIntent('帮我做一个30秒产品视频'), { kind: '' }, '普通视频制作需求不得误判成参考材料');
+  assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'running' }), 'active', '参考分析运行期间必须进入独占门禁');
+  assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'failed' }), 'blocked', '参考分析失败后不得自动恢复创意追问');
+  assert.equal(policy.referenceDialoguePhase({ analysis_id: 'ref', status: 'completed', analysis_valid: true }), 'ready', '只有有效分析结果才能解除参考门禁');
+  assert.deepEqual(policy.sanitizeDialogueTopics(['plot_trigger', 'subject_identity', 'subject_motivation'], 'commercial_subject'), ['subject_identity', 'subject_motivation'], '商业广告必须丢弃剧情主题污染');
+  assert.equal(policy.dialogueBudgetReached(['subject_identity', 'subject_motivation'], 'commercial_subject'), true, '商业广告回答两个关键问题后必须停止追问');
+  const scrolledUp = { scrollHeight: 1200, scrollTop: 200, clientHeight: 400 };
+  scroll.followConversationAfter(scrolledUp, () => { scrolledUp.scrollHeight = 1300; });
+  assert.equal(scrolledUp.scrollTop, 200, '用户已向上阅读时，异步更新不得强制拉回底部');
+  const atBottom = { scrollHeight: 1200, scrollTop: 800, clientHeight: 400 };
+  scroll.followConversationAfter(atBottom, () => { atBottom.scrollHeight = 1300; });
+  assert.equal(atBottom.scrollTop, 1300, '用户原本在底部时应继续跟随新消息');
   assert.deepEqual(
     dialogue.dialogueIntakeState({ name: '完整项目', mode: 'narrative_story', idea: '完整剧情', ideaReady: true, specificationsConfirmed: true, referenceAttached: true }),
     { ready: true, missing: [], next: '' },
@@ -92,6 +112,9 @@ async function main() {
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('await onAssist?.({'), '链接与上传意图必须在导演模型调用前完成路由');
   assert.match(dialogueSource, /routeReferenceInput\(\{/, '正文链接和上传意图必须复用正式参考输入路由');
   assert.match(dialogueSource, /showChoices: appendReferenceQuestion/, '明确表示有视频时必须在当前对话显示上传入口');
+  assert.match(dialogueSource, /initialReferencePhase === 'none'/, '参考分析存在时不得挂载恢复追问');
+  assert.match(dialogueSource, /cleanup\.updateReference/, '参考轮询必须实时更新对话门禁');
+  assert.match(dialogueSource, /await persistDialogueState\(\)/, '每轮对话主题必须及时持久化，不能只留在页面内存');
   assert.doesNotMatch(dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }), /class="brief-message/, '新项目对话必须默认空白，由用户先发起');
   assert.equal((dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }).match(/建议·待确认/g) || []).length, 3, '默认时长、画幅和清晰度都必须明确标为建议且等待确认');
   assert.equal((dialogue.briefDialogueMarkup({ brief: { brief_intake: { specifications_confirmed: true } } }).match(/用户已确认/g) || []).length, 3, '只有持久化的明确确认状态才能显示用户已确认');
@@ -123,7 +146,7 @@ async function main() {
   assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
   assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 43, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 53, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {
