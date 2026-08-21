@@ -58,11 +58,15 @@ async function main() {
     { ready: false, missing: ['reference'], next: 'reference' },
     '规格明确后且参考材料尚未决定时才应追问参考入口',
   );
-  assert.match(specificationQuestionSource, /data-specification-choice="confirm"[^>]*>确认当前规格<\/button>/, '对话内必须提供成片规格确认入口');
-  assert.match(specificationQuestionSource, /data-specification-choice="adjust"[^>]*>调整规格<\/button>/, '对话内必须提供成片规格修改入口');
+  assert.match(specificationQuestionSource, /data-spec-choice="confirm"[^>]*>确认当前规格<\/button>/, '对话内必须提供成片规格确认入口');
+  assert.match(specificationQuestionSource, /data-spec-choice="adjust"[^>]*>调整规格<\/button>/, '对话内必须提供成片规格修改入口');
+  assert.match(specificationQuestionSource, /data-spec-editor hidden/, '调整规格必须在当前对话内展开');
+  assert.match(specificationQuestionSource, /data-spec-choice="apply"[^>]*>确认调整<\/button>/, '对话内调整必须有明确确认入口');
+  assert.doesNotMatch(specificationQuestionSource, /onProfessional/, '调整规格不得跳转高级设置');
   assert.match(referenceQuestionSource, /data-reference-choice="upload"[^>]*>上传视频<\/button>/, '对话内必须提供上传参考视频入口');
   assert.match(referenceQuestionSource, /data-reference-choice="link"[^>]*>添加链接<\/button>/, '对话内必须提供参考链接入口');
-  assert.match(referenceQuestionSource, /data-reference-choice="none"[^>]*>没有，继续<\/button>/, '对话内必须提供无参考继续入口');
+  assert.match(referenceQuestionSource, /data-reference-choice="none"[^>]*>没有<\/button>/, '无参考按钮只显示“没有”');
+  assert.doesNotMatch(referenceQuestionSource, /没有，继续/, '无参考按钮不得附加流程词');
   assert.match(referenceQuestionSource, /产品实拍、品牌视觉、竞品视频或镜头节奏参考/, '商业参考问题必须结合商业内容类型');
   assert.match(referenceQuestionSource, /人物形象、时代氛围、影片画面或镜头参考/, '剧情参考问题必须结合剧情内容类型');
   assert.match(dialogueSource, /conversation\.querySelector\('\[data-reference-question\]'\)/, '同一次对话不得重复插入参考问题');
@@ -78,6 +82,9 @@ async function main() {
   assert.ok(resumed.answers.some(answer => /真实历史朝代/.test(answer)), '宽泛的“古代”必须追问可执行的世界设定');
   assert.doesNotMatch(dialogueSource, /这份设想尚未完成专业创作确认|缺少的内容会在对话中逐项询问/, '恢复已有项目时不得用系统规则冒充下一问');
   assert.match(dialogueSource, /dataset\.dialogueSuggestions/);
+  assert.doesNotMatch(dialogueSource, /正在理解你的想法/, '等待态不得显示解释性占位文案');
+  assert.match(dialogueSource, /pending\.article\.remove\(\)/, '进入规格阶段时必须移除模型过渡气泡，避免规格重复询问');
+  assert.doesNotMatch(dialogueSource, /核对右侧确认单/, '所有问题问完后不得把下一步推给右侧确认单');
   assert.match(dialogueSource, /specificationsConfirmed = String\(control\('specifications_confirmed'\)/, '已有项目不得按路由状态自动冒充规格已确认');
   assert.match(dialogueSource, /explicitSpecificationKeys\.size === explicitSettings\.OUTPUT_SETTING_KEYS\.length/, '只修改一项规格不得把整组规格标为确认');
   assert.deepEqual(
@@ -97,7 +104,7 @@ async function main() {
   assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
   assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 35, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 43, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {

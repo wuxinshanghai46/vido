@@ -8,7 +8,7 @@ export function mountReferenceQuestion(conversation, { onReference, onReferenceL
   const article = document.createElement('article');
   article.className = 'brief-message is-assistant';
   article.dataset.referenceQuestion = '';
-  article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><p></p></div><div class="brief-quick-actions"><button type="button" data-reference-choice="upload">上传视频</button><button type="button" data-reference-choice="link">添加链接</button><button type="button" data-reference-choice="none">没有，继续</button></div></div>';
+  article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理</small><div class="brief-bubble"><p></p></div><div class="brief-quick-actions"><button type="button" data-reference-choice="upload">上传视频</button><button type="button" data-reference-choice="link">添加链接</button><button type="button" data-reference-choice="none">没有</button></div></div>';
   article.querySelector('.brief-bubble p').textContent = referenceQuestionText({ mode, idea });
   conversation.appendChild(article);
   article.querySelector('[data-reference-choice="upload"]')?.addEventListener('click', () => onReference?.());

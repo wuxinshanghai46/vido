@@ -16,6 +16,7 @@ const RECENT_TEXT_SUCCESS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 const MANAGED_RECOVERY_FALLBACK_STAGES = new Set([
   REFERENCE_SYNTHESIS_STAGE,
   'new_story_ad.assist',
+  'new_story_ad.brief_dialogue',
   'new_story_ad.story_facts',
   'new_story_ad.story_facts_compact_retry',
   'new_story_ad.story_facts_repair',
@@ -55,6 +56,11 @@ const STAGE_FALLBACKS = {
   'new_story_ad.blueprint_polish': FALLBACKS,
   'new_story_ad.storyboard_language_repair': FALLBACKS,
   'new_story_ad.assist': FALLBACKS,
+  'new_story_ad.brief_dialogue': [
+    { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
+    { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 2, enabled: true },
+    { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
+  ],
 };
 
 const STAGE_ROUTE_INHERITANCE = Object.freeze({

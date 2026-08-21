@@ -187,8 +187,8 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       onReferenceLink,
       onSkip: () => {
       referenceSkipped = true;
-      message('user', '没有参考材料，继续');
-      streamMessage('已记录本项目不使用外部参考材料。请核对右侧确认单中的创作方向与成片规格；如有任何一项不准确，可以继续告诉我修改，确认无误后再生成剧情与对白。');
+      message('user', '没有');
+      streamMessage('参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成剧情与对白。');
       sync();
     } });
     referenceQuestionLoading = false;
@@ -209,7 +209,20 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
         sync();
         await appendReferenceQuestion();
       },
-      onAdjust: () => onProfessional?.(),
+      onAdjust: async values => {
+        const mappings = { target_duration: values.duration, output_ratio: values.ratio, video_resolution: values.resolution };
+        Object.entries(mappings).forEach(([name, value]) => {
+          const field = control(name);
+          if (!field) return;
+          field.value = String(value);
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        specificationsConfirmed = true;
+        message('user', `调整为 ${values.duration} 秒、${values.ratio}、${values.resolution}`);
+        await streamMessage('成片规格已按这个项目调整并确认。最后确认是否使用参考材料。');
+        sync();
+        await appendReferenceQuestion();
+      },
     });
     specificationQuestionLoading = false;
   };
@@ -295,7 +308,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     }
     if (intakeBefore.next === 'reference' && explicitSettings.isNoReferenceReply(text)) {
       referenceSkipped = true;
-      await finishImmediate('已记录本项目不使用外部参考材料，这句话不会写入核心创意。请核对右侧创作方向与成片规格；确认准确后再生成剧情与对白。');
+      await finishImmediate('参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成剧情与对白。');
       return;
     }
     let mode = String(control('content_mode')?.value || '');
@@ -320,7 +333,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     sync();
     const pending = message('assistant');
     pending.article.classList.add('is-thinking');
-    pending.textNode.textContent = '正在理解你的想法…';
+    pending.textNode.textContent = '…';
     try {
       const accumulatedIdea = String(control('brief')?.value || '').trim();
       const result = await onAssist?.({
@@ -339,9 +352,12 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       ideaReady = result?.idea_ready === true;
       const reply = String(result?.dialogue_reply || contextualFallback(text, mode, ideaReady));
       pending.article.classList.remove('is-thinking');
-      await streamMessage(reply, pending);
-      appendSuggestions(pending, result?.suggested_answers);
-      history.push({ role: 'assistant', content: reply });
+      if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
+      else {
+        await streamMessage(reply, pending);
+        appendSuggestions(pending, result?.suggested_answers);
+        history.push({ role: 'assistant', content: reply });
+      }
     } catch {
       ideaReady = false;
       const reply = contextualFallback(text, mode, ideaReady);

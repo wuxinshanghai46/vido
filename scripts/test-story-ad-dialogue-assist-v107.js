@@ -9,7 +9,7 @@ const service = require('../src/services/newStoryAd/briefDialogueAssistService')
 const root = path.join(__dirname, '..');
 const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 
-function main() {
+async function main() {
   assert.equal(service.isMode('brief_dialogue'), true);
   assert.throws(() => service.assertInput({}), error => error.code === 'BRIEF_DIALOGUE_MESSAGE_EMPTY');
   assert.doesNotThrow(() => service.assertInput({ user_message: '我想做一个雨夜重逢的故事' }));
@@ -31,6 +31,7 @@ function main() {
   assert.match(service.systemPrompt(), /每轮只追问 1 个/);
   assert.match(service.systemPrompt(), /suggested_answers/);
   assert.match(service.systemPrompt(), /不得是“继续补充”“都可以”“其他”/);
+  assert.match(service.systemPrompt(), /不能等用户反问才意识到/);
 
   const incomplete = JSON.stringify({
     reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
@@ -78,6 +79,35 @@ function main() {
   genericEvidence.coverage.visual_direction.evidence = '电影感';
   assert.equal(service.buildResponse({ parsed: genericEvidence, body: { accumulated_idea: `${completeIdea} 古代 电影感` } }).idea_ready, false, '宽泛时代和视觉词不得冒充可执行制作方向');
 
+  const crossEraIdea = `${completeIdea} 男女主从古代穿越千年到了现代`;
+  const crossEra = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: crossEraIdea } });
+  assert.equal(crossEra.idea_ready, false, '跨时代人物连续性未回答时不得进入规格');
+  assert.deepEqual(crossEra.missing_topics, ['跨时代人物连续性']);
+  assert.match(crossEra.dialogue_reply, /人物.*古代到现代怎样变化/);
+  assert.equal(crossEra.suggested_answers.length, 3);
+  assert.equal(service.impliedDecisionGap(`${crossEraIdea}，人物容貌基本不变，只改变服装与气质`), null, '用户回答人物连续性后不得重复追问');
+  let impliedModelCalls = 0;
+  const immediateCrossEra = await service.run({
+    body: { accumulated_idea: crossEraIdea, user_message: '继续问需要确认的内容', content_mode: 'narrative_story' },
+    modelGateway: { async generateText() { impliedModelCalls += 1; throw new Error('不应调用'); } },
+  });
+  assert.equal(impliedModelCalls, 0, '可确定的内容特有问题必须即时返回，不等待模型');
+  assert.equal(immediateCrossEra.model_meta.deterministic, true);
+  assert.match(immediateCrossEra.dialogue_reply, /古代到现代怎样变化/);
+
+  let capturedOptions = null;
+  const fastResult = await service.run({
+    body: { accumulated_idea: completeIdea, user_message: '就按真人写实电影感', content_mode: 'narrative_story' },
+    modelGateway: { async generateText(options) { capturedOptions = options; return { text: ready, used_model: 'stub/flash', latency_ms: 12 }; } },
+  });
+  assert.equal(capturedOptions.stage, 'new_story_ad.brief_dialogue');
+  assert.equal(capturedOptions.timeoutMs, 8000);
+  assert.equal(capturedOptions.maxCandidates, 2);
+  assert.deepEqual(capturedOptions.structuredOutput, { mode: 'json_object' });
+  assert.equal(fastResult.next_step, 'specifications');
+  const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
+  assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
+
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
   const briefViewSource = read('public/story-ad/views/briefView.js');
   const dialogueRuntimeSource = read('public/story-ad/views/briefDialogueRuntime.js');
@@ -100,7 +130,7 @@ function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 34, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 50, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
-try { main(); } catch (error) { console.error(error); process.exit(1); }
+main().catch(error => { console.error(error); process.exit(1); });

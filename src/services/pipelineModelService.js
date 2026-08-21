@@ -94,6 +94,7 @@ const PIPELINE_SCHEMA = {
     { id: 'new_story_ad.qa', name: '3.2 商用 QA', type: 'story', desc: '检查剧情边界、角色一致性、镜头可拍性和广告主体可见证据' },
     { id: 'new_story_ad.json_repair', name: '结构化 JSON 修复', type: 'story', desc: '只修复模型 JSON 结构，不改写业务内容' },
     { id: 'new_story_ad.assist', name: '需求辅助改写', type: 'story', desc: '把用户粗略需求清洗成可生成的新剧情广告任务单' },
+    { id: 'new_story_ad.brief_dialogue', name: '立项实时对话', type: 'story', desc: '快速理解用户当前回答并主动提出一个内容化下一问' },
     { id: 'new_story_ad.person_sheet', name: '演员三视图 / 人物资产', type: 'image', desc: '生成或兜底选择可复用的拟真演员参考资产' },
     { id: 'new_story_ad.person_dossier_atlas', name: '人物档案分类图集', type: 'image', desc: '生成人物档案中的分类视觉图集' },
     { id: 'new_story_ad.person_dossier_native_master', name: '人物档案原生主视图', type: 'image', desc: '生成人物档案的独立主视图资产' },
@@ -167,6 +168,11 @@ const NEW_STORY_AD_TEXT_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'claude-sonnet-4-6', priority: 9, enabled: false },
   { provider_id: 'deyunai', model_id: 'gpt-4o', priority: 10, enabled: false },
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 11, enabled: false },
+];
+const NEW_STORY_AD_DIALOGUE_DEFAULTS = [
+  { provider_id: 'apismile', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
+  { provider_id: 'aiapi', model_id: 'deepseek-chat', priority: 2, enabled: true },
+  { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 3, enabled: true },
 ];
 const NEW_STORY_AD_REFERENCE_VISION_DEFAULTS = [
   { provider_id: 'deyunai', model_id: 'gemini-2.5-flash', priority: 1, enabled: true },
@@ -459,6 +465,7 @@ const STAGE_DEFAULTS = {
   'new_story_ad.qa': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.json_repair': NEW_STORY_AD_TEXT_DEFAULTS,
   'new_story_ad.assist': NEW_STORY_AD_TEXT_DEFAULTS,
+  'new_story_ad.brief_dialogue': NEW_STORY_AD_DIALOGUE_DEFAULTS,
   'new_story_ad.person_keyframe_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.pet_consistency_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
   'new_story_ad.product_keyframe_qa': NEW_STORY_AD_CONSISTENCY_VISION_DEFAULTS,
