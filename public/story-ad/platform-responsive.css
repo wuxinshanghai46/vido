@@ -34,6 +34,52 @@
   .view-actions .btn { padding-inline: 12px; }
 }
 
+@media (max-width: 900px) {
+  .platform-topbar, .project-topbar { min-width: 0; padding-inline: 10px; }
+  .platform-brand b, .wordmark + .crumb, .crumb-separator, .project-context, .module-context, .save-state, .top-actions .btn { display: none; }
+  .top-actions { min-width: 42px; margin-left: auto; }
+  .center-shell { width: calc(100% - 20px); padding-top: 14px; }
+  .center-layout { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .center-filter { position: static; display: flex; overflow-x: auto; padding: 8px; }
+  .center-filter .filter { flex: 0 0 auto; min-height: 40px; white-space: nowrap; }
+  .create-banner { align-items: stretch; flex-direction: column; }
+  .create-banner .btn { width: 100%; margin-left: 0; }
+  .project-row:not(.project-head) { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto; }
+  .project-row:not(.project-head) > code,
+  .project-row:not(.project-head) > .project-copy,
+  .project-row:not(.project-head) > .project-mode,
+  .project-row:not(.project-head) > .status-tag,
+  .project-row:not(.project-head) > span:nth-child(5),
+  .project-row:not(.project-head) > time,
+  .project-row:not(.project-head) > .project-actions,
+  .project-row:not(.project-head) > .project-delete-state { grid-column: auto; grid-row: auto; justify-self: auto; }
+  .project-row:not(.project-head) > .project-copy { grid-column: 1 / -1; }
+  .project-row:not(.project-head) > .project-actions,
+  .project-row:not(.project-head) > .project-delete-state { grid-column: 1 / -1; flex-wrap: wrap; }
+  .project-shell { display: block; min-width: 0; }
+  .workspace-sidebar { position: sticky; z-index: 19; top: 64px; height: auto; padding: 8px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--line); }
+  .workspace-sidebar .side-label, .workspace-sidebar .side-divider, .workspace-sidebar .side-metric { display: none; }
+  .workspace-sidebar nav { display: flex; gap: 6px; width: max-content; min-width: 100%; }
+  .workspace-nav { flex: 0 0 auto; grid-template-columns: 26px auto; min-height: 42px; padding-inline: 9px; white-space: nowrap; }
+  .workspace-nav.workflow { margin-top: 0; }
+  .workspace-main { width: 100%; min-width: 0; }
+  .view-host, .project-progress-host { padding-inline: 12px; }
+  .two-column { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 520px) {
+  .platform-brand { padding-right: 8px; }
+  .platform-brand span { width: 34px; height: 34px; }
+  .wordmark { padding-right: 8px; font-size: 18px; }
+  .stat-grid { grid-template-columns: minmax(0, 1fr); }
+  .table-toolbar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .table-toolbar .btn { width: 100%; margin-left: 0; }
+  .project-query { padding-inline: 12px; }
+  .project-row:not(.project-head) { grid-template-columns: minmax(0, 1fr); padding-inline: 12px; }
+  .project-row:not(.project-head) > * { grid-column: 1 / -1 !important; }
+  .view-host, .project-progress-host { padding-inline: 8px; }
+}
+
 @media (max-height: 720px) and (min-width: 1000px) {
   .view-host:not(.brief-dialogue-view) { padding-top: 16px; padding-bottom: 36px; }
   .view-head { margin-bottom: 13px; }
