@@ -1150,6 +1150,13 @@ function buildContext(body = {}, user = {}) {
     video_quality: cleanText(body.video_quality || body.videoQuality || 'final', 20),
     visible_text_policy: inferVisibleTextPolicy(body, brief),
     production_mode: normalizeProductionMode(body.production_mode || body.productionMode || 'auto'),
+    brief_intake: {
+      creative_brief_confirmed: body.brief_intake?.creative_brief_confirmed === true || body.briefIntake?.creativeBriefConfirmed === true,
+      specifications_confirmed: body.brief_intake?.specifications_confirmed === true || body.briefIntake?.specificationsConfirmed === true,
+      reference_decision: ['attached', 'skipped'].includes(cleanText(body.brief_intake?.reference_decision || body.briefIntake?.referenceDecision || '', 20))
+        ? cleanText(body.brief_intake?.reference_decision || body.briefIntake?.referenceDecision, 20)
+        : '',
+    },
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
     asset_setup_confirmed: body.asset_setup_confirmed === true || body.assetSetupConfirmed === true,
     shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true,

@@ -7,7 +7,7 @@ function durationLabel(seconds = 30) {
 
 export function specificationQuestionText({ mode = '', duration = 30, ratio = '9:16', resolution = '1080p' } = {}) {
   const kind = mode === 'commercial_subject' ? '这条广告' : '这个故事';
-  return `${kind}的核心内容已经明确。成片规格建议先按 ${durationLabel(duration)}、${ratio}、${resolution}；是否采用？也可以直接回复要修改的时长、画幅或清晰度。`;
+  return `${kind}的五类创作依据已经具备直接信息。现在确认交付规格：系统建议 ${durationLabel(duration)}、${ratio}、${resolution}。请明确采用整组建议，或告诉我要调整哪一项；未选择前不会标记为用户确认。`;
 }
 
 export function mountSpecificationQuestion(conversation, options = {}) {

@@ -115,6 +115,9 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           <input type="hidden" name="benchmark_camera_language" value="${escapeHtml(benchmark.camera_language || '')}">
           <input type="hidden" name="benchmark_prompt_method" value="${escapeHtml(benchmark.prompt_method || '')}">
           <input type="hidden" name="benchmark_naturalness_review" value="${escapeHtml(benchmark.naturalness_review || '')}">
+          <input type="hidden" name="creative_brief_confirmed" value="${brief.brief_intake?.creative_brief_confirmed === true ? 'true' : 'false'}">
+          <input type="hidden" name="specifications_confirmed" value="${brief.brief_intake?.specifications_confirmed === true ? 'true' : 'false'}">
+          <input type="hidden" name="reference_decision" value="${referenceAttached ? 'attached' : escapeHtml(brief.brief_intake?.reference_decision || '')}">
           ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '保存项目设想' : referenceAction.label}</button></div>`}
           </div>
         </form>
@@ -198,6 +201,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       output_size: latest.output_size || 'standard',
       video_resolution: latest.video_resolution || '1080p',
       production_mode: 'auto',
+      brief_intake: latest.brief_intake || { creative_brief_confirmed: false, specifications_confirmed: false, reference_decision: '' },
       benchmark_strategy: latest.benchmark_strategy || {},
       world_setting: latest.world_setting || null,
     };
@@ -207,6 +211,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     if (dirtyFields.has('content_mode')) authoritative.content_mode_source = 'user';
     if (['world_family', 'world_fidelity', 'visual_medium', 'world_period', 'world_region'].some(name => dirtyFields.has(name))) authoritative.world_setting = current.world_setting;
     if (dirtyFields.has('brief') || dirtyFields.has('content_mode') || authoritative.content_mode === 'narrative_story') authoritative.product_subject = '';
+    authoritative.brief_intake = current.brief_intake;
     authoritative.brief_source = dirtyFields.has('brief') ? 'user' : (latest.brief_source || '');
     return authoritative;
   }

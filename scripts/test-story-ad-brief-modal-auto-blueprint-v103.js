@@ -59,6 +59,7 @@ async function main() {
           project_name: 'QA 项目', text: '一条完整的现代剧情短片，人物在雨夜重逢。',
           content_mode: 'narrative_story', content_mode_source: 'user',
           target_duration: 30, output_ratio: '16:9', video_resolution: '1080p',
+          brief_intake: { creative_brief_confirmed: true, specifications_confirmed: true, reference_decision: '' },
           world_setting: { profiles: [{}] },
         },
         reference: {}, story: {}, revisions: { content: 1 },
@@ -276,6 +277,7 @@ async function main() {
       const message = document.querySelector('.brief-message.is-assistant');
       return message && !message.classList.contains('is-streaming') && message.textContent.includes('成片时长');
     });
+    await page.waitForSelector('[data-specification-question]');
     const dialogueQa = await page.evaluate(() => ({
       modelCalls: window.__dialogueQa.modelCalls,
       payload: window.__dialogueQa.payload,

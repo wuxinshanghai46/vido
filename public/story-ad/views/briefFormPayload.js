@@ -16,6 +16,11 @@ export function formPayload(form) {
     output_size: String(data.get('output_size') || 'standard'),
     video_resolution: String(data.get('video_resolution') || '1080p'),
     production_mode: String(data.get('production_mode') || 'auto'),
+    brief_intake: {
+      creative_brief_confirmed: String(data.get('creative_brief_confirmed') || '') === 'true',
+      specifications_confirmed: String(data.get('specifications_confirmed') || '') === 'true',
+      reference_decision: String(data.get('reference_decision') || ''),
+    },
     world_setting: worldSettingPayload(data),
     benchmark_strategy: {
       source: 'platform_competitor_learning',
