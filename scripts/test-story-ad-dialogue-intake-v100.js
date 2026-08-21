@@ -10,9 +10,13 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const asModule = source => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 async function main() {
+  const referenceStateSource = read('public/story-ad/views/briefReferenceDialogueState.js')
+    .replace(/\bexport\s+/g, '');
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
-    .replace(/^import[^\n]+\n/, 'const escapeHtml = value => String(value ?? "");\n');
-  const dialogue = await asModule(dialogueSource);
+    .replace(/^import[^\n]+components\/ui[^\n]+\n/m, 'const escapeHtml = value => String(value ?? "");\n')
+    .replace(/^import[^\n]+briefReferenceDialogueState[^\n]+\n/m, '')
+    .replace(/^export \{ referenceDialogueStatus[^\n]+\n/m, '');
+  const dialogue = await asModule(`${referenceStateSource}\n${dialogueSource}`);
   const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
   const referenceQuestionSource = read('public/story-ad/views/briefReferenceQuestion.js');
