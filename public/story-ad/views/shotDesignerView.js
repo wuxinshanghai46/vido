@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v130';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v130';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-domain-reference-dashboard-v130';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v131';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v131';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-domain-reference-dashboard-v131';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

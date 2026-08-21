@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260821-domain-reference-dashboard-v130';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260821-domain-reference-dashboard-v131';
 
 export function formPayload(form) {
   const data = new FormData(form);

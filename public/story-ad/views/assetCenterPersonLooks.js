@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v130';
+import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v131';
 
 function rows(profile = {}) {
   const source = Array.isArray(profile.look_profiles) ? profile.look_profiles : [];
