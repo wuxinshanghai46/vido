@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v128';
+import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v129';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)
