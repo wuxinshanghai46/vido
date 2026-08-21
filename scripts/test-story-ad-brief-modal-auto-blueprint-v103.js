@@ -290,7 +290,7 @@ async function main() {
     assert.equal(dialogueQa.progress, '60%', '内容完整、名称已建议但规格未确认时准备度必须为 60%');
     assert.equal(dialogueQa.specificationQuestion, true, '内容完整后必须先整体确认成片规格');
     assert.equal(dialogueQa.referenceQuestion, false, '规格未确认前不得提前进入参考材料决定');
-    await page.click('[data-specification-choice="confirm"]');
+    await page.click('[data-spec-choice="confirm"]');
     await page.waitForSelector('[data-reference-question]');
     await page.type('[data-dialogue-input]', '没有');
     await page.click('[data-dialogue-send]');
