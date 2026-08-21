@@ -23,6 +23,7 @@ for (const file of fs.readdirSync(path.join(__dirname, '..', 'src', 'db', 'migra
 const storage = require('../src/services/newStoryAd/storageService');
 const taskId = 'v85-sqlite-atomic-task';
 storage.createTask({ id: taskId, title: 'before', request: { brief: 'atomic proof' } });
+const originalCreatedAt = storage.getTask(taskId).created_at;
 storage.saveOutput(taskId, 'context', { version: 'before' });
 storage.saveOutput(taskId, 'blueprint', { version: 'delete-proof' });
 
@@ -61,6 +62,7 @@ assert.deepEqual(storage.getOutput(taskId, 'context'), { version: 'after' });
 assert.equal(storage.getOutput(taskId, 'asset_plan_candidate').id, 'candidate-commit');
 assert.equal(storage.getOutput(taskId, 'blueprint'), null);
 assert.equal(storage.getGenerationRun('run-commit').state, 'planned');
+assert.equal(storage.getTask(taskId).created_at, originalCreatedAt);
 
 sqlite.closeDatabase();
 fs.rmSync(tempRoot, { recursive: true, force: true });

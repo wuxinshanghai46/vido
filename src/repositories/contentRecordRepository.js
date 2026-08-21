@@ -243,17 +243,9 @@ function applyAtomicChanges(changes = []) {
       const rec = normalize(change.collection, row);
       operations.push({
         sql: `
-          INSERT INTO content_records (
+          INSERT OR REPLACE INTO content_records (
             id, collection, user_id, project_id, account_id, type, status, payload_json, created_at, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(collection, id) DO UPDATE SET
-            user_id=excluded.user_id,
-            project_id=excluded.project_id,
-            account_id=excluded.account_id,
-            type=excluded.type,
-            status=excluded.status,
-            payload_json=excluded.payload_json,
-            updated_at=excluded.updated_at
         `,
         params: [
           rec.id, rec.collection, rec.user_id, rec.project_id, rec.account_id,
