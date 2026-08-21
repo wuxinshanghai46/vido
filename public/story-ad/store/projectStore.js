@@ -1,7 +1,7 @@
-import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260821-dialogue-interaction-v113';
-import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260821-dialogue-interaction-v113';
-import { loadProjectList } from './projectListStore.js?v=20260821-dialogue-interaction-v113';
-import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260821-dialogue-interaction-v113';
+import { request, uploadAsset, uploadReferenceVideo } from '../api.js?v=20260821-dialogue-interaction-v114';
+import { beginReferenceReplacement, beginReferenceRetry, referenceSyncInterrupted, replacementCurrent, removeProjectReference, restoreReferenceReplacement, restoreReferenceRetry } from './referenceReplacementState.js?v=20260821-dialogue-interaction-v114';
+import { loadProjectList } from './projectListStore.js?v=20260821-dialogue-interaction-v114';
+import { loadProjectBundle, refreshProjectBundle } from './projectBundleStore.js?v=20260821-dialogue-interaction-v114';
 export function createProjectStore() {
   const state = {
     projects: [],
@@ -54,7 +54,7 @@ export function createProjectStore() {
     hydrateReferenceFailure();
     return bundle;
   }
-  const mediaStore = () => import('./mediaCatalogStore.js?v=20260821-dialogue-interaction-v113'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
+  const mediaStore = () => import('./mediaCatalogStore.js?v=20260821-dialogue-interaction-v114'), loadMediaPage = async options => (await mediaStore()).loadMediaPage({ request, state }, options);
   const loadMoreMedia = async (kind = 'keyframes', limit = 24) => (await mediaStore()).loadMoreMedia({ request, state, set }, kind, limit);
 
   async function refreshSections(sections) {
