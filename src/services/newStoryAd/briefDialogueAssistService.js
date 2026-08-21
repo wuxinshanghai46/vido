@@ -1,7 +1,7 @@
 const jsonRepair = require('./jsonRepairService');
 
 const MODES = new Set(['brief_dialogue', 'dialogue_intake']);
-const NEXT_STEPS = new Set(['idea_details', 'reference', 'review']);
+const NEXT_STEPS = new Set(['idea_details', 'specifications', 'reference', 'review']);
 
 function cleanText(value = '', max = 1600) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -30,8 +30,9 @@ function systemPrompt() {
     '你是 VIDO 剧情广告模块的导演助理，负责用自然中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
     '每次必须直接回应用户刚刚说的具体内容，先用一句话准确复述你理解到的人物、事件、产品价值或情绪目标，再根据当前立项流程只追问最关键的 1 至 2 个缺口。',
     '剧情短片成立至少需要：主要人物或主体、关键事件或变化、希望观众感受到的情绪或主题。商业广告成立至少需要：产品或服务、要证明的价值、目标观众或使用情境、希望观众记住或采取的行动。',
-    '用户一次已经讲完整时不得重复盘问，next_step 应进入 reference，并自然询问是否有参考视频、图片或链接；参考材料不是必填项。',
-    '时长、画幅、清晰度、时代地区、视觉形态和制作方式属于可选精调项。除非用户主动提到或它们会造成明显冲突，否则不要逐项询问，也不要把系统默认值说成用户已经确认。',
+    '用户一次已经讲完整时不得重复盘问，next_step 应先进入 specifications；时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认，也不要逐项盘问。',
+    '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
+    '时代地区、视觉形态和制作方式属于可选精调项。除非用户主动提到或它们会造成明显冲突，否则不要逐项询问。',
     '不得编造用户没有说过的人物、品牌、产品功效、价格、时代、地点或结局；不得引用旧任务、知识库案例或其它用户内容。',
     '回复控制在 40 至 220 个中文字符，像真实创作伙伴交流，不要说“已整理到确认单”之类机械模板。',
   ].join('\n');
@@ -47,10 +48,11 @@ function userPrompt(body = {}) {
     `当前累计设想：${cleanText(body.accumulated_idea || body.brief || '', 2400) || '空'}`,
     `用户刚刚发送：${cleanText(body.user_message || body.message || '', 1600)}`,
     `参考材料状态：${body.reference_attached === true ? '已上传' : (body.reference_skipped === true ? '用户明确无参考' : '尚未决定')}`,
+    `成片规格确认状态：${body.specifications_confirmed === true ? '用户已确认' : '尚未确认；当前值只能视为建议'}`,
     `最近对话：${JSON.stringify(history)}`,
-    '请判断核心设想是否已经足以进入参考材料确认，并输出：',
-    '{"reply":"结合用户原话的自然回应与下一问","idea_ready":true,"missing_topics":[],"next_step":"reference"}',
-    'next_step 只能是 idea_details、reference、review。idea_ready=false 时 missing_topics 必须列出 1 至 2 个具体缺口；已经有充分信息时 idea_ready=true。',
+    '请判断核心设想是否已经足以进入成片规格确认，并输出：',
+    '{"reply":"结合用户原话的自然回应；核心足够时说明接下来确认成片规格","idea_ready":true,"missing_topics":[],"next_step":"specifications"}',
+    'next_step 只能是 idea_details、specifications、reference、review。idea_ready=false 时 missing_topics 必须列出 1 至 2 个具体缺口；已经有充分信息时 idea_ready=true。',
   ].join('\n');
 }
 
@@ -60,7 +62,7 @@ function normalizeParsed(parsed = {}) {
   const missingTopics = (Array.isArray(parsed.missing_topics) ? parsed.missing_topics : [])
     .map(item => cleanInline(item, 80)).filter(Boolean).slice(0, 2);
   let nextStep = cleanInline(parsed.next_step, 40);
-  if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'reference' : 'idea_details';
+  if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
   return { reply, idea_ready: ideaReady, missing_topics: missingTopics, next_step: nextStep };
 }
 
@@ -105,7 +107,7 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     stage: 'new_story_ad.assist',
     systemPrompt: systemPrompt(),
     userPrompt: userPrompt(body),
-    maxTokens: 700,
+    maxTokens: 420,
     validateText: validateRaw,
   });
   const parsed = await jsonRepair.parseOrRepair({

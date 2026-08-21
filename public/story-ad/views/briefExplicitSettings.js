@@ -5,6 +5,20 @@ export function suggestedName(idea = '', mode = '') {
   return mode === 'narrative_story' ? '未命名剧情项目' : '未命名广告项目';
 }
 
+export const OUTPUT_SETTING_KEYS = ['target_duration', 'output_ratio', 'video_resolution'];
+
+export function explicitOutputSettingKeys(settings = {}) {
+  return OUTPUT_SETTING_KEYS.filter(key => Object.prototype.hasOwnProperty.call(settings || {}, key));
+}
+
+export function isBriefConfirmationReply(text = '') {
+  return /^(?:好|好的|可以|行|确认|确定|就这样|按这个|按当前|按建议|用这个|没问题)[吧啊呀。！!，,\s]*$/.test(String(text || '').trim());
+}
+
+export function isNoReferenceReply(text = '') {
+  return /^(?:没有|无|不用|不需要|没有参考|没有参考材料|暂无|暂时没有|不提供|跳过)[了吧啊呀。！!，,\s]*$/.test(String(text || '').trim());
+}
+
 export function extractExplicitBriefSettings(text = '') {
   const source = String(text || '');
   const result = {};

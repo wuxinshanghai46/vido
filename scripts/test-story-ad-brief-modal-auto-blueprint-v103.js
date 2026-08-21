@@ -261,7 +261,7 @@ async function main() {
           window.__dialogueQa.modelCalls += 1;
           window.__dialogueQa.payload = payload;
           await new Promise(resolve => setTimeout(resolve, 40));
-          return { idea_ready: true, dialogue_reply: '我理解这是林夏与周远在雨夜车站重逢、最终彼此释然的克制爱情故事。你有希望参考的视频、图片或链接吗？' };
+          return { idea_ready: true, dialogue_reply: '我理解这是林夏与周远在雨夜车站重逢、最终彼此释然的克制爱情故事。接下来先确认成片时长、画幅和清晰度。' };
         },
       }) };
     }, BUILD);
@@ -274,18 +274,33 @@ async function main() {
     assert.ok(partialReply.length > 0 && partialReply.length < 49, `逐字阶段必须是部分回复，实际 ${partialReply.length} 字`);
     await page.waitForFunction(() => {
       const message = document.querySelector('.brief-message.is-assistant');
-      return message && !message.classList.contains('is-streaming') && message.textContent.includes('参考的视频');
+      return message && !message.classList.contains('is-streaming') && message.textContent.includes('成片时长');
     });
     const dialogueQa = await page.evaluate(() => ({
       modelCalls: window.__dialogueQa.modelCalls,
       payload: window.__dialogueQa.payload,
       progress: document.querySelector('[data-dialogue-progress-text]').textContent,
+      specificationQuestion: Boolean(document.querySelector('[data-specification-question]')),
       referenceQuestion: Boolean(document.querySelector('[data-reference-question]')),
     }));
     assert.equal(dialogueQa.modelCalls, 1, '每条用户消息只能触发一次导演助理调用');
     assert.match(dialogueQa.payload.accumulated_idea, /雨夜车站重逢/);
-    assert.equal(dialogueQa.progress, '70%', '内容完整、名称已建议但参考未决定时准备度必须为 70%');
-    assert.equal(dialogueQa.referenceQuestion, true, '内容完整后必须进入参考材料决定，而不是追问高级设置');
+    assert.equal(dialogueQa.progress, '60%', '内容完整、名称已建议但规格未确认时准备度必须为 60%');
+    assert.equal(dialogueQa.specificationQuestion, true, '内容完整后必须先整体确认成片规格');
+    assert.equal(dialogueQa.referenceQuestion, false, '规格未确认前不得提前进入参考材料决定');
+    await page.click('[data-specification-choice="confirm"]');
+    await page.waitForSelector('[data-reference-question]');
+    await page.type('[data-dialogue-input]', '没有');
+    await page.click('[data-dialogue-send]');
+    await page.waitForFunction(() => document.querySelector('[data-dialogue-progress-text]')?.textContent === '90%');
+    const fastReferenceDecision = await page.evaluate(() => ({
+      modelCalls: window.__dialogueQa.modelCalls,
+      idea: document.querySelector('[name="brief"]').value,
+      confirmDisabled: document.querySelector('[data-dialogue-confirm]').disabled,
+    }));
+    assert.equal(fastReferenceDecision.modelCalls, 1, '参考阶段回答“没有”不得再次调用模型');
+    assert.doesNotMatch(fastReferenceDecision.idea, /(?:^|\n)没有(?:$|\n)/, '参考决定不得写入核心创意');
+    assert.equal(fastReferenceDecision.confirmDisabled, false, '规格和参考均明确后才允许整体确认');
 
     // 正式蓝图与历史 reference_draft 并存时，正式蓝图必须胜出且不得误标参考来源。
     const plotResult = await page.evaluate(async build => {
@@ -309,7 +324,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 84,
+    checks: 88,
     scope: 'story-ad-brief-modal-auto-blueprint-v103',
     stubbed_blueprint_stage_calls: stubbedStageCalls,
     real_model_calls: 0,

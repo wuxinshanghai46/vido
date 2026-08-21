@@ -25,6 +25,8 @@ function main() {
   assert.match(prompt, /最近对话/);
   assert.match(service.systemPrompt(), /不要逐项询问/);
   assert.match(service.systemPrompt(), /只追问最关键的 1 至 2 个缺口/);
+  assert.match(service.systemPrompt(), /规格确认后 next_step 才能进入 reference/);
+  assert.match(service.systemPrompt(), /不能把系统默认值说成用户已经确认/);
 
   const incomplete = JSON.stringify({
     reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
@@ -42,13 +44,13 @@ function main() {
   });
 
   const ready = JSON.stringify({
-    reply: '我理解这是林夏与周远在雨夜告别、最终释然的克制爱情故事。你有希望参考的视频、图片或链接吗？',
+    reply: '我理解这是林夏与周远在雨夜告别、最终释然的克制爱情故事。接下来先确认成片时长、画幅和清晰度。',
     idea_ready: true,
     missing_topics: [],
-    next_step: 'reference',
+    next_step: 'specifications',
   });
   assert.equal(service.validateRaw(ready), true);
-  assert.equal(service.buildResponse({ parsed: JSON.parse(ready) }).next_step, 'reference');
+  assert.equal(service.buildResponse({ parsed: JSON.parse(ready) }).next_step, 'specifications');
 
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
   const briefViewSource = read('public/story-ad/views/briefView.js');

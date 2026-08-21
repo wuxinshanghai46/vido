@@ -115,8 +115,9 @@ function main() {
   const recoveryPreflightLazyJsFiles = allJsFiles.filter(file => /subjectRecoveryPreflightAction/.test(file));
   const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel|briefDialogueRuntime|briefFormPayload|projectBundleStore)/.test(file));
   const dialogueSupportLazyJsFiles = allJsFiles.filter(file => /(?:briefExplicitSettings|briefReferenceQuestion)/.test(file));
+  const dialogueSpecificationLazyJsFiles = allJsFiles.filter(file => /briefSpecificationQuestion/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -138,6 +139,7 @@ function main() {
   const recoveryPreflightLazyJsBytes = recoveryPreflightLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueFlowJsBytes = dialogueFlowJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueSupportLazyJsBytes = dialogueSupportLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const dialogueSpecificationLazyJsBytes = dialogueSpecificationLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const plotEditorJsBytes = plotEditorJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
   const coreJsGzip = gzipBytes(coreJsFiles);
@@ -161,6 +163,7 @@ function main() {
   const recoveryPreflightLazyJsGzip = gzipBytes(recoveryPreflightLazyJsFiles);
   const dialogueFlowJsGzip = gzipBytes(dialogueFlowJsFiles);
   const dialogueSupportLazyJsGzip = gzipBytes(dialogueSupportLazyJsFiles);
+  const dialogueSpecificationLazyJsGzip = gzipBytes(dialogueSpecificationLazyJsFiles);
   const plotEditorJsGzip = gzipBytes(plotEditorJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
@@ -179,6 +182,8 @@ function main() {
   assert(dialogueFlowJsGzip <= 12 * 1024, `对话立项与分区加载模块 gzip ${dialogueFlowJsGzip} bytes 超过 12 KiB`);
   assert(dialogueSupportLazyJsBytes <= 8 * 1024, `对话按需识别与参考入口 ${dialogueSupportLazyJsBytes} bytes 超过 8 KiB`);
   assert(dialogueSupportLazyJsGzip <= 3 * 1024, `对话按需识别与参考入口 gzip ${dialogueSupportLazyJsGzip} bytes 超过 3 KiB`);
+  assert(dialogueSpecificationLazyJsBytes <= 3 * 1024, `成片规格确认按需模块 ${dialogueSpecificationLazyJsBytes} bytes 超过 3 KiB`);
+  assert(dialogueSpecificationLazyJsGzip <= 2 * 1024, `成片规格确认按需模块 gzip ${dialogueSpecificationLazyJsGzip} bytes 超过 2 KiB`);
   assert(plotEditorJsBytes <= 12 * 1024, `剧情逐段编辑模块 ${plotEditorJsBytes} bytes 超过 12 KiB`);
   assert(plotEditorJsGzip <= 4 * 1024, `剧情逐段编辑模块 gzip ${plotEditorJsGzip} bytes 超过 4 KiB`);
   assert(featureLazyJsBytes <= 60 * 1024, `参考理解与画布导演功能模块 ${featureLazyJsBytes} bytes 超过 60 KiB`);
