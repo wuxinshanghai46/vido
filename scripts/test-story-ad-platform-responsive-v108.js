@@ -28,7 +28,7 @@ const projectCenterMarkup = `
     <div class="stat-grid">${Array.from({ length: 4 }, (_, index) => `<article class="stat-card"><span>统计 ${index + 1}</span><b>${index + 2}</b><small>实时数据</small></article>`).join('')}</div>
     <section class="project-table-card"><div class="table-toolbar"><div><h2>项目</h2><p>当前账号真实任务</p></div><button class="btn">刷新</button></div><div class="project-query"><label><span>项目名称</span><input class="input"></label><label><span>任务类型</span><select class="select"><option>全部</option></select></label><label><span>当前阶段</span><select class="select"><option>全部</option></select></label></div><div class="project-table">
       <div class="project-row project-head"><span>任务编号</span><span>项目名称</span><span>任务类型</span><span>当前阶段</span><span>镜头</span><span>最近更新</span><span>操作</span></div>
-      <div class="project-row"><code>SA-20260821-01</code><span class="project-copy"><b>多分辨率剧情广告项目</b><small>这是一段很长的项目描述，用来验证内容不会撑破页面宽度。</small></span><span class="project-mode is-story">剧情短片</span><span class="status-tag is-info">人物资产</span><span>18</span><time>08-21 14:20</time><span class="project-actions"><button class="btn small">打开</button><button class="btn small danger">删除</button></span></div>
+      ${Array.from({ length: 10 }, (_, index) => `<div class="project-row"><code>SA-20260821-${String(index + 1).padStart(2, '0')}</code><span class="project-copy"><b>多分辨率剧情广告项目</b><small>这是一段很长的项目描述，用来验证内容不会撑破页面宽度。</small></span><span class="project-mode is-story">剧情短片</span><span class="status-tag is-info">人物资产</span><span>18</span><time>08-21 14:20</time><span class="project-actions"><button class="btn small">打开</button><button class="btn small danger">删除</button></span></div>`).join('')}
     </div></section>
   </section></div></main>`;
 
