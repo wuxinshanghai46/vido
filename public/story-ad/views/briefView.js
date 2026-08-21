@@ -1,16 +1,16 @@
-import { request } from '../api.js?v=20260821-dialogue-interaction-v108';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v108';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v108';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-dialogue-interaction-v108';
-import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v108';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-dialogue-interaction-v108';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-dialogue-interaction-v108';
-import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-interaction-v108';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-dialogue-interaction-v108';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-interaction-v108';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-interaction-v108';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-interaction-v108';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-interaction-v108';
+import { request } from '../api.js?v=20260821-dialogue-interaction-v109';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v109';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v109';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260821-dialogue-interaction-v109';
+import { worldSettingFields, worldSettingPayload } from './briefWorldSettings.js?v=20260821-dialogue-interaction-v109';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260821-dialogue-interaction-v109';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260821-dialogue-interaction-v109';
+import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-interaction-v109';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-dialogue-interaction-v109';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-interaction-v109';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-interaction-v109';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-interaction-v109';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-interaction-v109';
 function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
@@ -206,7 +206,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260821-dialogue-interaction-v108');
+    const module = await import('./referenceUnderstandingView.js?v=20260821-dialogue-interaction-v109');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
