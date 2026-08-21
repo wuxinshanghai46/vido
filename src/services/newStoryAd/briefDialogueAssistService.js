@@ -31,13 +31,14 @@ function systemPrompt() {
   return [
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
     '不要机械复述整段原话，不要使用“针对【原始创作需求】”“核心已经成立”“已整理到确认单”等模板话术。先指出你真正理解到的创作选择或矛盾，再问能改变剧本或制作方案的具体问题。',
-    '每轮只处理最相关的 1 至 2 个缺口，但进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
+    '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
     '不得编造用户没有说过的人物、品牌、产品功效、价格、时代、地点或结局；不得引用旧任务、知识库案例或其它用户内容。',
-    '回复控制在 45 至 260 个中文字符，像真正参与创作的导演与制片策划，不说空泛鼓励，不用官样确认语。',
+    'reply 控制在 45 至 220 个中文字符：先用一句话说出你理解到的具体创作重点，再自然地提出这轮唯一一个问题。不能回复“还要核对若干项”“缺少的内容会逐项询问”之类系统说明。',
+    '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
   ].join('\n');
 }
 
@@ -54,8 +55,8 @@ function userPrompt(body = {}) {
     `成片规格确认状态：${body.specifications_confirmed === true ? '用户已确认' : '尚未确认；当前值只能视为建议'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
-    '{"reply":"专业、具体的回应和下一问","coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["最优先缺口","次优先缺口"],"next_step":"idea_details"}',
-    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false；missing_topics 列出本轮实际追问的 1 至 2 项。',
+    '{"reply":"先回应具体内容，再提出唯一一个下一问","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
+    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 suggested_answers 可以为空数组。',
   ].join('\n');
 }
 
@@ -79,15 +80,19 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '') {
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
   const ideaReady = parsed.idea_ready === true && coverageReady;
   let missingTopics = (Array.isArray(parsed.missing_topics) ? parsed.missing_topics : [])
-    .map(item => cleanInline(item, 80)).filter(Boolean).slice(0, 2);
+    .map(item => cleanInline(item, 80)).filter(Boolean).slice(0, 1);
+  let suggestedAnswers = (Array.isArray(parsed.suggested_answers) ? parsed.suggested_answers : [])
+    .map(item => cleanInline(item, 48)).filter(Boolean)
+    .filter((item, index, values) => values.indexOf(item) === index)
+    .slice(0, 3);
   let nextStep = cleanInline(parsed.next_step, 40);
   if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
   if (!ideaReady) {
     nextStep = 'idea_details';
-    if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 2).map(topic => COVERAGE_LABELS[topic]);
+    if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
     if (parsed.idea_ready === true && !coverageReady) reply = `现有回答还不能形成可核验的完整立项依据，不能直接进入规格确认。请继续明确${missingTopics.join('和')}，我会以你的原话作为确认依据。`;
-  }
-  return { reply, idea_ready: ideaReady, missing_topics: missingTopics, next_step: nextStep, coverage };
+  } else suggestedAnswers = [];
+  return { reply, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
 }
 
 function validateRaw(raw = '') {
@@ -98,7 +103,7 @@ function validateRaw(raw = '') {
     return value.reply.length >= 12
       && value.reply.length <= 300
       && NEXT_STEPS.has(value.next_step)
-      && (value.idea_ready || value.missing_topics.length > 0);
+      && (value.idea_ready || (value.missing_topics.length === 1 && value.suggested_answers.length >= 2));
   } catch {
     return false;
   }
@@ -117,6 +122,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     dialogue_reply: value.reply,
     idea_ready: value.idea_ready,
     missing_topics: value.missing_topics,
+    suggested_answers: value.suggested_answers,
     next_step: value.next_step,
     coverage: value.coverage,
     model_meta: {

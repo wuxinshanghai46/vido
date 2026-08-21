@@ -83,6 +83,33 @@ export function dialogueProgressState({ name = '', mode = '', idea = '', ideaRea
   return { percent: Object.keys(weights).reduce((sum, key) => sum + (complete[key] ? weights[key] : 0), 0), complete };
 }
 
+export function guidedResumePrompt({ mode = '', idea = '' } = {}) {
+  const source = String(idea || '').trim();
+  const narrative = mode === 'narrative_story';
+  if (!narrative) return {
+    text: '我已经看到你的广告设想。先把传播对象定准：这条片最需要打动哪类人，他们看完后最希望产生什么行动？',
+    answers: ['面向新用户，先建立认知与兴趣', '面向犹豫用户，用证据推动购买', '面向老用户，强化品牌认同与复购'],
+  };
+  if (source.length < 36) return {
+    text: '我先抓住了你的故事方向。要让它真正往下发展，先把主角放进一个具体处境：谁是主角，他最想得到什么，又被什么挡住？',
+    answers: ['一个想挽回旧爱、却不敢面对过去的人', '一对被家族与身份拆散的恋人', '请导演根据现有想法提出主角方案'],
+  };
+  const hasConcreteWorld = /(?:夏商周|春秋|战国|秦朝?|汉朝?|三国|晋朝?|南北朝|隋朝?|唐朝?|五代|宋朝?|元朝?|明朝?|清朝?|民国|当代|现代|近未来|公元|\d{3,4}\s*年|架空[^，。；\n]{0,12}(?:世界|王朝|大陆)|(?:长安|洛阳|汴京|临安|大都|北京|上海|广州|香港|中国|日本|欧洲|美国)[^，。；\n]{0,10})/u.test(source);
+  const hasVisualDirection = /(?:真人|实拍|二维|2D|三维|3D|动画|水墨|定格|写实|纪实|胶片|国漫|电影质感|视觉风格|美术风格)/iu.test(source);
+  if (!hasConcreteWorld) return {
+    text: '人物关系和主要事件已经有了方向。为了让身份、服化道和场景真正落地，这个故事更适合发生在哪一种世界里？',
+    answers: ['真实历史朝代，我来补充具体时期', '架空东方神话世界，不受史实限制', '请导演结合这个故事推荐一个时代'],
+  };
+  if (!hasVisualDirection) return {
+    text: '故事的时空已经有了落点。接下来会直接影响人物与场景怎么制作：你希望观众看到怎样的画面质感？',
+    answers: ['真人实拍感，克制而写实', '国风二维动画，诗意留白', '电影级三维动画，宏大奇幻'],
+  };
+  return {
+    text: '人物、故事与画面方向已经能对上了。最后把观众感受定准：你最希望结尾留下一种什么情绪？',
+    answers: ['遗憾之后的释然', '跨越生死仍无法割舍的震撼', '命运轮回、终于重逢的感动'],
+  };
+}
+
 export function bindBriefDialogue(host, { form, referenceAttached = false, requireUserInitiation = false, onAssist, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
   const panel = host.querySelector('[data-brief-dialogue]');
   if (!panel || !form) return () => {};
@@ -105,6 +132,28 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     conversation.appendChild(article);
     conversation.scrollTop = conversation.scrollHeight;
     return { article, textNode: article.querySelector('.brief-bubble p') };
+  };
+  const retireSuggestions = () => conversation.querySelectorAll('[data-dialogue-suggestions] button').forEach(button => { button.disabled = true; });
+  const appendSuggestions = (entry, answers = []) => {
+    const values = [...new Set((Array.isArray(answers) ? answers : []).map(value => String(value || '').trim()).filter(Boolean))].slice(0, 3);
+    if (!entry?.article || values.length < 2) return;
+    const actions = document.createElement('div');
+    actions.className = 'brief-quick-actions brief-dialogue-suggestions';
+    actions.dataset.dialogueSuggestions = '';
+    values.forEach(value => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = value;
+      button.addEventListener('click', () => {
+        if (sending) return;
+        retireSuggestions();
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        submit();
+      });
+      actions.appendChild(button);
+    });
+    entry.article.lastElementChild?.appendChild(actions);
   };
   const streamMessage = async (text, target = null) => {
     const entry = target || message('assistant');
@@ -203,6 +252,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     const text = input.value.trim();
     if (!text || sending) return;
     sending = true;
+    retireSuggestions();
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
     const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-professional-intake-v117');
@@ -290,6 +340,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       const reply = String(result?.dialogue_reply || contextualFallback(text, mode, ideaReady));
       pending.article.classList.remove('is-thinking');
       await streamMessage(reply, pending);
+      appendSuggestions(pending, result?.suggested_answers);
       history.push({ role: 'assistant', content: reply });
     } catch {
       ideaReady = false;
@@ -324,7 +375,9 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   form.addEventListener('change', sync);
   const initialIntake = sync();
   if (!requireUserInitiation && String(control('brief')?.value || '').trim() && !ideaReady) {
-    message('assistant', '这份设想尚未完成专业创作确认。我会继续核对人物或主体、叙事/价值链、受众与表达目标、世界时空、视觉制作方向；缺少的内容会在对话中逐项询问，不会直接进入整体确认。');
+    const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
+    const entry = message('assistant', guidance.text);
+    appendSuggestions(entry, guidance.answers);
   }
   if (!requireUserInitiation && initialIntake.next === 'specifications') appendSpecificationQuestion();
   if (!requireUserInitiation && initialIntake.next === 'reference') appendReferenceQuestion();

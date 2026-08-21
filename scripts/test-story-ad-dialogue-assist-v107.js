@@ -28,18 +28,23 @@ function main() {
   assert.match(service.systemPrompt(), /evidence 必须是从当前累计设想中原样摘取/);
   assert.match(service.systemPrompt(), /规格确认后 next_step 才能进入 reference/);
   assert.match(service.systemPrompt(), /不能把系统默认值说成用户已经确认/);
+  assert.match(service.systemPrompt(), /每轮只追问 1 个/);
+  assert.match(service.systemPrompt(), /suggested_answers/);
+  assert.match(service.systemPrompt(), /不得是“继续补充”“都可以”“其他”/);
 
   const incomplete = JSON.stringify({
     reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
     idea_ready: false,
     missing_topics: ['主要人物', '关键事件'],
     next_step: 'idea_details',
+    suggested_answers: ['先讲两人的关系', '先讲冲突如何发生', '先讲最后的结局'],
     coverage: {},
   });
   assert.equal(service.validateRaw(incomplete), true);
   const incompleteResponse = service.buildResponse({ parsed: JSON.parse(incomplete), modelResult: { used_model: 'stub' }, body: { accumulated_idea: '我想做剧情短片' } });
   assert.equal(incompleteResponse.idea_ready, false);
-  assert.deepEqual(incompleteResponse.missing_topics, ['主要人物', '关键事件']);
+  assert.deepEqual(incompleteResponse.missing_topics, ['主要人物']);
+  assert.deepEqual(incompleteResponse.suggested_answers, ['先讲两人的关系', '先讲冲突如何发生', '先讲最后的结局']);
   assert.equal(incompleteResponse.next_step, 'idea_details');
   assert.deepEqual(incompleteResponse.model_meta, { used_model: 'stub', fallback_used: undefined, failed_models: undefined });
   assert.deepEqual(incompleteResponse.coverage, {
@@ -54,6 +59,7 @@ function main() {
     idea_ready: true,
     missing_topics: [],
     next_step: 'specifications',
+    suggested_answers: [],
     coverage: {
       subject: { status: 'explicit', evidence: '林夏与周远' },
       structure: { status: 'explicit', evidence: '从重逢到互相释然' },
@@ -80,6 +86,8 @@ function main() {
   assert.match(dialogueSource, /streamMessage/);
   assert.match(dialogueSource, /setTimeout\(resolve, 22\)/);
   assert.match(dialogueSource, /data-dialogue-expand/);
+  assert.match(dialogueSource, /appendSuggestions/);
+  assert.match(dialogueSource, /result\?\.suggested_answers/);
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /brief-quick-actions button\{[^}]*font-size:11px/, '快捷选择按钮不得继承平台大字号');
@@ -92,7 +100,7 @@ function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 28, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 34, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 try { main(); } catch (error) { console.error(error); process.exit(1); }

@@ -72,6 +72,12 @@ async function main() {
   assert.doesNotMatch(dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }), /class="brief-message/, '新项目对话必须默认空白，由用户先发起');
   assert.equal((dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }).match(/建议·待确认/g) || []).length, 3, '默认时长、画幅和清晰度都必须明确标为建议且等待确认');
   assert.equal((dialogue.briefDialogueMarkup({ brief: { brief_intake: { specifications_confirmed: true } } }).match(/用户已确认/g) || []).length, 3, '只有持久化的明确确认状态才能显示用户已确认');
+  const resumed = dialogue.guidedResumePrompt({ mode: 'narrative_story', idea: '一对男女在古代相爱，却因为身份与家族阻隔被迫分开；跨越千年后，他们终于在海边重逢并面对过去的遗憾' });
+  assert.match(resumed.text, /哪一种世界/);
+  assert.equal(resumed.answers.length, 3);
+  assert.ok(resumed.answers.some(answer => /真实历史朝代/.test(answer)), '宽泛的“古代”必须追问可执行的世界设定');
+  assert.doesNotMatch(dialogueSource, /这份设想尚未完成专业创作确认|缺少的内容会在对话中逐项询问/, '恢复已有项目时不得用系统规则冒充下一问');
+  assert.match(dialogueSource, /dataset\.dialogueSuggestions/);
   assert.match(dialogueSource, /specificationsConfirmed = String\(control\('specifications_confirmed'\)/, '已有项目不得按路由状态自动冒充规格已确认');
   assert.match(dialogueSource, /explicitSpecificationKeys\.size === explicitSettings\.OUTPUT_SETTING_KEYS\.length/, '只修改一项规格不得把整组规格标为确认');
   assert.deepEqual(
@@ -91,7 +97,7 @@ async function main() {
   assert.match(briefView, /<dialog class="brief-settings-modal"[\s\S]*参考材料与识别信息[\s\S]*<\/dialog>/, '可选精调项必须收进手动设置 modal');
   assert.doesNotMatch(briefView, /<details[^>]*data-brief-settings/, '手动设置不得继续以内联 details 占用页面高度');
 
-  console.log(JSON.stringify({ passed: true, checks: 30, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 35, scope: 'story-ad-dialogue-intake-v100', model_calls: 0 }));
 }
 
 main().catch(error => {
