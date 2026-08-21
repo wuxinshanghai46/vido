@@ -3794,7 +3794,6 @@ module.exports = {
   keyframeReferenceImages, selectedSceneReference, runKeyframeQaReviews,
   acceptedKeyframeContextAt,
   compactKeyframePrompt,
-  previewShotPrompts,
-  isCompleteKeyframe,
+  previewShotPrompts, isCompleteKeyframe,
   subtitleSegmentsFromShots,
 };
