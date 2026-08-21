@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v131';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v131';
-import { confirmDialog } from '../components/dialog.js?v=20260821-domain-reference-dashboard-v131';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v132';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v132';
+import { confirmDialog } from '../components/dialog.js?v=20260821-domain-reference-dashboard-v132';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

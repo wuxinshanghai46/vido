@@ -1,5 +1,5 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v131';
-import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260821-domain-reference-dashboard-v131';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v132';
+import { normalizeSceneDossier, SCENE_VIEW_LABELS, SCENE_VIEW_ORDER } from './sceneDossierCard.js?v=20260821-domain-reference-dashboard-v132';
 
 const WIDTH = 1800;
 const HEIGHT = 2400;

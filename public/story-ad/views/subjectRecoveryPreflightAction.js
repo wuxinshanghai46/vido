@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v131';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v132';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
