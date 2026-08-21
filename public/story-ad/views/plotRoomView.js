@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v132';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v132';
-import { confirmDialog } from '../components/dialog.js?v=20260821-domain-reference-dashboard-v132';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260821-domain-reference-dashboard-v132';
+import { request } from '../api.js?v=20260822-reference-dialogue-dedup-v133';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-dialogue-dedup-v133';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-dialogue-dedup-v133';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};

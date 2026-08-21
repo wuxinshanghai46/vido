@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260821-domain-reference-dashboard-v132';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
 
 const labels = {
   front: '正面', three_quarter: '三分之四侧', side: '侧面', back: '背面',
