@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-v124';
+import { escapeHtml } from '../components/ui.js?v=20260821-dialogue-v125';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';
