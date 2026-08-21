@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260821-dialogue-interaction-v111';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v111';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-dialogue-interaction-v111';
-import { confirmDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v111';
+import { request } from '../api.js?v=20260821-dialogue-interaction-v112';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260821-dialogue-interaction-v112';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260821-dialogue-interaction-v112';
+import { confirmDialog } from '../components/dialog.js?v=20260821-dialogue-interaction-v112';
 
 export function friendlyBindings(bundle = {}, shot = {}) {
   const assets = bundle.assets || {};
@@ -105,7 +105,7 @@ function sketchGateReason(gate = {}, fallback = '文字分镜审核通过后才�
 
 export async function mount(host, context) {
   if (context.route?.params?.get('stage') === 'shot') {
-    const shotDesigner = await import('./shotDesignerView.js?v=20260821-dialogue-interaction-v111');
+    const shotDesigner = await import('./shotDesignerView.js?v=20260821-dialogue-interaction-v112');
     return shotDesigner.mount(host, context);
   }
   const { bundle, store } = context;
