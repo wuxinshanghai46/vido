@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

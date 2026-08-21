@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v135';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-reference-first-compact-dialogue-v135';
+import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v136';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-reference-first-compact-dialogue-v136';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

@@ -1,19 +1,19 @@
-import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v135';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-first-compact-dialogue-v135';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-first-compact-dialogue-v135';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-first-compact-dialogue-v135';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-first-compact-dialogue-v135';
-import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-first-compact-dialogue-v135';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-first-compact-dialogue-v135';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-first-compact-dialogue-v135';
-import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-first-compact-dialogue-v135';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-first-compact-dialogue-v135';
-import { formPayload } from './briefFormPayload.js?v=20260822-reference-first-compact-dialogue-v135';
+import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v136';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-first-compact-dialogue-v136';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-first-compact-dialogue-v136';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-first-compact-dialogue-v136';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-first-compact-dialogue-v136';
+import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-first-compact-dialogue-v136';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-first-compact-dialogue-v136';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-first-compact-dialogue-v136';
+import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-first-compact-dialogue-v136';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-first-compact-dialogue-v136';
+import { formPayload } from './briefFormPayload.js?v=20260822-reference-first-compact-dialogue-v136';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -131,7 +131,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-first-compact-dialogue-v135');
+    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-first-compact-dialogue-v136');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {
