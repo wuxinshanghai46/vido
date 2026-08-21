@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260821-responsive-brief-v106';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260821-dialogue-interaction-v107';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '故事理解',

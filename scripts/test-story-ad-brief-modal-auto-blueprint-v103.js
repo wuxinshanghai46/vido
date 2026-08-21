@@ -246,6 +246,47 @@ async function main() {
     assert.equal(recovered.stageOptions[0].idempotency_key, recovered.stageOptions[1].idempotency_key, '失败后的显式重试必须复用同一内容版本幂等键');
     assert.equal(recovered.realModelCalls, 0);
 
+    // 新项目必须由用户先发起；智能回复使用当前内容并逐字呈现，测试只用 stub，不调用真实模型。
+    await page.evaluate(async build => {
+      document.body.innerHTML = `<main class="view-host" id="qa-dialogue"></main><form id="qa-dialogue-form">
+        <input name="project_name"><select name="content_mode"><option value=""></option><option value="narrative_story">剧情</option><option value="commercial_subject">广告</option></select>
+        <textarea name="brief"></textarea><input name="target_duration" value="30"><input name="output_ratio" value="9:16"><input name="video_resolution" value="1080p">
+      </form>`;
+      const module = await import(`/story-ad/views/briefDialoguePanel.js?v=${build}&qa=${Date.now()}`);
+      const host = document.querySelector('#qa-dialogue');
+      host.innerHTML = module.briefDialogueMarkup({ brief: {} }, { isNew: true });
+      window.__dialogueQa = { modelCalls: 0, cleanup: module.bindBriefDialogue(host, {
+        form: document.querySelector('#qa-dialogue-form'), requireUserInitiation: true,
+        async onAssist(payload) {
+          window.__dialogueQa.modelCalls += 1;
+          window.__dialogueQa.payload = payload;
+          await new Promise(resolve => setTimeout(resolve, 40));
+          return { idea_ready: true, dialogue_reply: '我理解这是林夏与周远在雨夜车站重逢、最终彼此释然的克制爱情故事。你有希望参考的视频、图片或链接吗？' };
+        },
+      }) };
+    }, BUILD);
+    assert.equal(await page.$$eval('.brief-message.is-assistant', items => items.length), 0, '新项目不得预置助手对话，必须由用户先发起');
+    await page.type('[data-dialogue-input]', '林夏与周远在雨夜车站重逢，两人最终没有复合，而是在遗憾中彼此释然。');
+    await page.click('[data-dialogue-send]');
+    await page.waitForSelector('.brief-message.is-streaming');
+    await new Promise(resolve => setTimeout(resolve, 180));
+    const partialReply = await page.$eval('.brief-message.is-assistant .brief-bubble p', element => element.textContent);
+    assert.ok(partialReply.length > 0 && partialReply.length < 49, `逐字阶段必须是部分回复，实际 ${partialReply.length} 字`);
+    await page.waitForFunction(() => {
+      const message = document.querySelector('.brief-message.is-assistant');
+      return message && !message.classList.contains('is-streaming') && message.textContent.includes('参考的视频');
+    });
+    const dialogueQa = await page.evaluate(() => ({
+      modelCalls: window.__dialogueQa.modelCalls,
+      payload: window.__dialogueQa.payload,
+      progress: document.querySelector('[data-dialogue-progress-text]').textContent,
+      referenceQuestion: Boolean(document.querySelector('[data-reference-question]')),
+    }));
+    assert.equal(dialogueQa.modelCalls, 1, '每条用户消息只能触发一次导演助理调用');
+    assert.match(dialogueQa.payload.accumulated_idea, /雨夜车站重逢/);
+    assert.equal(dialogueQa.progress, '70%', '内容完整、名称已建议但参考未决定时准备度必须为 70%');
+    assert.equal(dialogueQa.referenceQuestion, true, '内容完整后必须进入参考材料决定，而不是追问高级设置');
+
     // 正式蓝图与历史 reference_draft 并存时，正式蓝图必须胜出且不得误标参考来源。
     const plotResult = await page.evaluate(async build => {
       document.body.innerHTML = '<main class="view-host" id="qa-plot"></main>';

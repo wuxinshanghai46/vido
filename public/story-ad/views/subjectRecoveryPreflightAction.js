@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260821-responsive-brief-v106';
+import { request } from '../api.js?v=20260821-dialogue-interaction-v107';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';
