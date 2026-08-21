@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v129';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v130';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

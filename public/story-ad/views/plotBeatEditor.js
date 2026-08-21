@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v129';
+import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v130';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260821-domain-reference-dashboard-v129';
-import { toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v129';
-import { confirmDialog } from '../components/dialog.js?v=20260821-domain-reference-dashboard-v129';
+import { request } from '../api.js?v=20260821-domain-reference-dashboard-v130';
+import { toast } from '../components/ui.js?v=20260821-domain-reference-dashboard-v130';
+import { confirmDialog } from '../components/dialog.js?v=20260821-domain-reference-dashboard-v130';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 
