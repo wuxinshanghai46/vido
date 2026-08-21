@@ -105,6 +105,7 @@ function main() {
   const briefLazyJsFiles = allJsFiles.filter(file => /(?:briefTextContract|briefContentModeMigration|briefSettingsSummary|briefWorldSettings)/.test(file));
   const briefMaterialsLazyJsFiles = allJsFiles.filter(file => /briefMaterials/.test(file));
   const briefAdvancedLazyJsFiles = allJsFiles.filter(file => /briefAdvancedConfig/.test(file));
+  const briefPageLazyJsFiles = allJsFiles.filter(file => /briefView/.test(file));
   const panoramaLazyJsFiles = allJsFiles.filter(file => /(?:panoramaViewer|panoramaGeneration)/.test(file));
   const sceneWorldLazyJsFiles = allJsFiles.filter(file => /sceneWorld(?:View|Page)/.test(file));
   const dossierLazyJsFiles = allJsFiles.filter(file => /sceneDossier(?:Card|Export)/.test(file));
@@ -113,13 +114,15 @@ function main() {
   const checkpointRecoveryLazyJsFiles = allJsFiles.filter(file => /assetCheckpointRecovery/.test(file));
   const assetStageLazyJsFiles = allJsFiles.filter(file => /assetCenterStageView/.test(file));
   const recoveryPreflightLazyJsFiles = allJsFiles.filter(file => /subjectRecoveryPreflightAction/.test(file));
-  const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel|briefDialogueRuntime|briefFormPayload|projectBundleStore)/.test(file));
+  const dialogueFlowJsFiles = allJsFiles.filter(file => /(?:dialogue-demo|briefDialoguePanel)/.test(file));
+  const dialogueDataJsFiles = allJsFiles.filter(file => /(?:briefDialogueRuntime|briefFormPayload|projectBundleStore)/.test(file));
   const dialogueGuidanceLazyJsFiles = allJsFiles.filter(file => /briefGuidedResume/.test(file));
   const dialogueSupportLazyJsFiles = allJsFiles.filter(file => /(?:briefExplicitSettings|briefReferenceQuestion)/.test(file));
   const dialogueSpecificationLazyJsFiles = allJsFiles.filter(file => /briefSpecificationQuestion/.test(file));
   const referenceDialogueStateJsFiles = allJsFiles.filter(file => /briefReferenceDialogueState/.test(file));
+  const dialoguePolicyJsFiles = allJsFiles.filter(file => /(?:briefDialoguePolicy|briefConversationScroll)/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !plotEditorJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotEditorJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -131,6 +134,7 @@ function main() {
   const briefLazyJsBytes = briefLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const briefMaterialsLazyJsBytes = briefMaterialsLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const briefAdvancedLazyJsBytes = briefAdvancedLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const briefPageLazyJsBytes = briefPageLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const panoramaLazyJsBytes = panoramaLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const sceneWorldLazyJsBytes = sceneWorldLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dossierLazyJsBytes = dossierLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -140,10 +144,12 @@ function main() {
   const assetStageLazyJsBytes = assetStageLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const recoveryPreflightLazyJsBytes = recoveryPreflightLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueFlowJsBytes = dialogueFlowJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const dialogueDataJsBytes = dialogueDataJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueGuidanceLazyJsBytes = dialogueGuidanceLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueSupportLazyJsBytes = dialogueSupportLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialogueSpecificationLazyJsBytes = dialogueSpecificationLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const referenceDialogueStateJsBytes = referenceDialogueStateJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const dialoguePolicyJsBytes = dialoguePolicyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const plotEditorJsBytes = plotEditorJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
   const coreJsGzip = gzipBytes(coreJsFiles);
@@ -157,6 +163,7 @@ function main() {
   const briefLazyJsGzip = gzipBytes(briefLazyJsFiles);
   const briefMaterialsLazyJsGzip = gzipBytes(briefMaterialsLazyJsFiles);
   const briefAdvancedLazyJsGzip = gzipBytes(briefAdvancedLazyJsFiles);
+  const briefPageLazyJsGzip = gzipBytes(briefPageLazyJsFiles);
   const panoramaLazyJsGzip = gzipBytes(panoramaLazyJsFiles);
   const sceneWorldLazyJsGzip = gzipBytes(sceneWorldLazyJsFiles);
   const dossierLazyJsGzip = gzipBytes(dossierLazyJsFiles);
@@ -166,10 +173,12 @@ function main() {
   const assetStageLazyJsGzip = gzipBytes(assetStageLazyJsFiles);
   const recoveryPreflightLazyJsGzip = gzipBytes(recoveryPreflightLazyJsFiles);
   const dialogueFlowJsGzip = gzipBytes(dialogueFlowJsFiles);
+  const dialogueDataJsGzip = gzipBytes(dialogueDataJsFiles);
   const dialogueGuidanceLazyJsGzip = gzipBytes(dialogueGuidanceLazyJsFiles);
   const dialogueSupportLazyJsGzip = gzipBytes(dialogueSupportLazyJsFiles);
   const dialogueSpecificationLazyJsGzip = gzipBytes(dialogueSpecificationLazyJsFiles);
   const referenceDialogueStateJsGzip = gzipBytes(referenceDialogueStateJsFiles);
+  const dialoguePolicyJsGzip = gzipBytes(dialoguePolicyJsFiles);
   const plotEditorJsGzip = gzipBytes(plotEditorJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
   // Rich asset/scene/storyboard editors are lazy-loaded after entering a project.
@@ -186,6 +195,8 @@ function main() {
   // Guided slot state stays in the initial dialogue module; explicit parsing
   // and reference actions are separately lazy-loaded and capped below.
   assert(dialogueFlowJsGzip <= 12 * 1024, `对话立项与分区加载模块 gzip ${dialogueFlowJsGzip} bytes 超过 12 KiB`);
+  assert(dialogueDataJsBytes <= 8 * 1024, `对话数据与请求模块 ${dialogueDataJsBytes} bytes 超过 8 KiB`);
+  assert(dialogueDataJsGzip <= 3 * 1024, `对话数据与请求模块 gzip ${dialogueDataJsGzip} bytes 超过 3 KiB`);
   assert(dialogueGuidanceLazyJsBytes <= 4 * 1024, `已有项目恢复问询模块 ${dialogueGuidanceLazyJsBytes} bytes 超过 4 KiB`);
   assert(dialogueGuidanceLazyJsGzip <= 2 * 1024, `已有项目恢复问询模块 gzip ${dialogueGuidanceLazyJsGzip} bytes 超过 2 KiB`);
   assert(dialogueSupportLazyJsBytes <= 8 * 1024, `对话按需识别与参考入口 ${dialogueSupportLazyJsBytes} bytes 超过 8 KiB`);
@@ -194,6 +205,8 @@ function main() {
   assert(dialogueSpecificationLazyJsGzip <= 2 * 1024, `成片规格确认按需模块 gzip ${dialogueSpecificationLazyJsGzip} bytes 超过 2 KiB`);
   assert(referenceDialogueStateJsBytes <= 8 * 1024, `参考分析对话状态模块 ${referenceDialogueStateJsBytes} bytes 超过 8 KiB`);
   assert(referenceDialogueStateJsGzip <= 3 * 1024, `参考分析对话状态模块 gzip ${referenceDialogueStateJsGzip} bytes 超过 3 KiB`);
+  assert(dialoguePolicyJsBytes <= 4 * 1024, `对话状态策略与滚动模块 ${dialoguePolicyJsBytes} bytes 超过 4 KiB`);
+  assert(dialoguePolicyJsGzip <= 2 * 1024, `对话状态策略与滚动模块 gzip ${dialoguePolicyJsGzip} bytes 超过 2 KiB`);
   assert(plotEditorJsBytes <= 12 * 1024, `剧情逐段编辑模块 ${plotEditorJsBytes} bytes 超过 12 KiB`);
   assert(plotEditorJsGzip <= 4 * 1024, `剧情逐段编辑模块 gzip ${plotEditorJsGzip} bytes 超过 4 KiB`);
   assert(featureLazyJsBytes <= 60 * 1024, `参考理解与画布导演功能模块 ${featureLazyJsBytes} bytes 超过 60 KiB`);
@@ -206,6 +219,8 @@ function main() {
   assert(briefMaterialsLazyJsGzip <= 2 * 1024, `目标页参考材料模块 gzip ${briefMaterialsLazyJsGzip} bytes 超过 2 KiB`);
   assert(briefAdvancedLazyJsBytes <= 3 * 1024, `目标页高级配置模块 ${briefAdvancedLazyJsBytes} bytes 超过 3 KiB`);
   assert(briefAdvancedLazyJsGzip <= 2 * 1024, `目标页高级配置模块 gzip ${briefAdvancedLazyJsGzip} bytes 超过 2 KiB`);
+  assert(briefPageLazyJsBytes <= 42 * 1024, `对话立项目标页按需模块 ${briefPageLazyJsBytes} bytes 超过 42 KiB`);
+  assert(briefPageLazyJsGzip <= 14 * 1024, `对话立项目标页按需模块 gzip ${briefPageLazyJsGzip} bytes 超过 14 KiB`);
   assert(panoramaLazyJsBytes <= 20 * 1024, `360全景按需模块 ${panoramaLazyJsBytes} bytes 超过 20 KiB`);
   assert(panoramaLazyJsGzip <= 8 * 1024, `360全景按需模块 gzip ${panoramaLazyJsGzip} bytes 超过 8 KiB`);
   assert(sceneWorldLazyJsBytes <= 50 * 1024, `场景世界按需模块 ${sceneWorldLazyJsBytes} bytes 超过 50 KiB`);
