@@ -3517,25 +3517,7 @@ async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
   const taskId = cleanText(body.task_id || body.taskId || '', 80);
-  if (briefDialogueAssist.isMode(mode)) {
-    briefDialogueAssist.assertInput(body);
-    const result = await modelGateway.generateText({
-      taskId,
-      stage: 'new_story_ad.assist',
-      systemPrompt: briefDialogueAssist.systemPrompt(),
-      userPrompt: briefDialogueAssist.userPrompt(body),
-      maxTokens: 700,
-      validateText: briefDialogueAssist.validateRaw,
-    });
-    const parsed = await jsonRepair.parseOrRepair({
-      raw: result.text,
-      expected: 'object',
-      modelGateway,
-      taskId,
-      stage: 'new_story_ad.json_repair',
-    });
-    return briefDialogueAssist.buildResponse({ parsed, modelResult: result });
-  }
+  if (briefDialogueAssist.isMode(mode)) return briefDialogueAssist.run({ body, modelGateway, taskId });
   const isStyleControl = mode === 'style_control' || mode === 'style', isNegativeControl = mode === 'negative_control' || mode === 'negative';
   const isCreativeDirection = mode === 'creative_direction' || mode === 'creative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';

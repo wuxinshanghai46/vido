@@ -98,8 +98,29 @@ function buildResponse({ parsed = {}, modelResult = {} } = {}) {
   };
 }
 
+async function run({ body = {}, modelGateway, taskId = '' } = {}) {
+  assertInput(body);
+  const result = await modelGateway.generateText({
+    taskId,
+    stage: 'new_story_ad.assist',
+    systemPrompt: systemPrompt(),
+    userPrompt: userPrompt(body),
+    maxTokens: 700,
+    validateText: validateRaw,
+  });
+  const parsed = await jsonRepair.parseOrRepair({
+    raw: result.text,
+    expected: 'object',
+    modelGateway,
+    taskId,
+    stage: 'new_story_ad.json_repair',
+  });
+  return buildResponse({ parsed, modelResult: result });
+}
+
 module.exports = {
   isMode,
+  run,
   assertInput,
   systemPrompt,
   userPrompt,

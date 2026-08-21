@@ -61,9 +61,10 @@ function main() {
   assert.match(css, /resize:vertical/);
   assert.match(css, /view-host\.brief-dialogue-view/);
   assert.match(briefViewSource, /mode: 'brief_dialogue'/);
-  assert.match(storyService, /briefDialogueAssist\.validateRaw/);
+  assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
+  assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 20, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 21, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 try { main(); } catch (error) { console.error(error); process.exit(1); }
