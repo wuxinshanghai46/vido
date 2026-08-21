@@ -29,12 +29,14 @@ async function main() {
   assert.match(service.systemPrompt(), /规格确认后 next_step 才能进入 reference/);
   assert.match(service.systemPrompt(), /不能把系统默认值说成用户已经确认/);
   assert.match(service.systemPrompt(), /每轮只追问 1 个/);
+  assert.match(service.systemPrompt(), /问询顺序必须连贯/);
   assert.match(service.systemPrompt(), /suggested_answers/);
   assert.match(service.systemPrompt(), /不得是“继续补充”“都可以”“其他”/);
   assert.match(service.systemPrompt(), /不能等用户反问才意识到/);
 
   const incomplete = JSON.stringify({
     reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
+    question_topic: 'subject_identity',
     idea_ready: false,
     missing_topics: ['主要人物', '关键事件'],
     next_step: 'idea_details',
@@ -69,7 +71,7 @@ async function main() {
       visual_direction: { status: 'explicit', evidence: '真人写实电影感' },
     },
   });
-  assert.equal(service.validateRaw(ready), true);
+  assert.equal(service.validateRaw(ready, { accumulatedIdea: completeIdea }), true);
   assert.equal(service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea } }).next_step, 'specifications');
   const inventedEvidence = JSON.parse(ready);
   inventedEvidence.coverage.world_context.evidence = '唐代长安';
@@ -94,6 +96,20 @@ async function main() {
   assert.equal(impliedModelCalls, 0, '可确定的内容特有问题必须即时返回，不等待模型');
   assert.equal(immediateCrossEra.model_meta.deterministic, true);
   assert.match(immediateCrossEra.dialogue_reply, /古代到现代怎样变化/);
+  assert.equal(immediateCrossEra.question_topic, 'character_continuity');
+
+  const repeatedOpposition = JSON.stringify({
+    reply: '目前最影响剧情的是古代线反派身份，你希望他是江湖仇家、邪派首领还是朝廷鹰犬？',
+    question_topic: 'opposition',
+    idea_ready: false,
+    missing_topics: ['反派身份与动机'],
+    next_step: 'idea_details',
+    suggested_answers: ['江湖仇家', '邪派首领', '朝廷鹰犬'],
+    coverage: {},
+  });
+  assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true);
+  assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事，反派是江湖仇家', completedTopics: ['opposition'] }), false, '用户回答过的决策必须在模型候选校验阶段被拒绝');
+  assert.deepEqual(service.cleanTopics(['opposition', 'opposition', 'unknown']), ['opposition']);
 
   let capturedOptions = null;
   const fastResult = await service.run({
@@ -109,6 +125,7 @@ async function main() {
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js');
+  const guidedResumeSource = read('public/story-ad/views/briefGuidedResume.js');
   const briefViewSource = read('public/story-ad/views/briefView.js');
   const dialogueRuntimeSource = read('public/story-ad/views/briefDialogueRuntime.js');
   const css = read('public/story-ad/dialogue-theme.css');
@@ -118,6 +135,10 @@ async function main() {
   assert.match(dialogueSource, /data-dialogue-expand/);
   assert.match(dialogueSource, /appendSuggestions/);
   assert.match(dialogueSource, /result\?\.suggested_answers/);
+  assert.match(dialogueSource, /completed_topics: \[\.\.\.completedTopics\]/);
+  assert.match(dialogueSource, /completedTopics\.add\(activeQuestionTopic\)/);
+  assert.match(guidedResumeSource, /answers: \['真人实拍', '国风二维动画', '电影级三维动画'\]/);
+  assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /brief-quick-actions button\{[^}]*font-size:11px/, '快捷选择按钮不得继承平台大字号');
@@ -130,7 +151,7 @@ async function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 50, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 60, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exit(1); });

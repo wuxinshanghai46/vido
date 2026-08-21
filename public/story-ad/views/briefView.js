@@ -118,6 +118,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           <input type="hidden" name="creative_brief_confirmed" value="${brief.brief_intake?.creative_brief_confirmed === true ? 'true' : 'false'}">
           <input type="hidden" name="specifications_confirmed" value="${brief.brief_intake?.specifications_confirmed === true ? 'true' : 'false'}">
           <input type="hidden" name="reference_decision" value="${referenceAttached ? 'attached' : escapeHtml(brief.brief_intake?.reference_decision || '')}">
+          <input type="hidden" name="completed_dialogue_topics" value="${escapeHtml((brief.brief_intake?.completed_dialogue_topics || []).join(','))}">
+          <input type="hidden" name="active_dialogue_topic" value="${escapeHtml(brief.brief_intake?.active_dialogue_topic || '')}">
           ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '保存项目设想' : referenceAction.label}</button></div>`}
           </div>
         </form>

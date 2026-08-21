@@ -304,6 +304,46 @@ async function main() {
     assert.doesNotMatch(fastReferenceDecision.idea, /(?:^|\n)没有(?:$|\n)/, '参考决定不得写入核心创意');
     assert.equal(fastReferenceDecision.confirmDisabled, false, '规格和参考均明确后才允许整体确认');
 
+    // 每一问必须有稳定决策身份；用户回答后，下一轮必须携带已完成身份，供服务端硬性拒绝重复问题。
+    await page.evaluate(async build => {
+      document.body.innerHTML = `<main class="view-host" id="qa-topic-ledger"></main><form id="qa-topic-form">
+        <input name="project_name"><select name="content_mode"><option value="narrative_story" selected>剧情</option></select>
+        <textarea name="brief"></textarea><input name="target_duration" value="30"><input name="output_ratio" value="9:16"><input name="video_resolution" value="1080p">
+        <input name="completed_dialogue_topics"><input name="active_dialogue_topic">
+      </form>`;
+      const module = await import(`/story-ad/views/briefDialoguePanel.js?v=${build}&topicQa=${Date.now()}`);
+      const host = document.querySelector('#qa-topic-ledger');
+      host.innerHTML = module.briefDialogueMarkup({ brief: {} }, { isNew: true });
+      window.__topicQa = { payloads: [] };
+      module.bindBriefDialogue(host, {
+        form: document.querySelector('#qa-topic-form'), requireUserInitiation: true,
+        async onAssist(payload) {
+          window.__topicQa.payloads.push(payload);
+          if (window.__topicQa.payloads.length === 1) return {
+            idea_ready: false, question_topic: 'opposition',
+            dialogue_reply: '古代线的反派具体是什么身份？', suggested_answers: ['江湖仇家', '邪派首领', '朝廷鹰犬'],
+          };
+          return {
+            idea_ready: false, question_topic: 'plot_trigger',
+            dialogue_reply: '反派身份已经明确。接下来是什么事件迫使主角行动？', suggested_answers: ['家人被掳走', '旧案重新出现', '掌门突然遇害'],
+          };
+        },
+      });
+    }, BUILD);
+    await page.type('[data-dialogue-input]', '一个古代侠客追查旧案的故事');
+    await page.click('[data-dialogue-send]');
+    await page.waitForSelector('[data-dialogue-suggestions] button');
+    await page.click('[data-dialogue-suggestions] button');
+    await page.waitForFunction(() => window.__topicQa.payloads.length === 2 && document.querySelector('[name="active_dialogue_topic"]')?.value === 'plot_trigger');
+    const topicLedger = await page.evaluate(() => ({
+      completed: window.__topicQa.payloads[1].completed_topics,
+      persisted: document.querySelector('[name="completed_dialogue_topics"]').value,
+      active: document.querySelector('[name="active_dialogue_topic"]').value,
+    }));
+    assert.deepEqual(topicLedger.completed, ['opposition'], '回答反派身份后，下一轮必须显式携带已完成的 opposition');
+    assert.match(topicLedger.persisted, /opposition/, '已完成决策必须进入表单持久化载荷');
+    assert.equal(topicLedger.active, 'plot_trigger', '下一问必须切换为新的稳定决策身份');
+
     // 正式蓝图与历史 reference_draft 并存时，正式蓝图必须胜出且不得误标参考来源。
     const plotResult = await page.evaluate(async build => {
       document.body.innerHTML = '<main class="view-host" id="qa-plot"></main>';
@@ -326,7 +366,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 88,
+    checks: 93,
     scope: 'story-ad-brief-modal-auto-blueprint-v103',
     stubbed_blueprint_stage_calls: stubbedStageCalls,
     real_model_calls: 0,

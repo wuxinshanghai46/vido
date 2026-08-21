@@ -13,6 +13,7 @@ async function main() {
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
     .replace(/^import[^\n]+\n/, 'const escapeHtml = value => String(value ?? "");\n');
   const dialogue = await asModule(dialogueSource);
+  const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
   const referenceQuestionSource = read('public/story-ad/views/briefReferenceQuestion.js');
   const specificationQuestionSource = read('public/story-ad/views/briefSpecificationQuestion.js');
@@ -76,7 +77,7 @@ async function main() {
   assert.doesNotMatch(dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }), /class="brief-message/, '新项目对话必须默认空白，由用户先发起');
   assert.equal((dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }).match(/建议·待确认/g) || []).length, 3, '默认时长、画幅和清晰度都必须明确标为建议且等待确认');
   assert.equal((dialogue.briefDialogueMarkup({ brief: { brief_intake: { specifications_confirmed: true } } }).match(/用户已确认/g) || []).length, 3, '只有持久化的明确确认状态才能显示用户已确认');
-  const resumed = dialogue.guidedResumePrompt({ mode: 'narrative_story', idea: '一对男女在古代相爱，却因为身份与家族阻隔被迫分开；跨越千年后，他们终于在海边重逢并面对过去的遗憾' });
+  const resumed = guidedResume.guidedResumePrompt({ mode: 'narrative_story', idea: '一对男女在古代相爱，却因为身份与家族阻隔被迫分开；跨越千年后，他们终于在海边重逢并面对过去的遗憾' });
   assert.match(resumed.text, /哪一种世界/);
   assert.equal(resumed.answers.length, 3);
   assert.ok(resumed.answers.some(answer => /真实历史朝代/.test(answer)), '宽泛的“古代”必须追问可执行的世界设定');

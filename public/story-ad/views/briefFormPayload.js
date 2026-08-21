@@ -20,6 +20,8 @@ export function formPayload(form) {
       creative_brief_confirmed: String(data.get('creative_brief_confirmed') || '') === 'true',
       specifications_confirmed: String(data.get('specifications_confirmed') || '') === 'true',
       reference_decision: String(data.get('reference_decision') || ''),
+      completed_dialogue_topics: String(data.get('completed_dialogue_topics') || '').split(',').map(value => value.trim()).filter(Boolean),
+      active_dialogue_topic: String(data.get('active_dialogue_topic') || '').trim(),
     },
     world_setting: worldSettingPayload(data),
     benchmark_strategy: {

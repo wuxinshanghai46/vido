@@ -1156,6 +1156,8 @@ function buildContext(body = {}, user = {}) {
       reference_decision: ['attached', 'skipped'].includes(cleanText(body.brief_intake?.reference_decision || body.briefIntake?.referenceDecision || '', 20))
         ? cleanText(body.brief_intake?.reference_decision || body.briefIntake?.referenceDecision, 20)
         : '',
+      completed_dialogue_topics: [...new Set((Array.isArray(body.brief_intake?.completed_dialogue_topics) ? body.brief_intake.completed_dialogue_topics : []).map(value => cleanText(value, 40)).filter(Boolean))].slice(0, 20),
+      active_dialogue_topic: cleanText(body.brief_intake?.active_dialogue_topic || '', 40),
     },
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
     asset_setup_confirmed: body.asset_setup_confirmed === true || body.assetSetupConfirmed === true,

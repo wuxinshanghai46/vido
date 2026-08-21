@@ -83,33 +83,6 @@ export function dialogueProgressState({ name = '', mode = '', idea = '', ideaRea
   return { percent: Object.keys(weights).reduce((sum, key) => sum + (complete[key] ? weights[key] : 0), 0), complete };
 }
 
-export function guidedResumePrompt({ mode = '', idea = '' } = {}) {
-  const source = String(idea || '').trim();
-  const narrative = mode === 'narrative_story';
-  if (!narrative) return {
-    text: '我已经看到你的广告设想。先把传播对象定准：这条片最需要打动哪类人，他们看完后最希望产生什么行动？',
-    answers: ['面向新用户，先建立认知与兴趣', '面向犹豫用户，用证据推动购买', '面向老用户，强化品牌认同与复购'],
-  };
-  if (source.length < 36) return {
-    text: '我先抓住了你的故事方向。要让它真正往下发展，先把主角放进一个具体处境：谁是主角，他最想得到什么，又被什么挡住？',
-    answers: ['一个想挽回旧爱、却不敢面对过去的人', '一对被家族与身份拆散的恋人', '请导演根据现有想法提出主角方案'],
-  };
-  const hasConcreteWorld = /(?:夏商周|春秋|战国|秦朝?|汉朝?|三国|晋朝?|南北朝|隋朝?|唐朝?|五代|宋朝?|元朝?|明朝?|清朝?|民国|当代|现代|近未来|公元|\d{3,4}\s*年|架空[^，。；\n]{0,12}(?:世界|王朝|大陆)|(?:长安|洛阳|汴京|临安|大都|北京|上海|广州|香港|中国|日本|欧洲|美国)[^，。；\n]{0,10})/u.test(source);
-  const hasVisualDirection = /(?:真人|实拍|二维|2D|三维|3D|动画|水墨|定格|写实|纪实|胶片|国漫|电影质感|视觉风格|美术风格)/iu.test(source);
-  if (!hasConcreteWorld) return {
-    text: '人物关系和主要事件已经有了方向。为了让身份、服化道和场景真正落地，这个故事更适合发生在哪一种世界里？',
-    answers: ['真实历史朝代，我来补充具体时期', '架空东方神话世界，不受史实限制', '请导演结合这个故事推荐一个时代'],
-  };
-  if (!hasVisualDirection) return {
-    text: '故事的时空已经有了落点。接下来会直接影响人物与场景怎么制作：你希望观众看到怎样的画面质感？',
-    answers: ['真人实拍感，克制而写实', '国风二维动画，诗意留白', '电影级三维动画，宏大奇幻'],
-  };
-  return {
-    text: '人物、故事与画面方向已经能对上了。最后把观众感受定准：你最希望结尾留下一种什么情绪？',
-    answers: ['遗憾之后的释然', '跨越生死仍无法割舍的震撼', '命运轮回、终于重逢的感动'],
-  };
-}
-
 export function bindBriefDialogue(host, { form, referenceAttached = false, requireUserInitiation = false, onAssist, onConfirm, onReference, onReferenceLink, onProfessional } = {}) {
   const panel = host.querySelector('[data-brief-dialogue]');
   if (!panel || !form) return () => {};
@@ -120,6 +93,8 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   const control = name => form.elements.namedItem(name);
   const dispatch = element => element?.dispatchEvent(new Event('input', { bubbles: true }));
   const history = [];
+  const completedTopics = new Set(String(control('completed_dialogue_topics')?.value || '').split(',').map(value => value.trim()).filter(Boolean));
+  let activeQuestionTopic = String(control('active_dialogue_topic')?.value || '').trim();
   let disposed = false;
   let sending = false;
   let ideaReady = String(control('creative_brief_confirmed')?.value || '') === 'true';
@@ -239,6 +214,8 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     if (control('creative_brief_confirmed')) control('creative_brief_confirmed').value = ideaReady ? 'true' : 'false';
     if (control('specifications_confirmed')) control('specifications_confirmed').value = specificationsConfirmed ? 'true' : 'false';
     if (control('reference_decision')) control('reference_decision').value = referenceAttached ? 'attached' : (referenceSkipped ? 'skipped' : '');
+    if (control('completed_dialogue_topics')) control('completed_dialogue_topics').value = [...completedTopics].join(',');
+    if (control('active_dialogue_topic')) control('active_dialogue_topic').value = activeQuestionTopic;
     panel.querySelector('[data-contract-name]').textContent = name || '待根据创意命名';
     panel.querySelector('[data-contract-mode]').textContent = modeLabel(mode);
     panel.querySelector('[data-contract-idea]').innerHTML = ideaMarkup(idea, 'contract');
@@ -265,6 +242,10 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     const text = input.value.trim();
     if (!text || sending) return;
     sending = true;
+    if (activeQuestionTopic) {
+      completedTopics.add(activeQuestionTopic);
+      activeQuestionTopic = '';
+    }
     retireSuggestions();
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
@@ -348,8 +329,10 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
         reference_attached: referenceAttached,
         reference_skipped: referenceSkipped,
         history: history.slice(-8),
+        completed_topics: [...completedTopics],
       });
       ideaReady = result?.idea_ready === true;
+      activeQuestionTopic = ideaReady ? '' : String(result?.question_topic || '').trim();
       const reply = String(result?.dialogue_reply || contextualFallback(text, mode, ideaReady));
       pending.article.classList.remove('is-thinking');
       if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
@@ -391,9 +374,14 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   form.addEventListener('change', sync);
   const initialIntake = sync();
   if (!requireUserInitiation && String(control('brief')?.value || '').trim() && !ideaReady) {
-    const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
-    const entry = message('assistant', guidance.text);
-    appendSuggestions(entry, guidance.answers);
+    import('./briefGuidedResume.js?v=20260821-dialogue-v122').then(({ guidedResumePrompt }) => {
+      if (disposed) return;
+      const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
+      const entry = message('assistant', guidance.text);
+      appendSuggestions(entry, guidance.answers);
+      activeQuestionTopic = guidance.topic;
+      sync();
+    });
   }
   if (!requireUserInitiation && initialIntake.next === 'specifications') appendSpecificationQuestion();
   if (!requireUserInitiation && initialIntake.next === 'reference') appendReferenceQuestion();

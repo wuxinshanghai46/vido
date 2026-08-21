@@ -4,6 +4,12 @@ const MODES = new Set(['brief_dialogue', 'dialogue_intake']);
 const NEXT_STEPS = new Set(['idea_details', 'specifications', 'reference', 'review']);
 const COVERAGE_TOPICS = ['subject', 'structure', 'audience_intent', 'world_context', 'visual_direction'];
 const COVERAGE_LABELS = { subject: '人物/主体', structure: '叙事或价值演示链', audience_intent: '受众与表达目标', world_context: '世界时空', visual_direction: '视觉制作方向' };
+const DIALOGUE_TOPICS = new Set([
+  'subject_identity', 'subject_relationship', 'subject_motivation', 'opposition',
+  'plot_trigger', 'plot_development', 'climax_ending', 'audience_intent',
+  'world_era', 'world_region_rules', 'character_continuity', 'visual_medium',
+  'visual_tone', 'commercial_evidence',
+]);
 
 function cleanText(value = '', max = 1600) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -14,6 +20,10 @@ function cleanInline(value = '', max = 240) {
 }
 
 function isMode(mode = '') { return MODES.has(String(mode || '').trim()); }
+
+function cleanTopics(value = []) {
+  return [...new Set((Array.isArray(value) ? value : []).map(item => cleanInline(item, 40)).filter(item => DIALOGUE_TOPICS.has(item)))].slice(0, DIALOGUE_TOPICS.size);
+}
 
 function assertInput(body = {}) {
   if (cleanText(body.user_message || body.message || '', 1600)) return;
@@ -33,6 +43,7 @@ function impliedDecisionGap(accumulatedIdea = '') {
   const continuityAnswered = /(?:容貌|外貌|年龄|老去|不老|衰老|少年|青年|中年|老年|转世|轮回|同一张脸|身份变化|气质变化|服装变化|古今相似)/u.test(source);
   if (crossesEras && !continuityAnswered) return {
     topic: '跨时代人物连续性',
+    question_topic: 'character_continuity',
     reply: '这个故事跨越了不同年代，人物如何被观众一眼认出会直接影响选角、造型和情感连续性。你希望人物从古代到现代怎样变化？',
     answers: ['容貌基本不变，只改变服装与气质', '保留相似五官，年龄与身份明显变化', '通过转世延续特征，但成为不同的人'],
   };
@@ -44,13 +55,14 @@ function systemPrompt() {
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
     '不要机械复述整段原话，不要使用“针对【原始创作需求】”“核心已经成立”“已整理到确认单”等模板话术。先指出你真正理解到的创作选择或矛盾，再问能改变剧本或制作方案的具体问题。',
     '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
+    '问询顺序必须连贯：先理清人物/主体、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
-    '用户一次已经讲完整时不得重复询问已经有直接证据的内容；五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
+    '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 中的决策已经回答，禁止换一种说法再次询问。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
     '规格确认后 next_step 才能进入 reference。参考提问必须结合当前剧情或商业内容说明可能有价值的参考类型；参考材料不是必填项，但必须由用户明确选择提供或不提供。',
     '不得编造用户没有说过的人物、品牌、产品功效、价格、时代、地点或结局；不得引用旧任务、知识库案例或其它用户内容。',
     'reply 控制在 45 至 220 个中文字符：先用一句话说出你理解到的具体创作重点，再自然地提出这轮唯一一个问题。不能回复“还要核对若干项”“缺少的内容会逐项询问”之类系统说明。',
-    '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
+    '未完成创意确认时，同时给出 2 至 3 个 suggested_answers。它们必须是贴合当前内容、可由用户直接选用的真实答案，不得是“继续补充”“都可以”“其他”等空标签；每个不超过 36 个中文字符。一个选项只表达当前问题的一种选择，不要在媒介名称后用逗号追加第二层风格评价。问题与选项应帮助没有影视专业知识的用户表达，而不是考用户。',
     '你必须主动发现并追问内容本身隐含的制作决策，不能等用户反问才意识到。例如跨越古今、穿越或轮回的故事，要主动确认人物年龄、身份、容貌和造型如何连续；多主角要确认关系与视角；商业内容要确认可见的价值证据。只要这类关键决策仍悬空，idea_ready 必须为 false。',
   ].join('\n');
 }
@@ -66,10 +78,12 @@ function userPrompt(body = {}) {
     `用户刚刚发送：${cleanText(body.user_message || body.message || '', 1600)}`,
     `参考材料状态：${body.reference_attached === true ? '已上传' : (body.reference_skipped === true ? '用户明确无参考' : '尚未决定')}`,
     `成片规格确认状态：${body.specifications_confirmed === true ? '用户已确认' : '尚未确认；当前值只能视为建议'}`,
+    `已经回答、禁止重复询问的创作决策：${cleanTopics(body.completed_topics).join('、') || '无'}`,
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
-    '{"reply":"先回应具体内容，再提出唯一一个下一问","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
-    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 suggested_answers 可以为空数组。',
+    '{"reply":"先回应具体内容，再提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
+    `question_topic 只能是：${[...DIALOGUE_TOPICS].join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
+    'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
   ].join('\n');
 }
 
@@ -100,28 +114,31 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '') {
     .filter((item, index, values) => values.indexOf(item) === index)
     .slice(0, 3);
   let nextStep = cleanInline(parsed.next_step, 40);
+  let questionTopic = cleanInline(parsed.question_topic, 40);
+  if (!DIALOGUE_TOPICS.has(questionTopic)) questionTopic = '';
   if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
   if (!ideaReady) {
     nextStep = 'idea_details';
     if (impliedGap) {
       missingTopics = [impliedGap.topic];
+      questionTopic = impliedGap.question_topic;
       reply = impliedGap.reply;
       suggestedAnswers = impliedGap.answers;
     } else if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
     if (!impliedGap && parsed.idea_ready === true && !coverageReady) reply = `现有回答还不能形成可核验的完整立项依据，不能直接进入规格确认。请继续明确${missingTopics.join('和')}，我会以你的原话作为确认依据。`;
-  } else suggestedAnswers = [];
-  return { reply, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
+  } else { suggestedAnswers = []; questionTopic = ''; }
+  return { reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
 }
 
-function validateRaw(raw = '') {
+function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [] } = {}) {
   try {
     const parsed = jsonRepair.parseJson(raw, 'object');
-    const evidenceSource = COVERAGE_TOPICS.map(topic => cleanInline(parsed?.coverage?.[topic]?.evidence, 120)).filter(Boolean).join(' ');
-    const value = normalizeParsed(parsed, evidenceSource);
-    return value.reply.length >= 12
+    const value = normalizeParsed(parsed, accumulatedIdea);
+    const completed = cleanTopics(completedTopics);
+    return Boolean(value.reply.length >= 12
       && value.reply.length <= 300
       && NEXT_STEPS.has(value.next_step)
-      && (value.idea_ready || (value.missing_topics.length === 1 && value.suggested_answers.length >= 2));
+      && (value.idea_ready || (value.question_topic && !completed.includes(value.question_topic) && value.missing_topics.length === 1 && value.suggested_answers.length >= 2)));
   } catch {
     return false;
   }
@@ -145,6 +162,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
     idea_ready: value.idea_ready,
     missing_topics: value.missing_topics,
     suggested_answers: value.suggested_answers,
+    question_topic: value.question_topic,
     next_step: nextStep,
     coverage: value.coverage,
     model_meta: {
@@ -163,6 +181,7 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     dialogue_reply: immediateGap.reply,
     idea_ready: false,
     missing_topics: [immediateGap.topic],
+    question_topic: immediateGap.question_topic,
     suggested_answers: immediateGap.answers,
     next_step: 'idea_details',
     coverage: normalizeCoverage({}, accumulatedIdea),
@@ -178,7 +197,7 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     timeoutMs: 8000,
     stageBudgetMs: 12000,
     structuredOutput: { mode: 'json_object' },
-    validateText: validateRaw,
+    validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics }),
   });
   const parsed = await jsonRepair.parseOrRepair({
     raw: result.text,
@@ -201,5 +220,7 @@ module.exports = {
   normalizeParsed,
   normalizeCoverage,
   impliedDecisionGap,
+  cleanTopics,
+  DIALOGUE_TOPICS,
   COVERAGE_TOPICS,
 };
