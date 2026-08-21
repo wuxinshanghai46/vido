@@ -32,26 +32,59 @@ export function syncReferenceDialogueStatus(host, reference = {}) {
 }
 
 export function createReferenceLinkDialogueHandler({ onReferenceLink, message, onAttached, sync }) {
-  return async () => {
+  return async ({ url = '', echoUser = true } = {}) => {
     let pending = null;
     try {
-      const result = await onReferenceLink?.({ onStart: () => {
-        message('user', '已提交参考链接');
+      const result = await onReferenceLink?.({ providedUrl: url, onStart: () => {
+        if (echoUser) message('user', '已提交参考链接');
         pending = message('assistant', '正在读取链接并建立参考分析任务，请稍候…');
         pending.article.dataset.referenceDialogueStatus = '';
       } });
-      if (!result || result.cancelled === true) return;
+      if (!result || result.cancelled === true) {
+        if (!echoUser) message('assistant', '已识别到参考链接；本次尚未开始读取，确认拥有分析与使用权后即可继续。');
+        return result;
+      }
       onAttached?.();
       const text = referenceDialogueStatus(result.analysis || { analysis_id: 'pending', status: 'importing' });
       if (pending) pending.textNode.textContent = text;
       sync?.();
+      return result;
     } catch (error) {
       const requestId = String(error?.data?.request_id || '').trim();
       const text = `参考链接未能开始分析：${error?.message || '请求失败，请重试。'}${requestId ? `（请求编号：${requestId}）` : ''}`;
       if (pending) pending.textNode.textContent = text;
       else message('assistant', text);
+      return { failed: true, error };
     }
   };
+}
+
+export function referenceInputIntent(text = '') {
+  const source = String(text || '').trim();
+  const url = String(source.match(/https?:\/\/[^\s<>"']+/iu)?.[0] || '').replace(/[，。！？；、,!;?]+$/u, '').replace(/[)\]}）】》]+$/u, '');
+  if (url) return { kind: 'link', url };
+  const offersMaterial = /(?:我|这边|手上)?\s*(?:有|准备了|可以提供|要上传|想上传|发给你|给你)\s*(?:一个|一段|一份|份)?\s*(?:参考)?\s*(?:视频|视频素材|视频文件|链接)|(?:上传|添加|提供|使用)\s*(?:这个|一个|一段)?\s*(?:参考视频|视频素材|视频文件)/u.test(source);
+  return offersMaterial ? { kind: 'material', preferred: /链接/u.test(source) ? 'link' : 'upload' } : { kind: '' };
+}
+
+export async function routeReferenceInput({ text = '', message, history, referenceLinkDialogue, panel, send, input, sync, showChoices }) {
+  const intent = referenceInputIntent(text);
+  if (!intent.kind) return false;
+  message('user', text);
+  history.push({ role: 'user', content: text });
+  const finish = () => {
+    send.disabled = false;
+    panel.removeAttribute('aria-busy');
+    sync();
+    input.focus();
+  };
+  if (intent.kind === 'link') {
+    try { await referenceLinkDialogue({ url: intent.url, echoUser: false }); } finally { finish(); }
+  } else {
+    finish();
+    await showChoices();
+  }
+  return true;
 }
 
 export function referenceActionState(reference = {}, contentMode = '') {

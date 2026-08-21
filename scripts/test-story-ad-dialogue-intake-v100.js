@@ -10,6 +10,7 @@ const read = relative => fs.readFileSync(path.join(root, relative), 'utf8');
 const asModule = source => import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 async function main() {
+  const referenceState = await asModule(read('public/story-ad/views/briefReferenceDialogueState.js'));
   const referenceStateSource = read('public/story-ad/views/briefReferenceDialogueState.js')
     .replace(/\bexport\s+/g, '');
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
@@ -19,6 +20,7 @@ async function main() {
   const dialogue = await asModule(`${referenceStateSource}\n${dialogueSource}`);
   const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
+  const referenceQuestion = await asModule(read('public/story-ad/views/briefReferenceQuestion.js'));
   const referenceQuestionSource = read('public/story-ad/views/briefReferenceQuestion.js');
   const specificationQuestionSource = read('public/story-ad/views/briefSpecificationQuestion.js');
 
@@ -43,6 +45,13 @@ async function main() {
   assert.equal(explicitSettings.isBriefConfirmationReply('按这个'), true, '规格确认短回答必须本地立即识别');
   assert.equal(explicitSettings.isNoReferenceReply('没有'), true, '无参考短回答必须本地立即识别');
   assert.equal(explicitSettings.isNoReferenceReply('女主没有选择复合'), false, '剧情内容中的否定句不得误判为无参考');
+  assert.deepEqual(
+    referenceState.referenceInputIntent('我给你一个参考，https://www.liblib.tv/detail/fd1757833da248299c1813bb7bea587b。'),
+    { kind: 'link', url: 'https://www.liblib.tv/detail/fd1757833da248299c1813bb7bea587b' },
+    '对话正文中的完整链接必须先提取并进入参考分析路由',
+  );
+  assert.deepEqual(referenceState.referenceInputIntent('我有视频可以上传'), { kind: 'material', preferred: 'upload' }, '明确表示有视频时必须显示参考材料入口');
+  assert.deepEqual(referenceState.referenceInputIntent('帮我做一个30秒产品视频'), { kind: '' }, '普通视频制作需求不得误判成参考材料');
   assert.deepEqual(
     dialogue.dialogueIntakeState({ name: '完整项目', mode: 'narrative_story', idea: '完整剧情', ideaReady: true, specificationsConfirmed: true, referenceAttached: true }),
     { ready: true, missing: [], next: '' },
@@ -74,10 +83,15 @@ async function main() {
   assert.doesNotMatch(referenceQuestionSource, /没有，继续/, '无参考按钮不得附加流程词');
   assert.match(referenceQuestionSource, /产品实拍、品牌视觉、竞品视频或镜头节奏参考/, '商业参考问题必须结合商业内容类型');
   assert.match(referenceQuestionSource, /人物形象、时代氛围、影片画面或镜头参考/, '剧情参考问题必须结合剧情内容类型');
+  assert.match(referenceQuestionSource, /直接在这里上传参考视频或添加公开链接/, '内容类型尚未确认时必须使用中性参考入口，不得擅自称为故事');
+  assert.match(referenceQuestion.referenceQuestionText({}), /上传参考视频或添加公开链接/, '未确认广告或剧情前的实际提示必须保持中性');
   assert.match(dialogueSource, /conversation\.querySelector\('\[data-reference-question\]'\)/, '同一次对话不得重复插入参考问题');
   assert.match(dialogueSource, /referenceAttached \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
   assert.ok(dialogueSource.indexOf("intakeBefore.next === 'reference'") < dialogueSource.indexOf('const previous ='), '参考阶段的短回答必须在写入核心创意和模型调用前处理');
   assert.match(dialogueSource, /isNoReferenceReply\(text\)/, '“没有参考”必须走本地即时判断');
+  assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('await onAssist?.({'), '链接与上传意图必须在导演模型调用前完成路由');
+  assert.match(dialogueSource, /routeReferenceInput\(\{/, '正文链接和上传意图必须复用正式参考输入路由');
+  assert.match(dialogueSource, /showChoices: appendReferenceQuestion/, '明确表示有视频时必须在当前对话显示上传入口');
   assert.doesNotMatch(dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }), /class="brief-message/, '新项目对话必须默认空白，由用户先发起');
   assert.equal((dialogue.briefDialogueMarkup({ brief: {} }, { isNew: true }).match(/建议·待确认/g) || []).length, 3, '默认时长、画幅和清晰度都必须明确标为建议且等待确认');
   assert.equal((dialogue.briefDialogueMarkup({ brief: { brief_intake: { specifications_confirmed: true } } }).match(/用户已确认/g) || []).length, 3, '只有持久化的明确确认状态才能显示用户已确认');

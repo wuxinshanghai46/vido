@@ -1,6 +1,7 @@
 export function referenceQuestionText({ mode = '', idea = '' } = {}) {
   const subject = String(idea || '').replace(/\s+/g, ' ').trim().slice(0, 54);
   if (mode === 'commercial_subject') return `针对${subject ? `“${subject}”` : '这条广告'}，有没有产品实拍、品牌视觉、竞品视频或镜头节奏参考？有的话可直接添加；没有也请明确告诉我。`;
+  if (mode !== 'narrative_story') return '可以，直接在这里上传参考视频或添加公开链接；系统会把识别进度和结果继续显示在本对话中。';
   return `针对${subject ? `“${subject}”` : '这个故事'}，有没有希望对齐的人物形象、时代氛围、影片画面或镜头参考？有的话可直接添加；没有也请明确告诉我。`;
 }
 

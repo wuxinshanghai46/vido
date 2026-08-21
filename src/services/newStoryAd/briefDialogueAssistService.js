@@ -57,6 +57,14 @@ function topicProfile(contentMode = '') {
     : { order: TOPIC_ORDER, questions: TOPIC_QUESTIONS };
 }
 
+function nextQuestionTopic(profile = {}, completedTopics = []) {
+  const completed = cleanTopics(completedTopics);
+  const order = Array.isArray(profile.order) ? profile.order : [];
+  const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, order.indexOf(item)), -1);
+  return order.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
+    || order.find(item => !completed.includes(item)) || '';
+}
+
 function commercialNarrativeAuthorized(accumulatedIdea = '') {
   return /(?:爱情|恋爱|感情|情感|情侣|夫妻|恋人|两人关系|人物关系|剧情化广告|故事型广告)/u.test(cleanText(accumulatedIdea, 4000));
 }
@@ -197,6 +205,7 @@ function normalizeCoverage(parsed = {}, accumulatedIdea = '') {
 
 function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null, contentMode = '') {
   const profile = topicProfile(contentMode);
+  const completed = cleanTopics(completedTopics);
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
@@ -211,6 +220,17 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
   let nextStep = cleanInline(parsed.next_step, 40);
   let questionTopic = cleanInline(parsed.question_topic, 40);
   if (!profile.order.includes(questionTopic)) questionTopic = '';
+  const repeatedCanonicalTopic = profile.order.find(topic => completed.includes(topic)
+    && cleanInline(profile.questions[topic]?.[0], 300) === cleanInline(reply, 300));
+  const repeatedCompletedTopic = completed.includes(questionTopic) || Boolean(repeatedCanonicalTopic);
+  if (repeatedCompletedTopic) {
+    questionTopic = nextQuestionTopic(profile, completed);
+    if (questionTopic && profile.questions[questionTopic]) {
+      [reply, suggestedAnswers] = profile.questions[questionTopic];
+      missingTopics = [questionTopic];
+      ideaReady = false;
+    }
+  }
   if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
   if (!ideaReady) {
     nextStep = 'idea_details';
@@ -283,9 +303,7 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
 function recoveryResponse(body = {}, failedModels = []) {
   const completed = cleanTopics(body.completed_topics);
   const profile = topicProfile(body.content_mode);
-  const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, profile.order.indexOf(item)), -1);
-  const topic = profile.order.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
-    || profile.order.find(item => !completed.includes(item)) || profile.order[0];
+  const topic = nextQuestionTopic(profile, completed) || profile.order[0];
   const fallback = profile.questions[topic];
   return {
     dialogue_reply: fallback[0], idea_ready: false, missing_topics: [topic], question_topic: topic,
@@ -354,6 +372,7 @@ module.exports = {
   displayableReply,
   cleanTopics,
   topicProfile,
+  nextQuestionTopic,
   commercialNarrativeAuthorized,
   commercialStoryLeak,
   DIALOGUE_TOPICS,

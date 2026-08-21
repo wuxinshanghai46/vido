@@ -110,7 +110,13 @@ async function main() {
     coverage: {},
   });
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true);
-  assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事，反派是江湖仇家', completedTopics: ['opposition'] }), false, '用户回答过的决策必须在模型候选校验阶段被拒绝');
+  assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事，反派是江湖仇家', completedTopics: ['opposition'] }), true, '已完成主题的重复候选应在本地归一化为下一问，避免再次调用模型消耗 Token');
+  const normalizedRepeatedOpposition = service.buildResponse({
+    parsed: JSON.parse(repeatedOpposition),
+    body: { accumulated_idea: '古代武侠故事，反派是江湖仇家', completed_topics: ['opposition'] },
+  });
+  assert.equal(normalizedRepeatedOpposition.question_topic, 'plot_trigger');
+  assert.match(normalizedRepeatedOpposition.dialogue_reply, /第一次出手/);
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', history: [{ role: 'assistant', content: JSON.parse(repeatedOpposition).reply }] }), false, '与最近一轮完全相同的助手回复不得再次展示');
   assert.equal(service.displayableReply('我记下了你的回答，接下来继续确认。'), false);
   assert.equal(service.displayableReply('你希望他们第一次相遇时是什么关系？'), true);
@@ -118,6 +124,45 @@ async function main() {
   const missingTopic = JSON.stringify({ ...JSON.parse(repeatedOpposition), question_topic: '' });
   assert.equal(service.validateRaw(missingTopic, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true, '模型漏回稳定问题字段时应从实际问题语义补全，不应废弃整段专业回答');
   assert.equal(service.buildResponse({ parsed: JSON.parse(missingTopic), body: { accumulated_idea: '古代武侠故事' } }).question_topic, 'opposition');
+
+  const repeatedCommercialQuestion = service.buildResponse({
+    parsed: {
+      reply: '这条广告最需要集中展示哪一种产品或服务？',
+      question_topic: 'subject_identity',
+      idea_ready: false,
+      missing_topics: ['产品主体'],
+      next_step: 'idea_details',
+      suggested_answers: ['只展示一个主打产品', '展示同系列的多种产品', '以服务流程和最终成果为主'],
+      coverage: {},
+    },
+    body: {
+      accumulated_idea: '展示同系列的多种产品',
+      content_mode: 'commercial_subject',
+      completed_topics: ['subject_identity'],
+    },
+  });
+  assert.equal(repeatedCommercialQuestion.question_topic, 'subject_motivation', '已回答产品范围后不得再次询问产品范围');
+  assert.match(repeatedCommercialQuestion.dialogue_reply, /核心卖点/);
+  assert.doesNotMatch(repeatedCommercialQuestion.dialogue_reply, /哪一种产品或服务/);
+
+  const mislabeledRepeatedCommercialQuestion = service.buildResponse({
+    parsed: {
+      reply: '这条广告最需要集中展示哪一种产品或服务？',
+      question_topic: 'subject_motivation',
+      idea_ready: false,
+      missing_topics: ['核心卖点'],
+      next_step: 'idea_details',
+      suggested_answers: ['突出产品性能', '突出设计与使用体验'],
+      coverage: {},
+    },
+    body: {
+      accumulated_idea: '展示同系列的多种产品',
+      content_mode: 'commercial_subject',
+      completed_topics: ['subject_identity'],
+    },
+  });
+  assert.equal(mislabeledRepeatedCommercialQuestion.question_topic, 'subject_motivation', '问题文字与主题字段不一致时也必须识别已完成主题');
+  assert.match(mislabeledRepeatedCommercialQuestion.dialogue_reply, /核心卖点/);
 
   let capturedOptions = null;
   const fastResult = await service.run({
@@ -208,6 +253,7 @@ async function main() {
   assert.match(dialogueSource, /result\?\.suggested_answers/);
   assert.match(dialogueSource, /completed_topics: \[\.\.\.completedTopics\]/);
   assert.match(dialogueSource, /completedTopics\.add\(activeQuestionTopic\)/);
+  assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('completedTopics.add(activeQuestionTopic)'), '参考链接或视频意图必须先路由，不能误标当前创作问题已完成');
   assert.match(guidedResumeSource, /answers: \['真人实拍', '国风二维动画', '电影级三维动画'\]/);
   assert.doesNotMatch(guidedResumeSource, /克制而写实|诗意留白|宏大奇幻/);
   assert.match(dialogueSource, /dialogueProgressState/);
@@ -224,7 +270,7 @@ async function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 76, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 82, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exit(1); });

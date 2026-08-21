@@ -1,5 +1,5 @@
 import { escapeHtml } from '../components/ui.js?v=20260821-domain-reference-dashboard-v132';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260821-domain-reference-dashboard-v132';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260821-domain-reference-dashboard-v132';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };
 
 function modeLabel(value = '') {
@@ -152,6 +152,12 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   let referenceSkipped = String(control('reference_decision')?.value || '') === 'skipped';
   let referenceQuestionLoading = false;
   let specificationQuestionLoading = false;
+  const referenceLinkDialogue = createReferenceLinkDialogueHandler({
+    onReferenceLink,
+    message,
+    onAttached: () => { referencePresent = true; },
+    sync: () => sync(),
+  });
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
@@ -160,14 +166,15 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
       onReference,
-      onReferenceLink: createReferenceLinkDialogueHandler({ onReferenceLink, message, onAttached: () => { referencePresent = true; }, sync }),
+      onReferenceLink: referenceLinkDialogue,
       onSkip: () => {
-      referenceSkipped = true;
-      message('user', '没有');
-      const output = String(control('content_mode')?.value || '') === 'commercial_subject' ? '广告脚本' : '剧情与对白';
-      streamMessage(`参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成${output}。`);
-      sync();
-    } });
+        referenceSkipped = true;
+        message('user', '没有');
+        const output = String(control('content_mode')?.value || '') === 'commercial_subject' ? '广告脚本' : '剧情与对白';
+        streamMessage(`参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成${output}。`);
+        sync();
+      },
+    });
     referenceQuestionLoading = false;
   };
   const appendSpecificationQuestion = async () => {
@@ -246,16 +253,21 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     const text = input.value.trim();
     if (!text || sending) return;
     sending = true;
-    if (activeQuestionTopic) {
-      completedTopics.add(activeQuestionTopic);
-      activeQuestionTopic = '';
-    }
-    retireSuggestions();
     send.disabled = true;
     panel.setAttribute('aria-busy', 'true');
     const explicitSettings = await import('./briefExplicitSettings.js?v=20260821-domain-reference-dashboard-v132');
     input.value = '';
     const intakeBefore = sync();
+    if (await routeReferenceInput({
+      text, message, history, referenceLinkDialogue,
+      panel, send, input, sync: () => { sending = false; sync(); },
+      showChoices: appendReferenceQuestion,
+    })) return;
+    if (activeQuestionTopic) {
+      completedTopics.add(activeQuestionTopic);
+      activeQuestionTopic = '';
+    }
+    retireSuggestions();
     const explicit = explicitSettings.extractExplicitBriefSettings(text);
     const explicitOutputKeys = explicitSettings.explicitOutputSettingKeys(explicit);
     const applyExplicitSettings = () => Object.entries(explicit).forEach(([name, value]) => {

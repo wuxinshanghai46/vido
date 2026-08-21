@@ -359,8 +359,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     }
   }
 
-  async function handleReferenceLink(button, { onStart } = {}) {
-    const url = await promptDialog('添加参考链接', {
+  async function handleReferenceLink(button, { onStart, providedUrl = '' } = {}) {
+    const url = String(providedUrl || '').trim() || await promptDialog('添加参考链接', {
       message: '粘贴无需登录即可访问的公开视频链接。',
       inputLabel: '参考视频链接',
       placeholder: 'https://',
