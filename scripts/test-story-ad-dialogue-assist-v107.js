@@ -37,7 +37,7 @@ async function main() {
   assert.match(service.systemPrompt('【动态检索到的知识】导演提问方法'), /不得照搬其中案例/);
 
   const incomplete = JSON.stringify({
-    reply: '我理解你想做剧情短片，但目前只有类型。主要人物是谁，发生了什么关键事件？',
+    reply: '这个故事的主要人物分别是谁？',
     question_topic: 'subject_identity',
     idea_ready: false,
     missing_topics: ['主要人物', '关键事件'],
@@ -60,7 +60,7 @@ async function main() {
 
   const completeIdea = '林夏与周远在雨夜车站告别；两人从重逢到互相释然；面向经历遗憾的年轻观众；当代上海雨夜；真人写实电影感';
   const ready = JSON.stringify({
-    reply: '我理解这是林夏与周远在雨夜告别、最终释然的克制爱情故事。接下来先确认成片时长、画幅和清晰度。',
+    reply: '请选择成片时长、画幅和清晰度。',
     idea_ready: true,
     missing_topics: [],
     next_step: 'specifications',
@@ -87,7 +87,7 @@ async function main() {
   const crossEra = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: crossEraIdea } });
   assert.equal(crossEra.idea_ready, false, '跨时代人物连续性未回答时不得进入规格');
   assert.deepEqual(crossEra.missing_topics, ['跨时代人物连续性']);
-  assert.match(crossEra.dialogue_reply, /人物.*古代到现代怎样变化/);
+  assert.match(crossEra.dialogue_reply, /现代后.*长相和年龄怎么变化/);
   assert.equal(crossEra.suggested_answers.length, 3);
   assert.equal(service.impliedDecisionGap(`${crossEraIdea}，人物容貌基本不变，只改变服装与气质`), null, '用户回答人物连续性后不得重复追问');
   let impliedModelCalls = 0;
@@ -97,7 +97,7 @@ async function main() {
   });
   assert.equal(impliedModelCalls, 0, '可确定的内容特有问题必须即时返回，不等待模型');
   assert.equal(immediateCrossEra.model_meta.deterministic, true);
-  assert.match(immediateCrossEra.dialogue_reply, /古代到现代怎样变化/);
+  assert.match(immediateCrossEra.dialogue_reply, /现代后.*长相和年龄怎么变化/);
   assert.equal(immediateCrossEra.question_topic, 'character_continuity');
 
   const repeatedOpposition = JSON.stringify({
@@ -111,6 +111,9 @@ async function main() {
   });
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true);
   assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事，反派是江湖仇家', completedTopics: ['opposition'] }), false, '用户回答过的决策必须在模型候选校验阶段被拒绝');
+  assert.equal(service.validateRaw(repeatedOpposition, { accumulatedIdea: '古代武侠故事', history: [{ role: 'assistant', content: JSON.parse(repeatedOpposition).reply }] }), false, '与最近一轮完全相同的助手回复不得再次展示');
+  assert.equal(service.displayableReply('我记下了你的回答，接下来继续确认。'), false);
+  assert.equal(service.displayableReply('你希望他们第一次相遇时是什么关系？'), true);
   assert.deepEqual(service.cleanTopics(['opposition', 'opposition', 'unknown']), ['opposition']);
   const missingTopic = JSON.stringify({ ...JSON.parse(repeatedOpposition), question_topic: '' });
   assert.equal(service.validateRaw(missingTopic, { accumulatedIdea: '古代武侠故事', completedTopics: [] }), true, '模型漏回稳定问题字段时应从实际问题语义补全，不应废弃整段专业回答');
@@ -134,7 +137,16 @@ async function main() {
   assert.equal(recovered.question_topic, 'plot_trigger');
   assert.match(recovered.dialogue_reply, /第一次出手/);
   assert.doesNotMatch(recovered.dialogue_reply, /没有取得可靠|请补充最影响制作/);
+  assert.doesNotMatch(recovered.dialogue_reply, /我记下了|我理解了|接下来/);
   assert.equal(recovered.model_meta.deterministic, true);
+  const relationshipRecovery = service.recoveryResponse({ completed_topics: ['subject_identity'] });
+  const motivationRecovery = service.recoveryResponse({ completed_topics: ['subject_identity', 'subject_relationship'] });
+  assert.equal(relationshipRecovery.question_topic, 'subject_relationship');
+  assert.equal(motivationRecovery.question_topic, 'subject_motivation');
+  assert.notEqual(relationshipRecovery.dialogue_reply, motivationRecovery.dialogue_reply, '不同问题主题不得复用同一句恢复文案');
+  const toneRecovery = service.recoveryResponse({ completed_topics: [...service.DIALOGUE_TOPICS].slice(0, 12) });
+  assert.match(toneRecovery.dialogue_reply, /画面看起来/);
+  assert.deepEqual(toneRecovery.suggested_answers, ['像真实电影一样自然', '画面柔美，有古风意境', '场面宏大，像传奇故事']);
   const reviewResult = service.buildResponse({ parsed: JSON.parse(ready), body: { accumulated_idea: completeIdea, specifications_confirmed: true, reference_skipped: true } });
   assert.equal(reviewResult.next_step, 'review', '规格与参考都完成后下一步必须由状态机确定，不能听从模型重复插入阶段');
 
@@ -149,6 +161,8 @@ async function main() {
   assert.match(dialogueSource, /brief-thinking-dots/);
   assert.doesNotMatch(dialogueSource, /textNode\.textContent = '…'/);
   assert.doesNotMatch(dialogueSource, /这轮没有取得可靠的专业审阅结果/);
+  assert.doesNotMatch(dialogueSource, /data-dialogue-reference title="添加参考材料">＋/);
+  assert.doesNotMatch(dialogueSource, /我记下了/);
   assert.match(dialogueSource, /data-dialogue-expand/);
   assert.match(dialogueSource, /appendSuggestions/);
   assert.match(dialogueSource, /result\?\.suggested_answers/);
@@ -159,6 +173,7 @@ async function main() {
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /@keyframes brief-thinking-wave/);
+  assert.doesNotMatch(css, /\.brief-attach/);
   assert.match(css, /brief-quick-actions button\{[^}]*font-size:11px/, '快捷选择按钮不得继承平台大字号');
   assert.match(css, /brief-send\{[^}]*font-size:12px/, '发送按钮必须使用紧凑字号');
   assert.match(css, /view-host\.brief-dialogue-view/);

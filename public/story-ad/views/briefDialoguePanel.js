@@ -31,7 +31,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
       <div class="brief-conversation-scroll" data-brief-conversation aria-live="polite">
         ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
       </div>
-      <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">＋</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>导演助理会结合你刚说的内容逐步回应；高级设置不会变成固定问卷</small></footer>
+      <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>导演助理会结合你刚说的内容逐步回应；高级设置不会变成固定问卷</small></footer>
     </div>
     <aside class="brief-contract-panel">
       <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
@@ -232,11 +232,10 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     return intake;
   };
   const contextualFallback = (text, mode, ready) => {
-    const preview = briefIdeaPreview(text, 72).text;
     if (!ready) return mode === 'narrative_story'
-      ? `我记下了“${preview}”。我们顺着这个设定继续：接下来发生什么事，真正把人物推入冲突？`
-      : `我记下了“${preview}”。为了让表达更贴近观众，你最希望他们看完后记住什么？`;
-    return `我理解到的核心是“${preview}”。人物或主体、事件与表达目标已经足够；接下来先确认成片时长、画幅和清晰度。`;
+      ? '发生什么事后，人物不得不面对这场冲突？'
+      : '你最希望观众看完后记住什么？';
+    return '请选择成片时长、画幅和清晰度。';
   };
   const submit = async () => {
     const text = input.value.trim();
@@ -362,7 +361,6 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); submit(); }
   });
   panel.querySelector('[data-dialogue-professional]')?.addEventListener('click', event => onProfessional?.(event.currentTarget));
-  panel.querySelector('[data-dialogue-reference]')?.addEventListener('click', () => onReference?.());
   panel.querySelector('[data-dialogue-expand]')?.addEventListener('click', event => {
     const expanded = panel.querySelector('.brief-composer')?.classList.toggle('is-expanded') === true;
     event.currentTarget.setAttribute('aria-expanded', String(expanded));
