@@ -42,7 +42,7 @@ const sceneBlockService = require('./sceneBlockService'), videoClipStatusRecover
 const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
-const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService');
+const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService'), briefDialogueAssist = require('./briefDialogueAssistService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
@@ -3516,6 +3516,26 @@ function normalizeAssistedShotSettings(input = {}, current = {}) {
 async function assistBrief(body = {}, user = {}) {
   const ctx = buildContext(body, user);
   const mode = cleanText(body.mode || body.assist_mode || 'write', 20);
+  const taskId = cleanText(body.task_id || body.taskId || '', 80);
+  if (briefDialogueAssist.isMode(mode)) {
+    briefDialogueAssist.assertInput(body);
+    const result = await modelGateway.generateText({
+      taskId,
+      stage: 'new_story_ad.assist',
+      systemPrompt: briefDialogueAssist.systemPrompt(),
+      userPrompt: briefDialogueAssist.userPrompt(body),
+      maxTokens: 700,
+      validateText: briefDialogueAssist.validateRaw,
+    });
+    const parsed = await jsonRepair.parseOrRepair({
+      raw: result.text,
+      expected: 'object',
+      modelGateway,
+      taskId,
+      stage: 'new_story_ad.json_repair',
+    });
+    return briefDialogueAssist.buildResponse({ parsed, modelResult: result });
+  }
   const isStyleControl = mode === 'style_control' || mode === 'style', isNegativeControl = mode === 'negative_control' || mode === 'negative';
   const isCreativeDirection = mode === 'creative_direction' || mode === 'creative';
   const isPersonSpec = mode === 'person_spec' || mode === 'person';
@@ -3539,7 +3559,7 @@ async function assistBrief(body = {}, user = {}) {
   const assistSceneTargetId = isSceneSpec ? cleanText(body.target_space_id || body.targetSpaceId || '', 100) : '';
   const preserveCurrentSceneFields = isSceneSpec && (body.preserve_current_scene_fields === true || body.preserveCurrentSceneFields === true);
   if (assistSceneTargetId && !currentScenePlan.spaces.some(space => space.id === assistSceneTargetId)) { const error = new Error('目标场景不在当前场景计划中；没有调用文本模型'); error.code = 'ASSIST_SCENE_TARGET_INVALID'; error.status = 400; throw error; }
-  const taskId = cleanText(body.task_id || body.taskId || '', 80), assistPolicy = assistKnowledgePolicy.resolve({ storage, taskId, context: ctx, person: isPersonSpec, scene: isSceneSpec || isSceneExperience });
+  const assistPolicy = assistKnowledgePolicy.resolve({ storage, taskId, context: ctx, person: isPersonSpec, scene: isSceneSpec || isSceneExperience });
   const broadSystemPrompt = [
     isBriefGoal ? briefGoalAssist.assistantRole(ctx) : '你是剧情广告模块的广告需求整理助手。只输出 JSON 对象，不要 markdown。',
     isBriefGoal ? briefGoalAssist.taskRule(ctx) : '你的任务是把用户的一句话或零散信息整理成可直接生成商用剧情广告的需求表单。',

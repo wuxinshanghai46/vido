@@ -67,6 +67,7 @@
     "story-ad:v100:test": "node scripts/test-story-ad-mode-isolated-section-recovery-v100.js",
     "story-ad:v101:test": "node scripts/test-story-ad-generation-mode-isolation-v101.js",
     "story-ad:v102:test": "node scripts/test-story-ad-story-scene-coverage-v102.js",
+    "story-ad:v107:test": "node scripts/test-story-ad-dialogue-assist-v107.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js",
     "story-ad:v108:test": "node scripts/test-story-ad-platform-narrative-release-v111.js",
     "story-ad:v109:test": "node scripts/test-story-ad-scene-config-deadline-recovery-v109.js",
     "story-ad:platform:layered-contracts:test": "node scripts/test-story-ad-platform-layered-contracts.js",

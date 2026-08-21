@@ -127,7 +127,7 @@ async function main() {
       { width: 1440, height: 760, mode: 'split' },
       { width: 1366, height: 680, mode: 'split' },
       { width: 1280, height: 640, mode: 'split' },
-      { width: 1080, height: 720, mode: 'stacked' },
+      { width: 1080, height: 720, mode: 'split' },
     ];
     for (const viewport of responsiveViewports) {
       await page.setViewport(viewport);
@@ -139,6 +139,7 @@ async function main() {
         return {
           viewport: { width: document.documentElement.clientWidth, height: document.documentElement.clientHeight },
           pageOverflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          pageOverflowY: document.documentElement.scrollHeight - document.documentElement.clientHeight,
           overflowElements: [...document.querySelectorAll('body *')].map(element => {
             const value = element.getBoundingClientRect();
             return { tag: element.tagName, cls: element.className, right: Math.round(value.right), width: Math.round(value.width) };
@@ -153,6 +154,7 @@ async function main() {
       const label = `${viewport.width}x${viewport.height}`;
       assert.ok(geometry.dialogue && geometry.conversation && geometry.composer && geometry.scroll && geometry.contract, `${label} 必须渲染完整立项布局`);
       assert.ok(geometry.pageOverflowX <= 1, `${label} 页面不得横向溢出，实际 ${geometry.pageOverflowX}px：${JSON.stringify(geometry.overflowElements)}`);
+      assert.ok(geometry.pageOverflowY <= 1, `${label} 立项工作台不得制造空白页面滚动，实际 ${geometry.pageOverflowY}px`);
       assert.ok(geometry.dialogue.right <= geometry.viewport.width + 1, `${label} 工作台不得越过右边界`);
       if (viewport.mode === 'split') {
         assert.ok(geometry.dialogue.bottom <= geometry.viewport.height + 1, `${label} 双栏工作台不得越过可视高度`);
@@ -167,6 +169,17 @@ async function main() {
       assert.ok(geometry.scroll.height >= 120, `${label} 对话记录仍需保留可用滚动高度，实际 ${geometry.scroll.height}px`);
     }
     await page.setViewport({ width: 1920, height: 1000 });
+
+    const composerControls = await page.evaluate(() => ({
+      resize: getComputedStyle(document.querySelector('[data-dialogue-input]')).resize,
+      initialHeight: document.querySelector('[data-dialogue-input]').getBoundingClientRect().height,
+      assistantMessages: document.querySelectorAll('.brief-message.is-assistant').length,
+    }));
+    assert.equal(composerControls.resize, 'vertical', '长文本输入框必须允许用户纵向拖动');
+    await page.click('[data-dialogue-expand]');
+    const expandedHeight = await page.$eval('[data-dialogue-input]', element => element.getBoundingClientRect().height);
+    assert.ok(expandedHeight > composerControls.initialHeight + 30, '展开输入必须明显增加可见文本高度');
+    await page.click('[data-dialogue-expand]');
 
     await page.click('[data-dialogue-reference]');
     assert.equal(await page.evaluate(() => window.__briefQa.refClicks), 1, '对话参考按钮必须触发隐藏上传入口');

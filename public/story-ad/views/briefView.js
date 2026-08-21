@@ -154,6 +154,18 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     </div>
     <div data-reference-understanding-host></div>
     ${BRIEF_MATERIALS.map(([id]) => `<input class="hidden-input" hidden type="file" data-material-file="${id}" ${id === 'reference' ? 'accept="video/mp4,video/quicktime,video/webm"' : 'accept="image/png,image/jpeg,image/webp"'}>`).join('')}`;
+  host.classList?.add('brief-dialogue-view');
+  const syncBriefViewport = () => {
+    const top = Math.max(0, Math.round(host.getBoundingClientRect?.().top || 64));
+    host.style?.setProperty('--brief-view-height', `calc(100dvh - ${top}px)`);
+  };
+  syncBriefViewport();
+  window.addEventListener('resize', syncBriefViewport);
+  const progressHost = host.parentElement?.querySelector?.('.project-progress-host');
+  const progressObserver = typeof ResizeObserver === 'function' && progressHost
+    ? new ResizeObserver(syncBriefViewport)
+    : null;
+  progressObserver?.observe(progressHost);
   const form = host.querySelector('[data-brief-form]');
   bindAdvancedReferenceControls(host);
   const briefSettingsLayout = host.querySelector('[data-brief-settings-layout]');
@@ -419,6 +431,12 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   dialogueCleanup = bindBriefDialogueWorkflow(host, {
     form,
     referenceAttached,
+    requireUserInitiation: route.isNew,
+    onAssist: payload => request('/api/new-story-ad/assist', {
+      method: 'POST',
+      timeoutMs: 90000,
+      body: { mode: 'brief_dialogue', task_id: createdProjectId || '', ...payload },
+    }),
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
     onReferenceLink: () => host.querySelector('[data-reference-link]')?.click(),
     ensureProject,
@@ -585,6 +603,10 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   host.addEventListener('click', handleReferenceRetry);
   return () => {
     disposed = true;
+    progressObserver?.disconnect();
+    window.removeEventListener('resize', syncBriefViewport);
+    host.classList?.remove('brief-dialogue-view');
+    host.style?.removeProperty('--brief-view-height');
     understandingLoadSequence += 1;
     understandingController?.destroy();
     briefSettingsModalController.destroy();
