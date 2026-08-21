@@ -45,8 +45,8 @@ function main(argv = process.argv.slice(2)) {
     return;
   }
   pm2(['delete', appName]);
-  start(appName, 4600);
   try { pm2(['delete', candidateName]); } catch {}
+  start(appName, 4600);
   pm2(['save', '--force']);
   console.log(JSON.stringify({ mode, app_name: appName, release_dir: releaseDir, port: 4600 }));
 }
