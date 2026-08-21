@@ -76,7 +76,7 @@ try {
   assert.match(dashboardUi, /<h2>当前任务<\/h2>/);
   assert.match(dashboardUi, /state\.unfinished\.slice\(0, 3\)/);
   assert.doesNotMatch(dashboardUi, /wb-toggle-tasks|showAllTasks|查看全部未完成/, '当前任务区域不得再展开全部任务');
-  assert.match(dashboardHtml, /dashboard-workbench\.js\?v=20260820-dashboard-clean-v94/, '首页必须更新工作台脚本缓存键，避免生产继续加载旧首屏或播放按钮逻辑');
+  assert.match(dashboardHtml, /dashboard-workbench\.js\?v=20260821-dashboard-preload-v128/, '首页必须更新工作台脚本缓存键，避免生产继续加载旧首屏或播放按钮逻辑');
 
   console.log(JSON.stringify({
     passed: true,

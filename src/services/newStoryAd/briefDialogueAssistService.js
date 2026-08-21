@@ -12,6 +12,10 @@ const DIALOGUE_TOPICS = new Set([
   'visual_tone', 'commercial_evidence',
 ]);
 const TOPIC_ORDER = [...DIALOGUE_TOPICS];
+const COMMERCIAL_TOPIC_ORDER = [
+  'subject_identity', 'subject_motivation', 'commercial_evidence', 'audience_intent',
+  'world_region_rules', 'visual_medium', 'visual_tone',
+];
 const TOPIC_HINTS = [
   ['opposition', /反派|对手|阻碍|敌人/u], ['subject_relationship', /关系|相识|相遇|彼此|两人/u],
   ['subject_motivation', /动机|为什么|想要|目的|渴望/u], ['plot_trigger', /开端|触发|卷入|第一次出手|导火索/u],
@@ -37,6 +41,29 @@ const TOPIC_QUESTIONS = {
   visual_tone: ['你希望画面看起来更接近哪一种？', ['像真实电影一样自然', '画面柔美，有古风意境', '场面宏大，像传奇故事']],
   commercial_evidence: ['观众从哪个画面能直接看出产品的好处？', ['使用前后效果对比', '真实使用过程和结果', '用户当场体验后的反应']],
 };
+const COMMERCIAL_TOPIC_QUESTIONS = {
+  subject_identity: ['这条广告最需要集中展示哪一种产品或服务？', ['只展示一个主打产品', '展示同系列的多种产品', '以服务流程和最终成果为主']],
+  subject_motivation: ['这条广告最希望观众记住哪个核心卖点？', ['突出产品性能', '突出设计与使用体验', '突出品牌的专业能力']],
+  commercial_evidence: ['用哪组画面直接证明这个卖点最合适？', ['展示真实使用过程和结果', '用细节特写呈现材质与工艺', '在实际场景中做前后效果对比']],
+  audience_intent: ['这条广告主要给谁看，看完希望他们做什么？', ['让采购方进一步咨询', '让设计师了解并选用', '让普通消费者记住品牌']],
+  world_region_rules: ['产品主要放在哪种真实使用场景里展示？', ['门店或展厅现场', '实际安装或使用环境', '干净背景下集中展示产品']],
+  visual_medium: ['这条广告希望采用哪种画面方式？', ['真人实拍与产品特写', '产品三维动画', '实拍与三维演示结合']],
+  visual_tone: ['整体画面更接近哪一种视觉方向？', ['清晰直接，突出产品信息', '简洁高级，突出材质细节', '有节奏感，突出性能演示']],
+};
+
+function topicProfile(contentMode = '') {
+  return contentMode === 'commercial_subject'
+    ? { order: COMMERCIAL_TOPIC_ORDER, questions: COMMERCIAL_TOPIC_QUESTIONS }
+    : { order: TOPIC_ORDER, questions: TOPIC_QUESTIONS };
+}
+
+function commercialNarrativeAuthorized(accumulatedIdea = '') {
+  return /(?:爱情|恋爱|感情|情感|情侣|夫妻|恋人|两人关系|人物关系|剧情化广告|故事型广告)/u.test(cleanText(accumulatedIdea, 4000));
+}
+
+function commercialStoryLeak(value = '') {
+  return /(?:男女主|两人的关系|感情逐渐|相爱|爱情|恋人|反派|秘宝|穿越|权贵|冲突升级|最后一场对决)/u.test(String(value || ''));
+}
 
 function cleanText(value = '', max = 1600) {
   return String(value ?? '').replace(/\u0000/g, '').trim().slice(0, max);
@@ -64,7 +91,8 @@ function modeLabel(mode = '') {
   return mode === 'commercial_subject' ? '商业广告' : (mode === 'narrative_story' ? '剧情短片' : '尚未确认');
 }
 
-function impliedDecisionGap(accumulatedIdea = '', completedTopics) {
+function impliedDecisionGap(accumulatedIdea = '', completedTopics, contentMode = '') {
+  if (contentMode === 'commercial_subject') return null;
   const source = cleanText(accumulatedIdea, 4000);
   if (Array.isArray(completedTopics)) {
     const completed = new Set(cleanTopics(completedTopics));
@@ -82,12 +110,15 @@ function impliedDecisionGap(accumulatedIdea = '', completedTopics) {
   return null;
 }
 
-function systemPrompt(dynamicKnowledge = '') {
+function systemPrompt(dynamicKnowledge = '', contentMode = '') {
+  const commercial = contentMode === 'commercial_subject';
   const lines = [
     '你是 VIDO 剧情广告模块的资深导演与制片策划，负责用自然、专业、具体的中文完成对话式立项。只输出 JSON 对象，不要 markdown。',
     '不要复述、确认或总结用户刚刚回答的内容，不要说“我记下了”“我理解了”“这部分已经清楚”“接下来”。直接提出当前唯一一个问题；只有问题本身不易理解时，才允许加一句很短的通俗说明。',
     '每轮只追问 1 个当前最影响创作与制作的缺口；不要向用户罗列检查项或宣布后续流程。进入成片规格前必须覆盖五类制作依据：subject（主要人物/关系或产品主体）、structure（开端触发、发展冲突、高潮/结局，或广告价值演示链）、audience_intent（目标观众及希望留下的情绪/认知/行动）、world_context（足够执行的时代、地区、社会环境或明确架空规则）、visual_direction（真人/动画等媒介、写实度、美学气质或用户明确委托导演建议）。',
-    '问询顺序必须连贯：先理清人物/主体、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
+    commercial
+      ? '当前是商业广告。广告与剧情短片必须使用不同问询合同：只确认产品或服务主体、核心卖点、可见证据、目标受众与行动、真实展示场景、画面方式和视觉方向。禁止追问人物关系、感情变化、反派、冲突升级、穿越、高潮或故事结局；只有用户明确要求剧情化广告并亲自提出人物情感时，才可沿用户原话确认，不能主动添加爱情或其它情感线。'
+      : '当前是剧情短片。问询顺序必须连贯：先理清人物、关系、动机与对立，再理清触发、发展和结局，然后确认受众与表达目标，再确认时空规则和跨时代连续性，最后确认视觉媒介与气质。用户原话已明确的部分直接跳过，只问该顺序中最早的真实缺口，不能在不同层级之间来回跳。',
     '“古代”“现代”“好看”“电影感”这类宽泛词不能单独算 world_context 或 visual_direction 已明确；应结合用户内容给出 2 至 3 个专业选项帮助选择。用户说“由你建议/你来定”时，先给出具体建议并请用户确认，确认后才能标为 explicit。',
     'coverage 的每个 evidence 必须是从当前累计设想中原样摘取的短语，不能改写或编造。未明确的项 status 必须为 missing。只有五类均为 explicit，idea_ready 才能为 true；否则必须继续 idea_details。',
     '用户一次已经讲完整时不得重复询问已经有直接证据的内容；completed_topics 中的决策已经回答，禁止换一种说法再次询问。五类均明确后 next_step 才进入 specifications。时长、画幅和清晰度必须作为一组简洁确认，不能把系统默认值说成用户已经确认。',
@@ -110,11 +141,13 @@ function knowledgeContext(body = {}) {
   try { return knowledgeBase.searchForAgent('director', query, { limit: 2, maxCharsPerDoc: 360 }); } catch { return ''; }
 }
 
-function inferQuestionTopic(reply = '', missingTopics = [], completedTopics = []) {
+function inferQuestionTopic(reply = '', missingTopics = [], completedTopics = [], contentMode = '') {
   const completed = new Set(cleanTopics(completedTopics));
+  const profile = topicProfile(contentMode);
   const source = `${cleanText(reply, 400)} ${listText(missingTopics)}`;
   const matched = TOPIC_HINTS.find(([topic, pattern]) => !completed.has(topic) && pattern.test(source));
-  return matched?.[0] || TOPIC_ORDER.find(topic => !completed.has(topic)) || '';
+  if (matched?.[0] && profile.order.includes(matched[0])) return matched[0];
+  return profile.order.find(topic => !completed.has(topic)) || '';
 }
 
 function listText(value = []) { return (Array.isArray(value) ? value : []).map(item => cleanInline(item, 80)).join(' '); }
@@ -128,6 +161,7 @@ function displayableReply(reply = '', history = []) {
 }
 
 function userPrompt(body = {}) {
+  const profile = topicProfile(body.content_mode);
   const history = Array.isArray(body.history) ? body.history.slice(-8).map(item => ({
     role: item?.role === 'assistant' ? 'assistant' : 'user',
     content: cleanText(item?.content, 600),
@@ -142,7 +176,7 @@ function userPrompt(body = {}) {
     `最近对话：${JSON.stringify(history)}`,
     '请重新审计五类制作依据，不要继承上一轮未经用户证据支持的判断，并输出：',
     '{"reply":"直接提出唯一一个下一问","question_topic":"从允许值中选择本轮问题身份","suggested_answers":["贴合当前内容的答案一","贴合当前内容的答案二","贴合当前内容的答案三"],"coverage":{"subject":{"status":"explicit|missing","evidence":"用户原文短语或空"},"structure":{"status":"explicit|missing","evidence":"用户原文短语或空"},"audience_intent":{"status":"explicit|missing","evidence":"用户原文短语或空"},"world_context":{"status":"explicit|missing","evidence":"用户原文短语或空"},"visual_direction":{"status":"explicit|missing","evidence":"用户原文短语或空"}},"idea_ready":false,"missing_topics":["本轮唯一追问的缺口"],"next_step":"idea_details"}',
-    `question_topic 只能是：${[...DIALOGUE_TOPICS].join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
+    `question_topic 只能是：${profile.order.join('、')}。它是本轮唯一问题的稳定身份，不能选择已经完成的值。`,
     'next_step 只能是 idea_details、specifications、reference、review。五类 coverage 未全部 explicit 时 idea_ready 必须为 false，missing_topics 只能列出本轮唯一追问的一项，并必须返回 2 至 3 个 suggested_answers；进入 specifications 后 question_topic 为空、suggested_answers 可以为空数组。',
   ].join('\n');
 }
@@ -161,11 +195,12 @@ function normalizeCoverage(parsed = {}, accumulatedIdea = '') {
   }));
 }
 
-function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null) {
+function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = null, contentMode = '') {
+  const profile = topicProfile(contentMode);
   let reply = cleanText(parsed.reply || parsed.dialogue_reply || parsed.message || '', 300);
   const coverage = normalizeCoverage(parsed, accumulatedIdea);
   const coverageReady = COVERAGE_TOPICS.every(topic => coverage[topic].status === 'explicit');
-  const impliedGap = impliedDecisionGap(accumulatedIdea, Array.isArray(completedTopics) ? completedTopics : undefined);
+  const impliedGap = impliedDecisionGap(accumulatedIdea, Array.isArray(completedTopics) ? completedTopics : undefined, contentMode);
   let ideaReady = parsed.idea_ready === true && coverageReady && !impliedGap;
   let missingTopics = (Array.isArray(parsed.missing_topics) ? parsed.missing_topics : [])
     .map(item => cleanInline(item, 80)).filter(Boolean).slice(0, 1);
@@ -175,7 +210,7 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
     .slice(0, 3);
   let nextStep = cleanInline(parsed.next_step, 40);
   let questionTopic = cleanInline(parsed.question_topic, 40);
-  if (!DIALOGUE_TOPICS.has(questionTopic)) questionTopic = '';
+  if (!profile.order.includes(questionTopic)) questionTopic = '';
   if (!NEXT_STEPS.has(nextStep)) nextStep = ideaReady ? 'specifications' : 'idea_details';
   if (!ideaReady) {
     nextStep = 'idea_details';
@@ -185,19 +220,26 @@ function normalizeParsed(parsed = {}, accumulatedIdea = '', completedTopics = nu
       reply = impliedGap.reply;
       suggestedAnswers = impliedGap.answers;
     } else if (!missingTopics.length) missingTopics = COVERAGE_TOPICS.filter(topic => coverage[topic].status !== 'explicit').slice(0, 1).map(topic => COVERAGE_LABELS[topic]);
-    if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, completedTopics);
-    if (!impliedGap && parsed.idea_ready === true && !coverageReady && TOPIC_QUESTIONS[questionTopic]) {
-      [reply, suggestedAnswers] = TOPIC_QUESTIONS[questionTopic];
+    if (!questionTopic) questionTopic = inferQuestionTopic(reply, missingTopics, completedTopics, contentMode);
+    if (!impliedGap && parsed.idea_ready === true && !coverageReady && profile.questions[questionTopic]) {
+      [reply, suggestedAnswers] = profile.questions[questionTopic];
+      missingTopics = [questionTopic];
+    }
+    if (contentMode === 'commercial_subject'
+      && !commercialNarrativeAuthorized(accumulatedIdea)
+      && commercialStoryLeak(`${reply} ${suggestedAnswers.join(' ')}`)) {
+      questionTopic = profile.order.find(topic => !cleanTopics(completedTopics).includes(topic)) || profile.order[0];
+      [reply, suggestedAnswers] = profile.questions[questionTopic];
       missingTopics = [questionTopic];
     }
   } else { suggestedAnswers = []; questionTopic = ''; }
   return { reply, question_topic: questionTopic, idea_ready: ideaReady, missing_topics: missingTopics, suggested_answers: suggestedAnswers, next_step: nextStep, coverage };
 }
 
-function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [] } = {}) {
+function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], history = [], contentMode = '' } = {}) {
   try {
     const parsed = jsonRepair.parseJson(raw, 'object');
-    const value = normalizeParsed(parsed, accumulatedIdea, completedTopics);
+    const value = normalizeParsed(parsed, accumulatedIdea, completedTopics, contentMode);
     const completed = cleanTopics(completedTopics);
     return Boolean(value.reply.length >= 12
       && value.reply.length <= 300
@@ -210,7 +252,7 @@ function validateRaw(raw = '', { accumulatedIdea = '', completedTopics = [], his
 }
 
 function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
-  const value = normalizeParsed(parsed, body.accumulated_idea || body.brief || '', body.completed_topics);
+  const value = normalizeParsed(parsed, body.accumulated_idea || body.brief || '', body.completed_topics, body.content_mode);
   if (!value.reply || (!value.idea_ready && !value.missing_topics.length)) {
     const error = new Error('导演助理没有返回可用的下一问，请保留当前输入后重试');
     error.code = 'BRIEF_DIALOGUE_REPLY_INCOMPLETE';
@@ -240,10 +282,11 @@ function buildResponse({ parsed = {}, modelResult = {}, body = {} } = {}) {
 
 function recoveryResponse(body = {}, failedModels = []) {
   const completed = cleanTopics(body.completed_topics);
-  const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, TOPIC_ORDER.indexOf(item)), -1);
-  const topic = TOPIC_ORDER.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
-    || TOPIC_ORDER.find(item => !completed.includes(item)) || 'plot_trigger';
-  const fallback = TOPIC_QUESTIONS[topic] || TOPIC_QUESTIONS.subject_identity;
+  const profile = topicProfile(body.content_mode);
+  const latestCompletedIndex = completed.reduce((max, item) => Math.max(max, profile.order.indexOf(item)), -1);
+  const topic = profile.order.slice(latestCompletedIndex + 1).find(item => !completed.includes(item))
+    || profile.order.find(item => !completed.includes(item)) || profile.order[0];
+  const fallback = profile.questions[topic];
   return {
     dialogue_reply: fallback[0], idea_ready: false, missing_topics: [topic], question_topic: topic,
     suggested_answers: fallback[1], next_step: 'idea_details',
@@ -255,7 +298,7 @@ function recoveryResponse(body = {}, failedModels = []) {
 async function run({ body = {}, modelGateway, taskId = '' } = {}) {
   assertInput(body);
   const accumulatedIdea = body.accumulated_idea || body.brief || '';
-  const immediateGap = impliedDecisionGap(accumulatedIdea, body.completed_topics);
+  const immediateGap = impliedDecisionGap(accumulatedIdea, body.completed_topics, body.content_mode);
   if (immediateGap) return {
     dialogue_reply: immediateGap.reply,
     idea_ready: false,
@@ -271,14 +314,14 @@ async function run({ body = {}, modelGateway, taskId = '' } = {}) {
     result = await modelGateway.generateText({
       taskId,
       stage: 'new_story_ad.brief_dialogue',
-      systemPrompt: systemPrompt(knowledgeContext(body)),
+      systemPrompt: systemPrompt(knowledgeContext(body), body.content_mode),
       userPrompt: userPrompt(body),
       maxTokens: 420,
       maxCandidates: 2,
       timeoutMs: 8000,
       stageBudgetMs: 12000,
       structuredOutput: { mode: 'json_object' },
-      validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics, history: body.history }),
+      validateText: raw => validateRaw(raw, { accumulatedIdea, completedTopics: body.completed_topics, history: body.history, contentMode: body.content_mode }),
     });
   } catch (error) {
     if (error?.code !== 'MODEL_ATTEMPTS_EXHAUSTED') throw error;
@@ -310,6 +353,9 @@ module.exports = {
   recoveryResponse,
   displayableReply,
   cleanTopics,
+  topicProfile,
+  commercialNarrativeAuthorized,
+  commercialStoryLeak,
   DIALOGUE_TOPICS,
   COVERAGE_TOPICS,
 };

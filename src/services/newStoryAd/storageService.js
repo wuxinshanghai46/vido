@@ -193,6 +193,13 @@ function getRow(key, id) {
   return contentRecords.get(COLLECTIONS[key], String(id));
 }
 
+function listRowsForUser(key, userId) {
+  const owner = String(userId || '');
+  if (!owner || sqliteBatchDb || !useSqlite()) return listRows(key);
+  ensureDbSeeded();
+  return contentRecords.listForUser(COLLECTIONS[key], owner);
+}
+
 function mutateJson(key, updater) {
   const db = normalizedJsonDb();
   const result = updater(db[key], db);
@@ -344,7 +351,7 @@ function latestTaskRowsById(rows = []) {
 }
 
 function listTasks({ limit = 50, status = '', userId = '' } = {}) {
-  let rows = listRows('tasks');
+  let rows = userId ? listRowsForUser('tasks', userId) : listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
   if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
   return latestTaskRowsById(rows)
@@ -353,7 +360,7 @@ function listTasks({ limit = 50, status = '', userId = '' } = {}) {
 }
 
 function listTaskRows({ status = '', userId = '' } = {}) {
-  let rows = listRows('tasks');
+  let rows = userId ? listRowsForUser('tasks', userId) : listRows('tasks');
   if (status && status !== 'all') rows = rows.filter(row => String(row.status || '') === String(status));
   if (userId) rows = rows.filter(row => String(row.user_id || row.request?.user_id || row.request?.userId || '') === String(userId));
   return latestTaskRowsById(rows)

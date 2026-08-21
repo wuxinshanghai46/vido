@@ -31,9 +31,11 @@ function cacheSet(key, value) {
 function invalidateCollection(collection) {
   const getPrefix = `get:${collection}|`;
   const listPrefix = `list:${collection}`;
+  const userListPrefix = `list-user:${collection}|`;
   for (const key of queryCache.keys()) {
     if (
       key.startsWith(getPrefix) ||
+      key.startsWith(userListPrefix) ||
       key === listPrefix ||
       key.startsWith(`${listPrefix}|`) ||
       key.includes(`|${collection}|`) ||
@@ -302,6 +304,22 @@ function list(collection, filters = {}) {
   return cacheSet(key, rows);
 }
 
+function listForUser(collection, userId) {
+  const owner = String(userId || '');
+  if (!owner) return list(collection);
+  const key = cacheKey('list-user', [collection, owner]);
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  const db = requireDatabase();
+  const rows = db.prepare(`
+    SELECT payload_json
+    FROM content_records
+    WHERE collection = ? AND (user_id = ? OR user_id IS NULL OR user_id = '')
+    ORDER BY COALESCE(updated_at, created_at) DESC
+  `).all(collection, owner).map(row => jsonParse(row.payload_json));
+  return cacheSet(key, rows);
+}
+
 function update(collection, id, fields) {
   const existing = get(collection, id);
   if (!existing) return null;
@@ -358,6 +376,7 @@ module.exports = {
   applyAtomicChanges,
   get,
   list,
+  listForUser,
   pruneBefore,
   remove,
   removeMany,

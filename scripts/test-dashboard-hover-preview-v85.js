@@ -11,7 +11,7 @@ const html = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'public/js/app.js'), 'utf8');
 
 assert.doesNotMatch(js, /<button class="wb-play-button"/, 'round play button markup must be removed');
-assert.match(html, /dashboard-workbench\.js\?v=20260820-dashboard-clean-v94/, 'dashboard script cache key must activate the clean dashboard build in production');
+assert.match(html, /dashboard-workbench\.js\?v=20260821-dashboard-preload-v128/, 'dashboard script cache key must activate the preload dashboard build in production');
 assert.match(html, /dashboard-workbench\.css\?v=20260820-dashboard-clean-v94/, 'dashboard style cache key must activate the hover preview visibility fix');
 assert.doesNotMatch(html, /你的 AI 视频创作工作台|VIDO GUIDED PRODUCTION|hubSmartRoute/, 'legacy dashboard markup must not remain in the initial HTML');
 assert.doesNotMatch(app, /function loadDashboard\(|function hubSmartRoute\(|function hubSetExample\(/, 'legacy dashboard runtime must be removed instead of racing the current workbench');

@@ -3,7 +3,7 @@ export function guidedResumePrompt({ mode = '', idea = '' } = {}) {
   const narrative = mode === 'narrative_story';
   if (!narrative) return {
     topic: 'audience_intent',
-    text: '我已经看到你的广告设想。先把传播对象定准：这条片最需要打动哪类人，他们看完后最希望产生什么行动？',
+    text: '我已经看到你的广告设想。先把传播对象定准：这条广告主要给哪类人看，他们看完后最希望产生什么行动？',
     answers: ['面向新用户，先建立认知与兴趣', '面向犹豫用户，用证据推动购买', '面向老用户，强化品牌认同与复购'],
   };
   if (source.length < 36) return {

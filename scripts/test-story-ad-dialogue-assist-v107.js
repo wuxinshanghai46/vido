@@ -139,6 +139,37 @@ async function main() {
   assert.doesNotMatch(recovered.dialogue_reply, /没有取得可靠|请补充最影响制作/);
   assert.doesNotMatch(recovered.dialogue_reply, /我记下了|我理解了|接下来/);
   assert.equal(recovered.model_meta.deterministic, true);
+  const commercialIdea = '为不锈钢板材制作商业广告，突出耐刮和耐污，在设计师展厅展示产品细节';
+  const commercialRecovered = await service.run({
+    body: {
+      accumulated_idea: commercialIdea,
+      user_message: '设计师拿着样板展示，但不要加入人物故事',
+      content_mode: 'commercial_subject',
+      completed_topics: ['subject_identity'],
+    },
+    modelGateway: { async generateText() { const error = new Error('invalid'); error.code = 'MODEL_ATTEMPTS_EXHAUSTED'; throw error; } },
+  });
+  assert.equal(commercialRecovered.question_topic, 'subject_motivation');
+  assert.match(commercialRecovered.dialogue_reply, /核心卖点/);
+  assert.doesNotMatch(JSON.stringify(commercialRecovered), /两人的关系|感情|相爱|反派|秘宝|穿越/);
+  const leakedCommercial = service.buildResponse({
+    parsed: {
+      reply: '冲突升级后，两人的关系怎么变化？',
+      question_topic: 'plot_development',
+      suggested_answers: ['一起追查，感情逐渐加深', '互相隐瞒，信任彻底破裂'],
+      missing_topics: ['人物关系'],
+      idea_ready: false,
+      next_step: 'idea_details',
+      coverage: {},
+    },
+    body: { accumulated_idea: commercialIdea, content_mode: 'commercial_subject' },
+  });
+  assert.equal(leakedCommercial.question_topic, 'subject_identity');
+  assert.match(leakedCommercial.dialogue_reply, /产品或服务/);
+  assert.doesNotMatch(JSON.stringify(leakedCommercial), /两人的关系|感情|相爱|反派|秘宝|穿越/);
+  assert.equal(service.impliedDecisionGap(`${commercialIdea}，古代工艺与现代工厂对比`, [], 'commercial_subject'), null, '商业广告不得因古今画面对比触发剧情人物连续性问题');
+  assert.match(service.systemPrompt('', 'commercial_subject'), /广告与剧情短片必须使用不同问询合同/);
+  assert.match(service.systemPrompt('', 'commercial_subject'), /不能主动添加爱情或其它情感线/);
   const relationshipRecovery = service.recoveryResponse({ completed_topics: ['subject_identity'] });
   const motivationRecovery = service.recoveryResponse({ completed_topics: ['subject_identity', 'subject_relationship'] });
   assert.equal(relationshipRecovery.question_topic, 'subject_relationship');
@@ -162,6 +193,13 @@ async function main() {
   assert.doesNotMatch(dialogueSource, /textNode\.textContent = '…'/);
   assert.doesNotMatch(dialogueSource, /这轮没有取得可靠的专业审阅结果/);
   assert.match(dialogueSource, /data-dialogue-reference title="添加参考材料">参考/);
+  assert.match(dialogueSource, /data-reference-dialogue-status/);
+  assert.match(dialogueSource, /参考链接未能开始分析/);
+  assert.match(dialogueSource, /请求编号/);
+  assert.match(briefViewSource, /syncReferenceDialogueStatus/);
+  assert.match(briefViewSource, /读取与分析进度已显示在对话中/);
+  assert.match(briefViewSource, /loadBundle\(createdProjectId, 'summary,reference'\)/, '新建项目添加链接前只允许读取摘要与参考域，不能让全量工作区阻断分析任务创建');
+  assert.doesNotMatch(briefViewSource, /loadBundle\(createdProjectId, 'all'\)/, '链接创建前不得加载无关的人物、场景和分镜大域');
   assert.doesNotMatch(dialogueSource, /data-dialogue-reference title="添加参考材料">＋/);
   assert.doesNotMatch(dialogueSource, /我记下了/);
   assert.match(dialogueSource, /data-dialogue-expand/);
@@ -185,7 +223,7 @@ async function main() {
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
   assert.doesNotMatch(storyService, /briefDialogueAssist\.validateRaw/, '对话模型与 JSON 修复接线必须下沉到独立服务');
 
-  console.log(JSON.stringify({ passed: true, checks: 60, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
+  console.log(JSON.stringify({ passed: true, checks: 76, scope: 'story-ad-dialogue-assist-v107', real_model_calls: 0 }));
 }
 
 main().catch(error => { console.error(error); process.exit(1); });

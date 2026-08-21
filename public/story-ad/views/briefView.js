@@ -9,14 +9,15 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260821-dialogue-
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260821-dialogue-v126';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260821-dialogue-v126';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260821-dialogue-v126';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260821-dialogue-v126';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription, syncReferenceDialogueStatus } from './briefDialoguePanel.js?v=20260821-dialogue-v126';
 import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260821-dialogue-v126';
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260821-dialogue-v126';
 import { formPayload } from './briefFormPayload.js?v=20260821-dialogue-v126';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
-export function referenceActionState(reference = {}) {
-  if (!reference.analysis_id) return { blocked: false, label: '确认设想，生成剧情与对白' };
+export function referenceActionState(reference = {}, contentMode = '') {
+  const output = contentMode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
+  if (!reference.analysis_id) return { blocked: false, label: `确认设想，生成${output}` };
   const status = String(reference.status || '').toLowerCase();
   if (status === 'completed' && reference.analysis_valid === true) {
     const understanding = reference.reference_understanding && typeof reference.reference_understanding === 'object'
@@ -42,7 +43,7 @@ export function referenceActionState(reference = {}) {
       || confirmation.confirmed === true
       || ['confirmed', 'authoritative_input'].includes(String(confirmation.status || confirmation.confirmation || '').toLowerCase());
     if (hasDeepUnderstanding && !confirmed) return { blocked: true, label: '先确认上方参考理解' };
-    return { blocked: false, label: '下一步：生成剧情与对白' };
+    return { blocked: false, label: `下一步：生成${output}` };
   }
   if (status === 'failed') return { blocked: true, label: '参考视频分析失败，请重试' };
   if (status === 'cancelled') return { blocked: true, label: '参考视频分析已停止，请更换' };
@@ -50,9 +51,9 @@ export function referenceActionState(reference = {}) {
   return { blocked: true, label: '等待参考视频分析完成' };
 }
 
-export function syncReferenceAction(button, reference = {}) {
+export function syncReferenceAction(button, reference = {}, contentMode = '') {
   if (!button) return;
-  const action = referenceActionState(reference);
+  const action = referenceActionState(reference, contentMode);
   button.disabled = action.blocked;
   button.textContent = action.label;
 }
@@ -61,16 +62,17 @@ export async function mount(host, context) {
   const { route, store, navigate } = context;
   const bundle = store.state.bundle || {};
   const brief = bundle.brief || {};
+  const outputLabel = brief.content_mode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
   const referenceAttached = Boolean(bundle.reference?.analysis_id);
   const benchmark = brief.benchmark_strategy || {};
   const worldProfile = brief.world_setting?.profiles?.[0] || {};
-  const referenceAction = referenceActionState(bundle.reference || {});
+  const referenceAction = referenceActionState(bundle.reference || {}, brief.content_mode);
   const referenceStepVisible = referenceAttached && !route.isNew;
   const showReferenceStepGuidance = referenceStepVisible && bundle.navigation?.steps?.brief?.completed !== true;
   host.innerHTML = `
     ${briefDialogueMarkup(bundle, route)}
     ${showReferenceStepGuidance && !referenceAction.blocked ? `<section class="card brief-reference-primary-action is-top-action" data-brief-inline-action aria-live="polite">
-      <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>生成剧情与对白</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}, referenceAction))}</p></div></div>
+      <div class="brief-next-step-copy"><span class="status-tag is-info" data-brief-next-tag>下一步</span><div><h2>生成${escapeHtml(outputLabel)}</h2><p data-brief-next-description>${escapeHtml(referenceNextStepDescription(bundle.reference || {}, referenceAction, brief.content_mode))}</p></div></div>
       <button class="btn primary" type="submit" form="storyAdBriefForm" data-brief-submit>${escapeHtml(referenceAction.label)}</button>
     </section>` : ''}
     ${showReferenceStepGuidance ? `<div data-reference-progress-host>${referenceProgress(bundle.reference)}</div>` : ''}
@@ -249,15 +251,17 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (control && String(control.value) !== String(value)) control.value = value;
     });
     const nextReference = nextState.bundle?.reference || {};
+    syncReferenceDialogueStatus(host, nextReference);
     const nextReferenceAttached = Boolean(nextReference.analysis_id);
     const nextReferenceStatus = String(nextReference.status || '').toLowerCase();
     if (briefSettingsModalController.modal?.open && (nextReferenceAttached !== lastReferenceAttached || (nextReferenceAttached && nextReferenceStatus !== lastReferenceStatus))) briefSettingsModalController.close();
     lastReferenceAttached = nextReferenceAttached; lastReferenceStatus = nextReferenceStatus;
     if (!route.isNew) {
-      const action = referenceActionState(nextReference);
-      host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference));
+      const nextMode = nextState.bundle?.brief?.content_mode || '';
+      const action = referenceActionState(nextReference, nextMode);
+      host.querySelectorAll('[data-brief-submit]').forEach(button => syncReferenceAction(button, nextReference, nextMode));
       const description = host.querySelector('[data-brief-next-description]');
-      if (description) description.textContent = referenceNextStepDescription(nextReference, action);
+      if (description) description.textContent = referenceNextStepDescription(nextReference, action, nextMode);
       const nextTag = host.querySelector('[data-brief-next-tag]');
       if (nextTag) {
         nextTag.textContent = action.blocked ? '等待完成' : '下一步';
@@ -335,7 +339,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     setButtonBusy(button, true, '正在创建…');
     const project = await store.createProject(payload);
     createdProjectId = project.id;
-    await store.loadBundle(createdProjectId, 'all');
+    await store.loadBundle(createdProjectId, 'summary,reference');
     dirtyFields.clear();
     return createdProjectId;
   }
@@ -347,7 +351,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     try {
       const reference = store.state.bundle?.reference || {};
       const status = String(reference.status || '').toLowerCase();
-      const actionState = referenceActionState(reference);
+      const actionState = referenceActionState(reference, store.state.bundle?.brief?.content_mode || '');
       if (actionState.blocked) {
         throw new Error(status === 'failed'
           ? '参考视频分析失败，请重新识别或更换视频后再创建方案。'
@@ -360,7 +364,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       const migration = await confirmContentModeMigration(String(store.state.bundle?.brief?.content_mode || '').trim(), payload.content_mode);
       if (migration.cancelled) return false;
       if (migration.confirmed) payload.content_mode_change_confirmed = true;
-      host.querySelectorAll('[data-brief-submit], [data-dialogue-confirm]').forEach(target => setButtonBusy(target, true, '正在生成剧情…', { elapsed: true }));
+      const commercial = payload.content_mode === 'commercial_subject';
+      host.querySelectorAll('[data-brief-submit], [data-dialogue-confirm]').forEach(target => setButtonBusy(target, true, commercial ? '正在生成广告脚本…' : '正在生成剧情…', { elapsed: true }));
       if (dirtyFields.size) {
         const savedBundle = await store.updateRequest(payload, { refreshSections: 'summary' });
         assertBriefReadback(payload.brief, savedBundle?.brief?.text || '');
@@ -372,12 +377,13 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
         idempotency_key: `${createdProjectId}:blueprint:brief-confirm:r${contentRevision}`,
       });
       navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=plot`);
-      toast('详细剧情与对白已提交生成。确认剧情后，系统才会继续提取人物与场景。', 'success');
+      toast(commercial ? '广告脚本已提交生成。确认脚本后，系统才会继续提取制作主体与场景。' : '详细剧情与对白已提交生成。确认剧情后，系统才会继续提取人物与场景。', 'success');
       return true;
     } catch (error) {
       if (error?.code === 'GENERATION_ALREADY_RUNNING' && createdProjectId) {
         navigate(`/story-ad/projects/${encodeURIComponent(createdProjectId)}?view=plot`);
-        toast('剧情生成已提交，本次没有重复调用模型。', 'success');
+        const mode = String(store.state.bundle?.brief?.content_mode || '');
+        toast(mode === 'commercial_subject' ? '广告脚本生成已提交，本次没有重复调用模型。' : '剧情生成已提交，本次没有重复调用模型。', 'success');
         return true;
       }
       toast(error.message, 'danger');
@@ -386,12 +392,47 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       assetPlanTransitioning = false;
       host.querySelectorAll('[data-brief-submit]').forEach(target => {
         setButtonBusy(target, false);
-        syncReferenceAction(target, store.state.bundle?.reference || {});
+        syncReferenceAction(target, store.state.bundle?.reference || {}, store.state.bundle?.brief?.content_mode || '');
       });
       host.querySelectorAll('[data-dialogue-confirm]').forEach(target => {
         setButtonBusy(target, false);
-        target.textContent = '确认设想，生成剧情与对白';
+        target.textContent = store.state.bundle?.brief?.content_mode === 'commercial_subject' ? '确认设想，生成广告脚本' : '确认设想，生成剧情与对白';
       });
+    }
+  }
+
+  async function handleReferenceLink(button, { onStart } = {}) {
+    const url = await promptDialog('添加参考链接', {
+      message: '粘贴无需登录即可访问的公开视频链接。',
+      inputLabel: '参考视频链接',
+      placeholder: 'https://',
+      confirmText: '继续',
+    });
+    if (!url) return { cancelled: true };
+    if (!await confirmDialog('请确认你拥有该链接视频的分析与使用权。确认后开始读取。', {
+      title: '参考视频授权确认',
+      confirmText: '确认并开始读取',
+    })) return { cancelled: true };
+    onStart?.(url);
+    try {
+      const taskId = await ensureProject(button);
+      setButtonBusy(button, true, '正在添加…');
+      const analysis = await store.addReferenceLink(url);
+      toast('参考链接已添加，读取与分析进度已显示在对话中。', 'success');
+      if (route.isNew) navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
+      else await context.refreshShell();
+      return { taskId, analysis };
+    } catch (error) {
+      const requestId = String(error?.data?.request_id || '').trim();
+      syncReferenceDialogueStatus(host, {
+        analysis_id: 'request-failed',
+        status: 'failed',
+        error: `${error.message}${requestId ? `（请求编号：${requestId}）` : ''}`,
+      });
+      toast(error.message, 'danger');
+      throw error;
+    } finally {
+      setButtonBusy(button, false);
     }
   }
 
@@ -401,7 +442,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
     requireUserInitiation: route.isNew,
     onAssist: briefDialogueAssist(() => createdProjectId),
     onReference: () => host.querySelector('[data-material-upload="reference"]')?.click(),
-    onReferenceLink: () => host.querySelector('[data-reference-link]')?.click(),
+    onReferenceLink: callbacks => handleReferenceLink(host.querySelector('[data-reference-link]'), callbacks),
     ensureProject,
     proceed: proceedToPlot,
     onProfessional: briefSettingsModalController.open,
@@ -469,30 +510,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
   });
 
   host.querySelector('[data-reference-link]')?.addEventListener('click', async event => {
-    const url = await promptDialog('添加参考链接', {
-      message: '粘贴无需登录即可访问的公开视频链接。',
-      inputLabel: '参考视频链接',
-      placeholder: 'https://',
-      confirmText: '继续',
-    });
-    if (!url) return;
-    if (!await confirmDialog('请确认你拥有该链接视频的分析与使用权。确认后开始读取。', {
-      title: '参考视频授权确认',
-      confirmText: '确认并开始读取',
-    })) return;
-    const button = event.currentTarget;
-    try {
-      const taskId = await ensureProject(button);
-      setButtonBusy(button, true, '正在添加…');
-      await store.addReferenceLink(url);
-      toast('参考链接已添加，分析将在后台进行。', 'success');
-      if (route.isNew) navigate(`/story-ad/projects/${encodeURIComponent(taskId)}?view=brief`, { replace: true });
-      else await context.refreshShell();
-    } catch (error) {
-      toast(error.message, 'danger');
-    } finally {
-      setButtonBusy(button, false);
-    }
+    try { await handleReferenceLink(event.currentTarget); } catch {}
   });
   host.querySelector('[data-reference-remove]')?.addEventListener('click', async event => {
     const button = event.currentTarget;

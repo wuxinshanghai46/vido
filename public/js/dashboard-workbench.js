@@ -7,6 +7,9 @@
     videoFilter: 'all',
     videoLimit: 8
   };
+  const SUMMARY_CACHE_VERSION = 1;
+  const SUMMARY_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+  let loadPromise = null;
   const modulePermission = { create: 'create', avatar: 'avatar', 'new-story-ad': 'dashboard' };
   const typeLabels = { 'new-story-ad': '剧情广告', avatar: '数字人', create: '视频动漫', i2v: '图生视频' };
   const safe = value => typeof esc === 'function'
@@ -23,6 +26,35 @@
     const user = typeof getCurrentUser === 'function' ? (getCurrentUser() || {}) : {};
     const label = document.getElementById('user-name-label')?.textContent?.trim();
     return user.nickname || user.name || user.username || label || '创作者';
+  }
+
+  function cacheOwner() {
+    let user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+    if (!user) {
+      try { user = JSON.parse(sessionStorage.getItem('vido_user') || localStorage.getItem('vido_user') || 'null'); } catch {}
+    }
+    return String(user?.id || user?.user_id || user?.username || '').trim();
+  }
+
+  function summaryCacheKey() {
+    const owner = cacheOwner();
+    return owner ? `vido-dashboard-summary:v${SUMMARY_CACHE_VERSION}:${owner}` : '';
+  }
+
+  function readCachedSummary() {
+    const key = summaryCacheKey();
+    if (!key) return null;
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(key) || 'null');
+      if (!cached?.result?.success || Date.now() - Number(cached.saved_at || 0) > SUMMARY_CACHE_MAX_AGE_MS) return null;
+      return cached.result;
+    } catch { return null; }
+  }
+
+  function writeCachedSummary(result) {
+    const key = summaryCacheKey();
+    if (!key || !result?.success) return;
+    try { sessionStorage.setItem(key, JSON.stringify({ saved_at: Date.now(), result })); } catch {}
   }
 
   function greeting() {
@@ -237,6 +269,14 @@
     document.getElementById('wb-unfinished-count').textContent = '数据加载失败';
   }
 
+  function applySummary(result) {
+    document.getElementById('wb-user-name').textContent = currentName();
+    state.unfinished = (result.unfinished_tasks || result.continue_tasks || []).filter(task => canUse(task.module));
+    state.videos = (result.videos || []).filter(video => canUse(video.module));
+    renderUnfinished();
+    renderVideos();
+  }
+
   function bind() {
     const page = document.getElementById('page-dashboard');
     document.getElementById('wb-open-creator').onclick = openCreator;
@@ -266,17 +306,27 @@
 
   async function load() {
     if (!document.getElementById('wb-unfinished') && !shell()) return;
-    const result = await authFetch('/api/dashboard/summary').then(response => response.json()).catch(() => null);
-    if (!result?.success) return showLoadError();
-    document.getElementById('wb-user-name').textContent = currentName();
-    state.unfinished = (result.unfinished_tasks || result.continue_tasks || []).filter(task => canUse(task.module));
-    state.videos = (result.videos || []).filter(video => canUse(video.module));
-    renderUnfinished();
-    renderVideos();
+    const cached = readCachedSummary();
+    if (cached) applySummary(cached);
+    if (loadPromise) return loadPromise;
+    loadPromise = authFetch('/api/dashboard/summary')
+      .then(response => response.json())
+      .then(result => {
+        if (!result?.success) {
+          if (!cached) showLoadError();
+          return null;
+        }
+        applySummary(result);
+        writeCachedSummary(result);
+        return result;
+      })
+      .catch(() => { if (!cached) showLoadError(); return null; })
+      .finally(() => { loadPromise = null; });
+    return loadPromise;
   }
 
   window.loadDashboard = load;
   shell();
-  const start = () => window.setTimeout(load, 120);
+  const start = () => window.setTimeout(load, 40);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();

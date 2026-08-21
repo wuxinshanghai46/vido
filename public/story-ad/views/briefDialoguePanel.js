@@ -21,15 +21,54 @@ function ideaMarkup(value = '', location = 'conversation') {
   return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
 }
 
+export function referenceDialogueStatus(reference = {}) {
+  const status = String(reference.status || '').toLowerCase();
+  if (!reference.analysis_id && !['importing', 'uploading', 'queued', 'running'].includes(status)) return '';
+  const progress = Math.max(0, Math.min(100, Number(reference.progress || 0) || 0));
+  const phase = String(reference.phase || '').trim();
+  const error = String(reference.error?.message || reference.error || '').trim();
+  if (status === 'completed' && reference.analysis_valid === true) return '参考视频分析完成，已把识别结果同步到当前项目。请先核对参考理解，再继续生成。';
+  if (status === 'completed') return '参考视频已读取完成，但分析结果不完整。请重新识别或更换参考视频。';
+  if (status === 'failed') return `参考视频分析失败：${error || '未取得可用结果，请重试或更换链接。'}`;
+  if (status === 'cancelled') return '参考视频分析已停止。如仍需使用，请重新添加链接或上传视频。';
+  if (status === 'sync_interrupted') return `参考分析仍在服务器继续，页面暂时无法取得最新进度：${error || '请稍后重试。'}`;
+  return `${phase || '正在读取并分析参考视频'}${progress ? `（${progress}%）` : ''}。结果会继续显示在本对话中。`;
+}
+
+export function syncReferenceDialogueStatus(host, reference = {}) {
+  const text = referenceDialogueStatus(reference);
+  if (!text) return null;
+  const conversation = host.querySelector('[data-brief-conversation]');
+  if (!conversation) return null;
+  let article = conversation.querySelector('[data-reference-dialogue-status]');
+  if (!article) {
+    article = document.createElement('article');
+    article.className = 'brief-message is-assistant';
+    article.dataset.referenceDialogueStatus = '';
+    article.innerHTML = '<span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p></p></div></div>';
+    conversation.appendChild(article);
+  }
+  article.querySelector('.brief-bubble p').textContent = text;
+  article.dataset.referenceStatus = String(reference.status || '').toLowerCase();
+  conversation.scrollTop = conversation.scrollHeight;
+  return article;
+}
+
 export function briefDialogueMarkup(bundle = {}, route = {}) {
   const brief = bundle.brief || {};
+  const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
+  const narrative = brief.content_mode_source === 'user' && brief.content_mode === 'narrative_story';
+  const domainLabel = commercial ? '广告方案' : (narrative ? '剧情' : '方案');
+  const outputLabel = commercial ? '广告脚本' : (narrative ? '剧情与对白' : '内容方案');
+  const referenceStatus = referenceDialogueStatus(bundle.reference || {});
   const intake = brief.brief_intake || {};
   const hasIdea = Boolean(String(brief.text || '').trim());
   return `<section class="brief-dialogue" data-brief-dialogue>
     <div class="brief-conversation-panel">
-      <header class="brief-conversation-head"><span class="brief-director-avatar">导</span><div><h1>导演助理</h1><p><i></i>在线 · 先把想法整理成可执行剧情</p></div><span class="brief-stage-chip">第 1 步 · 对话立项</span></header>
+      <header class="brief-conversation-head"><span class="brief-director-avatar">导</span><div><h1>导演助理</h1><p><i></i><span data-dialogue-domain-copy>在线 · 先把想法整理成可执行${domainLabel}</span></p></div><span class="brief-stage-chip">第 1 步 · 对话立项</span></header>
       <div class="brief-conversation-scroll" data-brief-conversation aria-live="polite">
         ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
+        ${referenceStatus ? `<article class="brief-message is-assistant" data-reference-dialogue-status data-reference-status="${escapeHtml(String(bundle.reference?.status || '').toLowerCase())}"><span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p>${escapeHtml(referenceStatus)}</p></div></div></article>` : ''}
       </div>
       <footer class="brief-composer"><label><span data-dialogue-context>${hasIdea ? '继续补充或修改核心设想' : '直接说说你想做什么，由你发起对话'}</span><button type="button" data-dialogue-expand aria-expanded="false">展开输入</button></label><div><button type="button" class="brief-attach" data-dialogue-reference title="添加参考材料">参考</button><textarea rows="2" data-dialogue-input placeholder="输入你的想法；内容较多时可拖动右下角，或点击“展开输入”…"></textarea><button type="button" class="brief-send" data-dialogue-send>发送</button></div><small>导演助理会结合你刚说的内容逐步回应；高级设置不会变成固定问卷</small></footer>
     </div>
@@ -41,16 +80,17 @@ export function briefDialogueMarkup(bundle = {}, route = {}) {
       <section><h3>基础信息</h3><dl><div><dt>项目名称</dt><dd data-contract-name>待根据创意命名</dd></div><div><dt>内容类型</dt><dd data-contract-mode>${escapeHtml(modeLabel(brief.content_mode_source === 'user' ? brief.content_mode : ''))}</dd></div><div class="wide"><dt>核心创意</dt><dd data-contract-idea>${ideaMarkup(brief.text, 'contract')}</dd></div></dl></section>
       <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd><span data-contract-duration>${Number(brief.target_duration || 30)}秒</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>画幅</dt><dd><span data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>清晰度</dt><dd><span data-contract-resolution>${escapeHtml(brief.video_resolution || '1080p')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div></dl></section>
       <section><h3>信息依据</h3><div class="brief-evidence"><span class="user">用户明确</span><b data-contract-user>${hasIdea ? 2 : 0} 项</b></div><div class="brief-evidence"><span class="ai">AI 建议</span><b>3 项</b></div><div class="brief-evidence"><span class="pending">等待确认</span><b data-contract-pending>${hasIdea ? 2 : 5} 项</b></div></section>
-      <button class="brief-confirm-concept" type="button" data-dialogue-confirm disabled>确认设想，生成剧情与对白</button>
+      <button class="brief-confirm-concept" type="button" data-dialogue-confirm disabled>确认设想，生成${outputLabel}</button>
       <button class="brief-professional" type="button" data-dialogue-professional>手动编辑全部设置</button>
     </aside>
   </section>`;
 }
 
-export function referenceNextStepDescription(reference = {}, action = {}) {
-  if (action.blocked === false) return '先生成可编辑的详细剧情与对白；确认剧情后再提取人物与场景。';
+export function referenceNextStepDescription(reference = {}, action = {}, contentMode = '') {
+  const output = contentMode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
+  if (action.blocked === false) return `先生成可编辑的${output}；确认后再提取制作主体与场景。`;
   const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) return '先确认参考理解；成功后自动生成剧情与对白。';
+  if (status === 'completed' && reference.analysis_valid === true) return `先确认参考理解；成功后自动生成${output}。`;
   if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
   return '参考分析中；完成并确认后自动继续。';
 }
@@ -99,6 +139,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   let sending = false;
   let ideaReady = String(control('creative_brief_confirmed')?.value || '') === 'true';
   let specificationsConfirmed = String(control('specifications_confirmed')?.value || '') === 'true';
+  let referencePresent = referenceAttached;
   const explicitSpecificationKeys = new Set();
   const message = (role, text = '') => {
     const article = document.createElement('article');
@@ -152,18 +193,40 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
   let referenceQuestionLoading = false;
   let specificationQuestionLoading = false;
   const appendReferenceQuestion = async () => {
-    if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referenceAttached || referenceSkipped) return;
+    if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
     const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260821-dialogue-v126');
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
       onReference,
-      onReferenceLink,
+      onReferenceLink: async () => {
+        let pending = null;
+        try {
+          const result = await onReferenceLink?.({
+            onStart: () => {
+              message('user', '已提交参考链接');
+              pending = message('assistant', '正在读取链接并建立参考分析任务，请稍候…');
+              pending.article.dataset.referenceDialogueStatus = '';
+            },
+          });
+          if (!result || result.cancelled === true) return;
+          referencePresent = true;
+          const text = referenceDialogueStatus(result.analysis || { analysis_id: 'pending', status: 'importing' });
+          if (pending) pending.textNode.textContent = text;
+          sync();
+        } catch (error) {
+          const requestId = String(error?.data?.request_id || '').trim();
+          const text = `参考链接未能开始分析：${error?.message || '请求失败，请重试。'}${requestId ? `（请求编号：${requestId}）` : ''}`;
+          if (pending) pending.textNode.textContent = text;
+          else message('assistant', text);
+        }
+      },
       onSkip: () => {
       referenceSkipped = true;
       message('user', '没有');
-      streamMessage('参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成剧情与对白。');
+      const output = String(control('content_mode')?.value || '') === 'commercial_subject' ? '广告脚本' : '剧情与对白';
+      streamMessage(`参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成${output}。`);
       sync();
     } });
     referenceQuestionLoading = false;
@@ -208,22 +271,25 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     const duration = Number(control('target_duration')?.value || 30) || 30;
     const ratio = String(control('output_ratio')?.value || '9:16');
     const resolution = String(control('video_resolution')?.value || '1080p');
-    const intake = dialogueIntakeState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached, referenceSkipped });
+    const intake = dialogueIntakeState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
     const ready = intake.ready;
-    const progress = dialogueProgressState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached, referenceSkipped });
+    const progress = dialogueProgressState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
     if (control('creative_brief_confirmed')) control('creative_brief_confirmed').value = ideaReady ? 'true' : 'false';
     if (control('specifications_confirmed')) control('specifications_confirmed').value = specificationsConfirmed ? 'true' : 'false';
-    if (control('reference_decision')) control('reference_decision').value = referenceAttached ? 'attached' : (referenceSkipped ? 'skipped' : '');
+    if (control('reference_decision')) control('reference_decision').value = referencePresent ? 'attached' : (referenceSkipped ? 'skipped' : '');
     if (control('completed_dialogue_topics')) control('completed_dialogue_topics').value = [...completedTopics].join(',');
     if (control('active_dialogue_topic')) control('active_dialogue_topic').value = activeQuestionTopic;
     panel.querySelector('[data-contract-name]').textContent = name || '待根据创意命名';
     panel.querySelector('[data-contract-mode]').textContent = modeLabel(mode);
+    const domainCopy = panel.querySelector('[data-dialogue-domain-copy]');
+    if (domainCopy) domainCopy.textContent = `在线 · 先把想法整理成可执行${mode === 'commercial_subject' ? '广告方案' : (mode === 'narrative_story' ? '剧情' : '方案')}`;
+    if (!panel.hasAttribute('aria-busy')) confirm.textContent = `确认设想，生成${mode === 'commercial_subject' ? '广告脚本' : (mode === 'narrative_story' ? '剧情与对白' : '内容方案')}`;
     panel.querySelector('[data-contract-idea]').innerHTML = ideaMarkup(idea, 'contract');
     panel.querySelector('[data-contract-duration]').textContent = `${duration}秒`;
     panel.querySelector('[data-contract-ratio]').textContent = ratio;
     panel.querySelector('[data-contract-resolution]').textContent = resolution;
     panel.querySelectorAll('[data-contract-spec-source]').forEach(source => { source.textContent = specificationsConfirmed ? '用户已确认' : '建议·待确认'; });
-    panel.querySelector('[data-contract-user]').textContent = `${[mode, idea, name, specificationsConfirmed ? 'specifications' : '', (referenceAttached || referenceSkipped) ? 'reference' : ''].filter(Boolean).length} 项`;
+    panel.querySelector('[data-contract-user]').textContent = `${[mode, idea, name, specificationsConfirmed ? 'specifications' : '', (referencePresent || referenceSkipped) ? 'reference' : ''].filter(Boolean).length} 项`;
     panel.querySelector('[data-contract-pending]').textContent = `${intake.missing.length} 项`;
     panel.querySelector('[data-dialogue-progress]').style.width = `${progress.percent}%`;
     panel.querySelector('[data-dialogue-progress-text]').textContent = `${progress.percent}%`;
@@ -288,7 +354,8 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
     }
     if (intakeBefore.next === 'reference' && explicitSettings.isNoReferenceReply(text)) {
       referenceSkipped = true;
-      await finishImmediate('参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成剧情与对白。');
+      const output = String(control('content_mode')?.value || '') === 'commercial_subject' ? '广告脚本' : '剧情与对白';
+      await finishImmediate(`参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成${output}。`);
       return;
     }
     let mode = String(control('content_mode')?.value || '');
@@ -325,7 +392,7 @@ export function bindBriefDialogue(host, { form, referenceAttached = false, requi
         output_ratio: String(control('output_ratio')?.value || '9:16'),
         video_resolution: String(control('video_resolution')?.value || '1080p'),
         specifications_confirmed: specificationsConfirmed,
-        reference_attached: referenceAttached,
+        reference_attached: referencePresent,
         reference_skipped: referenceSkipped,
         history: history.slice(-8),
         completed_topics: [...completedTopics],

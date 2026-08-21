@@ -64,7 +64,7 @@ assert(!server.includes("app.get('/story-ad',"), '禁止用会同时匹配 /stor
 
 assert(index.includes('/js/app.js?v=20260820-dashboard-clean-v94'), '首页业务脚本缓存版本必须更新');
 assert(index.includes('/css/style.css?v=20260731-story-ad-entry'), '首页样式缓存版本必须更新');
-assert(index.includes('/js/dashboard-workbench.js?v=20260820-dashboard-clean-v94'), '工作台脚本缓存版本必须与无旧首屏版本同步更新');
+assert(index.includes('/js/dashboard-workbench.js?v=20260821-dashboard-preload-v128'), '工作台脚本缓存版本必须与首页预加载版本同步更新');
 assert(index.includes('/css/dashboard-workbench.css?v=20260820-dashboard-clean-v94'), '工作台样式缓存版本必须与可见悬停预览版本同步更新');
 
 console.log('platform module navigation tests passed: removed=2 story_ad_entry=2 shared_capabilities=2');

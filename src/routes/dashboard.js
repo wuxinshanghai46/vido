@@ -130,6 +130,13 @@ function videoItem(record, options) {
   };
 }
 
+function storyAdVideoCandidate(record = {}) {
+  const status = String(record.status || '').toLowerCase();
+  if (!DONE.has(status)) return false;
+  if (status === 'published') return true;
+  return /final|compose|video|tts|publish/.test(String(record.stage || '').toLowerCase());
+}
+
 function collectVideos({ projects, avatars, i2v, storyAds }) {
   const videos = [];
   const paths = new Set();
@@ -181,7 +188,7 @@ function collectVideos({ projects, avatars, i2v, storyAds }) {
   });
 
   storyAds.forEach(record => {
-    if (statusGroup(record.status) !== 'completed') return;
+    if (!storyAdVideoCandidate(record)) return;
     const finalVideo = storyAdStorage.getOutput(record.id, 'final_video') || {};
     const keyframes = storyAdStorage.getOutput(record.id, 'keyframes') || [];
     const firstFrame = Array.isArray(keyframes) ? keyframes.find(frame => frame?.image_url || frame?.imageUrl || frame?.url) : null;
@@ -262,4 +269,4 @@ router.get('/model-status', (req, res) => {
 });
 
 module.exports = router;
-module.exports._test = { statusGroup, storyAdStep, timeAgo, stageLabel, isUnfinishedTask, firstRelativeUrl, collectVideos };
+module.exports._test = { statusGroup, storyAdStep, timeAgo, stageLabel, isUnfinishedTask, firstRelativeUrl, storyAdVideoCandidate, collectVideos };
