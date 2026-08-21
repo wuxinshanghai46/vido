@@ -67,6 +67,7 @@ assert.match(personDossierShowcase, /完整人物档案尚未合成/);
 assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
 const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
 const briefSettingsModal = read('public/story-ad/views/briefSettingsModal.js');
 const briefMaterials = read('public/story-ad/views/briefMaterials.js');
@@ -124,7 +125,7 @@ assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名�
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
 assert.match(briefView, /下一步：生成剧情与对白/, '第一步完成后的主操作必须先进入详细剧情与对白');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
-assert.match(briefView, /brief_source:\s*'user'/, '新建项目时必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
+assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
 assert.match(assetPlanStageStatus, /确认并生成全部缺失人物图片/, '主体批量入口必须明确点击确认后才会提交真实人物图片生成');
 assert.match(assetPlanStageStatus, /进入资产中心不会自动生成图片/, '资产中心必须明确区分文字方案与付费图片生成');

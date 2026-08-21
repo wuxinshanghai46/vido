@@ -355,7 +355,6 @@ body.story-dialog-open { overflow: hidden; }
 .brief-side-world-grid { display: grid; gap: 10px; }
 .brief-side-world-grid .field { display: grid; grid-template-rows: auto minmax(48px, auto) auto; gap: 8px; align-content: start; min-width: 0; }
 .brief-side-world-grid .select { height: 48px; min-height: 48px; padding-block: 8px; line-height: 1.5; }
-.brief-ai-recognition .card-head p { line-height: 1.6; }
 .brief-setting-tile { min-width: 0; padding: 13px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 11px; background: var(--surface); }
 .brief-setting-tile > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; color: var(--text); font-weight: 700; }
 .brief-setting-tile > span em { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; color: var(--info); background: color-mix(in srgb, var(--info) 10%, transparent); font-size: 9px; font-style: normal; font-weight: 700; }

@@ -165,6 +165,7 @@ assert.match(modalRule, /\.real-person-source-form input:focus/);
 assert.match(modalRule, /\.story-ad-modal-open\{overflow:hidden\}/);
 
 const briefView = read('public/story-ad/views/briefView.js');
+const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
 assert.match(briefView, /<select class="select" name="content_mode" required>/);
 assert.match(briefView, /<option value="commercial_subject"/);
 assert.match(briefView, /<option value="narrative_story"/);
@@ -174,9 +175,10 @@ assert.match(briefView, /!payload\.content_mode \|\| payload\.content_mode_sourc
 assert.match(briefView, /brief\.content_mode_source === 'user' && brief\.content_mode === 'narrative_story'/);
 assert.ok(briefView.indexOf('name="project_name"') < briefView.indexOf('name="content_mode"'), '内容类型必须位于项目名称下方');
 assert.ok(briefView.indexOf('name="content_mode"') < briefView.indexOf('name="brief"'), '必须先选择内容类型，再填写内容目标');
-assert.ok(briefView.indexOf('<h2>高级配置</h2>') < briefView.indexOf('class="brief-ai-recognition"'), '右侧高级配置必须包含 AI 识别信息');
+assert.ok(briefView.indexOf('id="brief-settings-modal-title">手动编辑全部设置</h2>') < briefView.indexOf('id="brief-optional-settings-title">参考材料与识别信息</b>'), '手动设置弹窗必须包含当前参考材料与识别信息区');
+assert.match(briefView, /renderAdvancedReferenceControls\(bundle, route\.isNew\)/, '当前参考材料与识别控件必须由正式高级设置模块渲染');
 assert.equal((briefView.match(/name="product_subject"/g) || []).length, 0, '自动识别广告主体后不得继续显示手工输入框');
-assert.match(briefView, /product_subject:\s*''/, '前端不得把旧主体值重新覆盖自动识别结果');
+assert.match(briefFormPayload, /product_subject:\s*''/, '正式表单载荷不得把旧主体值重新覆盖自动识别结果');
 assert.match(briefView, /promptDialog\(isStory \? 'AI 帮写剧情内容' : 'AI 帮写广告内容'/);
 assert.match(briefView, /multiline: true/);
 assert.match(briefView, /if \(idea === null\) return;/, '取消帮写弹窗必须在模型请求前退出');
