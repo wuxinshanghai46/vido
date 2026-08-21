@@ -1,4 +1,4 @@
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-dialogue-dedup-v133';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-first-compact-dialogue-v135';
 
 export async function confirmContentModeMigration(savedMode = '', nextMode = '') {
   if (!savedMode || savedMode === nextMode) return { cancelled: false, confirmed: false };

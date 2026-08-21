@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';

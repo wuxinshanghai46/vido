@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-dialogue-dedup-v133';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-dialogue-dedup-v133';
+import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v135';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-first-compact-dialogue-v135';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;

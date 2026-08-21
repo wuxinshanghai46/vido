@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];

@@ -1,5 +1,5 @@
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-dialogue-dedup-v133';
-import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260822-reference-dialogue-dedup-v133';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v135';
+import { bindMoreMedia, moreMediaButton } from './finalMediaPagination.js?v=20260822-reference-first-compact-dialogue-v135';
 
 function itemIndex(item = {}, index = 0) {
   const value = Number(item.shot_index ?? item.shotIndex ?? item.index);
