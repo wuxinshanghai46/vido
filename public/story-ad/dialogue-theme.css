@@ -48,7 +48,7 @@ body{letter-spacing:.004em}
 .status-tag.is-danger,.guide.is-danger{border-color:rgb(239 114 124 / 34%);background:rgb(239 114 124 / 9%);color:#f4a0a7}
 .tab.active{border-color:rgb(145 134 255 / 34%);background:rgb(121 109 242 / 14%);color:#c9c3ff;box-shadow:inset 0 -2px #9186ff}
 
-.view-host.brief-dialogue-view{height:var(--brief-view-height,calc(100dvh - 64px));min-height:0;padding-block:26px;overflow:hidden}.brief-dialogue{display:grid;grid-template-columns:minmax(560px,1fr) 370px;height:100%;min-height:0;max-height:none;margin-bottom:0;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgb(10 11 17 / 72%);box-shadow:0 24px 70px rgb(0 0 0 / 25%)}
+.view-host.brief-dialogue-view{height:var(--brief-view-height,calc(100dvh - 64px));min-height:0;padding-block:26px 0;overflow:hidden}.brief-dialogue{display:grid;grid-template-columns:minmax(560px,1fr) 370px;height:100%;min-height:0;max-height:none;margin-bottom:0;border:1px solid var(--line);border-radius:20px 20px 0 0;overflow:hidden;background:rgb(10 11 17 / 72%);box-shadow:0 24px 70px rgb(0 0 0 / 25%)}
 .brief-conversation-panel{min-width:0;min-height:0;display:grid;grid-template-rows:76px minmax(0,1fr) auto;overflow:hidden}
 .brief-conversation-head{display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--line);background:rgb(20 23 32 / 68%)}
 .brief-director-avatar,.brief-message-avatar{display:grid;place-items:center;background:linear-gradient(145deg,#7180f0,#6b5bdc);color:white;font-weight:900;box-shadow:0 10px 26px rgb(102 98 220 / 25%)}

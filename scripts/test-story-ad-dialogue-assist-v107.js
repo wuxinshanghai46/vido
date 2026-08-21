@@ -61,6 +61,8 @@ function main() {
   assert.match(dialogueSource, /dialogueProgressState/);
   assert.match(css, /resize:vertical/);
   assert.match(css, /view-host\.brief-dialogue-view/);
+  assert.match(css, /padding-block:26px 0/, '立项页底部不得保留无内容的装饰空白');
+  assert.match(css, /border-radius:20px 20px 0 0/, '铺满视口底部时不得保留悬浮卡片式底部圆角');
   assert.match(briefViewSource, /briefDialogueAssist\(\(\) => createdProjectId\)/);
   assert.match(dialogueRuntimeSource, /mode: 'brief_dialogue'/);
   assert.match(storyService, /briefDialogueAssist\.run\(\{ body, modelGateway, taskId \}\)/);
