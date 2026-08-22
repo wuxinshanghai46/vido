@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-production-board-v159';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-production-board-v160';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',
