@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v142';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

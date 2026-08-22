@@ -1,7 +1,7 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
-import { personAgeDisplay } from './assetCenterPersonState.js?v=20260822-reference-extended-analysis-v141';
-import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260822-reference-extended-analysis-v141';
-import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260822-reference-extended-analysis-v141';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v142';
+import { personAgeDisplay } from './assetCenterPersonState.js?v=20260822-reference-extended-analysis-v142';
+import { renderPersonLookEditors } from './assetCenterPersonLooks.js?v=20260822-reference-extended-analysis-v142';
+import { renderPersonEvolutionEditor } from './assetCenterPersonEvolution.js?v=20260822-reference-extended-analysis-v142';
 
 export function personEditForm(item = {}) {
   const profile = item.profile || {};

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v141';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v141';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-extended-analysis-v141';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v142';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v142';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v142';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-extended-analysis-v142';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
