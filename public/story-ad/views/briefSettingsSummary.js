@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-failure-recovery-v147';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-failure-recovery-v148';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();

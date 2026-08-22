@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-failure-recovery-v147';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v147';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v147';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-failure-recovery-v147';
+import { request } from '../api.js?v=20260822-reference-failure-recovery-v148';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v148';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-failure-recovery-v148';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-failure-recovery-v148';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
