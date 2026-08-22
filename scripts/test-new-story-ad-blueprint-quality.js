@@ -6,6 +6,7 @@ const {
   assessBlueprintQuality,
   assessDialogueNarrative,
   preferQualityCandidate,
+  mergePolishedBlueprint,
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
   similarity,
@@ -133,6 +134,28 @@ assert.match(normalizedBrandAppearance.beats[2].plot, /后期叠加的已授权�
 assert.doesNotMatch(normalizedBrandAppearance.beats[2].plot, /品牌标志/);
 assert.match(normalizedBrandAppearance.beats[2].spoken_line, /佛山海和/, '自有品牌名称必须保留在台词中');
 assert.equal(assessBlueprintQuality(normalizedBrandAppearance).pass, true);
+const speakerBindingOriginal = {
+  characters: [
+    { id: 'character_1', name: '林岚', role: '设计师' },
+    { id: 'character_2', name: '陈先生', role: '客户' },
+  ],
+  beats: [{
+    speech_mode: 'dialogue', speaker: '旁白', speaker_id: 'narrator',
+    spoken_line: '金属拉丝这个质感不错，就定这个系列吧。',
+  }],
+};
+const speakerBindingRepaired = mergePolishedBlueprint(speakerBindingOriginal, {
+  beats: [{ speech_mode: 'dialogue', speaker: '陈先生', speaker_id: 'character_2' }],
+});
+assert.deepEqual(
+  { speaker: speakerBindingRepaired.beats[0].speaker, speaker_id: speakerBindingRepaired.beats[0].speaker_id },
+  { speaker: '陈先生', speaker_id: 'character_2' },
+  '精修模型纠正的说话人必须通过人物合同校验后成对写回，不能继续保留 narrator 冲突',
+);
+const invalidSpeakerBinding = mergePolishedBlueprint(speakerBindingOriginal, {
+  beats: [{ speech_mode: 'dialogue', speaker: '陌生人', speaker_id: 'unknown_character' }],
+});
+assert.equal(invalidSpeakerBinding.beats[0].speaker, '旁白', '未在人物合同中的模型说话人不得写入');
 const normalizedGeneratedBrandMark = normalizeAuthorizedBrandPresentation(rightsRisk);
 assert.match(
   normalizedGeneratedBrandMark.beats[1].plot,

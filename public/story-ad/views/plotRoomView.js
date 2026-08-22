@@ -25,7 +25,7 @@ export async function mount(host, context) {
   const referenceDraft = bundle?.story?.reference_draft || null;
   const blueprint = savedBlueprint || referenceDraft;
   const failureCode = String(bundle?.generation?.progress?.error_code || bundle?.project?.error_code || '').toUpperCase();
-  const savedQualityDraft = !blueprint && failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED';
+  const savedQualityDraft = failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED';
   const isReferenceDraft = !savedBlueprint && !!referenceDraft;
   const draftNeedsGeneration = isReferenceDraft && (blueprint?.beats || []).some(beat => !String(beat.visual || beat.plot || '').trim() || !String(beat.spoken_line || beat.voiceover || '').trim());
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
@@ -37,7 +37,7 @@ export async function mount(host, context) {
       <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : `<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>${castMismatch ? `按 ${expectedCharacters} 人设定重新生成` : '重新生成剧情'}</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>`}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
+        ${blueprint ? `${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : `<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" ${savedQualityDraft ? 'data-recheck-story' : 'data-regenerate-story'}>${savedQualityDraft ? '重新检查已保存初稿' : (castMismatch ? `按 ${expectedCharacters} 人设定重新生成` : '重新生成剧情')}</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>`}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
       </div>
     </section>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
@@ -88,6 +88,7 @@ export async function mount(host, context) {
   };
   host.querySelector('[data-generate-story]')?.addEventListener('click', event => generate(event.currentTarget));
   host.querySelector('[data-empty-action="generate-story"]')?.addEventListener('click', event => generate(event.currentTarget));
+  host.querySelector('[data-recheck-story]')?.addEventListener('click', event => generate(event.currentTarget));
   host.querySelector('[data-regenerate-story]')?.addEventListener('click', async event => {
     if (!await confirmDialog('将重新生成故事标题、一句话剧情和全部情节点；当前剧情及已有分镜、线稿和下游媒体会按版本失效。', {
       title: '批量重生成全部剧情', confirmText: '确认批量生成',

@@ -414,6 +414,9 @@ function normalizedCandidateContract(value = {}, fallback = {}) {
 
 function mergePolishedBlueprint(original = {}, candidate = {}) {
   const merged = mergeVisibleStrings(original, candidate);
+  const characters = Array.isArray(original.characters) ? original.characters : [];
+  const characterByName = new Map(characters.map(character => [clean(character?.name), character]).filter(([name]) => name));
+  const characterById = new Map(characters.map(character => [clean(character?.id), character]).filter(([id]) => id));
   if (candidate.narrative_contract && typeof candidate.narrative_contract === 'object') {
     merged.narrative_contract = normalizedCandidateContract(candidate.narrative_contract, original.narrative_contract);
   }
@@ -423,11 +426,18 @@ function mergePolishedBlueprint(original = {}, candidate = {}) {
       const causalRole = clean(next.causal_role).toLowerCase().replace(/[\s-]+/g, '_');
       const dialogueFunction = clean(next.dialogue_function || next.dialogue_intent).toLowerCase().replace(/[\s-]+/g, '_');
       const speechMode = clean(next.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
+      const authoritativeSpeaker = characterByName.get(clean(next.speaker)) || characterById.get(clean(next.speaker_id));
+      const speakerBinding = speechMode === 'voiceover'
+        ? { speaker: '旁白', speaker_id: 'narrator' }
+        : (speechMode === 'dialogue' && authoritativeSpeaker
+          ? { speaker: clean(authoritativeSpeaker.name), speaker_id: clean(authoritativeSpeaker.id) }
+          : {});
       return {
         ...beat,
         ...(CAUSAL_ROLES.has(causalRole) ? { causal_role: causalRole } : {}),
         ...(DIALOGUE_FUNCTIONS.has(dialogueFunction) ? { dialogue_function: dialogueFunction } : {}),
         ...(SPEECH_MODES.has(speechMode) ? { speech_mode: speechMode } : {}),
+        ...speakerBinding,
         state_before: stringList(next.state_before || beat.state_before),
         state_after: stringList(next.state_after || beat.state_after),
         intended_changes: stringList(next.intended_changes || next.intended_change || beat.intended_changes),
@@ -464,6 +474,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '台词必须像真人会说的话，简短、自然、有上下文；避免“宇宙般、行业领先、为您赋能、最大化预算、更快更智能、一站式”等广告套话。',
       '台词必须承担故事推进，不能把人物目标、阻力、发现、可见证据、价值变化和最终决定只写在 plot、visual、action 或 why_next 中。',
       '允许在不改变镜头事实、数量和顺序的前提下，修正错误的 dialogue_function 与 speech_mode，使职责和实际台词一致。',
+      '当问题涉及说话人时，必须同时修正 speaker 与 speaker_id：dialogue 只能绑定当前 characters 中同一人物的精确 name/id；voiceover 只能使用旁白/narrator。',
       safeBlueprint.dialogue_contract?.speech_policy === 'authored_sparse'
         ? `用户采用稀疏口播：最多保留 ${safeBlueprint.dialogue_contract?.authored_line_count || 0} 个有声镜头。不得给 silent 或 ambient_only 镜头新增台词；剧情因果可由可见动作、状态与证据完成。`
         : '整条片子的台词必须形成“目标/阻力 → 发现/证据 → 决定/结果”的听觉叙事弧线。',
@@ -535,6 +546,7 @@ module.exports = {
   normalizeAuthorizedBrandPresentation,
   assessDialogueNarrative,
   preferQualityCandidate,
+  mergePolishedBlueprint,
   polishBlueprint,
   similarity,
 };

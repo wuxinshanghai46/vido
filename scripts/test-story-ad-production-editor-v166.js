@@ -26,6 +26,9 @@ async function main() {
   assert.match(source, /productionIssues\(host\)/, '确认前必须检查制作字段完整度');
   assert.match(source, /plot-sequence-actions[\s\S]*data-add-beat>＋ 新增镜头/, '表格右上角必须有新增镜头入口');
   assert.doesNotMatch(source, /广告专用规则围绕/, '不得继续显示固定教学提示');
+  assert.match(source, /const savedQualityDraft = failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED'/, '已有旧稿时也必须识别可复检的新初稿');
+  assert.match(source, /data-recheck-story[\s\S]*重新检查已保存初稿/, '质量失败后必须复检检查点，不能误导用户再次付费重生成');
+  assert.match(source, /\[data-recheck-story\][\s\S]*generate\(event\.currentTarget\)/, '复检按钮不得携带 force_regenerate 删除检查点');
   assert.doesNotMatch(editor, /beat-detail-editor/, '不得再渲染整行大表单');
 
   const browser = await puppeteer.launch({ headless: true, executablePath: chrome });
@@ -54,16 +57,19 @@ async function main() {
           { shot_id: 's2', title: '镜头二', duration: 5, scene: '会所', visual: '镜头转向墙面', spoken_line: '', speech_mode: 'silent', shot_size: 'close_up' },
         ],
       };
-      window.__qa = { navigations: [], saves: 0 };
+      window.__qa = { navigations: [], saves: 0, stageRuns: [] };
       await mount(document.querySelector('#qa-host'), {
-        bundle: { project: { id: 'qa-production-editor' }, brief: { content_mode: 'commercial_subject', brief_intake: { cast_intent: { confirmed: true, mode: 'dual', expected_people: 2 } } }, story: { blueprint }, generation: {} },
-        store: { async runStage() {}, async updateRequest() {}, async saveBlueprint() { window.__qa.saves += 1; } },
+        bundle: { project: { id: 'qa-production-editor' }, brief: { content_mode: 'commercial_subject', brief_intake: { cast_intent: { confirmed: true, mode: 'dual', expected_people: 2 } } }, story: { blueprint }, generation: { progress: { error_code: 'BLUEPRINT_POLISH_QUALITY_FAILED' } } },
+        store: { async runStage(stage, body) { window.__qa.stageRuns.push({ stage, body }); }, async updateRequest() {}, async saveBlueprint() { window.__qa.saves += 1; } },
         async refreshShell() {}, navigate(url) { window.__qa.navigations.push(url); },
       });
     });
 
     step = 'initial-assertions';
     assert.equal(await page.$$eval('[data-beat-index]', rows => rows.length), 2, '必须显示原有两镜');
+    await page.click('[data-recheck-story]');
+    await page.waitForFunction(() => window.__qa.stageRuns.length === 1);
+    assert.deepEqual(await page.evaluate(() => window.__qa.stageRuns[0]), { stage: 'blueprint', body: {} }, '复检已保存初稿不得携带 force_regenerate');
     step = 'popover-mutual';
     await page.click('[data-beat-index="0"] [data-open-beat-cell="scene"]');
     await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.matches(':popover-open'));
@@ -103,6 +109,8 @@ async function main() {
 
     step = 'dialogue-editor';
     await page.click('[data-beat-index="0"] [data-open-beat-cell="spoken_line"]');
+    await page.waitForFunction(() => document.querySelector('[data-beat-floating-editor]')?.dataset.group === 'spoken_line'
+      && document.querySelectorAll('[data-dialogue-speaker] option').length === 2);
     const dialogueUi = await page.$eval('[data-beat-floating-editor]', node => ({
       text: node.textContent,
       speakers: [...node.querySelectorAll('[data-dialogue-speaker] option')].map(option => option.textContent.trim()),
