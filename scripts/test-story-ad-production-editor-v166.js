@@ -108,7 +108,7 @@ async function main() {
       speakers: [...node.querySelectorAll('[data-dialogue-speaker] option')].map(option => option.textContent.trim()),
     }));
     assert.doesNotMatch(dialogueUi.text, /说话人 ID|对白时间/, '不得暴露内部 ID 或模糊的对白时间字段');
-    assert.deepEqual(dialogueUi.speakers, ['林岚', '陈先生'], '说话人必须只来自剧情人物');
+    assert.deepEqual(dialogueUi.speakers, ['林岚', '陈先生'], `说话人必须只来自剧情人物：${JSON.stringify(dialogueUi.speakers)}`);
     await page.click('[data-add-dialogue-line="voiceover"]');
     assert.equal(await page.$$eval('[data-dialogue-line]', lines => lines.length), 2, '同镜头必须允许新增台词或旁白');
     assert.equal(await page.$eval('[data-dialogue-line]:last-child [data-dialogue-speaker]', select => select.value), '旁白', '旁白必须自动绑定旁白者');
