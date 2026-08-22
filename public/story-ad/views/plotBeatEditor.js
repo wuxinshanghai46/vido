@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-provider-v165';
+import { escapeHtml } from '../components/ui.js?v=20260822-ui-v166';
 
 const fields='shot_id,title,scene,duration,visual,action,shot_size,lighting_mood,speaker,speaker_id,speech_mode,voiceover_timing,spoken_line,sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason,camera_movement,camera_movement_notes,transition,visual_proof,prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'.split(',');
 const beatStoreFields=b=>fields.map(n=>{const a={shot_id:b.shot_id||b.id,title:b.title||b.role,duration:b.duration||b.duration_sec,visual:b.visual||b.plot,shot_size:b.shot_size||b.shot_type,spoken_line:b.spoken_line||b.voiceover},raw=a[n]??b[n]??'',v=Array.isArray(raw)?raw.join('；'):raw;return `<input type="hidden" data-beat-field="${n}" value="${escapeHtml(v)}">`}).join('');

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-provider-v165';
-import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-v165';
-import { confirmDialog } from '../components/dialog.js?v=20260822-provider-v165';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260822-provider-v165';
+import { request } from '../api.js?v=20260822-ui-v166';
+import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-ui-v166';
+import { confirmDialog } from '../components/dialog.js?v=20260822-ui-v166';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260822-ui-v166';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
@@ -151,7 +151,7 @@ export async function mount(host, context) {
     pop.style.left = `${left}px`; pop.style.top = `${top}px`;
   };
   const openEditor = async (button, row, group) => {
-    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260822-provider-v165');
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260822-ui-v166');
     closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group); pop.dataset.group = group; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();
   };
