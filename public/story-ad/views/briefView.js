@@ -1,21 +1,21 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v149';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v149';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-blueprint-complete-v149';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-blueprint-complete-v149';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-blueprint-complete-v149';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-blueprint-complete-v149';
-import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-blueprint-complete-v149';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-blueprint-complete-v149';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-blueprint-complete-v149';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-blueprint-complete-v149';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-blueprint-complete-v149';
-import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-blueprint-complete-v149';
-import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260822-reference-blueprint-complete-v149';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-blueprint-complete-v149';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-blueprint-complete-v149';
-import { formPayload } from './briefFormPayload.js?v=20260822-reference-blueprint-complete-v149';
-import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260822-reference-blueprint-complete-v149';
+import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v150';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-blueprint-complete-v150';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-blueprint-complete-v150';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-blueprint-complete-v150';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-blueprint-complete-v150';
+import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-blueprint-complete-v150';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-blueprint-complete-v150';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-blueprint-complete-v150';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-blueprint-complete-v150';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-blueprint-complete-v150';
+import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-blueprint-complete-v150';
+import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260822-reference-blueprint-complete-v150';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-blueprint-complete-v150';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-blueprint-complete-v150';
+import { formPayload } from './briefFormPayload.js?v=20260822-reference-blueprint-complete-v150';
+import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260822-reference-blueprint-complete-v150';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -134,7 +134,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-blueprint-complete-v149');
+    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-blueprint-complete-v150');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

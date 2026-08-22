@@ -1,5 +1,5 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
-import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260822-reference-blueprint-complete-v149';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { renderCheckpointRecoveryBanner } from './billingRecoveryBanner.js?v=20260822-reference-blueprint-complete-v150';
 
 export function checkpointRecoverySummary(people = []) {
   const rows = people.filter(item => item.checkpoint_recovery_summary);

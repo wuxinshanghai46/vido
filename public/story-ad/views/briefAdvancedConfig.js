@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-reference-blueprint-complete-v149';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-reference-blueprint-complete-v150';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

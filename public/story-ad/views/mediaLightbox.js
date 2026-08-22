@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
 
 export function uniqueLightboxEntries(nodes = [], group = 'media') {
   return [...nodes].filter(node => (node.dataset?.mediaZoomGroup || 'media') === group)

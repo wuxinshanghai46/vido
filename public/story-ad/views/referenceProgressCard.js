@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

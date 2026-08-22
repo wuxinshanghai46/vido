@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-blueprint-complete-v149';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-reference-blueprint-complete-v149';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-reference-blueprint-complete-v149';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-reference-blueprint-complete-v149';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-reference-blueprint-complete-v149';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-blueprint-complete-v150';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-reference-blueprint-complete-v150';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-reference-blueprint-complete-v150';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-reference-blueprint-complete-v150';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-reference-blueprint-complete-v150';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];

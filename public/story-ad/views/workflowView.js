@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-blueprint-complete-v149';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-reference-blueprint-complete-v149';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-reference-blueprint-complete-v149';
+import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-reference-blueprint-complete-v150';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-reference-blueprint-complete-v150';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;
