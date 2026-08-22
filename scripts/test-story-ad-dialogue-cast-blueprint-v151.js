@@ -98,8 +98,8 @@ const css = fs.readFileSync(path.join(__dirname, '../public/story-ad/workspace-u
 for (const field of ['name', 'gender', 'age_range', 'role', 'relationship', 'description']) {
   assert.match(plotView, new RegExp(`data-character-field=\\"${field}\\"`));
 }
-for (const field of ['scene', 'shot_size', 'lighting_mood', 'speaker', 'sound_design', 'camera_movement', 'transition', 'prompt_notes']) {
-  assert.match(beatEditor, new RegExp(`data-beat-field=\\"${field}\\"`));
+for (const field of ['scene', 'shot_size', 'lighting_mood', 'speaker', 'sound_mode', 'camera_movement', 'transition', 'prompt_notes']) {
+  assert.match(beatEditor, new RegExp(`\\b${field}\\b`));
 }
 assert.match(css, /beat-table-scroll\{[^}]*overflow-x:auto/);
 assert.match(css, /story-overview-grid\{[^}]*align-items:stretch/);

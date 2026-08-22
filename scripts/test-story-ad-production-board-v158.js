@@ -50,6 +50,7 @@ ok(soundIssues.some(item => item.includes('声音设计')), 'quality blocks empt
 
 const ui = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/plotBeatEditor.js'), 'utf8');
 ['ambient_sound', 'sfx', 'music_cue', 'voiceover_timing', 'camera_movement_notes', 'keyframe_prompt_override', 'video_prompt_override'].forEach(marker => ok(ui.includes(marker), `UI contains ${marker}`));
-ok(ui.includes('data-toggle-beat-editor'), 'cells open editor');
+ok(ui.includes('data-open-beat-cell'), 'cells open the compact field editor');
+ok(ui.includes('data-beat-floating-editor') === false, 'row renderer must not embed one large editor per row');
 
 console.log(JSON.stringify({ ok: true, checks, model_calls: 0, media_calls: 0 }));

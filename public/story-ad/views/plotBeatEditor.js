@@ -1,46 +1,62 @@
 import { escapeHtml } from '../components/ui.js?v=20260822-provider-v165';
 
-// Static contract markers are intentionally explicit for release-boundary audits.
-const EDITABLE_FIELD_MARKERS = 'data-beat-field="scene" data-beat-field="shot_size" data-beat-field="lighting_mood" data-beat-field="speaker" data-beat-field="sound_design" data-beat-field="camera_movement" data-beat-field="transition" data-beat-field="prompt_notes"';
+const fields='shot_id,title,scene,duration,visual,action,shot_size,lighting_mood,speaker,speaker_id,speech_mode,voiceover_timing,spoken_line,sound_mode,ambient_sound,sfx,music_cue,audio_bridge,explicit_silence_reason,camera_movement,camera_movement_notes,transition,visual_proof,prompt_notes,keyframe_prompt_override,video_prompt_override,negative_prompt_override'.split(',');
+const beatStoreFields=b=>fields.map(n=>{const a={shot_id:b.shot_id||b.id,title:b.title||b.role,duration:b.duration||b.duration_sec,visual:b.visual||b.plot,shot_size:b.shot_size||b.shot_type,spoken_line:b.spoken_line||b.voiceover},raw=a[n]??b[n]??'',v=Array.isArray(raw)?raw.join('；'):raw;return `<input type="hidden" data-beat-field="${n}" value="${escapeHtml(v)}">`}).join('');
 
-const field = (name, value, label, options = {}) => `<label class="field${options.full ? ' full' : ''}"><span>${label}</span>${options.type === 'textarea' ? `<textarea class="textarea" rows="${options.rows || 3}" data-beat-field="${name}">${escapeHtml(value || '')}</textarea>` : `<input class="input"${options.inputType ? ` type="${options.inputType}"` : ''} data-beat-field="${name}" value="${escapeHtml(value ?? '')}">`}</label>`;
+const shotSizeLabel = value => ({ wide: '大远景', long: '远景', full: '全景', medium: '中景', medium_close: '中近景', close_up: '近景', extreme_close_up: '特写', insert: '插入镜头', product_detail: '产品特写' }[String(value || '').toLowerCase()] || value || '');
+
+function cell(group, content, className = '') {
+  return `<div class="beat-cell-wrap${className ? ` ${className}` : ''}"><button type="button" class="beat-cell${className ? ` ${className}` : ''}" data-open-beat-cell="${group}">${content}</button></div>`;
+}
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '', spoken = beat.spoken_line || beat.voiceover || '';
   const sound = beat.sound_design || [beat.ambient_sound, ...(beat.sfx || []), beat.music_cue].filter(Boolean).join('；');
-  return `<article class="beat-row" data-beat-index="${index}"><input type="hidden" data-beat-field="shot_id" value="${escapeHtml(beat.shot_id || beat.id || '')}">
+  const empty = '<span class="beat-empty-value">＋</span>';
+  return `<article class="beat-row" data-beat-index="${index}"><div class="beat-field-store" hidden>${beatStoreFields(beat)}</div>
     <div class="beat-overview"><code>B${String(index + 1).padStart(2, '0')}</code>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="duration">${Number((Number(beat.duration || beat.duration_sec || 3) || 3).toFixed(2))}s</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="scene">${escapeHtml(beat.scene || '待确认场景')}</button>
-      <button type="button" class="beat-cell beat-visual-cell" data-toggle-beat-editor><strong data-beat-summary="title">${escapeHtml(beat.title || beat.role || `镜头 ${index + 1}`)}</strong><span data-beat-summary="visual">${escapeHtml(visual || '等待补充画面与动作')}</span></button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="shot_size">${escapeHtml(beat.shot_size || beat.shot_type || '待确认')}</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="lighting_mood">${escapeHtml(beat.lighting_mood || '待确认')}</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="spoken_line">${escapeHtml([beat.speaker, spoken].filter(Boolean).join('：') || '无对白')}</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="sound_design">${escapeHtml(sound || '待补充')}</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="camera_movement">${escapeHtml(beat.camera_movement || '待确认')}</button>
-      <button type="button" class="beat-cell" data-toggle-beat-editor data-beat-summary="prompt_notes">${escapeHtml(beat.prompt_notes || '待生成')}</button>
-      <span class="beat-actions"><button class="btn icon compact" type="button" data-ai-beat title="AI 帮写并优化当前镜头">AI</button><button class="btn icon compact" type="button" data-row-menu aria-label="镜头操作">•••</button><span class="beat-row-menu" hidden><button type="button" data-duplicate-beat>复制镜头</button><button type="button" data-remove-beat>删除镜头</button></span></span>
-    </div><div class="beat-detail-editor" data-beat-editor hidden><div class="form-grid">
-      ${field('title', beat.title || beat.role || '', '镜头名称', { full: true })}${field('scene', beat.scene || '', '场景')}${field('duration', beat.duration || beat.duration_sec || 3, '时长（秒）', { inputType: 'number' })}
-      ${field('visual', visual, '画面描述', { type: 'textarea', rows: 4, full: true })}${field('action', beat.action || '', '人物 / 物体动作', { type: 'textarea', full: true })}
-      ${field('shot_size', beat.shot_size || beat.shot_type || '', '景别')}${field('lighting_mood', beat.lighting_mood || '', '光影氛围')}
-      ${field('speaker', beat.speaker || '', '说话人')}${field('speaker_id', beat.speaker_id || '', '说话人 ID')}${field('speech_mode', beat.speech_mode || (spoken ? 'voiceover' : 'silent'), '发声方式')}${field('voiceover_timing', beat.voiceover_timing || '', '对白时间')}
-      ${field('spoken_line', spoken, '对白 / 旁白', { type: 'textarea', full: true })}${field('sound_mode', beat.sound_mode || 'designed', '声音模式')}${field('ambient_sound', beat.ambient_sound || '', '环境声')}
-      ${field('sfx', Array.isArray(beat.sfx) ? beat.sfx.join('；') : '', '动作音效（分号分隔）')}${field('music_cue', beat.music_cue || '', '音乐')}${field('audio_bridge', beat.audio_bridge || '', '跨镜声音衔接')}${field('explicit_silence_reason', beat.explicit_silence_reason || '', '静默原因')}
-      ${field('camera_movement', beat.camera_movement || '', '运镜')}${field('camera_movement_notes', beat.camera_movement_notes || '', '运镜执行细节')}${field('transition', beat.transition || '', '转场')}${field('visual_proof', beat.visual_proof || beat.purpose || '', '可见证据')}
-      ${field('prompt_notes', beat.prompt_notes || '', '制作提示', { type: 'textarea', full: true })}${field('keyframe_prompt_override', beat.keyframe_prompt_override || '', '关键帧最终提示词（可选）', { type: 'textarea', full: true })}${field('video_prompt_override', beat.video_prompt_override || '', '视频最终提示词（可选）', { type: 'textarea', full: true })}${field('negative_prompt_override', beat.negative_prompt_override || '', '负面提示词（可选）', { type: 'textarea', full: true })}
-    </div><div class="beat-detail-actions"><button class="btn primary small" type="button" data-close-beat-editor>保存到当前编辑稿</button></div></div></article>`;
+      ${cell('duration', `<span data-beat-summary="duration">${Number((Number(beat.duration || beat.duration_sec || 3) || 3).toFixed(2))}s</span>`)}
+      ${cell('scene', `<span data-beat-summary="scene">${escapeHtml(beat.scene || '') || empty}</span>`)}
+      ${cell('visual', `<strong data-beat-summary="title">${escapeHtml(beat.title || beat.role || `镜头 ${index + 1}`)}</strong><span data-beat-summary="visual">${escapeHtml(visual || '') || empty}</span>`, 'beat-visual-cell')}
+      ${cell('shot_size', `<span data-beat-summary="shot_size">${escapeHtml(shotSizeLabel(beat.shot_size || beat.shot_type)) || empty}</span>`)}
+      ${cell('lighting_mood', `<span data-beat-summary="lighting_mood">${escapeHtml(beat.lighting_mood || '') || empty}</span>`)}
+      ${cell('spoken_line', `<span data-beat-summary="spoken_line">${escapeHtml([beat.speaker, spoken].filter(Boolean).join('：') || '无对白')}</span>`)}
+      ${cell('sound_design', `<span data-beat-summary="sound_design">${escapeHtml(sound || '') || empty}</span>`)}
+      ${cell('camera_movement', `<span data-beat-summary="camera_movement">${escapeHtml(beat.camera_movement || '') || empty}</span>`)}
+      ${cell('prompt_notes', `<span data-beat-summary="prompt_notes">${escapeHtml(beat.prompt_notes || beat.keyframe_prompt_override || '') || empty}</span>`)}
+      <span class="beat-actions"><button class="btn icon compact" type="button" data-ai-beat title="AI 帮写并优化当前镜头">AI</button><button class="btn icon compact" type="button" data-row-menu aria-label="操作">•••</button><span class="beat-row-menu" popover="auto"><button type="button" data-duplicate-beat>复制镜头</button><button type="button" data-remove-beat>删除镜头</button></span></span>
+    </div></article>`;
+}
+
+export function syncFloatingEditor(editor, row) {
+  editor.querySelectorAll('[data-floating-field]').forEach(input => {
+    const target = row.querySelector(`[data-beat-field="${input.dataset.floatingField}"]`);
+    if (target) target.value = input.value;
+  });
+  syncBeatPresentation(row);
 }
 
 export function syncBeatPresentation(row) {
-  const value = name => row.querySelector(`[data-beat-field="${name}"]`)?.value?.trim() || '';
-  const set = (name, text) => { const target = row.querySelector(`[data-beat-summary="${name}"]`); if (target) target.textContent = text; };
-  set('title', value('title') || '未命名镜头'); set('duration', `${Math.max(1, Number(value('duration')) || 3)}s`); set('scene', value('scene') || '待确认场景'); set('visual', value('visual') || '等待补充画面与动作'); set('shot_size', value('shot_size') || '待确认'); set('lighting_mood', value('lighting_mood') || '待确认'); set('spoken_line', [value('speaker'), value('spoken_line')].filter(Boolean).join('：') || '无对白'); set('sound_design', [value('ambient_sound'), value('sfx'), value('music_cue')].filter(Boolean).join('；') || (value('sound_mode') === 'silent' ? `静默：${value('explicit_silence_reason')}` : '待补充')); set('camera_movement', value('camera_movement') || '待确认'); set('prompt_notes', value('prompt_notes') || value('keyframe_prompt_override') || '待生成');
+  const v = n => row.querySelector(`[data-beat-field="${n}"]`)?.value?.trim() || '';
+  const s = (n, text) => { const t = row.querySelector(`[data-beat-summary="${n}"]`); if (t) { t.textContent = text || '＋'; t.classList.toggle('beat-empty-value', !text); } };
+  s('title', v('title') || '未命名镜头'); s('duration', `${Math.max(1, Number(v('duration')) || 3)}s`); s('scene', v('scene')); s('visual', v('visual')); s('shot_size', shotSizeLabel(v('shot_size'))); s('lighting_mood', v('lighting_mood')); s('spoken_line', [v('speaker'), v('spoken_line')].filter(Boolean).join('：') || (['silent', 'ambient_only'].includes(v('speech_mode')) ? '无对白' : '')); s('sound_design', [v('ambient_sound'), v('sfx'), v('music_cue')].filter(Boolean).join('；') || (v('sound_mode') === 'silent' ? `静默：${v('explicit_silence_reason')}` : '')); s('camera_movement', v('camera_movement')); s('prompt_notes', v('prompt_notes') || v('keyframe_prompt_override'));
 }
 
 export function collectBeat(row) {
-  const value = name => row.querySelector(`[data-beat-field="${name}"]`)?.value?.trim() || '', spoken = value('spoken_line'), speaker = value('speaker');
-  return { shot_id: value('shot_id'), title: value('title'), scene: value('scene'), visual: value('visual'), action: value('action'), duration: Math.max(1, Number(value('duration')) || 3), shot_size: value('shot_size'), speaker, speaker_id: value('speaker_id'), spoken_line: spoken, dialogue_lines: spoken ? [{ speaker_id: value('speaker_id'), speaker: speaker || '旁白', line: spoken }] : [], speech_mode: value('speech_mode'), voiceover_timing: value('voiceover_timing'), lighting_mood: value('lighting_mood'), sound_mode: value('sound_mode'), ambient_sound: value('ambient_sound'), sfx: value('sfx').split(/[；;\n]/).map(x => x.trim()).filter(Boolean), music_cue: value('music_cue'), audio_bridge: value('audio_bridge'), explicit_silence_reason: value('explicit_silence_reason'), camera_movement: value('camera_movement'), camera_movement_notes: value('camera_movement_notes'), transition: value('transition'), prompt_notes: value('prompt_notes'), keyframe_prompt_override: value('keyframe_prompt_override'), video_prompt_override: value('video_prompt_override'), negative_prompt_override: value('negative_prompt_override'), visual_proof: value('visual_proof') };
+  const v = n => row.querySelector(`[data-beat-field="${n}"]`)?.value?.trim() || '', spoken = v('spoken_line'), speaker = v('speaker');
+  return { shot_id: v('shot_id'), title: v('title'), scene: v('scene'), visual: v('visual'), action: v('action'), duration: Math.max(1, Number(v('duration')) || 3), shot_size: v('shot_size'), speaker, speaker_id: v('speaker_id'), spoken_line: spoken, dialogue_lines: spoken ? [{ speaker_id: v('speaker_id'), speaker: speaker || '旁白', line: spoken }] : [], speech_mode: v('speech_mode'), voiceover_timing: v('voiceover_timing'), lighting_mood: v('lighting_mood'), sound_mode: v('sound_mode'), ambient_sound: v('ambient_sound'), sfx: v('sfx').split(/[；;\n]/).map(x => x.trim()).filter(Boolean), music_cue: v('music_cue'), audio_bridge: v('audio_bridge'), explicit_silence_reason: v('explicit_silence_reason'), camera_movement: v('camera_movement'), camera_movement_notes: v('camera_movement_notes'), transition: v('transition'), prompt_notes: v('prompt_notes'), keyframe_prompt_override: v('keyframe_prompt_override'), video_prompt_override: v('video_prompt_override'), negative_prompt_override: v('negative_prompt_override'), visual_proof: v('visual_proof') };
+}
+
+export function productionIssues(host) {
+  const issues = [];
+  [...host.querySelectorAll('[data-beat-index]')].forEach((row, index) => {
+    const beat = collectBeat(row), missing = [];
+    if (!beat.scene) missing.push('scene'); if (!beat.visual) missing.push('visual'); if (!beat.shot_size) missing.push('shot_size'); if (!beat.lighting_mood) missing.push('lighting_mood');
+    if (!(beat.sound_mode === 'silent' ? beat.explicit_silence_reason : (beat.ambient_sound || beat.sfx.length || beat.music_cue || beat.audio_bridge))) missing.push('sound_design');
+    if (!beat.camera_movement) missing.push('camera_movement'); if (!(beat.prompt_notes || beat.keyframe_prompt_override)) missing.push('prompt_notes');
+    missing.forEach(group => issues.push({ row, group, index }));
+  });
+  return issues;
 }
 
 export function applyBeat(row, beat = {}) { Object.entries(beat).forEach(([name, raw]) => { const target = row.querySelector(`[data-beat-field="${name}"]`); if (target && raw !== undefined) target.value = Array.isArray(raw) ? raw.join('；') : raw; }); syncBeatPresentation(row); }

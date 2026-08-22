@@ -1,7 +1,7 @@
 import { request } from '../api.js?v=20260822-provider-v165';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-v165';
 import { confirmDialog } from '../components/dialog.js?v=20260822-provider-v165';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-provider-v165';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260822-provider-v165';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
@@ -42,7 +42,7 @@ export async function mount(host, context) {
       <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 添加情节点</button>${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : '<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>'}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
+        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 新增镜头</button>${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : '<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>'}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
       </div>
     </section>
     ${domainContractBanner(bundle.brief || {})}
@@ -60,9 +60,9 @@ export async function mount(host, context) {
       <section class="card plot-sequence-card">
         <div class="card-head"><div><h2>剧情、动作与对白</h2><p>完整制作表平铺显示；每一列都可以展开编辑，后续人物、场景和分镜沿用同一份数据。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
         <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
-        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div></div>
+        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div><div class="beat-table-footer"><button class="btn small" type="button" data-add-beat>＋ 新增镜头</button><span data-production-completeness></span></div></div>
       </section>
-    </div>` : `<section class="card">${emptyState({
+    </div><div class="beat-floating-editor" data-beat-floating-editor role="dialog" popover="auto"></div>` : `<section class="card">${emptyState({
       title: savedQualityDraft ? '脚本初稿已保存，等待重新检查' : '还没有剧情蓝图',
       body: savedQualityDraft
         ? '上次初稿没有进入后续制作。系统会复用已经保存的初稿，重新按统一的时长与口播标准检查。'
@@ -130,17 +130,56 @@ export async function mount(host, context) {
     }
   });
 
-  host.querySelector('[data-add-beat]')?.addEventListener('click', () => {
+  const pop = host.querySelector('[data-beat-floating-editor]');
+  let active = null;
+  let cellEditorModule = null;
+  const closeAll = () => { host.querySelectorAll(':popover-open').forEach(node => node.hidePopover()); active = null; };
+  const refreshState = () => {
+    const target = host.querySelector('[data-production-completeness]');
+    if (!target) return;
+    const issues = productionIssues(host);
+    target.textContent = issues.length ? `${new Set(issues.map(item => item.index)).size} 个镜头仍需补充` : '全部制作信息已完整';
+    target.className = issues.length ? 'is-warning' : 'is-complete';
+  };
+  const place = button => {
+    const rect = button.getBoundingClientRect();
+    const width = Math.min(pop.offsetWidth || 520, window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    let top = rect.bottom + 8;
+    const height = pop.offsetHeight || 280;
+    if (top + height > window.innerHeight - 12) top = Math.max(12, rect.top - height - 8);
+    pop.style.left = `${left}px`; pop.style.top = `${top}px`;
+  };
+  const openEditor = async (button, row, group) => {
+    cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260822-provider-v165');
+    closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group); pop.dataset.group = group; pop.showPopover(); place(button);
+    pop.querySelector('[data-floating-field]')?.focus();
+  };
+  const reindex = () => [...host.querySelectorAll('[data-beat-index]')].forEach((item, index) => {
+    item.dataset.beatIndex = index;
+    item.querySelector('code').textContent = `B${String(index + 1).padStart(2, '0')}`;
+  });
+  const appendBeat = () => {
     const list = host.querySelector('[data-beat-list]');
     const wrapper = document.createElement('div');
     wrapper.innerHTML = beatEditor({}, list.children.length);
     list.appendChild(wrapper.firstElementChild);
+    reindex(); refreshState();
+    list.lastElementChild?.querySelector('[data-open-beat-cell="visual"]')?.click();
+  };
+  host.querySelectorAll('[data-add-beat]').forEach(button => button.addEventListener('click', appendBeat));
+  const syncPop = () => { if (active) { syncFloatingEditor(pop, active); refreshState(); } };
+  pop?.addEventListener('input', syncPop); pop?.addEventListener('change', syncPop);
+  pop?.addEventListener('click', event => {
+    if (event.target.closest('[data-close-beat-floating]')) closeAll();
+    if (event.target.closest('[data-save-beat-floating]')) { syncPop(); closeAll(); }
   });
   host.querySelector('[data-beat-list]')?.addEventListener('click', async event => {
     const row = event.target.closest('[data-beat-index]');
     if (!row) return;
     const assistButton = event.target.closest('[data-ai-beat]');
     if (assistButton) {
+      closeAll();
       const rows = [...host.querySelectorAll('[data-beat-index]')];
       const index = rows.indexOf(row);
       try {
@@ -161,7 +200,8 @@ export async function mount(host, context) {
           timeoutMs: 180000,
         });
         applyBeat(row, data.story_beat || {});
-        toast('AI 建议已填入当前情节点；确认内容后再保存剧情。', 'success');
+        refreshState();
+        toast('AI 建议已填入当前镜头；确认内容后再保存剧情。', 'success');
       } catch (error) {
         toast(error.message, 'danger');
       } finally {
@@ -169,21 +209,16 @@ export async function mount(host, context) {
       }
       return;
     }
-    const toggle = event.target.closest('[data-toggle-beat-editor]');
-    if (toggle) {
-      const editor = row.querySelector('[data-beat-editor]');
-      editor.hidden = !editor.hidden;
-      return;
-    }
-    if (event.target.closest('[data-close-beat-editor]')) {
-      syncBeatPresentation(row);
-      row.querySelector('[data-beat-editor]').hidden = true;
-      return;
-    }
+    const cellButton = event.target.closest('[data-open-beat-cell]');
+    if (cellButton) { await openEditor(cellButton, row, cellButton.dataset.openBeatCell); return; }
     const menuButton = event.target.closest('[data-row-menu]');
-    if (menuButton) { const menu = row.querySelector('.beat-row-menu'); menu.hidden = !menu.hidden; return; }
+    if (menuButton) {
+      const menu = row.querySelector('.beat-row-menu'), open = menu.matches(':popover-open'); closeAll();
+      if (!open) { const rect = menuButton.getBoundingClientRect(); menu.style.left = `${Math.max(12, rect.left - 132)}px`; menu.style.top = `${Math.max(12, rect.top)}px`; menu.showPopover(); }
+      return;
+    }
     if (event.target.closest('[data-duplicate-beat]')) {
-      const copy = collectBeat(row); copy.shot_id = ''; const wrapper = document.createElement('div'); wrapper.innerHTML = beatEditor(copy, host.querySelectorAll('[data-beat-index]').length); row.after(wrapper.firstElementChild); return;
+      closeAll(); const copy = collectBeat(row); copy.shot_id = ''; const wrapper = document.createElement('div'); wrapper.innerHTML = beatEditor(copy, host.querySelectorAll('[data-beat-index]').length); row.after(wrapper.firstElementChild); reindex(); refreshState(); return;
     }
     if (!event.target.closest('[data-remove-beat]')) return;
     if (!await confirmDialog('删除后，该情节点只会从当前编辑器移除；点击“保存剧情”后才会写入项目。', {
@@ -191,16 +226,9 @@ export async function mount(host, context) {
       confirmText: '确认删除',
       tone: 'danger',
     })) return;
-    row.remove();
-    [...host.querySelectorAll('[data-beat-index]')].forEach((item, index) => {
-      item.dataset.beatIndex = index;
-      item.querySelector('code').textContent = `B${String(index + 1).padStart(2, '0')}`;
-    });
+    closeAll(); row.remove(); reindex(); refreshState();
   });
-  host.querySelector('[data-beat-list]')?.addEventListener('input', event => {
-    const row = event.target.closest('[data-beat-index]');
-    if (row) syncBeatPresentation(row);
-  });
+  refreshState();
   host.querySelector('[data-save-story]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
@@ -215,6 +243,14 @@ export async function mount(host, context) {
     }
   });
   host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => {
+    const issues = productionIssues(host);
+    if (issues.length) {
+      const first = issues[0];
+      const button = first.row.querySelector(`[data-open-beat-cell="${first.group}"]`);
+      if (button) { button.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); openEditor(button, first.row, first.group); }
+      toast(`还有 ${new Set(issues.map(item => item.index)).size} 个镜头缺少制作信息；请先补齐后再确认。`, 'warning');
+      return;
+    }
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=assets`);
   });
 }
