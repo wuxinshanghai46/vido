@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v136';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-first-compact-dialogue-v136';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-knowledge-director-learning-v137';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

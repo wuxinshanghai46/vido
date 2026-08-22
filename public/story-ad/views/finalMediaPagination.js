@@ -1,4 +1,4 @@
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
 
 export function moreMediaButton(catalog = {}, kind = 'keyframes', label = '继续加载') {
   return catalog?.has_more

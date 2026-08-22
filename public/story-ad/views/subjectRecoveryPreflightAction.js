@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v136';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';

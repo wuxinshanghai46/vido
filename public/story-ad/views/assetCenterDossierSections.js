@@ -1,4 +1,4 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
 
 export function mediaSection(title, rows = [], className = '') {
   const items = Array.isArray(rows) ? rows.filter(item => item?.image_url) : [];

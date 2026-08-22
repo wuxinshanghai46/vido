@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
+import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];

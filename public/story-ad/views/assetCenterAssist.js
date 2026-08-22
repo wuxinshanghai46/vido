@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-reference-first-compact-dialogue-v136';
-import { promptDialog } from '../components/dialog.js?v=20260822-reference-first-compact-dialogue-v136';
-import { setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
-import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-reference-first-compact-dialogue-v136';
+import { request } from '../api.js?v=20260822-knowledge-director-learning-v137';
+import { promptDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v137';
+import { setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
+import { applyGeneratedPersonLooks, collectPersonLookValues } from './assetCenterPersonLooks.js?v=20260822-knowledge-director-learning-v137';
 
 export function createAssetAssistHandlers(bundle) {
   const assistPerson = async (item, form, button = null) => {

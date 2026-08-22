@@ -1,4 +1,4 @@
-import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260822-reference-first-compact-dialogue-v136';
+import { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION } from './release.js?v=20260822-knowledge-director-learning-v137';
 
 export { CLIENT_BUILD_ID, CLIENT_CONTRACT_VERSION };
 const TOKEN_KEYS = ['vido_token', 'token'];

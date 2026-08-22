@@ -1,9 +1,9 @@
-import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-reference-first-compact-dialogue-v136';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-first-compact-dialogue-v136';
-import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-reference-first-compact-dialogue-v136';
-import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-reference-first-compact-dialogue-v136';
-import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-reference-first-compact-dialogue-v136';
-import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-reference-first-compact-dialogue-v136';
+import { escapeHtml, mediaPreview } from '../components/ui.js?v=20260822-knowledge-director-learning-v137';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-knowledge-director-learning-v137';
+import { personDossierShowcase } from './personDossierShowcase.js?v=20260822-knowledge-director-learning-v137';
+import { bindSceneDossierCard, renderSceneDossierCard } from './sceneDossierCard.js?v=20260822-knowledge-director-learning-v137';
+import { bindPersonLookForm } from './assetCenterPersonLooks.js?v=20260822-knowledge-director-learning-v137';
+import { bindPersonEvolutionForm } from './assetCenterPersonEvolution.js?v=20260822-knowledge-director-learning-v137';
 
 export function ownedPropDetails(item = {}) {
   const rows = Array.isArray(item.owned_props) ? item.owned_props : [];
