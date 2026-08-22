@@ -71,6 +71,7 @@ const referenceDialogueState = read('public/story-ad/views/briefReferenceDialogu
 const referenceActionStateSource = read('public/story-ad/views/briefReferenceActionState.js');
 const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
 const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
+const briefReferenceRecovery = read('public/story-ad/views/briefReferenceRecovery.js');
 const briefSettingsModal = read('public/story-ad/views/briefSettingsModal.js');
 const briefMaterials = read('public/story-ad/views/briefMaterials.js');
 const briefAdvancedConfig = read('public/story-ad/views/briefAdvancedConfig.js');
@@ -347,17 +348,19 @@ const extendedConfirmationCard = briefModule.referenceProgress({
 assert.match(extendedConfirmationCard, /等待确认分批分析/);
 assert.match(extendedConfirmationCard, /确认分批分析（11 批）/);
 assert.match(extendedConfirmationCard, /尚未启动语音、视觉或语义模型/);
-assert.match(briefView, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
-assert.match(briefView, /extended_analysis_confirmed:\s*true[\s\S]*preflight_fingerprint:/,
+assert.match(briefView, /bindBriefReferenceRecovery\(host, \{ store, context \}\)/,
+  '目标页必须绑定独立参考恢复控制器，避免主视图再次超过结构上限');
+assert.match(briefReferenceRecovery, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
+assert.match(briefReferenceRecovery, /extended_analysis_confirmed:\s*true[\s\S]*preflight_fingerprint:/,
   '扩展分析确认必须连同服务端预检指纹提交，不能只信任客户端片段数量');
-assert.match(briefView, /store\.retryReferenceAnalysis\(\{\s*acknowledge_billing_unknown:\s*billingUnknown\s*\}\)/,
+assert.match(briefReferenceRecovery, /store\.retryReferenceAnalysis\(\{\s*acknowledge_billing_unknown:\s*billingUnknown\s*\}\)/,
   '失败卡必须复用同一分析 ID，并仅在计费未知时携带用户确认，不能更换视频或静默重复调用');
-assert.match(briefView, /无需更换或重新上传|不需要更换或重新上传/, '质量无效完成态必须明确告知用户保留当前视频');
-assert.doesNotMatch(briefView, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
-assert.match(briefView, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
-assert.match(briefView, /removeEventListener\('click', handleReferenceRetry\)/, '离开页面必须注销重试事件，避免重复提交');
-assert.match(briefView, /referenceRetryPending \|\| button\.disabled/, '确认框打开与请求提交期间必须阻止重复点击');
-assert.match(briefView, /referenceRetryPending = true;[\s\S]*setButtonBusy\(button, true, '正在确认…'\)/, '防重入锁必须在打开确认框前立即生效');
+assert.match(briefReferenceRecovery, /无需更换或重新上传|不需要更换或重新上传/, '质量无效完成态必须明确告知用户保留当前视频');
+assert.doesNotMatch(briefReferenceRecovery, /store\.getState\(\)/, '重试按钮不得调用 Store 未公开的 getState 接口');
+assert.match(briefReferenceRecovery, /const currentReference = store\.state\.bundle\?\.reference \|\| \{\};[\s\S]*currentReference\.visual_evidence_reusable/, '重试按钮必须从 Store 公开 state 读取当前任务证据状态');
+assert.match(briefReferenceRecovery, /removeEventListener\('click', handleReferenceRetry\)/, '离开页面必须注销重试事件，避免重复提交');
+assert.match(briefReferenceRecovery, /referenceRetryPending \|\| button\.disabled/, '确认框打开与请求提交期间必须阻止重复点击');
+assert.match(briefReferenceRecovery, /referenceRetryPending = true;[\s\S]*setButtonBusy\(button, true, '正在确认…'\)/, '防重入锁必须在打开确认框前立即生效');
 
 const projectStore = read('public/story-ad/store/projectStore.js');
 assert.match(projectStore, /let requestMutationChain = Promise\.resolve\(\);/, '内容保存必须通过单一串行队列避免同一客户端并发版本冲突');
