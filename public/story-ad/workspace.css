@@ -212,6 +212,8 @@
 .reference-progress-card.is-failed .reference-progress-head strong, .reference-progress-card.is-failed .reference-progress-phase { color: var(--danger); }
 .reference-progress-card.is-failed .reference-progress-pulse, .reference-progress-card.is-failed .reference-progress-track i { background: var(--danger); }
 .reference-progress-card.is-cancelled { opacity: .82; }
+.brief-reference-progress-slot .reference-progress-card.is-recovery { width: min(760px, calc(100% - 48px)); margin: 8px 0 10px 48px; padding: 11px 13px; gap: 7px; box-shadow: none; }
+.reference-progress-card.is-recovery .reference-progress-head b{font-size:13px}.reference-progress-card.is-recovery .reference-progress-phase{font-size:12px}.reference-progress-card.is-recovery .reference-contract-breakdown{display:flex;flex-wrap:wrap;gap:6px}.reference-progress-card.is-recovery .reference-contract-state{min-width:0;padding:6px 8px}.reference-progress-card.is-recovery .reference-progress-foot{align-items:flex-end}.reference-progress-card.is-recovery .reference-progress-foot p{max-width:520px;font-size:11px;line-height:1.45}.reference-progress-card.is-recovery .reference-progress-actions .btn{min-height:34px;padding:7px 11px;font-size:11px}
 @keyframes reference-progress-pulse { 50% { opacity: .45; transform: scale(.82); } }
 @keyframes reference-progress-flow { to { transform: translateX(110%); } }
 .hidden-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
@@ -513,6 +515,7 @@
   .asset-visual-next-actions { width: 100%; min-width: 0; }
 }
 @media (max-width: 620px) {
+  .brief-reference-progress-slot .reference-progress-card.is-recovery{width:100%;margin-left:0}.reference-progress-card.is-recovery .reference-progress-foot{align-items:stretch;flex-direction:column}.reference-progress-card.is-recovery .reference-progress-actions{justify-content:stretch}.reference-progress-card.is-recovery .reference-progress-actions .btn{flex:1 1 auto}
   .brief-next-step-copy { flex-direction: column; }
   .brief-settings-meta em { max-width: 100%; }
   .brief-settings-modal { width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 14px; }

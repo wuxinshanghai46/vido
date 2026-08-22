@@ -116,8 +116,12 @@ assert.match(briefDialoguePanel, /data-brief-conversation[^>]*>[\s\S]*data-refer
   '分析中或失败时，参考状态卡必须位于可滚动对话区内并在输入区上方');
 assert.match(referenceProgressSource, /data-reference-abandon/,
   '失败参考必须提供不使用参考继续的可见恢复动作');
-assert.match(referenceProgressSource, /确认费用风险，仅重试语义/,
-  '计费未知时必须明确费用风险，不能静默切换备用模型');
+assert.match(referenceProgressSource, /'重新整理内容'/,
+  '恢复按钮必须使用用户可理解的简短动作名称');
+assert.match(briefReferenceRecovery, /可能新增一次模型费用|可能产生一次新费用/,
+  '费用风险必须在真正发起重试前的确认对话中明确说明');
+assert.match(referenceProgressSource, /failedUserCopy/,
+  '失败状态必须通过用户化映射展示，不能直接暴露供应商错误原文');
 assert.ok(
   briefView.indexOf('data-brief-settings-anchor') < briefView.indexOf('data-reference-understanding-host'),
   '没有可用报告时，广告目标与启动材料必须保留在报告挂载点上方',
@@ -149,6 +153,8 @@ assert.match(briefWorldSettings, /国家 \/ 地区 <em>AI 可识别<\/em>/, '国
 assert.match(briefWorldSettings, /formOwner = settings\.formId/, '移动到右侧的字段必须通过 form owner 参与保存');
 const briefStyles = read('public/story-ad/styles.css');
 const workspaceStyles = read('public/story-ad/workspace.css');
+assert.match(workspaceStyles, /\.brief-reference-progress-slot \.reference-progress-card\.is-recovery \{ width: min\(760px/,
+  '失败恢复卡必须使用对话式紧凑宽度，不能继续铺满工作区');
 assert.match(workspaceStyles, /\.material-list\[hidden\] \{ display: none; \}/, '选择不使用参考材料时，上传入口不得被 grid 样式重新显示');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) \{ grid-template-rows: auto minmax\(48px, auto\) auto;/, '目标页字段网格必须为中文下拉框保留足够行高');
 assert.match(briefStyles, /\.brief-form \.field:not\(\.full\) > \.select \{[\s\S]*height: 48px;[\s\S]*padding-block: 8px;[\s\S]*line-height: 1\.5;/, '目标页下拉框必须显式避免中文文字下缘裁切');
@@ -207,16 +213,17 @@ const interruptedReference = briefModule.referenceProgress({
 assert.match(interruptedReference, /状态同步暂时中断/);
 assert.match(interruptedReference, /已停止本地耗时计数/);
 assert.doesNotMatch(interruptedReference, /data-reference-retry/);
-assert.match(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90 }), /aria-valuenow="100"/);
+assert.match(briefModule.referenceProgress({ analysis_id: 'done', status: 'completed', progress: 90, analysis_valid: true }), /aria-valuenow="100"/);
 const invalidCompletedProgress = briefModule.referenceProgress({
   analysis_id: 'done-invalid', status: 'completed', progress: 100, analysis_valid: false,
   phase: '深度理解报告已就绪',
 });
-assert.match(invalidCompletedProgress, /镜头读取完成，深度识别未通过/);
-assert.match(invalidCompletedProgress, /原视频已保留/);
+assert.match(invalidCompletedProgress, /视频画面已保存，内容整理未通过/);
+assert.match(invalidCompletedProgress, /原视频和已校验画面都已保留/);
 assert.match(invalidCompletedProgress, /重新识别当前视频/);
 assert.match(invalidCompletedProgress, /data-reference-retry/);
-assert.match(invalidCompletedProgress, /深度识别未通过质量校验，旧结果已停止使用/);
+assert.match(invalidCompletedProgress, /内容整理未通过完整性检查/);
+assert.doesNotMatch(invalidCompletedProgress, /role="progressbar"/);
 assert.doesNotMatch(invalidCompletedProgress, /深度理解报告已就绪。请核对/);
 const partialFailureProgress = briefModule.referenceProgress({
   analysis_id: 'partial-failure', status: 'failed',
@@ -227,7 +234,8 @@ const partialFailureProgress = briefModule.referenceProgress({
 assert.match(partialFailureProgress, /已完成 4\/5 批/);
 assert.match(partialFailureProgress, /剩余 1 批/);
 assert.match(partialFailureProgress, /继续读取缺失镜头（4\/5 批）/);
-assert.match(partialFailureProgress, /建议约 5 分钟后继续/);
+assert.match(partialFailureProgress, /系统当前处理较忙，建议约 5 分钟后再继续/);
+assert.doesNotMatch(partialFailureProgress, /备用模型|访问量过大/);
 assert.deepStrictEqual(
   JSON.parse(JSON.stringify(briefModule.referenceActionState({ analysis_id: 'done', status: 'completed', analysis_valid: true }))),
   { blocked: false, label: '下一步：生成剧情与对白' },
@@ -269,12 +277,13 @@ const failedReference = briefModule.referenceProgress({
   analysis_id: 'failed', status: 'failed',
   error: '参考视频识别结果不完整：场景位置重复',
 });
-assert.match(failedReference, /参考视频识别结果不完整：场景位置重复/);
+assert.match(failedReference, /这次参考视频没有完整读完/);
+assert.doesNotMatch(failedReference, /场景位置重复/);
 assert.match(failedReference, /data-reference-retry/);
 assert.match(failedReference, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-reusable', status: 'failed', visual_evidence_reusable: true,
-}), />仅补齐缺失语义（不重读镜头）<\/button>/);
+}), />重新整理内容<\/button>/);
 const semanticFailureProgress = briefModule.referenceProgress({
   analysis_id: 'failed-semantic-contracts', status: 'failed', progress: 82, visual_evidence_reusable: true,
   evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
@@ -286,21 +295,21 @@ const semanticFailureProgress = briefModule.referenceProgress({
     },
   },
 });
-assert.match(semanticFailureProgress, /82%/);
-assert.match(semanticFailureProgress, /镜头证据已完成 8\/8 批/);
-assert.match(semanticFailureProgress, /语义合同已完成 4\/5 项/);
-assert.match(semanticFailureProgress, /镜头证据已保留，语义整理待补齐/);
+assert.doesNotMatch(semanticFailureProgress, /82%/);
+assert.match(semanticFailureProgress, /镜头画面已完成 8\/8 批/);
+assert.match(semanticFailureProgress, /内容整理已完成 4\/5 项/);
+assert.match(semanticFailureProgress, /视频画面已保存，内容整理未完成/);
 assert.match(semanticFailureProgress, /镜头证据<\/b><small>8\/8 批已完整保留/);
-assert.match(semanticFailureProgress, /故事理解<\/b><small>已完成并保留/);
-assert.match(semanticFailureProgress, /场景与事件<\/b><small>待定向补齐/);
-assert.match(semanticFailureProgress, /不会重读图片，只补缺失语义合同/);
+assert.match(semanticFailureProgress, /内容主线<\/b><small>已完成并保留/);
+assert.match(semanticFailureProgress, /场景安排<\/b><small>待定向补齐/);
+assert.match(semanticFailureProgress, /不会重新读取，只补未完成的内容整理/);
 assert.doesNotMatch(semanticFailureProgress, /重新读取镜头证据/);
 const completedEvidenceWithStaleFlag = briefModule.referenceProgress({
   analysis_id: 'failed-semantic-stale-flag', status: 'failed', progress: 55, visual_evidence_reusable: false,
   evidence_batch_progress: { total: 8, completed: 8, remaining: 0, failed: 0 },
   semantic_contract_progress: { total: 5, completed: 3, missing_contracts: ['cast', 'scenes'] },
 });
-assert.match(completedEvidenceWithStaleFlag, />仅补齐缺失语义（不重读镜头）<\/button>/);
+assert.match(completedEvidenceWithStaleFlag, />重新整理内容<\/button>/);
 assert.doesNotMatch(completedEvidenceWithStaleFlag, /重新读取镜头证据/);
 assert.match(briefModule.referenceProgress({
   analysis_id: 'failed-semantic-reusable', status: 'failed', visual_evidence_reusable: true, semantic_result_reusable: true,
@@ -320,7 +329,7 @@ assert.match(briefModule.referenceProgress({
   });
   assert.match(rendered, /data-reference-retry/, `所有失败任务都必须提供重试入口：${analysisId}`);
   assert.match(rendered, /重新读取镜头证据/, `证据不可复用时必须重新识别：${analysisId}`);
-  assert.match(rendered, new RegExp(error), `失败原因必须与当前任务绑定：${analysisId}`);
+  assert.doesNotMatch(rendered, new RegExp(error), `默认失败卡不得直接暴露内部错误原文：${analysisId}`);
 });
 ['importing', 'uploaded', 'queued', 'running', 'cancelling'].forEach(status => {
   assert.doesNotMatch(
@@ -345,9 +354,9 @@ const extendedConfirmationCard = briefModule.referenceProgress({
   error_code: 'REFERENCE_VIDEO_EXTENDED_ANALYSIS_CONFIRMATION_REQUIRED',
   analysis_preflight: { segment_count: 42, batch_count: 11, extra_batch_count: 1 },
 });
-assert.match(extendedConfirmationCard, /等待确认分批分析/);
+assert.match(extendedConfirmationCard, /等待确认分批读取/);
 assert.match(extendedConfirmationCard, /确认分批分析（11 批）/);
-assert.match(extendedConfirmationCard, /尚未启动语音、视觉或语义模型/);
+assert.match(extendedConfirmationCard, /尚未启动任何收费分析/);
 assert.match(briefView, /bindBriefReferenceRecovery\(host, \{ store, context \}\)/,
   '目标页必须绑定独立参考恢复控制器，避免主视图再次超过结构上限');
 assert.match(briefReferenceRecovery, /可能产生新的模型费用/, '证据不完整时必须在确认框明确提醒会重新调用视觉模型');
@@ -544,6 +553,19 @@ const planningFailure = uiModule.generationProgressView({
 assert.equal(planningFailure.failureTitle, '人物与场景方案更新失败');
 assert.match(planningFailure.liveText, /更新方案/);
 assert.doesNotMatch(planningFailure.liveText + planningFailure.message, /从缺失项继续|场景规划/, '统一方案失败不得错误引导用户继续缺失图片');
+const blueprintQualityFailure = uiModule.generationProgressView({
+  project: {
+    status: 'failed', stage: 'blueprint_failed', error_code: 'BLUEPRINT_POLISH_QUALITY_FAILED',
+    error: '支持编号：qa-blueprint。精品剧本精修后仍未通过质量门槛：台词总信息量不足：60 秒至少约 144 个有效字，当前 116 个；台词句式重复：多镜重复以“社区”开头',
+  },
+  generation: { progress: { stage: 'blueprint', status: 'failed', error_code: 'BLUEPRINT_POLISH_QUALITY_FAILED' } },
+});
+assert.equal(blueprintQualityFailure.failureTitle, '脚本初稿需要调整');
+assert.match(blueprintQualityFailure.liveText, /脚本初稿已保存/);
+assert.match(blueprintQualityFailure.message, /相同开头“社区”/);
+assert.doesNotMatch(blueprintQualityFailure.message, /116|144|建议至少|有效字/);
+assert.doesNotMatch(blueprintQualityFailure.message, /支持编号|精品剧本精修|BLUEPRINT/,
+  '蓝图失败必须展示用户可理解的具体原因，不得暴露内部阶段或支持编号');
 const outsideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'brief');
 assert.equal(outsideAssetsRecovery, '', '人物资产告警不得跨步骤污染立项页');
 const insideAssetsRecovery = uiModule.generationProgressPanel(blockedVisualFailure, 'assets');
@@ -707,6 +729,7 @@ assert.match(plot, /accept="\.txt,\.md,text\/plain,text\/markdown"/, '剧情室�
 assert.match(plot, /creative_direction:\s*\{ raw: text\.slice\(0, 12000\), source_name: file\.name \}/, '导入脚本必须进入剧情生成的权威请求字段');
 assert.match(plot, /setButtonBusy\(button, false\)[\s\S]*button\.dataset\.previousText/, '脚本导入完成后必须恢复按钮可操作状态');
 assert.match(plot, /data-open-storyboard/, '正式剧情蓝图保存后必须提供进入分镜台的入口');
+assert.match(plot, /重新检查已保存初稿/, '质量审核失败后必须提供复用初稿的恢复入口，不能只显示空白蓝图');
 
 const storyboard = read('public/story-ad/views/storyboardView.js');
 assert.match(storyboard, /sketch-action-bar/);
@@ -716,6 +739,10 @@ assert.match(storyboard, /shot-inline-editor/, '文字分镜必须在当前分�
 assert.match(storyboard, /data-save-inline-shot/, '逐镜编辑必须有当前行保存入口');
 assert.doesNotMatch(storyboard, /data-edit-shot[^\n]+context\.navigate/, '逐镜编辑不得再跳转到镜头设计页');
 assert.match(storyboard, /friendlyBindings/, '绑定资产必须显示用户可理解的名称而非裸 ID');
+assert.match(storyboard, /画面描述[\s\S]*景别[\s\S]*光影氛围[\s\S]*对白 \/ 旁白[\s\S]*音效[\s\S]*运镜[\s\S]*镜头提示词/,
+  '完整分镜表必须集中展示逐镜制作字段');
+assert.match(storyboard, /shotPromptPreview/);
+assert.match(read('public/story-ad/workspace-ux.css'), /\.storyboard-complete-row/);
 assert.match(storyboard, /label: '动物'/, '参考分镜中的动物绑定不得误标为人物');
 assert.match(storyboard, /storyboard\?\.source === 'reference_analysis_projection'/, '分镜台必须识别参考逐镜草稿');
 assert.match(storyboard, /data-save-reference-storyboard/, '参考逐镜草稿必须提供明确保存入口');

@@ -98,6 +98,7 @@ export function createProjectStore() {
         brief_source: context.brief_source ?? current.brief?.brief_source,
         content_mode: context.content_mode ?? current.brief?.content_mode,
         content_mode_source: context.content_mode_source ?? current.brief?.content_mode_source,
+        brief_intake: context.brief_intake ?? current.brief?.brief_intake,
         asset_setup_confirmed: context.asset_setup_confirmed === true,
         shot_design_confirmed: context.shot_design_confirmed === true,
         creative_direction: context.creative_direction ?? current.brief?.creative_direction,

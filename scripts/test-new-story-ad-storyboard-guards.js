@@ -71,6 +71,7 @@ const structuredNotesShot = normalizeShots([{
 assert(!structuredNotesShot.keyframe_notes.includes('[object Object]'), '结构化关键帧合同不得被字符串化为 object Object');
 assert.match(structuredNotesShot.keyframe_notes, /^本镜目的：.+；必须出现：.+；禁止出现：.+$/);
 assert.deepStrictEqual(localReview({}, [structuredNotesShot]).blocking_issues, [], '结构化关键帧合同归一化后必须通过三段硬门禁');
+assert.equal(structuredNotesShot.lighting_mood, '沿用当前场景已确认的主光方向、色温和明暗关系', '缺少显式光影时必须形成可执行的场景连续性约束');
 
 const legacyPollutedNotesShot = normalizeShots([{
   ...detailedShots[1],

@@ -5,15 +5,15 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
   const handleReferenceAbandon = async event => {
     const button = event.target.closest('[data-reference-abandon]');
     if (!button || button.disabled) return;
-    const confirmed = await confirmDialog('系统会解除当前项目的参考视频，并保留你已经手动填写的内容。已完成的镜头证据将不再用于这个项目；之后可以重新添加参考视频。是否不使用本次参考继续？', {
-      title: '不使用参考继续',
-      confirmText: '不使用参考，继续填写',
+    const confirmed = await confirmDialog('将从当前项目移除这个参考视频。你已经填写的创意内容、成片规格和已回答问题都会保留，接下来不会再次询问是否使用参考。', {
+      title: '跳过这个参考？',
+      confirmText: '跳过并继续',
     });
     if (!confirmed) return;
     try {
-      setButtonBusy(button, true, '正在解除…');
+      setButtonBusy(button, true, '正在跳过…');
       await store.removeReference();
-      toast('已解除失败的参考视频，现在可以继续输入并完成立项。', 'success');
+      toast('已跳过这个参考，之前确认的内容都已保留。', 'success');
       await context.refreshShell();
     } catch (error) {
       toast(error.message, 'danger');
@@ -42,17 +42,17 @@ export function bindBriefReferenceRecovery(host, { store, context } = {}) {
     const completedInvalid = currentReference.status === 'completed' && currentReference.analysis_valid !== true;
     const partialEvidence = Number(batchProgress.completed || 0) > 0 && Number(batchProgress.completed || 0) < Number(batchProgress.total || 0);
     const retryMessage = billingUnknown
-      ? `上一次语义模型请求已发出，但供应商没有返回可确认的计费结果；它可能已经产生费用。${Number(batchProgress.total || 0) > 0 ? `已完成的 ${Number(batchProgress.completed || 0)}/${Number(batchProgress.total || 0)} 批镜头证据都会保留` : '已通过校验的镜头证据都会保留'}，本次只重新调用语义整理模型，不会重读图片，但可能新增一次模型费用。是否明确承担这次重试风险并继续？`
+      ? `上一次内容整理请求已经发出，但系统没有收到完整结果，因此暂时无法确认是否计费。${Number(batchProgress.total || 0) > 0 ? `已完成的 ${Number(batchProgress.completed || 0)}/${Number(batchProgress.total || 0)} 批视频画面都会保留` : '已经读取成功的视频画面都会保留'}。如果继续，系统不会重新读取画面，只会再发起一次内容整理，并可能新增一次费用。是否继续？`
       : extendedConfirmation
       ? `系统已免费检测到 ${Number(preflight.segment_count || 0)} 个取证片段，需要 ${Number(preflight.batch_count || 0)} 批视觉读取；普通分析包含 10 批，本次将增加 ${Number(preflight.extra_batch_count || 0)} 批。确认后会完整读取全部片段，并按批保存进度；失败重试不会重复读取已通过批次。是否继续？`
       : completedInvalid
       ? (reusable
-        ? '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，复用已校验的镜头证据并重新调用语义识别模型，可能产生新的模型费用。是否继续？'
-        : '不需要更换或重新上传。系统会保留当前视频、撤下本次不合格结果，并重新调用视觉与语义识别模型，可能产生新的模型费用。是否继续？')
+        ? '不需要更换或重新上传。系统会保留当前视频、撤下本次不完整结果，并使用已保存画面重新整理内容，可能产生一次新费用。是否继续？'
+        : '不需要更换或重新上传。系统会保留当前视频并重新读取和整理内容，可能产生新的分析费用。是否继续？')
       : (semanticReusable
       ? '画面证据和语义整理结果都已完整保存，本次只重新校验场景与分镜映射，不再调用模型，是否继续？'
       : (reusable
-        ? '当前逐帧镜头证据已经通过完整性校验，本次不会重读图片；系统会保留最佳语义候选，只补齐未通过的语义合同，可能产生缺项修复的模型费用。是否继续？'
+        ? '当前视频画面已经完整保存，本次不会重新读取；系统只补齐没有整理完成的内容，可能产生一次新费用。是否继续？'
         : (partialEvidence
           ? `已完成 ${batchProgress.completed}/${batchProgress.total} 批镜头证据，本次只处理剩余 ${batchProgress.remaining || (batchProgress.total - batchProgress.completed)} 批，不会重跑已通过批次。若模型再次漏读同批画面，系统会把该批拆成单帧补读，因此实际视觉调用次数可能高于剩余批次数。是否继续？`
           : '当前证据没有通过逐帧完整性校验，本次将重新检测镜头并调用视觉与语义模型，可能产生新的模型费用。是否继续？')));

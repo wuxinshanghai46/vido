@@ -16,6 +16,11 @@ function buildDetachPatch(previous = {}, scenePlan = null, body = {}) {
     reference_video_analysis: null,
     reference_analysis_projection: null,
     reference_required: false,
+    brief_intake: {
+      ...(previous.brief_intake && typeof previous.brief_intake === 'object' ? previous.brief_intake : {}),
+      reference_decision: 'skipped',
+      active_dialogue_topic: '',
+    },
     asset_setup_confirmed: false,
     story_setup_confirmed: false,
     shot_design_confirmed: false,

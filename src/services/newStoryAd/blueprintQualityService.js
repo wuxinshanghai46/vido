@@ -180,16 +180,13 @@ function assessDialogueNarrative(blueprint = {}) {
   const lines = beats.map(beat => clean(beat.spoken_line || beat.voiceover || beat.copy));
   const counts = lines.map(spokenCharacterCount);
   const totalCharacters = counts.reduce((sum, count) => sum + count, 0);
-  const minRate = Math.max(1.8, Number(contract.target_chars_per_second?.min || 2.4) || 2.4);
-  const maxRate = Math.max(minRate, Number(contract.target_chars_per_second?.max || 4.8) || 4.8);
+  const maxRate = Math.max(3.2, Number(contract.target_chars_per_second?.max || 4.8) || 4.8);
   const sparse = contract.speech_policy === 'authored_sparse';
   const authoredLineCount = Math.max(0, Number(contract.authored_line_count || 0) || 0);
   const voicedBeatCount = lines.filter(Boolean).length;
-  const minTotal = sparse ? 0 : Math.max(beats.length * 6, Math.round(targetDuration * minRate));
   const maxTotal = Math.ceil(targetDuration * maxRate);
   const issues = [];
   const warnings = [];
-  if (!sparse && totalCharacters < minTotal) issues.push(`台词总信息量不足：${targetDuration} 秒至少约 ${minTotal} 个有效字，当前 ${totalCharacters} 个`);
   if (totalCharacters > maxTotal) issues.push(`台词总量超过自然口播容量：${targetDuration} 秒最多约 ${maxTotal} 个有效字，当前 ${totalCharacters} 个`);
   if (sparse && authoredLineCount && voicedBeatCount > authoredLineCount) {
     issues.push(`用户只提供了 ${authoredLineCount} 处口播，当前生成了 ${voicedBeatCount} 处，不能擅自给静默镜头补台词`);
@@ -200,19 +197,15 @@ function assessDialogueNarrative(blueprint = {}) {
     const duration = Math.max(1, Number(beat.duration || beat.duration_sec || targetDuration / Math.max(1, beats.length)) || 1);
     const fn = clean(beat.dialogue_function || beat.dialogue_intent);
     const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
-    const silent = sparse && (['silent', 'ambient_only'].includes(speechMode) || !lines[index]);
-    const minimum = fn === 'brand_closure' ? 4 : Math.max(6, Math.round(duration * 1.8));
-    const hardMinimum = Math.max(4, Math.ceil(minimum * 0.85));
+    const silent = ['silent', 'ambient_only'].includes(speechMode) || (sparse && !lines[index]);
     const maximum = Math.max(18, Math.ceil(duration * 5.2));
-    if (!sparse && !silent && counts[index] < hardMinimum) issues.push(`第 ${n} 镜台词信息量不足：${duration} 秒建议约 ${minimum} 个有效字，硬下限 ${hardMinimum} 个，当前 ${counts[index]} 个`);
-    else if (!silent && counts[index] < minimum) warnings.push(`第 ${n} 镜台词略低于建议密度：建议约 ${minimum} 个有效字，当前 ${counts[index]} 个`);
     if (!silent && counts[index] > maximum) issues.push(`第 ${n} 镜台词超过镜头口播容量：${duration} 秒最多约 ${maximum} 个有效字，当前 ${counts[index]} 个`);
     if (!fn) issues.push(`第 ${n} 镜缺少 dialogue_function，无法验证台词在故事中的职责`);
     if (!silent && genericReactionLine(lines[index])) issues.push(`第 ${n} 镜台词只有泛化反应，没有推进意图、证据或决定`);
   });
 
   const stages = new Set(beats
-    .filter((beat, index) => !sparse || !!lines[index])
+    .filter((_beat, index) => !!lines[index])
     .map(beat => dialogueArcStage(beat.dialogue_function || beat.dialogue_intent))
     .filter(Boolean));
   if (!sparse && beats.length >= 3 && !stages.has('setup')) issues.push('台词弧线缺少目标、问题或阻力');
@@ -240,7 +233,6 @@ function assessDialogueNarrative(blueprint = {}) {
       target_duration: targetDuration,
       total_characters: totalCharacters,
       chars_per_second: Math.round((totalCharacters / targetDuration) * 100) / 100,
-      min_total_characters: minTotal,
       max_total_characters: maxTotal,
       speech_policy: sparse ? 'authored_sparse' : 'full_track',
       voiced_beat_count: voicedBeatCount,
@@ -302,6 +294,7 @@ function assessBlueprintRights(blueprint = {}) {
 function assessBlueprintQuality(blueprint = {}) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
   const sparse = blueprint.dialogue_contract?.speech_policy === 'authored_sparse';
+  const durationAwareDialogue = blueprint.dialogue_contract?.version === DIALOGUE_CONTRACT_VERSION;
   const issues = [];
   if (!clean(blueprint.logline)) issues.push('缺少清晰的故事主线');
   if (CLICHE_PATTERNS.some(pattern => pattern.test(`${clean(blueprint.story_title)} ${clean(blueprint.logline)}`))) issues.push('标题或故事主线存在广告套话');
@@ -315,11 +308,13 @@ function assessBlueprintQuality(blueprint = {}) {
     if (!action) issues.push(`第 ${n} 镜缺少独立动作设计`);
     if (visual && action && similarity(visual, action) >= 0.72) issues.push(`第 ${n} 镜画面与动作重复`);
     const speechMode = clean(beat.speech_mode).toLowerCase().replace(/[\s-]+/g, '_');
-    if (!spoken && !(sparse && ['silent', 'ambient_only'].includes(speechMode))) issues.push(`第 ${n} 镜缺少可说出口的台词`);
+    if (!spoken && !['silent', 'ambient_only'].includes(speechMode)) issues.push(`第 ${n} 镜未说明使用对白、旁白还是静默画面`);
     const spokenWithoutDirections = spoken.replace(/^[（(][^）)]*[）)]\s*/g, '').replace(/^[…。.，,、\s]+|[…。.，,、\s]+$/g, '');
     if (spoken && !spokenWithoutDirections) issues.push(`第 ${n} 镜台词只有表演提示，没有实际对白`);
     if (/^[（(].*[）)]/.test(spoken)) issues.push(`第 ${n} 镜台词混入表演提示`);
-    if (spoken.length > 42) issues.push(`第 ${n} 镜台词过长`);
+    // 新版台词合同会按单镜时长核算自然口播容量；固定 42 字上限会把
+    // 10 秒等长镜头的合格台词误判为过长，并诱发全稿无谓重写。
+    if (!durationAwareDialogue && spoken.length > 42) issues.push(`第 ${n} 镜台词过长`);
     if (CLICHE_PATTERNS.some(pattern => pattern.test(`${spoken} ${visual}`))) issues.push(`第 ${n} 镜存在广告套话或翻译腔`);
     if (/(?:无数|知名|各种|不同).{0,12}(?:AI)?模型\s*[Ll]ogo/.test(visual)) issues.push(`第 ${n} 镜包含未经确认的第三方模型 Logo`);
   });
@@ -339,6 +334,20 @@ function assessBlueprintQuality(blueprint = {}) {
     dialogue,
     rights,
   };
+}
+
+function preferQualityCandidate(current = {}, candidate = {}) {
+  const currentReview = current.review || assessBlueprintQuality(current.blueprint || {});
+  const candidateReview = candidate.review || assessBlueprintQuality(candidate.blueprint || {});
+  if (candidateReview.pass && !currentReview.pass) return { ...candidate, review: candidateReview };
+  if (currentReview.pass && !candidateReview.pass) return { ...current, review: currentReview };
+  const currentIssues = Array.isArray(currentReview.issues) ? currentReview.issues.length : Number.MAX_SAFE_INTEGER;
+  const candidateIssues = Array.isArray(candidateReview.issues) ? candidateReview.issues.length : Number.MAX_SAFE_INTEGER;
+  if (candidateIssues < currentIssues) return { ...candidate, review: candidateReview };
+  if (currentIssues < candidateIssues) return { ...current, review: currentReview };
+  return Number(candidateReview.score || 0) > Number(currentReview.score || 0)
+    ? { ...candidate, review: candidateReview }
+    : { ...current, review: currentReview };
 }
 
 function preserveCharacterNames(original = {}, candidate = {}) {
@@ -426,7 +435,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       safeBlueprint.dialogue_contract?.speech_policy === 'authored_sparse'
         ? `用户采用稀疏口播：最多保留 ${safeBlueprint.dialogue_contract?.authored_line_count || 0} 个有声镜头。不得给 silent 或 ambient_only 镜头新增台词；剧情因果可由可见动作、状态与证据完成。`
         : '整条片子的台词必须形成“目标/阻力 → 发现/证据 → 决定/结果”的听觉叙事弧线。',
-      '按 dialogue_contract 的口播密度修正台词。正常 4-6 秒镜头通常需要约 10-22 个有意义的中文字，品牌落版可以更短；简短不等于空泛。',
+      '按 dialogue_contract 修正声音表达：台词必须承担清晰的剧情职责并能在镜头时长内自然说完；由画面动作、环境声或音乐承担叙事的镜头应明确标记 silent 或 ambient_only，不要为凑长度硬塞旁白。',
       '禁止用“原来……可以这样做”“就是它了”“太棒了”等泛化反应充当整句；每句至少补入具体意图、问题、材质/产品证据、后果或决定之一。',
       '相邻镜头不要重复“原来”“没想到”等相同开头，也不要依靠连续省略号制造虚假的情绪推进。',
       'spoken_line 只能写最终会被说出来的话，禁止加入括号、语气说明、表演提示、说话人标签或纯表情描述。',
@@ -461,15 +470,19 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
   const safePayload = brandEnding.applyToBlueprint(normalizeAuthorizedBrandPresentation(language.payload), ctx);
   const after = assessBlueprintQuality(safePayload);
   if (!after.pass) {
+    const best = preferQualityCandidate(
+      { blueprint: safeBlueprint, review: before },
+      { blueprint: safePayload, review: after },
+    );
     if (attempt < maxAttempts) {
-      const retry = await polishBlueprint(ctx, safePayload, { taskId, force: true, attempt: attempt + 1, maxAttempts, onProgress });
+      const retry = await polishBlueprint(ctx, best.blueprint, { taskId, force: true, attempt: attempt + 1, maxAttempts, onProgress });
       return { ...retry, before };
     }
-    const error = new Error(`精品剧本精修后仍未通过质量门槛：${after.issues.join('；')}`);
+    const error = new Error(`精品剧本精修后仍未通过质量门槛：${best.review.issues.join('；')}`);
     error.code = 'BLUEPRINT_POLISH_QUALITY_FAILED';
     error.retryable = false;
-    error.quality_diagnostics = { before, after };
-    error.rejected_blueprint = safePayload;
+    error.quality_diagnostics = { before, after: best.review };
+    error.rejected_blueprint = best.blueprint;
     throw error;
   }
   return {
@@ -489,6 +502,7 @@ module.exports = {
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
   assessDialogueNarrative,
+  preferQualityCandidate,
   polishBlueprint,
   similarity,
 };

@@ -28,6 +28,15 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
     expected_people: Math.max(0, Number(context.expected_people || 0) || 0),
     expected_animals: Math.max(0, Number(context.expected_animals || 0) || 0),
     brief_source: clean(context.brief_source, 40),
+    brief_intake: {
+      creative_brief_confirmed: context.brief_intake?.creative_brief_confirmed === true,
+      specifications_confirmed: context.brief_intake?.specifications_confirmed === true,
+      reference_decision: ['attached', 'skipped'].includes(clean(context.brief_intake?.reference_decision, 20))
+        ? clean(context.brief_intake?.reference_decision, 20) : '',
+      completed_dialogue_topics: [...new Set((Array.isArray(context.brief_intake?.completed_dialogue_topics)
+        ? context.brief_intake.completed_dialogue_topics : []).map(value => clean(value, 40)).filter(Boolean))].slice(0, 20),
+      active_dialogue_topic: clean(context.brief_intake?.active_dialogue_topic, 40),
+    },
     asset_setup_confirmed: context.asset_setup_confirmed === true,
     shot_design_confirmed: context.shot_design_confirmed === true,
     creative_direction: context.creative_direction || null,

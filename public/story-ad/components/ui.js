@@ -145,6 +145,14 @@ export function publicGenerationMessage(value = '', options = {}) {
     || options.fallback || '本次生成未完成，成功资产已保留。';
 }
 
+function blueprintQualityFailureMessage(value = '') {
+  const text = String(value || '');
+  const opener = /多镜重复以“([^”]+)”开头/.exec(text);
+  return opener
+    ? `脚本初稿已经保留，但有多段使用相同开头“${opener[1]}”，系统没有让重复表达进入后续制作。`
+    : '脚本初稿已经保留，但部分镜头的剧情推进或声音表达还不完整，系统没有让不完整内容进入后续制作。';
+}
+
 export function checkpointRecoveryView(bundle = {}) {
   const people = Array.isArray(bundle.assets?.people) ? bundle.assets.people : [];
   const rows = people.filter(item => item.checkpoint_recovery_summary);
@@ -185,12 +193,14 @@ export function generationProgressView(bundle = {}) {
   const failureText = String(progress.message || project.error || '');
   const billingUnknown = checkpointRecovery?.retryBlocked === true || progress.billing_state === 'unknown' || /billing(?:_| )state[^\n]*unknown|计费状态[^\n]*未知/i.test(failureText);
   let failureTitle = stage === 'scene_config' ? `${stageLabel}更新失败` : `${stageLabel}生成失败`;
-  if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
+  if (failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED') failureTitle = '脚本初稿需要调整';
+  else if (failureCode === 'PROVIDER_CONTENT_AUDIT') failureTitle = `${stageLabel}内容审核未通过`;
   else if (progress.phase === 'review_failed' || /(?:QUALITY|QA|REVIEW).*FAILED/.test(failureCode)) failureTitle = `${stageLabel}质量审核未通过`;
   else if (billingUnknown) failureTitle = `${stageLabel}生成中断（计费待核对）`;
   else if (/TIMEOUT|NETWORK|IMAGE_ATTEMPTS_EXHAUSTED/.test(failureCode) || /upstream connect error|connection termination|reset before headers/i.test(failureText)) failureTitle = `${stageLabel}生成中断（模型连接失败）`;
   let liveText = '';
   if (failed && stage === 'scene_config') liveText = '资产已保留，请更新方案';
+  else if (failed && failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED') liveText = '脚本初稿已保存，可从当前初稿继续检查';
   else if (failed) liveText = checkpointRecovery
     ? `已保留 ${checkpointRecovery.completed}/${checkpointRecovery.total} 项人物图片；${billingUnknown ? '核对计费前不会重复调用' : '仅处理缺失项'}`
     : (billingUnknown ? '已保留成功资产，核对计费前不会重复调用' : '已保留成功资产，可从缺失项继续');
@@ -200,7 +210,9 @@ export function generationProgressView(bundle = {}) {
   return {
     active, failed, stage, stageLabel, unitLabel, total, completed, percent, liveText, failureTitle,
     lanes: progress.lanes && typeof progress.lanes === 'object' ? progress.lanes : null,
-    message: failed && stage === 'scene_config'
+    message: failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED'
+      ? blueprintQualityFailureMessage(failureText)
+      : failed && stage === 'scene_config'
       ? '方案更新失败，资产已保留。'
       : publicGenerationMessage(progress.message || project.error, { fallback: `${stageLabel}正在处理中，请保持页面打开。` }),
     generationId: String(project.active_generation_id || progress.generation_id || ''),

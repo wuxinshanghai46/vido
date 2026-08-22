@@ -32,6 +32,7 @@ async function main() {
   const module = await loadModule(path.join(root, 'public/story-ad/views/briefDialoguePanel.js'));
   const { briefDialogueMarkup, referenceDialogueStatus } = module.namespace;
   const progressModule = await loadModule(path.join(root, 'public/story-ad/views/referenceProgressCard.js'));
+  const replacementModule = await loadModule(path.join(root, 'public/story-ad/store/referenceReplacementState.js'));
   const runningReference = {
     analysis_id: 'reference-v127', status: 'running', progress: 42, phase: '正在分析产品画面',
   };
@@ -62,14 +63,64 @@ async function main() {
     evidence_batch_progress: { total: 10, completed: 10, remaining: 0, failed: 0 },
   });
   assert.match(failedProgress, /data-reference-abandon/);
-  assert.match(failedProgress, /确认费用风险，仅重试语义/);
-  assert.match(failedProgress, /没有自动切换备用模型，避免重复付费/);
+  assert.match(failedProgress, /跳过这个参考/);
+  assert.match(failedProgress, />重新整理内容<\/button>/);
+  assert.doesNotMatch(failedProgress, /重新整理内容（可能计费）/);
+  assert.match(failedProgress, /系统没有自动重复请求，避免可能产生两次费用/);
+  assert.doesNotMatch(failedProgress, /new_story_ad|apismile|gpt-5\.5|TIMEOUT_OR_NETWORK|语义合同/,
+    '失败卡默认视图不得暴露模型、供应商、内部阶段或合同术语');
+  assert.match(failedProgress, /is-recovery/);
+  assert.doesNotMatch(failedProgress, /role="progressbar"/, '终态恢复卡不得继续占用大面积进度条');
   const recoveryMarkup = briefDialogueMarkup({
     brief: { content_mode: 'commercial_subject', content_mode_source: 'user', text: '不锈钢板材广告' },
     reference: { analysis_id: 'failed-billing-reference', status: 'failed' },
   }, {}, { referenceProgressMarkup: failedProgress });
   assert.match(recoveryMarkup, /brief-conversation-scroll[\s\S]*data-reference-progress-host/,
     '失败恢复操作必须位于可滚动对话区内，不能落在桌面裁剪容器之外');
+
+  let finishRemoval;
+  const optimisticState = {
+    bundle: { project: { id: 'task-optimistic' }, brief: { brief_intake: { creative_brief_confirmed: true, reference_decision: '' } }, reference: { analysis_id: 'reference-old', status: 'failed' }, revisions: { content: 3, client_edit_seq: 4 } },
+    referenceReplacementSeq: 0,
+  };
+  const set = patch => Object.assign(optimisticState, patch);
+  const removal = replacementModule.namespace.removeProjectReference({
+    state: optimisticState,
+    set,
+    stopPolling() {},
+    request: () => new Promise(resolve => { finishRemoval = resolve; }),
+    applyMutationResult: () => optimisticState.bundle,
+  });
+  assert.deepEqual(optimisticState.bundle.reference, {}, '用户确认跳过后恢复卡必须立即消失，不等待服务器清理完成');
+  assert.equal(optimisticState.bundle.brief.brief_intake.reference_decision, 'skipped', '后台删除期间必须先记录本地跳过决定，避免再次追问');
+  finishRemoval({ success: true, reference_removed: true });
+  await removal;
+  const failedState = {
+    bundle: { project: { id: 'task-rollback' }, brief: { brief_intake: { reference_decision: '' } }, reference: { analysis_id: 'reference-rollback', status: 'failed' }, revisions: { content: 2, client_edit_seq: 1 } },
+    referenceReplacementSeq: 0,
+  };
+  await assert.rejects(() => replacementModule.namespace.removeProjectReference({
+    state: failedState,
+    set: patch => Object.assign(failedState, patch),
+    stopPolling() {},
+    request: async () => { throw new Error('synthetic detach failure'); },
+    applyMutationResult: () => failedState.bundle,
+  }), /synthetic detach failure/);
+  assert.equal(failedState.bundle.reference.analysis_id, 'reference-rollback', '服务器解绑失败时必须恢复原卡片，不能假装成功');
+  assert.equal(failedState.bundle.brief.brief_intake.reference_decision, '', '服务器解绑失败时必须恢复原参考决定');
+
+  const briefProjection = require('../src/services/storyAdWorkspace/briefProjectionService');
+  const projectedBrief = briefProjection.project({
+    brief: '已确认广告设想',
+    brief_intake: {
+      creative_brief_confirmed: true, specifications_confirmed: true, reference_decision: 'skipped',
+      completed_dialogue_topics: ['audience_intent', 'commercial_evidence'], active_dialogue_topic: '',
+    },
+  }, {}, value => String(value || '').trim());
+  assert.deepEqual(projectedBrief.brief_intake, {
+    creative_brief_confirmed: true, specifications_confirmed: true, reference_decision: 'skipped',
+    completed_dialogue_topics: ['audience_intent', 'commercial_evidence'], active_dialogue_topic: '',
+  }, '工作区摘要投影必须携带完整对话进度，刷新后不得退回旧问题');
 
   const narrativeMarkup = briefDialogueMarkup({
     brief: { content_mode: 'narrative_story', content_mode_source: 'user', text: '雨夜重逢故事' },
@@ -102,7 +153,7 @@ async function main() {
 
   console.log(JSON.stringify({
     passed: true,
-    checks: 21,
+    checks: 31,
     scope: 'story-ad-dialogue-domain-reference-v127',
     real_model_calls: 0,
     paid_generation_calls: 0,

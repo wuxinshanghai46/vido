@@ -380,6 +380,13 @@ async function testProjectReferenceRemoval() {
   const manualPatch = referenceDetach.buildDetachPatch({
     brief: '用户手写的广告目标',
     brief_source: 'user',
+    brief_intake: {
+      creative_brief_confirmed: true,
+      specifications_confirmed: true,
+      reference_decision: 'attached',
+      completed_dialogue_topics: ['audience_intent', 'commercial_evidence'],
+      active_dialogue_topic: 'reference',
+    },
     cast_profiles: [
       { id: 'projected', source: 'reference_analysis_projection', projection_only: true },
       { id: 'manual', source: 'user' },
@@ -389,6 +396,13 @@ async function testProjectReferenceRemoval() {
   assert.equal(Object.prototype.hasOwnProperty.call(manualPatch, 'brief'), false, '删除参考不得清空用户手写广告目标');
   assert.deepEqual(manualPatch.cast_profiles.map(item => item.id), ['manual'], '删除参考必须保留用户自建人物');
   assert.equal(Object.prototype.hasOwnProperty.call(manualPatch, 'pet_profiles'), false, '没有参考投影动物时不得重写用户动物');
+  assert.deepEqual(manualPatch.brief_intake, {
+    creative_brief_confirmed: true,
+    specifications_confirmed: true,
+    reference_decision: 'skipped',
+    completed_dialogue_topics: ['audience_intent', 'commercial_evidence'],
+    active_dialogue_topic: '',
+  }, '点击跳过参考必须原子保留已确认内容并记录跳过决策，不能重载后再次追问');
   const reanalysisPatch = referenceDetach.buildReanalysisPatch({
     brief: '旧参考自动目标',
     brief_source: 'reference_analysis',
@@ -436,6 +450,7 @@ async function testProjectReferenceRemoval() {
     assert.equal(context.reference_video_analysis, null, '移除后任务不得继续绑定旧参考分析');
     assert.equal(context.brief, '', '参考分析自动填写的目标必须清空，恢复手动填写和 AI 帮写入口');
     assert.equal(context.brief_source, 'system');
+    assert.equal(context.brief_intake.reference_decision, 'skipped', '正式解绑结果必须持久化用户已跳过参考');
     assert.equal(context.cast_profiles.length, 0, '仅由参考分析投影的人物草稿必须清理');
     assert.equal(storage.getTask(taskId).content_revision, revisionBefore + 1, '移除参考必须形成新的来源版本');
     assert.equal(storage.getOutput(taskId, 'asset_plan'), null, '旧参考资产方案不得跨解绑保留');

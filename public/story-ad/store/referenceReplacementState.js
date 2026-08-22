@@ -98,9 +98,26 @@ export function restoreReferenceReplacement(state, set, replacement) {
 export async function removeProjectReference({ state, set, request, stopPolling, applyMutationResult } = {}) {
   const taskId = state.bundle?.project?.id || '';
   if (!taskId) throw new Error('当前项目尚未建立，不能移除参考视频。');
+  const previousReference = state.bundle?.reference || {};
+  const previousBriefIntake = state.bundle?.brief?.brief_intake || {};
   state.referenceReplacementSeq += 1;
   stopPolling();
-  set({ saving: true, error: '' });
+  set({
+    saving: true,
+    error: '',
+    bundle: state.bundle ? {
+      ...state.bundle,
+      reference: {},
+      brief: {
+        ...(state.bundle.brief || {}),
+        brief_intake: {
+          ...previousBriefIntake,
+          reference_decision: 'skipped',
+          active_dialogue_topic: '',
+        },
+      },
+    } : state.bundle,
+  });
   try {
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/reference-video`, {
       method: 'DELETE',
@@ -118,7 +135,15 @@ export async function removeProjectReference({ state, set, request, stopPolling,
     set({ bundle: next ? { ...next, reference: {} } : next, saving: false });
     return data;
   } catch (error) {
-    set({ saving: false, error: error.message });
+    set({
+      saving: false,
+      error: error.message,
+      bundle: state.bundle ? {
+        ...state.bundle,
+        reference: previousReference,
+        brief: { ...(state.bundle.brief || {}), brief_intake: previousBriefIntake },
+      } : state.bundle,
+    });
     throw error;
   }
 }

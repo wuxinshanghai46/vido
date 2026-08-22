@@ -5,6 +5,7 @@ const {
   assessCausalProgression,
   assessBlueprintQuality,
   assessDialogueNarrative,
+  preferQualityCandidate,
   assessBlueprintRights,
   normalizeAuthorizedBrandPresentation,
   similarity,
@@ -75,6 +76,51 @@ const authorizedOverlay = {
     : beat),
 };
 assert.equal(assessBlueprintRights(authorizedOverlay).pass, true, '已授权品牌素材必须允许后期叠加，不能要求模型生成 Logo');
+const durationAwareProductionDraft = {
+  story_title: '三类空间的金属质感',
+  logline: '依次展示社区、会所和展厅如何用不同不锈钢纹理形成各自的空间气质。',
+  target_duration: 60,
+  dialogue_contract: {
+    version: 'dialogue-arc-v1',
+    target_chars_per_second: { min: 2.4, max: 4.8 },
+    speech_policy: 'full_track',
+  },
+  narrative_contract: {
+    version: 'causal-story-v1', arc_type: 'demonstration',
+    setup: '建立空间需求', trigger: '比较纹理', progression: '依次验证三类空间', result: '形成定制决定',
+    beat_refs: { setup: [1], trigger: [2], progression: [3, 4, 5], result: [6] },
+  },
+  beats: Array.from({ length: 6 }, (_, index) => ({
+    duration: 10,
+    role: `空间验证 ${index + 1}`,
+    visual: `第 ${index + 1} 个空间呈现清晰可见的墙面纹理和光线变化。`,
+    action: `镜头沿墙面移动并在第 ${index + 1} 种材质细节前停下。`,
+    spoken_line: [
+      '社区大堂的墙面既要沉稳，也要让人一进门就感受到细致层次。',
+      '做旧钢板保留自然斑驳，让大面积墙面稳重但不显得沉闷。',
+      '横向拉丝把光线柔和拉开，会所空间因此更安静也更精致。',
+      '铂棕碎钻把灯光分成细密亮点，让展厅陈列自然成为视觉焦点。',
+      '三种纹理对应三种空间气质，颜色和尺寸还能继续按现场调整。',
+      '从材料到墙面效果，海和不锈钢为不同项目提供完整定制支持。',
+    ][index],
+    causal_role: ['setup', 'trigger', 'development', 'evidence', 'transformation', 'brand_closure'][index],
+    dialogue_function: ['setup_goal', 'discovery', 'development', 'proof', 'decision', 'brand_closure'][index],
+    speech_mode: 'voiceover',
+    state_before: [`空间 ${index + 1} 尚未呈现材质效果`],
+    state_after: [`空间 ${index + 1} 已呈现对应材质效果`],
+    intended_changes: [`验证第 ${index + 1} 种空间气质`],
+    visible_evidence: [`第 ${index + 1} 种墙面纹理与灯光关系清晰可见`],
+  })),
+};
+const durationAwareReview = assessBlueprintQuality(durationAwareProductionDraft);
+assert.equal(durationAwareReview.pass, true,
+  `10 秒镜头必须使用按时长计算的口播容量，不能再被固定 42 字上限误判：${durationAwareReview.issues.join('；')}`);
+assert.equal(durationAwareReview.issues.some(issue => /台词过长/.test(issue)), false);
+const retainedBetterDraft = preferQualityCandidate(
+  { blueprint: { id: 'better' }, review: { pass: false, issues: ['单一局部问题'], score: 0.92 } },
+  { blueprint: { id: 'degraded' }, review: { pass: false, issues: ['全稿过短', '句式重复'], score: 0.84 } },
+);
+assert.equal(retainedBetterDraft.blueprint.id, 'better', '精修候选变差时必须保留上一版最佳初稿，不能连续三轮累积退化');
 const firstPartyBrandAppearance = {
   ...premium,
   beats: premium.beats.map((beat, index) => index === 2
@@ -196,7 +242,7 @@ const thinDialogueReview = assessDialogueNarrative(productionThinDialogue);
 assert.equal(thinDialogueReview.pass, false);
 assert.equal(thinDialogueReview.metrics.total_characters, 49);
 assert.equal(thinDialogueReview.metrics.chars_per_second, 1.63);
-assert(thinDialogueReview.issues.some(issue => /台词总信息量不足/.test(issue)));
+assert(!thinDialogueReview.issues.some(issue => /台词总信息量不足|至少约|建议约/.test(issue)), '不得用最低字数代替剧情完整性判断');
 assert(thinDialogueReview.issues.some(issue => /泛化反应/.test(issue)));
 assert(thinDialogueReview.issues.some(issue => /句式重复/.test(issue)));
 assert.equal(assessBlueprintQuality(productionThinDialogue).pass, false, '生产中的单薄台词必须被质量门禁拒绝');
@@ -326,5 +372,5 @@ const nearBoundaryDialogue = {
 };
 const nearBoundaryReview = assessDialogueNarrative(nearBoundaryDialogue);
 assert.equal(nearBoundaryReview.pass, true, '比建议值少一个字不应机械地拒绝整条剧本');
-assert(nearBoundaryReview.warnings.some(issue => /略低于建议密度/.test(issue)));
+assert.deepEqual(nearBoundaryReview.warnings, [], '不得继续输出最低字数或密度建议');
 console.log('PASS new story ad premium blueprint quality');

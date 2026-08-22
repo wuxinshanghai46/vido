@@ -180,6 +180,8 @@ function normalizeShot(shot, ctx, idx, defaultDuration = 3) {
       action: clampText(pet?.action || '', 120),
     })).filter(pet => pet.name || pet.type || pet.action).slice(0, 8),
     shot_type: shotType,
+    lighting_mood: clampText(shot.lighting_mood || shot.light_atmosphere || shot.lighting || shot.light || '', 180)
+      || '沿用当前场景已确认的主光方向、色温和明暗关系',
     visual_layers: visualLayers,
     story_visual: storyVisual,
     promo_visual: promoVisual,
@@ -439,7 +441,7 @@ async function generateMissingStoryboardBeats(ctx, blueprint, beats, { taskId = 
     'Return exactly one shot for every supplied missing narrative coverage unit, in the same order, with index equal to beat_index.',
     'All user-visible text must be natural Simplified Chinese. Technical enum values and IDs stay unchanged.',
     'Do not invent a new person, product, industry, scene or plot. Use only the supplied context, blueprint and scene assets.',
-    'Each shot must include a concrete visual, action, natural voiceover or dialogue, purpose, visual_layers, speech_mode and continuity fields.',
+    'Each shot must include a concrete visual, action, appropriate speech or explicit silence, purpose, visual_layers, lighting_mood, sound and continuity fields.',
     'For every shot, dynamically choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement from that beat. Never copy one camera template across unrelated beats.',
     'For every shot, write entry_frame_state, exit_frame_state, action_start, action_end and object_states as visible states, even for the first shot.',
     actionSemantics.promptBlock(),
@@ -456,7 +458,7 @@ Blueprint: ${JSON.stringify(blueprint).slice(0, 12000)}
 ${sceneBindingPrompt(ctx.scene_assets || [])}
 Missing beats: ${JSON.stringify(beats)}
 
-Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, transition_duration_sec, transition_match_anchor, requires_previous_frame, audio_bridge, audio_bridge_duration_sec, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
+Return exactly ${beats.length} shots. Required fields: index, title, role, duration, purpose, subject_type, expected_people, expected_animals, pets, shot_type, lighting_mood, shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position, visual_layers, visual, action, speech_mode, voiceover, dialogue_lines, characters, material_usage, keyframe_notes, scene_id, look_id, scene_revision, scene_view, camera_id, scene_zone, scene_zone_id, scene_zone_label_zh, zone_ids, anchor_ids, transition_from, transition_reason, entry_frame_state, exit_frame_state, action_start, action_end, screen_direction, eyeline, camera_axis, camera_movement, object_states, transition_type, transition_duration_sec, transition_match_anchor, requires_previous_frame, audio_bridge, audio_bridge_duration_sec, ambient_sound, sfx, music_cue, voiceover_timing, temporal_state.`;
   const result = await modelGateway.generateText({
     taskId,
     stage: 'new_story_ad.storyboard_fill_missing',
@@ -548,6 +550,7 @@ async function generateStoryboardTable(ctx, blueprint, { taskId = '', resumeShot
       'Set requires_previous_frame=true only when the current image must visually inherit an exact action, pose, object state, eyeline or composition from the immediately previous frame. Ordinary hard cuts with shared verified scene/person anchors must use false so they can generate in parallel.',
       'Choose shot_size, camera_angle, lens_mm, depth_of_field, composition, subject_position and camera_movement independently from the current shot purpose. These are cinematography controls, not fixed story templates; do not copy one camera signature across unrelated beats.',
       'The visual must be production-ready and state the task-relevant subject/product, environment, spatial relationship and proportions, plus material and lighting only where they matter. Do not pad it with irrelevant fixed details.',
+      'lighting_mood must state the visible light source/direction, contrast or softness, and atmosphere needed by this shot while preserving the selected scene identity.',
       'keyframe_notes must use exactly three task-specific clauses: “本镜目的：…；必须出现：…；禁止出现：…”. Each clause must be derived from the current brief, scene contract and beat, never from a fixed scene/person/product template.',
       'Never output replacement characters, mojibake, placeholder values, or runs of question marks in any user-visible field.',
       'shot_scope, surface_topology and motion_effect are optional compatibility controls with open task-authored values. Set them only when the current brief/beat explicitly needs them; otherwise omit them. Never infer an industry-specific surface, scene, character or effect template.',
@@ -576,6 +579,7 @@ Return JSON array for current beats only. Fields:
   "expected_animals": 0,
   "pets": [{"id":"stable pet id from pet_contract","name":"pet name or empty","type":"species/breed","action":"this shot action"}],
   "shot_type": "open cinematography description chosen for this beat",
+  "lighting_mood": "visible light direction, contrast/softness and atmosphere for this shot",
   "shot_scope": "optional open task-authored scope; compatibility field only",
   "surface_topology": {"mode":"open task-authored topology","seam_policy":"open task-authored seam rule","finish_distribution":"open task-authored distribution","primary_surface_count":"explicit count or null","secondary_surface_policy":"auto/forbidden/task_defined","notes":"optional task-specific structure only"},
   "motion_effect": {"type":"open task-authored effect or none","source_state":"visible start state","target_state":"authored end state","timeline":"within-shot timing","intensity":"task-authored value","preserve_scene_geometry":true,"reference_asset_id":"optional exact target asset id","notes":"optional task-specific effect only"},

@@ -16,6 +16,8 @@ export async function mount(host, context) {
   const savedBlueprint = bundle?.story?.blueprint || null;
   const referenceDraft = bundle?.story?.reference_draft || null;
   const blueprint = savedBlueprint || referenceDraft;
+  const failureCode = String(bundle?.generation?.progress?.error_code || bundle?.project?.error_code || '').toUpperCase();
+  const savedQualityDraft = !blueprint && failureCode === 'BLUEPRINT_POLISH_QUALITY_FAILED';
   const isReferenceDraft = !savedBlueprint && !!referenceDraft;
   const draftNeedsGeneration = isReferenceDraft && (blueprint?.beats || []).some(beat => !String(beat.visual || beat.plot || '').trim() || !String(beat.spoken_line || beat.voiceover || '').trim());
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
@@ -45,9 +47,11 @@ export async function mount(host, context) {
         <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div>
       </section>
     </div>` : `<section class="card">${emptyState({
-      title: '还没有剧情蓝图',
-      body: '系统会根据当前对话确认单生成详细剧情、动作、旁白与对白；不会引用其他项目内容。',
-      action: '生成详细剧情与对白',
+      title: savedQualityDraft ? '脚本初稿已保存，等待重新检查' : '还没有剧情蓝图',
+      body: savedQualityDraft
+        ? '上次初稿没有进入后续制作。系统会复用已经保存的初稿，重新按统一的时长与口播标准检查。'
+        : '系统会根据当前对话确认单生成详细剧情、动作、旁白与对白；不会引用其他项目内容。',
+      action: savedQualityDraft ? '重新检查已保存初稿' : '生成详细剧情与对白',
       actionId: 'generate-story',
     })}</section>`}`;
 

@@ -19,6 +19,8 @@ const transitionReview = read('public/js/new-story-ad/transition-review.js');
 ].forEach(token => assert(currentStoryboard.includes(token), `missing current storyboard action hook: ${token}`));
 assert(currentStoryboard.includes('const pageSize = 20'), 'long-form storyboard must render one bounded page');
 assert(currentStoryboard.includes('data-open-shot-design'), 'confirmed storyboard must enter the current shot designer');
+['光影氛围', '音效', '运镜', '镜头提示词', 'storyboard-complete-row', 'shotPromptPreview']
+  .forEach(token => assert(currentStoryboard.includes(token), `complete storyboard table is missing: ${token}`));
 
 [
   'data-nsa-shot-field="transition_type"',

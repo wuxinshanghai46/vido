@@ -33,15 +33,45 @@ export function friendlyBindings(bundle = {}, shot = {}) {
   ].filter(Boolean);
 }
 
+const SHOT_SIZE_LABELS = Object.freeze({ extreme_wide: '大远景', wide: '全景', full: '全身景', medium: '中景', medium_close: '中近景', close_up: '特写', extreme_close_up: '大特写', macro: '微距' });
+const CAMERA_LABELS = Object.freeze({ static: '固定机位', push: '推镜', pull: '拉镜', pan: '摇镜', tilt: '俯仰摇镜', tracking: '跟拍', orbit: '环绕', handheld: '手持' });
+
+function productionCell(value, fallback = '—') {
+  const text = Array.isArray(value) ? value.filter(Boolean).join('、') : String(value || '').trim();
+  return escapeHtml(text || fallback);
+}
+
+function shotSound(shot = {}) {
+  return [shot.ambient_sound, ...(Array.isArray(shot.sfx) ? shot.sfx : []), shot.music_cue].filter(Boolean).join('；');
+}
+
+function shotPromptPreview(shot = {}) {
+  return [
+    shot.visual || shot.visual_description,
+    shot.action || shot.visual_action,
+    SHOT_SIZE_LABELS[shot.shot_size] || shot.shot_type || shot.shot_size,
+    shot.lighting_mood || shot.light_atmosphere || shot.lighting,
+    CAMERA_LABELS[shot.camera_movement] || shot.camera_movement,
+    shot.keyframe_notes,
+  ].filter(Boolean).join('；');
+}
+
 function shotRow(shot = {}, index = 0, bundle = {}) {
   const shotIndex = Number(shot.shot_index || shot.index || index + 1) || index + 1;
   const bindings = friendlyBindings(bundle, shot);
-  return `<div class="shot-row" data-storyboard-shot="${shotIndex}">
+  const shotSize = SHOT_SIZE_LABELS[shot.shot_size] || shot.shot_type || shot.shot_size;
+  const camera = CAMERA_LABELS[shot.camera_movement] || shot.camera_movement;
+  const prompt = [shotPromptPreview(shot), bindings.length ? `绑定资产：${bindings.map(item => item.label).join('、')}` : ''].filter(Boolean).join('；');
+  return `<div class="shot-row storyboard-complete-row" data-storyboard-shot="${shotIndex}">
     <b>SH${String(shotIndex).padStart(2, '0')}</b>
     <span class="shot-duration">${Number(shot.duration || shot.duration_sec || 3) || 3}s</span>
     <span class="shot-copy"><b>${escapeHtml(shot.title || `镜头 ${shotIndex}`)}</b><small>${escapeHtml(shot.visual || shot.visual_description || shot.action || '')}</small></span>
+    <span class="shot-production-cell">${productionCell(shotSize, '待设计')}</span>
+    <span class="shot-production-cell">${productionCell(shot.lighting_mood || shot.light_atmosphere || shot.lighting, '随场景光线')}</span>
     <span>${escapeHtml(shot.voiceover || shot.narration || '—')}</span>
-    <span class="binding-chips">${bindings.length ? bindings.map(item => `<span class="chip ok" title="${escapeHtml(item.id)}">${escapeHtml(item.label)}</span>`).join('') : '<span class="chip">未绑定</span>'}</span>
+    <span class="shot-production-cell">${productionCell(shotSound(shot), '环境原声')}</span>
+    <span class="shot-production-cell">${productionCell(camera, '固定机位')}</span>
+    <details class="shot-prompt-preview"><summary>查看镜头提示</summary><p>${productionCell(prompt, '确认场景与资产后自动形成')}</p></details>
     <button class="btn small" type="button" data-edit-shot="${shotIndex}" aria-expanded="false">编辑分镜</button>
     <form class="shot-inline-editor" data-shot-inline-editor="${shotIndex}" hidden>
       <label class="field"><span>分镜名称</span><input class="input" name="title" value="${escapeHtml(shot.title || `镜头 ${shotIndex}`)}"></label>
@@ -155,7 +185,7 @@ export async function mount(host, context) {
     </div>
     <section data-board-panel="shots">
       ${shots.length ? `<div class="card shot-table"><div class="shot-table-scroll">
-        <div class="shot-row header"><span>镜头</span><span>时长</span><span>剧情与动作</span><span>旁白 / 台词</span><span>绑定资产</span><span>操作</span></div>
+        <div class="shot-row header storyboard-complete-row"><span>镜头</span><span>时长</span><span>画面描述</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示词</span><span>操作</span></div>
         ${visibleShots.map((shot, index) => shotRow(shot, pageStart + index, bundle)).join('')}
       </div></div>${pageNav}` : `<div class="card">${emptyState({
         title: '还没有文字分镜',

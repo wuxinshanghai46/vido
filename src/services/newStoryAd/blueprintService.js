@@ -374,8 +374,8 @@ function normalizeBlueprint(blueprint, ctx) {
     const dialogueFunction = inferDialogueFunction(beat, idx, beats.length);
     const explicitSpeech = cleanSpeech(beat.spoken_line || beat.voiceover || beat.copy || '', 100);
     const speechMode = clean(beat.speech_mode || '', 30).toLowerCase().replace(/[\s-]+/g, '_');
-    const silent = speechPlan.policy === 'authored_sparse'
-      && (['silent', 'ambient_only'].includes(speechMode) || !explicitSpeech);
+    const silent = ['silent', 'ambient_only'].includes(speechMode)
+      || (speechPlan.policy === 'authored_sparse' && !explicitSpeech);
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -523,12 +523,12 @@ async function generateBlueprint(ctx, {
       ? 'This is a pure narrative/story task. Build visible story progression from character actions, place, time and emotional change. Do not invent a product, brand, selling point, purchase prompt or conversion goal.'
       : 'Prove selling points through visible actions, product/UI feedback, comparison or outcome. Characters must not simply recite product claims.',
     'Spoken lines must sound like natural conversational Chinese and fit the shot duration. Avoid translated phrasing and advertising clichés such as universe-like, industry-leading, empower, maximize your budget, faster and smarter, or one-stop solution.',
-    'The spoken track must carry the story, not merely react to visuals. Do not hide motivation, obstacle, evidence, value change or decision only in plot, visual, action or why_next.',
+    'When speech is used, it must carry a clear story function rather than merely react to visuals. A shot may instead use silent or ambient_only when visible action, environment sound or music carries that moment.',
     'Give every beat a distinct dialogue_function such as setup_goal, obstacle, question, discovery, proof, value_shift, decision, resolution or brand_closure. Across the whole film, the heard lines must cover setup/obstacle, development/proof and decision/resolution.',
     narrativeOnly
       ? 'The story must have a visible beginning, development and ending: establish the requested character and place, advance the requested events through observable actions, and resolve the emotional or narrative change. The middle must not be forced into product proof.'
       : 'Every advertisement must have a visible beginning, middle proof and ending: beat 1 is an opening hook or establishing problem/scene; middle beats introduce the actual product, material, service or scene-embedded result and prove it through detail, use, comparison, transformation, assembly or outcome; the final beat resolves the value and closes on a stable result or authorized brand ending. Do not start with an unexplained beauty shot or end immediately after a detail montage.',
-    'For natural Chinese with deliberate pauses, target roughly 2.4-4.8 spoken Chinese characters per second across the full film. A normal 4-6 second beat usually needs about 10-22 meaningful characters; a brand end card may be shorter.',
+    'Spoken Chinese must fit naturally inside the shot duration with room for performance and pauses. Never pad a line merely to reach a character count.',
     'Do not use a generic reaction such as “原来……可以这样做”“就是它了”“太棒了” as the whole line. Each line must add a concrete intention, question, product/material evidence, consequence or decision.',
     'Avoid repeating the same opening word or sentence pattern in adjacent beats. Concise means information-dense, not empty.',
     'Natural spoken-copy pass: preserve all facts, brand terms, numbers, claims and speaker intent; remove empty conclusions, overly symmetrical parallel phrasing, mechanical transition words and correct-but-useless filler. Vary sentence length and allow controlled spoken pauses, but never introduce mistakes, vague claims or deliberately broken language.',
@@ -549,7 +549,7 @@ async function generateBlueprint(ctx, {
     'If cast_mode is animal, treat the animal/pet as the subject required by the user brief and do not convert it into a human presenter.',
     speechPlan.policy === 'authored_sparse'
       ? `The user authored ${speechPlan.authored_line_count} spoken line(s) across ${speechPlan.segment_count} explicit shots. Preserve this sparse speech plan: do not invent speech for silent shots; use speech_mode silent or ambient_only and an empty spoken_line there.`
-      : 'Every beat must include spoken_line. If the picture is a silent product, space, UI or proof shot, write a short narrator line instead of leaving it blank.',
+      : 'Every beat must explicitly choose dialogue, voiceover, silent or ambient_only. Use speech only when it advances the story; do not add narrator filler to a shot whose picture and sound already communicate the moment.',
     'spoken_line is not a subtitle field. It must contain the final words for dialogue or narrator voice only, without any prefix such as "字幕:", "旁白:", "台词:", "解说:" or speaker-type tags.',
     'If Advanced production controls are enabled, obey scene direction, product presentation methods, style direction and negative requirements as hard constraints.',
     narrativeOnly
