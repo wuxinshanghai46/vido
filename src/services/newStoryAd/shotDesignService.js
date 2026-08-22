@@ -496,6 +496,14 @@ function keyframeEffectPrompt(input = null) {
   return lines.join('\n');
 }
 
+function keyframeExecutionPrompt(design = {}) {
+  const action = actionContractSummary(design.action_contract);
+  return [
+    action ? `Action staging contract: ${action}. Use it to choose the physically correct authored action state for this keyframe; do not collapse or reverse the causal order.` : '',
+    keyframeEffectPrompt(design.motion_effect),
+  ].filter(Boolean).join('\n');
+}
+
 function motionEffectPrompt(input = null) {
   const effect = normalizeMotionEffect(input);
   if (!effect) return '';
@@ -546,5 +554,6 @@ module.exports = {
   surfacePromptInvariantIssues,
   assertSurfacePromptConsistent,
   keyframeEffectPrompt,
+  keyframeExecutionPrompt,
   motionEffectPrompt,
 };

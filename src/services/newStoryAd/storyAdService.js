@@ -1216,8 +1216,7 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
   const styleText = resolveNarrative(visualContract.style, 260);
   const surfaceDesignText = shotDesign.surfacePrompt(design.surface_topology, design.shot_scope);
   const surfaceConflictText = shotDesign.surfaceConflictPrompt(design.surface_resolution);
-  const keyframeEffectText = shotDesign.keyframeEffectPrompt(design.motion_effect);
-  const actionDesignText = shotDesign.actionContractSummary(design.action_contract);
+  const keyframeEffectText = shotDesign.keyframeExecutionPrompt(design);
   const interactionRequested = /指向|伸手|食指|点击|点按|触摸|滑动|操作|按下|拿起|握住|放置|递给|注视|凝视|point|tap|touch|swipe|operate|press|pick up|hold|place|hand over|look at|gaze/i
     .test([visualText, actionText].filter(Boolean).join(' '));
   const interactionGroundingText = interactionRequested
@@ -1273,7 +1272,6 @@ function buildKeyframePrompt(ctx = {}, shot = {}, contract = {}, index = 0, opti
       ? `Current shot action: ${actionText || 'use a natural, physically grounded pose that supports the edited visual'}`
       : `Action: ${actionText}`,
     interactionGroundingText,
-    actionDesignText ? `Action staging contract: ${actionDesignText}. Use it to choose the physically correct authored action state for this keyframe; do not collapse or reverse the causal order.` : '',
     surfaceDesignText,
     surfaceConflictText,
     keyframeEffectText,
