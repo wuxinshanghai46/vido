@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-production-contract-v168';
+import { escapeHtml } from '../components/ui.js?v=20260823-user-regenerate-v169';
 
 export function modeLabel(value = '') {
   return value === 'commercial_subject' ? '商业广告' : (value === 'narrative_story' ? '剧情短片' : '待确认');

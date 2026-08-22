@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260823-production-contract-v168';
+import { escapeHtml } from '../components/ui.js?v=20260823-user-regenerate-v169';
 
 function compactText(value, maxLength = 120) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
