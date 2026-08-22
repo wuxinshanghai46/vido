@@ -43,6 +43,8 @@ const { buildSoundJourney } = require('./soundJourneyService');
 const shotDesign = require('./shotDesignService');
 const sceneAssistCompleteness = require('./sceneAssistCompletenessService'), assistScenePlan = require('./assistScenePlanService'), assistTextFormatter = require('./assistTextFormatterService'), assistCreativeDirection = require('./assistCreativeDirectionService'), storySetup = require('./storySetupService');
 const storyBeatAssist = require('./storyBeatAssistService'), briefGoalAssist = require('./briefGoalAssistService'), briefGoalPrompt = require('./briefGoalPromptService'), briefDialogueAssist = require('./briefDialogueAssistService');
+const productionBoard = require('./productionBoardContractService');
+const blueprintCharacterProjection = require('./blueprintCharacterProjectionService');
 const { normalizeAssistedStoryBeat } = storyBeatAssist, visualRealismPolicy = require('./visualRealismPolicyService'), sceneAssetLifecycle = require('./sceneAssetService');
 const sceneCheckpointProjection = require('./sceneCheckpointProjectionService');
 const stageProgress = require('./stageProgressService'), taskProgressSave = require('./taskProgressSaveService');
@@ -625,10 +627,10 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
   const sceneAssets = storage.getOutput(taskId, 'scene_assets') || baseCtx.scene_assets || [];
   const ctx = { ...baseCtx, scene_assets: Array.isArray(sceneAssets) ? sceneAssets : [] };
   const normalized = versionedBlueprint(contentDomainArtifacts.tagBlueprint(ctx,
-    normalizeBlueprintDraft({
+    productionBoard.normalizeBoard(normalizeBlueprintDraft({
       ...previous,
       ...(blueprint || {}),
-    }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`)),
+    }, `${ctx.request_id || taskId}|${ctx.brief || ''}|${ctx.product_subject || ''}`), { seed: taskId })),
     previous,
   );
   const changed = blueprintFingerprint(previous) !== blueprintFingerprint(normalized);
@@ -641,10 +643,13 @@ function updateBlueprint(taskId, blueprint = {}, user = {}, options = {}) {
       contentRevision: nextRevision,
       reason: 'manual_blueprint_edit_preserves_upstream_plan',
     });
+    const nextCtx = blueprintCharacterProjection.projectCharacters(ctx, normalized);
+    storage.saveOutput(taskId, 'context', nextCtx);
+    storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
     const snapshot = storage.saveSnapshot(taskId, {
       content_revision: nextRevision,
       status: 'manual_blueprint_edit',
-      payload: ctx,
+      payload: nextCtx,
     });
     storage.saveOutput(taskId, 'blueprint', normalized, {
       content_revision: nextRevision,
@@ -800,9 +805,13 @@ async function updateScenePlan(taskId, options = {}) {
 async function generateBlueprintStage(taskId, options = {}) {
   const task = storage.getTask(taskId);
   const ctx = storage.getOutput(taskId, 'context') || task?.request || {};
-  return blueprintLifecycle.generateBlueprintStage(taskId, options, {
-    versionedBlueprint: (blueprint, previous) => versionedBlueprint({ ...blueprint, ...contentDomainArtifacts.fields(ctx) }, previous),
+  const blueprint = await blueprintLifecycle.generateBlueprintStage(taskId, options, {
+    versionedBlueprint: (value, previous) => versionedBlueprint(productionBoard.normalizeBoard({ ...value, ...contentDomainArtifacts.fields(ctx) }, { seed: taskId }), previous),
   });
+  const nextCtx = blueprintCharacterProjection.projectCharacters(storage.getOutput(taskId, 'context') || ctx, blueprint);
+  storage.saveOutput(taskId, 'context', nextCtx);
+  storage.updateTask(taskId, { request: nextCtx, updated_at: new Date().toISOString() });
+  return blueprint;
 }
 
 const runTextStageWithRecovery = createTextStageRecovery(storage, cleanText);

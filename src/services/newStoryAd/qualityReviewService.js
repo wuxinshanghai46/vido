@@ -38,6 +38,7 @@ function storyboardTextValues(shot = {}) {
     shot.screen_direction, shot.eyeline, shot.camera_axis, shot.camera_movement,
     shot.object_states, shot.transition_reason, shot.audio_bridge, shot.ambient_sound,
     shot.music_cue, shot.voiceover_timing,
+    ...(Array.isArray(shot.sfx) ? shot.sfx : []), shot.explicit_silence_reason,
     ...dialogue.flatMap(item => [item?.speaker, item?.line]),
     ...characters.flatMap(item => [item?.name, item?.action]),
     ...layers.flatMap(item => [item?.type, item?.content]),
@@ -82,6 +83,15 @@ function detailContractIssues(shot = {}, index = 0) {
   if (!/本镜目的/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“本镜目的”`);
   if (!/必须出现/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“必须出现”`);
   if (!/禁止出现/.test(notes)) issues.push(`第 ${n} 镜关键帧补充缺少“禁止出现”`);
+  const soundMode = textValue(shot.sound_mode).toLowerCase();
+  const hasDesignedSound = !!(textValue(shot.ambient_sound) || (Array.isArray(shot.sfx) && shot.sfx.some(textValue))
+    || textValue(shot.music_cue) || textValue(shot.audio_bridge) || textValue(shot.sound_design));
+  const requiresSoundContract = Number(shot.sound_contract_version || 0) >= 1 || !!soundMode;
+  if (requiresSoundContract && soundMode === 'silent') {
+    if (!textValue(shot.explicit_silence_reason)) issues.push(`第 ${n} 镜选择静默但没有说明静默原因`);
+  } else if (requiresSoundContract && !hasDesignedSound) {
+    issues.push(`第 ${n} 镜缺少可执行声音设计；请填写环境声、动作音效或音乐，或明确选择静默并说明原因`);
+  }
   return issues;
 }
 

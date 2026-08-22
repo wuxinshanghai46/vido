@@ -28,6 +28,10 @@ function normalizeHistory(value = []) {
       content,
       topic: clean(item?.topic || item?.question_topic || '', 40),
       selected_answer: item?.selected_answer === true,
+      selected_value: clean(item?.selected_value || '', 300),
+      suggested_answers: (Array.isArray(item?.suggested_answers) ? item.suggested_answers : []).map(value => clean(value, 300)).filter(Boolean).slice(0, 6),
+      interaction_type: clean(item?.interaction_type || (item?.suggested_answers?.length ? 'choice' : 'text'), 40),
+      answered: item?.answered === true || !!item?.selected_value,
       created_at: clean(item?.created_at || '', 40),
     };
   }).filter(Boolean).map((item, index) => ({ ...item, seq: index + 1 }));

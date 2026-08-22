@@ -1,7 +1,7 @@
 import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
 import { confirmDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-dialogue-cast-blueprint-v157';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-production-board-v158';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
@@ -13,15 +13,18 @@ function domainContractBanner(brief = {}) {
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
-  return `<article class="story-character-card" data-character-index="${index}">
+  const complete = !!(character.name && character.gender && (character.age_range || character.age) && character.role);
+  return `<details class="story-character-card" data-character-index="${index}"${complete ? '' : ' open'}><summary><span><b>${escapeHtml(character.name || `角色 ${index + 1}`)}</b><small>${escapeHtml([character.gender === 'female' ? '女' : character.gender === 'male' ? '男' : '', character.age_range || character.age, character.role].filter(Boolean).join(' · ') || '基础信息待补充')}</small></span><span>展开详情</span></summary><div class="story-character-fields">
     <input type="hidden" data-character-field="id" value="${escapeHtml(character.id || character.character_id || `character_${index + 1}`)}">
     <label><span>姓名</span><input class="input" data-character-field="name" value="${escapeHtml(character.name || '')}" placeholder="待确认"></label>
     <label><span>性别</span><select class="input" data-character-field="gender"><option value=""${!gender ? ' selected' : ''}>待确认</option><option value="female"${gender === 'female' || gender === '女' ? ' selected' : ''}>女</option><option value="male"${gender === 'male' || gender === '男' ? ' selected' : ''}>男</option><option value="unspecified"${gender === 'unspecified' ? ' selected' : ''}>不限定</option></select></label>
     <label><span>年龄</span><input class="input" data-character-field="age_range" value="${escapeHtml(character.age_range || character.age || '')}" placeholder="如 28~35 岁"></label>
     <label><span>身份 / 职责</span><input class="input" data-character-field="role" value="${escapeHtml(character.role || '')}" placeholder="如 空间设计师"></label>
     <label><span>人物关系</span><input class="input" data-character-field="relationship" value="${escapeHtml(character.relationship || '')}" placeholder="如 向客户介绍方案"></label>
+    <label><span>音色</span><select class="input" data-character-field="voice_id" data-current-voice="${escapeHtml(character.voice?.voice_id || character.voice_id || '')}"><option value="">未指定（生成前需确认）</option></select></label>
+    <label><span>声音表演</span><input class="input" data-character-field="voice_tone" value="${escapeHtml(character.voice?.direction || character.voice_tone || '')}" placeholder="如 沉稳、清晰、语速自然"></label>
     <label class="character-description"><span>人物设定</span><textarea class="textarea" rows="2" data-character-field="description">${escapeHtml(character.description || '')}</textarea></label>
-  </article>`;
+  </div></details>`;
 }
 
 export async function mount(host, context) {
@@ -47,13 +50,13 @@ export async function mount(host, context) {
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
     ${blueprint ? `<div class="plot-layout plot-workspace">
       <section class="card story-overview-card">
-        <div class="card-head"><div><h2>故事与角色</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
-        <div class="card-body story-overview-grid">
+        <div class="card-head"><div><h2>故事设定</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
+        <div class="card-body story-overview-grid story-only-grid">
           <label class="field story-summary-surface"><span>故事标题</span><textarea class="textarea" name="story_title" rows="4">${escapeHtml(blueprint.story_title || blueprint.title || '')}</textarea></label>
           <label class="field story-summary-surface"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="4">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
-          <div class="field story-character-surface"><span>角色（姓名、性别、年龄与身份会贯穿人物资产和全部镜头）</span><div class="story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></div>
         </div>
       </section>
+      <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>基础信息与音色会按稳定人物 ID 同步到下一步人物资产和配音。</p></div><span class="status-tag is-info">${characters.length} 个角色</span></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
       <section class="card plot-sequence-card">
         <div class="card-head"><div><h2>剧情、动作与对白</h2><p>完整制作表平铺显示；每一列都可以展开编辑，后续人物、场景和分镜沿用同一份数据。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
         <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
@@ -67,6 +70,16 @@ export async function mount(host, context) {
       action: savedQualityDraft ? '重新检查已保存初稿' : '生成详细剧情与对白',
       actionId: 'generate-story',
     })}</section>`}`;
+
+  if (characters.length) {
+    request('/api/avatar/voice-list', { timeoutMs: 30000 }).then(data => {
+      const voices = Array.isArray(data.voices) ? data.voices.filter(voice => voice && voice.id) : [];
+      host.querySelectorAll('[data-character-field="voice_id"]').forEach(select => {
+        const selected = select.dataset.currentVoice || '';
+        select.insertAdjacentHTML('beforeend', voices.map(voice => `<option value="${escapeHtml(voice.id)}"${voice.id === selected ? ' selected' : ''}>${escapeHtml(voice.name || voice.label || voice.id)}</option>`).join(''));
+      });
+    }).catch(() => toast('音色列表暂时无法加载；已保留原音色绑定，可稍后重试。', 'warning'));
+  }
 
   const generate = async (button, force = false) => {
     try {
@@ -160,14 +173,17 @@ export async function mount(host, context) {
     if (toggle) {
       const editor = row.querySelector('[data-beat-editor]');
       editor.hidden = !editor.hidden;
-      toggle.textContent = editor.hidden ? '编辑' : '收起';
       return;
     }
     if (event.target.closest('[data-close-beat-editor]')) {
       syncBeatPresentation(row);
       row.querySelector('[data-beat-editor]').hidden = true;
-      row.querySelector('[data-toggle-beat-editor]').textContent = '编辑';
       return;
+    }
+    const menuButton = event.target.closest('[data-row-menu]');
+    if (menuButton) { const menu = row.querySelector('.beat-row-menu'); menu.hidden = !menu.hidden; return; }
+    if (event.target.closest('[data-duplicate-beat]')) {
+      const copy = collectBeat(row); copy.shot_id = ''; const wrapper = document.createElement('div'); wrapper.innerHTML = beatEditor(copy, host.querySelectorAll('[data-beat-index]').length); row.after(wrapper.firstElementChild); return;
     }
     if (!event.target.closest('[data-remove-beat]')) return;
     if (!await confirmDialog('删除后，该情节点只会从当前编辑器移除；点击“保存剧情”后才会写入项目。', {

@@ -163,17 +163,18 @@ export function createProjectStore() {
   }
 
   async function saveBlueprint(blueprint) {
-    const taskId = state.bundle?.project?.id;
-    const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, {
-      method: 'PUT',
-      body: { blueprint, expected_content_revision: state.bundle?.revisions?.content || 1 },
-      timeoutMs: 120000,
-    });
-    applyMutationResult(data);
-    await refreshSections('summary');
-    return data;
+    const execute = async () => {
+      const taskId = state.bundle?.project?.id;
+      if (!taskId) throw new Error('请先创建项目。');
+      set({ saving: true, error: '' });
+      try {
+        const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/blueprint`, { method: 'PUT', body: { blueprint, expected_content_revision: state.bundle?.revisions?.content || 1 }, timeoutMs: 120000 });
+        applyMutationResult(data); await refreshSections('summary'); set({ saving: false }); return data;
+      } catch (error) { set({ saving: false, error: error.message }); throw error; }
+    };
+    const queued = requestMutationChain.then(execute, execute);
+    requestMutationChain = queued.catch(() => {}); return queued;
   }
-
   async function saveStoryboard(shots) {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/new-story-ad/tasks/${encodeURIComponent(taskId)}/storyboard`, {
@@ -185,7 +186,6 @@ export function createProjectStore() {
     await refreshSections('summary');
     return data;
   }
-
   async function saveSketches(sketches) {
     const taskId = state.bundle?.project?.id;
     const data = await request(`/api/story-ad/projects/${encodeURIComponent(taskId)}/sketches`, {

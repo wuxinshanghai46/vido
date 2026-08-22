@@ -28,23 +28,28 @@ export function normalizedDialogueHistory(value = []) {
     content: String(item?.content || '').trim().slice(0, 1200),
     topic: String(item?.topic || '').trim().slice(0, 40),
     selected_answer: item?.selected_answer === true,
+    selected_value: String(item?.selected_value || '').trim().slice(0, 300),
+    suggested_answers: (Array.isArray(item?.suggested_answers) ? item.suggested_answers : []).map(value => String(value || '').trim().slice(0, 300)).filter(Boolean).slice(0, 6),
+    interaction_type: String(item?.interaction_type || (item?.suggested_answers?.length ? 'choice' : 'text')).slice(0, 40),
+    answered: item?.answered === true || Boolean(item?.selected_value),
     created_at: String(item?.created_at || ''),
   })).filter(item => item.content).slice(-60);
 }
 
-export function recordDialogueHistory(history, role, content, { topic = '', selectedAnswer = false } = {}) {
+export function recordDialogueHistory(history, role, content, { topic = '', selectedAnswer = false, selectedValue = '', suggestedAnswers = [], interactionType = '' } = {}) {
   const text = String(content || '').trim();
   if (!text) return history;
   const previous = history.at(-1);
   if (previous?.role === role && previous?.content === text && previous?.topic === topic) return history;
   const id = globalThis.crypto?.randomUUID?.() || `dialogue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   return normalizedDialogueHistory([...history, {
-    id, role, content: text, topic, selected_answer: selectedAnswer, created_at: new Date().toISOString(),
+    id, role, content: text, topic, selected_answer: selectedAnswer, selected_value: selectedValue,
+    suggested_answers: suggestedAnswers, interaction_type: interactionType || (suggestedAnswers.length ? 'choice' : 'text'), answered: Boolean(selectedValue), created_at: new Date().toISOString(),
   }]);
 }
 
 export function dialogueHistoryMarkup(value = []) {
-  return normalizedDialogueHistory(value).map(item => `<article class="brief-message ${item.role === 'user' ? 'is-user' : 'is-assistant'}" data-dialogue-message-id="${escapeHtml(item.id)}"><span class="brief-message-avatar">${item.role === 'user' ? '你' : '导'}</span><div><small>${item.role === 'user' ? '你' : '导演助理'}</small><div class="brief-bubble"><p>${escapeHtml(item.content)}</p></div></div></article>`).join('');
+  return normalizedDialogueHistory(value).map(item => `<article class="brief-message ${item.role === 'user' ? 'is-user' : 'is-assistant'}" data-dialogue-message-id="${escapeHtml(item.id)}"><span class="brief-message-avatar">${item.role === 'user' ? '你' : '导'}</span><div><small>${item.role === 'user' ? '你' : '导演助理'}</small><div class="brief-bubble"><p>${escapeHtml(item.content)}</p>${item.suggested_answers.length ? `<div class="brief-quick-actions is-history">${item.suggested_answers.map(answer => `<button type="button" disabled${answer === item.selected_value ? ' class="is-selected"' : ''}>${escapeHtml(answer)}</button>`).join('')}</div>` : ''}</div></div></article>`).join('');
 }
 
 export function appendDialogueSuggestions(entry, answers = [], { isSending, onSelect } = {}) {

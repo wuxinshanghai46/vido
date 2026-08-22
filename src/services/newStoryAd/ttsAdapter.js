@@ -106,13 +106,15 @@ function shotSpeechUnits(shot = {}, fallbackVoiceId = '', voiceAssignments = {})
   const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
   const units = dialogue.map(line => {
     const speaker = normalizeSpeechSegment(line?.speaker || '');
+    const speakerId = normalizeSpeechSegment(line?.speaker_id || line?.speakerId || '');
     const text = normalizeSpeechSegment(line?.line || line?.text || '');
-    return { speaker, text, voice_id: assignments.speakers[speaker] || line?.voice_id || fallbackVoiceId, kind: 'dialogue' };
+    return { speaker, speaker_id: speakerId, text, voice_id: assignments.speakers[speakerId] || assignments.speakers[speaker] || line?.voice_id || fallbackVoiceId, kind: 'dialogue' };
   }).filter(unit => unit.text);
   if (units.length) return units;
   const text = shotSpeechText(shot);
   const speaker = normalizeSpeechSegment(shot.speaker || shot.characters?.[0]?.name || '');
-  return text ? [{ speaker, text, voice_id: assignments.speakers[speaker] || fallbackVoiceId, kind: 'dialogue' }] : [];
+  const speakerId = normalizeSpeechSegment(shot.speaker_id || shot.speakerId || '');
+  return text ? [{ speaker, speaker_id: speakerId, text, voice_id: assignments.speakers[speakerId] || assignments.speakers[speaker] || fallbackVoiceId, kind: 'dialogue' }] : [];
 }
 
 function voiceSignature(shot = {}, fallbackVoiceId = '', voiceAssignments = {}) {

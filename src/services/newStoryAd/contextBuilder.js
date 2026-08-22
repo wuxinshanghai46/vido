@@ -683,7 +683,10 @@ function normalizeCastProfiles(input) {
       name: cleanText(profile.name || profile.displayName || profile.roleName || `角色${idx + 1}`, 120),
       displayName: cleanText(profile.displayName || profile.name || '', 120),
       roleName: cleanText(profile.roleName || profile.role || '', 120),
+      source_character_id: cleanText(profile.source_character_id || profile.character_id || profile.id || '', 80),
+      gender: cleanText(profile.gender || 'unspecified', 24),
       age: normalizedAge.value,
+      age_range: cleanText(profile.age_range || profile.ageRange || normalizedAge.value || '', 60),
       age_contract: normalizedAge,
       age_source: cleanText(profile.age_source || normalizedAge.source || '', 40),
       identity_id: evolved.identity_id,
@@ -729,6 +732,9 @@ function normalizeCastProfiles(input) {
         resolved.hairMakeupText ? `发型妆造：${resolved.hairMakeupText}` : '',
       ].filter(Boolean).join('；'), 1000),
       identityLock: profile.identityLock && typeof profile.identityLock === 'object' ? profile.identityLock : {},
+      relationship: cleanText(profile.relationship || '', 240),
+      voice_id: cleanText(profile.voice_id || profile.voice?.voice_id || '', 160),
+      voice_tone: cleanText(profile.voice_tone || profile.voice?.direction || '', 300),
     };
   }).filter(Boolean);
 }
