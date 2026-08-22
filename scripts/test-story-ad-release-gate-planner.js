@@ -34,6 +34,11 @@ assert.deepEqual(
   plan(['src/services/newStoryAd/storyboardTableService.js', 'src/services/newStoryAd/referenceDetachService.js']).gates.map(row => row.id),
   ['reference', 'story_content', 'workspace_ui', 'release_core'],
 );
+assert.equal(plan(['src/services/newStoryAd/blueprintService.js', 'src/services/newStoryAd/assetPlanService.js']).profile, 'story_content_asset_plan');
+assert.deepEqual(
+  plan(['src/services/newStoryAd/blueprintService.js', 'src/services/newStoryAd/assetPlanService.js']).gates.map(row => row.id),
+  ['story_content', 'asset_plan', 'workspace_ui', 'release_core'],
+);
 assert.equal(plan(['src/services/storyAdWorkspace/briefProjectionService.js']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/briefDialogueHistoryService.js', 'scripts/test-story-ad-dialogue-cast-blueprint-v151.js']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/contextBuilder.js']).profile, 'asset_plan');

@@ -259,6 +259,9 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
   if (risks.has('reference') && risks.has('story_content')) return {
     profile: 'reference_story_content', domains: [...domains], unknown_files: [], reasons: ['同时涉及参考权威与内容蓝图/完整分镜'],
   };
+  if (risks.has('story_content') && risks.has('asset_plan')) return {
+    profile: 'story_content_asset_plan', domains: [...domains], unknown_files: [], reasons: ['同时涉及内容蓝图与资产人物合同'],
+  };
   if (risks.has('story_content')) return {
     profile: 'story_content', domains: [...domains], unknown_files: [], reasons: ['涉及内容蓝图、完整分镜或连续性生成'],
   };
@@ -275,6 +278,7 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
     asset_plan: ['asset_plan', 'workspace_ui', 'release_core'],
     reference_asset_plan: ['reference', 'asset_plan', 'workspace_ui', 'release_core'],
     story_content: ['story_content', 'workspace_ui', 'release_core'],
+    story_content_asset_plan: ['story_content', 'asset_plan', 'workspace_ui', 'release_core'],
     reference_story_content: ['reference', 'story_content', 'workspace_ui', 'release_core'],
     upload_media: ['upload_media', 'reference', 'workspace_ui', 'release_core'],
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
