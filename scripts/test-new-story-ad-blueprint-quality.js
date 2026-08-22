@@ -249,6 +249,7 @@ assert.equal(assessBlueprintQuality(productionThinDialogue).pass, false, '生产
 
 const storyDrivenDialogue = {
   ...productionThinDialogue,
+  characters: [{ id: 'designer', name: '苏晚', role: '设计师', gender: 'female', age_range: '28~35岁' }],
   beats: [
     { role: '冲突', dialogue_function: '冲突', plot: '设计师面对空旷墙面思考材料难题。', action: '她翻看方案并停在墙前。', spoken_line: '客户要温度和质感，可普通材料撑不起整面空间。' },
     { role: '发现', dialogue_function: 'question', plot: '墙面显出铂棕纹理。', action: '她走近辨认表面。', spoken_line: '等等，这种细腻的纹理，真的是不锈钢？' },

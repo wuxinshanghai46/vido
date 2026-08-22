@@ -16,6 +16,7 @@ const worldSetting = require('./worldSettingContractService');
 const personAgeContract = require('./personAgeContractService');
 const personEvolution = require('./personStateEvolutionService');
 const multilineTextContract = require('./multilineTextContractService');
+const briefDialogueHistory = require('./briefDialogueHistoryService');
 
 function cleanText(value = '', max = 2000) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -192,9 +193,13 @@ function normalizeCharacter(item, idx = 0, seed = '') {
     const role = cleanText(item, 80);
     const gender = inferGenderFromText(role);
     return {
+      id: `character_${idx + 1}`,
       name: defaultCharacterName(gender, idx, seed, role),
       role,
       gender,
+      age_range: '',
+      relationship: '',
+      on_screen: true,
       description: role,
       name_generated: true,
     };
@@ -206,11 +211,16 @@ function normalizeCharacter(item, idx = 0, seed = '') {
   const rawName = cleanText(source.name || source.character_name || source.displayName || source.label || '', 40);
   const shouldGenerateName = looksLikeDescriptorName(rawName);
   return {
+    id: cleanText(source.id || source.character_id || `character_${idx + 1}`, 80),
     name: shouldGenerateName ? defaultCharacterName(gender, idx, seed, role || description) : rawName,
     role,
     gender,
+    age_range: cleanText(source.age_range || source.ageRange || source.age || '', 40),
+    relationship: cleanText(source.relationship || source.relation || '', 120),
+    on_screen: source.on_screen !== false && source.onScreen !== false,
+    source: cleanText(source.source || '', 40),
     description,
-    name_generated: shouldGenerateName || undefined,
+    name_generated: source.name_generated === true || source.nameGenerated === true || shouldGenerateName || undefined,
   };
 }
 
@@ -961,7 +971,11 @@ function buildContext(body = {}, user = {}) {
   const briefVersions = multilineTextContract.versions(body.brief_versions || body.briefVersions, brief);
   const productSubject = cleanText(body.product_subject || body.productSubject || body.subject || body.product_name || body.productName || '', 200);
   const requestId = cleanText(body.request_id || body.requestId || uuidv4(), 80);
-  const characters = normalizeCharacters(body.characters || body.cast || body.people, `${requestId}|${brief}|${productSubject}`);
+  const castIntent = briefDialogueHistory.normalizeCastIntent(body.brief_intake?.cast_intent || body.briefIntake?.castIntent || body.cast_intent || body.castIntent);
+  const dialogueHistory = briefDialogueHistory.normalizeHistory(body.brief_intake?.dialogue_history || body.briefIntake?.dialogueHistory);
+  const characterInput = body.characters || body.cast || body.people
+    || (castIntent.confirmed ? castIntent.participants : []);
+  const characters = normalizeCharacters(characterInput, `${requestId}|${brief}|${productSubject}`);
   const assets = normalizeAssets(body.assets || body.references || body.images);
   const durationContract = resolveTargetDuration(body, brief);
   const targetDuration = durationContract.value;
@@ -971,8 +985,9 @@ function buildContext(body = {}, user = {}) {
   const forbidden = Array.isArray(body.forbidden)
     ? body.forbidden.map(x => cleanText(x, 100)).filter(Boolean)
     : cleanText(body.forbidden || body.negative || '', 500).split(/[，,;\n]/).map(x => cleanText(x, 100)).filter(Boolean);
-  const castMode = inferCastMode({ castMode: body.cast_mode || body.castMode, characters, brief });
+  const castMode = inferCastMode({ castMode: body.cast_mode || body.castMode || (castIntent.confirmed ? castIntent.mode : ''), characters, brief });
   const expectedPeopleRaw = Number(body.expected_people || body.expectedPeople || body.person_count || body.personCount || 0)
+    || (castIntent.confirmed ? castIntent.expected_people : 0)
     || inferExpectedPeopleCount(brief, characters)
     || 0;
   const controlledProduction = normalizeControlledProduction(body.controlled_production || body.controlledProduction);
@@ -1158,7 +1173,10 @@ function buildContext(body = {}, user = {}) {
         : '',
       completed_dialogue_topics: [...new Set((Array.isArray(body.brief_intake?.completed_dialogue_topics) ? body.brief_intake.completed_dialogue_topics : []).map(value => cleanText(value, 40)).filter(Boolean))].slice(0, 20),
       active_dialogue_topic: cleanText(body.brief_intake?.active_dialogue_topic || '', 40),
+      dialogue_history: dialogueHistory,
+      cast_intent: castIntent,
     },
+    cast_intent: castIntent,
     story_setup_confirmed: body.story_setup_confirmed === true || body.storySetupConfirmed === true,
     asset_setup_confirmed: body.asset_setup_confirmed === true || body.assetSetupConfirmed === true,
     shot_design_confirmed: body.shot_design_confirmed === true || body.shotDesignConfirmed === true,
@@ -1379,6 +1397,12 @@ function contextPrompt(ctx) {
     contentSkill.promptBlock(ctx.content_mode),
     capabilityPacks.promptBlock(ctx),
     `${narrativeMode ? '剧情内容目标' : '广告需求'}：${ctx.brief}`,
+    briefDialogueHistory.dialogueContext(ctx.brief_intake?.dialogue_history)
+      ? `已确认立项对话（问题与回答必须一起理解，不能把“面向客户”误当“客户出镜”，也不能丢掉用户明确确认的出镜人物）：\n${briefDialogueHistory.dialogueContext(ctx.brief_intake.dialogue_history)}`
+      : '',
+    ctx.brief_intake?.cast_intent?.confirmed
+      ? `用户确认的出镜人物合同：${JSON.stringify(ctx.brief_intake.cast_intent)}。蓝图、人物规划和资产生成不得增删这些出镜身份。`
+      : '',
     narrativeMode
       ? '内容类型：纯剧情 / 故事主题。不得凭空添加商品、品牌、卖点、购买引导或销售转化；以原始故事事实为最高权威。'
       : `广告主体：${ctx.product_subject}`,

@@ -3,6 +3,10 @@ import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-referenc
 export function formPayload(form) {
   const data = new FormData(form);
   const brief = String(data.get('brief') || '').trim();
+  let dialogueHistory = [];
+  let castIntent = {};
+  try { dialogueHistory = JSON.parse(String(data.get('dialogue_history') || '[]')); } catch {}
+  try { castIntent = JSON.parse(String(data.get('cast_intent') || '{}')); } catch {}
   return {
     project_name: String(data.get('project_name') || '').trim(),
     brief,
@@ -22,6 +26,8 @@ export function formPayload(form) {
       reference_decision: String(data.get('reference_decision') || ''),
       completed_dialogue_topics: String(data.get('completed_dialogue_topics') || '').split(',').map(value => value.trim()).filter(Boolean),
       active_dialogue_topic: String(data.get('active_dialogue_topic') || '').trim(),
+      dialogue_history: Array.isArray(dialogueHistory) ? dialogueHistory : [],
+      cast_intent: castIntent && typeof castIntent === 'object' ? castIntent : {},
     },
     world_setting: worldSettingPayload(data),
     benchmark_strategy: {

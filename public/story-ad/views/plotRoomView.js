@@ -1,7 +1,7 @@
 import { request } from '../api.js?v=20260822-reference-blueprint-complete-v150';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v150';
 import { confirmDialog } from '../components/dialog.js?v=20260822-reference-blueprint-complete-v150';
-import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-reference-blueprint-complete-v150';
+import { applyBeat, beatEditor, collectBeat, collectBlueprint, syncBeatPresentation } from './plotBeatEditor.js?v=20260822-dialogue-cast-blueprint-v151';
 
 function domainContractBanner(brief = {}) {
   const contract = brief.content_domain_contract || {};
@@ -9,6 +9,19 @@ function domainContractBanner(brief = {}) {
   const objective = contract.objective || (narrative ? '以人物、关系、因果和主题完成剧情' : '围绕商品或服务主体完成传播目标');
   const forbidden = Array.isArray(contract.forbidden) ? contract.forbidden.slice(0, 4).join('、') : (narrative ? '禁止混入商品卖点、购买号召和品牌落版' : '禁止丢失广告主体与可见传播证据');
   return `<section class="guide content-domain-banner"><b>${narrative ? '剧情专用规则' : '广告专用规则'}</b><span>${escapeHtml(objective)}</span><small>${escapeHtml(forbidden)}</small></section>`;
+}
+
+function characterEditor(character = {}, index = 0) {
+  const gender = String(character.gender || '').toLowerCase();
+  return `<article class="story-character-card" data-character-index="${index}">
+    <input type="hidden" data-character-field="id" value="${escapeHtml(character.id || character.character_id || `character_${index + 1}`)}">
+    <label><span>姓名</span><input class="input" data-character-field="name" value="${escapeHtml(character.name || '')}" placeholder="待确认"></label>
+    <label><span>性别</span><select class="input" data-character-field="gender"><option value=""${!gender ? ' selected' : ''}>待确认</option><option value="female"${gender === 'female' || gender === '女' ? ' selected' : ''}>女</option><option value="male"${gender === 'male' || gender === '男' ? ' selected' : ''}>男</option><option value="unspecified"${gender === 'unspecified' ? ' selected' : ''}>不限定</option></select></label>
+    <label><span>年龄</span><input class="input" data-character-field="age_range" value="${escapeHtml(character.age_range || character.age || '')}" placeholder="如 28~35 岁"></label>
+    <label><span>身份 / 职责</span><input class="input" data-character-field="role" value="${escapeHtml(character.role || '')}" placeholder="如 空间设计师"></label>
+    <label><span>人物关系</span><input class="input" data-character-field="relationship" value="${escapeHtml(character.relationship || '')}" placeholder="如 向客户介绍方案"></label>
+    <label class="character-description"><span>人物设定</span><textarea class="textarea" rows="2" data-character-field="description">${escapeHtml(character.description || '')}</textarea></label>
+  </article>`;
 }
 
 export async function mount(host, context) {
@@ -35,16 +48,16 @@ export async function mount(host, context) {
     ${blueprint ? `<div class="plot-layout plot-workspace">
       <section class="card story-overview-card">
         <div class="card-head"><div><h2>故事与角色</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
-        <div class="card-body form-grid">
-          <label class="field full"><span>故事标题</span><input class="input" name="story_title" value="${escapeHtml(blueprint.story_title || blueprint.title || '')}"></label>
-          <label class="field full"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="5">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
-          <div class="field full"><span>角色</span><div class="binding-chips">${characters.length ? characters.map(character => `<span class="chip ok">${escapeHtml(character.name || character.role || '角色')}</span>`).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></div>
+        <div class="card-body story-overview-grid">
+          <label class="field story-summary-surface"><span>故事标题</span><textarea class="textarea" name="story_title" rows="4">${escapeHtml(blueprint.story_title || blueprint.title || '')}</textarea></label>
+          <label class="field story-summary-surface"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="4">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
+          <div class="field story-character-surface"><span>角色（姓名、性别、年龄与身份会贯穿人物资产和全部镜头）</span><div class="story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></div>
         </div>
       </section>
       <section class="card plot-sequence-card">
-        <div class="card-head"><div><h2>剧情、动作与对白</h2><p>系统先生成完整顺序；点击某一段“编辑”再修改细节。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
-        <div class="beat-table-head" aria-hidden="true"><span>段落</span><span>时长</span><span>画面与剧情动作</span><span>对白 / 旁白</span><span>操作</span></div>
-        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div>
+        <div class="card-head"><div><h2>剧情、动作与对白</h2><p>完整制作表平铺显示；每一列都可以展开编辑，后续人物、场景和分镜沿用同一份数据。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
+        <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
+        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div></div>
       </section>
     </div>` : `<section class="card">${emptyState({
       title: savedQualityDraft ? '脚本初稿已保存，等待重新检查' : '还没有剧情蓝图',

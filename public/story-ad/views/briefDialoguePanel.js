@@ -25,6 +25,22 @@ function ideaMarkup(value = '', location = 'conversation') {
   return `<p>${escapeHtml(preview.text)}</p>${preview.collapsed ? `<details class="brief-idea-details"><summary>查看完整设想</summary><div>${escapeHtml(preview.full)}</div></details>` : ''}`;
 }
 
+function normalizedDialogueHistory(value = []) {
+  return (Array.isArray(value) ? value : []).map((item, index) => ({
+    id: String(item?.id || `dialogue_${index + 1}`),
+    seq: index + 1,
+    role: item?.role === 'assistant' ? 'assistant' : 'user',
+    content: String(item?.content || '').trim().slice(0, 1200),
+    topic: String(item?.topic || '').trim().slice(0, 40),
+    selected_answer: item?.selected_answer === true,
+    created_at: String(item?.created_at || ''),
+  })).filter(item => item.content).slice(-60);
+}
+
+function dialogueHistoryMarkup(value = []) {
+  return normalizedDialogueHistory(value).map(item => `<article class="brief-message ${item.role === 'user' ? 'is-user' : 'is-assistant'}" data-dialogue-message-id="${escapeHtml(item.id)}"><span class="brief-message-avatar">${item.role === 'user' ? '你' : '导'}</span><div><small>${item.role === 'user' ? '你' : '导演助理'}</small><div class="brief-bubble"><p>${escapeHtml(item.content)}</p></div></div></article>`).join('');
+}
+
 export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
   const brief = bundle.brief || {};
   const commercial = brief.content_mode_source === 'user' && brief.content_mode === 'commercial_subject';
@@ -33,12 +49,19 @@ export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
   const outputLabel = commercial ? '广告脚本' : (narrative ? '剧情与对白' : '内容方案');
   const referenceStatus = referenceDialogueStatus(bundle.reference || {});
   const intake = brief.brief_intake || {};
+  const persistedHistory = normalizedDialogueHistory(intake.dialogue_history);
+  const pendingInteractiveTopic = persistedHistory.at(-1)?.role === 'assistant'
+    && ((persistedHistory.at(-1)?.topic === 'on_screen_cast' && intake.cast_intent?.confirmed !== true)
+      || (persistedHistory.at(-1)?.topic === 'specifications' && intake.specifications_confirmed !== true)
+      || (persistedHistory.at(-1)?.topic === 'reference' && !['attached', 'skipped'].includes(intake.reference_decision)))
+    ? persistedHistory.at(-1)?.topic : '';
+  const displayedHistory = pendingInteractiveTopic ? persistedHistory.slice(0, -1) : persistedHistory;
   const hasIdea = Boolean(String(brief.text || '').trim());
   return `<section class="brief-dialogue" data-brief-dialogue>
     <div class="brief-conversation-panel">
       <header class="brief-conversation-head"><span class="brief-director-avatar">导</span><div><h1>导演助理</h1><p><i></i><span data-dialogue-domain-copy>在线 · 先把想法整理成可执行${domainLabel}</span></p></div><span class="brief-stage-chip">第 1 步 · 对话立项</span></header>
       <div class="brief-conversation-scroll" data-brief-conversation aria-live="polite">
-        ${hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : ''}
+        ${displayedHistory.length ? dialogueHistoryMarkup(displayedHistory) : (hasIdea ? `<article class="brief-message is-user"><span class="brief-message-avatar">你</span><div><small>当前设想</small><div class="brief-bubble" data-dialogue-current-idea>${ideaMarkup(brief.text, 'conversation')}</div></div></article>` : '')}
         ${referenceStatus ? `<article class="brief-message is-assistant" data-reference-dialogue-status data-reference-status="${escapeHtml(String(bundle.reference?.status || '').toLowerCase())}"><span class="brief-message-avatar">导</span><div><small>导演助理 · 参考分析</small><div class="brief-bubble"><p>${escapeHtml(referenceStatus)}</p></div></div></article>` : ''}
         ${options.referenceProgressMarkup ? `<div class="brief-reference-progress-slot" data-reference-progress-host>${options.referenceProgressMarkup}</div>` : ''}
       </div>
@@ -47,7 +70,7 @@ export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
     <aside class="brief-contract-panel">
       <header><div><small>实时结构化</small><h2>项目确认单</h2></div><span>草稿</span></header>
       <div class="brief-contract-progress"><i><b data-dialogue-progress></b></i><strong data-dialogue-progress-text>0%</strong></div>
-      <ol class="brief-contract-checklist" aria-label="立项准备度依据"><li data-progress-item="mode">内容类型 15%</li><li data-progress-item="idea">核心内容 35%</li><li data-progress-item="name">项目名称 10%</li><li data-progress-item="specifications">成片规格 20%</li><li data-progress-item="reference">参考决定 10%</li><li data-progress-item="confirm">最终确认 10%</li></ol>
+      <ol class="brief-contract-checklist" aria-label="立项准备度依据"><li data-progress-item="mode">内容类型 15%</li><li data-progress-item="idea">核心内容 30%</li><li data-progress-item="name">项目名称 10%</li><li data-progress-item="cast">出镜人物 10%</li><li data-progress-item="specifications">成片规格 15%</li><li data-progress-item="reference">参考决定 10%</li><li data-progress-item="confirm">最终确认 10%</li></ol>
       <p class="brief-contract-hint">对话内容会自动同步到这里。这是立项准备度，不是高级设置完成度；系统建议的规格不算完成，必须由你明确确认。</p>
       <section><h3>基础信息</h3><dl><div><dt>项目名称</dt><dd data-contract-name>待根据创意命名</dd></div><div><dt>内容类型</dt><dd data-contract-mode>${escapeHtml(modeLabel(brief.content_mode_source === 'user' ? brief.content_mode : ''))}</dd></div><div class="wide"><dt>核心创意</dt><dd data-contract-idea>${ideaMarkup(brief.text, 'contract')}</dd></div></dl></section>
       <section><h3>成片规格</h3><dl class="triple"><div><dt>时长</dt><dd><span data-contract-duration>${Number(brief.target_duration || 30)}秒</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>画幅</dt><dd><span data-contract-ratio>${escapeHtml(brief.output_ratio || '9:16')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div><div><dt>清晰度</dt><dd><span data-contract-resolution>${escapeHtml(brief.video_resolution || '1080p')}</span> <i data-contract-spec-source>${intake.specifications_confirmed === true ? '用户已确认' : '建议·待确认'}</i></dd></div></dl></section>
@@ -58,31 +81,33 @@ export function briefDialogueMarkup(bundle = {}, route = {}, options = {}) {
   </section>`;
 }
 
-export function dialogueIntakeState({ name = '', mode = '', idea = '', ideaReady, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false } = {}) {
+export function dialogueIntakeState({ name = '', mode = '', idea = '', ideaReady, castIntentConfirmed = false, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false } = {}) {
   const missing = [];
   if (!mode) missing.push('mode');
   if (!idea) missing.push('idea');
   else if (ideaReady !== true) missing.push('idea_details');
-  if (idea && ideaReady === true && !specificationsConfirmed) missing.push('specifications');
+  if (idea && ideaReady === true && mode === 'commercial_subject' && !castIntentConfirmed) missing.push('cast');
+  if (idea && ideaReady === true && (mode !== 'commercial_subject' || castIntentConfirmed) && !specificationsConfirmed) missing.push('specifications');
   if (idea && ideaReady === true && specificationsConfirmed && !referenceAttached && !referenceSkipped) missing.push('reference');
   if (!name) missing.push('name');
   return {
-    ready: Boolean(name && mode && idea && ideaReady === true && specificationsConfirmed && (referenceAttached || referenceSkipped)),
+    ready: Boolean(name && mode && idea && ideaReady === true && (mode !== 'commercial_subject' || castIntentConfirmed) && specificationsConfirmed && (referenceAttached || referenceSkipped)),
     missing,
     next: missing[0] || '',
   };
 }
 
-export function dialogueProgressState({ name = '', mode = '', idea = '', ideaReady = false, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false, confirmed = false } = {}) {
+export function dialogueProgressState({ name = '', mode = '', idea = '', ideaReady = false, castIntentConfirmed = false, specificationsConfirmed = false, referenceAttached = false, referenceSkipped = false, confirmed = false } = {}) {
   const complete = {
     mode: Boolean(mode),
     idea: Boolean(idea && ideaReady),
     name: Boolean(name),
+    cast: mode !== 'commercial_subject' || castIntentConfirmed,
     specifications: Boolean(specificationsConfirmed),
     reference: Boolean(referenceAttached || referenceSkipped),
     confirm: Boolean(confirmed),
   };
-  const weights = { mode: 15, idea: 35, name: 10, specifications: 20, reference: 10, confirm: 10 };
+  const weights = { mode: 15, idea: 30, name: 10, cast: 10, specifications: 15, reference: 10, confirm: 10 };
   return { percent: Object.keys(weights).reduce((sum, key) => sum + (complete[key] ? weights[key] : 0), 0), complete };
 }
 
@@ -95,7 +120,21 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const send = panel.querySelector('[data-dialogue-send]');
   const control = name => form.elements.namedItem(name);
   const dispatch = element => element?.dispatchEvent(new Event('input', { bubbles: true }));
-  const history = [];
+  let history = [];
+  try { history = normalizedDialogueHistory(JSON.parse(String(control('dialogue_history')?.value || '[]'))); } catch { history = []; }
+  let castIntent = {};
+  try { castIntent = JSON.parse(String(control('cast_intent')?.value || '{}')) || {}; } catch { castIntent = {}; }
+  const recordHistory = (role, content, { topic = '', selectedAnswer = false } = {}) => {
+    const text = String(content || '').trim();
+    if (!text) return;
+    const previous = history.at(-1);
+    if (previous?.role === role && previous?.content === text && previous?.topic === topic) return;
+    const id = globalThis.crypto?.randomUUID?.() || `dialogue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    history = normalizedDialogueHistory([...history, {
+      id, role, content: text, topic, selected_answer: selectedAnswer, created_at: new Date().toISOString(),
+    }]);
+    if (control('dialogue_history')) control('dialogue_history').value = JSON.stringify(history);
+  };
   const modeAtMount = String(control('content_mode')?.value || '');
   const completedTopics = new Set(sanitizeDialogueTopics(String(control('completed_dialogue_topics')?.value || '').split(','), modeAtMount));
   let activeQuestionTopic = sanitizeDialogueTopics([String(control('active_dialogue_topic')?.value || '')], modeAtMount)[0] || '';
@@ -135,7 +174,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     });
     entry.article.lastElementChild?.appendChild(actions);
   };
-  const streamMessage = async (text, target = null) => {
+  const streamMessage = async (text, target = null, meta = {}) => {
     const entry = target || message('assistant');
     const value = String(text || '').trim();
     entry.article.classList.add('is-streaming');
@@ -150,11 +189,13 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     }
     entry.article.classList.remove('is-streaming');
     followConversationAfter(conversation, () => {});
+    recordHistory('assistant', value, meta);
     return entry;
   };
   let referenceSkipped = String(control('reference_decision')?.value || '') === 'skipped';
   let referenceQuestionLoading = false;
   let specificationQuestionLoading = false;
+  let castQuestionLoading = false;
   const referenceLinkDialogue = createReferenceLinkDialogueHandler({
     onReferenceLink,
     message,
@@ -164,7 +205,8 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendReferenceQuestion = async () => {
     if (referenceQuestionLoading || conversation.querySelector('[data-reference-question]') || referencePresent || referenceSkipped) return;
     referenceQuestionLoading = true;
-    const { mountReferenceQuestion } = await import('./briefReferenceQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const { mountReferenceQuestion, referenceQuestionText } = await import('./briefReferenceQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    recordHistory('assistant', referenceQuestionText({ mode: String(control('content_mode')?.value || ''), idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text }), { topic: 'reference' });
     mountReferenceQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       idea: briefIdeaPreview(String(control('brief')?.value || ''), 54).text,
@@ -173,6 +215,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       onSkip: () => {
         referenceSkipped = true;
         message('user', '没有');
+        recordHistory('user', '没有', { topic: 'reference', selectedAnswer: true });
         const output = String(control('content_mode')?.value || '') === 'commercial_subject' ? '广告脚本' : '剧情与对白';
         streamMessage(`参考材料已记为没有。创作内容、成片规格和参考材料都已问完；现在请确认整体设想，确认后我会生成${output}。`);
         sync();
@@ -183,7 +226,8 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
   const appendSpecificationQuestion = async () => {
     if (specificationQuestionLoading || conversation.querySelector('[data-specification-question]') || specificationsConfirmed) return;
     specificationQuestionLoading = true;
-    const { mountSpecificationQuestion } = await import('./briefSpecificationQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const { mountSpecificationQuestion, specificationQuestionText } = await import('./briefSpecificationQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    recordHistory('assistant', specificationQuestionText({ mode: String(control('content_mode')?.value || ''), duration: Number(control('target_duration')?.value || 30) || 30, ratio: String(control('output_ratio')?.value || '9:16'), resolution: String(control('video_resolution')?.value || '1080p') }), { topic: 'specifications' });
     mountSpecificationQuestion(conversation, {
       mode: String(control('content_mode')?.value || ''),
       duration: Number(control('target_duration')?.value || 30) || 30,
@@ -192,6 +236,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       onConfirm: async () => {
         specificationsConfirmed = true;
         message('user', '确认当前成片规格');
+        recordHistory('user', '确认当前成片规格', { topic: 'specifications', selectedAnswer: true });
         await streamMessage('好的，成片规格已由你确认。接下来确认是否使用参考材料。');
         sync();
         await appendReferenceQuestion();
@@ -206,12 +251,35 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
         });
         specificationsConfirmed = true;
         message('user', `调整为 ${values.duration} 秒、${values.ratio}、${values.resolution}`);
+        recordHistory('user', `调整为 ${values.duration} 秒、${values.ratio}、${values.resolution}`, { topic: 'specifications', selectedAnswer: true });
         await streamMessage('成片规格已按这个项目调整并确认。最后确认是否使用参考材料。');
         sync();
         await appendReferenceQuestion();
       },
     });
     specificationQuestionLoading = false;
+  };
+  const appendCastQuestion = async () => {
+    if (castQuestionLoading || conversation.querySelector('[data-cast-question]') || castIntent?.confirmed === true || String(control('content_mode')?.value || '') !== 'commercial_subject') return;
+    castQuestionLoading = true;
+    const { mountCastQuestion, castQuestionText } = await import('./briefCastQuestion.js?v=20260822-reference-blueprint-complete-v150');
+    const question = castQuestionText();
+    recordHistory('assistant', question, { topic: 'on_screen_cast' });
+    mountCastQuestion(conversation, {
+      onSelect: async ({ label, intent }) => {
+        castIntent = intent;
+        if (control('cast_intent')) control('cast_intent').value = JSON.stringify(castIntent);
+        message('user', label);
+        recordHistory('user', label, { topic: 'on_screen_cast', selectedAnswer: true });
+        await streamMessage(`出镜人物已确认：${label}。接下来确认成片规格。`, null, { topic: 'on_screen_cast' });
+        sync();
+        await persistDialogueState();
+        await appendSpecificationQuestion();
+      },
+    });
+    castQuestionLoading = false;
+    sync();
+    persistDialogueState().catch(() => {});
   };
   const sync = () => {
     const name = String(control('project_name')?.value || '').trim();
@@ -220,14 +288,17 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     const duration = Number(control('target_duration')?.value || 30) || 30;
     const ratio = String(control('output_ratio')?.value || '9:16');
     const resolution = String(control('video_resolution')?.value || '1080p');
-    const intake = dialogueIntakeState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
+    const castIntentConfirmed = castIntent?.confirmed === true;
+    const intake = dialogueIntakeState({ name, mode, idea, ideaReady, castIntentConfirmed, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
     const ready = intake.ready;
-    const progress = dialogueProgressState({ name, mode, idea, ideaReady, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
+    const progress = dialogueProgressState({ name, mode, idea, ideaReady, castIntentConfirmed, specificationsConfirmed, referenceAttached: referencePresent, referenceSkipped });
     if (control('creative_brief_confirmed')) control('creative_brief_confirmed').value = ideaReady ? 'true' : 'false';
     if (control('specifications_confirmed')) control('specifications_confirmed').value = specificationsConfirmed ? 'true' : 'false';
     if (control('reference_decision')) control('reference_decision').value = referencePresent ? 'attached' : (referenceSkipped ? 'skipped' : '');
     if (control('completed_dialogue_topics')) control('completed_dialogue_topics').value = [...completedTopics].join(',');
     if (control('active_dialogue_topic')) control('active_dialogue_topic').value = activeQuestionTopic;
+    if (control('dialogue_history')) control('dialogue_history').value = JSON.stringify(history);
+    if (control('cast_intent')) control('cast_intent').value = JSON.stringify(castIntent || {});
     panel.querySelector('[data-contract-name]').textContent = name || '待根据创意命名';
     panel.querySelector('[data-contract-mode]').textContent = modeLabel(mode);
     const domainCopy = panel.querySelector('[data-dialogue-domain-copy]');
@@ -254,6 +325,8 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       reference_decision: referencePresent ? 'attached' : (referenceSkipped ? 'skipped' : ''),
       completed_dialogue_topics: [...completedTopics],
       active_dialogue_topic: activeQuestionTopic,
+      dialogue_history: history,
+      cast_intent: castIntent,
     });
   };
   const applyReferenceGate = async reference => {
@@ -273,6 +346,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       activeQuestionTopic = '';
       const intake = sync();
       await persistDialogueState();
+      if (intake.next === 'cast') await appendCastQuestion();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
     }
     return phase;
@@ -297,8 +371,9 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       panel, send, input, sync: () => { sending = false; sync(); },
       showChoices: appendReferenceQuestion,
     })) return;
-    if (activeQuestionTopic) {
-      completedTopics.add(activeQuestionTopic);
+    const answeredTopic = activeQuestionTopic;
+    if (answeredTopic) {
+      completedTopics.add(answeredTopic);
       activeQuestionTopic = '';
     }
     retireSuggestions();
@@ -313,14 +388,14 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     });
     const finishImmediate = async reply => {
       message('user', text);
-      history.push({ role: 'user', content: text });
-      const assistant = await streamMessage(reply);
-      history.push({ role: 'assistant', content: assistant.textNode.textContent });
+      recordHistory('user', text, { topic: answeredTopic, selectedAnswer: Boolean(answeredTopic) });
+      await streamMessage(reply, null, { topic: answeredTopic });
       sending = false;
       send.disabled = false;
       panel.removeAttribute('aria-busy');
       const intake = sync();
       await persistDialogueState();
+      if (intake.next === 'cast') await appendCastQuestion();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
@@ -361,7 +436,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
     explicitOutputKeys.forEach(key => explicitSpecificationKeys.add(key));
     if (explicitSpecificationKeys.size === explicitSettings.OUTPUT_SETTING_KEYS.length) specificationsConfirmed = true;
     message('user', text);
-    history.push({ role: 'user', content: text });
+    recordHistory('user', text, { topic: answeredTopic, selectedAnswer: Boolean(answeredTopic) });
     ideaReady = false;
     sync();
     if (dialogueBudgetReached([...completedTopics], mode)) {
@@ -371,6 +446,7 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       sending = false;
       send.disabled = false;
       panel.removeAttribute('aria-busy');
+      if (intake.next === 'cast') await appendCastQuestion();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
@@ -402,22 +478,21 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       pending.article.classList.remove('is-thinking');
       if (ideaReady && result?.next_step === 'specifications') pending.article.remove();
       else {
-        await streamMessage(reply, pending);
+        await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
         appendSuggestions(pending, result?.suggested_answers);
-        history.push({ role: 'assistant', content: reply });
       }
     } catch {
       ideaReady = false;
       const reply = contextualFallback(text, mode, ideaReady);
       pending.article.classList.remove('is-thinking');
-      await streamMessage(reply, pending);
-      history.push({ role: 'assistant', content: reply });
+      await streamMessage(reply, pending, { topic: activeQuestionTopic || answeredTopic });
     } finally {
       sending = false;
       send.disabled = false;
       panel.removeAttribute('aria-busy');
       const intake = sync();
       await persistDialogueState();
+      if (intake.next === 'cast') await appendCastQuestion();
       if (intake.next === 'specifications') await appendSpecificationQuestion();
       if (intake.next === 'reference') await appendReferenceQuestion();
       input.focus();
@@ -447,12 +522,14 @@ export function bindBriefDialogue(host, { form, referenceState = {}, referenceAt
       if (disposed) return;
       const guidance = guidedResumePrompt({ mode: String(control('content_mode')?.value || ''), idea: String(control('brief')?.value || '') });
       const entry = message('assistant', guidance.text);
+      recordHistory('assistant', guidance.text, { topic: guidance.topic });
       appendSuggestions(entry, guidance.answers);
       activeQuestionTopic = guidance.topic;
       sync();
       persistDialogueState().catch(() => {});
     });
   }
+  if (!requireUserInitiation && initialReferencePhase === 'none' && initialIntake.next === 'cast') appendCastQuestion();
   if (!requireUserInitiation && initialReferencePhase === 'none' && initialIntake.next === 'specifications') appendSpecificationQuestion();
   if (!requireUserInitiation && initialReferencePhase === 'none' && initialIntake.next === 'reference') appendReferenceQuestion();
   const cleanup = () => {

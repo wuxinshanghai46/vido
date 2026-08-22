@@ -293,10 +293,18 @@ function assessBlueprintRights(blueprint = {}) {
 
 function assessBlueprintQuality(blueprint = {}) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
+  const characters = Array.isArray(blueprint.characters) ? blueprint.characters : [];
   const sparse = blueprint.dialogue_contract?.speech_policy === 'authored_sparse';
   const durationAwareDialogue = blueprint.dialogue_contract?.version === DIALOGUE_CONTRACT_VERSION;
   const issues = [];
   if (!clean(blueprint.logline)) issues.push('缺少清晰的故事主线');
+  characters.forEach((character, index) => {
+    const prefix = `第 ${index + 1} 个角色`;
+    if (!clean(character?.name)) issues.push(`${prefix}缺少姓名`);
+    if (!clean(character?.role)) issues.push(`${prefix}缺少剧情职责`);
+    if (!clean(character?.gender)) issues.push(`${prefix}缺少性别`);
+    if (!clean(character?.age_range || character?.age)) issues.push(`${prefix}缺少年龄或年龄范围`);
+  });
   if (CLICHE_PATTERNS.some(pattern => pattern.test(`${clean(blueprint.story_title)} ${clean(blueprint.logline)}`))) issues.push('标题或故事主线存在广告套话');
   if (beats.length < 3) issues.push('剧情推进层次不足');
   beats.forEach((beat, index) => {
@@ -355,7 +363,13 @@ function preserveCharacterNames(original = {}, candidate = {}) {
   if (Array.isArray(original.characters) && Array.isArray(result.characters)) {
     result.characters = result.characters.map((character, index) => ({
       ...character,
+      id: original.characters[index]?.id || character.id,
       name: original.characters[index]?.name || character.name,
+      role: original.characters[index]?.role || character.role,
+      gender: original.characters[index]?.gender || character.gender,
+      age_range: original.characters[index]?.age_range || original.characters[index]?.age || character.age_range || character.age,
+      relationship: original.characters[index]?.relationship || character.relationship,
+      on_screen: original.characters[index]?.on_screen ?? character.on_screen,
     }));
   }
   return result;

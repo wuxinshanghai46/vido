@@ -19,10 +19,10 @@ const VIEW_META = {
   workflow: ['⌘', '工作流画布'],
 };
 const VIEW_MODULES = {
-  brief: () => import('./views/briefView.js?v=20260822-reference-blueprint-complete-v150'),
+  brief: () => import('./views/briefView.js?v=20260822-dialogue-cast-blueprint-v151'),
   assets: () => import('./views/assetCenterView.js?v=20260822-reference-blueprint-complete-v150'),
   scene: () => import('./views/sceneWorldPage.js?v=20260822-reference-blueprint-complete-v150'),
-  plot: () => import('./views/plotRoomView.js?v=20260822-reference-blueprint-complete-v150'),
+  plot: () => import('./views/plotRoomView.js?v=20260822-dialogue-cast-blueprint-v151'),
   storyboard: () => import('./views/storyboardView.js?v=20260822-reference-blueprint-complete-v150'),
   final: () => import('./views/finalView.js?v=20260822-reference-blueprint-complete-v150'),
   workflow: () => import('./views/workflowView.js?v=20260822-reference-blueprint-complete-v150'),

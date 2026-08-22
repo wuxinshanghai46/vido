@@ -32,6 +32,8 @@ async function main() {
   const referenceQuestion = await asModule(read('public/story-ad/views/briefReferenceQuestion.js'));
   const referenceQuestionSource = read('public/story-ad/views/briefReferenceQuestion.js');
   const specificationQuestionSource = read('public/story-ad/views/briefSpecificationQuestion.js');
+  const castQuestion = await asModule(read('public/story-ad/views/briefCastQuestion.js'));
+  const castQuestionSource = read('public/story-ad/views/briefCastQuestion.js');
 
   assert.deepEqual(
     explicitSettings.extractExplicitBriefSettings('做一条60秒、16:9横屏、4K清晰度的现代剧情短片'),
@@ -78,17 +80,17 @@ async function main() {
     '已经附加参考材料的完整输入不得重复追问参考材料',
   );
   assert.deepEqual(
-    dialogue.dialogueIntakeState({ name: '无参考项目', mode: 'commercial_subject', idea: '完整广告要求', ideaReady: true, specificationsConfirmed: true, referenceSkipped: true }),
+    dialogue.dialogueIntakeState({ name: '无参考项目', mode: 'commercial_subject', idea: '完整广告要求', ideaReady: true, castIntentConfirmed: true, specificationsConfirmed: true, referenceSkipped: true }),
     { ready: true, missing: [], next: '' },
     '用户明确选择无参考材料后必须可以继续',
   );
   assert.deepEqual(
     dialogue.dialogueIntakeState({ name: '待补规格项目', mode: 'commercial_subject', idea: '完整广告要求', ideaReady: true }),
-    { ready: false, missing: ['specifications'], next: 'specifications' },
-    '核心内容完成后必须先确认成片规格，系统默认值不能直接放行',
+    { ready: false, missing: ['cast'], next: 'cast' },
+    '商业核心内容完成后必须先确认客户是否实际出镜，不能从“目标客户”猜成人物',
   );
   assert.deepEqual(
-    dialogue.dialogueIntakeState({ name: '待补参考项目', mode: 'commercial_subject', idea: '完整广告要求', ideaReady: true, specificationsConfirmed: true }),
+    dialogue.dialogueIntakeState({ name: '待补参考项目', mode: 'commercial_subject', idea: '完整广告要求', ideaReady: true, castIntentConfirmed: true, specificationsConfirmed: true }),
     { ready: false, missing: ['reference'], next: 'reference' },
     '规格明确后且参考材料尚未决定时才应追问参考入口',
   );
@@ -105,9 +107,12 @@ async function main() {
   assert.match(referenceQuestionSource, /人物形象、时代氛围、影片画面或镜头参考/, '剧情参考问题必须结合剧情内容类型');
   assert.match(referenceQuestionSource, /直接在这里上传参考视频或添加公开链接/, '内容类型尚未确认时必须使用中性参考入口，不得擅自称为故事');
   assert.match(referenceQuestion.referenceQuestionText({}), /上传参考视频或添加公开链接/, '未确认广告或剧情前的实际提示必须保持中性');
+  assert.match(castQuestionSource, /目标客户需要在画面中实际出镜吗/, '人物追问必须明确区分目标客户与实际出镜人物');
+  assert.equal(castQuestion.castChoices().find(choice => choice.id === 'presenter_customer').cast_intent.expected_people, 2, '设计师向客户现场介绍必须形成双人合同');
+  assert.equal(castQuestion.castChoices().find(choice => choice.id === 'audience_only').cast_intent.expected_people, 0, '客户只是受众时不得生成客户人物资产');
   assert.match(dialogueSource, /conversation\.querySelector\('\[data-reference-question\]'\)/, '同一次对话不得重复插入参考问题');
   assert.match(dialogueSource, /referenceAttached \|\| referenceSkipped/, '已附参考或已明确跳过时不得再次追问');
-  assert.ok(dialogueSource.indexOf("intakeBefore.next === 'reference'") < dialogueSource.indexOf('const previous ='), '参考阶段的短回答必须在写入核心创意和模型调用前处理');
+  assert.ok(dialogueSource.indexOf("intakeBefore.next === 'reference'") < dialogueSource.indexOf("const previous = String(control('brief')"), '参考阶段的短回答必须在写入核心创意和模型调用前处理');
   assert.match(dialogueSource, /isNoReferenceReply\(text\)/, '“没有参考”必须走本地即时判断');
   assert.ok(dialogueSource.indexOf('routeReferenceInput({') < dialogueSource.indexOf('await onAssist?.({'), '链接与上传意图必须在导演模型调用前完成路由');
   assert.match(dialogueSource, /routeReferenceInput\(\{/, '正文链接和上传意图必须复用正式参考输入路由');
@@ -131,12 +136,12 @@ async function main() {
   assert.match(dialogueSource, /explicitSpecificationKeys\.size === explicitSettings\.OUTPUT_SETTING_KEYS\.length/, '只修改一项规格不得把整组规格标为确认');
   assert.deepEqual(
     dialogue.dialogueProgressState({ mode: 'narrative_story' }),
-    { percent: 15, complete: { mode: true, idea: false, name: false, specifications: false, reference: false, confirm: false } },
+    { percent: 25, complete: { mode: true, idea: false, name: false, cast: true, specifications: false, reference: false, confirm: false } },
     '只选择内容类型时必须是可解释的 15%，不得使用写死进度',
   );
   assert.deepEqual(
     dialogue.dialogueProgressState({ name: '项目', mode: 'narrative_story', idea: '完整内容', ideaReady: true, specificationsConfirmed: true, referenceSkipped: true }),
-    { percent: 90, complete: { mode: true, idea: true, name: true, specifications: true, reference: true, confirm: false } },
+    { percent: 90, complete: { mode: true, idea: true, name: true, cast: true, specifications: true, reference: true, confirm: false } },
     '确认前的立项准备度必须包含成片规格确认',
   );
 

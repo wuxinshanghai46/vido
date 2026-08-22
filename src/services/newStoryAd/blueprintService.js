@@ -384,6 +384,11 @@ function normalizeBlueprint(blueprint, ctx) {
       subject_type: beat.subject_type || 'auto',
       scene: clean(beat.scene || beat.location || '', 120),
       shot_type: clean(beat.shot_type || beat.camera || '', 80),
+      lighting_mood: clean(beat.lighting_mood || beat.lighting || beat.atmosphere || '', 160),
+      camera_movement: clean(beat.camera_movement || beat.camera_move || beat.motion || '', 120),
+      sound_design: clean(beat.sound_design || beat.sound || beat.audio || '', 160),
+      transition: clean(beat.transition || '', 100),
+      prompt_notes: clean(beat.prompt_notes || beat.prompt || '', 320),
       plot: clean(beat.plot || beat.event || beat.description || '', 180),
       visual_layers: Array.isArray(beat.visual_layers) ? beat.visual_layers.map(layer => ({
         type: clean(layer?.type || layer?.kind || '', 40),
@@ -400,6 +405,7 @@ function normalizeBlueprint(blueprint, ctx) {
       intended_changes: cleanList(beat.intended_changes || beat.intended_change || beat.changes, 12, 180),
       visible_evidence: cleanList(beat.visible_evidence || beat.evidence_requirements || beat.visual_evidence, 12, 180),
       spoken_line: silent ? '' : (explicitSpeech || cleanSpeech(fallbackSpokenLine(beat, idx, ctx), 100)),
+      speaker: silent ? '' : clean(beat.speaker || beat.character || beat.speaker_name || '', 80),
       speech_mode: silent ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
         : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover'),
       dialogue_function: dialogueFunction,
@@ -545,6 +551,8 @@ async function generateBlueprint(ctx, {
     'Each beat should include only the visual layers that are actually needed for that beat. Some beats may be pure product proof, some may be pure story reaction, some may combine several layers.',
     'The important rule is completeness relative to the user request, not a fixed set of columns.',
     'characters.name must be a task-local formal person name when a person appears. If the user did not provide a name, generate a fresh stable name for this task; never use role placeholders or descriptions such as "elegant woman", "customer", "presenter" as final names.',
+    'Every on-screen character must include a stable id, formal name, gender, age_range, role, relationship and description. When the confirmed cast contract says a customer or procurement representative appears, create that person as a separate character; audience targeting alone must never create a customer character.',
+    'For multi-person dialogue, speaker must exactly match one characters.name. Do not merge a presenter and customer into one identity.',
     'If cast_mode is no_human, characters must be an empty array and beats must not introduce human body parts, backs, silhouettes, hands, presenters, models or crowds unless the user explicitly asked for them.',
     'If cast_mode is animal, treat the animal/pet as the subject required by the user brief and do not convert it into a human presenter.',
     speechPlan.policy === 'authored_sparse'
@@ -584,7 +592,7 @@ Return JSON in this shape:
     "beat_refs": {"setup":[1],"trigger":[2],"progression":[2,3],"result":[4]}
   },
   "segment_plan": [{"segment_id":"seg_1","name":"section","space_anchor":"fixed space or carrier","fixed_subjects":"fixed subjects/relationships","continuity_rules":["rules"]}],
-  "characters": [{"name":"fresh stable formal person name for this task when a human appears; empty array for no_human mode","role":"story function","gender":"female/male/unknown","description":"appearance, identity, behavior"}],
+  "characters": [{"id":"stable character id","name":"fresh stable formal person name for this task when a human appears; empty array for no_human mode","role":"story function","gender":"female/male/unknown","age_range":"specific age or range such as 32岁 or 28~35岁","relationship":"relationship to other characters or audience","on_screen":true,"description":"appearance, identity, behavior"}],
   "beats": [{
     "beat_index": 1,
     "role": "story function label",
@@ -593,6 +601,11 @@ Return JSON in this shape:
     "subject_type": "human_scene/product_only/ui_screen/proof_scene/environment/brand_endcard/auto",
     "scene": "place or carrier",
     "shot_type": "medium / close_up / insert / product_detail / reaction / endcard",
+    "lighting_mood": "key light, color temperature and atmosphere",
+    "camera_movement": "camera path, direction and speed",
+    "sound_design": "environment sound, effect and music cue",
+    "transition": "continuity or transition into the next beat",
+    "prompt_notes": "production prompt notes before asset binding",
     "plot": "what happens in this beat",
     "visual_layers": [{"type":"story/product/material/space/ui/proof/comparison/emotion/brand/offer/process/result/other","content":"specific visual content needed for this beat"}],
     "story_visual": "optional narrative picture if this beat needs story",
@@ -607,6 +620,7 @@ Return JSON in this shape:
     "visible_evidence": ["what the audience can directly see proving the change"],
     "dialogue_function": "setup_goal/obstacle/question/discovery/proof/value_shift/decision/resolution/brand_closure/development",
     "speech_mode": "dialogue/voiceover/silent/ambient_only",
+    "speaker": "exact characters.name for dialogue; narrator for voiceover; empty for silent",
     "spoken_line": "natural line heard in final video, without label prefix",
     "why_next": "why the next beat follows"
   }]

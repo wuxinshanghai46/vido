@@ -9,7 +9,7 @@ const briefAuthority = require('./briefAuthorityService');
 const productAssetResolver = require('./productAssetResolverService');
 const propIdentity = require('./propIdentityContractService');
 const productIdentity = require('./productIdentityContractService');
-const { contextPrompt, cleanText, assertContextConsistent } = require('./contextBuilder');
+const { contextPrompt, cleanText, assertContextConsistent, normalizeCharacters } = require('./contextBuilder');
 const { normalizeScenePlan, assertScenePlanContract } = require('./sceneBindingService');
 const assetPlanSceneContracts = require('./assetPlanSceneContractService');
 const personLooks = require('./personLookProfileService');
@@ -25,6 +25,35 @@ const sectionRecovery = require('./assetPlanSectionRecoveryContractService');
 const ASSET_PLAN_PROJECTION_VERSION = 15;
 const ASSET_PLAN_DRAFT_CHECKPOINT_KIND = 'asset_plan_draft_checkpoint';
 const ASSET_PLAN_MISSING_SECTIONS_RECOVERY_KIND = 'asset_plan_missing_sections_recovery';
+
+function assertBlueprintCastContract(ctx = {}, blueprint = {}) {
+  const hasBlueprint = Boolean(
+    cleanText(blueprint.story_title || blueprint.title || blueprint.logline || blueprint.summary || '', 300)
+    || (Array.isArray(blueprint.beats) && blueprint.beats.length)
+    || (Array.isArray(blueprint.characters) && blueprint.characters.length)
+  );
+  if (!hasBlueprint) return ctx;
+  const castIntent = ctx.brief_intake?.cast_intent || ctx.cast_intent || {};
+  const blueprintCharacters = normalizeCharacters(blueprint.characters || [], ctx.project_name || ctx.brief || '');
+  const blueprintCount = blueprintCharacters.filter(character => character.on_screen !== false).length;
+  const expectedCount = personCountContract.contract(ctx).planning_cast_count;
+  if (!castIntent.confirmed) {
+    if (blueprintCount !== expectedCount) {
+      const error = new Error('当前剧情中的出镜人物数量与立项信息不一致，请先返回对话立项确认“客户是否出镜”；本次没有调用模型。');
+      error.code = 'CAST_INTENT_CONFIRMATION_REQUIRED';
+      error.status = 409;
+      throw error;
+    }
+    return ctx;
+  }
+  if (blueprintCount !== expectedCount) {
+    const error = new Error(`已确认出镜 ${expectedCount} 人，但当前剧情蓝图包含 ${blueprintCount} 人。请重新生成或编辑剧情人物后再继续；本次没有调用模型。`);
+    error.code = 'BLUEPRINT_CAST_CONTRACT_MISMATCH';
+    error.status = 409;
+    throw error;
+  }
+  return ctx;
+}
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -1843,6 +1872,7 @@ async function generate(taskId, options = {}) {
   if (!task) throw new Error('任务不存在');
   const forceSceneCoverageReplan = options.replan_scene_coverage === true || options.replanSceneCoverage === true;
   let ctx = assertContextConsistent(storage.getOutput(taskId, 'context') || task.request || {});
+  assertBlueprintCastContract(ctx, storage.getOutput(taskId, 'blueprint') || {});
   if (forceSceneCoverageReplan && contentSkill.mode(ctx.content_mode || ctx.product_presentation?.mode) === 'narrative_story') {
     ctx = { ...ctx, story_scene_contract_version: storySceneCoverage.CONTRACT_VERSION };
     storage.updateTask(taskId, { request: { ...(task.request || {}), story_scene_contract_version: storySceneCoverage.CONTRACT_VERSION } });
@@ -2128,6 +2158,7 @@ async function generate(taskId, options = {}) {
 }
 
 module.exports = {
+  assertBlueprintCastContract,
   fingerprint,
   legacyFingerprintV14,
   referenceIsValid,

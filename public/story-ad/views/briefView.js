@@ -9,12 +9,12 @@ import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference
 import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-blueprint-complete-v150';
 import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-blueprint-complete-v150';
 import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-blueprint-complete-v150';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-blueprint-complete-v150';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-dialogue-cast-blueprint-v151';
 import { syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-blueprint-complete-v150';
 import { referenceActionState, syncReferenceAction } from './briefReferenceActionState.js?v=20260822-reference-blueprint-complete-v150';
 import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-blueprint-complete-v150';
 import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-blueprint-complete-v150';
-import { formPayload } from './briefFormPayload.js?v=20260822-reference-blueprint-complete-v150';
+import { formPayload } from './briefFormPayload.js?v=20260822-dialogue-cast-blueprint-v151';
 import { bindBriefReferenceRecovery } from './briefReferenceRecovery.js?v=20260822-reference-blueprint-complete-v150';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
@@ -83,6 +83,8 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
           <input type="hidden" name="reference_decision" value="${referenceAttached ? 'attached' : escapeHtml(brief.brief_intake?.reference_decision || '')}">
           <input type="hidden" name="completed_dialogue_topics" value="${escapeHtml((brief.brief_intake?.completed_dialogue_topics || []).join(','))}">
           <input type="hidden" name="active_dialogue_topic" value="${escapeHtml(brief.brief_intake?.active_dialogue_topic || '')}">
+          <input type="hidden" name="dialogue_history" value="${escapeHtml(JSON.stringify(brief.brief_intake?.dialogue_history || []))}">
+          <input type="hidden" name="cast_intent" value="${escapeHtml(JSON.stringify(brief.brief_intake?.cast_intent || {}))}">
           ${referenceStepVisible ? '' : `<div class="field full form-actions"><button class="btn primary" type="submit" data-brief-submit ${!route.isNew && referenceAction.blocked ? 'disabled' : ''}>${route.isNew ? '保存项目设想' : referenceAction.label}</button></div>`}
           </div>
         </form>
@@ -165,6 +167,13 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       output_ratio: latest.output_ratio || '9:16',
       output_size: latest.output_size || 'standard',
       video_resolution: latest.video_resolution || '1080p',
+      creative_brief_confirmed: latest.brief_intake?.creative_brief_confirmed === true ? 'true' : 'false',
+      specifications_confirmed: latest.brief_intake?.specifications_confirmed === true ? 'true' : 'false',
+      reference_decision: latest.brief_intake?.reference_decision || '',
+      completed_dialogue_topics: (latest.brief_intake?.completed_dialogue_topics || []).join(','),
+      active_dialogue_topic: latest.brief_intake?.active_dialogue_topic || '',
+      dialogue_history: JSON.stringify(latest.brief_intake?.dialogue_history || []),
+      cast_intent: JSON.stringify(latest.brief_intake?.cast_intent || {}),
       production_mode: 'auto',
       brief_intake: latest.brief_intake || { creative_brief_confirmed: false, specifications_confirmed: false, reference_decision: '' },
       benchmark_strategy: latest.benchmark_strategy || {},

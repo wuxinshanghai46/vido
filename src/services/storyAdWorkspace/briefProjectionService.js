@@ -3,6 +3,7 @@
 const productAssetResolver = require('../newStoryAd/productAssetResolverService');
 const benchmarkStrategy = require('../newStoryAd/benchmarkStrategyService');
 const multilineTextContract = require('../newStoryAd/multilineTextContractService');
+const briefDialogueHistory = require('../newStoryAd/briefDialogueHistoryService');
 
 function project(context = {}, task = {}, clean = value => String(value || '').trim(), options = {}) {
   const presentation = options.includeAssetPresentation === false
@@ -36,6 +37,8 @@ function project(context = {}, task = {}, clean = value => String(value || '').t
       completed_dialogue_topics: [...new Set((Array.isArray(context.brief_intake?.completed_dialogue_topics)
         ? context.brief_intake.completed_dialogue_topics : []).map(value => clean(value, 40)).filter(Boolean))].slice(0, 20),
       active_dialogue_topic: clean(context.brief_intake?.active_dialogue_topic, 40),
+      dialogue_history: briefDialogueHistory.normalizeHistory(context.brief_intake?.dialogue_history),
+      cast_intent: briefDialogueHistory.normalizeCastIntent(context.brief_intake?.cast_intent || context.cast_intent),
     },
     asset_setup_confirmed: context.asset_setup_confirmed === true,
     shot_design_confirmed: context.shot_design_confirmed === true,
