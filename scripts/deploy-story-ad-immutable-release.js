@@ -94,6 +94,7 @@ async function runLocalGate(baseRevision = '', baseArtifactId = '') {
     targetRevision: runtimeManifest.source_revision,
     sourceTree: runtimeManifest.source_tree,
     fullPlatform: !targetedHomeGate,
+    targetedHome: targetedHomeGate,
   });
   const result = await releaseGatePlanner.runPlan(root, plan);
   console.log(`LOCAL_IMMUTABLE_RELEASE_GATE=${JSON.stringify({

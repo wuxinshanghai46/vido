@@ -42,6 +42,44 @@ assert.equal(planner.releaseConfigChangeKind(
   { build_id: 'v2', contract_version: 8 },
 ), 'runtime_contract');
 assert.deepEqual(planner.gateIdsForProfile('release_metadata'), ['release_core']);
+assert.equal(planner.scopedDomainFromPatch('src/routes/newStoryAd.js', [
+  '@@ -809 +809 @@ router.post(\'/reference-video-analyses/:analysisId/start\'',
+  '+  extendedAnalysisConfirmed: true,',
+].join('\n')), 'reference');
+assert.equal(planner.scopedDomainFromPatch('src/services/pipelineModelService.js', [
+  '@@ -72,0 +73 @@',
+  '+  { id: \'new_story_ad.reference_video_transcript\' },',
+].join('\n')), 'reference');
+assert.equal(planner.scopedDomainFromPatch('src/routes/newStoryAd.js', [
+  '@@ -10 +10 @@ router.post(\'/tasks\'',
+  '+  unrelatedMutation();',
+].join('\n')), '');
+const targetedReferencePlan = planner.createPlan({
+  root: process.cwd(),
+  baseRevision: 'a'.repeat(40),
+  targetRevision: 'b'.repeat(40),
+  sourceTree: 'f'.repeat(40),
+  files: [
+    'scripts/lib/storyAdReleaseGatePlanner.js',
+    'scripts/deploy-story-ad-immutable-release.js',
+    'scripts/test-story-ad-release-gate-planner.js',
+    'src/routes/newStoryAd.js',
+    'src/services/pipelineModelService.js',
+    'src/services/newStoryAd/referenceVideoAnalysisService.js',
+  ],
+  patches: {
+    'src/routes/newStoryAd.js': '@@ route reference-video-analyses\n+ extendedAnalysisConfirmed',
+    'src/services/pipelineModelService.js': '@@ schema\n+ new_story_ad.reference_video_transcript',
+  },
+  targetedHome: true,
+});
+assert.equal(targetedReferencePlan.profile, 'upload_media');
+assert.deepEqual(targetedReferencePlan.gates.map(row => row.id), ['upload_media', 'reference', 'workspace_ui', 'release_core']);
+assert.deepEqual(targetedReferencePlan.targeted_planner_files.sort(), [
+  'scripts/deploy-story-ad-immutable-release.js',
+  'scripts/lib/storyAdReleaseGatePlanner.js',
+  'scripts/test-story-ad-release-gate-planner.js',
+]);
 
 const expectedRelease = {
   release_bundle_id: 'bundle-v1', artifact_id: 'artifact-v1', source_revision: 'source-v1', source_tree: 'tree-v1', build_id: 'build-v1',

@@ -8,6 +8,11 @@ const path = require('path');
 
 const CONTRACT_VERSION = 'story-ad-release-gates-v2';
 const CACHE_DIRECTORY = path.join('.runtime', 'story-ad-release-gates');
+const TARGETED_HOME_PLANNER_FILES = new Set([
+  'scripts/deploy-story-ad-immutable-release.js',
+  'scripts/lib/storyAdReleaseGatePlanner.js',
+  'scripts/test-story-ad-release-gate-planner.js',
+]);
 
 const GATES = Object.freeze({
   release_core: {
@@ -92,6 +97,25 @@ function normalizeFile(file = '') { return String(file || '').replace(/\\/g, '/'
 function unique(values = []) { return [...new Set(values)]; }
 function sha256(value) { return crypto.createHash('sha256').update(String(value)).digest('hex'); }
 
+function scopedDomainFromPatch(file = '', patch = '') {
+  const normalized = normalizeFile(file);
+  const hunks = String(patch || '').split(/^@@/m).slice(1).filter(Boolean);
+  if (!hunks.length) return '';
+  if (normalized === 'src/routes/newStoryAd.js'
+    && hunks.every(hunk => /reference-video-analyses|referenceVideoAnalyses|extendedAnalysisConfirmed|preflightFingerprint/i.test(hunk))) {
+    return 'reference';
+  }
+  if (normalized === 'src/services/pipelineModelService.js'
+    && hunks.every(hunk => /reference_video|reference video|reference-video/i.test(hunk))) {
+    return 'reference';
+  }
+  return '';
+}
+
+function diffPatch(root, baseRevision, targetRevision, file) {
+  try { return git(root, ['diff', '--unified=0', baseRevision, targetRevision, '--', file]); } catch { return ''; }
+}
+
 function git(root, args = []) {
   return childProcess.execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
 }
@@ -167,7 +191,7 @@ function releaseConfigDelta(root, baseRevision, targetRevision) {
   }
 }
 
-function classifyFiles(files = [], { reliable = true } = {}) {
+function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {}) {
   const normalized = unique(files.map(normalizeFile).filter(Boolean));
   if (!reliable) return {
     profile: 'full', domains: ['unknown'], unknown_files: normalized, reasons: ['影响范围无法可靠计算，自动执行完整门禁'],
@@ -178,6 +202,12 @@ function classifyFiles(files = [], { reliable = true } = {}) {
   for (const file of normalized) {
     if (/^(?:docs\/|README(?:\.|$)|\.github\/|\.gitee\/)/i.test(file)) continue;
     const matches = DOMAIN_RULES.filter(rule => rule.patterns.some(pattern => pattern.test(file)));
+    const scopedDomain = String(scopedDomains[file] || '');
+    if (!matches.length && scopedDomain) {
+      domains.add(scopedDomain);
+      risks.add(scopedDomain === 'reference' ? 'reference' : scopedDomain);
+      continue;
+    }
     if (!matches.length) {
       unknownFiles.push(file);
       continue;
@@ -218,7 +248,8 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
 }
 
 function createPlan({
-  root, baseRevision = '', baseArtifactId = '', targetRevision = '', sourceTree = '', files, reliable, fullPlatform = false,
+  root, baseRevision = '', baseArtifactId = '', targetRevision = '', sourceTree = '', files, reliable,
+  fullPlatform = false, targetedHome = false, patches = {},
 } = {}) {
   const artifactRevision = Array.isArray(files) ? '' : resolveArtifactRevision(root, baseArtifactId, targetRevision);
   const effectiveBaseRevision = artifactRevision || baseRevision;
@@ -234,11 +265,27 @@ function createPlan({
       runtimeFiles = delta.files.filter(file => file !== 'config/story-ad-release.json');
     }
   }
-  const classification = runtimeFiles.length
-    ? classifyFiles(runtimeFiles, { reliable: delta.reliable })
+  const scopedDomains = Object.fromEntries(runtimeFiles.map(file => [
+    file,
+    scopedDomainFromPatch(file, patches[file] || (!Array.isArray(files)
+      ? diffPatch(root, effectiveBaseRevision, targetRevision, file)
+      : '')),
+  ]).filter(([, domain]) => domain));
+  const targetedPlannerFiles = targetedHome
+    ? runtimeFiles.filter(file => TARGETED_HOME_PLANNER_FILES.has(file))
+    : [];
+  const classifiedRuntimeFiles = targetedPlannerFiles.length
+    ? runtimeFiles.filter(file => !TARGETED_HOME_PLANNER_FILES.has(file))
+    : runtimeFiles;
+  const classification = classifiedRuntimeFiles.length
+    ? classifyFiles(classifiedRuntimeFiles, { reliable: delta.reliable, scopedDomains })
     : (metadataFiles.length
       ? { profile: 'release_metadata', domains: ['release_metadata'], unknown_files: [], reasons: ['仅发布编号变化，执行发布完整性门禁'] }
-      : classifyFiles(runtimeFiles, { reliable: delta.reliable }));
+      : classifyFiles(classifiedRuntimeFiles, { reliable: delta.reliable, scopedDomains }));
+  if (targetedPlannerFiles.length && classification.profile !== 'full') {
+    classification.domains = unique([...classification.domains, 'release_infrastructure']);
+    classification.reasons = [...classification.reasons, '家庭电脑仅对发布规划器变更追加发布核心门禁'];
+  }
   const gateIds = gateIdsForProfile(classification.profile, { fullPlatform });
   return {
     contract_version: CONTRACT_VERSION,
@@ -258,6 +305,8 @@ function createPlan({
     target_revision: targetRevision,
     source_tree: sourceTree,
     full_platform: fullPlatform === true,
+    targeted_home: targetedHome === true,
+    targeted_planner_files: targetedPlannerFiles,
     gates: gateIds.map(id => ({ id, ...GATES[id] })),
   };
 }
@@ -390,4 +439,5 @@ module.exports = {
   resolveArtifactRevision,
   runPlan,
   saveGateCache,
+  scopedDomainFromPatch,
 };
