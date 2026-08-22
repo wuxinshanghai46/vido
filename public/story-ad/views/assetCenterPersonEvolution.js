@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-production-board-v158';
+import { escapeHtml } from '../components/ui.js?v=20260822-production-board-v159';
 
 function ageRows(profile = {}) {
   const rows = Array.isArray(profile.age_states) ? profile.age_states : [];
