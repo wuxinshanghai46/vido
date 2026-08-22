@@ -68,6 +68,7 @@ assert.match(personDossierShowcase, /当前分类拼图不是最终整图/);
 
 const briefView = read('public/story-ad/views/briefView.js');
 const referenceDialogueState = read('public/story-ad/views/briefReferenceDialogueState.js');
+const referenceActionStateSource = read('public/story-ad/views/briefReferenceActionState.js');
 const briefFormPayload = read('public/story-ad/views/briefFormPayload.js');
 const briefDialoguePanel = read('public/story-ad/views/briefDialoguePanel.js');
 const briefSettingsModal = read('public/story-ad/views/briefSettingsModal.js');
@@ -124,7 +125,7 @@ assert.match(briefView, /unsubscribeProgress\(\)/, '离开目标页时必须注�
 assert.match(briefView, /placeholder="请输入便于识别的项目名称"/);
 assert.doesNotMatch(briefView, /新标门窗|全景窗剧情广告/, '项目名称提示不得暗示特定行业');
 assert.match(referenceProgressSource, /elapsedTimeTag\(\{ startedAt: reference\.started_at/);
-assert.match(referenceDialogueState, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
+assert.match(referenceActionStateSource, /contentMode === 'commercial_subject' \? '广告脚本' : '剧情与对白'/, '第一步完成后的主操作必须按广告或剧情内容域进入对应脚本');
 assert.match(briefView, /data-ai-brief>AI 帮写/, '未添加参考视频时必须提供广告目标 AI 帮写入口');
 assert.match(briefFormPayload, /brief_source:\s*'user'/, '正式表单载荷必须把手填或 AI 帮写后的内容目标标记为用户权威，参考材料不得覆盖');
 assert.match(assets, /assetPlanStageView/, '资产中心必须通过统一阶段视图渲染人物生成入口');
@@ -181,7 +182,7 @@ const briefProgressModule = loadBrowserModule('public/story-ad/views/briefView.j
   confirmDialog() { return false; },
   promptDialog() { return ''; },
 });
-const referenceStateModule = loadBrowserModule('public/story-ad/views/briefReferenceDialogueState.js', ['referenceActionState', 'syncReferenceAction']);
+const referenceStateModule = loadBrowserModule('public/story-ad/views/briefReferenceActionState.js', ['referenceActionState', 'syncReferenceAction']);
 const briefModule = { ...briefProgressModule, ...referenceStateModule };
 const runningReference = briefModule.referenceProgress({
   analysis_id: 'analysis-running', status: 'running', progress: 42,

@@ -1,5 +1,6 @@
 import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
-import { createReferenceLinkDialogueHandler, referenceDialogueStatus, referenceNextStepDescription, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-extended-analysis-v141';
+import { createReferenceLinkDialogueHandler, referenceDialogueStatus, routeReferenceInput, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-extended-analysis-v141';
+import { referenceNextStepDescription } from './briefReferenceActionState.js?v=20260822-reference-extended-analysis-v141';
 import { dialogueBudgetReached, referenceDialoguePhase, sanitizeDialogueTopics } from './briefDialoguePolicy.js?v=20260822-reference-extended-analysis-v141';
 import { followConversationAfter } from './briefConversationScroll.js?v=20260822-reference-extended-analysis-v141';
 export { referenceDialogueStatus, referenceNextStepDescription, syncReferenceDialogueStatus };

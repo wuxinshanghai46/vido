@@ -20,13 +20,15 @@ async function main() {
   const referenceStateSource = read('public/story-ad/views/briefReferenceDialogueState.js')
     .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
     .replace(/\bexport\s+/g, '');
+  const referenceActionSource = read('public/story-ad/views/briefReferenceActionState.js').replace(/\bexport\s+/g, '');
   const dialogueSource = read('public/story-ad/views/briefDialoguePanel.js')
     .replace(/^import[^\n]+components\/ui[^\n]+\n/m, 'const escapeHtml = value => String(value ?? "");\n')
     .replace(/^import[^\n]+briefReferenceDialogueState[^\n]+\n/m, '')
+    .replace(/^import[^\n]+briefReferenceActionState[^\n]+\n/m, '')
     .replace(/^import[^\n]+briefDialoguePolicy[^\n]+\n/m, '')
     .replace(/^import[^\n]+briefConversationScroll[^\n]+\n/m, '')
     .replace(/^export \{ referenceDialogueStatus[^\n]+\n/m, '');
-  const dialogue = await asModule(`${scrollSource}\n${policySource}\n${referenceStateSource}\n${dialogueSource}`);
+  const dialogue = await asModule(`${scrollSource}\n${policySource}\n${referenceStateSource}\n${referenceActionSource}\n${dialogueSource}`);
   const guidedResume = await asModule(read('public/story-ad/views/briefGuidedResume.js'));
   const explicitSettings = await asModule(read('public/story-ad/views/briefExplicitSettings.js'));
   const referenceQuestion = await asModule(read('public/story-ad/views/briefReferenceQuestion.js'));

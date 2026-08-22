@@ -5,7 +5,7 @@ const vm = require('vm');
 
 const root = path.resolve(__dirname, '..');
 const brief = fs.readFileSync(path.join(root, 'public/story-ad/views/briefView.js'), 'utf8');
-const referenceDialogueState = fs.readFileSync(path.join(root, 'public/story-ad/views/briefReferenceDialogueState.js'), 'utf8');
+const referenceDialogueState = fs.readFileSync(path.join(root, 'public/story-ad/views/briefReferenceActionState.js'), 'utf8');
 const report = fs.readFileSync(path.join(root, 'public/story-ad/views/referenceUnderstandingView.js'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'public/story-ad/reference-understanding.css'), 'utf8');
 
