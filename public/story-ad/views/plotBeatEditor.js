@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v140';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';

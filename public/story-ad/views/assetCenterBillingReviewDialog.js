@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v140';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v140';
-export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260822-reference-extended-analysis-v140';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v141';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v141';
+export { ensureSubjectRecoveryReady } from './subjectRecoveryPreflightAction.js?v=20260822-reference-extended-analysis-v141';
 
 function reviewLabel(review = {}) {
   if (review.kind === 'scene') return `场景“${review.scene_id || '未命名场景'}”的${review.unit || '视图'}`;

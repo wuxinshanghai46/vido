@@ -1,19 +1,19 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v140';
-import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v140';
-import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v140';
-import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-extended-analysis-v140';
-import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-extended-analysis-v140';
-import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-extended-analysis-v140';
-import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-extended-analysis-v140';
-import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-extended-analysis-v140';
-import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-extended-analysis-v140';
-import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-extended-analysis-v140';
-import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-extended-analysis-v140';
-import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-extended-analysis-v140';
-import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-extended-analysis-v140';
-import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-extended-analysis-v140';
-import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-extended-analysis-v140';
-import { formPayload } from './briefFormPayload.js?v=20260822-reference-extended-analysis-v140';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v141';
+import { elapsedTimeTag, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
+import { confirmDialog, promptDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v141';
+import { briefSettingsSummary } from './briefSettingsSummary.js?v=20260822-reference-extended-analysis-v141';
+import { worldSettingFields } from './briefWorldSettings.js?v=20260822-reference-extended-analysis-v141';
+import { bindNarrativeRecognitionLayout } from './briefNarrativeRecognition.js?v=20260822-reference-extended-analysis-v141';
+import { referenceProgress as renderReferenceProgress } from './referenceProgressCard.js?v=20260822-reference-extended-analysis-v141';
+import { assertBriefReadback } from './briefTextContract.js?v=20260822-reference-extended-analysis-v141';
+import { confirmContentModeMigration } from './briefContentModeMigration.js?v=20260822-reference-extended-analysis-v141';
+import { BRIEF_MATERIALS } from './briefMaterials.js?v=20260822-reference-extended-analysis-v141';
+import { bindAdvancedReferenceControls, renderAdvancedReferenceControls } from './briefAdvancedConfig.js?v=20260822-reference-extended-analysis-v141';
+import { bindBriefDialogueWorkflow, briefDialogueMarkup, referenceNextStepDescription } from './briefDialoguePanel.js?v=20260822-reference-extended-analysis-v141';
+import { referenceActionState, syncReferenceAction, syncReferenceDialogueStatus } from './briefReferenceDialogueState.js?v=20260822-reference-extended-analysis-v141';
+import { bindBriefViewport, briefDialogueAssist } from './briefDialogueRuntime.js?v=20260822-reference-extended-analysis-v141';
+import { bindBriefSettingsModal } from './briefSettingsModal.js?v=20260822-reference-extended-analysis-v141';
+import { formPayload } from './briefFormPayload.js?v=20260822-reference-extended-analysis-v141';
 export function referenceProgress(reference = {}) { return renderReferenceProgress(reference); }
 
 export async function mount(host, context) {
@@ -131,7 +131,7 @@ ${renderAdvancedReferenceControls(bundle, route.isNew)}
       if (understandingHost) understandingHost.innerHTML = '';
       return;
     }
-    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-extended-analysis-v140');
+    const module = await import('./referenceUnderstandingView.js?v=20260822-reference-extended-analysis-v141');
     if (disposed || sequence !== understandingLoadSequence || !understandingHost) return;
     if (understandingController) understandingController.update(reference);
     else understandingController = module.mountReferenceUnderstanding(understandingHost, {

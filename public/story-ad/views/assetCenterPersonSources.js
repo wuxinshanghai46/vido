@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-extended-analysis-v140';
-import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v140';
-import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v140';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v141';
+import { escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v141';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v141';
 
 function assetModal(title = '') {
   const previouslyFocused = document.activeElement;
