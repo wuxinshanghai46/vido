@@ -23,6 +23,10 @@ const GATES = Object.freeze({
     command: 'node scripts/test-story-ad-workspace-v6-ui-regressions.js && node scripts/test-story-ad-dialogue-intake-v100.js && node scripts/test-story-ad-brief-modal-auto-blueprint-v103.js && node scripts/test-story-ad-lightweight-bundle-v100.js && node scripts/check-story-ad-workspace-v6-boundaries.js',
     label: '工作台 UI、对话立项、首屏轻量投影与模块边界',
   },
+  story_content: {
+    command: 'node scripts/test-new-story-ad-blueprint-quality.js && node scripts/test-new-story-ad-blueprint-lifecycle.js && node scripts/test-new-story-ad-content-versioning.js && node scripts/test-new-story-ad-storyboard-guards.js && node scripts/test-new-story-ad-storyboard-ui.js && node scripts/test-new-story-ad-storyboard-continuity-gate.js && node scripts/test-story-ad-detail-sketch-batch.js',
+    label: '内容蓝图、完整分镜、连续性与细化批次',
+  },
   reference: {
     command: 'npm run story-ad:reference-understanding:test && npm run story-ad:reference-sync:test',
     label: '参考分析、确认与同步',
@@ -50,6 +54,14 @@ const GATES = Object.freeze({
 });
 
 const DOMAIN_RULES = [
+  {
+    domain: 'story_content',
+    risk: 'story_content',
+    patterns: [
+      /^src\/services\/newStoryAd\/(?:blueprint|storyboard)/i,
+      /^scripts\/test-(?:new-)?story-ad-(?:blueprint|storyboard|detail-sketch)/i,
+    ],
+  },
   {
     domain: 'release_infrastructure',
     risk: 'full',
@@ -92,6 +104,7 @@ const DOMAIN_RULES = [
     patterns: [
       /^public\/story-ad\//,
       /^src\/routes\/storyAdWorkspace\.js$/,
+      /^src\/services\/storyAdWorkspace\/briefProjectionService\.js$/,
       /^scripts\/test-story-ad-workspace/i,
       /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
     ],
@@ -241,6 +254,12 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
   if (risks.has('reference') && risks.has('asset_plan')) return {
     profile: 'reference_asset_plan', domains: [...domains], unknown_files: [], reasons: ['同时涉及参考权威与资产方案'],
   };
+  if (risks.has('reference') && risks.has('story_content')) return {
+    profile: 'reference_story_content', domains: [...domains], unknown_files: [], reasons: ['同时涉及参考权威与内容蓝图/完整分镜'],
+  };
+  if (risks.has('story_content')) return {
+    profile: 'story_content', domains: [...domains], unknown_files: [], reasons: ['涉及内容蓝图、完整分镜或连续性生成'],
+  };
   if (risks.has('reference')) return { profile: 'reference', domains: [...domains], unknown_files: [], reasons: ['参考权威链路变更'] };
   if (risks.has('asset_plan')) return { profile: 'asset_plan', domains: [...domains], unknown_files: [], reasons: ['资产方案链路变更'] };
   return { profile: 'ui', domains: [...domains], unknown_files: [], reasons: ['仅涉及已分类工作台展示或交互'] };
@@ -253,6 +272,8 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
     reference: ['reference', 'workspace_ui', 'release_core'],
     asset_plan: ['asset_plan', 'workspace_ui', 'release_core'],
     reference_asset_plan: ['reference', 'asset_plan', 'workspace_ui', 'release_core'],
+    story_content: ['story_content', 'workspace_ui', 'release_core'],
+    reference_story_content: ['reference', 'story_content', 'workspace_ui', 'release_core'],
     upload_media: ['upload_media', 'reference', 'workspace_ui', 'release_core'],
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
     full: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],

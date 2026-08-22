@@ -27,6 +27,14 @@ assert.equal(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjecti
 assert(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).gates.some(row => row.id === 'reference'));
 assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'asset_plan');
 assert.equal(plan(['src/services/newStoryAd/referenceVideoUploadService.js']).profile, 'upload_media');
+assert.equal(plan(['src/services/newStoryAd/blueprintQualityService.js']).profile, 'story_content');
+assert.deepEqual(plan(['src/services/newStoryAd/blueprintQualityService.js']).gates.map(row => row.id), ['story_content', 'workspace_ui', 'release_core']);
+assert.equal(plan(['src/services/newStoryAd/storyboardTableService.js', 'src/services/newStoryAd/referenceDetachService.js']).profile, 'reference_story_content');
+assert.deepEqual(
+  plan(['src/services/newStoryAd/storyboardTableService.js', 'src/services/newStoryAd/referenceDetachService.js']).gates.map(row => row.id),
+  ['reference', 'story_content', 'workspace_ui', 'release_core'],
+);
+assert.equal(plan(['src/services/storyAdWorkspace/briefProjectionService.js']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
