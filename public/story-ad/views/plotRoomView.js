@@ -3,14 +3,6 @@ import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.j
 import { confirmDialog } from '../components/dialog.js?v=20260822-ui-v166';
 import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260822-ui-v166';
 
-function domainContractBanner(brief = {}) {
-  const contract = brief.content_domain_contract || {};
-  const narrative = brief.content_mode === 'narrative_story';
-  const objective = contract.objective || (narrative ? '以人物、关系、因果和主题完成剧情' : '围绕商品或服务主体完成传播目标');
-  const forbidden = Array.isArray(contract.forbidden) ? contract.forbidden.slice(0, 4).join('、') : (narrative ? '禁止混入商品卖点、购买号召和品牌落版' : '禁止丢失广告主体与可见传播证据');
-  return `<section class="guide content-domain-banner"><b>${narrative ? '剧情专用规则' : '广告专用规则'}</b><span>${escapeHtml(objective)}</span><small>${escapeHtml(forbidden)}</small></section>`;
-}
-
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
   const complete = !!(character.name && character.gender && (character.age_range || character.age) && character.role);
@@ -37,30 +29,31 @@ export async function mount(host, context) {
   const isReferenceDraft = !savedBlueprint && !!referenceDraft;
   const draftNeedsGeneration = isReferenceDraft && (blueprint?.beats || []).some(beat => !String(beat.visual || beat.plot || '').trim() || !String(beat.spoken_line || beat.voiceover || '').trim());
   const characters = Array.isArray(blueprint?.characters) ? blueprint.characters : [];
+  const castIntent = bundle?.brief?.brief_intake?.cast_intent || bundle?.brief?.cast_intent || {};
+  const expectedCharacters = castIntent.confirmed === true ? Number(castIntent.expected_people || 0) : characters.length;
+  const castMismatch = castIntent.confirmed === true && characters.filter(item => item?.on_screen !== false).length !== expectedCharacters;
   host.innerHTML = `
     <section class="view-head">
       <div><h1>${bundle.brief?.content_mode === 'narrative_story' ? '剧情与对白' : '广告剧情与对白'}</h1><p>第 2 步先把创作设想展开为详细分段、动作、旁白和对白；确认后才从剧情提取人物与场景。</p>${isReferenceDraft ? '<span class="status-tag is-neutral">参考视频提取草稿 · 待优化</span>' : ''}</div>
       <div class="view-actions">
         <button class="btn" type="button" data-import-script>导入脚本</button>
-        ${blueprint ? `<button class="btn" type="button" data-add-beat>＋ 新增镜头</button>${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : '<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>重新生成剧情</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>'}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
+        ${blueprint ? `${isReferenceDraft ? `<button class="btn" type="button" data-save-story>保存当前草稿</button><button class="btn primary" type="button" data-generate-story>${draftNeedsGeneration ? 'AI 补全剧情、动作与对白' : 'AI 生成完整剧情与对白'}</button>` : `<button class="btn" type="button" data-save-story>保存剧情</button><button class="btn" type="button" data-regenerate-story>${castMismatch ? `按 ${expectedCharacters} 人设定重新生成` : '重新生成剧情'}</button><button class="btn primary" type="button" data-open-storyboard>确认剧情，进入人物</button>`}` : '<button class="btn primary" type="button" data-generate-story>生成详细剧情与对白</button>'}
       </div>
     </section>
-    ${domainContractBanner(bundle.brief || {})}
-    <div class="guide">${isReferenceDraft ? '这里仅显示参考视频提取的故事草稿。请先补齐分段、动作和对白，确认后再提取人物。' : '先确认故事因果、每段动作和对白。人物、场景、线稿与分镜都从这份已确认剧情继续，避免先生成资产再反过来改故事。'}</div>
     <input class="hidden-input" hidden type="file" accept=".txt,.md,text/plain,text/markdown" data-script-file>
     ${blueprint ? `<div class="plot-layout plot-workspace">
       <section class="card story-overview-card">
         <div class="card-head"><div><h2>故事设定</h2><p>${isReferenceDraft ? '来自参考视频分析，尚未保存为正式剧情。' : '来自当前任务蓝图。'}</p></div></div>
         <div class="card-body story-overview-grid story-only-grid">
-          <label class="field story-summary-surface"><span>故事标题</span><textarea class="textarea" name="story_title" rows="4">${escapeHtml(blueprint.story_title || blueprint.title || '')}</textarea></label>
-          <label class="field story-summary-surface"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="4">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
+          <label class="field story-summary-surface"><span>故事标题</span><textarea class="textarea" name="story_title" rows="2">${escapeHtml(blueprint.story_title || blueprint.title || '')}</textarea></label>
+          <label class="field story-summary-surface"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="2">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
         </div>
       </section>
-      <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>基础信息与音色会按稳定人物 ID 同步到下一步人物资产和配音。</p></div><span class="status-tag is-info">${characters.length} 个角色</span></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
+      <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>基础信息与音色会自动同步到下一步人物资产和配音。</p></div><span class="status-tag ${castMismatch ? 'is-warning' : 'is-info'}">${castMismatch ? `已确认 ${expectedCharacters} 人，当前剧情仅 ${characters.length} 人` : `${characters.length} 个角色`}</span></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
       <section class="card plot-sequence-card">
-        <div class="card-head"><div><h2>剧情、动作与对白</h2><p>完整制作表平铺显示；每一列都可以展开编辑，后续人物、场景和分镜沿用同一份数据。</p></div><span class="status-tag is-info">${(blueprint.beats || []).length} 个情节点</span></div>
+        <div class="card-head"><div><h2>剧情、动作与对白</h2><p>点击任意单元格编辑，人物、场景和后续分镜沿用同一份数据。</p></div><div class="plot-sequence-actions"><span data-production-completeness></span><button class="btn small" type="button" data-add-beat>＋ 新增镜头</button></div></div>
         <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
-        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div><div class="beat-table-footer"><button class="btn small" type="button" data-add-beat>＋ 新增镜头</button><span data-production-completeness></span></div></div>
+        <div class="card-body beat-list" data-beat-list>${(blueprint.beats || []).map(beatEditor).join('')}</div></div>
       </section>
     </div><div class="beat-floating-editor" data-beat-floating-editor role="dialog" popover="auto"></div>` : `<section class="card">${emptyState({
       title: savedQualityDraft ? '脚本初稿已保存，等待重新检查' : '还没有剧情蓝图',
@@ -138,7 +131,9 @@ export async function mount(host, context) {
     const target = host.querySelector('[data-production-completeness]');
     if (!target) return;
     const issues = productionIssues(host);
-    target.textContent = issues.length ? `${new Set(issues.map(item => item.index)).size} 个镜头仍需补充` : '全部制作信息已完整';
+    const labels = { scene: '场景', visual: '画面', shot_size: '景别', lighting_mood: '光影', sound_design: '声音', camera_movement: '运镜', prompt_notes: '提示词' };
+    const counts = Object.entries(issues.reduce((all, item) => ((all[item.group] ||= []).push(item), all), {}));
+    target.textContent = issues.length ? `待补：${counts.map(([group, rows]) => `${labels[group] || group} ${rows.length}`).join(' · ')}` : '制作信息已完整';
     target.className = issues.length ? 'is-warning' : 'is-complete';
   };
   const place = button => {
@@ -152,7 +147,8 @@ export async function mount(host, context) {
   };
   const openEditor = async (button, row, group) => {
     cellEditorModule ||= await import('./plotBeatCellPopover.js?v=20260822-ui-v166');
-    closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group); pop.dataset.group = group; pop.showPopover(); place(button);
+    const currentCharacters = collectBlueprint(host, blueprint).characters;
+    closeAll(); active = row; pop.innerHTML = cellEditorModule.beatCellEditor(row, group, currentCharacters); pop.dataset.group = group; pop.dataset.dialogueEditor = group === 'spoken_line' ? 'true' : 'false'; pop.showPopover(); place(button);
     pop.querySelector('[data-floating-field]')?.focus();
   };
   const reindex = () => [...host.querySelectorAll('[data-beat-index]')].forEach((item, index) => {
@@ -171,8 +167,12 @@ export async function mount(host, context) {
   const syncPop = () => { if (active) { syncFloatingEditor(pop, active); refreshState(); } };
   pop?.addEventListener('input', syncPop); pop?.addEventListener('change', syncPop);
   pop?.addEventListener('click', event => {
+    if (cellEditorModule?.handleDialogueAction(pop, event.target, collectBlueprint(host, blueprint).characters)) { syncPop(); return; }
     if (event.target.closest('[data-close-beat-floating]')) closeAll();
     if (event.target.closest('[data-save-beat-floating]')) { syncPop(); closeAll(); }
+  });
+  pop?.addEventListener('change', event => {
+    if (cellEditorModule?.handleDialogueAction(pop, event.target, collectBlueprint(host, blueprint).characters)) syncPop();
   });
   host.querySelector('[data-beat-list]')?.addEventListener('click', async event => {
     const row = event.target.closest('[data-beat-index]');
@@ -243,12 +243,17 @@ export async function mount(host, context) {
     }
   });
   host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => {
+    if (castMismatch) {
+      host.querySelector('.story-characters-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      toast(`已确认 ${expectedCharacters} 人出镜，但当前历史剧情只有 ${characters.length} 人；请重新生成剧情后再进入人物。`, 'warning');
+      return;
+    }
     const issues = productionIssues(host);
     if (issues.length) {
       const first = issues[0];
       const button = first.row.querySelector(`[data-open-beat-cell="${first.group}"]`);
       if (button) { button.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); openEditor(button, first.row, first.group); }
-      toast(`还有 ${new Set(issues.map(item => item.index)).size} 个镜头缺少制作信息；请先补齐后再确认。`, 'warning');
+      toast('制作表仍有空项，已为你打开第一个需要补充的位置。', 'warning');
       return;
     }
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=assets`);

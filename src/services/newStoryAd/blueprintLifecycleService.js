@@ -15,13 +15,16 @@ function checkpointMatches(checkpoint, task, inputFingerprint) {
 
 function blueprintInputFingerprint(task = {}, ctx = {}) {
   return storage.canonicalFingerprint({
-    version: 2,
-    contract: 'new_story_ad.blueprint.semantic-input-v2',
+    version: 3,
+    contract: 'new_story_ad.blueprint.semantic-input-v3',
     asset_plan_fingerprint: ctx.asset_plan_fingerprint || '',
     brief: ctx.brief,
     product_subject: ctx.product_subject,
     reference_video_analysis: ctx.reference_video_analysis,
     cast_profiles: ctx.cast_profiles,
+    cast_intent: ctx.brief_intake?.cast_intent || ctx.cast_intent || null,
+    expected_people: Number(ctx.expected_people || 0),
+    cast_mode: ctx.cast_mode || '',
     pet_profiles: ctx.pet_profiles,
     prop_assets: (ctx.prop_assets || []).map(item => ({
       id: item.prop_id || item.id,
@@ -42,6 +45,14 @@ function blueprintInputFingerprint(task = {}, ctx = {}) {
   });
 }
 
+function blueprintMatchesCastContract(ctx = {}, blueprint = {}) {
+  const intent = ctx.brief_intake?.cast_intent || ctx.cast_intent || {};
+  if (intent.confirmed !== true) return true;
+  const expected = intent.mode === 'no_human' ? 0 : Math.max(0, Number(intent.expected_people || ctx.expected_people || 0));
+  const characters = Array.isArray(blueprint.characters) ? blueprint.characters.filter(item => item?.on_screen !== false) : [];
+  return characters.length === expected;
+}
+
 function findReusableBlueprintArtifact(taskId, task = {}, ctx = {}, inputFingerprint = '') {
   const expected = cleanText(inputFingerprint, 200);
   if (!expected || typeof storage.listArtifacts !== 'function') return null;
@@ -53,6 +64,7 @@ function findReusableBlueprintArtifact(taskId, task = {}, ctx = {}, inputFingerp
     if (!artifact || artifact.execution_disabled === true || artifact.cache_readonly === true) return false;
     if (['rejected', 'failed'].includes(String(artifact.qa_status || '').toLowerCase())) return false;
     if (!Array.isArray(artifact.payload?.beats) || !artifact.payload.beats.length) return false;
+    if (!blueprintMatchesCastContract(ctx, artifact.payload)) return false;
     if (cleanText(artifact.input_fingerprint, 200) === expected) return true;
     const snapshot = typeof storage.getSnapshot === 'function' ? storage.getSnapshot(artifact.snapshot_id) : null;
     const historical = snapshot?.payload && typeof snapshot.payload === 'object' ? snapshot.payload : null;
@@ -102,7 +114,8 @@ function recoverBlueprintWithoutProvider(taskId) {
   const inputFingerprint = blueprintInputFingerprint(task, { ...ctx, asset_plan_fingerprint: assetPlan.fingerprint || '' });
   const current = storage.getOutput(taskId, 'blueprint') || {};
   const currentMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
-  if (currentMeta.input_fingerprint === inputFingerprint && Array.isArray(current.beats) && current.beats.length) {
+  if (currentMeta.input_fingerprint === inputFingerprint && Array.isArray(current.beats) && current.beats.length
+    && blueprintMatchesCastContract(ctx, current)) {
     return { blueprint: current, input_fingerprint: inputFingerprint, artifact_id: '', source: 'current' };
   }
   const artifact = findReusableBlueprintArtifact(taskId, task, {
@@ -147,7 +160,8 @@ async function generateBlueprintStage(taskId, options = {}, {
   const previous = storage.getOutput(taskId, 'blueprint') || {};
   const previousMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
   const forceRegenerate = options.force_regenerate === true || options.forceRegenerate === true;
-  if (!forceRegenerate && previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length) {
+  if (!forceRegenerate && previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length
+    && blueprintMatchesCastContract(ctx, previous)) {
     const reused = publishReusedBlueprint(taskId, task, previous, inputFingerprint);
     blueprintProgress.update(taskId, {
       phase: 'fingerprint_reused',
@@ -252,6 +266,7 @@ module.exports = {
   generateBlueprintStage,
   checkpointMatches,
   blueprintInputFingerprint,
+  blueprintMatchesCastContract,
   findReusableBlueprintArtifact,
   publishReusedBlueprint,
   recoverBlueprintWithoutProvider,

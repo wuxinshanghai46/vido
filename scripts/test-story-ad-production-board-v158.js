@@ -25,6 +25,12 @@ equal(normalized.beats[0].sfx, ['手指轻触金属'], 'structured SFX survives'
 ok(board.soundComplete(normalized.beats[0]), 'designed sound is complete');
 ok(!board.soundComplete(board.normalizeBeat({ sound_mode: 'silent' }, 0, 'x')), 'silent needs reason');
 ok(board.soundComplete(board.normalizeBeat({ sound_mode: 'silent', explicit_silence_reason: '刻意留白突出画面' }, 0, 'x')), 'explicit silence passes');
+const mixedDialogueBeat = board.normalizeBeat({ dialogue_lines: [
+  { speech_mode: 'dialogue', speaker_id: 'designer', speaker: '林岚', line: '请看这里的纹理。' },
+  { speech_mode: 'voiceover', speaker_id: 'wrong', speaker: '错误人物', line: '材料效果逐渐清晰。' },
+] }, 0, 'dialogue-contract');
+equal(mixedDialogueBeat.dialogue_lines.map(line => line.speech_mode), ['dialogue', 'voiceover'], '台词与旁白类型不得在制作表投影中丢失');
+equal(mixedDialogueBeat.dialogue_lines[1].speaker_id, 'narrator', '旁白必须自动绑定内部旁白者');
 
 const projected = projection.projectCharacters({ cast_profiles: [{ id: normalized.characters[0].id, appearanceText: '短发，简洁西装' }] }, normalized);
 equal(projected.cast_profiles.length, 2, 'all people projected');
@@ -49,7 +55,8 @@ const soundIssues = quality.detailContractIssues({ sound_contract_version: 1, sh
 ok(soundIssues.some(item => item.includes('声音设计')), 'quality blocks empty sound');
 
 const ui = fs.readFileSync(path.join(__dirname, '../public/story-ad/views/plotBeatEditor.js'), 'utf8');
-['ambient_sound', 'sfx', 'music_cue', 'voiceover_timing', 'camera_movement_notes', 'keyframe_prompt_override', 'video_prompt_override'].forEach(marker => ok(ui.includes(marker), `UI contains ${marker}`));
+['ambient_sound', 'sfx', 'music_cue', 'dialogue_lines_json', 'camera_movement_notes', 'keyframe_prompt_override', 'video_prompt_override'].forEach(marker => ok(ui.includes(marker), `UI contains ${marker}`));
+ok(!ui.includes('voiceover_timing'), '用户不需要编辑模糊的对白时间字段');
 ok(ui.includes('data-open-beat-cell'), 'cells open the compact field editor');
 ok(ui.includes('data-beat-floating-editor') === false, 'row renderer must not embed one large editor per row');
 

@@ -140,6 +140,30 @@ async function main() {
       blueprintLifecycle.blueprintInputFingerprint({ content_revision: 99 }, context),
       '内容修订号不是语义输入，不能让完全相同的蓝图失去复用资格',
     );
+    const singleCastContext = {
+      ...context,
+      cast_profiles: [],
+      cast_mode: 'single',
+      expected_people: 1,
+      brief_intake: { cast_intent: { confirmed: true, mode: 'single', expected_people: 1 } },
+    };
+    const dualCastContext = {
+      ...context,
+      cast_profiles: [],
+      cast_mode: 'auto',
+      expected_people: 2,
+      brief_intake: { cast_intent: { confirmed: true, mode: 'dual', expected_people: 2 } },
+    };
+    assert.notEqual(
+      blueprintLifecycle.blueprintInputFingerprint({ content_revision: 1 }, singleCastContext),
+      blueprintLifecycle.blueprintInputFingerprint({ content_revision: 1 }, dualCastContext),
+      '用户已确认的出镜人数必须参与蓝图复用指纹',
+    );
+    assert.equal(
+      blueprintLifecycle.blueprintMatchesCastContract(dualCastContext, premiumBlueprint),
+      false,
+      '两人出镜不得恢复仅有一人的历史蓝图',
+    );
     storage.saveOutput('blueprint-lifecycle-task', 'storyboard_table', [{ shot_index: 1, title: '旧分镜' }]);
     storage.saveOutput('blueprint-lifecycle-task', 'storyboard_sketches', [{ shot_index: 1, image_url: '/old-sketch.png' }]);
     let forcedGeneratorCalls = 0;

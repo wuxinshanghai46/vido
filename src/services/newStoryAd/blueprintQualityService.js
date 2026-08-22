@@ -291,12 +291,18 @@ function assessBlueprintRights(blueprint = {}) {
   };
 }
 
-function assessBlueprintQuality(blueprint = {}) {
+function assessBlueprintQuality(blueprint = {}, ctx = {}) {
   const beats = Array.isArray(blueprint.beats) ? blueprint.beats : [];
   const characters = Array.isArray(blueprint.characters) ? blueprint.characters : [];
+  const castIntent = ctx.brief_intake?.cast_intent || ctx.cast_intent || {};
+  const productionContractRequired = castIntent.confirmed === true;
+  const expectedPeople = castIntent.mode === 'no_human' ? 0 : Math.max(0, Number(castIntent.expected_people || ctx.expected_people || 0));
   const sparse = blueprint.dialogue_contract?.speech_policy === 'authored_sparse';
   const durationAwareDialogue = blueprint.dialogue_contract?.version === DIALOGUE_CONTRACT_VERSION;
   const issues = [];
+  if (productionContractRequired && characters.filter(item => item?.on_screen !== false).length !== expectedPeople) {
+    issues.push(`已确认 ${expectedPeople} 位出镜人物，但剧情蓝图包含 ${characters.filter(item => item?.on_screen !== false).length} 位`);
+  }
   if (!clean(blueprint.logline)) issues.push('缺少清晰的故事主线');
   characters.forEach((character, index) => {
     const prefix = `第 ${index + 1} 个角色`;
@@ -320,6 +326,18 @@ function assessBlueprintQuality(blueprint = {}) {
     const spokenWithoutDirections = spoken.replace(/^[（(][^）)]*[）)]\s*/g, '').replace(/^[…。.，,、\s]+|[…。.，,、\s]+$/g, '');
     if (spoken && !spokenWithoutDirections) issues.push(`第 ${n} 镜台词只有表演提示，没有实际对白`);
     if (/^[（(].*[）)]/.test(spoken)) issues.push(`第 ${n} 镜台词混入表演提示`);
+    if (productionContractRequired) {
+      if (!clean(beat.lighting_mood)) issues.push(`第 ${n} 镜缺少光影氛围`);
+      const soundReady = clean(beat.sound_mode) === 'silent'
+        ? !!clean(beat.explicit_silence_reason)
+        : !!(clean(beat.ambient_sound) || (Array.isArray(beat.sfx) && beat.sfx.length) || clean(beat.music_cue) || clean(beat.audio_bridge));
+      if (!soundReady) issues.push(`第 ${n} 镜缺少声音设计`);
+      if (!clean(beat.camera_movement)) issues.push(`第 ${n} 镜缺少运镜设计`);
+      if (!clean(beat.prompt_notes || beat.keyframe_prompt_override)) issues.push(`第 ${n} 镜缺少制作提示`);
+      if (spoken && beat.speech_mode === 'dialogue' && !characters.some(character => clean(character.name) === clean(beat.speaker))) {
+        issues.push(`第 ${n} 镜说话人未绑定已确认剧情人物`);
+      }
+    }
     // 新版台词合同会按单镜时长核算自然口播容量；固定 42 字上限会把
     // 10 秒等长镜头的合格台词误判为过长，并诱发全稿无谓重写。
     if (!durationAwareDialogue && spoken.length > 42) issues.push(`第 ${n} 镜台词过长`);
@@ -422,7 +440,7 @@ function mergePolishedBlueprint(original = {}, candidate = {}) {
 
 async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, attempt = 1, maxAttempts = 3, onProgress = null } = {}) {
   const safeBlueprint = brandEnding.applyToBlueprint(normalizeAuthorizedBrandPresentation(blueprint), ctx);
-  const before = assessBlueprintQuality(safeBlueprint);
+  const before = assessBlueprintQuality(safeBlueprint, ctx);
   if (!force && before.pass) return { blueprint: safeBlueprint, polished: false, before, after: before, model_meta: null };
   if (typeof onProgress === 'function') {
     try {
@@ -468,7 +486,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '用户可见的 role 可以使用自然名称，不需要包含“冲突、转折、结果”等固定词；平台通过 narrative_contract 和 causal_role 校验因果关系。',
       '所有用户可见内容使用自然简体中文；JSON 键、技术枚举、数字和 ID 不变。',
     ].join('\n'),
-    userPrompt: `任务上下文：${JSON.stringify({ brief: ctx.brief || '', product_subject: ctx.product_subject || '', business_boundary: ctx.business_boundary || '', target_duration: ctx.target_duration || 30, forbidden: ctx.forbidden || [], characters: ctx.characters || [] }).slice(0, 9000)}\n\n当前蓝图：${JSON.stringify(safeBlueprint).slice(0, 22000)}\n\n这是第 ${attempt}/${maxAttempts} 轮精修。必须解决的问题：${before.issues.join('；') || '按精品标准进一步提升'}\n\n返回与当前蓝图相同结构和相同 beat 数量的完整 JSON。`,
+    userPrompt: `任务上下文：${JSON.stringify({ brief: ctx.brief || '', product_subject: ctx.product_subject || '', business_boundary: ctx.business_boundary || '', target_duration: ctx.target_duration || 30, forbidden: ctx.forbidden || [], characters: ctx.characters || [], cast_intent: ctx.brief_intake?.cast_intent || ctx.cast_intent || null, expected_people: ctx.expected_people || 0 }).slice(0, 9000)}\n\n当前蓝图：${JSON.stringify(safeBlueprint).slice(0, 22000)}\n\n这是第 ${attempt}/${maxAttempts} 轮精修。必须解决的问题：${before.issues.join('；') || '按精品标准进一步提升'}\n\n返回与当前蓝图相同结构和相同 beat 数量的完整 JSON。`,
     maxTokens: 8000,
     temperature: 0.55,
   });
@@ -482,7 +500,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
   const merged = preserveCharacterNames(safeBlueprint, mergePolishedBlueprint(safeBlueprint, parsed));
   const language = await ensureChineseOutput({ payload: merged, kind: 'blueprint', taskId, context: ctx });
   const safePayload = brandEnding.applyToBlueprint(normalizeAuthorizedBrandPresentation(language.payload), ctx);
-  const after = assessBlueprintQuality(safePayload);
+  const after = assessBlueprintQuality(safePayload, ctx);
   if (!after.pass) {
     const best = preferQualityCandidate(
       { blueprint: safeBlueprint, review: before },

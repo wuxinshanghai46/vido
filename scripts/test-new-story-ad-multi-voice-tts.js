@@ -23,26 +23,28 @@ const adapter = require('../src/services/newStoryAd/ttsAdapter');
   const shot = {
     speech_mode: 'on_camera_dialogue',
     dialogue_lines: [
-      { speaker: '沈砚辞', line: '你为什么来到这里？' },
+      { speech_mode: 'dialogue', speaker: '沈砚辞', line: '你为什么来到这里？' },
       { speaker: '云知月', line: '因为我在找你。' },
+      { speech_mode: 'voiceover', speaker: '内部错误人物', speaker_id: 'wrong', line: '故事从这里开始。' },
     ],
   };
   const assignments = { narrator: 'voice-n', speakers: { 沈砚辞: 'voice-a', 云知月: 'voice-b' } };
   const units = adapter.shotSpeechUnits(shot, 'voice-n', assignments);
-  assert.deepStrictEqual(units.map(x => x.voice_id), ['voice-a', 'voice-b']);
-  assert.deepStrictEqual(units.map(x => x.text), ['你为什么来到这里？', '因为我在找你。']);
+  assert.deepStrictEqual(units.map(x => x.voice_id), ['voice-a', 'voice-b', 'voice-n']);
+  assert.deepStrictEqual(units.map(x => x.text), ['你为什么来到这里？', '因为我在找你。', '故事从这里开始。']);
+  assert.deepStrictEqual(units.map(x => x.kind), ['dialogue', 'dialogue', 'narration']);
   const result = await adapter.generateShotAudio({ taskId: 'multi-voice', shot, index: 0, voiceId: 'voice-n', voiceAssignments: assignments });
   assert.ok(fs.existsSync(result.file_path));
   assert.ok(fs.statSync(result.file_path).size > 1000);
-  assert.deepStrictEqual(calls.map(x => x.voiceId), ['voice-a', 'voice-b']);
-  assert.strictEqual(result.speech_units.length, 2);
+  assert.deepStrictEqual(calls.map(x => x.voiceId), ['voice-a', 'voice-b', 'voice-n']);
+  assert.strictEqual(result.speech_units.length, 3);
   assert.match(result.voice_signature, /沈砚辞:voice-a/);
   assert.match(result.voice_signature, /云知月:voice-b/);
   assert.strictEqual(adapter.voiceoverPlanMatches({ voice_id: 'voice-n', tracks: [result] }, [shot], 'voice-n', assignments), true);
   assert.strictEqual(adapter.voiceoverPlanMatches({ voice_id: 'voice-n', tracks: [result] }, [shot], 'voice-n', { ...assignments, speakers: { ...assignments.speakers, 云知月: 'voice-c' } }), false);
   await assert.rejects(() => adapter.generateShotAudio({ taskId: 'missing-role', shot, voiceId: '', voiceAssignments: { speakers: { 沈砚辞: 'voice-a' } } }), /云知月/);
   fs.rmSync(output, { recursive: true, force: true });
-  console.log('new story ad multi-voice TTS: 11 assertions passed');
+  console.log('new story ad multi-voice TTS: 13 assertions passed');
 })().catch(error => {
   console.error(error);
   process.exitCode = 1;

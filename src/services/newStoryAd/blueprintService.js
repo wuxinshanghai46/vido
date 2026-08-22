@@ -369,6 +369,11 @@ function normalizeBlueprint(blueprint, ctx) {
   const beatLimit = profile.maxReasonable;
   const characterSeed = `${ctx.request_id || ''}|${ctx.brief || ''}|${ctx.product_subject || ''}`;
   const noHuman = ctx.cast_mode === 'no_human';
+  const normalizedCharacters = noHuman ? [] : normalizeCharacters(
+    Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters,
+    characterSeed,
+  );
+  const characterIdByName = new Map(normalizedCharacters.map(character => [clean(character.name, 80), clean(character.id, 80)]));
   const speechPlan = authoredSpeechPlan(ctx);
   const normalizedBeats = beats.map((beat, idx) => {
     const dialogueFunction = inferDialogueFunction(beat, idx, beats.length);
@@ -376,6 +381,25 @@ function normalizeBlueprint(blueprint, ctx) {
     const speechMode = clean(beat.speech_mode || '', 30).toLowerCase().replace(/[\s-]+/g, '_');
     const silent = ['silent', 'ambient_only'].includes(speechMode)
       || (speechPlan.policy === 'authored_sparse' && !explicitSpeech);
+    const resolvedSpeechMode = silent ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
+      : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover');
+    const rawSpeaker = clean(beat.speaker || beat.character || beat.speaker_name || '', 80);
+    const resolvedSpeaker = silent ? '' : (resolvedSpeechMode === 'voiceover' ? '旁白' : rawSpeaker);
+    const resolvedSpeakerId = silent ? '' : (resolvedSpeechMode === 'voiceover'
+      ? 'narrator'
+      : (characterIdByName.get(resolvedSpeaker) || clean(beat.speaker_id || '', 80)));
+    const dialogueLines = Array.isArray(beat.dialogue_lines) && beat.dialogue_lines.length
+      ? beat.dialogue_lines.map(line => {
+        const lineMode = clean(line?.speech_mode || line?.kind || 'dialogue', 30).toLowerCase() === 'voiceover' ? 'voiceover' : 'dialogue';
+        const lineSpeaker = lineMode === 'voiceover' ? '旁白' : clean(line?.speaker || '', 80);
+        return {
+          speech_mode: lineMode,
+          speaker: lineSpeaker,
+          speaker_id: lineMode === 'voiceover' ? 'narrator' : (characterIdByName.get(lineSpeaker) || clean(line?.speaker_id || '', 80)),
+          line: cleanSpeech(line?.line || line?.text || '', 100),
+        };
+      }).filter(line => line.line)
+      : (explicitSpeech ? [{ speech_mode: resolvedSpeechMode, speaker: resolvedSpeaker, speaker_id: resolvedSpeakerId, line: explicitSpeech }] : []);
     return {
       beat_index: Number(beat.beat_index || beat.index || idx + 1),
       role: clean(beat.role || beat.story_role || 'story', 50),
@@ -418,9 +442,10 @@ function normalizeBlueprint(blueprint, ctx) {
       intended_changes: cleanList(beat.intended_changes || beat.intended_change || beat.changes, 12, 180),
       visible_evidence: cleanList(beat.visible_evidence || beat.evidence_requirements || beat.visual_evidence, 12, 180),
       spoken_line: silent ? '' : (explicitSpeech || cleanSpeech(fallbackSpokenLine(beat, idx, ctx), 100)),
-      speaker: silent ? '' : clean(beat.speaker || beat.character || beat.speaker_name || '', 80),
-      speech_mode: silent ? (speechMode === 'ambient_only' ? 'ambient_only' : 'silent')
-        : (speechMode === 'dialogue' ? 'dialogue' : 'voiceover'),
+      speaker: resolvedSpeaker,
+      speaker_id: resolvedSpeakerId,
+      speech_mode: resolvedSpeechMode,
+      dialogue_lines: dialogueLines,
       dialogue_function: dialogueFunction,
       why_next: clean(beat.why_next || '', 120),
     };
@@ -462,7 +487,7 @@ function normalizeBlueprint(blueprint, ctx) {
       never_apply_to: ['camera_contracts', 'image_prompts', 'video_effect_timelines', 'legal_claims'],
     },
     segment_plan: Array.isArray(bp.segment_plan) ? bp.segment_plan : [],
-    characters: noHuman ? [] : normalizeCharacters(Array.isArray(bp.characters) && bp.characters.length ? bp.characters : ctx.characters, characterSeed),
+    characters: normalizedCharacters,
     beats: structuredBeats,
     model_meta: bp.model_meta || {},
   };
@@ -646,6 +671,7 @@ Return JSON in this shape:
     "dialogue_function": "setup_goal/obstacle/question/discovery/proof/value_shift/decision/resolution/brand_closure/development",
     "speech_mode": "dialogue/voiceover/silent/ambient_only",
     "speaker": "exact characters.name for dialogue; narrator for voiceover; empty for silent",
+    "speaker_id": "exact matching characters.id for dialogue; narrator for voiceover; empty for silent",
     "spoken_line": "natural line heard in final video, without label prefix",
     "why_next": "why the next beat follows"
   }]

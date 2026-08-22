@@ -54,9 +54,20 @@ function normalizeBeat(beat = {}, index = 0, seed = '') {
   const soundMode = cleanText(beat.sound_mode || '', 30)
     || (beat.explicit_silence_reason ? 'silent' : (beat.ambient_sound || sfx.length || beat.music_cue || beat.sound_design ? 'designed' : 'unassigned'));
   const spoken = cleanText(beat.spoken_line || beat.voiceover || '', 700);
-  const dialogueLines = Array.isArray(beat.dialogue_lines) ? beat.dialogue_lines.map(line => ({
-    speaker_id: cleanText(line?.speaker_id || '', 80), speaker: cleanText(line?.speaker || '', 120), line: cleanText(line?.line || '', 700),
-  })).filter(line => line.line) : (spoken ? [{ speaker_id: cleanText(beat.speaker_id || '', 80), speaker: cleanText(beat.speaker || '旁白', 120), line: spoken }] : []);
+  const dialogueLines = Array.isArray(beat.dialogue_lines) ? beat.dialogue_lines.map(line => {
+    const speechMode = cleanText(line?.speech_mode || line?.kind || 'dialogue', 30) === 'voiceover' ? 'voiceover' : 'dialogue';
+    return {
+      speech_mode: speechMode,
+      speaker_id: speechMode === 'voiceover' ? 'narrator' : cleanText(line?.speaker_id || '', 80),
+      speaker: speechMode === 'voiceover' ? '旁白' : cleanText(line?.speaker || '', 120),
+      line: cleanText(line?.line || line?.text || '', 700),
+    };
+  }).filter(line => line.line) : (spoken ? [{
+    speech_mode: cleanText(beat.speech_mode || 'voiceover', 30) === 'dialogue' ? 'dialogue' : 'voiceover',
+    speaker_id: cleanText(beat.speech_mode || '', 30) === 'dialogue' ? cleanText(beat.speaker_id || '', 80) : 'narrator',
+    speaker: cleanText(beat.speech_mode || '', 30) === 'dialogue' ? cleanText(beat.speaker || '', 120) : '旁白',
+    line: spoken,
+  }] : []);
   const ambient = cleanText(beat.ambient_sound || '', 300);
   const music = cleanText(beat.music_cue || '', 300);
   const bridge = cleanText(beat.audio_bridge || '', 300);

@@ -105,10 +105,17 @@ function shotSpeechUnits(shot = {}, fallbackVoiceId = '', voiceAssignments = {})
   }
   const dialogue = Array.isArray(shot.dialogue_lines) ? shot.dialogue_lines : [];
   const units = dialogue.map(line => {
-    const speaker = normalizeSpeechSegment(line?.speaker || '');
-    const speakerId = normalizeSpeechSegment(line?.speaker_id || line?.speakerId || '');
+    const voiceover = String(line?.speech_mode || line?.kind || '').trim().toLowerCase() === 'voiceover';
+    const speaker = voiceover ? '旁白' : normalizeSpeechSegment(line?.speaker || '');
+    const speakerId = voiceover ? 'narrator' : normalizeSpeechSegment(line?.speaker_id || line?.speakerId || '');
     const text = normalizeSpeechSegment(line?.line || line?.text || '');
-    return { speaker, speaker_id: speakerId, text, voice_id: assignments.speakers[speakerId] || assignments.speakers[speaker] || line?.voice_id || fallbackVoiceId, kind: 'dialogue' };
+    return {
+      speaker,
+      speaker_id: speakerId,
+      text,
+      voice_id: voiceover ? (assignments.narrator || fallbackVoiceId) : (assignments.speakers[speakerId] || assignments.speakers[speaker] || line?.voice_id || fallbackVoiceId),
+      kind: voiceover ? 'narration' : 'dialogue',
+    };
   }).filter(unit => unit.text);
   if (units.length) return units;
   const text = shotSpeechText(shot);

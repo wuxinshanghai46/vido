@@ -147,6 +147,24 @@ assert.equal(
 );
 assert.equal(assessBlueprintQuality(premium).pass, true);
 
+const confirmedDualIncomplete = {
+  story_title: '两人介绍方案',
+  logline: '设计师向客户展示不锈钢空间方案。',
+  characters: [{ id: 'designer', name: '林岚', role: '设计师', gender: 'female', age_range: '32 岁' }],
+  beats: [{
+    role: '介绍方案', plot: '林岚站在展厅介绍墙面材料。', action: '她抬手指向墙面纹理。',
+    speech_mode: 'dialogue', speaker: '陈先生', spoken_line: '这面墙会是什么效果？',
+  }],
+};
+const confirmedDualReview = assessBlueprintQuality(confirmedDualIncomplete, {
+  brief_intake: { cast_intent: { confirmed: true, mode: 'dual', expected_people: 2 } },
+  expected_people: 2,
+});
+assert.equal(confirmedDualReview.pass, false);
+['包含 1 位', '光影氛围', '声音设计', '运镜设计', '制作提示', '说话人未绑定'].forEach(message => {
+  assert(confirmedDualReview.issues.some(issue => issue.includes(message)), `确认制作合同应拦截：${message}`);
+});
+
 const warmLifestyleStory = {
   story_title: '雪球的活力一天',
   logline: '雪球和家人在草坪尽情运动，回家后主动享用狗粮补充能量，满足地回到家人身边。',
