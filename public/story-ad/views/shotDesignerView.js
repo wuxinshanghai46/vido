@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-reference-failure-recovery-v148';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-failure-recovery-v148';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-failure-recovery-v148';
+import { request } from '../api.js?v=20260822-reference-blueprint-complete-v149';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-blueprint-complete-v149';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-reference-blueprint-complete-v149';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
