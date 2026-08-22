@@ -201,6 +201,54 @@ function deyunaiVendorHeader(config = {}) {
   return vendor;
 }
 
+function validateDeyunaiTextContract(provider = {}, providerModel = {}) {
+  const family = adapterFamily(provider);
+  const providerId = String(provider.id || provider.preset || provider.name || '').trim();
+  const modelId = String(providerModel.id || '').trim();
+  const isDeyunai = family.includes('deyunai') || /deyunai|漫路/i.test(providerId);
+  const overseas = String(providerModel.channel || '').toLowerCase() === 'overseas'
+    || /^gpt-|^o[1-9]|^gemini-|^grok-/i.test(modelId);
+  const usesClaudeMessages = /^claude-/i.test(modelId);
+  if (!isDeyunai || !overseas || usesClaudeMessages) return { ok: true };
+  const vendor = String(providerModel.vendor || provider.vendor || DEYUNAI_C35_VENDOR || '').trim();
+  if (!vendor || vendor === 'API_VENDOR') {
+    return { ok: false, reason: 'deyunai_vendor_missing' };
+  }
+  return { ok: true };
+}
+
+function headerValue(headers = {}, name = '') {
+  if (!headers) return '';
+  if (typeof headers.get === 'function') return String(headers.get(name) || '').trim();
+  const target = String(name).toLowerCase();
+  const entry = Object.entries(headers).find(([key]) => String(key).toLowerCase() === target);
+  return String(entry?.[1] || '').trim();
+}
+
+function providerRequestId(payload = {}, headers = {}) {
+  return String(
+    payload?.id
+      || payload?.request_id
+      || payload?.requestId
+      || payload?._request_id
+      || headerValue(headers, 'x-request-id')
+      || headerValue(headers, 'request-id')
+      || headerValue(headers, 'x-trace-id')
+      || '',
+  ).trim().slice(0, 180);
+}
+
+function attachProviderErrorEvidence(error, headers = {}) {
+  if (!error || typeof error !== 'object') return error;
+  error.providerRequestId = providerRequestId({
+    id: error.request_id || error.requestId,
+  }, headers || error.headers || error.response?.headers);
+  error.provider_request_id = error.providerRequestId;
+  const status = providerStatus(error);
+  if (status) error.provider_status = status;
+  return error;
+}
+
 function textFromCompletion(completion) {
   const msg = completion?.choices?.[0]?.message;
   const content = msg?.content || msg?.reasoning_content || '';
@@ -257,7 +305,10 @@ function callAnthropicMessages(config, systemPrompt, userPrompt, opts = {}) {
         let data = null;
         try { data = JSON.parse(raw); } catch (_) {}
         if (res.statusCode >= 400) {
-          return reject(new Error(`Anthropic HTTP ${res.statusCode}: ${data?.error?.message || raw.slice(0, 300)}`));
+          const error = new Error(`Anthropic HTTP ${res.statusCode}: ${data?.error?.message || raw.slice(0, 300)}`);
+          error.status = res.statusCode;
+          error.response = { status: res.statusCode, headers: res.headers, data };
+          return reject(attachProviderErrorEvidence(error, res.headers));
         }
         const text = (Array.isArray(data?.content) ? data.content : [])
           .map(part => typeof part === 'string' ? part : (part?.text || ''))
@@ -265,7 +316,7 @@ function callAnthropicMessages(config, systemPrompt, userPrompt, opts = {}) {
           .join('\n')
           .trim();
         if (!text) return reject(new Error(`Anthropic returned empty content: ${raw.slice(0, 300)}`));
-        resolve({ text, usage: data.usage || {} });
+        resolve({ text, usage: data.usage || {}, provider_request_id: providerRequestId(data, res.headers) });
       });
     });
     const unbind = bindAbort(req, opts.signal);
@@ -305,7 +356,10 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
         try { data = JSON.parse(raw); } catch (_) {}
         if (res.statusCode >= 400 || data?.error) {
           const msg = data?.error?.message || data?.message || raw.slice(0, 300) || `HTTP ${res.statusCode}`;
-          return reject(new Error(`DeyunAI Claude Messages: ${msg}`));
+          const error = new Error(`DeyunAI Claude Messages: ${msg}`);
+          error.status = res.statusCode;
+          error.response = { status: res.statusCode, headers: res.headers, data };
+          return reject(attachProviderErrorEvidence(error, res.headers));
         }
         const text = (Array.isArray(data?.content) ? data.content : [])
           .map(part => typeof part === 'string' ? part : (part?.text || ''))
@@ -313,7 +367,7 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
           .join('\n')
           .trim();
         if (!text) return reject(new Error(`DeyunAI Claude Messages returned empty content: ${raw.slice(0, 300)}`));
-        resolve({ text, usage: data.usage || {} });
+        resolve({ text, usage: data.usage || {}, provider_request_id: providerRequestId(data, res.headers) });
       });
     });
     const unbind = bindAbort(req, opts.signal);
@@ -325,10 +379,10 @@ function callDeyunaiClaudeMessages(config, systemPrompt, userPrompt, opts = {}) 
   });
 }
 
-async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {}) {
+function openAICompatibleSdkOptions(config = {}, timeoutMs = 90000) {
   const sdkOpts = {
     apiKey: config.apiKey,
-    timeout: Math.max(30000, Math.min(180000, Number(opts.timeoutMs) || 90000)),
+    timeout: Math.max(30000, Math.min(180000, Number(timeoutMs) || 90000)),
     maxRetries: 0,
   };
   if (config.baseURL) sdkOpts.baseURL = config.baseURL;
@@ -336,8 +390,10 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   if (config.family.includes('deyunai') || /deyunai|漫路/i.test(config.providerId || '')) {
     const m = String(config.modelId || '').toLowerCase();
     const overseas = config.channel === 'overseas' || /^gpt-|^o[1-9]|^claude-|^gemini-(?!3\.1-flash-lite-preview)|^grok-/i.test(m);
-    if (overseas && sdkOpts.baseURL && !sdkOpts.baseURL.includes('/c35/')) {
-      sdkOpts.baseURL = sdkOpts.baseURL.replace(/\/v1\/?$/, '/c35/v1');
+    if (overseas) {
+      if (sdkOpts.baseURL && !sdkOpts.baseURL.includes('/c35/')) {
+        sdkOpts.baseURL = sdkOpts.baseURL.replace(/\/v1\/?$/, '/c35/v1');
+      }
       const vendor = deyunaiVendorHeader(config);
       if (vendor) headers.vendor = vendor;
     }
@@ -347,7 +403,11 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
     if (config.appId) headers['X-App-Id'] = config.appId;
   }
   if (Object.keys(headers).length) sdkOpts.defaultHeaders = headers;
+  return sdkOpts;
+}
 
+async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {}) {
+  const sdkOpts = openAICompatibleSdkOptions(config, opts.timeoutMs);
   const client = opts._client || new OpenAI(sdkOpts);
   const maxTokenValue = Math.max(1024, Math.min(32000, Number(opts.maxTokens) || 4096));
   const plan = structuredOutputPlan(config, opts.structuredOutput);
@@ -401,7 +461,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
         requested_mode: plan.request?.mode || '',
         attempts: structuredAttempts,
       };
-      throw error;
+      throw attachProviderErrorEvidence(error);
     }
   }
   if (typeof completion === 'string') {
@@ -411,7 +471,11 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   if ((!completion?.choices?.length || !text) && reasoningBudgetExhausted(completion, maxTokenValue)) {
     const retryTokenValue = Math.min(32000, Math.max(maxTokenValue + 6000, Math.ceil(maxTokenValue * 2)));
     if (retryTokenValue > maxTokenValue) {
-      completion = await client.chat.completions.create(buildPayload(retryTokenValue, appliedMode), { signal: opts.signal });
+      try {
+        completion = await client.chat.completions.create(buildPayload(retryTokenValue, appliedMode), { signal: opts.signal });
+      } catch (error) {
+        throw attachProviderErrorEvidence(error);
+      }
       if (typeof completion === 'string') {
         try { completion = JSON.parse(completion); } catch (_) {}
       }
@@ -428,6 +492,7 @@ async function callOpenAICompatible(config, systemPrompt, userPrompt, opts = {})
   return {
     text,
     usage: completion.usage || {},
+    provider_request_id: providerRequestId(completion),
     structured_output: plan.request ? {
       requested_mode: plan.request.mode,
       applied_mode: appliedMode,
@@ -459,6 +524,7 @@ async function generateText({ model, systemPrompt, userPrompt, messages = null, 
     family: config.family,
     provider_id: config.providerId,
     model_id: config.modelId,
+    provider_request_id: result.provider_request_id || '',
     structured_output: result.structured_output || (structuredOutput ? {
       requested_mode: normalizeStructuredOutput(structuredOutput)?.mode || '',
       applied_mode: 'prompt',
@@ -479,5 +545,9 @@ module.exports = {
   structuredResponseFormat,
   isStructuredOutputUnsupportedError,
   callOpenAICompatible,
+  openAICompatibleSdkOptions,
+  validateDeyunaiTextContract,
+  providerRequestId,
+  attachProviderErrorEvidence,
   generateText,
 };

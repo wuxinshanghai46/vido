@@ -898,6 +898,7 @@ function saveModelCall(call) {
     provider_status: call.provider_status || '',
     provider_reason: call.provider_reason || '',
     provider_request_id: call.provider_request_id || '',
+    failure_domain_id: call.failure_domain_id || '',
     provider_task_id: call.provider_task_id || '',
     provider_submission_state: call.provider_submission_state || '',
     billing_state: call.billing_state || '',

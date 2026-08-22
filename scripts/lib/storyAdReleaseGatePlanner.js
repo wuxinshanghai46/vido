@@ -12,6 +12,7 @@ const TARGETED_HOME_PLANNER_FILES = new Set([
   'scripts/deploy-story-ad-immutable-release.js',
   'scripts/lib/storyAdReleaseGatePlanner.js',
   'scripts/test-story-ad-release-gate-planner.js',
+  'scripts/lib/storyAdReleaseFiles.js',
 ]);
 
 const GATES = Object.freeze({
@@ -82,6 +83,7 @@ const DOMAIN_RULES = [
     patterns: [
       /^src\/server\.js$/,
       /(?:storage|database|sqlite|migration|billing|generation|modelGateway|jobService|concurrency|releaseControl)/i,
+      /(?:providerAdapterRegistry|settingsService|configure-story-ad-independent-text-routes|test-story-ad-(?:provider-contract|independent-text-routes))/i,
       /^scripts\/(?:migrate|audit)-new-story-ad-systemic/,
     ],
   },
@@ -274,7 +276,7 @@ function classifyFiles(files = [], { reliable = true, scopedDomains = {} } = {})
   return { profile: 'ui', domains: [...domains], unknown_files: [], reasons: ['仅涉及已分类工作台展示或交互'] };
 }
 
-function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
+function gateIdsForProfile(profile = 'full', { fullPlatform = false, targetedHome = false } = {}) {
   const profiles = {
     release_metadata: ['release_core'],
     ui: ['workspace_ui', 'release_core'],
@@ -288,6 +290,9 @@ function gateIdsForProfile(profile = 'full', { fullPlatform = false } = {}) {
     systemic: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
     full: ['systemic', 'workspace_ui', 'narrative_v111', 'release_core'],
   };
+  if (targetedHome && ['systemic', 'full'].includes(profile)) {
+    return ['systemic', 'workspace_ui', 'release_core'];
+  }
   if (profile === 'full' && fullPlatform) return ['systemic', 'platform_full', 'release_core'];
   return profiles[profile] || profiles.full;
 }
@@ -338,7 +343,7 @@ function createPlan({
     classification.domains = unique([...classification.domains, 'release_infrastructure']);
     classification.reasons = [...classification.reasons, '家庭电脑仅对发布规划器变更追加发布核心门禁'];
   }
-  const gateIds = gateIdsForProfile(classification.profile, { fullPlatform });
+  const gateIds = gateIdsForProfile(classification.profile, { fullPlatform, targetedHome });
   return {
     contract_version: CONTRACT_VERSION,
     profile: classification.profile,

@@ -47,6 +47,7 @@ const BASE_FILES = [
   'scripts/migrate-story-ad-platform-v111.js',
   'scripts/migrate-story-ad-v120-checkpoints.js',
   'scripts/migrate-new-story-ad-assist-route-v127.js',
+  'scripts/configure-story-ad-independent-text-routes.js',
   'scripts/migrate-story-ad-era-identities-v170.js',
   'scripts/migrate-story-ad-person-count-contract-v174.js',
   'scripts/migrate-story-ad-person-demographics-v63.js',

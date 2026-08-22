@@ -135,6 +135,11 @@ async function main() {
     assert.equal(jobService.stageBudgetMs('blueprint'), 480000);
 
     const persistedMeta = storage.getOutput('blueprint-lifecycle-task', 'blueprint_meta');
+    assert.equal(
+      blueprintLifecycle.blueprintInputFingerprint({ content_revision: 1 }, context),
+      blueprintLifecycle.blueprintInputFingerprint({ content_revision: 99 }, context),
+      '内容修订号不是语义输入，不能让完全相同的蓝图失去复用资格',
+    );
     storage.saveOutput('blueprint-lifecycle-task', 'storyboard_table', [{ shot_index: 1, title: '旧分镜' }]);
     storage.saveOutput('blueprint-lifecycle-task', 'storyboard_sketches', [{ shot_index: 1, image_url: '/old-sketch.png' }]);
     let forcedGeneratorCalls = 0;
@@ -204,6 +209,25 @@ async function main() {
     assert.equal(checkpointRecovered.beats.length, 3);
     assert.equal(generatorCalls, 2);
     assert.equal(storage.getOutput('blueprint-checkpoint-retry', 'blueprint_draft_checkpoint'), null);
+
+    const recoveryTaskId = 'blueprint-artifact-recovery';
+    storage.createTask({ id: recoveryTaskId, brief: context.brief, status: 'running', stage: 'blueprint', request: context });
+    storage.saveOutput(recoveryTaskId, 'context', context);
+    storage.enableLineage(recoveryTaskId);
+    const recoveryFingerprint = blueprintLifecycle.blueprintInputFingerprint(storage.getTask(recoveryTaskId), context);
+    storage.saveOutput(recoveryTaskId, 'blueprint', premiumBlueprint, { input_fingerprint: recoveryFingerprint });
+    const historicalArtifact = storage.listArtifacts(recoveryTaskId, 'blueprint')[0];
+    storage.deleteOutput(recoveryTaskId, 'blueprint');
+    let recoveryModelCalls = 0;
+    const recoveredArtifactBlueprint = await blueprintLifecycle.generateBlueprintStage(recoveryTaskId, {
+      inputFingerprint: recoveryFingerprint,
+    }, {
+      versionedBlueprint: value => value,
+      generateBlueprintFn: async () => { recoveryModelCalls += 1; return premiumBlueprint; },
+    });
+    assert.equal(recoveryModelCalls, 0, '语义一致的历史蓝图恢复不得再次调用模型');
+    assert.equal(recoveredArtifactBlueprint.recovered_from_artifact_id, historicalArtifact.id);
+    assert.equal(storage.listArtifacts(recoveryTaskId, 'blueprint')[0].upstream_artifact_ids[0], historicalArtifact.id);
 
     storage.updateTask('blueprint-lifecycle-task', { active_stage: '', active_generation_id: '' });
     const before = storage.getTask('blueprint-lifecycle-task').generation_progress;

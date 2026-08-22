@@ -723,9 +723,10 @@ async function main() {
         name: 'DeyunAI',
         api_url: 'https://api.deyunai.com/v1',
         api_key: 'test-deyunai-key',
+        vendor: 'test-official-vendor',
         enabled: true,
         models: [
-          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', enabled: true },
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', type: 'chat', use: 'story', channel: 'overseas', enabled: true },
         ],
       },
       {

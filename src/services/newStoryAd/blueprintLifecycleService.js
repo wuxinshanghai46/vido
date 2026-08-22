@@ -15,8 +15,8 @@ function checkpointMatches(checkpoint, task, inputFingerprint) {
 
 function blueprintInputFingerprint(task = {}, ctx = {}) {
   return storage.canonicalFingerprint({
-    version: 1,
-    content_revision: Math.max(1, Number(task.content_revision || 1) || 1),
+    version: 2,
+    contract: 'new_story_ad.blueprint.semantic-input-v2',
     asset_plan_fingerprint: ctx.asset_plan_fingerprint || '',
     brief: ctx.brief,
     product_subject: ctx.product_subject,
@@ -42,6 +42,58 @@ function blueprintInputFingerprint(task = {}, ctx = {}) {
   });
 }
 
+function findReusableBlueprintArtifact(taskId, task = {}, ctx = {}, inputFingerprint = '') {
+  const expected = cleanText(inputFingerprint, 200);
+  if (!expected || typeof storage.listArtifacts !== 'function') return null;
+  const currentReferenceId = cleanText(
+    ctx.reference_video_analysis?.analysis_id || ctx.reference_video_analysis?.id || '',
+    160,
+  );
+  return storage.listArtifacts(taskId, 'blueprint').find((artifact) => {
+    if (!artifact || artifact.execution_disabled === true || artifact.cache_readonly === true) return false;
+    if (['rejected', 'failed'].includes(String(artifact.qa_status || '').toLowerCase())) return false;
+    if (!Array.isArray(artifact.payload?.beats) || !artifact.payload.beats.length) return false;
+    if (cleanText(artifact.input_fingerprint, 200) === expected) return true;
+    const snapshot = typeof storage.getSnapshot === 'function' ? storage.getSnapshot(artifact.snapshot_id) : null;
+    const historical = snapshot?.payload && typeof snapshot.payload === 'object' ? snapshot.payload : null;
+    if (!historical) return false;
+    const historicalReferenceId = cleanText(
+      historical.reference_video_analysis?.analysis_id || historical.reference_video_analysis?.id || '',
+      160,
+    );
+    if (historicalReferenceId !== currentReferenceId) return false;
+    return blueprintInputFingerprint(task, historical) === expected;
+  }) || null;
+}
+
+function publishReusedBlueprint(taskId, task, blueprint, inputFingerprint, meta = {}) {
+  const recovered = {
+    ...blueprint,
+    source_revision: Math.max(1, Number(task.content_revision || 1) || 1),
+    ...(meta.artifact_id ? { recovered_from_artifact_id: meta.artifact_id } : {}),
+  };
+  if (meta.artifact_id) {
+    storage.saveOutput(taskId, 'blueprint', recovered, {
+      input_fingerprint: inputFingerprint,
+      upstream_artifact_ids: [meta.artifact_id],
+      qa_status: 'recovered_compatible',
+    });
+  }
+  storage.saveOutput(taskId, 'blueprint_meta', {
+    input_fingerprint: inputFingerprint,
+    content_revision: Number(task.content_revision || 1),
+    cache_hit: true,
+    recovered_from_artifact_id: meta.artifact_id || '',
+    completed_at: new Date().toISOString(),
+  });
+  storage.saveStage(taskId, 'blueprint', {
+    status: 'done',
+    output_summary: `${recovered.beats.length} 个剧情 beat（输入未变化，已复用）`,
+    diagnostics: { input_fingerprint: inputFingerprint, cache_hit: true, recovered_from_artifact_id: meta.artifact_id || '' },
+  });
+  return recovered;
+}
+
 async function generateBlueprintStage(taskId, options = {}, {
   versionedBlueprint,
   generateBlueprintFn = generateBlueprint,
@@ -61,18 +113,31 @@ async function generateBlueprintStage(taskId, options = {}, {
   const previousMeta = storage.getOutput(taskId, 'blueprint_meta') || {};
   const forceRegenerate = options.force_regenerate === true || options.forceRegenerate === true;
   if (!forceRegenerate && previousMeta.input_fingerprint === inputFingerprint && Array.isArray(previous.beats) && previous.beats.length) {
-    storage.saveStage(taskId, 'blueprint', {
-      status: 'done',
-      output_summary: `${previous.beats.length} 个剧情 beat（输入未变化，已复用）`,
-      diagnostics: { input_fingerprint: inputFingerprint, cache_hit: true },
-    });
+    const reused = publishReusedBlueprint(taskId, task, previous, inputFingerprint);
     blueprintProgress.update(taskId, {
       phase: 'fingerprint_reused',
       completed: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
       total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
       message: '输入指纹一致，已复用完整剧情蓝图。',
     }, { generationId });
-    return previous;
+    return reused;
+  }
+  if (!forceRegenerate) {
+    const artifact = findReusableBlueprintArtifact(taskId, task, {
+      ...ctx,
+      asset_plan_fingerprint: assetPlan.fingerprint || '',
+    }, inputFingerprint);
+    if (artifact) {
+      const reused = publishReusedBlueprint(taskId, task, artifact.payload, inputFingerprint, { artifact_id: artifact.id });
+      blueprintProgress.update(taskId, {
+        phase: 'artifact_recovered',
+        completed: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+        total: blueprintProgress.BLUEPRINT_PROGRESS_TOTAL,
+        message: '已恢复语义一致的历史剧情蓝图，本次没有再次调用模型。',
+      }, { generationId });
+      storage.updateTask(taskId, { status: 'running', stage: 'blueprint_done' });
+      return reused;
+    }
   }
   storage.updateTask(taskId, { status: 'running', stage: 'blueprint' });
   storage.saveStage(taskId, 'blueprint', { status: 'running', input_summary: ctx.brief });
@@ -127,7 +192,7 @@ async function generateBlueprintStage(taskId, options = {}, {
   if (forceRegenerate && Array.isArray(previous.beats) && previous.beats.length) {
     revisionService.invalidateOutputs(storage, taskId, ['blueprint']);
   }
-  storage.saveOutput(taskId, 'blueprint', blueprint);
+  storage.saveOutput(taskId, 'blueprint', blueprint, { input_fingerprint: inputFingerprint });
   storage.saveOutput(taskId, 'blueprint_meta', {
     input_fingerprint: inputFingerprint,
     content_revision: Number(task.content_revision || 1),
@@ -148,4 +213,10 @@ async function generateBlueprintStage(taskId, options = {}, {
   return blueprint;
 }
 
-module.exports = { generateBlueprintStage, checkpointMatches, blueprintInputFingerprint };
+module.exports = {
+  generateBlueprintStage,
+  checkpointMatches,
+  blueprintInputFingerprint,
+  findReusableBlueprintArtifact,
+  publishReusedBlueprint,
+};

@@ -50,6 +50,14 @@ assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row
 assert.equal(plan(['scripts/deploy-story-ad-immutable-release.js']).profile, 'full');
 assert.equal(plan(['docs/notes.md'], { reliable: false }).profile, 'full');
 assert.deepEqual(plan(['scripts/deploy-story-ad-immutable-release.js'], { fullPlatform: true }).gates.map(row => row.id), ['systemic', 'platform_full', 'release_core']);
+assert.deepEqual(
+  planner.createPlan({
+    root: process.cwd(), baseRevision: 'a'.repeat(40), targetRevision: 'b'.repeat(40), sourceTree: 'c'.repeat(40),
+    files: ['src/services/newStoryAd/modelGateway.js'], reliable: true, targetedHome: true,
+  }).gates.map(row => row.id),
+  ['systemic', 'workspace_ui', 'release_core'],
+  '家庭电脑的系统性相关门禁不得隐式触发跨版本完整回归',
+);
 assert.equal(planner.resolveArtifactRevision(process.cwd(), 'not-an-artifact', 'not-a-revision'), '');
 assert.equal(planner.releaseConfigChangeKind(
   { build_id: 'v1', contract_version: 7, node_runtime: { version: 'v22' } },

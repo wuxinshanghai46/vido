@@ -103,6 +103,27 @@ function modelKey(model) {
   return `${providerId}/${modelId}|channel=${channel || 'default'}|endpoint=${endpoint || 'default'}|wallet=${wallet || 'default'}|credential=${credential || 'none'}`;
 }
 
+function failureDomainKey(model = {}) {
+  const providerId = String(model.provider_id || '').trim().toLowerCase();
+  const modelId = String(model.model_id || '').trim().toLowerCase();
+  let endpoint = String(model.endpoint || '').trim().toLowerCase();
+  let wallet = String(model.wallet || model.account_group || '').trim().toLowerCase();
+  let credential = '';
+  try {
+    const provider = (loadSettings().providers || []).find(item => providerMatches(item, providerId));
+    const providerModel = (provider?.models || []).find(item => String(item.id || '').trim().toLowerCase() === modelId) || {};
+    endpoint = endpoint || String(providerModel.endpoint || provider?.api_url || provider?.base_url || '').trim().toLowerCase();
+    wallet = wallet || String(providerModel.wallet || providerModel.account_group || provider?.account_group || '').trim().toLowerCase();
+    if (provider?.api_key) credential = crypto.createHash('sha256').update(String(provider.api_key)).digest('hex').slice(0, 12);
+  } catch {}
+  let endpointIdentity = endpoint;
+  try {
+    const parsed = new URL(endpoint);
+    endpointIdentity = `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, '')}`.toLowerCase();
+  } catch {}
+  return `endpoint=${endpointIdentity || `provider:${providerId || 'unknown'}`}|wallet=${wallet || 'default'}|credential=${credential || 'none'}`;
+}
+
 function storyUseMatches(model) {
   return ['story', 'chat', 'llm'].includes(String(model?.use || '').toLowerCase());
 }
@@ -138,6 +159,8 @@ function isConfiguredAndUsable(model, capability = 'story') {
   if (capability === 'vision' ? !visionUseMatches(providerModel) : !storyUseMatches(providerModel)) {
     return { ok: false, reason: capability === 'vision' ? 'model_not_vision' : 'model_not_text' };
   }
+  const contract = providerAdapters.validateDeyunaiTextContract(provider, providerModel);
+  if (!contract.ok) return contract;
   return { ok: true, provider, providerModel };
 }
 
@@ -333,7 +356,7 @@ function uniqueModels(models) {
 
 /**
  * Keep the configured priority order, but spend the limited attempt budget on
- * independent providers before trying a second model from the same upstream.
+ * independent failure domains before trying a second model from the same upstream.
  * A provider-wide outage must not consume every text attempt.
  */
 function diversifyTextCandidates(candidates = []) {
@@ -341,9 +364,9 @@ function diversifyTextCandidates(candidates = []) {
   const remaining = [];
   const seen = new Set();
   (candidates || []).forEach((model) => {
-    const providerId = String(model?.provider_id || '').trim().toLowerCase();
-    if (providerId && !seen.has(providerId)) {
-      seen.add(providerId);
+    const domain = failureDomainKey(model);
+    if (domain && !seen.has(domain)) {
+      seen.add(domain);
       firstByProvider.push(model);
     } else {
       remaining.push(model);
@@ -686,6 +709,8 @@ async function generateText({
         status: 'success',
         provider_submission_state: 'completed',
         billing_state: 'confirmed',
+        failure_domain_id: failureDomainKey(model),
+        provider_request_id: result.provider_request_id || '',
         latency_ms: latency,
         fallback_rank: i + 1,
         provider_reason: result.structured_output
@@ -700,6 +725,7 @@ async function generateText({
         fallback_used: i > 0,
         failed_models: failed,
         latency_ms: latency,
+        provider_request_id: result.provider_request_id || '',
       };
     } catch (err) {
       if (cancellation.signal()?.aborted) cancellation.throwIfCancelled(taskId);
@@ -712,6 +738,7 @@ async function generateText({
         code: classified.code,
         message: String(err.message || err).slice(0, 300),
         response_diagnostics: err.response_diagnostics || null,
+        provider_request_id: err.providerRequestId || err.provider_request_id || '',
         ...billingEvidence,
       });
       if (candidateText) {
@@ -733,6 +760,10 @@ async function generateText({
           ? `${err.response_diagnostics.kind}:${err.response_diagnostics.requested_mode || ''}->${err.response_diagnostics.applied_mode || ''}`
           : '',
         latency_ms: latency,
+        provider_status: err.provider_status || err.status || err.response?.status || '',
+        provider_error_code: err.code || err.response?.data?.error?.code || '',
+        provider_request_id: err.providerRequestId || err.provider_request_id || '',
+        failure_domain_id: failureDomainKey(model),
         fallback_rank: i + 1,
         ...billingEvidence,
       });
@@ -1068,6 +1099,8 @@ function mockResponse(stage, userPrompt = '') {
 
 module.exports = {
   candidatesForStage,
+  failureDomainKey,
+  diversifyTextCandidates,
   candidatesForVisionStage,
   visionAvailability,
   diversifyVisionCandidates,

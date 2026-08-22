@@ -24,6 +24,7 @@ const storage = require('./storageService');
 
 const execFileAsync = promisify(execFile);
 const ROOT_DIR = path.resolve(process.env.OUTPUT_DIR || './outputs', 'new-story-ad', 'reference-video-analyses');
+const AUDIT_TOMBSTONE_DIR = path.join(ROOT_DIR, '_audit_tombstones');
 const MAX_DURATION_SECONDS = 180;
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
 const REFERENCE_VISION_MAX_CANDIDATES = 3;
@@ -97,6 +98,33 @@ function writeJsonAtomic(filePath, value) {
   }
   try { fs.unlinkSync(tmp); } catch {}
   throw lastError;
+}
+
+function writeAuditTombstone(record = {}, user = {}, reason = 'user_deleted') {
+  const taskId = String(record.task_id || record.id || '').trim();
+  const calls = (storage.readDb().model_calls || []).filter(call => (
+    String(call.task_id || '') === taskId
+    && /reference_video|transcript/i.test(String(call.stage || ''))
+  ));
+  const tombstone = {
+    schema_version: 1,
+    analysis_id: String(record.id || ''),
+    task_id: String(record.task_id || ''),
+    owner_id: safeSegment(record.user_id || ownerId(user)),
+    terminal_status: String(record.status || ''),
+    billing_states: [...new Set(calls.map(call => String(call.billing_state || '')).filter(Boolean))],
+    provider_submission_states: [...new Set(calls.map(call => String(call.provider_submission_state || '')).filter(Boolean))],
+    provider_request_ids: [...new Set(calls.map(call => String(call.provider_request_id || '')).filter(Boolean))],
+    model_call_ids: calls.map(call => String(call.id || '')).filter(Boolean),
+    record_digest: crypto.createHash('sha256').update(JSON.stringify(record)).digest('hex'),
+    deleted_by: safeSegment(ownerId(user)),
+    delete_reason: String(reason || 'user_deleted').slice(0, 120),
+    deleted_at: now(),
+    media_retained: false,
+    content_retained: false,
+  };
+  writeJsonAtomic(path.join(AUDIT_TOMBSTONE_DIR, `${safeSegment(record.id)}.json`), tombstone);
+  return tombstone;
 }
 
 function readRecord(userId, analysisId) {
@@ -3760,7 +3788,7 @@ function cancel(analysisId, user = {}) {
   }));
 }
 
-function remove(analysisId, user = {}) {
+function remove(analysisId, user = {}, options = {}) {
   const record = assertOwned(analysisId, user);
   if (activeImports.has(analysisId) || activeRuns.has(analysisId)
     || ['importing', 'running', 'queued', 'cancelling'].includes(record.status)) {
@@ -3782,8 +3810,9 @@ function remove(analysisId, user = {}) {
     const framePath = mediaAdapter.assetPathFromName(frame.filename);
     try { if (framePath && fs.existsSync(framePath)) fs.unlinkSync(framePath); } catch {}
   }
+  writeAuditTombstone(record, user, options.reason || 'user_deleted');
   fs.rmSync(resolved, { recursive: true, force: true });
-  return { id: analysisId, deleted: true };
+  return { id: analysisId, deleted: true, audit_tombstone: true };
 }
 
 function mapSceneViews(analysisId, user = {}, sceneAssets = []) {
@@ -3854,6 +3883,7 @@ module.exports = {
   get,
   cancel,
   remove,
+  writeAuditTombstone,
   mapSceneViews,
   rebuildStoredAnalysis,
   _private: {

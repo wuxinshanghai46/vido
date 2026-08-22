@@ -26,12 +26,14 @@ const models = [{ provider_id: 'billing-test', model_id: 'text-model', enabled: 
 
     const success = await gateway.generateText({
       taskId: 'success-task', stage: 'new_story_ad.asset_plan', systemPrompt: 'x', userPrompt: 'x',
-      _candidateModels: models, _generateText: async () => ({ text: '{"ok":true}' }),
+      _candidateModels: models, _generateText: async () => ({ text: '{"ok":true}', provider_request_id: 'chatcmpl-provider-1' }),
     });
     assert.equal(success.text, '{"ok":true}');
     const successCall = storage.getTaskBundle('success-task').model_calls[0];
     assert.equal(successCall.billing_state, 'confirmed');
     assert.equal(successCall.provider_submission_state, 'completed');
+    assert.equal(success.provider_request_id, 'chatcmpl-provider-1');
+    assert.equal(successCall.provider_request_id, 'chatcmpl-provider-1');
 
     await assert.rejects(() => gateway.generateText({
       taskId: 'rejected-task', stage: 'new_story_ad.asset_plan', systemPrompt: 'x', userPrompt: 'x',
@@ -40,6 +42,12 @@ const models = [{ provider_id: 'billing-test', model_id: 'text-model', enabled: 
     const rejectedCall = storage.getTaskBundle('rejected-task').model_calls[0];
     assert.equal(rejectedCall.billing_state, 'not_billed');
     assert.equal(rejectedCall.provider_submission_state, 'submission_rejected');
+    const diversified = gateway.diversifyTextCandidates([
+      { provider_id: 'alias-a', model_id: 'm1', endpoint: 'https://same.example/v1', wallet: 'shared' },
+      { provider_id: 'alias-b', model_id: 'm2', endpoint: 'https://same.example/v1', wallet: 'shared' },
+      { provider_id: 'independent', model_id: 'm3', endpoint: 'https://other.example/v1', wallet: 'other' },
+    ]);
+    assert.deepEqual(diversified.map(item => item.provider_id), ['alias-a', 'independent', 'alias-b']);
     console.log(JSON.stringify({ passed: true, timeout_quarantined: true, automatic_fallback_after_unknown: 0, success_confirmed: true, rejected_not_billed: true }));
   } finally {
     fs.rmSync(process.env.OUTPUT_DIR, { recursive: true, force: true });

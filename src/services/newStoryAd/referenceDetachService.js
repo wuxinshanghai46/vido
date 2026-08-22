@@ -82,8 +82,8 @@ function detach({ taskId, body = {}, user = {}, storyAdService, storage, referen
       referenceVideoAnalyses.cancel(analysisId, user);
       analysisCleanup = 'cancelling';
     } else {
-      referenceVideoAnalyses.remove(analysisId, user);
-      analysisCleanup = 'deleted';
+      referenceVideoAnalyses.remove(analysisId, user, { reason: 'detached_from_story_ad_project' });
+      analysisCleanup = 'deleted_with_audit_tombstone';
     }
   } catch {
     analysisCleanup = 'unavailable';
