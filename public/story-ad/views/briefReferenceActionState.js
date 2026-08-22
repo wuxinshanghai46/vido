@@ -30,12 +30,3 @@ export function syncReferenceAction(button, reference = {}, contentMode = '') {
   button.disabled = action.blocked;
   button.textContent = action.label;
 }
-
-export function referenceNextStepDescription(reference = {}, action = {}, contentMode = '') {
-  const output = contentMode === 'commercial_subject' ? '广告脚本' : '剧情与对白';
-  if (action.blocked === false) return `先生成可编辑的${output}；确认后再提取制作主体与场景。`;
-  const status = String(reference.status || '').toLowerCase();
-  if (status === 'completed' && reference.analysis_valid === true) return `先确认参考理解；成功后自动生成${output}。`;
-  if (status === 'failed' || status === 'cancelled' || status === 'completed') return '参考识别不可用，请按上方提示重试或更换。';
-  return '参考分析中；完成并确认后自动继续。';
-}
