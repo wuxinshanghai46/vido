@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-provider-contract-recovery-v162';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-contract-recovery-v162';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-provider-contract-recovery-v162';
+import { request } from '../api.js?v=20260822-provider-v163';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-v163';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260822-provider-v163';
 
 const FIELD_GROUPS = [
   ['场景与机位', [

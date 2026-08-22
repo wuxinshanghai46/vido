@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-provider-contract-recovery-v162';
+import { request } from '../api.js?v=20260822-provider-v163';
 
 async function preflight(bundle = {}, generationPayload = {}, apply = false, proofToken = '') {
   const taskId = bundle?.project?.id || '';

@@ -1,7 +1,7 @@
-import { request } from '../api.js?v=20260822-provider-contract-recovery-v162';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-contract-recovery-v162';
-import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-provider-contract-recovery-v162';
-import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-provider-contract-recovery-v162';
+import { request } from '../api.js?v=20260822-provider-v163';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260822-provider-v163';
+import { inlineNodeEditor, saveInlineNode } from './workflowInlineEditor.js?v=20260822-provider-v163';
+import { bindWorkflowDirectorSync, ensureWorkflowDirectorStyles, openWorkflowDirector, projectWorkflowDirectorNodes, workflowNodePanelMarkup, workflowNodePortMarkup } from './workflowDirectorNodes.js?v=20260822-provider-v163';
 
 const MIN_STAGE_WIDTH = 3400;
 const MIN_STAGE_HEIGHT = 1500;

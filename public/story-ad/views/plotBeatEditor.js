@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-provider-contract-recovery-v162';
+import { escapeHtml } from '../components/ui.js?v=20260822-provider-v163';
 
 // Static contract markers are intentionally explicit for release-boundary audits.
 const EDITABLE_FIELD_MARKERS = 'data-beat-field="scene" data-beat-field="shot_size" data-beat-field="lighting_mood" data-beat-field="speaker" data-beat-field="sound_design" data-beat-field="camera_movement" data-beat-field="transition" data-beat-field="prompt_notes"';

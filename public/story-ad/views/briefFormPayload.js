@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-provider-contract-recovery-v162';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-provider-v163';
 
 export function formPayload(form) {
   const data = new FormData(form);
