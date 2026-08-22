@@ -25,7 +25,7 @@ const cancellation = require('../src/services/newStoryAd/cancellationContext');
 const premiumBlueprint = {
   story_title: '雨停前的交付',
   logline: '交付前连接突然中断，林清禾改用当前任务主体完成验证，终于在雨停前发出结果。',
-  characters: [{ name: '林清禾', role: '项目负责人', description: '当前任务原创人物' }],
+  characters: [{ id: 'project_lead', name: '林清禾', role: '项目负责人', gender: 'female', age_range: '28~35岁', relationship: '负责向客户交付结果', on_screen: true, description: '当前任务原创人物' }],
   beats: [
     { beat_index: 1, role: '冲突', plot: '窗外下雨，交付页面的连接状态变红。', action: '林清禾停下输入并检查错误来源。', spoken_line: '客户十分钟后就要当场看结果，偏偏最后一条关键链路又断了。' },
     { beat_index: 2, role: '转折', plot: '当前任务主体完成验证，状态由红转绿。', action: '她重新连接并确认核心步骤。', spoken_line: '先锁定真正的错误源，再把最关键的一步完整重新跑通。' },
