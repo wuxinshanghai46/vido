@@ -89,7 +89,12 @@ const DOMAIN_RULES = [
   {
     domain: 'workspace_ui',
     risk: 'ui',
-    patterns: [/^public\/story-ad\//, /^src\/routes\/storyAdWorkspace\.js$/, /^scripts\/test-story-ad-workspace/i],
+    patterns: [
+      /^public\/story-ad\//,
+      /^src\/routes\/storyAdWorkspace\.js$/,
+      /^scripts\/test-story-ad-workspace/i,
+      /^scripts\/test-story-ad-historical-asset-actions-v61\.js$/,
+    ],
   },
 ];
 

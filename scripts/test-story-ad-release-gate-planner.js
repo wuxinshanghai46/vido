@@ -21,6 +21,8 @@ function plan(files, options = {}) {
 
 assert.equal(plan(['public/story-ad/views/briefView.js']).profile, 'ui');
 assert.deepEqual(plan(['public/story-ad/views/briefView.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
+assert.equal(plan(['scripts/test-story-ad-historical-asset-actions-v61.js']).profile, 'ui');
+assert.deepEqual(plan(['scripts/test-story-ad-historical-asset-actions-v61.js']).gates.map(row => row.id), ['workspace_ui', 'release_core']);
 assert.equal(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).profile, 'reference');
 assert(plan(['src/services/storyAdWorkspace/authoritativeReferenceProjectionService.js']).gates.some(row => row.id === 'reference'));
 assert.equal(plan(['src/services/newStoryAd/assetPlanService.js']).profile, 'asset_plan');
@@ -77,6 +79,7 @@ const targetedReferencePlan = planner.createPlan({
     'public/story-ad/release-manifest.json',
     'public/story-ad/app.js',
     'scripts/test-story-ad-workspace-v6-ui-regressions.js',
+    'scripts/test-story-ad-historical-asset-actions-v61.js',
     'src/routes/newStoryAd.js',
     'src/services/pipelineModelService.js',
     'src/services/newStoryAd/referenceVideoAnalysisService.js',
