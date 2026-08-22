@@ -121,9 +121,11 @@ function main() {
   const dialogueSpecificationLazyJsFiles = allJsFiles.filter(file => /briefSpecificationQuestion/.test(file));
   const referenceDialogueStateJsFiles = allJsFiles.filter(file => /briefReferenceDialogueState/.test(file));
   const dialoguePolicyJsFiles = allJsFiles.filter(file => /(?:briefDialoguePolicy|briefDialogueReadiness|briefConversationScroll)/.test(file));
+  const plotRoomLazyJsFiles = allJsFiles.filter(file => /plotRoomView/.test(file));
+  const plotCharacterLazyJsFiles = allJsFiles.filter(file => /plotCharacterAutosave/.test(file));
   const plotEditorJsFiles = allJsFiles.filter(file => /plotBeatEditor/.test(file));
   const plotCellLazyJsFiles = allJsFiles.filter(file => /plotBeatCellPopover/.test(file));
-  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
+  const coreJsFiles = allJsFiles.filter(file => !lazyJsFiles.includes(file) && !assetEditorLazyJsFiles.includes(file) && !planMigrationLazyJsFiles.includes(file) && !personFormLazyJsFiles.includes(file) && !personEvolutionLazyJsFiles.includes(file) && !featureLazyJsFiles.includes(file) && !recognitionLazyJsFiles.includes(file) && !briefLazyJsFiles.includes(file) && !briefMaterialsLazyJsFiles.includes(file) && !briefAdvancedLazyJsFiles.includes(file) && !briefPageLazyJsFiles.includes(file) && !panoramaLazyJsFiles.includes(file) && !sceneWorldLazyJsFiles.includes(file) && !dossierLazyJsFiles.includes(file) && !mediaLazyJsFiles.includes(file) && !lightboxLazyJsFiles.includes(file) && !checkpointRecoveryLazyJsFiles.includes(file) && !assetStageLazyJsFiles.includes(file) && !recoveryPreflightLazyJsFiles.includes(file) && !dialogueFlowJsFiles.includes(file) && !dialogueDataJsFiles.includes(file) && !dialogueGuidanceLazyJsFiles.includes(file) && !dialogueSupportLazyJsFiles.includes(file) && !dialogueSpecificationLazyJsFiles.includes(file) && !referenceDialogueStateJsFiles.includes(file) && !dialoguePolicyJsFiles.includes(file) && !plotRoomLazyJsFiles.includes(file) && !plotCharacterLazyJsFiles.includes(file) && !plotEditorJsFiles.includes(file) && !plotCellLazyJsFiles.includes(file));
   const coreJsBytes = coreJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const lazyJsBytes = lazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const assetEditorLazyJsBytes = assetEditorLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
@@ -151,6 +153,8 @@ function main() {
   const dialogueSpecificationLazyJsBytes = dialogueSpecificationLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const referenceDialogueStateJsBytes = referenceDialogueStateJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const dialoguePolicyJsBytes = dialoguePolicyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const plotRoomLazyJsBytes = plotRoomLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
+  const plotCharacterLazyJsBytes = plotCharacterLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const plotEditorJsBytes = plotEditorJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const plotCellLazyJsBytes = plotCellLazyJsFiles.reduce((sum, file) => sum + sourceBytes(file), 0);
   const gzipBytes = files => files.reduce((sum, file) => sum + zlib.gzipSync(Buffer.from(read(file).replace(/\r\n/g, '\n'))).length, 0);
@@ -181,6 +185,8 @@ function main() {
   const dialogueSpecificationLazyJsGzip = gzipBytes(dialogueSpecificationLazyJsFiles);
   const referenceDialogueStateJsGzip = gzipBytes(referenceDialogueStateJsFiles);
   const dialoguePolicyJsGzip = gzipBytes(dialoguePolicyJsFiles);
+  const plotRoomLazyJsGzip = gzipBytes(plotRoomLazyJsFiles);
+  const plotCharacterLazyJsGzip = gzipBytes(plotCharacterLazyJsFiles);
   const plotEditorJsGzip = gzipBytes(plotEditorJsFiles);
   const plotCellLazyJsGzip = gzipBytes(plotCellLazyJsFiles);
   assert(initialBytes <= 100 * 1024, `任务中心初始 JS ${initialBytes} bytes 超过 100 KiB`);
@@ -210,6 +216,10 @@ function main() {
   assert(referenceDialogueStateJsGzip <= 3 * 1024, `参考分析对话状态模块 gzip ${referenceDialogueStateJsGzip} bytes 超过 3 KiB`);
   assert(dialoguePolicyJsBytes <= 4 * 1024, `对话状态策略与滚动模块 ${dialoguePolicyJsBytes} bytes 超过 4 KiB`);
   assert(dialoguePolicyJsGzip <= 2 * 1024, `对话状态策略与滚动模块 gzip ${dialoguePolicyJsGzip} bytes 超过 2 KiB`);
+  assert(plotRoomLazyJsBytes <= 20 * 1024, `剧情室按需视图 ${plotRoomLazyJsBytes} bytes 超过 20 KiB`);
+  assert(plotRoomLazyJsGzip <= 7 * 1024, `剧情室按需视图 gzip ${plotRoomLazyJsGzip} bytes 超过 7 KiB`);
+  assert(plotCharacterLazyJsBytes <= 5 * 1024, `角色自动保存按需模块 ${plotCharacterLazyJsBytes} bytes 超过 5 KiB`);
+  assert(plotCharacterLazyJsGzip <= 2 * 1024, `角色自动保存按需模块 gzip ${plotCharacterLazyJsGzip} bytes 超过 2 KiB`);
   assert(plotEditorJsBytes <= 12 * 1024, `剧情逐段编辑模块 ${plotEditorJsBytes} bytes 超过 12 KiB`);
   assert(plotEditorJsGzip <= 4 * 1024, `剧情逐段编辑模块 gzip ${plotEditorJsGzip} bytes 超过 4 KiB`);
   assert(plotCellLazyJsBytes <= 5 * 1024, `单元格浮层按需模块 ${plotCellLazyJsBytes} bytes 超过 5 KiB`);
@@ -280,7 +290,7 @@ function main() {
   assert(store.includes('referenceAnalysisId'), '参考轮询必须锁定明确分析 ID');
   assert(store.includes('function clearProject()'), '状态仓库必须提供跨任务清理');
 
-  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes}; core_js=${coreJsBytes}; core_gzip=${coreJsGzip}; lightbox_lazy_js=${lightboxLazyJsBytes}; lightbox_lazy_gzip=${lightboxLazyJsGzip}; feature_lazy_js=${featureLazyJsBytes}; feature_lazy_gzip=${featureLazyJsGzip}; panorama_lazy_js=${panoramaLazyJsBytes}; panorama_lazy_gzip=${panoramaLazyJsGzip}; scene_world_lazy_js=${sceneWorldLazyJsBytes}; scene_world_lazy_gzip=${sceneWorldLazyJsGzip}; dossier_lazy_js=${dossierLazyJsBytes}; dossier_lazy_gzip=${dossierLazyJsGzip}; lazy_3d_js=${lazyJsBytes}; lazy_3d_gzip=${lazyJsGzip}`);
+  console.log(`story-ad workspace v6 boundaries: passed; initial_js=${initialBytes}; core_js=${coreJsBytes}; core_gzip=${coreJsGzip}; plot_room_lazy_js=${plotRoomLazyJsBytes}; plot_room_lazy_gzip=${plotRoomLazyJsGzip}; plot_character_lazy_js=${plotCharacterLazyJsBytes}; plot_character_lazy_gzip=${plotCharacterLazyJsGzip}; lightbox_lazy_js=${lightboxLazyJsBytes}; lightbox_lazy_gzip=${lightboxLazyJsGzip}; feature_lazy_js=${featureLazyJsBytes}; feature_lazy_gzip=${featureLazyJsGzip}; panorama_lazy_js=${panoramaLazyJsBytes}; panorama_lazy_gzip=${panoramaLazyJsGzip}; scene_world_lazy_js=${sceneWorldLazyJsBytes}; scene_world_lazy_gzip=${sceneWorldLazyJsGzip}; dossier_lazy_js=${dossierLazyJsBytes}; dossier_lazy_gzip=${dossierLazyJsGzip}; lazy_3d_js=${lazyJsBytes}; lazy_3d_gzip=${lazyJsGzip}`);
 }
 
 main();

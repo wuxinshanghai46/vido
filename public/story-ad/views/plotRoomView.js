@@ -2,7 +2,6 @@ import { request } from '../api.js?v=20260823-cast-autosave-v171';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-cast-autosave-v171';
 import { confirmDialog } from '../components/dialog.js?v=20260823-cast-autosave-v171';
 import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-cast-autosave-v171';
-import { bindCharacterAutosave } from './plotCharacterAutosave.js?v=20260823-cast-autosave-v171';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -76,7 +75,8 @@ export async function mount(host, context) {
   }
 
   const characterAutosave = characters.length
-    ? bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
+    ? (await import('./plotCharacterAutosave.js?v=20260823-cast-autosave-v171'))
+      .bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
     : null;
 
   const generate = async (button, force = false) => {
