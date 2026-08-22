@@ -1,4 +1,4 @@
-import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
+import { elapsedTimeTag, escapeHtml } from '../components/ui.js?v=20260822-production-board-v158';
 
 const CONTRACT_LABELS = Object.freeze({
   story: '内容主线',

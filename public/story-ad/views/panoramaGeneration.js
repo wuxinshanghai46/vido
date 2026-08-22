@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
-import { toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
-import { confirmDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
+import { request } from '../api.js?v=20260822-production-board-v158';
+import { toast } from '../components/ui.js?v=20260822-production-board-v158';
+import { confirmDialog } from '../components/dialog.js?v=20260822-production-board-v158';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

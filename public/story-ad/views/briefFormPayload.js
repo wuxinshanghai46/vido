@@ -1,4 +1,4 @@
-import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-dialogue-cast-blueprint-v157';
+import { worldSettingPayload } from './briefWorldSettings.js?v=20260822-production-board-v158';
 
 export function formPayload(form) {
   const data = new FormData(form);

@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-dialogue-cast-blueprint-v157';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-dialogue-cast-blueprint-v157';
-import { confirmDialog } from '../components/dialog.js?v=20260822-dialogue-cast-blueprint-v157';
+import { request } from '../api.js?v=20260822-production-board-v158';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-production-board-v158';
+import { confirmDialog } from '../components/dialog.js?v=20260822-production-board-v158';
 
 const STYLE_ID = 'story-ad-reference-understanding-style';
 const MAX_ITEMS = 120;
@@ -95,7 +95,7 @@ function ensureStyles() {
   const link = document.createElement('link');
   link.id = STYLE_ID;
   link.rel = 'stylesheet';
-  link.href = '/story-ad/reference-understanding.css?v=20260822-dialogue-cast-blueprint-v157';
+  link.href = '/story-ad/reference-understanding.css?v=20260822-production-board-v158';
   document.head.appendChild(link);
 }
 
