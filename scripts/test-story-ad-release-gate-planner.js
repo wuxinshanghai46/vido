@@ -35,6 +35,9 @@ assert.deepEqual(
   ['reference', 'story_content', 'workspace_ui', 'release_core'],
 );
 assert.equal(plan(['src/services/storyAdWorkspace/briefProjectionService.js']).profile, 'ui');
+assert.equal(plan(['src/services/newStoryAd/briefDialogueHistoryService.js', 'scripts/test-story-ad-dialogue-cast-blueprint-v151.js']).profile, 'ui');
+assert.equal(plan(['src/services/newStoryAd/contextBuilder.js']).profile, 'asset_plan');
+assert.equal(plan(['AGENTS.md']).profile, 'ui');
 assert.equal(plan(['src/services/newStoryAd/storageService.js']).profile, 'systemic');
 assert.equal(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).profile, 'full');
 assert(plan(['src/services/newStoryAd/unclassifiedAuthority.js']).gates.some(row => row.id === 'systemic'),
