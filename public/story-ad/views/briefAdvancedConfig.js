@@ -1,4 +1,4 @@
-import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-knowledge-director-learning-v138';
+import { renderBriefMaterialRows } from './briefMaterials.js?v=20260822-reference-extended-analysis-v139';
 
 function hasMaterials(bundle) {
   const reference = bundle?.reference || {};

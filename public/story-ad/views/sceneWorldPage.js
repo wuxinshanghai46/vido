@@ -1,7 +1,7 @@
-import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260822-knowledge-director-learning-v138';
-import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
-import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260822-knowledge-director-learning-v138';
-import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260822-knowledge-director-learning-v138';
+import { renderSceneWorldWorkspace, bindSceneWorldWorkspace } from './sceneWorldView.js?v=20260822-reference-extended-analysis-v139';
+import { escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v139';
+import { authorizeBillingReviews, confirmBillingAwareAction } from './assetCenterBillingRetry.js?v=20260822-reference-extended-analysis-v139';
+import { bindScenePlanUpdate, scenePlanBlockedView } from './scenePlanStatus.js?v=20260822-reference-extended-analysis-v139';
 
 function sceneGenerationQueue(bundle = {}, scenePlanReady = true) {
   const scenes = Array.isArray(bundle.assets?.scenes) ? bundle.assets.scenes : [];

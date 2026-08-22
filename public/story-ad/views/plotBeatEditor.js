@@ -1,4 +1,4 @@
-import { escapeHtml } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
+import { escapeHtml } from '../components/ui.js?v=20260822-reference-extended-analysis-v139';
 
 export function beatEditor(beat = {}, index = 0) {
   const visual = beat.visual || beat.plot || '';

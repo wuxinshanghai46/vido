@@ -1,4 +1,4 @@
-import { request } from '../api.js?v=20260822-knowledge-director-learning-v138';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v139';
 
 export function bindBriefViewport(host) {
   host.classList?.add('brief-dialogue-view');

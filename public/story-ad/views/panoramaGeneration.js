@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260822-knowledge-director-learning-v138';
-import { toast } from '../components/ui.js?v=20260822-knowledge-director-learning-v138';
-import { confirmDialog } from '../components/dialog.js?v=20260822-knowledge-director-learning-v138';
+import { request } from '../api.js?v=20260822-reference-extended-analysis-v139';
+import { toast } from '../components/ui.js?v=20260822-reference-extended-analysis-v139';
+import { confirmDialog } from '../components/dialog.js?v=20260822-reference-extended-analysis-v139';
 
 const rows = value => Array.isArray(value) ? value.filter(Boolean) : [];
 

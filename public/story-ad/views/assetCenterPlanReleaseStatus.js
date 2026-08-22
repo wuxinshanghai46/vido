@@ -1,4 +1,4 @@
-import { createKeyedRequestGuard as makeGuardMap, createPersonPlanRequestGuard as makePersonGuard } from './assetCenterRequestGuard.js?v=20260822-knowledge-director-learning-v138';
+import { createKeyedRequestGuard as makeGuardMap, createPersonPlanRequestGuard as makePersonGuard } from './assetCenterRequestGuard.js?v=20260822-reference-extended-analysis-v139';
 export const createPersonPlanRequestGuard = key => makePersonGuard(key);
 export const createKeyedRequestGuard = () => makeGuardMap();
 
