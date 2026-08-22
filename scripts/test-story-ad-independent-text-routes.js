@@ -14,6 +14,9 @@ const selected = routeConfig.selectCandidates(providers);
 assert.equal(selected.length, 3);
 assert.deepEqual(selected.map(item => item.priority), [1, 2, 3]);
 assert.equal(new Set(selected.map(item => item.provider_id)).size, 3);
+const prepared = routeConfig.ensureRequiredModels({ providers: [{ id: 'zhipu', enabled: true, api_key: 'fake', models: [] }] });
+assert.equal(prepared.providers[0].models[0].id, 'glm-5');
+assert.equal(prepared.providers[0].models[0].use, 'story');
 
 providers[1].models[0].enabled = false;
 assert.equal(routeConfig.selectCandidates(providers).length, 2, '禁用模型不得混入发布路由');
