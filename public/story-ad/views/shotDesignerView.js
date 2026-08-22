@@ -1,6 +1,6 @@
-import { request } from '../api.js?v=20260823-production-contract-v167';
-import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-contract-v167';
-import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-contract-v167';
+import { request } from '../api.js?v=20260823-production-contract-v168';
+import { emptyState, escapeHtml, mediaPreview, setButtonBusy, toast } from '../components/ui.js?v=20260823-production-contract-v168';
+import { bindMediaLightbox } from './mediaLightbox.js?v=20260823-production-contract-v168';
 
 const FIELD_GROUPS = [
   ['场景与机位', [
