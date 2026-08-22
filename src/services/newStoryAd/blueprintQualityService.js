@@ -204,6 +204,21 @@ function assessDialogueNarrative(blueprint = {}) {
     if (!silent && genericReactionLine(lines[index])) issues.push(`第 ${n} 镜台词只有泛化反应，没有推进意图、证据或决定`);
   });
 
+  const voicedBeats = beats.map((beat, index) => ({ beat, index, line: lines[index] })).filter(item => item.line);
+  voicedBeats.forEach((item, voicedIndex) => {
+    const fn = clean(item.beat.dialogue_function || item.beat.dialogue_intent).toLowerCase().replace(/[\s-]+/g, '_');
+    if (fn !== 'question') return;
+    const next = voicedBeats[voicedIndex + 1];
+    if (!next) {
+      issues.push(`第 ${item.index + 1} 镜提出问题后没有回应、证据或结果`);
+      return;
+    }
+    const nextFn = clean(next.beat.dialogue_function || next.beat.dialogue_intent).toLowerCase().replace(/[\s-]+/g, '_');
+    if (['decision', 'result', 'resolution', 'brand_closure'].includes(nextFn)) {
+      issues.push(`第 ${item.index + 1} 镜提出问题后直接进入第 ${next.index + 1} 镜的决定，缺少回应或可见证据`);
+    }
+  });
+
   const stages = new Set(beats
     .filter((_beat, index) => !!lines[index])
     .map(beat => dialogueArcStage(beat.dialogue_function || beat.dialogue_intent))
@@ -473,6 +488,7 @@ async function polishBlueprint(ctx, blueprint, { taskId = '', force = false, att
       '每个卖点必须由人物选择、可见动作、界面/产品反馈或结果变化证明；不要让人物直接念卖点。',
       '台词必须像真人会说的话，简短、自然、有上下文；避免“宇宙般、行业领先、为您赋能、最大化预算、更快更智能、一站式”等广告套话。',
       '台词必须承担故事推进，不能把人物目标、阻力、发现、可见证据、价值变化和最终决定只写在 plot、visual、action 或 why_next 中。',
+      '人物明确提问后，必须先由另一人物回应，或用独立镜头给出可见证据，再进入选择、决定或结果；必要时在不改变总镜头数的前提下合并前面的重复铺垫并重排提问、回应、决定。',
       '允许在不改变镜头事实、数量和顺序的前提下，修正错误的 dialogue_function 与 speech_mode，使职责和实际台词一致。',
       '当问题涉及说话人时，必须同时修正 speaker 与 speaker_id：dialogue 只能绑定当前 characters 中同一人物的精确 name/id；voiceover 只能使用旁白/narrator。',
       safeBlueprint.dialogue_contract?.speech_policy === 'authored_sparse'

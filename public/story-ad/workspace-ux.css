@@ -14,6 +14,7 @@
 .story-character-card>summary span:first-child{display:flex;align-items:center;gap:12px}.story-character-card>summary small{color:var(--muted)}
 .story-character-fields{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:9px;padding:0 14px 14px;border-top:1px solid var(--line)}
 .story-character-fields label{padding-top:12px}.story-character-fields .character-description{grid-column:1/-1}
+.story-character-save-actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;margin-left:auto}.story-character-save-actions [data-character-save-status]{color:var(--muted);font-size:12px;white-space:nowrap}.story-character-save-actions [data-state="dirty"],.story-character-save-actions [data-state="warning"]{color:var(--warning)}.story-character-save-actions [data-state="saving"]{color:var(--info)}.story-character-save-actions [data-state="saved"]{color:var(--mint)}.story-character-save-actions [data-state="error"]{color:var(--danger)}
 .beat-cell-wrap{display:flex;min-width:0;border-right:1px solid var(--line)}
 .beat-cell-wrap>.beat-cell{display:flex;width:100%;min-width:0;align-items:center;padding:11px 10px;border:0;border-radius:0;background:transparent;color:var(--text);font:inherit;line-height:1.55;text-align:left;cursor:pointer}
 .beat-cell-wrap>.beat-cell:hover,.beat-cell-wrap>.beat-cell:focus-visible{background:color-mix(in srgb,var(--accent) 10%,transparent);outline:1px solid color-mix(in srgb,var(--accent) 55%,transparent);outline-offset:-2px}
@@ -26,7 +27,7 @@
 .beat-floating-head button{width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-size:20px;cursor:pointer}.beat-floating-head button:hover{background:var(--surface-2);color:var(--text)}
 .beat-floating-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px;padding:14px}.beat-floating-fields label{display:grid;gap:6px;min-width:0}.beat-floating-fields label>span{color:var(--muted);font-size:11px}.beat-floating-fields label.full{grid-column:1/-1}.beat-floating-fields .textarea{min-height:72px;resize:vertical}
 .beat-floating-actions{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-top:1px solid var(--line);background:var(--surface)}.beat-floating-actions small{color:var(--muted);font-size:11px}
-@media(max-width:900px){.plot-workspace .story-only-grid{grid-template-columns:1fr}.story-character-fields{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.plot-workspace .story-only-grid{grid-template-columns:1fr}.story-character-fields{grid-template-columns:1fr 1fr}.story-characters-card>.card-head{flex-wrap:wrap}.story-character-save-actions{width:100%;justify-content:flex-start;flex-wrap:wrap;margin-left:0}}
 @media(max-width:620px){.beat-floating-fields{grid-template-columns:1fr}.beat-floating-fields label.full{grid-column:auto}.beat-floating-actions{align-items:flex-end}.beat-floating-actions small{max-width:70%}}
 
 /* compact production editor and character-bound dialogue */

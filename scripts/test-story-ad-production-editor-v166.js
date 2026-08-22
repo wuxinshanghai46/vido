@@ -57,16 +57,29 @@ async function main() {
           { shot_id: 's2', title: '镜头二', duration: 5, scene: '会所', visual: '镜头转向墙面', spoken_line: '', speech_mode: 'silent', shot_size: 'close_up' },
         ],
       };
-      window.__qa = { navigations: [], saves: 0, stageRuns: [] };
+      window.__qa = { navigations: [], saves: [], stageRuns: [] };
       await mount(document.querySelector('#qa-host'), {
         bundle: { project: { id: 'qa-production-editor' }, brief: { content_mode: 'commercial_subject', brief_intake: { cast_intent: { confirmed: true, mode: 'dual', expected_people: 2 } } }, story: { blueprint }, generation: { progress: { error_code: 'BLUEPRINT_POLISH_QUALITY_FAILED' } } },
-        store: { async runStage(stage, body) { window.__qa.stageRuns.push({ stage, body }); }, async updateRequest() {}, async saveBlueprint() { window.__qa.saves += 1; } },
+        store: { async runStage(stage, body) { window.__qa.stageRuns.push({ stage, body }); }, async updateRequest() {}, async saveBlueprint(blueprint) { window.__qa.saves.push(structuredClone(blueprint)); return { blueprint }; } },
         async refreshShell() {}, navigate(url) { window.__qa.navigations.push(url); },
       });
     });
 
     step = 'initial-assertions';
     assert.equal(await page.$$eval('[data-beat-index]', rows => rows.length), 2, '必须显示原有两镜');
+    assert.equal(await page.$eval('[data-character-save-status]', node => node.textContent.trim()), '修改后自动保存', '角色区必须明确提示自动保存');
+    assert.equal(await page.$eval('[data-save-characters]', node => node.textContent.trim()), '保存角色设置', '角色区必须保留明确的手动保存入口');
+    step = 'character-autosave';
+    await page.$eval('[data-character-index="0"] [data-character-field="age_range"]', node => { node.value = '25岁'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForFunction(() => window.__qa.saves.length === 1 && document.querySelector('[data-character-save-status]')?.textContent.includes('已自动保存'));
+    assert.equal(await page.evaluate(() => window.__qa.saves[0].characters[0].age_range), '25岁', '角色年龄必须自动写入保存载荷');
+    assert.equal(await page.evaluate(() => window.__qa.saves[0].story_title), '测试剧情', '角色自动保存必须保留原正式剧情');
+    assert.equal(await page.evaluate(() => window.__qa.saves[0].beats.length), 2, '角色自动保存不得丢失原正式镜头');
+    await page.$eval('[data-character-index="0"] [data-character-field="role"]', node => { node.value = ''; node.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForFunction(() => document.querySelector('[data-character-save-status]')?.textContent.includes('待补'));
+    assert.equal(await page.evaluate(() => window.__qa.saves.length), 1, '必填人物信息为空时不得覆盖正式数据');
+    await page.$eval('[data-character-index="0"] [data-character-field="role"]', node => { node.value = '空间设计师'; node.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForFunction(() => window.__qa.saves.length === 2 && document.querySelector('[data-character-save-status]')?.textContent.includes('已自动保存'));
     await page.click('[data-recheck-story]');
     await page.waitForFunction(() => window.__qa.stageRuns.length === 1);
     assert.deepEqual(await page.evaluate(() => window.__qa.stageRuns[0]), { stage: 'blueprint', body: {} }, '复检已保存初稿不得携带 force_regenerate');
@@ -124,7 +137,7 @@ async function main() {
     await page.click('[data-save-beat-floating]');
     const persistedLines = await page.$eval('[data-beat-index="0"] [data-beat-field="dialogue_lines_json"]', input => JSON.parse(input.value));
     assert.deepEqual(persistedLines.map(line => line.speaker_id), ['designer', 'narrator'], '人物台词与旁白必须自动写入内部绑定');
-    console.log(JSON.stringify({ ok: true, checks: 28, rows_after_add: 3, floating_editors: 1, model_calls: 0, media_calls: 0 }));
+    console.log(JSON.stringify({ ok: true, checks: 36, rows_after_add: 3, floating_editors: 1, character_saves: 2, model_calls: 0, media_calls: 0 }));
   } catch (error) {
     error.message = `[${step}] ${error.message}`;
     throw error;

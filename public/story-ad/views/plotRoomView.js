@@ -2,6 +2,7 @@ import { request } from '../api.js?v=20260823-speaker-recovery-v170';
 import { emptyState, escapeHtml, setButtonBusy, toast } from '../components/ui.js?v=20260823-speaker-recovery-v170';
 import { confirmDialog } from '../components/dialog.js?v=20260823-speaker-recovery-v170';
 import { applyBeat, beatEditor, collectBeat, collectBlueprint, productionIssues, syncFloatingEditor } from './plotBeatEditor.js?v=20260823-speaker-recovery-v170';
+import { bindCharacterAutosave } from './plotCharacterAutosave.js?v=20260823-speaker-recovery-v170';
 
 function characterEditor(character = {}, index = 0) {
   const gender = String(character.gender || '').toLowerCase();
@@ -49,7 +50,7 @@ export async function mount(host, context) {
           <label class="field story-summary-surface"><span>一句话剧情</span><textarea class="textarea" name="logline" rows="2">${escapeHtml(blueprint.logline || blueprint.summary || '')}</textarea></label>
         </div>
       </section>
-      <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>基础信息与音色会自动同步到下一步人物资产和配音。</p></div><span class="status-tag ${castMismatch ? 'is-warning' : 'is-info'}">${castMismatch ? `已确认 ${expectedCharacters} 人，当前剧情仅 ${characters.length} 人` : `${characters.length} 个角色`}</span></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
+      <section class="card story-characters-card"><div class="card-head"><div><h2>角色设定</h2><p>修改后自动保存，并同步到下一步人物资产和配音。</p></div><div class="story-character-save-actions"><span data-character-save-status data-state="idle" aria-live="polite">修改后自动保存</span><button class="btn small" type="button" data-save-characters>保存角色设置</button><span class="status-tag ${castMismatch ? 'is-warning' : 'is-info'}">${castMismatch ? `已确认 ${expectedCharacters} 人，当前剧情仅 ${characters.length} 人` : `${characters.length} 个角色`}</span></div></div><div class="card-body story-character-grid">${characters.length ? characters.map(characterEditor).join('') : '<span class="chip">当前蓝图没有独立角色记录</span>'}</div></section>
       <section class="card plot-sequence-card">
         <div class="card-head"><div><h2>剧情、动作与对白</h2><p>点击任意单元格编辑，人物、场景和后续分镜沿用同一份数据。</p></div><div class="plot-sequence-actions"><span data-production-completeness></span><button class="btn small" type="button" data-add-beat>＋ 新增镜头</button></div></div>
         <div class="beat-table-scroll"><div class="beat-table-head" aria-hidden="true"><span>镜号</span><span>时长</span><span>场景</span><span>画面描述 / 动作</span><span>景别</span><span>光影氛围</span><span>对白 / 旁白</span><span>音效</span><span>运镜</span><span>镜头提示</span><span>操作</span></div>
@@ -73,6 +74,10 @@ export async function mount(host, context) {
       });
     }).catch(() => toast('音色列表暂时无法加载；已保留原音色绑定，可稍后重试。', 'warning'));
   }
+
+  const characterAutosave = characters.length
+    ? bindCharacterAutosave({ host, blueprint, store, collectBlueprint, toast })
+    : null;
 
   const generate = async (button, force = false) => {
     try {
@@ -233,8 +238,10 @@ export async function mount(host, context) {
   host.querySelector('[data-save-story]')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     try {
+      characterAutosave?.cancelPending();
       setButtonBusy(button, true, '保存中…');
       await store.saveBlueprint(collectBlueprint(host, blueprint));
+      characterAutosave?.markSaved();
       toast('剧情蓝图已保存。', 'success');
       await context.refreshShell();
     } catch (error) {
@@ -243,7 +250,7 @@ export async function mount(host, context) {
       setButtonBusy(button, false);
     }
   });
-  host.querySelector('[data-open-storyboard]')?.addEventListener('click', () => {
+  host.querySelector('[data-open-storyboard]')?.addEventListener('click', async () => {
     if (castMismatch) {
       host.querySelector('.story-characters-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       toast(`已确认 ${expectedCharacters} 人出镜，但当前历史剧情只有 ${characters.length} 人；请重新生成剧情后再进入人物。`, 'warning');
@@ -255,6 +262,12 @@ export async function mount(host, context) {
       const button = first.row.querySelector(`[data-open-beat-cell="${first.group}"]`);
       if (button) { button.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' }); openEditor(button, first.row, first.group); }
       toast('制作表仍有空项，已为你打开第一个需要补充的位置。', 'warning');
+      return;
+    }
+    try {
+      await characterAutosave?.flush();
+    } catch {
+      host.querySelector('.story-characters-card')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
       return;
     }
     context.navigate(`/story-ad/projects/${encodeURIComponent(bundle.project.id)}?view=assets`);

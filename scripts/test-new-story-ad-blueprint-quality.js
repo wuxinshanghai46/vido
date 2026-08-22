@@ -288,6 +288,30 @@ assert(thinDialogueReview.issues.some(issue => /泛化反应/.test(issue)));
 assert(thinDialogueReview.issues.some(issue => /句式重复/.test(issue)));
 assert.equal(assessBlueprintQuality(productionThinDialogue).pass, false, '生产中的单薄台词必须被质量门禁拒绝');
 
+const unansweredQuestionDialogue = {
+  target_duration: 20,
+  dialogue_contract: { version: 'dialogue-arc-v1', target_chars_per_second: { max: 4.8 } },
+  beats: [
+    { duration: 5, dialogue_function: 'setup_goal', spoken_line: '我们先确认展厅入口的整体气质。' },
+    { duration: 5, dialogue_function: 'question', spoken_line: '还有金属拉丝这种风格吗？' },
+    { duration: 5, dialogue_function: 'decision', spoken_line: '这个效果合适，就定这个系列。' },
+    { duration: 5, dialogue_function: 'brand_closure', spoken_line: '材料选择完成，方案可以继续深化。' },
+  ],
+};
+const unansweredQuestionReview = assessDialogueNarrative(unansweredQuestionDialogue);
+assert.equal(unansweredQuestionReview.pass, false, '人物提问后直接决定必须被质量门禁拒绝');
+assert(unansweredQuestionReview.issues.some(issue => /提出问题后直接进入/.test(issue)));
+const answeredQuestionDialogue = {
+  ...unansweredQuestionDialogue,
+  target_duration: 25,
+  beats: [
+    unansweredQuestionDialogue.beats[0], unansweredQuestionDialogue.beats[1],
+    { duration: 5, dialogue_function: 'proof', spoken_line: '有，拉丝线条更利落，我带您看样片。' },
+    unansweredQuestionDialogue.beats[2], unansweredQuestionDialogue.beats[3],
+  ],
+};
+assert.equal(assessDialogueNarrative(answeredQuestionDialogue).pass, true, '提问、回应证据、决定的完整链路应通过');
+
 const storyDrivenDialogue = {
   ...productionThinDialogue,
   characters: [{ id: 'designer', name: '苏晚', role: '设计师', gender: 'female', age_range: '28~35岁' }],

@@ -591,6 +591,7 @@ async function generateBlueprint(ctx, {
     'characters.name must be a task-local formal person name when a person appears. If the user did not provide a name, generate a fresh stable name for this task; never use role placeholders or descriptions such as "elegant woman", "customer", "presenter" as final names.',
     'Every on-screen character must include a stable id, formal name, gender, age_range, role, relationship and description. When the confirmed cast contract says a customer or procurement representative appears, create that person as a separate character; audience targeting alone must never create a customer character.',
     'For multi-person dialogue, speaker must exactly match one characters.name. Do not merge a presenter and customer into one identity.',
+    'An explicit question must be followed by a distinct answer or visible evidence beat before any choice, decision or resolution. Never jump directly from a customer question to that same customer making a final decision.',
     'If cast_mode is no_human, characters must be an empty array and beats must not introduce human body parts, backs, silhouettes, hands, presenters, models or crowds unless the user explicitly asked for them.',
     'If cast_mode is animal, treat the animal/pet as the subject required by the user brief and do not convert it into a human presenter.',
     speechPlan.policy === 'authored_sparse'
